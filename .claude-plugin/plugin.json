@@ -1,0 +1,32 @@
+{
+  "$schema": "https://claude.ai/plugin-schema.json",
+  "name": "claudemd",
+  "version": "0.1.0",
+  "description": "AI-CODING-SPEC v6.9 HARD-rule enforcement via Claude Code hooks + spec distribution",
+  "author": {"name": "sds"},
+  "license": "MIT",
+  "commands": "./commands",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh\"", "timeout": 3},
+          {"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh\"", "timeout": 5},
+          {"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh\"", "timeout": 3}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh\"", "timeout": 3},
+          {"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh\"", "timeout": 3}
+        ]
+      }
+    ]
+  },
+  "postInstall": "node ${CLAUDE_PLUGIN_ROOT}/scripts/install.js",
+  "preUninstall": "node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js"
+}
