@@ -1,0 +1,10 @@
+{
+  "$schema": "https://claude.ai/plugin-marketplace-schema.json",
+  "name": "claudemd",
+  "plugins": {
+    "claudemd": {
+      "source": "./",
+      "description": "AI-CODING-SPEC v6.9 enforcement hooks + spec distribution"
+    }
+  }
+}
