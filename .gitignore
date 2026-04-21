@@ -1,0 +1,5 @@
+.code-graph/
+
+# docs/ is local-only; only docs/superpowers/ (design + implementation plan) is tracked
+docs/*
+!docs/superpowers/
