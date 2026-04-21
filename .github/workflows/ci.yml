@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install tools
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then brew install jq shellcheck; fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then sudo apt-get update -y && sudo apt-get install -y jq shellcheck; fi
+      - name: Shellcheck hooks (warn-only)
+        run: shellcheck hooks/*.sh hooks/lib/*.sh || echo "shellcheck warnings (non-blocking)"
+      - name: Run test suite
+        run: bash tests/run-all.sh
