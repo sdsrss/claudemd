@@ -1,5 +1,11 @@
 .code-graph/
 
-# docs/ is local-only; only docs/superpowers/ (design + implementation plan) is tracked
+# docs/ is local-only by default. Exceptions:
+#  - docs/superpowers/ (design + implementation plan)
+#  - docs/ADDING-NEW-HOOK.md (external contract: how to add a 6th hook)
+#  - docs/RULE-HITS-SCHEMA.md (external contract: JSONL schema)
+# ARCHITECTURE.md + HOOK-PROTOCOL.md are internal reference, stay local.
 docs/*
 !docs/superpowers/
+!docs/ADDING-NEW-HOOK.md
+!docs/RULE-HITS-SCHEMA.md
