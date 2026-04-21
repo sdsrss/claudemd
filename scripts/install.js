@@ -45,6 +45,13 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     }
   }
 
+  // §2.7 safety: pre-merge backup of settings.json before any modification
+  let settingsBackup = null;
+  if (fs.existsSync(settingsPath())) {
+    settingsBackup = `${settingsPath()}.claudemd-backup-${isoStamp()}`;
+    fs.copyFileSync(settingsPath(), settingsBackup);
+  }
+
   // Settings: merge hooks idempotently
   const settings = fs.existsSync(settingsPath()) ? readSettings() : {};
   const entries = [];
@@ -73,7 +80,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   const log = path.join(logsDir(), 'claudemd.jsonl');
   if (!fs.existsSync(log)) fs.writeFileSync(log, '');
 
-  return { spec: specResult, backupDir, entries };
+  return { spec: specResult, backupDir, settingsBackup, entries };
 }
 
 function isoStamp() {

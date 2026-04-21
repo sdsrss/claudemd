@@ -82,3 +82,17 @@ test('logs directory and empty jsonl created', async () => {
   assert.ok(fs.existsSync(log));
   assert.equal(fs.readFileSync(log, 'utf8'), '');
 });
+
+test('pre-merge settings.json backup created when settings.json existed', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{"hooks":{}}');
+  const res = await install({ pluginRoot });
+  assert.ok(res.settingsBackup, 'settingsBackup path should be populated');
+  assert.ok(fs.existsSync(res.settingsBackup), 'backup file should exist on disk');
+  assert.match(path.basename(res.settingsBackup), /^settings\.json\.claudemd-backup-\d{8}T\d{6}Z$/);
+  assert.equal(fs.readFileSync(res.settingsBackup, 'utf8'), '{"hooks":{}}');
+});
+
+test('fresh install (no settings.json): settingsBackup is null', async () => {
+  const res = await install({ pluginRoot });
+  assert.equal(res.settingsBackup, null);
+});
