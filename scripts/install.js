@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { readSettings, writeSettings, mergeHook } from './lib/settings-merge.js';
+import { readSettings, writeSettings, mergeHook, unmergeHook } from './lib/settings-merge.js';
 import { createBackup, pruneBackups } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome } from './lib/paths.js';
 
@@ -42,6 +42,27 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     const dest = path.join(path.dirname(settingsPath()), name);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);
+    }
+  }
+
+  // 2a. Migrate hand-installed banned-vocab hook (pre-plugin v0 hand-install artifact)
+  const handHooks = [
+    path.join(path.dirname(settingsPath()), 'hooks/banned-vocab-check.sh'),
+    path.join(path.dirname(settingsPath()), 'hooks/banned-vocab.patterns'),
+  ];
+  const handExisting = handHooks.filter(fs.existsSync);
+  if (handExisting.length > 0) {
+    const migrateDir = backupDir || createBackup([], { label: 'backup' }).dir;
+    const hooksSubdir = path.join(migrateDir, 'hooks');
+    fs.mkdirSync(hooksSubdir, { recursive: true });
+    for (const src of handExisting) {
+      fs.renameSync(src, path.join(hooksSubdir, path.basename(src)));
+    }
+    backupDir = migrateDir;
+    if (fs.existsSync(settingsPath())) {
+      const pre = readSettings();
+      unmergeHook(pre, { commandPredicate: (c) => handHooks.some(h => c.includes(h)) });
+      writeSettings(pre);
     }
   }
 

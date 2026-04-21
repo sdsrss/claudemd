@@ -96,3 +96,35 @@ test('fresh install (no settings.json): settingsBackup is null', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.settingsBackup, null);
 });
+
+test('migrates hand-installed banned-vocab hook into backup', async () => {
+  // Place hand-installed artifacts
+  fs.mkdirSync(path.join(tmpHome, '.claude/hooks'), { recursive: true });
+  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'), '#!/bin/bash\n# v0 hand-install\nexit 0\n');
+  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab.patterns'), 'foo|reason\n');
+  // settings.json pointing to hand-installed hook
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
+    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command',
+      command: `bash "${path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh')}"`, timeout: 3 }] }] }
+  }));
+
+  const res = await install({ pluginRoot });
+
+  // Old files moved into backup-<ISO>/hooks/
+  assert.ok(res.backupDir);
+  assert.ok(fs.existsSync(path.join(res.backupDir, 'hooks/banned-vocab-check.sh')));
+  assert.ok(fs.existsSync(path.join(res.backupDir, 'hooks/banned-vocab.patterns')));
+  assert.equal(fs.existsSync(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh')), false);
+
+  // settings.json no longer references hand-installed path
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  const bash = s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks;
+  assert.equal(bash.some(h => h.command.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))), false);
+});
+
+test('leaves non-migrated hand hooks untouched', async () => {
+  fs.mkdirSync(path.join(tmpHome, '.claude/hooks'), { recursive: true });
+  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/some-other.sh'), '#!/bin/bash\nexit 0\n');
+  await install({ pluginRoot });
+  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/hooks/some-other.sh')));
+});
