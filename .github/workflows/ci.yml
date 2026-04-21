@@ -19,8 +19,13 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Install tools
         run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then brew install jq shellcheck; fi
-          if [[ "$RUNNER_OS" == "Linux" ]]; then sudo apt-get update -y && sudo apt-get install -y jq shellcheck; fi
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install jq shellcheck coreutils
+            echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update -y && sudo apt-get install -y jq shellcheck
+          fi
       - name: Shellcheck hooks (warn-only)
         run: shellcheck hooks/*.sh hooks/lib/*.sh || echo "shellcheck warnings (non-blocking)"
       - name: Run test suite
