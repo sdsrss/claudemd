@@ -11,8 +11,8 @@ platform_stat_mtime() {
   fi
 }
 
-# platform_find_newer DIR REFERENCE_FILE — list files newer than REFERENCE_FILE under DIR.
+# platform_find_newer DIR REFERENCE_FILE — list files and dirs newer than REFERENCE_FILE under DIR.
 platform_find_newer() {
   local dir="$1" ref="$2"
-  find "$dir" -newer "$ref" -type f 2>/dev/null
+  find "$dir" -newer "$ref" 2>/dev/null | grep -v "^${dir}$" || true
 }
