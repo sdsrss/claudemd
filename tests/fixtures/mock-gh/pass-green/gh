@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo '[{"databaseId":1,"status":"completed","conclusion":"success","displayTitle":"CI main","url":"https://example/1"}]'

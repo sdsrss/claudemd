@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo '[{"databaseId":2,"status":"completed","conclusion":"failure","displayTitle":"test_flake","url":"https://example/2"}]'
