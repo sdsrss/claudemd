@@ -1,0 +1,6 @@
+{
+  "session_id": "test",
+  "tool_name": "Bash",
+  "tool_input": {"command": "git commit -m 'significantly improved parser'"},
+  "cwd": "/tmp/fixture"
+}

@@ -1,0 +1,6 @@
+{
+  "session_id": "test",
+  "tool_name": "Bash",
+  "tool_input": {"command": "git commit -m 'fix: parser handles NULL (tests/parser_nulls.rs +3, all green)'"},
+  "cwd": "/tmp/fixture"
+}

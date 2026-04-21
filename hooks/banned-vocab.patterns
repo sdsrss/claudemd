@@ -1,0 +1,50 @@
+# ~/.claude/hooks/banned-vocab.patterns
+# §10-V banned vocabulary — strict subset, scanned by banned-vocab-check.sh
+# Format: <extended-regex>|<human-readable reason>
+# Empty lines and lines starting with # are ignored.
+# Patterns are matched case-insensitive via grep -iE.
+#
+# Scope: applied to ENTIRE `git commit` command string. False positives
+# possible if an unrelated part of the command contains these words.
+# Mitigation: add [allow-banned-vocab] to the commit message to bypass.
+#
+# Design principle: only include words whose primary usage in a commit
+# message is "agent describing its own work in vague positive terms".
+# Skip common legitimate English/中文 (e.g. "usually", "often", "likely").
+
+# ─── EN adjectives (strong signals) ─────────────────────────────────────────
+\bsignificantly\b|vague magnitude without number — cite absolute or baseline ratio
+\bproduction[- ]ready\b|evaluative adjective — describe what you verified (tests, thresholds) instead
+\brobust\b|evaluative adjective — describe the property (covers X branches, handles Y input)
+\bcomprehensive\b|vague scope — cite what is actually covered
+\bbest practice\b|appeal to authority — cite the specific practice + source if invoking
+\bindustry standard\b|appeal to authority — same as best-practice
+\bcleaner code\b|evaluative — describe the concrete change (N fewer LOC, removed helper X)
+\bshould work\b|hedge — verify and state, or drop the claim (§8.V1 Anti-hallucination)
+\bseems to work\b|hedge — same as should-work
+\bappears correct\b|hedge — same
+\bin principle\b|hedge — state the specific case
+\bin theory\b|hedge — same
+\bpresumably\b|hedge — verify and state
+\bit should be fine\b|hedge — verify and state
+
+# ─── 中文 adjectives (strong signals) ────────────────────────────────────────
+显著提升|值述无具体数字 — 改写成 baseline → target 数字
+显著改善|同上
+显著优于|同上
+大幅提升|同上
+大幅改善|同上
+更高效|未给基线的比较
+明显优于|同上
+基本可用|软肯定 — 改为具体覆盖范围或 [PARTIAL]
+相当不错|评价性形容词 — 描述具体属性
+
+# ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
+# These match "X% faster" / "Nx better" without nearby numbers.
+# Deliberately conservative — miss some, false-positive none.
+\b[0-9]+%\s+(faster|slower|better|more efficient)\b|ratio without baseline — cite before → after numbers
+\b[0-9]+x\s+(faster|slower|better)\b|same
+
+# ─── Baseline-less ratios (中文) ────────────────────────────────────────────
+[0-9]+%(更快|更慢|更好|更高效)|无基线的比率 — 给出 before → after
+[0-9]+倍(提升|加速|改善)|同上

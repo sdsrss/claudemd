@@ -1,0 +1,6 @@
+{
+  "session_id": "test",
+  "tool_name": "Edit",
+  "tool_input": {"file_path": "/tmp/foo.txt", "old_string": "a", "new_string": "b"},
+  "cwd": "/tmp/fixture"
+}
