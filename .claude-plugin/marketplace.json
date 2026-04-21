@@ -1,0 +1,20 @@
+{
+  "$schema": "https://claude.ai/plugin-marketplace-schema.json",
+  "name": "claudemd",
+  "owner": {
+    "name": "sdsrss"
+  },
+  "metadata": {
+    "description": "claudemd marketplace: AI-CODING-SPEC v6.9 enforcement plugin",
+    "version": "0.1.1"
+  },
+  "plugins": [
+    {
+      "name": "claudemd",
+      "source": "./",
+      "description": "AI-CODING-SPEC v6.9 HARD-rule enforcement via Claude Code hooks + spec distribution",
+      "version": "0.1.1",
+      "category": "development"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Hooks are registered by scripts/install.js into ~/.claude/settings.json (authoritative). This file is intentionally empty to prevent double-execution if the plugin system auto-loads it.",
+  "hooks": {}
+}

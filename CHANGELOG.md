@@ -2,6 +2,18 @@
 
 All notable changes to the `claudemd` plugin. This changelog tracks plugin artifact changes (hooks, scripts, commands). Spec content changes live in `spec/CLAUDE-changelog.md`.
 
+## [0.1.1] - 2026-04-21
+
+### Fixed
+- `marketplace.json` moved from repo root to `.claude-plugin/marketplace.json` (correct Claude Code plugin layout).
+- `marketplace.json` `plugins` field changed from object-keyed-by-name to array of objects (schema compliance).
+- `plugin.json` stripped of explicit `commands` / `hooks` paths (auto-scanned by Claude Code); these caused install-time schema validation failure.
+- Added `hooks/hooks.json` stub (`hooks: {}`) to prevent any auto-load double-execution when the install script registers hooks in `~/.claude/settings.json`.
+- macOS CI: install `coreutils` for `timeout`; add GNU gnubin to PATH.
+- macOS: `tests/hooks/rule-hits.test.sh` strips BSD `wc -l` whitespace padding.
+- Git index: set executable bit (`100755`) on all shell scripts so CI mock-gh PATH invocation works.
+- README rewritten with correct `/plugin marketplace add` + `/plugin install` flow.
+
 ## [0.1.0] - 2026-04-21
 
 ### Added
