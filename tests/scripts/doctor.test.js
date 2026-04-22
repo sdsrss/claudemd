@@ -86,4 +86,39 @@ test('doctor runs banned-vocab self-test and reports pass when hook denies synth
   assert.equal(selftest.ok, true,
     `self-test must pass on a clean tree; detail="${selftest.detail}"`);
   assert.match(selftest.detail, /significantly/);
+  // Clean env: no kill-switch note should appear.
+  assert.doesNotMatch(selftest.detail, /kill-switch engaged/);
+});
+
+test('doctor self-test detail notes kill-switch when user has disabled the hook via settings.json', async () => {
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  // Write a settings.json with the per-hook kill-switch engaged. The self-test
+  // still runs against the hook CODE (with env cleared in spawn), but its
+  // detail must call out that live enforcement is OFF for this user.
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  const r = await doctor({});
+  const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
+  assert.ok(selftest);
+  assert.equal(selftest.ok, true, 'hook code still denies synthetic trigger regardless of kill-switch');
+  assert.match(selftest.detail, /kill-switch engaged/);
+  assert.match(selftest.detail, /will NOT fire in practice/);
+});
+
+test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in process env', async () => {
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const saved = process.env.DISABLE_CLAUDEMD_HOOKS;
+  process.env.DISABLE_CLAUDEMD_HOOKS = '1';
+  try {
+    const r = await doctor({});
+    const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
+    assert.ok(selftest);
+    assert.equal(selftest.ok, true);
+    assert.match(selftest.detail, /kill-switch engaged/);
+  } finally {
+    if (saved === undefined) delete process.env.DISABLE_CLAUDEMD_HOOKS;
+    else process.env.DISABLE_CLAUDEMD_HOOKS = saved;
+  }
 });

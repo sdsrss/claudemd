@@ -23,6 +23,11 @@ rule_hits_append() {
   # file, so rotations beyond .1 are effectively archived (read-only).
   # `stat -c` is GNU, `-f` is BSD — try both, default to 0 if neither works
   # (fail-safe: no rotation better than wrong rotation on an unknown stat).
+  # Concurrency: two hooks firing within the same ms can both observe
+  # `size > threshold` and both race `mv -f file .1`. One rotation wins, one
+  # is a no-op on an already-moved file; at worst one log line is lost to
+  # the race. Acceptable under the fail-open contract — flock would add a
+  # dependency for a ~0.01% occurrence.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
   local max_bytes=$((max_mb * 1024 * 1024))
   if [[ -f "$log_file" ]]; then

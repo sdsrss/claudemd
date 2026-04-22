@@ -42,6 +42,8 @@ New `pruneSettingsBackups(retainCount)` in `scripts/lib/backup.js:60-75` (mirror
 
 `scripts/doctor.js:59-93` spawns `hooks/banned-vocab-check.sh` with a synthetic event (`git commit -m "this is significantly better"`) and asserts a `"permissionDecision": "deny"` JSON response. Catches drift between `banned-vocab.patterns` and the hook's extraction logic that unit tests (which parse patterns directly) can silently paper over. Side-effect-free: sets `DISABLE_RULE_HITS_LOG=1` in the spawn env so the self-test doesn't pollute the user's rule-hits log; clears both kill-switch vars so ambient env can't falsely pass the check by disabling it. Degrades gracefully when `jq` / `bash` missing (prerequisite check with specific detail message).
 
+**Kill-switch surfacing (review I1)**: the self-test detects before spawn whether `DISABLE_CLAUDEMD_HOOKS=1` / `DISABLE_BANNED_VOCAB_HOOK=1` is engaged in process env OR `settings.json:env`. Result still reports `ok: true` (hook code still denies the synthetic trigger when forced-enabled), but the detail appends `" — note: kill-switch engaged in user env/settings; hook will NOT fire in practice"`. Without this, doctor would silently green-light a hook the user has actively disabled, masking a config-vs-intent mismatch. Two new tests in `tests/scripts/doctor.test.js` lock both the settings.json and process.env paths.
+
 ### Manifest version bumps
 
 - `package.json` 0.2.2 → 0.2.3. Description unchanged (`v6.10` per v0.2.1 policy: major.minor only).
@@ -54,9 +56,9 @@ New `pruneSettingsBackups(retainCount)` in `scripts/lib/backup.js:60-75` (mirror
 
 ### Test totals
 
-- Unit: 101 → 105 (+3 pruneSettingsBackups, +1 doctor self-test).
+- Unit: 101 → 107 (+3 pruneSettingsBackups, +1 doctor self-test, +2 doctor kill-switch surfacing).
 - Shell hooks: `memory-read-check` 8 → 9 cases (regex-metachar tag); `rule-hits` 3 → 6 cases (rotation trio).
-- Full suite (shell + Node + full-lifecycle integration): PASS (440 ms, +310 ms from self-test subprocess spawn).
+- Full suite (shell + Node + full-lifecycle integration): PASS (573 ms).
 
 ## [0.2.2] - 2026-04-23
 

@@ -65,6 +65,25 @@ export async function doctor({ pruneBackups: prune } = {}) {
   //   - DISABLE_RULE_HITS_LOG=1 suppresses the jsonl append
   //   - both kill-switch vars cleared so the user's env can't make the test
   //     pass by disabling the very check we're verifying
+  // Detect user-intent kill-switch BEFORE forcing the env clear in the self-
+  // test spawn. The self-test clears kill-switch vars so it can verify the
+  // hook CODE's enforcement path still works — a separate axis from user
+  // intent. When the user has disabled the hook (env or settings.json), the
+  // pass result is about code integrity, not live enforcement; surface that
+  // distinction in the detail so `/claudemd-doctor` output doesn't look like
+  // everything is enforced when it isn't.
+  const ksEnvPlugin = process.env.DISABLE_CLAUDEMD_HOOKS === '1';
+  const ksEnvHook = process.env.DISABLE_BANNED_VOCAB_HOOK === '1';
+  let ksSettings = false;
+  if (fs.existsSync(settingsPath())) {
+    try {
+      const s = readSettings();
+      ksSettings = s.env?.DISABLE_CLAUDEMD_HOOKS === '1'
+                 || s.env?.DISABLE_BANNED_VOCAB_HOOK === '1';
+    } catch { /* unparseable settings reported separately above */ }
+  }
+  const killSwitchEngaged = ksEnvPlugin || ksEnvHook || ksSettings;
+
   const hookPath = path.join(PLUGIN_ROOT, 'hooks/banned-vocab-check.sh');
   if (!fs.existsSync(hookPath)) {
     push('banned-vocab self-test', false, `hook missing at ${hookPath}`);
@@ -88,10 +107,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
       },
     });
     const denied = r.status === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout || '');
+    const ksNote = killSwitchEngaged
+      ? ' — note: kill-switch engaged in user env/settings; hook will NOT fire in practice'
+      : '';
     push('banned-vocab self-test', denied,
-      denied
+      (denied
         ? 'synthetic "significantly" trigger correctly denied'
-        : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`);
+        : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`)
+      + ksNote);
   }
 
   const pruned = prune != null ? pruneBackups(prune) : [];
