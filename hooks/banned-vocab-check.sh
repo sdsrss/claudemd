@@ -32,6 +32,18 @@ fi
 PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patterns"
 [[ -r "$PATTERNS_FILE" ]] || exit 0
 
+# Baseline-context exemption: if the commit message carries an explicit
+# before-after anchor (number on both sides of →/->/=>) OR the literal word
+# `baseline`, ratio-class patterns (tagged `@ratio` in their reason column)
+# are suppressed. Non-ratio hedges/adjectives still deny regardless.
+# Aligns with spec §10 "ratio with baseline" permission.
+BASELINE_EXEMPT=0
+if echo "$CMD" | grep -qE '[0-9][^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]'; then
+  BASELINE_EXEMPT=1
+elif echo "$CMD" | grep -qiE 'baseline'; then
+  BASELINE_EXEMPT=1
+fi
+
 # Collect hits
 declare -a HITS=()
 declare -a REASONS=()
@@ -39,7 +51,15 @@ while IFS= read -r line; do
   [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
   local_regex="${line%|*}"
   local_reason="${line##*|}"
+  is_ratio=0
+  if [[ "$local_reason" == "@ratio "* ]]; then
+    is_ratio=1
+    local_reason="${local_reason#@ratio }"
+  fi
   if echo "$CMD" | grep -qiE "$local_regex"; then
+    if (( is_ratio == 1 && BASELINE_EXEMPT == 1 )); then
+      continue
+    fi
     match=$(echo "$CMD" | grep -oiE "$local_regex" | head -n1)
     HITS+=("$match")
     REASONS+=("$local_reason")

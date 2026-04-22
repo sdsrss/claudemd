@@ -71,8 +71,31 @@ echo 'not json' > "$TMP_FIX"
 assert_pass "12: malformed JSON stdin → fail-open pass" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# --- baseline-context exemption (v0.1.8) ---
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -m 'perf: rendering 240ms → 72ms (70% faster)'"},"cwd":"/tmp"}
+EOF
+assert_pass "13: ratio + → baseline → pass" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -m 'fix: it should work → now verified'"},"cwd":"/tmp"}
+EOF
+assert_deny "14: hedge + → does NOT escape deny (ratio-only exemption)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -m '缓存: 380ms → 95ms (70% 更快)'"},"cwd":"/tmp"}
+EOF
+assert_pass "15: 中文 ratio + → baseline → pass" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"
+  echo "Tests: $((15 - FAIL))/15 passed"
   exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 15/15 passed"
