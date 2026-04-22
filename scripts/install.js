@@ -102,7 +102,8 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // "Variable Expansion in Hook Commands"). Pre-0.1.5 installs wrote commands
   // into settings.json under either literal ${CLAUDE_PLUGIN_ROOT} (0.1.2-0.1.4,
   // which the harness refused to run) or absolute version-dir paths (≤0.1.1,
-  // which went stale on /plugin update). Both are evicted here; no merge back.
+  // which went stale when CC swapped in a new version-dir on upgrade). Both
+  // are evicted here; no merge back.
   const settings = fs.existsSync(settingsPath()) ? readSettings() : {};
   unmergeHook(settings, { commandPredicate: (c) =>
     HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`))

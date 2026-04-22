@@ -128,13 +128,24 @@ CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/clau
 
 ## Update
 
-After `/plugin update claudemd` pulls a new plugin version, sync the shipped spec into `~/.claude/`:
+Claude Code has **no** `/plugin update` slash command — it's silently ignored as unrecognized. The canonical upgrade sequence is:
+
+```
+/plugin marketplace update claudemd                 # refresh local marketplace clone (git fetch)
+/plugin uninstall claudemd@claudemd                 # remove old plugin version
+/plugin install claudemd@claudemd                   # install latest from refreshed clone
+/reload-plugins                                     # apply changes to current session
+```
+
+Or open the interactive UI via `/plugin` → **Installed** tab → select `claudemd` → follow upgrade prompts.
+
+After the plugin upgrade, sync the shipped spec into `~/.claude/`:
 
 ```
 /claudemd-update
 ```
 
-The command prints per-file diff summary, then prompts `apply-all / select / cancel`. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — that's `/plugin update claudemd`'s job.
+The command prints per-file diff summary, then prompts `apply-all / select / cancel`. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
 
 ---
 
@@ -150,7 +161,9 @@ node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/install.js
 
 Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.
 
-**`Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated with a plugin`** (5 errors on every `Bash` tool call + every session end) — you're on claudemd 0.1.2 / 0.1.3 / 0.1.4. Those releases wrote hook commands into `~/.claude/settings.json` under the literal `${CLAUDE_PLUGIN_ROOT}` token, but the CC harness only expands that variable for hooks defined in a plugin's own `hooks/hooks.json` — never in `settings.json`. The fix is v0.1.5, which moves hook registration into the plugin's `hooks/hooks.json` (where the token expands correctly) and evicts the stale settings.json entries on install. Upgrade with `/plugin update claudemd`, then restart the Claude Code session to clear the cached hook registry. If `/plugin update` silently no-ops, the marketplace clone is stale — `git fetch + ff` under `~/.claude/plugins/marketplaces/claudemd/`, then unpack the newest tag into `~/.claude/plugins/cache/claudemd/claudemd/<version>/` and re-run `install.js`.
+**`/plugin update claudemd` does nothing / empty stdout** — `/plugin update` is not a valid Claude Code slash command; CC silently ignores unrecognized commands. Use the canonical sequence instead (see **Update** section above): `/plugin marketplace update claudemd` → `/plugin uninstall claudemd@claudemd` → `/plugin install claudemd@claudemd` → `/reload-plugins`. If that also fails (marketplace clone refuses to refresh), manually `git -C ~/.claude/plugins/marketplaces/claudemd fetch origin main --tags && git merge --ff-only origin/main`, then `git archive v<version> | tar -x -C ~/.claude/plugins/cache/claudemd/claudemd/<version>/`, then run that version's `scripts/install.js`.
+
+**`Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated with a plugin`** (5 errors on every `Bash` tool call + every session end) — you're on claudemd 0.1.2 / 0.1.3 / 0.1.4. Those releases wrote hook commands into `~/.claude/settings.json` under the literal `${CLAUDE_PLUGIN_ROOT}` token, but the CC harness only expands that variable for hooks defined in a plugin's own `hooks/hooks.json` — never in `settings.json`. The fix is v0.1.5+, which moves hook registration into the plugin's `hooks/hooks.json` (where the token expands correctly) and evicts the stale settings.json entries on install. Upgrade via the canonical sequence in the **Update** section above, then restart the Claude Code session to clear the cached hook registry.
 
 **`ship-baseline-check` silently passes on red CI** — `gh` CLI is not installed, or authentication failed. Install with `brew install gh` / `apt-get install gh` and run `gh auth login`. Check with `/claudemd-doctor` — it reports `gh: missing` if absent.
 
