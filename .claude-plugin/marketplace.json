@@ -5,15 +5,15 @@
     "name": "sdsrss"
   },
   "metadata": {
-    "description": "claudemd marketplace: AI-CODING-SPEC v6.9 enforcement plugin",
-    "version": "0.1.9"
+    "description": "claudemd marketplace: AI-CODING-SPEC v6.10 enforcement plugin",
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "claudemd",
       "source": "./",
-      "description": "AI-CODING-SPEC v6.9 HARD-rule enforcement via Claude Code hooks + spec distribution",
-      "version": "0.1.9",
+      "description": "AI-CODING-SPEC v6.10 HARD-rule enforcement via Claude Code hooks + spec distribution",
+      "version": "0.2.0",
       "category": "development"
     }
   ]

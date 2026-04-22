@@ -6,6 +6,24 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.10.0 — 2026-04-23
+
+Minor: data-driven net contraction. Grounding: external audit vs 6-week history of `projects--mem` / `projects--code-graph-mcp` / `projects--claudemd` flagged core at 95% of §13.1 ceiling (24.9k/25k), evidence rule scattered across §0/§7/§10/§EXT §7-EXT/B.2, and dual routing tables (§2.2 core + §EXT §4 FLOW) with tie-breaker adding cognitive cost every task. §13.2-compatible: 0 new HARD; rule consolidation + rationale externalization only.
+
+- `[merge]` **§2.1 ROUTE unified** (core) — §2.1 skill soft-triggers + §2.2 ROUTE + §2.3 TOOLS → one §2.1 ROUTE table + escalation-principles + soft-trigger clause. Dual-routing tie-breaker dropped. §EXT §4 FLOW unchanged (still authoritative on L3/ship). ~−1.4k chars.
+- `[compress]` **§5 AUTH** (core) — 14-row hard/soft column table → hard-default enum + soft list + none-case. 12 ops verbatim; semantics unchanged. ~−400 chars.
+- `[compress]` **§7 Iron Law #2 examples** (core) — Good-example set 3 → 2 (L1 + L2); 中文 explainer consolidated to one trailing line. Bugfix anchor rule unchanged. ~−250 chars.
+- `[compress]` **§8 Verify-before-claim** (core) — 8.V1–V4 body tightened to 1–2 lines each; v0.8.3 leak-count and similar historical grounding removed from core (preserved in v6.7.1 / v6.7.4 changelog entries). ~−500 chars.
+- `[compress]` **§10 Specificity** (core) — Scope clause tightened; full banned-vocab list kept at §EXT §10-V. ~−200 chars.
+- `[compress]` **§11 session-exit** (core) — rule binding unchanged; v0.11.4 anecdote moved to CLAUDE-changelog v6.7.4 reference. ~−150 chars.
+- `[fix]` **§EXT §8-EXT pointer removed** (core) — section never existed; core §8 short rationale + CLAUDE-changelog fulfills the role.
+- `[sweep]` **§0 / §EXT TOC / cross-ref** (core) — Fast-Path tightened, depth-triggers shortened, TOC updated. ~−200 chars.
+- `[archive]` **v6.9.0 entry backfilled to CLAUDE-changelog.md** (below, between v6.9.2 and v6.8.1) — extended `§Recent changes` invariant is "current entry only"; v6.9.0 was left stranded during the v6.9.2 / v6.9.3 patches.
+
+HARD tally unchanged (11 in core + 4 §EXT-side). Zero HARD added, zero removed, zero semantic change. §13.2 budget cost = 0; 20-task counter reset per "rule consolidation" allowance.
+
+---
+
 ## v6.9.3 — 2026-04-22
 
 Patch: §12 clarification (no new HARD rule, no behavior change). Identical §13.2 budget cost: 0.
@@ -30,6 +48,17 @@ Patch: §12 clarification (no new HARD rule, no behavior change). Identical §13
 - `[tweak]` §11 MEMORY.md index line gains optional `[tag]` suffix. Ungaged lines fall back to full-scan.
 
 ---
+
+**v6.9.0 (minor, 2026-04-21)** — net contraction + meta-rule stabilization. 7 changes: zero new HARD rule, 4 HARD rules merged (semantics preserved), 1 HARD relaxed at boundary, spec version-history externalized, 1 operator-facing size budget added. Compatible with v6.8.0 §13.2 (rule *removal* / consolidation / downgrade explicitly encouraged; no new HARD added).
+- **A4 §2 released-artifact exclusion** (core) — "bugfix restoring documented/intended behavior (CHANGELOG `fix:` not `change:` / `feat:`) → L2 max". Closes over-escalation where any bug-fix in a published CLI auto-read as L3.
+- **A2 §2.2 ROUTE trimmed 9 → 6 rows** (core) — UI / design / perf / security / product-biz / tech-clarify rows moved to §4 FLOW prose. §2.2 stays as the L2 subset; §4 FLOW is authoritative once extended loads (v6.8.1 tie-breaker unchanged).
+- **A3 §8 Verify-before-claim consolidation** (core) — former 4 standalone HARD subsections (Anti-hallucination / Tool-noise vs ground-truth / Destructive-smoke / Sandbox-artifact disposal) folded into one §8 "Verify-before-claim" section with sub-rules 8.V1-V4. Semantics identical; the 4 rules bind unchanged. Drops "how many HARD gates am I checking?" cognitive count from 4 to 1.
+- **B6 §11 Memory decision tree** (core) — former bullets 5/6 (auto-memory + global-state hard trigger) and the separate §11.1 Retrospective section merged into one top-down decision tree inside §11. Step 1 global-state hard trigger; step 2 L2+ retrospective; step 3 judgment test. §11.1 section deleted. Classification cost dropped from 3 independent tests to ordered evaluation.
+- **A1 §13.2 HARD-budget (permanent)** (extended) — v6.8.0 freeze window (2026-04-21 → 2026-05-21) replaced by a rolling permanent budget: promotion requires ≥3 repros AND ≥20 L2+ tasks since last HARD addition. Rule removal/downgrade adds budget back and resets the counter. Evidence-rebuttal shortcut preserved.
+- **B5 §13.1 Size budget** (extended) — operator-responsibility bullet: core ≤ 25k chars, extended ≤ 50k chars (v6.9.0 baseline). Over ceiling → next version MUST net-delete (removal bytes > addition bytes) or refuse the addition.
+- **B7 Recent changes externalized** — v6.8.1 and earlier entries moved to `~/.claude/CLAUDE-changelog.md`. Extended keeps only the current entry + Sizing line + pointer. Runtime reduction on L3/ship turns: ~−14k chars ≈ ~−3.5k tokens.
+
+Sizing (v6.9.0 measurement, 2026-04-21): core 24903 chars ≈ 6.2k tokens; extended 37434 chars ≈ 9.4k tokens; runtime when both loaded 62337 chars ≈ 15.6k tokens.
 
 **v6.8.1 (patch, 2026-04-21)** — post-v6.8.0 audit surfaced structural-tension / definition-gap issues; all fixes patch-level (no new HARD rules), compatible with §13.2 freeze. Zero rule semantic change; zero rule added; zero rule removed.
 - **Section-anchor disambiguate**: extended §10-EXT / §11 collided across core/extended. Renamed: extended `§10-EXT Banned-vocab` → `§10-V`; extended `§10-EXT COMPLETE` → `§10-R`; extended `§11 ORCHESTRATE` → `§11-O`. Core cross-refs updated (§10 Specificity → §10-V; §10 closing pointer → §10-R; §11 closing pointer → §11-O; Extended TOC). Historical `§10-EXT` / `§11 ORCHESTRATE` strings in v6.7.4 / v6.8.0 Recent-changes entries preserved (describe past state accurately).
