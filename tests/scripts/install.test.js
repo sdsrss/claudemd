@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { install } from '../../scripts/install.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 let tmpHome, savedHome, pluginRoot;
 
@@ -13,6 +17,8 @@ beforeEach(() => {
   savedHome = process.env.HOME;
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
+
+  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '9.9.9-test' }));
 
   fs.mkdirSync(path.join(pluginRoot, 'spec'), { recursive: true });
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# Core v6.9.2\nVersion: 6.9.2\n');
@@ -71,9 +77,29 @@ test('idempotent: running install 3x leaves settings.json unchanged', async () =
 test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
-  assert.equal(manifest.version, '0.1.0');
+  assert.equal(manifest.version, '9.9.9-test');
   assert.equal(manifest.entries.length, 5);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
+});
+
+test('installed.json version falls back to "unknown" when package.json missing', async () => {
+  fs.rmSync(path.join(pluginRoot, 'package.json'));
+  await install({ pluginRoot });
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
+  assert.equal(manifest.version, 'unknown');
+});
+
+test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via self-derived pluginRoot', () => {
+  const result = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/install.js')], {
+    env: { ...process.env, HOME: tmpHome, CLAUDE_PLUGIN_ROOT: '' },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, `exit non-zero. stderr: ${result.stderr}`);
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(manifest.pluginRoot, REPO_ROOT);
+  assert.equal(manifest.entries.length, 5);
 });
 
 test('logs directory and empty jsonl created', async () => {

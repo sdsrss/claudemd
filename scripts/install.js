@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, mergeHook, unmergeHook } from './lib/settings-merge.js';
 import { createBackup, pruneBackups } from './lib/backup.js';
-import { stateDir, logsDir, settingsPath, specHome } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion } from './lib/paths.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
 
@@ -90,7 +90,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // State manifest
   fs.mkdirSync(stateDir(), { recursive: true });
   fs.writeFileSync(path.join(stateDir(), 'installed.json'), JSON.stringify({
-    version: '0.1.0',
+    version: readPluginVersion(pluginRoot),
     installedAt: new Date().toISOString(),
     pluginRoot,
     entries,
@@ -109,7 +109,8 @@ function isoStamp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  install().then(r => {
+  const pluginRoot = resolvePluginRoot(import.meta.url);
+  install({ pluginRoot }).then(r => {
     console.log(JSON.stringify(r, null, 2));
   }).catch(e => {
     console.error(`install failed: ${e.message}`);

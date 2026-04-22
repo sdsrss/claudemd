@@ -30,7 +30,7 @@ Run **both** slash commands inside Claude Code. First registers the GitHub marke
 After the install finishes, wire the hooks into `~/.claude/settings.json` by running the plugin's install script once:
 
 ```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/0.1.1/scripts/install.js
+node ~/.claude/plugins/cache/claudemd/claudemd/0.1.2/scripts/install.js
 ```
 
 > The plugin system auto-scans `commands/` but hook registration via `plugin.json` / `hooks/hooks.json` is empirically unreliable across Claude Code versions (see `docs/ADDING-NEW-HOOK.md`). This plugin's `scripts/install.js` is the authoritative source — it idempotently merges 5 hook entries into your existing `~/.claude/settings.json`, backs up the prior file, and never touches other-plugin entries.
@@ -119,9 +119,9 @@ Add `--purge` to also remove `~/.claude/logs/claudemd.jsonl` and `~/.claude/.cla
 Invoking the uninstall script directly:
 
 ```bash
-CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/0.1.1/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/0.1.1/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/0.1.1/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/0.1.2/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/0.1.2/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/0.1.2/scripts/uninstall.js
 ```
 
 ---
@@ -145,7 +145,7 @@ The command prints per-file diff summary, then prompts `apply-all / select / can
 **Hooks don't fire after install** — Claude Code's `postInstall` lifecycle is not guaranteed to execute. Run the install script manually:
 
 ```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/0.1.1/scripts/install.js
+node ~/.claude/plugins/cache/claudemd/claudemd/0.1.2/scripts/install.js
 ```
 
 Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.

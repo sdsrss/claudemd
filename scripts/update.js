@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { backupRoot } from './lib/paths.js';
+import { backupRoot, resolvePluginRoot } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { createBackup, pruneBackups } from './lib/backup.js';
 
@@ -46,7 +46,7 @@ export async function update({ pluginRoot, choice = 'cancel', selected = [] } = 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = resolvePluginRoot(import.meta.url);
   const choice = process.env.CLAUDEMD_UPDATE_CHOICE || 'cancel';
   update({ pluginRoot, choice }).then(r => console.log(JSON.stringify(r, null, 2)));
 }
