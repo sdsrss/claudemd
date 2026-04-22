@@ -35,7 +35,10 @@ test('A14: core CLAUDE.md references §1.5-EXT / §5.1-EXT / §7-EXT / §11-EXT'
 test('A15: MEMORY.md tag syntax described in §11', () => {
   const text = fs.readFileSync(CORE, 'utf8');
   assert.match(text, /MEMORY\.md/);
-  assert.match(text, /tag syntax/i);
+  // v0.2.1: dropped `/tag syntax/i` literal-phrase match — the [tag1, tag2]
+  // literal is a structural copy-paste anchor and is the stable sentinel.
+  // Free-form prose around it (e.g. "Optional tag syntax" / "Index line tag
+  // annotation") can drift without breaking user-facing intent.
   assert.match(text, /\[tag1, tag2\]/);
 });
 

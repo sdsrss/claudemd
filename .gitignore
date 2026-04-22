@@ -1,7 +1,7 @@
 .code-graph/
 
-# Per-session Claude Code permission grants — user-specific + transient.
-.claude/settings.local.json
+# Claude Code workspace state (sessions, permission grants, local hooks) — user-specific + transient.
+.claude/
 
 # docs/ is local-only by default. Exceptions:
 #  - docs/superpowers/ (design + implementation plan)
