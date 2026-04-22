@@ -45,18 +45,18 @@ test('core contains new §0.1 + §2.3', () => {
   assert.ok(text.includes('§2.3 TOOLS'));
 });
 
-test('core version header is v6.9.2', () => {
+test('core version header is v6.9.3', () => {
   const text = fs.readFileSync(CORE, 'utf8');
   const m = text.match(/Version:\s*(\S+)/);
   assert.ok(m);
-  assert.equal(m[1], '6.9.2');
+  assert.equal(m[1], '6.9.3');
 });
 
-test('changelog top entry is v6.9.2', () => {
+test('changelog top entry is v6.9.3', () => {
   const text = fs.readFileSync(CL, 'utf8');
   const first = text.match(/^##\s+v(\d+\.\d+\.\d+)/m);
   assert.ok(first);
-  assert.equal(first[1], '6.9.2');
+  assert.equal(first[1], '6.9.3');
 });
 
 test('§2.1 table contains sp:brainstorming row', () => {
