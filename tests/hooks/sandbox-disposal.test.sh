@@ -34,18 +34,26 @@ STDERR=$(DISABLE_SANDBOX_DISPOSAL_HOOK=1 bash "$HOOK" <<<'{}' 2>&1)
 
 # Case 5: nested tmp.XXXXXX is NOT walked (M2) — spec §8 forbids recursive
 # ~/.claude/ traversal; hook must only scan immediate children of tmp/.
-# Reset state for isolation.
+# We cannot assert stderr is empty because the hook also scans /tmp, which on
+# CI runners routinely contains fresh tmp.*/claudemd-* directories unrelated
+# to this test. Instead: set ref to NOW, then sleep+mkdir our nested path,
+# and assert the hook's stderr does NOT mention that specific nested path.
 rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
 mkdir -p "$HOME/.claude/tmp/legit-container" "$HOME/.claude/.claudemd-state"
-touch -t 202001010000 "$HOME/.claude/.claudemd-state/session-start.ref"
-# Fresh nested mkdtemp-style dir — deep under a legit container.
-mkdir -p "$HOME/.claude/tmp/legit-container/tmp.nested_abc"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
+mkdir -p "$HOME/.claude/tmp/legit-container/tmp.nested_m2_marker_xyz"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-# With maxdepth 1, only legit-container (basename doesn't match tmp.) is seen → silent.
-# Without maxdepth (old bug), tmp.nested_abc would match → warn.
-echo "$STDERR" | grep -q "sandbox disposal" \
-  && { echo "FAIL: 5 nested tmp.X walked — recursive traversal bug still present (stderr: $STDERR)"; FAIL=$((FAIL+1)); } \
-  || echo "PASS: 5 nested tmp.X ignored (maxdepth 1 respected)"
+# With maxdepth 1, hook sees only legit-container (its mtime was touched by
+# the nested mkdir) — basename doesn't match `^tmp\.`, so nothing added to
+# FOUND from the claudemd branch. Without maxdepth, tmp.nested_m2_marker_xyz
+# would be walked and appear in the warn stderr.
+if echo "$STDERR" | grep -q "tmp\.nested_m2_marker_xyz"; then
+  echo "FAIL: 5 nested tmp.X walked — recursive traversal bug still present (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 5 nested tmp.X ignored (maxdepth 1 respected)"
+fi
 
 if (( FAIL > 0 )); then
   echo "Tests: $((5 - FAIL))/5 passed"; exit 1
