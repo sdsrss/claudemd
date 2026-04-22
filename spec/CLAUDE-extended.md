@@ -362,6 +362,8 @@ Rationale: ship encapsulates mechanical checklists (manifest sync across package
 
 Override form: in the REPORT's Done section, first line states `manual ship because <reason>` (e.g. `manual ship because CI down for unrelated infra work, manifests verified by hand at :4f2e1`). Reviewer can then audit the manual diff against the skill's checklist.
 
+**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. Rationale: without a skill's step-list pulling the agent forward, `git commit` looks like a natural pause, and the user's ship AUTH — which per §5 "per-task, per-scope" already covers push/tag/release — gets re-litigated one manual step at a time. User's single `[AUTH]` on ship is one AUTH on the full pipeline.
+
 ### Review-finding repair
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.
 - **Security (any severity)**: failing test must reproduce vulnerability (not just touch code path). No "added a check" without RED test.

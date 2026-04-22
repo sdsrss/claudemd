@@ -1,5 +1,8 @@
 .code-graph/
 
+# Per-session Claude Code permission grants — user-specific + transient.
+.claude/settings.local.json
+
 # docs/ is local-only by default. Exceptions:
 #  - docs/superpowers/ (design + implementation plan)
 #  - docs/ADDING-NEW-HOOK.md (external contract: how to add a 6th hook)

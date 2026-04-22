@@ -27,13 +27,13 @@ Run **both** slash commands inside Claude Code. First registers the GitHub marke
 /plugin install claudemd@claudemd
 ```
 
-After the install finishes, wire the hooks into `~/.claude/settings.json` by running the plugin's install script once:
+After the install finishes, run the plugin's install script once to copy the spec files into `~/.claude/` and evict any stale claudemd hook entries from `settings.json`:
 
 ```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/0.1.4/scripts/install.js
+node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/install.js
 ```
 
-> The plugin system auto-scans `commands/` but hook registration via `plugin.json` / `hooks/hooks.json` is empirically unreliable across Claude Code versions (see `docs/ADDING-NEW-HOOK.md`). This plugin's `scripts/install.js` is the authoritative source — it idempotently merges 5 hook entries into your existing `~/.claude/settings.json`, backs up the prior file, and never touches other-plugin entries.
+> Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks.
 
 ### Verify
 
@@ -119,9 +119,9 @@ Add `--purge` to also remove `~/.claude/logs/claudemd.jsonl` and `~/.claude/.cla
 Invoking the uninstall script directly:
 
 ```bash
-CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/0.1.4/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/0.1.4/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/0.1.4/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/uninstall.js
+CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/uninstall.js
 ```
 
 ---
@@ -145,12 +145,12 @@ The command prints per-file diff summary, then prompts `apply-all / select / can
 **Hooks don't fire after install** — Claude Code's `postInstall` lifecycle is not guaranteed to execute. Run the install script manually:
 
 ```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/0.1.4/scripts/install.js
+node ~/.claude/plugins/cache/claudemd/claudemd/0.1.5/scripts/install.js
 ```
 
 Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.
 
-> Since 0.1.4, registered hook commands use `${CLAUDE_PLUGIN_ROOT}` (expanded by the CC harness at invocation time), so subsequent `/plugin update claudemd` bumps no longer require re-running `install.js`. If you're upgrading from ≤0.1.3, run it once — the new install evicts stale absolute-path entries left by the older version.
+**`Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated with a plugin`** (5 errors on every `Bash` tool call + every session end) — you're on claudemd 0.1.2 / 0.1.3 / 0.1.4. Those releases wrote hook commands into `~/.claude/settings.json` under the literal `${CLAUDE_PLUGIN_ROOT}` token, but the CC harness only expands that variable for hooks defined in a plugin's own `hooks/hooks.json` — never in `settings.json`. The fix is v0.1.5, which moves hook registration into the plugin's `hooks/hooks.json` (where the token expands correctly) and evicts the stale settings.json entries on install. Upgrade with `/plugin update claudemd`, then restart the Claude Code session to clear the cached hook registry. If `/plugin update` silently no-ops, the marketplace clone is stale — `git fetch + ff` under `~/.claude/plugins/marketplaces/claudemd/`, then unpack the newest tag into `~/.claude/plugins/cache/claudemd/claudemd/<version>/` and re-run `install.js`.
 
 **`ship-baseline-check` silently passes on red CI** — `gh` CLI is not installed, or authentication failed. Install with `brew install gh` / `apt-get install gh` and run `gh auth login`. Check with `/claudemd-doctor` — it reports `gh: missing` if absent.
 
@@ -178,7 +178,7 @@ claudemd/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
 ├── hooks/                    # 5 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
-│   └── hooks.json            # intentionally empty; install.js is authoritative
+│   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 5 slash-command markdown files
 ├── scripts/                  # 7 Node.js management scripts + scripts/lib/
 ├── spec/                     # shipped v6.9.2 CLAUDE*.md trio
