@@ -35,28 +35,31 @@ test('A14: core CLAUDE.md references §1.5-EXT / §5.1-EXT / §7-EXT / §11-EXT'
 test('A15: MEMORY.md tag syntax described in §11', () => {
   const text = fs.readFileSync(CORE, 'utf8');
   assert.match(text, /MEMORY\.md/);
-  assert.match(text, /Index line tag syntax/i);
+  assert.match(text, /tag syntax/i);
   assert.match(text, /\[tag1, tag2\]/);
 });
 
-test('core contains new §0.1 + §2.3', () => {
+test('core contains §0.1 + §2.1 (unified ROUTE absorbs former §2.3 TOOLS)', () => {
   const text = fs.readFileSync(CORE, 'utf8');
   assert.ok(text.includes('§0.1 Core growth discipline'));
-  assert.ok(text.includes('§2.3 TOOLS'));
+  assert.ok(text.includes('§2.1 ROUTE'));
+  // v6.10.0: §2.3 TOOLS merged into §2.1; escalation block retains the substance.
+  assert.match(text, /Tool escalation/);
 });
 
-test('core version header is v6.9.3', () => {
+test('core version header matches current spec version', () => {
   const text = fs.readFileSync(CORE, 'utf8');
-  const m = text.match(/Version:\s*(\S+)/);
-  assert.ok(m);
-  assert.equal(m[1], '6.9.3');
+  // v6.10.0: header is "# AI-CODING-SPEC vX.Y.Z — Core" (no standalone `Version:` line).
+  const m = text.match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
+  assert.ok(m, 'core header must declare semver version inline');
+  assert.equal(m[1], '6.10.0');
 });
 
-test('changelog top entry is v6.9.3', () => {
+test('changelog top entry is v6.10.0', () => {
   const text = fs.readFileSync(CL, 'utf8');
   const first = text.match(/^##\s+v(\d+\.\d+\.\d+)/m);
   assert.ok(first);
-  assert.equal(first[1], '6.9.3');
+  assert.equal(first[1], '6.10.0');
 });
 
 test('§2.1 table contains sp:brainstorming row', () => {
