@@ -6,6 +6,16 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.10.1 — 2026-04-23
+
+Patch: §7 Ship-baseline wording alignment (no rule change, no behavior change). §13.2 budget cost: 0.
+
+- `[fix]` **§7 Ship-baseline** (core) — "check base-branch pipeline color" → "check pushed-branch pipeline color (fallback latest-any on detached HEAD)". Grounding: `claudemd` hook enforcement since v0.1.0 has filtered `gh run list --branch $(git branch --show-current)` precisely so that an unrelated scheduled workflow failing on `main` cannot block a feature-branch push whose own CI is green. Prior wording implied a broader check than any implementation actually performed, so §3 TRUST (strictest reading) made the rule effectively unfalsifiable. Same single-line fix applied to §EXT §7-EXT rationale paragraph for consistency.
+
+HARD tally unchanged. Zero HARD added, zero removed, zero semantic change.
+
+---
+
 ## v6.10.0 — 2026-04-23
 
 Minor: data-driven net contraction. Grounding: external audit vs 6-week history of `projects--mem` / `projects--code-graph-mcp` / `projects--claudemd` flagged core at 95% of §13.1 ceiling (24.9k/25k), evidence rule scattered across §0/§7/§10/§EXT §7-EXT/B.2, and dual routing tables (§2.2 core + §EXT §4 FLOW) with tie-breaker adding cognitive cost every task. §13.2-compatible: 0 new HARD; rule consolidation + rationale externalization only.

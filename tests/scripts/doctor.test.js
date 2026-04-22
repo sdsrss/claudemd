@@ -75,3 +75,15 @@ test('doctor logs check ok when small (L5)', async () => {
   assert.equal(logs.ok, true);
   assert.match(logs.detail, /1 rule-hits row/);
 });
+
+test('doctor runs banned-vocab self-test and reports pass when hook denies synthetic trigger', async () => {
+  // Requires jq + bash on PATH; CI installs both. Skip assertion if absent.
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const r = await doctor({});
+  const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
+  assert.ok(selftest, 'self-test check must exist');
+  assert.equal(selftest.ok, true,
+    `self-test must pass on a clean tree; detail="${selftest.detail}"`);
+  assert.match(selftest.detail, /significantly/);
+});

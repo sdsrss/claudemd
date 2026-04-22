@@ -93,7 +93,25 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 8 dot-in-cwd → correct encoding → deny" \
   || { echo "FAIL: 8 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 9: tag containing regex metacharacters is matched literally (H3). Before
+# the v6.10.1 `-qiF` fix, a tag like `v6.9` would regex-match `v6X9`, `v699`,
+# etc. — drifting into false-positive territory as tag vocab grows. Locks the
+# intent: tags are plain strings, not BREs.
+SESS="sess9"
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Specific release lessons](feedback_release.md) `[v6.9, deploy.prod]` — only match literally
+EOF
+touch "$MEM_DIR/feedback_release.md"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+# `v6X9` would match `v6.9` under regex (`.` = any char); under -F it does not.
+# Command contains neither literal `v6.9` nor literal `deploy.prod`, but DOES
+# contain `deploy` (fires the ship/release/deploy/push keyword filter). Tags
+# are NOT substrings of CMD → no tag-based file should match → no deny.
+OUT=$(mkevent "deploy --env v6X9 deployXprod" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 9 regex-metachar tag matched literally → no false deny" \
+  || { echo "FAIL: 9 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
+  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
 fi
-echo "Tests: 8/8 passed"
+echo "Tests: 9/9 passed"

@@ -1,10 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { backupRoot } from './paths.js';
+import { backupRoot, settingsPath } from './paths.js';
 
 // Second-precision (legacy) vs millisecond-precision (current). Both accepted
 // by listBackups so pre-existing backups keep sorting correctly.
 const BACKUP_DIR_REGEX = /^backup-\d{8}T\d{6}(\d{3})?Z$/;
+// Matches the pre-merge settings.json backup files install.js writes before
+// any modification. Same iso-stamp grammar, plus an optional `-N` numeric
+// suffix from the sub-ms collision path in install.js.
+const SETTINGS_BK_REGEX = /^settings\.json\.claudemd-backup-\d{8}T\d{6}(\d{3})?Z(-\d+)?$/;
 
 export function isoStamp() {
   // YYYYMMDDTHHMMSSmmmZ — ms suffix prevents sub-second collisions when install
@@ -52,6 +56,26 @@ export function pruneBackups(retainCount = 5) {
   for (const b of backups.slice(retainCount)) {
     fs.rmSync(b.dir, { recursive: true, force: true });
     removed.push(b.dir);
+  }
+  return removed;
+}
+
+// Prune ~/.claude/settings.json.claudemd-backup-* pre-merge safety copies.
+// install.js writes one per invocation; without rotation, N installs leave N
+// backup files indefinitely. Mirror pruneBackups (keep 5 newest, drop rest)
+// so `/claudemd-doctor` is not needed to surface the growth. Lexicographic
+// sort on the iso stamp is chronological by construction.
+export function pruneSettingsBackups(retainCount = 5) {
+  const dir = path.dirname(settingsPath());
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir)
+    .filter(n => SETTINGS_BK_REGEX.test(n))
+    .sort((a, b) => b.localeCompare(a));
+  const removed = [];
+  for (const n of entries.slice(retainCount)) {
+    const full = path.join(dir, n);
+    try { fs.unlinkSync(full); removed.push(full); }
+    catch { /* best-effort — missing / race is fine */ }
   }
   return removed;
 }

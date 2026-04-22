@@ -4,9 +4,14 @@
 # Empty lines and lines starting with # are ignored.
 # Patterns are matched case-insensitive via grep -iE.
 #
-# Scope: applied to ENTIRE `git commit` command string. False positives
-# possible if an unrelated part of the command contains these words.
-# Mitigation: add [allow-banned-vocab] to the commit message to bypass.
+# Scope: applied to extracted `-m` / `--message` body when present (the
+# common case); falls back to the ENTIRE command string when no message is
+# captured (editor-mode `git commit`, `git commit --file=PATH`, `--amend
+# --no-edit`, unusual quoting). False positives possible in the fallback
+# path only — e.g. `git commit --file=/tmp/banned-significantly.txt` scans
+# the filename. Mitigation: add `[allow-banned-vocab]` to the commit
+# message to bypass, OR rewrite so the hook takes the happy path
+# (use `-m "real message"`).
 #
 # Design principle: only include words whose primary usage in a commit
 # message is "agent describing its own work in vague positive terms".

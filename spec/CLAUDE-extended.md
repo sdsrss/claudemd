@@ -258,7 +258,7 @@ Falling to tier N requires stating why N-1 unfit.
 Order: project CI > defaults. No CI → build + smoke and report `[PARTIAL]`.
 
 ### Ship-baseline rationale (core §7)
-Core §7 defines the rule: before a push that fires CI/Release, check base-branch pipeline color; red → fix / annotate / ASK. Rationale:
+Core §7 defines the rule: before a push that fires CI/Release, check pushed-branch pipeline color; red → fix / annotate / ASK. Rationale:
 - **Silent stacking on red** hides your change's effect inside pre-existing failure — when CI stays red, attribution gets lost and the next shipper inherits an unclear diff.
 - **Local green ≠ pipeline green**: CI toolchain version, lint-ruleset drift, env vars (`CI=true` branches), and platform differences (Linux-only signal / Windows path separator) are the usual sources. `cargo test` / `pytest` / `npm test` passing locally is necessary, not sufficient.
 - **Concrete-call requirement** prevents "I think CI is green": state the command you ran (`gh run list ...` / `circleci ...` / `buildkite-agent ...`) and cite the result.

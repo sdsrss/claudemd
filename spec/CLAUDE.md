@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.10.0 — Core
+# AI-CODING-SPEC v6.10.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -155,7 +155,7 @@ Evidence = inline prose naming what was checked + what was observed + why it pro
 
 ### Ship-baseline check (HARD, L2+ when push fires CI/Release)
 
-Before push: check base-branch pipeline color (`gh run list --workflow <CI> --limit 1` or equivalent). Red → (a) fix first / (b) commit-body `known-red baseline: <reason>` / (c) ASK. Rationale + failure modes → §EXT §7-EXT.
+Before push: check pushed-branch pipeline color (`gh run list --branch "$(git branch --show-current)" --limit 1` or equivalent; detached-HEAD → fall back to latest-any). Red → (a) fix first / (b) commit-body `known-red baseline: <reason>` / (c) ASK. Rationale + failure modes → §EXT §7-EXT.
 
 ### User-global-state audit (HARD, L2+)
 

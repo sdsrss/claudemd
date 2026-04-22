@@ -8,6 +8,56 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.2.3] - 2026-04-23
+
+Patch. Ships spec v6.10.1 (wording patch on §7 Ship-baseline; zero rule change). Fixes 1 doc-drift P0 + 3 hook/spec P1 items surfaced by end-to-end audit. Adds 3 P2 production-hardening items: pre-merge settings.json backup rotation, rule-hits log rotation, and a live banned-vocab self-test check in `/claudemd-doctor`.
+
+### Fixed — README spec-version drift (P0)
+
+`README.md` lines 3, 15, 197 still referenced `v6.9` / `v6.9.3` after v0.2.0 shipped spec v6.10.0. Installers reading the README believed they were getting v6.9.3 while `plugin.json:4` and the shipped `spec/CLAUDE.md` H1 both declared v6.10. Synced to `v6.10` / `v6.10.1`.
+
+### Fixed — §7 Ship-baseline wording vs hook behavior (P1)
+
+`spec/CLAUDE.md:158` + `spec/CLAUDE-extended.md:261` said "check base-branch pipeline color"; the shipped `hooks/ship-baseline-check.sh:30-35` has queried `gh run list --branch $(git branch --show-current)` since v0.1.0 to avoid blocking feature-branch pushes over unrelated scheduled-workflow failures on `main`. Prior wording implied a broader check than any implementation actually did. Changed to "check pushed-branch pipeline color (fallback latest-any on detached HEAD)" in both core §7 and §EXT §7-EXT rationale. Spec bumped v6.10.0 → v6.10.1 with new entry in `spec/CLAUDE-changelog.md`. Spec-structure tests updated (`tests/scripts/spec-structure.test.js:58,65`).
+
+### Fixed — `memory-read-check` tag matched as regex (P1)
+
+`hooks/memory-read-check.sh:58` used `grep -qi "$t"` where `$t` is a MEMORY.md index tag. Tags containing regex metacharacters (`.`, `$`, `*`, `[`, `]`, `\`) were interpreted by grep's BRE — e.g. a tag `v6.9` would literal-match `v6X9` / `v6_9`, drifting into false-positive territory as tag vocab grows. Changed to `grep -qiF` (fixed-string). Added test case 9 in `tests/hooks/memory-read-check.test.sh:96-113` locking the intent (tag `v6.9` does NOT match command text `v6X9`).
+
+### Fixed — `banned-vocab` fallback false-positive scope undocumented (P1)
+
+`hooks/banned-vocab.patterns` header claimed "applied to ENTIRE git commit command string", but since v0.1.9 the hook extracts `-m`/`--message` bodies first and only falls back to whole-command scanning when extraction fails (editor-mode commits, `--file=PATH`, `--amend --no-edit`, unusual quoting). Rewrote header to describe actual extraction logic and name the fallback-only false-positive class (`git commit --file=/tmp/banned-significantly.txt` scanning the filename). Mirrored comment in `hooks/banned-vocab-check.sh:52-56`.
+
+### Added — Pre-merge `settings.json` backup rotation
+
+`scripts/install.js:88-98` has written `~/.claude/settings.json.claudemd-backup-<iso>` before any settings mutation since v0.1.0, but `/claudemd-doctor --prune-backups` only touched `~/.claude/backup-<ISO>/` directories — the sibling backup files accumulated one-per-install indefinitely.
+
+New `pruneSettingsBackups(retainCount)` in `scripts/lib/backup.js:60-75` (mirrors `pruneBackups` retention semantics, iso-stamp lexicographic sort). Called from `install.js` right after creating the new backup; retains 5 newest, drops older. Regex `SETTINGS_BK_REGEX` accepts both ms-precision stamps and the sub-ms `-N` collision suffix. Install return shape gains `settingsBackupsPruned: string[]`. Three new unit tests in `tests/scripts/backup.test.js:71-105`: retention with mixed siblings, ms-precision + `-N` suffix, missing `.claude/` dir returns `[]` without throw.
+
+### Added — Rule-hits log size-capped rotation
+
+`hooks/lib/rule-hits.sh:18-33` gained `CLAUDEMD_LOG_MAX_MB` (default 5) size check before each append. Over threshold → rotate `claudemd.jsonl` → `claudemd.jsonl.1` (pushing existing `.1` to `.2`, dropping prior `.2`). Disk footprint bounded at ~3× max_mb. `stat -c` (GNU) with `-f %z` (BSD) fallback for macOS compat. Three new shell cases in `tests/hooks/rule-hits.test.sh`: rotation on overflow with old content preserved in `.1`, second rotation evicts stale `.2`, under-threshold no-rotation. `doctor.js` existing `logs > 5 MB` warn path still fires when the primary file itself grows past 5 MB after most recent rotation (informational; rotation keeps disk bounded regardless).
+
+### Added — `/claudemd-doctor` live banned-vocab self-test
+
+`scripts/doctor.js:59-93` spawns `hooks/banned-vocab-check.sh` with a synthetic event (`git commit -m "this is significantly better"`) and asserts a `"permissionDecision": "deny"` JSON response. Catches drift between `banned-vocab.patterns` and the hook's extraction logic that unit tests (which parse patterns directly) can silently paper over. Side-effect-free: sets `DISABLE_RULE_HITS_LOG=1` in the spawn env so the self-test doesn't pollute the user's rule-hits log; clears both kill-switch vars so ambient env can't falsely pass the check by disabling it. Degrades gracefully when `jq` / `bash` missing (prerequisite check with specific detail message).
+
+### Manifest version bumps
+
+- `package.json` 0.2.2 → 0.2.3. Description unchanged (`v6.10` per v0.2.1 policy: major.minor only).
+- `.claude-plugin/plugin.json` 0.2.2 → 0.2.3. Description unchanged.
+- `.claude-plugin/marketplace.json` both version fields 0.2.2 → 0.2.3. Descriptions unchanged.
+
+### Required migration
+
+**`/claudemd-update`** to pick up spec v6.10.1 (3-word wording change on §7 Ship-baseline + §EXT §7-EXT rationale). No hook behavior change, no settings.json change, no state-dir change. Existing `~/.claude/CLAUDE.md` at v6.10.0 continues to work (wording is more-accurate, not rule-different).
+
+### Test totals
+
+- Unit: 101 → 105 (+3 pruneSettingsBackups, +1 doctor self-test).
+- Shell hooks: `memory-read-check` 8 → 9 cases (regex-metachar tag); `rule-hits` 3 → 6 cases (rotation trio).
+- Full suite (shell + Node + full-lifecycle integration): PASS (440 ms, +310 ms from self-test subprocess spawn).
+
 ## [0.2.2] - 2026-04-23
 
 Patch. Ships at spec v6.10.0 (unchanged). Fixes `/claudemd-status` spec-version drift and adds bounded cache retention to prevent unbounded version-dir accumulation under `~/.claude/plugins/cache/`.

@@ -55,7 +55,10 @@ while IFS= read -r line; do
     for t in "${TAGS[@]}"; do
       t=$(echo "$t" | tr -d ' ')
       [[ -z "$t" ]] && continue
-      if echo "$CMD" | grep -qi "$t"; then
+      # -F: tag is literal, not a regex. A tag containing `.` / `$` / `*` would
+      # otherwise be interpreted by grep's BRE and either match too broadly
+      # (e.g. `.` matching any char) or fail to match itself.
+      if echo "$CMD" | grep -qiF "$t"; then
         MATCHES+=("$FILE")
         break
       fi

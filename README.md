@@ -1,6 +1,6 @@
 # claudemd
 
-Claude Code plugin that enforces **AI-CODING-SPEC v6.9 HARD rules** through shell hooks and ships the spec as part of the plugin.
+Claude Code plugin that enforces **AI-CODING-SPEC v6.10 HARD rules** through shell hooks and ships the spec as part of the plugin.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -12,7 +12,7 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.9 HARD rules** through shel
 |---|---|
 | 5 shell hooks | `banned-vocab-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` |
 | 5 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` |
-| Spec v6.9.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
+| Spec v6.10.1 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
 
@@ -194,7 +194,7 @@ claudemd/
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 5 slash-command markdown files
 ├── scripts/                  # 7 Node.js management scripts + scripts/lib/
-├── spec/                     # shipped v6.9.3 CLAUDE*.md trio
+├── spec/                     # shipped v6.10.1 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/ci.yml  # ubuntu + macOS × node 20

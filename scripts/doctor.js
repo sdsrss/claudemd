@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { logsDir, settingsPath, specHome, readManifest } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
+
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
@@ -53,6 +56,43 @@ export async function doctor({ pruneBackups: prune } = {}) {
     logOk
       ? `${logLines} rule-hits row(s), ${logMB} MB`
       : `${logLines} rule-hits row(s), ${logMB} MB — exceeds ${LOG_WARN_MB} MB; truncate ~/.claude/logs/claudemd.jsonl`);
+
+  // Live banned-vocab self-test: feed a synthetic event with a known trigger
+  // ("significantly") to the shipped hook and assert a deny JSON comes back.
+  // Catches drift between `banned-vocab.patterns` and the hook's extraction
+  // logic that unit tests (which import the regex or parse the file
+  // directly) can silently paper over. Side-effect-free:
+  //   - DISABLE_RULE_HITS_LOG=1 suppresses the jsonl append
+  //   - both kill-switch vars cleared so the user's env can't make the test
+  //     pass by disabling the very check we're verifying
+  const hookPath = path.join(PLUGIN_ROOT, 'hooks/banned-vocab-check.sh');
+  if (!fs.existsSync(hookPath)) {
+    push('banned-vocab self-test', false, `hook missing at ${hookPath}`);
+  } else if (!which('jq') || !which('bash')) {
+    push('banned-vocab self-test', false, 'prerequisite missing (jq + bash required)');
+  } else {
+    const event = JSON.stringify({
+      session_id: 'doctor-selftest',
+      tool_name: 'Bash',
+      tool_input: { command: 'git commit -m "this is significantly better"' },
+    });
+    const r = spawnSync('bash', [hookPath], {
+      input: event,
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        DISABLE_RULE_HITS_LOG: '1',
+        DISABLE_CLAUDEMD_HOOKS: '',
+        DISABLE_BANNED_VOCAB_HOOK: '',
+      },
+    });
+    const denied = r.status === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout || '');
+    push('banned-vocab self-test', denied,
+      denied
+        ? 'synthetic "significantly" trigger correctly denied'
+        : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`);
+  }
 
   const pruned = prune != null ? pruneBackups(prune) : [];
 

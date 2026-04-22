@@ -48,6 +48,9 @@ done < <(printf '%s' "$CMD" | grep -oE -- "$MSG_REGEX" 2>/dev/null)
 
 # Fallback — no -m/--message captured (editor commits, `-F file`, amend with
 # no-edit, unusual quoting). Scan the whole CMD to preserve §10-V coverage.
+# Trade-off: banned words in unrelated argv tokens (filenames, `-c
+# user.email=...`, env vars) can cause false positives in this branch — the
+# `[allow-banned-vocab]` escape hatch is the documented workaround.
 [[ -z "$MSG_TEXT" ]] && MSG_TEXT="$CMD"
 
 # Baseline-context exemption: if the commit message carries an explicit

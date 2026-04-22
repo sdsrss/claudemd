@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
-import { createBackup, pruneBackups, isoStamp } from './lib/backup.js';
+import { createBackup, pruneBackups, pruneSettingsBackups, isoStamp } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
 
@@ -85,6 +85,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
 
   // §2.7 safety: pre-merge backup of settings.json before any modification
   let settingsBackup = null;
+  let settingsBackupsPruned = [];
   if (fs.existsSync(settingsPath())) {
     let candidate = `${settingsPath()}.claudemd-backup-${isoStamp()}`;
     if (fs.existsSync(candidate)) {
@@ -95,6 +96,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     }
     settingsBackup = candidate;
     fs.copyFileSync(settingsPath(), settingsBackup);
+    // Retention: keep 5 newest pre-merge backups, drop older. Without this,
+    // N installs leave N `.claudemd-backup-*` files indefinitely —
+    // `/claudemd-doctor --prune-backups` only touches `backup-<ISO>/` dirs,
+    // never these sibling files.
+    settingsBackupsPruned = pruneSettingsBackups(5);
   }
 
   // Settings: evict ANY claudemd hook command from settings.json by basename.
@@ -153,7 +159,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   try { cachePruned = pruneCache(pluginRoot, { keep: 3 }); }
   catch { /* install succeeded — swallow prune FS errors */ }
 
-  return { spec: specResult, backupDir, settingsBackup, entries, cachePruned };
+  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

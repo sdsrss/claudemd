@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createBackup, listBackups, pruneBackups, restoreBackup } from '../../scripts/lib/backup.js';
+import { createBackup, listBackups, pruneBackups, pruneSettingsBackups, restoreBackup } from '../../scripts/lib/backup.js';
 
 let tmpHome;
 let savedHome;
@@ -56,6 +56,42 @@ test('pruneBackups keeps N newest and removes rest', () => {
   assert.equal(removed.length, 1);
   assert.ok(removed[0].endsWith('backup-20260101T000000Z'));
   assert.equal(listBackups().length, 5);
+});
+
+test('pruneSettingsBackups: keeps N newest settings.json.claudemd-backup-* files', () => {
+  const dir = path.join(tmpHome, '.claude');
+  const iso = ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z',
+               '20260401T000000Z', '20260501T000000Z', '20260601T000000Z'];
+  for (const s of iso) {
+    fs.writeFileSync(path.join(dir, `settings.json.claudemd-backup-${s}`), 'x');
+  }
+  // Also drop an unrelated sibling to verify the regex filter.
+  fs.writeFileSync(path.join(dir, 'settings.json'), '{}');
+  fs.writeFileSync(path.join(dir, 'unrelated.txt'), 'y');
+
+  const removed = pruneSettingsBackups(5);
+  assert.equal(removed.length, 1);
+  assert.ok(removed[0].endsWith('settings.json.claudemd-backup-20260101T000000Z'));
+
+  const remaining = fs.readdirSync(dir).filter(n => n.startsWith('settings.json.claudemd-backup-'));
+  assert.equal(remaining.length, 5);
+  assert.equal(fs.existsSync(path.join(dir, 'settings.json')), true);
+  assert.equal(fs.existsSync(path.join(dir, 'unrelated.txt')), true);
+});
+
+test('pruneSettingsBackups: accepts ms-precision and -N collision suffix', () => {
+  const dir = path.join(tmpHome, '.claude');
+  fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260601T000000000Z'), 'x');
+  fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260601T000000000Z-1'), 'x');
+  fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260101T000000Z'), 'x');
+  const removed = pruneSettingsBackups(2);
+  assert.equal(removed.length, 1);
+  assert.ok(removed[0].endsWith('20260101T000000Z'));
+});
+
+test('pruneSettingsBackups: missing .claude dir returns [] without throw', () => {
+  fs.rmSync(path.join(tmpHome, '.claude'), { recursive: true, force: true });
+  assert.deepEqual(pruneSettingsBackups(5), []);
 });
 
 test('restoreBackup copies files back to targetRoot', () => {
