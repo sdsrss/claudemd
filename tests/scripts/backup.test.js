@@ -24,7 +24,8 @@ test('createBackup moves files into timestamped dir', () => {
   const src1 = path.join(tmpHome, '.claude/CLAUDE.md');
   fs.writeFileSync(src1, 'core');
   const { dir, movedFiles } = createBackup([src1]);
-  assert.match(path.basename(dir), /^backup-\d{8}T\d{6}Z$/);
+  // isoStamp now includes milliseconds to prevent sub-second collisions (F10).
+  assert.match(path.basename(dir), /^backup-\d{8}T\d{6}(\d{3})?Z$/);
   assert.equal(movedFiles.length, 1);
   assert.equal(fs.existsSync(src1), false);
   assert.equal(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'core');

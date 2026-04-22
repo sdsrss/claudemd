@@ -11,8 +11,13 @@ platform_stat_mtime() {
   fi
 }
 
-# platform_find_newer DIR REFERENCE_FILE — list files and dirs newer than REFERENCE_FILE under DIR.
+# platform_find_newer DIR REFERENCE_FILE — list immediate children (depth ≤ 1)
+# newer than REFERENCE_FILE. Depth cap matters in two ways:
+#   1. The spec this plugin ships forbids recursive traversal of ~/.claude/
+#      (CLAUDE.md §8) — hook behavior must comply with its own rule.
+#   2. Callers only care about fresh top-level mkdtemp dirs; descending into
+#      them can be expensive when tmp/ accumulates.
 platform_find_newer() {
   local dir="$1" ref="$2"
-  find "$dir" -newer "$ref" 2>/dev/null | grep -v "^${dir}$" || true
+  find "$dir" -maxdepth 1 -newer "$ref" 2>/dev/null | grep -v "^${dir}$" || true
 }

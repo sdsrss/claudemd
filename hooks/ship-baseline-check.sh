@@ -24,8 +24,15 @@ echo "$CMD" | grep -qE '\-\-help|\-h\b' && exit 0
 # Require gh CLI
 command -v gh >/dev/null 2>&1 || exit 0
 
-# Query latest run with 2s hard timeout
-RUN_JSON=$(timeout 2 gh run list --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+# Filter by current branch when available — otherwise an unrelated scheduled
+# workflow failing on main would block a feature-branch push whose own CI is
+# green. Detached HEAD / non-git: skip the filter (old unfiltered behavior).
+BRANCH=$(git branch --show-current 2>/dev/null)
+if [[ -n "$BRANCH" ]]; then
+  RUN_JSON=$(timeout 2 gh run list --branch "$BRANCH" --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+else
+  RUN_JSON=$(timeout 2 gh run list --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+fi
 [[ -n "$RUN_JSON" ]] || exit 0
 
 CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""' 2>/dev/null)

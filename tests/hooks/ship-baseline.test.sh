@@ -59,8 +59,17 @@ OUT=$(PATH="/usr/bin:/bin" bash "$HOOK" <<<"$EVENT_PUSH" 2>&1)
 OUT=$(DISABLE_SHIP_BASELINE_HOOK=1 run_hook fail-red "$EVENT_PUSH")
 [[ -z "$OUT" ]] && echo "PASS: 8 kill-switch" || { echo "FAIL: 8 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Case 9: branch-aware filter (M1) — previously `gh run list --limit 1` took
+# the latest run of ANY workflow, so a failing scheduled cron on main blocked
+# a feature-branch push whose own CI was green.
+cd "$TMP_HOME" && git checkout -q -b feature-x 2>/dev/null \
+  && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "on feature-x"
+OUT=$(run_hook branch-aware "$EVENT_PUSH")
+[[ -z "$OUT" ]] && echo "PASS: 9 --branch filter: feature-x green despite main-red cron" \
+  || { echo "FAIL: 9 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((8 - FAIL))/8 passed"
+  echo "Tests: $((9 - FAIL))/9 passed"
   exit 1
 fi
-echo "Tests: 8/8 passed"
+echo "Tests: 9/9 passed"

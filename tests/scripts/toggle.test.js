@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { toggle } from '../../scripts/toggle.js';
+
+const TOGGLE_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/toggle.js');
 
 let tmpHome, savedHome;
 
@@ -37,4 +41,16 @@ test('toggle re-enables banned-vocab (clears kill-switch)', async () => {
 
 test('toggle unknown name → error', async () => {
   await assert.rejects(() => toggle('not-a-hook'), /unknown hook/i);
+});
+
+test('toggle CLI with no argument prints usage (F18)', () => {
+  // Regression: bare `node toggle.js` printed "unknown hook: undefined" —
+  // unhelpful. Should print usage with the valid names.
+  const result = spawnSync(process.execPath, [TOGGLE_JS], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /usage/i);
+  assert.match(result.stderr, /banned-vocab/);
 });

@@ -2,12 +2,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { backupRoot } from './paths.js';
 
-function isoStamp() {
-  return new Date().toISOString().replace(/[-:]/g, '').replace(/\..+Z$/, 'Z');
+// Second-precision (legacy) vs millisecond-precision (current). Both accepted
+// by listBackups so pre-existing backups keep sorting correctly.
+const BACKUP_DIR_REGEX = /^backup-\d{8}T\d{6}(\d{3})?Z$/;
+
+export function isoStamp() {
+  // YYYYMMDDTHHMMSSmmmZ — ms suffix prevents sub-second collisions when install
+  // or update runs twice in the same second (would overwrite prior backup).
+  return new Date().toISOString().replace(/[-:.]/g, '');
 }
 
 export function createBackup(files, { label = 'backup' } = {}) {
-  const dir = path.join(backupRoot(), `${label}-${isoStamp()}`);
+  let dir = path.join(backupRoot(), `${label}-${isoStamp()}`);
+  // Belt-and-braces: if the ms-precision stamp still collides (same process,
+  // same ms — vanishingly rare), append a numeric suffix to avoid clobbering.
+  if (fs.existsSync(dir)) {
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `${dir}-${i}`;
+      if (!fs.existsSync(candidate)) { dir = candidate; break; }
+    }
+  }
   fs.mkdirSync(dir, { recursive: true });
   const movedFiles = [];
   for (const src of files) {
@@ -23,7 +37,7 @@ export function listBackups() {
   const root = backupRoot();
   if (!fs.existsSync(root)) return [];
   return fs.readdirSync(root)
-    .filter(name => /^backup-\d{8}T\d{6}Z$/.test(name))
+    .filter(name => BACKUP_DIR_REGEX.test(name))
     .map(name => ({
       dir: path.join(root, name),
       iso: name.replace(/^backup-/, ''),

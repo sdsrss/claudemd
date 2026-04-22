@@ -6,7 +6,7 @@ import { createBackup, pruneBackups } from './lib/backup.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
 
-export async function update({ pluginRoot, choice = 'cancel', selected = [] } = {}) {
+export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   if (!pluginRoot) throw new Error('update: pluginRoot missing');
 
   const diffs = [];
@@ -20,15 +20,9 @@ export async function update({ pluginRoot, choice = 'cancel', selected = [] } = 
   }
 
   if (choice === 'cancel') return { applied: false, diffs };
+  if (choice !== 'apply-all') throw new Error(`unknown choice: ${choice}`);
 
-  let targets;
-  if (choice === 'apply-all') {
-    targets = SPEC_FILES.filter(n => diffs.find(d => d.file === n && (d.added > 0 || d.removed > 0)));
-  } else if (choice === 'select') {
-    targets = selected;
-  } else {
-    throw new Error(`unknown choice: ${choice}`);
-  }
+  const targets = SPEC_FILES.filter(n => diffs.find(d => d.file === n && (d.added > 0 || d.removed > 0)));
 
   if (targets.length === 0) {
     return { applied: false, diffs, reason: 'no changes to apply' };

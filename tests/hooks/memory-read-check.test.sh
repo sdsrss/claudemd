@@ -72,7 +72,28 @@ SESS="sess7"; echo '' > "$PROJ_DIR/$SESS.jsonl"
 OUT=$(DISABLE_MEMORY_READ_HOOK=1 bash "$HOOK" <<<"$(mkevent "git push origin main" "$SESS")" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 7 kill-switch" || { echo "FAIL: 7 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 8: cwd with dots encodes via `/.` → `-` (H2) — must match Claude Code's
+# project-dir encoding. Previously hook used `tr '/' '-'` and silently failed
+# on any project path containing a dot (e.g. `~/.config/...`, `my.project/`),
+# turning the HARD §11 rule into a silent no-op.
+DOT_CWD="/work/my.project"
+DOT_ENCODED=$(echo "$DOT_CWD" | tr '/.' '-')
+DOT_PROJ="$HOME/.claude/projects/$DOT_ENCODED"
+DOT_MEM="$DOT_PROJ/memory"
+mkdir -p "$DOT_MEM"
+cat > "$DOT_MEM/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$DOT_MEM/feedback_ship.md"
+SESS="sess8"
+echo '{"tool":"Read","path":"/unrelated"}' > "$DOT_PROJ/$SESS.jsonl"
+EVENT_8="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$DOT_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_8" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 8 dot-in-cwd → correct encoding → deny" \
+  || { echo "FAIL: 8 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((7 - FAIL))/7 passed"; exit 1
+  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
 fi
-echo "Tests: 7/7 passed"
+echo "Tests: 8/8 passed"

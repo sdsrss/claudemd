@@ -29,8 +29,10 @@ CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 [[ -n "$CWD" && -n "$SESSION_ID" ]] || exit 0
 
-# Derive project-encoded dir (replace / with -)
-ENCODED=$(printf '%s' "$CWD" | tr '/' '-')
+# Derive project-encoded dir — Claude Code converts both `/` AND `.` to `-`
+# (observe: ~/.claude/projects/-home-sds--claude-tmp-... for /home/sds/.claude/tmp/...).
+# Slash-only encoding silently missed any project path containing a dot.
+ENCODED=$(printf '%s' "$CWD" | tr '/.' '-')
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"

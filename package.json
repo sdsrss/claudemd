@@ -1,15 +1,12 @@
 {
   "name": "claudemd",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "AI-CODING-SPEC v6.9 enforcement plugin for Claude Code",
   "type": "module",
   "scripts": {
     "test": "bash tests/run-all.sh",
     "test:scripts": "node --test tests/scripts/*.test.js",
     "test:hooks": "bash tests/hooks/*.test.sh"
-  },
-  "bin": {
-    "claudemd": "./scripts/cli.js"
   },
   "engines": {
     "node": ">=20"

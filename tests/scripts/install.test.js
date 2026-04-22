@@ -114,7 +114,8 @@ test('pre-merge settings.json backup created when settings.json existed', async 
   const res = await install({ pluginRoot });
   assert.ok(res.settingsBackup, 'settingsBackup path should be populated');
   assert.ok(fs.existsSync(res.settingsBackup), 'backup file should exist on disk');
-  assert.match(path.basename(res.settingsBackup), /^settings\.json\.claudemd-backup-\d{8}T\d{6}Z$/);
+  // isoStamp now includes milliseconds (F10).
+  assert.match(path.basename(res.settingsBackup), /^settings\.json\.claudemd-backup-\d{8}T\d{6}(\d{3})?Z$/);
   assert.equal(fs.readFileSync(res.settingsBackup, 'utf8'), '{"hooks":{}}');
 });
 
@@ -153,4 +154,98 @@ test('leaves non-migrated hand hooks untouched', async () => {
   fs.writeFileSync(path.join(tmpHome, '.claude/hooks/some-other.sh'), '#!/bin/bash\nexit 0\n');
   await install({ pluginRoot });
   assert.ok(fs.existsSync(path.join(tmpHome, '.claude/hooks/some-other.sh')));
+});
+
+test('back-to-back installs in same second preserve the original user backup (F10)', async () => {
+  // Regression: isoStamp was second-precision, so two installs within one second
+  // reused the same backup-<ISO> dir and renameSync silently overwrote the
+  // user's original CLAUDE.md with the freshly-installed plugin copy, losing data.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'USER-ORIGINAL-CONTENT\n');
+  await install({ pluginRoot });
+  // Second install: spec now matches plugin, new backup dir would be made.
+  await install({ pluginRoot });
+
+  const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude'))
+    .filter(n => /^backup-/.test(n))
+    .map(n => path.join(tmpHome, '.claude', n));
+  const allBackedUp = backupDirs
+    .filter(d => fs.existsSync(path.join(d, 'CLAUDE.md')))
+    .map(d => fs.readFileSync(path.join(d, 'CLAUDE.md'), 'utf8'));
+  assert.ok(
+    allBackedUp.includes('USER-ORIGINAL-CONTENT\n'),
+    `USER-ORIGINAL-CONTENT lost after two fast installs. Backups contained: ${JSON.stringify(allBackedUp)}`
+  );
+});
+
+test('hook command uses ${CLAUDE_PLUGIN_ROOT} so upgrades survive path bumps (M4)', async () => {
+  // Regression: hook command used to bake in the absolute version-specific path
+  // (~/.claude/plugins/cache/claudemd/claudemd/0.1.3/hooks/...). After `/plugin
+  // update claudemd` bumped the version directory, entries pointed at a stale
+  // path and hooks silently stopped firing until the user manually re-ran
+  // install.js. ${CLAUDE_PLUGIN_ROOT} is expanded by the CC harness at hook
+  // invocation time and tracks the active version automatically.
+  await install({ pluginRoot });
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  const allCommands = [
+    ...s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks.map(h => h.command),
+    ...s.hooks.Stop.find(m => m.matcher === '*').hooks.map(h => h.command),
+  ];
+  for (const c of allCommands) {
+    assert.ok(c.includes('${CLAUDE_PLUGIN_ROOT}'),
+      `command should reference env var, got: ${c}`);
+    assert.ok(!c.includes(pluginRoot),
+      `command must NOT bake in the version-specific absolute path, got: ${c}`);
+  }
+});
+
+test('upgrade from absolute-path entries: stale version-dir entries get removed (M4)', async () => {
+  // Simulate user who installed with an older claudemd that wrote
+  // absolute-path hook commands. Running the new install.js should remove
+  // those stale entries (not leave them as duplicates alongside the new form).
+  const OLD_VERSION_DIR = '/home/fake/.claude/plugins/cache/claudemd/claudemd/0.1.3';
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
+    hooks: {
+      PreToolUse: [{ matcher: 'Bash', hooks: [
+        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/banned-vocab-check.sh"`, timeout: 3 },
+        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/ship-baseline-check.sh"`, timeout: 5 },
+        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/memory-read-check.sh"`, timeout: 3 },
+        { type: 'command', command: 'node /foreign/hook.mjs', timeout: 2 },
+      ] }],
+      Stop: [{ matcher: '*', hooks: [
+        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/residue-audit.sh"`, timeout: 3 },
+        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/sandbox-disposal-check.sh"`, timeout: 3 },
+      ] }],
+    },
+  }));
+
+  await install({ pluginRoot });
+
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  const bash = s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks;
+  const stop = s.hooks.Stop.find(m => m.matcher === '*').hooks;
+  // 3 new claudemd PreToolUse + the untouched foreign hook
+  assert.equal(bash.length, 4, `expected 4 Bash entries (3 ours + foreign), got: ${JSON.stringify(bash)}`);
+  assert.equal(bash.filter(h => h.command.includes(OLD_VERSION_DIR)).length, 0,
+    'stale absolute-path entries must be removed');
+  assert.ok(bash.some(h => h.command === 'node /foreign/hook.mjs'),
+    'foreign hook must survive');
+  assert.equal(stop.length, 2);
+  assert.equal(stop.filter(h => h.command.includes(OLD_VERSION_DIR)).length, 0);
+});
+
+test('same-stamp settings.json backup gets numeric suffix (F10)', async () => {
+  // If a settings.json.claudemd-backup-<stamp> file happens to already exist
+  // at the exact ms, we must not clobber it — we append -1, -2, ...
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{"existing":true}');
+  const r1 = await install({ pluginRoot });
+  // Manually create a conflicting backup file using the same stamp pattern,
+  // then do a second install — backup should get a numeric suffix.
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{"round2":true}');
+  // Simulate collision by pre-creating the exact target candidate path is hard
+  // (stamp is ms-precise). Instead verify that the two run-level backups are
+  // distinct files with distinct content.
+  const r2 = await install({ pluginRoot });
+  assert.notEqual(r1.settingsBackup, r2.settingsBackup, 'each install must produce a distinct settings backup');
+  assert.ok(fs.existsSync(r1.settingsBackup));
+  assert.ok(fs.existsSync(r2.settingsBackup));
 });

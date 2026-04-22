@@ -28,6 +28,13 @@ export async function toggle(name) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const name = process.argv[2];
+  if (!name) {
+    console.error(
+      'Usage: node toggle.js <hook-name>\n' +
+      '  hook-name: ' + Object.keys(NAME_MAP).join(' | ')
+    );
+    process.exit(1);
+  }
   toggle(name).then(r => console.log(JSON.stringify(r, null, 2)))
     .catch(e => { console.error(e.message); process.exit(1); });
 }

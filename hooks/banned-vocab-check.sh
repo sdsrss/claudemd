@@ -19,8 +19,9 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
-# Filter: must be a git commit invocation
-echo "$CMD" | grep -qE '(^|[[:space:];&|])git(\s+-c\s+\S+)*\s+commit(\s|$)' || exit 0
+# Filter: must be a git commit invocation. `\s` / `\S` aren't portable under
+# BSD grep (macOS); use POSIX character classes so behavior matches Linux.
+echo "$CMD" | grep -qE '(^|[[:space:];&|])git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then

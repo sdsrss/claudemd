@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Mock: returns a red run for 'main' (or when no --branch given — the bug),
+# returns a green run for 'feature-x'. Lets M1 test assert that the hook
+# is passing --branch to `gh run list`.
+BRANCH=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "--branch" ]]; then BRANCH="$arg"; break; fi
+  prev="$arg"
+done
+
+if [[ "$BRANCH" == "feature-x" ]]; then
+  echo '[{"databaseId":4,"status":"completed","conclusion":"success","displayTitle":"feature CI","url":"https://example/4"}]'
+else
+  echo '[{"databaseId":2,"status":"completed","conclusion":"failure","displayTitle":"unrelated cron","url":"https://example/2"}]'
+fi

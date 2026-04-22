@@ -47,9 +47,9 @@ test('apply-all: backup created and all files updated', async () => {
   assert.equal(fs.readFileSync(path.join(res.backupDir, 'CLAUDE.md'), 'utf8'), 'home-old\n');
 });
 
-test('select-per-file: only chosen files updated', async () => {
-  const res = await update({ pluginRoot, choice: 'select', selected: ['CLAUDE.md'] });
-  assert.equal(res.applied, true);
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'plugin-new\n');
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE-changelog.md'), 'utf8'), 'home-old-cl\n');
+test('unknown choice throws', async () => {
+  await assert.rejects(
+    () => update({ pluginRoot, choice: 'select' }),
+    /unknown choice/
+  );
 });

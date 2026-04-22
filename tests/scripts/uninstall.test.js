@@ -77,3 +77,63 @@ test('idempotent: running uninstall twice is safe', async () => {
   const second = await uninstall({ specAction: 'keep' });
   assert.equal(second.warning, 'already-uninstalled');
 });
+
+test('aborted delete (no confirm) does not mutate settings.json or manifest (F14)', async () => {
+  // Regression: the unconfirmed-delete abort was returned AFTER settings.json
+  // had already been cleaned of plugin hooks. Users saw "abort", thought
+  // nothing changed, but hooks were silently removed.
+  const settingsPath = path.join(tmpHome, '.claude/settings.json');
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const before = fs.readFileSync(settingsPath, 'utf8');
+  const manifestBefore = fs.readFileSync(manifestPath, 'utf8');
+
+  const r = await uninstall({ specAction: 'delete', confirmHardAuth: false });
+  assert.equal(r.specAction, 'abort');
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), before,
+    'settings.json must be untouched after aborted delete');
+  assert.equal(fs.readFileSync(manifestPath, 'utf8'), manifestBefore,
+    'manifest must be untouched after aborted delete');
+});
+
+test('aborted restore (no backups) does not mutate settings.json or manifest (F14)', async () => {
+  const settingsPath = path.join(tmpHome, '.claude/settings.json');
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const before = fs.readFileSync(settingsPath, 'utf8');
+  const manifestBefore = fs.readFileSync(manifestPath, 'utf8');
+  // No backup-* dirs were created during install (fresh HOME had no prior
+  // spec files; beforeEach already ensured that).
+  const r = await uninstall({ specAction: 'restore' });
+  assert.equal(r.specAction, 'abort');
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), before);
+  assert.equal(fs.readFileSync(manifestPath, 'utf8'), manifestBefore);
+});
+
+test('purge: deletes only claudemd.jsonl, preserves other tools\' logs (H1)', async () => {
+  // Regression: ~/.claude/logs is shared with other plugins (claude-mem-lite etc).
+  // Purge used to rm -rf the whole directory and nuke neighbor logs.
+  const logsDir = path.join(tmpHome, '.claude/logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  const claudemdLog = path.join(logsDir, 'claudemd.jsonl');
+  const foreignLog = path.join(logsDir, 'claude-mem-lite.jsonl');
+  const foreignSubdir = path.join(logsDir, 'some-tool');
+  fs.writeFileSync(claudemdLog, '{"own":true}\n');
+  fs.writeFileSync(foreignLog, '{"foreign":true}\n');
+  fs.mkdirSync(foreignSubdir);
+  fs.writeFileSync(path.join(foreignSubdir, 'x.log'), 'keep-me\n');
+
+  await uninstall({ specAction: 'keep', purge: true });
+
+  assert.equal(fs.existsSync(claudemdLog), false, 'own jsonl must be removed');
+  assert.ok(fs.existsSync(foreignLog), 'foreign plugin log must be preserved');
+  assert.ok(fs.existsSync(foreignSubdir), 'foreign subdir must be preserved');
+  assert.ok(fs.existsSync(logsDir), 'logs dir must remain (other tools may still use it)');
+});
+
+test('purge: removes logs dir when empty after claudemd.jsonl deletion (H1)', async () => {
+  const logsDir = path.join(tmpHome, '.claude/logs');
+  // install() in beforeEach already created logsDir + empty claudemd.jsonl.
+  // Nothing else lives there, so purge should clean up the now-empty dir.
+  await uninstall({ specAction: 'keep', purge: true });
+  assert.equal(fs.existsSync(logsDir), false,
+    'empty logs dir after own-log removal should be cleaned up');
+});
