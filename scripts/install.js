@@ -1,14 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { readSettings, writeSettings, mergeHook, unmergeHook } from './lib/settings-merge.js';
+import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, isoStamp } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion } from './lib/paths.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
 
-// Basenames shared with uninstall — used as the migration/cleanup discriminator
-// so stale version-specific absolute-path entries get removed on upgrade.
+// Basenames shared with uninstall — used as the cleanup discriminator so stale
+// entries from ≤0.1.4 installs (which wrote hook commands into settings.json
+// under ${CLAUDE_PLUGIN_ROOT} or absolute version-dir paths) get evicted on
+// upgrade. The source of truth for registered hooks is now the plugin's
+// hooks/hooks.json; settings.json should contain NO claudemd hook commands.
 export const HOOK_BASENAMES = [
   'banned-vocab-check.sh',
   'ship-baseline-check.sh',
@@ -17,22 +20,23 @@ export const HOOK_BASENAMES = [
   'sandbox-disposal-check.sh',
 ];
 
-// Commands reference ${CLAUDE_PLUGIN_ROOT} (expanded by the CC harness at hook
-// invocation, per hooks docs "Variable Expansion in Hook Commands"). Storing
-// the literal env-var means `/plugin update claudemd` keeps hooks pointed at
-// the active version without manual re-registration.
-const HOOK_SPECS = [
-  { event: 'PreToolUse', matcher: 'Bash',
-    command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
-  { event: 'PreToolUse', matcher: 'Bash',
-    command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
-  { event: 'PreToolUse', matcher: 'Bash',
-    command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
-  { event: 'Stop', matcher: '*',
-    command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 3 },
-  { event: 'Stop', matcher: '*',
-    command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
-];
+// Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
+// shape previously held in HOOK_SPECS. Used to populate the manifest so status/
+// uninstall keep seeing the 5 shipped hooks after the v0.1.5 registration move.
+function readPluginHookSpecs(pluginRoot) {
+  const hooksFile = path.join(pluginRoot, 'hooks/hooks.json');
+  if (!fs.existsSync(hooksFile)) return [];
+  const data = JSON.parse(fs.readFileSync(hooksFile, 'utf8'));
+  const specs = [];
+  for (const [event, blocks] of Object.entries(data.hooks || {})) {
+    for (const block of blocks) {
+      for (const h of block.hooks || []) {
+        specs.push({ event, matcher: block.matcher, command: h.command, timeout: h.timeout });
+      }
+    }
+  }
+  return specs;
+}
 
 export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {}) {
   if (!pluginRoot) throw new Error('install: pluginRoot missing');
@@ -91,25 +95,30 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     fs.copyFileSync(settingsPath(), settingsBackup);
   }
 
-  // Settings: evict stale claudemd entries by hook basename so upgrades from
-  // older absolute-path installs converge on the current ${CLAUDE_PLUGIN_ROOT}
-  // form. Skipping this left duplicate/dead hooks in settings.json after
-  // `/plugin update claudemd` bumped the version directory.
+  // Settings: evict ANY claudemd hook command from settings.json by basename.
+  // Hooks now live in the plugin's hooks/hooks.json where ${CLAUDE_PLUGIN_ROOT}
+  // actually expands (CC only resolves that variable for plugin-owned
+  // hooks/hooks.json, not for entries in settings.json — see hooks docs
+  // "Variable Expansion in Hook Commands"). Pre-0.1.5 installs wrote commands
+  // into settings.json under either literal ${CLAUDE_PLUGIN_ROOT} (0.1.2-0.1.4,
+  // which the harness refused to run) or absolute version-dir paths (≤0.1.1,
+  // which went stale on /plugin update). Both are evicted here; no merge back.
   const settings = fs.existsSync(settingsPath()) ? readSettings() : {};
   unmergeHook(settings, { commandPredicate: (c) =>
     HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`))
   });
-  const entries = [];
-  for (const spec of HOOK_SPECS) {
-    const { entry } = mergeHook(settings, spec);
-    entries.push({
-      event: spec.event,
-      matcher: spec.matcher,
-      command: entry.command,
-      sha256: crypto.createHash('sha256').update(entry.command).digest('hex'),
-    });
-  }
   writeSettings(settings);
+
+  // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall
+  // keep a canonical list of the 5 shipped hooks even though settings.json no
+  // longer carries them. Command sha256 is stable (same literal across versions).
+  const hookSpecs = readPluginHookSpecs(pluginRoot);
+  const entries = hookSpecs.map(s => ({
+    event: s.event,
+    matcher: s.matcher,
+    command: s.command,
+    sha256: crypto.createHash('sha256').update(s.command).digest('hex'),
+  }));
 
   // State manifest
   fs.mkdirSync(stateDir(), { recursive: true });

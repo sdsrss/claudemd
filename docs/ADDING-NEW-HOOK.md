@@ -42,7 +42,9 @@ Create `tests/hooks/foo.test.sh` with at least:
 
 ## 3. Register in plugin manifest
 
-Edit `.claude-plugin/plugin.json` and `scripts/install.js` `HOOK_SPECS` array to add the new entry. Both must reference the same command path.
+Edit `hooks/hooks.json` — add the new entry to the appropriate `event` block (e.g. `PreToolUse` / `Stop`). Command form: `bash "${CLAUDE_PLUGIN_ROOT}/hooks/foo-check.sh"` (the CC harness expands `${CLAUDE_PLUGIN_ROOT}` only for hooks defined in the plugin's own `hooks/hooks.json` — never in `settings.json`).
+
+Then add the new basename to `scripts/install.js` `HOOK_BASENAMES` so `uninstall.js` and the upgrade-cleanup path match it.
 
 ## 4. Update docs
 

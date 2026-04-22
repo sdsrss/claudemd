@@ -1,4 +1,23 @@
 {
-  "description": "Hooks are registered by scripts/install.js into ~/.claude/settings.json (authoritative). This file is intentionally empty to prevent double-execution if the plugin system auto-loads it.",
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh\"", "timeout": 3 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh\"", "timeout": 5 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh\"", "timeout": 3 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh\"", "timeout": 3 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh\"", "timeout": 3 }
+        ]
+      }
+    ]
+  }
 }

@@ -30,6 +30,21 @@ beforeEach(() => {
                       'memory-read-check', 'sandbox-disposal-check']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
   }
+  // The production hooks.json is what install.js reads to populate the manifest.
+  // Tests must ship a copy that mirrors the real plugin's 5-hook registration.
+  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
+    hooks: {
+      PreToolUse: [{ matcher: 'Bash', hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
+      ] }],
+      Stop: [{ matcher: '*', hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 3 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
+      ] }],
+    },
+  }));
 });
 
 afterEach(() => {
@@ -56,21 +71,31 @@ test('existing spec: backup created, new spec in place', async () => {
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# Core v6.9.2\nVersion: 6.9.2\n');
 });
 
-test('settings.json gets 5 hook entries on fresh install', async () => {
+test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)', async () => {
+  // As of v0.1.5, hooks live in the plugin's hooks/hooks.json — CC only
+  // expands ${CLAUDE_PLUGIN_ROOT} for plugin-owned hooks, not for entries in
+  // settings.json. settings.json should carry zero claudemd hook commands.
   await install({ pluginRoot });
-  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  const bashHooks = s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks;
-  assert.equal(bashHooks.length, 3);
-  const stopHooks = s.hooks.Stop.find(m => m.matcher === '*').hooks;
-  assert.equal(stopHooks.length, 2);
+  const sPath = path.join(tmpHome, '.claude/settings.json');
+  if (!fs.existsSync(sPath)) return; // fresh install with no pre-existing settings.json is fine
+  const s = JSON.parse(fs.readFileSync(sPath, 'utf8'));
+  const all = [];
+  for (const event of Object.keys(s.hooks || {})) {
+    for (const block of s.hooks[event]) {
+      for (const h of block.hooks || []) all.push(h.command);
+    }
+  }
+  const claudemdCmds = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
+  assert.deepEqual(claudemdCmds, [], `settings.json must not contain claudemd hook commands, got: ${JSON.stringify(claudemdCmds)}`);
 });
 
 test('idempotent: running install 3x leaves settings.json unchanged', async () => {
   await install({ pluginRoot });
-  const after1 = fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8');
+  const sPath = path.join(tmpHome, '.claude/settings.json');
+  const after1 = fs.existsSync(sPath) ? fs.readFileSync(sPath, 'utf8') : '';
   await install({ pluginRoot });
   await install({ pluginRoot });
-  const after3 = fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8');
+  const after3 = fs.existsSync(sPath) ? fs.readFileSync(sPath, 'utf8') : '';
   assert.equal(after1, after3);
 });
 
@@ -145,8 +170,11 @@ test('migrates hand-installed banned-vocab hook into backup', async () => {
 
   // settings.json no longer references hand-installed path
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  const bash = s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks;
-  assert.equal(bash.some(h => h.command.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))), false);
+  const all = [];
+  for (const event of Object.keys(s.hooks || {})) {
+    for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
+  }
+  assert.equal(all.some(c => c.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))), false);
 });
 
 test('leaves non-migrated hand hooks untouched', async () => {
@@ -177,43 +205,45 @@ test('back-to-back installs in same second preserve the original user backup (F1
   );
 });
 
-test('hook command uses ${CLAUDE_PLUGIN_ROOT} so upgrades survive path bumps (M4)', async () => {
-  // Regression: hook command used to bake in the absolute version-specific path
+test('manifest entries use ${CLAUDE_PLUGIN_ROOT} literal for version-stable registration (M4/v0.1.5)', async () => {
+  // Regression: hook commands used to bake in the absolute version-specific path
   // (~/.claude/plugins/cache/claudemd/claudemd/0.1.3/hooks/...). After `/plugin
   // update claudemd` bumped the version directory, entries pointed at a stale
-  // path and hooks silently stopped firing until the user manually re-ran
-  // install.js. ${CLAUDE_PLUGIN_ROOT} is expanded by the CC harness at hook
-  // invocation time and tracks the active version automatically.
+  // path and hooks silently stopped firing. v0.1.5 moves hook registration into
+  // the plugin's hooks/hooks.json where ${CLAUDE_PLUGIN_ROOT} is expanded by
+  // the CC harness at hook invocation time, tracking the active version.
   await install({ pluginRoot });
-  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  const allCommands = [
-    ...s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks.map(h => h.command),
-    ...s.hooks.Stop.find(m => m.matcher === '*').hooks.map(h => h.command),
-  ];
-  for (const c of allCommands) {
-    assert.ok(c.includes('${CLAUDE_PLUGIN_ROOT}'),
-      `command should reference env var, got: ${c}`);
-    assert.ok(!c.includes(pluginRoot),
-      `command must NOT bake in the version-specific absolute path, got: ${c}`);
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
+  for (const e of manifest.entries) {
+    assert.ok(e.command.includes('${CLAUDE_PLUGIN_ROOT}'),
+      `manifest entry should reference env var, got: ${e.command}`);
+    assert.ok(!e.command.includes(pluginRoot),
+      `manifest entry must NOT bake in the version-specific absolute path, got: ${e.command}`);
   }
 });
 
-test('upgrade from absolute-path entries: stale version-dir entries get removed (M4)', async () => {
-  // Simulate user who installed with an older claudemd that wrote
-  // absolute-path hook commands. Running the new install.js should remove
-  // those stale entries (not leave them as duplicates alongside the new form).
+test('upgrade evicts ALL stale claudemd hook entries from settings.json (v0.1.5)', async () => {
+  // v0.1.5 moves hook registration to plugin hooks/hooks.json. Pre-0.1.5
+  // installs wrote commands into settings.json in two incompatible forms:
+  //  (1) ${CLAUDE_PLUGIN_ROOT}-literal (0.1.2-0.1.4) — the CC harness refused
+  //      to expand these in settings.json and threw an error every invocation.
+  //  (2) absolute version-dir paths (≤0.1.1) — went stale on /plugin update.
+  // Both forms must be evicted on upgrade so the plugin's own hooks.json
+  // becomes the sole registration site.
   const OLD_VERSION_DIR = '/home/fake/.claude/plugins/cache/claudemd/claudemd/0.1.3';
   fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
     hooks: {
       PreToolUse: [{ matcher: 'Bash', hooks: [
+        // absolute-path form (≤0.1.1)
         { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/banned-vocab-check.sh"`, timeout: 3 },
-        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/ship-baseline-check.sh"`, timeout: 5 },
-        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/memory-read-check.sh"`, timeout: 3 },
+        // ${CLAUDE_PLUGIN_ROOT}-literal form (0.1.2-0.1.4)
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
         { type: 'command', command: 'node /foreign/hook.mjs', timeout: 2 },
       ] }],
       Stop: [{ matcher: '*', hooks: [
         { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/residue-audit.sh"`, timeout: 3 },
-        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/sandbox-disposal-check.sh"`, timeout: 3 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
       ] }],
     },
   }));
@@ -221,16 +251,19 @@ test('upgrade from absolute-path entries: stale version-dir entries get removed 
   await install({ pluginRoot });
 
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  const bash = s.hooks.PreToolUse.find(m => m.matcher === 'Bash').hooks;
-  const stop = s.hooks.Stop.find(m => m.matcher === '*').hooks;
-  // 3 new claudemd PreToolUse + the untouched foreign hook
-  assert.equal(bash.length, 4, `expected 4 Bash entries (3 ours + foreign), got: ${JSON.stringify(bash)}`);
-  assert.equal(bash.filter(h => h.command.includes(OLD_VERSION_DIR)).length, 0,
-    'stale absolute-path entries must be removed');
-  assert.ok(bash.some(h => h.command === 'node /foreign/hook.mjs'),
-    'foreign hook must survive');
-  assert.equal(stop.length, 2);
-  assert.equal(stop.filter(h => h.command.includes(OLD_VERSION_DIR)).length, 0);
+  const bash = s.hooks.PreToolUse?.find(m => m.matcher === 'Bash')?.hooks || [];
+  const stop = s.hooks.Stop?.find(m => m.matcher === '*')?.hooks || [];
+  // Only foreign hook survives in Bash; Stop block empty (orphan hooks array is stripped by unmergeHook).
+  assert.equal(bash.length, 1, `expected 1 Bash entry (foreign only), got: ${JSON.stringify(bash)}`);
+  assert.equal(bash[0].command, 'node /foreign/hook.mjs', 'foreign hook must survive');
+  assert.equal(stop.length, 0, `expected 0 Stop entries after eviction, got: ${JSON.stringify(stop)}`);
+  // And — crucially — no claudemd command string remains anywhere in settings.json
+  const all = [];
+  for (const event of Object.keys(s.hooks || {})) {
+    for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
+  }
+  const claudemd = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
+  assert.deepEqual(claudemd, [], `all claudemd hook commands must be evicted, residue: ${JSON.stringify(claudemd)}`);
 });
 
 test('same-stamp settings.json backup gets numeric suffix (F10)', async () => {

@@ -20,12 +20,15 @@ echo "$OUT" | jq -e '.spec == "fresh"' >/dev/null \
 # For M2, we check that at least ~/.claude/ exists post-install.
 [[ -d "$HOME/.claude" ]] || { echo "FAIL: ~/.claude missing"; exit 1; }
 
-# Phase 3: settings.json has 5 hook entries
-JQ_QUERY='(.hooks.PreToolUse[] | select(.matcher=="Bash") | .hooks | length) as $pre
-  | (.hooks.Stop[] | select(.matcher=="*") | .hooks | length) as $stop
-  | $pre == 3 and $stop == 2'
-jq -e "$JQ_QUERY" "$HOME/.claude/settings.json" >/dev/null \
-  || { echo "FAIL: settings.json hook count"; exit 1; }
+# Phase 3: settings.json has NO claudemd hook entries (v0.1.5 moves them to
+# the plugin's hooks/hooks.json where ${CLAUDE_PLUGIN_ROOT} actually expands).
+# Manifest carries the canonical 5-entry list instead.
+if [[ -f "$HOME/.claude/settings.json" ]]; then
+  RESIDUE=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
+  [[ "$RESIDUE" == "0" ]] || { echo "FAIL: settings.json carries claudemd hooks (v0.1.5 expects 0)"; exit 1; }
+fi
+MCOUNT=$(jq '.entries | length' "$HOME/.claude/.claudemd-state/installed.json") || { echo "FAIL: manifest unreadable"; exit 1; }
+[[ "$MCOUNT" == "5" ]] || { echo "FAIL: manifest entry count ($MCOUNT != 5)"; exit 1; }
 
 # Phase 4: simulate banned-vocab hook firing
 EVENT='{"session_id":"integ","tool_name":"Bash","tool_input":{"command":"git commit -m '\''significantly improved'\''"},"cwd":"/tmp"}'
