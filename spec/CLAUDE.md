@@ -1,6 +1,6 @@
-# AI-CODING-SPEC v6.9.2 — Core
+# AI-CODING-SPEC v6.9.3 — Core
 
-Version: 6.9.2
+Version: 6.9.3
 Canonical path: `~/.claude/CLAUDE.md`
 Extended rules: `~/.claude/CLAUDE-extended.md` (loaded on demand, see §EXT)
 

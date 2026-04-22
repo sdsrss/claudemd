@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.9.0 — Extended
+# AI-CODING-SPEC v6.9.3 — Extended
 
 Loaded on demand per §EXT in `CLAUDE.md`. Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 

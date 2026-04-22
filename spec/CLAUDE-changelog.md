@@ -6,6 +6,15 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.9.3 — 2026-04-22
+
+Patch: §12 clarification (no new HARD rule, no behavior change). Identical §13.2 budget cost: 0.
+
+- `[clarify]` §12 PLUGINS Ship-pipeline hardening — new paragraph "Manual-ship atomicity (HARD, clarification)". Codifies that the `manual ship because <reason>` override is still **one atomic turn**: enumerate remaining steps up-front (commit → push → tag → release-artifact → CI verify), execute them back-to-back, no turn-ending between clean green steps. Green CI is Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: hard failure (push rejected / tag collision / CI red) — stop at the failure with full context. Grounding: a manual-ship session stopped after `git commit` and required user prompt to continue; root cause was treating commit as a natural pause point when the user's single `[AUTH]` on ship already covered the full pipeline per §5 per-task-per-scope.
+- `[fix]` `spec/CLAUDE-extended.md` header was stuck at `v6.9.0` while core had advanced through v6.9.1 / v6.9.2. Bumped to v6.9.3 to match.
+
+---
+
 ## v6.9.2 — 2026-04-21
 
 **Core size**: ~6,200 → ~5,330 tokens (−14%). Policy lives in new §0.1 to prevent re-accrual.
