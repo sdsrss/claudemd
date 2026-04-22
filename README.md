@@ -156,6 +156,8 @@ Verify with `/claudemd-status` — the "log.lines" count should increment after 
 
 **`/claudemd-doctor` reports backup growth** — run `/claudemd-doctor --prune-backups=5` to keep only the 5 most recent.
 
+**`PreToolUse:Bash hook error ... No such file or directory`** pointing at `~/.claude/hooks/banned-vocab-check.sh` — Claude Code loaded `settings.json` at session start and cached the old hand-install hook entry in memory. `install.js` migrated the on-disk entry to the cache path and moved the original shell file to `~/.claude/backup-*/hooks/`, but the running session's hook registry is still stale. Exit and restart the Claude Code session — settings.json is re-read from disk, and the error stops. (This applies to any mid-session `settings.json` change, not just claudemd.)
+
 ---
 
 ## Extending
