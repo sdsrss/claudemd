@@ -37,7 +37,10 @@ done
 if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
-  echo "$FOUND" | head -n 5 | sed 's/^/  - /' >&2
+  # `$FOUND` ends with a trailing newline from the accumulator loop; strip
+  # blank lines before prefixing so the bullet list doesn't show an empty
+  # trailing "  - " entry.
+  printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5 >&2
   hook_record sandbox-disposal warn "{\"count\":$COUNT}"
 fi
 

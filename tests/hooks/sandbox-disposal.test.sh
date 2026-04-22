@@ -55,7 +55,21 @@ else
   echo "PASS: 5 nested tmp.X ignored (maxdepth 1 respected)"
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((5 - FAIL))/5 passed"; exit 1
+# Case 6 (v0.1.9 P3a): warn bullet list has no trailing blank " - " entry
+# even when FOUND accumulator ends with \n.
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
+mkdir -p "$HOME/.claude/tmp/tmp.p3a_bullet_test"
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -E '^\s*-\s*$'; then
+  echo "FAIL: 6 trailing blank bullet present — sed '/^$/d' regression (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 6 no trailing blank bullet in warn list"
 fi
-echo "Tests: 5/5 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((6 - FAIL))/6 passed"; exit 1
+fi
+echo "Tests: 6/6 passed"

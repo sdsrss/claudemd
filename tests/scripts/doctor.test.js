@@ -17,7 +17,7 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
   fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), JSON.stringify({
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
     version: '0.1.0', entries: []
   }));
 });

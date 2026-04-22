@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, isoStamp } from './lib/backup.js';
-import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
 
@@ -18,6 +18,7 @@ export const HOOK_BASENAMES = [
   'memory-read-check.sh',
   'residue-audit.sh',
   'sandbox-disposal-check.sh',
+  'session-start-check.sh',
 ];
 
 // Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
@@ -121,14 +122,22 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     sha256: crypto.createHash('sha256').update(s.command).digest('hex'),
   }));
 
-  // State manifest
+  // State manifest — written at ~/.claude/.claudemd-manifest.json so that
+  // blowing away the runtime state dir (tmp-baseline.txt / session-start.ref)
+  // does not erase the install record. Pre-0.1.9 installs wrote to
+  // stateDir()/installed.json; that legacy file is removed here to keep the
+  // filesystem tidy when upgrading.
   fs.mkdirSync(stateDir(), { recursive: true });
-  fs.writeFileSync(path.join(stateDir(), 'installed.json'), JSON.stringify({
+  fs.mkdirSync(path.dirname(manifestPath()), { recursive: true });
+  fs.writeFileSync(manifestPath(), JSON.stringify({
     version: readPluginVersion(pluginRoot),
     installedAt: new Date().toISOString(),
     pluginRoot,
     entries,
   }, null, 2));
+  if (fs.existsSync(legacyManifestPath())) {
+    try { fs.unlinkSync(legacyManifestPath()); } catch { /* stale legacy ok */ }
+  }
 
   // Logs directory + empty jsonl (touch only)
   fs.mkdirSync(logsDir(), { recursive: true });

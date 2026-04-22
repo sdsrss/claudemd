@@ -13,7 +13,7 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
   fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), JSON.stringify({
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
     version: '0.1.0', entries: [
       { event: 'PreToolUse', command: 'bash /pkg/hooks/banned-vocab-check.sh', sha256: 'x' }
     ],
@@ -45,7 +45,10 @@ test('status reports kill-switch state', async () => {
 });
 
 test('status reports not-installed when manifest missing', async () => {
-  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
+  // v0.1.9: manifest lives at ~/.claude/.claudemd-manifest.json outside
+  // the runtime state dir. Clean both locations to assert "not-installed".
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), { force: true });
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true, force: true });
   const r = await status();
   assert.equal(r.plugin.installed, false);
 });

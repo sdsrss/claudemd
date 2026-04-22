@@ -6,6 +6,7 @@ const NAME_MAP = {
   'residue-audit': 'RESIDUE_AUDIT',
   'memory-read-check': 'MEMORY_READ',
   'sandbox-disposal-check': 'SANDBOX_DISPOSAL',
+  'session-start-check': 'SESSION_START',
 };
 
 export async function toggle(name) {

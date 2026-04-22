@@ -144,10 +144,13 @@ test('16: unmergeHook on empty settings no-op', () => {
   assert.equal(removed, 0);
 });
 
-test('17: unmergeHook removes entire matcher block if all hooks drop', () => {
+test('17: unmergeHook removes entire matcher block + event key + hooks key when all drop (v0.1.9)', () => {
   const s = { hooks: { PreToolUse: [{ matcher: 'X', hooks: [{ type: 'command', command: 'ours' }] }] } };
   unmergeHook(s, { commandPredicate: (c) => c === 'ours' });
-  assert.equal(s.hooks.PreToolUse.length, 0);
+  // Empty event keys and the top-level hooks object are pruned so repeated
+  // install/uninstall cycles leave settings.json without `"PreToolUse": []`
+  // scaffolding residue.
+  assert.equal(s.hooks, undefined);
 });
 
 test('18: mergeHook handles settings where hooks key is missing', () => {

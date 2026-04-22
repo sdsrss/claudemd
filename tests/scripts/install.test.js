@@ -27,13 +27,17 @@ beforeEach(() => {
 
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
   for (const name of ['banned-vocab-check', 'ship-baseline-check', 'residue-audit',
-                      'memory-read-check', 'sandbox-disposal-check']) {
+                      'memory-read-check', 'sandbox-disposal-check', 'session-start-check']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
   }
   // The production hooks.json is what install.js reads to populate the manifest.
-  // Tests must ship a copy that mirrors the real plugin's 5-hook registration.
+  // Tests must ship a copy that mirrors the real plugin's 6-hook registration
+  // (5 enforcement hooks + SessionStart self-bootstrap added in v0.1.9).
   fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
     hooks: {
+      SessionStart: [{ matcher: '*', hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-check.sh"', timeout: 5 },
+      ] }],
       PreToolUse: [{ matcher: 'Bash', hooks: [
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
@@ -101,16 +105,16 @@ test('idempotent: running install 3x leaves settings.json unchanged', async () =
 
 test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
-  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, 5);
+  assert.equal(manifest.entries.length, 6);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
 test('installed.json version falls back to "unknown" when package.json missing', async () => {
   fs.rmSync(path.join(pluginRoot, 'package.json'));
   await install({ pluginRoot });
-  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, 'unknown');
 });
 
@@ -120,11 +124,11 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, `exit non-zero. stderr: ${result.stderr}`);
-  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-manifest.json');
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 5);
+  assert.equal(manifest.entries.length, 6);
 });
 
 test('logs directory and empty jsonl created', async () => {
@@ -213,7 +217,7 @@ test('manifest entries use ${CLAUDE_PLUGIN_ROOT} literal for version-stable regi
   // the plugin's hooks/hooks.json where ${CLAUDE_PLUGIN_ROOT} is expanded by
   // the CC harness at hook invocation time, tracking the active version.
   await install({ pluginRoot });
-  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-state/installed.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   for (const e of manifest.entries) {
     assert.ok(e.command.includes('${CLAUDE_PLUGIN_ROOT}'),
       `manifest entry should reference env var, got: ${e.command}`);

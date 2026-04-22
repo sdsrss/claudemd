@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import { stateDir, logsDir, settingsPath, specHome } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, readManifest } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 
@@ -9,9 +9,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
 
-  const manifestPath = path.join(stateDir(), 'installed.json');
-  push('manifest', fs.existsSync(manifestPath),
-    fs.existsSync(manifestPath) ? 'present' : 'missing — is plugin installed?');
+  const m = readManifest();
+  push('manifest', m.exists && m.data != null,
+    m.exists && m.data != null
+      ? (m.migrated ? `present at ${m.path} (relocated from pre-0.1.9 state dir)` : 'present')
+      : 'missing — is plugin installed?');
 
   if (fs.existsSync(settingsPath())) {
     try { readSettings(); push('settings.json', true, 'parseable'); }

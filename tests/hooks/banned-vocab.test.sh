@@ -94,8 +94,45 @@ EOF
 assert_pass "15: 中文 ratio + → baseline → pass" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# --- message-body scope (v0.1.9) — banned vocab in CMD tokens outside the message body must not deny ---
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"COMMIT_FLAG_SIGNIFICANTLY=1 git commit -m 'fix: correct typo in README'"},"cwd":"/tmp"}
+EOF
+assert_pass "16: banned word in env prefix, clean message → pass (message-scope)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git -c log.showSignature=true commit -m 'fix: token parser'"},"cwd":"/tmp"}
+EOF
+assert_pass "17: git -c config flag, clean message → pass (message-scope)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -m 'fix: X' -m 'it should work under load'"},"cwd":"/tmp"}
+EOF
+assert_deny "18: hedge in second -m body → deny (multi -m)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit --message=\"显著改善 rendering\""},"cwd":"/tmp"}
+EOF
+assert_deny "19: --message= form with 中文 hedge → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -F /tmp/msg.txt"},"cwd":"/tmp"}
+EOF
+assert_pass "20: -F file (no -m captured, fallback to CMD scan — clean CMD) → pass" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((15 - FAIL))/15 passed"
+  echo "Tests: $((20 - FAIL))/20 passed"
   exit 1
 fi
-echo "Tests: 15/15 passed"
+echo "Tests: 20/20 passed"

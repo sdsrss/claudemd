@@ -66,7 +66,7 @@ test('restore option: finds newest backup and copies back', async () => {
 });
 
 test('manifest consumed for precise removal', async () => {
-  const manifest = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const manifest = path.join(tmpHome, '.claude/.claudemd-manifest.json');
   assert.ok(fs.existsSync(manifest));
   await uninstall({ specAction: 'keep', purge: true });
   assert.equal(fs.existsSync(path.join(tmpHome, '.claude/.claudemd-state')), false);
@@ -83,7 +83,7 @@ test('aborted delete (no confirm) does not mutate settings.json or manifest (F14
   // had already been cleaned of plugin hooks. Users saw "abort", thought
   // nothing changed, but hooks were silently removed.
   const settingsPath = path.join(tmpHome, '.claude/settings.json');
-  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-manifest.json');
   const before = fs.readFileSync(settingsPath, 'utf8');
   const manifestBefore = fs.readFileSync(manifestPath, 'utf8');
 
@@ -97,7 +97,7 @@ test('aborted delete (no confirm) does not mutate settings.json or manifest (F14
 
 test('aborted restore (no backups) does not mutate settings.json or manifest (F14)', async () => {
   const settingsPath = path.join(tmpHome, '.claude/settings.json');
-  const manifestPath = path.join(tmpHome, '.claude/.claudemd-state/installed.json');
+  const manifestPath = path.join(tmpHome, '.claude/.claudemd-manifest.json');
   const before = fs.readFileSync(settingsPath, 'utf8');
   const manifestBefore = fs.readFileSync(manifestPath, 'utf8');
   // No backup-* dirs were created during install (fresh HOME had no prior

@@ -1,16 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { stateDir, logsDir, backupRoot } from './lib/paths.js';
+import { logsDir, backupRoot, readManifest } from './lib/paths.js';
 
-const HOOK_NAMES = ['BANNED_VOCAB','SHIP_BASELINE','RESIDUE_AUDIT','MEMORY_READ','SANDBOX_DISPOSAL'];
+const HOOK_NAMES = ['BANNED_VOCAB','SHIP_BASELINE','RESIDUE_AUDIT','MEMORY_READ','SANDBOX_DISPOSAL','SESSION_START'];
 
 export async function status() {
-  const manifestPath = path.join(stateDir(), 'installed.json');
-  const installed = fs.existsSync(manifestPath);
+  const m = readManifest();
   let plugin = { installed: false };
-  if (installed) {
-    const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    plugin = { installed: true, version: m.version, entries: m.entries.length };
+  if (m.exists && m.data) {
+    plugin = { installed: true, version: m.data.version, entries: m.data.entries.length };
   }
 
   const coreSpec = path.join(backupRoot(), 'CLAUDE.md');

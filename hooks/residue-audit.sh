@@ -17,9 +17,17 @@ TMP_DIR="$HOME/.claude/tmp"
 [[ -d "$TMP_DIR" ]] || exit 0
 
 CURRENT=$(find "$TMP_DIR" -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
-BASELINE=0
-[[ -f "$BASELINE_FILE" ]] && BASELINE=$(cat "$BASELINE_FILE" 2>/dev/null || echo 0)
 
+# First-run: establish baseline silently. A user with a pre-existing
+# ~/.claude/tmp/ (e.g. from other plugins or prior sessions) would otherwise
+# eat an immediate false alarm with BASELINE=0 on initial Stop. Mirrors
+# sandbox-disposal-check.sh, which also exits silently on first call.
+if [[ ! -f "$BASELINE_FILE" ]]; then
+  echo "$CURRENT" > "$BASELINE_FILE"
+  exit 0
+fi
+
+BASELINE=$(cat "$BASELINE_FILE" 2>/dev/null || echo 0)
 DELTA=$((CURRENT - BASELINE))
 THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
 

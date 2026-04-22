@@ -2,15 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
 import { listBackups, restoreBackup } from './lib/backup.js';
-import { stateDir, logsDir, settingsPath, specHome, backupRoot } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './install.js';
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
-  const manifestPath = path.join(stateDir(), 'installed.json');
-  if (!fs.existsSync(manifestPath)) {
+  const m = readManifest();
+  if (!m.exists || !m.data) {
     return { warning: 'already-uninstalled' };
   }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const manifest = m.data;
+  const activeManifestPath = m.path;
+  const legacyPath = legacyManifestPath();
 
   // Pre-flight abort checks — MUST run before any side effects so that an
   // aborted uninstall leaves settings.json / spec files / manifest untouched.
@@ -52,9 +54,14 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     outcome = 'keep';
   }
 
-  // 3. Clean state + logs (per purge flag)
+  // 3. Clean state + logs (per purge flag). Always unlink both the current
+  // manifest path and any pre-0.1.9 legacy file — readManifest() migrated
+  // legacy → new in-place, but if install.js never ran on the upgraded
+  // version the legacy location could still exist as a stale copy.
   if (purge) {
     fs.rmSync(stateDir(), { recursive: true, force: true });
+    if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
+    if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
     // ~/.claude/logs is shared with other plugins (e.g. claude-mem-lite) —
     // only drop our own jsonl, and remove the dir if it ends up empty.
     const ownLog = path.join(logsDir(), 'claudemd.jsonl');
@@ -63,7 +70,8 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       if (fs.readdirSync(logsDir()).length === 0) fs.rmdirSync(logsDir());
     } catch { /* dir gone or unreadable — fine */ }
   } else {
-    fs.unlinkSync(manifestPath);
+    if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
+    if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
   return { specAction: outcome };

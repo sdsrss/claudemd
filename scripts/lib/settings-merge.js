@@ -52,6 +52,11 @@ export function unmergeHook(settings, { commandPredicate }) {
       removed += before - block.hooks.length;
     }
     settings.hooks[event] = blocks.filter(b => b.hooks.length > 0);
+    // Drop the event key entirely if no blocks remain — otherwise every
+    // install/uninstall cycle leaves a `"PreToolUse": []` residue and
+    // settings.json accumulates empty scaffolding visible in diffs.
+    if (settings.hooks[event].length === 0) delete settings.hooks[event];
   }
+  if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
   return { removed };
 }
