@@ -18,7 +18,12 @@ beforeEach(() => {
       { event: 'PreToolUse', command: 'bash /pkg/hooks/banned-vocab-check.sh', sha256: 'x' }
     ],
   }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# core\nVersion: 6.9.2\n');
+  // Real v6.10.0+ spec format: version lives in the H1 title, no standalone
+  // `Version:` line (see spec-structure.test.js:55 and CHANGELOG v0.2.1
+  // "Versioning policy": canonical spec version source is the `spec/CLAUDE.md`
+  // top-line title). status.js must extract the version from this H1.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.10.0 — Core\n\nBody.\n');
 });
 
 afterEach(() => {
@@ -29,7 +34,7 @@ afterEach(() => {
 test('status reports plugin version + installed spec version', async () => {
   const r = await status();
   assert.equal(r.plugin.version, '0.1.0');
-  assert.equal(r.spec.installed, '6.9.2');
+  assert.equal(r.spec.installed, '6.10.0');
 });
 
 test('status reports kill-switch state', async () => {

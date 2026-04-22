@@ -11,10 +11,19 @@ export async function status() {
     plugin = { installed: true, version: m.data.version, entries: m.data.entries.length };
   }
 
+  // Spec version source (per v0.2.1 "Versioning policy"): the `spec/CLAUDE.md`
+  // H1 title — `# AI-CODING-SPEC vX.Y.Z — Core`. Pre-v6.10.0 specs used a
+  // standalone `Version: X.Y.Z` line (retired in v6.10.0 restructure);
+  // fallback regex preserves read compatibility with old installs.
   const coreSpec = path.join(backupRoot(), 'CLAUDE.md');
-  const specVersion = fs.existsSync(coreSpec)
-    ? (fs.readFileSync(coreSpec, 'utf8').match(/^Version:\s*(\S+)/m) || [,''])[1]
-    : '';
+  const specVersion = (() => {
+    if (!fs.existsSync(coreSpec)) return '';
+    const text = fs.readFileSync(coreSpec, 'utf8');
+    const h1 = text.match(/^#\s*AI-CODING-SPEC\s+v([\d.]+)/m);
+    if (h1) return h1[1];
+    const legacy = text.match(/^Version:\s*(\S+)/m);
+    return legacy ? legacy[1] : '';
+  })();
 
   const killSwitches = { plugin: process.env.DISABLE_CLAUDEMD_HOOKS === '1' };
   for (const name of HOOK_NAMES) {

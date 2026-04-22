@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, isoStamp } from './lib/backup.js';
+import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
@@ -144,7 +145,15 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   const log = path.join(logsDir(), 'claudemd.jsonl');
   if (!fs.existsSync(log)) fs.writeFileSync(log, '');
 
-  return { spec: specResult, backupDir, settingsBackup, entries };
+  // Cache pruning: keep 3 newest version dirs (including current), drop older.
+  // Best-effort — install has already succeeded; a prune failure must not
+  // void that outcome, so the call is wrapped. `pruneCache` is a no-op when
+  // pluginRoot basename is not semver (dev-mode via `node scripts/install.js`).
+  let cachePruned = { kept: [], removed: [], skipped: 'not-attempted' };
+  try { cachePruned = pruneCache(pluginRoot, { keep: 3 }); }
+  catch { /* install succeeded — swallow prune FS errors */ }
+
+  return { spec: specResult, backupDir, settingsBackup, entries, cachePruned };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

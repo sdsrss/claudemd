@@ -1,6 +1,6 @@
 {
   "name": "claudemd",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "AI-CODING-SPEC v6.10 enforcement plugin for Claude Code",
   "type": "module",
   "scripts": {
