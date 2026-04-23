@@ -8,6 +8,36 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.3.1] - 2026-04-24
+
+Patch. Adds `UserPromptSubmit` hook `hooks/version-sync.sh` — piggy-back version-mismatch detection that covers the `/plugin marketplace update + /plugin install + /reload-plugins` upgrade path. Complements `session-start-check.sh` (SessionStart-only). After 0.3.1 lands, the user's first prompt submission following a plugin cache swap triggers `install.js` in the background; on-disk `~/.claude/CLAUDE*.md` syncs without requiring `/exit` + new session. No spec change (v6.11.0 stays). Manifest descriptions stay at `v6.11` per v0.2.1 policy.
+
+### Added — `hooks/version-sync.sh`
+
+Reads `~/.claude/.claudemd-manifest.json::.version` and compares against the active plugin root's `package.json::.version` (same authoritative pair `session-start-check.sh` and `install.js::readPluginVersion` use). Mismatch → `timeout 10 node install.js` backgrounded, detached, stdout+stderr redirected to `~/.claude/logs/claudemd-bootstrap.log`. Match → fast exit. Fail-safe: missing `jq`, unreadable `package.json`, legacy manifest without `.version`, `node` absent → silent early exit, no spawn, fail-open.
+
+**Stdout contract**: exactly 0 bytes on every path. `UserPromptSubmit` hook stdout is injected into the user's prompt context by Claude Code; any accidental output would pollute every prompt in every session.
+
+**Once-per-session**: session-scoped sentinel at `${TMPDIR:-/tmp}/claudemd-sync-${CLAUDE_SESSION_ID:-$PPID}`. Keyed off `CLAUDE_SESSION_ID` when CC exposes it, else the CC process PID (stable within a session). Sentinel is written on the first invocation regardless of outcome — mismatch or match — so subsequent prompts in the same session re-check in O(1) (single `test -f`). Hook adds ~5-10ms to first-prompt-of-session wall time, ~1ms to every subsequent prompt.
+
+**Kill-switch**: `DISABLE_USER_PROMPT_SUBMIT_HOOK=1` or `DISABLE_CLAUDEMD_HOOKS=1` both suppress entirely (shared `hook_kill_switch` from `lib/hook-common.sh`).
+
+### Added — test coverage
+
+`tests/hooks/version-sync.test.sh` — 6 cases covering no-manifest/version-match/version-mismatch/kill-switch/sentinel-dedup/stdout-byte-count paths. `tests/scripts/install.test.js` fixture `hooks.json` updated to include the new `UserPromptSubmit` block (entry count 6 → 7). `tests/integration/full-lifecycle.test.sh` entry-count assertion updated accordingly.
+
+### Changed — Version bumps
+
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2): 0.3.0 → 0.3.1
+- `hooks/hooks.json`: +`UserPromptSubmit` block with 2-second timeout
+- `README.md`: hook count 5 → 7 (also surfaces previously-undocumented `session-start-check` + new `version-sync`)
+
+### Migration
+
+Transparent — install.js behavior unchanged, hook registration auto-picked-up. First user after upgrade path: `/plugin marketplace update claudemd` + `/plugin uninstall claudemd@claudemd` + `/plugin install claudemd@claudemd` + `/reload-plugins` + send any prompt → on-disk spec syncs in background within ~1s. Subsequent upgrades require only the 4-step sequence + one prompt (no `/exit` needed).
+
+---
+
 ## [0.3.0] - 2026-04-24
 
 Minor. Ships **spec v6.11.0** — ROI-ranked optimization across §1 / §2 / §5 / §5.1 / §7 / §9 / §10 / §11 driven by a 5-day retrospective over `projects--mem` (v2.47.0 → v2.50.0) and `projects--code-graph-mcp` (v0.11.4 → v0.16.2) session history. Plugin-side: version sync + manifest `description` field bumps (v6.10 → v6.11 family, per v0.2.1 policy). No hook / script / test behavior changes beyond version pins.

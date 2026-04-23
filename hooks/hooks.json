@@ -8,6 +8,14 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/version-sync.sh\"", "timeout": 2 }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

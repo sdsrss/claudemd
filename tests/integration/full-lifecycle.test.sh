@@ -28,7 +28,7 @@ if [[ -f "$HOME/.claude/settings.json" ]]; then
   [[ "$RESIDUE" == "0" ]] || { echo "FAIL: settings.json carries claudemd hooks (v0.1.5 expects 0)"; exit 1; }
 fi
 MCOUNT=$(jq '.entries | length' "$HOME/.claude/.claudemd-manifest.json") || { echo "FAIL: manifest unreadable"; exit 1; }
-[[ "$MCOUNT" == "6" ]] || { echo "FAIL: manifest entry count ($MCOUNT != 6)"; exit 1; }
+[[ "$MCOUNT" == "7" ]] || { echo "FAIL: manifest entry count ($MCOUNT != 7)"; exit 1; }
 
 # Phase 4: simulate banned-vocab hook firing
 EVENT='{"session_id":"integ","tool_name":"Bash","tool_input":{"command":"git commit -m '\''significantly improved'\''"},"cwd":"/tmp"}'
