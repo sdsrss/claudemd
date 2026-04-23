@@ -6,6 +6,18 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.10.2 — 2026-04-23
+
+Patch: §11 Mid-SPINE turn-yield (new HARD, all levels). HARD tally +1 in core (12 core + 4 §EXT-side).
+
+- `[add]` **§11 Mid-SPINE turn-yield** (core, HARD) — placed immediately before `Session-exit mid-SPINE` as the turn-boundary sibling to its session-boundary rule. Once a turn has executed ≥1 tool call inside an active SPINE cycle, MUST continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output / mid-turn `[mem]` context / PostToolUse flushes) are explicitly NOT turn boundaries. Only three legal mid-cycle yields: `[AUTH REQUIRED]`, genuinely-ambiguous direction, or §11 Context pressure checkpoint. "Natural-feeling" pause points and single-Edit completion do not qualify. Silent yield followed by next-turn "done" claim = Iron Law #2 violation. Self-diagnostic tell: user's next message is `继续 / next / 怎么停了 / why did you stop` → treat as confirmed prior yield.
+- **Grounding**: two user-reported mid-turn stops on 2026-04-22 / 04-23 in plugin-adjacent sessions. Root-cause split: (1) `<system-reminder>` injection from `UserPromptSubmit` hook read as new-turn boundary even when prompt was empty/continuation; (2) single-Edit completion felt like task-done when plan had ≥3 remaining steps. Hook-side mitigation (short-prompt silent-exit + continuation labels) is plugin-side work, already landed on the hook that drove incident 1; this spec rule covers the model-side habit that hook fixes cannot reach (incident 2).
+- **Core vs §EXT decision**: §EXT loads only at L3/ship/Override/3-strike, but mid-turn yields happen at L1/L2 (both grounded incidents were L1-L2). Rule in §EXT would never bind at the levels where it fires. §11 is already the "universal · binds every task" section, so placement here is the natural home and does not require a §0.1 core-growth exception.
+
+HARD tally: 11 → 12 in core (+1). §13.2 budget cost: 1 new HARD.
+
+---
+
 ## v6.10.1 — 2026-04-23
 
 Patch: §7 Ship-baseline wording alignment (no rule change, no behavior change). §13.2 budget cost: 0.

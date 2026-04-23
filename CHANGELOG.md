@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.2.4] - 2026-04-23
+
+Patch. Ships spec v6.10.2 — new HARD rule **§11 Mid-SPINE turn-yield** (core, all levels). First rule-addition patch since v0.2.0 (v6.10.0 shipped); prior v0.2.1 / v0.2.2 / v0.2.3 were hook/doc-drift patches. HARD tally: 11 → 12 in core.
+
+### Added — §11 Mid-SPINE turn-yield (HARD, all levels)
+
+`spec/CLAUDE.md:229` new bullet between `MEMORY.md read-the-file` and `Session-exit mid-SPINE`. Placement is the turn-boundary sibling to the existing session-boundary rule: once a turn has executed ≥1 tool call inside an active SPINE cycle, the model MUST continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output / mid-turn `[mem]` context / PostToolUse flushes) are explicitly NOT turn boundaries. Only three legal mid-cycle yields: `[AUTH REQUIRED]`, genuinely-ambiguous direction, or §11 Context pressure checkpoint. Silent mid-cycle yield followed by a next-turn "done" claim is flagged as Iron Law #2 violation. Self-diagnostic tell: user's next message is `继续 / next / 怎么停了 / why did you stop` → confirmed prior yield.
+
+**Grounding**: two user-reported mid-turn stops in plugin-adjacent sessions on 2026-04-22 / 04-23. Incident 1 root cause was `UserPromptSubmit` hook injecting a `<system-reminder>` on an empty/continuation prompt, which the model read as a new-turn boundary (hook-side mitigation landed separately: short-prompt silent-exit + continuation-label on reminders). Incident 2 root cause was single-Edit completion feeling like task-done when the plan had ≥3 remaining steps — this is a model-side habit that hook fixes cannot reach. The new spec rule addresses incident-2 directly; incident 1 gets both hook mitigation (eliminates the noise) and spec reinforcement (neutralizes the noise if it ever slips through).
+
+**Core vs §EXT decision**: §EXT loads only at L3/ship/Override/3-strike, but mid-turn yields happen at L1/L2 (both grounded incidents were L1-L2). Placing the rule in §EXT would mean it never binds at the levels where it fires. §11 SESSION is already labeled "universal · binds every task", so core placement is the natural home and does not require a §0.1 core-growth exception carve-out.
+
+Spec-structure tests updated (`tests/scripts/spec-structure.test.js:58,65` pin to 6.10.2).
+
+### Changed — Version bumps
+
+- `spec/CLAUDE.md` header v6.10.1 → v6.10.2
+- `spec/CLAUDE-changelog.md` new v6.10.2 entry (above v6.10.1)
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2 fields): 0.2.3 → 0.2.4
+- `README.md` lines 15, 197 spec-version mention: v6.10.1 → v6.10.2
+
+Per "Versioning policy set in v0.2.1" (§CHANGELOG.md:7), plugin manifest `description` fields stay at `v6.10` (major.minor) — not re-bumped per patch.
+
+### Migration
+
+**`/claudemd-update`** to pick up spec v6.10.2 (1 new bullet in §11). No hook behavior change, no settings.json change, no state-dir change. Existing `~/.claude/CLAUDE.md` at v6.10.0 or v6.10.1 continues to work with all prior rules binding; the new Mid-SPINE turn-yield rule binds only after update.
+
+---
+
 ## [0.2.3] - 2026-04-23
 
 Patch. Ships spec v6.10.1 (wording patch on §7 Ship-baseline; zero rule change). Fixes 1 doc-drift P0 + 3 hook/spec P1 items surfaced by end-to-end audit. Adds 3 P2 production-hardening items: pre-merge settings.json backup rotation, rule-hits log rotation, and a live banned-vocab self-test check in `/claudemd-doctor`.

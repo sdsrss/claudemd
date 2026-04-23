@@ -55,14 +55,14 @@ test('core version header matches current spec version', () => {
   // v6.10.0: header is "# AI-CODING-SPEC vX.Y.Z — Core" (no standalone `Version:` line).
   const m = text.match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
   assert.ok(m, 'core header must declare semver version inline');
-  assert.equal(m[1], '6.10.1');
+  assert.equal(m[1], '6.10.2');
 });
 
-test('changelog top entry is v6.10.1', () => {
+test('changelog top entry is v6.10.2', () => {
   const text = fs.readFileSync(CL, 'utf8');
   const first = text.match(/^##\s+v(\d+\.\d+\.\d+)/m);
   assert.ok(first);
-  assert.equal(first[1], '6.10.1');
+  assert.equal(first[1], '6.10.2');
 });
 
 test('§2.1 table contains sp:brainstorming row', () => {
