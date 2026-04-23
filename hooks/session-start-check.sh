@@ -16,9 +16,35 @@ MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Already installed (new or legacy location) — nothing to do. Legacy files
-# get relocated the next time any claudemd script calls readManifest().
-[[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]] && exit 0
+# Manifest-exists path: check for version mismatch (v0.2.5). Pre-0.2.5 this
+# was a plain `manifest-exists → exit`. Users who installed 0.2.2 then used
+# `/plugin install` on 0.2.3/0.2.4 got silently stuck: CC's marketplace
+# lifecycle does not fire the plugin.json `postInstall` field, so install.js
+# never ran, and manifest + spec froze at 0.2.2 state. We now re-run install
+# when `.claudemd-manifest.json` .version disagrees with the package.json of
+# the plugin root we're loading from.
+if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
+  # Authoritative current-plugin version = package.json .version, same source
+  # install.js uses for readPluginVersion. Dir basename is unreliable in
+  # dev-mode (git checkout basename is not semver).
+  PLUGIN_VER=""
+  if command -v jq >/dev/null 2>&1 && [[ -r "$PLUGIN_ROOT/package.json" ]]; then
+    PLUGIN_VER="$(jq -r '.version // empty' "$PLUGIN_ROOT/package.json" 2>/dev/null || true)"
+  fi
+  INSTALLED_VER=""
+  if [[ -f "$MANIFEST_NEW" ]] && command -v jq >/dev/null 2>&1; then
+    INSTALLED_VER="$(jq -r '.version // empty' "$MANIFEST_NEW" 2>/dev/null || true)"
+  fi
+  # Skip auto-upgrade when either side is unknown — legacy manifests without
+  # .version (pre-0.1.9), jq absent, unreadable package.json, etc. — to avoid
+  # a re-bootstrap loop on broken state. Match → nothing to do.
+  if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" || "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
+    exit 0
+  fi
+  # Mismatch: log intent, then fall through to the install block below which
+  # writes the real bootstrap trail.
+  echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+fi
 
 # node required to run install.js — silent no-op if absent.
 command -v node >/dev/null 2>&1 || exit 0

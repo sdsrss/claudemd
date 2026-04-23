@@ -8,6 +8,38 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.2.5] - 2026-04-23
+
+Patch. Hook-behavior fix: SessionStart auto-sync on version mismatch. No spec change (v6.10.2 stays). Plugin-side response to a CC marketplace-lifecycle gap that quietly froze users' installed manifest at whatever version last ran `scripts/install.js` manually.
+
+### Fixed — SessionStart hook now auto-upgrades on version mismatch
+
+`hooks/session-start-check.sh` pre-0.2.5 short-circuited on `manifest-exists`, meaning the manifest + spec files stayed pinned to whichever version last triggered `scripts/install.js`. In practice Claude Code's marketplace install/uninstall flow does **not** invoke the `postInstall` / `preUninstall` fields declared in `.claude-plugin/plugin.json` — a `/plugin install claudemd@claudemd` after `/plugin marketplace update claudemd` swaps the active cache dir pointer but never runs `install.js`, so manifest.version and `~/.claude/CLAUDE*.md` both froze at the user's last manual-bootstrap version. Observed in the wild: a user stuck at manifest 0.2.2 / spec v6.10.0 after two documented releases (v0.2.3 shipping v6.10.1, v0.2.4 shipping v6.10.2) despite running the full canonical `/plugin marketplace update + uninstall + install + reload-plugins` sequence each time.
+
+Hook now reads `manifest.version` from `~/.claude/.claudemd-manifest.json` and compares it against `.version` in the loaded plugin root's `package.json` (same authoritative source `install.js` uses for `readPluginVersion`). Mismatch logs a line to `~/.claude/logs/claudemd-bootstrap.log` and falls through to the existing background install block (`timeout 10 node scripts/install.js`, detached, stdout redirected). Match → fast exit as before. Fail-safe defaults: missing `jq`, unreadable `package.json`, legacy manifests without `.version`, or dev-mode non-semver plugin roots all early-exit without attempting upgrade (prevents re-bootstrap loops on broken state).
+
+New test case `tests/hooks/session-start.test.sh:69-89` (Case 7) writes a `{"version":"0.0.1"}` manifest and asserts the hook both writes an auto-upgrade log line and bumps the manifest to the plugin's current `package.json` version. Cases 1-6 unchanged (fresh install, silence, log creation, version-match no-op, kill-switch, legacy manifest). Case 4 description updated to reflect the new "version-match" semantics.
+
+### Migration
+
+**One-time manual sync** to land this 0.2.5 hook: after `/plugin marketplace update claudemd` + `/reload-plugins`, run
+
+```
+node ~/.claude/plugins/cache/claudemd/claudemd/0.2.5/scripts/install.js
+```
+
+This will be the last manual install required — from 0.2.6 onward the 0.2.5 hook (now active in your session) will detect version drift on the next SessionStart and re-run install.js in the background automatically.
+
+### Changed — Version bumps
+
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2): 0.2.4 → 0.2.5
+- `hooks/session-start-check.sh`: +27/-3 (version-check branch before manifest early-exit)
+- `tests/hooks/session-start.test.sh`: +21/-3 (Case 7 added, Case 4 comment clarified)
+
+No `spec/CLAUDE*.md` change. `README.md` spec-version mentions unchanged (still v6.10.2). Manifest `description` fields still at `v6.10` per the v0.2.1 policy.
+
+---
+
 ## [0.2.4] - 2026-04-23
 
 Patch. Ships spec v6.10.2 — new HARD rule **§11 Mid-SPINE turn-yield** (core, all levels). First rule-addition patch since v0.2.0 (v6.10.0 shipped); prior v0.2.1 / v0.2.2 / v0.2.3 were hook/doc-drift patches. HARD tally: 11 → 12 in core.

@@ -32,15 +32,17 @@ done
   && echo "PASS: 3 bootstrap log created" \
   || { echo "FAIL: 3 bootstrap log missing"; FAIL=$((FAIL+1)); }
 
-# Case 4: manifest already present → hook fast-exits, no bootstrap spawn.
-# Truncate the bootstrap log so we can detect whether a new line is appended.
+# Case 4: manifest version matches current plugin version → no bootstrap spawn.
+# v0.2.5: hook now compares manifest.version against plugin package.json version.
+# Case 2 above ran a real install, so the current manifest carries the same
+# version as $PLUGIN_ROOT/package.json — match path exercised here.
 : > "$HOME/.claude/logs/claudemd-bootstrap.log"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 LOG_SIZE=$(wc -c < "$HOME/.claude/logs/claudemd-bootstrap.log" | tr -d ' ')
 if [[ -z "$STDERR" && "$LOG_SIZE" == "0" ]]; then
-  echo "PASS: 4 manifest-present no-op (no spawn)"
+  echo "PASS: 4 manifest version-match no-op (no spawn)"
 else
-  echo "FAIL: 4 hook spawned install despite manifest present (stderr=$STDERR size=$LOG_SIZE)"
+  echo "FAIL: 4 hook spawned install despite version match (stderr=$STDERR size=$LOG_SIZE)"
   FAIL=$((FAIL+1))
 fi
 
@@ -66,7 +68,30 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((6 - FAIL))/6 passed"; exit 1
+# Case 7 (v0.2.5): manifest present but .version < current plugin → auto-upgrade.
+# Regression for the 0.2.2→0.2.4 stuck-upgrade scenario: under the old hook,
+# manifest-exists was sufficient to short-circuit. Auto-sync must trigger.
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+# Background install needs a moment to write bootstrap log + new manifest.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  NEW_VER=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
+  [[ -n "$NEW_VER" && "$NEW_VER" != "0.0.1" ]] && break
+  sleep 0.5
+done
+PLUGIN_VER=$(jq -r .version "$PLUGIN_ROOT/package.json" 2>/dev/null || echo "")
+POST_VER=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
+LOG_SIZE=$(wc -c < "$HOME/.claude/logs/claudemd-bootstrap.log" | tr -d ' ')
+if [[ -z "$STDERR" && "$LOG_SIZE" -gt "0" && "$POST_VER" == "$PLUGIN_VER" ]]; then
+  echo "PASS: 7 version-mismatch triggers auto-upgrade (0.0.1 → $PLUGIN_VER)"
+else
+  echo "FAIL: 7 auto-upgrade not triggered (stderr=$STDERR log_size=$LOG_SIZE post_ver=$POST_VER plugin_ver=$PLUGIN_VER)"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 6/6 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((7 - FAIL))/7 passed"; exit 1
+fi
+echo "Tests: 7/7 passed"
