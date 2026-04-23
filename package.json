@@ -1,7 +1,7 @@
 {
   "name": "claudemd",
-  "version": "0.2.5",
-  "description": "AI-CODING-SPEC v6.10 enforcement plugin for Claude Code",
+  "version": "0.3.0",
+  "description": "AI-CODING-SPEC v6.11 enforcement plugin for Claude Code",
   "type": "module",
   "scripts": {
     "test": "bash tests/run-all.sh",

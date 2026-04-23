@@ -6,6 +6,23 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.0 — 2026-04-24
+
+Minor: ROI-ranked optimization across §1 / §2 / §5 / §5.1 / §7 / §9 / §10 / §11, driven by 5-day retrospective over `projects--mem` + `projects--code-graph-mcp` session history. §13.2-compatible: 0 new HARD. HARD tally unchanged (12 core + 4 §EXT-side).
+
+- `[add]` **§9 Parallel-path completeness** (core, SHOULD L2+) — change touching a node with multiple parallel paths (fallback / feature flag / match default / SQL `ORDER BY`+`LIMIT` / early-return / FTS-vs-LIKE / multi-dispatch) MUST enumerate and verify each. 4 grounded repros in 5 days logged as HARD candidate in `tasks/rule-candidates-2026-04.md`; promotion blocked by §13.2 20-task counter until SHOULD presence fails to suppress recurrence.
+- `[add]` **§2 LLM-visible metadata → L3** (core, classification) — MCP tool descriptions / MCP `instructions` / adoption-memory files / shipped prompt templates / plugin skill descriptions → L3 regardless of LOC. Prior wording ("released-artifact user-visible default behavior change") didn't trigger on metadata edits that silently re-route Claude Code.
+- `[add]` **§7 Metric-coupling check** (core, SHOULD L2+) — changes coupled to an existing metric / bench / oracle / compile-time budget MUST cite before-and-after. Triggers: tool descriptions, adoption-memory, field compression, prompt templates, compile-time assert guards.
+- `[add]` **§5 Obvious-follow-on not exempt** (core, clarifies §0 Hard-AUTH override — no new HARD) — mid-bundle adjacent-bug discovery requires individual re-AUTH even when the fix feels obvious. Source: `feedback_mid_bundle_scope_auth.md`.
+- `[add]` **§1 Recommend-first single-option** (core, clarifies principle) — single-obvious-option execute directly without preamble. Source: `feedback_autonomous_fixes.md`.
+- `[add]` **§5.1 aggressive skip-list** (core) — explicit list of ceremony items `aggressive` mode skips (soft-trigger announcement / single-option preamble / bugfix proposal). Never-downgrade set unchanged.
+- `[add]` **§10 banned-vocab quick-list** (core) — 10 most-frequent EN + 中文 offenders inlined; full enumeration stays at §EXT §10-V. Grounding: §EXT reference lost after compaction.
+- `[move]` **§11 Re-Read / Correction / Context pressure** (core → §11-EXT) — three non-HARD maintenance heuristics demoted. Core pointer line retained. 0 grounded-incident hits in 30-day session history.
+
+**Sizing** (v6.11.0, 2026-04-24): core 20299 → 23212 chars (+2913, +14.3%); extended 42604 → 45428 chars (+2824, +6.6%). Size budget (§13.1): core 23212/25000 (1788 chars headroom — tight, 92.8% utilized, next minor MUST net-delete); extended 45428/50000 (4572 chars headroom). Runtime L0/L1/L2 ≈ 5.8k tokens (core only). L3/Override/ship ≈ 17.2k tokens. §13.2 budget cost = 0; 20-task counter preserved from v6.10.2. A13 token test (≤5500) still green.
+
+---
+
 ## v6.10.2 — 2026-04-23
 
 Patch: §11 Mid-SPINE turn-yield (new HARD, all levels). HARD tally +1 in core (12 core + 4 §EXT-side).

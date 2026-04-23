@@ -8,6 +8,38 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.3.0] - 2026-04-24
+
+Minor. Ships **spec v6.11.0** — ROI-ranked optimization across §1 / §2 / §5 / §5.1 / §7 / §9 / §10 / §11 driven by a 5-day retrospective over `projects--mem` (v2.47.0 → v2.50.0) and `projects--code-graph-mcp` (v0.11.4 → v0.16.2) session history. Plugin-side: version sync + manifest `description` field bumps (v6.10 → v6.11 family, per v0.2.1 policy). No hook / script / test behavior changes beyond version pins.
+
+### Spec v6.11.0 highlights
+
+- **New SHOULD**: §9 Parallel-path completeness (L2+) — 4 grounded repros in 5 days; HARD candidate logged in `tasks/rule-candidates-2026-04.md`, promotion blocked by §13.2 20-task counter.
+- **New SHOULD**: §7 Metric-coupling check (L2+) — changes coupled to existing bench/oracle/compile-time budget MUST cite before-and-after.
+- **New classification**: §2 LLM-visible metadata (MCP tool descriptions, `instructions` field, adoption memory, prompt templates) → L3 regardless of LOC.
+- **Clarifications** (no new HARD): §5 Obvious-follow-on re-AUTH; §1 Recommend-first single-option execute-directly; §5.1 aggressive skip-list; §10 banned-vocab quick-list in core.
+- **Demotion**: §11 Re-Read / Correction / Context pressure → §11-EXT (non-HARD maintenance heuristics).
+- **HARD tally unchanged** from v6.10.2 (12 core + 4 §EXT-side). §13.2 budget cost = 0.
+
+See `spec/CLAUDE-changelog.md` for full per-section delta and sizing.
+
+### Changed — Version bumps
+
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2): 0.2.5 → 0.3.0
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2) descriptions: `v6.10` → `v6.11` (minor-family bump per v0.2.1 policy)
+- `README.md`: spec-version mentions 6.10 → 6.11 / 6.10.2 → 6.11.0 (3 sites)
+- `tests/scripts/spec-structure.test.js`: version pins (L58, L65) 6.10.2 → 6.11.0
+- `spec/CLAUDE.md`: header + §1 / §2 / §5 / §5.1 / §7 / §9 / §10 / §11 rule edits
+- `spec/CLAUDE-extended.md`: §11-EXT Session maintenance heuristics (new block, receives demoted rules) + Recent changes block replaced
+- `spec/CLAUDE-changelog.md`: v6.11.0 entry prepended
+- `tasks/rule-candidates-2026-04.md`: created (§13.2 workflow)
+
+### Migration
+
+`/claudemd-update` picks up spec v6.11.0 automatically on next SessionStart (v0.2.5 hook upgrades on version-mismatch).
+
+---
+
 ## [0.2.5] - 2026-04-23
 
 Patch. Hook-behavior fix: SessionStart auto-sync on version mismatch. No spec change (v6.10.2 stays). Plugin-side response to a CC marketplace-lifecycle gap that quietly froze users' installed manifest at whatever version last ran `scripts/install.js` manually.

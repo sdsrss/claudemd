@@ -12,8 +12,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 OLD_TAG="v0.2.3"
 OLD_SPEC_VER="v6.10.1"
-NEW_SPEC_VER="v6.10.2"
-NEW_RULE_NEEDLE="Mid-SPINE turn-yield"
+NEW_SPEC_VER="v6.11.0"
+NEW_RULE_NEEDLE="Parallel-path completeness"
 
 # macOS `mktemp -d` returns `/var/folders/...` which is a symlink to
 # `/private/var/folders/...`. node ESM realpaths `import.meta.url` while

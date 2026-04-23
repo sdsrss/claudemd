@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.10.2 — Core
+# AI-CODING-SPEC v6.11.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -50,7 +50,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 - **Honest partial > dishonest complete** — `[PARTIAL]` + reason > "done" + hedges.
 - **Zero-assume** — unsure → ASK; reversible → state choice; never assume silently.
 - **Reuse-first** — check existing code/lib/config before adding new.
-- **Recommend-first** — ≥2 options → lead with pick + one-line reason. Pure enumeration = abdication. Exception: true 50/50 on user preference.
+- **Recommend-first** — ≥2 options → lead with pick + one-line reason. Pure enumeration = abdication. Exception: true 50/50 on user preference. **Single obvious option** (clear-scope bugfix / mechanical refactor / docs edit): execute directly, don't preface with "shall I proceed" — unless §5 hard-AUTH fires.
 
 ## §1.5 GLOSSARY
 
@@ -65,7 +65,7 @@ L2  contract-Δ / multi-file / new tests / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
-Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artifact user-visible default behavior change** (npm / crates.io / marketplace package) → L3 regardless of LOC. **Excluded**: bugfix restoring documented/intended behavior (CHANGELOG `fix:`, not `change:`/`feat:`) → L2 max. Release-requirements checklist: §EXT §2-EXT.
+Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artifact user-visible default behavior change** (npm / crates.io / marketplace package) → L3 regardless of LOC; **LLM-visible metadata** (MCP tool descriptions / MCP `instructions` field / adoption-memory files / shipped prompt templates / plugin skill descriptions) → L3 regardless of LOC — these steer Claude Code routing and are effectively runtime behavior. **Excluded**: bugfix restoring documented/intended behavior (CHANGELOG `fix:`, not `change:`/`feat:`) → L2 max. Release-requirements checklist: §EXT §2-EXT.
 
 **Schema-Δ**: additive (new table / optional col w/ default / index / FK on new col) = L2 + hard AUTH on migration. Breaking (drop / rename / type-change / required-no-default / data-migration) = L3.
 
@@ -115,6 +115,8 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH.
 
+**Obvious-follow-on not exempt** (clarifies §0 Hard-AUTH override): mid-bundle e2e discovery of an adjacent bug → pause, announce, individual re-ASK — even if the fix feels obvious. The intuition making it feel obvious is the same intuition that hides behavior tradeoffs in the sibling path. Exception: the authorized fix literally cannot pass e2e without it — proceed but surface in REPORT as a mid-bundle scope extension, not as part of the original Done list.
+
 **Hard** (default): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).
 
 **Soft**: delete within §5 safe-paths · deps dev-only · deps in `tmp/` or `scripts/`.
@@ -130,6 +132,8 @@ Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (de
 **Never-downgrade** (override irrelevant): §8 SAFETY, Iron Law #2, §8 Verify-before-claim (V1–V4), Session-exit, User-global-state audit, `.env`/secrets, migration, auth/payment/crypto, `~/.claude/settings.json` / user-global hooks / MCP config, `L3 enter`.
 
 Solo-dev + `bypassPermissions` → consider `aggressive`. Team-shared / prod-touching repo → `default` or `careful`.
+
+**`aggressive` skip-list** (reduces ceremony for known-bypass users; never downgrades §5.1 Never-downgrade set): skill soft-trigger announcement optional; §1 Recommend-first single-obvious-option execute-without-preamble is the default; clear-scope bugfix goes fix → test → iterate without proposal. §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind.
 
 ## §7 VALIDATE (L0/L1/L2)
 
@@ -163,6 +167,10 @@ Code writing to user-global / cross-project paths (`~/.claude/` / `~/.cache/` / 
 
 `~/.claude/tmp/` retention policy → §EXT §7-EXT.
 
+### Metric-coupling check (SHOULD, L2+)
+
+When a change touches code coupled to an existing metric / bench / oracle / compile-time budget (e.g. `routing_bench.rs` P@1 / `semantic_search` compression estimator vs `MAX_SEARCH_CODE_LEN` / MCP `instructions` ≤ harness cutoff / token-count budgets / latency SLOs): record baseline before the edit, re-run after, cite both numbers in REPORT. Regression beyond the metric's declared threshold → (a) fix / (b) commit body `known-drop: <reason>` / (c) ASK. "Vibe-check from one manual test" is not evidence that the change is metric-neutral. Triggers: tool descriptions / adoption-memory / field compression / prompt templates / anything with a compile-time `const _: () = assert!(len <= N)` guard.
+
 **L3 evidence rules, Iron Law #1 (additive exception), evidence ladder, cold-start → §EXT §7-EXT.**
 
 ## §8 SAFETY (immutable, never exempt)
@@ -195,6 +203,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **Root cause**: no temporary patches at L2+.
 - **YAGNI**: grep usage before adding code.
 - **Parallel-first**: independent Read/Grep/Bash (no data dependency) → single message, multiple tool calls; dependent → serial. Skipping parallelism is the largest wall-clock waste in L2+ research.
+- **Parallel-path completeness** (L2+): a change touching a node with multiple parallel implementation paths — fallback / feature flag / `match` default arm / SQL `ORDER BY` + `LIMIT` combo / early-return branch / FTS-vs-LIKE fallback / multi-language `config.name` dispatch — MUST enumerate every path and verify each. Main-path green + silent siblings = not evidence. Enumerate before edit; verify after. Triggers: `fallback / default arm / early return / else branch / feature flag / fts vs like / multi-dispatch`. (SHOULD now; §13.2 candidate for HARD promotion — logged in `tasks/rule-candidates-2026-04.md`.)
 
 ## §10 REPORT
 
@@ -209,16 +218,15 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
 - "Did this work?" → yes/no first, evidence second.
 - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
-- **Specificity (HARD)**: value claims about agent's own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, file:line, 12/12 tests) OR ratio with baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Full EN+中文 list → §EXT §10-V. Scope: applies to *value claims about agent's own work*; descriptive framing about external system behavior allowed. Ambiguous → strict.
+- **Specificity (HARD)**: value claims about agent's own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, file:line, 12/12 tests) OR ratio with baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: applies to *value claims about agent's own work*; descriptive framing about external system behavior allowed. Ambiguous → strict.
+- **Banned-vocab quick-list** (EN): `significantly / robust / production-ready / more efficient / should work / comprehensive / best practice / presumably / likely / seems to work / N× faster` (no baseline) / `M% improved` (no baseline). **中文**: `显著提升 / 大幅改善 / 更高效 / 基本可用 / 相当不错 / 大部分情况 / N 倍提升` (无基线). Full EN+中文 list → §EXT §10-V. Fix = strip the word, cite the specific case with number.
 
 ## §11 SESSION (universal)
 
 Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MUST L2+ where marked.
 
 - **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read plan + spec before proceeding. Silent unless gap surfaces (drift / missing files / stale assumption). User references artifact absent from context → assume compaction.
-- **Redundant Re-Read**: skip files Read/Written this session absent external-change signal. Unsure → re-read. Freshness is cheaper than staleness.
-- **Correction pressure**: pattern of auto-decision rejections in a task → switch to ASK-first for the rest.
-- **Context pressure**: >75% window OR compaction-imminent → prefer fresh-subagent; compact prose; defer non-critical Re-Read; consider `tasks/<slug>-paused.md` checkpoint.
+- **Re-Read / Correction / Context pressure** (maintenance heuristics, full detail → §EXT §11-EXT): skip files already Read/Written absent external-change signal · on repeated auto-decision rejection switch to ASK-first · at >75% window prefer fresh-subagent + consider `tasks/<slug>-paused.md`.
 - **Auto-memory triggers** (top-down; first match wins; full tree → §EXT §11-EXT):
   1. **Global-state hard** (MUST any level): `~/.claude/` writes across ≥2 files in one task → save project/feedback memory unless self-describing-artifact exempts.
   2. **L2+ retrospective** (MUST L2+): preventable-error pattern OR non-default decision / non-obvious sequencing.
