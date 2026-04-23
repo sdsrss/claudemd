@@ -15,8 +15,14 @@ OLD_SPEC_VER="v6.10.1"
 NEW_SPEC_VER="v6.10.2"
 NEW_RULE_NEEDLE="Mid-SPINE turn-yield"
 
-TMP_HOME=$(mktemp -d)
-WT_PARENT=$(mktemp -d)
+# macOS `mktemp -d` returns `/var/folders/...` which is a symlink to
+# `/private/var/folders/...`. node ESM realpaths `import.meta.url` while
+# argv[1] keeps the symlink form; the two differ and scripts/install.js'
+# CLI trigger (`import.meta.url === file://${argv[1]}`) silently no-ops —
+# install returns exit 0 with zero side-effects. Physical-path normalize
+# every mktemp result so argv[1] and import.meta.url agree.
+TMP_HOME=$(cd "$(mktemp -d)" && pwd -P)
+WT_PARENT=$(cd "$(mktemp -d)" && pwd -P)
 OLD_WT="$WT_PARENT/old"
 FAILS=0
 
