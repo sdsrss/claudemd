@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 OLD_TAG="v0.2.3"
 OLD_SPEC_VER="v6.10.1"
-NEW_SPEC_VER="v6.11.1"
+NEW_SPEC_VER="v6.11.2"
 NEW_RULE_NEEDLE="Parallel-path completeness"
 
 # macOS `mktemp -d` returns `/var/folders/...` which is a symlink to
@@ -117,7 +117,7 @@ MANIFEST_VER_NEW=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev
 assert_eq "manifest.version upgraded to $CURRENT_PLUGIN_VER" "$CURRENT_PLUGIN_VER" "$MANIFEST_VER_NEW"
 POST_REINSTALL_VER=$(head -1 "$HOME/.claude/CLAUDE.md" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
 assert_eq "re-install preserves $NEW_SPEC_VER (idempotent)" "$NEW_SPEC_VER" "$POST_REINSTALL_VER"
-CLAUDEMD_IN_SETTINGS=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo missing)
+CLAUDEMD_IN_SETTINGS=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check|session-start-check|version-sync)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo missing)
 assert_eq "settings.json: 0 claudemd hook entries (v0.1.5+ hooks live in hooks.json)" "0" "$CLAUDEMD_IN_SETTINGS"
 
 echo "-- Phase 5: uninstall (keep spec)"
@@ -125,7 +125,7 @@ OUT=$(node "$REPO/scripts/uninstall.js" 2>&1) || {
   printf "  FAIL uninstall.js non-zero exit\n%s\n" "$OUT"; FAILS=$((FAILS+1))
 }
 assert_file_exists "CLAUDE.md preserved (keep)" "$HOME/.claude/CLAUDE.md"
-REMAIN=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
+REMAIN=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check|session-start-check|version-sync)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
 assert_eq "post-uninstall: 0 claudemd hooks in settings.json" "0" "$REMAIN"
 if [[ ! -f "$HOME/.claude/.claudemd-manifest.json" ]]; then
   printf "  ok manifest removed\n"

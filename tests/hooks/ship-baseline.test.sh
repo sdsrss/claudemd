@@ -68,8 +68,24 @@ OUT=$(run_hook branch-aware "$EVENT_PUSH")
 [[ -z "$OUT" ]] && echo "PASS: 9 --branch filter: feature-x green despite main-red cron" \
   || { echo "FAIL: 9 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Case 10/11: non-failure red conclusions also block. Pre-fix the hook only
+# treated `failure` as red, letting `cancelled` and `timed_out` runs ship
+# silently — both are red in `gh run list` parlance.
+cd "$TMP_HOME" && git checkout -q main 2>/dev/null
+# Reset HEAD message so known-red bypass (Case 3) doesn't carry over.
+git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean again"
+OUT=$(run_hook fail-cancelled "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 10 cancelled → deny" \
+  || { echo "FAIL: 10 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+OUT=$(run_hook fail-timed-out "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 11 timed_out → deny" \
+  || { echo "FAIL: 11 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"
+  echo "Tests: $((11 - FAIL))/11 passed"
   exit 1
 fi
-echo "Tests: 9/9 passed"
+echo "Tests: 11/11 passed"

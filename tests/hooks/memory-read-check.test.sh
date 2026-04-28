@@ -111,7 +111,41 @@ OUT=$(mkevent "deploy --env v6X9 deployXprod" "$SESS" | bash "$HOOK" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 9 regex-metachar tag matched literally → no false deny" \
   || { echo "FAIL: 9 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 10: plain-form tag block (spec §11 syntax `[tag, tag]` without
+# backticks). Pre-fix the hook only matched the backtick-wrapped form, so
+# any plain-form line was treated as untagged → matched every push command.
+# Asserts: a plain-form tag whose tags do NOT match the command keywords
+# does NOT trigger a deny.
+PLAIN_DIR="$HOME/.claude/projects/${ENCODED}-plain"
+PLAIN_MEM="$PLAIN_DIR/memory"
+mkdir -p "$PLAIN_MEM"
+cat > "$PLAIN_MEM/MEMORY.md" <<'EOF'
+- [Plain-form tags](feedback_plain.md) [unrelated, sometag] — plain spec §11 syntax
+EOF
+touch "$PLAIN_MEM/feedback_plain.md"
+SESS="sess10"
+PLAIN_CWD="${CWD}-plain"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PLAIN_DIR/$SESS.jsonl"
+EVENT_10="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$PLAIN_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_10" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 10 plain-form tag, no keyword match → no false deny" \
+  || { echo "FAIL: 10 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 11: plain-form tag block, keyword IN tag list → deny when unread.
+# Confirms plain-form parser actually extracts tags (Case 10 alone could
+# pass via the untagged-fallback path that was always too eager).
+SESS="sess11"
+cat > "$PLAIN_MEM/MEMORY.md" <<'EOF'
+- [Plain-form tags](feedback_plain.md) [push, deploy] — plain spec §11 syntax
+EOF
+echo '{"tool":"Read","path":"/unrelated"}' > "$PLAIN_DIR/$SESS.jsonl"
+EVENT_11="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$PLAIN_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_11" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 11 plain-form tag, keyword match + unread → deny" \
+  || { echo "FAIL: 11 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
 fi
-echo "Tests: 9/9 passed"
+echo "Tests: 11/11 passed"

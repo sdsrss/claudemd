@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.1 — Core
+# AI-CODING-SPEC v6.11.2 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -252,7 +252,5 @@ Load `~/.claude/CLAUDE-extended.md` when:
 **L0/L1/L2**: do NOT load extended. Wanting extended content at L2 usually signals re-classify to L3 — re-classify, don't load-and-continue.
 
 **How**: Read whole file at task start, before ROUTE. No per-task re-read absent compaction. Post-compaction on L3/Override/ship: re-Read.
-
-**Extended TOC**: §1.5-EXT · §2-EXT modes · §2.S spec artifact · §4 FLOW/FULL/FULL-lite · §5-EXT safe-paths · §5.1-EXT autonomy · §6 DEBUG · §7-EXT evidence/retention · §10-V banned-vocab · §10-R L3 report · §11-EXT memory tree · §11-O orchestration · §12 PLUGINS · §13 META + §13.1 operator + §13.2 HARD-budget · Appendix B.
 
 Version history → `~/.claude/CLAUDE-changelog.md`. Current entry + sizing → `CLAUDE-extended.md §Recent changes`.

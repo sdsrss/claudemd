@@ -46,7 +46,17 @@ MATCHES=()
 while IFS= read -r line; do
   FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
   [[ -z "$FILE" ]] && continue
+  # Accept both backtick-wrapped (`[tag, tag]`) and plain (`[tag, tag]`)
+  # tag-block syntax. Spec §11 documents the plain form; existing user data
+  # commonly uses the backtick form. Trying backtick first preserves precise
+  # matching when both forms could otherwise overlap on a single line.
   TAG_BLOCK=$(echo "$line" | sed -n 's/.*`\[\([^]]*\)\]`.*/\1/p')
+  if [[ -z "$TAG_BLOCK" ]]; then
+    # Plain form: anchor on the markdown link `(file.md)` then `[tag, tag]`
+    # before the description separator (`—` or `-`). The leading `.md)` anchor
+    # avoids matching the link's own `[Title]` bracket pair.
+    TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*\[\([^]]*\)\][[:space:]]*[—-].*/\1/p')
+  fi
 
   if [[ -z "$TAG_BLOCK" ]]; then
     MATCHES+=("$FILE")

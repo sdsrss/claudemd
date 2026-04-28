@@ -22,15 +22,22 @@ if [[ ! -f "$SESSION_REF" ]]; then
   exit 0
 fi
 
-# Scan locations for fresh tmp.XXXXXX-style dirs
+# Scan locations for fresh tmp.XXXXXX-style dirs.
+# In system /tmp, only flag claudemd-* labeled dirs — stock /tmp/tmp.* dirs
+# come from vim, pip, cargo, mktemp, and other unrelated tools, attributing
+# them to the current claudemd session was pure noise. In ~/.claude/tmp, both
+# generic mkdtemp tmp.* and claudemd-* dirs are claudemd-attributable.
 FOUND=""
 for loc in "/tmp" "$HOME/.claude/tmp"; do
   [[ -d "$loc" ]] || continue
   while IFS= read -r path; do
     base=$(basename "$path")
-    if [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ claudemd- ]]; then
-      FOUND+="$path"$'\n'
+    if [[ "$loc" == "/tmp" ]]; then
+      [[ "$base" =~ ^claudemd- ]] || continue
+    else
+      [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue
     fi
+    FOUND+="$path"$'\n'
   done < <(platform_find_newer "$loc" "$SESSION_REF" 2>/dev/null | head -n 50)
 done
 

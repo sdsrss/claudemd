@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo '[{"databaseId":4,"status":"completed","conclusion":"timed_out","displayTitle":"slow_workflow","url":"https://example/4"}]'

@@ -69,7 +69,44 @@ else
   echo "PASS: 6 no trailing blank bullet in warn list"
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((6 - FAIL))/6 passed"; exit 1
+# Case 7 (v0.4.x): system /tmp/tmp.* dirs (vim, pip, cargo, mktemp) MUST NOT
+# be attributed to the claudemd session. Pre-fix the hook scanned /tmp with
+# the same `^tmp\.` regex used for ~/.claude/tmp, attributing unrelated
+# system tmp churn to the agent. Now: in /tmp, only `claudemd-*` flags.
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
+# Drop a stock-shape system-tmp dir alongside ours. Use a uniquely-named
+# basename so existing CI-runner /tmp churn doesn't false-positive the assert.
+SYSTEM_TMP_MARKER="/tmp/tmp.claudemd_test_system_xyz_$$"
+mkdir -p "$SYSTEM_TMP_MARKER"
+trap 'rm -rf "$TMP_HOME" "$SYSTEM_TMP_MARKER"' EXIT
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -q "$SYSTEM_TMP_MARKER"; then
+  echo "FAIL: 7 system /tmp/tmp.* attributed to session (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 7 system /tmp/tmp.* not attributed"
 fi
-echo "Tests: 6/6 passed"
+
+# Case 8: /tmp/claudemd-* IS still flagged (the legitimate case for
+# attributing system /tmp to the session — claudemd-aware code that
+# explicitly labels its mkdtemp).
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
+CLAUDEMD_LABELED_TMP="/tmp/claudemd-test-labeled_$$"
+mkdir -p "$CLAUDEMD_LABELED_TMP"
+trap 'rm -rf "$TMP_HOME" "$SYSTEM_TMP_MARKER" "$CLAUDEMD_LABELED_TMP"' EXIT
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -q "$CLAUDEMD_LABELED_TMP"; then
+  echo "PASS: 8 /tmp/claudemd-* still flagged"
+else
+  echo "FAIL: 8 /tmp/claudemd-* not flagged (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+fi
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
+fi
+echo "Tests: 8/8 passed"

@@ -18,6 +18,20 @@ If you already have `~/.claude/CLAUDE.md`, install moves your existing files to 
 
 ---
 
+## Prerequisites
+
+| Tool | Required | Why |
+|---|---|---|
+| `node >= 20` | yes | install / status / doctor / update scripts (`package.json` engines) |
+| `jq` | yes | every hook parses Claude Code event JSON via `jq` — without it hooks silently fail-open |
+| `git` | yes | `ship-baseline-check` reads HEAD body; `session-start-check` runs `git ls-remote`; manual upgrade fallback |
+| `gh` | recommended | `ship-baseline-check` calls `gh run list` — if absent, the hook fail-opens silently and shipping on red CI is no longer blocked |
+| `coreutils` | macOS only | hooks need GNU `timeout`. Install with `brew install coreutils`, then prepend `$(brew --prefix coreutils)/libexec/gnubin` to your `PATH` |
+
+Verify in one command (Linux): `node --version && jq --version && gh --version && git --version && timeout --version | head -1`. macOS users can swap `timeout` for `gtimeout` if `coreutils` is bottle-installed without the `gnubin` shim.
+
+---
+
 ## Install
 
 Run **both** slash commands inside Claude Code. First registers the GitHub marketplace, second installs the plugin:
@@ -122,10 +136,10 @@ Then, for the spec files in `~/.claude/`:
 | Option | Behavior |
 |---|---|
 | `keep` (default) | `~/.claude/CLAUDE*.md` left in place; plugin hook entries removed from `settings.json`. |
-| `delete` | Requires `CLAUDEMD_CONFIRM=1` env var (hard-AUTH). Removes the three spec files. |
-| `restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. |
+| `delete` | Requires `CLAUDEMD_CONFIRM=1` env var (hard-AUTH). Removes the three spec files. Only available via the direct script invocation below — `/plugin uninstall` always picks `keep`. |
+| `restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Only available via the direct script invocation below. |
 
-Add `--purge` to also remove `~/.claude/logs/claudemd.jsonl` and `~/.claude/.claudemd-state/`.
+Set `CLAUDEMD_PURGE=1` (env var, not a CLI flag) on the direct script invocation to also remove `~/.claude/logs/claudemd.jsonl` and `~/.claude/.claudemd-state/`.
 
 Invoking the uninstall script directly:
 

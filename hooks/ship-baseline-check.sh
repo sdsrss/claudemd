@@ -36,7 +36,13 @@ fi
 [[ -n "$RUN_JSON" ]] || exit 0
 
 CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""' 2>/dev/null)
-[[ "$CONCLUSION" == "failure" ]] || { hook_record ship-baseline pass null; exit 0; }
+# `gh` reports red as one of these terminal states; treating only "failure" as
+# red lets cancelled/timed-out runs ship silently. Spec §7 Ship-baseline says
+# "Red →" — these are red in gh parlance.
+case "$CONCLUSION" in
+  failure|cancelled|timed_out|action_required|startup_failure) ;;
+  *) hook_record ship-baseline pass null; exit 0 ;;
+esac
 
 # known-red baseline bypass
 HEAD_MSG=$(git log -1 --format=%B 2>/dev/null || true)

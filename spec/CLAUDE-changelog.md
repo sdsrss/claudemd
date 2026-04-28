@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.2 — 2026-04-29
+
+Patch: §EXT TOC paragraph trimmed from core (dead-weight per `claudemd` v0.4.1 self-audit Section 2) + extended-title alignment to core (v6.10.0 → v6.11.2; closes silent-drift bug v6.11.1 demonstrated when core was bumped without extended). No rule additions, removals, or downgrades. From v6.11.2 forward, spec trio (CLAUDE.md / CLAUDE-extended.md / CLAUDE-changelog.md) ships with synced version numbers.
+
+- `[del]` **§EXT TOC line** (core, -357 chars) — the `**Extended TOC**:` paragraph that listed §1.5-EXT through Appendix B was operator-routing metadata, not agent-actionable content. Loaded every L0-L2 turn (5.8k token core baseline) for zero per-task value. Grounding: spec self-audit (`claudemd` v0.4.1 dispatched 3 audit agents 2026-04-29; Agent C identified the line as bottom-5 lowest-value-per-byte in core). §1.5/§5.1/§7/§11 EXT pointers retained at their semantic-reference call-sites (§1.5 line 57, §5.1 line 130, §7 lines 162/168/174, §11 lines 229-230); A14 spec-structure assertions intact.
+- `[fix]` **spec-trio version alignment** — `spec/CLAUDE-extended.md` title bumped from `v6.10.0` to `v6.11.2`. Pre-fix: each minor/patch was supposed to bump only the file actually touched, but v6.11.1 patch bumped core without extended → trio desynced silently for 5 days (no test caught it). v6.11.2 introduces sync policy: trio always ships with the same version number going forward; per-file content-vs-version accuracy gives way to whole-trio consistency.
+
+**§13.2 budget cost**: 0 (deletion + version-field correction; no HARD delta). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.2, 2026-04-29): core 23751 → 23394 chars (-357, -1.5%); extended 45678 → 42302 chars (-3376, -7.4% — `## Recent changes` block trimmed from v6.11.0 verbose 8-bullet entry to v6.11.2 concise 2-bullet entry per the "current version's entry only" policy at the top of that block). Size budget (§13.1): core 23394/25000 (1606 chars headroom, 93.6% utilized — recovered 1.4 percentage points from v6.11.1's 95.0%); extended 42302/50000 (7698 chars headroom, 84.6% utilized — recovered 6.7 percentage points). Runtime L0/L1/L2 ≈ 5.85k tokens (core only, -0.05k vs v6.11.1). L3/Override/ship ≈ 16.6k tokens (-0.8k vs v6.11.1's 17.4k).
+
+---
+
 ## v6.11.1 — 2026-04-29
 
 Patch: §7 Iron Law #2 Bugfix-anchor + §10 Specificity wording tightening (no new HARD; evidence-rebuttal shortcut per §13.2 — fixing existing HARDs shown to allow hedge-evasion). HARD tally unchanged (12 core + 4 §EXT-side).

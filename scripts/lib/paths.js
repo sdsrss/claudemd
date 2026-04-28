@@ -23,6 +23,10 @@ export const specHome          = () => [
   path.join(home(), '.claude/CLAUDE-extended.md'),
   path.join(home(), '.claude/CLAUDE-changelog.md'),
 ];
+// Address a single home-spec file by basename. Decoupled from backupRoot()
+// (which happens to share the same dir today) so that a future relocation
+// of backups does not silently break update.js's home-spec read path.
+export const homeSpec          = (name) => path.join(home(), '.claude', name);
 
 // Reads the manifest from its canonical location, falling back to (and
 // relocating) the pre-0.1.9 location. Any consumer (install / uninstall /

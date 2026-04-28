@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo '[{"databaseId":3,"status":"completed","conclusion":"cancelled","displayTitle":"infra_cancel","url":"https://example/3"}]'

@@ -20,6 +20,7 @@ export const HOOK_BASENAMES = [
   'residue-audit.sh',
   'sandbox-disposal-check.sh',
   'session-start-check.sh',
+  'version-sync.sh',
 ];
 
 // Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
@@ -119,7 +120,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   writeSettings(settings);
 
   // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall
-  // keep a canonical list of the 5 shipped hooks even though settings.json no
+  // keep a canonical list of the 7 shipped hooks even though settings.json no
   // longer carries them. Command sha256 is stable (same literal across versions).
   const hookSpecs = readPluginHookSpecs(pluginRoot);
   const entries = hookSpecs.map(s => ({

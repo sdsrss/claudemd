@@ -8,6 +8,56 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.4.1] - 2026-04-29
+
+**Patch — post-audit fixes** spanning hooks, install/upgrade scripts, README, and spec content. Driven by 3-agent self-audit dispatched on `main` (install path / hook logic / spec prompt science). No new HARD rules, no breaking changes, no behavior change for already-installed users until they upgrade. Plugin manifests stay at `v6.11` per v0.2.1 description-policy (spec major.minor unchanged).
+
+### Migration note (read before upgrading)
+
+Run the canonical 4-step upgrade after fetching v0.4.1, then `/claudemd-update` to apply spec patch v6.11.1 → v6.11.2:
+
+```
+/plugin marketplace update claudemd
+/plugin uninstall claudemd@claudemd
+/plugin install claudemd@claudemd
+/reload-plugins
+/claudemd-update
+```
+
+Pin v0.4.0 to skip: `/plugin install claudemd@claudemd@0.4.0`.
+
+### Fixed — hooks
+
+- **`memory-read-check.sh` accepts both spec and data tag-syntax forms.** `hooks/memory-read-check.sh:49-58` adds plain-form sed fallback for `(file.md) [tag, tag] —` (the syntax documented at spec §11) alongside the existing `\`[tag, tag]\`` backtick form (the syntax in real `MEMORY.md` files). Pre-fix any plain-form line was treated as untagged → matched every `git push` / release / deploy / ship command, forcing unrelated Reads.
+- **`ship-baseline-check.sh` treats all gh red-conclusion states as red.** `hooks/ship-baseline-check.sh:38-44` expands `[[ "$CONCLUSION" == "failure" ]]` to a `case` covering `failure` / `cancelled` / `timed_out` / `action_required` / `startup_failure`. Pre-fix a cancelled CI run shipped silently.
+- **`sandbox-disposal-check.sh` no longer attributes system /tmp churn to the session.** `hooks/sandbox-disposal-check.sh:25-39` filters `/tmp` to `^claudemd-` prefix only. `~/.claude/tmp` continues to flag both `^tmp\.` and `^claudemd-`. Pre-fix vim/pip/cargo's stock `/tmp/tmp.XXXXXX` directories were warned-on at every Stop hook.
+
+### Fixed — install / uninstall / update
+
+- **`HOOK_BASENAMES` covers all 7 shipped hooks.** `scripts/install.js:16-24` adds `version-sync.sh` (was missing since v0.3.1 introduced the hook). settings.json eviction during install/uninstall now cleans stale `version-sync.sh` entries; previously they persisted undetected. Comment "5 shipped hooks" → "7" on `scripts/install.js:122`.
+- **`scripts/update.js` decoupled from `backupRoot()`.** New `homeSpec(name)` helper at `scripts/lib/paths.js:29` replaces `path.join(backupRoot(), name)` (3 call sites). Future relocation of backups will not silently break `/claudemd-update`'s home-spec read path.
+- **Integration tests grep covers all 7 hooks.** `tests/integration/full-lifecycle.test.sh:27,50` and `tests/integration/upgrade-lifecycle.test.sh:120,128` extend the hook-basename alternation from 5 to 7 (adds `session-start-check|version-sync`); Phase 7 in full-lifecycle also widens the JSON path filter from `PreToolUse`-only to all event types. Pre-fix a regression leaving either of those two in `settings.json` post-uninstall would have passed CI.
+
+### Added
+
+- **README ## Prerequisites section.** Explicit table for `node>=20` / `jq` / `git` / `gh` / `coreutils` (macOS only). Hoists previously-Troubleshooting-only dependency notes into the install path. Verify line: `node --version && jq --version && gh --version && git --version && timeout --version | head -1`.
+- **README Uninstall clarifications.** Calls out that `delete` and `restore` are only available via direct `node …/uninstall.js`, never via `/plugin uninstall` (which always picks `keep`). Corrects `--purge` flag misdescription to `CLAUDEMD_PURGE=1` env-var form (the actual mechanism per `scripts/uninstall.js:83`).
+- **Hook test cases** for the 3 hook fixes:
+  - `tests/hooks/memory-read-check.test.sh` Cases 10-11: plain-form tag syntax (no-keyword-match passes; with-keyword-match-and-unread denies). 9 → 11 cases.
+  - `tests/hooks/ship-baseline.test.sh` Cases 10-11: `cancelled` and `timed_out` conclusions deny push. 9 → 11 cases.
+  - `tests/hooks/sandbox-disposal.test.sh` Cases 7-8: system `/tmp/tmp.*` is not attributed; `/tmp/claudemd-*` is still flagged. 6 → 8 cases.
+- **`tests/fixtures/mock-gh/fail-cancelled/gh` + `fail-timed-out/gh`** — two new gh-CLI mocks emitting `cancelled` / `timed_out` conclusion JSON. mode 100755 set via `git update-index --chmod=+x` (per macOS portability rule — exec bit on `.sh` artifacts).
+
+### Changed
+
+- **Spec v6.11.1 → v6.11.2.** `spec/CLAUDE.md` §EXT TOC line removed (-357 chars / -1.5% core size); `spec/CLAUDE-extended.md` title bumped from `v6.10.0` to `v6.11.2` (closes silent trio-desync demonstrated at v6.11.1). From v6.11.2 forward, spec trio ships with synced version numbers. Recovered 1.4 percentage points from §13.1 size-budget pressure (95.0% → 93.6%). Full spec rationale at `spec/CLAUDE-changelog.md` v6.11.2 entry.
+
+### Not changed
+
+- **No new HARD rules**, no rule downgrades, no §13.2 budget delta. 20-task counter preserved.
+- **No new hook scripts**, no new `settings.json` schema, no new env-var kill-switches. Existing kill-switches all unchanged.
+- **No marketplace `description` version-family bump** — `v6.11` stays per v0.2.1 description-policy.
+
 ## [0.4.0] - 2026-04-29
 
 **Minor bump — released-artifact user-visible default behavior change** per AI-CODING-SPEC §2 + §EXT §2-EXT release-requirements checklist. Adds an upstream-tag-check sub-feature to `session-start-check.sh`: every session start (rate-limited to once per 24h) compares the local plugin cache max version against the GitHub remote latest tag and, on mismatch, injects a 4-line "upgrade available" banner via SessionStart `additionalContext`. No spec content change (v6.11.1 stays). Manifest descriptions stay at `v6.11` per v0.2.1 policy.
