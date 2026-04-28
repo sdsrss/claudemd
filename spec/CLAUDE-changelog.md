@@ -6,6 +6,21 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.1 — 2026-04-29
+
+Patch: §7 Iron Law #2 Bugfix-anchor + §10 Specificity wording tightening (no new HARD; evidence-rebuttal shortcut per §13.2 — fixing existing HARDs shown to allow hedge-evasion). HARD tally unchanged (12 core + 4 §EXT-side).
+
+- `[fix]` **§7 Iron Law #2 Bugfix anchor** (core, wording) — appended explicit banned-phrasing list (`should work / 应该可以 / 看上去 ok / 跑过了 / 能跑 / it runs / 没问题了`) with replace-with-failing-state-token instruction. Grounding: 2026-04-23 user prompt P#4984「为什么没严格按 §7 Iron Law #2 该做的就是查日志，不是凭印象」. Existing rule "'Fixed' without 'was broken' = not evidence" did not enumerate the most-frequent escape phrasings, leaving the rule effectively unfalsifiable for hedge-style claims. v6.11.1 closes the door per §13.2 evidence-rebuttal shortcut (fix existing HARD; do not wrap a new rule around it).
+- `[fix]` **§10 Specificity** (core, wording) — appended `No-baseline fallback` clause requiring `[PARTIAL: <missing-baseline>]` when no absolute number or baseline ratio is available, instead of softening with synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Grounding: 30d `claudemd` audit (188 rule-hits across 4 projects) — banned-vocab hook 13/14 deny rate; top patterns `significantly` ×6, `70% faster` ×4, `显著改善` ×4, `should work` ×3, `Comprehensive` ×1. Hook catches surface forms but agent retries with synonyms not in the quick-list. Closes the "switch synonym to escape" path per §13.2 evidence-rebuttal shortcut.
+
+**§13.2 budget cost**: 0 (both edits are wording fixes to existing HARD rules per evidence-rebuttal shortcut). HARD tally unchanged. 20-task counter preserved from v6.10.2.
+
+**Sizing** (v6.11.1, 2026-04-29): core 23212 → 23751 chars (+539, +2.3%); extended 45678 chars (unchanged this PR). Size budget (§13.1): core 23751/25000 (1249 chars headroom — tight, 95.0% utilized; next minor MUST net-delete); extended 45678/50000 (4322 chars headroom). Runtime L0/L1/L2 ≈ 5.9k tokens (core only, +0.1k vs v6.11.0). L3/Override/ship ≈ 17.4k tokens (+0.1k vs v6.11.0). A13 token test (≤5500) — verify in CI.
+
+**§13.2 candidate update**: `tasks/rule-candidates-2026-04.md` gains a second candidate — Shared-symbol edit guard (proposed §9 SHOULD trial). Repro-count: 1 (mem #8155 FTS5 `OBS_FTS_COLUMNS` desync across utils.mjs / scoring-sql / synonyms.mjs); below promotion bar — log-only.
+
+---
+
 ## v6.11.0 — 2026-04-24
 
 Minor: ROI-ranked optimization across §1 / §2 / §5 / §5.1 / §7 / §9 / §10 / §11, driven by 5-day retrospective over `projects--mem` + `projects--code-graph-mcp` session history. §13.2-compatible: 0 new HARD. HARD tally unchanged (12 core + 4 §EXT-side).

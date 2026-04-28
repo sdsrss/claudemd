@@ -24,6 +24,22 @@
 
 ---
 
+## [candidate] §9 Shared-symbol edit guard → SHOULD L2+ (trial)
+
+**Proposed rule text**: editing an exported symbol / shared schema constant / cross-file enum SHOULD `Grep` (or `find_references` / `get_call_graph`) for all callers in the same task before commit, and verify each in the same evidence sentence. Search-before-write applies to read-side, not just write-side.
+
+**Repro-count: 1** (cross-project, mem only)
+
+1. **mem v2.45.0+** — `OBS_FTS_COLUMNS` exported from `utils.mjs` was edited but desynced from references in `scoring-sql` / `synonyms.mjs` / test files. FTS5 virtual table recreated without column-list sync; `react/hook` keyword queries silently returned `None` instead of result set. Migration logic existed but column references across scoring/search modules were not verified together. Anchor: mem observation #8155 (`feedback_fts5_column_drift.md` if filed).
+
+**Repro-bar status**: 1 / 3 — below promotion bar. Log-only per §13.2. Watching for second-repro signal in code-graph-mcp `cross-file static_name` paths (e.g. lang_config.rs vs detect_language.rs vs Cargo.toml — already partly covered by §9 Parallel-path completeness).
+
+**Candidate scope vs §9 Parallel-path completeness**: distinct trigger surface. Parallel-path covers "this node has multiple branches; main + silent siblings" (intra-symbol). Shared-symbol covers "this symbol has multiple callers; edit + silent dependents" (inter-symbol). Could merge into one HARD if both reach 3 repros and merging doesn't lose precision.
+
+**Tracking cadence**: re-evaluate at next ship OR if `feedback_fts5_column_drift.md`-class observation surfaces in another project.
+
+---
+
 ## Batch-review checklist (§13.2, every 20 L2+ tasks OR 30 days)
 
 - [ ] Merge overlapping candidate entries

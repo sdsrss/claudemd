@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.3.2] - 2026-04-29
+
+Patch. Ships **spec v6.11.1** — 2 wording tightenings on existing HARD rules (§7 Iron Law #2 Bugfix anchor + §10 Specificity), driven by 30-day cross-project audit (188 rule-hits across `projects--claudemd` / `projects--mem` / `projects--code-graph-mcp` / `projects--daagu`). Both edits qualify as §13.2 evidence-rebuttal shortcut (fix existing HARDs, not new rules); HARD tally unchanged at 12 core + 4 §EXT-side. Manifest descriptions stay at `v6.11` per v0.2.1 policy.
+
+### Spec v6.11.1 highlights
+
+- **§7 Iron Law #2 Bugfix anchor** — appended banned-phrasing list (`should work / 应该可以 / 看上去 ok / 跑过了 / 能跑 / it runs / 没问题了`) with replace-with-failing-state-token instruction. Closes the "ran ≠ verified" hedge-evasion path that left the existing rule unfalsifiable.
+- **§10 Specificity** — appended `No-baseline fallback` clause: `[PARTIAL: <missing-baseline>]` mandatory when no absolute number or baseline ratio is available, replacing synonym-softening (`much / notably / clearly / markedly / 较为 / 比较`). Closes the "switch synonym to escape banned-vocab" path observed in 13/14 deny-rate over 30 days.
+- **§13.2 candidate log update**: `tasks/rule-candidates-2026-04.md` gains a second candidate — Shared-symbol edit guard (repro-count 1, below promotion bar).
+
+See `spec/CLAUDE-changelog.md` v6.11.1 entry for sizing + grounding detail.
+
+### Changed — Version bumps
+
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2): 0.3.1 → 0.3.2
+- `tests/scripts/spec-structure.test.js`: version pins (L58, L65) 6.11.0 → 6.11.1; test description (L61) updated to match
+- `tests/integration/upgrade-lifecycle.test.sh`: `NEW_SPEC_VER` (L15) 6.11.0 → 6.11.1
+- `spec/CLAUDE.md`: header + §7 Iron Law #2 Bugfix anchor + §10 Specificity wording
+- `spec/CLAUDE-changelog.md`: v6.11.1 entry prepended
+- `tasks/rule-candidates-2026-04.md`: §9 Shared-symbol edit guard candidate appended
+- `README.md`: spec-version mentions 6.11.0 → 6.11.1 (2 sites)
+
+### Migration
+
+`/claudemd-update` picks up spec v6.11.1 automatically on next SessionStart (v0.2.5 hook auto-syncs on version mismatch; v0.3.1 `UserPromptSubmit` covers the live-session path). No hook behavior change, no settings.json change, no state-dir change.
+
+---
+
 ## [0.3.1] - 2026-04-24
 
 Patch. Adds `UserPromptSubmit` hook `hooks/version-sync.sh` — piggy-back version-mismatch detection that covers the `/plugin marketplace update + /plugin install + /reload-plugins` upgrade path. Complements `session-start-check.sh` (SessionStart-only). After 0.3.1 lands, the user's first prompt submission following a plugin cache swap triggers `install.js` in the background; on-disk `~/.claude/CLAUDE*.md` syncs without requiring `/exit` + new session. No spec change (v6.11.0 stays). Manifest descriptions stay at `v6.11` per v0.2.1 policy.

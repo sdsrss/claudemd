@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.0 — Core
+# AI-CODING-SPEC v6.11.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -155,7 +155,7 @@ Evidence = inline prose naming what was checked + what was observed + why it pro
 - **L2**: `Done: added pagination cursor on GET /orders; tests 1453 → 1490 (+2.5%). pytest tests/api/test_orders_pagination.py: 12 passed (empty / single-page / exact-fit / mid-page).`
 - **中文 user**: 结构标签保英文（Done/Not done/Failed/Uncertain）；file:line / 命令 / 符号保英文；叙述跟用户语言（§1 Language contract）。
 
-**Bugfix anchor**: cite the prior-failing state (error msg or failing test name) in the same sentence as the fix. "Fixed" without "was broken" = not evidence.
+**Bugfix anchor**: cite the prior-failing state (error msg or failing test name) in the same sentence as the fix. "Fixed" without "was broken" = not evidence. **Banned phrasings** (treat as missing evidence): `should work / 应该可以 / 看上去 ok / 跑过了 / 能跑 / it runs / 没问题了`. Replace with the failing-state token (error msg / test name / git diff hash).
 
 ### Ship-baseline check (HARD, L2+ when push fires CI/Release)
 
@@ -218,7 +218,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
 - "Did this work?" → yes/no first, evidence second.
 - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
-- **Specificity (HARD)**: value claims about agent's own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, file:line, 12/12 tests) OR ratio with baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: applies to *value claims about agent's own work*; descriptive framing about external system behavior allowed. Ambiguous → strict.
+- **Specificity (HARD)**: value claims about agent's own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, file:line, 12/12 tests) OR ratio with baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: applies to *value claims about agent's own work*; descriptive framing about external system behavior allowed. Ambiguous → strict. **No-baseline fallback**: when no absolute number or baseline ratio is available, write `[PARTIAL: <missing-baseline>]` instead of softening with synonyms (`much / notably / clearly / markedly / 较为 / 比较`) — banned-vocab quick-list catches surface forms, this clause closes the "switch synonym to escape" path.
 - **Banned-vocab quick-list** (EN): `significantly / robust / production-ready / more efficient / should work / comprehensive / best practice / presumably / likely / seems to work / N× faster` (no baseline) / `M% improved` (no baseline). **中文**: `显著提升 / 大幅改善 / 更高效 / 基本可用 / 相当不错 / 大部分情况 / N 倍提升` (无基线). Full EN+中文 list → §EXT §10-V. Fix = strip the word, cite the specific case with number.
 
 ## §11 SESSION (universal)
