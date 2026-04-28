@@ -27,14 +27,16 @@ beforeEach(() => {
 
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
   for (const name of ['banned-vocab-check', 'ship-baseline-check', 'residue-audit',
-                      'memory-read-check', 'sandbox-disposal-check', 'session-start-check',
+                      'memory-read-check', 'pre-bash-safety-check',
+                      'sandbox-disposal-check', 'session-start-check',
                       'version-sync']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
   }
   // The production hooks.json is what install.js reads to populate the manifest.
-  // Tests must ship a copy that mirrors the real plugin's 7-hook registration
-  // (5 enforcement + SessionStart self-bootstrap [v0.1.9] + UserPromptSubmit
-  // version-sync piggy-back [v0.3.1]).
+  // Tests must ship a copy that mirrors the real plugin's 8-hook registration
+  // (4 PreToolUse:Bash enforcement [pre-bash-safety + banned-vocab + ship-baseline
+  // + memory-read] + Stop [residue-audit + sandbox-disposal] + SessionStart
+  // self-bootstrap [v0.1.9] + UserPromptSubmit version-sync piggy-back [v0.3.1]).
   fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
     hooks: {
       SessionStart: [{ matcher: '*', hooks: [
@@ -44,6 +46,7 @@ beforeEach(() => {
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/version-sync.sh"', timeout: 2 },
       ] }],
       PreToolUse: [{ matcher: 'Bash', hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-bash-safety-check.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
@@ -94,7 +97,7 @@ test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)'
       for (const h of block.hooks || []) all.push(h.command);
     }
   }
-  const claudemdCmds = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
+  const claudemdCmds = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|pre-bash-safety-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
   assert.deepEqual(claudemdCmds, [], `settings.json must not contain claudemd hook commands, got: ${JSON.stringify(claudemdCmds)}`);
 });
 
@@ -112,7 +115,7 @@ test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, 7);
+  assert.equal(manifest.entries.length, 8);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
@@ -133,7 +136,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 7);
+  assert.equal(manifest.entries.length, 8);
 });
 
 test('logs directory and empty jsonl created', async () => {

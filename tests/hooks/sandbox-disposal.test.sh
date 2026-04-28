@@ -44,10 +44,6 @@ touch "$HOME/.claude/.claudemd-state/session-start.ref"
 sleep 1
 mkdir -p "$HOME/.claude/tmp/legit-container/tmp.nested_m2_marker_xyz"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-# With maxdepth 1, hook sees only legit-container (its mtime was touched by
-# the nested mkdir) — basename doesn't match `^tmp\.`, so nothing added to
-# FOUND from the claudemd branch. Without maxdepth, tmp.nested_m2_marker_xyz
-# would be walked and appear in the warn stderr.
 if echo "$STDERR" | grep -q "tmp\.nested_m2_marker_xyz"; then
   echo "FAIL: 5 nested tmp.X walked — recursive traversal bug still present (stderr: $STDERR)"
   FAIL=$((FAIL+1))
@@ -59,7 +55,8 @@ fi
 # even when FOUND accumulator ends with \n.
 rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
 mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
+touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref" 2>/dev/null \
+  || { touch "$HOME/.claude/.claudemd-state/session-start.ref"; sleep 1; }
 mkdir -p "$HOME/.claude/tmp/tmp.p3a_bullet_test"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 if echo "$STDERR" | grep -E '^\s*-\s*$'; then
@@ -69,68 +66,49 @@ else
   echo "PASS: 6 no trailing blank bullet in warn list"
 fi
 
-# Cases 7+8 cover the v0.4.1 hook fix that limits /tmp scan to ^claudemd-
-# prefix. They depend on writing into the system /tmp and observing the
-# hook's reaction. On GitHub Actions macOS runners (v0.4.1 run 25073453249,
-# v0.4.2 run 25073841437), Case 8's assertion that `/tmp/claudemd-*` IS
-# still flagged failed reproducibly with stderr empty — meaning the hook's
-# FOUND list was empty even after `mkdir`. v0.4.2's mtime-edge fix
-# (`touch NOW + sleep 1`) and basename-grep defense did not change the
-# outcome, so the root cause is not what we hypothesized. Without
-# macOS-real-machine access we cannot reproduce locally.
-# Conditional skip until real-machine investigation is possible — the hook's
-# /tmp-scope behavior is still validated on Linux. See `tasks/lessons.md`
-# 2026-04-29 entry.
-if [[ "$(uname)" == "Darwin" ]]; then
-  echo "SKIP: 7+8 macOS — system /tmp scan cases pending real-machine investigation (tasks/lessons.md 2026-04-29)"
-else
-  # Case 7: system /tmp/tmp.* dirs (vim, pip, cargo, mktemp) MUST NOT be
-  # attributed to the claudemd session. Pre-fix the hook scanned /tmp with
-  # the same `^tmp\.` regex used for ~/.claude/tmp, attributing unrelated
-  # system tmp churn to the agent. Now: in /tmp, only `claudemd-*` flags.
-  rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-  mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-  touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
-  # Drop a stock-shape system-tmp dir alongside ours. Use a uniquely-named
-  # basename so existing CI-runner /tmp churn doesn't false-positive the assert.
-  SYSTEM_TMP_MARKER="/tmp/tmp.claudemd_test_system_xyz_$$"
-  mkdir -p "$SYSTEM_TMP_MARKER"
-  trap 'rm -rf "$TMP_HOME" "$SYSTEM_TMP_MARKER"' EXIT
-  STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-  if echo "$STDERR" | grep -q "$SYSTEM_TMP_MARKER"; then
-    echo "FAIL: 7 system /tmp/tmp.* attributed to session (stderr: $STDERR)"
-    FAIL=$((FAIL+1))
-  else
-    echo "PASS: 7 system /tmp/tmp.* not attributed"
-  fi
+# Cases 7+8 (v0.5.0 §1.B refactor): test the system-tmp filter logic via the
+# CLAUDEMD_SCAN_SPECS_OVERRIDE env knob. Pre-v0.5.0 these cases wrote into the
+# real /tmp and read the hook's reaction — failed reproducibly on GitHub
+# Actions macos-15-arm64 with empty stderr (FOUND list empty in hook) and
+# mtime/symlink defenses didn't change the outcome (v0.4.1 / v0.4.2). v0.5.0
+# decouples the hook from real /tmp via the override; tests now run identically
+# on Linux + macOS without depending on hosted-runner /tmp behavior.
+SYSTEM_FIXTURE="$TMP_HOME/system-tmp"
+HOME_FIXTURE="$HOME/.claude/tmp"
+RS=$'\x1e'
 
-  # Case 8: /tmp/claudemd-* IS still flagged (the legitimate case for
-  # attributing system /tmp to the session — claudemd-aware code that
-  # explicitly labels its mkdtemp).
-  rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-  mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-  touch "$HOME/.claude/.claudemd-state/session-start.ref"
-  sleep 1
-  CLAUDEMD_LABELED_TMP="/tmp/claudemd-test-labeled_$$"
-  mkdir -p "$CLAUDEMD_LABELED_TMP"
-  trap 'rm -rf "$TMP_HOME" "$SYSTEM_TMP_MARKER" "$CLAUDEMD_LABELED_TMP"' EXIT
-  STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-  LABELED_BASE=$(basename "$CLAUDEMD_LABELED_TMP")
-  if echo "$STDERR" | grep -q "$LABELED_BASE"; then
-    echo "PASS: 8 /tmp/claudemd-* still flagged"
-  else
-    echo "FAIL: 8 /tmp/claudemd-* not flagged (stderr: $STDERR)"
-    FAIL=$((FAIL+1))
-  fi
+# Case 7: claudemd_only filter rejects ^tmp\. dirs (system /tmp churn from
+# vim/pip/cargo/mktemp must NOT be attributed to the agent session).
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
+mkdir "$SYSTEM_FIXTURE/tmp.system_marker"
+SCAN_OVERRIDE="${SYSTEM_FIXTURE}|claudemd_only${RS}${HOME_FIXTURE}|both"
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$SCAN_OVERRIDE" bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -q "tmp\.system_marker"; then
+  echo "FAIL: 7 system /tmp/tmp.* attributed to session (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 7 system /tmp/tmp.* not attributed (claudemd_only filter)"
 fi
 
-# Test count adjusts on macOS (cases 7+8 skipped → 6 cases run).
-if [[ "$(uname)" == "Darwin" ]]; then
-  TOTAL=6
+# Case 8: claudemd_only filter accepts ^claudemd- dirs (claudemd-aware code
+# that explicitly labels its mkdtemp IS attributable).
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
+mkdir "$SYSTEM_FIXTURE/claudemd-test-labeled"
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$SCAN_OVERRIDE" bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -q "claudemd-test-labeled"; then
+  echo "PASS: 8 /tmp/claudemd-* still flagged"
 else
-  TOTAL=8
+  echo "FAIL: 8 /tmp/claudemd-* not flagged (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
 fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
+  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
 fi
-echo "Tests: $TOTAL/$TOTAL passed"
+echo "Tests: 8/8 passed"

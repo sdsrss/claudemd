@@ -28,5 +28,48 @@ jobs:
           fi
       - name: Shellcheck hooks (warn-only)
         run: shellcheck hooks/*.sh hooks/lib/*.sh || echo "shellcheck warnings (non-blocking)"
+      - name: Diagnose macOS /tmp + find behavior (informational, non-gating)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          # v0.5.0 §1.A diagnostic — runs only on macOS, never gates CI.
+          # Captures ground-truth data for the v0.4.1/v0.4.2 sandbox-disposal
+          # Case 8 failure (find /tmp -newer ref returned no fresh claudemd-*
+          # entries despite documented mkdir + sleep). v0.5.0 §1.B refactor
+          # bypassed real /tmp in tests via CLAUDEMD_SCAN_SPECS_OVERRIDE; this
+          # step records whether the production hook's real /tmp scan still
+          # works on this runner image so a future fix has data.
+          set +e
+          echo "=== environment ==="
+          uname -a
+          echo "BASH_VERSION=$BASH_VERSION  TMPDIR=${TMPDIR:-<unset>}"
+          which find && find --version 2>&1 | head -2
+          echo "/tmp realpath: $(python3 -c 'import os; print(os.path.realpath("/tmp"))' 2>&1)"
+          echo "/tmp -maxdepth 1 entries: $(find /tmp -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')"
+          echo "=== timestamp probe ==="
+          REF=$(mktemp)
+          REF_MTIME=$(stat -f %m "$REF" 2>&1)
+          sleep 1
+          MARKER=$(mktemp -d "/tmp/claudemd-test-debug.XXXXXX")
+          MK_MTIME=$(stat -f %m "$MARKER" 2>&1)
+          echo "ref mtime    = $REF_MTIME  ($REF)"
+          echo "marker mtime = $MK_MTIME  ($MARKER)"
+          echo "delta        = $((MK_MTIME - REF_MTIME))s"
+          echo "=== find -newer ref output (raw) ==="
+          find /tmp -maxdepth 1 -newer "$REF" 2>&1 | head -20
+          echo "=== find -maxdepth 1 unfiltered (sample) ==="
+          find /tmp -maxdepth 1 2>&1 | head -10
+          echo "=== production hook against real /tmp ==="
+          rm -rf "$HOME/.claude/.claudemd-state" 2>/dev/null
+          mkdir -p "$HOME/.claude/.claudemd-state"
+          touch "$HOME/.claude/.claudemd-state/session-start.ref"
+          sleep 1
+          mkdir "/tmp/claudemd-debug-marker_$$" 2>&1
+          echo "marker created: /tmp/claudemd-debug-marker_$$"
+          ls -la "/tmp/claudemd-debug-marker_$$" 2>&1
+          OUT=$(bash hooks/sandbox-disposal-check.sh <<<'{}' 2>&1)
+          echo "hook stderr (expected to mention claudemd-debug-marker): '$OUT'"
+          rm -rf "/tmp/claudemd-debug-marker_$$" "$MARKER" "$REF"
+          exit 0
       - name: Run test suite
         run: bash tests/run-all.sh

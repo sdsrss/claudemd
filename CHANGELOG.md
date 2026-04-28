@@ -8,6 +8,54 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.0] - 2026-04-29
+
+**Minor — three bundled additions: §12 PreToolUse:Bash safety hook, §1.B sandbox-disposal scan-locations override, §1.A macOS /tmp diagnostic CI step.** Released-artifact user-visible default behavior change (new hook intercepts dangerous `git`-adjacent Bash commands at PreToolUse), so SemVer minor per AI-CODING-SPEC §EXT released-artifact checklist. No spec content change; spec stays at v6.11.2. Manifest descriptions stay at `v6.11` per v0.2.1 description-policy.
+
+### Migration note (read before upgrading)
+
+After v0.5.0 lands, **a new PreToolUse:Bash hook** (`pre-bash-safety-check.sh`) intercepts two dangerous patterns enumerated in spec §8 SAFETY:
+
+1. `rm -rf $VAR` / `rm -rf "$VAR"` / `rm -rf ${VAR}` — variable-expansion target without inline validation. Whitelists `$HOME`, `$PWD`, `$OLDPWD`, `$TMPDIR`.
+2. `npx <pkg>` without `@<version>` pin — bare `npx prettier` denies; `npx prettier@3.0.0` / `npx ./local.tgz` / `npx --help` pass.
+
+**Bypass**:
+- Per-command escape token in the command body: `[allow-rm-rf-var]` or `[allow-npx-unpinned]` (recorded as `bypass-*` in rule-hits log).
+- Hook kill-switch: `DISABLE_PRE_BASH_SAFETY_HOOK=1` (whole hook off).
+- Global kill: `DISABLE_CLAUDEMD_HOOKS=1`.
+
+Run the canonical 4-step upgrade after fetching v0.5.0:
+
+```
+/plugin marketplace update claudemd
+/plugin uninstall claudemd@claudemd
+/plugin install claudemd@claudemd
+/reload-plugins
+```
+
+Pin v0.4.3 to skip: `/plugin install claudemd@claudemd@0.4.3`.
+
+### Added
+
+- **`hooks/pre-bash-safety-check.sh`** — new PreToolUse:Bash hook enforcing spec §8 SAFETY rules at the harness level (forbids `rm -rf $VAR` with unvalidated expansion + unpinned `npx`). Registered in `hooks/hooks.json` ahead of the existing 3 PreToolUse:Bash hooks. 28-case test in `tests/hooks/pre-bash-safety.test.sh` covers: 4 non-trigger paths, 6 rm-with-var-expansion forms (bare/quoted/braced/flag-permutations/whitelist), 1 escape-hatch, 3 npx-unpinned forms (bare/scoped/`-p`), 7 npx-allowed forms (pinned/local-path/flags/`@latest`/escape), 2 kill-switch verifications, 1 fail-open malformed-stdin path.
+- **`HOOK_BASENAMES` extended to 8 entries** at `scripts/install.js:16-25` — adds `pre-bash-safety-check.sh` so install/uninstall correctly evict any stale registration. Manifest count assertion in `tests/integration/full-lifecycle.test.sh:31` updated 7 → 8. Hook-basename alternation in both integration tests extended.
+- **`.github/workflows/ci.yml` macOS-only diagnostic step** (`continue-on-error: true`) — captures ground-truth data on `find /tmp -newer ref` behavior on `macos-15-arm64` runners. v0.4.1 (run 25073453249) + v0.4.2 (run 25073841437) saw `FOUND` empty in the production sandbox-disposal hook with stderr blank; the diagnostic prints `uname`, `BASH_VERSION`, `TMPDIR`, `/tmp` realpath, `find --version`, ref/marker mtime delta, raw `find -newer` output, and runs the production hook against real `/tmp` to surface the v0.4.x-era root cause. Non-gating; data lives in CI logs for forensic use.
+
+### Changed
+
+- **`hooks/sandbox-disposal-check.sh` scan locations parameterized via `CLAUDEMD_SCAN_SPECS_OVERRIDE`** (§1.B refactor). Default scan list `/tmp|claudemd_only` + `$HOME/.claude/tmp|both` lifted from inline literals into a record-separator-delimited spec format the hook consumes. Tests inject fixture dirs via the env var, decoupling Cases 7-8 from real `/tmp` — the same path that failed reproducibly on macOS-15 GitHub runners in v0.4.1/v0.4.2 with stderr empty. Hook behavior on production users is unchanged (default scan paths identical to v0.4.x).
+- **`tests/hooks/sandbox-disposal.test.sh` Cases 7-8 unconditional** — v0.4.3's `if [[ "$(uname)" == "Darwin" ]]; then echo SKIP; else …` branch removed. Both cases now inject fixture paths through the override; Linux + macOS run all 8 cases identically. Test fixture under `$TMP_HOME/system-tmp` substitutes for real `/tmp`; assertions on basename, no dependency on host-runner /tmp churn or `mkdir` semantics.
+
+### Not changed
+
+- **No spec content change**, no new HARD rules, no §13.2 budget delta. 20-task counter preserved.
+- **No new env-var kill-switches** outside the new hook's `DISABLE_PRE_BASH_SAFETY_HOOK`. Existing kill-switches all unchanged.
+- **No marketplace `description` version-family bump** — `v6.11` stays per v0.2.1 description-policy.
+
+### Follow-up (not blocking)
+
+If the v0.5.0 macOS CI diagnostic step surfaces a concrete root cause for the v0.4.1/v0.4.2 `find /tmp -newer ref` empty-result behavior, file as a `tasks/lessons.md` entry and decide whether the production hook needs a macOS-specific code path. Until then, real `/tmp` scan still runs on production macOS — only test coverage is decoupled.
+
 ## [0.4.3] - 2026-04-29
 
 **Patch — macOS CI test conditional skip + lessons entry.** No plugin/spec code change. Spec stays at v6.11.2.

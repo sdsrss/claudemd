@@ -16,41 +16,41 @@ STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SESSION_REF="$STATE_DIR/session-start.ref"
 
-# Establish session reference if not present
 if [[ ! -f "$SESSION_REF" ]]; then
   touch "$SESSION_REF"
   exit 0
 fi
 
-# Scan locations for fresh tmp.XXXXXX-style dirs.
-# In system /tmp, only flag claudemd-* labeled dirs — stock /tmp/tmp.* dirs
-# come from vim, pip, cargo, mktemp, and other unrelated tools, attributing
-# them to the current claudemd session was pure noise. In ~/.claude/tmp, both
-# generic mkdtemp tmp.* and claudemd-* dirs are claudemd-attributable.
+# Scan-spec format: DIR|FILTER pairs separated by ASCII record separator (RS, \x1e).
+# FILTER: claudemd_only (system /tmp — only ^claudemd- prefix attributable)
+#         both          (~/.claude/tmp — both ^tmp\. and ^claudemd-).
+# Override via CLAUDEMD_SCAN_SPECS_OVERRIDE for tests; production default below.
+DEFAULT_SCAN_SPECS=$(printf '/tmp|claudemd_only\x1e%s|both' "$HOME/.claude/tmp")
+SCAN_SPECS="${CLAUDEMD_SCAN_SPECS_OVERRIDE:-$DEFAULT_SCAN_SPECS}"
+
 FOUND=""
-for loc in "/tmp" "$HOME/.claude/tmp"; do
+while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
+  [[ -n "$spec" ]] || continue
+  loc="${spec%|*}"
+  filter="${spec##*|}"
   [[ -d "$loc" ]] || continue
   while IFS= read -r path; do
     base=$(basename "$path")
-    if [[ "$loc" == "/tmp" ]]; then
-      [[ "$base" =~ ^claudemd- ]] || continue
-    else
-      [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue
-    fi
+    case "$filter" in
+      claudemd_only) [[ "$base" =~ ^claudemd- ]] || continue ;;
+      both)          [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue ;;
+      *)             continue ;;
+    esac
     FOUND+="$path"$'\n'
   done < <(platform_find_newer "$loc" "$SESSION_REF" 2>/dev/null | head -n 50)
-done
+done < <(printf '%s\x1e' "$SCAN_SPECS")
 
 if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
-  # `$FOUND` ends with a trailing newline from the accumulator loop; strip
-  # blank lines before prefixing so the bullet list doesn't show an empty
-  # trailing "  - " entry.
   printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5 >&2
   hook_record sandbox-disposal warn "{\"count\":$COUNT}"
 fi
 
-# Refresh session reference for next run
 touch "$SESSION_REF"
 exit 0

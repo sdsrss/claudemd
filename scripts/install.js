@@ -17,6 +17,7 @@ export const HOOK_BASENAMES = [
   'banned-vocab-check.sh',
   'ship-baseline-check.sh',
   'memory-read-check.sh',
+  'pre-bash-safety-check.sh',
   'residue-audit.sh',
   'sandbox-disposal-check.sh',
   'session-start-check.sh',
@@ -25,7 +26,7 @@ export const HOOK_BASENAMES = [
 
 // Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
 // shape previously held in HOOK_SPECS. Used to populate the manifest so status/
-// uninstall keep seeing the 5 shipped hooks after the v0.1.5 registration move.
+// uninstall keep seeing the 8 shipped hooks after the v0.1.5 registration move.
 function readPluginHookSpecs(pluginRoot) {
   const hooksFile = path.join(pluginRoot, 'hooks/hooks.json');
   if (!fs.existsSync(hooksFile)) return [];
@@ -120,7 +121,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   writeSettings(settings);
 
   // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall
-  // keep a canonical list of the 7 shipped hooks even though settings.json no
+  // keep a canonical list of the 8 shipped hooks even though settings.json no
   // longer carries them. Command sha256 is stable (same literal across versions).
   const hookSpecs = readPluginHookSpecs(pluginRoot);
   const entries = hookSpecs.map(s => ({
