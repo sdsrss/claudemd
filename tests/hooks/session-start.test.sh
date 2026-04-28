@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# session-start-check.sh tests — self-bootstrap behavior (v0.1.9 P1b).
+# session-start-check.sh tests — self-bootstrap behavior (v0.1.9 P1b)
+# + upstream-check banner behavior (v0.4.0 Cases 8-11).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -8,6 +9,10 @@ PLUGIN_ROOT="$HERE/../.."
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/logs"
+
+# Cases 1-7 should NOT exercise upstream-check — keep them network-free and
+# stdout-clean. Cases 8-11 explicitly override DISABLE_UPSTREAM_CHECK=0.
+export DISABLE_UPSTREAM_CHECK=1
 
 FAIL=0
 
@@ -91,7 +96,84 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((7 - FAIL))/7 passed"; exit 1
+# --- v0.4.0 upstream-check cases ---
+# Restore manifest to plugin-current version so subsequent cases hit the
+# manifest-MATCH path (where upstream_check fires).
+PLUGIN_VER_REAL=$(jq -r .version "$PLUGIN_ROOT/package.json")
+echo "{\"version\":\"$PLUGIN_VER_REAL\",\"entries\":[]}" > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+
+# Mock cache parent with one semver dir
+mkdir -p "$TMP_HOME/cache/0.4.0"
+
+# Mock git ls-remote: returns v9.9.9 (newer than 0.4.0)
+cat > "$TMP_HOME/mock-ls-remote-newer.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'abc123def456789012345678901234567890abcd\trefs/tags/v9.9.9\n'
+MOCK
+chmod +x "$TMP_HOME/mock-ls-remote-newer.sh"
+
+# Mock git ls-remote: exits non-zero (network failure)
+cat > "$TMP_HOME/mock-ls-remote-fail.sh" <<'MOCK'
+#!/usr/bin/env bash
+exit 1
+MOCK
+chmod +x "$TMP_HOME/mock-ls-remote-fail.sh"
+
+# Case 8 (v0.4.0): upstream-check emits SessionStart additionalContext banner
+# when the mocked git ls-remote returns a tag higher than the local cache max.
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+OUT8=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
+       CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+       DISABLE_UPSTREAM_CHECK=0 \
+       bash "$HOOK" <<<'{}' 2>/dev/null)
+if echo "$OUT8" | grep -q '"additionalContext"' && echo "$OUT8" | grep -q 'v9.9.9' && echo "$OUT8" | grep -q 'plugin marketplace update claudemd'; then
+  echo "PASS: 8 upstream-check banner emitted on newer remote tag"
+else
+  echo "FAIL: 8 banner malformed or missing (out: $OUT8)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 7/7 passed"
+
+# Case 9 (v0.4.0): DISABLE_UPSTREAM_CHECK=1 suppresses banner.
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+OUT9=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
+       CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+       DISABLE_UPSTREAM_CHECK=1 \
+       bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT9" ]]; then
+  echo "PASS: 9 DISABLE_UPSTREAM_CHECK=1 suppresses banner"
+else
+  echo "FAIL: 9 kill-switch leaked (out: $OUT9)"; FAIL=$((FAIL+1))
+fi
+
+# Case 10 (v0.4.0): sentinel within 24h prevents re-emit (no banner, mock NOT called).
+# Pre-touch sentinel; the hook should skip ls-remote and return silently.
+mkdir -p "$HOME/.claude/.claudemd-state"
+touch "$HOME/.claude/.claudemd-state/upstream-check.lastrun"
+OUT10=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
+        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+        DISABLE_UPSTREAM_CHECK=0 \
+        bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT10" ]]; then
+  echo "PASS: 10 24h sentinel skips fresh check"
+else
+  echo "FAIL: 10 sentinel ignored (out: $OUT10)"; FAIL=$((FAIL+1))
+fi
+
+# Case 11 (v0.4.0): git ls-remote failure → fail-open (hook exits 0, no banner, no stderr).
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-fail.sh" \
+CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+DISABLE_UPSTREAM_CHECK=0 \
+  bash "$HOOK" <<<'{}' >"$TMP_HOME/out11" 2>"$TMP_HOME/err11"
+EC11=$?
+OUT11=$(cat "$TMP_HOME/out11"); ERR11=$(cat "$TMP_HOME/err11")
+if [[ "$EC11" == "0" && -z "$OUT11" && -z "$ERR11" ]]; then
+  echo "PASS: 11 ls-remote failure fail-open (exit=0, no output)"
+else
+  echo "FAIL: 11 fail-open broken (ec=$EC11 out=$OUT11 err=$ERR11)"; FAIL=$((FAIL+1))
+fi
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+fi
+echo "Tests: 11/11 passed"

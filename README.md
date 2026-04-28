@@ -57,6 +57,7 @@ Once installed, the hooks run silently in the background:
 | Session end with `~/.claude/tmp/` growth > 20 entries | `residue-audit` | Advisory stderr warning; never blocks. |
 | Bash command matching ship/push/deploy/release with an unread matched `MEMORY.md` entry | `memory-read-check` | Blocks the command with a list of memory files to Read first. |
 | Session end with fresh `tmp.XXXXXX`-style directories | `sandbox-disposal-check` | Advisory stderr warning. |
+| New session start with GitHub remote tag newer than local cache max version | `session-start-check` (v0.4.0+) | Injects an "upgrade available" banner via `additionalContext` listing the 4-step upgrade sequence. Rate-limited to once per 24h via `~/.claude/.claudemd-state/upstream-check.lastrun` sentinel. 3-second `git ls-remote` timeout, fail-open. |
 
 ### Commands
 
@@ -83,11 +84,21 @@ export DISABLE_CLAUDEMD_HOOKS=1
 **2. Per-hook.** Disable one hook, leave others active:
 
 ```bash
-export DISABLE_BANNED_VOCAB_HOOK=1       # or
-export DISABLE_SHIP_BASELINE_HOOK=1      # or
-export DISABLE_RESIDUE_AUDIT_HOOK=1      # or
-export DISABLE_MEMORY_READ_HOOK=1        # or
-export DISABLE_SANDBOX_DISPOSAL_HOOK=1
+export DISABLE_BANNED_VOCAB_HOOK=1         # or
+export DISABLE_SHIP_BASELINE_HOOK=1        # or
+export DISABLE_RESIDUE_AUDIT_HOOK=1        # or
+export DISABLE_MEMORY_READ_HOOK=1          # or
+export DISABLE_SANDBOX_DISPOSAL_HOOK=1     # or
+export DISABLE_SESSION_START_HOOK=1        # or
+export DISABLE_USER_PROMPT_SUBMIT_HOOK=1
+```
+
+**2a. Per-sub-feature** (v0.4.0+). Sub-flags inside an enabled hook, named without the `_HOOK` suffix:
+
+```bash
+export DISABLE_UPSTREAM_CHECK=1            # only the upstream-tag-check sub-feature
+                                           # of session-start-check; bootstrap-on-mismatch
+                                           # behavior remains active.
 ```
 
 **3. Per-invocation escape hatches** (no env var needed; embed in the command itself):

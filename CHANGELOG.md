@@ -8,6 +8,84 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.4.0] - 2026-04-29
+
+**Minor bump — released-artifact user-visible default behavior change** per AI-CODING-SPEC §2 + §EXT §2-EXT release-requirements checklist. Adds an upstream-tag-check sub-feature to `session-start-check.sh`: every session start (rate-limited to once per 24h) compares the local plugin cache max version against the GitHub remote latest tag and, on mismatch, injects a 4-line "upgrade available" banner via SessionStart `additionalContext`. No spec content change (v6.11.1 stays). Manifest descriptions stay at `v6.11` per v0.2.1 policy.
+
+### Migration note (read before upgrading)
+
+After 0.4.0 lands, **all your sessions will start showing an "upgrade available" banner** when the GitHub remote has a newer claudemd release than your local cache. The banner contains the 4-step canonical upgrade sequence ready to copy-paste:
+
+```
+[claudemd] vX.Y.Z available (you have vA.B.C). Run these 4 commands to upgrade:
+/plugin marketplace update claudemd
+/plugin uninstall claudemd@claudemd
+/plugin install claudemd@claudemd
+/reload-plugins
+
+Disable this notice: DISABLE_UPSTREAM_CHECK=1
+```
+
+This is a **default-on** behavior change — you will see the banner on session start without any opt-in. Three layers of opt-out (see Kill-switches in README):
+
+1. `DISABLE_UPSTREAM_CHECK=1` — turn off only this sub-feature; existing manifest-version-mismatch auto-bootstrap (v0.2.5+) keeps running.
+2. `DISABLE_SESSION_START_HOOK=1` — turn off the entire SessionStart hook (loses both upstream-check and bootstrap auto-sync).
+3. `DISABLE_CLAUDEMD_HOOKS=1` — turn off all 7 claudemd hooks.
+
+To pin v0.3.2 and skip 0.4.0: `/plugin install claudemd@claudemd@0.3.2` (CC marketplace pinning) or restore from `~/.claude/backup-<ISO>/`.
+
+### Added — `hooks/session-start-check.sh::upstream_check`
+
+New function inside the existing SessionStart hook (no new hook script registration; `hooks/hooks.json` unchanged). Fires only on the manifest-version-MATCH branch — i.e. when the local install is consistent and we're free to look outward. Skips on the mismatch branch to avoid stacking a banner on top of an in-flight bootstrap.
+
+**Mechanism**:
+
+1. Sentinel check: `~/.claude/.claudemd-state/upstream-check.lastrun` mtime within 24h → exit silently. Cross-platform via `platform_stat_mtime` (GNU `stat --format=%Y` / BSD `stat -f %m`).
+2. Cache enumeration: `ls $cache_parent | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1` → local max version.
+3. Remote tag: `timeout 3 git ls-remote --tags --refs --sort=-v:refname https://github.com/sdsrss/claudemd 'v*.*.*' | head -1` → latest semver tag. Public repo, no auth, no GitHub API rate-limit footprint.
+4. Compare via `sort -V`: only emit banner when `remote > local`. Skips on equal or `local > remote` (dev-mode safety).
+5. Sentinel touched on every reachable network attempt (success or empty result), so transient remote failures don't burst-retry.
+6. Banner output: `jq -cn` constructs `{suppressOutput: true, hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: "..."}}` JSON; written to stdout for CC to inject as session context.
+
+**Test override env vars** (testing-only, not user-facing):
+
+- `CLAUDEMD_LS_REMOTE_CMD` — replace `git ls-remote` with a mock script for unit tests.
+- `CLAUDEMD_CACHE_PARENT` — point cache-enumeration at a fake parent dir.
+- `CLAUDEMD_REMOTE_URL` — override the GitHub URL (default `https://github.com/sdsrss/claudemd`).
+
+### Added — Tests
+
+`tests/hooks/session-start.test.sh` Cases 8-11 (test count 7 → 11):
+
+- Case 8: upstream-check banner emitted on newer remote tag (mock returns v9.9.9, local cache max `0.4.0` stub).
+- Case 9: `DISABLE_UPSTREAM_CHECK=1` suppresses banner (no stdout, manifest-match path otherwise unchanged).
+- Case 10: 24h sentinel skips fresh check (pre-touched sentinel → no banner, mock not invoked).
+- Case 11: `git ls-remote` failure fail-open (mock exits 1; hook exits 0, no stdout, no stderr).
+
+Existing Cases 1-7 unchanged. Test file exports `DISABLE_UPSTREAM_CHECK=1` at top so Cases 1-7 stay network-free; new cases override per-run with `DISABLE_UPSTREAM_CHECK=0`.
+
+### Discoverability (per §EXT §2-EXT)
+
+- The banner itself is the one-time discoverability signal — first session after upgrade prints it; subsequent sessions within 24h hit the sentinel and stay quiet.
+- Migration note in this CHANGELOG entry (above) documents the default-on behavior + 3-tier opt-out.
+- README Kill-switches section gains a new "Per-sub-feature" tier (2a) calling out `DISABLE_UPSTREAM_CHECK`. Tier 2 list also gains `DISABLE_SESSION_START_HOOK` and `DISABLE_USER_PROMPT_SUBMIT_HOOK` (doc-drift fix from v0.1.9 / v0.3.1).
+- `/claudemd-status` will continue to show the kill-switch state (existing logic surfaces all `DISABLE_*` env vars).
+
+### Changed — Version bumps
+
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2): 0.3.2 → 0.4.0
+- `hooks/session-start-check.sh`: +60 lines (upstream_check function + match-branch routing)
+- `tests/hooks/session-start.test.sh`: +69 lines (Cases 8-11 + mocks)
+- `README.md`: +1 row in Daily-use table; +5 lines in Kill-switches Tier 2; +new Tier 2a sub-feature section
+
+No spec change. `spec/CLAUDE*.md` unchanged at v6.11.1.
+
+### Migration
+
+`/plugin marketplace update claudemd` + `/plugin uninstall claudemd@claudemd` + `/plugin install claudemd@claudemd` + `/reload-plugins` (canonical sequence). `postInstall` triggers `install.js` which copies the new `hooks/session-start-check.sh` into the plugin cache. Next session start: banner appears if remote > local (which after 0.4.0 lands → no banner since local = remote = 0.4.0).
+
+---
+
 ## [0.3.2] - 2026-04-29
 
 Patch. Ships **spec v6.11.1** — 2 wording tightenings on existing HARD rules (§7 Iron Law #2 Bugfix anchor + §10 Specificity), driven by 30-day cross-project audit (188 rule-hits across `projects--claudemd` / `projects--mem` / `projects--code-graph-mcp` / `projects--daagu`). Both edits qualify as §13.2 evidence-rebuttal shortcut (fix existing HARDs, not new rules); HARD tally unchanged at 12 core + 4 §EXT-side. Manifest descriptions stay at `v6.11` per v0.2.1 policy.

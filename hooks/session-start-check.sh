@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # session-start-check.sh — SessionStart hook.
-# Auto-runs install.js when the plugin is present but the manifest is missing.
-# Saves new users the manual `node .../scripts/install.js` bootstrap step.
+# 1. Auto-runs install.js when the plugin is present but the manifest is missing
+#    or version-mismatched (v0.1.9 / v0.2.5).
+# 2. Emits an "upgrade available" banner via additionalContext when the GitHub
+#    remote has a newer tag than the local cache max version (v0.4.0).
 # Fail-open on any hiccup — SessionStart must never delay the user's session.
 
 set -uo pipefail
@@ -9,12 +11,74 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SESSION_START || exit 0
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# upstream_check — emit "upgrade available" SessionStart additionalContext
+# banner when remote GitHub tag exceeds local cache max version.
+# Always returns 0 (fail-open). Outputs JSON to stdout on banner emit; nothing
+# otherwise. Skipped on: DISABLE_UPSTREAM_CHECK=1, sentinel within 24h, jq
+# missing, no semver-named cache dirs, network failure, remote ≤ local.
+upstream_check() {
+  [[ "${DISABLE_UPSTREAM_CHECK:-0}" == "1" ]] && return 0
+
+  local sentinel="$HOME/.claude/.claudemd-state/upstream-check.lastrun"
+  mkdir -p "$(dirname "$sentinel")" 2>/dev/null || return 0
+  if [[ -f "$sentinel" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
+    local now smtime age
+    now=$(date +%s 2>/dev/null) || return 0
+    smtime=$(platform_stat_mtime "$sentinel" 2>/dev/null) || return 0
+    if [[ -n "$smtime" ]]; then
+      age=$(( now - smtime ))
+      [[ "$age" -lt 86400 ]] && return 0
+    fi
+  fi
+
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local cache_parent local_max
+  if [[ -n "${CLAUDEMD_CACHE_PARENT:-}" ]]; then
+    cache_parent="$CLAUDEMD_CACHE_PARENT"
+  else
+    cache_parent="$(cd "$PLUGIN_ROOT/.." 2>/dev/null && pwd)" || return 0
+  fi
+  [[ -d "$cache_parent" ]] || return 0
+  local_max=$(ls -1 "$cache_parent" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+  [[ -z "$local_max" ]] && return 0
+
+  local remote_url remote_output remote_tag
+  remote_url="${CLAUDEMD_REMOTE_URL:-https://github.com/sdsrss/claudemd}"
+  read -ra ls_remote_args <<< "${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}"
+  remote_output=$(timeout 3 "${ls_remote_args[@]}" --tags --refs --sort=-v:refname "$remote_url" 'v*.*.*' 2>/dev/null) || return 0
+  remote_tag=$(printf '%s' "$remote_output" | head -1 | awk '{print $2}' | sed 's|refs/tags/||')
+  [[ -z "$remote_tag" ]] && return 0
+
+  touch "$sentinel" 2>/dev/null || true
+
+  [[ "v$local_max" == "$remote_tag" ]] && return 0
+  local newer
+  newer=$(printf '%s\n%s\n' "v$local_max" "$remote_tag" | sort -V | tail -1)
+  [[ "$newer" != "$remote_tag" ]] && return 0
+
+  jq -cn \
+    --arg cur "v$local_max" \
+    --arg new "$remote_tag" \
+    '{
+      suppressOutput: true,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: ("[claudemd] " + $new + " available (you have " + $cur + "). Run these 4 commands to upgrade:\n/plugin marketplace update claudemd\n/plugin uninstall claudemd@claudemd\n/plugin install claudemd@claudemd\n/reload-plugins\n\nDisable this notice: DISABLE_UPSTREAM_CHECK=1")
+      }
+    }' 2>/dev/null
+
+  hook_record session-start upstream-banner null 2>/dev/null || true
+}
 
 # Manifest-exists path: check for version mismatch (v0.2.5). Pre-0.2.5 this
 # was a plain `manifest-exists → exit`. Users who installed 0.2.2 then used
@@ -37,12 +101,19 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
   fi
   # Skip auto-upgrade when either side is unknown — legacy manifests without
   # .version (pre-0.1.9), jq absent, unreadable package.json, etc. — to avoid
-  # a re-bootstrap loop on broken state. Match → nothing to do.
-  if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" || "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
+  # a re-bootstrap loop on broken state. No upstream check on broken state.
+  if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" ]]; then
+    exit 0
+  fi
+  # Match: local install is current. Run upstream check before exiting — this
+  # is the canonical "everything in order locally, look outward" branch.
+  if [[ "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
+    upstream_check
     exit 0
   fi
   # Mismatch: log intent, then fall through to the install block below which
-  # writes the real bootstrap trail.
+  # writes the real bootstrap trail. Skip upstream-check on mismatch — the
+  # local upgrade is already in flight; banner would compound noise.
   echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
 fi
 
