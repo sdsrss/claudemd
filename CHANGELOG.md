@@ -8,6 +8,19 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.4.2] - 2026-04-29
+
+**Patch — macOS CI test flake fix.** No plugin/spec code change. `tests/hooks/sandbox-disposal.test.sh` Case 8 (added in v0.4.1) was timing-fragile on macOS APFS: `touch -d '1 second ago' SESSION_REF` followed by an **immediate** `mkdir /tmp/claudemd-test-labeled_$$` could round both mtimes into the same wall-clock-second slot under APFS metadata granularity, defeating `find -newer`'s strict `>` comparison and leaving `FOUND` empty. CI run [25073453249](https://github.com/sdsrss/claudemd/actions/runs/25073453249) on v0.4.1 surfaced it; ubuntu-latest cancelled by `fail-fast` matrix.
+
+### Fixed
+
+- `tests/hooks/sandbox-disposal.test.sh` Case 8 — replaces `touch -d '1 second ago' + immediate mkdir` with `touch (NOW) + sleep 1 + mkdir` (the same pattern Case 5 already uses for nested-dir setup). Also grep on basename instead of full path, defending against the secondary risk of macOS `/tmp → /private/tmp` symlink-form path differences.
+
+### Not changed
+
+- No hook script change; no `scripts/` change; no spec content change. Spec stays at v6.11.2 from v0.4.1.
+- README, install/uninstall/update logic, manifests' `description` field — all unchanged from v0.4.1.
+
 ## [0.4.1] - 2026-04-29
 
 **Patch — post-audit fixes** spanning hooks, install/upgrade scripts, README, and spec content. Driven by 3-agent self-audit dispatched on `main` (install path / hook logic / spec prompt science). No new HARD rules, no breaking changes, no behavior change for already-installed users until they upgrade. Plugin manifests stay at `v6.11` per v0.2.1 description-policy (spec major.minor unchanged).

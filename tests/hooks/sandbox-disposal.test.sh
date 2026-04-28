@@ -92,14 +92,23 @@ fi
 # Case 8: /tmp/claudemd-* IS still flagged (the legitimate case for
 # attributing system /tmp to the session — claudemd-aware code that
 # explicitly labels its mkdtemp).
+# v0.4.2 fix: use the same `touch (NOW) + sleep 1 + mkdir` pattern as
+# Case 5, instead of `touch -d '1 second ago' + immediate mkdir`. On
+# macOS APFS, `-d '1 second ago'` and the immediate-following mkdir can
+# round to the same wall-clock second in mtime metadata, defeating
+# `find -newer`'s strict `>` comparison (FOUND was empty on macOS CI
+# under v0.4.1). Grep on basename also normalizes macOS `/tmp → /private/tmp`
+# symlink path-form differences.
 rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
 mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
-touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
 CLAUDEMD_LABELED_TMP="/tmp/claudemd-test-labeled_$$"
 mkdir -p "$CLAUDEMD_LABELED_TMP"
 trap 'rm -rf "$TMP_HOME" "$SYSTEM_TMP_MARKER" "$CLAUDEMD_LABELED_TMP"' EXIT
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-if echo "$STDERR" | grep -q "$CLAUDEMD_LABELED_TMP"; then
+LABELED_BASE=$(basename "$CLAUDEMD_LABELED_TMP")
+if echo "$STDERR" | grep -q "$LABELED_BASE"; then
   echo "PASS: 8 /tmp/claudemd-* still flagged"
 else
   echo "FAIL: 8 /tmp/claudemd-* not flagged (stderr: $STDERR)"
