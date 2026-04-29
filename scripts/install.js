@@ -48,8 +48,25 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // Ensure ~/.claude exists
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
 
-  // Spec: backup existing files if any, then copy fresh
+  // Spec: backup existing files if any, then copy fresh.
+  // D7 (v0.5.3): detect "personal user-global instructions" before the
+  // overwrite. ~/.claude/CLAUDE.md is shared real estate — both this plugin's
+  // spec and the user's hand-written CC user-global instructions live there.
+  // If existing CLAUDE.md lacks the canonical `# AI-CODING-SPEC vX.Y.Z — Core`
+  // H1, the user almost certainly didn't write it as a claudemd spec; we
+  // still backup-and-overwrite (previous v0.5.2 behavior unchanged), but
+  // flag it loudly via stderr so the user knows where their content went and
+  // how to restore it. No silent data loss vector either way — backup-<ISO>/
+  // always carries the original.
   const existing = specHome().filter(p => fs.existsSync(p));
+  const claudeMdPath = specHome()[0]; // ~/.claude/CLAUDE.md by convention
+  let userContentDetected = false;
+  if (existing.includes(claudeMdPath)) {
+    const head = fs.readFileSync(claudeMdPath, 'utf8').slice(0, 256);
+    if (!/^#\s*AI-CODING-SPEC\b/m.test(head)) {
+      userContentDetected = true;
+    }
+  }
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
@@ -58,6 +75,15 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     backupDir = bk.dir;
     pruneBackups(5);
     specResult = 'backup-and-overwrite';
+    if (userContentDetected) {
+      process.stderr.write(
+        `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec ` +
+        `(no "# AI-CODING-SPEC" H1 in first 256 bytes). It looks like personal user-global ` +
+        `instructions and was backed up to ${backupDir}/CLAUDE.md before being overwritten ` +
+        `with the plugin spec. To bring your content back on uninstall, run ` +
+        `\`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`.\n`
+      );
+    }
   }
   for (const name of SPEC_FILES) {
     const src = path.join(pluginRoot, 'spec', name);
@@ -161,7 +187,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   try { cachePruned = pruneCache(pluginRoot, { keep: 3 }); }
   catch { /* install succeeded — swallow prune FS errors */ }
 
-  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned };
+  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned, userContentDetected };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

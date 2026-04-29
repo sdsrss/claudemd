@@ -20,7 +20,15 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   }
 
   if (choice === 'cancel') return { applied: false, diffs };
-  if (choice !== 'apply-all') throw new Error(`unknown choice: ${choice}`);
+  // Per-file select is intentionally not supported — spec trio evolves
+  // lockstep (CLAUDE.md H1 is the canonical version; §EXT cross-references
+  // would dangle if only some files updated). Choices: 'apply-all' | 'cancel'.
+  if (choice !== 'apply-all') {
+    throw new Error(
+      `unknown choice: ${choice}. Valid: 'apply-all' | 'cancel'. ` +
+      `Spec trio is lockstep; per-file select is not supported.`
+    );
+  }
 
   const targets = SPEC_FILES.filter(n => diffs.find(d => d.file === n && (d.added > 0 || d.removed > 0)));
 

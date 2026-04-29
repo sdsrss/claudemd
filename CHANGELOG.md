@@ -8,6 +8,47 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.3] - 2026-04-30
+
+**Patch — `/claudemd-uninstall` command + user-content overwrite warning + spec trio lockstep clarification.** Pure additive bugfix release. No behavior change to existing flows; closes 4 user-perspective gaps surfaced in the v0.5.2 audit.
+
+### Symptoms (pre-fix)
+
+1. **Personal user-global instructions silently overwritten without warning.** `~/.claude/CLAUDE.md` is shared real estate between this plugin's spec and the user's hand-written CC instructions. Install backed up the original to `~/.claude/backup-<ISO>/CLAUDE.md` (no data loss), but emitted no stderr line; users who hand-wrote their CLAUDE.md ("Always reply in 中文", "My name is X") could discover their content gone with no breadcrumb to the backup.
+2. **`/claudemd-update` description claimed a `select` mode that `update.js` does not implement.** Anyone choosing `select` got `Error: unknown choice: select`. The mode was never implementable — spec trio (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`) evolves lockstep, and per-file select would dangle `§EXT §X-EXT` cross-references.
+3. **`/plugin uninstall claudemd@claudemd` left orphan state.** CC's marketplace lifecycle does not fire `preUninstall`, so `~/.claude/.claudemd-manifest.json` + `~/.claude/.claudemd-state/` + `~/.claude/logs/claudemd.jsonl` survived plugin removal. No in-tree tool to clean up afterwards because the plugin cache (and `scripts/uninstall.js`) was already gone.
+4. **`tests/scripts/install.test.js` settings.json basename assertions only covered 5–6 of 8 hooks.** Hardcoded regex listed `(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)` — silent gap for `session-start-check`, `version-sync`, `pre-bash-safety-check`. Production code (`install.js` `HOOK_BASENAMES`) had all 8; if `HOOK_BASENAMES` regressed, the test wouldn't catch it.
+
+### Fix
+
+- `[fix]` **`scripts/install.js:51-79`** — D7: detect user-content overwrite. Before backup, check `~/.claude/CLAUDE.md` for the canonical `# AI-CODING-SPEC` H1 in the first 256 bytes. If absent (existing file is likely personal CC user-global instructions), `process.stderr.write` a `[claudemd] WARN: …` line pointing at the backup path and the `CLAUDEMD_SPEC_ACTION=restore` recovery command. Backup-and-overwrite proceeds either way — the warning is informational, not a block. Return value gains `userContentDetected: boolean` for programmatic detection.
+- `[add]` **`commands/claudemd-uninstall.md`** — M3: new slash command. `/claudemd-uninstall` runs `scripts/uninstall.js` while the plugin is still installed (so `${CLAUDE_PLUGIN_ROOT}` and the script itself still exist), clearing manifest + state-dir + log. Two-step uninstall flow: `/claudemd-uninstall` → `/plugin uninstall claudemd@claudemd`. Reversing the order is the orphan-state vector; the command frontmatter spells out why.
+- `[fix]` **`commands/claudemd-update.md` + `README.md` (2 sites) + `scripts/update.js:23`** — M2: remove the `select` / `select-per-file` claim from `/claudemd-update`'s frontmatter description, README commands table, README Update section. `scripts/update.js` error message for invalid choices now lists the valid set (`'apply-all' | 'cancel'`) and explains the lockstep rationale. The description is now contract documentation: per-file select is intentionally not supported, not a missing feature.
+- `[fix]` **`tests/scripts/install.test.js:8` + `:100` + `:277`** — D5: import `HOOK_BASENAMES` from `install.js` and define `isClaudemdHookCommand` predicate. Test assertions now use the same `c.includes('/hooks/' + b)` predicate as production code. Future hook additions to `HOOK_BASENAMES` automatically widen test coverage; no parallel hardcoded list to drift.
+- `[test]` **`tests/scripts/install.test.js`** — 3 new D7 cases: (a) existing CLAUDE.md without spec H1 → `userContentDetected: true` + content preserved in backup, (b) existing CLAUDE.md with `# AI-CODING-SPEC vX.Y.Z` H1 → `userContentDetected: false` (routine upgrade, no warning), (c) fresh install → `userContentDetected: false`.
+- `[docs]` **`README.md` "Install" section** — D7: callout warning that `~/.claude/CLAUDE.md` is shared real estate; describes the v0.5.3 stderr warning + recovery via `CLAUDEMD_SPEC_ACTION=restore`.
+
+### Migration note (read before upgrading)
+
+No action required for existing installs. After upgrade:
+
+- A new slash command `/claudemd-uninstall` is available — use it BEFORE `/plugin uninstall claudemd@claudemd` to avoid orphan state.
+- `install.js` now prints a stderr warning if your existing `~/.claude/CLAUDE.md` does not look like a claudemd spec. Pre-existing installs (where CLAUDE.md already has the `# AI-CODING-SPEC` H1) trigger no warning.
+- `/claudemd-update` no longer documents a `select` choice. Behavior is unchanged — `cancel` and `apply-all` were always the only valid choices.
+
+### Not changed
+
+- No spec content change. Spec stays at v6.11.3.
+- No new hook, no new HARD rule, no §13.2 budget delta.
+- No change to install / uninstall / update behavior on existing installs (apart from the new D7 stderr line).
+- `scripts/uninstall.js` unchanged in this release; the manifest-missing tightening (D6) and the predicate `/claudemd/`-anchoring stay deferred to v0.5.4.
+
+### Follow-up (deferred to v0.5.4)
+
+- D6: `scripts/uninstall.js:9-12` early-returns when manifest is missing or unparseable, skipping the `HOOK_BASENAMES` legacy-eviction backstop. Run the basename sweep unconditionally.
+- D6 secondary: tighten `HOOK_BASENAMES` predicate from substring match to path-anchored (`/plugins/cache/claudemd/` OR `/.claude/hooks/` OR `${CLAUDE_PLUGIN_ROOT}` literal) to eliminate cross-plugin name-collision risk.
+- M3 README rewrite: re-order Uninstall section to lead with the two-step flow (`/claudemd-uninstall` → `/plugin uninstall`); current README still presents the direct-`scripts/uninstall.js` invocation as primary.
+
 ## [0.5.2] - 2026-04-30
 
 **Patch — installer-audit cleanup: `/claudemd-toggle` + `/claudemd-status` cover all 8 hooks; README freshness pass.** Pure docs/metadata bugfix; no behavior change to install/uninstall/update or any hook script. Restores documented intent (every shipped hook is toggleable + visible) that drifted when v0.3.1 added `version-sync` and v0.5.0 added `pre-bash-safety-check`.

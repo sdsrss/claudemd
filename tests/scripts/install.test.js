@@ -5,7 +5,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { install } from '../../scripts/install.js';
+import { install, HOOK_BASENAMES } from '../../scripts/install.js';
+
+// Shared with production code: install.js evicts settings.json entries
+// using the same predicate. Tests assert against the same source of truth
+// so a future hook addition (HOOK_BASENAMES grows) is automatically covered.
+const isClaudemdHookCommand = (c) => HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`));
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -97,7 +102,7 @@ test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)'
       for (const h of block.hooks || []) all.push(h.command);
     }
   }
-  const claudemdCmds = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|pre-bash-safety-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
+  const claudemdCmds = all.filter(isClaudemdHookCommand);
   assert.deepEqual(claudemdCmds, [], `settings.json must not contain claudemd hook commands, got: ${JSON.stringify(claudemdCmds)}`);
 });
 
@@ -159,6 +164,42 @@ test('pre-merge settings.json backup created when settings.json existed', async 
 test('fresh install (no settings.json): settingsBackup is null', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.settingsBackup, null);
+});
+
+test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved in backup', async () => {
+  // ~/.claude/CLAUDE.md is shared between this plugin and the user's
+  // hand-written CC user-global instructions. When the existing file lacks
+  // the canonical `# AI-CODING-SPEC` H1, install must (a) flag the case so
+  // the user is told where the content went, (b) still back it up — never
+  // silent data loss.
+  const personalContent = '# My personal user-global instructions\n\nAlways respond in 中文.\nMy name is X.\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), personalContent);
+  const res = await install({ pluginRoot });
+  assert.equal(res.userContentDetected, true, 'user content detection flag must be set');
+  assert.ok(res.backupDir && fs.existsSync(res.backupDir));
+  assert.equal(
+    fs.readFileSync(path.join(res.backupDir, 'CLAUDE.md'), 'utf8'),
+    personalContent,
+    'personal content must be preserved verbatim in backup'
+  );
+  // And install proceeded — the plugin spec is now in place.
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# Core v6.9.2\nVersion: 6.9.2\n');
+});
+
+test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content', async () => {
+  // Anything matching `# AI-CODING-SPEC vX.Y.Z` in the first 256 bytes is
+  // assumed to be a prior claudemd install — this is a routine spec upgrade,
+  // not a user-content overwrite. Silent backup-and-overwrite (no warning).
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.10.0 — Core\n\nold spec content\n');
+  const res = await install({ pluginRoot });
+  assert.equal(res.userContentDetected, false, 'spec-headed file must not trip user-content flag');
+  assert.equal(res.spec, 'backup-and-overwrite');
+});
+
+test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag', async () => {
+  const res = await install({ pluginRoot });
+  assert.equal(res.userContentDetected, false);
+  assert.equal(res.spec, 'fresh');
 });
 
 test('migrates hand-installed banned-vocab hook into backup', async () => {
@@ -274,7 +315,7 @@ test('upgrade evicts ALL stale claudemd hook entries from settings.json (v0.1.5)
   for (const event of Object.keys(s.hooks || {})) {
     for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
-  const claudemd = all.filter(c => /\/hooks\/(banned-vocab-check|ship-baseline-check|memory-read-check|residue-audit|sandbox-disposal-check)\.sh/.test(c));
+  const claudemd = all.filter(isClaudemdHookCommand);
   assert.deepEqual(claudemd, [], `all claudemd hook commands must be evicted, residue: ${JSON.stringify(claudemd)}`);
 });
 

@@ -16,6 +16,8 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
 
+> ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** Claude Code reads this file as your user-global instructions across every project. If you've hand-written personal instructions there (`Always reply in 中文`, `My name is X`, etc.), install will back them up to `~/.claude/backup-<ISO>/CLAUDE.md` and replace them with the spec. Since v0.5.3, install prints a `[claudemd] WARN: …` line to stderr when the existing file does not look like a claudemd spec. To bring your personal instructions back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
+
 ---
 
 ## Prerequisites
@@ -80,7 +82,7 @@ Once installed, the hooks run silently in the background:
 | Command | Purpose |
 |---|---|
 | `/claudemd-status` | Plugin version + spec version + kill-switch state + logs line count. |
-| `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all / select-per-file / cancel. |
+| `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (spec trio is lockstep — per-file select would break §EXT cross-references). |
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. |
@@ -175,7 +177,7 @@ After the plugin upgrade, sync the shipped spec into `~/.claude/`:
 /claudemd-update
 ```
 
-The command prints per-file diff summary, then prompts `apply-all / select / cancel`. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
+The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the spec trio (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
 
 ---
 
