@@ -8,6 +8,55 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.6.0] - 2026-04-30
+
+**Minor — hook trust hardening: SHA-256 spec drift detection + opt-in indirect-call coverage + corpus-driven regression suite.** Closes the two follow-up items deferred from v0.5.5 (cso F4 spec integrity + indirect-exec FN) plus a foundational test refactor that moves bash-safety regression cases into a single TSV corpus driving a thin shell runner. Theme is hook *trust*: SHA-256 surfaces drift between shipped and installed spec; indirect-call closes a documented FN class on opt-in; the corpus eliminates the per-FP test-code edit cycle that v0.5.5 demonstrated.
+
+### Added
+
+- `[feat]` **`scripts/lib/spec-hash.js`** — new module exposing `sha256File(path)` and `compareSpecs(pluginRoot)`. Each `compareSpecs` row reports `{name, shipped, installed, match, missing}` for one of the three shipped spec files (`CLAUDE.md`, `CLAUDE-extended.md`, `CLAUDE-changelog.md`). Detects two distinct drift modes: (a) local edits to `~/.claude/<spec>` after install, (b) post-upgrade staleness when the plugin updated but the user hasn't run `/claudemd-update` to re-sync. Does **not** cover supply-chain integrity — the marketplace/npm signature is the right layer for that, and baking a frozen expected hash here would couple the lib to release-time bookkeeping it doesn't need. Pure-function design (takes `pluginRoot` as arg, no manifest write); status.js + doctor.js both consume it.
+
+- `[feat]` **`scripts/doctor.js`** — `/claudemd-doctor` now surfaces three new `spec-hash:<name>` checks per run. Match: `[✓] spec-hash:CLAUDE.md: <12-hex-prefix>… matches`. Drift: `[✗] spec-hash:CLAUDE.md: installed <hex>… ≠ shipped <hex>… — local edits or stale install; run /claudemd-update to sync`. Missing-installed: explicit `/plugin install claudemd@claudemd to bootstrap` hint. Adds 3 rows to the doctor output; existing checks unchanged.
+
+- `[feat]` **`scripts/status.js`** — `/claudemd-status` JSON now reports `spec.hashes` (one row per spec with 12-hex-prefix shipped/installed + match boolean) and `features.bashSafetyIndirectCall` (reflects the new env var below). Existing `spec.installed` (version) field unchanged. status.js gains a `resolvePluginRoot(import.meta.url)` call to find the shipped specs.
+
+- `[feat]` **`hooks/pre-bash-safety-check.sh`** — new opt-in `BASH_SAFETY_INDIRECT_CALL=1` env var enables `unwrap_indirect()`, which rewrites `bash -c '<inner>'` / `bash -c "<inner>"` / `sh -c <…>` / `zsh -c <…>` / `eval '<inner>'` / `eval "<inner>"` to `; <inner> ;` BEFORE `sanitize_cmd` runs. The unwrapped inner is then a top-level token, so the existing pattern-1 (rm -rf var) and pattern-2 (npx unpinned) detectors fire on it normally. Anchored to the same prefix class as the detectors, plus `(` so `$(bash -c '...')` is covered. Bypass tokens (`[allow-rm-rf-var]` / `[allow-npx-unpinned]`) survive unwrap because they scan raw `$CMD`. **Default OFF for v0.6.0.** Rationale: bash-safety is a HARD §8 hook that fires on every `Bash` tool call; FP regressions hit user workflow immediately. Opt-in for one minor lets the kill-switch path stay single-flag (just unset the var) while we collect FP signal in the wild. Plan to flip the default ON in 0.6.x or 0.7.0 once corpus FP coverage holds steady. Heuristic limitations: escaped quotes inside the inner string, heredoc-form indirect calls, and deeply nested substitutions can defeat the regex unwrap — documented in the hook header.
+
+- `[test]` **`tests/fixtures/bash-safety/corpus.tsv`** — new corpus replacing inline cases in `tests/hooks/pre-bash-safety.test.sh`. Format: `<label>\t<note>\t<command>\t<env>` (4-tab columns, env optional). Lines starting with `#` are corpus comments; blanks skipped. Heredoc cases use `__NL__` marker for LF (chosen over `\n` so `printf "label: foo\n"` test cases stay literal). 52 corpus rows (34 pass + 18 deny); plus the malformed-JSON edge case kept inline = 53 total tests. Up from 39 inline cases in v0.5.5: 16 added for indirect-call coverage (9 deny + 7 pass — 3 default-OFF + 4 FP-guard with feature ON), case-count differential explained by drop of the v0.5.5 "non-Bash tool early-exit" synthetic case (corpus is bash-only by construction). Single source of truth — adding a new regression case is one corpus row, not a test-code edit.
+
+- `[test]` **`tests/scripts/spec-hash.test.js`** — 8 unit tests for `scripts/lib/spec-hash.js`. Locks the SHA-256 of `"abc"` to its published canonical digest (`ba7816bf…`) as a sanity check — catches future drift if the impl ever silently switches to text-mode read or non-default hash. Property test: hand-constructed `crypto.createHash('sha256')` digest must equal `sha256File()` byte-for-byte across binary input.
+
+- `[test]` **`tests/scripts/doctor.test.js`** — 2 new tests: `spec-hash:*` drift detection (write installed-spec body that cannot match shipped → assert `[✗] ≠ shipped`) and `spec-hash:*` missing-installed (default beforeEach state, no installed CLAUDE.md → assert `installed spec missing` hint).
+
+- `[test]` **`tests/scripts/status.test.js`** — 2 new tests: `status.spec.hashes` array shape + drift detection from synthetic-vs-real-shipped, and `status.features.bashSafetyIndirectCall` reflects env var on/off.
+
+### Refactor
+
+- `[refactor]` **`tests/hooks/pre-bash-safety.test.sh`** — corpus-driven runner. Replaced the 39 hand-coded `assert_pass` / `assert_deny` calls + heredoc-embedded multiline cases with a 50-line shell loop that reads `tests/fixtures/bash-safety/corpus.tsv`, expands `__NL__` to LF, applies the optional env-var prefix, and asserts allow vs deny by label. Inline edge case (malformed-JSON stdin → fail-open) preserved at the bottom; not a corpus case because corpus is "given valid event, hook produces correct allow/deny". Pre-existing 27-case baseline behaviour unchanged.
+
+### Why opt-in for indirect-call
+
+CHANGELOG v0.5.5 deferred two follow-ups: F4 (spec SHA-256) and indirect-exec coverage. This release ships SHA-256 default-ON (passive read-only check; FP risk is "you see a drift warning", not "your tool call is denied"), and ships indirect-call as opt-in for the inverse reason: a regex-based unwrap cannot perfectly distinguish indirect exec from string-literal `bash -c` mentions, so a wrong-direction FP would block a legitimate `Bash` tool call. The corpus has 4 FP-guard cases under `BASH_SAFETY_INDIRECT_CALL=1` (whitelist + pinned + bypass-token + outer-quoted echo) — but these are theory; field signal is what the opt-in window collects. To enable now: set `"BASH_SAFETY_INDIRECT_CALL": "1"` in `~/.claude/settings.json` `env` block, or `export BASH_SAFETY_INDIRECT_CALL=1` in the shell that launches Claude Code.
+
+### Migration note (read before upgrading)
+
+No automatic action needed. After upgrade:
+- `/claudemd-doctor` adds three `spec-hash:*` rows. Hand-edited `~/.claude/CLAUDE.md` will report `[✗]` with a "local edits or stale install" detail — that's correct, your edit is the drift. Run `/claudemd-update` to sync (your edits are backed up to `~/.claude/backup-<ISO>/` first), or accept the drift if it's intentional.
+- `bash -c '...'` indirect-exec invocations are still NOT denied unless you opt in via `BASH_SAFETY_INDIRECT_CALL=1`. No behaviour change for users who don't set the var.
+
+### Not changed
+
+- No spec content change. Spec stays at v6.11.3.
+- No new HARD rule, no new hook, no §13.2 budget delta.
+- No change to install / update / uninstall behaviour or manifest schema. The new SHA-256 module reads files; it does not write to manifest or state dir.
+- No CI / Node-version change. (Note: GitHub deprecates Node 20 actions on 2026-06-02; `actions/checkout@v4` and `actions/setup-node@v4` upgrade to v5 is unrelated to plugin behaviour and will land as a CI-only commit.)
+
+### Follow-up
+
+- Flip `BASH_SAFETY_INDIRECT_CALL` default ON after one minor of in-the-wild FP signal — pending corpus expansion if any FPs surface.
+- Heredoc-form indirect call (`bash <<EOF\nrm -rf $X\nEOF`) is a known FN of the unwrap regex; sanitize strips heredoc bodies before unwrap can see them. Closing this requires reordering or an explicit heredoc-target-of-bash-c detector. Deferred until field signal indicates need.
+- Node 24 actions upgrade (deadline 2026-06-02) — CI-only commit, no plugin version bump.
+
 ## [0.5.5] - 2026-04-30
 
 **Patch — pre-bash-safety FP fix + session-start glob refactor + .gstack gitignore.** Hook-trust hardening release. Closes 4 of 5 findings from the 2026-04-30 `/cso` + `/health` audits run on this project; F1 (the largest-impact hook FP) is the headline.

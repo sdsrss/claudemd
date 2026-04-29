@@ -13,6 +13,16 @@
 #       [allow-npx-unpinned]— bypasses pattern 2
 #   (b) Kill-switch: DISABLE_PRE_BASH_SAFETY_HOOK=1 (whole hook off)
 #   (c) Global kill: DISABLE_CLAUDEMD_HOOKS=1
+#
+# Feature flags:
+#   BASH_SAFETY_INDIRECT_CALL=1 — opt-in indirect-exec coverage (v0.6.0).
+#     Unwraps `bash -c '<inner>'` / `sh -c '<inner>'` / `zsh -c '<inner>'` /
+#     `eval '<inner>'` (single OR double quoted) to the same patterns above.
+#     Default OFF for v0.6.0 to gather FP signal in the wild before flipping
+#     the default. Heuristic — escaped quotes / heredoc forms / nested
+#     substitutions can defeat it. Bypass tokens (a) survive unwrap so an
+#     authorized indirect call still works with `[allow-rm-rf-var]` /
+#     `[allow-npx-unpinned]` inside the inner string.
 
 set -uo pipefail
 
@@ -92,7 +102,27 @@ sanitize_cmd() {
   printf '%s' "$out"
 }
 
-SANITIZED_CMD=$(sanitize_cmd "$CMD")
+# Indirect-call unwrap (opt-in v0.6.0).
+# Order: unwrap BEFORE sanitize. Sanitize strips single-quoted bodies entirely
+# and double-quoted bodies w/o `$`; once we unwrap, the inner sits as a
+# top-level token so sanitize then handles legit echo/heredoc/comment shapes
+# normally. Anchored to the same prefix class as the detectors (^|[[:space:];&|`(])
+# so `cmd && bash -c '...'` and `$(bash -c '...')` both match, but
+# `echo "bash -c 'rm -rf $X'"` (where the bash sits behind `"`) does not.
+unwrap_indirect() {
+  local s="$1"
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\3 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\3 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
+  printf '%s' "$s"
+}
+
+PROCESSED_CMD="$CMD"
+if [[ "${BASH_SAFETY_INDIRECT_CALL:-0}" == "1" ]]; then
+  PROCESSED_CMD=$(unwrap_indirect "$CMD")
+fi
+SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")
 
 declare -a HITS=()
 REASONS=""

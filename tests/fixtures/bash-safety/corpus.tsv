@@ -1,0 +1,85 @@
+# pre-bash-safety hook regression corpus.
+# Format: <label>\t<note>\t<command>\t<env>
+#   label  : pass (must allow) | deny (must block)
+#   note   : human-readable test name (no tabs)
+#   command: literal tool_input.command. The marker __NL__ expands to LF
+#            (used by heredoc cases). Backslash sequences like \n are passed
+#            through unchanged so printf "label: foo\n" stays literal.
+#   env    : optional `KEY=VAL` env-var prefix (single segment, no spaces inside value)
+# Lines beginning with `#` are skipped. Blank lines skipped. Tabs separate columns.
+# Trailing column may be empty (no env).
+
+# === non-trigger paths (smoke) ===
+pass	git status	git status
+pass	rm -rf /tmp/foo (literal)	rm -rf /tmp/foo
+pass	rm -f file.txt (no -r)	rm -f file.txt
+
+# === pattern 1: rm -rf with variable expansion ===
+deny	rm -rf $WORK_DIR (bare)	rm -rf $WORK_DIR
+deny	rm -rf "$WORK_DIR" (quoted)	rm -rf "$WORK_DIR"
+deny	rm -rf ${WORK_DIR} (braced)	rm -rf ${WORK_DIR}
+deny	rm -fr $VAR (flag swap)	rm -fr $VAR
+deny	rm -rfv $VAR (extra flag)	rm -rfv $VAR
+deny	rm -Rf $VAR (uppercase)	rm -Rf $VAR
+
+# === pattern 1: whitelist + per-cmd escape ===
+pass	rm -rf $HOME/cache (whitelist)	rm -rf $HOME/cache
+pass	rm -rf $TMPDIR/x (whitelist)	rm -rf $TMPDIR/x
+pass	rm -rf $PWD/build (whitelist)	rm -rf $PWD/build
+pass	rm -rf $VAR [allow-rm-rf-var]	rm -rf $VAR [allow-rm-rf-var]
+
+# === pattern 2: npx unpinned ===
+deny	npx prettier (bare)	npx prettier
+deny	npx @types/node (scoped bare)	npx @types/node
+deny	npx -p create-react-app foo	npx -p create-react-app foo
+
+# === pattern 2: pinned + local + flags + escape ===
+pass	npx prettier@3.0.0 (pinned)	npx prettier@3.0.0
+pass	npx @types/node@20 (scoped+pin)	npx @types/node@20
+pass	npx pkg@latest tag	npx pkg@latest
+pass	npx ./local.tgz path	npx ./local.tgz
+pass	npx /abs/path.tgz path	npx /abs/path.tgz
+pass	npx --help flag only	npx --help
+pass	npx -v short flag	npx -v
+pass	npx prettier [allow-npx-unpinned]	npx prettier [allow-npx-unpinned]
+
+# === kill switches ===
+pass	DISABLE_PRE_BASH_SAFETY_HOOK=1 short-circuits	rm -rf $X	DISABLE_PRE_BASH_SAFETY_HOOK=1
+pass	DISABLE_CLAUDEMD_HOOKS=1 short-circuits	npx pkg	DISABLE_CLAUDEMD_HOOKS=1
+
+# === FP guards: npx-as-string-literal ===
+# Real-world FPs from /cso 2026-04-30 (4 reproductions) — see CHANGELOG v0.5.5.
+pass	echo "X: npx pkg" double-quoted arg	echo "DEADCODE: npx knip"
+pass	echo 'X: npx pkg' single-quoted arg	echo 'mention: npx prettier here'
+pass	echo -n flag + space-prefix string	echo -n "warn: npx tsc next"
+pass	printf "label: npx pkg\\n"	printf "label: npx pkg\\n"
+pass	leading # comment with npx	# npx pkg in a comment
+pass	trailing # comment with npx	ls /tmp # npx pkg trailing
+pass	heredoc body with npx	cat <<EOF__NL__some prose mentioning npx pkg here__NL__EOF
+pass	heredoc with quoted tag + npx in body	cat <<'JSON'__NL__{"hint":"run npx pkg to install"}__NL__JSON
+
+# === FP guards: rm-rf-as-string-literal ===
+pass	echo "rm -rf $X" rm in echo arg	echo "rm -rf $X"
+pass	# rm -rf $X comment line	# rm -rf $X danger
+
+# === indirect-call detection (gated by BASH_SAFETY_INDIRECT_CALL=1, default OFF in v0.6.0) ===
+deny	bash -c 'rm -rf $WORK_DIR' (single)	bash -c 'rm -rf $WORK_DIR'	BASH_SAFETY_INDIRECT_CALL=1
+deny	bash -c "rm -rf $X" (double)	bash -c "rm -rf $X"	BASH_SAFETY_INDIRECT_CALL=1
+deny	sh -c 'rm -rf $X'	sh -c 'rm -rf $X'	BASH_SAFETY_INDIRECT_CALL=1
+deny	zsh -c 'rm -rf $X'	zsh -c 'rm -rf $X'	BASH_SAFETY_INDIRECT_CALL=1
+deny	eval 'rm -rf $X'	eval 'rm -rf $X'	BASH_SAFETY_INDIRECT_CALL=1
+deny	eval "rm -rf $X"	eval "rm -rf $X"	BASH_SAFETY_INDIRECT_CALL=1
+deny	bash -c 'npx prettier' (unpinned)	bash -c 'npx prettier'	BASH_SAFETY_INDIRECT_CALL=1
+deny	eval "npx prettier"	eval "npx prettier"	BASH_SAFETY_INDIRECT_CALL=1
+deny	indirect after && operator	cmd && bash -c 'rm -rf $X'	BASH_SAFETY_INDIRECT_CALL=1
+
+# === indirect-call default OFF (v0.6.0 ships with feature flag absent) ===
+pass	bash -c rm-rf default OFF	bash -c 'rm -rf $WORK_DIR'
+pass	eval rm-rf default OFF	eval 'rm -rf $X'
+pass	sh -c rm-rf default OFF	sh -c 'rm -rf $X'
+
+# === indirect-call FP guards (when feature is ON) ===
+pass	bash -c 'rm -rf $HOME/cache' (whitelist via unwrap)	bash -c 'rm -rf $HOME/cache'	BASH_SAFETY_INDIRECT_CALL=1
+pass	bash -c 'npx prettier@3.0.0' (pinned via unwrap)	bash -c 'npx prettier@3.0.0'	BASH_SAFETY_INDIRECT_CALL=1
+pass	indirect [allow-rm-rf-var] survives unwrap	bash -c 'rm -rf $X [allow-rm-rf-var]'	BASH_SAFETY_INDIRECT_CALL=1
+pass	echo of bash -c string-literal	echo "bash -c 'rm -rf $X'"	BASH_SAFETY_INDIRECT_CALL=1

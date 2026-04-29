@@ -1,7 +1,7 @@
 {
   "$schema": "https://claude.ai/plugin-schema.json",
   "name": "claudemd",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "AI-CODING-SPEC v6.11 HARD-rule enforcement via Claude Code hooks + spec distribution",
   "author": {"name": "sds"},
   "repository": "https://github.com/sdsrss/claudemd",

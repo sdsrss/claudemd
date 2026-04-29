@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "claudemd marketplace: AI-CODING-SPEC v6.11 enforcement plugin",
-    "version": "0.5.5"
+    "version": "0.6.0"
   },
   "plugins": [
     {
       "name": "claudemd",
       "source": "./",
       "description": "AI-CODING-SPEC v6.11 HARD-rule enforcement via Claude Code hooks + spec distribution",
-      "version": "0.5.5",
+      "version": "0.6.0",
       "category": "development"
     }
   ]

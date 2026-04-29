@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { logsDir, settingsPath, specHome, readManifest } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
+import { compareSpecs } from './lib/spec-hash.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,6 +45,28 @@ export async function doctor({ pruneBackups: prune } = {}) {
   for (const p of specHome()) {
     push(`spec:${path.basename(p)}`, fs.existsSync(p),
       fs.existsSync(p) ? 'present' : 'missing');
+  }
+
+  // v0.6.0: SHA-256 drift detection. Compares installed ~/.claude/<spec>
+  // against shipped <pluginRoot>/spec/<spec>. Surfaces (a) local edits to
+  // installed spec after install, (b) post-upgrade staleness when the
+  // plugin updated but the user hasn't run /claudemd-update yet. Does NOT
+  // cover supply-chain integrity — the marketplace/npm signature is the
+  // right layer for that.
+  const drift = compareSpecs(PLUGIN_ROOT);
+  for (const s of drift) {
+    if (s.shipped === null) {
+      push(`spec-hash:${s.name}`, false,
+        `shipped spec missing at ${path.join(PLUGIN_ROOT, 'spec', s.name)}`);
+    } else if (s.installed === null) {
+      push(`spec-hash:${s.name}`, false,
+        `installed spec missing — /plugin install claudemd@claudemd to bootstrap`);
+    } else if (s.match) {
+      push(`spec-hash:${s.name}`, true, `${s.shipped.slice(0, 12)}… matches`);
+    } else {
+      push(`spec-hash:${s.name}`, false,
+        `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync`);
+    }
   }
 
   const which = (bin) => {

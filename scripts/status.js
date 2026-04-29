@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logsDir, backupRoot, readManifest } from './lib/paths.js';
+import { logsDir, backupRoot, readManifest, resolvePluginRoot } from './lib/paths.js';
+import { compareSpecs } from './lib/spec-hash.js';
 
 // Keep in sync with toggle.js NAME_MAP values. Order mirrors HOOK_BASENAMES
 // in install.js (registration order) for human-scannable output.
@@ -32,12 +33,29 @@ export async function status() {
     killSwitches[name.toLowerCase()] = process.env[`DISABLE_${name}_HOOK`] === '1';
   }
 
+  // v0.6.0: SHA-256 drift summary. Truncate to 12 hex chars for display
+  // (full hash is in doctor's per-file detail). One row per shipped spec.
+  const pluginRoot = resolvePluginRoot(import.meta.url);
+  const hashes = compareSpecs(pluginRoot).map(s => ({
+    name: s.name,
+    match: s.match,
+    shipped: s.shipped ? s.shipped.slice(0, 12) : null,
+    installed: s.installed ? s.installed.slice(0, 12) : null,
+  }));
+
+  // v0.6.0: surface opt-in feature flags so /claudemd-status reflects what
+  // the hooks will actually do this session. BASH_SAFETY_INDIRECT_CALL gates
+  // the bash -c / sh -c / zsh -c / eval unwrap path in pre-bash-safety hook.
+  const features = {
+    bashSafetyIndirectCall: process.env.BASH_SAFETY_INDIRECT_CALL === '1',
+  };
+
   const logPath = path.join(logsDir(), 'claudemd.jsonl');
   const logLines = fs.existsSync(logPath)
     ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length
     : 0;
 
-  return { plugin, spec: { installed: specVersion }, killSwitches, log: { lines: logLines } };
+  return { plugin, spec: { installed: specVersion, hashes }, killSwitches, features, log: { lines: logLines } };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

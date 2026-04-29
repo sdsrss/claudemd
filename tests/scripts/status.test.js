@@ -57,3 +57,35 @@ test('status reports not-installed when manifest missing', async () => {
   const r = await status();
   assert.equal(r.plugin.installed, false);
 });
+
+test('status.spec.hashes covers all three spec files (v0.6.0)', async () => {
+  const r = await status();
+  assert.ok(Array.isArray(r.spec.hashes), 'spec.hashes must be an array');
+  assert.equal(r.spec.hashes.length, 3);
+  assert.deepEqual(r.spec.hashes.map(h => h.name),
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md']);
+  // The fixture installed-spec content does NOT match the shipped spec
+  // (test writes a synthetic 6.10.0 stub, not the real shipped spec) — so
+  // CLAUDE.md must report match=false. This proves drift is detected, not
+  // silently green.
+  const main = r.spec.hashes.find(h => h.name === 'CLAUDE.md');
+  assert.equal(main.match, false);
+  assert.equal(typeof main.installed, 'string'); // fixture installed
+  assert.equal(typeof main.shipped, 'string');   // real shipped from repo
+});
+
+test('status.features.bashSafetyIndirectCall reflects env var (v0.6.0)', async () => {
+  const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
+  try {
+    delete process.env.BASH_SAFETY_INDIRECT_CALL;
+    const off = await status();
+    assert.equal(off.features.bashSafetyIndirectCall, false);
+
+    process.env.BASH_SAFETY_INDIRECT_CALL = '1';
+    const on = await status();
+    assert.equal(on.features.bashSafetyIndirectCall, true);
+  } finally {
+    if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
+    else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
+  }
+});

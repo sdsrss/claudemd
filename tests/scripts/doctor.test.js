@@ -142,6 +142,29 @@ test('D8: orphan manifest detected when manifest.pluginRoot path is absent', asy
   assert.match(pc.detail, /claudemd-uninstall/);
 });
 
+test('doctor surfaces spec-hash drift when installed differs from shipped (v0.6.0)', async () => {
+  // Write installed spec content that cannot match the real shipped spec —
+  // proves drift is detected, not silently green.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'fake spec body\n');
+  const r = await doctor({});
+  const main = r.checks.find(c => c.name === 'spec-hash:CLAUDE.md');
+  assert.ok(main, 'spec-hash:CLAUDE.md check must exist');
+  assert.equal(main.ok, false);
+  assert.match(main.detail, /≠ shipped/);
+  assert.match(main.detail, /claudemd-update/);
+});
+
+test('doctor reports spec-hash:* missing when installed spec absent (v0.6.0)', async () => {
+  // Default beforeEach does NOT write a CLAUDE.md to ~/.claude — so the
+  // "installed missing" branch fires. This is the fresh-install state
+  // before /plugin install runs the postInstall hook.
+  const r = await doctor({});
+  const main = r.checks.find(c => c.name === 'spec-hash:CLAUDE.md');
+  assert.ok(main);
+  assert.equal(main.ok, false);
+  assert.match(main.detail, /installed spec missing/);
+});
+
 test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
   const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
   fs.mkdirSync(realPluginRoot, { recursive: true });
