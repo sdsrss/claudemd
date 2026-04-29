@@ -29,20 +29,88 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
+# Sanitize CMD before pattern matching: strip heredoc bodies, line comments, and
+# quoted-string contents. The original regex matched on naive prefix class
+# `[[:space:];&|`]` which fired on `npx`/`rm` *inside* string literals — see
+# tests/hooks/pre-bash-safety.test.sh cases 29-36, 38 for the FP shapes
+# observed during the 2026-04-30 cso audit (4 live reproductions in one session).
+#
+# Strip order matters:
+#   1. Heredoc bodies (multi-line state, must run first to avoid downstream sed
+#      lines stripping content of an unclosed heredoc)
+#   2. Line comments
+#   3. Quoted string contents
+#
+# What this does NOT change:
+#   - Backtick command substitution (` ... `) — backticks ARE direct exec, so
+#     `\`npx pkg\`` stays detectable
+#   - $(...) command substitution — preserved (also direct exec)
+#   - bash -c "..." / eval "..." — these were already FNs (the original prefix
+#     class `[[:space:];&|`]` excluded `"` and `'`, so quoted-arg npx never matched).
+#     Stripping quotes therefore does not weaken any case the original detected.
+sanitize_cmd() {
+  local raw="$1" out="" line
+  local in_heredoc=0 heredoc_tag=""
+  # ['"]? = optional surround quote on tag (handles <<EOF, <<'EOF', <<"EOF").
+  # \047 = single quote (octal); double quote can sit literally inside char class.
+  local heredoc_re=$'<<-?[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if (( in_heredoc )); then
+      # Terminator: optional leading whitespace (for <<-TAG indented form), tag, optional trailing whitespace.
+      if [[ "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then
+        in_heredoc=0; heredoc_tag=""
+      fi
+      out+=$'\n'
+      continue
+    fi
+    if [[ "$line" =~ $heredoc_re ]]; then
+      heredoc_tag="${BASH_REMATCH[1]}"
+      in_heredoc=1
+      # Keep portion of line BEFORE the `<<` introducer.
+      line="${line%%<<*}"
+    fi
+    out+="$line"$'\n'
+  done <<< "$raw"
+
+  # Strip line comments (# at line start or after whitespace, to end of line).
+  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
+
+  # Strip contents of paired quoted strings, keeping the empty-quote markers
+  # so token boundaries (e.g. `echo ""` after stripping) are preserved.
+  #
+  # Double-quoted strings:
+  #   - Strip iff the body contains NO `$` (no var expansion / command sub).
+  #   - Char class [^"$] excludes both " and $, so "foo bar" matches and strips,
+  #     but "$VAR" / "x$y" / "$(cmd)" do not match — preserved for the rm-rf
+  #     and npx detectors to see the variable expansion they need to deny.
+  # Single-quoted strings:
+  #   - Always strip — no shell expansion ever happens inside '...'.
+  out=$(printf '%s' "$out" | sed -E 's/"[^"$]*"/""/g')
+  out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
+
+  printf '%s' "$out"
+}
+
+SANITIZED_CMD=$(sanitize_cmd "$CMD")
+
 declare -a HITS=()
 REASONS=""
 
 # Pattern 1: rm with -r/-R/-f flag combination AND variable-expansion target.
 # Use a token-based approach to keep regex BSD-grep compatible.
+# Match against SANITIZED_CMD (strings/comments/heredoc-bodies stripped) but
+# accept the [allow-rm-rf-var] bypass token from raw CMD so the marker can
+# live anywhere — including inside a quoted string the user wrote intentionally.
 RM_FLAG_REGEX='(^|[[:space:];&|`])rm[[:space:]]+-[[:alpha:]]*[rRfF][[:alpha:]]*[[:space:]]'
-if echo "$CMD" | grep -qE "$RM_FLAG_REGEX"; then
+if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
   bypass_rm=0
   echo "$CMD" | grep -qF '[allow-rm-rf-var]' && bypass_rm=1
 
   if (( bypass_rm == 0 )); then
     # Find the rm subcommand's argv after the flag block. Strip up through
     # the rm flags, then take the next non-flag token as the target.
-    rm_tail=$(echo "$CMD" | sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1)
+    rm_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1)
     rm_target=""
     for tok in $rm_tail; do
       case "$tok" in
@@ -68,13 +136,13 @@ fi
 # Pattern 2: npx with first non-flag arg being a bare/scoped package name
 # without @<version> pin.
 NPX_REGEX='(^|[[:space:];&|`])npx[[:space:]]+'
-if echo "$CMD" | grep -qE "$NPX_REGEX"; then
+if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   bypass_npx=0
   echo "$CMD" | grep -qF '[allow-npx-unpinned]' && bypass_npx=1
 
   if (( bypass_npx == 0 )); then
     # Take everything after the first `npx ` up to a command terminator.
-    npx_tail=$(echo "$CMD" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
+    npx_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
     pkg_token=""
     skip_next=0
     for tok in $npx_tail; do

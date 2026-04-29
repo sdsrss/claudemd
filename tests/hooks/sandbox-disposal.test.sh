@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2015  # `cmd && PASS || FAIL` is the test-assertion idiom here; PASS branch is `echo` which does not fail
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

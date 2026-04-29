@@ -49,7 +49,16 @@ upstream_check() {
     cache_parent="$(cd "$PLUGIN_ROOT/.." 2>/dev/null && pwd)" || return 0
   fi
   [[ -d "$cache_parent" ]] || return 0
-  local_max=$(ls -1 "$cache_parent" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+  # SC2010 avoidance: glob iteration tolerates non-alphanumeric filenames in the
+  # cache parent and lets us pre-filter to semver-named dirs before sort -V.
+  local entry base
+  local_max=$(
+    for entry in "$cache_parent"/*; do
+      [[ -d "$entry" ]] || continue
+      base="${entry##*/}"
+      [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s\n' "$base"
+    done | sort -V | tail -1
+  )
   [[ -z "$local_max" ]] && return 0
 
   local remote_url remote_output remote_tag

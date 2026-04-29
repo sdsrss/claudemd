@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.5] - 2026-04-30
+
+**Patch — pre-bash-safety FP fix + session-start glob refactor + .gstack gitignore.** Hook-trust hardening release. Closes 4 of 5 findings from the 2026-04-30 `/cso` + `/health` audits run on this project; F1 (the largest-impact hook FP) is the headline.
+
+### Symptoms (pre-fix)
+
+1. **`hooks/pre-bash-safety-check.sh:70` regex over-fired on `npx`/`rm` *inside* string literals.** The matcher's `(^|[[:space:];&|`])npx[[:space:]]+` prefix class included whitespace, so any command containing `<space>npx<space>` — even inside `echo "X: npx Y"`, `# npx Y` comments, or heredoc bodies — denied with "npx unpinned package: <token>" pointing at an unrelated subsequent token (the `sed s/.*${REGEX}//` extractor was greedy, so a later word in the same script became the "package name" in the error message). Reproduced 4× during the 2026-04-30 `/cso` audit on this very project. The pattern trains users toward `DISABLE_PRE_BASH_SAFETY_HOOK=1`, eroding the HARD safety gate.
+2. **`hooks/session-start-check.sh:52` used `ls -1 | grep -E` to find latest semver-named cache dir.** SC2010 — the only non-info shellcheck finding in production hooks. Doesn't break with normal cache-dir names but is shellcheck-dirty and tolerates non-alphanumeric filenames the glob form handles correctly.
+3. **`.gstack/` not in `.gitignore`.** `/cso` writes findings to `.gstack/security-reports/{date}.json`. Public OSS repo; an accidental `git add .gstack/` would publish a security-posture summary including attack-path descriptions.
+4. **`tests/hooks/{sandbox-disposal,session-start,ship-baseline}.test.sh` triggered 17 SC2015 notes.** The `assert && PASS || FAIL` test-assertion idiom intentionally uses `A && B || C`; the noise drowns out real shellcheck signal across the suite.
+
+### Fix
+
+- `[fix]` **`hooks/pre-bash-safety-check.sh`** — F1: new `sanitize_cmd()` function applied to `$CMD` before pattern matching. Strips in order: (1) heredoc bodies (multi-line state, matched via `<<-?TAG` introducer + bare-TAG terminator regex; supports `<<EOF`, `<<'EOF'`, `<<"EOF"`, `<<-EOF` indented form), (2) line comments (`#` at line start or after whitespace, to end of line), (3) quoted-string contents — with crucial nuance: double-quoted strings strip iff body has no `$` (so `"$VAR"` / `"$(cmd)"` / `"x$y"` are preserved for the rm-rf detector), single-quoted strings always strip (no shell expansion ever happens inside `'...'`). Backticks and `$(...)` left intact (they ARE direct exec). Both rm and npx detectors switched to `$SANITIZED_CMD`; the `[allow-rm-rf-var]` / `[allow-npx-unpinned]` bypass tokens still scan raw `$CMD` so the marker can live anywhere — including inside a quoted string the user wrote intentionally.
+- `[fix]` **`hooks/session-start-check.sh:52`** — Health #5: replaced `ls -1 "$cache_parent" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1` with a glob iteration + bash-regex format guard then `sort -V | tail -1`. SC2010 cleared; tolerates filenames with non-alphanumeric characters.
+- `[chore]` **`.gitignore`** — F2: added `.gstack/` with rationale comment pointing at the security-report leak vector.
+- `[chore]` **`tests/hooks/{sandbox-disposal,session-start,ship-baseline}.test.sh`** — top-of-file `# shellcheck disable=SC2015` directive with one-line rationale (the PASS branch is `echo` which never fails, so the `A && B || C` idiom is safe here). Full-repo shellcheck noise: 58 findings (1 warning + 57 notes) → 41 findings (0 warning + 41 notes).
+- `[test]` **`tests/hooks/pre-bash-safety.test.sh`** — 11 new regression cases (29-38 + malformed-input renumbered to 39): cases 29-32 cover space-prefixed npx in echo/printf/single-and-double-quote/echo-flag forms (the actual session FP shapes — e.g. `echo "DEADCODE: npx knip"`); cases 33-34 cover leading + trailing comment forms; cases 35-36 cover heredoc body + heredoc-with-quoted-tag forms (`<<'JSON' ... npx pkg ... JSON`); cases 37-38 confirm the rm pattern's same-class FP guard. All 39 pass post-fix; 9 of the new cases were RED prior to the `sanitize_cmd` implementation (verified before commit). Case 6 (`rm -rf "$WORK_DIR"` deny) was an intermediate regression caught by the test suite during TDD — initial sanitize stripped `"$VAR"` to `""`; refined the double-quote regex to `[^"$]*` to preserve var-expansion content.
+
+### Migration note (read before upgrading)
+
+No action required. The sanitize is strictly more conservative than the original matcher in the FN direction (preserves backtick + `$(...)` + double-quoted-with-`$`); strictly less aggressive in the FP direction (silences string-literal / comment / heredoc shapes). All 27 original test cases (1-27) continue to pass unchanged.
+
+### Not changed
+
+- No spec content change. Spec stays at v6.11.3.
+- No new HARD rule, no new hook, no §13.2 budget delta.
+- No change to install / update / uninstall behavior.
+- `bash -c '<unpinned npx>'` / `eval "<unpinned npx>"` indirect-execution gap is documented in `pre-bash-safety-check.sh` as a known FN, NOT closed in this release. Original matcher already missed these (the `[[:space:];&|`]` prefix class excluded `'` and `"`, so quoted-arg npx never matched). Closing this requires a scan-then-recurse design and is deferred.
+
+### Follow-up (deferred to v0.6.0 if reached)
+
+- **Spec file SHA-256 integrity check** (cso F4) — record SHA-256 of installed `~/.claude/CLAUDE*.md` files in manifest; verify in `session-start-check.sh`. Detects post-install spec tampering — a real LLM-trust-surface risk for plugins distributing behavior policy. Multi-file change spanning install.js + manifest schema + session-start hook; warrants a minor bump, not a patch.
+- **Indirect-exec coverage** for `bash -c` / `eval` / `xargs ... bash -c` — pre-existing FN, not touched here.
+
 ## [0.5.4] - 2026-04-30
 
 **Patch — uninstall path hardening + diagnostics.** Defensive bugfix release. Closes the 3 follow-up items deferred from v0.5.3 + 1 new finding (D8 orphan-manifest doctor check). Manifest-conditional eviction logic was the largest correctness gap in the install audit; this release closes it.

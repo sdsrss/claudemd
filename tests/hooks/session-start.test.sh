@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # session-start-check.sh tests — self-bootstrap behavior (v0.1.9 P1b)
 # + upstream-check banner behavior (v0.4.0 Cases 8-11).
+# shellcheck disable=SC2015  # `cmd && PASS || FAIL` is the test-assertion idiom here; PASS branch is `echo` which does not fail
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -1,5 +1,9 @@
 .code-graph/
 
+# gstack project artifacts (security reports, plans, telemetry) — local-only, may
+# leak attack-path summaries onto a public repo if accidentally git-add'd.
+.gstack/
+
 # Claude Code workspace state (sessions, permission grants, local hooks) — user-specific + transient.
 .claude/
 

@@ -79,20 +79,50 @@ assert_pass "25: npx prettier [allow-npx-unpinned] → pass"      "npx prettier 
 assert_pass "26: DISABLE_PRE_BASH_SAFETY_HOOK=1 → pass" 'rm -rf $X' "DISABLE_PRE_BASH_SAFETY_HOOK=1"
 assert_pass "27: DISABLE_CLAUDEMD_HOOKS=1 → pass"        'npx pkg'   "DISABLE_CLAUDEMD_HOOKS=1"
 
-# --- malformed input fail-open ---
+# --- pattern 2 FP guards: npx-as-string-literal must not trigger ---
+# Real-world FPs observed during /cso audit on 2026-04-30 — bash commands containing
+# the literal text "npx <pkg>" inside echo args, comments, or heredoc bodies were
+# blocked as if they were actual npx invocations.
+# Cases 29-32 use a space-before-npx inside the string — this is the form that
+# triggers the original regex (prefix class includes [[:space:]]), so they fail
+# without the sanitize_cmd quoted-string strip. The 4-times-during-cso reproductions
+# all had this shape (`echo "DEADCODE: npx knip"`, etc).
+assert_pass "29: echo \"X: npx pkg\" → pass (space-prefixed npx in echo arg)"  'echo "DEADCODE: npx knip"'
+assert_pass "30: echo '\''X: npx pkg'\'' → pass (single-quoted echo, space-prefix)" "echo 'mention: npx prettier here'"
+assert_pass "31: echo -n \"X: npx pkg\" → pass (echo flag + space-prefix string)" 'echo -n "warn: npx tsc next"'
+assert_pass "32: printf with mid-string npx → pass"                              'printf "label: npx pkg\\n"'
+assert_pass "33: leading-# comment with npx → pass"                          '# npx pkg in a comment'
+assert_pass "34: trailing # comment with npx → pass"                         'ls /tmp # npx pkg trailing'
+assert_pass "35: heredoc body with npx → pass"                               'cat <<EOF
+some prose mentioning npx pkg here
+EOF'
+assert_pass "36: heredoc with quoted tag + npx in body → pass" 'cat <<'\''JSON'\''
+{"hint":"run npx pkg to install"}
+JSON'
+
+# --- pattern 1 FP guards: rm-rf-as-string-literal must not trigger ---
+assert_pass "37: echo \"rm -rf \$X\" → pass (rm in echo arg)"    'echo "rm -rf $X"'
+assert_pass "38: # rm -rf \$X → pass (rm in comment)"             '# rm -rf $X danger'
+
+# --- pattern 2 FN re-confirmation: real npx invocations stay blocked ---
+# These were already FNs of the original matcher (no prefix-class match before
+# `npx` when wrapped in quotes). Documented here so future regressions surface.
+# We do NOT add new detection for indirect-exec — that's deferred per project plan.
+# bash -c 'npx pkg' → currently NOT detected (FN); not asserting here.
+
 TMP_FIX=$(mktemp)
 echo 'not json' > "$TMP_FIX"
 out=$(bash "$HOOK" < "$TMP_FIX" 2>&1)
 rm -f "$TMP_FIX"
 if [[ -z "$out" ]]; then
-  echo "PASS: 28 malformed JSON stdin → fail-open pass"
+  echo "PASS: 39 malformed JSON stdin → fail-open pass"
 else
-  echo "FAIL: 28 (got: $out)"
+  echo "FAIL: 39 (got: $out)"
   FAIL=$((FAIL + 1))
 fi
 
 if (( FAIL > 0 )); then
-  echo "Tests: $((28 - FAIL))/28 passed"
+  echo "Tests: $((39 - FAIL))/39 passed"
   exit 1
 fi
-echo "Tests: 28/28 passed"
+echo "Tests: 39/39 passed"
