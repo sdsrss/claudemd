@@ -145,7 +145,103 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 11 plain-form tag, keyword match + unread → deny" \
   || { echo "FAIL: 11 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+# Case 12 (B): untagged-only MEMORY.md entry must NOT auto-block. Pre-fix the
+# hook treated every untagged line as "always required Read", forcing the
+# user to Read N unrelated files on every push. Spec §11 "Index is a router,
+# not a substitute" — untagged matching is the agent's responsibility, not
+# the hook's. Locks: ship command + only-untagged entries → pass.
+UNTAG_DIR="$HOME/.claude/projects/${ENCODED}-untag"
+UNTAG_MEM="$UNTAG_DIR/memory"
+mkdir -p "$UNTAG_MEM"
+cat > "$UNTAG_MEM/MEMORY.md" <<'EOF'
+- [Untagged one](project_a.md) — no tag block at all
+- [Untagged two](project_b.md) — also no tags
+EOF
+touch "$UNTAG_MEM/project_a.md" "$UNTAG_MEM/project_b.md"
+SESS="sess12"
+UNTAG_CWD="${CWD}-untag"
+echo '{"tool":"Read","path":"/unrelated"}' > "$UNTAG_DIR/$SESS.jsonl"
+EVENT_12="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$UNTAG_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_12" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 12 untagged-only MEMORY → no auto-block" \
+  || { echo "FAIL: 12 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 13 (B): mixed tagged + untagged. Tagged matching keyword + unread →
+# deny, but the deny message must mention ONLY the tagged file, not the
+# untagged ones. Locks: untagged entries are silent at hook level even when
+# a sibling tagged entry triggers a block.
+MIX_DIR="$HOME/.claude/projects/${ENCODED}-mix"
+MIX_MEM="$MIX_DIR/memory"
+mkdir -p "$MIX_MEM"
+cat > "$MIX_MEM/MEMORY.md" <<'EOF'
+- [Tagged ship](feedback_ship.md) `[push]` — tagged
+- [Untagged sibling](project_other.md) — should not appear in deny
+EOF
+touch "$MIX_MEM/feedback_ship.md" "$MIX_MEM/project_other.md"
+SESS="sess13"
+MIX_CWD="${CWD}-mix"
+echo '{"tool":"Read","path":"/unrelated"}' > "$MIX_DIR/$SESS.jsonl"
+EVENT_13="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$MIX_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_13" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+REASON=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecisionReason 2>/dev/null)
+if [[ "$DEC" == "deny" ]] && echo "$REASON" | grep -qF "feedback_ship.md" \
+  && ! echo "$REASON" | grep -qF "project_other.md"; then
+  echo "PASS: 13 mixed tagged+untagged → deny only on tagged"
+else
+  echo "FAIL: 13 (out: $OUT)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 11/11 passed"
+
+# Case 14 (C): ship-word inside quoted commit message must NOT trigger,
+# even when MEMORY has a tag that would match the quoted word. Pre-fix the
+# regex `(git push|release|deploy|ship)` matched anywhere, so
+# `git commit -m "release notes"` triggered the scan; the tagged `release`
+# entry then demanded a Read. Locks anchor: trigger words must be at
+# command-segment-start, not embedded in quoted args.
+SESS="sess14"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Release lessons](feedback_release.md) `[release]` — would false-match in quotes pre-fix
+EOF
+touch "$MEM_DIR/feedback_release.md"
+EVENT_14="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m 'fix: release notes update'\"},\"cwd\":\"$CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_14" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 14 ship-word in quoted commit msg → no trigger" \
+  || { echo "FAIL: 14 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 15 (C): glab mr create is a real ship verb at command-start; the
+# trigger filter must fire so tagged matches are still enforced. With no
+# tag matching the command keywords, the file requirement set is empty →
+# pass. Confirms `glab mr` got added to the trigger list without breaking
+# the no-tag-match exit path.
+SESS="sess15"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Push lessons](feedback_push.md) `[migration, schema]` — neither tag in the command
+EOF
+touch "$MEM_DIR/feedback_push.md"
+EVENT_15="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"glab mr create --title bump\"},\"cwd\":\"$CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_15" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 15 glab mr + non-matching tags → no deny" \
+  || { echo "FAIL: 15 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 16 (C): standalone shipping verb (`release-please`, `deploy.sh`,
+# `&& deploy`) at command-segment-start must STILL trigger the filter so
+# tagged matches are enforced. Locks: tightening C didn't accidentally
+# kill real ship-tool detection.
+SESS="sess16"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Deploy lessons](feedback_deploy.md) `[deploy]` — fires on real deploy
+EOF
+touch "$MEM_DIR/feedback_deploy.md"
+EVENT_16="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd dist && deploy --env prod\"},\"cwd\":\"$CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_16" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 16 standalone deploy after && → still triggers" \
+  || { echo "FAIL: 16 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((16 - FAIL))/16 passed"; exit 1
+fi
+echo "Tests: 16/16 passed"

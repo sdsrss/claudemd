@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.2 — Extended
+# AI-CODING-SPEC v6.11.3 — Extended
 
 Loaded on demand per §EXT in `CLAUDE.md`. Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -522,14 +522,13 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.2 (patch, 2026-04-29)** — §EXT TOC trim from core (dead-weight per `claudemd` v0.4.1 self-audit) + spec-trio version-field alignment. No rule additions, removals, or downgrades. From v6.11.2 forward, spec trio (CLAUDE.md / CLAUDE-extended.md / CLAUDE-changelog.md) ships with synced version numbers — per-file content-vs-version accuracy gives way to whole-trio consistency, closing the silent-drift bug v6.11.1 demonstrated when core was bumped without extended.
+**v6.11.3 (patch, 2026-04-30)** — §11 MEMORY.md read-the-file footnote clarified; documents the hook/agent split: hook enforces only tagged matches, untagged lines are agent-driven full content scan. No rule additions, removals, or downgrades. Resolves a real over-trigger pattern observed in `claudemd` v0.5.0: untagged MEMORY.md entries forced N unrelated Reads on every push, and the trigger regex `(release|deploy|ship)` matched anywhere in the command (commit messages, MR descriptions, file paths) → false-positive denials.
 
-- **§EXT TOC line removed** (core, -357 chars) — the `**Extended TOC**:` paragraph (operator-routing metadata listing §1.5-EXT through Appendix B) was loaded every L0-L2 turn for zero per-task agent value. §1.5/§5.1/§7/§11-EXT pointers retained at their semantic-reference call-sites; A14 spec-structure assertions intact.
-- **Extended title field** (1 line) — `# AI-CODING-SPEC v6.10.0 — Extended` → `v6.11.2 — Extended`. Was stuck at v6.10.0 since the v6.11.0 minor; v6.11.1 patch bumped core only and the desync went undetected. v6.11.2 introduces explicit trio-sync policy.
+- **§11 footnote** (core, ~+250 chars) — clarifies that "Untagged lines = full-scan" means agent-driven content scan based on title/description, NOT hook-enforced auto-block. Plugin-side `hooks/memory-read-check.sh` updated in claudemd v0.5.1 to skip untagged entries and anchor the trigger regex to command-segment-start. Together: tag the lines you want hook-enforced; leave the rest for agent judgment.
 
 HARD tally unchanged: §0.1 Core growth discipline / §0 Hard-AUTH override / Iron Law #2 / §7 Ship-baseline / §7 User-global-state audit / §8 Verify-before-claim (V1–V4) / §10 Four-section order / §10 Honesty rules / §10 Specificity / §11 MEMORY.md read-the-file / §11 Mid-SPINE turn-yield / §11 Session-exit mid-SPINE. **12 HARD in core + 4 §EXT-side, zero delta from v6.10.2**.
 
-**Sizing** (v6.11.2, 2026-04-29): core 23751 → 23394 chars (-357, -1.5%); extended 45678 → 42302 chars (-3376, -7.4% — `## Recent changes` block trimmed from v6.11.0 verbose 8-bullet entry to v6.11.2 concise 2-bullet entry per the "current version's entry only" policy). Size budget (§13.1): core 23394/25000 (1606 chars headroom, 93.6% utilized); extended 42302/50000 (7698 chars headroom, 84.6% utilized). Runtime L0/L1/L2 ≈ 5.85k tokens (core only). L3/Override/ship ≈ 16.6k tokens (-0.8k vs v6.11.1). §13.2 budget cost = 0; 20-task counter preserved.
+**Sizing** (v6.11.3, 2026-04-30): core 23394 → 23643 chars (+249, +1.1%); extended 42302 → ~42050 chars (Recent-changes block compaction net of v6.11.3 entry). Size budget (§13.1): core 23643/25000 (1357 chars headroom, 94.6% utilized — closer to ceiling, still safe); extended ~42050/50000 (~7950 chars headroom, ~84% utilized). Runtime L0/L1/L2 ≈ 5.91k tokens (core only). L3/Override/ship ≈ 16.6k tokens (no change from v6.11.2). §13.2 budget cost = 0; 20-task counter preserved.
 
 ## §1.5-EXT GLOSSARY (full definitions)
 

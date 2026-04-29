@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.1] - 2026-04-30
+
+**Patch — `memory-read-check.sh` over-trigger fixes.** Bugfix release; no new HARD rule, no behavior expansion. Restores the spec §11 "Index is a router, not a substitute" intent that v0.5.0's hook contradicted. Spec footnote co-bumped to v6.11.3 to document the hook/agent split.
+
+### Symptoms (pre-fix)
+
+Three real failures observed against `~/.claude/CLAUDE.md` v6.11.2 and `claudemd` v0.5.0:
+
+1. `git push origin <branch>` blocked with 6 `MEMORY.md` files demanded for Read — none of which had keyword tags. Every push on a project with untagged MEMORY.md entries paid this tax.
+2. `glab mr create --title "fix release"` blocked: the trigger regex `(git push|release|deploy|ship)` matched the `release` substring inside the quoted `--title` argument.
+3. `git commit -m "release notes update"`-style commands triggered the same path even though `git commit` is not a ship verb.
+
+### Fix
+
+- `[fix]` **`hooks/memory-read-check.sh` L26** — trigger regex anchored to command-segment-start (`^` or after `;` / `&` / `|`), with explicit ship-tool prefixes (`git push`, `gh release`, `gh pr`, `glab mr`, `npm publish`, `npm run release|deploy|ship`, `cargo publish`, `make release|deploy|ship`) plus bare ship verbs at boundary positions. Substring matches inside quoted args no longer fire the filter.
+- `[fix]` **`hooks/memory-read-check.sh` L61–62** — untagged `MEMORY.md` entries no longer auto-block. Per spec v6.11.3, untagged lines are agent-driven full content scan; the hook enforces only entries with explicit `[tag1, tag2]` blocks. Operational guidance: tag the lines you want hook-enforced, leave the rest for agent judgment. Existing untagged MEMORY.md content keeps working — agent reads when keyword/title looks relevant; hook stays out of the way.
+- `[test]` **`tests/hooks/memory-read-check.test.sh`** — Cases 12–16 added (16 total): untagged-only no-block, mixed tagged+untagged deny-tagged-only, ship-word in quoted commit msg no-trigger, glab mr non-matching tags no-deny, standalone deploy after `&&` still triggers.
+- `[test]` **`tests/scripts/spec-structure.test.js`** + **`tests/integration/upgrade-lifecycle.test.sh`** — version assertions bumped v6.11.2 → v6.11.3.
+
+### Migration note (read before upgrading)
+
+No action required. Existing MEMORY.md files keep working; previously over-triggering pushes will now flow without the false-positive deny. If you were relying on the old "untagged = always required Read" behavior to force re-Read of specific files at ship time, **add `[tag1, tag2]` blocks to those entries** — the hook now enforces only tagged matches.
+
+`DISABLE_MEMORY_READ_HOOK=1` per-session bypass and `[skip-memory-check]` in-command bypass unchanged.
+
 ## [0.5.0] - 2026-04-29
 
 **Minor — three bundled additions: §12 PreToolUse:Bash safety hook, §1.B sandbox-disposal scan-locations override, §1.A macOS /tmp diagnostic CI step.** Released-artifact user-visible default behavior change (new hook intercepts dangerous `git`-adjacent Bash commands at PreToolUse), so SemVer minor per AI-CODING-SPEC §EXT released-artifact checklist. No spec content change; spec stays at v6.11.2. Manifest descriptions stay at `v6.11` per v0.2.1 description-policy.

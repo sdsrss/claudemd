@@ -22,8 +22,14 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Escape hatch
 echo "$CMD" | grep -qF '[skip-memory-check]' && exit 0
 
-# Filter: ship/release/push/deploy keywords
-echo "$CMD" | grep -qE '(git[[:space:]]+push|release|deploy|ship)' || exit 0
+# Filter: ship/release/push/deploy verbs at command-segment-start.
+# Anchor on `^` or shell separator (`;` / `&` / `|`) so `release`/`deploy`/
+# `ship` substrings inside quoted commit messages, MR descriptions, file
+# paths, etc. don't trigger the whole MEMORY scan. Pre-fix `git commit -m
+# "release notes"` and `glab mr create --title "fix release"` both fired
+# the filter — see tests Cases 14–15.
+TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|$)'
+echo "$CMD" | grep -qE "$TRIGGER_RE" || exit 0
 
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
@@ -59,7 +65,12 @@ while IFS= read -r line; do
   fi
 
   if [[ -z "$TAG_BLOCK" ]]; then
-    MATCHES+=("$FILE")
+    # Untagged entries: hook does NOT auto-block. Spec §11 "Index is a
+    # router, not a substitute" — untagged matching is the agent's
+    # responsibility (full content scan when in doubt). Pre-fix this branch
+    # added the file to MATCHES unconditionally, forcing N unrelated Reads
+    # on every push when MEMORY.md grew without tag discipline.
+    continue
   else
     IFS=',' read -ra TAGS <<<"$TAG_BLOCK"
     for t in "${TAGS[@]}"; do

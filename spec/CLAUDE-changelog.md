@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.3 — 2026-04-30
+
+Patch: §11 MEMORY.md read-the-file footnote clarified to document the hook/agent split. No rule additions, removals, or downgrades. Resolves over-trigger pattern observed in `claudemd` v0.5.0 where untagged MEMORY.md entries forced N unrelated Reads on every push and the trigger regex `(release|deploy|ship)` matched anywhere in the command body (commit messages, MR descriptions, file paths) → false-positive denials on `git commit -m "release notes"`, `glab mr create --description "fix release"`, etc.
+
+- `[fix]` **§11 footnote wording** (core, +249 chars) — `Ungaged lines = full-scan` was ambiguous; the v0.5.0 hook implementation read it as "block on every untagged entry", contradicting the same paragraph's "Index is a router, not a substitute". v6.11.3 makes the footnote explicit: untagged lines = **agent-driven** full content scan (decide via title/description); the hook does NOT auto-block. Operational rule: tag lines you want hook-enforced; leave the rest for agent judgment.
+- `[fix]` **plugin-side cross-reference** — companion fix in `claudemd` v0.5.1 (`hooks/memory-read-check.sh`): untagged-fallback removed, trigger regex anchored to command-segment-start (`^` or after `;` / `&` / `|`). Tests `tests/hooks/memory-read-check.test.sh` Cases 12–16 lock both halves.
+
+**§13.2 budget cost**: 0 (footnote clarification + version-field bump; no HARD delta). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.3, 2026-04-30): core 23394 → 23643 chars (+249, +1.1%); extended 42302 → ~42050 chars (block compaction). Size budget (§13.1): core 23643/25000 (1357 chars headroom, 94.6% utilized); extended ~42050/50000 (~7950 chars headroom, ~84% utilized). Runtime L0/L1/L2 ≈ 5.91k tokens (core only, +0.06k vs v6.11.2). L3/Override/ship ≈ 16.6k tokens (no change).
+
+---
+
 ## v6.11.2 — 2026-04-29
 
 Patch: §EXT TOC paragraph trimmed from core (dead-weight per `claudemd` v0.4.1 self-audit Section 2) + extended-title alignment to core (v6.10.0 → v6.11.2; closes silent-drift bug v6.11.1 demonstrated when core was bumped without extended). No rule additions, removals, or downgrades. From v6.11.2 forward, spec trio (CLAUDE.md / CLAUDE-extended.md / CLAUDE-changelog.md) ships with synced version numbers.

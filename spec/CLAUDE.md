@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.2 — Core
+# AI-CODING-SPEC v6.11.3 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -233,7 +233,7 @@ Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MU
   3. **Judgment** (L0/L1 + L2+ fallback): durable artifact whose insight would have changed a decision this session + ≥1 future-reuse probability.
   Always skip: `git log`-recoverable, code invariant, session-local, clean-root-cause bugfix.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
-  - Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`; agent matches task keywords against tags before Read. Ungaged lines = full-scan.
+  - Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`; agent matches task keywords against tags before Read. **Untagged lines = agent-driven full content scan** (decide based on the line's title/description) — the hook does NOT auto-block on untagged entries, so a MEMORY.md without tag discipline doesn't force N unrelated Reads on every push. Tag the lines you want hook-enforced.
 - **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn `[mem]` context, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or context pressure (§11 Context pressure → `tasks/<slug>-paused.md`). "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: next user message is `继续 / next / 怎么停了 / why did you stop` → confirmed prior yield.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → MUST NOT list under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
 
