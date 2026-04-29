@@ -1,13 +1,11 @@
 {
   "$schema": "https://claude.ai/plugin-schema.json",
   "name": "claudemd",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "AI-CODING-SPEC v6.11 HARD-rule enforcement via Claude Code hooks + spec distribution",
   "author": {"name": "sds"},
   "repository": "https://github.com/sdsrss/claudemd",
   "homepage": "https://github.com/sdsrss/claudemd",
   "license": "MIT",
-  "keywords": ["claude-code", "spec", "hooks", "enforcement", "banned-vocab", "ship-baseline"],
-  "postInstall": "node ${CLAUDE_PLUGIN_ROOT}/scripts/install.js",
-  "preUninstall": "node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js"
+  "keywords": ["claude-code", "spec", "hooks", "enforcement", "banned-vocab", "ship-baseline"]
 }

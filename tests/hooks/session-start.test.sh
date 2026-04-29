@@ -174,7 +174,35 @@ else
   echo "FAIL: 11 fail-open broken (ec=$EC11 out=$OUT11 err=$ERR11)"; FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+# Case 12: bootstrap log rotation. Pre-load >64 KiB of stale content; assert
+# the next hook run truncates it to ≤32 KiB before appending its own line.
+# Without this, the file grew unbounded across sessions.
+rm -f "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+# Sentinel at the HEAD followed by 80 KiB of filler. tail -c 32768 keeps
+# only the trailing 32 KiB → the head sentinel must vanish post-rotate.
+{ echo "STALE_SENTINEL_LINE_AT_HEAD"; head -c 81920 /dev/urandom | base64 | head -c 81920; } > "$HOME/.claude/logs/claudemd-bootstrap.log"
+PRE_BYTES=$(wc -c < "$HOME/.claude/logs/claudemd-bootstrap.log" | tr -d ' ')
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+# Wait for the background install to write its line.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$HOME/.claude/.claudemd-manifest.json" ]] && break
+  sleep 0.5
+done
+POST_BYTES=$(wc -c < "$HOME/.claude/logs/claudemd-bootstrap.log" | tr -d ' ')
+# After rotate the file = 32 KiB tail kept + this run's bootstrap output
+# (install.js dumps its JSON result ≈ 2-3 KiB). Cap the assertion at 48 KiB
+# (32 KiB + 16 KiB slack) — comfortably under the 64 KiB rotate ceiling, so
+# the next session would not re-rotate. Stale-sentinel must be gone (it
+# lived in the truncated head); that's the real content-rotation assertion.
+if [[ "$PRE_BYTES" -gt 65536 && "$POST_BYTES" -lt 49152 ]] \
+   && ! grep -q STALE_SENTINEL_LINE_AT_HEAD "$HOME/.claude/logs/claudemd-bootstrap.log"; then
+  echo "PASS: 12 bootstrap log rotates at >64 KiB (pre=$PRE_BYTES post=$POST_BYTES)"
+else
+  echo "FAIL: 12 log rotation not applied (pre=$PRE_BYTES post=$POST_BYTES)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 11/11 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
+fi
+echo "Tests: 12/12 passed"

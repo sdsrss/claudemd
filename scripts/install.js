@@ -85,12 +85,23 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
       );
     }
   }
+  // Fail loudly if the shipped spec dir is incomplete — otherwise the silent
+  // skip below would leave home-spec partially populated (or empty on a fresh
+  // install) while still writing the manifest, leaving the user thinking the
+  // install succeeded. Triggers seen in the wild: partial git checkout,
+  // truncated tarball, CI packaging that excluded `spec/`.
+  const missingSpecs = SPEC_FILES.filter(n => !fs.existsSync(path.join(pluginRoot, 'spec', n)));
+  if (missingSpecs.length > 0) {
+    throw new Error(
+      `install: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
+      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
+      `re-clone from https://github.com/sdsrss/claudemd.`
+    );
+  }
   for (const name of SPEC_FILES) {
     const src = path.join(pluginRoot, 'spec', name);
     const dest = path.join(path.dirname(settingsPath()), name);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, dest);
-    }
+    fs.copyFileSync(src, dest);
   }
 
   // 2a. Migrate hand-installed banned-vocab hook files (pre-plugin v0 artifact).

@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.6.1] - 2026-04-29
+
+**Patch — install/update/uninstall lifecycle audit + hardening.** Audit-driven cleanup pass on the three user-facing lifecycle paths. No spec change, no new commands, no new hooks. Removes one unsupported manifest field that future Claude Code schema tightening could refuse, plugs a silent-failure branch in `install.js`, stabilizes the shape of `uninstall.js` / `status.js` returns so downstream LLM templates don't see drifting keys, and adds bootstrap-log rotation so `~/.claude/logs/claudemd-bootstrap.log` no longer grows unbounded across sessions.
+
+### Added
+
+- `[feat]` **`scripts/status.js`** — new `plugin.hint` + `plugin.cacheVersions` fields surface the "installed but not yet bootstrapped" state (Claude Code cache dirs present under `~/.claude/plugins/cache/marketplaces/claudemd/plugins/claudemd/<version>/` but `~/.claude/.claudemd-manifest.json` missing). Previously `/claudemd-status` showed `plugin.installed: false` with no signal that the user was inside the bootstrap window — they'd assume install failed and re-run `/plugin install`. Now the JSON includes `plugin.hint: "cache-present-bootstrap-pending"` and `plugin.cacheVersions: ["0.6.0", ...]` (semver-shaped dirs only; dev-mode `main` and other non-semver entries are filtered). `commands/claudemd-status.md` updated to surface the hint in the slash-command output.
+
+- `[feat]` **`scripts/install.js`** — fail-loud check before manifest write: if any of the three shipped spec files (`CLAUDE.md`, `CLAUDE-extended.md`, `CLAUDE-changelog.md`) is missing from `<pluginRoot>/spec/`, `install()` throws `Error: install: shipped spec missing in <path>/spec/: <names>` instead of silently skipping the copy and writing a manifest that points at non-existent files. Catches packaging regressions (npm pack glob misconfiguration, marketplace mirror corruption) at install time rather than at first `/claudemd-update` invocation.
+
+- `[feat]` **`hooks/session-start-check.sh`** — bootstrap log rotation. When `~/.claude/logs/claudemd-bootstrap.log` exceeds 64 KiB the hook truncates it to the trailing 32 KiB before appending the new session's bootstrap output. Previously the file grew unbounded — typical bootstrap line is ~3 KiB, so a long-lived install accumulated megabytes of stale output. 64 KiB ceiling chosen so the file always holds at least 10–15 prior bootstrap runs for forensics; truncation uses `tail -c` (portable on Linux/macOS, no `logrotate` dependency).
+
+- `[test]` **`tests/scripts/status.test.js`** — new test case covering the `cache-present-bootstrap-pending` branch. Asserts `plugin.hint` is set, `plugin.cacheVersions` contains semver-shaped dirs, and dev-mode `main` is filtered out. Total `tests/scripts/` count: 134 (was 133).
+
+- `[test]` **`tests/hooks/session-start.test.sh`** — new Case 12 covering log rotation. Seeds 80 KiB log with a head sentinel string, runs the hook, asserts (a) file shrinks below 49 KiB, (b) head sentinel is gone (proving the truncation kept the *tail* not the head). Total: 12/12 passing (was 11/11).
+
+### Changed
+
+- `[fix]` **`.claude-plugin/plugin.json`** — removed `postInstall` and `preUninstall` fields. Claude Code's plugin schema does not define these; current loader silently ignores them, but a future schema-validation tightening would refuse the manifest entirely. The bootstrap path has always been carried by the `SessionStart` hook (not these fields), so removal is purely defensive — no behavioral change. Audit found this as the only HIGH-risk item in the lifecycle review.
+
+- `[fix]` **`scripts/uninstall.js`** — `already-uninstalled` early-return now includes `specAction: 'noop'` so the return-object shape matches the normal-path return (which always has `specAction`). Downstream consumers (slash-command markdown templates, future automation) that branch on `result.specAction` no longer need a defensive `?? 'noop'`. Existing `.warning` field unchanged; integration tests still pass.
+
+- `[docs]` **`README.md`** — installation section reworded: `node scripts/install.js` is documented as an **optional** fast-path for users who don't want to wait for the next session-start, not the canonical install step. The canonical step is `/plugin install claudemd@claudemd`; bootstrap completes either via the `SessionStart` hook on next launch or via the optional manual command. Also corrects the command count (6 commands listed, was 5 — `/claudemd-uninstall` was missing from the table since v0.5.3).
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + plugins[0]) — all to `0.6.1`. Spec files (`spec/CLAUDE*.md`) unchanged; spec version remains v6.11. Per the versioning policy above, plugin patch ships independently when spec is unchanged.
+- Validation: `node --test tests/scripts/*.test.js` → 134/134 pass; `tests/hooks/*.test.sh` × 11 suites → all pass (session-start 12/12); `tests/integration/full-lifecycle.test.sh` + `upgrade-lifecycle.test.sh` → both PASS.
+
 ## [0.6.0] - 2026-04-30
 
 **Minor — hook trust hardening: SHA-256 spec drift detection + opt-in indirect-call coverage + corpus-driven regression suite.** Closes the two follow-up items deferred from v0.5.5 (cso F4 spec integrity + indirect-exec FN) plus a foundational test refactor that moves bash-safety regression cases into a single TSV corpus driving a thin shell runner. Theme is hook *trust*: SHA-256 surfaces drift between shipped and installed spec; indirect-call closes a documented FN class on opt-in; the corpus eliminates the per-FP test-code edit cycle that v0.5.5 demonstrated.

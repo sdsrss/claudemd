@@ -135,6 +135,21 @@ LOG_DIR="$HOME/.claude/logs"
 mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
 LOG="$LOG_DIR/claudemd-bootstrap.log"
 
+# Rotate when log exceeds 64 KiB — keep last 32 KiB. Without this the file
+# grows unbounded (every SessionStart appends ≥1 line; mismatch path appends
+# more). Best-effort: any failure leaves the file as-is.
+if [[ -f "$LOG" ]]; then
+  LOG_BYTES=$(wc -c < "$LOG" 2>/dev/null | tr -d ' ')
+  if [[ -n "$LOG_BYTES" && "$LOG_BYTES" -gt 65536 ]]; then
+    TAIL_TMP="$LOG.tail.$$"
+    if tail -c 32768 "$LOG" > "$TAIL_TMP" 2>/dev/null; then
+      mv -f "$TAIL_TMP" "$LOG" 2>/dev/null || rm -f "$TAIL_TMP" 2>/dev/null
+    else
+      rm -f "$TAIL_TMP" 2>/dev/null
+    fi
+  fi
+fi
+
 (
   {
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart bootstrap → $PLUGIN_ROOT/scripts/install.js"

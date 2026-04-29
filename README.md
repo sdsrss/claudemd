@@ -11,7 +11,7 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 | Layer | Contents |
 |---|---|
 | 8 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `version-sync` |
-| 5 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` |
+| 6 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` |
 | Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
@@ -43,13 +43,15 @@ Run **both** slash commands inside Claude Code. First registers the GitHub marke
 /plugin install claudemd@claudemd
 ```
 
-After the install finishes, run the plugin's install script once to copy the spec files into `~/.claude/` and evict any stale claudemd hook entries from `settings.json`. The `<version>` below is the installed version dir — find it with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`:
+That's it for normal use. The plugin's own `hooks/hooks.json` is registered by Claude Code immediately, and the `SessionStart` hook bootstraps `install.js` in the background on your **next** Claude Code session — copying `spec/CLAUDE*.md` into `~/.claude/` (backup-before-overwrite) and writing the install manifest. Verify with `/claudemd-status` after the next session.
+
+**Optional fast-path — activate in the current session without restarting.** If you want the spec files in `~/.claude/` immediately (e.g. you opened Claude Code specifically to install this plugin and don't want to `/exit` first), run the install script directly. Find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`:
 
 ```bash
 node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js
 ```
 
-> Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks.
+> Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks. Claude Code's plugin-lifecycle `postInstall` field is not honored, so the script runs from `SessionStart` instead.
 
 ### Verify
 
@@ -86,6 +88,7 @@ Once installed, the hooks run silently in the background:
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. |
+| `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---
 
@@ -196,7 +199,7 @@ The command prints per-file diff summary, then prompts `apply-all` or `cancel`. 
 
 **`Plugin "claudemd" not found in any marketplace`** — you forgot the `/plugin marketplace add sdsrss/claudemd` step. Re-run it, then retry install.
 
-**Hooks don't fire after install** — Claude Code's `postInstall` lifecycle is not guaranteed to execute. Run the install script manually (replace `<version>` with the installed version dir — see the [Install](#install) section):
+**Hooks don't fire / `~/.claude/CLAUDE*.md` not present after install** — Claude Code's `postInstall` lifecycle is not honored, so `install.js` runs from the `SessionStart` hook on your next session, not at install time. Either start a fresh Claude Code session, or run the script manually right now (replace `<version>` with the installed version dir — see the [Install](#install) section):
 
 ```bash
 node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js

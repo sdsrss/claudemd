@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logsDir, backupRoot, readManifest, resolvePluginRoot } from './lib/paths.js';
+import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 
 // Keep in sync with toggle.js NAME_MAP values. Order mirrors HOOK_BASENAMES
@@ -12,6 +12,26 @@ export async function status() {
   let plugin = { installed: false };
   if (m.exists && m.data) {
     plugin = { installed: true, version: m.data.version, entries: m.data.entries.length };
+  } else {
+    // CC's `/plugin install claudemd@claudemd` lands the version dir under
+    // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire
+    // postInstall, so install.js (which writes the manifest) has not run
+    // yet. session-start-check.sh bootstraps it on the next session — until
+    // then we surface the limbo state explicitly so /claudemd-status can
+    // tell the user "files are on disk, restart or run install.js".
+    try {
+      const cacheBase = path.join(pluginCacheDir(), 'claudemd');
+      if (fs.existsSync(cacheBase)) {
+        const versions = fs.readdirSync(cacheBase, { withFileTypes: true })
+          .filter(d => d.isDirectory() && /^\d/.test(d.name))
+          .map(d => d.name)
+          .sort();
+        if (versions.length > 0) {
+          plugin.hint = 'cache-present-bootstrap-pending';
+          plugin.cacheVersions = versions;
+        }
+      }
+    } catch { /* best-effort hint; absence is non-fatal */ }
   }
 
   // Spec version source (per v0.2.1 "Versioning policy"): the `spec/CLAUDE.md`

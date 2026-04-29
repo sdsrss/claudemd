@@ -56,6 +56,28 @@ test('status reports not-installed when manifest missing', async () => {
   fs.rmSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true, force: true });
   const r = await status();
   assert.equal(r.plugin.installed, false);
+  // No cache dir present → no hint either.
+  assert.equal(r.plugin.hint, undefined);
+});
+
+test('status flags cache-present-bootstrap-pending when manifest missing but plugin cache exists', async () => {
+  // CC's `/plugin install claudemd@claudemd` lands the version dir in
+  // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire
+  // postInstall, so install.js (which writes the manifest) hasn't run yet.
+  // status.js must surface this limbo state so /claudemd-status can tell
+  // the user the plugin is staged but not bootstrapped.
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), { force: true });
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true, force: true });
+  const cacheBase = path.join(tmpHome, '.claude/plugins/cache/claudemd/claudemd');
+  fs.mkdirSync(path.join(cacheBase, '0.6.4'), { recursive: true });
+  fs.mkdirSync(path.join(cacheBase, '0.6.5'), { recursive: true });
+  // Non-semver dir must be ignored (e.g. dev-mode `node scripts/install.js`
+  // from a git checkout where the cache dir basename is the branch name).
+  fs.mkdirSync(path.join(cacheBase, 'main'), { recursive: true });
+  const r = await status();
+  assert.equal(r.plugin.installed, false);
+  assert.equal(r.plugin.hint, 'cache-present-bootstrap-pending');
+  assert.deepEqual(r.plugin.cacheVersions, ['0.6.4', '0.6.5']);
 });
 
 test('status.spec.hashes covers all three spec files (v0.6.0)', async () => {

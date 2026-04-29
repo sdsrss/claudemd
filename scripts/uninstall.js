@@ -41,9 +41,12 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
 
   // No manifest = no path forward for state/log/spec disposition (you can't
   // remove what you don't know about). settingsRemoved still surfaces the
-  // partial outcome so callers can see the eviction did happen.
+  // partial outcome so callers can see the eviction did happen. specAction
+  // is set to 'noop' (rather than omitted) so consumers can `.specAction`
+  // unconditionally without a missing-key branch — same shape as the success
+  // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
-    return { warning: 'already-uninstalled', settingsRemoved };
+    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved };
   }
   const activeManifestPath = m.path;
   const legacyPath = legacyManifestPath();
