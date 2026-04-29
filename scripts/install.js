@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
+import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, pruneSettingsBackups, isoStamp } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
@@ -141,8 +141,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // which went stale when CC swapped in a new version-dir on upgrade). Both
   // are evicted here; no merge back.
   const settings = fs.existsSync(settingsPath()) ? readSettings() : {};
-  unmergeHook(settings, { commandPredicate: (c) =>
-    HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`))
+  // D6 (v0.5.4): path-anchored predicate (lib/settings-merge.js) replaces
+  // the old substring match — narrows eviction to claudemd's three legacy
+  // residue forms and never touches a same-basename hook from another plugin.
+  unmergeHook(settings, {
+    commandPredicate: (c) => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
   });
   writeSettings(settings);
 

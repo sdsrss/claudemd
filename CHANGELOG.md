@@ -8,6 +8,53 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.4] - 2026-04-30
+
+**Patch — uninstall path hardening + diagnostics.** Defensive bugfix release. Closes the 3 follow-up items deferred from v0.5.3 + 1 new finding (D8 orphan-manifest doctor check). Manifest-conditional eviction logic was the largest correctness gap in the install audit; this release closes it.
+
+### Symptoms (pre-fix)
+
+1. **`scripts/uninstall.js:9-12` early-returned when manifest was missing or unparseable**, skipping the `HOOK_BASENAMES` legacy-eviction backstop. Pre-0.1.5 settings.json hook entries (`${CLAUDE_PLUGIN_ROOT}` literal form, absolute version-dir form, v0 hand-install form) survived the uninstall when the user had hand-deleted manifest or hit JSON corruption — exactly the path where legacy entries are most likely to exist.
+2. **`HOOK_BASENAMES` predicate was a substring match** (`c.includes('/hooks/${b}')`), shared by `install.js:118-120` and `uninstall.js:36-41`. A future plugin shipping a same-basename hook (e.g. another plugin's `banned-vocab-check.sh`) would be incorrectly evicted from settings.json. No real-world hits today (v0.1.5+ plugins don't write hooks to settings.json), but the latent risk grew with `/claudemd-uninstall` becoming the recommended user flow in v0.5.3.
+3. **`/claudemd-doctor` surfaced no signal for orphan manifests.** A user who ran `/plugin uninstall claudemd@claudemd` without `/claudemd-uninstall` first ended up with `~/.claude/.claudemd-manifest.json` pointing at a now-deleted `pluginRoot`. doctor reported `[✓] manifest: present` — falsely green. Combined with v0.5.3's two-step uninstall flow being new, plenty of users could end up here.
+4. **`README.md` "Uninstall" section still led with the direct-`scripts/uninstall.js` invocation.** v0.5.3 added `/claudemd-uninstall` as the recommended path but didn't restructure the doc; first-time readers would copy the old single-step flow.
+
+### Fix
+
+- `[fix]` **`scripts/lib/settings-merge.js`** — D6: new exported `isClaudemdLegacyHookCommand(cmd, hookBasenames)` predicate. Path-anchored OR of the three legitimate residue forms claudemd has ever written to settings.json: `/plugins/cache/claudemd/...`, `/.claude/hooks/${basename}`, `${CLAUDE_PLUGIN_ROOT}/hooks/${basename}`. Other-plugin same-basename hooks no longer match. `hookBasenames` is passed in (rather than imported from `install.js`) to avoid a lib → top-level circular import.
+- `[fix]` **`scripts/install.js:118-120`** — calls `isClaudemdLegacyHookCommand` instead of inline substring match. Same hooks evicted on install (no behavior change for v0.1.5+ users), but no longer touches a hypothetical other-plugin hook of the same basename.
+- `[fix]` **`scripts/uninstall.js:7-44`** — D6 main: settings.json eviction now runs UNCONDITIONALLY before the manifest-presence guard. Pre-fix flow returned `{ warning: 'already-uninstalled' }` and skipped settings.json entirely when manifest was absent. Now: settings.json gets evicted via the path-anchored predicate; manifest-conditional steps (spec disposition, state-dir cleanup, log removal) still gate on manifest. New `settingsRemoved: number` field on the return value surfaces how many entries were evicted (visible to callers, including the `already-uninstalled` warning path).
+- `[fix]` **`scripts/doctor.js`** — D8: new `plugin cache` check. When manifest is present, verify `manifest.pluginRoot` directory still exists. If absent, report `[△]` with cleanup hint pointing at `/claudemd-uninstall`. Advisory only — orphan manifest is benign but stale.
+- `[docs]` **`README.md` "Uninstall" section** — M3 后半: re-ordered to lead with the two-step `/claudemd-uninstall` → `/plugin uninstall claudemd@claudemd` flow. Direct-script invocation demoted to "advanced fallback". Spec-disposition table now cross-references the v0.5.3 install-time `[claudemd] WARN` line so users know `restore` recovers their personal user-global instructions.
+- `[test]` **`tests/scripts/settings-merge.test.js`** — 6 new D6 cases for `isClaudemdLegacyHookCommand`: matches each of the three legitimate residue forms (D6.1/D6.2/D6.3); rejects same-basename hook from a different plugin (D6.4); rejects unknown basename in `${CLAUDE_PLUGIN_ROOT}/hooks/` (D6.5) and in `/.claude/hooks/` (D6.6).
+- `[test]` **`tests/scripts/uninstall.test.js`** — 3 new D6 cases: legacy `${CLAUDE_PLUGIN_ROOT}` entry evicted even when manifest is missing; other-plugin same-basename hook survives uninstall (path-anchoring proven); `settingsRemoved` field surfaces count in normal manifest-present uninstall.
+- `[test]` **`tests/scripts/doctor.test.js`** — 2 new D8 cases: orphan-manifest case detected when `pluginRoot` path absent; `plugin cache: present at <path>` when `pluginRoot` exists.
+
+### Migration note (read before upgrading)
+
+No action required. Existing installs see no behavior change because:
+
+- v0.1.5+ installs don't write claudemd hooks to settings.json — the legacy backstop only fires on pre-0.1.5 residue, which 0.5.x users won't have.
+- The path-anchored predicate is strictly more conservative than the old substring match (it matches a subset). For all currently observed claudemd settings.json entries, the new predicate matches the same set as the old.
+- `/claudemd-uninstall` flow from v0.5.3 still works the same way; this release just makes it more robust when state is corrupted.
+
+After upgrade:
+
+- `/claudemd-doctor` will report a new `plugin cache` row; healthy installs see `[✓]`.
+- `scripts/uninstall.js` return value gains `settingsRemoved: number` (programmatic consumers can use it; slash command output unchanged).
+- README "Uninstall" section now leads with the two-step flow.
+
+### Not changed
+
+- No spec content change. Spec stays at v6.11.3.
+- No new hook, no new HARD rule, no §13.2 budget delta.
+- No change to install / update / hook behavior. `install.js` predicate change is a strict refinement; pre-0.5.4 substring already matched a superset of v0.5.4's path-anchored set on real-world claudemd entries.
+- `commands/claudemd-uninstall.md` (added in v0.5.3) is unchanged.
+
+### Follow-up (deferred to v0.6.0 if reached)
+
+- `scripts/lib/hook-registry.js` single-source refactor: still YAGNI. 5-place hook list duplication observed across install.js / toggle.js / status.js / commands/claudemd-toggle.md / settings-merge.test.js fixture. Year-cost ~30 minutes of manual sync vs ~2 hours refactor; revisit only if a new hook addition triggers another drift.
+
 ## [0.5.3] - 2026-04-30
 
 **Patch — `/claudemd-uninstall` command + user-content overwrite warning + spec trio lockstep clarification.** Pure additive bugfix release. No behavior change to existing flows; closes 4 user-perspective gaps surfaced in the v0.5.2 audit.

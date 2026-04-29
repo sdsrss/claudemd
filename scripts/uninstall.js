@@ -1,18 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSettings, writeSettings, unmergeHook } from './lib/settings-merge.js';
+import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { listBackups, restoreBackup } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './install.js';
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
   const m = readManifest();
-  if (!m.exists || !m.data) {
-    return { warning: 'already-uninstalled' };
-  }
-  const manifest = m.data;
-  const activeManifestPath = m.path;
-  const legacyPath = legacyManifestPath();
 
   // Pre-flight abort checks — MUST run before any side effects so that an
   // aborted uninstall leaves settings.json / spec files / manifest untouched.
@@ -28,19 +22,31 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     restoreSource = backups[0].dir;
   }
 
-  // 1. Remove settings.json entries. Manifest command match is the precise
-  // path; HOOK_BASENAMES fallback catches env-var-form entries AND any stale
-  // absolute-path entries the manifest didn't record (e.g. user hand-edit,
-  // older-version leftovers).
+  // D6 (v0.5.4): settings.json eviction runs UNCONDITIONALLY. Pre-fix this
+  // step lived after the manifest-presence guard, so a missing/corrupt manifest
+  // (≤0.1.4 user hand-deleted it; JSON unparseable; etc.) returned early
+  // without clearing settings.json — exactly the case where pre-0.1.5 legacy
+  // hook entries were most likely to survive. Manifest command match still
+  // wins when available; the path-anchored backstop covers everything else.
+  let settingsRemoved = 0;
   if (fs.existsSync(settingsPath())) {
     const s = readSettings();
-    const pluginCommands = new Set(manifest.entries.map(e => e.command));
-    unmergeHook(s, { commandPredicate: (c) =>
-      pluginCommands.has(c) ||
-      HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`))
+    const pluginCommands = new Set((m.data?.entries || []).map(e => e.command));
+    const r = unmergeHook(s, { commandPredicate: (c) =>
+      pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES)
     });
+    settingsRemoved = r.removed;
     writeSettings(s);
   }
+
+  // No manifest = no path forward for state/log/spec disposition (you can't
+  // remove what you don't know about). settingsRemoved still surfaces the
+  // partial outcome so callers can see the eviction did happen.
+  if (!m.exists || !m.data) {
+    return { warning: 'already-uninstalled', settingsRemoved };
+  }
+  const activeManifestPath = m.path;
+  const legacyPath = legacyManifestPath();
 
   // 2. Spec file disposition
   let outcome = specAction;
@@ -74,7 +80,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  return { specAction: outcome };
+  return { specAction: outcome, settingsRemoved };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

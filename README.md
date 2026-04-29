@@ -134,27 +134,38 @@ export DISABLE_UPSTREAM_CHECK=1            # only the upstream-tag-check sub-fea
 
 ## Uninstall
 
+CC marketplace lifecycle does not fire `preUninstall`, so `/plugin uninstall claudemd@claudemd` alone leaves orphan state behind (`~/.claude/.claudemd-manifest.json`, `~/.claude/.claudemd-state/`, `~/.claude/logs/claudemd.jsonl`). Use the **two-step flow**:
+
 ```
-/plugin uninstall claudemd
+/claudemd-uninstall                    # clear manifest + state + log (plugin still installed)
+/plugin uninstall claudemd@claudemd    # CC removes plugin cache itself
 ```
 
-Then, for the spec files in `~/.claude/`:
+Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `scripts/uninstall.js` are gone after `/plugin uninstall`, with no in-tree tool to clean up afterwards. `/claudemd-doctor` flags `[△] plugin cache: orphan manifest …` if you've already hit this.
 
-| Option | Behavior |
-|---|---|
-| `keep` (default) | `~/.claude/CLAUDE*.md` left in place; plugin hook entries removed from `settings.json`. |
-| `delete` | Requires `CLAUDEMD_CONFIRM=1` env var (hard-AUTH). Removes the three spec files. Only available via the direct script invocation below — `/plugin uninstall` always picks `keep`. |
-| `restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Only available via the direct script invocation below. |
+### Spec disposition
 
-Set `CLAUDEMD_PURGE=1` (env var, not a CLI flag) on the direct script invocation to also remove `~/.claude/logs/claudemd.jsonl` and `~/.claude/.claudemd-state/`.
+`/claudemd-uninstall` defaults to `keep` (leaves `~/.claude/CLAUDE*.md` in place). Override via env vars before the slash command:
 
-Invoking the uninstall script directly:
+| Option | Env vars | Behavior |
+|---|---|---|
+| `keep` (default) | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
+| `restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — it means your hand-written user-global instructions are sitting in the backup waiting to be brought back. |
+| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes the three spec files. |
+
+`CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
+
+### Direct script invocation (advanced fallback)
+
+If `/claudemd-uninstall` is unavailable (you already ran `/plugin uninstall` first and want to clean up by reaching into the cache before it gets pruned, or you need to script the uninstall outside CC):
 
 ```bash
 CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
 CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
 CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
 ```
+
+The slash command and the script are equivalent — the slash command just supplies `${CLAUDE_PLUGIN_ROOT}` for you.
 
 ---
 

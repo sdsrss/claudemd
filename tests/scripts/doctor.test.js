@@ -122,3 +122,38 @@ test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in
     else process.env.DISABLE_CLAUDEMD_HOOKS = saved;
   }
 });
+
+test('D8: orphan manifest detected when manifest.pluginRoot path is absent', async () => {
+  // User scenario: ran /plugin uninstall claudemd@claudemd without the
+  // /claudemd-uninstall step. Plugin cache is gone; manifest survives with
+  // a now-stale pluginRoot. doctor must flag this so the user knows what to clean up.
+  const ghostPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/9.9.9-removed');
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
+    version: '9.9.9-removed',
+    installedAt: new Date().toISOString(),
+    pluginRoot: ghostPluginRoot,
+    entries: [],
+  }));
+  const r = await doctor({});
+  const pc = r.checks.find(c => c.name === 'plugin cache');
+  assert.ok(pc, 'plugin cache check must exist');
+  assert.equal(pc.ok, false, 'must report fail when pluginRoot is absent');
+  assert.match(pc.detail, /orphan manifest/);
+  assert.match(pc.detail, /claudemd-uninstall/);
+});
+
+test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
+  const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
+  fs.mkdirSync(realPluginRoot, { recursive: true });
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
+    version: '0.5.4',
+    installedAt: new Date().toISOString(),
+    pluginRoot: realPluginRoot,
+    entries: [],
+  }));
+  const r = await doctor({});
+  const pc = r.checks.find(c => c.name === 'plugin cache');
+  assert.ok(pc);
+  assert.equal(pc.ok, true);
+  assert.match(pc.detail, /present at/);
+});

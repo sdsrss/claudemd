@@ -137,3 +137,78 @@ test('purge: removes logs dir when empty after claudemd.jsonl deletion (H1)', as
   assert.equal(fs.existsSync(logsDir), false,
     'empty logs dir after own-log removal should be cleaned up');
 });
+
+test('D6: manifest missing but settings.json has legacy ${CLAUDE_PLUGIN_ROOT} entry → eviction still runs', async () => {
+  // Real scenario: user installed ≤0.1.4 (which wrote ${CLAUDE_PLUGIN_ROOT}-
+  // literal entries into settings.json), then hand-deleted manifest. Pre-fix
+  // uninstall.js early-returned `'already-uninstalled'` without clearing
+  // settings.json — orphan hook entry left forever.
+  fs.unlinkSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'));
+  const settingsP = path.join(tmpHome, '.claude/settings.json');
+  const s = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
+  s.hooks ||= {};
+  s.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [
+    { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
+  ] }];
+  fs.writeFileSync(settingsP, JSON.stringify(s));
+
+  const res = await uninstall({ specAction: 'keep' });
+
+  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(res.settingsRemoved, 1, 'legacy ${CLAUDE_PLUGIN_ROOT} entry must be evicted even with manifest missing');
+
+  const after = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
+  const all = [];
+  for (const event of Object.keys(after.hooks || {})) {
+    for (const block of after.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
+  }
+  assert.equal(all.some(c => c.includes('banned-vocab-check.sh')), false,
+    'no claudemd hook command should remain after eviction');
+  assert.ok(all.some(c => c.includes('node /foreign/hook.mjs')),
+    'foreign hook from beforeEach must survive');
+});
+
+test('D6: predicate is path-anchored — does NOT evict same-basename hook from another plugin', async () => {
+  // Pre-0.5.4 substring predicate `c.includes('/hooks/banned-vocab-check.sh')`
+  // would have matched a hypothetical other-plugin hook with the same
+  // basename, accidentally evicting it. v0.5.4 path-anchors to known claudemd
+  // residue forms only.
+  fs.unlinkSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'));
+  const settingsP = path.join(tmpHome, '.claude/settings.json');
+  const s = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
+  s.hooks ||= {};
+  // Hypothetical other-plugin shipping a same-basename hook. Note: this path
+  // contains `/plugins/cache/` but NOT `/plugins/cache/claudemd/`, so the
+  // path-anchored predicate must reject it.
+  s.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [
+    { type: 'command',
+      command: 'bash "/home/x/.claude/plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh"',
+      timeout: 3 },
+  ] }];
+  fs.writeFileSync(settingsP, JSON.stringify(s));
+
+  const res = await uninstall({ specAction: 'keep' });
+
+  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(res.settingsRemoved, 0, 'must not evict other-plugin hook of same basename');
+
+  const after = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
+  const all = [];
+  for (const event of Object.keys(after.hooks || {})) {
+    for (const block of after.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
+  }
+  assert.ok(all.some(c => c.includes('plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh')),
+    'other-plugin hook must survive uninstall');
+});
+
+test('D6: settingsRemoved field present on normal keep path (manifest exists)', async () => {
+  // Sanity check: uninstall return value carries settingsRemoved (number) on
+  // the success path, not just on the manifest-missing path. The exact count
+  // depends on what install wrote — this fixture omits hooks/hooks.json so
+  // install records 0 manifest entries. Numeric coverage of the field is what
+  // matters; the eviction count itself is exercised by the two D6 cases above.
+  const res = await uninstall({ specAction: 'keep' });
+  assert.equal(res.specAction, 'keep');
+  assert.equal(typeof res.settingsRemoved, 'number',
+    'settingsRemoved must be a number on normal keep path');
+});

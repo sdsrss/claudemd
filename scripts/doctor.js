@@ -18,6 +18,22 @@ export async function doctor({ pruneBackups: prune } = {}) {
       ? (m.migrated ? `present at ${m.path} (relocated from pre-0.1.9 state dir)` : 'present')
       : 'missing — is plugin installed?');
 
+  // D8 (v0.5.4): orphan-manifest detection. CC marketplace lifecycle does not
+  // fire `preUninstall`, so /plugin uninstall claudemd@claudemd leaves the
+  // manifest behind. Verify `manifest.pluginRoot` still exists; if not,
+  // surface the cleanup hint pointing at /claudemd-uninstall (which must run
+  // BEFORE /plugin uninstall to avoid this state — see commands/claudemd-
+  // uninstall.md). Advisory only: orphan manifest is benign but stale.
+  if (m.exists && m.data?.pluginRoot) {
+    const orphan = !fs.existsSync(m.data.pluginRoot);
+    push('plugin cache', !orphan,
+      orphan
+        ? `manifest.pluginRoot (${m.data.pluginRoot}) no longer exists — orphan manifest. ` +
+          `Likely cause: /plugin uninstall claudemd@claudemd ran without /claudemd-uninstall first. ` +
+          `Either /plugin install claudemd@claudemd to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
+        : `present at ${m.data.pluginRoot}`);
+  }
+
   if (fs.existsSync(settingsPath())) {
     try { readSettings(); push('settings.json', true, 'parseable'); }
     catch (e) { push('settings.json', false, e.message); }

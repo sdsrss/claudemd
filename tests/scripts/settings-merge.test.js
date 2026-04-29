@@ -3,7 +3,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { readSettings, writeSettings, mergeHook, unmergeHook } from '../../scripts/lib/settings-merge.js';
+import { readSettings, writeSettings, mergeHook, unmergeHook, isClaudemdLegacyHookCommand } from '../../scripts/lib/settings-merge.js';
+
+const CLAUDEMD_HOOK_BASENAMES = [
+  'banned-vocab-check.sh',
+  'ship-baseline-check.sh',
+  'memory-read-check.sh',
+  'pre-bash-safety-check.sh',
+  'residue-audit.sh',
+  'sandbox-disposal-check.sh',
+  'session-start-check.sh',
+  'version-sync.sh',
+];
 
 let tmpHome, savedHome;
 const FIX = new URL('../fixtures/settings-samples/', import.meta.url).pathname;
@@ -173,4 +184,42 @@ test('20: mergeHook tag in SHA256 manifest-friendly form', () => {
   const { added, entry } = mergeHook(s, HOOK_SPEC);
   assert.equal(added, true);
   assert.ok(entry && entry.command.includes('ship-baseline-check.sh'));
+});
+
+// D6 (v0.5.4): isClaudemdLegacyHookCommand path-anchoring tests.
+// Pre-fix substring `c.includes('/hooks/${b}')` would match any plugin's
+// hook of the same basename. The 3-OR predicate enumerates only the
+// residue forms claudemd has ever written.
+
+test('D6.1: matches pre-0.1.5 ${CLAUDE_PLUGIN_ROOT} literal form', () => {
+  const cmd = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), true);
+});
+
+test('D6.2: matches ≤0.1.1 absolute plugin-cache path form', () => {
+  const cmd = 'bash "/home/user/.claude/plugins/cache/claudemd/claudemd/0.1.3/hooks/ship-baseline-check.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), true);
+});
+
+test('D6.3: matches v0 hand-install form ~/.claude/hooks/<basename>', () => {
+  const cmd = 'bash "/home/user/.claude/hooks/memory-read-check.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), true);
+});
+
+test('D6.4: does NOT match same-basename hook from a different plugin', () => {
+  // Future-plugin scenario: another plugin happens to ship a hook named
+  // banned-vocab-check.sh (no namespacing collision policy in CC). We must
+  // not evict it — pre-0.5.4 substring predicate would have.
+  const cmd = 'bash "/home/user/.claude/plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), false);
+});
+
+test('D6.5: does NOT match non-claudemd hook basenames', () => {
+  const cmd = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/some-foreign-hook.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), false);
+});
+
+test('D6.6: does NOT match foreign hook in /.claude/hooks/ with non-claudemd basename', () => {
+  const cmd = 'bash "/home/user/.claude/hooks/my-personal-hook.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), false);
 });
