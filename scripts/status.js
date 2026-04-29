@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, backupRoot, readManifest } from './lib/paths.js';
 
-const HOOK_NAMES = ['BANNED_VOCAB','SHIP_BASELINE','RESIDUE_AUDIT','MEMORY_READ','SANDBOX_DISPOSAL','SESSION_START'];
+// Keep in sync with toggle.js NAME_MAP values. Order mirrors HOOK_BASENAMES
+// in install.js (registration order) for human-scannable output.
+const HOOK_NAMES = ['BANNED_VOCAB','PRE_BASH_SAFETY','SHIP_BASELINE','RESIDUE_AUDIT','MEMORY_READ','SANDBOX_DISPOSAL','SESSION_START','USER_PROMPT_SUBMIT'];
 
 export async function status() {
   const m = readManifest();

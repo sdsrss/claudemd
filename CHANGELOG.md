@@ -8,6 +8,44 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.5.2] - 2026-04-30
+
+**Patch — installer-audit cleanup: `/claudemd-toggle` + `/claudemd-status` cover all 8 hooks; README freshness pass.** Pure docs/metadata bugfix; no behavior change to install/uninstall/update or any hook script. Restores documented intent (every shipped hook is toggleable + visible) that drifted when v0.3.1 added `version-sync` and v0.5.0 added `pre-bash-safety-check`.
+
+### Symptoms (pre-fix)
+
+User-perspective audit against v0.5.1 surfaced 4 cases where surfaces lagged the shipped hook set:
+
+1. `/claudemd-toggle pre-bash-safety` and `/claudemd-toggle version-sync` threw `unknown hook: …`. The hook scripts already honored `DISABLE_PRE_BASH_SAFETY_HOOK=1` / `DISABLE_USER_PROMPT_SUBMIT_HOOK=1` env vars (manual export worked), but `scripts/toggle.js` `NAME_MAP` listed only 6 of 8 hooks, so the slash command had no path to flip them.
+2. `/claudemd-status` killSwitches block omitted both `pre_bash_safety` and `user_prompt_submit` lines — `scripts/status.js` `HOOK_NAMES` matched the same 6-entry set as toggle.js.
+3. `commands/claudemd-toggle.md` frontmatter `Valid hook names:` listed only 5 (also missing `session-start-check` since v0.4.0). Discoverability gap independent of code paths.
+4. `README.md` carried multiple stale claims from before the v0.3.1 + v0.5.0 hook additions: "7 shell hooks" (×2), "Spec v6.11.1" (×2), kill-switch list missing `DISABLE_PRE_BASH_SAFETY_HOOK`, "All 5 hooks" header, daily-use table missing `pre-bash-safety` + `version-sync` rows, escape-hatch table missing `[allow-rm-rf-var]` + `[allow-npx-unpinned]`.
+
+### Fix
+
+- `[fix]` **`scripts/toggle.js:3-15`** — `NAME_MAP` extended 6 → 8 entries: `pre-bash-safety` → `PRE_BASH_SAFETY`, `version-sync` → `USER_PROMPT_SUBMIT`. Note `version-sync`'s value tracks the hook event name, not the file basename, to preserve the existing `DISABLE_USER_PROMPT_SUBMIT_HOOK` env var contract introduced in v0.3.1.
+- `[fix]` **`scripts/status.js:5`** — `HOOK_NAMES` extended 6 → 8 entries; order mirrors `install.js` `HOOK_BASENAMES` for human-scannable `/claudemd-status` output.
+- `[fix]` **`commands/claudemd-toggle.md:8`** — frontmatter `Valid hook names:` now lists all 8 toggle keys.
+- `[fix]` **`README.md`** — 8 sites updated: header table (8 hooks + Spec v6.11.3), daily-use table (added `pre-bash-safety-check` + `version-sync` rows), Kill-switches header ("All 8 hooks"), per-hook list (added `DISABLE_PRE_BASH_SAFETY_HOOK`), escape-hatch table (added `[allow-rm-rf-var]` + `[allow-npx-unpinned]`), Project layout tree (8 hooks + v6.11.3).
+
+### Migration note (read before upgrading)
+
+No action required. Existing `DISABLE_*_HOOK` env vars and per-invocation escape tokens are unchanged; this release only widens which surfaces report and toggle them. After upgrade, `/claudemd-toggle pre-bash-safety` and `/claudemd-toggle version-sync` start working; `/claudemd-status` killSwitches block adds two new keys (`pre_bash_safety`, `user_prompt_submit`).
+
+### Not changed
+
+- No spec content change. Spec stays at v6.11.3 (manifest description policy: `v6.11` family unchanged).
+- No new HARD rule, no §13.2 budget delta.
+- No change to install / uninstall / update script behavior or to any of the 8 hook scripts.
+- No new env-var kill-switch or escape-token introduced by this patch — the 5 enumerated additions are pre-existing artifacts that the documentation now reflects.
+
+### Follow-up (not blocking, deferred to next minor)
+
+- M2: `/claudemd-update` description claims a `select`/`select-per-file` mode that `update.js` does not implement (only `cancel` + `apply-all` are valid choices). Either add per-file selection or strip the dead text.
+- M3: `/plugin uninstall claudemd` does not run `scripts/uninstall.js` (CC marketplace lifecycle does not fire `preUninstall`); orphan manifest + state-dir + log left behind. Either document the explicit `node scripts/uninstall.js` follow-up at top of the Uninstall README section, or add a session-start self-clean ("manifest exists but plugin cache absent → tear down").
+- D5: `tests/scripts/install.test.js` settings.json basename assertions cover only 5–6 of 8 hooks; widen to all 8 so future HOOK_BASENAMES drift is caught.
+- D6: `scripts/uninstall.js:9-12` early-returns on missing manifest, skipping the `HOOK_BASENAMES` legacy-eviction sweep. Run the basename sweep unconditionally; only manifest-driven steps should depend on manifest presence.
+
 ## [0.5.1] - 2026-04-30
 
 **Patch — `memory-read-check.sh` over-trigger fixes.** Bugfix release; no new HARD rule, no behavior expansion. Restores the spec §11 "Index is a router, not a substitute" intent that v0.5.0's hook contradicted. Spec footnote co-bumped to v6.11.3 to document the hook/agent split.

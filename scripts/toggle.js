@@ -1,12 +1,19 @@
 import { readSettings, writeSettings } from './lib/settings-merge.js';
 
+// Keep in sync with status.js HOOK_NAMES + commands/claudemd-toggle.md
+// frontmatter + scripts/install.js HOOK_BASENAMES. Hook script names map to
+// the hook_kill_switch arg the .sh file passes; for `version-sync` the arg
+// is `USER_PROMPT_SUBMIT` (event name, not file name) — preserved here so
+// existing DISABLE_USER_PROMPT_SUBMIT_HOOK env var keeps working.
 const NAME_MAP = {
   'banned-vocab': 'BANNED_VOCAB',
+  'pre-bash-safety': 'PRE_BASH_SAFETY',
   'ship-baseline': 'SHIP_BASELINE',
   'residue-audit': 'RESIDUE_AUDIT',
   'memory-read-check': 'MEMORY_READ',
   'sandbox-disposal-check': 'SANDBOX_DISPOSAL',
   'session-start-check': 'SESSION_START',
+  'version-sync': 'USER_PROMPT_SUBMIT',
 };
 
 export async function toggle(name) {

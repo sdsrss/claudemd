@@ -10,9 +10,9 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 
 | Layer | Contents |
 |---|---|
-| 7 shell hooks | `banned-vocab-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `version-sync` |
+| 8 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `version-sync` |
 | 5 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` |
-| Spec v6.11.1 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
+| Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
 
@@ -67,11 +67,13 @@ Once installed, the hooks run silently in the background:
 | Trigger | Hook | What happens |
 |---|---|---|
 | `git commit` with banned vocab (e.g. `significantly`, `70% faster`, `should work`) | `banned-vocab-check` | Blocks the commit with a message pointing to §10-V spec rule. |
+| Bash command with `rm -rf $VAR` (unvalidated expansion) or unpinned `npx <pkg>` | `pre-bash-safety-check` (v0.5.0+) | Blocks at PreToolUse:Bash per §8 SAFETY. Bypass via `[allow-rm-rf-var]` / `[allow-npx-unpinned]` token in the command, or pin/validate the variable. |
 | `git push` while base-branch CI is red | `ship-baseline-check` | Blocks the push (2-second `gh run list` timeout; fail-open if `gh` absent or times out). |
 | Session end with `~/.claude/tmp/` growth > 20 entries | `residue-audit` | Advisory stderr warning; never blocks. |
 | Bash command matching ship/push/deploy/release with an unread matched `MEMORY.md` entry | `memory-read-check` | Blocks the command with a list of memory files to Read first. |
 | Session end with fresh `tmp.XXXXXX`-style directories | `sandbox-disposal-check` | Advisory stderr warning. |
 | New session start with GitHub remote tag newer than local cache max version | `session-start-check` (v0.4.0+) | Injects an "upgrade available" banner via `additionalContext` listing the 4-step upgrade sequence. Rate-limited to once per 24h via `~/.claude/.claudemd-state/upstream-check.lastrun` sentinel. 3-second `git ls-remote` timeout, fail-open. |
+| First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`, so `~/.claude/CLAUDE*.md` syncs without `/exit`. Sentinel-gated; fail-open. |
 
 ### Commands
 
@@ -89,7 +91,7 @@ Once installed, the hooks run silently in the background:
 
 All visible in `/claudemd-status`.
 
-**1. Plugin-wide.** All 5 hooks short-circuit before any logic:
+**1. Plugin-wide.** All 8 hooks short-circuit before any logic:
 
 ```bash
 export DISABLE_CLAUDEMD_HOOKS=1
@@ -99,6 +101,7 @@ export DISABLE_CLAUDEMD_HOOKS=1
 
 ```bash
 export DISABLE_BANNED_VOCAB_HOOK=1         # or
+export DISABLE_PRE_BASH_SAFETY_HOOK=1      # or
 export DISABLE_SHIP_BASELINE_HOOK=1        # or
 export DISABLE_RESIDUE_AUDIT_HOOK=1        # or
 export DISABLE_MEMORY_READ_HOOK=1          # or
@@ -122,6 +125,8 @@ export DISABLE_UPSTREAM_CHECK=1            # only the upstream-tag-check sub-fea
 | `[allow-banned-vocab]` | commit message | `banned-vocab-check` |
 | `known-red baseline: <reason>` | commit body | `ship-baseline-check` |
 | `[skip-memory-check]` | bash command string | `memory-read-check` |
+| `[allow-rm-rf-var]` | bash command string | `pre-bash-safety-check` (rm-with-var path only) |
+| `[allow-npx-unpinned]` | bash command string | `pre-bash-safety-check` (unpinned npx path only) |
 
 ---
 
@@ -215,11 +220,11 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 7 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
+├── hooks/                    # 8 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 5 slash-command markdown files
 ├── scripts/                  # 7 Node.js management scripts + scripts/lib/
-├── spec/                     # shipped v6.11.1 CLAUDE*.md trio
+├── spec/                     # shipped v6.11.3 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/ci.yml  # ubuntu + macOS × node 20
