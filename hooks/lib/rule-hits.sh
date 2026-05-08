@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # rule-hits.sh — append-only JSONL log for §13.1 self-audit data.
 
-# rule_hits_append HOOK EVENT EXTRA_JSON
-#   HOOK  — hook name (banned-vocab, ship-baseline, ...)
-#   EVENT — see docs/RULE-HITS-SCHEMA.md "Events" table for the
-#           canonical list (kept in sync via tests/hooks/contract.test.sh).
-#   EXTRA — JSON value (object | null | string). "null" if none.
+# rule_hits_append HOOK EVENT EXTRA_JSON [SPEC_SECTION]
+#   HOOK    — hook name (banned-vocab, ship-baseline, ...)
+#   EVENT   — see docs/RULE-HITS-SCHEMA.md "Events" table for the
+#             canonical list (kept in sync via tests/hooks/contract.test.sh).
+#   EXTRA   — JSON value (object | null | string). "null" if none.
+#   SECTION — optional spec section identifier for §0.1/§13.1/§13.2 promotion
+#             and demotion accounting. See docs/RULE-HITS-SCHEMA.md
+#             "Spec section taxonomy" table. Empty arg → null in JSONL row.
+#             Hooks that aren't enforcing a spec rule (session-start bootstrap,
+#             version-sync) leave it empty.
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 
   local hook="${1:-unknown}"
   local event="${2:-unknown}"
   local extra="${3:-null}"
+  local section="${4:-}"
 
   # Project: encoded with `/` and `.` → `-` to match Claude Code's
   # ~/.claude/projects/<encoded>/ convention (paths with dots round-trip
@@ -56,7 +62,10 @@ rule_hits_append() {
     --arg hook "$hook" \
     --arg event "$event" \
     --arg project "$project" \
+    --arg section "$section" \
     --argjson extra "$extra" \
-    '{ts: $ts, hook: $hook, event: $event, project: $project, extra: $extra}' \
+    '{ts: $ts, hook: $hook, event: $event, project: $project,
+      spec_section: (if $section == "" then null else $section end),
+      extra: $extra}' \
     2>/dev/null >> "$log_file" || return 0
 }

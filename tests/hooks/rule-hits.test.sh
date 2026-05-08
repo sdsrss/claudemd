@@ -84,4 +84,28 @@ LAST=$(tail -n 1 "$LOG")
 echo "$LAST" | jq -e '.project == "-p" and .extra.run_id == 99' >/dev/null \
   || { echo "FAIL: Case 9 project + extra both required (got: $LAST)"; exit 1; }
 
+# Case 10 (v0.7.0): spec_section 4th positional arg lands as `spec_section`
+# field, populated only when non-empty (omitted arg → null).
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null "§10-V"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.spec_section == "§10-V"' >/dev/null \
+  || { echo "FAIL: Case 10 spec_section not threaded through (got: $LAST)"; exit 1; }
+
+# Case 11: omitted spec_section arg → null in JSONL row (back-compat for
+# meta hooks like session-start bootstrap / version-sync that aren't
+# enforcing a spec rule).
+run 'rule_hits_append session-start bootstrap null'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.spec_section == null' >/dev/null \
+  || { echo "FAIL: Case 11 omitted section should be null (got: $LAST)"; exit 1; }
+
+# Case 12: empty-string spec_section arg also normalizes to null (defends
+# against accidental `hook_record h e null ""` becoming an empty-string row,
+# which would muddle audit `bySection` `(unset)` bucket attribution).
+run 'rule_hits_append banned-vocab deny null ""'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.spec_section == null' >/dev/null \
+  || { echo "FAIL: Case 12 empty spec_section should normalize to null (got: $LAST)"; exit 1; }
+
 echo "All cases passed"

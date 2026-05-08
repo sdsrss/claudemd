@@ -8,6 +8,42 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.7.0] - 2026-05-09
+
+**Minor — per-rule instrumentation + bypass dashboard + banned-vocab dead-pattern stratification.** Closes the §0.1/§13.1/§13.2 governance loop: pre-fix `/claudemd-audit` answered "which hook is firing" but not "which spec rule is firing", so `§0.1 Core growth discipline` (promote ≥5 hits in 30d) and `§13.1` quarterly demote (0 hits in 90d) had no source data — both rules were aspirational, not mechanical. This release adds `spec_section` to every hook-enforcing rule-hits row, surfaces `byBypass` (per-token escape-hatch usage — the §0.1 demotion candidate signal), and reorganizes `banned-vocab.patterns` into high-fire and prophylactic regions per the same audit data.
+
+### Added
+
+- `[feat]` **`hooks/lib/rule-hits.sh:8-17 / 56-67`** — `rule_hits_append` accepts an optional 4th positional `SPEC_SECTION` arg. Empty arg → `null` in the JSONL row (back-compat with hooks that don't pass the arg). The new field lands as `spec_section` next to the existing `extra` column. Schema is additive — `audit.js` keeps working unchanged on legacy rows; the `bySection` aggregation surfaces them under an `(unset)` bucket so the operator sees how much pre-upgrade data is in the audit window.
+
+- `[feat]` **7 hook scripts** — every spec-enforcing `hook_record` callsite now passes a section identifier: `banned-vocab` → `§10-V`; `ship-baseline` → `§7-ship-baseline`; `pre-bash-safety` → `§8-rm-rf-var` / `§8-npx` / `§8` (combined-deny path); `memory-read-check` → `§11-memory-read`; `residue-audit` → `§7-user-global-state`; `sandbox-disposal` → `§8.V4`. Plugin-internal events (`session-start` bootstrap/upstream-banner; `version-sync` lifecycle) keep section `null` — they're not enforcing a spec rule. Full taxonomy table is the new "Spec section taxonomy" section in `docs/RULE-HITS-SCHEMA.md`.
+
+- `[feat]` **`scripts/lib/rule-hits-parse.js`** — two new exports: `groupBySection(hits)` (per-section total + event/hook breakdown) and `byBypass(hits)` (per-`bypass-escape-hatch`-token total + per-hook breakdown). High counts on a single bypass token signal a rule that's too strict and is being routinely overridden — the §0.1 demotion candidate indicator that pre-fix sat in the JSONL log unaggregated.
+
+- `[feat]` **`scripts/audit.js`** — `/claudemd-audit` JSON now carries `bySection` and `byBypass` next to the existing `byHook` / `topPatterns`. `commands/claudemd-audit.md` updated with the field table and a "≥3 occurrences = review candidate" rule for the bypass dashboard.
+
+- `[test]` **`tests/hooks/contract.test.sh`** — invariant E added (8 cases): every spec-enforcing hook (banned-vocab / ship-baseline / pre-bash-safety × 2 / memory-read-check / residue-audit / sandbox-disposal) emits the documented `spec_section`; plugin-internal hooks keep it `null`. Drives §0.1/§13.1/§13.2 promotion accounting end-to-end. Total: 35/35 passing (was 27/27 — invariants A.1–A.4, B×14, C×8, D, E×8).
+
+- `[test]` **`tests/hooks/rule-hits.test.sh`** — Cases 10/11/12 added: (10) `spec_section` 4th arg threads through to JSONL; (11) omitted arg → `null` (back-compat); (12) empty-string arg also normalizes to `null` (defends against `hook_record h e null ""` muddling the `(unset)` bucket attribution). Total: 12/12 passing (was 9/9).
+
+- `[test]` **`tests/scripts/audit.test.js`** — 4 new tests: `bySection` aggregates v0.7.0 spec_section field correctly; `bySection` surfaces legacy rows under `(unset)`; `byBypass` aggregates per-token override usage with hook breakdown; `byBypass` empty when no bypass-escape-hatch events present. Existing `byHook` test updated for fixture expansion (banned-vocab now 3 rows incl. 1 bypass; pre-bash-safety added with 2 bypass rows). Total: 9 tests passing.
+
+### Changed
+
+- `[refactor]` **`hooks/banned-vocab.patterns`** — reorganized into `# region: high-fire` (≥1 deny in last 30d audit window) and `# region: prophylactic` (0 hits in last 30d) sections. Same 27 patterns kept — zero deletion, zero functional change. Reorder puts the 6 actively-firing patterns at the top of the file so grep early-exits on common matches; visual stratification lets the operator see at a glance "what's actively gating" vs "what's carried for §10-V coverage". Re-stratify on each `/claudemd-audit` review per §13.1 cadence; demotion to `§EXT §10-V` reference list eligible after 3 consecutive 30d windows at zero (combined with `byBypass` — added this release).
+
+- `[docs]` **`docs/RULE-HITS-SCHEMA.md`** — `spec_section` field added to the row-shape table; new "Spec section taxonomy" table maps each (hook, event) pair to its section identifier; example rows include the new field. Pre-v0.7.0 rows handled by the `(unset)` bucket — documented inline.
+
+### Migration
+
+No user action required for the `spec_section` field — it auto-populates on next hook fire after upgrade. Existing rule-hits rows in `~/.claude/logs/claudemd.jsonl` keep working; `/claudemd-audit` `bySection` shows them under `(unset)` until the audit window slides past the upgrade timestamp.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + plugins[0]) — all to `0.7.0`. Spec files (`spec/CLAUDE*.md`) unchanged; spec version remains v6.11.3. Per the versioning policy, plugin minor ships independently when spec is unchanged but plugin features are added.
+- Validation: `tests/run-all.sh` → 150/150 node tests pass; 11 hook suites green (rule-hits 12/12, contract 35/35, banned-vocab 20/20, sandbox-disposal, memory-read-check, ship-baseline, residue-audit, pre-bash-safety, session-start, version-sync, hook-common, platform); 2 integration suites pass (full-lifecycle, upgrade-lifecycle).
+- Why this set together: R1 (spec_section), R3 (byBypass), R4 (banned-vocab stratification) all consume the same rule-hits.jsonl data plane. Shipping them in one release keeps schema migration to one wave; the audit dashboard ships with the data that makes the dashboard useful on day one.
+
 ## [0.6.3] - 2026-05-09
 
 **Patch — fix v0.6.2 macOS CI red.** `scripts/clean-residue.js` returned `deleted: 0` on macOS for brand-new entries when `ageDaysMin=0`, because `now - stat.mtimeMs` could come back marginally negative — sub-ms timing skew between `fs.writeFileSync` and the `Date.now()` read inside `clean()` on APFS. Linux ext4 happened to land consistently non-negative; the same test passed locally and on Ubuntu CI. v0.6.2 shipped, the macOS runner caught it, and this is the immediate forward-fix. v0.6.2 functionality is otherwise intact (the bug only affects callers passing `ageDaysMin=0` against a freshly-created file — not the default 1-day threshold path).

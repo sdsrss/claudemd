@@ -34,7 +34,7 @@ THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
 if (( DELTA > THRESHOLD )); then
   echo "[claudemd] §7 residue audit: ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2
   echo "[claudemd] Consider: find ~/.claude/tmp -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +" >&2
-  hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}"
+  hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}" '§7-user-global-state'
 fi
 
 echo "$CURRENT" > "$BASELINE_FILE"

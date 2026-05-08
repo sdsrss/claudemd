@@ -137,7 +137,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
   bypass_rm=0
   if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
     bypass_rm=1
-    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}'
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}' '§8-rm-rf-var'
   fi
 
   if (( bypass_rm == 0 )); then
@@ -173,7 +173,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   bypass_npx=0
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
     bypass_npx=1
-    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-npx-unpinned"}'
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-npx-unpinned"}' '§8-npx'
   fi
 
   if (( bypass_npx == 0 )); then
@@ -230,5 +230,5 @@ Bypass options:
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
 HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record pre-bash-safety deny "{\"matched\":$HITS_JSON}"
+hook_record pre-bash-safety deny "{\"matched\":$HITS_JSON}" '§8'
 hook_deny pre-bash-safety "$REASON_TEXT"

@@ -31,7 +31,7 @@ echo "$CMD" | grep -qE "$TRIGGER_RE" || exit 0
 # Per-invocation escape hatch — placed AFTER trigger filter so bypass
 # usage is recorded only when the hook would have actually scanned.
 if echo "$CMD" | grep -qF '[skip-memory-check]'; then
-  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}'
+  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read'
   exit 0
 fi
 
@@ -115,5 +115,5 @@ REASON+=$'\n\n'"Options:
 Spec: ~/.claude/CLAUDE.md §11 SESSION — MEMORY.md read-the-file."
 
 MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
-hook_record memory-read-check deny "{\"missing\":$MISS_JSON}"
+hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read'
 hook_deny memory-read-check "$REASON"

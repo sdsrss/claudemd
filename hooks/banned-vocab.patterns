@@ -25,16 +25,54 @@
 # baseline" and keeps spec-compliant commits like
 #   perf: rendering 240ms → 72ms (70% faster)
 # from being denied. See banned-vocab-check.sh for the baseline check.
+#
+# ─── Layout policy (v0.7.0, R4) ──────────────────────────────────────────────
+# Patterns are split into two regions by 30-day fire history. `/claudemd-audit
+# --days=30` `topPatterns` table is the authoritative signal; this file mirrors
+# it visually so the operator can see "what's actively gating" vs "what's
+# carried as prophylactic spec coverage".
+#
+#   region: high-fire     ≥1 deny in the most recent 30d audit window.
+#                         Scanned first (grep order matters for early-exit on
+#                         common matches; ~6 patterns scan ~3× faster than the
+#                         full set on a clean message).
+#   region: prophylactic  0 hits in the most recent 30d audit window.
+#                         Kept for §10-V coverage (the spec lists these as
+#                         banned regardless of empirical fire rate); §0.1
+#                         demotion candidates if they remain at zero across
+#                         3 consecutive 30d windows. Move to §EXT §10-V
+#                         reference list before deletion.
+#
+# Re-stratify on each /claudemd-audit review (§13.1 cadence: ~50 L2+ tasks or
+# 4 weeks). `byBypass` field — added v0.7.0 — flags any pattern whose deny is
+# routinely overridden via `[allow-banned-vocab]`; that's a strong demotion
+# signal independent of fire count.
 
-# ─── EN adjectives (strong signals) ─────────────────────────────────────────
+# ============================================================================
+# region: high-fire (last audit window)
+# ============================================================================
+
+# ─── EN adjectives ──────────────────────────────────────────────────────────
 \bsignificantly\b|vague magnitude without number — cite absolute or baseline ratio
-\bproduction[- ]ready\b|evaluative adjective — describe what you verified (tests, thresholds) instead
 \brobust\b|evaluative adjective — describe the property (covers X branches, handles Y input)
 \bcomprehensive\b|vague scope — cite what is actually covered
+\bshould work\b|hedge — verify and state, or drop the claim (§8.V1 Anti-hallucination)
+
+# ─── 中文 adjectives ────────────────────────────────────────────────────────
+显著改善|值述无具体数字 — 改写成 before → after 的具体数字
+
+# ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
+\b[0-9]+%\s+(faster|slower|better|more efficient)\b|@ratio ratio without baseline — cite before → after numbers
+
+# ============================================================================
+# region: prophylactic (kept for §10-V coverage; 0 hits in last audit window)
+# ============================================================================
+
+# ─── EN adjectives ──────────────────────────────────────────────────────────
+\bproduction[- ]ready\b|evaluative adjective — describe what you verified (tests, thresholds) instead
 \bbest practice\b|appeal to authority — cite the specific practice + source if invoking
 \bindustry standard\b|appeal to authority — same as best-practice
 \bcleaner code\b|evaluative — describe the concrete change (N fewer LOC, removed helper X)
-\bshould work\b|hedge — verify and state, or drop the claim (§8.V1 Anti-hallucination)
 \bseems to work\b|hedge — verify and state, or drop the claim
 \bappears correct\b|hedge — verify and state, or drop the claim
 \bin principle\b|hedge — state the specific case
@@ -42,9 +80,8 @@
 \bpresumably\b|hedge — verify and state
 \bit should be fine\b|hedge — verify and state
 
-# ─── 中文 adjectives (strong signals) ────────────────────────────────────────
+# ─── 中文 adjectives ────────────────────────────────────────────────────────
 显著提升|值述无具体数字 — 改写成 baseline → target 数字
-显著改善|值述无具体数字 — 改写成 before → after 的具体数字
 显著优于|评价性形容词 — 描述具体属性 (覆盖 N 分支 / 处理 X 输入)
 大幅提升|值述无基线 — 给出 baseline → target 数字
 大幅改善|值述无基线 — 给出 before → after 数字
@@ -54,9 +91,6 @@
 相当不错|评价性形容词 — 描述具体属性
 
 # ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
-# These match "X% faster" / "Nx better" without nearby numbers.
-# Tagged @ratio — baseline-context exemption applies (see header).
-\b[0-9]+%\s+(faster|slower|better|more efficient)\b|@ratio ratio without baseline — cite before → after numbers
 \b[0-9]+x\s+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
 
 # ─── Baseline-less ratios (中文) ────────────────────────────────────────────

@@ -49,7 +49,7 @@ if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
   printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5 >&2
-  hook_record sandbox-disposal warn "{\"count\":$COUNT}"
+  hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4'
 fi
 
 touch "$SESSION_REF"

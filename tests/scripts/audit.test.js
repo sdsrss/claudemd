@@ -18,10 +18,16 @@ beforeEach(() => {
   fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
+  // Mix: 2 v0.7.0 rows with spec_section + 1 legacy v0.6.x row missing the
+  // field (audit `bySection` must surface it under the `(unset)` bucket so
+  // pre-upgrade data is visible during the audit-window transition).
   fs.writeFileSync(log,
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","extra":{"matched":["significantly"]}}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","extra":{"matched":["70% faster"]}}\n` +
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","extra":null}\n`
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["70% faster"]}}\n` +
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","extra":null}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n` +
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n` +
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n`
   );
 });
 
@@ -32,8 +38,11 @@ afterEach(() => {
 
 test('audit aggregates by hook', async () => {
   const r = await audit({ days: 30 });
-  assert.equal(r.byHook['banned-vocab'].total, 2);
+  assert.equal(r.byHook['banned-vocab'].total, 3);
+  assert.equal(r.byHook['banned-vocab'].byEvent.deny, 2);
+  assert.equal(r.byHook['banned-vocab'].byEvent['bypass-escape-hatch'], 1);
   assert.equal(r.byHook['ship-baseline'].total, 1);
+  assert.equal(r.byHook['pre-bash-safety'].total, 2);
 });
 
 test('audit top patterns for banned-vocab', async () => {
@@ -41,6 +50,45 @@ test('audit top patterns for banned-vocab', async () => {
   assert.ok(r.topPatterns.length >= 2);
   const names = r.topPatterns.map(([name]) => name);
   assert.ok(names.includes('significantly'));
+});
+
+test('audit bySection aggregates v0.7.0 spec_section field', async () => {
+  const r = await audit({ days: 30 });
+  // §10-V fired 3× (2 deny + 1 bypass on banned-vocab)
+  assert.equal(r.bySection['§10-V'].total, 3);
+  assert.equal(r.bySection['§10-V'].byEvent.deny, 2);
+  assert.equal(r.bySection['§10-V'].byEvent['bypass-escape-hatch'], 1);
+  assert.equal(r.bySection['§10-V'].byHook['banned-vocab'], 3);
+  // §8-rm-rf-var fired 2× (both bypass on pre-bash-safety)
+  assert.equal(r.bySection['§8-rm-rf-var'].total, 2);
+});
+
+test('audit bySection surfaces legacy rows under (unset)', async () => {
+  // The ship-baseline row in the fixture has no spec_section field
+  // (simulates pre-v0.7.0 row that's still in the audit window).
+  const r = await audit({ days: 30 });
+  assert.ok(r.bySection['(unset)'], '(unset) bucket must exist when legacy rows present');
+  assert.equal(r.bySection['(unset)'].total, 1);
+  assert.equal(r.bySection['(unset)'].byHook['ship-baseline'], 1);
+});
+
+test('audit byBypass aggregates per-token override usage', async () => {
+  const r = await audit({ days: 30 });
+  // 1× allow-banned-vocab + 2× allow-rm-rf-var in fixture
+  assert.equal(r.byBypass['allow-banned-vocab'].total, 1);
+  assert.equal(r.byBypass['allow-banned-vocab'].byHook['banned-vocab'], 1);
+  assert.equal(r.byBypass['allow-rm-rf-var'].total, 2);
+  assert.equal(r.byBypass['allow-rm-rf-var'].byHook['pre-bash-safety'], 2);
+});
+
+test('audit byBypass empty when no bypass-escape-hatch events present', async () => {
+  // Replace fixture with deny-only data.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  fs.writeFileSync(log,
+    `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["robust"]}}\n`
+  );
+  const r = await audit({ days: 30 });
+  assert.deepEqual(r.byBypass, {});
 });
 
 test('audit CLI rejects non-numeric --days (L1)', () => {

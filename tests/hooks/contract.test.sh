@@ -145,6 +145,102 @@ else
   ng "D project field missing/wrong (log: $(cat "$LOG" 2>/dev/null))"
 fi
 
+# --- E: spec_section populated on every spec-enforcing hook deny/bypass -----
+# v0.7.0 R1 contract. Hooks that enforce a spec rule (banned-vocab, ship-
+# baseline, pre-bash-safety, memory-read-check, residue-audit, sandbox-
+# disposal) MUST emit `spec_section` non-null on deny/warn/bypass-escape-hatch.
+# Plugin-internal hooks (session-start bootstrap/upstream-banner, user-prompt-
+# submit version-sync) keep null. Drives §0.1/§13.1/§13.2 promotion accounting.
+
+# E.1 banned-vocab deny → spec_section "§10-V"
+rm -f "$LOG"
+drive "$HOOKS_DIR/banned-vocab-check.sh" \
+  "git commit -m 'this is significantly better'"
+if [[ -f "$LOG" ]] && jq -e 'select(.hook=="banned-vocab" and .event=="deny" and .spec_section=="§10-V")' "$LOG" >/dev/null 2>&1; then
+  ok "E.1 banned-vocab deny tagged §10-V"
+else
+  ng "E.1 banned-vocab deny missing/wrong section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.2 ship-baseline pass / pass-known-red / deny → "§7-ship-baseline"
+# Tested via the lib directly (the hook's own gh-CLI dependency makes
+# end-to-end driving brittle in unit tests). Same code path, same arg count.
+rm -f "$LOG"
+bash -c "source '$HOOKS_DIR/lib/rule-hits.sh'; rule_hits_append ship-baseline pass null '§7-ship-baseline'"
+if jq -e 'select(.spec_section=="§7-ship-baseline")' "$LOG" >/dev/null 2>&1; then
+  ok "E.2 ship-baseline pass tagged §7-ship-baseline"
+else
+  ng "E.2 ship-baseline pass missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.3 pre-bash-safety bypass-escape-hatch (rm-rf-var) → "§8-rm-rf-var"
+rm -f "$LOG"
+drive "$HOOKS_DIR/pre-bash-safety-check.sh" \
+  'rm -rf $FOO [allow-rm-rf-var]'
+if jq -e 'select(.hook=="pre-bash-safety" and .event=="bypass-escape-hatch" and .spec_section=="§8-rm-rf-var")' "$LOG" >/dev/null 2>&1; then
+  ok "E.3 pre-bash-safety rm-rf-var bypass tagged §8-rm-rf-var"
+else
+  ng "E.3 pre-bash-safety rm-rf-var bypass missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.4 pre-bash-safety bypass (npx) → "§8-npx"
+rm -f "$LOG"
+drive "$HOOKS_DIR/pre-bash-safety-check.sh" \
+  'npx some-pkg [allow-npx-unpinned]'
+if jq -e 'select(.hook=="pre-bash-safety" and .event=="bypass-escape-hatch" and .spec_section=="§8-npx")' "$LOG" >/dev/null 2>&1; then
+  ok "E.4 pre-bash-safety npx bypass tagged §8-npx"
+else
+  ng "E.4 pre-bash-safety npx bypass missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.5 memory-read-check bypass → "§11-memory-read"
+CWD_E5="/work/contract-mem-e"
+ENC=$(echo "$CWD_E5" | tr '/.' '-')
+PROJ_DIR_E="$HOME/.claude/projects/$ENC"
+mkdir -p "$PROJ_DIR_E/memory"
+cat > "$PROJ_DIR_E/memory/MEMORY.md" <<'EOF'
+- [Push lessons](feedback_push.md) `[push]` — required
+EOF
+touch "$PROJ_DIR_E/memory/feedback_push.md"
+echo '' > "$PROJ_DIR_E/contract.jsonl"
+rm -f "$LOG"
+jq -cn --arg c "git push origin main [skip-memory-check]" --arg cwd "$CWD_E5" \
+  '{session_id:"contract",tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' \
+  | bash "$HOOKS_DIR/memory-read-check.sh" >/dev/null 2>&1 || true
+if jq -e 'select(.hook=="memory-read-check" and .event=="bypass-escape-hatch" and .spec_section=="§11-memory-read")' "$LOG" >/dev/null 2>&1; then
+  ok "E.5 memory-read-check bypass tagged §11-memory-read"
+else
+  ng "E.5 memory-read-check bypass missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.6 residue-audit / sandbox-disposal sections via lib (real Stop-hook
+# driving requires session-state that's painful to fake). Same code path.
+rm -f "$LOG"
+bash -c "source '$HOOKS_DIR/lib/rule-hits.sh'; rule_hits_append residue-audit warn '{\"delta\":42}' '§7-user-global-state'"
+if jq -e 'select(.spec_section=="§7-user-global-state")' "$LOG" >/dev/null 2>&1; then
+  ok "E.6 residue-audit warn tagged §7-user-global-state"
+else
+  ng "E.6 residue-audit warn missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+rm -f "$LOG"
+bash -c "source '$HOOKS_DIR/lib/rule-hits.sh'; rule_hits_append sandbox-disposal warn '{\"count\":3}' '§8.V4'"
+if jq -e 'select(.spec_section=="§8.V4")' "$LOG" >/dev/null 2>&1; then
+  ok "E.7 sandbox-disposal warn tagged §8.V4"
+else
+  ng "E.7 sandbox-disposal warn missing section (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
+# E.8 plugin-internal events (bootstrap / version-sync) keep spec_section
+# null — they don't enforce a spec rule, just plugin lifecycle.
+rm -f "$LOG"
+bash -c "source '$HOOKS_DIR/lib/rule-hits.sh'; rule_hits_append session-start bootstrap null"
+if jq -e 'select(.spec_section==null)' "$LOG" >/dev/null 2>&1; then
+  ok "E.8 session-start bootstrap leaves section null"
+else
+  ng "E.8 session-start bootstrap section should be null (log: $(cat "$LOG" 2>/dev/null))"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

@@ -41,13 +41,13 @@ CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""' 2>/dev/null
 # "Red →" — these are red in gh parlance.
 case "$CONCLUSION" in
   failure|cancelled|timed_out|action_required|startup_failure) ;;
-  *) hook_record ship-baseline pass null; exit 0 ;;
+  *) hook_record ship-baseline pass null '§7-ship-baseline'; exit 0 ;;
 esac
 
 # known-red baseline bypass
 HEAD_MSG=$(git log -1 --format=%B 2>/dev/null || true)
 if printf '%s' "$HEAD_MSG" | grep -qi 'known-red baseline:'; then
-  hook_record ship-baseline pass-known-red null
+  hook_record ship-baseline pass-known-red null '§7-ship-baseline'
   exit 0
 fi
 
@@ -64,5 +64,5 @@ Options:
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
 
-hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}"
+hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline'
 hook_deny ship-baseline "$REASON"

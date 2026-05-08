@@ -12,6 +12,7 @@ Format: one JSON object per line. Append-only. Size-capped rotation at 5 MB
 | `hook` | string | hook name — see "Events" table for valid emitters |
 | `event` | string | event class — see "Events" table |
 | `project` | string | project identifier: `$CLAUDE_PROJECT_DIR` (or `$PWD` fallback) with `/` and `.` replaced by `-`. Empty string when neither var is set. Added v0.6.2. |
+| `spec_section` | string \| null | spec section being enforced — drives §0.1/§13.1/§13.2 promotion/demotion accounting. `null` for plugin-internal events (bootstrap, version-sync, upstream-banner) and for rows written before v0.7.0. See "Spec section taxonomy" below. Added v0.7.0. |
 | `extra` | any | hook-specific payload (object / null / string) |
 
 ## Events
@@ -32,13 +33,37 @@ source must appear in this table.
 | `upstream-banner` | `session-start` | upstream version available banner |
 | `version-sync` | `user-prompt-submit` | mid-session manifest sync triggered |
 
+## Spec section taxonomy
+
+`spec_section` carries the spec section identifier each event maps to. The
+mapping is compile-time per (hook, callsite); `extra.matched` keeps the
+per-pattern detail. Hooks that don't enforce a spec rule (session-start
+bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
+
+| Hook | Event | spec_section |
+|---|---|---|
+| `banned-vocab` | `deny` / `bypass-escape-hatch` | `§10-V` |
+| `ship-baseline` | `pass` / `pass-known-red` / `deny` | `§7-ship-baseline` |
+| `pre-bash-safety` | `deny` (combined patterns) | `§8` |
+| `pre-bash-safety` | `bypass-escape-hatch` (`allow-rm-rf-var`) | `§8-rm-rf-var` |
+| `pre-bash-safety` | `bypass-escape-hatch` (`allow-npx-unpinned`) | `§8-npx` |
+| `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
+| `residue-audit` | `warn` | `§7-user-global-state` |
+| `sandbox-disposal` | `warn` | `§8.V4` |
+| `session-start` | `bootstrap` / `upstream-banner` | `null` |
+| `user-prompt-submit` | `version-sync` | `null` |
+
+Pre-v0.7.0 rows have no `spec_section` field; `audit.js`'s `bySection`
+aggregation surfaces them under the `(unset)` bucket so the operator can
+see how much pre-upgrade data is in the audit window.
+
 ## Example rows
 
 ```json
-{"ts":"2026-04-21T03:10:45Z","hook":"banned-vocab","event":"deny","project":"-mnt-data-ssd-dev-projects-claudemd","extra":{"matched":["significantly"]}}
-{"ts":"2026-04-21T03:14:00Z","hook":"ship-baseline","event":"pass-known-red","project":"-mnt-data-ssd-dev-projects-claudemd","extra":{"run_url":"https://..."}}
-{"ts":"2026-04-21T04:22:30Z","hook":"residue-audit","event":"warn","project":"-mnt-data-ssd-dev-projects-claudemd","extra":{"delta":34,"current":187,"baseline":153}}
-{"ts":"2026-04-21T04:23:00Z","hook":"pre-bash-safety","event":"bypass-escape-hatch","project":"-mnt-data-ssd-dev-projects-claudemd","extra":{"token":"allow-rm-rf-var"}}
+{"ts":"2026-04-21T03:10:45Z","hook":"banned-vocab","event":"deny","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["significantly"]}}
+{"ts":"2026-04-21T03:14:00Z","hook":"ship-baseline","event":"pass-known-red","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§7-ship-baseline","extra":{"run_url":"https://..."}}
+{"ts":"2026-04-21T04:22:30Z","hook":"residue-audit","event":"warn","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§7-user-global-state","extra":{"delta":34,"current":187,"baseline":153}}
+{"ts":"2026-04-21T04:23:00Z","hook":"pre-bash-safety","event":"bypass-escape-hatch","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}
 ```
 
 ## Retention

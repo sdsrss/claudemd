@@ -25,7 +25,7 @@ echo "$CMD" | grep -qE '(^|[[:space:];&|])git([[:space:]]+-c[[:space:]]+[^[:spac
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
-  hook_record banned-vocab bypass-escape-hatch null
+  hook_record banned-vocab bypass-escape-hatch null '§10-V'
   exit 0
 fi
 
@@ -103,6 +103,6 @@ REASON_TEXT+=$'\n\n'"Bypass options:
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
 
 HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record banned-vocab deny "{\"matched\":$HITS_JSON}"
+hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V'
 
 hook_deny banned-vocab "$REASON_TEXT"
