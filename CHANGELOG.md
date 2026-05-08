@@ -8,13 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.1] - 2026-05-09
+
+**Patch — code-review fix-up for v0.8.0.** Closes 6 Important issues + 2 Minor issues raised by post-ship code review of v0.8.0. Theme: docs and tests drifted from code in the same release that shipped a manifest meant to detect drift — that's the §10 Specificity self-violation reviewer caught. No runtime behavior change.
+
+### Fixed
+
+- `[fix]` **`tests/integration/full-lifecycle.test.sh:50`** — Phase 7 residue regex now includes `session-summary` in its alternation. Pre-fix, a future regression that left a `session-summary.sh` entry in `settings.json` after uninstall would pass this gate silently. (Reviewer I1.)
+
+- `[fix]` **`README.md`** — 5 stale counts corrected: line 14 "6 slash commands" → 8 (+ `/claudemd-rules` + `/claudemd-clean-residue` listed); line 99 "All 8 hooks" → 9; line 115 kill-switch list adds `DISABLE_SESSION_SUMMARY_HOOK`; new sub-feature flag `DISABLE_SESSION_SUMMARY_BANNER` documented at line 122-126; line 241 layout block "5 slash-command markdown files" → 8; commands table at line 84-91 adds `/claudemd-rules` + `/claudemd-clean-residue` rows. (Reviewer I2.)
+
+- `[fix]` **`CHANGELOG.md` v0.8.0 entry — false-claim correction**: removed "+ ARCHITECTURE.md updated" from the Notes block. Per `.gitignore`, `docs/ARCHITECTURE.md` is an explicitly local-only internal reference (commit `e035f1f`); the v0.8.0 release does not ship it. The original phrasing implied a public doc update that never happened — the §10 Specificity self-violation reviewer caught. Local copy of `docs/ARCHITECTURE.md` was updated for personal reference but is intentionally not part of the release artifact. (Reviewer I3.)
+
+- `[fix]` **`docs/RULE-HITS-SCHEMA.md`** — explicit "Hooks that do NOT write to this log" callout naming `session-summary.sh` so future readers grepping `claudemd.jsonl` for it know why nothing matches. The hook writes to `~/.claude/.claudemd-state/last-session-summary.json` instead. (Reviewer I4.)
+
+- `[fix]` **`tests/scripts/hard-rules-drift.test.js:99`** — invariant 5 substring matching tightened to a single direction (`line.includes(anchor)` only). The previous OR with `anchor.includes(line[:80])` accepted silent renames where a future spec edit shortened a heading's verbatim text but the manifest still carried the longer anchor. Now invariants 1 and 5 must remain in lockstep — invariant 1 owns `anchor → spec`, invariant 5 owns `spec → anchor`, neither half can paper over the other. (Reviewer I5.)
+
+- `[fix]` **`tests/scripts/hard-rules-drift.test.js:24-39`** — `SPEC_HARD_LINE_EXEMPTIONS` comment block was misleading: it described 4 reasons for exemption when actually only 1 line in the spec needs exemption (the §12 fallback table cross-ref to `sp:subagent-driven-development`). Comment rewritten to explain that the other (HARD) lines (V1-V4 sub-rules, Iron Laws, Manual-ship atomicity, etc.) are anchor-covered, not exempt. Future maintainer reading the comment will understand why each is or isn't on the list. (Reviewer I6.)
+
+- `[fix]` **`scripts/hard-rules-audit.js:62-72`** — `byEnforcement` output no longer double-counts. Pre-fix: `byEnforcement.hook` counted `enforcement === 'hook'` plus `enforcement === 'both'`, while `byEnforcement.both` counted `both` again — sum exceeded `totalRules` by the count of `both` entries. Post-fix the four categories partition `rules` exactly: `hook + self + external + both = totalRules`. The hook-enforced union (used internally for `demoteCandidates`) is computed inline. (Reviewer M3.)
+
+- `[fix]` **`CHANGELOG.md` v0.8.0 entry** — replaced "the 90/10 split" baseline-less ratio with concrete numbers: `7 of 21 (33%) hook-enforced, 14 of 21 (67%) self/external`. Per §10 Specificity, value claims about own work require absolute numbers or baseline ratios; the original phrasing was the kind of vague magnitude the same release's `banned-vocab.patterns` is meant to catch. (Reviewer M7.)
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.8.1`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 170/170 node tests pass; 11 hook suites green; 2 integration suites pass.
+- Reviewer's recommended `scripts/lib/hook-registry.js` refactor (single source of truth for the 9-hook list) deferred — touches 5 production files plus tests and qualifies as L2 cross-module work; better as its own focused commit. Tracked as v0.8.x candidate.
+
 ## [0.8.0] - 2026-05-09
 
 **Minor — HARD-rules manifest (R-N2) + week-over-week regression (R-N3) + SessionStart summary banner (R-N4).** Builds on v0.7.x's `spec_section` + `byBypass` data plane. R-N2 makes spec self-governance machine-readable: §13.1 quarterly demote and §13.2 budget accounting now have a structured manifest to read instead of grep-and-eyeball. R-N3 turns single-window audit numbers into early-regression alerts. R-N4 surfaces last session's hook activity at the start of the next session — agent sees its own trend without an explicit `/claudemd-audit` invocation.
 
 ### Added
 
-- `[feat]` **`spec/hard-rules.json`** (new, 21 rules) — machine-readable manifest of every HARD rule across `spec/CLAUDE.md` + `spec/CLAUDE-extended.md`. Per-rule fields: `id`, `name`, `scope` (core/extended), `section_anchor` (verbatim spec substring), `enforcement` (hook/self/external/both), `rule_hits_section` (links to v0.7.0 audit data; null for non-hook rules), `added_version`, `confidence` (high/medium/low), `last_demote_review`. 6 rules tagged `enforcement: hook` (or `both`); 13 self-enforced; 1 external; 1 both. The manifest documents the 90/10 split that was previously implicit — most spec content is agent self-discipline, only a small fraction is hook-gated.
+- `[feat]` **`spec/hard-rules.json`** (new, 21 rules) — machine-readable manifest of every HARD rule across `spec/CLAUDE.md` + `spec/CLAUDE-extended.md`. Per-rule fields: `id`, `name`, `scope` (core/extended), `section_anchor` (verbatim spec substring), `enforcement` (hook/self/external/both), `rule_hits_section` (links to v0.7.0 audit data; null for non-hook rules), `added_version`, `confidence` (high/medium/low), `last_demote_review`. Enforcement breakdown: 6 hook + 13 self + 1 external + 1 both = 21 rules total — meaning 7 of 21 (33%) HARD rules emit signal to rule-hits.jsonl, while 14 of 21 (67%) rely on agent self-discipline.
 
 - `[feat]` **`scripts/hard-rules-audit.js`** (new, 100 LOC) — cross-references `spec/hard-rules.json` with `~/.claude/logs/claudemd.jsonl` `bySection` data over a configurable window (default 90d, matching §13.1 quarterly cadence). Outputs: `byScope` / `byEnforcement` / `byConfidence` summaries, `demoteCandidates` (hook-enforced rules with 0 hits in window), `staleReviews` (rules whose `last_demote_review` is null or older than the window), and per-rule rows with hits. CLI: `--days=N` flag or `CLAUDEMD_RULES_DAYS` env var.
 
@@ -54,7 +82,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 ### Notes
 
 - Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + plugins[0]) — all to `0.8.0`. Spec files (`spec/CLAUDE*.md`) unchanged; spec version remains v6.11.3.
-- Hook count: 8 → 9. README + ARCHITECTURE.md updated.
+- Hook count: 8 → 9. README updated. (`docs/ARCHITECTURE.md` is gitignored as internal reference per `.gitignore` — local-only edits don't ship.)
 - Validation: `tests/run-all.sh` → 170/170 node tests pass; 11 hook suites green (including new session-summary 6/6 + hard-rules-drift 6/6); 2 integration suites pass (full-lifecycle, upgrade-lifecycle).
 - Why R-N2 + R-N3 + R-N4 in one ship: they all consume v0.7.x data. R-N2 indexes the rule taxonomy; R-N3 adds a time-axis to existing aggregations; R-N4 is a one-line context inject at session boundary. Single migration wave keeps schema attribution clean.
 

@@ -49,10 +49,16 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     };
   });
 
-  // Aggregations for §13.1/§13.2 review:
-  const hookEnforced = rules.filter(r => r.enforcement === 'hook' || r.enforcement === 'both');
+  // Aggregations for §13.1/§13.2 review. The four enforcement categories
+  // partition `rules` exactly — hook + self + external + both = totalRules.
+  // `hookEnforced` (used for demoteCandidates below) is the union of `hook`
+  // and `both`, computed inline rather than as a separate count to avoid
+  // making the published `byEnforcement` shape look overlapping.
+  const hookOnly = rules.filter(r => r.enforcement === 'hook');
   const selfEnforced = rules.filter(r => r.enforcement === 'self');
   const externalEnforced = rules.filter(r => r.enforcement === 'external');
+  const bothEnforced = rules.filter(r => r.enforcement === 'both');
+  const hookEnforced = [...hookOnly, ...bothEnforced]; // union: rules whose denials reach rule-hits.jsonl
 
   // Demotion candidates: hook-enforced rules with 0 hits in the audit window.
   // Self-enforced rules are excluded — their "hits" are agent-text patterns
@@ -78,11 +84,12 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
       core: rules.filter(r => r.scope === 'core').length,
       extended: rules.filter(r => r.scope === 'extended').length,
     },
+    // Categories partition rules exactly — sum equals totalRules.
     byEnforcement: {
-      hook: hookEnforced.length,
+      hook: hookOnly.length,
       self: selfEnforced.length,
       external: externalEnforced.length,
-      both: rules.filter(r => r.enforcement === 'both').length,
+      both: bothEnforced.length,
     },
     byConfidence: {
       high: rules.filter(r => r.confidence === 'high').length,

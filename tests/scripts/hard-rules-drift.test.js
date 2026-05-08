@@ -25,16 +25,19 @@ const KNOWN_HOOK_SECTIONS = new Set([
   '§11-memory-read', '§7-user-global-state', '§8.V4',
 ]);
 
-// HARD spec annotations that are deliberately NOT manifest entries:
-// they're sub-clauses or in-line clarifications grouped under a parent
-// HARD entry already in the manifest. Adding the parent already covers them.
+// HARD spec annotations whose containing line cannot be matched by any
+// manifest entry's `section_anchor` substring. There's exactly ONE such
+// line in the current spec: the §12 fallback table cross-ref to the
+// `sp:subagent-driven-development` skill, which mentions "(HARD)" but
+// is a pointer to a HARD rule documented elsewhere — not a new rule.
+//
+// All other (HARD)-bearing lines ARE covered by anchor matching:
+//   • §8 V1-V4 sub-rules → parent `§8-verify-before-claim` anchor matches
+//     the heading "Verify-before-claim (HARD, 4 sub-rules)" line.
+//   • Iron Law #1 / #2 — each has its own manifest entry.
+//   • Manual-ship atomicity — its own entry.
+//   • Each top-level (HARD) section heading or bold-tagged rule — own entry.
 const SPEC_HARD_LINE_EXEMPTIONS = new Set([
-  // §8 has 4 sub-rules (V1-V4). The parent §8-verify-before-claim entry
-  // covers V1-V3; V4 has its own entry (§8.V4) for the sandbox-disposal hook.
-  // Iron Law #2 line is a separate manifest entry.
-  // Manual-ship atomicity line — separate entry.
-  // Subagent-driven-development "(HARD)" mention in §12 fallback table is
-  // a cross-ref, not a new rule — skip.
   'sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD)',
 ]);
 
@@ -100,6 +103,13 @@ test('hard-rules-4: self/external-enforced entries have null rule_hits_section',
 test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest entry', () => {
   // For each spec, extract lines containing "(HARD". For each, check whether
   // the line text matches any manifest entry's section_anchor.
+  //
+  // Direction: line.includes(anchor) ONLY. The earlier two-direction OR
+  // (which also accepted `anchor.includes(line[:80])`) made silent renames
+  // possible — if a future spec edit shortened a heading's verbatim text
+  // but the manifest still carried the longer form, the second clause
+  // accepted that. Strict one-direction matching forces invariant 1
+  // (anchor → spec) and invariant 5 (spec → anchor) to remain in sync.
   const m = loadManifest();
   const violations = [];
   for (const scope of ['core', 'extended']) {
@@ -107,10 +117,8 @@ test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest
     const hardLines = text.split('\n').filter(l => /\(HARD/.test(l));
     for (const line of hardLines) {
       const trimmed = line.trim();
-      // Match if any manifest entry's section_anchor is a substring of this line.
-      const matched = m.rules.some(r => trimmed.includes(r.section_anchor) || r.section_anchor.includes(trimmed.slice(0, 80)));
+      const matched = m.rules.some(r => trimmed.includes(r.section_anchor));
       if (matched) continue;
-      // Check exemption list (cross-references, table mentions).
       const exempt = [...SPEC_HARD_LINE_EXEMPTIONS].some(e => trimmed.includes(e));
       if (exempt) continue;
       violations.push({ scope, line: trimmed.slice(0, 120) });

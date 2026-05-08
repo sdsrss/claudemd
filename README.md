@@ -11,7 +11,7 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 | Layer | Contents |
 |---|---|
 | 9 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `version-sync` |
-| 6 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` |
+| 8 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` |
 | Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
@@ -87,7 +87,9 @@ Once installed, the hooks run silently in the background:
 | `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (spec trio is lockstep — per-file select would break §EXT cross-references). |
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
-| `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. |
+| `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). |
+| `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 90, matches §13.1 quarterly cadence). Surfaces `demoteCandidates` (hook-enforced rules with 0 hits) and `staleReviews` (rules whose `last_demote_review` is null/old). |
+| `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
 | `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---
@@ -96,7 +98,7 @@ Once installed, the hooks run silently in the background:
 
 All visible in `/claudemd-status`.
 
-**1. Plugin-wide.** All 8 hooks short-circuit before any logic:
+**1. Plugin-wide.** All 9 hooks short-circuit before any logic:
 
 ```bash
 export DISABLE_CLAUDEMD_HOOKS=1
@@ -112,6 +114,7 @@ export DISABLE_RESIDUE_AUDIT_HOOK=1        # or
 export DISABLE_MEMORY_READ_HOOK=1          # or
 export DISABLE_SANDBOX_DISPOSAL_HOOK=1     # or
 export DISABLE_SESSION_START_HOOK=1        # or
+export DISABLE_SESSION_SUMMARY_HOOK=1      # or  (v0.8.0+, Stop hook writing summary)
 export DISABLE_USER_PROMPT_SUBMIT_HOOK=1
 ```
 
@@ -121,6 +124,12 @@ export DISABLE_USER_PROMPT_SUBMIT_HOOK=1
 export DISABLE_UPSTREAM_CHECK=1            # only the upstream-tag-check sub-feature
                                            # of session-start-check; bootstrap-on-mismatch
                                            # behavior remains active.
+
+export DISABLE_SESSION_SUMMARY_BANNER=1    # v0.8.0+ — only the SessionStart banner-emit
+                                           # half of session-summary; the Stop-side write
+                                           # of last-session-summary.json continues so
+                                           # the data is captured for /claudemd-audit
+                                           # but no additionalContext line is injected.
 ```
 
 **3. Per-invocation escape hatches** (no env var needed; embed in the command itself):
@@ -238,7 +247,7 @@ claudemd/
 │   └── marketplace.json      # marketplace catalog entry
 ├── hooks/                    # 9 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 5 slash-command markdown files
+├── commands/                 # 8 slash-command markdown files
 ├── scripts/                  # 7 Node.js management scripts + scripts/lib/
 ├── spec/                     # shipped v6.11.3 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures

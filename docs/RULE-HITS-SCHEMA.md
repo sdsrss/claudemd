@@ -57,6 +57,13 @@ Pre-v0.7.0 rows have no `spec_section` field; `audit.js`'s `bySection`
 aggregation surfaces them under the `(unset)` bucket so the operator can
 see how much pre-upgrade data is in the audit window.
 
+**Hooks that do NOT write to this log** (v0.8.0+): `session-summary.sh`
+is a Stop hook that aggregates rows from this log and writes a derived
+summary to `~/.claude/.claudemd-state/last-session-summary.json` (consumed
+once by `session-start-check.sh` on the next session). It does not call
+`hook_record` and produces no JSONL row. Grepping `claudemd.jsonl` for
+`hook == "session-summary"` will return zero — that's expected.
+
 ## Example rows
 
 ```json

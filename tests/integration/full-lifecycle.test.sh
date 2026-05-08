@@ -47,7 +47,7 @@ echo "$OUT" | jq -e '.specAction == "keep"' >/dev/null \
 
 # Phase 7: settings.json clean of our entries. Match by known hook basename
 # (works for both absolute-path and ${CLAUDE_PLUGIN_ROOT}-form commands).
-REMAIN=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(banned-vocab-check|ship-baseline-check|memory-read-check|pre-bash-safety-check|residue-audit|sandbox-disposal-check|session-start-check|version-sync)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
+REMAIN=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(banned-vocab-check|ship-baseline-check|memory-read-check|pre-bash-safety-check|residue-audit|sandbox-disposal-check|session-start-check|session-summary|version-sync)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
 [[ "$REMAIN" == "0" ]] || { echo "FAIL: claudemd entries remain"; exit 1; }
 
 echo "full-lifecycle: PASS"
