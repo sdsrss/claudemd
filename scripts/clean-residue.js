@@ -21,7 +21,12 @@ export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
     const full = path.join(tmpDir, entry.name);
     let stat;
     try { stat = fs.statSync(full); } catch { continue; }
-    const ageDays = (now - stat.mtimeMs) / 86400000;
+    // Clamp at 0: macOS APFS can return mtimeMs marginally above Date.now()
+    // for files just written in the same turn (sub-ms timing skew between
+    // fs.writeFileSync and the Date.now() read here). A file can't be
+    // younger than itself; negative ageDays would falsely exclude it under
+    // ageDaysMin=0. v0.6.2 macOS CI red root cause.
+    const ageDays = Math.max(0, (now - stat.mtimeMs) / 86400000);
     if (SENTINEL_PATTERN.test(entry.name) && entry.isFile()) {
       sentinels.push({ path: full, ageDays });
     } else if (SANDBOX_PATTERN.test(entry.name) && entry.isDirectory()) {

@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.6.3] - 2026-05-09
+
+**Patch — fix v0.6.2 macOS CI red.** `scripts/clean-residue.js` returned `deleted: 0` on macOS for brand-new entries when `ageDaysMin=0`, because `now - stat.mtimeMs` could come back marginally negative — sub-ms timing skew between `fs.writeFileSync` and the `Date.now()` read inside `clean()` on APFS. Linux ext4 happened to land consistently non-negative; the same test passed locally and on Ubuntu CI. v0.6.2 shipped, the macOS runner caught it, and this is the immediate forward-fix. v0.6.2 functionality is otherwise intact (the bug only affects callers passing `ageDaysMin=0` against a freshly-created file — not the default 1-day threshold path).
+
+### Fixed
+
+- `[fix]` **`scripts/clean-residue.js`** — `ageDays = Math.max(0, (now - mtimeMs) / 86400000)`. A file can't be younger than itself; clamping at 0 makes the comparison robust to sub-ms timestamp skew between filesystem writes and `Date.now()` regardless of FS implementation. The 12-case test suite continues to pass; the failing case `clean ageDaysMin=0 includes brand-new entries` now resolves correctly on macOS APFS as well.
+
 ## [0.6.2] - 2026-05-09
 
 **Patch — audit-data instrumentation + residue self-cleanup.** Two themes, one release. (1) Closes a schema-vs-impl drift in the rule-hits log: 2 of 4 bypass-capable hooks were silently exiting without recording `bypass-escape-hatch`, so `/claudemd-audit` under-counted user overrides; the JSONL also carried no project identifier, so cross-project drill-down was impossible. Adds `project` field on every row + bypass recording in `pre-bash-safety` and `memory-read-check` + a contract test that locks "every documented event has a producer and every emitted event is documented." (2) Closes the irony that the residue-policing plugin was itself the largest residue source: 525 stale `claudemd-sync-*` session sentinels accumulated in 9 days under `$TMPDIR` (one per CC session, never collected). Adds GC of >24h sentinels in `version-sync.sh` (bounded to first prompt of a session) + a new `/claudemd-clean-residue` command + a `scripts/clean-residue.js` library.
