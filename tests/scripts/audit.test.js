@@ -91,6 +91,70 @@ test('audit byBypass empty when no bypass-escape-hatch events present', async ()
   assert.deepEqual(r.byBypass, {});
 });
 
+test('R-N3: byTrend flags regression when recent doubles prior', async () => {
+  // 5 events in last 7d, 1 event in 7-14d window → ratio 5.0 → regression.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = Date.now();
+  const recent = new Date(now - 1 * 86400 * 1000).toISOString();
+  const prior = new Date(now - 10 * 86400 * 1000).toISOString();
+  const rows = [
+    `{"ts":"${recent}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`.repeat(5),
+    `{"ts":"${prior}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await audit({ days: 30, trendDays: 7 });
+  assert.ok(r.byTrend, 'byTrend must be present');
+  assert.equal(r.byTrend['§10-V'].recent, 5);
+  assert.equal(r.byTrend['§10-V'].prior, 1);
+  assert.equal(r.byTrend['§10-V'].ratio, 5);
+  assert.equal(r.byTrend['§10-V'].flag, 'regression');
+});
+
+test('R-N3: byTrend flags newly_active when prior=0 recent>0', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = Date.now();
+  const recent = new Date(now - 2 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${recent}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`.repeat(3)
+  );
+  const r = await audit({ days: 30, trendDays: 7 });
+  assert.equal(r.byTrend['§11-memory-read'].recent, 3);
+  assert.equal(r.byTrend['§11-memory-read'].prior, 0);
+  assert.equal(r.byTrend['§11-memory-read'].ratio, null);
+  assert.equal(r.byTrend['§11-memory-read'].flag, 'newly_active');
+});
+
+test('R-N3: byTrend flags silenced when recent=0 prior>0', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = Date.now();
+  const prior = new Date(now - 10 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${prior}","hook":"sandbox-disposal","event":"warn","spec_section":"§8.V4","extra":null}\n`.repeat(4)
+  );
+  const r = await audit({ days: 30, trendDays: 7 });
+  assert.equal(r.byTrend['§8.V4'].recent, 0);
+  assert.equal(r.byTrend['§8.V4'].prior, 4);
+  assert.equal(r.byTrend['§8.V4'].ratio, 0);
+  assert.equal(r.byTrend['§8.V4'].flag, 'silenced');
+});
+
+test('R-N3: byTrend marks recovery when ratio ≤ 0.5', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = Date.now();
+  const recent = new Date(now - 1 * 86400 * 1000).toISOString();
+  const prior = new Date(now - 10 * 86400 * 1000).toISOString();
+  const rows = [
+    `{"ts":"${recent}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`,
+    `{"ts":"${prior}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`.repeat(4),
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await audit({ days: 30, trendDays: 7 });
+  assert.equal(r.byTrend['§10-V'].recent, 1);
+  assert.equal(r.byTrend['§10-V'].prior, 4);
+  assert.equal(r.byTrend['§10-V'].ratio, 0.25);
+  assert.equal(r.byTrend['§10-V'].flag, 'recovery');
+});
+
 test('audit CLI rejects non-numeric --days (L1)', () => {
   // Regression: parseInt('garbage', 10) → NaN → cutoff NaN → every row
   // filtered out silently. Previous runs returned 0 hits with no error.

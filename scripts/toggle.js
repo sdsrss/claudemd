@@ -13,6 +13,7 @@ const NAME_MAP = {
   'memory-read-check': 'MEMORY_READ',
   'sandbox-disposal-check': 'SANDBOX_DISPOSAL',
   'session-start-check': 'SESSION_START',
+  'session-summary': 'SESSION_SUMMARY',
   'version-sync': 'USER_PROMPT_SUBMIT',
 };
 

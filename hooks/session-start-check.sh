@@ -20,6 +20,43 @@ MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
+# session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
+# Sentinel: rename file after read so banner only fires once. Skipped on:
+# DISABLE_SESSION_SUMMARY_BANNER=1, jq missing, file absent, total=0.
+emit_session_summary_banner() {
+  [[ "${DISABLE_SESSION_SUMMARY_BANNER:-0}" == "1" ]] && return 0
+  local f="$HOME/.claude/.claudemd-state/last-session-summary.json"
+  [[ -f "$f" ]] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local denies bypasses warns top_section
+  denies=$(jq -r '.denies // 0' "$f" 2>/dev/null) || return 0
+  bypasses=$(jq -r '.bypasses // 0' "$f" 2>/dev/null) || return 0
+  warns=$(jq -r '.warns // 0' "$f" 2>/dev/null) || return 0
+  top_section=$(jq -r '.top_section // ""' "$f" 2>/dev/null) || return 0
+
+  # Suppress empty banner — session-summary.sh skips writing on total=0,
+  # but defensive against partial writes.
+  local total=$((denies + bypasses + warns))
+  (( total > 0 )) || return 0
+
+  local msg="[claudemd] last session: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
+  [[ -n "$top_section" && "$top_section" != "null" ]] && msg+=", top: ${top_section}"
+  msg+=". Disable: DISABLE_SESSION_SUMMARY_BANNER=1"
+
+  jq -cn --arg ctx "$msg" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $ctx
+    }
+  }' 2>/dev/null
+
+  # Rename → consumed. Next Stop will write a fresh summary; this one is done.
+  mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
+}
+
 # upstream_check — emit "upgrade available" SessionStart additionalContext
 # banner when remote GitHub tag exceeds local cache max version.
 # Always returns 0 (fail-open). Outputs JSON to stdout on banner emit; nothing
@@ -118,6 +155,7 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
   # is the canonical "everything in order locally, look outward" branch.
   if [[ "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
     upstream_check
+    emit_session_summary_banner
     exit 0
   fi
   # Mismatch: log intent, then fall through to the install block below which

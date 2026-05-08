@@ -34,14 +34,16 @@ beforeEach(() => {
   for (const name of ['banned-vocab-check', 'ship-baseline-check', 'residue-audit',
                       'memory-read-check', 'pre-bash-safety-check',
                       'sandbox-disposal-check', 'session-start-check',
+                      'session-summary',
                       'version-sync']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
   }
   // The production hooks.json is what install.js reads to populate the manifest.
-  // Tests must ship a copy that mirrors the real plugin's 8-hook registration
+  // Tests must ship a copy that mirrors the real plugin's 9-hook registration
   // (4 PreToolUse:Bash enforcement [pre-bash-safety + banned-vocab + ship-baseline
-  // + memory-read] + Stop [residue-audit + sandbox-disposal] + SessionStart
-  // self-bootstrap [v0.1.9] + UserPromptSubmit version-sync piggy-back [v0.3.1]).
+  // + memory-read] + Stop [residue-audit + sandbox-disposal + session-summary
+  // v0.8.0] + SessionStart self-bootstrap [v0.1.9] + UserPromptSubmit
+  // version-sync piggy-back [v0.3.1]).
   fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
     hooks: {
       SessionStart: [{ matcher: '*', hooks: [
@@ -59,6 +61,7 @@ beforeEach(() => {
       Stop: [{ matcher: '*', hooks: [
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh"', timeout: 3 },
       ] }],
     },
   }));
@@ -120,7 +123,7 @@ test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, 8);
+  assert.equal(manifest.entries.length, 9);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
@@ -141,7 +144,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 8);
+  assert.equal(manifest.entries.length, 9);
 });
 
 test('logs directory and empty jsonl created', async () => {

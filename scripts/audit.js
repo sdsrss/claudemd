@@ -1,16 +1,23 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend } from './lib/rule-hits-parse.js';
 
-export async function audit({ days = 30 } = {}) {
+const DEFAULT_TREND_DAYS = 7;
+
+export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) {
   const log = path.join(logsDir(), 'claudemd.jsonl');
   const hits = readHits(log, days);
+  // v0.8.0 R-N3 — byTrend computes recent vs prior window ratios; needs 2x
+  // trendDays of data. If days < 2x trendDays, byTrend will produce a
+  // truncated view (still informative — `prior` half just has less data).
+  const trendHits = readHits(log, Math.max(days, 2 * trendDays));
   return {
     windowDays: days,
     totalHits: hits.length,
     byHook: groupByHook(hits),
     bySection: groupBySection(hits),
     byBypass: byBypass(hits),
+    byTrend: byTrend(trendHits, trendDays),
     topPatterns: topPatterns(hits, 'banned-vocab'),
   };
 }

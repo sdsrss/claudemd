@@ -68,3 +68,54 @@ export function byBypass(hits) {
   }
   return byToken;
 }
+
+// v0.8.0 — R-N3 week-over-week regression. Splits hits into two windows
+// (recent N days vs prior N days) and reports per-section ratio change.
+// Surfaces hot spots — "§11-memory-read deny rate doubled this week" —
+// that single-window aggregations miss. Sections firing only in one half
+// emit ratio Infinity (new) or 0 (silenced) so the operator can spot
+// activation/deactivation transitions.
+//
+// Inputs: hits already filtered to the combined window (both halves);
+// windowDays = days per half. Caller must pass 2× window when reading.
+export function byTrend(hits, windowDays = 7) {
+  const now = Date.now();
+  const halfMs = windowDays * 86400 * 1000;
+  const recentCutoff = now - halfMs;
+  const priorCutoff = now - 2 * halfMs;
+
+  const recent = {};
+  const prior = {};
+  for (const h of hits) {
+    const t = new Date(h.ts).getTime();
+    const key = h.spec_section || '(unset)';
+    if (t >= recentCutoff) {
+      recent[key] = (recent[key] || 0) + 1;
+    } else if (t >= priorCutoff) {
+      prior[key] = (prior[key] || 0) + 1;
+    }
+  }
+
+  const sections = new Set([...Object.keys(recent), ...Object.keys(prior)]);
+  const trend = {};
+  for (const s of sections) {
+    const r = recent[s] || 0;
+    const p = prior[s] || 0;
+    let ratio;
+    let flag = 'stable';
+    if (p === 0 && r === 0) continue; // shouldn't happen, defensive
+    if (p === 0) {
+      ratio = null; // newly active — ratio undefined
+      flag = 'newly_active';
+    } else if (r === 0) {
+      ratio = 0;
+      flag = 'silenced';
+    } else {
+      ratio = r / p;
+      if (ratio >= 2) flag = 'regression';
+      else if (ratio <= 0.5) flag = 'recovery';
+    }
+    trend[s] = { recent: r, prior: p, ratio, flag, windowDays };
+  }
+  return trend;
+}

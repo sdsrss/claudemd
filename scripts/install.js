@@ -21,6 +21,7 @@ export const HOOK_BASENAMES = [
   'residue-audit.sh',
   'sandbox-disposal-check.sh',
   'session-start-check.sh',
+  'session-summary.sh',
   'version-sync.sh',
 ];
 

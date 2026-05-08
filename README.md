@@ -10,7 +10,7 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 
 | Layer | Contents |
 |---|---|
-| 8 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `version-sync` |
+| 9 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `version-sync` |
 | 6 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` |
 | Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
@@ -236,7 +236,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 8 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
+├── hooks/                    # 9 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 5 slash-command markdown files
 ├── scripts/                  # 7 Node.js management scripts + scripts/lib/

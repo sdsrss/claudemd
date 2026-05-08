@@ -8,6 +8,56 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.0] - 2026-05-09
+
+**Minor — HARD-rules manifest (R-N2) + week-over-week regression (R-N3) + SessionStart summary banner (R-N4).** Builds on v0.7.x's `spec_section` + `byBypass` data plane. R-N2 makes spec self-governance machine-readable: §13.1 quarterly demote and §13.2 budget accounting now have a structured manifest to read instead of grep-and-eyeball. R-N3 turns single-window audit numbers into early-regression alerts. R-N4 surfaces last session's hook activity at the start of the next session — agent sees its own trend without an explicit `/claudemd-audit` invocation.
+
+### Added
+
+- `[feat]` **`spec/hard-rules.json`** (new, 21 rules) — machine-readable manifest of every HARD rule across `spec/CLAUDE.md` + `spec/CLAUDE-extended.md`. Per-rule fields: `id`, `name`, `scope` (core/extended), `section_anchor` (verbatim spec substring), `enforcement` (hook/self/external/both), `rule_hits_section` (links to v0.7.0 audit data; null for non-hook rules), `added_version`, `confidence` (high/medium/low), `last_demote_review`. 6 rules tagged `enforcement: hook` (or `both`); 13 self-enforced; 1 external; 1 both. The manifest documents the 90/10 split that was previously implicit — most spec content is agent self-discipline, only a small fraction is hook-gated.
+
+- `[feat]` **`scripts/hard-rules-audit.js`** (new, 100 LOC) — cross-references `spec/hard-rules.json` with `~/.claude/logs/claudemd.jsonl` `bySection` data over a configurable window (default 90d, matching §13.1 quarterly cadence). Outputs: `byScope` / `byEnforcement` / `byConfidence` summaries, `demoteCandidates` (hook-enforced rules with 0 hits in window), `staleReviews` (rules whose `last_demote_review` is null or older than the window), and per-rule rows with hits. CLI: `--days=N` flag or `CLAUDEMD_RULES_DAYS` env var.
+
+- `[feat]` **`commands/claudemd-rules.md`** (new) — slash command surfacing `hard-rules-audit.js`. Documents the field table and the "≥3 occurrences = demotion candidate" heuristic for §13.1 review.
+
+- `[feat]` **`scripts/lib/rule-hits-parse.js`** — new `byTrend(hits, windowDays)` export. Splits hits into recent vs prior windows of equal size, returns per-section `{recent, prior, ratio, flag}`. Flag values: `regression` (ratio ≥ 2), `recovery` (ratio ≤ 0.5), `newly_active` (prior=0, recent>0), `silenced` (recent=0, prior>0), `stable` (in-between).
+
+- `[feat]` **`scripts/audit.js`** — `/claudemd-audit` JSON now carries `byTrend` (default 7-day window). Reads 2× window data automatically. Empty when fewer than 2 windows of data exist.
+
+- `[feat]` **`hooks/session-summary.sh`** (new, 80 LOC) — Stop hook. Aggregates `~/.claude/logs/claudemd.jsonl` rows since session-start.ref and writes summary to `~/.claude/.claudemd-state/last-session-summary.json` (atomic tmp+rename). Skips write when total=0. Two-stage jq pipe: outer parses each line via `try fromjson catch empty` (drops corrupt rows silently), inner slurps the stream and aggregates. Kill-switch: `DISABLE_SESSION_SUMMARY_HOOK=1`.
+
+- `[feat]` **`hooks/session-start-check.sh`** — new `emit_session_summary_banner` function. On version-match branch (after `upstream_check`), reads the summary file, emits a one-line `additionalContext` banner via SessionStart hookSpecificOutput, then renames the file to `.last-shown` so the banner only fires once. Banner format: `[claudemd] last session: N denies, M bypasses, K warns, top: §X-Y`. Kill-switch: `DISABLE_SESSION_SUMMARY_BANNER=1`.
+
+- `[test]` **`tests/scripts/hard-rules-drift.test.js`** (new, 6 tests) — 4-direction drift gate: (1) every manifest entry's `section_anchor` exists verbatim in the named spec file; (2) every `rule_hits_section` is in the v0.7.0 hook taxonomy; (3) hook-enforced entries have non-null `rule_hits_section`; (4) self/external entries have null. Plus 2 schema invariants: (5) every (HARD) annotation in spec has a manifest entry or documented exemption; (6) required-fields presence + enum validity (enforcement, confidence, scope).
+
+- `[test]` **`tests/scripts/audit.test.js`** — 4 R-N3 cases: byTrend flags `regression` at recent/prior=5/1, `newly_active` at 3/0, `silenced` at 0/4, `recovery` at 1/4. Existing 9 tests preserved.
+
+- `[test]` **`tests/hooks/session-summary.test.sh`** (new, 6 cases) — empty log → no write; 2 deny + 1 bypass + 1 warn captured correctly with `top_section: §10-V`; kill-switch suppression; SessionStart banner consumes summary + renames to `.last-shown`; `DISABLE_SESSION_SUMMARY_BANNER=1` suppresses banner.
+
+### Changed
+
+- `[refactor]` **`scripts/install.js`** — `HOOK_BASENAMES` extended to 9 entries (added `session-summary.sh`). The list drives `isClaudemdLegacyHookCommand` for legacy `settings.json` eviction; defensive even though session-summary was never in pre-0.1.5 settings.json form.
+
+- `[refactor]` **`scripts/status.js`** + **`scripts/toggle.js`** — `HOOK_NAMES` and `NAME_MAP` extended with `SESSION_SUMMARY` / `session-summary`. `/claudemd-toggle session-summary` enables/disables the new hook.
+
+- `[refactor]` **`hooks/hooks.json`** — Stop hook block now registers 3 hooks (was 2): `residue-audit.sh` + `sandbox-disposal-check.sh` + `session-summary.sh`.
+
+- `[fix]` **`tests/scripts/install.test.js`** — `manifest.entries.length` assertions updated to 9 (was 8); fixture hooks.json mirrors production with the new Stop entry.
+
+- `[fix]` **`tests/integration/full-lifecycle.test.sh`** — `MCOUNT == 9` (was 8); residue-detection regex includes `session-summary`.
+
+### Deferred
+
+- **R-N9** (CHANGELOG sparkline) — release-time dev tool, low priority vs runtime features. Fits a future patch when audit data has accumulated enough trend signal to be worth visualizing.
+- **R-N5** (Bash early-exit list for read-only commands) + **R-N8** (transcript-side §10-V scan) — runtime hook-surface changes. Per v0.6.0 `BASH_SAFETY_INDIRECT_CALL` precedent, they should ship behind opt-in flags with their own validation cycle. Targeted for v0.8.1.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + plugins[0]) — all to `0.8.0`. Spec files (`spec/CLAUDE*.md`) unchanged; spec version remains v6.11.3.
+- Hook count: 8 → 9. README + ARCHITECTURE.md updated.
+- Validation: `tests/run-all.sh` → 170/170 node tests pass; 11 hook suites green (including new session-summary 6/6 + hard-rules-drift 6/6); 2 integration suites pass (full-lifecycle, upgrade-lifecycle).
+- Why R-N2 + R-N3 + R-N4 in one ship: they all consume v0.7.x data. R-N2 indexes the rule taxonomy; R-N3 adds a time-axis to existing aggregations; R-N4 is a one-line context inject at session boundary. Single migration wave keeps schema attribution clean.
+
 ## [0.7.1] - 2026-05-09
 
 **Patch — spec ↔ pattern drift gate (R-N1) + doctor §0.1 demotion-candidate surface (R-N6).** Closes the "spec is falsifiable" half of the v0.7.0 governance loop. Pre-fix, `spec/CLAUDE-extended.md §10-V` (banned-vocab prose list) and `hooks/banned-vocab.patterns` (regex enforcement) were maintained by hand discipline; drift in either direction went undetected until field signal. v0.7.1 adds a CI-time canonical fixture + 6-direction drift test that fails the build the moment spec or patterns disagree without an explicit exemption. R-N6 turns v0.7.0's `byBypass` data into a doctor check — sections whose denies are routinely escape-hatched (>50% bypass:deny ratio) surface as §0.1 demotion candidates without manual audit reading.

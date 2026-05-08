@@ -1,0 +1,245 @@
+{
+  "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md. Drives §13.1 quarterly demote (rules with 0 hits in 90d) and §13.2 budget accounting (≥3 repros + ≥20 L2+ tasks since last HARD addition). v0.8.0 R-N2. Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file. /claudemd-rules cross-references against rule-hits.jsonl bySection data.",
+  "spec_version": "v6.11.3",
+  "spec_files": {
+    "core": "spec/CLAUDE.md",
+    "extended": "spec/CLAUDE-extended.md"
+  },
+  "rules": [
+    {
+      "id": "§0-hard-auth-override",
+      "name": "Hard-AUTH override",
+      "scope": "core",
+      "section_anchor": "**Hard-AUTH override (HARD)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.10",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§0.1-core-growth",
+      "name": "Core growth discipline",
+      "scope": "core",
+      "section_anchor": "### §0.1 Core growth discipline (HARD)",
+      "enforcement": "external",
+      "rule_hits_section": null,
+      "added_version": "v6.7",
+      "confidence": "medium",
+      "last_demote_review": null,
+      "note": "Mechanical enforcement deferred to /claudemd-rules + R-N6 doctor signal (v0.7.x)"
+    },
+    {
+      "id": "§iron-law-2",
+      "name": "Iron Law #2: no done without fresh evidence",
+      "scope": "core",
+      "section_anchor": "### Iron Law #2: NO DONE WITHOUT FRESH EVIDENCE",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.5",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§7-ship-baseline",
+      "name": "Ship-baseline check",
+      "scope": "core",
+      "section_anchor": "### Ship-baseline check (HARD, L2+ when push fires CI/Release)",
+      "enforcement": "hook",
+      "rule_hits_section": "§7-ship-baseline",
+      "added_version": "v6.4",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§7-user-global-state",
+      "name": "User-global-state audit",
+      "scope": "core",
+      "section_anchor": "### User-global-state audit (HARD, L2+)",
+      "enforcement": "hook",
+      "rule_hits_section": "§7-user-global-state",
+      "added_version": "v6.7",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§8-verify-before-claim",
+      "name": "Verify-before-claim (4 sub-rules V1-V4)",
+      "scope": "core",
+      "section_anchor": "### Verify-before-claim (HARD, 4 sub-rules)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.8",
+      "confidence": "high",
+      "last_demote_review": null,
+      "note": "V4 sandbox-artifact disposal partially hooked via sandbox-disposal-check.sh (§8.V4); V1-V3 self-enforced"
+    },
+    {
+      "id": "§8.V4-sandbox-disposal",
+      "name": "Sandbox-artifact disposal (V4 sub-rule)",
+      "scope": "core",
+      "section_anchor": "8.V4 Sandbox-artifact disposal",
+      "enforcement": "hook",
+      "rule_hits_section": "§8.V4",
+      "added_version": "v6.8",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§8-rm-rf-var",
+      "name": "rm -rf $VAR safety (immutable)",
+      "scope": "core",
+      "section_anchor": "`rm -rf $VAR` without validating VAR",
+      "enforcement": "hook",
+      "rule_hits_section": "§8-rm-rf-var",
+      "added_version": "v6.0",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§8-npx",
+      "name": "NPX unpinned package safety",
+      "scope": "core",
+      "section_anchor": "NPX: lockfile → local → pinned whitelist",
+      "enforcement": "hook",
+      "rule_hits_section": "§8-npx",
+      "added_version": "v6.0",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§10-four-section-order",
+      "name": "Four-section REPORT order (Done → Not done → Failed → Uncertain)",
+      "scope": "core",
+      "section_anchor": "**Four-section order (HARD)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.6",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§10-honesty",
+      "name": "Honesty rules (no evaluative framing, yes/no first)",
+      "scope": "core",
+      "section_anchor": "**Honesty rules (HARD)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.6",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§10-specificity",
+      "name": "Specificity (banned-vocab, absolute numbers, baseline-anchored ratios)",
+      "scope": "core",
+      "section_anchor": "**Specificity (HARD)**",
+      "enforcement": "both",
+      "rule_hits_section": "§10-V",
+      "added_version": "v6.7",
+      "confidence": "high",
+      "last_demote_review": null,
+      "note": "Hook enforces banned-vocab subset on git commit (banned-vocab-check.sh); self-enforces on all other agent text"
+    },
+    {
+      "id": "§11-memory-read",
+      "name": "MEMORY.md read-the-file at ship/release/destructive/L3",
+      "scope": "core",
+      "section_anchor": "**MEMORY.md read-the-file** (HARD",
+      "enforcement": "hook",
+      "rule_hits_section": "§11-memory-read",
+      "added_version": "v6.10",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§11-mid-spine-yield",
+      "name": "Mid-SPINE turn-yield",
+      "scope": "core",
+      "section_anchor": "**Mid-SPINE turn-yield** (HARD, all levels)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.10",
+      "confidence": "medium",
+      "last_demote_review": null
+    },
+    {
+      "id": "§11-session-exit",
+      "name": "Session-exit mid-SPINE",
+      "scope": "core",
+      "section_anchor": "**Session-exit mid-SPINE** (HARD, all levels)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.10",
+      "confidence": "medium",
+      "last_demote_review": null
+    },
+    {
+      "id": "§iron-law-1",
+      "name": "Iron Law #1: no change without failing evidence (L2+)",
+      "scope": "extended",
+      "section_anchor": "### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.5",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§7-EXT-evidence-validity",
+      "name": "Evidence validity (semantic linkage, valid types, test scope)",
+      "scope": "extended",
+      "section_anchor": "### Evidence validity (HARD)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.7",
+      "confidence": "high",
+      "last_demote_review": null
+    },
+    {
+      "id": "§11-O-subagent-non-convergence",
+      "name": "Subagent non-convergence (3-strike pull-back)",
+      "scope": "extended",
+      "section_anchor": "**Subagent non-convergence (HARD)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.8",
+      "confidence": "low",
+      "last_demote_review": null,
+      "note": "Low confidence — tied to §EXT loading (only L3/Override/ship); minimal field signal so far"
+    },
+    {
+      "id": "§12-author-not-reviewer",
+      "name": "Author ≠ reviewer (fresh subagent, empty context)",
+      "scope": "extended",
+      "section_anchor": "**Author ≠ reviewer (HARD)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.7",
+      "confidence": "medium",
+      "last_demote_review": null
+    },
+    {
+      "id": "§12-ship-pipeline-hardening",
+      "name": "Ship-pipeline hardening (manual ship requires REPORT note)",
+      "scope": "extended",
+      "section_anchor": "### Ship-pipeline hardening (HARD)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.7",
+      "confidence": "medium",
+      "last_demote_review": null
+    },
+    {
+      "id": "§12-manual-ship-atomicity",
+      "name": "Manual-ship atomicity (one atomic turn from commit through CI green)",
+      "scope": "extended",
+      "section_anchor": "**Manual-ship atomicity (HARD, clarification)**",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.10",
+      "confidence": "medium",
+      "last_demote_review": null
+    }
+  ]
+}
