@@ -214,6 +214,66 @@ test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', asy
   assert.equal(usage, undefined, 'no rule-usage check should fire below RULE_USAGE_MIN_TOTAL=3');
 });
 
+test('R-N6+: demotion-candidate detail names the dominant bypass token (single token)', async () => {
+  // 5 bypasses, all via [skip-memory-check], 1 deny — single-token
+  // 80% override means the rule is being defeated through one specific
+  // escape hatch. Operator should see the token name in the detail line,
+  // not have to cross-reference /claudemd-audit byBypass.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
+  assert.ok(usage);
+  assert.equal(usage.ok, false);
+  assert.match(usage.detail, /\[skip-memory-check\]×5/, 'detail must surface bypass token + count');
+});
+
+test('R-N6+: demotion-candidate detail sorts mixed tokens by count desc', async () => {
+  // §8-rm-rf-var: 3× allow-rm-rf-var + 1× allow-npx-unpinned + 1 deny.
+  // ratio 80%, two tokens, output must list them sorted by count desc:
+  //   [allow-rm-rf-var]×3, [allow-npx-unpinned]×1
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n`.repeat(3),
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-npx-unpinned"}}\n`,
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"deny","spec_section":"§8-rm-rf-var","extra":null}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§8-rm-rf-var');
+  assert.ok(usage);
+  assert.equal(usage.ok, false);
+  // Sort order: count desc → [allow-rm-rf-var]×3 must appear BEFORE
+  // [allow-npx-unpinned]×1 in the detail string.
+  const idxRm = usage.detail.indexOf('[allow-rm-rf-var]×3');
+  const idxNpx = usage.detail.indexOf('[allow-npx-unpinned]×1');
+  assert.ok(idxRm > -1 && idxNpx > -1, `both tokens must appear; detail="${usage.detail}"`);
+  assert.ok(idxRm < idxNpx, 'higher-count token must come first');
+});
+
+test('R-N6+: healthy rows stay terse — no token detail attached', async () => {
+  // Healthy section: detail must NOT include token breakdown. Per-token
+  // forensics are only useful when the rule is being defeated.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
+  assert.equal(usage.ok, true);
+  assert.match(usage.detail, /healthy/);
+  assert.doesNotMatch(usage.detail, /\[allow-banned-vocab\]/, 'healthy detail must not carry token detail');
+});
+
 test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () => {
   // Legacy rows (no spec_section) accumulate under (unset). Demoting on
   // these would misattribute pre-upgrade behavior to current rule design.

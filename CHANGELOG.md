@@ -8,6 +8,47 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.5] - 2026-05-09
+
+**Patch — R-N6+ doctor bypass-token detail.** Follow-on to v0.7.1's R-N6 (bypass:deny ratio surface): when a spec section trips the §0.1 demotion threshold, doctor now names the specific `[allow-X]` token driving the bypass. Distinguishes "single token consistently overused" (likely rule-design issue — wording confuses, threshold too tight) from "multiple tokens distributed" (likely cross-cutting friction). Operator no longer has to cross-reference `/claudemd-audit byBypass` to see WHICH escape hatch is being used.
+
+### Changed
+
+- `[refactor]` **`scripts/doctor.js:173-217`** — extends the v0.7.1 rule-usage check. When `ratio > 0.5` AND total ≥ 3 events, build a per-section `extra.token` histogram from the same recent-hits buffer already in scope (no extra log read). Sort tokens by count desc, secondary alpha for deterministic output. Detail format:
+  ```
+  [✗] rule-usage:§11-memory-read: 30d deny=2 bypass=8 (ratio 80%, §0.1 demotion candidate; bypass via [skip-memory-check]×8)
+  [✗] rule-usage:§8-rm-rf-var:    30d deny=1 bypass=4 (ratio 80%, §0.1 demotion candidate; bypass via [allow-rm-rf-var]×3, [allow-npx-unpinned]×1)
+  ```
+  Healthy rows stay terse (token detail only attached to demotion candidates — per-token forensics are only useful when the rule is being defeated).
+
+- `[test]` **`tests/scripts/doctor.test.js`** — 3 new R-N6+ cases: (1) single-token demotion candidate detail names the token + count, (2) mixed-token detail sorts by count desc, (3) healthy rows do NOT carry token detail.
+
+### Fixed
+
+- `[fix]` **`CHANGELOG.md` v0.8.4 entry** — corrected the R-N series status table: R-N6 ships at v0.7.1, NOT a v0.9.x candidate. The original entry mis-listed it alongside R-N7. v0.8.4 already cited the correct shipped status in `README.md` ("v0.7.1+ also flags rule sections whose bypass:deny ratio > 50%"); only the CHANGELOG status table was wrong. Same Specificity self-violation class the v0.8.1 reviewer caught for v0.8.0 (CHANGELOG claim contradicting the actual ship state).
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.8.5`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 188/188 node tests pass (was 185; +3 R-N6+ cases); 13 hook suites green; 2 integration suites pass.
+- No runtime behavior change in hook execution; doctor surface only.
+- Net diff vs v0.8.4: +21 LOC in `doctor.js` (per-section token histogram), +47 LOC tests, 1 CHANGELOG correction.
+
+### R-N series status (corrected)
+
+| ID | Title | Shipped |
+|---|---|---|
+| R-N1 | Spec ↔ banned-vocab.patterns drift gate | v0.7.1 |
+| R-N2 | HARD-rules manifest | v0.8.0 |
+| R-N3 | Week-over-week regression alerts | v0.8.0 |
+| R-N4 | SessionStart summary banner | v0.8.0 |
+| R-N5 | Bash readonly fast-path (opt-in) | v0.8.3 |
+| R-N6 | Doctor bypass:deny ratio | v0.7.1 |
+| R-N6+ | Doctor bypass-token detail | **v0.8.5** |
+| R-N8 | Transcript-side §10-V scan (opt-in) | v0.8.3 |
+| R-N9 | CHANGELOG/audit sparkline | v0.8.4 |
+| R-N7 | npx claudemd-lint CLI | v0.9.x candidate (200-400 LOC + npm pipeline) |
+
 ## [0.8.4] - 2026-05-09
 
 **Patch — R-N9 rule-usage sparkline (dev-tooling).** Closes the audit-gap §13.1 (quarterly rule review) and §13.2 (rule budget) have run on since v0.7.0: per-window cumulative counts of signal events grouped by `spec_section`, with a per-period rate-based trend arrow. Operators paste the markdown block into the CHANGELOG header before each release; `/claudemd-sparkline` runs anytime to surface "which rules are firing, which are dying, which just woke up" with public data instead of "operator eyeballed two audits."

@@ -174,6 +174,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // demotion candidates from v0.7.0's `byBypass` data. Sections firing < 3
   // events in 30d are skipped (statistical floor); the (unset) bucket is
   // skipped as it carries pre-v0.7.0 rows with no section attribution.
+  //
+  // v0.8.5 R-N6+ — when a section trips the demotion threshold, surface
+  // WHICH `[allow-X]` token is driving the bypass. Operator now sees both
+  // (a) "rule too strict / wording confuses" (high ratio) AND (b) "via
+  // which escape token" — the latter distinguishes "single token consistently
+  // overused" (likely rule design issue) from "multiple tokens distributed"
+  // (likely cross-cutting friction). Token detail only attached to demotion
+  // candidates; healthy rows stay terse.
   const ruleHitsLog = path.join(logsDir(), 'claudemd.jsonl');
   const recentHits = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
   const bySection = groupBySection(recentHits);
@@ -187,8 +195,21 @@ export async function doctor({ pruneBackups: prune } = {}) {
     const ratio = bypass / total;
     const ratioPct = (ratio * 100).toFixed(0);
     if (ratio > RULE_USAGE_DEMOTION_RATIO) {
+      // R-N6+: per-token breakdown of the section's bypass events. Sort by
+      // count desc, secondary alpha so output is deterministic across runs.
+      const tokens = {};
+      for (const h of recentHits) {
+        if (h.event !== 'bypass-escape-hatch') continue;
+        if ((h.spec_section || '(unset)') !== section) continue;
+        const tok = h.extra?.token || '(unspecified)';
+        tokens[tok] = (tokens[tok] || 0) + 1;
+      }
+      const tokenList = Object.entries(tokens)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([tok, n]) => `[${tok}]×${n}`)
+        .join(', ');
       push(`rule-usage:${section}`, false,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, §0.1 demotion candidate — see /claudemd-audit byBypass)`);
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, §0.1 demotion candidate; bypass via ${tokenList})`);
     } else {
       push(`rule-usage:${section}`, true,
         `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
