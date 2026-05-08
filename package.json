@@ -1,8 +1,11 @@
 {
   "name": "claudemd",
-  "version": "0.8.5",
-  "description": "AI-CODING-SPEC v6.11 enforcement plugin for Claude Code",
+  "version": "0.9.0",
+  "description": "AI-CODING-SPEC v6.11 enforcement plugin for Claude Code + standalone CLI for CI / pre-commit / cross-agent use",
   "type": "module",
+  "bin": {
+    "claudemd": "./bin/claudemd-lint.js"
+  },
   "scripts": {
     "test": "bash tests/run-all.sh",
     "test:scripts": "node --test tests/scripts/*.test.js",

@@ -10,8 +10,9 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 
 | Layer | Contents |
 |---|---|
-| 9 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `version-sync` |
+| 10 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `transcript-vocab-scan` · `version-sync` |
 | 9 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` |
+| 1 standalone CLI | `claudemd lint` · `claudemd audit` (v0.9.0+ — for git pre-commit / CI / cross-agent use; same `banned-vocab.patterns` source as the in-CC hook) |
 | Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
@@ -92,6 +93,39 @@ Once installed, the hooks run silently in the background:
 | `/claudemd-sparkline [--days=A,B,C]` | v0.8.4+ R-N9 — per-`spec_section` cumulative counts of signal events across 3 windows (default 30/60/90d). Trend arrow compares per-period rate; `(newly active)` / `(silenced)` annotations flag activation/deactivation transitions. Markdown block suitable for CHANGELOG header pre-release. |
 | `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
 | `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
+
+---
+
+## Standalone CLI (v0.9.0+ R-N7)
+
+The same `banned-vocab.patterns` source the in-CC hook uses is also exposed as a standalone Node CLI for **git pre-commit hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw) — i.e. anywhere outside the Claude Code process.
+
+```bash
+# Dev mode (this repo, before npm publish):
+node bin/claudemd-lint.js lint "your commit message here"
+node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
+
+# After npm publish (operator-driven, not part of plugin install):
+npx claudemd lint "your commit message here"
+npx claudemd lint --stdin < message.txt
+npx claudemd audit transcript.jsonl
+npx claudemd audit transcript.jsonl --json
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `lint <text>` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits. |
+| `audit <jsonl-path>` | Scan all assistant-text turns in a Claude Code transcript jsonl. Skips `@ratio` patterns by default (chat prose has different baseline conventions); pass `--include-ratio` to include them. |
+| `--json` | JSON output (machine-readable for CI). |
+| `--version` / `--help` | Standard. |
+
+**Pre-commit example (`.git/hooks/commit-msg`)**:
+```bash
+#!/usr/bin/env bash
+npx claudemd lint --stdin < "$1" || exit 1
+```
+
+The CLI does NOT depend on `~/.claude/` state — pure stateless input → stdout/stderr + exit code. Same enforcement, anywhere Node 20+ runs.
 
 ---
 
@@ -249,7 +283,8 @@ claudemd/
 ├── hooks/                    # 10 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 9 slash-command markdown files
-├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, etc.)
+├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → npx claudemd post-publish)
+├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.11.3 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/

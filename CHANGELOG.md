@@ -8,6 +8,52 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.0] - 2026-05-09
+
+**Minor — R-N7 standalone CLI (`npx claudemd lint` / `audit`).** Closes the last entry in the v0.6.x → v0.8.x R-N series: the same `banned-vocab.patterns` source the in-CC bash hook uses is now exposed as a pure-Node CLI for **git pre-commit hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw). Spec's effective enforcement surface expands from "inside Claude Code only" to "anywhere Node 20+ runs." This is what makes claudemd a meaningful authority layer rather than a single-client lint.
+
+**Ground-only ship**: source code + `bin` field + tests + GitHub release. `npm publish` is **not** part of this release — operator runs `npm publish` separately when ready (irreversible 24h unpublish window + 72h name reservation are real-world side effects requiring deliberate operator action with their own credentials).
+
+### Added
+
+- `[feat]` **`bin/claudemd-lint.js`** (new, ~140 LOC) — Node CLI entrypoint. Subcommands: `lint <text>` (positional or `--stdin`), `audit <jsonl-path>`. Flags: `--json`, `--include-ratio`, `--version`, `--help`. Exit codes: `0` clean, `1` hits, `2` usage error. Human-readable hits go to stderr (so stdout stays parseable for `cmd | jq`); `--json` emits to stdout regardless of hit/clean. Shebang `#!/usr/bin/env node`, ES module, `fs.readFileSync(0, 'utf8')` for stdin.
+
+- `[feat]` **`scripts/lib/lint.js`** (new, ~110 LOC) — pure-Node scanning functions: `readPatterns` (parses `hooks/banned-vocab.patterns` into `{regex, reason, isRatio}` entries), `scan(text, {excludeRatio, patterns})` (case-insensitive match against patterns; bad-regex fail-open), `parseTranscript(jsonlText)` (extracts assistant-text turns, joins multi-block content per turn, drops corrupt rows silently), `formatHumanReadable` + `formatJSON`. Same matching rules as the bash hooks without the shell quoting + jq plumbing. Reusable by future Node-side hooks.
+
+- `[feat]` **`package.json` `bin` field** — `{ "claudemd": "./bin/claudemd-lint.js" }`. After operator runs `npm publish`, `npx claudemd lint "..."` works directly. Pre-publish, dev mode is `node bin/claudemd-lint.js lint "..."`. Description string updated to reflect the dual surface (CC plugin + standalone CLI).
+
+- `[test]` **`tests/scripts/lint.test.js`** (new, 11 cases) — unit tests for `lib/lint.js`: pattern parsing, hit detection, case-insensitivity, `excludeRatio` flag, bad-regex skip, transcript parsing (multi-block joining, corrupt-row tolerance), formatter output shape, default patterns file resolution.
+
+- `[test]` **`tests/scripts/lint-cli.test.js`** (new, 12 cases) — spawn-based CLI surface tests: `--help` exit 0 + usage to stdout, no-args exit 2, `--version` exit 0, lint clean exit 0, lint hit exit 1 with stderr (NOT stdout) carrying the hit, `--stdin`, `--json` parseable for both clean + hit, missing positional → exit 2, audit clean / hit / missing-file paths, unknown subcommand error.
+
+### Fixed
+
+- `[fix]` **`README.md`** — drift catch-up: layout block "What it installs" said `9 shell hooks` but transcript-vocab-scan landed at v0.8.3 (line 248 was fixed in v0.8.4 but line 13 was missed). Now `10 shell hooks` with `transcript-vocab-scan` listed; new `1 standalone CLI` row added below the slash-command count.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.9.0` (minor: new public surface). Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 211/211 node tests pass (was 188; +23 lint cases — 11 unit + 12 CLI); 13 hook suites green; 2 integration suites pass.
+- Plugin runtime path unchanged. CC users see no functional change. `bin/` is opt-in invocation surface only.
+- `npm publish` deferred: when ready, operator runs `npm whoami` (or `npm login`), `npm publish --dry-run` to preview tarball contents, optionally adds `.npmignore` to trim non-essentials (tests/ docs/ spec/ would inflate package size 4-5×), then `npm publish`. Once published, `npx claudemd@0.9.0 lint "..."` works for anyone.
+
+### R-N series — closed
+
+| ID | Title | Shipped |
+|---|---|---|
+| R-N1 | Spec ↔ banned-vocab.patterns drift gate | v0.7.1 |
+| R-N2 | HARD-rules manifest | v0.8.0 |
+| R-N3 | Week-over-week regression alerts | v0.8.0 |
+| R-N4 | SessionStart summary banner | v0.8.0 |
+| R-N5 | Bash readonly fast-path (opt-in) | v0.8.3 |
+| R-N6 | Doctor bypass:deny ratio | v0.7.1 |
+| R-N6+ | Doctor bypass-token detail | v0.8.5 |
+| R-N7 | npx claudemd-lint CLI | **v0.9.0** |
+| R-N8 | Transcript-side §10-V scan (opt-in) | v0.8.3 |
+| R-N9 | CHANGELOG/audit sparkline | v0.8.4 |
+
+All 9 audit-doc R-N candidates shipped. Next-cycle work would be informed by 30-day FP-signal data on the opt-in R-N5 + R-N8 flags (decide default-ON / demote / remove), not by extending the R-N list.
+
 ## [0.8.5] - 2026-05-09
 
 **Patch — R-N6+ doctor bypass-token detail.** Follow-on to v0.7.1's R-N6 (bypass:deny ratio surface): when a spec section trips the §0.1 demotion threshold, doctor now names the specific `[allow-X]` token driving the bypass. Distinguishes "single token consistently overused" (likely rule-design issue — wording confuses, threshold too tight) from "multiple tokens distributed" (likely cross-cutting friction). Operator no longer has to cross-reference `/claudemd-audit byBypass` to see WHICH escape hatch is being used.
