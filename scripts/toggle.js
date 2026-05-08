@@ -1,21 +1,11 @@
 import { readSettings, writeSettings } from './lib/settings-merge.js';
+import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
 
-// Keep in sync with status.js HOOK_NAMES + commands/claudemd-toggle.md
-// frontmatter + scripts/install.js HOOK_BASENAMES. Hook script names map to
-// the hook_kill_switch arg the .sh file passes; for `version-sync` the arg
-// is `USER_PROMPT_SUBMIT` (event name, not file name) — preserved here so
-// existing DISABLE_USER_PROMPT_SUBMIT_HOOK env var keeps working.
-const NAME_MAP = {
-  'banned-vocab': 'BANNED_VOCAB',
-  'pre-bash-safety': 'PRE_BASH_SAFETY',
-  'ship-baseline': 'SHIP_BASELINE',
-  'residue-audit': 'RESIDUE_AUDIT',
-  'memory-read-check': 'MEMORY_READ',
-  'sandbox-disposal-check': 'SANDBOX_DISPOSAL',
-  'session-start-check': 'SESSION_START',
-  'session-summary': 'SESSION_SUMMARY',
-  'version-sync': 'USER_PROMPT_SUBMIT',
-};
+// Display name → env-var suffix. Source of truth: scripts/lib/hook-registry.js.
+// `version-sync` maps to `USER_PROMPT_SUBMIT` (event name, not file name) —
+// preserved in the registry so DISABLE_USER_PROMPT_SUBMIT_HOOK keeps working
+// for users who set it under prior versions.
+const NAME_MAP = HOOK_NAME_TO_ENV;
 
 export async function toggle(name) {
   const upper = NAME_MAP[name];

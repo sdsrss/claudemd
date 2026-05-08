@@ -8,6 +8,43 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.2] - 2026-05-09
+
+**Patch — single-source hook registry refactor.** Eliminates 5 hand-maintained sites where the 9-hook list was duplicated. Same thesis as v0.7.1's spec ↔ banned-vocab.patterns drift gate and v0.8.0's R-N1 / R-N2 manifests, applied to the plugin's own internal code: turn "agent must remember N places to keep in sync" into "code enforces single source of truth." Surfaced by the v0.8.1 reviewer. No runtime behavior change.
+
+### Added
+
+- `[feat]` **`scripts/lib/hook-registry.js`** (new, 9 entries) — single source of truth for the 9 plugin hooks. Each entry: `basename`, `displayName`, `envVarSuffix`, `hookEvent`, `matcher`, `timeout`. Re-exports `HOOK_BASENAMES`, `HOOK_ENV_SUFFIXES`, `HOOK_NAME_TO_ENV` derived from the array, so consumers stay one-line imports. Order mirrors `hooks/hooks.json` registration order (the order CC actually executes them: SessionStart → UserPromptSubmit → PreToolUse:Bash → Stop).
+
+- `[test]` **`tests/scripts/hook-registry.test.js`** (new, 7 cases) — drift gate against every consumer site:
+  1. Registry length === 9 (matches integration `MCOUNT` and `manifest.entries.length`).
+  2. Every registry entry exists in `hooks/hooks.json` with matching event/matcher/timeout.
+  3. Every `hooks/hooks.json` command points to a registry basename.
+  4. Every `hooks/*.sh` file on disk is registered (no orphan entrypoints) and every registry entry has a file on disk.
+  5. `commands/claudemd-toggle.md` mentions every registry `displayName`.
+  6. Derived consts (`HOOK_BASENAMES`, `HOOK_ENV_SUFFIXES`, `HOOK_NAME_TO_ENV`) all have one entry per registry row.
+  7. `basename`, `displayName`, `envVarSuffix` are unique within the registry.
+
+### Changed
+
+- `[refactor]` **`scripts/install.js`** — removed inline `HOOK_BASENAMES` literal; now imports from `scripts/lib/hook-registry.js` and re-exports for back-compat (used by `tests/scripts/install.test.js` and `scripts/uninstall.js`).
+
+- `[refactor]` **`scripts/status.js`** — removed inline `HOOK_NAMES` literal; now derives kill-switch enumeration from `HOOK_ENV_SUFFIXES`. Side effect: `status.killSwitches` JSON object key order shifts from the old `BANNED_VOCAB`-first to registry order (`session-start`-first); no test pinned the old order. The `plugin` kill-switch key remains first by virtue of being added before the loop.
+
+- `[refactor]` **`scripts/toggle.js`** — removed inline `NAME_MAP` literal; now imports `HOOK_NAME_TO_ENV` from the registry. The `version-sync` → `USER_PROMPT_SUBMIT` event-name mapping (preserved so existing `DISABLE_USER_PROMPT_SUBMIT_HOOK` env vars keep working) lives in the registry rather than as a NAME_MAP comment.
+
+- `[refactor]` **`scripts/uninstall.js`** — `HOOK_BASENAMES` import switched from `./install.js` to `./lib/hook-registry.js` (direct registry import; install.js's re-export is for tests only).
+
+### Fixed
+
+- `[fix]` **`commands/claudemd-toggle.md`** — drift caught by the new registry test: the "Valid hook names" line listed 8 hooks (`banned-vocab`, `pre-bash-safety`, `ship-baseline`, `residue-audit`, `memory-read-check`, `sandbox-disposal-check`, `session-start-check`, `version-sync`) but `toggle.js` NAME_MAP carried 9 — `session-summary` (added in v0.8.0) was never added to the markdown. Now lists all 9 in registry order; future drift fails the new drift test.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.8.2`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 177/177 node tests pass (170 pre-refactor + 7 new hook-registry drift cases); 11 hook suites green; 2 integration suites pass (`full-lifecycle` + `upgrade-lifecycle`).
+- Net diff: +1 file (registry), +1 file (drift test), -22 lines of duplicated literals across 4 consumers, +1 docs fix.
+
 ## [0.8.1] - 2026-05-09
 
 **Patch — code-review fix-up for v0.8.0.** Closes 6 Important issues + 2 Minor issues raised by post-ship code review of v0.8.0. Theme: docs and tests drifted from code in the same release that shipped a manifest meant to detect drift — that's the §10 Specificity self-violation reviewer caught. No runtime behavior change.

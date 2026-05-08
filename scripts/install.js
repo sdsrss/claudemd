@@ -5,25 +5,15 @@ import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand }
 import { createBackup, pruneBackups, pruneSettingsBackups, isoStamp } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
+import { HOOK_BASENAMES } from './lib/hook-registry.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
 
-// Basenames shared with uninstall — used as the cleanup discriminator so stale
-// entries from ≤0.1.4 installs (which wrote hook commands into settings.json
-// under ${CLAUDE_PLUGIN_ROOT} or absolute version-dir paths) get evicted on
-// upgrade. The source of truth for registered hooks is now the plugin's
-// hooks/hooks.json; settings.json should contain NO claudemd hook commands.
-export const HOOK_BASENAMES = [
-  'banned-vocab-check.sh',
-  'ship-baseline-check.sh',
-  'memory-read-check.sh',
-  'pre-bash-safety-check.sh',
-  'residue-audit.sh',
-  'sandbox-disposal-check.sh',
-  'session-start-check.sh',
-  'session-summary.sh',
-  'version-sync.sh',
-];
+// Re-export for back-compat: tests/scripts/install.test.js + scripts/uninstall.js
+// previously imported HOOK_BASENAMES from this module. Source of truth now lives
+// in scripts/lib/hook-registry.js; drift between registry, hooks/hooks.json, and
+// commands/claudemd-toggle.md is gated by tests/scripts/hook-registry.test.js.
+export { HOOK_BASENAMES };
 
 // Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
 // shape previously held in HOOK_SPECS. Used to populate the manifest so status/

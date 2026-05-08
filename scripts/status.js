@@ -2,10 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
-
-// Keep in sync with toggle.js NAME_MAP values. Order mirrors HOOK_BASENAMES
-// in install.js (registration order) for human-scannable output.
-const HOOK_NAMES = ['BANNED_VOCAB','PRE_BASH_SAFETY','SHIP_BASELINE','RESIDUE_AUDIT','MEMORY_READ','SANDBOX_DISPOSAL','SESSION_START','SESSION_SUMMARY','USER_PROMPT_SUBMIT'];
+import { HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 
 export async function status() {
   const m = readManifest();
@@ -49,7 +46,7 @@ export async function status() {
   })();
 
   const killSwitches = { plugin: process.env.DISABLE_CLAUDEMD_HOOKS === '1' };
-  for (const name of HOOK_NAMES) {
+  for (const name of HOOK_ENV_SUFFIXES) {
     killSwitches[name.toLowerCase()] = process.env[`DISABLE_${name}_HOOK`] === '1';
   }
 

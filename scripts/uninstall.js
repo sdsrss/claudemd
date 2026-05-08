@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { listBackups, restoreBackup } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
-import { HOOK_BASENAMES } from './install.js';
+import { HOOK_BASENAMES } from './lib/hook-registry.js';
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
   const m = readManifest();
