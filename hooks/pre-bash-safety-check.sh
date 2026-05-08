@@ -39,6 +39,17 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
+# R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
+# When BASH_READONLY_FAST_PATH=1 and CMD is a definitely-read-only shape
+# (no shell-meta, first token in safe-reader whitelist), exit before the
+# sanitize/unwrap pipeline. This is the highest-leverage hook for the
+# fast-path: sanitize_cmd + RM/NPX detectors run on EVERY Bash invocation
+# in the steady-state hook config; readonly skip drops them entirely for
+# `ls`, `cat /etc/foo`, `git log`, etc.
+if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then
+  exit 0
+fi
+
 # Sanitize CMD before pattern matching: strip heredoc bodies, line comments, and
 # quoted-string contents. The original regex matched on naive prefix class
 # `[[:space:];&|`]` which fired on `npx`/`rm` *inside* string literals — see

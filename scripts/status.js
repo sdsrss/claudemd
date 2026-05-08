@@ -60,11 +60,17 @@ export async function status() {
     installed: s.installed ? s.installed.slice(0, 12) : null,
   }));
 
-  // v0.6.0: surface opt-in feature flags so /claudemd-status reflects what
-  // the hooks will actually do this session. BASH_SAFETY_INDIRECT_CALL gates
-  // the bash -c / sh -c / zsh -c / eval unwrap path in pre-bash-safety hook.
+  // v0.6.0+: surface opt-in feature flags so /claudemd-status reflects what
+  // the hooks will actually do this session.
+  //   bashSafetyIndirectCall (v0.6.0): bash/sh/zsh/eval unwrap in pre-bash-safety
+  //   bashReadonlyFastPath (v0.8.3 R-N5): skip 4 PreToolUse:Bash hooks for
+  //     definitely-read-only commands (ls / cat / git log / etc.)
+  //   transcriptVocabScan (v0.8.3 R-N8): PostToolUse advisory scan of
+  //     assistant text against §10-V banned-vocab.patterns
   const features = {
     bashSafetyIndirectCall: process.env.BASH_SAFETY_INDIRECT_CALL === '1',
+    bashReadonlyFastPath: process.env.BASH_READONLY_FAST_PATH === '1',
+    transcriptVocabScan: process.env.TRANSCRIPT_VOCAB_SCAN === '1',
   };
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');

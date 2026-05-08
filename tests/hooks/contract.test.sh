@@ -104,6 +104,7 @@ DOCUMENTED=(
   "pass-known-red:ship-baseline"
   "warn:sandbox-disposal"
   "warn:residue-audit"
+  "advisory:transcript-vocab-scan"
   "bootstrap:session-start"
   "upstream-banner:session-start"
   "version-sync:user-prompt-submit"

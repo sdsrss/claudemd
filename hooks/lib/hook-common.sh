@@ -46,3 +46,46 @@ hook_record() {
   source "$lib_dir/rule-hits.sh" 2>/dev/null || return 0
   rule_hits_append "$@"
 }
+
+# hook_is_readonly_bash CMD
+#   Returns 0 if CMD is "definitely read-only and side-effect free" — caller
+#   may safely exit 0 without running heavier hook logic. Returns 1 (proceed)
+#   in all uncertain cases. Conservative by design: false negatives are free
+#   (just do more work), false positives could skip a real safety check.
+#
+#   Used by R-N5 fast-path (v0.8.3, opt-in BASH_READONLY_FAST_PATH=1) in the
+#   four PreToolUse:Bash hooks. When the flag is OFF, callers do not invoke
+#   this function and behavior is byte-identical to v0.8.2.
+#
+#   Reject criteria — any of these → return 1:
+#     * Shell metacharacters introducing a second command, redirect, or
+#       substitution: ; | & > < ` $( ${ \n
+#     * First token not in the safe-reader whitelist
+#     * For `git`: subcommand not in the read-only subcommand whitelist
+#       (excludes branch / tag / config because those have destructive
+#       sub-flags like -d/-D/-m/-c)
+hook_is_readonly_bash() {
+  local cmd="$1"
+  case "$cmd" in
+    *';'*|*'|'*|*'&'*|*'>'*|*'<'*|*'`'*) return 1 ;;
+    *'$('*|*'${'*) return 1 ;;
+    *$'\n'*) return 1 ;;
+  esac
+  # Trim leading whitespace, take first token via parameter expansion (no fork).
+  local trimmed="${cmd#"${cmd%%[![:space:]]*}"}"
+  local first="${trimmed%%[[:space:]]*}"
+  case "$first" in
+    ls|cat|head|tail|wc|stat|date|pwd|echo|printf|sleep|file|which|type|env|basename|dirname|realpath|true|false)
+      return 0 ;;
+    git)
+      local rest="${trimmed#git}"
+      rest="${rest#"${rest%%[![:space:]]*}"}"
+      local sub="${rest%%[[:space:]]*}"
+      case "$sub" in
+        log|status|diff|show|rev-parse|rev-list|describe|blame|reflog|ls-files|ls-tree|cat-file|remote)
+          return 0 ;;
+      esac
+      ;;
+  esac
+  return 1
+}

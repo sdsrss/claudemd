@@ -19,6 +19,15 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
+# R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
+# When BASH_READONLY_FAST_PATH=1 and CMD is a definitely-read-only shape
+# (ls / cat / git log / etc., no shell-meta), exit before the per-pattern
+# scan loop. Free in this hook (filter on next line is also fast), but
+# uniform across all 4 PreToolUse:Bash hooks for cumulative latency.
+if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then
+  exit 0
+fi
+
 # Filter: must be a git commit invocation. `\s` / `\S` aren't portable under
 # BSD grep (macOS); use POSIX character classes so behavior matches Linux.
 echo "$CMD" | grep -qE '(^|[[:space:];&|])git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0

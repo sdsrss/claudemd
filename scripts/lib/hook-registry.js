@@ -24,6 +24,7 @@ export const HOOK_REGISTRY = [
   { basename: 'residue-audit.sh',         displayName: 'residue-audit',         envVarSuffix: 'RESIDUE_AUDIT',     hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'sandbox-disposal-check.sh',displayName: 'sandbox-disposal-check',envVarSuffix: 'SANDBOX_DISPOSAL',  hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'session-summary.sh',       displayName: 'session-summary',       envVarSuffix: 'SESSION_SUMMARY',   hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
+  { basename: 'transcript-vocab-scan.sh', displayName: 'transcript-vocab-scan', envVarSuffix: 'TRANSCRIPT_VOCAB_SCAN', hookEvent: 'PostToolUse',  matcher: '*',    timeout: 3 },
 ];
 
 export const HOOK_BASENAMES = HOOK_REGISTRY.map(h => h.basename);

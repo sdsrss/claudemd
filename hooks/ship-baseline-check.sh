@@ -17,6 +17,11 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
+# R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
+if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then
+  exit 0
+fi
+
 # Filter: git push, not --help
 echo "$CMD" | grep -qE '(^|[[:space:];&|])git[[:space:]]+push([[:space:]]|$)' || exit 0
 echo "$CMD" | grep -qE '\-\-help|\-h\b' && exit 0

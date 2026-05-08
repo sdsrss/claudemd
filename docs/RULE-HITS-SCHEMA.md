@@ -29,6 +29,7 @@ source must appear in this table.
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |
 | `warn` | `sandbox-disposal`, `residue-audit` | non-blocking advisory |
+| `advisory` | `transcript-vocab-scan` | PostToolUse advisory — agent-text §10-V hit (cannot block; v0.8.3 R-N8) |
 | `bootstrap` | `session-start` | one-shot install on session start |
 | `upstream-banner` | `session-start` | upstream version available banner |
 | `version-sync` | `user-prompt-submit` | mid-session manifest sync triggered |
@@ -50,6 +51,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `residue-audit` | `warn` | `§7-user-global-state` |
 | `sandbox-disposal` | `warn` | `§8.V4` |
+| `transcript-vocab-scan` | `advisory` | `§10-V` |
 | `session-start` | `bootstrap` / `upstream-banner` | `null` |
 | `user-prompt-submit` | `version-sync` | `null` |
 

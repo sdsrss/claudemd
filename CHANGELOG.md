@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.3] - 2026-05-09
+
+**Patch — R-N5 + R-N8 opt-in behavior bundle.** Two independent runtime changes ship behind opt-in env-var flags, default OFF, following the v0.6.0 `BASH_SAFETY_INDIRECT_CALL` precedent for behavior-layer changes that need 30-day FP signal collection in the wild before becoming default-on. Both are gated, both expose status via `/claudemd-status`, both honor the standard kill-switch envelope. With both flags OFF, behavior is byte-identical to v0.8.2.
+
+### Added
+
+- `[feat]` **R-N5 — `BASH_READONLY_FAST_PATH=1`** (default OFF). Skips the 4 PreToolUse:Bash hooks (`pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`) for definitely-read-only commands — the bulk of agent Bash calls (`ls`, `cat`, `git log`, `git status`, etc.). New helper `hook_is_readonly_bash` in `hooks/lib/hook-common.sh`: rejects any shell-meta (`;`, `|`, `&`, `>`, `<`, `` ` ``, `$(`, `${`), then matches first token against a conservative whitelist (pure readers + `git` read-only subcommands like `log`/`status`/`diff`/`show`/`rev-parse`/`rev-list`/`describe`/`blame`/`reflog`/`ls-files`/`ls-tree`/`cat-file`/`remote`). Excludes `git branch`/`tag`/`config` because their destructive sub-flags (`-d`, `-D`, `-c`) live one token deeper than the fast-path scans. False negatives are free (just do more work); false positives could skip a real safety check, hence the conservative list.
+
+- `[feat]` **R-N8 — `TRANSCRIPT_VOCAB_SCAN=1`** (default OFF). New `hooks/transcript-vocab-scan.sh` PostToolUse:* hook. Reverses `banned-vocab-check.sh`: instead of scanning git commit messages (commit-time enforcement), scans the most recent assistant text in the transcript jsonl and emits a stderr advisory + rule-hits log entry on §10-V banned vocab. Advisory-only — PostToolUse fires after the assistant text has been sent, so cannot block. Skips `@ratio` patterns (commit-context-only; chat prose has different baseline conventions). Reads transcript via `jq -R 'try fromjson catch empty'` (line-by-line jsonl with corrupt-row tolerance). Picks the LAST assistant turn (`tail -n 1` after `awk 'NF'`) using `join(" ")` to keep one turn per output line.
+
+- `[feat]` **`scripts/status.js`** — new `features.bashReadonlyFastPath` and `features.transcriptVocabScan` fields alongside existing `features.bashSafetyIndirectCall`. `/claudemd-status` now reflects all three opt-in behavior flags.
+
+- `[feat]` **`hooks/transcript-vocab-scan.sh`** registration: `hooks/hooks.json` gains a new `PostToolUse: [{matcher: '*', ...}]` block. The plugin now registers 10 hooks total (was 9). Registry, `commands/claudemd-toggle.md`, `tests/scripts/install.test.js` fixture, and `tests/integration/full-lifecycle.test.sh` MCOUNT all moved together via the v0.8.2 single-source registry.
+
+- `[test]` **`tests/hooks/bash-readonly-skip.test.sh`** (new, 30 cases) — classifier truth table (read-only commands, shell-meta rejection, non-whitelisted first tokens, git destructive subcommands), plus end-to-end: each of the 4 PreToolUse:Bash hooks short-circuits with the flag ON; with the flag OFF, banned-vocab still denies as in v0.8.2.
+
+- `[test]` **`tests/hooks/transcript-vocab-scan.test.sh`** (new, 8 cases) — opt-in gate (default OFF silent), clean-prose silent, banned-word advisory + log row with `event: "advisory"`, exit-0 on hit (PostToolUse cannot block), kill-switch suppression, `@ratio` skip in transcript context, fail-open on missing transcript, last-assistant-turn targeting across multiple turns.
+
+### Changed
+
+- `[refactor]` **4 PreToolUse:Bash hooks** — opt-in fast-path branch inserted after CMD extraction, before per-hook filter. Highest leverage in `pre-bash-safety-check.sh` because that hook runs `sanitize_cmd` + RM/NPX detectors on every Bash invocation; the 3 others already short-circuit on filter mismatch quickly. Same call shape across all 4 for consistency: `if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then exit 0; fi`.
+
+- `[change]` **`scripts/lib/hook-registry.js`** — 10th entry: `transcript-vocab-scan.sh` / `transcript-vocab-scan` / `TRANSCRIPT_VOCAB_SCAN` / `PostToolUse` / `*` / 3s. Drift test count moved 9 → 10.
+
+- `[change]` **`docs/RULE-HITS-SCHEMA.md`** — Events table gains `advisory` row (emitter: `transcript-vocab-scan`, meaning: PostToolUse non-blocking §10-V hit). Spec-section taxonomy table gains `transcript-vocab-scan` → `§10-V` row.
+
+- `[change]` **`tests/hooks/contract.test.sh`** — `DOCUMENTED` array gains `advisory:transcript-vocab-scan` to keep the hook↔doc contract gate green.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.8.3`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 177/177 node tests pass; 13 hook suites green (was 11; +2 new); 2 integration suites pass (`full-lifecycle` + `upgrade-lifecycle`); contract test green with new `advisory` event documented.
+- Default-OFF discipline: every existing test passes byte-identical to v0.8.2 with no env vars set. Opt-in is required to exercise either new code path.
+- 30-day FP-signal collection plan (per v0.6.0 precedent): operators set the flags, surface hits via `/claudemd-audit`, and at the v0.9.x review either flip a default ON, demote, or remove.
+
 ## [0.8.2] - 2026-05-09
 
 **Patch — single-source hook registry refactor.** Eliminates 5 hand-maintained sites where the 9-hook list was duplicated. Same thesis as v0.7.1's spec ↔ banned-vocab.patterns drift gate and v0.8.0's R-N1 / R-N2 manifests, applied to the plugin's own internal code: turn "agent must remember N places to keep in sync" into "code enforces single source of truth." Surfaced by the v0.8.1 reviewer. No runtime behavior change.

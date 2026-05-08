@@ -35,6 +35,7 @@ beforeEach(() => {
                       'memory-read-check', 'pre-bash-safety-check',
                       'sandbox-disposal-check', 'session-start-check',
                       'session-summary',
+                      'transcript-vocab-scan',
                       'version-sync']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
   }
@@ -62,6 +63,9 @@ beforeEach(() => {
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
         { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh"', timeout: 3 },
+      ] }],
+      PostToolUse: [{ matcher: '*', hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/transcript-vocab-scan.sh"', timeout: 3 },
       ] }],
     },
   }));
@@ -123,7 +127,7 @@ test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, 9);
+  assert.equal(manifest.entries.length, 10);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
@@ -144,7 +148,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 9);
+  assert.equal(manifest.entries.length, 10);
 });
 
 test('logs directory and empty jsonl created', async () => {
