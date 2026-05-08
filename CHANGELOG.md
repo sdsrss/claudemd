@@ -8,6 +8,42 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.8.4] - 2026-05-09
+
+**Patch — R-N9 rule-usage sparkline (dev-tooling).** Closes the audit-gap §13.1 (quarterly rule review) and §13.2 (rule budget) have run on since v0.7.0: per-window cumulative counts of signal events grouped by `spec_section`, with a per-period rate-based trend arrow. Operators paste the markdown block into the CHANGELOG header before each release; `/claudemd-sparkline` runs anytime to surface "which rules are firing, which are dying, which just woke up" with public data instead of "operator eyeballed two audits."
+
+### Added
+
+- `[feat]` **`scripts/sparkline.js`** (new, ~110 LOC) — reads `~/.claude/logs/claudemd.jsonl`, computes 30/60/90d cumulative counts per `spec_section` for signal events (`deny` + `warn` + `advisory` + `bypass-escape-hatch`), emits a markdown block. Reuses `readHits` + `groupBySection` from `scripts/lib/rule-hits-parse.js` (no duplication of the parsing/aggregation logic). Skips the `(unset)` bucket — pre-v0.7.0 rows without `spec_section` are noise for the version-discipline question this report answers.
+
+  Output shape:
+  ```
+  Rule usage trend (30d / 60d / 90d, signal events only):
+    §10-V              30 / 80 / 120  ↘
+    §7-ship-baseline   12 / 12 / 12   ≈
+    §11-memory-read     5 /  5 /  5   ↗ (newly active)
+    §8.V4               0 /  4 /  4   ↘ (silenced)
+  ```
+
+  Trend arrow compares per-period rate (count / window-days), not cumulative count, so a rule firing at steady cadence reads as `≈` rather than `↗` just because the cumulative number grew with the window. Annotations: `(newly active)` when older buckets are empty + recent has events; `(silenced)` when recent bucket is empty + cumulative > 0 (covers both "fired only in oldest bucket" and "fired only in middle bucket and went quiet" — the latter case caused a v0.8.4 prep bug, fixed before ship via test fixture).
+
+  CLI: `node scripts/sparkline.js [--days=30,60,90]` or `CLAUDEMD_SPARKLINE_DAYS=14,28,56`. Requires ≥2 windows.
+
+- `[feat]` **`commands/claudemd-sparkline.md`** — `/claudemd-sparkline` slash command wrapping the script. Registered as the 9th slash command (was 8 in v0.8.0+).
+
+- `[test]` **`tests/scripts/sparkline.test.js`** (new, 8 cases) — empty-log no-data path, monotonic ↗, monotonic ↘, newly-active marker, silenced marker (covers both oldest-bucket-only and middle-bucket-only-then-quiet cases), signal-event filter (excludes `pass` / `pass-known-red` / `bootstrap` / `(unset)` rows), aligned markdown output, custom windows.
+
+### Fixed
+
+- `[fix]` **`README.md`** — drift catch-up from v0.8.3: hook count `9 → 10` (transcript-vocab-scan added in v0.8.3 was never reflected in the layout block); slash-command count `8 → 9` (adds the new `/claudemd-sparkline` row); script count `7 → 10` (was stale across multiple v0.x releases). Same documentation-drift class the v0.8.1 reviewer caught for v0.8.0; the v0.8.2 single-source registry handled the in-code count drift but README counts remain hand-maintained because they're prose-context, not machine-readable. v0.9.x candidate: extend the registry drift test to grep README for stale numeric claims.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.8.4`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 185/185 node tests pass (was 177; +8 sparkline cases); 13 hook suites green; 2 integration suites pass.
+- No runtime behavior change. Pure dev-tooling addition; nothing in the hook execution path touched.
+- Closes the v0.6.x → v0.8.x R-N series. R-N1 (drift gate v0.7.1), R-N2 (HARD-rules manifest v0.8.0), R-N3 (week-over-week regression v0.8.0), R-N4 (SessionStart summary banner v0.8.0), R-N5 (bash readonly fast-path v0.8.3), R-N8 (transcript vocab scan v0.8.3), R-N9 (sparkline v0.8.4) all shipped. R-N6 (doctor bypass:deny ratio) and R-N7 (npx claudemd-lint CLI) remain candidates for v0.9.x.
+
 ## [0.8.3] - 2026-05-09
 
 **Patch — R-N5 + R-N8 opt-in behavior bundle.** Two independent runtime changes ship behind opt-in env-var flags, default OFF, following the v0.6.0 `BASH_SAFETY_INDIRECT_CALL` precedent for behavior-layer changes that need 30-day FP signal collection in the wild before becoming default-on. Both are gated, both expose status via `/claudemd-status`, both honor the standard kill-switch envelope. With both flags OFF, behavior is byte-identical to v0.8.2.
