@@ -135,7 +135,10 @@ REASONS=""
 RM_FLAG_REGEX='(^|[[:space:];&|`])rm[[:space:]]+-[[:alpha:]]*[rRfF][[:alpha:]]*[[:space:]]'
 if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
   bypass_rm=0
-  echo "$CMD" | grep -qF '[allow-rm-rf-var]' && bypass_rm=1
+  if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
+    bypass_rm=1
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}'
+  fi
 
   if (( bypass_rm == 0 )); then
     # Find the rm subcommand's argv after the flag block. Strip up through
@@ -168,7 +171,10 @@ fi
 NPX_REGEX='(^|[[:space:];&|`])npx[[:space:]]+'
 if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   bypass_npx=0
-  echo "$CMD" | grep -qF '[allow-npx-unpinned]' && bypass_npx=1
+  if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
+    bypass_npx=1
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-npx-unpinned"}'
+  fi
 
   if (( bypass_npx == 0 )); then
     # Take everything after the first `npx ` up to a command terminator.

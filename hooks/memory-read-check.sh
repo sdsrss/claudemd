@@ -19,9 +19,6 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
-# Escape hatch
-echo "$CMD" | grep -qF '[skip-memory-check]' && exit 0
-
 # Filter: ship/release/push/deploy verbs at command-segment-start.
 # Anchor on `^` or shell separator (`;` / `&` / `|`) so `release`/`deploy`/
 # `ship` substrings inside quoted commit messages, MR descriptions, file
@@ -30,6 +27,13 @@ echo "$CMD" | grep -qF '[skip-memory-check]' && exit 0
 # the filter — see tests Cases 14–15.
 TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|$)'
 echo "$CMD" | grep -qE "$TRIGGER_RE" || exit 0
+
+# Per-invocation escape hatch — placed AFTER trigger filter so bypass
+# usage is recorded only when the hook would have actually scanned.
+if echo "$CMD" | grep -qF '[skip-memory-check]'; then
+  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}'
+  exit 0
+fi
 
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)

@@ -27,6 +27,12 @@ TMP_BASE="${TMPDIR:-/tmp}"
 SENTINEL="$TMP_BASE/claudemd-sync-$SCOPE"
 [[ -f "$SENTINEL" ]] && exit 0
 
+# Self-cleanup: GC stale claudemd-sync-* sentinels older than 24h. Runs only
+# on first prompt of a session (the early-exit above already filtered out
+# subsequent prompts), so cost is bounded to once per CC session. -maxdepth 1
+# + -mmin (GNU+BSD compatible) + fail-silent — no §8 deep-traversal risk.
+find "$TMP_BASE" -maxdepth 1 -name 'claudemd-sync-*' -mmin +1440 -delete 2>/dev/null || true
+
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

@@ -3,7 +3,8 @@
 
 # rule_hits_append HOOK EVENT EXTRA_JSON
 #   HOOK  — hook name (banned-vocab, ship-baseline, ...)
-#   EVENT — pass | deny | bypass-env | bypass-escape-hatch | warn | error
+#   EVENT — see docs/RULE-HITS-SCHEMA.md "Events" table for the
+#           canonical list (kept in sync via tests/hooks/contract.test.sh).
 #   EXTRA — JSON value (object | null | string). "null" if none.
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
@@ -11,6 +12,14 @@ rule_hits_append() {
   local hook="${1:-unknown}"
   local event="${2:-unknown}"
   local extra="${3:-null}"
+
+  # Project: encoded with `/` and `.` → `-` to match Claude Code's
+  # ~/.claude/projects/<encoded>/ convention (paths with dots round-trip
+  # identically to CC's encoder; see hooks/memory-read-check.sh L41 for
+  # the matching consumer). Empty string when neither var is set.
+  local project_raw="${CLAUDE_PROJECT_DIR:-${PWD:-}}"
+  local project=""
+  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr '/.' '-')
 
   local log_dir="$HOME/.claude/logs"
   local log_file="$log_dir/claudemd.jsonl"
@@ -46,7 +55,8 @@ rule_hits_append() {
     --arg ts "$ts" \
     --arg hook "$hook" \
     --arg event "$event" \
+    --arg project "$project" \
     --argjson extra "$extra" \
-    '{ts: $ts, hook: $hook, event: $event, extra: $extra}' \
+    '{ts: $ts, hook: $hook, event: $event, project: $project, extra: $extra}' \
     2>/dev/null >> "$log_file" || return 0
 }

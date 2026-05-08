@@ -62,4 +62,26 @@ CLAUDEMD_LOG_MAX_MB=5 run 'rule_hits_append banned-vocab deny null'
 UNDER_LINES=$(wc -l < "$LOG" | tr -d ' ')
 [[ "$UNDER_LINES" == "2" ]] || { echo "FAIL: under-threshold expected 2 lines, got $UNDER_LINES"; exit 1; }
 
+# Case 7: project field — CLAUDE_PROJECT_DIR encoded with `/` and `.` → `-`.
+rm -rf "$TMP_HOME/.claude/logs"
+CLAUDE_PROJECT_DIR=/work/my.project run 'rule_hits_append banned-vocab deny null'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.project == "-work-my-project"' >/dev/null \
+  || { echo "FAIL: Case 7 project encoding wrong (got: $(echo "$LAST" | jq -r .project))"; exit 1; }
+
+# Case 8: project field falls back to PWD when CLAUDE_PROJECT_DIR unset.
+rm -rf "$TMP_HOME/.claude/logs"
+unset_run() { unset CLAUDE_PROJECT_DIR; bash -c "source $LIB; $*"; }
+(cd "$TMP_HOME" && unset_run 'rule_hits_append banned-vocab deny null')
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.project | length > 0' >/dev/null \
+  || { echo "FAIL: Case 8 project field empty under PWD fallback (got: $LAST)"; exit 1; }
+
+# Case 9: existing 'extra' payload still preserved alongside new project field.
+rm -rf "$TMP_HOME/.claude/logs"
+CLAUDE_PROJECT_DIR=/p run 'rule_hits_append ship-baseline pass-known-red '\''{"run_id":99}'\'''
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.project == "-p" and .extra.run_id == 99' >/dev/null \
+  || { echo "FAIL: Case 9 project + extra both required (got: $LAST)"; exit 1; }
+
 echo "All cases passed"

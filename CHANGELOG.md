@@ -8,6 +8,49 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.6.2] - 2026-05-09
+
+**Patch — audit-data instrumentation + residue self-cleanup.** Two themes, one release. (1) Closes a schema-vs-impl drift in the rule-hits log: 2 of 4 bypass-capable hooks were silently exiting without recording `bypass-escape-hatch`, so `/claudemd-audit` under-counted user overrides; the JSONL also carried no project identifier, so cross-project drill-down was impossible. Adds `project` field on every row + bypass recording in `pre-bash-safety` and `memory-read-check` + a contract test that locks "every documented event has a producer and every emitted event is documented." (2) Closes the irony that the residue-policing plugin was itself the largest residue source: 525 stale `claudemd-sync-*` session sentinels accumulated in 9 days under `$TMPDIR` (one per CC session, never collected). Adds GC of >24h sentinels in `version-sync.sh` (bounded to first prompt of a session) + a new `/claudemd-clean-residue` command + a `scripts/clean-residue.js` library.
+
+### Added
+
+- `[feat]` **`hooks/lib/rule-hits.sh`** — `rule_hits_append` now derives `project` from `$CLAUDE_PROJECT_DIR` (or `$PWD` fallback), encoded with `/` and `.` → `-` to match Claude Code's `~/.claude/projects/<encoded>/` convention. Every JSONL row now carries the field. Schema is additive — `audit.js` keeps working unchanged on legacy rows; `groupByProject` aggregation deferred to a follow-up. Pre-fix, `/claudemd-audit` could answer "which hook is firing" but not "in which project" — making per-project red-rate / regression detection impossible.
+
+- `[feat]` **`hooks/pre-bash-safety-check.sh:138-141 / 173-176`** — when `[allow-rm-rf-var]` or `[allow-npx-unpinned]` token fires the bypass branch, the hook now calls `hook_record pre-bash-safety bypass-escape-hatch '{"token":"..."}'` before exiting. Pre-fix, the bypass took the deny path's normal early-exit and never wrote to the rule-hits log — so a user routinely escape-hatching `npx unpinned-pkg` had zero audit visibility. 30-day baseline data showed 0 such recorded bypasses; field signal will land in the next 14-day window.
+
+- `[feat]` **`hooks/memory-read-check.sh:22-31`** — `[skip-memory-check]` token check moved from pre-trigger (line 23) to post-trigger, so bypass usage is recorded only when the hook would have actually scanned. New `hook_record memory-read-check bypass-escape-hatch` call on the bypass path. Behavior is unchanged from a user-visible standpoint (token still exits 0); only the audit log gains the bypass row.
+
+- `[feat]` **`hooks/version-sync.sh:31-35`** — first-prompt-per-session self-cleanup: `find "$TMP_BASE" -maxdepth 1 -name 'claudemd-sync-*' -mmin +1440 -delete 2>/dev/null || true`. Bounded to once per CC session (the early-exit on existing sentinel filters out subsequent prompts), `-maxdepth 1` + named-pattern + fail-silent. Field measurement: one user's `~/.claude/tmp/` had 525 stale sentinels accumulated over 9 days at install time; post-deploy first-session run drops the count to ≤ session count of the day.
+
+- `[feat]` **`scripts/clean-residue.js`** (new, 66 LOC) — exports `scan({tmpDir})` and `clean({tmpDir, apply, ageDaysMin})`. Anchored regexes `/^claudemd-sync-/` (file) and `/^claudemd-(mockgh|work)\./` (dir) — defends against fnmatch-style sloppy matches like `not-claudemd-sync-foo`. CLI is dry-run-by-default; `--apply` opts into deletion; `--age-days=N` overrides the 1-day stale threshold.
+
+- `[feat]` **`commands/claudemd-clean-residue.md`** (new) — slash command surfacing the script with `$ARGS` passthrough. Use case: bulk-clean accumulated residue on first install of v0.6.2 (the new self-cleanup only handles forward-direction drift; pre-existing pile must be one-shot via this command).
+
+- `[test]` **`tests/hooks/contract.test.sh`** (new, 137 LOC, 27 cases) — locks the rule-hits schema contract: (A) every hook with a documented bypass token records `bypass-escape-hatch` end-to-end (4 cases driving real fixtures); (B) every documented `(event, emitter)` pair in `RULE-HITS-SCHEMA.md` has a matching `hook_record` call in source (14 cases); (C) every event emitted in `hooks/` source is documented in the schema (8 cases — fails loudly on drift in either direction); (D) `project` field is auto-populated when `$CLAUDE_PROJECT_DIR` is set. 27/27 passing.
+
+- `[test]` **`tests/scripts/clean-residue.test.js`** (new, 152 LOC, 12 cases) — `scan()` finds prefix-anchored matches; `scan()` tolerates missing/empty dir; `clean({apply:false})` returns targets without deleting; `clean({apply:true})` deletes only entries older than `ageDaysMin`; sandbox dirs deleted recursively; non-matching files preserved; `ageDaysMin=0` includes brand-new entries; anchor patterns reject `not-claudemd-sync-*` / `xclaudemd-sync-*` / `claudemd-mockgh-noDot` (no dot) / `claudemd-mockghX.YYY` (extra char); CLI dry-run-by-default; `--apply` deletes idempotently; `--age-days=N` overrides; rejects negative `--age-days`. 12/12 passing.
+
+- `[test]` **`tests/hooks/rule-hits.test.sh`** — Cases 7/8/9 added: (7) `CLAUDE_PROJECT_DIR=/work/my.project` → log `.project == "-work-my-project"`; (8) `$CLAUDE_PROJECT_DIR` unset → falls back to `$PWD` encoding; (9) project + extra payload coexist on `pass-known-red` row. Total: 9/9 passing (was 6/6).
+
+- `[test]` **`tests/hooks/version-sync.test.sh`** — Case 7 added: pre-seeds 2 stale sentinels (mtime 2 days ago, set via portable `node -e fs.utimesSync`) + 1 recent + 1 unrelated, runs hook, asserts stale removed / recent + unrelated kept / new sentinel created. Total: 7/7 passing (was 6/6).
+
+### Changed
+
+- `[fix]` **`docs/RULE-HITS-SCHEMA.md`** — rewritten. Drops `bypass-env` from the event enum (was documented but no hook ever emitted it). Adds `bootstrap` / `upstream-banner` / `version-sync` (emitted by `session-start` and `user-prompt-submit` but previously undocumented). Adds the `project` field. Replaces the flat enum with a per-event/per-emitter table — `tests/hooks/contract.test.sh` parses this table to enforce drift in either direction. Pre-fix the schema listed 7 events, the source emitted 8 events, and 1 documented event (`bypass-env`) had no producer.
+
+- `[fix]` **`hooks/lib/rule-hits.sh:6`** — function header comment now points at `docs/RULE-HITS-SCHEMA.md` for the canonical event list, instead of inlining a stale local copy.
+
+### Migration
+
+No user action required for the `project` field — it auto-populates on next prompt after upgrade. For one-shot cleanup of pre-existing `claudemd-sync-*` accumulation:
+
+```
+/claudemd-clean-residue           # dry-run, shows count + per-path age
+/claudemd-clean-residue --apply   # delete entries >24h old
+```
+
+Self-cleanup runs forward from v0.6.2 onward — no manual maintenance after this one-time pass.
+
 ## [0.6.1] - 2026-04-29
 
 **Patch — install/update/uninstall lifecycle audit + hardening.** Audit-driven cleanup pass on the three user-facing lifecycle paths. No spec change, no new commands, no new hooks. Removes one unsupported manifest field that future Claude Code schema tightening could refuse, plugs a silent-failure branch in `install.js`, stabilizes the shape of `uninstall.js` / `status.js` returns so downstream LLM templates don't see drifting keys, and adds bootstrap-log rotation so `~/.claude/logs/claudemd-bootstrap.log` no longer grows unbounded across sessions.

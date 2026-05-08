@@ -128,7 +128,29 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((6 - FAIL))/6 passed"; exit 1
+# Case 7: self-cleanup GCs stale claudemd-sync-* sentinels (>24h old) on
+# first prompt of a session. Recent sentinels and unrelated names are kept.
+# Confirms the leak that produced 525+ accumulated sentinels in 9 days is
+# now bounded.
+reset_state
+STALE_A="$TMPDIR/claudemd-sync-stale-A"
+STALE_B="$TMPDIR/claudemd-sync-stale-B"
+RECENT="$TMPDIR/claudemd-sync-recent"
+UNRELATED="$TMPDIR/something-else.txt"
+touch "$STALE_A" "$STALE_B" "$RECENT" "$UNRELATED"
+# Mark A and B as 2 days old via node (portable Linux/macOS).
+node -e "const fs=require('fs'); const t=(Date.now()/1000)-86400*2; for (const f of process.argv.slice(1)) fs.utimesSync(f,t,t)" "$STALE_A" "$STALE_B"
+PLUGIN_VER=$(jq -r .version "$PLUGIN_ROOT/package.json")
+jq -n --arg v "$PLUGIN_VER" '{version:$v,entries:[]}' > "$HOME/.claude/.claudemd-manifest.json"
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+if [[ ! -e "$STALE_A" && ! -e "$STALE_B" && -e "$RECENT" && -e "$UNRELATED" && -e "$SENTINEL" ]]; then
+  echo "PASS: 7 self-cleanup removes >24h sentinels, keeps recent and unrelated"
+else
+  echo "FAIL: 7 (stale_A=$([[ -e $STALE_A ]] && echo kept || echo gone) stale_B=$([[ -e $STALE_B ]] && echo kept || echo gone) recent=$([[ -e $RECENT ]] && echo kept || echo gone) unrelated=$([[ -e $UNRELATED ]] && echo kept || echo gone) sentinel=$([[ -e $SENTINEL ]] && echo created || echo missing))"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 6/6 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((7 - FAIL))/7 passed"; exit 1
+fi
+echo "Tests: 7/7 passed"
