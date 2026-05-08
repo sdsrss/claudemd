@@ -8,6 +8,29 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.1] - 2026-05-09
+
+**Patch — first npm publish + auto-publish workflow.** Operator approved npm publish for v0.9.0's R-N7 CLI; v0.9.1 is the actual first release on npm. Bundles four changes: `.npmignore` (whitelist-style; ships only the 7 runtime files the CLI needs — 69 kB packed vs 4-5× full repo), GitHub Actions auto-publish workflow on tag push, npm package rename to `claudemd-cli` (anti-spam similarity check rejected `claudemd` name due to existing `claude-md` package), and the publish itself.
+
+### Naming
+
+- **GitHub repo**: `sdsrss/claudemd` (unchanged — the Claude Code plugin marketplace install path uses this).
+- **npm package**: `claudemd-cli` (NEW — `claudemd` was rejected by npm's automatic similarity check against the unrelated `claude-md` package). CLI invocation: `npx claudemd-cli lint "..."` / `npx claudemd-cli audit transcript.jsonl`. Asymmetry is intentional: GitHub repo serves both the plugin (broad scope) and the CLI (lint subset); npm package is CLI-only and `-cli` suffix makes that explicit.
+
+### Added
+
+- `[feat]` **`.npmignore`** (new) — whitelist approach (`*` then `!file` re-includes). Ships only `bin/`, `scripts/lib/lint.js`, `hooks/banned-vocab.patterns`, `package.json`, `README.md`, `CHANGELOG.md`, `LICENSE`. All plugin-only artifacts (other `hooks/*.sh`, `commands/`, `spec/`, `scripts/install.js` and friends, `.claude-plugin/`, `tests/`, `docs/`, `tasks/`, `.github/`) are excluded. Plugin marketplace install path is unaffected — Claude Code clones the GitHub repo, doesn't go through npm. Verified via `npm pack --dry-run`: 7 files, 68.4 kB packed / 199.5 kB unpacked.
+
+- `[feat]` **`.github/workflows/npm-publish.yml`** (new) — auto-publish on tag push (`v*.*.*` pattern). Pre-publish gate: `tests/run-all.sh` must pass on `ubuntu-latest + node 20` (matches `ci.yml` Linux leg). Belt-and-suspenders version check: refuses to publish if `package.json` version differs from the tag. Uses `npm publish --provenance --access public` for npm provenance attestation (signed build chain). Required repo secret: `NPM_TOKEN` (Automation token, publish scope for `claudemd`). `workflow_dispatch` allowed for manual fallback (e.g. recovering from transient registry outage).
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.9.1`. Spec files unchanged; spec version remains v6.11.3.
+- **First npm release**: `claudemd-cli@0.9.1` published from this commit's tagged tarball. After this release, future tag pushes auto-publish via the workflow — operator no longer runs `npm publish` by hand.
+- npm package: [`claudemd-cli@0.9.1`](https://www.npmjs.com/package/claudemd-cli). Invocation: `npx claudemd-cli lint "..."` / `npx claudemd-cli audit ...`.
+- Validation: `tests/run-all.sh` → 211/211 node tests pass; 13 hook suites green; 2 integration suites pass. No code changes vs v0.9.0 in the runtime path; this release is publish infra + first push.
+- Operator post-step: add `NPM_TOKEN` to repo secrets (npm dashboard → Access Tokens → Generate Automation Token, scope `claudemd` publish; GitHub repo → Settings → Secrets → Actions → New repository secret).
+
 ## [0.9.0] - 2026-05-09
 
 **Minor — R-N7 standalone CLI (`npx claudemd lint` / `audit`).** Closes the last entry in the v0.6.x → v0.8.x R-N series: the same `banned-vocab.patterns` source the in-CC bash hook uses is now exposed as a pure-Node CLI for **git pre-commit hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw). Spec's effective enforcement surface expands from "inside Claude Code only" to "anywhere Node 20+ runs." This is what makes claudemd a meaningful authority layer rather than a single-client lint.

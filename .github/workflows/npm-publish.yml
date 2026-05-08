@@ -1,0 +1,75 @@
+name: npm-publish
+
+# Auto-publish to npm on tag push (v0.9.1+).
+#
+# Trigger: any tag matching `v*.*.*` pushed to origin. The atomic ship
+# workflow (commit + push main + git tag + git push tag + gh release create)
+# fires this action on the `git push origin v<X.Y.Z>` step. Manual `gh release`
+# creation also pushes the tag, so this works for both paths.
+#
+# Required repo secret: NPM_TOKEN
+#   Type: "Automation" token (npm dashboard → Access Tokens → Generate New Token).
+#   Permissions: publish for the `claudemd-cli` package (granular token scope).
+#   Lifetime: rotate on a schedule consistent with org policy.
+#
+# Pre-publish gate: tests/run-all.sh must pass on the same runner image
+# CI uses (ubuntu-latest + node 20), matching the ci.yml matrix's Linux leg.
+# Rationale: don't publish a tarball that can't pass tests in the standard
+# environment. Skip the macOS leg here — it's belt-and-suspenders for plugin
+# behavior on developer laptops, not a publish gate.
+#
+# Idempotency: if NPM has already received this version, `npm publish` exits
+# non-zero with E_PUBLISH_ALREADY_PUBLISHED. The job fails loudly rather than
+# silently re-publishing — operator's signal that the tag was bumped without
+# a corresponding package.json bump.
+#
+# Manual trigger: `gh workflow run npm-publish.yml` works as a fallback.
+# The workflow_dispatch input lets operators publish out-of-band when a tag
+# already exists (e.g. recovering from a transient registry outage).
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write  # required for npm provenance attestation (--provenance)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install jq + shellcheck (test prereqs)
+        run: sudo apt-get update -y && sudo apt-get install -y jq shellcheck
+
+      - name: Run test suite (publish gate)
+        run: bash tests/run-all.sh
+
+      - name: Verify package.json version matches the tag
+        # Belt-and-suspenders: refuse to publish if the tag and package.json
+        # disagree. Catches "tagged v0.9.1 but forgot to bump package.json"
+        # which would otherwise publish a misleading version to npm.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [[ "$tag" != "$pkg" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME ≠ package.json version $pkg — refusing to publish"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches package.json version $pkg"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -12,7 +12,7 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 |---|---|
 | 10 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `transcript-vocab-scan` · `version-sync` |
 | 9 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` |
-| 1 standalone CLI | `claudemd lint` · `claudemd audit` (v0.9.0+ — for git pre-commit / CI / cross-agent use; same `banned-vocab.patterns` source as the in-CC hook) |
+| 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` (v0.9.0+ — for git pre-commit / CI / cross-agent use; npm package: [`claudemd-cli`](https://www.npmjs.com/package/claudemd-cli); same `banned-vocab.patterns` source as the in-CC hook) |
 | Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
@@ -106,10 +106,10 @@ node bin/claudemd-lint.js lint "your commit message here"
 node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
 
 # After npm publish (operator-driven, not part of plugin install):
-npx claudemd lint "your commit message here"
-npx claudemd lint --stdin < message.txt
-npx claudemd audit transcript.jsonl
-npx claudemd audit transcript.jsonl --json
+npx claudemd-cli lint "your commit message here"
+npx claudemd-cli lint --stdin < message.txt
+npx claudemd-cli audit transcript.jsonl
+npx claudemd-cli audit transcript.jsonl --json
 ```
 
 | Subcommand | Purpose |
@@ -122,7 +122,7 @@ npx claudemd audit transcript.jsonl --json
 **Pre-commit example (`.git/hooks/commit-msg`)**:
 ```bash
 #!/usr/bin/env bash
-npx claudemd lint --stdin < "$1" || exit 1
+npx claudemd-cli lint --stdin < "$1" || exit 1
 ```
 
 The CLI does NOT depend on `~/.claude/` state — pure stateless input → stdout/stderr + exit code. Same enforcement, anywhere Node 20+ runs.
@@ -283,7 +283,7 @@ claudemd/
 ├── hooks/                    # 10 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 9 slash-command markdown files
-├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → npx claudemd post-publish)
+├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.11.3 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures

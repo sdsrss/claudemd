@@ -1,0 +1,23 @@
+# .npmignore — whitelist approach. The npm tarball ships only the runtime
+# files the standalone CLI needs (R-N7, v0.9.0+). Plugin-only artifacts
+# (bash hooks, slash commands, spec distribution, install/update scripts)
+# stay out of the tarball — they're delivered to Claude Code via the
+# marketplace clone path, not via npm install.
+#
+# Verify with: `npm pack --dry-run` (see "Tarball Contents" output).
+
+# Default: ignore everything.
+*
+
+# Re-include the CLI's transitive surface.
+!bin/
+!bin/**
+!scripts/
+!scripts/lib/
+!scripts/lib/lint.js
+!hooks/
+!hooks/banned-vocab.patterns
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
