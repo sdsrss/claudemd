@@ -4,7 +4,7 @@
   "description": "Standalone CLI for §10-V banned-vocab + transcript scanning. Companion to the claudemd Claude Code plugin (github.com/sdsrss/claudemd) for use in git pre-commit hooks, GitHub Actions, and other agents.",
   "type": "module",
   "bin": {
-    "claudemd-cli": "./bin/claudemd-lint.js"
+    "claudemd-cli": "bin/claudemd-lint.js"
   },
   "scripts": {
     "test": "bash tests/run-all.sh",
