@@ -8,6 +8,29 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.2] - 2026-05-09
+
+**Patch — npm provenance metadata + first auto-publish via workflow.** v0.9.1 manual publish succeeded but the auto-publish workflow's first triggered run failed twice: first run on the v0.9.1 tag push hit `ENEEDAUTH` (NPM_TOKEN not yet configured); a rerun after token configuration hit `E422` from npm's sigstore provenance verifier — `--provenance` requires `repository.url` in package.json to match the inferred repo URL. v0.9.2 closes that gap and serves as the first end-to-end auto-publish validation.
+
+### Added
+
+- `[feat]` **`package.json` `repository` / `homepage` / `bugs` / `keywords` fields** — required by `npm publish --provenance` (sigstore verifier reads `repository.url` to validate the build chain came from the same git origin GitHub Actions claims). `homepage` deep-links to the README's CLI section so the npm package page sends new users straight to install/usage. `keywords` improves discoverability on npmjs.com search.
+
+### Changed
+
+- `[chore]` **`package.json` bin path** (committed post-v0.9.1 as a no-bump fixup) — `npm pkg fix` normalized `./bin/claudemd-lint.js` → `bin/claudemd-lint.js`. Silences the publish warning the v0.9.1 workflow run surfaced. Behavior unchanged — npm resolves both forms identically.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — all to `0.9.2`. Spec files unchanged; spec version remains v6.11.3.
+- This release is the **first auto-publish** (operator pre-configured `NPM_TOKEN` repo secret on 2026-05-08; tag push triggers `.github/workflows/npm-publish.yml` which runs tests, validates package.json version against tag, and publishes with `--provenance --access public`).
+- Validation: `tests/run-all.sh` → 211/211 node tests pass (no test changes vs v0.9.1); 13 hook suites green; 2 integration suites pass.
+- npm package: [`claudemd-cli@0.9.2`](https://www.npmjs.com/package/claudemd-cli). Published via Actions OIDC, so the tarball carries a sigstore provenance attestation linking it to commit `<sha>` and workflow `npm-publish.yml`.
+- v0.9.1 workflow run history (verbose for the on-call audit trail):
+  - run 1: failed `ENEEDAUTH` — token not yet set.
+  - run 2 (rerun after token set): failed `E422` — missing `repository.url`.
+  - v0.9.2 (this release): expected to succeed end-to-end.
+
 ## [0.9.1] - 2026-05-09
 
 **Patch — first npm publish + auto-publish workflow.** Operator approved npm publish for v0.9.0's R-N7 CLI; v0.9.1 is the actual first release on npm. Bundles four changes: `.npmignore` (whitelist-style; ships only the 7 runtime files the CLI needs — 69 kB packed vs 4-5× full repo), GitHub Actions auto-publish workflow on tag push, npm package rename to `claudemd-cli` (anti-spam similarity check rejected `claudemd` name due to existing `claude-md` package), and the publish itself.
