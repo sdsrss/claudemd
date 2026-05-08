@@ -165,6 +165,70 @@ test('doctor reports spec-hash:* missing when installed spec absent (v0.6.0)', a
   assert.match(main.detail, /installed spec missing/);
 });
 
+test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 50%', async () => {
+  // 6 events on §11-memory-read: 5 bypasses + 1 deny = 83% override rate.
+  // Doctor must flag this as a demotion candidate (rule too strict / wording
+  // confuses, users routinely escape-hatch).
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
+  assert.ok(usage, 'rule-usage:§11-memory-read check must exist');
+  assert.equal(usage.ok, false, 'must fail (demotion candidate) when bypass:deny > 50%');
+  assert.match(usage.detail, /demotion candidate/);
+  assert.match(usage.detail, /deny=1/);
+  assert.match(usage.detail, /bypass=5/);
+  assert.match(usage.detail, /83%/);
+});
+
+test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () => {
+  // 5 denies + 1 bypass = 17% override rate — below threshold, healthy.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
+  assert.ok(usage);
+  assert.equal(usage.ok, true);
+  assert.match(usage.detail, /healthy/);
+  assert.match(usage.detail, /17%/);
+});
+
+test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', async () => {
+  // Single deny on §10-V — too few to draw a ratio conclusion. No check emitted.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  fs.writeFileSync(log,
+    `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["robust"]}}\n`
+  );
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
+  assert.equal(usage, undefined, 'no rule-usage check should fire below RULE_USAGE_MIN_TOTAL=3');
+});
+
+test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () => {
+  // Legacy rows (no spec_section) accumulate under (unset). Demoting on
+  // these would misattribute pre-upgrade behavior to current rule design.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","extra":{"token":"allow-banned-vocab"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","extra":null}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const unset = r.checks.find(c => c.name === 'rule-usage:(unset)');
+  assert.equal(unset, undefined, '(unset) bucket must not generate a rule-usage check');
+});
+
 test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
   const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
   fs.mkdirSync(realPluginRoot, { recursive: true });

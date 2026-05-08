@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.7.1] - 2026-05-09
+
+**Patch — spec ↔ pattern drift gate (R-N1) + doctor §0.1 demotion-candidate surface (R-N6).** Closes the "spec is falsifiable" half of the v0.7.0 governance loop. Pre-fix, `spec/CLAUDE-extended.md §10-V` (banned-vocab prose list) and `hooks/banned-vocab.patterns` (regex enforcement) were maintained by hand discipline; drift in either direction went undetected until field signal. v0.7.1 adds a CI-time canonical fixture + 6-direction drift test that fails the build the moment spec or patterns disagree without an explicit exemption. R-N6 turns v0.7.0's `byBypass` data into a doctor check — sections whose denies are routinely escape-hatched (>50% bypass:deny ratio) surface as §0.1 demotion candidates without manual audit reading.
+
+### Added
+
+- `[feat]` **`tests/fixtures/banned-vocab-canonical.json`** (new, 38 entries) — single source of truth mapping each spec §10-V banned term ↔ `hooks/banned-vocab.patterns` regex. Each entry carries `term`, `category` (EN-adj/EN-hedge/EN-ratio/ZH-adj/ZH-ratio), `in_spec` (bool), `pattern` (regex string or null), and `exempt_reason` when partial coverage applies. Documents 11 acknowledged divergences: 8 spec-only "too common in legitimate language" exemptions (likely / arguably / 通常如此 / 一般来说 / 大部分情况 / most of the time / usually passes / often fails / 大多数时候 / 多数情况下) and 3 pattern-only symmetric forms (显著改善 / 显著优于 / 大幅提升, derived from spec's 显著提升 / 大幅改善 / 明显优于 — 显著改善 is also flagged as a spec-promotion candidate as it leads ZH pattern fires at 5/30d).
+
+- `[feat]` **`tests/scripts/spec-pattern-drift.test.js`** (new, 6 tests) — 4-direction drift gate: (1) every banned-vocab pattern has a canonical entry; (2) every canonical entry's pattern exists in the patterns file; (3) every spec §10-V banned term has a canonical entry with `in_spec: true`; (4) every `in_spec: true` canonical entry exists verbatim in spec §10-V text. Plus 2 schema invariants: (5) partial-coverage entries carry `exempt_reason`; (6) no entry is both spec-absent and pattern-absent. Parses spec section text via `## §10-V Banned-vocab` anchor + `**Banned ...**: "term"` regex (handles both `"a" / "b"` separate quotes and `"a / b / c"` slash-joined-quote forms). 6/6 passing on current state.
+
+- `[feat]` **`scripts/doctor.js:11 / 19-31 / 154-178`** — new `rule-usage:<spec_section>` checks. Reads 30-day window from `~/.claude/logs/claudemd.jsonl`, groups by `spec_section` (v0.7.0 field), computes bypass:deny ratio per section, emits one check per section with ≥3 events. Ratio > 50% → `[✗] §0.1 demotion candidate — see /claudemd-audit byBypass`; ratio ≤ 50% → `[✓] healthy`. Sections under the statistical floor or in the `(unset)` legacy bucket are skipped — pre-v0.7.0 rows lack section attribution and would misattribute pre-upgrade behavior to current rule design.
+
+- `[test]` **`tests/scripts/doctor.test.js`** — 4 R-N6 cases: (1) flags `§11-memory-read` as demotion candidate when 5 bypass + 1 deny → 83%; (2) marks `§10-V` healthy at 17%; (3) skips sections below 3-event statistical floor; (4) skips `(unset)` bucket carrying legacy rows. Total `tests/scripts/`: 160 (was 150 — +6 drift + +4 R-N6).
+
+### Changed
+
+No behavior change to the runtime hook path. Drift test runs in CI only; doctor check is read-only against the existing rule-hits log.
+
+### Why drift gate matters now
+
+Empirical signal from v0.7.0 audit data already reveals 3 acknowledged spec ↔ pattern divergences in `tests/fixtures/banned-vocab-canonical.json` (the `pattern_only` ZH adjectives 显著改善 / 显著优于 / 大幅提升 — symmetric forms the patterns author derived from spec but never round-tripped to spec). Prior to this release, those divergences sat invisible. The drift test surfaces them as `exempt_reason` lines on review; the next minor spec bump can promote them with full visibility.
+
+### Notes
+
+- Versions bumped: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + plugins[0]) — all to `0.7.1`. Spec files unchanged; spec version remains v6.11.3.
+- Validation: `tests/run-all.sh` → 160/160 node tests pass; 11 hook suites green (drift 6/6, doctor 16/16, contract 35/35, banned-vocab 20/20, rule-hits 12/12); 2 integration suites pass (full-lifecycle, upgrade-lifecycle).
+- Why drift + doctor together: both consume the v0.7.0 `spec_section` data plane. R-N1 polices its edit-time invariants; R-N6 polices its runtime behavior. Same wave, two layers.
+
 ## [0.7.0] - 2026-05-09
 
 **Minor — per-rule instrumentation + bypass dashboard + banned-vocab dead-pattern stratification.** Closes the §0.1/§13.1/§13.2 governance loop: pre-fix `/claudemd-audit` answered "which hook is firing" but not "which spec rule is firing", so `§0.1 Core growth discipline` (promote ≥5 hits in 30d) and `§13.1` quarterly demote (0 hits in 90d) had no source data — both rules were aspirational, not mechanical. This release adds `spec_section` to every hook-enforcing rule-hits row, surfaces `byBypass` (per-token escape-hatch usage — the §0.1 demotion candidate signal), and reorganizes `banned-vocab.patterns` into high-fire and prophylactic regions per the same audit data.

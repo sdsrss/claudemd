@@ -1,0 +1,51 @@
+{
+  "_doc": "Single source of truth for §10-V Banned-vocab spec ↔ banned-vocab.patterns mapping. tests/scripts/spec-pattern-drift.test.js validates both sides against this manifest. Adding a new pattern to hooks/banned-vocab.patterns OR a new banned term to spec §10-V REQUIRES updating an entry here, otherwise CI red. v0.7.1 R-N1 (drift test). The fixture is intentionally explicit (no regex auto-extraction): legibility on review > clever parsing. Fields per entry — term: the spec-listed phrase or the literal pattern body; category: one of EN-adj / EN-hedge / EN-ratio / ZH-adj / ZH-ratio; in_spec: true if §10-V text contains `term` verbatim; pattern: the regex from banned-vocab.patterns this entry is enforced by, null if exempt; exempt_reason: required when in_spec=false OR pattern=null; note: optional clarification.",
+  "spec_section_path": "spec/CLAUDE-extended.md",
+  "spec_section_anchor": "## §10-V Banned-vocab",
+  "patterns_path": "hooks/banned-vocab.patterns",
+  "entries": [
+    {"term": "significantly improved", "category": "EN-adj", "in_spec": true, "pattern": "\\bsignificantly\\b", "note": "spec lists 'significantly improved'; pattern fires on the head word"},
+    {"term": "robust", "category": "EN-adj", "in_spec": true, "pattern": "\\brobust\\b"},
+    {"term": "production-ready", "category": "EN-adj", "in_spec": true, "pattern": "\\bproduction[- ]ready\\b", "note": "char class accepts both 'production-ready' and 'production ready'"},
+    {"term": "more efficient", "category": "EN-adj", "in_spec": true, "pattern": "\\b[0-9]+%\\s+(faster|slower|better|more efficient)\\b", "note": "shared with EN-ratio; 'more efficient' enforced only inside an N% clause to keep FP rate down"},
+    {"term": "should work", "category": "EN-adj", "in_spec": true, "pattern": "\\bshould work\\b"},
+    {"term": "cleaner code", "category": "EN-adj", "in_spec": true, "pattern": "\\bcleaner code\\b"},
+    {"term": "comprehensive", "category": "EN-adj", "in_spec": true, "pattern": "\\bcomprehensive\\b"},
+    {"term": "best practice", "category": "EN-adj", "in_spec": true, "pattern": "\\bbest practice\\b"},
+    {"term": "industry-standard", "category": "EN-adj", "in_spec": true, "pattern": "\\bindustry standard\\b", "note": "spec uses dash; pattern uses space — both forms common in commit text"},
+
+    {"term": "presumably", "category": "EN-hedge", "in_spec": true, "pattern": "\\bpresumably\\b"},
+    {"term": "likely", "category": "EN-hedge", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English (banned-vocab.patterns header skip-list policy)"},
+    {"term": "in principle", "category": "EN-hedge", "in_spec": true, "pattern": "\\bin principle\\b"},
+    {"term": "arguably", "category": "EN-hedge", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English"},
+    {"term": "in theory", "category": "EN-hedge", "in_spec": true, "pattern": "\\bin theory\\b"},
+    {"term": "seems to work", "category": "EN-hedge", "in_spec": true, "pattern": "\\bseems to work\\b"},
+    {"term": "appears correct", "category": "EN-hedge", "in_spec": true, "pattern": "\\bappears correct\\b"},
+    {"term": "it should be fine", "category": "EN-hedge", "in_spec": true, "pattern": "\\bit should be fine\\b"},
+
+    {"term": "70-80% faster", "category": "EN-ratio", "in_spec": true, "pattern": "\\b[0-9]+%\\s+(faster|slower|better|more efficient)\\b", "note": "matched via N% (faster|slower|better|more efficient) ratio pattern"},
+    {"term": "2× better", "category": "EN-ratio", "in_spec": true, "pattern": "\\b[0-9]+x\\s+(faster|slower|better)\\b", "note": "spec uses unicode multiplication sign ×; pattern uses ASCII 'x' — drift acknowledged, both common in commits"},
+    {"term": "most of the time", "category": "EN-ratio", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English"},
+    {"term": "usually passes", "category": "EN-ratio", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English"},
+    {"term": "often fails", "category": "EN-ratio", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English"},
+
+    {"term": "显著提升", "category": "ZH-adj", "in_spec": true, "pattern": "显著提升"},
+    {"term": "大幅改善", "category": "ZH-adj", "in_spec": true, "pattern": "大幅改善"},
+    {"term": "更高效", "category": "ZH-adj", "in_spec": true, "pattern": "更高效"},
+    {"term": "明显优于", "category": "ZH-adj", "in_spec": true, "pattern": "明显优于"},
+    {"term": "基本可用", "category": "ZH-adj", "in_spec": true, "pattern": "基本可用"},
+    {"term": "相当不错", "category": "ZH-adj", "in_spec": true, "pattern": "相当不错"},
+    {"term": "通常如此", "category": "ZH-adj", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate 中文 (parallel to likely/usually/often)"},
+    {"term": "一般来说", "category": "ZH-adj", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate 中文"},
+    {"term": "大部分情况", "category": "ZH-adj", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate 中文"},
+
+    {"term": "显著改善", "category": "ZH-adj", "in_spec": false, "pattern": "显著改善", "exempt_reason": "pattern-only: symmetric form derived from spec's 显著提升 + 大幅改善. Top-fired ZH pattern (5 hits in 30d audit). Promotion candidate — spec should add 显著改善 to §10-V ZH-adj list in next minor."},
+    {"term": "显著优于", "category": "ZH-adj", "in_spec": false, "pattern": "显著优于", "exempt_reason": "pattern-only: symmetric form derived from spec's 明显优于"},
+    {"term": "大幅提升", "category": "ZH-adj", "in_spec": false, "pattern": "大幅提升", "exempt_reason": "pattern-only: symmetric form derived from spec's 大幅改善 + 显著提升"},
+
+    {"term": "N 倍提升", "category": "ZH-ratio", "in_spec": true, "pattern": "[0-9]+倍(提升|加速|改善)", "note": "matched via N倍(提升|加速|改善) ratio pattern; alternation members 加速/改善 are pattern-only symmetric forms"},
+    {"term": "M% 更快", "category": "ZH-ratio", "in_spec": true, "pattern": "[0-9]+%(更快|更慢|更好|更高效)", "note": "matched via N%(更快|...) ratio pattern; spec uses 'M% 更快' with space, pattern is contiguous — drift acknowledged"},
+    {"term": "大多数时候", "category": "ZH-ratio", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate 中文"},
+    {"term": "多数情况下", "category": "ZH-ratio", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate 中文"}
+  ]
+}

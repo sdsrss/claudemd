@@ -6,8 +6,22 @@ import { logsDir, settingsPath, specHome, readManifest } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
+import { readHits, groupBySection } from './lib/rule-hits-parse.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// v0.7.1 R-N6 — doctor surfaces §0.1 demotion candidates from v0.7.0's
+// bypass-vs-deny audit data. A spec section whose users override its denies
+// more often than they comply with them is signalling either "rule too strict"
+// or "rule wording confuses". §0.1 Core growth discipline says core entries
+// with 0 hits in 90d are demotion candidates; this catch is the inverse —
+// hits exist, but they're routinely escape-hatched.
+const RULE_USAGE_WINDOW_DAYS = 30;
+const RULE_USAGE_DEMOTION_RATIO = 0.5;
+// Floor below which the bypass:deny ratio is statistically meaningless.
+// 3 events over 30 days is the smallest sample where a 50%+ override rate
+// reliably distinguishes signal from a single-incident artifact.
+const RULE_USAGE_MIN_TOTAL = 3;
 
 export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
@@ -154,6 +168,31 @@ export async function doctor({ pruneBackups: prune } = {}) {
         ? 'synthetic "significantly" trigger correctly denied'
         : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`)
       + ksNote);
+  }
+
+  // v0.7.1 R-N6 — bypass:deny ratio per spec section. Surfaces §0.1
+  // demotion candidates from v0.7.0's `byBypass` data. Sections firing < 3
+  // events in 30d are skipped (statistical floor); the (unset) bucket is
+  // skipped as it carries pre-v0.7.0 rows with no section attribution.
+  const ruleHitsLog = path.join(logsDir(), 'claudemd.jsonl');
+  const recentHits = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
+  const bySection = groupBySection(recentHits);
+  for (const section of Object.keys(bySection).sort()) {
+    if (section === '(unset)') continue;
+    const data = bySection[section];
+    const deny = data.byEvent.deny || 0;
+    const bypass = data.byEvent['bypass-escape-hatch'] || 0;
+    const total = deny + bypass;
+    if (total < RULE_USAGE_MIN_TOTAL) continue;
+    const ratio = bypass / total;
+    const ratioPct = (ratio * 100).toFixed(0);
+    if (ratio > RULE_USAGE_DEMOTION_RATIO) {
+      push(`rule-usage:${section}`, false,
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, §0.1 demotion candidate — see /claudemd-audit byBypass)`);
+    } else {
+      push(`rule-usage:${section}`, true,
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
+    }
   }
 
   const pruned = prune != null ? pruneBackups(prune) : [];
