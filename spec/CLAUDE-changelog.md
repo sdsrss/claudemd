@@ -6,6 +6,28 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.7 — 2026-05-10
+
+Patch: CC-source comparative audit release. Side-by-side analysis of upstream `sdscc/src/constants/prompts.ts` + `src/memdir/memoryTypes.ts` vs AI-CODING-SPEC v6.11.6 → five additions where CC's eval-validated rules were stronger or absent in spec. No rule removals or downgrades. No new HARD (§13.2 budget cost = 0).
+
+- `[fix]` **§10 Specificity No-baseline fallback boundary** (core, +~70 bytes net) — closes a defensive-PARTIAL drift: PARTIAL applies to **numeric/quantitative claims w/o baseline** only, NOT to pure process-completion (commit landed / file created / config applied) when V1-verified. Source: CC `prompts.ts:183` ("do not hedge confirmed results... downgrade finished work to 'partial'"). Failure mode addressed: agent producing `[PARTIAL: <missing-baseline>]` on a task that had no quantitative claim to begin with — turning the honesty signal into noise.
+- `[change]` **§11 Memory routing** (core +~95 bytes pointer; full body §EXT §11-EXT +~810 bytes) — distinguishes durable layer (CC built-in 4 types under `~/.claude/projects/<enc>/memory/`, identity-level, session-spanning) from time-sensitive recall layer (e.g. `claude-mem-lite` FTS5 + timeline, days-weeks, rolls off). Picking the home: "will this be true 6 months from now?" Yes → durable. No → recall. Conflict: durable wins as long-term anchor; recall ages out naturally. New rule defaults to §EXT per §0.1.
+- `[change]` **§11-EXT user-override filter (HARD-equivalent)** (extended, included in routing block ~290 bytes) — extends CC's `## What NOT to save` discipline: WHAT-NOT-TO-SAVE list applies even when user explicitly says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs are noise. Compliance with explicit save = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189` H2 eval (0/2 → 3/3 with this filter).
+- `[change]` **§11-EXT Execution heuristics (CC-borrowed)** (extended, +~960 bytes) — three non-HARD guardrails:
+  - **Read-before-propose**: don't propose changes to code you haven't Read/Grep'd this session. §1 Search-before-write covers writes; this covers recommendations + AUTH-eligible proposals. Difference matters because `[AUTH REQUIRED]` citing unread code is a false-claim incident on its own. CC `prompts.ts:175`.
+  - **Diagnose-before-pivot**: failed once → diagnose (read error, check assumption, focused fix), don't blind-retry AND don't abandon after a single failure. §6 Three-strike (3× same signature) is the upper bound, not the trigger. Pivot too early on a viable approach burns context the same way thrashing does. CC `prompts.ts:178`.
+  - **Existing-comment protection**: don't remove old comments unless removing the code they describe OR you've verified them wrong this session. May encode constraint or past-bug lesson invisible in current diff. §1 "default no comments" addresses *new* comments, not pruning. CC `prompts.ts:161`.
+- `[refactor]` **§10 Banned-vocab quick-list compaction** (core, −~50 bytes) — `(no baseline)` redundant annotations folded into single `baseline-less ratios` clause. Full enumeration unchanged in §EXT §10-V.
+
+**Plugin companion (claudemd v0.9.4)**:
+- New Stop hook `mem-audit.sh` — scans `~/.claude/projects/*/memory/feedback_*.md` + `project_*.md` for missing `**Why:**` / `**How to apply:**` body-structure markers (per CC `memoryTypes.ts:58/76/132/149`); warn-only via `additionalContext`, never blocks. Registered in `hooks/hooks.json` + `scripts/lib/hook-registry.js` + `commands/claudemd-toggle.md`.
+
+**§13.2 budget cost**: 0 (no new HARD; user-override-filter is a clarification of CC's existing `## What NOT to save` rule, not a new gate). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.7, 2026-05-10, measured via `wc -c`): core 24351 → 24558 bytes (+207, +0.85%); extended 41999 → 46568 bytes (+4569, +10.88%). Size budget (§13.1): core 24558/25000 (**442 bytes headroom, 98.23% — tight; next minor bump MUST net-delete or refuse addition per §0.1**); extended 46568/50000 (3432 bytes headroom, 93.14% — tightening). Runtime L0/L1/L2 ≈ 6.11k tokens (+0.05k vs v6.11.6). L3/Override/ship ≈ 14.9k tokens (+0.9k from §11-EXT additions). Operator note: this puts both files into the upper third of their budgets — v6.11.8 should net-delete or migrate marginal core bullets to §EXT before adding new content.
+
+---
+
 ## v6.11.6 — 2026-05-10
 
 Patch: size hygiene release. Two fixes consolidated into one bump (originally planned as v6.11.6 + v6.11.7 split — merged for review economy since both target the same `Sizing` line):

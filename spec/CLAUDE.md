@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.6 — Core
+# AI-CODING-SPEC v6.11.7 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -241,8 +241,8 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
 - "Did this work?" → yes/no first, evidence second.
 - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
-- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: write `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`) — closes the "switch synonym to escape" path.
-- **Banned-vocab quick-list** (EN): `significantly / robust / production-ready / more efficient / should work / comprehensive / best practice / presumably / likely / seems to work / N× faster` (no baseline) / `M% improved` (no baseline). **中文**: `显著提升 / 大幅改善 / 更高效 / 基本可用 / 相当不错 / 大部分情况 / N 倍提升` (无基线). Full EN+中文 list → §EXT §10-V. Fix = strip the word, cite the specific case with number.
+- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, NOT PARTIAL — defensive PARTIAL on done work = own honesty failure.
+- **Banned-vocab quick-list** (EN): `significantly / robust / production-ready / more efficient / should work / comprehensive / best practice / presumably / likely / seems to work`; baseline-less ratios `N× faster / M% improved`. **中文**: `显著提升 / 大幅改善 / 更高效 / 基本可用 / 相当不错 / 大部分情况 / N 倍提升`. Full → §EXT §10-V. Fix = strip + cite case with number.
 
 ## §11 SESSION (universal)
 
@@ -250,6 +250,7 @@ Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MU
 
 - **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read plan + spec before proceeding. Silent unless gap surfaces (drift / missing files / stale assumption). User references artifact absent from context → assume compaction.
 - **Re-Read / Correction / Context pressure** (maintenance heuristics, full detail → §EXT §11-EXT): skip files already Read/Written absent external-change signal · on repeated auto-decision rejection switch to ASK-first · at >75% window prefer fresh-subagent + consider `tasks/<slug>-paused.md`.
+- **Memory routing** (durable layer vs time-sensitive recall layer; user-override filter): full → §EXT §11-EXT.
 - **Auto-memory triggers** (top-down; first match wins; full tree → §EXT §11-EXT):
   1. **Global-state hard** (MUST any level): `~/.claude/` writes across ≥2 files in one task → save project/feedback memory unless self-describing-artifact exempts.
   2. **L2+ retrospective** (MUST L2+): preventable-error pattern OR non-default decision / non-obvious sequencing.

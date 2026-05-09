@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.6 — Extended
+# AI-CODING-SPEC v6.11.7 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -522,14 +522,17 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.6 (patch, 2026-05-10)** — Size hygiene release. Two fixes:
+**v6.11.7 (patch, 2026-05-10)** — CC-source comparative audit release. Five additions, no rule removals or downgrades. Driven by side-by-side analysis of upstream `sdscc/src/constants/prompts.ts` and `src/memdir/memoryTypes.ts` against AI-CODING-SPEC v6.11.6 — covers gaps where CC's eval-validated rules were stronger or absent in spec.
 
-- `[fix]` **Recent-changes rule violation** (extended, −~6800 bytes) — v6.11.3, v6.11.4, v6.11.5 entries had accumulated in this section despite the explicit rule on line 523 ("Only the current version's entry lives here"). v6.11.6 restores compliance: only the current entry remains. Historical entries preserved in `~/.claude/CLAUDE-changelog.md` (the canonical history per externalization in v6.9.0).
-- `[refactor]` **Core prose compaction** (core, −~470 bytes) — 5 places tightened without rule loss: §0 Fast-Path (one-line), §1 Principles (Search-before-write / Zero-assume / Reuse-first — redundant tails removed), §3 canonical-artifact (5 lines → 4), §5 Obvious-follow-on (2nd-order explanation removed), §10 Specificity (descriptive prose tightened). All triggers / banned-vocab / examples preserved verbatim.
+- `[fix]` **§10 Specificity No-baseline fallback boundary** (core, +~70 bytes net) — clarifies that PARTIAL applies to **numeric/quantitative claims w/o baseline**, NOT to pure process-completion (commit landed / file created / config applied) with V1-verified evidence. Resolves the false-PARTIAL drift observed when "no pretty number" was being conflated with "incomplete work" — a defensive PARTIAL on completed work is its own honesty failure, not its mitigation. Aligns with CC `prompts.ts:183` ("do not hedge confirmed results... downgrade finished work to 'partial'").
+- `[change]` **§11 Memory routing pointer** (core, +~95 bytes; full body in §11-EXT, +~810 bytes) — distinguishes durable layer (CC built-in 4 types, identity-level, session-spanning) from time-sensitive recall layer (plugin like `claude-mem-lite`, days-weeks, rolls off). One home per fact — both = drift. New rule defaults to §EXT per §0.1; core keeps 1-line pointer.
+- `[change]` **§11-EXT user-override filter** (extended, included in routing block) — WHAT-NOT-TO-SAVE list applies even when user explicitly says "save / 记一下 / remember". Activity logs / PR rundowns / step lists / deploy walkthroughs are noise. Compliance = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189` H2 eval (0/2 → 3/3 with this filter present). NOT new HARD per §13.2 — clarification of CC's existing `## What NOT to save` discipline.
+- `[change]` **§11-EXT Execution heuristics (CC-borrowed)** (extended, +~960 bytes) — three non-HARD guardrails: (a) Read-before-propose (don't propose changes to unread code; AUTH on unread code = false claim) — CC `prompts.ts:175`; (b) Diagnose-before-pivot (failed once → diagnose, don't blind-retry AND don't abandon; §6 Three-strike is upper bound not trigger) — CC `prompts.ts:178`; (c) Existing-comment protection (don't remove old comments unless code-also-removed OR verified-wrong; §1 "default no comments" addresses new, not pruning) — CC `prompts.ts:161`. None promoted to HARD per §13.2 budget; can ratchet later if rule-hits data justifies.
+- `[refactor]` **§10 Banned-vocab quick-list compaction** (core, −~50 bytes) — `(no baseline)` redundant annotations folded into a single `baseline-less ratios` clause; full enumeration still in §EXT §10-V.
 
-HARD tally unchanged (12 core + 4 §EXT-side). §13.2 budget cost = 0. 20-task counter preserved.
+**§13.2 budget cost**: 0 (no new HARD added; user-override-filter is a clarification of existing CC `## What NOT to save` rule, not a new gate). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
 
-**Sizing** (v6.11.6, 2026-05-10, measured via `wc -c`): core 24823 → 24351 bytes (−472, −1.90%); extended 46672 → 41930 bytes (−4742, −10.16%; cleanup recovered ~6.8KB from v6.11.3+v6.11.4+v6.11.5 historical entries, partially re-spent on the v6.11.6 entry itself). Size budget (§13.1): core 24351/25000 (649 bytes headroom, 97.40% utilized — recovered from v6.11.5 ceiling-grazing 99.29%); extended 41930/50000 (8070 bytes headroom, 83.86% utilized — healthy). Runtime L0/L1/L2 ≈ 6.06k tokens (−0.12k vs v6.11.5). L3/Override/ship ≈ 14.0k tokens (extended shrunk back close to v6.11.3 footprint).
+**Sizing** (v6.11.7, 2026-05-10, measured via `wc -c`): core 24351 → 24558 bytes (+207, +0.85%); extended 41999 → 46545 bytes (+4546, +10.82% — primarily the three new §11-EXT subsections (~3k) + this Recent-changes entry replacing v6.11.6's (~1.6k)). Size budget (§13.1): core 24558/25000 (**442 bytes headroom, 98.23% utilized — tight; next minor bump MUST net-delete or refuse addition per §0.1**); extended 46545/50000 (3455 bytes headroom, 93.09% utilized — tightening). Runtime L0/L1/L2 ≈ 6.11k tokens (+0.05k vs v6.11.6). L3/Override/ship ≈ 14.9k tokens (+0.9k from §11-EXT additions).
 
 ## §1.5-EXT GLOSSARY (full definitions)
 
@@ -564,6 +567,27 @@ Demoted from core §11 in v6.11.0 (non-HARD, low per-session hit rate; core poin
 - **Redundant Re-Read**: files Read or Written in this session do not need re-Read absent external-change signal (user says "pull latest" / commit message appears / mtime newer than last Read / structural test failure suggesting stale content). Unsure → re-read. Freshness is cheaper than staleness, but a third Read on unchanged content is wasted context.
 - **Correction pressure**: if the user rejects ≥2 auto-decisions within a single task, switch to ASK-first for remaining sub-decisions of that task. Rejection signals the agent's inferred defaults are drifting from user intent — narrow the autonomy band until a fresh task resets it.
 - **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for any exploration/research that doesn't require main-thread state; (b) compact prose, drop evidential blocks already in inline citations; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before the next long tool call to preserve resumability.
+
+## §11-EXT Memory-system routing (v6.11.7)
+
+Two memory layers serve different time horizons. One home per fact — writing the same fact to both creates double-source drift.
+
+| Layer | Path | Time horizon | Use for |
+|---|---|---|---|
+| **Durable (CC built-in 4 types)** | `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` + `*.md` | session-spanning, identity-level | user role / preference / collaboration style; cross-session validated lessons; project-permanent decisions |
+| **Time-sensitive recall plugin** (if present, e.g. `claude-mem-lite` FTS5 + timeline) | plugin-managed (SQLite / vector) | days–weeks, rolls off | bugfix lessons; current-project state; recent activity context; "what was I doing last session" |
+
+**Picking the home**: ask "will this be true 6 months from now?" Yes → durable. No / decays / event-bound → recall plugin. Conflict: durable wins as long-term anchor; recall layer naturally ages out.
+
+**User-override filter** — extends `## What NOT to save` from CC built-in section (clarification, not a new HARD per §13.2): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user explicitly says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs are noise; saving them dumps activity-log content into the memory layer, lowering signal density. Compliance with explicit save request = ASK what was *surprising* or *non-obvious* about it, save only that. Source: CC `memoryTypes.ts:189` (eval-validated H2: 0/2 → 3/3).
+
+## §11-EXT Execution heuristics (v6.11.7, CC-borrowed)
+
+Three guardrails from upstream `sdscc/src/constants/prompts.ts`. Non-HARD; act as advisory when conditions apply.
+
+- **Read-before-propose**: do not propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers recommendations + AUTH-eligible proposals. Difference matters because a `[AUTH REQUIRED]` line citing unread code is a false-claim incident on its own. Source: CC `prompts.ts:175`.
+- **Diagnose-before-pivot**: an approach failed once → diagnose (read error, check assumption, focused fix), don't blind-retry AND don't abandon after a single failure. §6 Three-strike (3× same signature) is the upper bound, not the trigger — pivot too early on a viable approach burns context the same way thrashing does. Source: CC `prompts.ts:178`.
+- **Existing-comment protection**: do not remove old comments unless removing the code they describe OR you have verified them wrong this session. A comment that looks pointless may encode a constraint or past-bug lesson invisible in the current diff. §1 "Default to writing no comments" addresses *new* comments, not pruning old. Source: CC `prompts.ts:161`.
 
 ## §11-EXT Auto-memory decision tree (full)
 

@@ -8,6 +8,40 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.4] - 2026-05-10
+
+**Minor — spec v6.11.7 (CC-source comparative audit) + new `mem-audit` Stop hook.** Driven by side-by-side analysis of upstream `sdscc/src/constants/prompts.ts` + `src/memdir/memoryTypes.ts` against AI-CODING-SPEC v6.11.6 — five spec additions where CC's eval-validated rules were stronger or absent in spec. Plugin manifest version skips `0.9.3` (npm-only release that didn't bump `plugin.json` / `marketplace.json`); v0.9.4 brings all manifests back to a coherent state.
+
+### Spec changes (v6.11.6 → v6.11.7)
+
+- `[fix]` **§10 Specificity No-baseline fallback boundary** (core, +~70 bytes net) — PARTIAL applies to numeric/quantitative claims w/o baseline only, NOT to pure process-completion (commit landed / file created / config applied) when V1-verified. Closes a defensive-PARTIAL drift. Source: CC `prompts.ts:183`.
+- `[change]` **§11 Memory routing** (core +~95 bytes pointer; full body §EXT §11-EXT +~810 bytes) — durable layer (CC built-in 4 types) vs time-sensitive recall layer (e.g. `claude-mem-lite`). One home per fact.
+- `[change]` **§11-EXT user-override filter** — WHAT-NOT-TO-SAVE applies even on explicit "save / 记一下 / remember"; ASK what was *surprising* / *non-obvious*, save only that. Source: CC `memoryTypes.ts:189`.
+- `[change]` **§11-EXT Execution heuristics (CC-borrowed, non-HARD)** — Read-before-propose (`prompts.ts:175`), Diagnose-before-pivot (`prompts.ts:178`), Existing-comment protection (`prompts.ts:161`).
+- `[refactor]` **§10 Banned-vocab quick-list compaction** (core, −~50 bytes).
+
+§13.2 budget cost: 0 (no new HARD added). Sizing post-v6.11.7: core 24558/25000 (442 bytes headroom, **98.23% — tight**); extended 46568/50000 (3432 bytes headroom, 93.14%). Operator note: v6.11.8 should net-delete or migrate marginal core bullets to §EXT before adding new content.
+
+### Plugin changes
+
+- `[feat]` **`hooks/mem-audit.sh` — new Stop hook (advisory, never blocks)**: scans `~/.claude/projects/*/memory/feedback_*.md` + `project_*.md` for missing `**Why:**` / `**How to apply:**` body-structure markers (per CC `memoryTypes.ts:58/76/132/149`). Emits `additionalContext` banner with file paths (max 3 shown + `+N more`); 24h sentinel debounce so it doesn't fire on every Stop. Skips MEMORY.md itself + sub-400-byte stubs. Disable: `DISABLE_MEM_AUDIT_HOOK=1`. Registered in `hooks/hooks.json` (Stop event, after sandbox-disposal-check, before session-summary), `scripts/lib/hook-registry.js`, `commands/claudemd-toggle.md`. Hook count: **10 → 11**.
+
+### Versioning
+
+- `package.json` 0.9.3 → **0.9.4** (npm tag).
+- `.claude-plugin/plugin.json` 0.9.2 → **0.9.4** (catches up — v0.9.3 was an npm-only release that didn't bump plugin manifests).
+- `.claude-plugin/marketplace.json` two version fields 0.9.2 → **0.9.4**.
+- `spec/CLAUDE.md` v6.11.6 → **v6.11.7** (header + body).
+- `spec/CLAUDE-extended.md` v6.11.6 → **v6.11.7**.
+- `spec/CLAUDE-changelog.md` prepended **v6.11.7** entry.
+- `spec/hard-rules.json` `spec_version` v6.11.6 → **v6.11.7**.
+
+### Notes
+
+- Plugin manifest `description` fields stay at major.minor (`v6.11`) per Versioning policy; not touched this release.
+- npm `claudemd-cli@0.9.4` will publish via the `npm-publish.yml` workflow on `v0.9.4` tag push (auto-publish per v0.9.2 onwards).
+- Carryover: v0.9.3 npm tarball (released 2026-05-09 with spec v6.11.4–v6.11.6 batch ship) didn't bump plugin manifests. v0.9.4 reconciles. No user-facing impact — `/claudemd-update` reads `spec/CLAUDE.md` header, not `plugin.json` version, so spec sync was unaffected.
+
 ## [0.9.2] - 2026-05-09
 
 **Patch — npm provenance metadata + first auto-publish via workflow.** v0.9.1 manual publish succeeded but the auto-publish workflow's first triggered run failed twice: first run on the v0.9.1 tag push hit `ENEEDAUTH` (NPM_TOKEN not yet configured); a rerun after token configuration hit `E422` from npm's sigstore provenance verifier — `--provenance` requires `repository.url` in package.json to match the inferred repo URL. v0.9.2 closes that gap and serves as the first end-to-end auto-publish validation.

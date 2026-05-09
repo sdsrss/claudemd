@@ -10,10 +10,10 @@ Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through she
 
 | Layer | Contents |
 |---|---|
-| 10 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `transcript-vocab-scan` · `version-sync` |
+| 11 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `transcript-vocab-scan` · `version-sync` · `mem-audit` (v0.9.4) |
 | 9 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` (v0.9.0+ — for git pre-commit / CI / cross-agent use; npm package: [`claudemd-cli`](https://www.npmjs.com/package/claudemd-cli); same `banned-vocab.patterns` source as the in-CC hook) |
-| Spec v6.11.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
+| Spec v6.11.7 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 If you already have `~/.claude/CLAUDE.md`, install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the plugin version. Uninstall offers `keep / delete / restore`; `delete` requires an extra confirmation.
 
@@ -285,7 +285,7 @@ claudemd/
 ├── commands/                 # 9 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.11.3 CLAUDE*.md trio
+├── spec/                     # shipped v6.11.7 CLAUDE*.md trio
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/ci.yml  # ubuntu + macOS × node 20

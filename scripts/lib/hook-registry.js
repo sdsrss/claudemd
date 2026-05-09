@@ -23,6 +23,7 @@ export const HOOK_REGISTRY = [
   { basename: 'memory-read-check.sh',     displayName: 'memory-read-check',     envVarSuffix: 'MEMORY_READ',       hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 3 },
   { basename: 'residue-audit.sh',         displayName: 'residue-audit',         envVarSuffix: 'RESIDUE_AUDIT',     hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'sandbox-disposal-check.sh',displayName: 'sandbox-disposal-check',envVarSuffix: 'SANDBOX_DISPOSAL',  hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
+  { basename: 'mem-audit.sh',             displayName: 'mem-audit',             envVarSuffix: 'MEM_AUDIT',         hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'session-summary.sh',       displayName: 'session-summary',       envVarSuffix: 'SESSION_SUMMARY',   hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'transcript-vocab-scan.sh', displayName: 'transcript-vocab-scan', envVarSuffix: 'TRANSCRIPT_VOCAB_SCAN', hookEvent: 'PostToolUse',  matcher: '*',    timeout: 3 },
 ];
