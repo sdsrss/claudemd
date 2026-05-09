@@ -8,6 +8,32 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.15] - 2026-05-10
+
+**Patch — `memory-read-check.sh` two coupled silent-fail-open defects.** Spec v6.11.7 unchanged. Surfaced while end-to-end-testing the v0.9.14 fix from real cwd `/mnt/data_ssd/dev/projects/claudemd`: the §11 HARD memory-read hook had been a no-op for any project containing `_` in its path AND broke entirely when MEMORY.md held a tag beginning with `-`.
+
+### Fixed
+
+- `[fix]` **`tr '/.' '-'` → `tr '/._' '-'`** in `hooks/memory-read-check.sh:50` and `hooks/lib/rule-hits.sh:28`. Empirical: Claude Code encodes every non-`[a-zA-Z0-9-]` char to `-` (verified across all `~/.claude/projects/` entries). Pre-fix, any cwd containing `_` resolved to a non-existent `~/.claude/projects/-mnt-data_ssd-...` (vs CC's actual `-mnt-data-ssd-...`), the `[[ -f "$MEM_INDEX" ]] || exit 0` fail-open kicked in, and the §11 enforcement degraded to silent no-op. Stale-Memory note `feedback_cc_cwd_encoding_dots.md` claimed only `/` and `.` were encoded — incomplete; updated to reflect the broader rule.
+- `[fix]` **`grep -qiF -- "$t"`** in `hooks/memory-read-check.sh:95` (and `--` added to the transcript-scan grep at L109 for parity). A MEMORY.md tag beginning with `-` (e.g. `--file`, `-h`) was parsed by `grep -qiF` as a flag, erroring `option '--file' requires an argument` and aborting the entire MEMORY scan with exit-0 fail-open. Discovered when v0.9.14's own MEMORY.md entry tagged itself with `[--file]` and broke the hook for the entire `git push` path.
+
+### Added
+
+- `[test]` **3 new cases in `tests/hooks/memory-read-check.test.sh` (16/16 → 19/19)**:
+  - Case 17: cwd `/work/my_project` → underscore-encoded → tag match → deny.
+  - Case 18: cwd `/mnt/data_ssd/my.proj_v2` mixed `/`, `.`, `_` → all encoded → deny.
+  - Case 19: tag `--file` matched literally with `-- "$t"` separator → deny without grep crash.
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion — both items restore the hook's documented intent (HARD-block ship verbs without prior matching MEMORY.md Read). L2 ceiling. Diff: 2 hook files (~6 lines net), 1 test file (~50 lines added), 0 spec/contract change. Notable: this kind of bug class — silently-no-op'd HARD enforcement under specific cwd shapes — is the worst-quality fix to ship because users couldn't have noticed (no error signal); ratio of installed users on underscore-containing paths is high (Linux convention), so impact ≫ patch surface size.
+
+### Versioning
+
+- `package.json`, `plugin.json`, `marketplace.json` (×2 fields) → `0.9.15`. Spec trio unchanged at v6.11.7.
+
+---
+
 ## [0.9.14] - 2026-05-10
 
 **Patch — `claudemd-cli lint <path>` silent-success fix.** Spec v6.11.7 unchanged. Surfaced while role-playing a real user of the standalone CLI: `claudemd lint /path/to/COMMIT_EDITMSG` (the natural pre-commit-hook shape, mirroring `audit <jsonl-path>`) silently scans the **literal path string** for banned-vocab — finds none — and exits 0, even when the file content would deny. CI / git-pre-commit integrations would have shipped commit messages full of `significantly` / `robust` / `production-ready` undetected.

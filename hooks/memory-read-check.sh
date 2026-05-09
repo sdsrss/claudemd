@@ -44,10 +44,14 @@ CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 [[ -n "$CWD" && -n "$SESSION_ID" ]] || exit 0
 
-# Derive project-encoded dir — Claude Code converts both `/` AND `.` to `-`
-# (observe: ~/.claude/projects/-home-sds--claude-tmp-... for /home/sds/.claude/tmp/...).
-# Slash-only encoding silently missed any project path containing a dot.
-ENCODED=$(printf '%s' "$CWD" | tr '/.' '-')
+# Derive project-encoded dir — Claude Code converts every non-`[a-zA-Z0-9-]`
+# char to `-` (empirically: `/`, `.`, AND `_` all map to `-`; observed across
+# ~/.claude/projects/ — e.g. /mnt/data_ssd → -mnt-data-ssd, my.project → my-project,
+# ~/.claude → --claude). Earlier `tr '/.' '-'` missed `_`, silently mis-locating
+# the memory dir for any cwd with an underscore (turning the HARD §11 rule into
+# a no-op for those projects). `tr '/._'` is the minimal extension covering all
+# three observed encoded chars.
+ENCODED=$(printf '%s' "$CWD" | tr '/._' '-')
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
@@ -88,7 +92,12 @@ while IFS= read -r line; do
       # -F: tag is literal, not a regex. A tag containing `.` / `$` / `*` would
       # otherwise be interpreted by grep's BRE and either match too broadly
       # (e.g. `.` matching any char) or fail to match itself.
-      if echo "$CMD" | grep -qiF "$t"; then
+      # `--` separator: a tag beginning with `-` (e.g. `--file`, `-h`) would
+      # otherwise be parsed by grep as a flag — `--file` literally errors with
+      # `option '--file' requires an argument`, breaking the whole MEMORY scan
+      # and silently fail-opening the §11 rule. Spotted in v0.9.14 when the
+      # newly-added CLI flag tag triggered this.
+      if echo "$CMD" | grep -qiF -- "$t"; then
         MATCHES+=("$FILE")
         break
       fi
@@ -102,7 +111,7 @@ done < "$MEM_INDEX"
 MISSING=()
 for file in "${MATCHES[@]}"; do
   MEMFILE="$MEM_DIR/$file"
-  if ! grep -qF "$MEMFILE" "$TRANSCRIPT" 2>/dev/null; then
+  if ! grep -qF -- "$MEMFILE" "$TRANSCRIPT" 2>/dev/null; then
     MISSING+=("$file")
   fi
 done

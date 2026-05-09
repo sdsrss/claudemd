@@ -19,13 +19,14 @@ rule_hits_append() {
   local extra="${3:-null}"
   local section="${4:-}"
 
-  # Project: encoded with `/` and `.` → `-` to match Claude Code's
-  # ~/.claude/projects/<encoded>/ convention (paths with dots round-trip
-  # identically to CC's encoder; see hooks/memory-read-check.sh L41 for
-  # the matching consumer). Empty string when neither var is set.
+  # Project: encoded with `/`, `.`, AND `_` → `-` to match Claude Code's
+  # ~/.claude/projects/<encoded>/ convention. CC encodes every non-`[a-zA-Z0-9-]`
+  # char; `tr '/._'` covers the three observed in real cwds. See
+  # hooks/memory-read-check.sh for the matching consumer + bug-history note.
+  # Empty string when neither var is set.
   local project_raw="${CLAUDE_PROJECT_DIR:-${PWD:-}}"
   local project=""
-  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr '/.' '-')
+  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr '/._' '-')
 
   local log_dir="$HOME/.claude/logs"
   local log_file="$log_dir/claudemd.jsonl"

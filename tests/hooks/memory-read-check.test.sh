@@ -241,7 +241,76 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 16 standalone deploy after && → still triggers" \
   || { echo "FAIL: 16 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((16 - FAIL))/16 passed"; exit 1
+# Case 17: cwd with underscore encodes via `_` → `-` too. Empirically CC
+# converts every non-`[a-zA-Z0-9-]` char (including `_`); pre-fix `tr '/.'`
+# silently missed underscore-containing paths (e.g. /mnt/data_ssd/...) and
+# fail-open'd the HARD §11 rule for any such project — the predominant
+# silent-no-op shape on Linux hosts where dirs commonly carry underscores.
+US_CWD="/work/my_project"
+US_ENCODED=$(echo "$US_CWD" | tr '/._' '-')
+US_PROJ="$HOME/.claude/projects/$US_ENCODED"
+US_MEM="$US_PROJ/memory"
+mkdir -p "$US_MEM"
+cat > "$US_MEM/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$US_MEM/feedback_ship.md"
+SESS="sess17"
+echo '{"tool":"Read","path":"/unrelated"}' > "$US_PROJ/$SESS.jsonl"
+EVENT_17="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$US_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_17" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 17 underscore-in-cwd → correct encoding → deny" \
+  || { echo "FAIL: 17 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 18: mixed `/`, `.`, `_` in cwd all encode to `-` together. Locks the
+# combined-class behavior in one fixture so future regressions on any of the
+# three chars get surfaced.
+MIX_CWD="/mnt/data_ssd/my.proj_v2"
+MIX_ENCODED=$(echo "$MIX_CWD" | tr '/._' '-')
+MIX2_PROJ="$HOME/.claude/projects/$MIX_ENCODED"
+MIX2_MEM="$MIX2_PROJ/memory"
+mkdir -p "$MIX2_MEM"
+cat > "$MIX2_MEM/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$MIX2_MEM/feedback_ship.md"
+SESS="sess18"
+echo '{"tool":"Read","path":"/unrelated"}' > "$MIX2_PROJ/$SESS.jsonl"
+EVENT_18="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$MIX_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_18" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 18 mixed /._ in cwd → correct encoding → deny" \
+  || { echo "FAIL: 18 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 19: tag beginning with `-` (e.g. `--file`, `-h`). Pre-fix `grep -qiF
+# "$t"` parsed `--file` as a grep flag, erroring `option '--file' requires
+# an argument` and abort-fail-opening the whole MEMORY scan. `-- "$t"` end-
+# of-options separator forces literal interpretation. Locks: dash-prefixed
+# tags don't break the hook AND still match correctly.
+DASH_DIR="$HOME/.claude/projects/${ENCODED}-dash"
+DASH_MEM="$DASH_DIR/memory"
+mkdir -p "$DASH_MEM"
+cat > "$DASH_MEM/MEMORY.md" <<'EOF'
+- [Flag-prefix tags](feedback_flagtags.md) `[--file, -h, ship]` — flags as tags
+EOF
+touch "$DASH_MEM/feedback_flagtags.md"
+SESS="sess19"
+DASH_CWD="${CWD}-dash"
+echo '{"tool":"Read","path":"/unrelated"}' > "$DASH_DIR/$SESS.jsonl"
+# CMD contains `--file`, so the `--file` tag should match → file unread → deny
+EVENT_19="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npx claudemd lint --file COMMIT_EDITMSG && git push\"},\"cwd\":\"$DASH_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_19" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+# Pre-fix the grep error printed to stderr and the hook exit'd 0 with no JSON.
+# Post-fix: tag matches → unread file → deny JSON.
+if [[ "$DEC" == "deny" ]] && ! echo "$OUT" | grep -q "option.*requires an argument"; then
+  echo "PASS: 19 dash-prefixed tag matched literally (no grep --flag crash)"
+else
+  echo "FAIL: 19 (out: $OUT)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 16/16 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((19 - FAIL))/19 passed"; exit 1
+fi
+echo "Tests: 19/19 passed"
