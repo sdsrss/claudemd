@@ -5,7 +5,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { sparkline, formatMarkdown } from '../../scripts/sparkline.js';
+
+const SPARKLINE_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/sparkline.js');
 
 let tmpHome, savedHome, logPath;
 
@@ -154,4 +158,22 @@ test('custom --days windows: [7,14,28] still produces the same shape', () => {
   const row = r.rows.find(x => x.section === '§10-V');
   // 0-7d: 2 events (1, 3); 0-14d: 3 (adds the 10); 0-28d: 4 (adds the 20)
   assert.deepEqual(row.counts, [2, 3, 4]);
+});
+
+test('sparkline CLI rejects space-form --days 7,14,28 (was silent default)', () => {
+  const r = spawnSync(process.execPath, [SPARKLINE_JS, '--days', '7,14,28'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, `expected exit 2, stderr: ${r.stderr}`);
+  assert.match(r.stderr, /requires '=value' form/);
+});
+
+test('sparkline CLI rejects unknown flag (was silent ignore)', () => {
+  const r = spawnSync(process.execPath, [SPARKLINE_JS, '--bogus=1'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /Unknown flag.*--bogus/);
 });

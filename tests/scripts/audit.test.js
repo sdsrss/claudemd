@@ -184,3 +184,21 @@ test('audit CLI --days=N takes precedence over env var', () => {
   const r = JSON.parse(result.stdout);
   assert.equal(r.windowDays, 1);
 });
+
+test('audit CLI rejects space-form --days 7 (was silent default)', () => {
+  const result = spawnSync(process.execPath, [AUDIT_JS, '--days', '7'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2, `expected exit 2, stderr: ${result.stderr}`);
+  assert.match(result.stderr, /requires '=value' form/);
+});
+
+test('audit CLI rejects unknown flag (was silent ignore)', () => {
+  const result = spawnSync(process.execPath, [AUDIT_JS, '--bogus=1'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Unknown flag.*--bogus/);
+});

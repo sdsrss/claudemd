@@ -26,6 +26,7 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError } from './lib/argv.js';
 
 const DEFAULT_WINDOWS = [30, 60, 90];
 const SIGNAL_EVENTS = new Set(['deny', 'warn', 'advisory', 'bypass-escape-hatch']);
@@ -120,9 +121,14 @@ export function formatMarkdown(report) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  const daysArg = args.find(a => a.startsWith('--days='));
-  const raw = daysArg ? daysArg.split('=')[1] : (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
+  let parsed;
+  try {
+    parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
+  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
   const windows = raw.split(',').map(s => parseInt(s.trim(), 10));
   if (!windows.every(w => Number.isInteger(w) && w >= 1) || windows.length < 2) {
     console.error(

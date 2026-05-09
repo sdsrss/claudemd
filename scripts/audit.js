@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
 import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
@@ -23,9 +24,14 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  const daysArg = args.find(a => a.startsWith('--days='));
-  const raw = daysArg ? daysArg.split('=')[1] : (process.env.CLAUDEMD_AUDIT_DAYS || '30');
+  let parsed;
+  try {
+    parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
+  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_AUDIT_DAYS || '30');
   const days = parseInt(raw, 10);
   if (!Number.isInteger(days) || days < 1) {
     console.error(

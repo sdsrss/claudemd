@@ -180,3 +180,23 @@ test('CLI rejects negative --age-days', () => {
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /non-negative/i);
 });
+
+test('CLI rejects space-form --age-days 0 (was silent default → exit 0 + 0 deleted)', () => {
+  fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-now'), '');
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--age-days', '0'], {
+    env: { ...process.env, TMPDIR: tmpDir },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, `expected exit 2 (ArgvError); got ${r.status}, stderr: ${r.stderr}`);
+  assert.match(r.stderr, /requires '=value' form/);
+  assert.ok(fs.existsSync(path.join(tmpDir, 'claudemd-sync-now')), 'must not delete on parse error');
+});
+
+test('CLI rejects unknown flag (was silent ignore)', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--bogus=x'], {
+    env: { ...process.env, TMPDIR: tmpDir },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /Unknown flag.*--bogus/);
+});

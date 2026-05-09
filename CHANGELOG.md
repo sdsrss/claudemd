@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.16] - 2026-05-10
+
+**Patch — three slash-command CLIs silently dropped wrong-shape arguments.** Spec v6.11.7 unchanged. Surfaced while exercising the v0.9.15 plugin from a real `/claudemd-clean-residue --apply --age-days 0` user attempt: `--age-days` value dropped (script fell back to default `1`), `--apply` ran, script exited 0 reporting "0 deleted." Same family as v0.9.14 `claudemd-cli lint <path>` silent-success — argv-shape mismatch produced indistinguishable-from-success output.
+
+### Fixed
+
+- `[fix]` **Strict argv parser in `scripts/lib/argv.js` (new) wired into `clean-residue.js` / `audit.js` / `sparkline.js`.** Pre-fix, each script used `args.find(a => a.startsWith('--key='))` which silently dropped (a) the space-separated form `--key value`, (b) any unknown flag, (c) `--apply=yes`-style boolean-with-value. Post-fix all three exit 2 with a parser error before touching state. The contract documented in `commands/claudemd-{clean-residue,audit,sparkline}.md` (`--key=value` only) is now enforced. Documented happy-path behavior is unchanged.
+
+### Added
+
+- `[test]` **9 new cases in `tests/scripts/argv.test.js`** covering happy path, both bug shapes (space-form, unknown flag), and edge cases (empty value, `=` in value, repeated flag, bool-with-value, bare unknown arg).
+- `[test]` **2 new cases each in `tests/scripts/clean-residue.test.js`, `audit.test.js`, `sparkline.test.js`** asserting exit 2 + stderr message on the two bug shapes via spawned CLI (225 → 240 tests).
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion — restores documented intent (`--key=value` is the contract per slash-command docs). L2 ceiling. Diff: 1 new lib file (~40 LOC), 3 script tails refactored (~10 LOC each, no lib API change), 4 test files (+15 cases). Notable: third silent-success-on-wrong-arg-shape bug in 3 patches (v0.9.14 `lint <path>`; v0.9.15 hook tag-with-dash; this one) — argv-shape silent-fallback is a recurring antipattern worth a hook-level lint, candidate for the §13.2 promotion queue.
+
 ## [0.9.15] - 2026-05-10
 
 **Patch — `memory-read-check.sh` two coupled silent-fail-open defects.** Spec v6.11.7 unchanged. Surfaced while end-to-end-testing the v0.9.14 fix from real cwd `/mnt/data_ssd/dev/projects/claudemd`: the §11 HARD memory-read hook had been a no-op for any project containing `_` in its path AND broke entirely when MEMORY.md held a tag beginning with `-`.

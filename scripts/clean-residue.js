@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { parseStrict, ArgvError } from './lib/argv.js';
 
 // Anchored regexes — names MUST start with the prefix. Defends against
 // future fnmatch-style globs that would falsely match `not-claudemd-sync-*`.
@@ -56,10 +57,18 @@ export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  const apply = args.includes('--apply');
-  const ageArg = args.find(a => a.startsWith('--age-days='));
-  const rawAge = ageArg ? ageArg.split('=')[1] : '1';
+  let parsed;
+  try {
+    parsed = parseStrict(process.argv.slice(2), {
+      bools: ['--apply'],
+      values: ['--age-days'],
+    });
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
+  const apply = parsed.bools.has('--apply');
+  const rawAge = parsed.values['--age-days'] ?? '1';
   const ageDaysMin = Number(rawAge);
   if (!Number.isFinite(ageDaysMin) || ageDaysMin < 0) {
     console.error(`--age-days requires a non-negative number (got '${rawAge}').`);
