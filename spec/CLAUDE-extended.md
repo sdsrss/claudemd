@@ -1,6 +1,6 @@
-# AI-CODING-SPEC v6.11.3 — Extended
+# AI-CODING-SPEC v6.11.6 — Extended
 
-Loaded on demand per §EXT in `CLAUDE.md`. Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
+Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
 ## §5-EXT Safe-paths whitelist (detail)
 
@@ -522,13 +522,14 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.3 (patch, 2026-04-30)** — §11 MEMORY.md read-the-file footnote clarified; documents the hook/agent split: hook enforces only tagged matches, untagged lines are agent-driven full content scan. No rule additions, removals, or downgrades. Resolves a real over-trigger pattern observed in `claudemd` v0.5.0: untagged MEMORY.md entries forced N unrelated Reads on every push, and the trigger regex `(release|deploy|ship)` matched anywhere in the command (commit messages, MR descriptions, file paths) → false-positive denials.
+**v6.11.6 (patch, 2026-05-10)** — Size hygiene release. Two fixes:
 
-- **§11 footnote** (core, ~+250 chars) — clarifies that "Untagged lines = full-scan" means agent-driven content scan based on title/description, NOT hook-enforced auto-block. Plugin-side `hooks/memory-read-check.sh` updated in claudemd v0.5.1 to skip untagged entries and anchor the trigger regex to command-segment-start. Together: tag the lines you want hook-enforced; leave the rest for agent judgment.
+- `[fix]` **Recent-changes rule violation** (extended, −~6800 bytes) — v6.11.3, v6.11.4, v6.11.5 entries had accumulated in this section despite the explicit rule on line 523 ("Only the current version's entry lives here"). v6.11.6 restores compliance: only the current entry remains. Historical entries preserved in `~/.claude/CLAUDE-changelog.md` (the canonical history per externalization in v6.9.0).
+- `[refactor]` **Core prose compaction** (core, −~470 bytes) — 5 places tightened without rule loss: §0 Fast-Path (one-line), §1 Principles (Search-before-write / Zero-assume / Reuse-first — redundant tails removed), §3 canonical-artifact (5 lines → 4), §5 Obvious-follow-on (2nd-order explanation removed), §10 Specificity (descriptive prose tightened). All triggers / banned-vocab / examples preserved verbatim.
 
-HARD tally unchanged: §0.1 Core growth discipline / §0 Hard-AUTH override / Iron Law #2 / §7 Ship-baseline / §7 User-global-state audit / §8 Verify-before-claim (V1–V4) / §10 Four-section order / §10 Honesty rules / §10 Specificity / §11 MEMORY.md read-the-file / §11 Mid-SPINE turn-yield / §11 Session-exit mid-SPINE. **12 HARD in core + 4 §EXT-side, zero delta from v6.10.2**.
+HARD tally unchanged (12 core + 4 §EXT-side). §13.2 budget cost = 0. 20-task counter preserved.
 
-**Sizing** (v6.11.3, 2026-04-30): core 23394 → 23643 chars (+249, +1.1%); extended 42302 → ~42050 chars (Recent-changes block compaction net of v6.11.3 entry). Size budget (§13.1): core 23643/25000 (1357 chars headroom, 94.6% utilized — closer to ceiling, still safe); extended ~42050/50000 (~7950 chars headroom, ~84% utilized). Runtime L0/L1/L2 ≈ 5.91k tokens (core only). L3/Override/ship ≈ 16.6k tokens (no change from v6.11.2). §13.2 budget cost = 0; 20-task counter preserved.
+**Sizing** (v6.11.6, 2026-05-10, measured via `wc -c`): core 24823 → 24351 bytes (−472, −1.90%); extended 46672 → 41930 bytes (−4742, −10.16%; cleanup recovered ~6.8KB from v6.11.3+v6.11.4+v6.11.5 historical entries, partially re-spent on the v6.11.6 entry itself). Size budget (§13.1): core 24351/25000 (649 bytes headroom, 97.40% utilized — recovered from v6.11.5 ceiling-grazing 99.29%); extended 41930/50000 (8070 bytes headroom, 83.86% utilized — healthy). Runtime L0/L1/L2 ≈ 6.06k tokens (−0.12k vs v6.11.5). L3/Override/ship ≈ 14.0k tokens (extended shrunk back close to v6.11.3 footprint).
 
 ## §1.5-EXT GLOSSARY (full definitions)
 

@@ -6,6 +6,52 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.6 — 2026-05-10
+
+Patch: size hygiene release. Two fixes consolidated into one bump (originally planned as v6.11.6 + v6.11.7 split — merged for review economy since both target the same `Sizing` line):
+
+- `[fix]` **Recent-changes rule violation in extended** (extended, −~6800 bytes) — `CLAUDE-extended.md` Recent-changes section had accumulated v6.11.3 + v6.11.4 + v6.11.5 entries, despite the line-523 rule "Only the current version's entry lives here" (rule introduced when changelog was externalized in v6.9.0). Each prior version-bump round prepended without removing the previous entry → ~7000 bytes of historical narrative duplicated between extended and changelog. v6.11.6 cleans Recent-changes to just the current version's entry. Canonical history is and remains in this file (`CLAUDE-changelog.md`).
+- `[refactor]` **Core prose compaction at 5 sites** (core, −~470 bytes) — five places tightened, no rule loss:
+  - **§0 Fast-Path**: 1 long line collapsed (one-line summary; wordy `"L0 short-circuits to single-line report"` → `"single-line report"`; `"behavior-describing ('returns Z on null') → L1 (Read implementation to confirm)"` → `"behavior-describing → L1 (Read to confirm)"`). Whitelist preserved verbatim.
+  - **§1 Principles**: 3 bullets trimmed of redundant tails — `Search-before-write` drops `"never guess paths or symbols"` (covered by §8.V1); `Zero-assume` drops `"never assume silently"` (covered by the rule name); `Reuse-first` drops `"/config"` (lib coverage retained).
+  - **§3 canonical-artifact** (added v6.11.5): expanded prose collapsed to a tighter precedence statement. Same triggers, same conflict-resolution paths, same cross-source list.
+  - **§5 Obvious-follow-on**: 2nd-order explanation `"The intuition making it feel obvious is the same intuition that hides behavior tradeoffs in the sibling path"` (descriptive, not actionable) trimmed to `"feels obvious ≠ safe — same intuition hides sibling tradeoffs"`. Rule + exception preserved.
+  - **§10 Specificity**: descriptive prose tightened. `"banned-vocab quick-list catches surface forms, this clause closes the 'switch synonym to escape' path"` → `"closes the 'switch synonym to escape' path"`. Banned-vocab quick-list (operationally critical) untouched.
+
+**§13.2 budget cost**: 0 (no new HARD; rule preservation verified by `hard-rules-drift.test.js` — every existing `section_anchor` substring still resolves). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.6, 2026-05-10, measured via `wc -c`): core 24823 → 24351 bytes (−472, −1.90%); extended 46672 → 41930 bytes (−4742, −10.16%; cleanup recovered ~6.8KB from v6.11.3+v6.11.4+v6.11.5 historical entries, partially re-spent on the v6.11.6 entry itself). Size budget (§13.1): core 24351/25000 (**649 bytes headroom, 97.40% utilized — recovered from v6.11.5 ceiling-grazing 99.29%**); extended 41930/50000 (8070 bytes headroom, 83.86% utilized). Runtime L0/L1/L2 ≈ 6.06k tokens (−0.12k vs v6.11.5).
+
+---
+
+## v6.11.5 — 2026-05-10
+
+Patch: three additive/structural improvements informed by ultrathink self-audit of v6.11.4. One new content rule (§3 canonical-artifact precedence), one L1 self-containment fix (§1.5 inline definitions), one §0 readability split. No rule removals or downgrades.
+
+- `[change]` **§3 TRUST: canonical artifact > derived prose** (core, +~395 bytes) — adds explicit precedence rule for cross-source data conflicts. `code / diff / CI output > commit message / PR description / issue body / Slack / wiki / docstring`. Canonical decides *behavior* (what is); prose decides *intent* (what was meant). Conflict on behavior → trust canonical, flag prose as stale. Conflict on intent → ASK or verify with author. Fills the gap §3 had between "Read vs memory: trust Read" (one binary case) and the broader reality of multi-source conflict (PR text vs diff, issue body vs CI logs, docstring vs code, etc.). No HARD label; ranks at spec-rule level per §3 ordering.
+- `[fix]` **§1.5 GLOSSARY inline definitions for L1/L2-resident terms** (core, +~740 bytes) — fixes correctness issue: `Local-Δ` and `LOC` are referenced in §2 LEVEL's L1 boundary, but until v6.11.5 their full definitions lived only in §EXT §1.5-EXT, which §2.2 EXT LOADING explicitly does NOT load at L1/L2. Strict reading of L1 task entry had no in-core definition for "Local-Δ only". v6.11.5 inlines five terms used in L1/L2 routing: `LOC / Local-Δ / Module / Evidence / Task`. `Assumption / Contract / Δ-contract` (L3+ usage) stay Extended-only.
+- `[refactor]` **§0 split: Mid-task feedback → §0.2** (core, ~+50 bytes net) — §0 was carrying 7 distinct concepts. Mid-task feedback was the largest sub-block (5 indented bullets). Extracted to §0.2 placed after §0.1 Core growth discipline. §0 prose references it via one-liner. No semantic change; pure structural lift to reduce §0 cognitive load.
+
+**§13.2 budget cost**: 0 (no new HARD; canonical-artifact rule is descriptive precedence not gating). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.5, 2026-05-10, measured via `wc -c`): core 23732 → 24823 bytes (+1091, +4.60%); extended 43601 → 46565 bytes (+2964, +6.80% — verbose Recent-changes entry; baseline includes v6.11.4 entry which is preserved). Size budget (§13.1): core 24823/25000 (**177 bytes headroom, 99.29% utilized — tight; next minor bump MUST net-delete or refuse addition per §0.1**); extended 46565/50000 (**3435 bytes headroom, 93.13% utilized — tightening**). Runtime L0/L1/L2 ≈ 6.18k tokens (+0.25k vs v6.11.4). L3/Override/ship ≈ 17.6k tokens.
+
+---
+
+## v6.11.4 — 2026-05-09
+
+Patch: structural reorganization in core, no rule additions/removals/downgrades. Three changes informed by self-audit on a 1M-context Opus session that exercised the spec end-to-end:
+
+- `[refactor]` **§EXT LOADING RULE → §2.2 EXT LOADING** (core, ±0 net chars on body, −1 trailing footer line) — relocated from end-of-file to immediately after §2.1 ROUTE. Rationale: load triggers are a routing decision; placement next to §2 LEVEL / §2.1 ROUTE makes the load policy visible before readers encounter `§EXT §X-EXT` cross-references in §3+. End-of-file footer reduced to a one-line pointer (`EXT loading rule → §2.2.`) plus version-history line.
+- `[refactor]` **§7 sub-rules → "Evidence beyond green tests" trigger table** (core, net −~120 chars) — `### Ship-baseline check`, `### User-global-state audit`, `### Metric-coupling check` (3 prose subsections) collapsed into one section with a 3-row table (Trigger / Severity / Check / Evidence in REPORT). All three triggers, severities (HARD/HARD/SHOULD), commands, and remediation paths preserved verbatim. Shared failure-mode footer ("`mkdtempSync` leaks invisible to exit code; vibe-check is not metric-neutral evidence") consolidates the duplicated reasoning. `spec/hard-rules.json` `section_anchor` for `§7-ship-baseline` and `§7-user-global-state` updated to substrings stable in the new table form.
+- `[change]` **§0.1 Core growth discipline cap reference** (core, +~150 chars) — explicitly cross-references §13.1 size budget: "Hard cap (per §EXT §13.1): core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line." The "≥5 sessions in 30d" promotion rule alone lacked a script-able number — this closes the audit loop.
+
+**§13.2 budget cost**: 0 (no new HARD; §7 table preserves the 2 existing HARD rules + 1 SHOULD verbatim). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.4, 2026-05-09, measured via `wc -c`): core 23643 → 23732 bytes (+89, +0.38%); extended 42170 → 43601 bytes (+1431, mostly Recent-changes + this changelog). Size budget (§13.1): core 23732/25000 (1268 bytes headroom, 94.93% utilized — flat ceiling distance); extended 43601/50000 (6399 bytes headroom, 87.2% utilized). Runtime L0/L1/L2 ≈ 5.93k tokens (core only). L3/Override/ship ≈ 16.6k tokens (no change).
+
+---
+
 ## v6.11.3 — 2026-04-30
 
 Patch: §11 MEMORY.md read-the-file footnote clarified to document the hook/agent split. No rule additions, removals, or downgrades. Resolves over-trigger pattern observed in `claudemd` v0.5.0 where untagged MEMORY.md entries forced N unrelated Reads on every push and the trigger regex `(release|deploy|ship)` matched anywhere in the command body (commit messages, MR descriptions, file paths) → false-positive denials on `git commit -m "release notes"`, `glab mr create --description "fix release"`, etc.
