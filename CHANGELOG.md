@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.5] - 2026-05-10
+
+**Patch — `mem-audit.sh` hotfix (3 bugs introduced in v0.9.4).** Spec unchanged (still v6.11.7); plugin-only patch. The new Stop hook shipped in v0.9.4 silently failed validation on every Stop event ("Hook JSON output validation failed — Invalid input") and produced false-positive missing-marker warnings on legitimate memories. v0.9.5 fixes all three issues and adds `tests/hooks/mem-audit.test.sh` (9/9 cases) to lock them down.
+
+### Fixed
+
+- `[fix]` **Stop event schema mismatch (CRITICAL)** — v0.9.4 emitted `{"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": "..."}}` to stdout, but Claude Code's hook schema only accepts `hookSpecificOutput` for `PreToolUse` / `UserPromptSubmit` / `PostToolUse` / `PostToolBatch`. **Stop is not on the list.** Every emit was rejected with `Hook JSON output validation failed — (root): Invalid input`. The fix mirrors `residue-audit.sh`: write to stderr only, no JSON output. CC harness surfaces stderr as advisory; Stop cannot block by design either way.
+- `[fix]` **Path double-slash** — error banner showed paths like `<encoded>//memory/feedback_x.md` (double slash after the project dir). Root cause: glob `"$PROJECTS_ROOT"/*/` produces values with trailing slashes, so the join `"$proj_dir/memory"` became `"<dir>/memory"` with `<dir>` already ending `/`. Fix: `proj_dir="${proj_dir%/}"` strips the trailing slash before the join.
+- `[fix]` **Regex matched only one Why-form** — v0.9.4 regex `^\*\*Why:\*\*` matched only `**Why:**` (colon inside bolding), but most memories in the wild use `**Why**:` (colon outside bolding). Both forms are valid per CC `memoryTypes.ts:58` body_structure example. v0.9.5 regex `^\*\*Why(:\*\*|\*\*:)` accepts either; same change for `**How to apply:**` / `**How to apply**:`. This eliminates the v0.9.4 26-file false-positive batch on `~/.claude/projects/-mnt-data-ssd-dev-projects-claudemd/memory/feedback_*.md`.
+
+### Added
+
+- `[test]` **`tests/hooks/mem-audit.test.sh` — 9 cases**: (1) no projects dir → silent, (2) empty memory dir → silent, (3) **Why:** colon-inside-bolding accepted, (4) **Why**: colon-outside-bolding accepted, (5) missing markers → stderr warn, no stdout (locks Stop schema fix), (6) path single-slash format (locks the trailing-slash bug), (7) 24h sentinel debounce, (8) kill-switch DISABLE_MEM_AUDIT_HOOK=1, (9) MEMORY.md index file skipped.
+
+### Compatibility
+
+- **No claude-mem-lite required.** `mem-audit.sh` audits CC built-in auto-memory under `~/.claude/projects/<encoded>/memory/` only. It does NOT depend on `claude-mem-lite`, `claude-mem`, or any other recall-layer plugin. If a user only has the claudemd plugin installed (no recall plugin):
+  - Hook still operates correctly, scanning whatever CC built-in 4-types memories exist.
+  - Zero memory files → silent exit (no projects dir / no relevant files = no output).
+  - Spec wording (§11 + §11-EXT) consistently uses "recall-layer plugin **if present**" — no plugin specifically required.
+- **Comment in `mem-audit.sh:13-21`** documents the independence property explicitly.
+
+### Versioning
+
+- `package.json` 0.9.4 → **0.9.5** (npm).
+- `.claude-plugin/plugin.json` 0.9.4 → **0.9.5**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.4 → **0.9.5**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `bash tests/hooks/mem-audit.test.sh` → 9/9 passed.
+- `npm run test:scripts` → 211/211 passed.
+- `bash tests/run-all.sh` → all suites passed including upgrade-lifecycle (v0.2.3/v6.10.1 → current/v6.11.7).
+
 ## [0.9.4] - 2026-05-10
 
 **Minor — spec v6.11.7 (CC-source comparative audit) + new `mem-audit` Stop hook.** Driven by side-by-side analysis of upstream `sdscc/src/constants/prompts.ts` + `src/memdir/memoryTypes.ts` against AI-CODING-SPEC v6.11.6 — five spec additions where CC's eval-validated rules were stronger or absent in spec. Plugin manifest version skips `0.9.3` (npm-only release that didn't bump `plugin.json` / `marketplace.json`); v0.9.4 brings all manifests back to a coherent state.

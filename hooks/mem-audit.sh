@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # mem-audit.sh — Stop hook (advisory only, never blocks).
+#
 # Scans ~/.claude/projects/*/memory/feedback_*.md + project_*.md for missing
 # **Why:** / **How to apply:** body-structure markers per CC memoryTypes.ts
 # lines 58/76/132/149 (eval-validated body_structure for feedback + project
 # types). Spec §11 + §EXT §11-EXT also reference this structure.
 #
-# Output via additionalContext on stdout JSON (only when count >0; otherwise
-# silent). Fail-open on any hiccup; Stop hook cannot block, so exit 0 always.
+# Output: stderr only (no JSON to stdout) — Stop event has no
+# hookSpecificOutput.additionalContext schema. Mirrors residue-audit.sh.
+# CC harness surfaces stderr to the user as advisory; never blocks
+# (Stop cannot block by design).
+#
+# Independence: this hook audits CC built-in auto-memory under
+# ~/.claude/projects/<encoded-cwd>/memory/ ONLY. It does NOT depend on
+# claude-mem-lite, claude-mem, or any other recall-layer plugin. If a user
+# only has the claudemd plugin installed and no recall-layer plugin, this
+# hook still operates correctly: it scans whatever CC built-in 4-types
+# memories exist locally. Zero memory files → silent exit.
 #
 # Sentinel-debounced: emits at most once per 24h to avoid noise on every Stop.
 
@@ -19,13 +29,12 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch MEM_AUDIT || exit 0
-hook_require_jq || exit 0
 
 STATE_DIR="$HOME/.claude/.claudemd-state"
 SENTINEL="$STATE_DIR/mem-audit.lastrun"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 
-# Debounce: only run once per 24h.
+# 24h debounce.
 if [[ -f "$SENTINEL" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   now=$(date +%s 2>/dev/null) || exit 0
   smtime=$(platform_stat_mtime "$SENTINEL" 2>/dev/null) || exit 0
@@ -45,6 +54,10 @@ SAMPLE_LIMIT=3
 # Iterate per-project memory dirs only one level deep — never traverse the
 # whole projects tree (§8 SAFETY ban on recursive traversal of ~/.claude/).
 for proj_dir in "$PROJECTS_ROOT"/*/; do
+  # proj_dir from glob /*/  has trailing slash; strip it so the join below
+  # produces "<dir>/memory" not "<dir>//memory" (v0.9.4 had double-slash bug
+  # surfaced in error paths).
+  proj_dir="${proj_dir%/}"
   mem_dir="$proj_dir/memory"
   [[ -d "$mem_dir" ]] || continue
 
@@ -61,13 +74,17 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
     size=$(wc -c < "$f" 2>/dev/null | tr -d '[:space:]') || continue
     [[ "${size:-0}" -lt 400 ]] && continue
 
-    # Both markers must appear at line start (the canonical CC body_structure).
-    if ! grep -qE '^\*\*Why:\*\*' "$f" 2>/dev/null \
-       || ! grep -qE '^\*\*How to apply:\*\*' "$f" 2>/dev/null; then
+    # Both markers must appear at line start. Match BOTH common punctuation
+    # forms (CC memoryTypes.ts uses `**Why:**`, but `**Why**:` is also widely
+    # used in the wild; accept either to avoid false-positive alarms):
+    #   **Why:** ...    OR    **Why**: ...
+    #   **How to apply:** ...    OR    **How to apply**: ...
+    if ! grep -qE '^\*\*Why(:\*\*|\*\*:)' "$f" 2>/dev/null \
+       || ! grep -qE '^\*\*How to apply(:\*\*|\*\*:)' "$f" 2>/dev/null; then
       MISSING=$((MISSING + 1))
       if [[ "${#SAMPLE[@]}" -lt "$SAMPLE_LIMIT" ]]; then
         # Path relative to projects root for compactness in the banner.
-        rel="${f#$PROJECTS_ROOT/}"
+        rel="${f#"$PROJECTS_ROOT/"}"
         SAMPLE+=("$rel")
       fi
     fi
@@ -85,15 +102,10 @@ fi
 joined=$(IFS=, ; echo "${SAMPLE[*]}")
 extra=""
 [[ "$MISSING" -gt "$SAMPLE_LIMIT" ]] && extra=" (+$((MISSING - SAMPLE_LIMIT)) more)"
-msg="[claudemd] §11-EXT mem-audit: $MISSING feedback/project memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1"
 
-jq -cn --arg ctx "$msg" '{
-  suppressOutput: true,
-  hookSpecificOutput: {
-    hookEventName: "Stop",
-    additionalContext: $ctx
-  }
-}' 2>/dev/null
+# stderr only — no JSON, no stdout. CC Stop event has no
+# hookSpecificOutput.additionalContext schema; mirrors residue-audit.sh.
+echo "[claudemd] §11-EXT mem-audit: $MISSING feedback/project memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1" >&2
 
 hook_record mem-audit warn "{\"missing\":$MISSING}" '§11-EXT-mem-audit'
 exit 0
