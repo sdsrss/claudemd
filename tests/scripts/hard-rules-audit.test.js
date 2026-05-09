@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { hardRulesAudit } from '../../scripts/hard-rules-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
+const HARD_RULES_AUDIT_JS = path.resolve(HERE, '../../scripts/hard-rules-audit.js');
 
 let tmpHome, savedHome;
 
@@ -112,6 +114,27 @@ test('hardRulesAudit cross-refs rule_hits_section to real log', async () => {
   // Self-enforced rules: hits is null (we have no signal vs zero firings).
   const ironLaw2 = r.rules.find(rl => rl.id === '§iron-law-2');
   assert.equal(ironLaw2.hits, null, 'self-enforced rules must surface hits=null');
+});
+
+test('hard-rules-audit CLI rejects space-form --days 30 (was silent default)', () => {
+  // v0.9.16 antipattern recurrence: pre-fix, `--days 30` was silently dropped,
+  // audit ran with default 90-day window, exited 0 — same family as audit.js
+  // / sparkline.js / clean-residue.js fixes shipped in v0.9.16.
+  const result = spawnSync(process.execPath, [HARD_RULES_AUDIT_JS, '--days', '30'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2, `expected exit 2, stderr: ${result.stderr}`);
+  assert.match(result.stderr, /requires '=value' form/);
+});
+
+test('hard-rules-audit CLI rejects unknown flag (was silent ignore)', () => {
+  const result = spawnSync(process.execPath, [HARD_RULES_AUDIT_JS, '--bogus=1'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Unknown flag.*--bogus/);
 });
 
 test('demoteCandidates list hook-rules with zero hits', async () => {

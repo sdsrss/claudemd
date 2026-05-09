@@ -289,6 +289,27 @@ test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () 
   assert.equal(unset, undefined, '(unset) bucket must not generate a rule-usage check');
 });
 
+test('doctor CLI rejects space-form --prune-backups 5 (was silent default)', () => {
+  // v0.9.16 antipattern recurrence: pre-fix, space-form was silently dropped,
+  // doctor ran without prune, exited 0 — same family as audit.js / sparkline.js
+  // / clean-residue.js fixes shipped in v0.9.16.
+  const result = spawnSync(process.execPath, [DOCTOR_JS, '--prune-backups', '5'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2, `expected exit 2, stderr: ${result.stderr}`);
+  assert.match(result.stderr, /requires '=value' form/);
+});
+
+test('doctor CLI rejects unknown flag (was silent ignore)', () => {
+  const result = spawnSync(process.execPath, [DOCTOR_JS, '--bogus=1'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Unknown flag.*--bogus/);
+});
+
 test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
   const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
   fs.mkdirSync(realPluginRoot, { recursive: true });

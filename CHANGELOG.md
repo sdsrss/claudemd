@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.17] - 2026-05-10
+
+**Patch — two more slash-command CLIs leaked the v0.9.16 antipattern.** Spec v6.11.7 unchanged. Surfaced in the same exploratory-testing session that produced v0.9.16: `/claudemd-doctor --prune-backups 5` (space form) silently dropped the value, ran without prune, exited 0; `/claudemd-rules --days 30` (space form) silently fell back to the default 90-day window, exited 0. v0.9.16 swept `clean-residue.js` / `audit.js` / `sparkline.js` but missed `doctor.js` and `hard-rules-audit.js` carrying the same `args.find(a => a.startsWith('--key='))` pattern. Fourth recurrence of argv-shape silent-fallback (v0.9.14 lint, v0.9.15 hook tag, v0.9.16 three CLIs, this one).
+
+### Fixed
+
+- `[fix]` **`scripts/doctor.js` + `scripts/hard-rules-audit.js` switched to `parseStrict`.** Pre-fix, both scripts used the `args.find(a => a.startsWith('--key='))` pattern that silently dropped (a) the space-separated form `--key value`, (b) any unknown flag. Post-fix, both exit 2 with a parser error before touching state. The contract documented in `commands/claudemd-doctor.md` (`--prune-backups=N`) and the `--days=N` env-var-equivalent on `hard-rules-audit.js` is now enforced. Documented happy-path behavior unchanged.
+
+### Added
+
+- `[test]` **2 new cases each in `tests/scripts/doctor.test.js` + `tests/scripts/hard-rules-audit.test.js`** asserting exit 2 + stderr message on space-form and unknown-flag bug shapes via spawned CLI (240 → 244 tests).
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion — restores documented intent (`--key=value` per slash-command docs and v0.9.16 contract). L2 ceiling. Diff: 2 script tails refactored (~10 LOC each), 2 test files (+4 cases). Recurrence count for argv-shape silent-fallback antipattern is now 4 across 4 patches — the §13.2 promotion case for a hook-level lint or repo-wide grep gate is stronger than v0.9.16 made it.
+
 ## [0.9.16] - 2026-05-10
 
 **Patch — three slash-command CLIs silently dropped wrong-shape arguments.** Spec v6.11.7 unchanged. Surfaced while exercising the v0.9.15 plugin from a real `/claudemd-clean-residue --apply --age-days 0` user attempt: `--age-days` value dropped (script fell back to default `1`), `--apply` ran, script exited 0 reporting "0 deleted." Same family as v0.9.14 `claudemd-cli lint <path>` silent-success — argv-shape mismatch produced indistinguishable-from-success output.

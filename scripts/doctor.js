@@ -7,6 +7,7 @@ import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError } from './lib/argv.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -222,11 +223,16 @@ export async function doctor({ pruneBackups: prune } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  const pruneArg = args.find(a => a.startsWith('--prune-backups='));
+  let parsed;
+  try {
+    parsed = parseStrict(process.argv.slice(2), { values: ['--prune-backups'] });
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   let prune;
-  if (pruneArg) {
-    const raw = pruneArg.split('=')[1];
+  const raw = parsed.values['--prune-backups'];
+  if (raw !== undefined) {
     const val = parseInt(raw, 10);
     if (!Number.isInteger(val) || val < 1) {
       console.error(

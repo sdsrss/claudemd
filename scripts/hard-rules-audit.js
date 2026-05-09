@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError } from './lib/argv.js';
 
 const DEFAULT_WINDOW_DAYS = 90;
 
@@ -113,9 +114,14 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  const daysArg = args.find(a => a.startsWith('--days='));
-  const raw = daysArg ? daysArg.split('=')[1] : (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
+  let parsed;
+  try {
+    parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
+  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
   const days = parseInt(raw, 10);
   if (!Number.isInteger(days) || days < 1) {
     console.error(
