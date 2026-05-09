@@ -105,12 +105,12 @@ function validateAndExpandFlags(args, knownBools, knownValues, sub) {
 
 function lintCmd(rawArgs) {
   const args = validateAndExpandFlags(rawArgs, ['--json', '--stdin'], ['--file'], 'lint');
-  const json = args.includes('--json');
-  const stdin = args.includes('--stdin');
+  const json = args.includes('--json');     // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const stdin = args.includes('--stdin');   // argv-lint:allow — validated upstream by validateAndExpandFlags
 
   // --file <path> consumes the next non-flag arg.
   let filePath = null;
-  const fileIdx = args.indexOf('--file');
+  const fileIdx = args.indexOf('--file');   // argv-lint:allow — validated upstream by validateAndExpandFlags
   if (fileIdx !== -1) {
     const next = args[fileIdx + 1];
     if (!next || next.startsWith('--')) {
@@ -191,8 +191,8 @@ function lintCmd(rawArgs) {
 
 function auditCmd(rawArgs) {
   const args = validateAndExpandFlags(rawArgs, ['--json', '--include-ratio'], [], 'audit');
-  const json = args.includes('--json');
-  const includeRatio = args.includes('--include-ratio');
+  const json = args.includes('--json');                   // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const includeRatio = args.includes('--include-ratio');  // argv-lint:allow — validated upstream by validateAndExpandFlags
   const positional = args.filter(a => !a.startsWith('--'));
   const transcriptPath = positional[0];
 

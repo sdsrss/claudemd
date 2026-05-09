@@ -8,6 +8,24 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.19] - 2026-05-10
+
+**Patch — repo-wide CI guard for the argv-shape silent-fallback antipattern (§13.2 Tier 1).** Spec v6.11.7 unchanged. v0.9.14 → v0.9.18 was five consecutive patches chasing the same antipattern in five different files because each fix-set was scoped to whatever the repro session tripped on. The CHANGELOG entry for v0.9.18 stated "the next exploratory-testing session WILL find a 6th hole"; this patch makes that prediction grep-enforceable instead of trusting the next session not to slip.
+
+### Added
+
+- `[feat]` **`scripts/lint-argv.js`** — module-friendly gate exporting `scan({ root, dirs, exts, fileAllowlist, patterns })` and a CLI entry. Greps the union of three known antipattern signatures (`\b\w+\.includes\(['"]--`, `\.find\(\w+\s*=>\s*\w+\.startsWith\(['"]--`, `\b\w+\.indexOf\(['"]--`) across `bin/` + `scripts/` `.js` files. Pure `//` comment lines are skipped (meta-recursion guard for the validator's own docstring quoting the antipattern as the bug it prevents). Inline allowlist: append `// argv-lint:allow` to a vetted line. File allowlist: add to `FILE_ALLOWLIST` with a one-line reason — only the gate itself + `scripts/lib/argv.js` (parseStrict implementation) qualify today.
+- `[feat]` **`npm run lint:argv` script in `package.json`.** Local + CI invocable. Exit 0 on clean, exit 1 with per-hit `file:line  [pattern]` + offending text + remediation hint on dirty. Tier 2 (wiring into `.github/workflows/test.yml`) is intentionally NOT in this patch — that's a §5 Hard CI/infra change deferred to user decision.
+- `[test]` **9 new cases in `tests/scripts/lint-argv.test.js` (248 → 257)** — live-repo clean baseline, each of the three signatures detected on synthetic fixtures, inline allowlist, file-level allowlist, pure-comment skip (the meta-recursion guard), end-of-line comment NOT skipped (allowlist evasion attempt rejected), CLI exit 0 + stdout shape on clean.
+
+### Fixed
+
+- `[fix]` **`bin/claudemd-lint.js` lintCmd/auditCmd add 5 inline `// argv-lint:allow` comments** on the `args.includes/indexOf('--*')` lines that are post-validator-safe-by-construction (`validateAndExpandFlags` rejects unknown + bool=value upstream, so downstream `.includes('--json')` will never observe a wrong-shape value). The lines are functionally safe and intentionally chosen over a structural refactor that would churn v0.9.18's diff for no behavioral gain.
+
+### Why no L3 / pre-ship-review chain
+
+`feat:` adds a CI-helper script, not user-visible plugin behavior. No spec change. L2 ceiling. Diff: 1 new gate (~100 LOC), 1 new test file (~100 LOC), 1 package.json line, 5 inline comments in the public CLI, 4 version-string bumps. The companion §13.2 promotion to a HARD spec rule (hook-level enforcement) is a separate L3 spec-change patch held until the gate has run for a few release cycles and the false-positive rate is known empirically.
+
 ## [0.9.18] - 2026-05-10
 
 **Patch — public npm CLI `bin/claudemd-lint.js` had the same argv-shape silent-fallback the slash-commands fixed in v0.9.16/v0.9.17.** Spec v6.11.7 unchanged. Surfaced exercising the published CLI as a downstream integrator would: `claudemd lint --jzon "..."` (typo) silently dropped the unknown flag and scanned the text anyway → exit reflected only the text content; `claudemd lint --json=yes "..."` silently dropped `--json` (because `args.includes('--json')` returns false for the `=` form) → human-readable text emitted on stdout when JSON was expected; `claudemd lint --file=PATH` (GNU-getopt convention) was unrecognized and exited 2 with the misleading `text required` message; `claudemd audit --include-ratiox PATH` silently dropped the typo → exit 0 even when content would deny. Fifth recurrence of argv-shape silent-fallback (v0.9.14 lint positional, v0.9.15 hook tag, v0.9.16 three slash-commands, v0.9.17 two more slash-commands, this one — the **publicly published** surface, the most-visible footgun).
