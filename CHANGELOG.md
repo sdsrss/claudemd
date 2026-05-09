@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.9] - 2026-05-10
+
+**Patch — macOS bash 3.2 portability hotfix on `hooks/mem-audit.sh` drift detection (v0.9.7 regression).** v0.9.7 introduced `declare -A on_disk=()` and `declare -A in_index=()` for the new MEMORY.md ↔ files drift check; macOS ships bash 3.2 which lacks associative arrays (added in bash 4.0). v0.9.8 macOS CI failed at `tests/hooks/mem-audit.test.sh` cases 9-11 with `declare: -A: invalid option` + downstream `syntax error: invalid arithmetic operator (error token is ".md")` — the latter because indexing a non-existent associative array on bash 3.2 falls through to arithmetic context which can't parse `.md`. Cross-references project memory `feedback_macos_shell_portability.md` (BSD wc / GNU timeout / git exec-mode patterns); this is a sibling case — bash 4 idioms not portable to macOS default shell.
+
+### Fixed
+
+- `[fix]` **`hooks/mem-audit.sh` drift detection**: replaced `declare -A on_disk=()` + `${on_disk[$linked]:-}` lookups with newline-separated string accumulator + `grep -qFx -- "$linked"` membership check. Bash 3.2 compatible. Same logic, same outputs (test cases 9-11 unchanged, 11/11 still passes locally on bash 5.2). Per memory `feedback_macos_shell_portability` section "GNU coreutils availability on macOS CI": same source as the v0.1.0 BSD wc / GNU timeout fixes, different bash-version axis.
+
+### Versioning
+
+- `package.json` 0.9.8 → **0.9.9** (npm).
+- `.claude-plugin/plugin.json` 0.9.8 → **0.9.9**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.8 → **0.9.9**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- Local `bash tests/hooks/mem-audit.test.sh` → 11/11 passed (bash 5.2.21 — verifies structural correctness; macOS bash 3.2 compatibility verified by absence of `declare -A` and any other bash-4-only idiom in the changed block).
+- `node --test tests/scripts/*.test.js` → 217 passed.
+- `bash -n hooks/mem-audit.sh` → no syntax errors.
+
+### Lesson recorded
+
+Bash 3.2 portability is documented in project memory `feedback_macos_shell_portability.md` (4 patterns: git exec-mode, BSD wc, GNU timeout/coreutils, mktemp symlink). This v0.9.7 regression adds a 5th pattern — `declare -A` + array indexing fail differently on bash 3.2 (silently fall through to arithmetic context). For any future hook code, prefer string + `grep -qFx` over associative arrays unless macOS support is dropped explicitly.
+
 ## [0.9.8] - 2026-05-10
 
 **Patch — v0.9.7 CI hotfix.** v0.9.7 shipped `hooks/mem-audit.sh` drift detection + new `tests/hooks/mem-audit.test.sh` cases 9-11, but the test-file edit was not staged in the v0.9.7 commit. Result: v0.9.7 CI failed at `Run test suite` step on both ubuntu-latest and macos-latest because old case 9 expected `silent` from a hook that now correctly emits an `index_orphan` warn. Hook behavior in v0.9.7 is correct; only the test sync was missing.

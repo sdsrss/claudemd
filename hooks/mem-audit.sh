@@ -104,22 +104,25 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   index_file="$mem_dir/MEMORY.md"
   [[ -f "$index_file" ]] || continue
 
-  # Collect on-disk filenames (basename only, excluding MEMORY.md).
-  declare -A on_disk=()
+  # Collect on-disk filenames as a newline-separated string. macOS ships
+  # bash 3.2 which does not support `declare -A` (associative arrays added
+  # in bash 4); use a string + grep -Fx instead. CI breakage at v0.9.8
+  # macOS-latest confirmed -A fails with "invalid option".
+  on_disk_list=""
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     base="$(basename "$f")"
     [[ "$base" == "MEMORY.md" ]] && continue
-    on_disk["$base"]=1
+    on_disk_list+="$base"$'\n'
   done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
   # Extract `(file.md)` references from MEMORY.md index lines. Markdown link
   # syntax `[Title](file.md) ...` — first matching .md token per line.
-  declare -A in_index=()
+  in_index_list=""
   while IFS= read -r linked; do
     [[ -n "$linked" ]] || continue
-    in_index["$linked"]=1
-    if [[ -z "${on_disk[$linked]:-}" ]]; then
+    in_index_list+="$linked"$'\n'
+    if ! printf '%s' "$on_disk_list" | grep -qFx -- "$linked"; then
       DRIFT=$((DRIFT + 1))
       if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
         rel="${index_file#"$PROJECTS_ROOT/"}"
@@ -129,17 +132,16 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   done < <(grep -oE '\([^)]+\.md\)' "$index_file" 2>/dev/null | sed -E 's/^\(|\)$//g')
 
   # Reverse direction: any on-disk file with no MEMORY.md link.
-  for base in "${!on_disk[@]}"; do
-    if [[ -z "${in_index[$base]:-}" ]]; then
+  while IFS= read -r base; do
+    [[ -z "$base" ]] && continue
+    if ! printf '%s' "$in_index_list" | grep -qFx -- "$base"; then
       DRIFT=$((DRIFT + 1))
       if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
         rel="${index_file#"$PROJECTS_ROOT/"}"
         DRIFT_SAMPLE+=("file_orphan: $rel → $base (no index link)")
       fi
     fi
-  done
-
-  unset on_disk in_index
+  done <<< "$on_disk_list"
 done
 
 # Touch sentinel even on zero-missing — prevents repeat scans within 24h.
