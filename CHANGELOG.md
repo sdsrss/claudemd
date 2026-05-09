@@ -8,6 +8,54 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.10] - 2026-05-10
+
+**Patch — P1.2 restart: agent self-rule observation mirror via new `transcript-structure-scan` Stop hook.** Spec v6.11.7 unchanged. Closes the audit gap that ~7 self-enforced HARD rules in `spec/hard-rules.json` (§iron-law-2, §10-four-section-order, §10-honesty, §10-specificity, §0-hard-auth-override, §11-mid-spine-yield, §11-session-exit) had **no hook-side feedback signal** — only banned-vocab (§10-V) was observed via `transcript-vocab-scan`. P1.2 was deferred in v0.9.7 with two reasons (pattern lockstep on `tests/scripts/spec-pattern-drift.test.js`; FP storm risk on every `PostToolUse`); both addressed by design pivot.
+
+### Design pivot vs deferred v0.9.7 plan
+
+- **Hook event**: Stop instead of PostToolUse. Fires once per session end (vs every tool call) — heavier checks affordable, FP impact minimal.
+- **Detection scope**: 3 narrow checks, each FP-tightened by context-gating:
+  - `§10-four-section-order` — only fires when ALL 4 of `Done:`, `Not done:`, `Failed:`, `Uncertain:` appear line-anchored within a 50-line window. Single-section narrative ("Done — v0.9.6 ship 完成") never triggers because the other three labels are absent.
+  - `§iron-law-2` — only checks `Done:` lines INSIDE a four-section block (above). Single `Done:` lines = L1 short-form per spec §10, never flagged. Each in-block `Done:` line + next 2 lines must contain at least one evidence fingerprint: `\.[a-z]+:[0-9]+` file:line, `\b(passed|failed|tests)\b`, `[0-9].*(→|->|=>).*[0-9]` baseline arrow, `Checked:`, `baseline`, or `known-red`. `Done: (none)` / `Done: (无)` / `Done:$` — explicitly skipped (legitimate L3 zero-issue).
+  - `§10-honesty` — `^Uncertain:` lines that are <80 chars total AND don't contain `because`/`since`/`reason:`/`因为` AND don't end with `(none)`/`(无)`/`none`/`N/A`/`-`. Independent of four-section context.
+- **Pattern lockstep avoided**: detections are regex inside the hook, not entries in `banned-vocab.patterns`. `tests/scripts/spec-pattern-drift.test.js` is unaffected; no spec change required.
+- **Default OFF**: `TRANSCRIPT_STRUCTURE_SCAN=1` opt-in gate, same precedent as `transcript-vocab-scan` and `BASH_SAFETY_INDIRECT_CALL` — ≥30 days FP signal collection in the wild before flipping default.
+
+### Added
+
+- `[feat]` **`hooks/transcript-structure-scan.sh`** — Stop hook (advisory), 130 LOC. Reads last assistant turn from `$EVENT.transcript_path`, applies the 3 detections above, records to rule-hits log via new event `structure-advisory`, emits stderr banner capped at 5 hits.
+- `[contract]` **New rule-hits event class `structure-advisory`** — documented in `docs/RULE-HITS-SCHEMA.md` "Events" + "Spec section taxonomy" tables. Three new `spec_section` keys: `§iron-law-2`, `§10-four-section-order`, `§10-honesty` (one rule-hits row per distinct §-section detected; aggregate via `/claudemd-audit` `bySection`).
+- `[doc]` **README.md "What it installs"** — hook count 11 → 12; new entry under "Hooks (what fires when)" table.
+- `[test]` **`tests/hooks/transcript-structure-scan.test.sh`** — 12 cases covering opt-out default, opt-in + missing transcript fail-open, ordered four-section silent, reversed four-section flag, in-block Done lacking evidence flag, single Done silent (FP guard), short Uncertain without `because` flag, `Uncertain: (none)` silent, `Uncertain: ... because` silent, hook kill-switch, global kill-switch, rule-hits row schema verification. 12/12 pass on bash 5.2 (Linux). Bash 3.2 portable (no `declare -A`; uses string + `grep -qFx`).
+
+### Registry sync (12-hook count)
+
+- `scripts/lib/hook-registry.js` — added `transcript-structure-scan` entry (hookEvent: Stop, matcher: *, timeout: 3).
+- `hooks/hooks.json` — added Stop entry between `mem-audit` and `session-summary`.
+- `commands/claudemd-toggle.md` — added `transcript-structure-scan` to displayName list.
+- `tests/scripts/hook-registry.test.js` — `HOOK_REGISTRY.length` 11 → 12.
+- `tests/integration/full-lifecycle.test.sh` — `MCOUNT == "12"` (was 11).
+- `tests/scripts/install.test.js` — `manifest.entries.length === 12` (×2 places); fixture hooks.json + hook basename list updated.
+- `tests/hooks/contract.test.sh` — `DOCUMENTED` array gains `structure-advisory:transcript-structure-scan` entry.
+
+### Versioning
+
+- `package.json` 0.9.9 → **0.9.10** (npm).
+- `.claude-plugin/plugin.json` 0.9.9 → **0.9.10**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.9 → **0.9.10**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `bash tests/hooks/transcript-structure-scan.test.sh` → 12/12 passed locally on bash 5.2.
+- `node --test tests/scripts/*.test.js` → 217 passed, 0 failed.
+- `bash tests/run-all.sh` → all suites passed (Linux). macOS bash 3.2 portability verified by absence of `declare -A`/array indexing in the new hook (per `feedback_macos_shell_portability.md` 5th portability pattern recorded in v0.9.9).
+
+### Audit follow-up: P1.2 status
+
+P1.2 deferred → restarted → done. The audit's 5th meta-issue ("agent 自律层零观察镜 — 90% rules are self-enforce, no hook-side observation") now has infrastructure: 3 of the 7 most-load-bearing self-enforce rules are observable. Remaining 4 (§0-hard-auth-override, §10-specificity beyond banned-vocab, §11-mid-spine-yield, §11-session-exit) require richer transcript context (multi-turn awareness, AUTH-state tracking) that's a larger lift; not in scope for this patch. Operator can `/claudemd-audit --days 30` after enabling `TRANSCRIPT_STRUCTURE_SCAN=1` to gather field signal on the 3 covered rules' real fire rates.
+
 ## [0.9.9] - 2026-05-10
 
 **Patch — macOS bash 3.2 portability hotfix on `hooks/mem-audit.sh` drift detection (v0.9.7 regression).** v0.9.7 introduced `declare -A on_disk=()` and `declare -A in_index=()` for the new MEMORY.md ↔ files drift check; macOS ships bash 3.2 which lacks associative arrays (added in bash 4.0). v0.9.8 macOS CI failed at `tests/hooks/mem-audit.test.sh` cases 9-11 with `declare: -A: invalid option` + downstream `syntax error: invalid arithmetic operator (error token is ".md")` — the latter because indexing a non-existent associative array on bash 3.2 falls through to arithmetic context which can't parse `.md`. Cross-references project memory `feedback_macos_shell_portability.md` (BSD wc / GNU timeout / git exec-mode patterns); this is a sibling case — bash 4 idioms not portable to macOS default shell.

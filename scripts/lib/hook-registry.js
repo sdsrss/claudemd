@@ -1,4 +1,4 @@
-// Single source of truth for the 9 plugin hooks. Consumers must import from
+// Single source of truth for the 12 plugin hooks. Consumers must import from
 // here rather than maintaining parallel literal arrays:
 //
 //   scripts/install.js     — re-exports HOOK_BASENAMES (legacy callers)
@@ -26,6 +26,7 @@ export const HOOK_REGISTRY = [
   { basename: 'mem-audit.sh',             displayName: 'mem-audit',             envVarSuffix: 'MEM_AUDIT',         hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'session-summary.sh',       displayName: 'session-summary',       envVarSuffix: 'SESSION_SUMMARY',   hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'transcript-vocab-scan.sh', displayName: 'transcript-vocab-scan', envVarSuffix: 'TRANSCRIPT_VOCAB_SCAN', hookEvent: 'PostToolUse',  matcher: '*',    timeout: 3 },
+  { basename: 'transcript-structure-scan.sh', displayName: 'transcript-structure-scan', envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN', hookEvent: 'Stop', matcher: '*', timeout: 3 },
 ];
 
 export const HOOK_BASENAMES = HOOK_REGISTRY.map(h => h.basename);

@@ -18,11 +18,11 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('registry has 11 entries (matches integration MCOUNT)', () => {
+test('registry has 12 entries (matches integration MCOUNT)', () => {
   // Pinned to the same number as tests/integration/full-lifecycle.test.sh
   // MCOUNT and tests/scripts/install.test.js manifest.entries.length so the
   // three counts move together when a hook is added or removed.
-  assert.equal(HOOK_REGISTRY.length, 11);
+  assert.equal(HOOK_REGISTRY.length, 12);
 });
 
 test('registry → hooks.json: every entry registered with same event/matcher/timeout', () => {

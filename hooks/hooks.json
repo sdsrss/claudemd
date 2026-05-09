@@ -34,6 +34,7 @@
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/mem-audit.sh\"", "timeout": 3 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/transcript-structure-scan.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh\"", "timeout": 3 }
         ]
       }

@@ -105,6 +105,7 @@ DOCUMENTED=(
   "warn:sandbox-disposal"
   "warn:residue-audit"
   "advisory:transcript-vocab-scan"
+  "structure-advisory:transcript-structure-scan"
   "bootstrap:session-start"
   "upstream-banner:session-start"
   "version-sync:user-prompt-submit"

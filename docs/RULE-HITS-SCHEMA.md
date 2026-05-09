@@ -30,6 +30,7 @@ source must appear in this table.
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |
 | `warn` | `sandbox-disposal`, `residue-audit` | non-blocking advisory |
 | `advisory` | `transcript-vocab-scan` | PostToolUse advisory — agent-text §10-V hit (cannot block; v0.8.3 R-N8) |
+| `structure-advisory` | `transcript-structure-scan` | Stop advisory — agent self-rule observation for §iron-law-2 / §10-four-section-order / §10-honesty (cannot block; v0.9.10 P1.2) |
 | `bootstrap` | `session-start` | one-shot install on session start |
 | `upstream-banner` | `session-start` | upstream version available banner |
 | `version-sync` | `user-prompt-submit` | mid-session manifest sync triggered |
@@ -52,6 +53,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `residue-audit` | `warn` | `§7-user-global-state` |
 | `sandbox-disposal` | `warn` | `§8.V4` |
 | `transcript-vocab-scan` | `advisory` | `§10-V` |
+| `transcript-structure-scan` | `structure-advisory` | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (one row per §-section detected) |
 | `session-start` | `bootstrap` / `upstream-banner` | `null` |
 | `user-prompt-submit` | `version-sync` | `null` |
 
