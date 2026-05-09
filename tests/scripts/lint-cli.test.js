@@ -126,3 +126,83 @@ test('CLI: unknown subcommand → exit 2 + usage', () => {
   assert.match(r.stderr, /unknown subcommand/);
   assert.match(r.stderr, /Usage:/);
 });
+
+test('CLI: lint --file PATH reads file contents (hit)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const msg = path.join(tmp, 'msg.txt');
+  fs.writeFileSync(msg, 'this commit significantly improves things\n');
+  try {
+    const r = run(['lint', '--file', msg]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /significantly/);
+    assert.equal(r.stdout, '');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint --file PATH on clean content → exit 0', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const msg = path.join(tmp, 'msg.txt');
+  fs.writeFileSync(msg, 'added cursor; tests 30 → 35\n');
+  try {
+    const r = run(['lint', '--file', msg]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /^OK/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint --file <missing> → exit 2 file-not-found', () => {
+  const r = run(['lint', '--file', '/nonexistent/msg.txt']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /file not found/);
+});
+
+test('CLI: lint --file without arg → exit 2', () => {
+  const r = run(['lint', '--file']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /--file requires a path/);
+});
+
+test('CLI: lint <existing-file-path> auto-detects --file (the bug fix)', () => {
+  // Regression for the silent-success bug: pre-fix, passing a file path as
+  // positional scanned the path STRING (no banned vocab) and exit 0. Now it
+  // reads the file contents. Critical for git pre-commit / CI use cases.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const msg = path.join(tmp, 'COMMIT_EDITMSG');
+  fs.writeFileSync(msg, 'this is robust and production-ready\n');
+  try {
+    const r = run(['lint', msg]);
+    assert.equal(r.status, 1, 'positional existing-file should be auto-treated as --file');
+    assert.match(r.stderr, /robust|production-ready/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint with literal text that is not a path stays text', () => {
+  const r = run(['lint', 'this is just a sentence with no banned terms']);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^OK/);
+});
+
+test('CLI: lint --file + positional → exit 2 (mutually exclusive)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const msg = path.join(tmp, 'msg.txt');
+  fs.writeFileSync(msg, 'clean text');
+  try {
+    const r = run(['lint', '--file', msg, 'extra positional']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /mutually exclusive/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint --stdin + --file → exit 2', () => {
+  const r = run(['lint', '--stdin', '--file', '/tmp/x'], 'hi\n');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /not both/);
+});

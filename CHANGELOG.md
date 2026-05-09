@@ -8,6 +8,30 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.14] - 2026-05-10
+
+**Patch — `claudemd-cli lint <path>` silent-success fix.** Spec v6.11.7 unchanged. Surfaced while role-playing a real user of the standalone CLI: `claudemd lint /path/to/COMMIT_EDITMSG` (the natural pre-commit-hook shape, mirroring `audit <jsonl-path>`) silently scans the **literal path string** for banned-vocab — finds none — and exits 0, even when the file content would deny. CI / git-pre-commit integrations would have shipped commit messages full of `significantly` / `robust` / `production-ready` undetected.
+
+### Fixed
+
+- `[fix]` **`bin/claudemd-lint.js` `lintCmd`**: a single positional arg that is an existing regular file is now auto-treated as `--file <path>` (file contents scanned), not as a literal text argument. Pre-fix: `claudemd lint .git/COMMIT_EDITMSG` → scans the string `".git/COMMIT_EDITMSG"` → exit 0. Post-fix: reads file contents → exit reflects banned-vocab presence. Backward-compatible: bare-text `claudemd lint "literal sentence"` still scans the sentence; non-existent paths fall through to text-scan (no surprise error). Asymmetry with `audit <jsonl-path>` (which already takes a path) was the root inconsistency.
+
+### Added
+
+- `[feat]` **`--file <path>` flag on `lint`** for explicit file-mode (parallels `--stdin`). Mutual-exclusion enforced: `--file` + `--stdin`, `--file` + positional, `--stdin` + positional all → exit 2 with reason. `--file <missing>` → exit 2 `file not found`. Recommended form for scripts that don't want to depend on the auto-detect heuristic.
+- `[doc]` **USAGE block updated** in `bin/claudemd-lint.js`: documents `--file <path>`, the auto-detect rule, and the opt-out (quote literal text or use `--stdin`).
+- `[test]` **8 new cases in `tests/scripts/lint-cli.test.js` (12/12 → 20/20)**: `--file` happy-path (hit + clean), `--file` missing → exit 2, `--file` without arg → exit 2, the regression test for the auto-detect bugfix (`lint <existing-file>` exits 1 on banned-vocab content), pure-text path-shape stays text, and both mutex pairs (`--file + positional`, `--stdin + --file`).
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion list — the package's stated use case in `package.json#description` is "git pre-commit hooks, GitHub Actions, and other agents," all of which require path-based input; the silent-success on path arg failed that intent. L2 ceiling applies. Diff: 1 CLI file (~50 lines net), 1 test file (~70 lines added), 0 spec/contract change. Standalone-CLI consumers (`npx claudemd-cli lint ...`) get a stricter, less-footgun-prone surface; in-CC plugin behavior is unchanged.
+
+### Versioning
+
+- `package.json`, `plugin.json`, `marketplace.json` (×2 fields) → `0.9.14`. Spec trio unchanged at v6.11.7.
+
+---
+
 ## [0.9.13] - 2026-05-10
 
 **Patch — `session-summary.sh` window calculation: missing `platform.sh` source + self-owned sentinel.** Spec v6.11.7 unchanged. Two coupled defects in window discipline, both surfaced while reasoning about the v0.9.12 fix's "Bug 2" follow-up.

@@ -32,6 +32,7 @@ const USAGE = `claudemd-lint — §10-V banned-vocab + transcript scanner
 
 Usage:
   claudemd lint <text>            Scan text for banned-vocab.
+  claudemd lint --file <path>     Scan the contents of a file.
   claudemd lint --stdin           Read text from stdin.
   claudemd audit <jsonl-path>     Scan all assistant turns in a CC transcript.
   claudemd --version              Print plugin version.
@@ -42,6 +43,12 @@ Flags:
   --include-ratio                 (audit only) Include @ratio patterns.
                                   Default OFF — chat prose has different
                                   baseline conventions from commit messages.
+
+Notes:
+  A bare \`lint <arg>\` whose only positional is an existing regular file
+  is auto-treated as \`--file <arg>\` so \`claudemd lint .git/COMMIT_EDITMSG\`
+  works as expected in pre-commit hooks. Pass --stdin or quote literal
+  text to opt out.
 
 Exit codes:
   0   no hits
@@ -63,7 +70,37 @@ function readPackageVersion() {
 function lintCmd(args) {
   const json = args.includes('--json');
   const stdin = args.includes('--stdin');
-  const positional = args.filter(a => !a.startsWith('--'));
+
+  // --file <path> consumes the next non-flag arg.
+  let filePath = null;
+  const fileIdx = args.indexOf('--file');
+  if (fileIdx !== -1) {
+    const next = args[fileIdx + 1];
+    if (!next || next.startsWith('--')) {
+      process.stderr.write('lint: --file requires a path argument\n');
+      process.exit(2);
+    }
+    filePath = next;
+  }
+  const positional = args.filter((a, i) => {
+    if (a.startsWith('--')) return false;
+    if (fileIdx !== -1 && i === fileIdx + 1) return false;
+    return true;
+  });
+
+  // Mutual-exclusion: pick one source — stdin > --file > positional.
+  if (stdin && filePath) {
+    process.stderr.write('lint: choose one of --stdin or --file, not both\n');
+    process.exit(2);
+  }
+  if (stdin && positional.length > 0) {
+    process.stderr.write('lint: --stdin and positional text are mutually exclusive\n');
+    process.exit(2);
+  }
+  if (filePath && positional.length > 0) {
+    process.stderr.write('lint: --file and positional text are mutually exclusive\n');
+    process.exit(2);
+  }
 
   let text;
   if (stdin) {
@@ -73,10 +110,34 @@ function lintCmd(args) {
       process.stderr.write(`lint: failed to read stdin: ${e.message}\n`);
       process.exit(2);
     }
+  } else if (filePath) {
+    if (!fs.existsSync(filePath)) {
+      process.stderr.write(`lint: file not found: ${filePath}\n`);
+      process.exit(2);
+    }
+    try {
+      text = fs.readFileSync(filePath, 'utf8');
+    } catch (e) {
+      process.stderr.write(`lint: failed to read ${filePath}: ${e.message}\n`);
+      process.exit(2);
+    }
   } else if (positional.length > 0) {
-    text = positional.join(' ');
+    // Auto-detect: a bare single positional that is an existing regular file
+    // is overwhelmingly the user's intent (they're piping a commit-msg path
+    // from a git pre-commit hook). Without this, `claudemd lint message.txt`
+    // silently scans the LITERAL STRING "message.txt" → exits 0 even when
+    // the file contents would deny.
+    if (positional.length === 1) {
+      try {
+        const st = fs.statSync(positional[0]);
+        if (st.isFile()) {
+          text = fs.readFileSync(positional[0], 'utf8');
+        }
+      } catch { /* not a path — fall through to text */ }
+    }
+    if (text === undefined) text = positional.join(' ');
   } else {
-    process.stderr.write('lint: text required (positional arg or --stdin)\n');
+    process.stderr.write('lint: text required (positional arg, --file PATH, or --stdin)\n');
     process.exit(2);
   }
 
