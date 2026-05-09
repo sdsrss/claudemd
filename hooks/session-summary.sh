@@ -57,6 +57,13 @@ fi
 # attempt used `--slurpfile` with `<(...)` and tried `$log[0]` — but
 # --slurpfile already wraps the file's stream into a single array, so
 # `$log[0]` was the first row not the array. The pipe form is unambiguous.
+# top_section is the most-cited spec_section among events that contributed to
+# the banner counts (deny + bypass-escape-hatch + warn). Restricting by both
+# event type AND non-null spec_section keeps housekeeping events (bootstrap,
+# version-sync, upstream-banner, pass*) out of the (unset) bucket — pre-fix
+# they dominated whenever a session had >50 ops events vs ≤50 rule events,
+# making the banner always read `top: (unset)` regardless of actual rule
+# activity. (v0.9.12 fix.)
 SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
   | jq -s -c --arg since "$SINCE_TS" '
       map(select(.ts >= $since))
@@ -64,7 +71,11 @@ SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
       | (map(select(.event == "deny")) | length) as $denies
       | (map(select(.event == "bypass-escape-hatch")) | length) as $bypasses
       | (map(select(.event == "warn")) | length) as $warns
-      | (group_by(.spec_section // "(unset)") | map({section: (.[0].spec_section // "(unset)"), n: length}) | sort_by(-.n) | .[0].section // null) as $top_section
+      | (map(select(.event == "deny" or .event == "bypass-escape-hatch" or .event == "warn") | select(.spec_section != null))
+         | group_by(.spec_section)
+         | map({section: .[0].spec_section, n: length})
+         | sort_by(-.n)
+         | (.[0].section // null)) as $top_section
       | {
           ts: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
           since: $since,

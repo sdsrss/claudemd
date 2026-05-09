@@ -124,8 +124,42 @@ else
   ng "Case 6: banner emitted despite suppression flag (out: $OUT)"
 fi
 
+# --- Case 7: top_section ignores housekeeping events lacking spec_section ----
+# Regression for the "top: (unset)" bug. Bootstrap / version-sync / upstream-
+# banner / pass events have null spec_section by design (rule-hits.sh only
+# stamps section when the caller passes one). Pre-fix, group_by lumped them
+# all into "(unset)" and that bucket dominated whenever ops events outnumbered
+# rule-violation events — which is the steady state for a healthy session.
+# Post-fix: only deny/bypass/warn events with non-null spec_section count
+# toward top_section, so it tracks actual rule activity.
+rm -f "$SUMMARY"
+touch "$REF"
+sleep 1
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+{
+  # 2 deny §10-V + 1 warn §8.V4 = real rule activity
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"sandbox-disposal\",\"event\":\"warn\",\"spec_section\":\"§8.V4\",\"extra\":null}"
+  # 15 housekeeping events (no spec_section) — would dominate (unset) bucket pre-fix
+  for _ in 1 2 3 4 5; do
+    echo "{\"ts\":\"$NOW_TS\",\"hook\":\"session-start\",\"event\":\"bootstrap\",\"extra\":null}"
+    echo "{\"ts\":\"$NOW_TS\",\"hook\":\"user-prompt-submit\",\"event\":\"version-sync\",\"extra\":null}"
+    echo "{\"ts\":\"$NOW_TS\",\"hook\":\"ship-baseline\",\"event\":\"pass\",\"extra\":null}"
+  done
+} > "$LOG"
+echo "$EVENT" | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+TOP=$(jq -r '.top_section' "$SUMMARY" 2>/dev/null)
+DENIES=$(jq -r '.denies' "$SUMMARY" 2>/dev/null)
+WARNS=$(jq -r '.warns' "$SUMMARY" 2>/dev/null)
+if [[ "$TOP" == "§10-V" && "$DENIES" == "2" && "$WARNS" == "1" ]]; then
+  ok "Case 7: top_section ignores null-section housekeeping events"
+else
+  ng "Case 7: top_section pollution (got top='$TOP' denies=$DENIES warns=$WARNS, expected top='§10-V' denies=2 warns=1)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((6 - FAIL))/6 passed"
+  echo "Tests: $((7 - FAIL))/7 passed"
   exit 1
 fi
-echo "Tests: 6/6 passed"
+echo "Tests: 7/7 passed"

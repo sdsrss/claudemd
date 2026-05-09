@@ -8,6 +8,29 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.12] - 2026-05-10
+
+**Patch — `session-summary.sh` `top_section` bucket pollution fix.** Spec v6.11.7 unchanged. Empirical session run produced banner `[claudemd] last session: 61 denies, 3 bypasses, 134 warns, top: (unset)` despite the log holding 95 `§8.V4` warns and 54 `§10-V` denies in window — i.e. `(unset)` should not have won.
+
+### Fixed
+
+- `[fix]` **`top_section` calculation in `hooks/session-summary.sh`**: previously `group_by(.spec_section // "(unset)")` over **all** events in window, including operational telemetry that lacks `spec_section` by design (`session-start.bootstrap`, `user-prompt-submit.version-sync`, `session-start.upstream-banner`, `ship-baseline.pass`, `ship-baseline.pass-known-red`). On a healthy session those ops events outnumber rule-violation events ≥1:1, so the synthetic `"(unset)"` bucket dominates and the banner reads `top: (unset)` regardless of actual rule activity. Reproducer (24h window): 18 events total, 2 deny `§10-V` + 1 warn `§8.V4` + 15 housekeeping (no `spec_section`) → `top_section = "(unset)"` (wrong; correct: `§10-V`).
+- `[fix]` Now restricts `top_section` aggregation to the same three event types whose counts the banner reports — `deny` + `bypass-escape-hatch` + `warn` — and drops null-`spec_section` rows. `top_section` becomes "the most-cited spec_section among events that contributed to the displayed counts," internally consistent with denies/bypasses/warns numerals.
+
+### Added
+
+- `[test]` **Case 7 in `tests/hooks/session-summary.test.sh` (6/6 → 7/7)**: regression for the pollution scenario. 2 deny `§10-V` + 1 warn `§8.V4` + 15 housekeeping events (5× bootstrap + 5× version-sync + 5× pass) → asserts `top_section == "§10-V"` and `denies == 2 && warns == 1`. Pre-fix this test fails with `top_section == "(unset)"`.
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` (bugfix restoring intended behavior, not feat/change) per spec §2 hard-upgrade exclusion list — `top_section` is meant to surface "what rule hit you most this session," docstring at hook L8 reads "the agent sees its own recent tendency"; the polluted `(unset)` form fails that intent. L2 ceiling applies. Diff: 1 hook (12 lines net), 1 test (33 lines added), 0 spec/contract change. CHANGELOG `fix:` voice.
+
+### Versioning
+
+- `package.json`, `plugin.json`, `marketplace.json` (×2 fields) → `0.9.12`. Spec trio unchanged at v6.11.7.
+
+---
+
 ## [0.9.11] - 2026-05-10
 
 **Patch — `transcript-structure-scan.sh` regex coverage gap fix.** Spec v6.11.7 unchanged. v0.9.10 shipped the hook with `^Done:` / `^Not done:` etc. line-anchored regex (canonical spec form). Empirical run against 5 real session transcripts (`~/.claude/projects/-mnt-data-ssd-dev-projects-claudemd/*.jsonl`) showed the prevalent style in this project is the **markdown-header form** (`## Done` / `## Done — <title>` / `## Not done`) per memory `feedback_done_section_chinese_prose` example — not canonical inline. v0.9.10 hook missed those entirely.
