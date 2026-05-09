@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.6] - 2026-05-10
+
+**Patch — defensive hardening + test coverage gap closure.** Spec unchanged (still v6.11.7); plugin-only patch. Triggered by an audit pass that found `scripts/hard-rules-audit.js` had zero test coverage and no error context on `JSON.parse` failure, plus `hooks/session-start-check.sh` embedded the upstream tag in a banner without a strict semver gate. Three small changes; no behavior change for users on the green path.
+
+### Fixed
+
+- `[fix]` **`hard-rules-audit.js` opaque error on broken / missing `spec/hard-rules.json`** — pre-fix: `JSON.parse(fs.readFileSync(manifestPath, 'utf8'))` at L21 surfaced bare `ENOENT` / `SyntaxError` with no path context, leaving the operator to guess which file broke. Post-fix: try/catch wraps the parse, throws `hard-rules-audit: failed to load <path>: <reason>`; an additional shape-check (`Array.isArray(manifest.rules)`) throws `hard-rules-audit: <path> missing required 'rules' array` when the JSON is valid but the manifest body is wrong.
+- `[fix]` **`session-start-check.sh` lacked semver gate before embedding `remote_tag` in `additionalContext`** — pre-fix: `jq --arg new "$remote_tag"` already safe-quotes the value, so JSON injection wasn't reachable, but a malformed remote tag (newline-injected, exotic glyphs from a compromised mirror) would still produce a confusing upgrade banner. Post-fix: a `[[ "$remote_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0` gate after `head -1 | awk | sed`. Defense-in-depth, not a fix to a live exploit.
+
+### Added
+
+- `[test]` **`tests/scripts/hard-rules-audit.test.js` — 6 cases, 0 → 6 coverage**: (1) byte-exact production fixture (reads real `spec/hard-rules.json` per project memory `feedback_test_fixture_format_drift` — locks against test/impl drift), (2) missing manifest path → error names the file, (3) malformed JSON → error names the file, (4) JSON valid but `rules` array missing → error explains what's missing, (5) cross-ref of `rule_hits_section` to live log rows (verifies `§10-V` deny rows reach `§10-specificity.hits.deny`), (6) `demoteCandidates` correctly excludes self-enforced rules (avoids false-positive `§iron-law-2` demotion suggestion). All 6 pass; total Node test count 211 → 217.
+
+### Versioning
+
+- `package.json` 0.9.5 → **0.9.6** (npm).
+- `.claude-plugin/plugin.json` 0.9.5 → **0.9.6**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.5 → **0.9.6**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `node --test tests/scripts/*.test.js` → 217 passed (211 prior + 6 new), 0 failed.
+- `bash hooks/session-start-check.sh < /dev/null` → exit 0; banner emitted as expected; semver gate not exercised on green path (operator-side smoke).
+- Verification log of why three of four originally suspected HIGH hook bugs turned out to be false positives recorded in this session's audit transcript:
+  - `sandbox-disposal-check.sh` printf `\x1e` — `printf '/tmp|claudemd_only\x1e%s|both' "$HOME"` produces 1 RS byte; `read -d $'\x1e'` correctly splits into 2 specs.
+  - `pre-bash-safety-check.sh` heredoc terminator — bash itself treats `EOF # comment` as heredoc body (not terminator), so the regex matching this behavior is correct, not a bypass.
+  - `banned-vocab-check.sh` baseline regex — `code→123ms` and `code → 123ms` both correctly fail the `[0-9].*(→|->|=>).*[0-9]` test (left side requires a number); previously-claimed asymmetry doesn't exist.
+
 ## [0.9.5] - 2026-05-10
 
 **Patch — `mem-audit.sh` hotfix (3 bugs introduced in v0.9.4).** Spec unchanged (still v6.11.7); plugin-only patch. The new Stop hook shipped in v0.9.4 silently failed validation on every Stop event ("Hook JSON output validation failed — Invalid input") and produced false-positive missing-marker warnings on legitimate memories. v0.9.5 fixes all three issues and adds `tests/hooks/mem-audit.test.sh` (9/9 cases) to lock them down.

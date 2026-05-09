@@ -104,6 +104,11 @@ upstream_check() {
   remote_output=$(timeout 3 "${ls_remote_args[@]}" --tags --refs --sort=-v:refname "$remote_url" 'v*.*.*' 2>/dev/null) || return 0
   remote_tag=$(printf '%s' "$remote_output" | head -1 | awk '{print $2}' | sed 's|refs/tags/||')
   [[ -z "$remote_tag" ]] && return 0
+  # Defensive semver gate before embedding in jq output. jq's --arg already
+  # safe-quotes the value, but a malformed tag (newline-injected, exotic
+  # chars from a compromised remote) would still produce a confusing banner.
+  # Reject anything that doesn't match strict v<major>.<minor>.<patch>.
+  [[ "$remote_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
 
   touch "$sentinel" 2>/dev/null || true
 

@@ -18,7 +18,17 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     pluginRoot = resolvePluginRoot(import.meta.url);
   }
   const manifestPath = path.join(pluginRoot, 'spec/hard-rules.json');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch (e) {
+    // Surface the failing path — without this, ENOENT / SyntaxError lands
+    // with no context and operators waste turns guessing which file is broken.
+    throw new Error(`hard-rules-audit: failed to load ${manifestPath}: ${e.message}`);
+  }
+  if (!manifest || !Array.isArray(manifest.rules)) {
+    throw new Error(`hard-rules-audit: ${manifestPath} missing required 'rules' array`);
+  }
 
   const log = path.join(logsDir(), 'claudemd.jsonl');
   const hits = readHits(log, days);
