@@ -166,8 +166,10 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 9: MEMORY.md itself is skipped even if missing markers (it's an
-# index, not a feedback/project entry).
+# Case 9: MEMORY.md as the only file in a memory dir → MISSING=0 (no
+# feedback/project files to scan), DRIFT=1 (index links to feedback_x.md
+# but no such file). v0.9.7 added drift detection — this case used to
+# expect silent, now expects index_orphan warn.
 # --------------------------------------------------------------------------
 reset_sentinel
 rm -rf "$HOME/.claude/projects"
@@ -176,16 +178,62 @@ seed "-proj-" "MEMORY.md" "# Memory index
 # No feedback_*.md / project_*.md present at all.
 OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
 ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
-if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
-  echo "PASS: 9 MEMORY.md skipped (only index file)"
+if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'index_orphan.*feedback_x.md'; then
+  echo "PASS: 9 index_orphan (MEMORY.md links file that does not exist)"
 else
-  echo "FAIL: 9 (stderr='$ERR')"; FAIL=$((FAIL+1))
+  echo "FAIL: 9 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 10: drift detection — file_orphan branch. v0.9.7 added cross-check:
+# memory file present but MEMORY.md doesn't link to it → file_orphan warn.
+# Setup: a compliant feedback file (so MISSING=0), MEMORY.md with NO link
+# to it. Expectation: stderr contains 'file_orphan'.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+COMPLIANT_NO_LINK='---
+name: orphan
+type: feedback
+---
+**Rule**: do X.
+**Why**: because Y. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.
+**How to apply**: when Z. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.'
+seed "-proj-" "feedback_orphan.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "MEMORY.md" "# Memory index
+- [Some other entry](feedback_unrelated.md) — text"
+# Note: MEMORY.md links feedback_unrelated.md (not present → index_orphan)
+# AND feedback_orphan.md is on disk but not linked → file_orphan.
+OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
+ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'file_orphan.*feedback_orphan.md'; then
+  echo "PASS: 10 file_orphan (memory file present but MEMORY.md missing link)"
+else
+  echo "FAIL: 10 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 11: aligned MEMORY.md ↔ files (one compliant feedback + matching
+# index entry) → silent. Verifies the drift detection doesn't FP on
+# correctly-aligned dirs.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+seed "-proj-" "feedback_aligned.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "MEMORY.md" "# Memory index
+- [Aligned](feedback_aligned.md) — text"
+OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
+ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
+  echo "PASS: 11 aligned MEMORY.md ↔ files → silent"
+else
+  echo "FAIL: 11 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
 fi
 
 # --------------------------------------------------------------------------
 # Result
 # --------------------------------------------------------------------------
 if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
 fi
-echo "Tests: 9/9 passed"
+echo "Tests: 11/11 passed"

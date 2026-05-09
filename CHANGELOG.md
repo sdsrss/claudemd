@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.8] - 2026-05-10
+
+**Patch — v0.9.7 CI hotfix.** v0.9.7 shipped `hooks/mem-audit.sh` drift detection + new `tests/hooks/mem-audit.test.sh` cases 9-11, but the test-file edit was not staged in the v0.9.7 commit. Result: v0.9.7 CI failed at `Run test suite` step on both ubuntu-latest and macos-latest because old case 9 expected `silent` from a hook that now correctly emits an `index_orphan` warn. Hook behavior in v0.9.7 is correct; only the test sync was missing.
+
+### Fixed
+
+- `[fix]` **`tests/hooks/mem-audit.test.sh`** — sync test file with v0.9.7 mem-audit.sh drift detection. Case 9 reused for `index_orphan` (MEMORY.md links file that doesn't exist), case 10 added for `file_orphan` (memory file present, no MEMORY.md link), case 11 added for aligned-no-drift baseline. Test count 9/9 → 11/11. Pre-fix on v0.9.7 CI: `FAIL: 9 (stderr='[claudemd] §11-EXT mem-audit: 1 MEMORY.md drift entries...')` — the failure was the test asserting old behavior, not a hook regression.
+
+### Versioning
+
+- `package.json` 0.9.7 → **0.9.8** (npm).
+- `.claude-plugin/plugin.json` 0.9.7 → **0.9.8**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.7 → **0.9.8**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `bash tests/hooks/mem-audit.test.sh` → 11/11 passed locally pre-commit.
+- `node --test tests/scripts/*.test.js` → 217 passed, 0 failed.
+- `bash tests/run-all.sh` → all suites passed.
+
+### Lesson recorded
+
+The v0.9.7 atomic-ship sequence used `git add <files...>` with an explicit list and forgot `tests/hooks/mem-audit.test.sh`. Local `bash tests/run-all.sh` passed because it ran against the working-tree state, not the staged state. Future ships covering hook + test edits should `git diff --cached` before commit, or use `git add -u` after touching tracked files. Recorded inline here rather than as a separate memory entry — the test fixture format-drift memory (`feedback_test_fixture_format_drift`) already covers the test-real-file-divergence pattern; this is its sibling failure mode (test edit forgotten, not test fixture drift).
+
 ## [0.9.7] - 2026-05-10
 
 **Patch — P1.3 + P2 batch from audit follow-up.** Spec v6.11.7 unchanged. Three additive changes; no behavior change for users on the green path.
