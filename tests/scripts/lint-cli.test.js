@@ -206,3 +206,49 @@ test('CLI: lint --stdin + --file → exit 2', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /not both/);
 });
+
+// v0.9.18 — argv-shape silent-fallback regression coverage on the public CLI
+// (same antipattern fixed in slash-command CLIs in v0.9.16/0.9.17). These
+// previously silently dropped → either scanned wrong text or returned the
+// wrong output channel. Each must now exit 2 with a parser error.
+
+test('CLI: lint --jzon (typo flag) → exit 2 unknown-flag', () => {
+  const r = run(['lint', '--jzon', 'this is robust']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /unknown flag.*--jzon/);
+});
+
+test('CLI: lint --json=yes (bool with value) → exit 2', () => {
+  const r = run(['lint', '--json=yes', 'clean text']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /boolean flag.*does not take a value/);
+});
+
+test('CLI: lint --file=PATH (= form) reads file contents', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const msg = path.join(tmp, 'msg.txt');
+  fs.writeFileSync(msg, 'this commit is robust\n');
+  try {
+    const r = run(['lint', `--file=${msg}`]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /robust/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'session.jsonl');
+  fs.writeFileSync(transcript, JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: 'clean' }] },
+  }) + '\n');
+  try {
+    const r = run(['audit', '--include-ratiox', transcript]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /unknown flag.*--include-ratiox/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

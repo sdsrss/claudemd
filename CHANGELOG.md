@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.18] - 2026-05-10
+
+**Patch — public npm CLI `bin/claudemd-lint.js` had the same argv-shape silent-fallback the slash-commands fixed in v0.9.16/v0.9.17.** Spec v6.11.7 unchanged. Surfaced exercising the published CLI as a downstream integrator would: `claudemd lint --jzon "..."` (typo) silently dropped the unknown flag and scanned the text anyway → exit reflected only the text content; `claudemd lint --json=yes "..."` silently dropped `--json` (because `args.includes('--json')` returns false for the `=` form) → human-readable text emitted on stdout when JSON was expected; `claudemd lint --file=PATH` (GNU-getopt convention) was unrecognized and exited 2 with the misleading `text required` message; `claudemd audit --include-ratiox PATH` silently dropped the typo → exit 0 even when content would deny. Fifth recurrence of argv-shape silent-fallback (v0.9.14 lint positional, v0.9.15 hook tag, v0.9.16 three slash-commands, v0.9.17 two more slash-commands, this one — the **publicly published** surface, the most-visible footgun).
+
+### Fixed
+
+- `[fix]` **`bin/claudemd-lint.js` `lintCmd` + `auditCmd` validate flags up-front via `validateAndExpandFlags(rawArgs, knownBools, knownValues, sub)`.** Pre-fix, both commands used `args.includes('--bool')` / `args.indexOf('--key')` which silently dropped (a) `--bool=value` (typo'd as truthy → false), (b) any unknown `--typo` flag (filtered out of positional via `startsWith('--')`), (c) `--key=value` for value flags (`indexOf` looks for the bare `--key`). Post-fix, all three exit 2 with a parser error before the existing happy-path logic runs. Bonus: `--file=PATH` (GNU-getopt `=` form) is now accepted as a sibling of `--file PATH` (Unix convention preserved). Backward-compatible — every previously-passing call shape still works.
+
+### Added
+
+- `[test]` **4 new cases in `tests/scripts/lint-cli.test.js`** asserting exit 2 + stderr message on the three silent-fallback shapes (`--jzon` typo, `--json=yes` bool-with-value, audit `--include-ratiox` typo) + the new accepted shape (`--file=PATH`). Test count 244 → 248. Coverage gap that allowed v0.9.17 to ship without catching this: the existing tests asserted happy paths but had no negative assertions on bug shapes.
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion — restores the implied contract (every flag shape either works or rejects loudly; no silent-drop). L2 ceiling. Diff: 1 source file (~30 LOC added, no API change), 1 test file (+45 LOC). Notable: this is the FIFTH consecutive patch chasing the same antipattern. The §13.2 promotion case for a `grep -rE '\.find\(.*startsWith\|args\.includes.*--' bin/ scripts/` lint gate (CI step or pre-commit) is now overwhelming. The v0.9.16 memory note already flagged this — adding a one-line `npm run lint:argv` step that fails CI on any `args.includes('--`'-shaped flag detection is the obvious next iteration.
+
 ## [0.9.17] - 2026-05-10
 
 **Patch — two more slash-command CLIs leaked the v0.9.16 antipattern.** Spec v6.11.7 unchanged. Surfaced in the same exploratory-testing session that produced v0.9.16: `/claudemd-doctor --prune-backups 5` (space form) silently dropped the value, ran without prune, exited 0; `/claudemd-rules --days 30` (space form) silently fell back to the default 90-day window, exited 0. v0.9.16 swept `clean-residue.js` / `audit.js` / `sparkline.js` but missed `doctor.js` and `hard-rules-audit.js` carrying the same `args.find(a => a.startsWith('--key='))` pattern. Fourth recurrence of argv-shape silent-fallback (v0.9.14 lint, v0.9.15 hook tag, v0.9.16 three CLIs, this one).

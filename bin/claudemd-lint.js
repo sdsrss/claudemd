@@ -67,7 +67,44 @@ function readPackageVersion() {
   }
 }
 
-function lintCmd(args) {
+// Strict-validate flag-shaped args + normalize `--key=value` → `--key value`
+// pairs so the existing space-form parsing below works on either shape.
+// Catches the same antipattern the slash-command CLIs hit in v0.9.16/0.9.17:
+// `args.includes('--json')` returns false for `--json=yes`, so the flag was
+// silently dropped; `args.indexOf('--file')` returns -1 for `--file=PATH`,
+// so the value was silently ignored; an unknown `--jzon` typo was silently
+// stripped from positional and never surfaced. Each path now exits 2.
+function validateAndExpandFlags(args, knownBools, knownValues, sub) {
+  const out = [];
+  const bools = new Set(knownBools);
+  const values = new Set(knownValues);
+  for (const a of args) {
+    if (!a.startsWith('--')) { out.push(a); continue; }
+    if (a.includes('=')) {
+      const eq = a.indexOf('=');
+      const k = a.slice(0, eq);
+      const v = a.slice(eq + 1);
+      if (bools.has(k)) {
+        process.stderr.write(`${sub}: '${k}' is a boolean flag and does not take a value (got '${a}'). Drop the '=...' suffix.\n`);
+        process.exit(2);
+      }
+      if (values.has(k)) {
+        out.push(k);
+        out.push(v);
+        continue;
+      }
+      process.stderr.write(`${sub}: unknown flag '${k}' (got '${a}').\n`);
+      process.exit(2);
+    }
+    if (bools.has(a) || values.has(a)) { out.push(a); continue; }
+    process.stderr.write(`${sub}: unknown flag '${a}'.\n`);
+    process.exit(2);
+  }
+  return out;
+}
+
+function lintCmd(rawArgs) {
+  const args = validateAndExpandFlags(rawArgs, ['--json', '--stdin'], ['--file'], 'lint');
   const json = args.includes('--json');
   const stdin = args.includes('--stdin');
 
@@ -152,7 +189,8 @@ function lintCmd(args) {
   process.exit(hits.length === 0 ? 0 : 1);
 }
 
-function auditCmd(args) {
+function auditCmd(rawArgs) {
+  const args = validateAndExpandFlags(rawArgs, ['--json', '--include-ratio'], [], 'audit');
   const json = args.includes('--json');
   const includeRatio = args.includes('--include-ratio');
   const positional = args.filter(a => !a.startsWith('--'));
