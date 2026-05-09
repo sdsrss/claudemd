@@ -74,13 +74,24 @@ declare -a HITS=()
 
 # --- Locate the four section labels --------------------------------------
 # Single awk pass captures FIRST occurrence of each label. NR is line number.
+# v0.9.11: matches both spec-canonical line-anchored form (`^Done:`) AND the
+# markdown-header form (`## Done — ...`, `## Done`, `## Done:`) widely used
+# in real reports per memory feedback_done_section_chinese_prose. Strip a
+# leading `## ` first, then test for `^<label>` followed by colon, em-dash
+# (with surrounding space), trailing whitespace + EOL, or end-of-line.
+# `## Done with the analysis` (narrative continuation) does NOT match
+# because the next non-space char must be `:`, `—`, or EOL.
 # Output: "DONE_LN NOTDONE_LN FAILED_LN UNCERTAIN_LN" (0 = absent).
 read -r done_ln notdone_ln failed_ln uncertain_ln <<< "$(
   printf '%s\n' "$LAST_TEXT" | awk '
-    /^Done:/      { if (!d) d = NR }
-    /^Not done:/  { if (!nd) nd = NR }
-    /^Failed:/    { if (!f) f = NR }
-    /^Uncertain:/ { if (!u) u = NR }
+    {
+      l = $0
+      sub(/^##[[:space:]]+/, "", l)
+    }
+    l ~ /^Done([[:space:]]+—|:|[[:space:]]*$)/      { if (!d) d = NR }
+    l ~ /^Not done([[:space:]]+—|:|[[:space:]]*$)/  { if (!nd) nd = NR }
+    l ~ /^Failed([[:space:]]+—|:|[[:space:]]*$)/    { if (!f) f = NR }
+    l ~ /^Uncertain([[:space:]]+—|:|[[:space:]]*$)/ { if (!u) u = NR }
     END { print (d+0)" "(nd+0)" "(f+0)" "(u+0) }
   '
 )"
@@ -102,46 +113,91 @@ if (( done_ln > 0 && notdone_ln > 0 && failed_ln > 0 && uncertain_ln > 0 )); the
     fi
 
     # --- Detection 2: iron-law-2-anchor (only inside this four-section block)
-    # Iterate Done: line(s) inside [min_ln, max_ln]; check current + next 2
-    # lines for evidence fingerprints.
+    # Iterate Done: line(s) inside [min_ln, max_ln]; for each, the evidence
+    # window is `[ln, min(ln+14, next_label_line - 1)]`. v0.9.11 widened
+    # from a fixed 3-line window because markdown-header reports
+    # (## Done — ...) commonly have a blank line + intro + bullet/table
+    # block. The cap-at-next-label avoids bleeding evidence keywords from
+    # the Not done / Failed / Uncertain sections into Done's accounting
+    # (e.g. "untested" in Uncertain matching `\btest\b`).
     while IFS= read -r ln_str; do
       [[ -z "$ln_str" ]] && continue
       ln=$ln_str
       (( ln >= min_ln && ln <= max_ln )) || continue
-      # Pull this Done: line + next 2 (3 lines total context).
-      block=$(printf '%s\n' "$LAST_TEXT" | sed -n "${ln},$((ln+2))p")
-      # Evidence fingerprints (any one suffices).
-      if printf '%s' "$block" | grep -qE '\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]+[^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]+|Checked:|baseline|known-red'; then
+      # Find smallest label position > ln (the section after this Done block).
+      next_label=999999
+      for cand in $notdone_ln $failed_ln $uncertain_ln; do
+        if (( cand > ln && cand < next_label )); then
+          next_label=$cand
+        fi
+      done
+      upper=$((ln + 14))
+      (( next_label - 1 < upper )) && upper=$((next_label - 1))
+      (( upper < ln )) && upper=$ln
+      block=$(printf '%s\n' "$LAST_TEXT" | sed -n "${ln},${upper}p")
+      # Evidence fingerprints (any one suffices). Tight set — `\b(passed|
+      # failed|tests)\b` is word-bounded so "untested" / "testing" don't
+      # match. `证据[:：]` requires the section-header form (Chinese colon
+      # included) so prose mentions of "证据" don't trip.
+      if printf '%s' "$block" | grep -qE '\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]+[^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]+|Checked:|baseline|known-red|证据[:：]' >/dev/null 2>&1; then
         continue
       fi
-      # L3 zero-issue / empty Done: → skip.
+      # L3 zero-issue / empty Done: → skip. The skip applies only to the
+      # canonical inline form `Done: (none)` / `Done: ` (empty body); the
+      # markdown-header form `## Done` carries its body on subsequent lines
+      # and must NOT short-circuit here — the evidence-window check above
+      # already inspects those lines.
       first_line=$(printf '%s\n' "$LAST_TEXT" | sed -n "${ln}p")
-      echo "$first_line" | grep -qE '^Done:[[:space:]]*(\(none\)|\(无\)|none|N/A|-+|$)' && continue
+      echo "$first_line" | grep -qE '^Done:[[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
       # Otherwise: missing evidence anchor.
       excerpt=$(printf '%s' "$first_line" | head -c 80 | tr -d '\n')
-      HITS+=("§iron-law-2|Done@L$ln lacks evidence fingerprint: \"$excerpt\"")
-    done < <(printf '%s\n' "$LAST_TEXT" | awk '/^Done:/ {print NR}')
+      window_size=$((upper - ln + 1))
+      HITS+=("§iron-law-2|Done@L$ln lacks evidence fingerprint in next $window_size lines: \"$excerpt\"")
+    done < <(printf '%s\n' "$LAST_TEXT" | awk '
+      {
+        l = $0
+        sub(/^##[[:space:]]+/, "", l)
+      }
+      l ~ /^Done([[:space:]]+—|:|[[:space:]]*$)/ { print NR }
+    ')
   fi
 fi
 
 # --- Detection 3: uncertain-hedge -------------------------------------------
-# `^Uncertain:` lines, <80 chars, no "because"/"since"/"reason:"/"因为", not
-# "(none)"/"(无)"/"none"/"N/A"/"-". Independent of four-section context — a
-# bare hedged Uncertain in any L1 report is honesty drift.
+# `^Uncertain:` or `^## Uncertain` lines, <80 chars, no "because"/"since"/
+# "reason:"/"因为", not "(none)"/"(无)"/"none"/"N/A"/"-". Independent of
+# four-section context — a bare hedged Uncertain in any report is honesty drift.
+# v0.9.11: also matches `## Uncertain` markdown-header form. Markdown headers
+# alone (no rationale on same line, content follows) are skipped because
+# rationale typically lives on the NEXT line; the test is for short standalone
+# `Uncertain:` lines that ALSO carry the (presumably hedged) reason inline.
 while IFS= read -r ln_str; do
   [[ -z "$ln_str" ]] && continue
   ln=$ln_str
   line=$(printf '%s\n' "$LAST_TEXT" | sed -n "${ln}p")
-  len=${#line}
+  norm=$(printf '%s' "$line" | sed -E 's/^##[[:space:]]+//')
+  len=${#norm}
   (( len < 80 )) || continue
+  # Markdown header alone (`## Uncertain` w/ no inline content) → skip;
+  # the rationale typically lives on a following line, not the header itself.
+  echo "$line" | grep -qE '^##[[:space:]]+Uncertain[[:space:]]*$' && continue
   # Empty / explicit-none → skip.
-  echo "$line" | grep -qE '^Uncertain:[[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
+  echo "$norm" | grep -qE '^Uncertain[[:space:]]*[:—-][[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
   # Has rationale connector → skip.
-  echo "$line" | grep -qiE '\b(because|since)\b|reason:|因为' && continue
+  echo "$norm" | grep -qiE '\b(because|since)\b|reason:|因为' && continue
+  # Bare Uncertain header without : or — separator and no body → skip
+  # (typically markdown form where reason follows on next line).
+  echo "$norm" | grep -qE '^Uncertain[[:space:]]*$' && continue
   # Otherwise: bare Uncertain w/o rationale.
   excerpt=$(printf '%s' "$line" | head -c 80 | tr -d '\n')
   HITS+=("§10-honesty|Uncertain@L$ln short + no rationale connector: \"$excerpt\"")
-done < <(printf '%s\n' "$LAST_TEXT" | awk '/^Uncertain:/ {print NR}')
+done < <(printf '%s\n' "$LAST_TEXT" | awk '
+  {
+    l = $0
+    sub(/^##[[:space:]]+/, "", l)
+  }
+  l ~ /^Uncertain([[:space:]]+—|:|[[:space:]]*$)/ { print NR }
+')
 
 (( ${#HITS[@]} == 0 )) && exit 0
 

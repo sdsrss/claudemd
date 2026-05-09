@@ -185,6 +185,77 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 13: markdown-header four-section with evidence in 15-line window
+# (## Done — title; blank line; evidence in next-N lines) → silent.
+# v0.9.11 broadening: hook must accept `## Done` style.
+# --------------------------------------------------------------------------
+TX=$(seed_transcript "## Done — pagination shipped
+
+具体证据：
+- pytest tests/api/test_orders_pagination.py: 12 passed
+- baseline 1453 → 1490 tests (+2.5%)
+
+## Not done
+
+- (none)
+
+## Failed
+
+- (none)
+
+## Uncertain
+
+cursor opacity uncertain because urlsafe_b64 not encrypted; reversible.")
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 && -z "$STDERR" ]]; then
+  echo "PASS: 13 ## Done markdown-header form with evidence in window → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 13 (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 14: markdown-header four-section but Done window lacks evidence
+# (Done capped before Not done section) → §iron-law-2 fires.
+# --------------------------------------------------------------------------
+TX=$(seed_transcript "## Done
+
+refactored auth module per discussion.
+
+## Not done
+
+- bullet 2 deferred (because untested in staging, will follow up)
+
+## Failed
+
+- (none)
+
+## Uncertain
+
+env behaviour uncertain because new envs were not exercised.")
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 ]] && echo "$STDERR" | grep -q '§iron-law-2'; then
+  echo "PASS: 14 ## Done markdown-header without evidence → §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 14 (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 15: bare `## Uncertain` (header standalone, rationale on next line)
+# → silent. Markdown-header form for Uncertain is normal report style.
+# --------------------------------------------------------------------------
+TX=$(seed_transcript "## Done — thing
+
+## Uncertain
+
+This is a multi-line rationale that explains why I'm uncertain because of various reasons.")
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 && -z "$STDERR" ]]; then
+  echo "PASS: 15 ## Uncertain header alone (rationale follows) → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 15 (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Case 12: rule-hits row written with new event class structure-advisory.
 # --------------------------------------------------------------------------
 rm -f "$HOME/.claude/logs/claudemd.jsonl"

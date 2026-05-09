@@ -8,6 +8,52 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.11] - 2026-05-10
+
+**Patch — `transcript-structure-scan.sh` regex coverage gap fix.** Spec v6.11.7 unchanged. v0.9.10 shipped the hook with `^Done:` / `^Not done:` etc. line-anchored regex (canonical spec form). Empirical run against 5 real session transcripts (`~/.claude/projects/-mnt-data-ssd-dev-projects-claudemd/*.jsonl`) showed the prevalent style in this project is the **markdown-header form** (`## Done` / `## Done — <title>` / `## Not done`) per memory `feedback_done_section_chinese_prose` example — not canonical inline. v0.9.10 hook missed those entirely.
+
+### Fixed
+
+- `[fix]` **Label regex**: now matches both canonical `^Done:` and markdown-header `^## Done\b` (with `:`, em-dash + space, or EOL terminators). Single awk pass strips `^##\s+` prefix then tests `^<label>(<sp>—|:|<sp>$)`. Same for `Not done`, `Failed`, `Uncertain`. Narrative text like `## Done with the analysis` (no canonical terminator after `Done`) does NOT match.
+- `[fix]` **Evidence window 3 → up to 15 lines, capped at next-label-line - 1**: previously `Done` evidence had to land in the next 2 lines. Markdown reports commonly use `## Done — title` / blank / intro / table — evidence lives in the table 3-15 lines later. Window expansion captures those. Cap-at-next-label prevents bleed-through (e.g. "untested" in `Uncertain` matching `\btest\b` and falsely satisfying `Done`'s evidence requirement).
+- `[fix]` **Evidence regex 中文 addition**: `证据[:：]` (literal "evidence:" / "evidence：" header marker, both ASCII and full-width colon). Tight — requires colon, so prose mentions of the word "证据" don't trigger.
+- `[fix]` **Empty-Done skip applies only to canonical form**: `Done: (none)` / `Done: ` skip; `## Done` (header alone, body on subsequent lines) does NOT auto-skip — the evidence-window check above is authoritative for markdown form.
+- `[fix]` **`uncertain-hedge` matches `## Uncertain` markdown form too**, but bare `## Uncertain` (header alone, rationale on following lines) is correctly excluded — the test fires only when content lives ON the same line as the label. `^## Uncertain[[:space:]]*$` short-circuits to silent.
+
+### Added
+
+- `[test]` **3 new cases (12/12 → 15/15)** in `tests/hooks/transcript-structure-scan.test.sh`:
+  - case 13: markdown four-section with evidence in window → silent
+  - case 14: markdown four-section without evidence → `§iron-law-2` fires
+  - case 15: bare `## Uncertain` header alone → silent
+
+### Empirical validation against real transcripts
+
+After the broadening fix, the hook was run against 5 most-recent session transcripts under `~/.claude/projects/-mnt-data-ssd-dev-projects-claudemd/*.jsonl` (each transcript represents one session's full event stream, last 200 lines = last ~20-50 turns).
+
+| Transcript | `## Done` | `## Not done` | `## Failed` | `## Uncertain` | hook hits |
+|---|---|---|---|---|---|
+| 78696600 (current session) | 2 | 2 | 2 | 2 | 0 |
+| 3e4c19fb | 2 | 2 | 2 | 2 | 0 |
+| 8f6585f6 | 0 | 0 | 0 | 0 | 0 |
+| 84078778 | 0 | 0 | 0 | 0 | 0 |
+| 71210740 | 0 (4 plain `Done:`) | 0 | 0 | 0 | 0 |
+
+**0 hits across 5 transcripts.** Verified manually: the v0.9.10 ship report's Done window (last assistant turn of session 78696600) contains 4 evidence fingerprints (`证据：`, `passed`, `tests`, `baseline`) — hook correctly stays silent. Uncertain section uses `## Uncertain` standalone with rationale on following lines — bare-header skip applies. Reports are honestly clean; the hook isn't suppressing.
+
+### Versioning
+
+- `package.json` 0.9.10 → **0.9.11** (npm).
+- `.claude-plugin/plugin.json` 0.9.10 → **0.9.11**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.10 → **0.9.11**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `bash tests/hooks/transcript-structure-scan.test.sh` → 15/15 passed.
+- `node --test tests/scripts/*.test.js` → 217 passed.
+- `bash tests/run-all.sh` → all suites passed.
+
 ## [0.9.10] - 2026-05-10
 
 **Patch — P1.2 restart: agent self-rule observation mirror via new `transcript-structure-scan` Stop hook.** Spec v6.11.7 unchanged. Closes the audit gap that ~7 self-enforced HARD rules in `spec/hard-rules.json` (§iron-law-2, §10-four-section-order, §10-honesty, §10-specificity, §0-hard-auth-override, §11-mid-spine-yield, §11-session-exit) had **no hook-side feedback signal** — only banned-vocab (§10-V) was observed via `transcript-vocab-scan`. P1.2 was deferred in v0.9.7 with two reasons (pattern lockstep on `tests/scripts/spec-pattern-drift.test.js`; FP storm risk on every `PostToolUse`); both addressed by design pivot.
