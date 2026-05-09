@@ -87,6 +87,19 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
 | `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. |
 
+### Execution order (PreToolUse:Bash)
+
+CC runs all configured PreToolUse hooks for `Bash` sequentially in declaration order. **First deny stops the rest** and the tool call is denied. The 4 Bash hooks fire in this order (declared in `hooks/hooks.json`):
+
+1. `pre-bash-safety-check` (§8 SAFETY immutable) — `rm -rf $VAR`, unpinned `npx <pkg>`. First so a §8 violation can never be overridden by a downstream hook.
+2. `banned-vocab-check` (§10-V) — `git commit` message scan.
+3. `ship-baseline-check` (§7) — `git push` while base CI is red.
+4. `memory-read-check` (§11) — ship/release/deploy commands matching unread MEMORY.md tags.
+
+Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per fail-open contract. Stop / SessionStart / UserPromptSubmit / PostToolUse hooks run all declared hooks regardless (none can block; advisories accumulate). Internal hook errors (missing `jq`, malformed event JSON, unreadable patterns file) fail-open; failures do NOT propagate to subsequent hooks.
+
+Opt-in `BASH_READONLY_FAST_PATH=1` short-circuits hooks 1, 2, and 4 when the command is a definitely-read-only shape (no shell-meta, first token in safe-reader whitelist — `ls`, `cat`, `git log`, etc.). Hook 3 only fires on `git push` so the fast-path doesn't apply.
+
 ## Commands
 
 | Command | Purpose |

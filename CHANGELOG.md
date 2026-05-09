@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.7] - 2026-05-10
+
+**Patch — P1.3 + P2 batch from audit follow-up.** Spec v6.11.7 unchanged. Three additive changes; no behavior change for users on the green path.
+
+### Added
+
+- `[doc]` **README.md "Execution order (PreToolUse:Bash)" subsection** — closes the audit observation that the 4 PreToolUse:Bash hook execution order was undocumented. Lists the 4 hooks in `hooks/hooks.json` declaration order with their spec section, fail-stop semantics (first deny stops the rest), per-hook timeout fail-open contract, and the opt-in `BASH_READONLY_FAST_PATH=1` short-circuit. Local-only `docs/HOOK-PROTOCOL.md` (gitignored per `.gitignore` policy) carries the same content for internal reference.
+- `[feat]` **`hooks/mem-audit.sh` MEMORY.md ↔ files drift detection** — adds two reverse-direction checks to the existing Why/How marker scan: (a) `index_orphan` — MEMORY.md link target file doesn't exist (stale index), (b) `file_orphan` — memory file present but no MEMORY.md link points to it. Both advisory; reported alongside Why/How marker counts on the same 24 h sentinel debounce. Independent of `claude-mem-lite` per the existing hook contract — pure CC built-in memory scan. Test cases 9-11 cover index_orphan, file_orphan, and aligned-no-drift; 11/11 cases pass (was 9/9; case 9 reused for new behavior, cases 10+11 new).
+- `[feat]` **`scripts/perf-baseline.sh`** — measures hook chain overhead on 6 representative bash commands (`ls` / `git_log` / `git_status` / `git_commit_noop` / `echo` / `cat_head`). Median of N=10 runs (configurable) with hooks ON vs hooks OFF (`DISABLE_CLAUDEMD_HOOKS=1`). Initial run on this repo (Linux 6.17, N=3): `ls 1→48 ms (delta 47)`, `git_log 3→50 ms (delta 47)`, `git_status 8→55 ms (delta 47)`, `git_commit_noop 11→93 ms (delta 82)` — `git_commit_noop` is the only command where banned-vocab actually scans, hence the higher delta. Pre-this-script estimate was "200-400 ms" (5月9日 audit, never measured). Caveat: script measures direct stdin invocation, NOT CC harness round-trip — real overhead is above + per-event JSON construction + timeout enforcement.
+- `[doc]` **`docs/cross-project-pilot.md`** — checklist framework for adopting claudemd in an unrelated project. Closes the audit observation that claudemd was self-tested only. 6-axis observation table, pilot-duration guidance (≥2 weeks), 3 exit-outcome criteria, empty pilot-results table for future fills. Added to `.gitignore` exception list so the doc ships with the repo.
+
+### Versioning
+
+- `package.json` 0.9.6 → **0.9.7** (npm).
+- `.claude-plugin/plugin.json` 0.9.6 → **0.9.7**.
+- `.claude-plugin/marketplace.json` two version fields 0.9.6 → **0.9.7**.
+- Spec headers unchanged (v6.11.7 still current); no `spec/CLAUDE-changelog.md` entry — plugin-only patch.
+
+### Validation
+
+- `node --test tests/scripts/*.test.js` → 217 passed, 0 failed.
+- `bash tests/hooks/mem-audit.test.sh` → 11/11 passed (was 9/9; +2 drift cases).
+- `bash tests/run-all.sh` → all suites passed (upgrade-lifecycle final check).
+- `bash scripts/perf-baseline.sh --runs 3` → 6 commands measured; output format matches the column layout documented in the script header.
+
+### Audit follow-up status (after v0.9.6 + v0.9.7)
+
+P0 done (v0.9.6: hard-rules-audit error context + tests; session-start tag semver gate). P1 partially done — P1.3 doc shipped here; P1.1 spec net-delete deferred (core 442 chars headroom; passive trigger per §13.1, not active); P1.2 agent observation extension deferred (spec-pattern-drift would require 3-file lockstep spec change + transcript scanner FP risk on every PostToolUse). P2 done (this release: mem drift detector, perf baseline, cross-project pilot framework). The unresolved audit signal is P1.2 — agent self-rule observation needs better detection logic before adding patterns; logged for next iteration.
+
 ## [0.9.6] - 2026-05-10
 
 **Patch — defensive hardening + test coverage gap closure.** Spec unchanged (still v6.11.7); plugin-only patch. Triggered by an audit pass that found `scripts/hard-rules-audit.js` had zero test coverage and no error context on `JSON.parse` failure, plus `hooks/session-start-check.sh` embedded the upstream tag in a banner without a strict semver gate. Three small changes; no behavior change for users on the green path.
