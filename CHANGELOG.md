@@ -8,6 +8,33 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.13] - 2026-05-10
+
+**Patch — `session-summary.sh` window calculation: missing `platform.sh` source + self-owned sentinel.** Spec v6.11.7 unchanged. Two coupled defects in window discipline, both surfaced while reasoning about the v0.9.12 fix's "Bug 2" follow-up.
+
+### Fixed
+
+- `[fix]` **`hook_lib/platform.sh` was never sourced by `hooks/session-summary.sh`** (regression latent since v0.8.0 ship of the hook). The window-start computation guards on `command -v platform_stat_mtime`, but with `platform.sh` not sourced the function name was undefined, the guard silently fell false, `SINCE_TS` stayed empty, and **every** session-summary invocation since v0.8.0 took the 24h-rolling fallback path instead of the documented "since last Stop" window. Hard evidence in the wild: pre-fix `last-session-summary.json` shipped with `since == ts - 24h00m00s` exactly — only the fallback `date -u -d '24 hours ago'` produces that. Banner counts were therefore mixing rule activity across multiple sessions in the same calendar day.
+- `[fix]` **Window sentinel decoupled from `session-start.ref`**. The shared sentinel was also being written by `hooks/sandbox-disposal-check.sh` during the same Stop event (declared earlier in `hooks/hooks.json`). With the platform.sh source restored above, that sharing would surface as a parallel/serial-ordering race — parallel hooks may let session-summary stat the file before sandbox-disposal touches it (OK), but a future CC harness running Stop hooks serially in declaration order (sandbox first / summary last) would produce `mtime == NOW` → empty window → banner permanently empty. New private sentinel `session-summary.lastrun` is read + always-touched by session-summary alone; sandbox-disposal continues to own `session-start.ref` for its tmp-dir scan baseline.
+- `[fix]` **Always-touch sentinel before the no-event early-exit**. A no-event Stop (zero rule activity) previously exited without advancing the window, so the next session would silently extend the window backward through the gap. New code touches `SUMMARY_REF` unconditionally before the `total > 0` guard so window discipline is event-count-independent.
+
+### Added
+
+- `[test]` **Cases 8 + 9 in `tests/hooks/session-summary.test.sh` (7/7 → 9/9)**:
+  - Case 8: SUMMARY_REF is created on no-event Stop (no summary file written, but sentinel exists for next-window boundary).
+  - Case 9: SUMMARY_REF mtime correctly gates the window — a row dated 5 minutes before sentinel mtime is excluded; a fresh row is included; final summary asserts `denies==1 total==1`. Pre-fix this case fails with `denies==2 total==2` (24h fallback regression detector).
+- `[test]` **Case 2 + new cases retargeted from `session-start.ref` to `session-summary.lastrun`** to match the new ownership boundary.
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per spec §2 hard-upgrade exclusion list — both items restore documented/intended hook behavior (the v0.8.0 R-N4 design comment in the source file already says "Window: from session-start.ref mtime to now," which the missing source line silently broke). L2 ceiling applies. Diff: 1 hook (~25 lines net), 1 test (~45 lines added), 0 spec/contract change.
+
+### Versioning
+
+- `package.json`, `plugin.json`, `marketplace.json` (×2 fields) → `0.9.13`. Spec trio unchanged at v6.11.7.
+
+---
+
 ## [0.9.12] - 2026-05-10
 
 **Patch — `session-summary.sh` `top_section` bucket pollution fix.** Spec v6.11.7 unchanged. Empirical session run produced banner `[claudemd] last session: 61 denies, 3 bypasses, 134 warns, top: (unset)` despite the log holding 95 `§8.V4` warns and 54 `§10-V` denies in window — i.e. `(unset)` should not have won.

@@ -20,6 +20,13 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# v0.9.13: platform_stat_mtime is the cross-platform stat wrapper. v0.8.0 →
+# v0.9.12 omitted this source line, so the `command -v platform_stat_mtime`
+# guard below silently failed and SINCE_TS was always empty → every call
+# took the 24h fallback path. Verified post-fix: with platform.sh sourced,
+# SUMMARY_REF mtime drives the window as designed.
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SESSION_SUMMARY || exit 0
 hook_require_jq || exit 0
@@ -27,17 +34,25 @@ hook_require_jq || exit 0
 STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SUMMARY_FILE="$STATE_DIR/last-session-summary.json"
-SESSION_REF="$STATE_DIR/session-start.ref"
+# v0.9.13: session-summary owns its own sentinel. Earlier versions read
+# session-start.ref mtime, which sandbox-disposal-check.sh also writes during
+# the same Stop event. Stop hooks fire in parallel (empirical: last summary's
+# `since` == `ts - 24h` exactly, which only the 24h fallback below can produce
+# — meaning session-summary stat'd session-start.ref before sandbox-disposal
+# had touched it, hit `[[ -f ]]` false, and fell through). Worse, a future CC
+# harness running Stop hooks serially in declaration order (sandbox first /
+# summary last) would always see fresh mtime → empty window → banner gone.
+# Self-owned sentinel decouples both failure modes.
+SUMMARY_REF="$STATE_DIR/session-summary.lastrun"
 
 LOG_FILE="$HOME/.claude/logs/claudemd.jsonl"
 [[ -f "$LOG_FILE" ]] || exit 0
 
-# Window: from session-start.ref mtime to now. session-start-check.sh writes
-# this on bootstrap; sandbox-disposal-check.sh advances it on every Stop.
-# If absent (first run or pruned state), fall back to last 24h.
+# Window: from SUMMARY_REF mtime (last session-summary touch) to now. First
+# run after install (no sentinel) or pruned state → 24h fallback.
 SINCE_TS=""
-if [[ -f "$SESSION_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
-  smtime=$(platform_stat_mtime "$SESSION_REF" 2>/dev/null || true)
+if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
+  smtime=$(platform_stat_mtime "$SUMMARY_REF" 2>/dev/null || true)
   if [[ -n "$smtime" ]]; then
     SINCE_TS=$(date -u -d "@$smtime" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
       || date -u -r "$smtime" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
@@ -86,6 +101,11 @@ SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
           top_section: $top_section
         }
     ' 2>/dev/null) || exit 0
+
+# Always advance SUMMARY_REF before any early-exit so the next window starts
+# from this Stop, not the previous one. Otherwise a no-event session would
+# silently extend the next session's window indefinitely.
+touch "$SUMMARY_REF" 2>/dev/null || true
 
 # Skip writing when nothing happened — banner would be empty anyway.
 total=$(printf '%s' "$SUMMARY" | jq -r '.total // 0' 2>/dev/null)

@@ -18,7 +18,9 @@ export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/logs" "$HOME/.claude/.claudemd-state"
 LOG="$HOME/.claude/logs/claudemd.jsonl"
 SUMMARY="$HOME/.claude/.claudemd-state/last-session-summary.json"
-REF="$HOME/.claude/.claudemd-state/session-start.ref"
+# v0.9.13: session-summary owns its own sentinel (not session-start.ref, which
+# is shared with sandbox-disposal-check.sh in the same Stop event and races).
+REF="$HOME/.claude/.claudemd-state/session-summary.lastrun"
 
 FAIL=0
 ok() { echo "PASS: $1"; }
@@ -158,8 +160,46 @@ else
   ng "Case 7: top_section pollution (got top='$TOP' denies=$DENIES warns=$WARNS, expected top='§10-V' denies=2 warns=1)"
 fi
 
+# --- Case 8: SUMMARY_REF is touched even on no-event Stop (window discipline) -
+# Without always-touch, a Stop with zero events would not advance the window
+# boundary, and the next session's window would silently extend back through
+# this gap. v0.9.13 adds unconditional `touch "$SUMMARY_REF"` before the
+# total-eq-0 early-exit.
+rm -f "$SUMMARY" "$REF"
+echo -n '' > "$LOG"
+echo "$EVENT" | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+if [[ -f "$REF" && ! -f "$SUMMARY" ]]; then
+  ok "Case 8: SUMMARY_REF touched even when no events (no summary written)"
+else
+  ng "Case 8: window discipline broken (REF exists: $([[ -f "$REF" ]] && echo yes || echo no); SUMMARY exists: $([[ -f "$SUMMARY" ]] && echo yes || echo no))"
+fi
+
+# --- Case 9: SUMMARY_REF mtime drives subsequent window (decoupled from
+#             session-start.ref / sandbox-disposal-check) -------------------
+# After Case 8, SUMMARY_REF mtime is "just now". Write a row dated 5 minutes
+# in the past — the hook should NOT include it (mtime > row.ts). Then write a
+# fresh row — the hook SHOULD include it.
+rm -f "$SUMMARY"
+PAST_TS=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -v-5M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || echo "1970-01-01T00:00:00Z")
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+{
+  echo "{\"ts\":\"$PAST_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+} > "$LOG"
+sleep 1  # let mtime+ts ordering be unambiguous against the just-touched REF
+echo "$EVENT" | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+if [[ -f "$SUMMARY" ]] \
+   && [[ "$(jq -r '.denies' "$SUMMARY")" == "1" ]] \
+   && [[ "$(jq -r '.total' "$SUMMARY")" == "1" ]]; then
+  ok "Case 9: SUMMARY_REF mtime gates window — past row excluded, fresh row included"
+else
+  ng "Case 9: window gate broken — expected denies=1 total=1; got $(cat "$SUMMARY" 2>/dev/null)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((7 - FAIL))/7 passed"
+  echo "Tests: $((9 - FAIL))/9 passed"
   exit 1
 fi
-echo "Tests: 7/7 passed"
+echo "Tests: 9/9 passed"
