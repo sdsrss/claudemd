@@ -137,13 +137,67 @@ test('hard-rules-audit CLI rejects unknown flag (was silent ignore)', () => {
   assert.match(result.stderr, /Unknown flag.*--bogus/);
 });
 
-test('demoteCandidates list hook-rules with zero hits', async () => {
-  // Empty log under tmp HOME — no rule fires in window.
+test('demoteCandidates list hook-rules with zero hits (sufficient log span)', async () => {
+  // To exercise demoteCandidates we need log span >= window. Seed a sentinel
+  // row 31 days old so logSpan > 30d window, then no signal events in window.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const old = new Date(Date.now() - 31 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${old}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`
+  );
   const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
-  // §8-rm-rf-var is enforcement="hook" — should appear as candidate when log is empty.
+  assert.equal(r.insufficientData, false, 'log span 31d > window 30d → sufficient');
+  // §8-rm-rf-var is enforcement="hook" — should appear as candidate when no
+  // signal in window AND log span is sufficient to evaluate.
   assert.ok(r.demoteCandidates.includes('§8-rm-rf-var'),
-    'empty log must surface §8-rm-rf-var as demote candidate');
+    'sufficient-span empty-window must surface §8-rm-rf-var as demote candidate');
   // §iron-law-2 is enforcement="self" — must NOT appear (would be false signal).
   assert.ok(!r.demoteCandidates.includes('§iron-law-2'),
     'self-enforced rules must NOT be demote candidates');
+});
+
+// Bug surfaced v0.9.20 in dogfood session: log span 17d < requested 90d window
+// → demoteCandidates included §11-memory-read, which had been silently no-op'd
+// in projects with `_` in the cwd path until v0.9.15 fixed it. The rule wasn't
+// cold; the data couldn't see it firing because the rule itself was broken.
+// Generalizes to any rule where "0 hits in N days" is uninformative because
+// the log doesn't reach back N days.
+
+test('insufficientData flag set when log span < requested window', async () => {
+  // Empty log under tmp HOME → logSpan = 0 < 30 → insufficient.
+  const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
+  assert.equal(r.insufficientData, true);
+  assert.equal(r.logSpanDays, 0);
+  assert.deepEqual(r.demoteCandidates, [],
+    'insufficient-data must suppress demoteCandidates to prevent false demote signals');
+  assert.ok(r.demoteSuppressed, 'demoteSuppressed must surface when insufficient');
+  assert.match(r.demoteSuppressed.reason, /log spans 0\.0d.*requires 30d/);
+  assert.ok(Array.isArray(r.demoteSuppressed.wouldHaveBeen),
+    'wouldHaveBeen surfaces what would have been demoted with sufficient data');
+  assert.ok(r.demoteSuppressed.wouldHaveBeen.includes('§8-rm-rf-var'),
+    'wouldHaveBeen retains the candidates so operator can see them as provisional');
+});
+
+test('insufficientData false when log spans the requested window exactly', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  // 35 days old > 30-day window — sufficient.
+  const old = new Date(Date.now() - 35 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${old}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`
+  );
+  const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
+  assert.equal(r.insufficientData, false);
+  assert.ok(r.logSpanDays > 30, `logSpanDays ${r.logSpanDays} must exceed window 30`);
+  assert.equal(r.demoteSuppressed, null);
+});
+
+test('logSpanDays surfaced even when sufficient (operator transparency)', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const old = new Date(Date.now() - 100 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${old}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`
+  );
+  const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
+  assert.ok(r.logSpanDays >= 100,
+    `logSpanDays ${r.logSpanDays} must reflect actual log reach, not the window`);
 });

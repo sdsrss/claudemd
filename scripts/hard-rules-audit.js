@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
-import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { readHits, groupBySection, logFirstTs } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError } from './lib/argv.js';
 
 const DEFAULT_WINDOW_DAYS = 90;
@@ -34,6 +34,16 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   const log = path.join(logsDir(), 'claudemd.jsonl');
   const hits = readHits(log, days);
   const bySection = groupBySection(hits);
+
+  // Detect log span. If the log doesn't reach `days` days back, "0 hits in
+  // window" is uninformative — a rule fixed 5 days ago (e.g., §11-memory-read
+  // in v0.9.15, which was silently no-op'd for underscore-cwd projects pre-fix)
+  // would look identical to a rule that's been cold for 90 days. §0.1 HARD
+  // requires "0 hits in 90d" specifically; suppressing demoteCandidates on
+  // insufficient data is the spec-compliant behavior.
+  const firstTs = logFirstTs(log);
+  const logSpanDays = firstTs === null ? 0 : (Date.now() - firstTs) / 86400000;
+  const insufficientData = firstTs === null || logSpanDays < days;
 
   const rules = manifest.rules.map(r => {
     // Cross-ref by rule_hits_section. Self-enforced rules have null and stay
@@ -74,10 +84,17 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // Demotion candidates: hook-enforced rules with 0 hits in the audit window.
   // Self-enforced rules are excluded — their "hits" are agent-text patterns
   // not captured in rule-hits.jsonl (R-N8 transcript-side scan would fix
-  // that; deferred to v0.8.1).
-  const demoteCandidates = hookEnforced
+  // that; deferred to v0.8.1). When `insufficientData` is true (log span <
+  // requested window), candidates are suppressed but surfaced in `demoteSuppressed`
+  // so the operator sees what's potentially cold without auto-acting on it.
+  const wouldBeDemoteCandidates = hookEnforced
     .filter(r => r.hits && r.hits.total === 0)
     .map(r => r.id);
+  const demoteCandidates = insufficientData ? [] : wouldBeDemoteCandidates;
+  const demoteSuppressed = insufficientData ? {
+    reason: `log spans ${logSpanDays.toFixed(1)}d; §0.1 HARD requires ${days}d of history to evaluate demotion`,
+    wouldHaveBeen: wouldBeDemoteCandidates,
+  } : null;
 
   // Stale-review candidates: any rule whose last_demote_review is null OR
   // older than the audit window. Surfaces §13.1 quarterly cadence drift.
@@ -107,7 +124,10 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
       medium: rules.filter(r => r.confidence === 'medium').length,
       low: rules.filter(r => r.confidence === 'low').length,
     },
+    logSpanDays: Math.round(logSpanDays * 10) / 10,
+    insufficientData,
     demoteCandidates,
+    demoteSuppressed,
     staleReviews,
     rules,
   };

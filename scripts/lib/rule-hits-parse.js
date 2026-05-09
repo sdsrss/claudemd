@@ -14,6 +14,27 @@ export function readHits(path, daysBack = 30) {
   return hits;
 }
 
+// Earliest ts in the rule-hits log, in ms since epoch. Returns null when the
+// file is missing, empty, or all rows are unparseable. Used by audit + trend
+// reports to detect "log too short for the requested window" — without this,
+// "0 hits in 90d" against a 17-day-old log produces false-positive demote
+// signals (a rule that didn't exist 90 days ago looks identical to a rule
+// that's been silent for 90 days).
+export function logFirstTs(path) {
+  if (!fs.existsSync(path)) return null;
+  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
+  let firstTs = null;
+  for (const line of lines) {
+    try {
+      const row = JSON.parse(line);
+      const t = new Date(row.ts).getTime();
+      if (!Number.isFinite(t)) continue;
+      if (firstTs === null || t < firstTs) firstTs = t;
+    } catch { /* skip malformed */ }
+  }
+  return firstTs;
+}
+
 export function groupByHook(hits) {
   const byHook = {};
   for (const h of hits) {

@@ -8,6 +8,25 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.20] - 2026-05-10
+
+**Patch — `hard-rules-audit` demoteCandidates produced false-positive recommendations when log span < requested window.** Spec v6.11.7 unchanged. Surfaced in the same dogfood session that produced v0.9.18/v0.9.19: running `/claudemd-rules` (default 90-day window) against a `~/.claude/logs/claudemd.jsonl` that only spans 17 days reported `§11-memory-read` as a demote candidate — but that rule had been silently no-op'd in projects with `_` in the cwd path until v0.9.15 fixed it. The data couldn't see the rule firing because the rule itself was broken; "0 hits in window" wasn't a coldness signal. §0.1 HARD specifies "0 hits in 90d" — running the calculation on 17 days of data violates the spec. Same root applies to any rule fixed/added more recently than the log start.
+
+### Fixed
+
+- `[fix]` **`scripts/hard-rules-audit.js` suppresses `demoteCandidates` when `insufficientData`.** Pre-fix: `demoteCandidates` was computed as `hookEnforced.filter(r => r.hits.total === 0)` regardless of whether the log reached back the requested window. Post-fix: when `logSpanDays < days`, `demoteCandidates` is forced to `[]` and the would-have-been list is preserved under a new `demoteSuppressed` field (`{ reason, wouldHaveBeen }`) so the operator sees what's *potentially* cold without auto-acting on a false signal.
+
+### Added
+
+- `[feat]` **`scripts/lib/rule-hits-parse.js#logFirstTs(path)`** — returns earliest ts in the rule-hits log (ms-since-epoch) or `null` for missing/empty/all-malformed files. Skips rows with non-finite timestamps. Used by `hardRulesAudit` to compute `logSpanDays`; future consumers (sparkline, audit) can adopt for the same insufficient-data check.
+- `[feat]` **`hardRulesAudit` output: 4 new fields** — `logSpanDays` (operator transparency, surfaced even when sufficient), `insufficientData` (boolean), `demoteSuppressed` (`{reason, wouldHaveBeen}` when insufficient, `null` otherwise), and `demoteCandidates: []` when insufficient (compatibility: existing consumers reading the array get an empty array instead of false candidates).
+- `[test]` **5 new cases in `tests/scripts/hard-rules-audit.test.js`** + **8 new cases in new `tests/scripts/rule-hits-parse.test.js` (257 → 270)**: insufficient-data suppresses + surfaces `demoteSuppressed`, sufficient-span preserves existing demote behavior, log-span boundary case (35d > 30d window), `logSpanDays` always reflects actual log reach not the window, `logFirstTs` returns `null` on missing/empty/all-malformed and earliest ts otherwise, skips non-finite ts rows.
+- `[test]` **`demoteCandidates list hook-rules with zero hits` test updated** to write a 31-day-old sentinel row before asserting `§8-rm-rf-var` appears as candidate. Pre-fix, the test passed against an empty log because there was no insufficient-data check. Post-fix, an empty log triggers `insufficientData=true` and `demoteCandidates=[]`, so the test would have asserted on suppressed candidates and failed. Documented in the new "sufficient log span" test name.
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per §2 hard-upgrade exclusion — restores §0.1 HARD's documented intent (90d window means 90d of data, not "whatever the log has"). L2 ceiling. Diff: 1 lib helper added (~15 LOC), 1 script branch added (~15 LOC), 2 test files (+13 cases). Notable: this is the same family as v0.9.13's `session-summary` window-calculation bug — "report computes correct math against the data it has, but the data itself doesn't span the window the report claims to cover." Sparkline's `(newly active)` annotation is the same UX issue — not in this patch (would require updating the existing `newly active` test fixture to span 90 days, larger churn) — flagged for a follow-up patch.
+
 ## [0.9.19] - 2026-05-10
 
 **Patch — repo-wide CI guard for the argv-shape silent-fallback antipattern (§13.2 Tier 1).** Spec v6.11.7 unchanged. v0.9.14 → v0.9.18 was five consecutive patches chasing the same antipattern in five different files because each fix-set was scoped to whatever the repro session tripped on. The CHANGELOG entry for v0.9.18 stated "the next exploratory-testing session WILL find a 6th hole"; this patch makes that prediction grep-enforceable instead of trusting the next session not to slip.
