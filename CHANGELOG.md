@@ -8,6 +8,33 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.10.1] - 2026-05-11
+
+**Patch — feat: §13.1 demote-analysis denominator signal.** New PreToolUse:Read hook `session-extended-read` records once per session when `~/.claude/CLAUDE-extended.md` is read (per spec §2.2 EXT LOADING). Backlog item 1C from v0.10.0 closed: extended-scope rules with "0 hits in 90d" can now be qualified against the count of sessions that actually loaded extended, instead of conflating "rule cold" with "extended rarely loaded."
+
+### What changed
+
+- **New hook** `hooks/session-extended-read.sh` (~40 LOC). PreToolUse:Read matcher; matches only the canonical user-global path (`$HOME/.claude/CLAUDE-extended.md`), not the project source `spec/CLAUDE-extended.md` (which maintainers Read while editing — that's spec-edit traffic, not §2.2 EXT-load).
+- **Per-session dedup** via `~/.claude/.claudemd-state/ext-read-<sid>.ts` sentinel. Without dedup, agents Reading the same file N times mid-session would inflate the denominator from "binary did-load" into a frequency metric that §13.1 doesn't evaluate.
+- **GC**: `session-end-check.sh` drops the sentinel for the ending SID — best-effort cleanup so `.claudemd-state/` doesn't accumulate one file per ended session.
+- **Schema additive**: `event="read"` + `spec_section="§13.1-extended-read"` documented in `docs/RULE-HITS-SCHEMA.md` Events table + Spec section taxonomy.
+- **Registry sync**: 13 → 14 hooks. `scripts/lib/hook-registry.js` adds the entry; tests/scripts/{install,hook-registry}.test.js MCOUNT pin moved; tests/integration/full-lifecycle.test.sh manifest count moved; README + commands/claudemd-toggle.md kill-switch list extended.
+- **Kill-switch**: `DISABLE_SESSION_EXTENDED_READ_HOOK=1`.
+
+### Why patch, not minor
+
+Pure additive: new hook, new event, new spec_section. No existing schema field changes; no existing audit-output shape changes (consumer side — extending `hard-rules-audit.js` to qualify extended-scope demote candidates against this denominator — is deferred to a follow-up patch). All existing rows continue to parse; new rows are tagged with a new `hook`/`event`/`spec_section` triple that pre-v0.10.1 audit code simply ignores.
+
+### Tests
+
+- New `tests/hooks/session-extended-read.test.sh`: 9 cases — canonical path records, dedup, new-session new-row, project source skipped, wrong tool skipped, missing session_id fail-open, kill-switch, silent stdout.
+- `tests/hooks/contract.test.sh` DOCUMENTED array: `read:session-extended-read` added (closes Invariants B + C).
+- Suite: 19/19 hook + 384/384 JS + 2/2 integration pass.
+
+### Sizing
+
+No spec changes; same `spec/CLAUDE.md` v6.11.13 / `spec/CLAUDE-extended.md` baseline as v0.10.0.
+
 ## [0.10.0] - 2026-05-11
 
 **Minor — roll-up of v0.9.33 → v0.9.38: in-session dogfood-driven hardening of the §0.1 / §13.1 / §13.2 audit data pipeline + the §11 enforcement chain.** Zero new code in this commit (3 manifest version files + this index). First plugin minor bump since v0.2.0; semver shift justified by the coherent feature surface added across the 6 patches — additive Δ-contract on `rule-hits.jsonl` schema (2 new columns), new `audit.js` top-level fields, new `claudemd-doctor` check.

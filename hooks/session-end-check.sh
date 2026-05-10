@@ -125,4 +125,12 @@ EOF
     '§11-session-exit' "$SESSION_ID"
 fi
 
+# v0.10.1: drop session-extended-read sentinel for this SID. Hook fail-open
+# already tolerates missing/leaked sentinels — this is best-effort GC so
+# `~/.claude/.claudemd-state/` doesn't accumulate one file per ended session.
+if [[ -n "${SESSION_ID:-}" && "$SESSION_ID" != "unknown" ]]; then
+  SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c '[:alnum:]-' '_')
+  rm -f "$HOME/.claude/.claudemd-state/ext-read-${SAFE_SID}.ts" 2>/dev/null || true
+fi
+
 exit 0

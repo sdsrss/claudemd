@@ -1,4 +1,4 @@
-// Single source of truth for the 13 plugin hooks. Consumers must import from
+// Single source of truth for the 14 plugin hooks. Consumers must import from
 // here rather than maintaining parallel literal arrays:
 //
 //   scripts/install.js     — re-exports HOOK_BASENAMES (legacy callers)
@@ -21,6 +21,7 @@ export const HOOK_REGISTRY = [
   { basename: 'banned-vocab-check.sh',    displayName: 'banned-vocab',          envVarSuffix: 'BANNED_VOCAB',      hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 3 },
   { basename: 'ship-baseline-check.sh',   displayName: 'ship-baseline',         envVarSuffix: 'SHIP_BASELINE',     hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 5 },
   { basename: 'memory-read-check.sh',     displayName: 'memory-read-check',     envVarSuffix: 'MEMORY_READ',       hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 3 },
+  { basename: 'session-extended-read.sh', displayName: 'session-extended-read', envVarSuffix: 'SESSION_EXTENDED_READ', hookEvent: 'PreToolUse',   matcher: 'Read', timeout: 3 },
   { basename: 'residue-audit.sh',         displayName: 'residue-audit',         envVarSuffix: 'RESIDUE_AUDIT',     hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'sandbox-disposal-check.sh',displayName: 'sandbox-disposal-check',envVarSuffix: 'SANDBOX_DISPOSAL',  hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'mem-audit.sh',             displayName: 'mem-audit',             envVarSuffix: 'MEM_AUDIT',         hookEvent: 'Stop',             matcher: '*',    timeout: 3 },

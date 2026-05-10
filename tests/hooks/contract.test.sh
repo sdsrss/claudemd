@@ -110,6 +110,7 @@ DOCUMENTED=(
   "bootstrap:session-start"
   "upstream-banner:session-start"
   "version-sync:user-prompt-submit"
+  "read:session-extended-read"
 )
 
 for entry in "${DOCUMENTED[@]}"; do
