@@ -27,6 +27,7 @@ source must appear in this table.
 | `pass` | `ship-baseline` | rule checked, no action needed |
 | `deny` | `banned-vocab`, `ship-baseline`, `memory-read-check`, `pre-bash-safety` | rule denied the tool call |
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
+| `npx-allow-local` | `pre-bash-safety` | `npx <pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30. |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |
 | `warn` | `sandbox-disposal`, `residue-audit` | non-blocking advisory |
 | `advisory` | `transcript-vocab-scan` | PostToolUse advisory — agent-text §10-V hit (cannot block; v0.8.3 R-N8) |
@@ -50,6 +51,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `pre-bash-safety` | `deny` (combined patterns) | `§8` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-rm-rf-var`) | `§8-rm-rf-var` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-npx-unpinned`) | `§8-npx` |
+| `pre-bash-safety` | `npx-allow-local` | `§8-npx` |
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `residue-audit` | `warn` | `§7-user-global-state` |
 | `sandbox-disposal` | `warn` | `§8.V4` |

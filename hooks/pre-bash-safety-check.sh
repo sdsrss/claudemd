@@ -4,8 +4,10 @@
 #   1. `rm -rf $VAR` / `rm -rf "$VAR"` / `rm -rf ${VAR}` — variable expansion
 #      in the target without inline validation. Whitelists $HOME, $PWD,
 #      $OLDPWD, $TMPDIR (always-set, low-blast vars).
-#   2. `npx <pkg>` without version pin — spec §8 NPX rule
-#      "lockfile → local → pinned whitelist; none → [AUTH REQUIRED]".
+#   2. `npx <pkg>` without version pin AND not resolvable from cwd's lockfile
+#      / node_modules — spec §8 NPX rule "lockfile → local → pinned whitelist;
+#      none → [AUTH REQUIRED]". v0.9.30: previously only the pinned link was
+#      enforced, denying any `npx <pkg>` with a project-installed dep.
 #
 # Bypass:
 #   (a) Per-invocation escape token in command:
@@ -129,6 +131,37 @@ unwrap_indirect() {
   printf '%s' "$s"
 }
 
+# EVENT_CWD: per spec §8 NPX rule, the lockfile/local resolution check needs
+# the directory the bash command will run in. CC's bash hook event includes
+# `.cwd`. Empty/missing → npx_pkg_locally_resolved fails closed (deny).
+EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
+
+# npx_pkg_locally_resolved PKG CWD
+#   Returns 0 (true) if PKG can be resolved from CWD without a registry hit,
+#   per spec §8 NPX rule "lockfile → local → pinned". Two checks:
+#     1. CWD/node_modules/<pkg>/ exists (covers @scope/pkg via slash literal).
+#     2. CWD lockfile mentions pkg in its native key form.
+#   Conservative — false negatives just preserve the existing deny, false
+#   positives would allow an attacker who can plant a lockfile entry but not
+#   install (acceptable: planting a lockfile already requires write access).
+npx_pkg_locally_resolved() {
+  local pkg="$1" cwd="$2"
+  [[ -n "$cwd" && -d "$cwd" ]] || return 1
+  [[ -d "$cwd/node_modules/$pkg" ]] && return 0
+  local lockfile
+  for lockfile in package-lock.json npm-shrinkwrap.json; do
+    [[ -f "$cwd/$lockfile" ]] || continue
+    grep -qF "\"node_modules/$pkg\"" "$cwd/$lockfile" 2>/dev/null && return 0
+  done
+  if [[ -f "$cwd/pnpm-lock.yaml" ]]; then
+    grep -qE "(^|[[:space:]])/${pkg}@" "$cwd/pnpm-lock.yaml" 2>/dev/null && return 0
+  fi
+  if [[ -f "$cwd/yarn.lock" ]]; then
+    grep -qE "^[\"']?${pkg}@" "$cwd/yarn.lock" 2>/dev/null && return 0
+  fi
+  return 1
+}
+
 PROCESSED_CMD="$CMD"
 if [[ "${BASH_SAFETY_INDIRECT_CALL:-0}" == "1" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$CMD")
@@ -208,13 +241,19 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
         ./*|/*|../*) ;;                       # local path — allow
         *@[0-9]*|*@latest|*@next|*@beta|*@alpha) ;;  # pinned — allow
         @*/*@*) ;;                            # scoped + pin — allow
-        @*/*)
-          HITS+=("npx $pkg_token (scoped, unpinned)")
-          REASONS+=$'\n  - npx unpinned scoped package: '"$pkg_token"
-          ;;
         *)
-          HITS+=("npx $pkg_token (unpinned)")
-          REASONS+=$'\n  - npx unpinned package: '"$pkg_token"
+          # Unpinned (scoped or unscoped). Per spec §8 lockfile → local → pinned:
+          # check lockfile/node_modules in EVENT_CWD before denying.
+          if npx_pkg_locally_resolved "$pkg_token" "$EVENT_CWD"; then
+            hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx'
+          else
+            case "$pkg_token" in
+              @*/*) HITS+=("npx $pkg_token (scoped, unpinned, no lockfile/local)")
+                    REASONS+=$'\n  - npx unpinned scoped package (no lockfile/local in '"${EVENT_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+              *)    HITS+=("npx $pkg_token (unpinned, no lockfile/local)")
+                    REASONS+=$'\n  - npx unpinned package (no lockfile/local in '"${EVENT_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+            esac
+          fi
           ;;
       esac
     fi
