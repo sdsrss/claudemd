@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.13 — Extended
+# AI-CODING-SPEC v6.11.14 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -429,6 +429,8 @@ Permanent ratchet on new HARD rules. Rationale: v6.6 → v6.7.5 (~1 month) added
 
 ## Appendix B — Canonical examples
 
+Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format + B.2 evidence valid/invalid). B.3 (L3 summary formats), B.4 (EMERGENCY incident report), B.5 (auto-decision one-liners), B.6 (L3 spec example) removed — their normative content is fully covered by §10-R / §2-EXT EMERGENCY / §10-R Auto-decisions / §2.S SPEC ARTIFACT respectively; the example bodies were illustrative, not normative.
+
 ### B.1 `[AUTH REQUIRED]`
 
 ```
@@ -452,86 +454,21 @@ Permanent ratchet on new HARD rules. Rationale: v6.6 → v6.7.5 (~1 month) added
 **Valid — intermittent/concurrency** (tier-2 stress-repro as tier-1 proxy):
 > Done: closed double-charge race window with row-level lock (./scripts/stress_race.sh --workers 20 --iterations 5000: pre-fix 47/5000 double-charges; post-fix 0/5000 across 3 runs). Intermittent — tier-2 stress-repro used as tier-1 proxy, reason: concurrency-dependent.
 
-### B.3 L3 summary formats
-
-**Zero-issue single paragraph**:
-> Done: added GET /users/{id}/preferences with default-empty response (pytest tests/users/test_preferences.py: 3 passed — unknown → 200+{}, known → dict, deleted → 404; contract matches spec success-criteria).
-
-**Full four-section (with Uncertain)**:
-```
-Done:      pagination cursor on GET /orders; OpenAPI updated (pytest tests/api/test_orders_pagination.py: 12 passed in 1.4s, covers empty / single-page / exact-fit / mid-page).
-Not done:  (none)
-Failed:    (none)
-Uncertain: cursor opacity — used urlsafe_b64 without encryption; reversible by swapping encoder; user confirm before ship.
-```
-
-### B.4 EMERGENCY incident report
-
-Prose mode-entry ("entering EMERGENCY: checkout 12% error on /checkout"), then the report block, then mode-exit ("incident closed, back to normal").
-
-```
-Timeline:   18:42 alert (error 12% on /checkout) → 18:45 identified bad deploy a1b2c3d (#4521) → 18:47 user-approved revert to d4e5f6a → 18:51 baseline 0.2%.
-Root-cause: #4521 changed Stripe webhook sig-verify, silently rejected live webhooks.
-Rollback:   git revert of a1b2c3d as e7f8g9h. Verified via prod logs (checkout error dropped to baseline; sig-verify errors gone).
-Follow-ups: L2 task filed `tasks/webhook-sig-verify-fix.md`; done-criteria: failing test reproduces rejection then re-applied with correct sig path.
-```
-
-### B.5 Auto-decision one-liners
-
-- "chose `async def` over sync wrapper because caller chain is already async under FastAPI; reversible (rename + remove `await`, 2 LOC) if wrong."
-- "ordered fields `id, created_at, updated_at, <domain>` per project convention `src/models/*.py`; reversible (migration reorder, 1 file) if wrong."
-- "used `dict[str, list[int]]` over dataclass because map is construction-time only, never escapes function; reversible (extract dataclass, 8 LOC) if wrong."
-
-### B.6 L3 spec example
-
-```markdown
----
-status: approved
-revision: 3
----
-
-# Goal
-Add per-user rate limiting to public API to prevent abuse while preserving headroom for legitimate bursts.
-
-# Non-goals
-- Per-endpoint rate limits (future work)
-- Distributed rate limit state (single-region for now)
-
-# Constraints
-- Must not add p50 latency >5ms
-- Must handle Redis outage gracefully (fail open with alert)
-- Must emit metrics compatible with existing Datadog dashboards
-
-# Success criteria
-1. `GET /api/*` returns 429 when user exceeds 100 req/min over rolling window
-2. Response includes `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers
-3. Integration test: 101st request within a minute returns 429; 60s later, 429 clears
-4. Redis connection failure: logs warning, serves traffic without limit
-
-# Open questions
-- Should internal service-to-service calls be exempt? → Yes, bypass via mTLS identity check
-- What happens to WebSocket connections? → Rate limit applies to connection, not messages (revision 3)
-
-# Change log
-- 2026-04-10 r1: draft
-- 2026-04-12 r2: added Redis-outage fail-open constraint (user request)
-- 2026-04-14 r3: clarified WebSocket behavior
-```
-
 ## Recent changes
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.13 (patch, 2026-05-11)** — compression-only release: discharges v6.11.12's `MUST net-delete or migrate` carry-forward. No content/rule change; redundant prose dropped where extended duplicated core. No new HARD; **§13.2 budget cost: 0**.
+**v6.11.14 (patch, 2026-05-11)** — extended compression release: §11-EXT cluster consolidated (5 sub-sections → 2 + 1 cross-ref), Appendix B trimmed to high-reuse examples only (B.1 + B.2; B.3–B.6 removed as covered by §10-R / §2-EXT / §2.S normative text). No rule change, no behavior change. No new HARD; **§13.2 budget cost: 0**.
 
-- `[refactor]` **§1.5-EXT GLOSSARY consolidated** (extended, −~620 bytes) — table dropped 5 entries (`LOC / Module / Local-Δ / Evidence / Task`) already inlined to core §1.5 (since v6.11.5/v6.11.9). §1.5-EXT keeps only extended-only material: `Assumption` + a `Local-Δ note` clarifying co-located = test-path mirrors source-path. Core §1.5 cross-ref `Assumption → §EXT §1.5-EXT` unchanged.
-- `[refactor]` **§10-V OK examples trimmed** (extended, −~80 bytes) — `OK (absolute)` 5→3 examples; `OK (中文 with baseline)` 3→2. Banned-vocab enumeration (adjectives/hedges/baseline-less ratios EN+中) unchanged.
+- `[refactor]` **§11-EXT cluster consolidated** — `Session maintenance heuristics` + `Execution heuristics (CC-borrowed)` merged into `§11-EXT Session heuristics (advisory)`; `Memory-system routing` + `Auto-memory decision tree` + `MEMORY-tag-syntax` merged into `§11-EXT Memory operations` (Layer routing / Auto-memory decision tree / MEMORY.md tag syntax as subsections of one node). Reduces fragmentation and the "where does X live in §11-EXT" lookup cost.
+- `[refactor]` **§11-EXT macOS shell portability** — large 12-line apply-list moved out of spec to `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` memory anchors. Spec keeps a one-paragraph cross-ref pointer; implementation discipline lives in memory where it can age with the codebase.
+- `[refactor]` **Appendix B trimmed** — B.1 (AUTH-REQUIRED format) + B.2 (valid/invalid evidence) retained as canonical reuse-cases. B.3 (L3 summary formats), B.4 (EMERGENCY incident report), B.5 (auto-decision one-liners), B.6 (L3 spec example) removed: their normative content lives in §10-R / §2-EXT EMERGENCY allowed-ops + Exit ritual / §10-R Auto-decisions / §2.S SPEC ARTIFACT; the example bodies were illustrative, not normative.
 
-**§13.2 budget cost**: 0 (compression only). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+**§13.2 budget cost**: 0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
 
-**Sizing** (v6.11.13, 2026-05-11, measured via `wc -c` after content edits + Recent-changes turnover): core 24614 → 24614 bytes (header version digit only, same byte count); extended 49835 → 48384 bytes (−1451, −2.91% — content compression −728, Recent-changes block turnover −723). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%** — unchanged); extended 48384/50000 (**1616 bytes headroom, 96.77%** — recovered from v6.11.12's 99.67% ceiling-grazing). Drift discipline (per `feedback_spec_sizing_recursive_rewrite.md` option 1): post-edit `wc -c` once, accept ±20B drift from this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.10k tokens (−0.02k vs v6.11.12).
+**Sizing** (v6.11.14, 2026-05-11, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24614 → 24614 bytes (header digit only, identical byte count); extended 48396 → 42993 bytes (Δ −5403, −11.16%). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%** — unchanged); extended 42993/50000 (**7007 bytes headroom, 85.99%** — recovered ~10.8 pp from v6.11.13's 96.77% utilization). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.10k tokens (core unchanged).
 
-**Operator carry-forward — DISCHARGED**: extended back to ~97.6% utilization. v6.11.13 net-delete mandate satisfied via §1.5-EXT redundancy removal. Future bumps may add content within budget; §11-EXT MEMORY-* cluster remains a long-term migration candidate but is no longer urgent.
+**Operator carry-forward**: none. Extended utilization recovered well below ceiling. Future minor/patch bumps may add content within budget; §13.2 ratchet and §0.1 demote-candidate audit run unchanged.
 
 ## §1.5-EXT GLOSSARY
 
@@ -554,56 +491,41 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 **`~/.claude/tmp/` retention**: harness SHOULD purge `mtime > 7d` at SessionStart (tool-exhaust, not WIP). Residue check ≥100 stale (>7d) + unconfigured harness → surface recommendation inline; no auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
 
-## §11-EXT Session maintenance heuristics (full)
+## §11-EXT Session heuristics (advisory)
 
-Demoted from core §11 in v6.11.0 (non-HARD, low per-session hit rate; core pointer retained). These are guardrails, not gates — agents SHOULD apply when the condition fires, but missing them does not violate Iron Law #2.
+Demoted from core §11 in v6.11.0 + CC-borrowed in v6.11.7; consolidated in v6.11.14. SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 
-- **Redundant Re-Read**: files Read or Written in this session do not need re-Read absent external-change signal (user says "pull latest" / commit message appears / mtime newer than last Read / structural test failure suggesting stale content). Unsure → re-read. Freshness is cheaper than staleness, but a third Read on unchanged content is wasted context.
-- **Correction pressure**: if the user rejects ≥2 auto-decisions within a single task, switch to ASK-first for remaining sub-decisions of that task. Rejection signals the agent's inferred defaults are drifting from user intent — narrow the autonomy band until a fresh task resets it.
-- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for any exploration/research that doesn't require main-thread state; (b) compact prose, drop evidential blocks already in inline citations; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before the next long tool call to preserve resumability.
+- **Redundant Re-Read**: files Read or Written this session don't need re-Read absent external-change signal (user says "pull latest" / commit appears / mtime newer / structural test failure). Unsure → re-read; a third Read on unchanged content is wasted context.
+- **Correction pressure**: user rejects ≥2 auto-decisions in one task → switch to ASK-first for remaining sub-decisions. Rejection signals inferred defaults are drifting.
+- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before next long tool call.
+- **Read-before-propose** (CC `prompts.ts:175`): don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
+- **Diagnose-before-pivot** (`prompts.ts:178`): approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
+- **Existing-comment protection** (`prompts.ts:161`): don't remove old comments unless removing the code they describe OR verified them wrong this session. §1 "default to writing no comments" addresses *new* comments, not pruning old.
 
-## §11-EXT Memory-system routing (v6.11.7)
+## §11-EXT Memory operations
 
-Two memory layers serve different time horizons. One home per fact — writing the same fact to both creates double-source drift.
+Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11) in v6.11.14. One home per fact — double-writing creates drift.
+
+### Layer routing
 
 | Layer | Path | Time horizon | Use for |
 |---|---|---|---|
-| **Durable (CC built-in 4 types)** | `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` + `*.md` | session-spanning, identity-level | user role / preference / collaboration style; cross-session validated lessons; project-permanent decisions |
-| **Time-sensitive recall plugin** (if present, e.g. `claude-mem-lite` FTS5 + timeline) | plugin-managed (SQLite / vector) | days–weeks, rolls off | bugfix lessons; current-project state; recent activity context; "what was I doing last session" |
+| **Durable (CC built-in 4 types)** | `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` + `*.md` | session-spanning | user role / preference / cross-session lessons / project-permanent decisions |
+| **Time-sensitive recall plugin** (e.g. `claude-mem-lite` FTS5 + timeline) | plugin-managed | days–weeks, rolls off | bugfix lessons / current-project state / recent activity |
 
-**Picking the home**: ask "will this be true 6 months from now?" Yes → durable. No / decays / event-bound → recall plugin. Conflict: durable wins as long-term anchor; recall layer naturally ages out.
+**Picking the home**: "will this be true 6 months from now?" Yes → durable. No → recall plugin. Conflict: durable wins; recall layer ages out.
 
-**User-override filter** — extends `## What NOT to save` from CC built-in section (clarification, not a new HARD per §13.2): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user explicitly says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs are noise; saving them dumps activity-log content into the memory layer, lowering signal density. Compliance with explicit save request = ASK what was *surprising* or *non-obvious* about it, save only that. Source: CC `memoryTypes.ts:189` (eval-validated H2: 0/2 → 3/3).
+**User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189`.
 
-## §11-EXT Execution heuristics (v6.11.7, CC-borrowed)
+### Auto-memory decision tree (top-down, first match wins)
 
-Three guardrails from upstream `sdscc/src/constants/prompts.ts`. Non-HARD; act as advisory when conditions apply.
+**Step 1 — Global-state hard** (MUST any level, skip judgment): `~/.claude/` writes across ≥2 files in one task (plugin install/uninstall / settings migration / marketplace edits / statusline / hook / MCP config) → save `project`/`feedback` memory naming what + why. **Self-describing artifact exemption**: edit produces durable in-artifact "what + why" a future session can grep without loading memory (versioned spec with `## Recent changes` / `CHANGELOG.md` / migration comment) → skip `mem_save`. Test: opaque state (plugin / marketplace JSON / hook / MCP) fails the test, still save.
 
-- **Read-before-propose**: do not propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers recommendations + AUTH-eligible proposals. Difference matters because a `[AUTH REQUIRED]` line citing unread code is a false-claim incident on its own. Source: CC `prompts.ts:175`.
-- **Diagnose-before-pivot**: an approach failed once → diagnose (read error, check assumption, focused fix), don't blind-retry AND don't abandon after a single failure. §6 Three-strike (3× same signature) is the upper bound, not the trigger — pivot too early on a viable approach burns context the same way thrashing does. Source: CC `prompts.ts:178`.
-- **Existing-comment protection**: do not remove old comments unless removing the code they describe OR you have verified them wrong this session. A comment that looks pointless may encode a constraint or past-bug lesson invisible in the current diff. §1 "Default to writing no comments" addresses *new* comments, not pruning old. Source: CC `prompts.ts:161`.
+**Step 2 — L2+ retrospective** (MUST L2+, overrides Step 3): (a) preventable-error pattern (>2 wasted tool iterations OR hypothesis falsified in a reusable way), OR (b) non-default decision / non-obvious sequencing (spec-skill conflict resolved with non-default tradeoff, OR ship/release/env step not derivable from docs). Body: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
 
-## §11-EXT Auto-memory decision tree (full)
+**Step 3 — Judgment** (L0/L1, and L2+ when Steps 1-2 miss): durable project artifact (overview / phase / plan / retrospective / completion) whose insight would have changed a decision this session AND has ≥1 future-reuse probability → save; else skip.
 
-Evaluate top-down; first match wins:
-
-**Step 1: Global-state hard trigger** (MUST any level, skip judgment):
-`~/.claude/` global-state writes across ≥2 files in one task (plugin install/uninstall / settings migration / marketplace edits / statusline chain swaps / hook registration / MCP config) → save `project`/`feedback` memory naming what + why.
-
-**Exemption (self-describing artifact)**: edit produces durable in-artifact "what + why" a future session can grep without loading memory (versioned spec with `## Recent changes` / `CHANGELOG.md` / migration comment) → trigger satisfied, skip `mem_save`. Test: can rationale be recovered from the artifact alone? Opaque state (plugin install / marketplace JSON / hook registration / MCP config) fails this test → still save.
-
-**Step 2: L2+ retrospective trigger** (MUST at L2+, overrides Step 3):
-one of —
-- (a) preventable-error pattern (>2 wasted tool iterations OR hypothesis falsified by DB/grep/tool in a reusable way)
-- (b) non-default decision or non-obvious sequencing (spec-skill conflict resolved with non-default tradeoff, OR ship/release/env step not derivable from docs)
-
-Body: `[context]` + `[what to do differently]` + `[trigger words]`. ≤8 lines.
-
-**Step 3: Judgment test** (L0/L1, and L2+ when Steps 1-2 miss):
-durable project artifact (overview / phase / plan / next-step / recommendation / retrospective / completion) whose insight would have changed a decision this session if known upfront AND has ≥1 future-reuse probability → save; else skip.
-
-**Always skip regardless of step**:
-`git log`-recoverable content, code invariant (→ inline comment), session-local state (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
+**Always skip regardless of step**: `git log`-recoverable, code invariant (→ inline comment), session-local (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
 
 After any `memory/*.md` write: refresh `MEMORY.md` index line.
 
@@ -615,31 +537,13 @@ Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains
 - **Cancel** ("停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
 - **Switch** ("先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
 
-## §11-EXT MEMORY-tag-syntax (detail)
+### MEMORY.md tag syntax
 
-Demoted from core §11 in v6.11.9 (rationale text moved from a long footnote to here; core keeps the one-line operational summary).
+- Optional `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before Read.
+- **Untagged lines** = agent-driven full content scan from title/description; hook does NOT auto-block. v6.11.3 introduced the hook/agent split after the v0.5.0 over-trigger pattern (release/deploy/ship substring-matching commit-body / file-paths).
+- **Tag specificity (SHOULD, v6.11.11)**: tags ≥4 chars AND specific to the topic. Avoid generic single-word EN tags (`hook` / `plugin` / `test` / `cli` / `audit` / `done` / `spec` / `ship` when memory not actually about ship-flow) that substring-match incidental occurrences. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter`). Hook v0.9.28+ applies word-boundary matching with 0-2 char declension tolerance (`hook` → `hooks` / `hooked`; `cli` ≠ inside `clippy`); generic exact-word tags still fire — fix at authoring time.
+- Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.
 
-- Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before reading the file.
-- **Untagged lines = agent-driven full content scan** (decide based on the line's title/description). The hook does NOT auto-block on untagged entries, so a `MEMORY.md` without tag discipline doesn't force N unrelated Reads on every push.
-- Operational rule: tag the lines you want hook-enforced; leave the rest for agent judgment. v6.11.3 introduced this hook/agent split after the v0.5.0 over-trigger pattern (release/deploy/ship matching anywhere in commit-body / MR-description / file-paths → false-positive blocks).
+## §11-EXT macOS shell portability (cross-ref)
 
-### Tag specificity (SHOULD, v6.11.11)
-
-Tags SHOULD be ≥4 chars AND specific to the memory's topic — avoid generic single-word English tags (`hook`, `plugin`, `test`, `cli`, `lint`, `audit`, `done`, `spec`, `ship` when memory is not actually about ship-flow) that substring-match incidental keyword occurrences in commit bodies and command lines. Generic tags produce high FP rates that erode the §11 read-the-file rule's signal value. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter` / `plugin-update-flow`).
-
-Hook (claudemd v0.9.28+) applies word-boundary matching with 0-2 char declension tolerance — plurals and -ed/-er forms still match (`hook` → `hooks` / `hooked`), and longer words containing the tag as a substring no longer fire (`cli` ≠ inside `clippy`). But a generic exact-word tag (`audit` matching the bare word `audit` in body) still fires; the only fix is tag specificity at authoring time.
-
-Rule of thumb: if removing the tag would not change the agent's decision quality on a typical command match, the tag is too generic.
-
-## §11-EXT macOS CI shell portability (SHOULD)
-
-Hooks and shell tests on a Linux+macOS CI matrix MUST route platform-divergent shell builtins through `hooks/lib/platform.sh` or use POSIX-portable forms. Repros (lessons.md 2026-04-29): `stat -f` (BSD) vs `-c` (GNU) under brew gnubin; missing `timeout` on default macOS PATH; `wc -l` whitespace padding; `mktemp -d` symlink (`/var → /private/var`) breaking ESM `import.meta.url === ` + "`file://${process.argv[1]}`" + ` checks.
-
-**Apply**:
-- `stat`/`find -newer`: route through `platform_stat_mtime` / `platform_find_newer` wrappers in `hooks/lib/platform.sh` (must `source` it — `command -v` guard alone falls silently false; see `feedback_hook_platform_lib_source.md`).
-- `timeout`: install GNU coreutils on macOS CI (`brew install coreutils` + add `libexec/gnubin` to `PATH`); detect with `command -v timeout` before invocation.
-- `wc -l`: pipe through `tr -d ' '` or use `awk 'END {print NR}'` — BSD `wc` whitespace-pads.
-- `mktemp -d` for ESM-script roots: `TMP=$(cd "$(mktemp -d)" && pwd -P)` to resolve macOS `/var → /private/var` symlink so ESM CLI-trigger `import.meta.url === \`file://${process.argv[1]}\`` matches.
-- Shell fixtures: `git update-index --chmod=+x path/to.sh` after `git add` (chmod after `git add` does NOT re-stage mode).
-
-Memory anchors: `feedback_macos_shell_portability.md` (4 patterns) + `feedback_hook_platform_lib_source.md` (silent fallthrough). SHOULD-level — implementation discipline; failures surface in CI red, not silent prod.
+Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) captured in memory anchors — moved out of spec in v6.11.14 because the patterns are repo-implementation detail, not spec rules. See `feedback_macos_shell_portability.md` (4 patterns) + `feedback_hook_platform_lib_source.md` (silent fallthrough — must `source` `hooks/lib/platform.sh`, `command -v` guard alone falls silently false). Failures surface in CI red, not silent prod.

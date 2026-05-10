@@ -6,6 +6,35 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.14 — 2026-05-11
+
+Patch: extended compression release. §11-EXT cluster consolidated (5 sub-sections → 2 + 1 cross-ref), Appendix B trimmed to canonical high-reuse examples (B.1 + B.2 kept; B.3–B.6 removed as covered by §10-R / §2-EXT / §2.S normative text). No rule add/remove/downgrade, no behavior change. **§13.2 budget cost: 0**.
+
+### Background
+
+Audit-driven trim (user request `分析一下我们的CLAUDE.md...能不能精炼和压缩`). Two structural findings:
+- **§11-EXT was 6 sibling sub-sections** (Session maintenance / Memory-system routing / Execution heuristics / Auto-memory decision tree / MEMORY-tag-syntax / macOS shell portability) covering overlapping topics — Session + Execution were both advisory session-level guardrails; Routing + Decision tree + Tag-syntax were all memory-operation rules. Fragmentation increased lookup cost without semantic gain.
+- **Appendix B had 6 examples** but only B.1 (AUTH format) + B.2 (evidence valid/invalid) carry reuse load — B.3–B.6 were illustrative restatements of normative text already in §10-R / §2-EXT / §2.S.
+
+### Changes
+
+- `[refactor]` **§11-EXT consolidated**: 4 sub-sections (Session maintenance + Execution heuristics + Memory-system routing + Auto-memory decision tree) merged into 2 (`§11-EXT Session heuristics (advisory)` + `§11-EXT Memory operations`). MEMORY-tag-syntax folded into Memory operations as a subsection. macOS shell portability replaced with a one-paragraph cross-ref pointer to its memory anchors (`feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md`) — implementation discipline lives in memory where it ages with code.
+- `[refactor]` **Appendix B trimmed**: B.1 + B.2 retained; B.3 (L3 summary formats) + B.4 (EMERGENCY incident report) + B.5 (auto-decision one-liners) + B.6 (L3 spec example) removed. Header note documents the move.
+
+### §13.2 budget cost
+
+0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+
+### Sizing
+
+Live numbers in `CLAUDE-extended.md §Recent changes` Sizing line. Discipline: single post-content-edit `wc -c` (`feedback_spec_sizing_recursive_rewrite.md` option 1) — accept ±20B drift attributable to the Sizing line's own rewrite.
+
+### Operator carry-forward
+
+None. Extended back well under ceiling; future bumps may add content within budget. §13.2 ratchet and §0.1 demote-candidate audit cadence unchanged.
+
+---
+
 ## v6.11.13 — 2026-05-11
 
 Patch: compression-only release. Discharges v6.11.12's `MUST net-delete or migrate` carry-forward. Two redundancy removals in extended; no rule add/remove/downgrade, no behavior change. **§13.2 budget cost: 0**.

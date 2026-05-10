@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.12.1] - 2026-05-11
+
+**Patch — refactor: AI-CODING-SPEC v6.11.13 → v6.11.14 extended compression (audit-driven trim).**
+
+Spec audit (user request `分析一下我们的CLAUDE.md...能不能精炼和压缩`) surfaced two structural redundancies in `CLAUDE-extended.md` — §11-EXT was 6 sibling sub-sections covering overlapping topics, and Appendix B carried 4 examples (B.3–B.6) whose normative content already lived in §10-R / §2-EXT / §2.S. No HARD rule add/remove/downgrade; no behavior change.
+
+### What changed
+
+- **Spec v6.11.13 → v6.11.14** (patch — content reorg + redundancy removal, identical rule semantics).
+- **§11-EXT consolidated** in `spec/CLAUDE-extended.md`: 4 sub-sections (`Session maintenance heuristics` + `Execution heuristics (CC-borrowed)` + `Memory-system routing` + `Auto-memory decision tree`) merged into 2 (`§11-EXT Session heuristics (advisory)` + `§11-EXT Memory operations`); `MEMORY-tag-syntax` folded into Memory operations as a subsection; `macOS shell portability` replaced with one-paragraph cross-ref pointer to `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` memory anchors.
+- **Appendix B trimmed**: B.1 (`[AUTH REQUIRED]` format) + B.2 (evidence valid/invalid) retained as canonical reuse-cases; B.3 (L3 summary formats) + B.4 (EMERGENCY incident report) + B.5 (auto-decision one-liners) + B.6 (L3 spec example) removed.
+- **Version pins synced**: `spec/CLAUDE.md` header, `spec/CLAUDE-changelog.md` top entry, `tests/scripts/spec-structure.test.js` assertions, `README.md` (2 occurrences). Plugin manifest `description` fields kept at `v6.11` per the major.minor-only versioning policy (set in v0.2.1).
+
+### Why patch (not minor)
+
+§13 META: patch = wording / clarification / identical behavior. No rule added or relaxed. Pure content reorganization + redundancy removal; agent behavior unchanged. §13.2 budget cost: 0.
+
+### Tests
+
+- `tests/scripts/spec-structure.test.js` version pins bumped: still asserts core header + changelog top entry shape unchanged; A14 `§11-EXT` anchor still present in extended; A15 `[tag1, tag2]` literal still present (now inside `§11-EXT Memory operations § MEMORY.md tag syntax` subsection).
+
+### Sizing
+
+Live numbers in `spec/CLAUDE-extended.md §Recent changes` Sizing line. Single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1 (±20B drift envelope).
+
 ## [0.12.0] - 2026-05-11
 
 **Minor — feat: `/claudemd-analyze` spec ↔ implementation coherence audit.** Borrowed from github/spec-kit's `/analyze` pattern, scoped to claudemd's three highest-value drift surfaces. Read-only by default; `--strict` flag exits non-zero on CRITICAL/HIGH for pre-tag ship gate.
