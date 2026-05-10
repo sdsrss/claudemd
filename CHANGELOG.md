@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.32] - 2026-05-11
+
+**Patch — spec v6.11.12 → v6.11.13. Compression-only release: discharges v6.11.12's `MUST net-delete or migrate` carry-forward by removing two long-standing redundancies in extended (§1.5-EXT GLOSSARY duplicate of core §1.5, §10-V illustrative-example bloat).** No rule add/remove/downgrade, no behavior change. Net delete: extended 49835 → 48384 bytes (−1451, recovered to 96.77% utilization from v6.11.12's 99.67% ceiling-grazing).
+
+### Spec changes
+
+- `[refactor]` **§1.5-EXT GLOSSARY consolidated** (extended, −~620 bytes) — table dropped 5 entries (`LOC / Module / Local-Δ / Evidence / Task`) already inlined to core §1.5 since v6.11.5/v6.11.9. §1.5-EXT keeps only `Assumption` + `Local-Δ note` (extended-only material).
+- `[refactor]` **§10-V OK examples trimmed** (extended, −~80 bytes) — `OK (absolute)` 5→3 examples; `OK (中文 with baseline)` 3→2. Normative banned-vocab enumeration unchanged.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.31 → 0.9.32 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1) — patch-level spec updates do not re-bump description text.
+
+### Hand-off
+
+- After install, run `/claudemd-update` to pull v6.11.13 into `~/.claude/CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`.
+
 ## [0.9.28] - 2026-05-11
 
 **Patch — spec v6.11.10 → v6.11.11. Hook fix for §11 MEMORY.md read-the-file FP rate (~80% in v0.9.27 self-audit) + spec §11-EXT Tag-specificity SHOULD codifying the complementary authoring discipline.** Two mechanical hook fixes (word-boundary tag match + multi-line trigger collapse) eliminate the 2 substring/anchor FP classes; spec SHOULD addresses the 3rd class (generic exact-word tags) as authoring discipline.

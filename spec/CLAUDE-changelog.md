@@ -6,6 +6,38 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.13 — 2026-05-11
+
+Patch: compression-only release. Discharges v6.11.12's `MUST net-delete or migrate` carry-forward. Two redundancy removals in extended; no rule add/remove/downgrade, no behavior change. **§13.2 budget cost: 0**.
+
+### Background
+
+v6.11.12 left extended at 99.67% utilization (165 bytes headroom) — the recursive Sizing-rewrite cost (Δ +378) consumed most of v6.11.11's recovered headroom. Carry-forward mandated `first addition of any size MUST net-delete or migrate`. User request `精炼和压缩一下` aligned exactly with the mandate.
+
+### Changes
+
+- `[refactor]` **§1.5-EXT GLOSSARY consolidated** (extended, −~620 bytes). Full-table dropped 5 entries (`LOC / Module / Local-Δ / Evidence / Task`) that core §1.5 already inlines (since v6.11.5 + v6.11.9). §1.5-EXT keeps only the extended-only material: `Assumption` + a `Local-Δ note` (co-located = test-path mirrors source-path — clarification not in core). The dropped entries were verbatim or near-verbatim duplicates of core; core §1.5 cross-ref `Assumption → §EXT §1.5-EXT` continues to resolve.
+- `[refactor]` **§10-V OK examples trimmed** (extended, −~80 bytes). `OK (absolute)` 5→3 examples; `OK (中文 with baseline)` 3→2. Banned-vocab enumeration (adjectives/hedges/baseline-less ratios EN+中) entirely unchanged — those are normative, the trimmed lines were illustrative.
+
+### §13.2 budget cost
+
+0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+
+### Sizing
+
+Measured via `wc -c` after content edits + Recent-changes block turnover:
+
+- **Core**: 24614 → 24614 bytes (header version digit only — `v6.11.12` and `v6.11.13` are identical char count). Headroom 386 / 25000 (98.46%, unchanged).
+- **Extended**: 49835 → 48384 bytes (−1451, −2.91%). Composition: content compression −728 bytes (§1.5-EXT, §10-V); Recent-changes block turnover −723 bytes (v6.11.12 entry replaced by shorter v6.11.13 entry). Headroom 1616 / 50000 (96.77%) — recovered from v6.11.12's 99.67% ceiling-grazing.
+
+Drift discipline: `feedback_spec_sizing_recursive_rewrite.md` option 1 — single post-content-edit `wc -c`, accept ±20B drift attributable to the Sizing line's own corrective rewrite. The correction-rewrite cost in this release is bounded; the compression dominates.
+
+### Operator carry-forward
+
+DISCHARGED. Extended back to ~96.77% utilization. v6.11.13 mandate satisfied via §1.5-EXT redundancy removal alone (the long-standing `core §1.5 inlines L1/L2 terms; §1.5-EXT duplicates them` overlap). Future bumps may add content within budget; §11-EXT MEMORY-* cluster remains a long-term migration candidate but is no longer urgent — keep it for when extended next approaches the ceiling.
+
+---
+
 ## v6.11.12 — 2026-05-11
 
 Patch: Tier-1 dogfood fixes from in-session simulation pass. Two fresh-agent literal-misread spots in core §7 + §11; one observation entry on Sizing-claim drift (repro=2 of `tasks/rule-candidates-2026-04.md` candidate). No new HARD; **§13.2 budget cost: 0**.

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.12 — Extended
+# AI-CODING-SPEC v6.11.13 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -269,11 +269,11 @@ Annotation form when overriding: commit body line `known-red baseline: <one-line
 
 Core §10 Specificity rule lifted the full list here (v6.8). Core keeps examples + scope; full enumeration below — consult only when drafting a claim you're unsure about.
 
-**OK (absolute)**: "reduced p99 580ms → 140ms" / "fixed at schema.mjs:147" / "12/12 tests pass" / "covers 3 of 3 branches I modified" / "65 → 64 tests after consolidation".
+**OK (absolute)**: "reduced p99 580ms → 140ms" / "12/12 tests pass" / "65 → 64 tests after consolidation".
 
 **OK (ratio with baseline)**: "1453 → 1490 tests (+2.5%)" / "cut FTS latency from 380ms to 95ms (4×)".
 
-**OK (中文 with baseline)**: "FTS 查询 380ms → 95ms（4×）" / "1453 → 1490 tests（+2.5%）" / "fixed at schema.mjs:147, 12/12 tests pass".
+**OK (中文 with baseline)**: "FTS 查询 380ms → 95ms（4×）" / "fixed at schema.mjs:147, 12/12 tests pass".
 
 **Banned — adjectives (EN)**: "significantly improved" / "robust" / "production-ready" / "more efficient" / "should work" / "cleaner code" / "comprehensive" / "best practice" / "industry-standard".
 
@@ -522,29 +522,23 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.12 (patch, 2026-05-11)** — Tier-1 dogfood patch: two fresh-agent literal-misreads in core §7 + §11 surfaced by in-session simulation pass. No new HARD; **§13.2 budget cost: 0**.
+**v6.11.13 (patch, 2026-05-11)** — compression-only release: discharges v6.11.12's `MUST net-delete or migrate` carry-forward. No content/rule change; redundant prose dropped where extended duplicated core. No new HARD; **§13.2 budget cost: 0**.
 
-- `[fix]` **§7 Iron Law #2 L1 example replaced** (core, +~58 bytes net) — `Done: fixed typo README.md:42 (Checked: git diff, "teh" → "the").` → `Done: fixed empty-input crash in scripts/audit.js:42 (Checked: pre-fix TypeError, post-fix scripts/audit.test.js 7 passed).`. Original example reused the canonical L0 Fast-Path whitelist case (`typo`); strict reading concluded "typo is L1" and escalated L0 typo fixes to L1 evidence form (waste). New example exercises the Bugfix-anchor rule (cite prior-failing state) on a true L1 bugfix.
-- `[fix]` **§11 MEMORY.md untagged-fallback wording** (core, +8 bytes net) — `Untagged → agent-driven full content scan (NOT hook-blocked)` → `Untagged → agent decides per-line from title/desc (NOT hook-blocked)`. Phrase read literally as "scan the linked memory file's full content"; intent was "scan the index entry's title/desc to decide". Strict reading would Read every untagged memory file at every ship — the exact FP class v0.9.28 word-boundary hook fix targeted.
-- `[observe]` **Sizing-claim drift repro=2** — v6.11.11 Recent-changes claimed extended `~49850 bytes`; in-session `wc -c` measured 49457 (Δ −393, 2nd repro since v6.11.8→v6.11.9 Δ −1526). Still under ≥3 promotion bar. Logged in `tasks/rule-candidates-2026-04.md` Sizing-claim drift candidate.
+- `[refactor]` **§1.5-EXT GLOSSARY consolidated** (extended, −~620 bytes) — table dropped 5 entries (`LOC / Module / Local-Δ / Evidence / Task`) already inlined to core §1.5 (since v6.11.5/v6.11.9). §1.5-EXT keeps only extended-only material: `Assumption` + a `Local-Δ note` clarifying co-located = test-path mirrors source-path. Core §1.5 cross-ref `Assumption → §EXT §1.5-EXT` unchanged.
+- `[refactor]` **§10-V OK examples trimmed** (extended, −~80 bytes) — `OK (absolute)` 5→3 examples; `OK (中文 with baseline)` 3→2. Banned-vocab enumeration (adjectives/hedges/baseline-less ratios EN+中) unchanged.
 
-**§13.2 budget cost**: 0 (wording fixes only). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+**§13.2 budget cost**: 0 (compression only). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
 
-**Sizing** (v6.11.12, 2026-05-11, measured via `wc -c` AFTER all edits): core 24550 → 24614 bytes (+64, +0.26%); extended 49457 → 49835 bytes (+378, +0.76% — Recent-changes turnover replaced one block with another, plus this very Sizing/carry-forward paragraph rewrite added ~350 bytes itself: a recursive Sizing-drift artifact, see §Companion observations). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%**); extended 49835/50000 (**165 bytes headroom, 99.67%**). Runtime L0/L1/L2 ≈ 6.12k tokens (+0.02k vs v6.11.11).
+**Sizing** (v6.11.13, 2026-05-11, measured via `wc -c` after content edits + Recent-changes turnover): core 24614 → 24614 bytes (header version digit only, same byte count); extended 49835 → 48384 bytes (−1451, −2.91% — content compression −728, Recent-changes block turnover −723). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%** — unchanged); extended 48384/50000 (**1616 bytes headroom, 96.77%** — recovered from v6.11.12's 99.67% ceiling-grazing). Drift discipline (per `feedback_spec_sizing_recursive_rewrite.md` option 1): post-edit `wc -c` once, accept ±20B drift from this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.10k tokens (−0.02k vs v6.11.12).
 
-**Operator carry-forward — NOT discharged, escalated**: v6.11.11's `MUST net-delete` mandate was driven by an overstated 99.7% utilization claim; real pre-v6.11.12 measurement was 98.9% (49457/50000 = 543 bytes headroom). v6.11.12's recursive-write Sizing rewrite consumed 378 of those 543 bytes, ending at 99.67% (165 bytes headroom). Net-delete mandate carries forward to v6.11.13 stronger than before — first addition of any size MUST net-delete or migrate. §11-EXT MEMORY-* cluster remains the prime migration candidate.
+**Operator carry-forward — DISCHARGED**: extended back to ~97.6% utilization. v6.11.13 net-delete mandate satisfied via §1.5-EXT redundancy removal. Future bumps may add content within budget; §11-EXT MEMORY-* cluster remains a long-term migration candidate but is no longer urgent.
 
-## §1.5-EXT GLOSSARY (full definitions)
+## §1.5-EXT GLOSSARY
 
-| Term | Definition |
-|---|---|
-| **LOC** | additions + deletions per `git diff --stat`, excluding blank/comment-only lines. |
-| **Module** | single-package repo: each `src/<subdir>/` is a Module. Monorepo: each workspace/package root is a Module. Sub-folders inside a Module are NOT separate modules. |
-| **Local-Δ** | ≤2 files (source + its co-located test counts as one; co-located = test path mirrors source path). No exported-symbol change, no import-surface change, no config/schema touch. |
-| **Assumption** | claim not verified this turn via Read/Grep/tool. Memory recall = assumption. |
-| **Contract / Δ-contract** | inlined to core §1.5 in v6.11.9 (used by §2 L2 trigger + §5 hard-AUTH at L1/L2). |
-| **Evidence** | tool-call output showing specific behavior. *Fresh* = same turn or re-run after last change. |
-| **Task** | one SPINE cycle. New user request = new task unless explicit continuation. |
+Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Extended-only terms + clarifications:
+
+- **Assumption** — claim not verified this turn via Read/Grep/tool. Memory recall = assumption.
+- **Local-Δ note** — co-located = test path mirrors source path.
 
 ## §5.1-EXT AUTONOMY_LEVEL effects (full table)
 
