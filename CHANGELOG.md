@@ -8,6 +8,48 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.35] - 2026-05-11
+
+**Patch — §11-EXT Tag-specificity static check in `claudemd-doctor`.** Closes the spec→tooling gap from v6.11.11: spec §11-EXT (SHOULD) said "generic single-word English tags substring-match incidental prose and produce high FP rates" but no enforcer existed; doctor now scans `~/.claude/projects/*/memory/MEMORY.md` for FP candidates.
+
+### Why this exists
+
+Two FP incidents in the §11 MEMORY.md read-the-file enforcement chain:
+- v0.9.27 → v0.9.28: tag `cli` substring-matched `clippy` → ~80% FP rate. Hook side fixed via word-boundary tightening (v0.9.28), but tag-quality was never audited.
+- 2026-05-11 (this session, mid-1B ship): tag `semantic` from `plugin_code_graph_mcp.md` matched `semantics` in a release-notes body (`fail-open semantics`) — required `[skip-memory-check]` bypass or a Read of the wrong memory file. Root cause: `plugin_code_graph_mcp.md`'s tag list `[callgraph, impact, refs, overview, semantic, ast-search, dead-code, deps]` violates §11-EXT (5 of 8 tags are generic single-word EN: `impact` / `refs` / `overview` / `semantic` / `deps`).
+
+Static check catches this class **pre-deploy** instead of via runtime FP.
+
+### Added
+
+- `[add]` **`scripts/lib/memory-tags.js`** — exports `classifyTag(tag)` + `parseMemoryIndex(content)` + `scanMemoryTags({rootDir})`. Mirrors `hooks/memory-read-check.sh` parsing for both backtick and plain tag-block forms. Hand-curated narrow-allowlist (~30 entries, 3 sub-classes: short tech acronyms / hook trigger verbs / OS-runtime terms) + generic-EN wordlist (~45 entries from observed FPs + high-FP-risk domain words).
+- `[change]` **`scripts/doctor.js`** — new `memory-tag-specificity` check after rule-usage section. Groups findings by `(memDir, file)`; shows up-to-3 sample entries inline, `+N more` overflow. Advisory only (spec §11-EXT is SHOULD, not MUST).
+- `[doc]` **`commands/claudemd-doctor.md`** — description + body updated to mention the new check.
+
+### Heuristic
+
+A tag is flagged when:
+- Single-word (no `-` / `_`) AND ASCII-alpha AND not in narrow-allowlist AND length ≤ 5 → `short-single-word`
+- OR (same word-shape filters) AND case-insensitive match in generic wordlist → `generic-wordlist`
+
+Both flags can fire on one tag (e.g. `refs` is 4 chars + in wordlist). Multi-word / CJK / narrow-allowlist tags pass unconditionally.
+
+Tightened detector-FP cases:
+- Hook trigger verbs (`release`, `push`, `ship`, `deploy`, `merge`, `commit`, `build`, `publish`) — tagging on these is the hook's design intent, not FP. Added to narrow-allowlist.
+- OS / runtime narrow terms (`macos`, `linux`, `ubuntu`, `darwin`, `node`, `python`, `rust`, `go`) — topic-specific in claudemd-domain context.
+
+### Tests
+
+- `[add]` **`tests/scripts/memory-tags.test.js`** — 16 cases covering: multi-word pass / CJK pass / narrow-allowlist pass (3 sub-classes incl. trigger-verbs + OS-runtime) / short-single-word flag / wordlist hit / both-reasons combo / observed-FP allflag / spec-compliant tags from real MEMORY.md / both tag-block parsers / untagged-line skip / integration fixture scan / missing-root no-throw.
+
+### Live scan result (this repo, 2026-05-11)
+
+22 generic-tag candidate(s) across 4 entry(ies) in 8 MEMORY.md file(s). All findings are `plugin_code_graph_mcp.md` copies adopted into 4 separate project memory dirs (claudemd / code-graph-mcp / daagu / mem). Single upstream fix in code-graph-mcp's adoption template clears all 22 simultaneously. Issue/PR description for upstream prepared in-session.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.34 → 0.9.35 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.34] - 2026-05-11
 
 **Patch — instrumentation bundle sub-patch 1B: tool_use_id column + audit `uniqueInvocations` dedup view + 5 remaining hooks plumbed for session_id.** Completes the schema half of the 1A/1B/1C bundle from 2026-05-11 dogfood audit. Post-cutover (this commit on), every rule-hits row carries enough identity to distinguish "one CC invocation logged twice" (registration / lib bug) from "Claude fast-retry after deny in same second" (not a bug).

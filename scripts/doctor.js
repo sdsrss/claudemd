@@ -8,6 +8,7 @@ import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { scanMemoryTags } from './lib/memory-tags.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
@@ -290,6 +291,37 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(`rule-usage:${section}`, true,
         `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
     }
+  }
+
+  // v0.9.35 — §11-EXT Tag-specificity (SHOULD) static check. Scans
+  // ~/.claude/projects/*/memory/MEMORY.md for tags that substring-match
+  // incidental release-notes / commit-message prose at ship time. Same FP
+  // family as v0.9.27→v0.9.28 (`cli`⊂`clippy`) and the 2026-05-11
+  // `semantic`⊂`semantics` incident. Advisory only — spec §11-EXT is SHOULD,
+  // not MUST. See scripts/lib/memory-tags.js for heuristic + wordlist.
+  const { findings: tagFindings, scannedFiles } = scanMemoryTags();
+  if (tagFindings.length === 0) {
+    push('memory-tag-specificity', true,
+      `scanned ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates`);
+  } else {
+    // Group by memDir+file for readable output: one row per (memDir, file)
+    // listing all flagged tags with reasons.
+    const byEntry = new Map();
+    for (const f of tagFindings) {
+      const key = `${f.memDir}::${f.file}`;
+      if (!byEntry.has(key)) byEntry.set(key, { memDir: f.memDir, file: f.file, tags: [] });
+      byEntry.get(key).tags.push(`${f.tag}(${f.reasons.join(',')})`);
+    }
+    const sample = [...byEntry.values()].slice(0, 3).map(e => {
+      const projectDir = path.basename(path.dirname(e.memDir));
+      return `${projectDir}/${e.file}: ${e.tags.join(', ')}`;
+    });
+    const more = byEntry.size > 3 ? ` +${byEntry.size - 3} more` : '';
+    push('memory-tag-specificity', false,
+      `${tagFindings.length} generic-tag candidate(s) across ${byEntry.size} entry(ies) in ${scannedFiles} MEMORY.md file(s); ` +
+      `risk of §11 ship-time FP per spec §11-EXT (v6.11.11). ` +
+      `Samples: ${sample.join(' | ')}${more}. ` +
+      `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`);
   }
 
   const pruned = prune != null ? pruneBackups(prune) : [];
