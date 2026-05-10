@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.38] - 2026-05-11
+
+**Patch — §11-EXT Tag-specificity wordlist补全.** Self-applied follow-up to v0.9.35: this session's own ship flow tripped two §11 FPs (`semantic` in 1B body / `design` in cutover-split body), and only the first was caught by v0.9.35's wordlist. Adds 10 entries: 2 from the observed FP (`design`, `brainstorm`) + 8 preventive picks from words that appeared ≥2× in this session's release notes / CHANGELOG entries (`architecture`, `behavior`, `schema`, `default`, `pattern`, `format`, `system`, `process`). Live doctor finding count 22 → 24 (+2 catches `design` + `brainstorm` in `feedback_brainstorm_for_design_tasks.md`; other 8 are preventive — no current MEMORY.md uses them as single-word tags yet).
+
+### Changed
+
+- `[change]` **`scripts/lib/memory-tags.js`** `GENERIC_WORDLIST` extended by 10 entries.
+- `[add]` **`tests/scripts/memory-tags.test.js`** new case `v0.9.38: design / brainstorm + 8 ship-prose words flagged` locks all 10 additions.
+
+### Tests
+
+- 17/17 memory-tags + 19/19 hook + 388/388 JS pass; `tests/run-all.sh` `OVERALL: all suites passed`.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.37 → 0.9.38 (package.json + plugin.json + marketplace.json).
+
 ## [0.9.37] - 2026-05-11
 
 **Patch — audit `bySection` cutover-split for `(unset)` bucket.** Closes point 1 of 2026-05-11 dogfood: the legacy `(unset)` bucket conflated three different row kinds — (a) pre-v0.7.0 historical rows (will age out), (b) post-cutover by-design housekeeping (session-start bootstrap / version-sync), (c) post-cutover instrumentation gaps (real bug signal). With one bucket, (a) overwhelmed (b)+(c) in steady state and instrumentation regressions were invisible. v0.9.37 auto-detects the cutover ts and splits.

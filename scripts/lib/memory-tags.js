@@ -53,19 +53,33 @@ const NARROW_ALLOWLIST = new Set([
 
 // Generic English single-word wordlist: tags known or strongly suspected to
 // substring-match release-notes / commit-message / docs prose. Curated from
-// observed FPs (v0.9.27/28 + 2026-05-11) plus high-frequency claudemd-domain
-// prose words. Keep this list focused — false-positives in the detector itself
-// (flagging fine tags) are worse than misses.
+// observed FPs (v0.9.27/28 + 2026-05-11 series) plus high-frequency claudemd-
+// domain prose words. Keep this list focused — false-positives in the detector
+// itself (flagging fine tags) are worse than misses.
 const GENERIC_WORDLIST = new Set([
-  // Observed FPs:
+  // Observed FPs in §11 ship-time enforcement chain:
+  //   v0.9.27/28 family: cli (⊂clippy), hook (⊂hooks/hooked declension).
+  //   2026-05-11 1B ship: semantic (⊂"fail-open semantics").
+  //   2026-05-11 cutover-split ship: design (⊂"by-design housekeeping" /
+  //     "by design"). brainstorm co-tagged with design in the same memory
+  //     entry — equally FP-prone at ship time (any prose mentioning the
+  //     design-process word would trigger).
   'cli', 'hook', 'semantic', 'impact', 'refs', 'overview', 'deps',
-  // High-FP-risk claudemd-domain words (common in release notes / commits):
+  'design', 'brainstorm',
+  // High-FP-risk claudemd-domain words (common in release notes / commits /
+  // CHANGELOG entries / spec text):
   'fix', 'bug', 'push', 'log', 'file', 'audit', 'review', 'version',
   'commit', 'merge', 'build', 'deploy', 'release', 'config', 'flag',
   'option', 'command', 'script', 'output', 'input', 'message', 'error',
   'warning', 'success', 'result', 'value', 'action', 'name', 'type',
   'item', 'list', 'field', 'state', 'event', 'signal', 'args', 'path',
   'data', 'info', 'time', 'code', 'test', 'debug', 'feature', 'change',
+  // Added v0.9.38 from 2026-05-11 dogfood pass — words that appeared
+  // multiple times in this session's own release notes / CHANGELOG entries
+  // and would FP if used as a tag. `default` is special-risk ("by default"
+  // is near-universal in spec prose).
+  'architecture', 'behavior', 'schema', 'default', 'pattern', 'format',
+  'system', 'process',
 ]);
 
 // classifyTag(tag) — returns array of reasons. Empty array = tag passes.

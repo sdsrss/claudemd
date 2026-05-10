@@ -74,6 +74,21 @@ test('classifyTag: observed FPs all flagged', () => {
   }
 });
 
+test('v0.9.38: design / brainstorm + 8 ship-prose words flagged', () => {
+  // 2026-05-11 cutover-split ship: `design` matched "by-design housekeeping"
+  // in release notes; `brainstorm` co-tagged with `design` in the same entry.
+  // Plus 8 additional ship-prose words added in v0.9.38 wordlist pass.
+  for (const tag of [
+    'design', 'brainstorm',
+    'architecture', 'behavior', 'schema', 'default',
+    'pattern', 'format', 'system', 'process',
+  ]) {
+    const r = classifyTag(tag);
+    assert.ok(r.includes('generic-wordlist'),
+      `${tag} must be flagged as generic-wordlist after v0.9.38, got: ${JSON.stringify(r)}`);
+  }
+});
+
 test('classifyTag: spec-compliant tags from MEMORY.md pass', () => {
   // Sample of multi-word + CJK tags currently in MEMORY.md — should all pass.
   for (const tag of [
