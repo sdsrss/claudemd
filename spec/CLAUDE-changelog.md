@@ -6,6 +6,21 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.10 — 2026-05-10
+
+Patch: first batch-review-driven HARD promotion since v6.10.2 (2026-04-23). §9 Parallel-path completeness elevated SHOULD → HARD after `tasks/rule-candidates-2026-04.md` 2026-05-10 batch review confirmed both promotion conditions met (4 distinct repros across 2 projects ≥ 3-bar; ~25 L2+ tasks since last HARD addition ≥ 20-task counter). New §EXT SHOULD documenting macOS CI shell portability (3 lessons.md repros). **§13.2 budget cost: 1** (one new HARD); 20-task counter resets to 0.
+
+- `[change]` **§9 Parallel-path completeness: SHOULD → HARD L2+** (core, −89 bytes — promotion *saves* bytes by dropping the trailing candidate-tracking clause). Repros: (1) code-graph-mcp `ast_search ORDER BY f.path LIMIT 60` silently truncated late-alphabet files; (2) code-graph-mcp v0.15.0 `lang_config.rs::for_language` default arm returned `"unknown"` so new-language match silently always-false; (3) code-graph-mcp v0.16 `dead-code --json` empty-result silently emitted nothing; (4) mem v2.49.0 CJK precision bundle fixed FTS path but missed sibling LIKE fallback. Self-enforced (no per-language-AST mechanical detection feasible at hook layer); `hard-rules.json` `enforcement: "self"` like Iron Law #2.
+- `[change]` **§11-EXT macOS CI shell portability (SHOULD)** (extended, +~870 bytes — new section). Codifies the implementation contract behind `hooks/lib/platform.sh` + `feedback_macos_shell_portability.md` memory + `feedback_hook_platform_lib_source.md` memory. Triggers: 3 repros from `tasks/lessons.md` 2026-04-29 (`bsd-vs-gnu-stat`, `macos-tmp-essentially-empty`, `macos-ci-tmp-flake`). SHOULD not HARD because failure surfaces in CI red, not silent prod. Rule covers the five recurring traps: `stat`/`find -newer` wrapper sourcing, `timeout` GNU-coreutils-via-brew, BSD `wc -l` padding, `mktemp -d` `/var→/private/var` symlink, post-`git add` `chmod +x` mode preservation.
+
+**§13.2 budget cost**: 1 new HARD (§9 Parallel-path). HARD tally: 13 core + 4 §EXT-side. 20-task counter resets to 0 from ~25.
+
+**Sizing** (v6.11.10, 2026-05-10, measured via `wc -c`): core 24643 → 24550 bytes (−93); extended 47747 → 48815 bytes (+1068). core 24550/25000 (450 bytes headroom, 98.20%); extended 48815/50000 (1185 bytes headroom, 97.63%). Runtime L0/L1/L2 ≈ 6.10k tokens.
+
+**Plugin companion (claudemd v0.9.26)**: spec content + version-pin + hard-rules.json 13th core entry + manifest-sync. No hook / runtime behavior change.
+
+---
+
 ## v6.11.9 — 2026-05-10
 
 Patch: fresh-agent-adherence release. Three reader-side ambiguities surfaced in a second dogfood pass (simulating "first time touching this spec, strict-literal execution"), plus the v6.11.8 carry-forward `MUST net-delete or migrate marginal core bullets` honored via two §EXT migrations. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**

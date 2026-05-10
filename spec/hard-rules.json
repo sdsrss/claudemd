@@ -1,6 +1,6 @@
 {
   "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md. Drives §13.1 quarterly demote (rules with 0 hits in 90d) and §13.2 budget accounting (≥3 repros + ≥20 L2+ tasks since last HARD addition). v0.8.0 R-N2. Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file. /claudemd-rules cross-references against rule-hits.jsonl bySection data.",
-  "spec_version": "v6.11.9",
+  "spec_version": "v6.11.10",
   "spec_files": {
     "core": "spec/CLAUDE.md",
     "extended": "spec/CLAUDE-extended.md"
@@ -173,6 +173,18 @@
       "added_version": "v6.10",
       "confidence": "medium",
       "last_demote_review": null
+    },
+    {
+      "id": "§9-parallel-path",
+      "name": "Parallel-path completeness (L2+)",
+      "scope": "core",
+      "section_anchor": "**Parallel-path completeness** (HARD, L2+)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.11.10",
+      "confidence": "high",
+      "last_demote_review": null,
+      "note": "Self-enforced — no feasible per-language AST mechanical detection at hook layer. Promoted from SHOULD on 2026-05-10 after 4 repros + 25 L2+ tasks counter saturation; see tasks/rule-candidates-2026-04.md batch review."
     },
     {
       "id": "§iron-law-1",

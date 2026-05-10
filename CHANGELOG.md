@@ -8,6 +8,29 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.26] - 2026-05-10
+
+**Patch — spec v6.11.9 → v6.11.10. First batch-review-driven HARD promotion since v6.10.2 (2026-04-23).** §9 Parallel-path completeness elevated SHOULD → HARD after `tasks/rule-candidates-2026-04.md` 2026-05-10 batch review confirmed both promotion conditions met. New §EXT SHOULD section documenting macOS CI shell portability (3 lessons.md repros). Plugin-side: hard-rules.json gets 13th core entry; spec content + version-pin + manifest-sync only — no hook / runtime behavior change. §13.2 budget cost: 1 new HARD; 20-task counter resets to 0.
+
+### Changed
+
+- `[change]` **Spec §9 Parallel-path completeness: SHOULD → HARD L2+** — promotion saves 89 bytes by dropping the trailing `(SHOULD now; §13.2 candidate for HARD promotion)` clause. Repros: code-graph-mcp ast_search SQL `ORDER BY` + `LIMIT` truncation, lang_config default-arm always-false dispatch, dead-code `--json` empty-result silent skip, mem v2.49 CJK FTS-vs-LIKE sibling miss. Self-enforced (no per-language-AST mechanical detection feasible at hook layer).
+- `[change]` **Spec §11-EXT macOS CI shell portability (SHOULD)** — new section codifying the implementation contract behind `hooks/lib/platform.sh` + `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` memories. Five recurring traps: `stat`/`find -newer` wrapper sourcing, `timeout` GNU-coreutils, BSD `wc -l` padding, `mktemp -d` `/var→/private/var` symlink, post-`git add` `chmod +x` mode preservation.
+
+### hard-rules.json
+
+- `[add]` **13th core HARD entry**: `§9-parallel-path`, `enforcement: "self"`, `confidence: "high"`. HARD tally: 13 core + 4 §EXT-side.
+
+### Tests
+
+- `[test]` `tests/scripts/spec-structure.test.js`, `tests/scripts/spec-hash.test.js`, `tests/integration/upgrade-lifecycle.test.sh` version-pin updated v6.11.9 → v6.11.10.
+
+### Sizing
+
+- core 24643 → 24550 bytes (−93, −0.38% — promotion is a wording change, dropping the trailing candidate clause net-deletes).
+- extended 47747 → 48815 bytes (+1068, +2.24% — new §11-EXT macOS section adds ~870 bytes, Recent-changes turnover net-deletes ~150 bytes).
+- core 24550/25000 (450 bytes headroom, 98.20% — improved from v6.11.9); extended 48815/50000 (1185 bytes headroom, 97.63% — tightened from v6.11.9). v6.11.11 net-delete or migrate preferred.
+
 ## [0.9.25] - 2026-05-10
 
 **Patch — spec v6.11.8 → v6.11.9 fresh-agent-adherence release.** Three reader-side ambiguities surfaced in a second dogfood pass simulating "first time touching this spec, strict-literal execution"; v6.11.8 carry-forward `MUST net-delete or migrate marginal core bullets` honored via two §EXT migrations. Plugin-side: spec content + version-pin + manifest-sync only — no hook / script / runtime behavior change.

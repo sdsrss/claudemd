@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.9 — Core
+# AI-CODING-SPEC v6.11.10 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -225,7 +225,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **Root cause**: no temporary patches at L2+.
 - **YAGNI**: grep usage before adding code.
 - **Parallel-first**: independent Read/Grep/Bash (no data dependency) → single message, multiple tool calls; dependent → serial. Skipping parallelism is the largest wall-clock waste in L2+ research.
-- **Parallel-path completeness** (L2+): a change touching a node with multiple parallel implementation paths — fallback / feature flag / `match` default arm / SQL `ORDER BY` + `LIMIT` combo / early-return branch / FTS-vs-LIKE fallback / multi-language `config.name` dispatch — MUST enumerate every path and verify each. Main-path green + silent siblings = not evidence. Enumerate before edit; verify after. Triggers: `fallback / default arm / early return / else branch / feature flag / fts vs like / multi-dispatch`. (SHOULD now; §13.2 candidate for HARD promotion — logged in `tasks/rule-candidates-2026-04.md`.)
+- **Parallel-path completeness** (HARD, L2+): a change touching a node with multiple parallel implementation paths — fallback / feature flag / `match` default arm / SQL `ORDER BY` + `LIMIT` combo / early-return branch / FTS-vs-LIKE fallback / multi-language `config.name` dispatch — MUST enumerate every path and verify each. Main-path green + silent siblings = not evidence. Enumerate before edit; verify after. Triggers: `fallback / default arm / early return / else branch / feature flag / fts vs like / multi-dispatch`.
 
 ## §10 REPORT
 
