@@ -56,7 +56,7 @@ test('sha256File matches Node crypto implementation byte-for-byte', () => {
 });
 
 test('compareSpecs reports match when installed equals shipped', () => {
-  const body = '# AI-CODING-SPEC v6.11.10 — Core\nbody.\n';
+  const body = '# AI-CODING-SPEC v6.11.11 — Core\nbody.\n';
   writeShipped('CLAUDE.md', body);
   writeShipped('CLAUDE-extended.md', 'ext\n');
   writeShipped('CLAUDE-changelog.md', 'log\n');

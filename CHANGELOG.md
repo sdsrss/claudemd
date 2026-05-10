@@ -8,6 +8,44 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.28] - 2026-05-11
+
+**Patch — spec v6.11.10 → v6.11.11. Hook fix for §11 MEMORY.md read-the-file FP rate (~80% in v0.9.27 self-audit) + spec §11-EXT Tag-specificity SHOULD codifying the complementary authoring discipline.** Two mechanical hook fixes (word-boundary tag match + multi-line trigger collapse) eliminate the 2 substring/anchor FP classes; spec SHOULD addresses the 3rd class (generic exact-word tags) as authoring discipline.
+
+### Fixed
+
+- `[fix]` **`hooks/memory-read-check.sh` word-boundary tag match** — replaces `grep -iF` (literal substring match, no boundaries) with `grep -iE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}($|[^a-zA-Z0-9])"`. Anchors on non-word-char boundaries; allows 0-2 trailing alpha chars so plurals/declensions still match (`hook` → `hooks` / `hooked`). Tag escaping handles regex meta chars. Eliminates the `cli ⊂ clippy` substring class (FP #5b in v0.9.27 self-audit).
+- `[fix]` **`hooks/memory-read-check.sh` multi-line trigger collapse** — `tr '\n' ' '` before applying TRIGGER_RE so the `^` anchor only matches actual start-of-command, not start-of-each-heredoc-body-line. Eliminates the `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"` false-trigger class (FP #1, FP #4 in v0.9.27 self-audit).
+
+### Spec changes
+
+- `[change]` **Spec §11-EXT Tag-specificity (SHOULD, v6.11.11)** — tags SHOULD be ≥4 chars AND specific to the memory's topic; generic single-word English tags substring-match incidental occurrences and produce high FP rates. Prefer multi-word phrases. Plugin-side complement to the hook word-boundary fix.
+
+### Tests
+
+- `[test]` **4 new test cases** in `tests/hooks/memory-read-check.test.sh` (Cases 20-23):
+  - Case 20: `cli` tag does NOT substring-match `clippy` (word-boundary)
+  - Case 21: `hook` tag still matches `hooks` plural (declension tolerance)
+  - Case 22: heredoc-body `release(...)` line does NOT trigger (multi-line collapse)
+  - Case 23: regex-meta tag (`v6.9`) escaped — does not match `v6X9`
+- 23/23 passing (was 19/19 pre-fix).
+
+### Operator-side companion (NOT shipped via `/claudemd-update`)
+
+- `[chore]` **`~/.claude/projects/<encoded>/memory/MEMORY.md` tag cleanup** — dropped 12 generic single-word tags across 11 entries; promoted 6 generic tags to multi-word specific phrases. Examples: `[hook, plugin-root, expansion]` → `[plugin-root, hook-expansion]`; `[test, fixture, tdd]` → `[test-fixture, fixture-drift, tdd]`; `[cli, lint, audit, positional, file-flag, ...]` → `[cli-positional, file-flag, silent-success, footgun, sibling-symmetry]`. This is user-global state — operator-managed, version-controlled by user, not shipped through `/claudemd-update`.
+
+### Self-audit grounding
+
+`/claudemd-audit` over the v0.9.27 release session showed 5 hook trips:
+- 1 true positive (`macos` tag → memory IS about macOS shell portability — relevant)
+- 4 false positives — 2 substring-class (mechanical, fixed by hook), 2 multi-line-anchor-class (mechanical, fixed by hook), 1 generic-exact-word-class (authoring discipline, addressed by spec SHOULD + MEMORY.md cleanup)
+
+### Sizing
+
+- core 24550 → 24550 bytes (header bump only).
+- extended 48815 → ~49850 bytes (+1035, new SHOULD section).
+- core 450 bytes headroom (98.20%); extended ~150 bytes headroom (**~99.7% — at-ceiling, v6.11.12 MUST net-delete**).
+
 ## [0.9.27] - 2026-05-11
 
 **Patch — new SessionEnd hook `session-end-check.sh` mechanizes core §11 "Session-exit mid-SPINE" HARD self-rule.** First feature shipping under the v6.11.10 §9 Parallel-path HARD regime. Spec unchanged — purely plugin-side enforcement. Hook count 12 → 13. Default ON (Stop hook of comparable plumbing already at default-ON; this hook only writes a `tasks/<slug>-paused.md` checkpoint and stderr warn — never blocks exit).

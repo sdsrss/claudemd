@@ -6,6 +6,41 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.11 — 2026-05-11
+
+Patch: companion to claudemd v0.9.28 hook fix for §11 MEMORY.md read-the-file FP rate. **Spec-side adds Tag-specificity SHOULD** in §11-EXT codifying the authoring discipline that complements the v0.9.28 word-boundary hook fix. No new HARD; **§13.2 budget cost: 0**.
+
+### Background
+
+`/claudemd-audit` over the v0.9.27 release session showed 5 hook trips on push/release commands; only 1 was a true positive (`macos` tag → memory about macOS shell portability — relevant). The remaining 4 fell into two FP classes:
+
+1. **Substring match** (`cli` tag inside `clippy` literal) — mechanical bug, fixed in claudemd v0.9.28 hook.
+2. **Multi-line `^release` anchor** firing on commit-msg heredoc body lines starting with conventional-commit verbs — also fixed in v0.9.28 hook (collapse `\n` → space before regex).
+3. **Generic exact-word tags** (`audit` matching bare word `audit` anywhere in body, `dead-code` matching CLI subcommand name in citation) — authoring-discipline issue. Spec-side fix below.
+
+### Changes
+
+- `[change]` **§11-EXT Tag-specificity (SHOULD)** (extended, +~1080 bytes — new sub-section under existing §11-EXT MEMORY-tag-syntax). Tags SHOULD be ≥4 chars AND specific to the memory's topic — generic single-word English tags (`hook`, `plugin`, `test`, `cli`, `lint`, `audit`) substring-match incidental occurrences in commit bodies and produce high FP rates. Prefer multi-word phrases (`hook-fail-open`, `cli-flag-shape`, `audit-pipeline-filter`). Hook (claudemd v0.9.28+) applies word-boundary + 0-2 char declension tolerance, so plurals still match without substring-collisions in longer words; but generic exact-word tags still need authoring-time discipline. Rule of thumb: if removing the tag would not change the agent's decision quality on a typical command match, the tag is too generic.
+
+### Companion plugin work (claudemd v0.9.28)
+
+- `[fix]` **`hooks/memory-read-check.sh` word-boundary tag match** — replaces `grep -iF` (literal substring) with `grep -iE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}($|[^a-zA-Z0-9])"` (word-boundary + 0-2 char declension tolerance + regex-meta escape). Eliminates `cli ⊂ clippy` class.
+- `[fix]` **`hooks/memory-read-check.sh` multi-line trigger collapse** — `tr '\n' ' '` before applying TRIGGER_RE so the `^` anchor only matches actual start-of-command, not start-of-each-heredoc-body-line. Eliminates `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"` false trigger.
+- `[test]` **4 new test cases** in `tests/hooks/memory-read-check.test.sh` (Cases 20-23): cli vs clippy substring rejection, hook → hooks plural via declension tolerance, heredoc-body release(...) line not triggering, regex-meta tag (v6.9) escaping vs v6X9. 23/23 passing.
+- `[chore]` **`~/.claude/projects/<encoded>/memory/MEMORY.md` operator-side cleanup** — dropped 12 generic single-word tags across 11 entries; promoted 6 generic tags to multi-word specific phrases (e.g. `[hook]` → `[plugin-root, hook-expansion]`, `[test]` → `[test-fixture, fixture-drift]`, `[cli]` → `[cli-positional, sibling-symmetry]`). User-global state — operator-managed, not shipped via `/claudemd-update`.
+
+### §13.2 budget cost
+
+0 (new SHOULD, no new HARD). HARD tally unchanged: 13 core + 4 §EXT-side.
+
+### Sizing
+
+core 24550 → 24550 bytes (0% — header bump only); extended 48815 → ~49850 bytes (+1035, new SHOULD section + Recent-changes turnover). core 24550/25000 (450 bytes headroom, 98.20%); extended ~49850/50000 (**~150 bytes headroom, 99.7%** — at-ceiling; v6.11.12 MUST net-delete or migrate marginal content per §13.1).
+
+**Operator carry-forward (HARD for v6.11.12)**: extended hit 99.7% utilization. v6.11.12 MUST net-delete. Migration candidate: §11-EXT MEMORY-* cluster (4 sub-sections covering memory routing / auto-memory tree / tag-syntax / tag-specificity) — largest contiguous plugin-specific block whose content is implementation discipline rather than spec-canonical contract.
+
+---
+
 ## v6.11.10 — 2026-05-10
 
 Patch: first batch-review-driven HARD promotion since v6.10.2 (2026-04-23). §9 Parallel-path completeness elevated SHOULD → HARD after `tasks/rule-candidates-2026-04.md` 2026-05-10 batch review confirmed both promotion conditions met (4 distinct repros across 2 projects ≥ 3-bar; ~25 L2+ tasks since last HARD addition ≥ 20-task counter). New §EXT SHOULD documenting macOS CI shell portability (3 lessons.md repros). **§13.2 budget cost: 1** (one new HARD); 20-task counter resets to 0.

@@ -310,7 +310,100 @@ else
   echo "FAIL: 19 (out: $OUT)"; FAIL=$((FAIL+1))
 fi
 
+# Case 20 (D): v0.9.28 — short tag must NOT substring-match longer word.
+# Pre-v0.9.28 grep -iF substring-matched tag `cli` inside `clippy` (and
+# similar `dead-code` inside arbitrary citations), producing ~80% FP rate
+# on real ship-flow self-audit.
+S20_DIR="$HOME/.claude/projects/${ENCODED}-s20"
+S20_MEM="$S20_DIR/memory"
+mkdir -p "$S20_MEM"
+cat > "$S20_MEM/MEMORY.md" <<'EOF'
+- [CLI input shape](feedback_cli_shape.md) `[cli, ship]` — fires on cli verb
+EOF
+touch "$S20_MEM/feedback_cli_shape.md"
+SESS="sess20"
+S20_CWD="${CWD}-s20"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S20_DIR/$SESS.jsonl"
+# CMD contains `clippy` (NOT `cli` as a word) and `git push`. Tag `cli` should
+# NOT match `clippy`. Tag `ship` should NOT match (no ship word in body).
+# But `git push` triggers the hook regex. So if cli-as-word doesn't match,
+# only `ship` could match — and it doesn't → no deny.
+EVENT_20="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cargo clippy && git push\"},\"cwd\":\"$S20_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_20" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 20 cli tag does NOT substring-match clippy (v0.9.28 word-boundary)" \
+  || { echo "FAIL: 20 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 21 (D): v0.9.28 — short tag still matches plural form (declension
+# tolerance, 0-2 trailing alpha chars allowed). `hook` should still match
+# `hooks` (the plural form is the topic too).
+S21_DIR="$HOME/.claude/projects/${ENCODED}-s21"
+S21_MEM="$S21_DIR/memory"
+mkdir -p "$S21_MEM"
+cat > "$S21_MEM/MEMORY.md" <<'EOF'
+- [Hook lib](feedback_hook_lib.md) `[hook, ship]` — sourcing rule
+EOF
+touch "$S21_MEM/feedback_hook_lib.md"
+SESS="sess21"
+S21_CWD="${CWD}-s21"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S21_DIR/$SESS.jsonl"
+# CMD contains `hooks` (plural), tag `hook` should match (declension tolerance).
+EVENT_21="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push  # added 2 hooks\"},\"cwd\":\"$S21_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_21" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 21 hook tag still matches hooks plural (declension tolerance)" \
+  || { echo "FAIL: 21 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 22 (D): v0.9.28 — heredoc body line starting with conventional-commit
+# verb (e.g. `release(v0.9.27): ...`) must NOT trigger the hook just because
+# `^release` matches the bare-verb fallback at line-start. Pre-v0.9.28 the
+# trigger regex's `^` anchor matched line-starts in multi-line $CMD, so any
+# `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"` would fire
+# the scan even though no real ship verb was invoked. Fix: collapse \n to
+# space before regex check.
+S22_DIR="$HOME/.claude/projects/${ENCODED}-s22"
+S22_MEM="$S22_DIR/memory"
+mkdir -p "$S22_MEM"
+cat > "$S22_MEM/MEMORY.md" <<'EOF'
+- [Release lessons](feedback_release.md) `[release]` — would fire pre-fix
+EOF
+touch "$S22_MEM/feedback_release.md"
+SESS="sess22"
+S22_CWD="${CWD}-s22"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S22_DIR/$SESS.jsonl"
+# Multi-line command: `git commit -m "..."` where the message body is a
+# heredoc starting with `release(v0.9.27):`. No real ship verb in the bash
+# command itself.
+EVENT_22=$(jq -cn --arg cwd "$S22_CWD" --arg sess "$SESS" \
+  '{session_id:$sess, tool_name:"Bash", tool_input:{command:"git commit -m \"$(cat <<EOF\nrelease(v0.9.27): hooks added\nEOF\n)\""}, cwd:$cwd}')
+OUT=$(bash "$HOOK" <<<"$EVENT_22" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 22 heredoc-body release(...) line does NOT trigger (multi-line collapse)" \
+  || { echo "FAIL: 22 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 23 (D): v0.9.28 — tag containing regex meta chars (`.`, `+`, etc.)
+# must be escaped before use in the new -E word-boundary pattern. Tag
+# `v6.9` should NOT match `v6X9` literally (the `.` was a regex `.` in
+# unescaped form, matching any char).
+S23_DIR="$HOME/.claude/projects/${ENCODED}-s23"
+S23_MEM="$S23_DIR/memory"
+mkdir -p "$S23_MEM"
+cat > "$S23_MEM/MEMORY.md" <<'EOF'
+- [Versioned](feedback_versioned.md) `[v6.9, ship]` — meta chars in tag
+EOF
+touch "$S23_MEM/feedback_versioned.md"
+SESS="sess23"
+S23_CWD="${CWD}-s23"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S23_DIR/$SESS.jsonl"
+# `v6X9` does NOT contain literal `v6.9`; tag should not match.
+# `git push` triggers the hook. Tag `ship` doesn't appear. So no deny.
+EVENT_23="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push v6X9\"},\"cwd\":\"$S23_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_23" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 23 regex-meta tag (v6.9) escaped — does not match v6X9" \
+  || { echo "FAIL: 23 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((19 - FAIL))/19 passed"; exit 1
+  echo "Tests: $((23 - FAIL))/23 passed"; exit 1
 fi
-echo "Tests: 19/19 passed"
+echo "Tests: 23/23 passed"

@@ -31,7 +31,16 @@ fi
 # "release notes"` and `glab mr create --title "fix release"` both fired
 # the filter — see tests Cases 14–15.
 TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|$)'
-echo "$CMD" | grep -qE "$TRIGGER_RE" || exit 0
+# v0.9.28: collapse newlines to spaces before regex check. Prior behavior fired
+# on multi-line commands where heredoc body lines started with conventional-
+# commit verbs (e.g. `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"`
+# matched the bare-verb fallback `release|deploy|ship` because grep -E treats
+# each newline-separated line as anchorable via `^`). Collapsing to one line
+# means `^` only matches actual start-of-command, while mid-string occurrences
+# still need a `[;&|]+` separator before them — which heredoc body content
+# never has.
+CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 # Per-invocation escape hatch — placed AFTER trigger filter so bypass
 # usage is recorded only when the hook would have actually scanned.
@@ -89,15 +98,19 @@ while IFS= read -r line; do
     for t in "${TAGS[@]}"; do
       t=$(echo "$t" | tr -d ' ')
       [[ -z "$t" ]] && continue
-      # -F: tag is literal, not a regex. A tag containing `.` / `$` / `*` would
-      # otherwise be interpreted by grep's BRE and either match too broadly
-      # (e.g. `.` matching any char) or fail to match itself.
-      # `--` separator: a tag beginning with `-` (e.g. `--file`, `-h`) would
-      # otherwise be parsed by grep as a flag — `--file` literally errors with
-      # `option '--file' requires an argument`, breaking the whole MEMORY scan
-      # and silently fail-opening the §11 rule. Spotted in v0.9.14 when the
-      # newly-added CLI flag tag triggered this.
-      if echo "$CMD" | grep -qiF -- "$t"; then
+      # v0.9.28: word-boundary match with 0-2 char declension tolerance.
+      # Pre-fix `grep -iF` substring-matched `cli` inside `clippy`,
+      # `dead-code` inside any literal citation, etc. — produced ~80% FP rate
+      # in v0.9.27 ship-flow self-audit. New form anchors on non-word-char
+      # boundaries and allows up to 2 trailing alpha chars so plurals/
+      # declensions still match (`hook` still matches `hooks`/`hooked`).
+      # `--` separator preserved: a tag beginning with `-` (e.g. `--file`,
+      # `-h`) would otherwise be parsed by grep as a flag and silently
+      # fail-open the whole §11 rule (regression from v0.9.14).
+      # Tag escaping: regex meta chars in tags (`.`, `*`, `+`, `[`, `]`,
+      # `(`, `)`, `?`, `{`, `}`, `|`, `^`, `$`, `\`) escaped before use.
+      ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
+      if echo "$CMD" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
         MATCHES+=("$FILE")
         break
       fi

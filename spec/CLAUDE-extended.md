@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.10 — Extended
+# AI-CODING-SPEC v6.11.11 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -522,14 +522,15 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.10 (patch, 2026-05-10)** — first batch-review-driven HARD promotion since v6.10.2. §9 Parallel-path completeness elevated SHOULD → HARD after counter saturation (~25 L2+ tasks since 2026-04-23) + 4 distinct repros across 2 projects (code-graph-mcp v0.14/v0.15/v0.16 + mem v2.49). New §EXT SHOULD documenting macOS CI shell portability (3 lessons.md repros). **§13.2 budget cost: 1** (one new HARD); 20-task counter resets to 0.
+**v6.11.11 (patch, 2026-05-11)** — companion to claudemd v0.9.28 hook fix for §11 MEMORY.md read-the-file FP rate (~80% in v0.9.27 self-audit). New §11-EXT Tag-specificity SHOULD codifies the authoring discipline that complements the v0.9.28 word-boundary hook fix. No new HARD. **§13.2 budget cost: 0**.
 
-- `[change]` **§9 Parallel-path completeness: SHOULD → HARD L2+** (core, −89 bytes — promotion *saves* bytes by dropping the trailing candidate-tracking clause). Repros (per `tasks/rule-candidates-2026-04.md` 2026-05-10 batch review): (1) code-graph-mcp `ast_search ORDER BY f.path LIMIT 60` silently truncated late-alphabet files; (2) code-graph-mcp v0.15.0 `lang_config.rs::for_language` default arm returned `"unknown"` so new-language match silently always-false; (3) code-graph-mcp v0.16 `dead-code --json` empty-result silently emitted nothing; (4) mem v2.49.0 CJK precision bundle fixed FTS path but missed sibling LIKE fallback. Self-enforced (no per-language-AST mechanical detection feasible at hook layer); `hard-rules.json` `enforcement: "self"` like Iron Law #2.
-- `[change]` **§11-EXT macOS CI shell portability (SHOULD)** (extended, +~870 bytes — new section). Codifies the implementation contract behind `hooks/lib/platform.sh` + `feedback_macos_shell_portability.md` memory + `feedback_hook_platform_lib_source.md` memory. Triggers: 3 repros from `tasks/lessons.md` 2026-04-29 (`bsd-vs-gnu-stat`, `macos-tmp-essentially-empty`, `macos-ci-tmp-flake`). SHOULD not HARD because failure surfaces in CI red, not silent prod. Rule covers the five recurring traps: `stat`/`find -newer` wrapper sourcing, `timeout` GNU-coreutils-via-brew, BSD `wc -l` padding, `mktemp -d` `/var→/private/var` symlink, post-`git add` `chmod +x` mode preservation.
+- `[change]` **§11-EXT Tag-specificity (SHOULD)** (extended, +~1080 bytes — new sub-section under existing §11-EXT MEMORY-tag-syntax). Tags SHOULD be ≥4 chars AND specific to the memory's topic — generic single-word English tags (`hook`, `plugin`, `test`, `cli`, `lint`, `audit`, `done`, `spec`) substring-match incidental occurrences in commit bodies and command lines, producing high FP rates. Hook (claudemd v0.9.28+) applies word-boundary + 0-2 char declension tolerance, so plurals/-ed/-er forms still match without longer-word substring matches; but generic exact-word tags still need authoring-time discipline. Companion plugin work: claudemd v0.9.28 `hooks/memory-read-check.sh` word-boundary fix + multi-line trigger collapse (eliminates two FP classes mechanically) + `~/.claude/projects/<encoded>/memory/MEMORY.md` operator-side tag cleanup (drops 12 generic tags across 11 entries).
 
-**§13.2 budget cost**: 1 new HARD (§9 Parallel-path). HARD tally: 13 core + 4 §EXT-side. 20-task counter resets to 0 from ~25.
+**§13.2 budget cost**: 0 (no new HARD; new SHOULD is §11-EXT-side complement to existing §11 MEMORY.md HARD). HARD tally unchanged: 13 core + 4 §EXT-side.
 
-**Sizing** (v6.11.10, 2026-05-10, measured via `wc -c` on disk): core 24643 → 24550 bytes (−93, −0.38% — net delete via SHOULD→HARD trim); extended 47747 → 48815 bytes (+1068, +2.24% — new §11-EXT macOS section adds ~870 bytes, Recent-changes turnover net-deletes ~150 bytes). Size budget (§13.1): core 24550/25000 (**450 bytes headroom, 98.20% utilized — improved from v6.11.9's 357 bytes**); extended 48815/50000 (**1185 bytes headroom, 97.63% utilized — tightened from v6.11.9's 2253 bytes; v6.11.11 net-delete or migrate strongly preferred**). Runtime L0/L1/L2 ≈ 6.10k tokens (−0.03k vs v6.11.9; HARD-rule promotion is a wording change, not new content).
+**Sizing** (v6.11.11, 2026-05-11, measured via `wc -c` on disk): core 24550 → 24550 bytes (0, 0.00% — header bump only, no content); extended 48815 → ~49850 bytes (+1035, +2.12% — new §11-EXT Tag-specificity SHOULD section ~1100 bytes, Recent-changes turnover net-deletes ~65 bytes). Size budget (§13.1): core 24550/25000 (**450 bytes headroom, 98.20%** — unchanged); extended ~49850/50000 (**~150 bytes headroom, ~99.7% utilized — at-ceiling; v6.11.12 MUST net-delete or migrate marginal content per §13.1**). Runtime L0/L1/L2 ≈ 6.10k tokens (0 vs v6.11.10).
+
+**Operator carry-forward (MUST for v6.11.12)**: extended at 99.7% utilization. Next bump MUST net-delete or refuse addition. Migration candidate: §11-EXT MEMORY-* cluster (4 sub-sections covering memory routing / auto-memory tree / tag-syntax / tag-specificity) — largest contiguous plugin-specific block whose content is implementation discipline rather than spec-canonical contract.
 
 ## §1.5-EXT GLOSSARY (full definitions)
 
@@ -625,6 +626,14 @@ Demoted from core §11 in v6.11.9 (rationale text moved from a long footnote to 
 - Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before reading the file.
 - **Untagged lines = agent-driven full content scan** (decide based on the line's title/description). The hook does NOT auto-block on untagged entries, so a `MEMORY.md` without tag discipline doesn't force N unrelated Reads on every push.
 - Operational rule: tag the lines you want hook-enforced; leave the rest for agent judgment. v6.11.3 introduced this hook/agent split after the v0.5.0 over-trigger pattern (release/deploy/ship matching anywhere in commit-body / MR-description / file-paths → false-positive blocks).
+
+### Tag specificity (SHOULD, v6.11.11)
+
+Tags SHOULD be ≥4 chars AND specific to the memory's topic — avoid generic single-word English tags (`hook`, `plugin`, `test`, `cli`, `lint`, `audit`, `done`, `spec`, `ship` when memory is not actually about ship-flow) that substring-match incidental keyword occurrences in commit bodies and command lines. Generic tags produce high FP rates that erode the §11 read-the-file rule's signal value. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter` / `plugin-update-flow`).
+
+Hook (claudemd v0.9.28+) applies word-boundary matching with 0-2 char declension tolerance — plurals and -ed/-er forms still match (`hook` → `hooks` / `hooked`), and longer words containing the tag as a substring no longer fire (`cli` ≠ inside `clippy`). But a generic exact-word tag (`audit` matching the bare word `audit` in body) still fires; the only fix is tag specificity at authoring time.
+
+Rule of thumb: if removing the tag would not change the agent's decision quality on a typical command match, the tag is too generic.
 
 ## §11-EXT macOS CI shell portability (SHOULD)
 
