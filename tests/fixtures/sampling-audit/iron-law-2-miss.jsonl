@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"status"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: ship completed\nNot done: docs update deferred\nFailed: (none)\nUncertain: whether CI will catch the edge case, because the trigger is timing-sensitive."}]}}

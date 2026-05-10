@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"fix the bug"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: fixed empty-input crash in scripts/foo.js:42 (Checked: pre-fix TypeError on null arg, post-fix tests/foo.test.js 7 passed)."}]}}

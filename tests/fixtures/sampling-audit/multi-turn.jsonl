@@ -1,0 +1,6 @@
+{"type":"user","message":{"content":"first task"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: patched scripts/a.js:10 (tests/a.test.js: 3 passed)."}]}}
+{"type":"user","message":{"content":"now do the second"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Refactor significantly improved cohesion."}]}}
+{"type":"user","message":{"content":"end"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Uncertain: dunno."}]}}

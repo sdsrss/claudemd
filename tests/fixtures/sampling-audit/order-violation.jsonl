@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"final report"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: feature added (tests/feat.test.js: 12 passed).\nFailed: lint job timeout\nNot done: e2e flakes deferred\nUncertain: whether the workaround stays stable, because timeout is flaky."}]}}

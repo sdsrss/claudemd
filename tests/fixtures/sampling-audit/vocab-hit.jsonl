@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"how did it go"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Refactor significantly improved the lookup speed; the new solution is robust and production-ready."}]}}

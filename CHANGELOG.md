@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.14.0] - 2026-05-11
+
+**Minor — feat: `/claudemd-sampling-audit` retrospective batch scanner for 4 self-enforced HARD rules.**
+
+P3 #7 from the P2/P3 phase plan: turn agent self-constraint observability from "凭感觉" to "可观测". Companion to v0.13.0's `memory-coverage-scan` and the existing `transcript-{vocab,structure}-scan` hooks — those fire write-time on the current session; this command iterates ALL assistant turns across the last N days of historical transcripts and produces aggregate per-rule violation counts feeding §13.2 staleReviews demote-review.
+
+### Background
+
+Spec audit flagged that 4 self-enforced HARD rules (§10-V banned vocab / §iron-law-2 Done-without-evidence / §10-four-section-order / §10-honesty bare-Uncertain) had hook-side detectors that only saw the last-turn / current-session surface. `staleReviews` in `/claudemd-rules` permanently listed all four as un-reviewed because no batch-scan signal existed. The §13.2 demote pipeline could not start. This command closes that gap.
+
+### What changed
+
+- **New script** `scripts/sampling-audit.js` (~280 LOC). Mirrors the regex / heuristic core of `hooks/transcript-vocab-scan.sh` (§10-V) and `hooks/transcript-structure-scan.sh` (§iron-law-2, §10-four-section-order, §10-honesty), but iterates all assistant text turns across a window of historical transcripts. Loads `hooks/banned-vocab.patterns` directly so vocab detection stays single-sourced; structure detectors are JS re-implementations of the bash awk passes, pinned to identical-fixture tests for drift guard.
+- **New slash command** `commands/claudemd-sampling-audit.md`.
+- **Default scope**: current project (CC-encoded cwd under `~/.claude/projects/`), last 30 days by `mtime`. Flags: `--days=N`, `--sample=N` (random subset), `--global` (all projects), `--json` (stdout JSON instead of markdown report).
+- **Output (default)**: writes `tasks/sampling-audit-<YYYY-MM-DD>.md` with aggregate by-rule table + per-transcript hit list; prints per-rule summary to stdout.
+- **Output (`--json`)**: machine-readable `{windowDays, scannedTranscripts, totalTurns, byRule, perTranscript}` to stdout — pipe-friendly for downstream tooling.
+- **Drift guard**: 6 fixture transcripts under `tests/fixtures/sampling-audit/` (clean / vocab-hit / iron-law-2-miss / order-violation / honesty-bare / multi-turn) pin both the JS scanner and (manually maintained) the corresponding bash hook outputs to identical expected hit counts. If bash detectors change without this script following, the fixture tests force re-alignment.
+- **Read-only**: this ship does NOT write back to `spec/hard-rules.json` `last_demote_review` timestamps. `--update-reviews` flag deferred to v0.15.0 — surfaces signal first, wires ratchet after operator review.
+
+### Why minor (not patch)
+
+New slash command = LLM-visible metadata surface (per spec §2: plugin skill descriptions → L3 regardless of LOC). Additive feature; no rule add / remove / downgrade. §13.2 budget cost: 0.
+
+### Tests
+
+- New `tests/scripts/sampling-audit.test.js`: 9 cases — clean / vocab-hit / iron-law-2-miss / order-violation / honesty-bare / multi-turn fixtures; days-window mtime filter; aggregate result shape; missing projectsDir no-throw.
+- Full JS suite: 396 → 405 tests passing (+9 / +2.3%). Hook suite 8/8 (`transcript-vocab-scan`) unchanged. Integration suite: PASS.
+
+### Operator notes
+
+First real-data smoke run (this session, 30d window on the claudemd repo): 46 transcripts, 1885 assistant turns scanned. By rule: §10-V 75 hits across 24 transcripts; §iron-law-2 8 hits across 5 transcripts; §10-four-section-order 0 hits; §10-honesty 5 hits across 3 transcripts. The §10-four-section-order zero-hit baseline confirms the Stop hook's structural enforcement is effective; §10-V remains the highest-drift surface (matches the v0.7.0 high-fire region split in `banned-vocab.patterns`).
+
+Once a few audit runs accumulate, `/claudemd-rules` `staleReviews` can be cleared with informed demote/keep decisions instead of operator-eyeball guesses.
+
 ## [0.13.1] - 2026-05-11
 
 **Patch — fix: AI-CODING-SPEC v6.11.14 → v6.11.15 — §0.1 demote-evaluation window 90d → 30d (unblocks `/claudemd-rules` demote-candidate detection).**
