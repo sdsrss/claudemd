@@ -12,7 +12,8 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/version-sync.sh\"", "timeout": 2 }
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/version-sync.sh\"", "timeout": 2 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/memory-prompt-hint.sh\"", "timeout": 3 }
         ]
       }
     ],

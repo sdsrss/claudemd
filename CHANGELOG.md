@@ -8,6 +8,32 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.11.0] - 2026-05-11
+
+**Minor — feat: proactive MEMORY.md tag hint at UserPromptSubmit.** New hook `memory-prompt-hint` fires on every user prompt, parses MEMORY.md `[tag, tag]` index, matches against the prompt with the same word-boundary + declension + meta-escape regex as `memory-read-check.sh`, and emits an `additionalContext` block listing un-Read matched memory files. Attacks the observed §11 cite-recall ~8% (2/24) by surfacing relevant memories *before* the agent acts, not waiting for the ship-time deny.
+
+### What changed
+
+- **New hook** `hooks/memory-prompt-hint.sh` (~110 LOC). UserPromptSubmit matcher; emits `{suppressOutput:true, hookSpecificOutput:{hookEventName,additionalContext}}` listing the un-Read matched files (capped at 5 + overflow footer; full match count carried in telemetry `extra.match_count`).
+- **Proactive twin** of `memory-read-check.sh`: read-check denies bash ship verbs at ship time; prompt-hint suggests files at prompt time. Both share tag-parsing logic; hint additionally checks the session transcript for prior Read so already-Read files don't generate noise.
+- **Schema additive**: `event="suggest"` + `spec_section="§11-memory-hint"` documented in `docs/RULE-HITS-SCHEMA.md` Events table + Spec section taxonomy. Contract test (`tests/hooks/contract.test.sh`) DOCUMENTED array extended.
+- **Registry sync**: 14 → 15 hooks. `scripts/lib/hook-registry.js` adds entry; `tests/scripts/{install,hook-registry}.test.js` MCOUNT pin moved; `tests/integration/full-lifecycle.test.sh` manifest count + regex group moved; `README.md` + `commands/claudemd-toggle.md` kill-switch list extended.
+- **Kill-switch**: `DISABLE_MEMORY_HINT_HOOK=1`.
+
+### Why minor, not patch
+
+Pure additive: new hook, new event, new spec_section, no existing schema or audit-output shape changes. But: this is the first hook that *injects* into user-prompt context (not just denies / records), and it surfaces on every prompt — user-visible new default behavior crosses the §2 "released-artifact user-visible default behavior change" L3 threshold mentioned in spec v6.11.13, so the bump is minor (not patch) to make the new context-injection contract semver-discoverable.
+
+### Tests
+
+- New `tests/hooks/memory-prompt-hint.test.sh`: 12 cases — single tag match emits, no match silent, prior Read suppressed, multi-tag match, kill-switch, untagged entry skipped, missing MEMORY.md fail-open, empty prompt silent, underscore+dot cwd encoding, regex-meta literal match, telemetry row schema, cap-at-5 + overflow footer.
+- `tests/hooks/contract.test.sh` DOCUMENTED array: `suggest:memory-prompt-hint` added (closes Invariants B + C).
+- Suite: 20/20 hook + 384/384 JS + 2/2 integration pass.
+
+### Sizing
+
+No spec changes; same `spec/CLAUDE.md` v6.11.13 baseline as v0.10.1.
+
 ## [0.10.1] - 2026-05-11
 
 **Patch — feat: §13.1 demote-analysis denominator signal.** New PreToolUse:Read hook `session-extended-read` records once per session when `~/.claude/CLAUDE-extended.md` is read (per spec §2.2 EXT LOADING). Backlog item 1C from v0.10.0 closed: extended-scope rules with "0 hits in 90d" can now be qualified against the count of sessions that actually loaded extended, instead of conflating "rule cold" with "extended rarely loaded."

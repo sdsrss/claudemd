@@ -58,7 +58,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 13 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 14 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 9 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.11.13 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
@@ -169,6 +169,7 @@ export DISABLE_PRE_BASH_SAFETY_HOOK=1            # or
 export DISABLE_SHIP_BASELINE_HOOK=1              # or
 export DISABLE_RESIDUE_AUDIT_HOOK=1              # or
 export DISABLE_MEMORY_READ_HOOK=1                # or
+export DISABLE_MEMORY_HINT_HOOK=1                # v0.11.0+ — UserPromptSubmit MEMORY.md tag pre-matcher (proactive §11 hint)
 export DISABLE_SANDBOX_DISPOSAL_HOOK=1           # or
 export DISABLE_SESSION_START_HOOK=1              # or
 export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary

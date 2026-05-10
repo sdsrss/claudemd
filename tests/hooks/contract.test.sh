@@ -111,6 +111,7 @@ DOCUMENTED=(
   "upstream-banner:session-start"
   "version-sync:user-prompt-submit"
   "read:session-extended-read"
+  "suggest:memory-prompt-hint"
 )
 
 for entry in "${DOCUMENTED[@]}"; do

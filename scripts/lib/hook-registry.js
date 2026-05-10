@@ -17,6 +17,7 @@
 export const HOOK_REGISTRY = [
   { basename: 'session-start-check.sh',  displayName: 'session-start-check',   envVarSuffix: 'SESSION_START',     hookEvent: 'SessionStart',     matcher: '*',    timeout: 5 },
   { basename: 'version-sync.sh',          displayName: 'version-sync',          envVarSuffix: 'USER_PROMPT_SUBMIT', hookEvent: 'UserPromptSubmit', matcher: '*',    timeout: 2 },
+  { basename: 'memory-prompt-hint.sh',    displayName: 'memory-prompt-hint',    envVarSuffix: 'MEMORY_HINT',       hookEvent: 'UserPromptSubmit', matcher: '*',    timeout: 3 },
   { basename: 'pre-bash-safety-check.sh', displayName: 'pre-bash-safety',       envVarSuffix: 'PRE_BASH_SAFETY',   hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 3 },
   { basename: 'banned-vocab-check.sh',    displayName: 'banned-vocab',          envVarSuffix: 'BANNED_VOCAB',      hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 3 },
   { basename: 'ship-baseline-check.sh',   displayName: 'ship-baseline',         envVarSuffix: 'SHIP_BASELINE',     hookEvent: 'PreToolUse',       matcher: 'Bash', timeout: 5 },
