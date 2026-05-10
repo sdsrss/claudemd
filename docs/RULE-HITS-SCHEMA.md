@@ -15,7 +15,7 @@ Format: one JSON object per line. Append-only. Size-capped rotation at 5 MB
 | `session_id` | string \| null | Claude Code session identifier extracted from stdin EVENT JSON `.session_id`. `null` for rows written before v0.9.33 (added then). All 12 emitter hooks populate it as of v0.9.34. |
 | `tool_use_id` | string \| null | Per-invocation tool use ID (format `toolu_[alnum]`) from stdin EVENT JSON `.tool_use_id`. Only PreToolUse / PostToolUse events carry this — Stop / SessionStart / SessionEnd / UserPromptSubmit emit `null` (no per-tool context). Drives audit `unique_invocations` dedup: same `(ts, hook, session_id, tool_use_id)` quadruple twice ⇒ true single-invocation double-fire (registration / lib bug); different `tool_use_id` at same ts + same session_id ⇒ Claude fast-retry after deny, NOT a duplicate. Added v0.9.34. |
 | `spec_section` | string \| null | spec section being enforced — drives §0.1/§13.1/§13.2 promotion/demotion accounting. `null` for plugin-internal events (bootstrap, version-sync, upstream-banner) and for rows written before v0.7.0. See "Spec section taxonomy" below. Added v0.7.0. |
-| `extra` | any | hook-specific payload (object / null / string) |
+| `extra` | any | hook-specific payload (object / null / string). For `memory-read-check`: `deny` rows carry `{missing: string[], match_count: number}` (`match_count` = total MATCHES in MEMORY.md scan = MISSING.length + already-Read subset; added v0.9.36); `bypass-escape-hatch` rows carry `{token: string}` plus optional `bypass_reason: string` when `[skip-memory-check: <reason>]` form is used (added v0.9.36). |
 
 ## Events
 

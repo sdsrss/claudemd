@@ -50,8 +50,25 @@ TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 # usage is recorded only when the hook would have actually scanned.
 # SESSION_ID / TOOL_USE_ID extracted above so bypass row also carries them
 # (v0.9.33 / v0.9.34 schema).
-if echo "$CMD" | grep -qF '[skip-memory-check]'; then
-  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
+#
+# v0.9.36: accept both [skip-memory-check] and [skip-memory-check: <reason>].
+# Reason text (when present) lands in extra.bypass_reason — fuels future
+# §0.1/§13.1 audit: bypass concentrated on `tag-FP` reasons ⇒ rule too
+# strict; concentrated on `trivial-edit` reasons ⇒ command-shape too
+# aggressive. Distinguishes "operator says rule is broken" from "operator
+# says task doesn't need this rule" without manual transcript reading.
+BYPASS_RE='\[skip-memory-check[[:space:]]*(:[[:space:]]*([^]]*))?\]'
+if [[ "$CMD" =~ $BYPASS_RE ]]; then
+  BYPASS_REASON="${BASH_REMATCH[2]:-}"
+  # Trim trailing whitespace; leading absorbed by the inner [[:space:]]* group.
+  BYPASS_REASON="${BYPASS_REASON%"${BYPASS_REASON##*[![:space:]]}"}"
+  if [[ -n "$BYPASS_REASON" ]]; then
+    R_JSON=$(printf '%s' "$BYPASS_REASON" | jq -R .)
+    EXTRA="{\"token\":\"skip-memory-check\",\"bypass_reason\":$R_JSON}"
+  else
+    EXTRA='{"token":"skip-memory-check"}'
+  fi
+  hook_record memory-read-check bypass-escape-hatch "$EXTRA" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi
 
@@ -141,10 +158,18 @@ for m in "${MISSING[@]}"; do
 done
 REASON+=$'\n\n'"Options:
   (a) Read the listed file(s), then retry.
-  (b) Per-invocation bypass: include [skip-memory-check] in the command.
+  (b) Per-invocation bypass: include [skip-memory-check] or
+      [skip-memory-check: <reason>] in the command. Citing a reason
+      helps the §0.1/§13.1 audit distinguish 'rule too strict' from
+      'task doesn't need this rule'.
 
 Spec: ~/.claude/CLAUDE.md §11 SESSION — MEMORY.md read-the-file."
 
 MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
-hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
+# v0.9.36: emit match_count = total MATCHES (triggered files), not just
+# MISSING (un-Read subset). Distinguishes "deny triggered 8-file fan-out"
+# (avalanche signal, rule may be too broad) from "deny triggered 1 file"
+# (single match, rule working as designed). Bypass-rate by match_count
+# bucket surfaces avalanche-driven bypass.
+hook_record memory-read-check deny "{\"missing\":$MISS_JSON,\"match_count\":${#MATCHES[@]}}" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
 hook_deny memory-read-check "$REASON"

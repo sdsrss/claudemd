@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.36] - 2026-05-11
+
+**Patch — memory-read-check observation 维度扩 (`match_count` + `bypass_reason`).** Closes the §0.1 / §13.1 audit data gap from point 3 of 2026-05-11 dogfood. Pre-v0.9.36 the 30d sample showed `skip-memory-check` bypass at 4/9 = 44% rate — n=9 too small to act, but more importantly the row schema couldn't distinguish "rule too strict on N-file avalanche" from "rule unnecessary for this task." Two new fields in `extra`:
+
+- `deny.extra.match_count` = total MATCHES from MEMORY.md scan (`MISSING.length` + already-Read subset). Distinguishes 8-file fan-out deny (avalanche signal — rule may be too broad) from 1-file deny (single tag match, rule working as designed). Audit consumer can bucket bypass rate by match_count to spot avalanche-driven bypass.
+- `bypass-escape-hatch.extra.bypass_reason` = free-form reason text extracted from `[skip-memory-check: <reason>]` form. Operator citing "tag-FP" / "trivial-edit" / "already-read-in-prior-session" reasons fuels §0.1 demote decisions without manual transcript reading.
+
+### Changed
+
+- `[change]` **`hooks/memory-read-check.sh`** — escape-hatch parser switched from literal `grep -qF '[skip-memory-check]'` to bash regex `\[skip-memory-check[[:space:]]*(:[[:space:]]*([^]]*))?\]`, accepting both bare and reason forms. Tolerates whitespace around the colon. Trailing whitespace trimmed; non-`]` chars in reason captured literally.
+- `[change]` **`hooks/memory-read-check.sh`** — deny row's `extra` extends from `{missing:[...]}` to `{missing:[...], match_count: N}`.
+- `[change]` **`hooks/memory-read-check.sh`** — user-facing deny message option (b) updated to advertise `[skip-memory-check: <reason>]` form.
+- `[doc]` **`docs/RULE-HITS-SCHEMA.md`** — `extra` field row documents the `memory-read-check`-specific shape for both `deny` and `bypass-escape-hatch` events.
+
+### Tests
+
+- `[add]` **`tests/hooks/memory-read-check.test.sh` Cases 24–27**: bypass with reason captured / bare bypass back-compat (no `bypass_reason` key) / deny carries `match_count=8` with 8-file avalanche fixture / colon-no-space tolerance.
+- 27/27 memory-read-check cases pass; 19/19 hook + 391/391 JS tests green; `tests/run-all.sh` `OVERALL: all suites passed`.
+
+### Compat
+
+- Existing bare `[skip-memory-check]` form continues to work unchanged. Rows from pre-v0.9.36 deny events have no `match_count` in `extra` — audit consumer should treat absence as "unknown" (cannot retro-compute).
+- No `rule_hits_append` schema change. New fields live entirely in `extra`, which has always been hook-defined payload.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.35 → 0.9.36 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.35] - 2026-05-11
 
 **Patch — §11-EXT Tag-specificity static check in `claudemd-doctor`.** Closes the spec→tooling gap from v6.11.11: spec §11-EXT (SHOULD) said "generic single-word English tags substring-match incidental prose and produce high FP rates" but no enforcer existed; doctor now scans `~/.claude/projects/*/memory/MEMORY.md` for FP candidates.

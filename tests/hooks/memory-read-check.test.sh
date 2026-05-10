@@ -403,7 +403,74 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 23 regex-meta tag (v6.9) escaped — does not match v6X9" \
   || { echo "FAIL: 23 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((23 - FAIL))/23 passed"; exit 1
+# Case 24 (v0.9.36): bypass with reason form — [skip-memory-check: <reason>]
+# extracts reason text into extra.bypass_reason in rule-hits log.
+SESS="sess24"
+echo '' > "$PROJ_DIR/$SESS.jsonl"
+RULE_LOG="$TMP_HOME/.claude/logs/claudemd.jsonl"
+rm -f "$RULE_LOG"
+OUT=$(mkevent "git push origin main [skip-memory-check: trivial doc edit]" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] || { echo "FAIL: 24a expected bypass (silent pass), got: $OUT"; FAIL=$((FAIL+1)); }
+if [[ -f "$RULE_LOG" ]]; then
+  LAST=$(tail -n 1 "$RULE_LOG")
+  echo "$LAST" | jq -e '.event == "bypass-escape-hatch" and .extra.bypass_reason == "trivial doc edit"' >/dev/null \
+    && echo "PASS: 24 bypass reason captured in extra.bypass_reason" \
+    || { echo "FAIL: 24b expected bypass_reason='trivial doc edit' (got: $LAST)"; FAIL=$((FAIL+1)); }
+else
+  echo "FAIL: 24c rule-hits log not written"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 23/23 passed"
+
+# Case 25 (v0.9.36): bare [skip-memory-check] still works — backward compat,
+# no bypass_reason in extra.
+SESS="sess25"
+echo '' > "$PROJ_DIR/$SESS.jsonl"
+rm -f "$RULE_LOG"
+OUT=$(mkevent "git push origin main [skip-memory-check]" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] || { echo "FAIL: 25a expected silent bypass, got: $OUT"; FAIL=$((FAIL+1)); }
+LAST=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+echo "$LAST" | jq -e '.event == "bypass-escape-hatch" and (.extra | has("bypass_reason") | not)' >/dev/null \
+  && echo "PASS: 25 bare bypass token has no bypass_reason (back-compat)" \
+  || { echo "FAIL: 25b expected no bypass_reason key (got: $LAST)"; FAIL=$((FAIL+1)); }
+
+# Case 26 (v0.9.36): deny row carries extra.match_count = total MATCHES.
+# 8 entries in MEMORY.md, all tagged with `push` so all 8 match the
+# `git push` command; agent Read 0 → missing=8, match_count=8. (Tag `ship`
+# would not match `git push` — substring match needs the verb to be in
+# the command literally.)
+S26_DIR="$HOME/.claude/projects/-work-s26"
+S26_MEM="$S26_DIR/memory"
+mkdir -p "$S26_MEM"
+{
+  for i in 1 2 3 4 5 6 7 8; do
+    echo "- [Entry $i](feedback_$i.md) \`[push]\` — desc $i"
+    touch "$S26_MEM/feedback_$i.md"
+  done
+} > "$S26_MEM/MEMORY.md"
+SESS="sess26"
+S26_CWD="/work/s26"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S26_DIR/$SESS.jsonl"
+rm -f "$RULE_LOG"
+EVENT_26="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$S26_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_26" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] || { echo "FAIL: 26a expected deny (got: $OUT)"; FAIL=$((FAIL+1)); }
+LAST=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+echo "$LAST" | jq -e '.event == "deny" and .extra.match_count == 8 and (.extra.missing | length) == 8' >/dev/null \
+  && echo "PASS: 26 deny carries match_count=8 + missing.length=8" \
+  || { echo "FAIL: 26b expected match_count=8 missing.length=8 (got: $LAST)"; FAIL=$((FAIL+1)); }
+
+# Case 27 (v0.9.36): bypass with reason variations — `:` spacing tolerance.
+SESS="sess27"
+echo '' > "$PROJ_DIR/$SESS.jsonl"
+rm -f "$RULE_LOG"
+OUT=$(mkevent "git push origin main [skip-memory-check:no-space]" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] || { echo "FAIL: 27a expected silent bypass on no-space form, got: $OUT"; FAIL=$((FAIL+1)); }
+LAST=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+echo "$LAST" | jq -e '.extra.bypass_reason == "no-space"' >/dev/null \
+  && echo "PASS: 27 bypass tolerates no space after colon" \
+  || { echo "FAIL: 27b (got: $LAST)"; FAIL=$((FAIL+1)); }
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((27 - FAIL))/27 passed"; exit 1
+fi
+echo "Tests: 27/27 passed"
