@@ -23,6 +23,11 @@ const EXT_SPEC = path.join(ROOT, 'spec/CLAUDE-extended.md');
 const KNOWN_HOOK_SECTIONS = new Set([
   '§10-V', '§7-ship-baseline', '§8', '§8-rm-rf-var', '§8-npx',
   '§11-memory-read', '§7-user-global-state', '§8.V4',
+  // v0.9.23 (Round-6): plugin-internal observability — fail-open events from
+  // hook_record_failopen. Never targeted by spec/hard-rules.json (it's not a
+  // spec rule), but listed here per the taxonomy-sync contract with
+  // docs/RULE-HITS-SCHEMA.md.
+  '§hooks-fail-open',
 ]);
 
 // HARD spec annotations whose containing line cannot be matched by any

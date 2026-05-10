@@ -152,6 +152,21 @@ function lintCmd(rawArgs) {
       process.stderr.write(`lint: file not found: ${filePath}\n`);
       process.exit(2);
     }
+    // Pre-fix, `lint --file <dir>` fell through to readFileSync and surfaced
+    // a raw Node `EISDIR: illegal operation on a directory, read` — asymmetric
+    // with the positional path which already rejects directories cleanly
+    // (line ~191 below). Keep the friendly error shape consistent across both
+    // entry shapes.
+    try {
+      const st = fs.statSync(filePath);
+      if (!st.isFile()) {
+        process.stderr.write(`lint: '${filePath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`);
+        process.exit(2);
+      }
+    } catch (e) {
+      process.stderr.write(`lint: failed to stat ${filePath}: ${e.message}\n`);
+      process.exit(2);
+    }
     try {
       text = fs.readFileSync(filePath, 'utf8');
     } catch (e) {
@@ -206,7 +221,32 @@ function lintCmd(rawArgs) {
     process.exit(2);
   }
 
-  const hits = scan(text);
+  // Per-commit escape hatch — mirrors hooks/banned-vocab-check.sh:36. Without
+  // this, `claudemd-cli lint --file=.git/COMMIT_EDITMSG` in a git pre-commit
+  // hook silently disagreed with the in-CC bash hook: the same commit message
+  // with `[allow-banned-vocab]` would pass the bash gate (exit 0) but the CLI
+  // would still exit 1 and block the commit. Same input → different verdict =
+  // contract violation across surfaces of the same feature.
+  const ESCAPE_HATCH = '[allow-banned-vocab]';
+  if (text.includes(ESCAPE_HATCH)) {
+    if (json) {
+      process.stdout.write(formatJSON({ scope: 'lint', text, hits: [], bypass: 'allow-banned-vocab' }) + '\n');
+    } else {
+      process.stdout.write(`OK: §10-V scan bypassed via ${ESCAPE_HATCH}.\n`);
+    }
+    process.exit(0);
+  }
+
+  // Baseline-context exemption — mirrors banned-vocab-check.sh:65-75. When
+  // the text carries an explicit before-after anchor (digit ... → / -> / =>
+  // ... digit) OR the literal word `baseline`, ratio-class patterns (tagged
+  // `@ratio` in their reason column) are suppressed. Non-ratio hedges /
+  // adjectives still match.
+  const HAS_NUMERIC_ARROW = /\d\S*\s*(?:→|->|=>)\s*\d/;
+  const HAS_BASELINE = /baseline/i;
+  const baselineExempt = HAS_NUMERIC_ARROW.test(text) || HAS_BASELINE.test(text);
+
+  const hits = scan(text, { excludeRatio: baselineExempt });
   if (json) {
     process.stdout.write(formatJSON({ scope: 'lint', text, hits }) + '\n');
   } else {
@@ -230,6 +270,19 @@ function auditCmd(rawArgs) {
   }
   if (!fs.existsSync(transcriptPath)) {
     process.stderr.write(`audit: file not found: ${transcriptPath}\n`);
+    process.exit(2);
+  }
+  // Pre-fix, `audit <dir>` crashed with raw Node EISDIR + Node stack trace
+  // and exit 1 — colliding with the documented "1 = hits found" semantic so
+  // CI scripts couldn't tell a usage error from a real banned-vocab hit.
+  try {
+    const st = fs.statSync(transcriptPath);
+    if (!st.isFile()) {
+      process.stderr.write(`audit: '${transcriptPath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`);
+      process.exit(2);
+    }
+  } catch (e) {
+    process.stderr.write(`audit: failed to stat ${transcriptPath}: ${e.message}\n`);
     process.exit(2);
   }
 

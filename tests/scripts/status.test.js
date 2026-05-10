@@ -49,6 +49,32 @@ test('status reports kill-switch state', async () => {
   }
 });
 
+test('status surfaces pendingKillSwitches when settings.json toggles ahead of process.env (Round-6)', async () => {
+  // Pre-fix dogfood: `/claudemd-toggle banned-vocab` writes
+  // DISABLE_BANNED_VOCAB_HOOK=1 to settings.json. CC will pick that up at
+  // next session start. A user running `node scripts/status.js` between
+  // toggle and restart saw `banned_vocab: false` (= effective in *this*
+  // process) with NO indication that a flip is pending — confusing
+  // self-verification of toggle action. Fix: dual-source.
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  // Process env intentionally NOT set — simulates "between toggle and CC restart".
+  delete process.env.DISABLE_BANNED_VOCAB_HOOK;
+  const r = await status();
+  assert.equal(r.killSwitches.banned_vocab, false, 'effective stays false this process');
+  assert.ok(r.pendingKillSwitches, 'pendingKillSwitches block must exist');
+  assert.deepEqual(r.pendingKillSwitches.banned_vocab,
+    { effective: false, persisted: true });
+});
+
+test('status pendingKillSwitches is empty when env + settings agree', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: {} }));
+  delete process.env.DISABLE_BANNED_VOCAB_HOOK;
+  const r = await status();
+  assert.deepEqual(r.pendingKillSwitches, {}, 'no diff → empty pendingKillSwitches');
+});
+
 test('status reports not-installed when manifest missing', async () => {
   // v0.1.9: manifest lives at ~/.claude/.claudemd-manifest.json outside
   // the runtime state dir. Clean both locations to assert "not-installed".

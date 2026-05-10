@@ -34,6 +34,7 @@ source must appear in this table.
 | `bootstrap` | `session-start` | one-shot install on session start |
 | `upstream-banner` | `session-start` | upstream version available banner |
 | `version-sync` | `user-prompt-submit` | mid-session manifest sync triggered |
+| `fail-open` | any hook calling `hook_record_failopen` (currently `banned-vocab`) | hook silently skipped enforcement due to a missing prerequisite. `extra.reason` ∈ {`jq-missing`, `bad-event`, `patterns-missing`, `prereq-missing`}. Rate-limited to 1 row per (hook, reason) per 60s via `~/.claude/.claudemd-state/failopen-*.ts`. Section: `§hooks-fail-open`. Round-6. |
 
 ## Spec section taxonomy
 
@@ -56,6 +57,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `transcript-structure-scan` | `structure-advisory` | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (one row per §-section detected) |
 | `session-start` | `bootstrap` / `upstream-banner` | `null` |
 | `user-prompt-submit` | `version-sync` | `null` |
+| any hook calling `hook_record_failopen` | `fail-open` | `§hooks-fail-open` (plugin-internal observability — not a spec rule) |
 
 Pre-v0.7.0 rows have no `spec_section` field; `audit.js`'s `bySection`
 aggregation surfaces them under the `(unset)` bucket so the operator can

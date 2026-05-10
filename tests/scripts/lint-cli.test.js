@@ -19,6 +19,78 @@ const run = (args, input) => spawnSync(process.execPath, [BIN, ...args], {
   timeout: 10000,
 });
 
+test('CLI: audit <directory> rejects with friendly error (exit 2, not Node EISDIR stack)', () => {
+  // Pre-fix: `audit .` crashed with raw `EISDIR: illegal operation on a
+  // directory, read` Node stack trace + exit 1 — colliding with documented
+  // "1 = hits found" semantics so CI pipelines couldn't distinguish a usage
+  // error from a real banned-vocab hit. Fix added an isFile() guard.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
+  try {
+    const r = run(['audit', tmpDir]);
+    assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /is not a regular file/);
+    assert.doesNotMatch(r.stderr, /EISDIR/, 'must not surface raw Node EISDIR error');
+    assert.doesNotMatch(r.stderr, /at Object\.readFileSync/, 'must not leak Node stack');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint honors [allow-banned-vocab] escape hatch (Round-4 contract symmetry)', () => {
+  // Pre-fix: hooks/banned-vocab-check.sh:36 honored the escape hatch in
+  // CC sessions, but `claudemd-cli lint --file=COMMIT_EDITMSG` did NOT —
+  // same input, different verdict across surfaces. A git pre-commit hook
+  // wired to `claudemd-cli lint` would block commits with the marker that
+  // the documented in-CC path lets through. This test locks the symmetry.
+  const r = run(['lint', 'feat: robust system [allow-banned-vocab]']);
+  assert.equal(r.status, 0, `expected exit 0; stdout=${r.stdout} stderr=${r.stderr}`);
+  assert.match(r.stdout, /bypassed via \[allow-banned-vocab\]/);
+});
+
+test('CLI: lint --json marks bypass field on escape hatch', () => {
+  const r = run(['lint', '--json', '[allow-banned-vocab] robust']);
+  assert.equal(r.status, 0);
+  const obj = JSON.parse(r.stdout);
+  assert.equal(obj.bypass, 'allow-banned-vocab');
+  assert.deepEqual(obj.hits, []);
+});
+
+test('CLI: lint baseline-context (numeric arrow) suppresses @ratio hits', () => {
+  // `10x faster` is an @ratio pattern — without baseline it should hit.
+  // With a numeric arrow `580 → 140` in the same text, the bash hook
+  // (banned-vocab-check.sh:71) suppresses ratio-class hits. Mirror it.
+  const r = run(['lint', 'p99 580ms → 140ms (10x faster)']);
+  assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
+});
+
+test('CLI: lint baseline-context (literal `baseline` keyword) suppresses @ratio hits', () => {
+  const r = run(['lint', '10x faster than v1 — baseline 100ms']);
+  assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
+});
+
+test('CLI: lint baseline-context does NOT suppress non-ratio hedges', () => {
+  // Hedges / evaluative adjectives are NOT @ratio patterns and must still
+  // deny even under a baseline anchor. Mirrors the bash hook's "non-ratio
+  // hedges/adjectives still deny regardless" comment.
+  const r = run(['lint', 'robust system; baseline 100ms → 50ms']);
+  assert.equal(r.status, 1, `expected exit 1; stdout=${r.stdout}`);
+  assert.match(r.stderr, /robust/);
+});
+
+test('CLI: lint --file <directory> rejects with friendly error (exit 2)', () => {
+  // Symmetry: positional `lint <dir>` already rejected cleanly; `lint --file
+  // <dir>` used to surface raw EISDIR. Fix added the same isFile() guard.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
+  try {
+    const r = run(['lint', '--file', tmpDir]);
+    assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /is not a regular file/);
+    assert.doesNotMatch(r.stderr, /EISDIR/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('CLI: --help exits 0, prints usage to stdout', () => {
   const r = run(['--help']);
   assert.equal(r.status, 0);

@@ -1,7 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { parseStrict, ArgvError } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N]
+
+Clean leftover claudemd-sync-* sentinels and historical claudemd-(mockgh|work).*
+sandbox dirs from $TMPDIR. Default is dry-run.
+
+Options:
+  --apply        Opt into deletion (without it, prints what would be deleted).
+  --age-days=N   Stale threshold in days (non-negative number, default 1).
+  --help, -h     Print this message and exit.
+
+Wrapped by /claudemd-clean-residue.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 // Anchored regexes — names MUST start with the prefix. Defends against
 // future fnmatch-style globs that would falsely match `not-claudemd-sync-*`.
@@ -57,6 +71,7 @@ export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), {

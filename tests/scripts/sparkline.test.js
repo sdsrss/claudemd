@@ -89,16 +89,49 @@ test('monotonic ↘: rule dying — older periods had more events', () => {
 
 test('newly active: oldest bucket empty, recent has events → ↗ + annotation', () => {
   // 0-30d: 5; 30-60d: 0; 60-90d: 0. Marker: oldest bucket = 0, recent > 0.
+  // Round-6: include a sentinel `daysAgo: 89` event for an UNRELATED section
+  // so log span ≥ longest window. Without this, log span = 20d < 30d (shortest
+  // window), insufficientSpan defense fires and suppresses the `newly active`
+  // annotation — the (correct) "we can't tell newly active vs no-data" guard.
+  // Adding the sentinel attests the log DID cover 30-90d, so §11-memory-read's
+  // empty older buckets are a real signal.
   writeRows([
     { daysAgo: 1, section: '§11-memory-read' }, { daysAgo: 3, section: '§11-memory-read' },
     { daysAgo: 7, section: '§11-memory-read' }, { daysAgo: 12, section: '§11-memory-read' },
     { daysAgo: 20, section: '§11-memory-read' },
+    { daysAgo: 89, section: '§7-ship-baseline' }, // span sentinel — unrelated section
   ]);
   const r = sparkline();
+  assert.equal(r.insufficientSpan, false, 'log span (≥89d) covers shortest window (30d)');
   const row = r.rows.find(x => x.section === '§11-memory-read');
   assert.deepEqual(row.counts, [5, 5, 5]);
   assert.equal(row.trend.arrow, '↗');
   assert.equal(row.trend.annotation, 'newly active');
+});
+
+test('insufficient log span suppresses newly-active annotation (Round-6 fix)', () => {
+  // Pre-fix: 3d log + 30/60/90 windows → every section labeled `newly active`
+  // because 30-60d / 60-90d buckets are trivially zero. Maintainers reading
+  // `/claudemd-sparkline` could mistake "log just started" for "all rules
+  // ramping" — biased input to §0.1 promote/demote review. The fix surfaces
+  // logSpanDays + suppresses misleading annotations.
+  writeRows([
+    { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
+  ]);
+  const r = sparkline();
+  assert.equal(r.insufficientSpan, true);
+  assert.ok(r.logSpanDays < 30, `expected logSpanDays < 30; got ${r.logSpanDays}`);
+  const row = r.rows.find(x => x.section === '§10-V');
+  assert.equal(row.trend.annotation, null, 'newly-active must be suppressed under insufficient span');
+});
+
+test('formatMarkdown emits insufficient-span banner', () => {
+  writeRows([
+    { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
+  ]);
+  const md = formatMarkdown(sparkline());
+  assert.match(md, /insufficient log span/);
+  assert.doesNotMatch(md, /newly active/, 'banner present + annotation suppressed');
 });
 
 test('silenced: recent bucket empty but older buckets had events → ↘ + annotation', () => {
@@ -132,15 +165,21 @@ test('only signal events counted; pass / pass-known-red / bootstrap / (unset) ex
 });
 
 test('formatMarkdown emits aligned table with header + arrows', () => {
+  // Add daysAgo:89 sentinel so log span covers all default windows and the
+  // partial-coverage banner does NOT fire (Round-6: a banner line on the
+  // partial-coverage path doesn't carry a trend arrow and would break the
+  // per-row arrow assertion below).
   writeRows([
     { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
     { daysAgo: 80, section: '§7-ship-baseline' },
+    { daysAgo: 95, section: '§8.V4' }, // > longest window — full coverage
   ]);
   const md = formatMarkdown(sparkline());
   assert.match(md, /Rule usage trend \(30d \/ 60d \/ 90d, signal events only\):/);
   assert.match(md, /§10-V/);
   assert.match(md, /§7-ship-baseline/);
-  // Each row ends with one of the trend glyphs
+  assert.doesNotMatch(md, /insufficient log span|partial coverage/, 'no banner on full coverage');
+  // Skip header line; assert each rule row ends with a trend glyph.
   const lines = md.trim().split('\n').slice(1);
   for (const l of lines) {
     assert.match(l, /[↗↘≈]/, `expected trend arrow in row: ${l}`);

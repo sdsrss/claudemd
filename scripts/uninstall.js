@@ -4,6 +4,23 @@ import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand }
 import { listBackups, restoreBackup } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
+
+Remove claudemd hooks from ~/.claude/settings.json + clear the install
+manifest. Spec files in ~/.claude/CLAUDE*.md are kept by default. Idempotent
+(re-run after success returns warning: already-uninstalled).
+
+No flags. Behavior is read from the following env vars:
+  CLAUDEMD_SPEC_ACTION  keep (default) | delete | restore
+  CLAUDEMD_CONFIRM      1 to confirm hard-AUTH for spec delete
+  CLAUDEMD_PURGE        1 to also wipe ~/.claude/.claudemd-state and logs
+
+Options:
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 success | 1 uninstall failure | 2 argv-shape error.`;
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
   const m = readManifest();
@@ -87,6 +104,14 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), UNINSTALL_USAGE);
+  // No argv contract — uninstall reads from env. Loud-fail on unknown flags.
+  try {
+    parseStrict(process.argv.slice(2), {});
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   const specAction = process.env.CLAUDEMD_SPEC_ACTION || 'keep';
   const confirmHardAuth = process.env.CLAUDEMD_CONFIRM === '1';
   const purge = process.env.CLAUDEMD_PURGE === '1';

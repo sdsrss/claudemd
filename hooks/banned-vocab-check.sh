@@ -9,9 +9,16 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch BANNED_VOCAB || exit 0
-hook_require_jq || exit 0
+if ! hook_require_jq; then
+  hook_record_failopen banned-vocab jq-missing
+  exit 0
+fi
 
-EVENT=$(hook_read_event) || exit 0
+EVENT=$(hook_read_event)
+if [[ -z "$EVENT" ]]; then
+  hook_record_failopen banned-vocab bad-event
+  exit 0
+fi
 
 TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 [[ "$TOOL" == "Bash" ]] || exit 0
@@ -39,7 +46,10 @@ if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
 fi
 
 PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patterns"
-[[ -r "$PATTERNS_FILE" ]] || exit 0
+if [[ ! -r "$PATTERNS_FILE" ]]; then
+  hook_record_failopen banned-vocab patterns-missing
+  exit 0
+fi
 
 # Extract commit-message bodies (-m / --message) from CMD. §10-V is about the
 # commit message, not the whole invocation — scanning `git -c core.editor=...

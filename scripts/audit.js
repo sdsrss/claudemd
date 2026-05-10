@@ -1,29 +1,54 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError } from './lib/argv.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
+const USAGE = `Usage: node scripts/audit.js [--days=N]
+
+Aggregate claudemd rule-hits over the last N days.
+Reads ~/.claude/logs/claudemd.jsonl. Output: JSON.
+
+Options:
+  --days=N       Window in days (positive integer, default 30).
+  --help, -h     Print this message and exit.
+
+Env: CLAUDEMD_AUDIT_DAYS=N (overridden by --days=N when both set).
+Wrapped by /claudemd-audit.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
+
 export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) {
   const log = path.join(logsDir(), 'claudemd.jsonl');
-  const hits = readHits(log, days);
+  const { hits, totalLines, parsed, skipped } = readHits(log, days);
   // v0.8.0 R-N3 — byTrend computes recent vs prior window ratios; needs 2x
   // trendDays of data. If days < 2x trendDays, byTrend will produce a
   // truncated view (still informative — `prior` half just has less data).
-  const trendHits = readHits(log, Math.max(days, 2 * trendDays));
+  const trendHits = readHits(log, Math.max(days, 2 * trendDays)).hits;
   return {
     windowDays: days,
     totalHits: hits.length,
+    // dataIntegrity surfaces silent log corruption so §13.1 reviewers can
+    // tell "0 hits because rule is dormant" vs "0 hits because half the
+    // log lines failed JSON.parse". skipRatio in [0, 1].
+    dataIntegrity: {
+      totalLines,
+      parsed,
+      skipped,
+      skipRatio: totalLines > 0 ? Math.round((skipped / totalLines) * 1000) / 1000 : 0,
+    },
     byHook: groupByHook(hits),
     bySection: groupBySection(hits),
     byBypass: byBypass(hits),
+    byFailOpen: byFailOpen(hits),
     byTrend: byTrend(trendHits, trendDays),
     topPatterns: topPatterns(hits, 'banned-vocab'),
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
@@ -32,7 +57,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_AUDIT_DAYS || '30');
-  const days = parseInt(raw, 10);
+  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
+  // Pre-fix `parseInt('1.5', 10) === 1` silently truncated and ran with the
+  // wrong window. Same silent-fallback family as feedback_cli_flag_shape_silent_fallback.md.
+  const days = Number(raw);
   if (!Number.isInteger(days) || days < 1) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +

@@ -79,10 +79,40 @@ test('readHits: respects daysBack cutoff', () => {
       `{"ts":"${oldTs}","hook":"x","event":"deny"}\n` +
       `{"ts":"${newTs}","hook":"x","event":"deny"}\n`
     );
-    const hits = readHits(file, 30);
+    const { hits } = readHits(file, 30);
     assert.equal(hits.length, 1, 'rows older than cutoff must be dropped');
     assert.equal(hits[0].ts, newTs);
   });
+});
+
+test('readHits: surfaces skipped count for malformed rows', () => {
+  // Round-6: data-integrity transparency. 5 valid + 3 corrupt → skipped=3.
+  // Pre-fix the 3 corrupt rows were silently swallowed; §13.1 audit was
+  // biased on 3/8 = 37% data loss with zero operator visibility.
+  withFixture((file) => {
+    const now = Date.now();
+    const ts = new Date(now - 1 * 86400 * 1000).toISOString();
+    fs.writeFileSync(file,
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+      `garbage line\n` +
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+      `{truncated\n` +
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+      `not-json\n` +
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n`
+    );
+    const { hits, totalLines, parsed, skipped } = readHits(file, 30);
+    assert.equal(totalLines, 8);
+    assert.equal(parsed, 5);
+    assert.equal(skipped, 3);
+    assert.equal(hits.length, 5);
+  });
+});
+
+test('readHits: missing file returns zero counters', () => {
+  const r = readHits('/tmp/definitely-not-here.jsonl', 30);
+  assert.deepEqual(r, { hits: [], totalLines: 0, parsed: 0, skipped: 0 });
 });
 
 test('groupBySection: bins by spec_section, falls back to (unset)', () => {

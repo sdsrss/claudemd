@@ -54,3 +54,25 @@ test('toggle CLI with no argument prints usage (F18)', () => {
   assert.match(result.stderr, /usage/i);
   assert.match(result.stderr, /banned-vocab/);
 });
+
+test('toggle CLI --help exits 0 with usage on stdout (Round-2 discoverability)', () => {
+  // Pre-fix: `toggle --help` returned `unknown hook: --help` exit 1 — same
+  // discoverability family as the parseStrict scripts before they got
+  // printHelpAndExit. The hook-name lookup ate the flag.
+  const result = spawnSync(process.execPath, [TOGGLE_JS, '--help'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, `expected exit 0; stderr=${result.stderr}`);
+  assert.match(result.stdout, /Usage:.*toggle\.js/);
+  assert.match(result.stdout, /banned-vocab/);
+});
+
+test('toggle CLI -h exits 0 with usage on stdout', () => {
+  const result = spawnSync(process.execPath, [TOGGLE_JS, '-h'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, `expected exit 0; stderr=${result.stderr}`);
+  assert.match(result.stdout, /Usage:.*toggle\.js/);
+});

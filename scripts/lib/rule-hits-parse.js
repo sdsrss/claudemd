@@ -1,17 +1,37 @@
 import fs from 'node:fs';
 
+// readHits — returns parsed hits within the daysBack window, alongside
+// data-integrity counters so the operator can detect silent corruption.
+//
+// Pre-fix readHits returned `[]` on malformed lines, no-counter — a 33%
+// corruption was invisible in `/claudemd-audit` output. §13.1 quarterly
+// review depends on hit counts; biased input → biased demote decisions.
+//
+// Returns: { hits, totalLines, parsed, skipped }
+//   hits        — array of parsed rows within the window (existing contract)
+//   totalLines  — total non-empty lines read from the file
+//   parsed      — lines that JSON.parse'd successfully (regardless of window)
+//   skipped     — lines that failed JSON.parse (malformed / truncated)
+//
+// Out-of-window rows count as `parsed`, not `skipped` — `skipped` is reserved
+// for parse-time corruption signals.
 export function readHits(path, daysBack = 30) {
-  if (!fs.existsSync(path)) return [];
+  if (!fs.existsSync(path)) return { hits: [], totalLines: 0, parsed: 0, skipped: 0 };
   const cutoff = Date.now() - daysBack * 86400 * 1000;
   const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
   const hits = [];
+  let parsed = 0;
+  let skipped = 0;
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
+      parsed++;
       if (new Date(row.ts).getTime() >= cutoff) hits.push(row);
-    } catch { /* skip malformed */ }
+    } catch {
+      skipped++;
+    }
   }
-  return hits;
+  return { hits, totalLines: lines.length, parsed, skipped };
 }
 
 // Earliest ts in the rule-hits log, in ms since epoch. Returns null when the
@@ -69,6 +89,23 @@ export function groupBySection(hits) {
     bySection[key].byHook[h.hook] = (bySection[key].byHook[h.hook] || 0) + 1;
   }
   return bySection;
+}
+
+// Round-6: hook fail-open accountability. Aggregates `event: "fail-open"`
+// rows by (hook, reason) so /claudemd-audit + /claudemd-doctor can see
+// "banned-vocab silently skipped 12× yesterday because jq was missing on
+// the runner" — a class of incident pre-fix had zero log trace.
+export function byFailOpen(hits) {
+  const out = {};
+  for (const h of hits) {
+    if (h.event !== 'fail-open') continue;
+    const hook = h.hook || '(unknown)';
+    const reason = h.extra?.reason || '(unspecified)';
+    out[hook] ||= { total: 0, byReason: {} };
+    out[hook].total++;
+    out[hook].byReason[reason] = (out[hook].byReason[reason] || 0) + 1;
+  }
+  return out;
 }
 
 // v0.7.0 — R3 bypass-escape-hatch dashboard. Per-token aggregation over

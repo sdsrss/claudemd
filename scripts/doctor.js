@@ -8,7 +8,22 @@ import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
+
+Run health checks on claudemd installation. Flags missing deps, spec drift,
+settings.json issues, hook drift, backup inventory, rule-usage health.
+
+Options:
+  --prune-backups=N   Keep the N newest backup dirs (positive integer ≥1).
+                      To remove ALL backups, delete ~/.claude/backup-*
+                      manually — this flag cannot do that.
+  --help, -h          Print this message and exit.
+
+Wrapped by /claudemd-doctor.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -209,7 +224,42 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // (likely cross-cutting friction). Token detail only attached to demotion
   // candidates; healthy rows stay terse.
   const ruleHitsLog = path.join(logsDir(), 'claudemd.jsonl');
-  const recentHits = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
+  const { hits: recentHits, totalLines: rhTotal, skipped: rhSkipped } = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
+  // Hook fail-open advisory. Any `fail-open` event in the window means at
+  // least one hook silently bypassed enforcement; with rate-limiting at 60s
+  // per (hook,reason), a single event corresponds to ≥1 minute of impacted
+  // session time — worth surfacing. Always advisory `[△]`, never `ok:false`,
+  // because resilience-first is the design choice; we just don't want it
+  // happening invisibly.
+  const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
+  if (failOpenEvents.length > 0) {
+    const byReason = {};
+    for (const h of failOpenEvents) {
+      const key = `${h.hook}:${h.extra?.reason || '(unspecified)'}`;
+      byReason[key] = (byReason[key] || 0) + 1;
+    }
+    const summary = Object.entries(byReason)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${k}=${n}`)
+      .join(', ');
+    checks.push({
+      name: 'hook-fail-open',
+      ok: false,
+      detail: `${failOpenEvents.length} fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summary}); enforcement silently bypassed. Investigate the named prerequisite (jq install / patterns file integrity / event-pipe shape).`,
+    });
+  }
+  // Surface log-corruption signal as an advisory check. Threshold 1% — below
+  // that is normal noise (race writes during rotation, partial last-line
+  // flushes); above signals systemic damage worth investigating because
+  // §13.1 demote decisions are downstream.
+  if (rhTotal > 0 && rhSkipped / rhTotal > 0.01) {
+    const pct = Math.round((rhSkipped / rhTotal) * 1000) / 10;
+    checks.push({
+      name: 'rule-hits-integrity',
+      ok: false,
+      detail: `${rhSkipped}/${rhTotal} rule-hits log lines failed JSON.parse (${pct}%); §13.1 audit data is biased. Inspect ~/.claude/logs/claudemd.jsonl for truncated rows.`,
+    });
+  }
   const bySection = groupBySection(recentHits);
   for (const section of Object.keys(bySection).sort()) {
     if (section === '(unset)') continue;
@@ -248,6 +298,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--prune-backups'] });
@@ -258,7 +309,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let prune;
   const raw = parsed.values['--prune-backups'];
   if (raw !== undefined) {
-    const val = parseInt(raw, 10);
+    // `Number()` (not `parseInt`) so '2.5' yields 2.5 — `isInteger(2.5)` rejects.
+    // Pre-fix `parseInt('2.5', 10) === 2` silently truncated, deleting backups
+    // using the wrong retain count — destructive on a numeric-shape mismatch.
+    const val = Number(raw);
     if (!Number.isInteger(val) || val < 1) {
       console.error(
         `--prune-backups requires a positive integer retain count (got '${raw}').\n` +

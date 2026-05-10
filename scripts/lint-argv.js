@@ -18,6 +18,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/lint-argv.js
+
+Repo-wide lint for the argv-shape silent-fallback antipattern. Scans
+bin/ + scripts/ for three known signatures (args.includes / args.find +
+startsWith / args.indexOf on '--literal') and exits 1 on any hit.
+
+No flags. Inline allowlist token: \`// argv-lint:allow\`.
+
+Options:
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 clean | 1 antipattern hit | 2 argv-shape error.`;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..');
@@ -53,6 +67,61 @@ export const PATTERNS = [
 ];
 
 const ALLOW_TOKEN = 'argv-lint:allow';
+
+// Round-6: structural blind-spot closure. The three regex PATTERNS above
+// detect *wrong-shape* argv reads. They cannot detect "main block exists
+// but never reads argv at all" — the v0.9.x → Round-1/Round-5 family
+// (status.js / lint-argv.js / install.js / uninstall.js / update.js) where
+// `--help` and `--bogus` were silently swallowed because no validation ran.
+//
+// scanMainBlockMissingArgv: for each .js under bin/ + scripts/ (excluding
+// scripts/lib/), if the file has a main-block guard
+// `if (import.meta.url === \`file://${process.argv[1]}\`) {`, the body must
+// call EITHER parseStrict( OR printHelpAndExit( OR validateAndExpandFlags(
+// (bin/claudemd-lint.js path). Files without a main block are ignored.
+const MAIN_BLOCK_GUARD_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
+const REQUIRED_CALL_RE = /\b(parseStrict|printHelpAndExit|validateAndExpandFlags)\s*\(/;
+// Files that legitimately have a main block but no argv contract — must be
+// allowlisted with a one-line reason. Empty by default; entries here represent
+// considered exemptions, not "I forgot to wire parseStrict."
+export const MAIN_BLOCK_ALLOWLIST = {};
+
+export function scanMainBlockMissingArgv({
+  root = REPO_ROOT,
+  dirs = SCAN_DIRS,
+  exts = SCAN_EXT,
+  fileAllowlist = FILE_ALLOWLIST,
+  mainBlockAllowlist = MAIN_BLOCK_ALLOWLIST,
+} = {}) {
+  const hits = [];
+  for (const dir of dirs) {
+    const abs = path.join(root, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const file of walkJsFiles(abs, exts)) {
+      const rel = path.relative(root, file);
+      // Skip lib/ — internal modules don't have CLI main blocks.
+      if (rel.includes(`${path.sep}lib${path.sep}`)) continue;
+      if (fileAllowlist[rel]) continue;
+      if (mainBlockAllowlist[rel]) continue;
+      const text = fs.readFileSync(file, 'utf8');
+      const guardMatch = text.match(MAIN_BLOCK_GUARD_RE);
+      if (!guardMatch) continue;
+      const body = text.slice(guardMatch.index);
+      if (REQUIRED_CALL_RE.test(body)) continue;
+      // Find line number of the main block guard for actionable error.
+      const before = text.slice(0, guardMatch.index);
+      const line = before.split('\n').length;
+      hits.push({
+        file: rel,
+        line,
+        pattern: 'main-block-without-argv-validation',
+        why: 'Main block ignores process.argv — `--help`/`--bogus` silently run the script. Add `printHelpAndExit + parseStrict` (or validateAndExpandFlags for bin/claudemd-lint.js).',
+        text: '<main block guard>',
+      });
+    }
+  }
+  return hits;
+}
 
 function* walkJsFiles(dir, exts) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -100,7 +169,20 @@ export function scan({
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const hits = scan();
+  printHelpAndExit(process.argv.slice(2), USAGE);
+  // The validator validating itself: lint-argv takes no flags, so any arg
+  // (including `--help` after the helper above returns false on absence) is
+  // unknown. Pre-fix it silently ignored ALL arguments and exited 0 — the
+  // exact silent-fallback class this gate is supposed to detect.
+  try {
+    parseStrict(process.argv.slice(2), {});
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
+  const patternHits = scan();
+  const structuralHits = scanMainBlockMissingArgv();
+  const hits = [...patternHits, ...structuralHits];
   if (hits.length === 0) {
     process.stdout.write(`argv-lint: 0 hits across ${SCAN_DIRS.join(' + ')}/.\n`);
     process.exit(0);

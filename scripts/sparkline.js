@@ -25,8 +25,23 @@
 
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupBySection } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError } from './lib/argv.js';
+import { readHits, groupBySection, logFirstTs } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
+
+Emit rule-usage trend sparkline as a markdown block (deny+warn+advisory+
+bypass per spec_section across multiple windows).
+
+Options:
+  --days=W1,...  Comma-separated positive integers (default 30,60,90).
+                 Requires ≥2 windows.
+  --help, -h     Print this message and exit.
+
+Env: CLAUDEMD_SPARKLINE_DAYS=W1,W2,W3 (overridden by --days when both set).
+Wrapped by /claudemd-sparkline.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const DEFAULT_WINDOWS = [30, 60, 90];
 const SIGNAL_EVENTS = new Set(['deny', 'warn', 'advisory', 'bypass-escape-hatch']);
@@ -36,11 +51,31 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const sortedWindows = [...windows].sort((a, b) => a - b);
   const longest = sortedWindows[sortedWindows.length - 1];
 
-  const allHits = readHits(log, longest)
+  const allHits = readHits(log, longest).hits
     .filter(h => SIGNAL_EVENTS.has(h.event))
     .filter(h => h.spec_section); // drop (unset)
 
+  // Log-span check. When the log doesn't reach back as far as the shortest
+  // window, every prior bucket is necessarily 0 — the `newly active` heuristic
+  // (= "recent has events AND all older buckets are zero") fires for EVERY
+  // section, regardless of true trend. Mirror hard-rules-audit.js' insufficient-
+  // data defense: surface log-span info to the operator and suppress the
+  // misleading annotation.
+  const firstTs = logFirstTs(log);
   const now = Date.now();
+  const logSpanDays = firstTs === null
+    ? 0
+    : Math.round(((now - firstTs) / 86400000) * 10) / 10;
+  const shortest = sortedWindows[0];
+  const insufficientSpan = firstTs === null || logSpanDays < shortest;
+  // Per-window coverage: each window with `days > logSpanDays` is "not
+  // covered" by the log. Used to annotate row arrows for the under-covered
+  // window subset.
+  const windowCoverage = sortedWindows.map(days => ({
+    days,
+    covered: firstTs !== null && logSpanDays >= days,
+  }));
+
   const perWindow = sortedWindows.map(days => {
     const cutoff = now - days * 86400 * 1000;
     const filtered = allHits.filter(h => new Date(h.ts).getTime() >= cutoff);
@@ -53,7 +88,7 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const rows = [];
   for (const section of sectionSet) {
     const counts = perWindow.map(w => w.grouped[section]?.total || 0);
-    const trend = computeTrend(counts, sortedWindows);
+    const trend = computeTrend(counts, sortedWindows, { insufficientSpan });
     rows.push({ section, counts, windows: sortedWindows, trend });
   }
   // Sort: most active in shortest window first; tie-break by total.
@@ -64,14 +99,20 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
     return bTotal - aTotal;
   });
 
-  return { windows: sortedWindows, rows };
+  return {
+    windows: sortedWindows,
+    rows,
+    logSpanDays,
+    insufficientSpan,
+    windowCoverage,
+  };
 }
 
 // computeTrend: arrow + optional annotation. counts and windows are both
 // shortest-first. Cumulative counts are converted to per-period rates so that
 // "rule still firing at the old steady-state rate" reads as ≈, not ↗ just
 // because the cumulative number grew with the window.
-function computeTrend(counts, windows) {
+function computeTrend(counts, windows, { insufficientSpan = false } = {}) {
   if (counts.length < 2) return { arrow: '', annotation: null };
   // Per-bucket counts: bucket i contains events in (windows[i-1], windows[i]] days ago.
   // bucket 0 = (0, windows[0]] = events 0 to windows[0] days ago = counts[0].
@@ -90,7 +131,11 @@ function computeTrend(counts, windows) {
   //   was concentrated in a middle window.
   let annotation = null;
   const olderBuckets = buckets.slice(1);
-  if (counts[0] > 0 && olderBuckets.every(b => b === 0)) annotation = 'newly active';
+  // Suppress `newly active` when the log span is shorter than the shortest
+  // window — every section trivially satisfies "older buckets all zero"
+  // because the log doesn't reach those buckets at all. The signal is
+  // structurally meaningless under insufficient span.
+  if (counts[0] > 0 && olderBuckets.every(b => b === 0) && !insufficientSpan) annotation = 'newly active';
   else if (counts[0] === 0 && counts[counts.length - 1] > 0) annotation = 'silenced';
 
   let arrow = '≈';
@@ -104,10 +149,26 @@ function computeTrend(counts, windows) {
 }
 
 export function formatMarkdown(report) {
-  const { windows, rows } = report;
+  const { windows, rows, logSpanDays, insufficientSpan, windowCoverage } = report;
   const header = `Rule usage trend (${windows.map(w => `${w}d`).join(' / ')}, signal events only):`;
+
+  // Insufficient-span banner — when log doesn't reach the shortest window.
+  // Tells the operator the trend annotations are structurally unreliable so
+  // they don't act on virtual `↗ (newly active)` signals (which are now
+  // suppressed in computeTrend). Surfaced in markdown only; the JSON shape
+  // already carries `insufficientSpan` + `logSpanDays`.
+  let banner = '';
+  if (insufficientSpan) {
+    banner = `\n  [insufficient log span: ${logSpanDays}d — trend annotations suppressed; need ≥${windows[0]}d]`;
+  } else if (windowCoverage && windowCoverage.some(w => !w.covered)) {
+    const uncoveredFrom = windowCoverage.find(w => !w.covered);
+    if (uncoveredFrom) {
+      banner = `\n  [partial coverage: log spans ${logSpanDays}d; ≥${uncoveredFrom.days}d windows are not fully covered]`;
+    }
+  }
+
   if (rows.length === 0) {
-    return `${header}\n  (no signal events in any window)\n`;
+    return `${header}${banner}\n  (no signal events in any window)\n`;
   }
   const sectionWidth = Math.max(...rows.map(r => r.section.length), 8);
   const numWidth = Math.max(...rows.flatMap(r => r.counts.map(c => String(c).length)), 1);
@@ -117,10 +178,11 @@ export function formatMarkdown(report) {
     const ann = r.trend.annotation ? ` (${r.trend.annotation})` : '';
     return `  ${sec}  ${nums}  ${r.trend.arrow}${ann}`;
   });
-  return `${header}\n${lines.join('\n')}\n`;
+  return `${header}${banner}\n${lines.join('\n')}\n`;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
@@ -129,7 +191,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
-  const windows = raw.split(',').map(s => parseInt(s.trim(), 10));
+  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
+  // Pre-fix `parseInt('1.5,2,3', 10)` silently truncated to [1,2,3] and ran
+  // with the wrong window header. Same silent-fallback family.
+  const windows = raw.split(',').map(s => Number(s.trim()));
   if (!windows.every(w => Number.isInteger(w) && w >= 1) || windows.length < 2) {
     console.error(
       `--days expects ≥2 comma-separated positive integers (got '${raw}').\n` +

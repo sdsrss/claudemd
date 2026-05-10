@@ -3,8 +3,22 @@ import path from 'node:path';
 import { homeSpec, resolvePluginRoot } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { createBackup, pruneBackups } from './lib/backup.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
+
+const UPDATE_USAGE = `Usage: node scripts/update.js
+
+Sync ~/.claude/CLAUDE*.md with the plugin-cache shipped spec. Read-only by
+default (shows diffs); set CLAUDEMD_UPDATE_CHOICE=apply to write.
+
+No flags. Behavior is read from the following env vars:
+  CLAUDEMD_UPDATE_CHOICE  cancel (default — diff-only) | apply
+
+Options:
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 success | 2 argv-shape error.`;
 
 export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   if (!pluginRoot) throw new Error('update: pluginRoot missing');
@@ -48,6 +62,14 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), UPDATE_USAGE);
+  // No argv contract — update reads from env. Loud-fail on unknown flags.
+  try {
+    parseStrict(process.argv.slice(2), {});
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   const pluginRoot = resolvePluginRoot(import.meta.url);
   const choice = process.env.CLAUDEMD_UPDATE_CHOICE || 'cancel';
   update({ pluginRoot, choice }).then(r => console.log(JSON.stringify(r, null, 2)));

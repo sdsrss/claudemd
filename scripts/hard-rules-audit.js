@@ -10,7 +10,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
 import { readHits, groupBySection, logFirstTs } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
+
+Audit the HARD-rules manifest. Cross-references spec/hard-rules.json with
+rule-hits.jsonl bySection over the last N days. Surfaces §13.1 quarterly
+demote candidates and stale-review entries.
+
+Options:
+  --days=N       Window in days (positive integer, default 90).
+  --help, -h     Print this message and exit.
+
+Env: CLAUDEMD_RULES_DAYS=N (overridden by --days=N when both set).
+Wrapped by /claudemd-rules.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const DEFAULT_WINDOW_DAYS = 90;
 
@@ -32,7 +47,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   }
 
   const log = path.join(logsDir(), 'claudemd.jsonl');
-  const hits = readHits(log, days);
+  const { hits } = readHits(log, days);
   const bySection = groupBySection(hits);
 
   // Detect log span. If the log doesn't reach `days` days back, "0 hits in
@@ -104,9 +119,20 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     return new Date(r.last_demote_review).getTime() < cutoff;
   }).map(r => r.id);
 
+  // §0.1 hard-codes a 90d quarterly cadence for demote review. Direct script
+  // invocation accepts arbitrary `--days`, but values < DEFAULT_WINDOW_DAYS
+  // produce demote candidates from a window shorter than the contract — e.g.
+  // `--days=1` would surface every rule with 0 hits in the last day. Surface
+  // the deviation in the JSON so the operator (or `/claudemd-rules` wrapper)
+  // can flag it; do not block (some debugging flows want a narrow window).
+  const cadenceWarning = days < DEFAULT_WINDOW_DAYS
+    ? `--days=${days} is shorter than the §0.1 quarterly cadence (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
+    : null;
+
   return {
     spec_version: manifest.spec_version,
     windowDays: days,
+    cadenceWarning,
     totalRules: rules.length,
     byScope: {
       core: rules.filter(r => r.scope === 'core').length,
@@ -134,6 +160,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
@@ -142,7 +169,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
-  const days = parseInt(raw, 10);
+  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
+  // Pre-fix `parseInt('2.7', 10) === 2` silently truncated.
+  const days = Number(raw);
   if (!Number.isInteger(days) || days < 1) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +

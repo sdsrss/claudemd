@@ -6,8 +6,22 @@ import { createBackup, pruneBackups, pruneSettingsBackups, isoStamp } from './li
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
+
+const INSTALL_USAGE = `Usage: node scripts/install.js
+
+Install claudemd hooks + spec from the plugin cache into ~/.claude/. Idempotent
+(safe to re-run). Wired by Claude Code's plugin install lifecycle.
+
+No flags. Behavior is read from the plugin cache + the following env vars:
+  (none — reserved)
+
+Options:
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 success | 1 install failure | 2 argv-shape error.`;
 
 // Re-export for back-compat: tests/scripts/install.test.js + scripts/uninstall.js
 // previously imported HOOK_BASENAMES from this module. Source of truth now lives
@@ -196,6 +210,17 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), INSTALL_USAGE);
+  // No argv contract — install reads from plugin cache + env. Loud-fail on
+  // unknown flags so a typo (e.g. `--help` pre-fix) doesn't silently RUN
+  // the install destructively. Same silent-fallback family as Round-1
+  // status.js / lint-argv.js.
+  try {
+    parseStrict(process.argv.slice(2), {});
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   const pluginRoot = resolvePluginRoot(import.meta.url);
   install({ pluginRoot }).then(r => {
     console.log(JSON.stringify(r, null, 2));

@@ -15,6 +15,20 @@ export class ArgvError extends Error {
   constructor(message) { super(message); this.name = 'ArgvError'; }
 }
 
+// Discoverability helper: when `--help` or `-h` is the first non-empty arg
+// (or anywhere in argv for scripts with no flags), print usage to stdout and
+// exit 0. Caller invokes BEFORE parseStrict so unknown-arg rejection doesn't
+// shadow the universal first-probe of every Unix CLI. Pre-fix, every
+// parseStrict-using script (audit / sparkline / hard-rules-audit /
+// clean-residue / doctor) responded `Unknown argument: '--help'.` exit 2 —
+// classic discoverability bug for new users.
+export function printHelpAndExit(argv, usage) {
+  if (argv.some(a => a === '--help' || a === '-h')) {
+    process.stdout.write(usage.endsWith('\n') ? usage : usage + '\n');
+    process.exit(0);
+  }
+}
+
 export function parseStrict(argv, { bools = [], values = [] } = {}) {
   const out = { bools: new Set(), values: {} };
   const knownBool = new Set(bools);

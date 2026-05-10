@@ -47,6 +47,68 @@ hook_record() {
   rule_hits_append "$@"
 }
 
+# hook_record_failopen HOOK REASON
+#   Records a `fail-open` event in rule-hits.jsonl with rate limiting (one
+#   event per HOOK+REASON per 60s). Pre-this, fail-open exits (jq-missing /
+#   bad-json / patterns-missing) left zero trace — operators couldn't tell
+#   "hook silently bypassed" from "hook didn't trigger." That blind spot
+#   biases §13.1 self-audit data: every silently-skipped enforcement looks
+#   identical to "rule wasn't relevant," so demote-candidate decisions get
+#   the wrong baseline.
+#
+# Rate limit rationale: a misconfigured environment (jq uninstalled) would
+# fire on every hook invocation otherwise. 60s/reason caps log growth at
+# ≤1440 events/day per (hook,reason) — surfaces the issue without flooding.
+# Reasons (canonical):
+#   jq-missing       prerequisite jq binary not on PATH
+#   bad-event        stdin JSON unreadable / truncated
+#   patterns-missing patterns file unreadable / absent
+#   prereq-missing   other prerequisite (settings, state dir) unavailable
+hook_record_failopen() {
+  [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
+  local hook="${1:-unknown}"
+  local reason="${2:-unspecified}"
+
+  local state_dir="$HOME/.claude/.claudemd-state"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  # State file: fail-open-<hook>-<reason>. Replace `/`,`.` for filesystem safety
+  # and keep filename printable (defense against future reasons with slashes).
+  local stamp
+  stamp=$(printf '%s-%s' "$hook" "$reason" | tr '/. ' '___')
+  local marker="$state_dir/failopen-${stamp}.ts"
+
+  local now
+  now=$(date +%s 2>/dev/null) || return 0
+  if [[ -r "$marker" ]]; then
+    local last
+    last=$(cat "$marker" 2>/dev/null) || last=0
+    [[ -z "$last" ]] && last=0
+    if (( now - last < 60 )); then
+      return 0
+    fi
+  fi
+  printf '%s' "$now" > "$marker" 2>/dev/null || return 0
+
+  # Emit via rule_hits_append. extra carries the reason as structured JSON.
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=/dev/null
+  source "$lib_dir/rule-hits.sh" 2>/dev/null || return 0
+  # `jq` may be the very thing missing. Inline the JSON construction so
+  # fail-open accounting itself doesn't depend on jq for the `extra` payload.
+  if command -v jq >/dev/null 2>&1; then
+    local extra
+    extra=$(jq -cn --arg r "$reason" '{reason:$r}' 2>/dev/null) || extra='null'
+    rule_hits_append "$hook" "fail-open" "$extra" '§hooks-fail-open'
+  else
+    # Manually-escaped reason. Reasons are caller-supplied literal tokens
+    # (jq-missing / bad-event / patterns-missing / prereq-missing) — no
+    # untrusted input. Still prefer minimal escape over interpolating wild.
+    local escaped="${reason//\"/\\\"}"
+    rule_hits_append "$hook" "fail-open" "{\"reason\":\"$escaped\"}" '§hooks-fail-open'
+  fi
+}
+
 # hook_is_readonly_bash CMD
 #   Returns 0 if CMD is "definitely read-only and side-effect free" — caller
 #   may safely exit 0 without running heavier hook logic. Returns 1 (proceed)

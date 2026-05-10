@@ -3,6 +3,17 @@ import path from 'node:path';
 import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
+import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+
+const USAGE = `Usage: node scripts/status.js
+
+Print plugin / spec / kill-switch / feature / log status as JSON.
+No flags. Wrapped by /claudemd-status.
+
+Options:
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 success | 2 argv-shape error.`;
 
 export async function status() {
   const m = readManifest();
@@ -45,9 +56,37 @@ export async function status() {
     return legacy ? legacy[1] : '';
   })();
 
-  const killSwitches = { plugin: process.env.DISABLE_CLAUDEMD_HOOKS === '1' };
+  // killSwitches.<name> reflects this-process env (= "currently in effect").
+  // Pre-fix it ignored ~/.claude/settings.json's persisted env block, so a
+  // user running `node scripts/status.js` directly after `/claudemd-toggle X`
+  // saw `X: false` even though the toggle wrote DISABLE_X_HOOK=1 — toggle
+  // takes effect on next CC session start (when CC loads settings.env).
+  // We now also read settings.json's persisted env and surface a `pending`
+  // diff: keys that will flip on the next session. The boolean `effective`
+  // remains the canonical "this session" value (back-compat).
+  const persistedEnv = (() => {
+    try {
+      const sp = path.join(process.env.HOME || '', '.claude', 'settings.json');
+      if (!fs.existsSync(sp)) return {};
+      const s = JSON.parse(fs.readFileSync(sp, 'utf8'));
+      return (s && s.env) || {};
+    } catch { return {}; }
+  })();
+  const isOn = (key) => process.env[key] === '1';
+  const persistedOn = (key) => persistedEnv[key] === '1';
+
+  const killSwitches = { plugin: isOn('DISABLE_CLAUDEMD_HOOKS') };
+  const pendingKillSwitches = {};
+  if (isOn('DISABLE_CLAUDEMD_HOOKS') !== persistedOn('DISABLE_CLAUDEMD_HOOKS')) {
+    pendingKillSwitches.plugin = { effective: isOn('DISABLE_CLAUDEMD_HOOKS'), persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS') };
+  }
   for (const name of HOOK_ENV_SUFFIXES) {
-    killSwitches[name.toLowerCase()] = process.env[`DISABLE_${name}_HOOK`] === '1';
+    const key = `DISABLE_${name}_HOOK`;
+    const lower = name.toLowerCase();
+    killSwitches[lower] = isOn(key);
+    if (isOn(key) !== persistedOn(key)) {
+      pendingKillSwitches[lower] = { effective: isOn(key), persisted: persistedOn(key) };
+    }
   }
 
   // v0.6.0: SHA-256 drift summary. Truncate to 12 hex chars for display
@@ -78,9 +117,27 @@ export async function status() {
     ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length
     : 0;
 
-  return { plugin, spec: { installed: specVersion, hashes }, killSwitches, features, log: { lines: logLines } };
+  return {
+    plugin,
+    spec: { installed: specVersion, hashes },
+    killSwitches,
+    pendingKillSwitches,
+    features,
+    log: { lines: logLines },
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  printHelpAndExit(process.argv.slice(2), USAGE);
+  // Reject unknown args with the same loud-fail contract as the rest of the
+  // slash-command CLIs. status.js takes no flags; pre-fix it silently
+  // ignored ALL arguments (including typos) and exited 0 — the same
+  // silent-fallback antipattern documented in feedback_cli_flag_shape_silent_fallback.md.
+  try {
+    parseStrict(process.argv.slice(2), {});
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   status().then(r => console.log(JSON.stringify(r, null, 2)));
 }
