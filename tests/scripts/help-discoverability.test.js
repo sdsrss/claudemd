@@ -12,6 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,3 +63,30 @@ for (const [rel, usageRe] of SCRIPTS) {
     assert.match(r.stderr, /Unknown flag|Unknown argument/);
   });
 }
+
+// bin/claudemd-lint.js USAGE → npm bin-name consistency.
+// Pre-fix, USAGE listed every subcommand as `claudemd lint <text>` but the
+// installed npm bin is `claudemd-cli` (per package.json). A user copying the
+// help-text command verbatim hit `command not found: claudemd`. README,
+// CHANGELOG, and pre-commit example all use the correct `claudemd-cli` form,
+// so the help-text was the only surface drifted.
+test('bin/claudemd-lint.js: USAGE references actual npm bin name', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+  const binName = Object.keys(pkg.bin)[0]; // "claudemd-cli"
+  const r = spawnSync(
+    process.execPath,
+    [path.join(REPO_ROOT, 'bin/claudemd-lint.js'), '--help'],
+    { encoding: 'utf8', timeout: 10000 },
+  );
+  assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
+  // Every documented subcommand line must use the real bin name.
+  for (const sub of ['lint', 'audit', '--version', '--help']) {
+    const wrongRe = new RegExp(`(^|\\s)claudemd\\s+(${sub.replace(/[-]/g, '\\-')})\\b`, 'm');
+    assert.ok(
+      !wrongRe.test(r.stdout),
+      `USAGE references 'claudemd ${sub}' (without -cli suffix); should be '${binName} ${sub}'.`,
+    );
+    const rightRe = new RegExp(`${binName}\\s+${sub.replace(/[-]/g, '\\-')}`, 'm');
+    assert.match(r.stdout, rightRe, `USAGE should mention '${binName} ${sub}'`);
+  }
+});

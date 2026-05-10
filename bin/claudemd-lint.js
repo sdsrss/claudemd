@@ -6,9 +6,9 @@
 // so enforcement is consistent across surfaces.
 //
 // Once published to npm:
-//   npx claudemd lint "your commit message here"
-//   npx claudemd lint --stdin < message.txt
-//   npx claudemd audit ~/.claude/projects/.../session.jsonl
+//   npx claudemd-cli lint "your commit message here"
+//   npx claudemd-cli lint --stdin < message.txt
+//   npx claudemd-cli audit ~/.claude/projects/.../session.jsonl
 //
 // Pre-publish (this repo, dev mode):
 //   node bin/claudemd-lint.js lint "..."
@@ -31,22 +31,22 @@ const REPO_ROOT = path.resolve(HERE, '..');
 const USAGE = `claudemd-lint — §10-V banned-vocab + transcript scanner
 
 Usage:
-  claudemd lint <text>            Scan text for banned-vocab.
-  claudemd lint --file <path>     Scan the contents of a file.
-  claudemd lint --stdin           Read text from stdin.
-  claudemd audit <jsonl-path>     Scan all assistant turns in a CC transcript.
-  claudemd --version              Print plugin version.
-  claudemd --help                 Print this message.
+  claudemd-cli lint <text>            Scan text for banned-vocab.
+  claudemd-cli lint --file <path>     Scan the contents of a file.
+  claudemd-cli lint --stdin           Read text from stdin.
+  claudemd-cli audit <jsonl-path>     Scan all assistant turns in a CC transcript.
+  claudemd-cli --version              Print plugin version.
+  claudemd-cli --help                 Print this message.
 
 Flags:
-  --json                          Emit machine-readable JSON instead of text.
-  --include-ratio                 (audit only) Include @ratio patterns.
-                                  Default OFF — chat prose has different
-                                  baseline conventions from commit messages.
+  --json                              Emit machine-readable JSON instead of text.
+  --include-ratio                     (audit only) Include @ratio patterns.
+                                      Default OFF — chat prose has different
+                                      baseline conventions from commit messages.
 
 Notes:
   A bare \`lint <arg>\` whose only positional is an existing regular file
-  is auto-treated as \`--file <arg>\` so \`claudemd lint .git/COMMIT_EDITMSG\`
+  is auto-treated as \`--file <arg>\` so \`claudemd-cli lint .git/COMMIT_EDITMSG\`
   works as expected in pre-commit hooks. Pass --stdin or quote literal
   text to opt out.
 
@@ -176,7 +176,7 @@ function lintCmd(rawArgs) {
   } else if (positional.length > 0) {
     // Auto-detect: a bare single positional that is an existing regular file
     // is overwhelmingly the user's intent (they're piping a commit-msg path
-    // from a git pre-commit hook). Without this, `claudemd lint message.txt`
+    // from a git pre-commit hook). Without this, `claudemd-cli lint message.txt`
     // silently scans the LITERAL STRING "message.txt" → exits 0 even when
     // the file contents would deny.
     //

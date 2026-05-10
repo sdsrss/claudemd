@@ -8,6 +8,24 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.24] - 2026-05-10
+
+**Patch — doc-vs-code drift fixes from a 5-round self-iteration dogfood pass.** Spec v6.11.8 unchanged. Zero runtime behavior change — pure `bin/` USAGE strings + README §Per-hook list nudged into lockstep with the actual code, plus two new regression anchors that fail loudly on future drift.
+
+### Fixed
+
+- `[fix]` **`bin/claudemd-lint.js` USAGE references `claudemd-cli` (not `claudemd`)** — the npm `bin` key is `claudemd-cli`, but the help text shown by `--help` listed every subcommand as `claudemd lint <text>` / `claudemd audit <jsonl-path>` / `claudemd --version`. A user copying the documented command verbatim hit `command not found: claudemd`. Pre-fix discrepancy isolated to the help-text surface (10 occurrences across USAGE block + header + Notes + one inline comment); README, CHANGELOG, and the pre-commit hook example already used the correct name. Affects v0.9.0+ (the surface where `claudemd-cli` became the published bin).
+- `[fix]` **README §Per-hook kill-switch list lockstep with `hook_kill_switch <NAME>` calls in `hooks/*.sh`** — three `DISABLE_*_HOOK` env vars that real hooks DO honor were undocumented (`DISABLE_MEM_AUDIT_HOOK`, `DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK`, `DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK`), and one documented var carried a wrong owning-hook annotation: README labeled `DISABLE_USER_PROMPT_SUBMIT_HOOK` as disabling `transcript-vocab-scan`, but the `hook_kill_switch USER_PROMPT_SUBMIT` call lives in `version-sync.sh`, so the env actually disables version-sync. A user trying to silence transcript-vocab-scan via the documented var would silence the wrong hook. Drift introduced incrementally through v0.9.4 / v0.9.10 (mem-audit + transcript-structure-scan additions) without a corresponding README update.
+
+### Tests
+
+- `[test]` **`tests/scripts/help-discoverability.test.js` +1 case**: `bin/claudemd-lint.js --help` USAGE references the actual npm `bin` key (read from `package.json`), and never the bare `claudemd <subcommand>` form. Catches future bin renames + USAGE edits in either direction.
+- `[test]` **`tests/scripts/kill-switch-doc-drift.test.js` (new, 2 cases)**: parses `hook_kill_switch <NAME>` arg from every `hooks/*.sh`, derives `DISABLE_<NAME>_HOOK`, and asserts each is documented in README; pins all 12 `DISABLE_*_HOOK → <hook-file>` mappings so a future rename can't re-introduce the env-name-vs-owning-hook ambiguity.
+
+### Why no L3 / pre-ship-review chain
+
+Two doc/test edits, zero runtime behavior change, zero hook/CLI/spec touch. Suite stays at 350 node tests + 18 bash hook tests + 2 integration suites — all pass. Five rounds of self-iteration (67 scenarios across CLI bounds, hook fail-open, lifecycle anomalies, declared-vs-actual consistency, state-machine coordination, npm packaging dogfood) found these 2 P1 doc-drift items + zero P0/P1 elsewhere; the 2 carryover P2s are tracked inline (sparkline 「3 windows」 README phrasing vs code's `≥2`; corrupt `last-session-summary.json` not auto-cleaned but recoverable on next Stop).
+
 ## [0.9.23] - 2026-05-10
 
 **Patch — observability + structural-enforcement upgrade.** Spec v6.11.8 unchanged. 6 fixes from a deep dogfood pass on the `~/.claude/logs/claudemd.jsonl` telemetry channel and the lint-argv structural detector. The unifying theme: **resilience without observability** — hooks fail-open silently, jsonl parser silently skips bad rows, sparkline annotations virtual-fire under insufficient log span, status disconnects from settings.json, hard-rules-audit accepts windows shorter than the §0.1 quarterly cadence with no warning, and lint-argv only catches *wrong-shape* argv reads (not "main block doesn't read argv at all" — the v0.9.x silent-fallback family that recurred 9× across 5 dogfood rounds and bit destructive lifecycle scripts in Round 5). Each fix surfaces the silent path so §13.1 reviewers see the full picture.

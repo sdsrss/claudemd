@@ -164,15 +164,18 @@ export DISABLE_CLAUDEMD_HOOKS=1
 **2. Per-hook.** Disable one, leave others active:
 
 ```bash
-export DISABLE_BANNED_VOCAB_HOOK=1         # or
-export DISABLE_PRE_BASH_SAFETY_HOOK=1      # or
-export DISABLE_SHIP_BASELINE_HOOK=1        # or
-export DISABLE_RESIDUE_AUDIT_HOOK=1        # or
-export DISABLE_MEMORY_READ_HOOK=1          # or
-export DISABLE_SANDBOX_DISPOSAL_HOOK=1     # or
-export DISABLE_SESSION_START_HOOK=1        # or
-export DISABLE_SESSION_SUMMARY_HOOK=1      # v0.8.0+ — Stop hook writing summary
-export DISABLE_USER_PROMPT_SUBMIT_HOOK=1   # transcript-vocab-scan
+export DISABLE_BANNED_VOCAB_HOOK=1               # or
+export DISABLE_PRE_BASH_SAFETY_HOOK=1            # or
+export DISABLE_SHIP_BASELINE_HOOK=1              # or
+export DISABLE_RESIDUE_AUDIT_HOOK=1              # or
+export DISABLE_MEMORY_READ_HOOK=1                # or
+export DISABLE_SANDBOX_DISPOSAL_HOOK=1           # or
+export DISABLE_SESSION_START_HOOK=1              # or
+export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary
+export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
+export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
+export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 four-section advisory
+export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
 ```
 
 **2a. Per-sub-feature** (v0.4.0+). Sub-flags inside an enabled hook, named without the `_HOOK` suffix:
