@@ -6,6 +6,24 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.9 — 2026-05-10
+
+Patch: fresh-agent-adherence release. Three reader-side ambiguities surfaced in a second dogfood pass (simulating "first time touching this spec, strict-literal execution"), plus the v6.11.8 carry-forward `MUST net-delete or migrate marginal core bullets` honored via two §EXT migrations. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**
+
+- `[fix]` **§2 LEVEL "new tests" trigger vs §1.5 Local-Δ "co-located test = one"** (core, +~85 bytes) — literal reading of `L2 trigger: new tests` promoted every L1-bugfix that wrote a regression RED test to L2, contradicting §1.5 Local-Δ ("source + co-located test = one") and §7 L1-bugfix workflow ("reproduce-once → fix → re-run repro"). Reworded as `new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5)`. Bugfix-with-regression stays L1.
+- `[fix]` **§1.5 GLOSSARY missing Contract / Δ-contract at L1/L2** (core, +~220 bytes) — `Contract` / `Δ-contract` were defined only in §EXT §1.5-EXT (L3+ load only), but core §2 L2 trigger uses `contract-Δ` and core §5 hard-AUTH uses `Δ-contract on public API`. At L1/L2 a fresh agent classifying could not resolve the term in core. Same class as v6.11.5's L1/L2-resident-term inlining; this entry slipped through. Inlined a single-bullet definition that also distinguishes additive (→ L2) from breaking (→ L3), folding F4-class clarity (additive-vs-breaking carve-out) into the same fix.
+- `[fix]` **§13 META "Spec changes = L2 minimum" vs §2 LLM-visible metadata → L3** (extended, +~50 bytes) — literal reading of `Spec changes = L2 minimum` defaulted spec edits to L2, contradicting §2 LLM-visible-metadata-→-L3 (which spec files most directly are). Reworded: `patch (wording) = L2; minor (rule add/relaxed) / major (protocol shift) = L3 per §2`. Aligns spec wording with how the maintainer has actually been classifying spec patches.
+- `[refactor]` **§0.2 Mid-task feedback split** (core −~175 bytes; extended +~280 bytes) — Continuation / Cancel / Switch (predictable common-sense cases) migrated to new §0.2-EXT; core retains the three non-obvious cases (Refinement / Quality slider / Scope-expansion) plus a one-line pointer. Honors v6.11.8 operator carry-forward.
+- `[refactor]` **§11 MEMORY.md tag-syntax footnote split** (core −~320 bytes; extended +~720 bytes) — operational summary stays in core (one line); detail rationale + v0.5.0 over-trigger history moved to new §11-EXT MEMORY-tag-syntax section. Same v6.11.8 carry-forward.
+
+**§13.2 budget cost**: 0 (no new HARD; all three fixes are wording/clarification of existing rules + 2 structural migrations). HARD tally unchanged (12 core + 4 §EXT-side). 20-task counter preserved.
+
+**Sizing** (v6.11.9, 2026-05-10, measured via `wc -c`): core 24672 → 24643 bytes (−29, −0.12%); extended last-recorded-v6.11.8 46690 → 47747 bytes (+1057, +2.26%). Size budget (§13.1): core 24643/25000 (357 bytes headroom, 98.57% utilized — ceiling-grazing); extended 47747/50000 (2253 bytes headroom, 95.49% utilized — tightening). Runtime L0/L1/L2 ≈ 6.13k tokens.
+
+**Plugin companion (claudemd v0.9.25)**: spec-only patch — no plugin-side hook / script / test changes beyond the version-pin updates in `tests/scripts/spec-structure.test.js`.
+
+---
+
 ## v6.11.8 — 2026-05-10
 
 Patch: clarity release. Two wording fixes addressing real reader-side ambiguity surfaced during a dogfood pass simulating fresh-user spec adherence. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**

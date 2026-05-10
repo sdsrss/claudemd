@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.8 — Extended
+# AI-CODING-SPEC v6.11.9 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -397,7 +397,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 
 ## §13 META (Agent-facing)
 
-- **Spec changes = L2 minimum**: modifying this document changes Agent behavior — contract-Δ on author-Agent relationship. Proposal → diff → user ASK.
+- **Spec changes**: patch (wording / clarification, identical behavior) = L2; minor (rule added / relaxed) / major (protocol shift) = L3 per core §2 LLM-visible metadata. Proposal → diff → user ASK at all levels.
 - **Version bump**: patch (wording/clarification, identical behavior) / minor (rule added/relaxed, backward-compatible) / major (protocol shift).
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
@@ -522,12 +522,15 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.8 (patch, 2026-05-10)** — clarity release. Two wording fixes addressing real reader-side ambiguity surfaced during a dogfood pass simulating fresh-user spec adherence. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**
+**v6.11.9 (patch, 2026-05-10)** — fresh-agent-adherence release. Three reader-side ambiguities found in a second dogfood pass simulating "first time touching this spec, strict-literal execution" — plus the v6.11.8 carry-forward "next bump MUST net-delete or migrate marginal core bullets" honored via two §EXT migrations. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**
 
-- `[fix]` **§10 Four-section order — "Lead with incomplete" disambiguated** (core, +~125 bytes net) — original line read literally as "put incomplete first" which contradicts the HARD structural order Done → Not done → Failed → Uncertain. The `transcript-structure-scan` Stop hook enforces the structural order; the original sentence's intent was prose emphasis, not section reorder. New wording separates structural order (Stop hook enforces) from emphasis rule (prose body weights incomplete sections heavier than Done). A fresh agent following the literal reading would have triggered the very §10-four-section-order hit it's meant to prevent.
-- `[fix]` **§7 L2 evidence example — "tests 1453 → 1490" annotated** (core, +~25 bytes net) — bare numbers were ambiguous between "test count growth" and "pass rate". Added `suite test count` qualifier + absolute-delta inline (`+37`). Aligns with §10 Specificity HARD: "absolute number OR ratio+baseline" — the example now models both.
+- `[fix]` **§2 LEVEL "new tests" trigger vs §1.5 Local-Δ "co-located test = one"** (core, +~85 bytes) — literal reading of `L2 trigger: new tests` promoted every L1-bugfix that wrote a regression RED test to L2, contradicting §1.5 Local-Δ ("source + co-located test = one") and §7 L1-bugfix workflow ("reproduce-once → fix → re-run repro"). Reworded as `new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5)`. Bugfix-with-regression stays L1.
+- `[fix]` **§1.5 GLOSSARY missing Contract / Δ-contract at L1/L2** (core, +~220 bytes) — `Contract` / `Δ-contract` were defined only in §EXT §1.5-EXT (L3+ load), but core §2 L2 trigger uses `contract-Δ` and core §5 hard-AUTH uses `Δ-contract on public API`. At L1/L2 a fresh agent classifying could not resolve the term in core. Same class as v6.11.5's L1/L2-resident-term inlining; this entry slipped through. Inlined a single-bullet definition that also distinguishes additive (→ L2) from breaking (→ L3), folding F4-class clarity into F2.
+- `[fix]` **§13 META "Spec changes = L2 minimum" vs §2 LLM-visible metadata → L3** (extended, +~50 bytes) — literal reading of `Spec changes = L2 minimum` defaulted spec edits to L2, contradicting §2 LLM-visible-metadata-→-L3 (which the spec itself most directly is). Reworded: `patch (wording) = L2; minor (rule add/relaxed) / major (protocol shift) = L3 per §2`. Aligns with how the maintainer has actually been classifying spec patches — the spec wording now matches the practice.
+- `[refactor]` **§0.2 Mid-task feedback split** (core −~175 bytes; extended +~280 bytes) — Continuation / Cancel / Switch (predictable common-sense cases) migrated to new §0.2-EXT; core retains the three non-obvious cases (Refinement / Quality slider / Scope-expansion) plus a one-line pointer. Honors v6.11.8 operator carry-forward.
+- `[refactor]` **§11 MEMORY.md tag-syntax footnote split** (core −~320 bytes; extended +~720 bytes) — operational summary stays in core (one line); detail rationale + v0.5.0 over-trigger history moved to new §11-EXT MEMORY-tag-syntax section. Same v6.11.8 carry-forward.
 
-**Sizing** (v6.11.8, 2026-05-10, measured via `wc -c`): core 24558 → 24672 bytes (+114, +0.46%); extended 46568 → 46690 bytes (+122, +0.26%, no extended content change beyond this Recent-changes pointer). Size budget (§13.1): core 24672/25000 (**328 bytes headroom, 98.69% utilized — ceiling-grazing, next bump MUST net-delete or migrate marginal core bullets to §EXT per v6.11.7's operator note**); extended 46690/50000 (3310 bytes headroom, 93.38% utilized). Operator carry-forward: v6.11.7 said "v6.11.8 should net-delete or migrate marginal core bullets" — this patch did not (clarity fixes were judged higher-value than the byte cost), so the directive moves to v6.11.9. Runtime L0/L1/L2 ≈ 6.14k tokens (+0.03k vs v6.11.7).
+**Sizing** (v6.11.9, 2026-05-10, measured via `wc -c` on disk): core 24672 → 24643 bytes (−29, −0.12%); extended last-recorded-v6.11.8 46690 → current 47747 bytes (+1057, +2.26% — additive §EXT migrations from core consume extended budget). Size budget (§13.1): core 24643/25000 (**357 bytes headroom, 98.57% utilized — net-delete restored marginal headroom; file remains ceiling-grazing**); extended 47747/50000 (**2253 bytes headroom, 95.49% utilized — tightened from v6.11.8's 3310 bytes**). v6.11.8 operator carry-forward (`MUST net-delete or migrate`): **honored** — core net-deleted 29 bytes despite three additive fixes, courtesy of two §EXT migrations (§0.2-EXT + §11-EXT MEMORY-tag-syntax). Runtime L0/L1/L2 ≈ 6.13k tokens (−0.01k vs v6.11.8). Extended baseline drift: v6.11.8 changelog claimed 46690 bytes; on-disk session-start was 45164 (~1500 bytes unrecorded shrinkage between v6.11.8 release and v6.11.9 start — likely from intervening plugin patches that didn't bump spec). Sizing-line uses the recorded v6.11.8 figure for delta-of-record.
 
 ## §1.5-EXT GLOSSARY (full definitions)
 
@@ -537,7 +540,7 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 | **Module** | single-package repo: each `src/<subdir>/` is a Module. Monorepo: each workspace/package root is a Module. Sub-folders inside a Module are NOT separate modules. |
 | **Local-Δ** | ≤2 files (source + its co-located test counts as one; co-located = test path mirrors source path). No exported-symbol change, no import-surface change, no config/schema touch. |
 | **Assumption** | claim not verified this turn via Read/Grep/tool. Memory recall = assumption. |
-| **Contract** | interface visible to external callers: signature, return/error type, API shape, status code, CLI flag, config key, I/O schema, security semantics. |
+| **Contract / Δ-contract** | inlined to core §1.5 in v6.11.9 (used by §2 L2 trigger + §5 hard-AUTH at L1/L2). |
 | **Evidence** | tool-call output showing specific behavior. *Fresh* = same turn or re-run after last change. |
 | **Task** | one SPINE cycle. New user request = new task unless explicit continuation. |
 
@@ -607,3 +610,19 @@ durable project artifact (overview / phase / plan / next-step / recommendation /
 `git log`-recoverable content, code invariant (→ inline comment), session-local state (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
 
 After any `memory/*.md` write: refresh `MEMORY.md` index line.
+
+## §0.2-EXT Mid-task feedback (continued)
+
+Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains the three non-obvious cases — Refinement / Quality slider / Scope-expansion — and points here for the rest).
+
+- **Continuation** ("继续/next"): same SPINE.
+- **Cancel** ("停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
+- **Switch** ("先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
+
+## §11-EXT MEMORY-tag-syntax (detail)
+
+Demoted from core §11 in v6.11.9 (rationale text moved from a long footnote to here; core keeps the one-line operational summary).
+
+- Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before reading the file.
+- **Untagged lines = agent-driven full content scan** (decide based on the line's title/description). The hook does NOT auto-block on untagged entries, so a `MEMORY.md` without tag discipline doesn't force N unrelated Reads on every push.
+- Operational rule: tag the lines you want hook-enforced; leave the rest for agent judgment. v6.11.3 introduced this hook/agent split after the v0.5.0 over-trigger pattern (release/deploy/ship matching anywhere in commit-body / MR-description / file-paths → false-positive blocks).

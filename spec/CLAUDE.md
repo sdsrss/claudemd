@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.8 — Core
+# AI-CODING-SPEC v6.11.9 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -31,9 +31,7 @@ New rule defaults to extended §X-EXT. Promote to core only after rule-hits data
 - **Refinement** (text/style/wording): apply inline.
 - **Quality slider** ("更严 / make rigorous"): re-validate current scope stricter per §7; do NOT add features. <30% LOC + explicit direction → inline merge. Ambiguous slider vs scope-expansion → ASK once.
 - **Scope-expansion**: re-plan. Cross-level → Serial; same-level → Inline. Announce level shift in one prose line.
-- **Continuation** ("继续/next"): same SPINE.
-- **Cancel** ("停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
-- **Switch** ("先做X再做Y"): new SPINE; paused.md only under context pressure or non-trivial.
+- **Continuation / Cancel / Switch** → §EXT §0.2-EXT.
 
 ## §1 IDENTITY
 
@@ -63,15 +61,16 @@ Core-resident (L1/L2 routing decisions reference these — Extended is not loade
 - **Module**: single-package = each `src/<subdir>/`; monorepo = each workspace/package root. Sub-folders inside a Module are NOT separate modules.
 - **Evidence**: tool-call output showing specific behavior. *Fresh* = same turn or re-run after last change.
 - **Task**: one SPINE cycle. New user request = new task unless explicit continuation.
+- **Contract / Δ-contract**: external-caller-visible interface (sig / return / status / CLI flag / config / schema / security); change to it = Δ-contract — additive (new flag/endpoint/optional/field) → L2, breaking (rename/remove/type-change/required-no-default) → L3.
 
-Extended-only (L3+ load resolves these): **Assumption / Contract / Δ-contract** → §EXT §1.5-EXT.
+Extended-only (L3+ load resolves these): **Assumption** → §EXT §1.5-EXT.
 
 ## §2 LEVEL
 
 ```
 L0  docs / comment / style / config                       → Fast-Path
 L1  files ≤2, LOC <80, Local-Δ only                       → §7.L1
-L2  contract-Δ / multi-file / new tests / additive-schema → §7 L2 + §9
+L2  contract-Δ / multi-file / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
@@ -257,7 +256,7 @@ Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MU
   3. **Judgment** (L0/L1 + L2+ fallback): durable artifact whose insight would have changed a decision this session + ≥1 future-reuse probability.
   Always skip: `git log`-recoverable, code invariant, session-local, clean-root-cause bugfix.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
-  - Optional tag syntax: `- [Title](file.md) [tag1, tag2] — description`; agent matches task keywords against tags before Read. **Untagged lines = agent-driven full content scan** (decide based on the line's title/description) — the hook does NOT auto-block on untagged entries, so a MEMORY.md without tag discipline doesn't force N unrelated Reads on every push. Tag the lines you want hook-enforced.
+  - Optional tag syntax `- [Title](file.md) [tags] — desc`; agent matches task keywords against tags before Read. Untagged → agent-driven full content scan (NOT hook-blocked). Detail: §EXT §11-EXT MEMORY-tag-syntax.
 - **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn `[mem]` context, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or context pressure (§11 Context pressure → `tasks/<slug>-paused.md`). "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: next user message is `继续 / next / 怎么停了 / why did you stop` → confirmed prior yield.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → MUST NOT list under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
 

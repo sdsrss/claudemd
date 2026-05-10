@@ -61,7 +61,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | 12 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `sandbox-disposal-check` · `session-start-check` · `session-summary` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 9 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
-| Spec v6.11.8 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
+| Spec v6.11.9 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
 
 Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 
@@ -302,7 +302,7 @@ claudemd/
 ├── commands/                 # 9 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.11.8 CLAUDE*.md trio + hard-rules.json manifest
+├── spec/                     # shipped v6.11.9 CLAUDE*.md trio + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20) + npm-publish.yml (tag-triggered)

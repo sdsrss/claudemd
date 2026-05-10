@@ -32,14 +32,15 @@ test('A14: core CLAUDE.md references §1.5-EXT / §5.1-EXT / §7-EXT / §11-EXT'
   }
 });
 
-test('A15: MEMORY.md tag syntax described in §11', () => {
-  const text = fs.readFileSync(CORE, 'utf8');
-  assert.match(text, /MEMORY\.md/);
-  // v0.2.1: dropped `/tag syntax/i` literal-phrase match — the [tag1, tag2]
-  // literal is a structural copy-paste anchor and is the stable sentinel.
-  // Free-form prose around it (e.g. "Optional tag syntax" / "Index line tag
-  // annotation") can drift without breaking user-facing intent.
-  assert.match(text, /\[tag1, tag2\]/);
+test('A15: MEMORY.md tag syntax described in §11 (core summary + §EXT detail)', () => {
+  const coreText = fs.readFileSync(CORE, 'utf8');
+  const extText = fs.readFileSync(EXT, 'utf8');
+  assert.match(coreText, /MEMORY\.md/);
+  // v6.11.9: detail migrated to §EXT §11-EXT MEMORY-tag-syntax; the [tag1, tag2]
+  // literal is a structural copy-paste anchor and the stable sentinel — now
+  // lives in extended. Core retains a one-line operational summary.
+  assert.match(extText, /\[tag1, tag2\]/);
+  assert.match(coreText, /tag syntax/i);
 });
 
 test('core contains §0.1 + §2.1 (unified ROUTE absorbs former §2.3 TOOLS)', () => {
@@ -55,14 +56,14 @@ test('core version header matches current spec version', () => {
   // v6.10.0: header is "# AI-CODING-SPEC vX.Y.Z — Core" (no standalone `Version:` line).
   const m = text.match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
   assert.ok(m, 'core header must declare semver version inline');
-  assert.equal(m[1], '6.11.8');
+  assert.equal(m[1], '6.11.9');
 });
 
-test('changelog top entry is v6.11.8', () => {
+test('changelog top entry is v6.11.9', () => {
   const text = fs.readFileSync(CL, 'utf8');
   const first = text.match(/^##\s+v(\d+\.\d+\.\d+)/m);
   assert.ok(first);
-  assert.equal(first[1], '6.11.8');
+  assert.equal(first[1], '6.11.9');
 });
 
 test('§2.1 table contains sp:brainstorming row', () => {
