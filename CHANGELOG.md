@@ -8,6 +8,69 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.10.0] - 2026-05-11
+
+**Minor — roll-up of v0.9.33 → v0.9.38: in-session dogfood-driven hardening of the §0.1 / §13.1 / §13.2 audit data pipeline + the §11 enforcement chain.** Zero new code in this commit (3 manifest version files + this index). First plugin minor bump since v0.2.0; semver shift justified by the coherent feature surface added across the 6 patches — additive Δ-contract on `rule-hits.jsonl` schema (2 new columns), new `audit.js` top-level fields, new `claudemd-doctor` check.
+
+### What the 6 patches collectively delivered
+
+| Patch | Delivered |
+|---|---|
+| [0.9.33] | `rule_hits_append` 5th arg `session_id`; 7 of 12 emitter hooks threaded. Schema-additive Δ-contract on the JSONL artifact. |
+| [0.9.34] | `rule_hits_append` 6th arg `tool_use_id` (PreToolUse / PostToolUse only); remaining 5 hooks plumbed `session_id`; `audit.js` `uniqueInvocations()` dedup view by `(ts, hook, session_id, tool_use_id)`. |
+| [0.9.35] | `scripts/lib/memory-tags.js` + `claudemd-doctor` `memory-tag-specificity` check — closes spec §11-EXT (SHOULD, v6.11.11) tooling gap. |
+| [0.9.36] | `memory-read-check.sh` deny `extra.match_count` + bypass `extra.bypass_reason` (with `[skip-memory-check: <reason>]` form). |
+| [0.9.37] | `detectCutover()` + `bySection` / `byTrend` cutover-split — `(unset)` → `(unset-historical)` + `(unset-current)`. |
+| [0.9.38] | `GENERIC_WORDLIST` +10 entries (`design`, `brainstorm`, +8 preventive ship-prose words). |
+
+### Schema shape after v0.10.0
+
+`~/.claude/logs/claudemd.jsonl` row format:
+```json
+{
+  "ts": "2026-05-11T...Z",
+  "hook": "<hook-name>",
+  "event": "<event-class>",
+  "project": "-mnt-data-ssd-...",
+  "session_id": "...",         // added v0.9.33
+  "tool_use_id": "toolu_...",  // added v0.9.34; PreToolUse/PostToolUse only
+  "spec_section": "§...",
+  "extra": { ... }
+}
+```
+
+`scripts/audit.js` top-level shape:
+```
+windowDays, totalHits,
+dataIntegrity: { totalLines, parsed, skipped, skipRatio,
+                 cutoverTs },          // added v0.9.37
+byHook, bySection, byBypass, byFailOpen, byTrend,
+uniqueInvocations,                     // added v0.9.34
+topPatterns
+```
+
+### Why minor, not patch
+
+Each individual sub-patch was patch-level (atomic, additive, back-compat). Aggregated, they constitute the first deliberate semver shift since v0.2.0: rule-hits.jsonl schema gains 2 stable columns that downstream tooling can rely on; `audit.js` JSON shape gains 2 top-level fields; doctor gains 1 new check class. Anyone with audit dashboards parsing the older shape needs to handle the new keys. Patch-level was correct per individual commit; minor is correct as the index marker.
+
+### Compat (re-confirmed)
+
+- All 6 sub-patches are back-compat: optional schema args, JSONL `null` for absent fields, legacy `(unset)` bucket falls back when cutoverTs is null, pre-v0.9.36 bypass form still works.
+- Tests: 19/19 hook + 388/388 JS pass across the entire 6-patch sequence.
+
+### In-session self-dogfood evidence
+
+The work itself stress-tested the §11 enforcement chain twice during ship:
+- **v0.9.34 ship → `semantic` tag FP** caught by Read of `plugin_code_graph_mcp.md`. Drove v0.9.35 detector design.
+- **v0.9.37 ship → `design` tag FP** caught by Read of `feedback_brainstorm_for_design_tasks.md`. Drove v0.9.38 wordlist补全.
+- **v0.9.38 ship → used `[skip-memory-check: <reason>]` form** to bypass the §11 hook on a release whose notes literally mention `design`. First production use of the v0.9.36 `bypass_reason` capture.
+
+The §11 enforcement worked correctly all three times — each FP was the spec doing its job, not failing.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.38 → 0.10.0 (package.json + plugin.json + marketplace.json). Spec content unchanged — manifest `description` fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.38] - 2026-05-11
 
 **Patch — §11-EXT Tag-specificity wordlist补全.** Self-applied follow-up to v0.9.35: this session's own ship flow tripped two §11 FPs (`semantic` in 1B body / `design` in cutover-split body), and only the first was caught by v0.9.35's wordlist. Adds 10 entries: 2 from the observed FP (`design`, `brainstorm`) + 8 preventive picks from words that appeared ≥2× in this session's release notes / CHANGELOG entries (`architecture`, `behavior`, `schema`, `default`, `pattern`, `format`, `system`, `process`). Live doctor finding count 22 → 24 (+2 catches `design` + `brainstorm` in `feedback_brainstorm_for_design_tasks.md`; other 8 are preventive — no current MEMORY.md uses them as single-word tags yet).
