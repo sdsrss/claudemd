@@ -8,6 +8,45 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.15.0] - 2026-05-11
+
+**Minor — feat: `mid-spine-yield-scan` Stop hook closes the §11-mid-spine-yield observation gap.**
+
+P2 #1 (a-mini) from the P2/P3 phase plan. Highest-confidence detector in the 5-rule transcript-scan extension queue, shipped first so its FP profile can be measured before layering medium-confidence siblings (iron-law-1 / parallel-path / session-exit / author-not-reviewer).
+
+### Background
+
+§11 Mid-SPINE turn-yield (HARD): once a turn has executed ≥1 tool call inside an active SPINE cycle, the agent must continue planned steps through VALIDATE. Yield only on `[AUTH REQUIRED]`, real ambiguity, or context pressure. Spec gives the tell: "next user message is `继续 / next / 怎么停了 / why did you stop` → confirmed prior yield." Pre-fix, the rule was self-discipline only — no hook observed it, no `rule_hits.jsonl` row carried `§11-mid-spine-yield`, and `/claudemd-rules` staleReviews permanently listed it as un-reviewed. The 4 sibling self-rules (§iron-law-2 / §10-four-section-order / §10-honesty / §10-V) already had hook-side observers (`transcript-structure-scan` / `transcript-vocab-scan`); mid-spine-yield was the only §11 rule still observability-dark.
+
+### What changed
+
+- **New hook** `hooks/mid-spine-yield-scan.sh` (~125 LOC). Stop event; opt-in `MID_SPINE_YIELD_SCAN=1` (default OFF per behavior-layer hook convention — same as `transcript-vocab-scan` / `transcript-structure-scan` / `memory-coverage-scan`).
+- **Detection**: walks the session transcript in order; tracks each assistant turn's text + tool_use count. For each user message matching the continuation tell (`继续 / next / continue / proceed / 怎么停了 / 为什么停了 / 还有吗 / why (did) you stop / why stop / keep going / again`, body ≤ 30 chars after whitespace), evaluates the immediately-prior assistant turn. Suspect mid-SPINE yield when the prior turn (a) contained ≥1 tool_use AND (b) text body lacked four-section report anchor (`^Done:` / `^## Done` / `^Done —`) AND (c) text body lacked `[AUTH REQUIRED` (legitimate yield) AND (d) text body lacked `[PARTIAL:` (legitimate partial-completion signal).
+- **Aggregation**: per-session count emitted as one advisory row with `extra.count`. Per-session dedup via state sentinel `~/.claude/.claudemd-state/mid-spine-yield-<sid>.ts` — at most one row per `session_id`.
+- **Schema additive**: new event `mid-spine-advisory`; new section-mapping row `§11-mid-spine-yield`. `tests/hooks/contract.test.sh` DOCUMENTED array extended.
+- **Registry sync**: 16 → 17 hooks. `scripts/lib/hook-registry.js` adds entry; `tests/scripts/{install,hook-registry}.test.js` count pins moved (real-plugin count: 16 → 17; fixture array stays at 12 — fixture is intentionally minimal); `tests/integration/full-lifecycle.test.sh` MCOUNT + regex group moved; `README.md` shell-hook count + name list updated; `commands/claudemd-toggle.md` valid-name list extended; `README.md` kill-switch enumeration extended with `DISABLE_MID_SPINE_YIELD_HOOK`.
+- **Kill-switch**: `DISABLE_MID_SPINE_YIELD_HOOK=1` (and the global `DISABLE_CLAUDEMD_HOOKS=1`).
+
+### Why minor (not patch)
+
+New hook = new contract surface (rule-hits emits `mid-spine-advisory` rows, schema documents `§11-mid-spine-yield`). Per `feedback_claudemd_spec_single_source_of_truth.md`: plugin semver vs spec semver are independent — plugin minor for additive observability instrumentation; spec stays at v6.11.15 (rule itself unchanged, only the observation surface added). §13.2 budget cost: 0 (no rule add/remove/downgrade).
+
+### Tests
+
+- New `tests/hooks/mid-spine-yield-scan.test.sh`: 12 cases — default OFF / missing-transcript fail-open / four-section-prev silence / tool-call-prev TP / `[AUTH REQUIRED]` legit-yield / `[PARTIAL:]` legit-partial / long-form-message FP filter / kill-switch / per-session dedup / multi-yield count aggregation / tool+report combined silence / EN `next` continuation parity.
+- Updated `tests/hooks/contract.test.sh`: `mid-spine-advisory:mid-spine-yield-scan` in DOCUMENTED array; B/C invariants auto-verify via grep.
+- Updated `tests/scripts/install.test.js` + `tests/scripts/hook-registry.test.js`: count pin 16 → 17.
+- Updated `tests/integration/full-lifecycle.test.sh`: MCOUNT + settings-eviction regex group.
+- Full JS suite: 405 unchanged (count pins only). Hook suite 12/12 new + 8/8 existing transcript-vocab unchanged. Integration: PASS.
+
+### Operator notes
+
+Hook ships default-OFF for ≥30 days FP signal collection before flipping default-ON, mirroring the `transcript-*-scan` + `memory-coverage-scan` precedent. Enable per project via:
+```
+export MID_SPINE_YIELD_SCAN=1
+```
+Once FP rate is measurable, the next 4 sibling detectors (iron-law-1 / parallel-path / session-exit / author-not-reviewer) ship as v0.16.0 / v0.17.0 per the P2 #1 (a/b) split — calibrated against this hook's signal-to-noise baseline.
+
 ## [0.14.0] - 2026-05-11
 
 **Minor — feat: `/claudemd-sampling-audit` retrospective batch scanner for 4 self-enforced HARD rules.**

@@ -43,6 +43,7 @@
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/mem-audit.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/transcript-structure-scan.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/memory-coverage-scan.sh\"", "timeout": 3 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/mid-spine-yield-scan.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh\"", "timeout": 3 }
         ]
       }

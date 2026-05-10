@@ -113,6 +113,7 @@ DOCUMENTED=(
   "read:session-extended-read"
   "suggest:memory-prompt-hint"
   "coverage-advisory:memory-coverage-scan"
+  "mid-spine-advisory:mid-spine-yield-scan"
 )
 
 for entry in "${DOCUMENTED[@]}"; do

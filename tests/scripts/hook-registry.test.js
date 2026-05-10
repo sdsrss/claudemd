@@ -1,5 +1,5 @@
 // Drift gate: scripts/lib/hook-registry.js is the single source of truth for
-// the 9 plugin hooks. This test asserts every consumer (hooks.json,
+// the 17 plugin hooks. This test asserts every consumer (hooks.json,
 // commands/claudemd-toggle.md, hooks/*.sh files on disk, derived consts) stays
 // in lockstep. Adding a hook = one entry in the registry + the hooks.json
 // command + the toggle.md list; any drift fails here.
@@ -18,11 +18,11 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('registry has 16 entries (matches integration MCOUNT)', () => {
+test('registry has 17 entries (matches integration MCOUNT)', () => {
   // Pinned to the same number as tests/integration/full-lifecycle.test.sh
   // MCOUNT and tests/scripts/install.test.js manifest.entries.length so the
   // three counts move together when a hook is added or removed.
-  assert.equal(HOOK_REGISTRY.length, 16);
+  assert.equal(HOOK_REGISTRY.length, 17);
 });
 
 test('registry → hooks.json: every entry registered with same event/matcher/timeout', () => {

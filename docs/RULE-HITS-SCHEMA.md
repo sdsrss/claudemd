@@ -41,6 +41,7 @@ source must appear in this table.
 | `read` | `session-extended-read` | session loaded the canonical user-global extended spec `~/.claude/CLAUDE-extended.md` (per spec §2.2 EXT LOADING). Per-session dedup via `~/.claude/.claudemd-state/ext-read-<sid>.ts` sentinel — at most one row per `session_id`. Provides the session-denominator signal for §13.1 demote analysis on extended-scope rules: a "0 hits" count is only meaningful against the count of sessions that actually loaded extended. Section: `§13.1-extended-read`. Added v0.10.1. |
 | `suggest` | `memory-prompt-hint` | UserPromptSubmit proactive hint — user's prompt matched MEMORY.md tags and at least one matched file is un-Read this session. `extra.suggested` lists the un-Read file basenames (capped at 5 in output, full list logged); `extra.match_count` carries the total un-Read match count for cite-recall analysis. Section: `§11-memory-hint`. Added v0.11.0. |
 | `coverage-advisory` | `memory-coverage-scan` | Stop advisory — session-aggregate count of lesson/decision trigger tokens in assistant text vs `mem_save` tool-call count. Fires when `total >= threshold AND mem_saves == 0` (default threshold 3). `extra` carries `{lesson, decision, mem_saves, threshold, total}`. Inverse of `suggest`: this catches "should have SAVED" while `suggest` catches "should have READ." Per-session dedup via `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` sentinel. Opt-in `MEMORY_COVERAGE_SCAN=1` (default OFF). Section: `§11-mem-coverage`. Added v0.13.0. |
+| `mid-spine-advisory` | `mid-spine-yield-scan` | Stop advisory — agent self-rule observation for §11 Mid-SPINE turn-yield. Walks the session transcript for (user-message matching continuation tell `继续 / next / why stop / proceed / keep going / 怎么停了 / 还有吗`, body ≤ 30 chars) preceded immediately by an assistant turn that (a) executed ≥1 tool_use AND (b) lacked four-section report anchor / `[AUTH REQUIRED` / `[PARTIAL:`. `extra` carries `{count}` (total suspected yields per session). Per-session dedup via `~/.claude/.claudemd-state/mid-spine-yield-<sid>.ts` sentinel. Opt-in `MID_SPINE_YIELD_SCAN=1` (default OFF). Section: `§11-mid-spine-yield`. Added v0.15.0. |
 
 ## Spec section taxonomy
 
@@ -60,6 +61,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `memory-prompt-hint` | `suggest` | `§11-memory-hint` |
 | `memory-coverage-scan` | `coverage-advisory` | `§11-mem-coverage` |
+| `mid-spine-yield-scan` | `mid-spine-advisory` | `§11-mid-spine-yield` |
 | `residue-audit` | `warn` | `§7-user-global-state` |
 | `sandbox-disposal` | `warn` | `§8.V4` |
 | `transcript-vocab-scan` | `advisory` | `§10-V` |
