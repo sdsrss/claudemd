@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.15 — Core
+# AI-CODING-SPEC v6.11.16 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -86,27 +86,20 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 ROUTE (unified)
 
-SPINE step 3. MCP-injected per-tool instructions are authoritative; this table covers cross-tool routing. Full L3 / composite matrix → §EXT §4.
+SPINE step 3. MCP-injected per-tool instructions are authoritative; this table covers cross-tool routing. Full L3 / composite / specialized-clarify matrix → §EXT §4.
 
 | Trigger | Primary | Note |
 |---|---|---|
-| code/logic bug | L1: reproduce→fix→§7; L2+: `sp:systematic-debugging` | gs:/investigate only for env/staging/deploy |
-| env/staging/deploy bug | `gs:/investigate` | → sp if root cause is code |
+| code/logic bug | L1: reproduce→fix→§7; L2+: `sp:systematic-debugging` | env/staging/deploy → `gs:/investigate` |
 | feat L0/L1 | direct edit → §7 | |
 | feat L2 (additive) | `sp:test-driven-development` RED-first → §7; bundle deps one AUTH | no prior failing path |
-| L3 / auth-payment / migration | Load extended → §EXT §4.FULL or §4.FULL-lite | |
-| ship / deploy / PR / release | Load extended → §EXT §4 chain | `gs:ship` required; manual override per §EXT §12 |
 | 2+ disjoint tasks | `sp:dispatching-parallel-agents` | |
-| large design / plugin design / architecture | `sp:brainstorming` | |
-| plan review (CEO/eng/design/devex) | `gs:plan-*-review` | |
 | UI/visual verify | `gs:/browse` ONLY | never `mcp__chrome` / computer-use |
-| perf / security / design / product-biz clarify | Load extended → §EXT §4 FLOW | |
 | tech/arch clarify (no code) | `sp:brainstorming` | |
 | Q&A no code | direct answer; context7 for API claims | |
+| L3 / ship / deploy / PR / release / migration / design / plan-review / perf / security / specialized-clarify | Load extended → §EXT §4 FLOW | full table + §4.FULL / §4.FULL-lite chains in extended |
 
-**Tool escalation** (principles): (1) Grep exact → semantic → AST/call-graph; (2) target-name known → Grep first; conceptual → semantic first; (3) Edit public symbol → impact-analysis first (feeds §5 AUTH); (4) unfamiliar module → module-overview before ≥3 Reads; (5) "did we / why / past decisions" → memory tool before Grep/Read.
-
-**Anti-patterns**: parallel-dispatching mem + code-graph on same question (start cheap, escalate); Grep for concepts or semantic for literals; reading unknown module files one-by-one without overview.
+**Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.
 
 **Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). Skill "MUST invoke" → per §3 TRUST this spec wins for L0–L2 default-proceed-without.
 

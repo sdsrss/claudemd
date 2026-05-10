@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.0] - 2026-05-11
+
+**Minor — refactor: spec v6.11.16 §2.1 ROUTE single-source collapse; core spec −470B (headroom 396B → 866B).**
+
+### Background
+
+Per `tasks/specs/routing-single-source.md` (drafted in v0.16.0 cycle, commit 8f26e37). Core spec headroom was at 396B / 25000B (98.42% utilization) — one bad version away from the §0.1 net-delete-forced gate. §2.1 ROUTE was the largest hot-path table that duplicated content with §EXT §4 FLOW (already 21 rows in extended).
+
+### What changed
+
+- **`spec/CLAUDE.md` §2.1 ROUTE table** — 13 rows → 8 rows. Removed 6 rows (env/staging bug, L3 migration, ship, large design, plan review, perf-security-clarify); merged env/staging into code/logic bug row note. New single catch-all row enumerates all 6 evicted triggers → `Load extended → §EXT §4 FLOW`. Hand-walked 5 routing scenarios (bug / ship / plan-review / migration / Q&A) — same terminal skill pre/post-edit.
+- **`spec/CLAUDE.md` §2.1 Tool escalation** — 5-principle numbered list (386 chars) → compact heuristic form (235 chars, −151B). All 5 mappings preserved.
+- **`spec/CLAUDE.md` §2.1 Anti-patterns** — 3-item paragraph dropped; unique warning (`parallel-dispatch mem + code-graph on same question`) merged into Tool escalation suffix. The 3 dropped items were textual inverses of escalation principles.
+- **`spec/CLAUDE-extended.md` Recent changes** — v6.11.15 entry replaced with v6.11.16. Sizing line updated; drift = 0 (line numbers match actual wc -c).
+- **`spec/CLAUDE-changelog.md`** — v6.11.16 entry prepended.
+- **Spec version bump**: v6.11.15 → v6.11.16 (patch — wording/clarification, identical behavior per §13 META).
+
+### Why minor (not patch) on plugin
+
+Per `feedback_claudemd_spec_single_source_of_truth.md`: plugin semver vs spec semver are independent. Spec is patch (no behavior change). Plugin is minor because shipped artifact's user-visible routing table changed structure — users running `/claudemd-update` see a new §2.1 table on next sync. Per core §2 release-requirements: LLM-visible metadata change (spec content distributed via plugin) → L3 regardless of LOC; ship discoverability via CHANGELOG callout. §13.2 budget cost: 0.
+
+### Cross-ref preservation
+
+`§EXT §12` was referenced only in the now-removed `ship / deploy / PR / release` row's note. Verified still live at 3 other core locations: §0 line 5, §2.1 Skill soft-triggers, §2.2 Ship-pipeline hardening. `spec-coherence-audit ext-cross-refs` PASS expected.
+
+### Tests
+
+- `tests/scripts/spec-coherence-audit.test.js` — ext-cross-refs / sizing-accuracy / structured-report all 3 checks PASS.
+- Full JS suite + hook suite + integration green.
+- 5 hand-walked routing scenarios re-verified vs new table.
+
+### Operator notes
+
+Sync via `/claudemd-update` to pick up the new §2.1 table in `~/.claude/CLAUDE.md`. No behavior change required from operators — same triggers route to same terminal skills; the table is just more compact.
+
 ## [0.16.0] - 2026-05-11
 
 **Minor — fix: `sandbox-disposal-check` no longer false-positive-flags `version-sync.sh` sentinel files; cuts 95% of 30d warn volume.**

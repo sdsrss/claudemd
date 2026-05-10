@@ -6,6 +6,35 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.16 — 2026-05-11
+
+Patch: §2.1 ROUTE single-source collapse — 13-row routing table reduced to 8 rows; L3 / composite / specialized-clarify routes evicted to §EXT §4 FLOW via single catch-all dispatcher; "Tool escalation" 5-principle list compressed; "Anti-patterns" line merged in (unique warning preserved as suffix). No rule change, no behavior change. Same terminal skill for all 5 hand-walked routing scenarios. **§13.2 budget cost: 0**.
+
+### Background
+
+`tasks/specs/routing-single-source.md` (committed 8f26e37 in plugin v0.16.0 cycle) captured the design rationale. Driver: core spec headroom at 396B / 25000B (98.42% utilization) — one bad version away from the §0.1 net-delete forced. §2.1 ROUTE was the largest hot-path table that duplicated content with §EXT §4 FLOW (21-row routing matrix already exhaustive in extended).
+
+### Changes
+
+- `[refactor]` **§2.1 ROUTE table 13 → 8 rows** — removed `env/staging/deploy bug` (merged into `code/logic bug` row's note: `env/staging/deploy → gs:/investigate`), `L3 / auth-payment / migration`, `ship / deploy / PR / release`, `large design / plugin design / architecture`, `plan review (CEO/eng/design/devex)`, `perf / security / design / product-biz clarify`. New single catch-all row enumerates all 6 evicted triggers as keywords: `L3 / ship / deploy / PR / release / migration / design / plan-review / perf / security / specialized-clarify → Load extended → §EXT §4 FLOW`. Agent-facing semantics unchanged: same terminal skill in all 5 hand-walked scenarios (bug / ship / plan-review / migration / Q&A) per the plan's verification table.
+- `[refactor]` **§2.1 Tool escalation compress** — 5-principle numbered list (386 chars) → compact heuristic form (235 chars, −151B). Preserves all 5 mappings (literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis; unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first).
+- `[refactor]` **§2.1 Anti-patterns merge** — 3-item paragraph (215 chars) dropped; sole unique warning (`parallel-dispatch mem + code-graph on same question`) merged into Tool escalation paragraph as `Anti-pattern:` suffix. The 3 dropped items were textual inverses of escalation principles (Grep-for-concepts inverse of #2; semantic-for-literals inverse of #1; one-by-one Read of unknown module inverse of #4) — information preserved through the positive form.
+- `[refactor]` **§2.1 lead-in expanded** — added `/ specialized-clarify` to the "Full L3 / composite matrix → §EXT §4" pointer, signaling the catch-all row's coverage.
+
+### Cross-ref preservation
+
+`§EXT §12` was referenced in §2.1 line 98 (`ship / deploy / PR / release` row's note: `manual override per §EXT §12`). Eviction removed that ref. Verified still alive at 3 other core locations: §0 line 5 (`L3/ship: fallback in §EXT §12`), §2.1 Skill soft-triggers line (`Ship-pipeline skills NOT soft (see §EXT §12)`), §2.2 Ship-pipeline hardening line (`Full → §EXT §12`). `spec-coherence-audit ext-cross-refs` check expected to PASS.
+
+### Sizing impact
+
+Core 24604 → 24134 bytes (Δ −470B, **headroom 396B → 866B**, 98.42% → 96.54% utilization — ~2.2× safety margin). Extended 43982 → 44901 bytes (Δ +919B, Recent-changes turnover only). Both files inside ±20B drift envelope on the Sizing line itself.
+
+### Migration / agent impact
+
+- Agent loads core every turn → ~−10 token cost per turn (471B / ~3.5 bytes per token).
+- Routing scenarios 2/3/4 (ship / plan-review / migration) gain one indirection hop: catch-all row → §EXT §4 FLOW table lookup. Cost: one additional paragraph read for the agent that was already loading extended per §2.2 EXT LOADING (ship + L3 + benchmark + security audit independently trigger extended load).
+- Hand-walked verification table in `tasks/specs/routing-single-source.md` confirms all 5 scenarios land on the same terminal skill pre/post-edit.
+
 ## v6.11.15 — 2026-05-11
 
 Patch: §0.1 demote-evaluation window 90d → 30d. Wording fix only — no HARD add/remove/downgrade; agent behavior unchanged (the 90d gate was structurally unreachable, so the rule was already a no-op in practice). **§13.2 budget cost: 0**.
