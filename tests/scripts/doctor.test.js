@@ -165,6 +165,39 @@ test('doctor reports spec-hash:* missing when installed spec absent (v0.6.0)', a
   assert.match(main.detail, /installed spec missing/);
 });
 
+test('hook-drift check skips when no marketplace install exists (v0.9.22)', async () => {
+  // beforeEach gives a clean ~/.claude with no plugins/marketplaces/claudemd.
+  // The drift check must not fail-loudly for fresh-install / npm-CLI-only
+  // users — skip with reason.
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift');
+  assert.ok(c, 'hook-drift check must exist');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /skipped/);
+  assert.match(c.detail, /market-root-missing/);
+});
+
+test('hook-drift flags differing hooks when marketplace install lags source (v0.9.22)', async () => {
+  // Reproduces the v0.9.15 install-drift scenario: source ships
+  // tr '/._' '-' but marketplaces/claudemd/hooks/lib/rule-hits.sh still
+  // has the pre-fix tr '/.' '-'. doctor must surface it, not green-rubberstamp.
+  const sourceHooks = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks');
+  const mktRoot = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  // Mirror source hooks/ into market so missing-in-market doesn't dominate.
+  fs.cpSync(sourceHooks, path.join(mktRoot, 'hooks'), { recursive: true });
+  // Then break ONE file (the canonical drift target) to simulate the real
+  // v0.9.15 silent fix that didn't propagate to the marketplace install.
+  fs.writeFileSync(path.join(mktRoot, 'hooks/lib/rule-hits.sh'),
+    "#!/usr/bin/env bash\n# stale (pre-v0.9.15)\nrule_hits_append() { :; }\n");
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift');
+  assert.ok(c);
+  assert.equal(c.ok, false, 'must flag drift');
+  assert.match(c.detail, /hooks\/lib\/rule-hits\.sh \(differs\)/);
+  assert.match(c.detail, /uninstall claudemd@claudemd/);
+});
+
 test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 50%', async () => {
   // 6 events on §11-memory-read: 5 bypasses + 1 deny = 83% override rate.
   // Doctor must flag this as a demotion candidate (rule too strict / wording

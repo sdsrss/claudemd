@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.8 — 2026-05-10
+
+Patch: clarity release. Two wording fixes addressing real reader-side ambiguity surfaced during a dogfood pass simulating fresh-user spec adherence. No behavior change, no rule add/remove. **§13.2 budget cost: 0.**
+
+- `[fix]` **§10 Four-section order — "Lead with incomplete" disambiguated** (core, +~125 bytes net) — original line read literally as "put incomplete first" which contradicts the HARD structural order Done → Not done → Failed → Uncertain. The `transcript-structure-scan` Stop hook enforces the structural order; the original sentence's intent was prose emphasis, not section reorder. New wording separates structural order (Stop hook enforces) from emphasis rule (prose body weights incomplete sections heavier than Done). A fresh agent following the literal reading would have triggered the very §10-four-section-order hit it's meant to prevent.
+- `[fix]` **§7 L2 evidence example — "tests 1453 → 1490" annotated** (core, +~25 bytes net) — bare numbers were ambiguous between "test count growth" and "pass rate". Added `suite test count` qualifier + absolute-delta inline (`+37`). Aligns with §10 Specificity HARD: "absolute number OR ratio+baseline" — the example now models both.
+
+**Sizing** (v6.11.8, 2026-05-10, measured via `wc -c`): core 24558 → 24672 bytes (+114, +0.46%); extended 46568 → 46690 bytes (+122, +0.26%, no extended content change — `## v6.11.8` Recent-changes pointer carries the diff). Size budget (§13.1): core 24672/25000 (**328 bytes headroom, 98.69% utilized — ceiling-grazing, next bump MUST net-delete or migrate marginal core bullets to §EXT per v6.11.7's operator note**); extended 46690/50000 (3310 bytes headroom, 93.38% utilized). Operator carry-forward: v6.11.7 said "v6.11.8 should net-delete or migrate marginal core bullets" — this patch did not (clarity fixes were judged higher-value than the byte cost), so the directive moves to v6.11.9. Runtime L0/L1/L2 ≈ 6.14k tokens (+0.03k vs v6.11.7).
+
+**Plugin companion (claudemd v0.9.22)**: new `hook-drift` doctor check + new lib `scripts/lib/install-drift.js`. Surfaces the silent-drift class where source repo ships v0.9.21 but `~/.claude/plugins/marketplaces/claudemd/` still runs v0.9.11 hook code (because `/plugin update` is a silent no-op in current CC versions). Real symptom that triggered this work: `~/.claude/logs/claudemd.jsonl` simultaneously holding `-mnt-data-ssd-...` (new tr `'/._'` encoding, post-v0.9.15) and `-mnt-data_ssd-...` (stale tr `'/.'` encoding, pre-v0.9.15) for the same cwd — silently splitting telemetry across two project keys AND making the §11-memory-read hook a no-op for `_`-bearing project paths. The drift was undetectable by the prior `spec-hash` check, which only compared the spec MD files, not hook scripts.
+
+---
+
 ## v6.11.7 — 2026-05-10
 
 Patch: CC-source comparative audit release. Side-by-side analysis of upstream `sdscc/src/constants/prompts.ts` + `src/memdir/memoryTypes.ts` vs AI-CODING-SPEC v6.11.6 → five additions where CC's eval-validated rules were stronger or absent in spec. No rule removals or downgrades. No new HARD (§13.2 budget cost = 0).

@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, readManifest } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
+import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError } from './lib/argv.js';
 
@@ -82,6 +83,30 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(`spec-hash:${s.name}`, false,
         `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync`);
     }
+  }
+
+  // v0.9.22: production-hook drift. Source-of-truth (this PLUGIN_ROOT) vs
+  // the ${CLAUDE_PLUGIN_ROOT} Claude Code actually resolves at hook-fire time.
+  // /plugin update is a silent no-op in current CC versions (memory:
+  // reference_plugin_update_manual_refresh.md), so a v0.9.21 source repo can
+  // ship while the marketplace install still runs v0.9.11 hook code. Pre-fix
+  // symptom: rule-hits.jsonl saw two project encodings simultaneously
+  // (`-mnt-data-ssd-...` from new code path vs `-mnt-data_ssd-...` from
+  // stale `tr '/.' '-'`) — silently splitting telemetry across two keys and
+  // making §11-memory-read a silent no-op for `_`-bearing cwds. Skip cases
+  // (self-compare / no marketplace install / source has no hooks/) are not
+  // flagged — the surface is "you have both source AND a stale market install".
+  const drift2 = compareHooks(PLUGIN_ROOT, marketplacePluginRoot());
+  if (drift2.skipped) {
+    push('hook-drift', true, `skipped (${drift2.skippedReason})`);
+  } else if (drift2.driftCount === 0) {
+    push('hook-drift', true, 'marketplace hooks match source');
+  } else {
+    const sample = drift2.diffs.slice(0, 3).map(d => `${d.path} (${d.reason})`).join(', ');
+    const more = drift2.diffs.length > 3 ? ` +${drift2.diffs.length - 3} more` : '';
+    push('hook-drift', false,
+      `${drift2.driftCount} hook script(s) differ between source and ${marketplacePluginRoot()}: ${sample}${more}. ` +
+      `Likely cause: /plugin update is a silent no-op. Fix: /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins.`);
   }
 
   const which = (bin) => {

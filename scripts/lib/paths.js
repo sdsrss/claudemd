@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 const home = () => process.env.HOME || os.homedir();
 
 export const pluginCacheDir    = () => path.join(home(), '.claude/plugins/cache/claudemd');
+// Production hook root: the path Claude Code resolves ${CLAUDE_PLUGIN_ROOT} to
+// at hook-fire time. /plugin update is a silent no-op in current CC versions
+// (memory: reference_plugin_update_manual_refresh.md), so this can lag the
+// shipped plugin version. install-drift compares this against the source repo.
+export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/marketplaces/claudemd');
 export const stateDir          = () => path.join(home(), '.claude/.claudemd-state');
 // Manifest lives outside stateDir so that `rm -rf ~/.claude/.claudemd-state/`
 // — which a user might run to reset residue-audit / sandbox-disposal baselines

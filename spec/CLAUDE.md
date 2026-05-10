@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.7 — Core
+# AI-CODING-SPEC v6.11.8 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -177,7 +177,7 @@ L2        lint + typecheck + test  → inline evidence with numbers+baseline
 Evidence = inline prose naming what was checked + what was observed + why it proves the claim. One sentence when concrete.
 
 - **L1**: `Done: fixed typo README.md:42 (Checked: git diff, "teh" → "the").`
-- **L2**: `Done: added pagination cursor on GET /orders; tests 1453 → 1490 (+2.5%). pytest tests/api/test_orders_pagination.py: 12 passed (empty / single-page / exact-fit / mid-page).`
+- **L2**: `Done: added pagination cursor on GET /orders; suite test count 1453 → 1490 (+37 / +2.5%). pytest tests/api/test_orders_pagination.py: 12 passed (empty / single-page / exact-fit / mid-page).`
 - **中文 user**: 结构标签保英文（Done/Not done/Failed/Uncertain）；file:line / 命令 / 符号保英文；叙述跟用户语言（§1 Language contract）。
 
 **Bugfix anchor**: cite the prior-failing state (error msg or failing test name) in the same sentence as the fix. "Fixed" without "was broken" = not evidence. **Banned phrasings** (treat as missing evidence): `should work / 应该可以 / 看上去 ok / 跑过了 / 能跑 / it runs / 没问题了`. Replace with the failing-state token (error msg / test name / git diff hash).
@@ -235,7 +235,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **L1-bugfix**: four-section always.
 - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
 
-**Four-section order (HARD)**: Done → Not done → Failed → Uncertain. Lead with incomplete.
+**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; Stop hook enforces). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
 
 **Honesty rules (HARD)**:
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
