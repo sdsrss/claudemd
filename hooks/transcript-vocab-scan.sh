@@ -44,6 +44,7 @@ EVENT=$(hook_read_event) || exit 0
 TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
 [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]] || exit 0
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
 PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patterns"
 [[ -r "$PATTERNS_FILE" ]] || exit 0
@@ -95,7 +96,7 @@ done < "$PATTERNS_FILE"
 
 # Record + advise. PostToolUse cannot deny; advisory only.
 HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record transcript-vocab-scan advisory "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID"
+hook_record transcript-vocab-scan advisory "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
 
 printf '[claudemd] §10-V drift detected in agent text:\n' >&2
 for i in "${!HITS[@]}"; do

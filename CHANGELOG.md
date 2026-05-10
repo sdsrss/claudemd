@@ -8,6 +8,52 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.34] - 2026-05-11
+
+**Patch — instrumentation bundle sub-patch 1B: tool_use_id column + audit `uniqueInvocations` dedup view + 5 remaining hooks plumbed for session_id.** Completes the schema half of the 1A/1B/1C bundle from 2026-05-11 dogfood audit. Post-cutover (this commit on), every rule-hits row carries enough identity to distinguish "one CC invocation logged twice" (registration / lib bug) from "Claude fast-retry after deny in same second" (not a bug).
+
+### Schema
+
+- `[add]` **`rule_hits_append` accepts 6th positional arg `tool_use_id`** (`hooks/lib/rule-hits.sh`). Empty/omitted → JSONL row carries `tool_use_id: null`. Only PreToolUse / PostToolUse hooks populate it; Stop / SessionStart / SessionEnd / UserPromptSubmit leave it null (no per-tool context).
+- `[doc]` **`docs/RULE-HITS-SCHEMA.md`** — `tool_use_id` field added; `session_id` field row updated to note all 12 emitter hooks now populate it (1A note revised).
+
+### Hook plumbing — round 2 (12 of 12 emitter hooks)
+
+PreToolUse / PostToolUse hooks add `TOOL_USE_ID` extraction + thread it into all `hook_record` callsites:
+- `[change]` **`hooks/banned-vocab-check.sh`** (2 callsites)
+- `[change]` **`hooks/ship-baseline-check.sh`** (3 callsites)
+- `[change]` **`hooks/pre-bash-safety-check.sh`** (4 callsites)
+- `[change]` **`hooks/memory-read-check.sh`** (2 callsites)
+- `[change]` **`hooks/transcript-vocab-scan.sh`** (1 callsite)
+
+The 5 hooks not plumbed in 1A get `SESSION_ID` added (tool_use_id stays null — these are non-tool events):
+- `[change]` **`hooks/sandbox-disposal-check.sh`** (Stop) — best-effort `cat` from stdin + jq extract, fail-open on any error (Stop cannot block).
+- `[change]` **`hooks/residue-audit.sh`** (Stop) — same pattern.
+- `[change]` **`hooks/mem-audit.sh`** (Stop) — same pattern.
+- `[change]` **`hooks/session-start-check.sh`** (SessionStart) — env-var (`CLAUDE_SESSION_ID`) preferred, stdin fallback; threaded into both `hook_record` callsites (`bootstrap` + `upstream-banner`).
+- `[change]` **`hooks/version-sync.sh`** (UserPromptSubmit) — uses existing `CLAUDE_SESSION_ID` env var (hook backgrounds itself, can't reliably re-read stdin).
+
+### Audit consumer
+
+- `[add]` **`scripts/lib/rule-hits-parse.js` `uniqueInvocations()`** — per-hook dedup view. Key: `(ts, hook, session_id, tool_use_id)`. Output: `{rows, unique_invocations, duplicate_rows, legacy_rows}` per hook. `legacy_rows` counts pre-v0.9.33 rows (both session_id + tool_use_id null) so the operator can discount them — historical dedup over-collapses across sessions.
+- `[change]` **`scripts/audit.js`** emits new top-level `uniqueInvocations` field (next to `byTrend`).
+- `[change]` **`commands/claudemd-audit.md`** — renderer hint updated: surface `uniqueInvocations.<hook>.duplicate_rows > 0` for PreToolUse/PostToolUse hooks as candidate bug; treat `bySection['(unset)']` as historical pre-v0.7.0 data and exclude from heatmap leader unless window pre-dates 2026-05-09.
+
+### Tests
+
+- `[add]` **`tests/hooks/rule-hits.test.sh` Cases 16–18** — Case 16: 6th arg lands as `tool_use_id`; Case 17 / 17b: omitted + empty normalize to null; Case 18: full-shape PreToolUse row (session_id + tool_use_id + spec_section + extra) byte-exact assertion.
+- `[add]` **`tests/scripts/audit.test.js` `uniqueInvocations` case** — dedup-by-quadruple + legacy_rows counter + null tool_use_id passthrough for non-tool hooks.
+- 19/19 hook tests + 361/361 JS tests pass; `tests/run-all.sh` `OVERALL: all suites passed`.
+
+### Out of scope (sub-patch 1C)
+
+- `session_extended_read` boolean per row (point 4 from 2026-05-11 audit) — separate sub-patch.
+- 7 days post-cutover data accumulation before `uniqueInvocations` will produce non-trivial dedup signal. Code path verified by unit test fixture in this release.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.33 → 0.9.34 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.33] - 2026-05-11
 
 **Patch — rule-hits.jsonl schema additive: new `session_id` column.** Sub-patch 1A of the instrumentation bundle (points 2 + 4 from in-session dogfood audit on 2026-05-11). Disambiguates hook double-fire vs fast-retry in audit data — currently `banned-vocab/deny` shows ~50% byte-identical pair rows at the same timestamp, and existing schema cannot tell whether two rows came from one CC invocation (registration / lib bug) or two retries within the same second. Fully back-compat: pre-v0.9.33 rows have `session_id: null`; new callsites populate it from stdin EVENT JSON `.session_id`.

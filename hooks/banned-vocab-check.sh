@@ -27,6 +27,7 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
 # R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
 # When BASH_READONLY_FAST_PATH=1 and CMD is a definitely-read-only shape
@@ -43,7 +44,7 @@ echo "$CMD" | grep -qE '(^|[[:space:];&|])git([[:space:]]+-c[[:space:]]+[^[:spac
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
-  hook_record banned-vocab bypass-escape-hatch null '§10-V' "$SESSION_ID"
+  hook_record banned-vocab bypass-escape-hatch null '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi
 
@@ -124,6 +125,6 @@ REASON_TEXT+=$'\n\n'"Bypass options:
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
 
 HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID"
+hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
 
 hook_deny banned-vocab "$REASON_TEXT"

@@ -9,6 +9,13 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch RESIDUE_AUDIT || exit 0
 
+# v0.9.34: best-effort session_id from Stop stdin for audit attribution.
+SESSION_ID=""
+if command -v jq >/dev/null 2>&1; then
+  EVENT=$(cat 2>/dev/null || true)
+  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+fi
+
 STATE_DIR="$HOME/.claude/.claudemd-state"
 BASELINE_FILE="$STATE_DIR/tmp-baseline.txt"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
@@ -34,7 +41,7 @@ THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
 if (( DELTA > THRESHOLD )); then
   echo "[claudemd] §7 residue audit: ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2
   echo "[claudemd] Consider: find ~/.claude/tmp -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +" >&2
-  hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}" '§7-user-global-state'
+  hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}" '§7-user-global-state' "$SESSION_ID"
 fi
 
 echo "$CURRENT" > "$BASELINE_FILE"

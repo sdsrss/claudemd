@@ -65,6 +65,48 @@ export function groupByHook(hits) {
   return byHook;
 }
 
+// v0.9.34 — R1 instrumentation point 2: unique_invocations dedup view.
+// Distinguishes "one CC invocation logged twice" (registration / lib bug)
+// from "Claude fast-retry within same second" (not a bug). Dedup key:
+// (ts, hook, session_id, tool_use_id). When tool_use_id is null (Stop /
+// SessionStart / SessionEnd / UserPromptSubmit hooks), falls back to
+// (ts, hook, session_id) — for non-tool events, same-second + same-session
+// is genuinely one event.
+//
+// Returns: per-hook count of distinct invocations (de-duplicated rows).
+//   { hook: { rows: N, unique_invocations: M, duplicate_rows: N-M } }
+//
+// Interpretation: duplicate_rows > 0 with all rows carrying a populated
+// tool_use_id ⇒ same tool_use_id appeared in multiple rows ⇒ true
+// double-fire bug. duplicate_rows > 0 with tool_use_id null on Stop/
+// SessionStart hooks is normal (concurrent sessions or rapid Stop firings).
+//
+// Pre-v0.9.33 rows have session_id=null and tool_use_id=null; their dedup
+// key collapses to (ts, hook), which over-collapses across sessions in
+// historical data. The `legacy_rows` counter surfaces this — operator can
+// see "N legacy rows weren't reliably deduped" and discount accordingly.
+export function uniqueInvocations(hits) {
+  const out = {};
+  for (const h of hits) {
+    const hook = h.hook;
+    out[hook] ||= { rows: 0, unique_invocations: 0, duplicate_rows: 0, legacy_rows: 0, _seen: new Set() };
+    out[hook].rows++;
+    if (h.session_id == null && h.tool_use_id == null) {
+      out[hook].legacy_rows++;
+    }
+    const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}`;
+    if (out[hook]._seen.has(key)) {
+      out[hook].duplicate_rows++;
+    } else {
+      out[hook]._seen.add(key);
+      out[hook].unique_invocations++;
+    }
+  }
+  // Strip internal _seen Set before return.
+  for (const hook of Object.keys(out)) delete out[hook]._seen;
+  return out;
+}
+
 export function topPatterns(hits, hook = 'banned-vocab') {
   const counts = {};
   for (const h of hits) {

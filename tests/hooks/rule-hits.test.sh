@@ -146,4 +146,42 @@ echo "$LAST" | jq -e '
 ' >/dev/null \
   || { echo "FAIL: Case 15 full-shape row mismatch (got: $LAST)"; exit 1; }
 
+# Case 16 (v0.9.34): tool_use_id 6th positional arg lands as `tool_use_id`
+# field. Required for audit `unique_invocations` dedup — disambiguates true
+# single-invocation double-fire (same tool_use_id) from Claude fast-retry
+# (different tool_use_id, same second).
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null "§10-V" "sess-abc" "toolu_01XYZ"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.tool_use_id == "toolu_01XYZ" and .session_id == "sess-abc"' >/dev/null \
+  || { echo "FAIL: Case 16 tool_use_id not threaded through (got: $LAST)"; exit 1; }
+
+# Case 17: omitted/empty tool_use_id → null. Hooks without per-tool context
+# (Stop / SessionStart / SessionEnd / UserPromptSubmit) emit null in this
+# column.
+run 'rule_hits_append sandbox-disposal warn '\''{"count":1}'\'' "§8.V4" "sess-abc"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.tool_use_id == null and .session_id == "sess-abc"' >/dev/null \
+  || { echo "FAIL: Case 17 omitted tool_use_id should normalize to null (got: $LAST)"; exit 1; }
+run 'rule_hits_append banned-vocab deny null "§10-V" "sess-abc" ""'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.tool_use_id == null' >/dev/null \
+  || { echo "FAIL: Case 17b empty-string tool_use_id should normalize to null (got: $LAST)"; exit 1; }
+
+# Case 18: full-shape row with both session_id + tool_use_id (PreToolUse
+# emitter pattern). Byte-exact assertion locks v0.9.34 consumer field set.
+rm -rf "$TMP_HOME/.claude/logs"
+CLAUDE_PROJECT_DIR=/work/p run 'rule_hits_append banned-vocab deny '\''{"matched":["significantly"]}'\'' "§10-V" "sess-xyz" "toolu_42"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '
+  .hook == "banned-vocab" and
+  .event == "deny" and
+  .project == "-work-p" and
+  .session_id == "sess-xyz" and
+  .tool_use_id == "toolu_42" and
+  .spec_section == "§10-V" and
+  (.extra.matched | type == "array")
+' >/dev/null \
+  || { echo "FAIL: Case 18 full-shape row with tool_use_id mismatch (got: $LAST)"; exit 1; }
+
 echo "All cases passed"

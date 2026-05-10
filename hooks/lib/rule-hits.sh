@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
 # rule-hits.sh — append-only JSONL log for §13.1 self-audit data.
 
-# rule_hits_append HOOK EVENT EXTRA_JSON [SPEC_SECTION] [SESSION_ID]
-#   HOOK       — hook name (banned-vocab, ship-baseline, ...)
-#   EVENT      — see docs/RULE-HITS-SCHEMA.md "Events" table for the
-#                canonical list (kept in sync via tests/hooks/contract.test.sh).
-#   EXTRA      — JSON value (object | null | string). "null" if none.
-#   SECTION    — optional spec section identifier for §0.1/§13.1/§13.2
-#                promotion and demotion accounting. See docs/RULE-HITS-SCHEMA.md
-#                "Spec section taxonomy" table. Empty arg → null in JSONL row.
-#                Hooks that aren't enforcing a spec rule (session-start
-#                bootstrap, version-sync) leave it empty.
-#   SESSION_ID — optional Claude Code session identifier (extracted from
-#                stdin EVENT JSON `.session_id`). Empty arg → null in row.
-#                Added v0.10.0 to disambiguate hook double-fire vs fast-retry
-#                patterns in audit data; same (ts, hook) row twice with the
-#                same session_id implies a single CC invocation triggered the
-#                hook twice (registration / lib bug); different session_ids
-#                imply concurrent sessions or fast-retry across sessions.
+# rule_hits_append HOOK EVENT EXTRA_JSON [SPEC_SECTION] [SESSION_ID] [TOOL_USE_ID]
+#   HOOK        — hook name (banned-vocab, ship-baseline, ...)
+#   EVENT       — see docs/RULE-HITS-SCHEMA.md "Events" table for the
+#                 canonical list (kept in sync via tests/hooks/contract.test.sh).
+#   EXTRA       — JSON value (object | null | string). "null" if none.
+#   SECTION     — optional spec section identifier for §0.1/§13.1/§13.2
+#                 promotion and demotion accounting. See docs/RULE-HITS-SCHEMA.md
+#                 "Spec section taxonomy" table. Empty arg → null in JSONL row.
+#                 Hooks that aren't enforcing a spec rule (session-start
+#                 bootstrap, version-sync) leave it empty.
+#   SESSION_ID  — optional Claude Code session identifier (extracted from
+#                 stdin EVENT JSON `.session_id`). Empty arg → null in row.
+#                 Added v0.9.33.
+#   TOOL_USE_ID — optional per-invocation tool use ID (CC stdin `.tool_use_id`,
+#                 format `toolu_[alnum]`). Empty arg → null in row. Only
+#                 PreToolUse / PostToolUse events carry this; Stop /
+#                 SessionStart / SessionEnd / UserPromptSubmit do not.
+#                 Added v0.9.34 to enable audit `unique_invocations` dedup:
+#                 same (ts, hook, session_id, tool_use_id) row twice ⇒ true
+#                 single-invocation double-fire (registration / lib bug);
+#                 different tool_use_id at same ts ⇒ Claude fast-retry after
+#                 deny, not a duplicate.
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 
@@ -26,6 +31,7 @@ rule_hits_append() {
   local extra="${3:-null}"
   local section="${4:-}"
   local session_id="${5:-}"
+  local tool_use_id="${6:-}"
 
   # Project: encoded with `/`, `.`, AND `_` → `-` to match Claude Code's
   # ~/.claude/projects/<encoded>/ convention. CC encodes every non-`[a-zA-Z0-9-]`
@@ -72,10 +78,12 @@ rule_hits_append() {
     --arg event "$event" \
     --arg project "$project" \
     --arg session_id "$session_id" \
+    --arg tool_use_id "$tool_use_id" \
     --arg section "$section" \
     --argjson extra "$extra" \
     '{ts: $ts, hook: $hook, event: $event, project: $project,
       session_id: (if $session_id == "" then null else $session_id end),
+      tool_use_id: (if $tool_use_id == "" then null else $tool_use_id end),
       spec_section: (if $section == "" then null else $section end),
       extra: $extra}' \
     2>/dev/null >> "$log_file" || return 0

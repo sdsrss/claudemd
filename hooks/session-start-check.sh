@@ -16,6 +16,15 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SESSION_START || exit 0
 
+# v0.9.34: best-effort session_id from SessionStart stdin for audit attribution.
+# Fail-open on any read error; SessionStart hooks cannot block. CLAUDE_SESSION_ID
+# env var is a fallback when stdin isn't structured.
+SESSION_ID="${CLAUDE_SESSION_ID:-}"
+if [[ -z "$SESSION_ID" ]] && command -v jq >/dev/null 2>&1; then
+  EVENT=$(cat 2>/dev/null || true)
+  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+fi
+
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -128,7 +137,7 @@ upstream_check() {
       }
     }' 2>/dev/null
 
-  hook_record session-start upstream-banner null 2>/dev/null || true
+  hook_record session-start upstream-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
 # Manifest-exists path: check for version mismatch (v0.2.5). Pre-0.2.5 this
@@ -201,5 +210,5 @@ fi
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true
 
-hook_record session-start bootstrap null
+hook_record session-start bootstrap null '' "$SESSION_ID"
 exit 0

@@ -81,6 +81,41 @@ test('audit byBypass aggregates per-token override usage', async () => {
   assert.equal(r.byBypass['allow-rm-rf-var'].byHook['pre-bash-safety'], 2);
 });
 
+test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use_id)', async () => {
+  // Replace fixture with rows specifically designed to exercise dedup:
+  //   - 2 banned-vocab rows at same ts with same tool_use_id → 1 dup
+  //   - 1 banned-vocab row at same ts with different tool_use_id → unique
+  //   - 1 sandbox-disposal Stop row with tool_use_id null → unique (no dedup
+  //     possible without tool_use_id; same-second + same-session counts as
+  //     one event for non-tool hooks)
+  //   - 1 ship-baseline LEGACY row (session_id + tool_use_id null) → unique,
+  //     but counted under legacy_rows.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const ts1 = '2026-05-11T12:00:00Z';
+  const ts2 = '2026-05-11T12:00:01Z';
+  fs.writeFileSync(log,
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_B","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts2}","hook":"sandbox-disposal","event":"warn","session_id":"s1","tool_use_id":null,"extra":{"count":1}}\n` +
+    `{"ts":"${ts2}","hook":"ship-baseline","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
+  );
+  const r = await audit({ days: 30 });
+  // banned-vocab: 3 rows, but two share (ts, session, tool_use_id) → 1 dup
+  assert.equal(r.uniqueInvocations['banned-vocab'].rows, 3);
+  assert.equal(r.uniqueInvocations['banned-vocab'].unique_invocations, 2);
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows, 1);
+  assert.equal(r.uniqueInvocations['banned-vocab'].legacy_rows, 0);
+  // sandbox-disposal: 1 row, no dup possible, not legacy (session_id present)
+  assert.equal(r.uniqueInvocations['sandbox-disposal'].rows, 1);
+  assert.equal(r.uniqueInvocations['sandbox-disposal'].unique_invocations, 1);
+  assert.equal(r.uniqueInvocations['sandbox-disposal'].duplicate_rows, 0);
+  assert.equal(r.uniqueInvocations['sandbox-disposal'].legacy_rows, 0);
+  // ship-baseline: 1 legacy row (both null), counted under legacy_rows
+  assert.equal(r.uniqueInvocations['ship-baseline'].rows, 1);
+  assert.equal(r.uniqueInvocations['ship-baseline'].legacy_rows, 1);
+});
+
 test('audit byBypass empty when no bypass-escape-hatch events present', async () => {
   // Replace fixture with deny-only data.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');

@@ -82,5 +82,5 @@ LOG="$LOG_DIR/claudemd-bootstrap.log"
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true
 
-hook_record user-prompt-submit version-sync null
+hook_record user-prompt-submit version-sync null '' "${CLAUDE_SESSION_ID:-}"
 exit 0

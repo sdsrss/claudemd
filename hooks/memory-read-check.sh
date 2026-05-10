@@ -44,12 +44,14 @@ echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
 # Per-invocation escape hatch — placed AFTER trigger filter so bypass
 # usage is recorded only when the hook would have actually scanned.
-# SESSION_ID extracted above so bypass row also carries it (v0.10.0 schema).
+# SESSION_ID / TOOL_USE_ID extracted above so bypass row also carries them
+# (v0.9.33 / v0.9.34 schema).
 if echo "$CMD" | grep -qF '[skip-memory-check]'; then
-  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read' "$SESSION_ID"
+  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi
 
@@ -144,5 +146,5 @@ REASON+=$'\n\n'"Options:
 Spec: ~/.claude/CLAUDE.md §11 SESSION — MEMORY.md read-the-file."
 
 MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
-hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read' "$SESSION_ID"
+hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
 hook_deny memory-read-check "$REASON"

@@ -12,6 +12,15 @@ source "$LIB_DIR/platform.sh" || exit 0
 
 hook_kill_switch SANDBOX_DISPOSAL || exit 0
 
+# v0.9.34: best-effort session_id from Stop stdin for audit attribution.
+# Stop event has no tool_use_id (not a tool call). Fail-open on any read
+# error — Stop hooks cannot block, advisory only.
+SESSION_ID=""
+if command -v jq >/dev/null 2>&1; then
+  EVENT=$(cat 2>/dev/null || true)
+  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+fi
+
 STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SESSION_REF="$STATE_DIR/session-start.ref"
@@ -49,7 +58,7 @@ if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
   printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5 >&2
-  hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4'
+  hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
 fi
 
 touch "$SESSION_REF"

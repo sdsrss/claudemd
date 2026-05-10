@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -43,6 +43,10 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
     byBypass: byBypass(hits),
     byFailOpen: byFailOpen(hits),
     byTrend: byTrend(trendHits, trendDays),
+    // v0.9.34 R1 — per-hook dedup view; surfaces true single-invocation
+    // double-fire (registration / lib bug) vs Claude fast-retry. See
+    // hooks/lib/rule-hits.sh tool_use_id doc and uniqueInvocations() comment.
+    uniqueInvocations: uniqueInvocations(hits),
     topPatterns: topPatterns(hits, 'banned-vocab'),
   };
 }

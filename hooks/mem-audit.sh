@@ -30,6 +30,13 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch MEM_AUDIT || exit 0
 
+# v0.9.34: best-effort session_id from Stop stdin for audit attribution.
+SESSION_ID=""
+if command -v jq >/dev/null 2>&1; then
+  EVENT=$(cat 2>/dev/null || true)
+  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+fi
+
 STATE_DIR="$HOME/.claude/.claudemd-state"
 SENTINEL="$STATE_DIR/mem-audit.lastrun"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
@@ -168,5 +175,5 @@ if [[ "$DRIFT" -gt 0 ]]; then
   echo "  - $drift_joined" >&2
 fi
 
-hook_record mem-audit warn "{\"missing\":$MISSING,\"drift\":$DRIFT}" '§11-EXT-mem-audit'
+hook_record mem-audit warn "{\"missing\":$MISSING,\"drift\":$DRIFT}" '§11-EXT-mem-audit' "$SESSION_ID"
 exit 0
