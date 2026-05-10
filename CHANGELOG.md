@@ -8,6 +8,43 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.37] - 2026-05-11
+
+**Patch — audit `bySection` cutover-split for `(unset)` bucket.** Closes point 1 of 2026-05-11 dogfood: the legacy `(unset)` bucket conflated three different row kinds — (a) pre-v0.7.0 historical rows (will age out), (b) post-cutover by-design housekeeping (session-start bootstrap / version-sync), (c) post-cutover instrumentation gaps (real bug signal). With one bucket, (a) overwhelmed (b)+(c) in steady state and instrumentation regressions were invisible. v0.9.37 auto-detects the cutover ts and splits.
+
+### Added
+
+- `[add]` **`scripts/lib/rule-hits-parse.js` `detectCutover(path)`** — scans log for the earliest row carrying non-null `spec_section`; returns ms-since-epoch or null (log entirely pre-v0.7.0).
+- `[change]` **`groupBySection(hits, cutoverTs?)`** — optional 2nd arg; when provided, null-section rows split into `(unset-historical)` (ts < cutoverTs) / `(unset-current)` (ts ≥ cutoverTs). Without the arg, behavior is unchanged (legacy single `(unset)` bucket — back-compat for callers pre-dating v0.9.37).
+- `[change]` **`byTrend(hits, windowDays, cutoverTs?)`** — same split applied to recent/prior trend buckets. Same back-compat semantics.
+
+### Changed
+
+- `[change]` **`scripts/audit.js`** — emits `dataIntegrity.cutoverTs` (ISO-8601 UTC or null); threads detected cutover into `groupBySection` + `byTrend` calls. Legacy `(unset)` bucket disappears from audit output whenever the log has any spec_section row.
+- `[change]` **`scripts/doctor.js`** — `rule-usage` section skip extended to all `(unset*)` variants. Defensive: doctor still calls `groupBySection` without cutoverTs (single-bucket), but if future code threads it through, doctor won't accidentally score the split buckets.
+- `[change]` **`commands/claudemd-audit.md`** (§2 LLM-visible metadata → L3) — renderer hint updated: `(unset-historical)` flagged as pre-v0.7.0 legacy (no heatmap leader); `(unset-current)` requires subtracting intentional housekeeping (`session-start`/`version-sync`) before the residual is treated as instrumentation-gap signal.
+- `[doc]` **`docs/RULE-HITS-SCHEMA.md`** — `spec_section` field row notes the v0.9.37 audit-side split.
+
+### Tests
+
+- `[add]` **`tests/scripts/rule-hits-parse.test.js`** — 5 new cases: groupBySection back-compat (no cutoverTs ⇒ `(unset)`); cutover-split splits correctly on mixed pre/post fixture; `detectCutover` finds earliest spec_section row; null when no row has section; null when log missing.
+- `[change]` **`tests/scripts/audit.test.js`** — replaced "surfaces legacy rows under (unset)" with "under (unset-current) post-cutover"; added 2 new cases (mixed-fixture cutover-split + null-cutover back-compat behavior).
+- 19/19 hook + 388/388 JS pass; `tests/run-all.sh` `OVERALL: all suites passed`.
+
+### Live behavior (this repo, 2026-05-11)
+
+- `cutoverTs = 2026-05-08T19:53:38.000Z` (earliest spec_section row in maintainer log).
+- 30d window splits into `(unset-historical)` = 697 rows (pre-cutover legacy) and `(unset-current)` = 137 rows. Of the 137: 83 are by-design housekeeping (`session-start bootstrap`+`upstream-banner`+`version-sync`); residual 54 are mix of stale-plugin-binary rows (sessions still running pre-v0.9.33 code) + genuinely null-section emissions. As `(unset-historical)` rolls out of the 30d window, the residual signal becomes operator-actionable.
+
+### Compat
+
+- Pre-v0.9.37 audit output had `bySection['(unset)']`. v0.9.37 output has `bySection['(unset-historical)']` + `bySection['(unset-current)']` instead (when log has any spec_section row). Any downstream tooling that hardcoded the `(unset)` key needs to handle both variants OR call `groupBySection(hits)` without cutoverTs (still works, returns legacy single bucket).
+- doctor's `rule-usage` skip handles all three variants — operator-facing behavior unchanged.
+
+### Plugin
+
+- Plugin manifests bumped 0.9.36 → 0.9.37 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.36] - 2026-05-11
 
 **Patch — memory-read-check observation 维度扩 (`match_count` + `bypass_reason`).** Closes the §0.1 / §13.1 audit data gap from point 3 of 2026-05-11 dogfood. Pre-v0.9.36 the 30d sample showed `skip-memory-check` bypass at 4/9 = 44% rate — n=9 too small to act, but more importantly the row schema couldn't distinguish "rule too strict on N-file avalanche" from "rule unnecessary for this task." Two new fields in `extra`:

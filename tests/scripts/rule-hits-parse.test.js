@@ -115,7 +115,7 @@ test('readHits: missing file returns zero counters', () => {
   assert.deepEqual(r, { hits: [], totalLines: 0, parsed: 0, skipped: 0 });
 });
 
-test('groupBySection: bins by spec_section, falls back to (unset)', () => {
+test('groupBySection: bins by spec_section, falls back to (unset) when cutoverTs not passed', () => {
   const hits = [
     { hook: 'x', event: 'deny', spec_section: '§10-V' },
     { hook: 'x', event: 'warn', spec_section: '§10-V' },
@@ -125,5 +125,70 @@ test('groupBySection: bins by spec_section, falls back to (unset)', () => {
   assert.equal(g['§10-V'].total, 2);
   assert.equal(g['§10-V'].byEvent.deny, 1);
   assert.equal(g['§10-V'].byEvent.warn, 1);
+  // Back-compat: no cutoverTs ⇒ legacy single `(unset)` bucket.
   assert.equal(g['(unset)'].total, 1);
+  assert.equal(g['(unset-historical)'], undefined);
+  assert.equal(g['(unset-current)'], undefined);
+});
+
+test('v0.9.37: groupBySection with cutoverTs splits unset into historical / current', async () => {
+  const { groupBySection } = await import('../../scripts/lib/rule-hits-parse.js');
+  const cutoverIso = '2026-05-09T15:16:00Z';
+  const cutoverMs = new Date(cutoverIso).getTime();
+  const hits = [
+    // Pre-cutover null-section rows → (unset-historical).
+    { ts: '2026-04-22T12:00:00Z', hook: 'sandbox-disposal', event: 'warn' /* null section */ },
+    { ts: '2026-04-23T12:00:00Z', hook: 'ship-baseline',    event: 'pass' /* null section */ },
+    // Post-cutover null-section row (intentional housekeeping: session-start
+    // bootstrap is by-design null) → (unset-current).
+    { ts: '2026-05-10T08:00:00Z', hook: 'session-start',    event: 'bootstrap' /* null section */ },
+    // Post-cutover with section → its own bucket.
+    { ts: '2026-05-10T09:00:00Z', hook: 'banned-vocab',     event: 'deny', spec_section: '§10-V' },
+  ];
+  const g = groupBySection(hits, cutoverMs);
+  assert.ok(!('(unset)' in g), 'with cutoverTs the legacy (unset) bucket must not appear');
+  assert.equal(g['(unset-historical)'].total, 2);
+  assert.deepEqual(Object.keys(g['(unset-historical)'].byHook).sort(),
+    ['sandbox-disposal', 'ship-baseline']);
+  assert.equal(g['(unset-current)'].total, 1);
+  assert.equal(g['(unset-current)'].byHook['session-start'], 1);
+  assert.equal(g['§10-V'].total, 1);
+});
+
+test('v0.9.37: detectCutover finds earliest ts with non-null spec_section', async () => {
+  const { detectCutover } = await import('../../scripts/lib/rule-hits-parse.js');
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cut-'));
+  try {
+    const log = path.join(tmpHome, 'claudemd.jsonl');
+    fs.writeFileSync(log,
+      `{"ts":"2026-04-22T10:00:00Z","hook":"x","event":"warn","spec_section":null}\n` +
+      `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny"}\n` +
+      `{"ts":"2026-05-09T15:16:00Z","hook":"y","event":"warn","spec_section":"§8.V4"}\n` +
+      `{"ts":"2026-05-10T08:00:00Z","hook":"z","event":"deny","spec_section":"§10-V"}\n`
+    );
+    const cut = detectCutover(log);
+    assert.equal(new Date(cut).toISOString(), '2026-05-09T15:16:00.000Z');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('v0.9.37: detectCutover returns null when no spec_section row exists', async () => {
+  const { detectCutover } = await import('../../scripts/lib/rule-hits-parse.js');
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cut-'));
+  try {
+    const log = path.join(tmpHome, 'claudemd.jsonl');
+    fs.writeFileSync(log,
+      `{"ts":"2026-04-22T10:00:00Z","hook":"x","event":"warn"}\n` +
+      `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny","spec_section":null}\n`
+    );
+    assert.equal(detectCutover(log), null);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('v0.9.37: detectCutover returns null when log missing', async () => {
+  const { detectCutover } = await import('../../scripts/lib/rule-hits-parse.js');
+  assert.equal(detectCutover('/tmp/definitely-not-here-xyz.jsonl'), null);
 });

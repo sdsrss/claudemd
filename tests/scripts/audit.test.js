@@ -63,13 +63,20 @@ test('audit bySection aggregates v0.7.0 spec_section field', async () => {
   assert.equal(r.bySection['§8-rm-rf-var'].total, 2);
 });
 
-test('audit bySection surfaces legacy rows under (unset)', async () => {
-  // The ship-baseline row in the fixture has no spec_section field
-  // (simulates pre-v0.7.0 row that's still in the audit window).
+test('audit bySection surfaces null-section rows under (unset-current) post-cutover', async () => {
+  // The ship-baseline row in the fixture has no spec_section field. All
+  // rows share `now` as ts so detectCutover ⇒ now; the null-section row is
+  // ts >= cutoverTs ⇒ goes to (unset-current). v0.9.37 split: pre-cutover
+  // ⇒ (unset-historical), post-cutover ⇒ (unset-current). Legacy `(unset)`
+  // bucket no longer appears when any spec_section row exists in the log.
   const r = await audit({ days: 30 });
-  assert.ok(r.bySection['(unset)'], '(unset) bucket must exist when legacy rows present');
-  assert.equal(r.bySection['(unset)'].total, 1);
-  assert.equal(r.bySection['(unset)'].byHook['ship-baseline'], 1);
+  assert.equal(r.bySection['(unset)'], undefined, 'legacy (unset) must NOT appear when cutoverTs is detectable');
+  assert.ok(r.bySection['(unset-current)'], '(unset-current) bucket must exist for post-cutover null-section rows');
+  assert.equal(r.bySection['(unset-current)'].total, 1);
+  assert.equal(r.bySection['(unset-current)'].byHook['ship-baseline'], 1);
+  // dataIntegrity surfaces the detected cutoverTs (ISO-8601 UTC).
+  assert.ok(r.dataIntegrity.cutoverTs, 'dataIntegrity.cutoverTs must be set when log has spec_section rows');
+  assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}/.test(r.dataIntegrity.cutoverTs));
 });
 
 test('audit byBypass aggregates per-token override usage', async () => {
@@ -79,6 +86,55 @@ test('audit byBypass aggregates per-token override usage', async () => {
   assert.equal(r.byBypass['allow-banned-vocab'].byHook['banned-vocab'], 1);
   assert.equal(r.byBypass['allow-rm-rf-var'].total, 2);
   assert.equal(r.byBypass['allow-rm-rf-var'].byHook['pre-bash-safety'], 2);
+});
+
+test('v0.9.37: bySection cutover-split with mixed pre/post rows', async () => {
+  // Rewrite fixture with explicit pre-cutover + post-cutover timestamps.
+  // cutoverTs := earliest ts where spec_section != null. Pre-cutover null-
+  // section rows → (unset-historical); post-cutover → (unset-current).
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const fakeNowIso = new Date().toISOString();
+  const fakeNowMinus3dIso = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+  fs.writeFileSync(log,
+    // Pre-cutover null-section legacy rows (3d ago, simulating v0.6.x data).
+    `{"ts":"${fakeNowMinus3dIso}","hook":"sandbox-disposal","event":"warn","extra":null}\n` +
+    `{"ts":"${fakeNowMinus3dIso}","hook":"ship-baseline","event":"pass","extra":null}\n` +
+    // Cutover row: first one carrying a spec_section. ts ≈ now-1d.
+    `{"ts":"${new Date(Date.now() - 86400 * 1000).toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["x"]}}\n` +
+    // Post-cutover null-section row (intentional housekeeping — session-start
+    // bootstrap is by-design null). Should land in (unset-current).
+    `{"ts":"${fakeNowIso}","hook":"session-start","event":"bootstrap","extra":null}\n`
+  );
+  const r = await audit({ days: 30 });
+  // Cutover detected.
+  assert.ok(r.dataIntegrity.cutoverTs, 'cutoverTs detected');
+  // Split executed.
+  assert.equal(r.bySection['(unset-historical)'].total, 2);
+  assert.deepEqual(Object.keys(r.bySection['(unset-historical)'].byHook).sort(),
+    ['sandbox-disposal', 'ship-baseline']);
+  assert.equal(r.bySection['(unset-current)'].total, 1);
+  assert.equal(r.bySection['(unset-current)'].byHook['session-start'], 1);
+  assert.equal(r.bySection['§10-V'].total, 1);
+  // Legacy single-bucket name must not appear when split was performed.
+  assert.equal(r.bySection['(unset)'], undefined);
+});
+
+test('v0.9.37: cutoverTs is null when no spec_section row exists; legacy (unset) bucket used', async () => {
+  // Fully pre-v0.7.0 log — no row ever had spec_section. detectCutover ⇒
+  // null. Behavior falls back to single `(unset)` bucket (back-compat for
+  // anyone analyzing a vintage log).
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${now}","hook":"sandbox-disposal","event":"warn","extra":null}\n` +
+    `{"ts":"${now}","hook":"ship-baseline","event":"pass","extra":null}\n`
+  );
+  const r = await audit({ days: 30 });
+  assert.equal(r.dataIntegrity.cutoverTs, null);
+  assert.ok(r.bySection['(unset)'], 'legacy (unset) bucket must appear when no cutover detectable');
+  assert.equal(r.bySection['(unset)'].total, 2);
+  assert.equal(r.bySection['(unset-historical)'], undefined);
+  assert.equal(r.bySection['(unset-current)'], undefined);
 });
 
 test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use_id)', async () => {

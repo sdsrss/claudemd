@@ -263,7 +263,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
   }
   const bySection = groupBySection(recentHits);
   for (const section of Object.keys(bySection).sort()) {
-    if (section === '(unset)') continue;
+    // v0.9.37: skip all (unset*) variants — `(unset)` (single-bucket legacy)
+    // + `(unset-historical)` / `(unset-current)` (cutover-split). All three
+    // are bookkeeping buckets, not spec rules, and would self-FP as demote
+    // candidates if scored against deny/bypass ratio.
+    if (section === '(unset)' || section.startsWith('(unset-')) continue;
     const data = bySection[section];
     const deny = data.byEvent.deny || 0;
     const bypass = data.byEvent['bypass-escape-hatch'] || 0;

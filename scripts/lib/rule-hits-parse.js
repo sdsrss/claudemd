@@ -55,6 +55,41 @@ export function logFirstTs(path) {
   return firstTs;
 }
 
+// v0.9.37 — auto-detect the spec_section emit cutover. Returns ms-since-epoch
+// of the earliest row carrying a non-null `spec_section`, or null when no
+// such row exists (log entirely pre-v0.7.0).
+//
+// Why: the `(unset)` bucket in `groupBySection` conflates two different
+// row kinds —
+//   (a) pre-cutover historical data (legacy rows from v0.6.x and earlier
+//       that physically can't have a spec_section field; will age out of
+//       the audit window naturally)
+//   (b) post-cutover intentional null-section events (session-start
+//       bootstrap, version-sync, upstream-banner — non-spec-enforcing
+//       housekeeping events, by design no section)
+//   (c) post-cutover BUG: a spec-enforcing hook forgot to pass section
+//       (instrumentation regression).
+//
+// Without cutover, (a) overwhelms (b) and (c) in steady-state; with cutover,
+// `(unset-historical)` isolates (a) and `(unset-current)` exposes (b)+(c) —
+// operator scans the byHook breakdown to tell intentional housekeeping from
+// real instrumentation bugs.
+export function detectCutover(path) {
+  if (!fs.existsSync(path)) return null;
+  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
+  let cutover = null;
+  for (const line of lines) {
+    try {
+      const row = JSON.parse(line);
+      if (row.spec_section == null) continue;
+      const t = new Date(row.ts).getTime();
+      if (!Number.isFinite(t)) continue;
+      if (cutover === null || t < cutover) cutover = t;
+    } catch { /* skip malformed */ }
+  }
+  return cutover;
+}
+
 export function groupByHook(hits) {
   const byHook = {};
   for (const h of hits) {
@@ -121,10 +156,23 @@ export function topPatterns(hits, hook = 'banned-vocab') {
 // just "which hook is firing". `spec_section` is populated on rows written
 // by v0.7.0+; legacy rows surface under the `(unset)` bucket so the operator
 // can see how much pre-upgrade data is in the window.
-export function groupBySection(hits) {
+// groupBySection(hits, cutoverTs?) — v0.9.37 adds optional cutoverTs (ms
+// since epoch). When provided, the legacy `(unset)` bucket splits into
+// `(unset-historical)` (ts < cutoverTs) and `(unset-current)` (ts ≥ cutoverTs).
+// When omitted (callers pre-dating v0.9.37), behavior is unchanged: all
+// null-section rows collapse to `(unset)`.
+export function groupBySection(hits, cutoverTs = null) {
   const bySection = {};
   for (const h of hits) {
-    const key = h.spec_section || '(unset)';
+    let key;
+    if (h.spec_section) {
+      key = h.spec_section;
+    } else if (cutoverTs == null) {
+      key = '(unset)';
+    } else {
+      const t = new Date(h.ts).getTime();
+      key = (Number.isFinite(t) && t < cutoverTs) ? '(unset-historical)' : '(unset-current)';
+    }
     bySection[key] ||= { total: 0, byEvent: {}, byHook: {} };
     bySection[key].total++;
     bySection[key].byEvent[h.event] = (bySection[key].byEvent[h.event] || 0) + 1;
@@ -178,7 +226,7 @@ export function byBypass(hits) {
 //
 // Inputs: hits already filtered to the combined window (both halves);
 // windowDays = days per half. Caller must pass 2× window when reading.
-export function byTrend(hits, windowDays = 7) {
+export function byTrend(hits, windowDays = 7, cutoverTs = null) {
   const now = Date.now();
   const halfMs = windowDays * 86400 * 1000;
   const recentCutoff = now - halfMs;
@@ -188,7 +236,14 @@ export function byTrend(hits, windowDays = 7) {
   const prior = {};
   for (const h of hits) {
     const t = new Date(h.ts).getTime();
-    const key = h.spec_section || '(unset)';
+    let key;
+    if (h.spec_section) {
+      key = h.spec_section;
+    } else if (cutoverTs == null) {
+      key = '(unset)';
+    } else {
+      key = (Number.isFinite(t) && t < cutoverTs) ? '(unset-historical)' : '(unset-current)';
+    }
     if (t >= recentCutoff) {
       recent[key] = (recent[key] || 0) + 1;
     } else if (t >= priorCutoff) {

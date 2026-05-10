@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -26,6 +26,12 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
   // trendDays of data. If days < 2x trendDays, byTrend will produce a
   // truncated view (still informative — `prior` half just has less data).
   const trendHits = readHits(log, Math.max(days, 2 * trendDays)).hits;
+  // v0.9.37 — cutoverTs splits the legacy `(unset)` bucket into
+  // `(unset-historical)` + `(unset-current)`. Detected from the log (earliest
+  // row with non-null spec_section); null when the log is entirely pre-v0.7.0
+  // (no row ever carried a section), in which case bySection falls back to
+  // the single-bucket `(unset)` behavior.
+  const cutoverTs = detectCutover(log);
   return {
     windowDays: days,
     totalHits: hits.length,
@@ -37,12 +43,15 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
       parsed,
       skipped,
       skipRatio: totalLines > 0 ? Math.round((skipped / totalLines) * 1000) / 1000 : 0,
+      // ISO-8601 UTC. null ⇒ no spec_section row ever observed; null-section
+      // rows in bySection / byTrend collapse to legacy `(unset)`.
+      cutoverTs: cutoverTs != null ? new Date(cutoverTs).toISOString() : null,
     },
     byHook: groupByHook(hits),
-    bySection: groupBySection(hits),
+    bySection: groupBySection(hits, cutoverTs),
     byBypass: byBypass(hits),
     byFailOpen: byFailOpen(hits),
-    byTrend: byTrend(trendHits, trendDays),
+    byTrend: byTrend(trendHits, trendDays, cutoverTs),
     // v0.9.34 R1 — per-hook dedup view; surfaces true single-invocation
     // double-fire (registration / lib bug) vs Claude fast-retry. See
     // hooks/lib/rule-hits.sh tool_use_id doc and uniqueInvocations() comment.
