@@ -92,9 +92,13 @@ Plus existing memory `feedback_macos_shell_portability.md` (2026-04-12) document
 #### [candidate, log-only repro=1] Spec Sizing-claim drift
 **Pattern**: spec/CLAUDE-changelog.md Sizing line claims byte-counts for core/extended that diverge from on-disk `wc -c` at session start of next ship.
 
-**Repro count: 1** — v6.11.8 entry claimed extended `46690 bytes`; v6.11.9 session-start measurement showed `45164 bytes` (Δ = −1526). Cause unconfirmed: either (a) Sizing line was estimate-at-write-time not real measure, or (b) intervening plugin patches (v0.9.22-v0.9.24) silently modified extended without bumping spec version. v6.11.9 entry documents the gap.
+**Repro count: 3** (v6.11.8→v6.11.9, v6.11.11→v6.11.12, v6.11.12 in-session)
 
-**Repro-bar status**: 1 / 3 — log-only. Watching for second occurrence at next spec patch ship.
+1. v6.11.8 entry claimed extended `46690 bytes`; v6.11.9 session-start measurement showed `45164 bytes` (Δ = −1526). Cause unconfirmed: either (a) Sizing line was estimate-at-write-time not real measure, or (b) intervening plugin patches (v0.9.22-v0.9.24) silently modified extended without bumping spec version. v6.11.9 entry documents the gap.
+2. v6.11.11 Recent-changes claimed extended `~49850 bytes`; v6.11.12 in-session `wc -c` measured 49457 (Δ = −393). Tilde qualifier in v6.11.11 was doing some hand-wave work but the gap stayed real. Cause likely (a): Sizing line in v6.11.11 was forward-projected at write-time from v6.11.10 baseline + planned addition (~1100 bytes for Tag-specificity SHOULD), not re-measured post-edit.
+3. v6.11.12 in-session: this very release initially wrote Sizing as `extended 49457 → 48560 bytes (−897, −1.81%)` — projected from char-count of old vs new Recent-changes block. Post-edit `wc -c` measured 49485 bytes (Δ +28, off by 925). Pattern identical to (1) and (2): Sizing claims authored from forward projection at edit-plan time, not from real measurement after edits land. Self-corrected before push.
+
+**Repro-bar status**: 3 / 3 ✅ — promotion bar met. **Counter (§13.2)**: 2 / 20 L2+ tasks since 2026-05-10 reset (v6.11.10 §9 Parallel-path HARD addition). PROMOTION BLOCKED by counter saturation rule. Re-evaluate at next batch review. Mechanical-fix candidate (release-time `wc -c` self-check, ~30 LOC bash) is **independent of the HARD-rule track and now ship-blocking SHOULD before v6.11.13** — three distinct repros within 4 days makes the discipline-only approach insufficient.
 
 **Mechanical-fix candidate** (orthogonal to spec rule): release-time pre-tag check that `wc -c` on spec files matches the latest Recent-changes Sizing claim ±50 bytes, fail-tag on mismatch. Cost: ~30 LOC bash. Independent of HARD-rule track.
 

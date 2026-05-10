@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.11 — Extended
+# AI-CODING-SPEC v6.11.12 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -522,15 +522,17 @@ Add per-user rate limiting to public API to prevent abuse while preserving headr
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.11.11 (patch, 2026-05-11)** — companion to claudemd v0.9.28 hook fix for §11 MEMORY.md read-the-file FP rate (~80% in v0.9.27 self-audit). New §11-EXT Tag-specificity SHOULD codifies the authoring discipline that complements the v0.9.28 word-boundary hook fix. No new HARD. **§13.2 budget cost: 0**.
+**v6.11.12 (patch, 2026-05-11)** — Tier-1 dogfood patch: two fresh-agent literal-misreads in core §7 + §11 surfaced by in-session simulation pass. No new HARD; **§13.2 budget cost: 0**.
 
-- `[change]` **§11-EXT Tag-specificity (SHOULD)** (extended, +~1080 bytes — new sub-section under existing §11-EXT MEMORY-tag-syntax). Tags SHOULD be ≥4 chars AND specific to the memory's topic — generic single-word English tags (`hook`, `plugin`, `test`, `cli`, `lint`, `audit`, `done`, `spec`) substring-match incidental occurrences in commit bodies and command lines, producing high FP rates. Hook (claudemd v0.9.28+) applies word-boundary + 0-2 char declension tolerance, so plurals/-ed/-er forms still match without longer-word substring matches; but generic exact-word tags still need authoring-time discipline. Companion plugin work: claudemd v0.9.28 `hooks/memory-read-check.sh` word-boundary fix + multi-line trigger collapse (eliminates two FP classes mechanically) + `~/.claude/projects/<encoded>/memory/MEMORY.md` operator-side tag cleanup (drops 12 generic tags across 11 entries).
+- `[fix]` **§7 Iron Law #2 L1 example replaced** (core, +~58 bytes net) — `Done: fixed typo README.md:42 (Checked: git diff, "teh" → "the").` → `Done: fixed empty-input crash in scripts/audit.js:42 (Checked: pre-fix TypeError, post-fix scripts/audit.test.js 7 passed).`. Original example reused the canonical L0 Fast-Path whitelist case (`typo`); strict reading concluded "typo is L1" and escalated L0 typo fixes to L1 evidence form (waste). New example exercises the Bugfix-anchor rule (cite prior-failing state) on a true L1 bugfix.
+- `[fix]` **§11 MEMORY.md untagged-fallback wording** (core, +8 bytes net) — `Untagged → agent-driven full content scan (NOT hook-blocked)` → `Untagged → agent decides per-line from title/desc (NOT hook-blocked)`. Phrase read literally as "scan the linked memory file's full content"; intent was "scan the index entry's title/desc to decide". Strict reading would Read every untagged memory file at every ship — the exact FP class v0.9.28 word-boundary hook fix targeted.
+- `[observe]` **Sizing-claim drift repro=2** — v6.11.11 Recent-changes claimed extended `~49850 bytes`; in-session `wc -c` measured 49457 (Δ −393, 2nd repro since v6.11.8→v6.11.9 Δ −1526). Still under ≥3 promotion bar. Logged in `tasks/rule-candidates-2026-04.md` Sizing-claim drift candidate.
 
-**§13.2 budget cost**: 0 (no new HARD; new SHOULD is §11-EXT-side complement to existing §11 MEMORY.md HARD). HARD tally unchanged: 13 core + 4 §EXT-side.
+**§13.2 budget cost**: 0 (wording fixes only). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
 
-**Sizing** (v6.11.11, 2026-05-11, measured via `wc -c` on disk): core 24550 → 24550 bytes (0, 0.00% — header bump only, no content); extended 48815 → ~49850 bytes (+1035, +2.12% — new §11-EXT Tag-specificity SHOULD section ~1100 bytes, Recent-changes turnover net-deletes ~65 bytes). Size budget (§13.1): core 24550/25000 (**450 bytes headroom, 98.20%** — unchanged); extended ~49850/50000 (**~150 bytes headroom, ~99.7% utilized — at-ceiling; v6.11.12 MUST net-delete or migrate marginal content per §13.1**). Runtime L0/L1/L2 ≈ 6.10k tokens (0 vs v6.11.10).
+**Sizing** (v6.11.12, 2026-05-11, measured via `wc -c` AFTER all edits): core 24550 → 24614 bytes (+64, +0.26%); extended 49457 → 49835 bytes (+378, +0.76% — Recent-changes turnover replaced one block with another, plus this very Sizing/carry-forward paragraph rewrite added ~350 bytes itself: a recursive Sizing-drift artifact, see §Companion observations). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%**); extended 49835/50000 (**165 bytes headroom, 99.67%**). Runtime L0/L1/L2 ≈ 6.12k tokens (+0.02k vs v6.11.11).
 
-**Operator carry-forward (MUST for v6.11.12)**: extended at 99.7% utilization. Next bump MUST net-delete or refuse addition. Migration candidate: §11-EXT MEMORY-* cluster (4 sub-sections covering memory routing / auto-memory tree / tag-syntax / tag-specificity) — largest contiguous plugin-specific block whose content is implementation discipline rather than spec-canonical contract.
+**Operator carry-forward — NOT discharged, escalated**: v6.11.11's `MUST net-delete` mandate was driven by an overstated 99.7% utilization claim; real pre-v6.11.12 measurement was 98.9% (49457/50000 = 543 bytes headroom). v6.11.12's recursive-write Sizing rewrite consumed 378 of those 543 bytes, ending at 99.67% (165 bytes headroom). Net-delete mandate carries forward to v6.11.13 stronger than before — first addition of any size MUST net-delete or migrate. §11-EXT MEMORY-* cluster remains the prime migration candidate.
 
 ## §1.5-EXT GLOSSARY (full definitions)
 

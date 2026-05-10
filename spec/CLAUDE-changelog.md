@@ -6,6 +6,46 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.12 — 2026-05-11
+
+Patch: Tier-1 dogfood fixes from in-session simulation pass. Two fresh-agent literal-misread spots in core §7 + §11; one observation entry on Sizing-claim drift (repro=2 of `tasks/rule-candidates-2026-04.md` candidate). No new HARD; **§13.2 budget cost: 0**.
+
+### Background
+
+Mid-session dogfood pass simulating "fresh agent applies spec strict-literal" surfaced two reader-side traps in v6.11.11 core that survived the v6.11.8/v6.11.9 dogfood batches:
+
+1. **§7 Iron Law #2 L1 example reused `typo`** — the canonical L0 Fast-Path whitelist case. Strict reading concluded "typo is L1" → escalated L0 typo fixes to L1 evidence form (extra ceremony for no gain).
+2. **§11 MEMORY.md `agent-driven full content scan`** — phrase reads as "scan the linked memory file's full content"; intent is "scan the index entry's title/desc to decide". Strict reading would Read every untagged memory file at every ship — exactly the FP class v0.9.28 word-boundary fix targeted to suppress.
+
+### Changes
+
+- `[fix]` **§7 Iron Law #2 L1 example replaced** (core, +~58 bytes net) — see Background §1. New example exercises the Bugfix-anchor rule (cite prior-failing state) on a true L1 bugfix; no longer crosses with §0 Fast-Path L0 typo whitelist.
+- `[fix]` **§11 MEMORY.md untagged-fallback wording** (core, +8 bytes net) — see Background §2. Same semantics, removes literal misread.
+
+### Companion observations (no spec changes)
+
+- `[observe]` **Sizing-claim drift repro=2** — v6.11.11 Recent-changes claimed extended `~49850 bytes`; in-session `wc -c` measured 49457 (Δ −393, 2nd repro). First repro: v6.11.8 → v6.11.9 (Δ −1526). Promotion bar (≥3 repros across distinct sessions) not yet met; release-time `wc -c` self-check candidate retained at log-only in `tasks/rule-candidates-2026-04.md`.
+
+### §13.2 budget cost
+
+0 (wording fixes only). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+
+### Sizing
+
+core 24550 → 24614 bytes (+64, +0.26%); extended 49457 → 49835 bytes (+378, +0.76%). core 24614/25000 (386 bytes headroom, 98.46%); extended 49835/50000 (165 bytes headroom, 99.67%). **All numbers measured via `wc -c` AFTER all edits landed** — including the recursive Sizing-rewrite cost itself (see §In-session repro #3 below).
+
+**Operator carry-forward — NOT discharged, escalated**: v6.11.11 mandated `MUST net-delete or refuse the addition` because it claimed extended at 99.7% utilization. Real pre-v6.11.12 measurement was 98.9% (49457/50000, 543 bytes headroom) — the mandate was itself a Sizing-claim-drift artifact. v6.11.12's first-cut block replacement was actually ≈ size-neutral (+28 bytes), but rewriting the Sizing block + Operator-carry-forward paragraphs to use real numbers added another ~350 bytes (recursive cost). Final delta +378. v6.11.13 inherits a *stronger* carry-forward: extended at 99.67% real utilization, 165 bytes headroom; first addition of any size MUST net-delete or migrate.
+
+### In-session Sizing-drift repro #3 (this very release)
+
+Pre-edit, this changelog claimed extended `−897 bytes net-delete` (estimated from old vs new block char counts). Post-edit `wc -c` showed +28 bytes. Then the corrective Sizing/carry-forward rewrite *itself* added ~350 bytes, landing at +378. **Two-level drift**: (1) initial estimate off by 925 bytes vs first-cut measurement; (2) the rewrite to fix (1) added recursive cost not captured in the rewrite's own size projection. Consistent with v6.11.8 (Δ −1526) and v6.11.11 (Δ −393) episodes. Promotion bar (≥3 repros) NOW MET via this release. Counter (≥20 L2+ tasks since 2026-05-10 reset) at 2 — promotion BLOCKED. Eligibility flagged in `tasks/rule-candidates-2026-04.md` for next batch review; release-time `wc -c` self-check candidate (~30 LOC bash) escalated to "ship-blocking SHOULD before v6.11.13" — discipline-only approach demonstrably insufficient when the discipline itself perturbs the metric.
+
+### Plugin companion (claudemd v0.9.29)
+
+Spec-only patch — version pin in `tests/scripts/spec-structure.test.js` + `spec/hard-rules.json` `spec_version` + manifest sync (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`). No hook / runtime behavior change.
+
+---
+
 ## v6.11.11 — 2026-05-11
 
 Patch: companion to claudemd v0.9.28 hook fix for §11 MEMORY.md read-the-file FP rate. **Spec-side adds Tag-specificity SHOULD** in §11-EXT codifying the authoring discipline that complements the v0.9.28 word-boundary hook fix. No new HARD; **§13.2 budget cost: 0**.
