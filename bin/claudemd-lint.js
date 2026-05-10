@@ -164,13 +164,41 @@ function lintCmd(rawArgs) {
     // from a git pre-commit hook). Without this, `claudemd lint message.txt`
     // silently scans the LITERAL STRING "message.txt" → exits 0 even when
     // the file contents would deny.
+    //
+    // v0.9.21 — close the v0.9.14 silent-fall-through residual: when the
+    // positional looks like a PATH (contains '/' or is '.' / '..') AND the
+    // path doesn't resolve to a regular file, error out instead of scanning
+    // the literal string. Pre-fix, `lint /tmp/missing.txt` scanned the path
+    // string (exit 0); `lint /tmp` (existing dir) scanned '/tmp' (exit 0);
+    // `lint /tmp/significantly-improved.txt` (missing) matched "significantly"
+    // in the basename and falsely exited 1. Same silent-success family the
+    // v0.9.14 fix targeted; the fix was scoped only to the "file exists" branch.
+    //
+    // Non-path-shape positionals (single word, no slash) keep the v0.9.14
+    // text fallback — `lint significantly` MUST stay a text scan because it's
+    // a single literal word, not a typo'd path. `lint message.txt` (no slash,
+    // missing file) stays text — it's ambiguous between "literal text" and
+    // "filename in cwd"; pre-existing-file behavior wins to preserve the
+    // pre-commit-hook ergonomic where `--file` is explicit.
     if (positional.length === 1) {
+      const arg = positional[0];
+      const looksLikePath = arg.includes('/') || arg === '.' || arg === '..';
       try {
-        const st = fs.statSync(positional[0]);
+        const st = fs.statSync(arg);
         if (st.isFile()) {
-          text = fs.readFileSync(positional[0], 'utf8');
+          text = fs.readFileSync(arg, 'utf8');
+        } else if (looksLikePath) {
+          process.stderr.write(`lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`);
+          process.exit(2);
         }
-      } catch { /* not a path — fall through to text */ }
+        // Non-path-shape + non-file (e.g. a symlink loop, fifo) → fall through to text scan.
+      } catch (e) {
+        if (looksLikePath) {
+          process.stderr.write(`lint: file not found: ${arg}\n`);
+          process.exit(2);
+        }
+        // Non-path-shape miss → fall through to text scan.
+      }
     }
     if (text === undefined) text = positional.join(' ');
   } else {

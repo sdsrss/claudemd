@@ -207,6 +207,51 @@ test('CLI: lint --stdin + --file → exit 2', () => {
   assert.match(r.stderr, /not both/);
 });
 
+// v0.9.21 — path-shape silent-fall-through (v0.9.14 regression family).
+// The v0.9.14 fix made `lint <existing-file>` auto-treat as --file. But when
+// the positional looked like a path AND didn't resolve to a regular file
+// (missing path, directory, basename containing a banned word), the script
+// silently scanned the literal positional string and exited based on that —
+// the same silent-success the v0.9.14 fix targeted. Variants A/B/D below
+// previously returned exit 0 (silent OK); variant E returned a misleading
+// exit 1 from scanning the path's basename. All four must now exit 2.
+
+test('CLI: lint /path/missing.txt (path-shape, missing) → exit 2 file-not-found', () => {
+  const r = run(['lint', '/tmp/claudemd-dogfood-nonexistent-msg.txt']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /file not found|not a regular file/);
+});
+
+test('CLI: lint <directory> → exit 2 not-a-regular-file', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-dir-'));
+  try {
+    const r = run(['lint', tmp]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /not a regular file|is a directory/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: lint /path/with-banned-word-in-name (missing) → exit 2, not false-positive deny', () => {
+  // Pre-fix: `lint /tmp/significantly-improved.txt` scanned the path STRING,
+  // matched "significantly" in the basename, and exited 1 — looking like a
+  // legitimate banned-vocab hit when actually nothing was scanned. Worse than
+  // a silent OK because it falsely accuses the user.
+  const r = run(['lint', '/tmp/claudemd-dogfood-significantly-improved.txt']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /file not found|not a regular file/);
+});
+
+test('CLI: lint <single-word-no-slash> stays text scan (no false path-error)', () => {
+  // Anchor that the fix does NOT regress non-path-shape literals. A single
+  // word with no `/` is plausibly text the caller wanted to scan; preserve
+  // v0.9.14's "treat as text" fallback for that shape.
+  const r = run(['lint', 'message.txt']);  // has dot but no slash
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^OK/);
+});
+
 // v0.9.18 — argv-shape silent-fallback regression coverage on the public CLI
 // (same antipattern fixed in slash-command CLIs in v0.9.16/0.9.17). These
 // previously silently dropped → either scanned wrong text or returned the

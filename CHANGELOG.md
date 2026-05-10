@@ -8,6 +8,27 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.21] - 2026-05-10
+
+**Hotfix — `claudemd-cli lint <path>` silent-text-scan when path looks like a path but doesn't resolve to a regular file (v0.9.14 family residual).** Spec v6.11.7 unchanged. The v0.9.14 fix added auto-`--file` for the case where the positional was an existing regular file. The other branches — missing path, directory, dead symlink — still fell through to scanning the literal positional string. Three failure shapes surfaced during the dogfood session that produced v0.9.18–v0.9.20:
+- `claudemd lint /tmp/missing-msg.txt` → exit 0, "OK no hits" (silent success masking a CI misconfiguration).
+- `claudemd lint /tmp` (existing dir) → exit 0, "OK no hits" (scans the literal string `/tmp`).
+- `claudemd lint /tmp/significantly-improved.txt` (missing) → **exit 1 with banned-vocab hit on the basename** — falsely accuses the user of writing "significantly" in a commit message they didn't even compose.
+
+Same silent-fall-through family the v0.9.14 fix targeted; the original fix was scoped only to the "file exists" branch. The third shape is the worst — a deny that points at text the user never wrote.
+
+### Fixed
+
+- `[fix]` **`bin/claudemd-lint.js#lintCmd` rejects path-shape positionals that don't resolve to a regular file.** Pre-fix: `try { stat(); if isFile read } catch { /* fall through */ }` then `text = positional.join(' ')`. Post-fix: when the positional contains `/` (or is `.` / `..`), a stat miss exits 2 with `file not found`, and a stat-as-non-file exits 2 with `is not a regular file`. Non-path-shape positionals (single word, no slash) keep the v0.9.14 text fallback — `lint significantly` MUST stay a text scan, and `lint message.txt` (no slash, missing) stays as text to preserve the pre-commit-hook ergonomic where `--file` is explicit.
+
+### Added
+
+- `[test]` **4 new cases in `tests/scripts/lint-cli.test.js`** (267 → 271 total): `lint /path/missing.txt` exits 2 with file-not-found, `lint <directory>` exits 2 with not-a-regular-file, `lint /path/with-banned-word-in-name (missing)` exits 2 (the false-positive-deny shape — anchors that the path string is NEVER scanned), `lint message.txt` (single word, no slash) stays as text scan exit 0 (anchor that the fix doesn't regress non-path-shape literals).
+
+### Why no L3 / pre-ship-review chain
+
+`fix:` per §2 hard-upgrade exclusion — restores the v0.9.14 fix's documented intent (path-shape input that doesn't resolve to a file should NOT silently scan the path string). L2 ceiling. Diff: 1 file changed in `bin/`, 1 file in `tests/scripts/`, ~25 LOC added. Pattern continuity: same antipattern family as v0.9.14/v0.9.15/v0.9.16/v0.9.17/v0.9.18 — "input parser silently falls through on unexpected shape, exits 0 looking like success." The lint-argv gate (v0.9.19) covers the JS .find/.includes/.indexOf shapes; this is a different shape (path-resolution branch missing) that lives in the lintCmd auto-detect logic, not in flag parsing — so the gate doesn't catch it. No new gate added: this branch is now covered by the four new regression tests, which is sufficient for a one-shot logic branch (the gate exists for the recurring `args.find` family, not every branch in every CLI).
+
 ## [0.9.20] - 2026-05-10
 
 **Patch — `hard-rules-audit` demoteCandidates produced false-positive recommendations when log span < requested window.** Spec v6.11.7 unchanged. Surfaced in the same dogfood session that produced v0.9.18/v0.9.19: running `/claudemd-rules` (default 90-day window) against a `~/.claude/logs/claudemd.jsonl` that only spans 17 days reported `§11-memory-read` as a demote candidate — but that rule had been silently no-op'd in projects with `_` in the cwd path until v0.9.15 fixed it. The data couldn't see the rule firing because the rule itself was broken; "0 hits in window" wasn't a coldness signal. §0.1 HARD specifies "0 hits in 90d" — running the calculation on 17 days of data violates the spec. Same root applies to any rule fixed/added more recently than the log start.
