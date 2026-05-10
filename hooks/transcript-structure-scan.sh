@@ -58,6 +58,7 @@ hook_require_jq || exit 0
 EVENT=$(hook_read_event) || exit 0
 TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
 [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]] || exit 0
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
 # Read the LAST assistant turn from the transcript jsonl. Bound to last 200
 # lines; mirror transcript-vocab-scan.sh parsing (try fromjson catch empty).
@@ -238,7 +239,7 @@ while IFS= read -r section; do
   done
   matched_json=$(printf '%s\n' "${matched[@]}" | jq -R . | jq -s .)
   hook_record transcript-structure-scan structure-advisory \
-    "{\"matched\":$matched_json,\"count\":$count}" "$section"
+    "{\"matched\":$matched_json,\"count\":$count}" "$section" "$SESSION_ID"
   unset matched
 done <<< "$SECTION_LIST"
 

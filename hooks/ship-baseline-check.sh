@@ -16,6 +16,7 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 [[ "$TOOL" == "Bash" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
 # R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
 if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then
@@ -46,13 +47,13 @@ CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""' 2>/dev/null
 # "Red →" — these are red in gh parlance.
 case "$CONCLUSION" in
   failure|cancelled|timed_out|action_required|startup_failure) ;;
-  *) hook_record ship-baseline pass null '§7-ship-baseline'; exit 0 ;;
+  *) hook_record ship-baseline pass null '§7-ship-baseline' "$SESSION_ID"; exit 0 ;;
 esac
 
 # known-red baseline bypass
 HEAD_MSG=$(git log -1 --format=%B 2>/dev/null || true)
 if printf '%s' "$HEAD_MSG" | grep -qi 'known-red baseline:'; then
-  hook_record ship-baseline pass-known-red null '§7-ship-baseline'
+  hook_record ship-baseline pass-known-red null '§7-ship-baseline' "$SESSION_ID"
   exit 0
 fi
 
@@ -69,5 +70,5 @@ Options:
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
 
-hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline'
+hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID"
 hook_deny ship-baseline "$REASON"

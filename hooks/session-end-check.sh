@@ -122,7 +122,7 @@ EOF
 
   hook_record session-end-check warn \
     "$(jq -cn --argjson m "$MUTATIONS" --arg p "$PAUSED" '{mutations:$m,paused:$p}' 2>/dev/null)" \
-    '§11-session-exit'
+    '§11-session-exit' "$SESSION_ID"
 fi
 
 exit 0

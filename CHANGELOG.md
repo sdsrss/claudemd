@@ -8,6 +8,40 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.33] - 2026-05-11
+
+**Patch — rule-hits.jsonl schema additive: new `session_id` column.** Sub-patch 1A of the instrumentation bundle (points 2 + 4 from in-session dogfood audit on 2026-05-11). Disambiguates hook double-fire vs fast-retry in audit data — currently `banned-vocab/deny` shows ~50% byte-identical pair rows at the same timestamp, and existing schema cannot tell whether two rows came from one CC invocation (registration / lib bug) or two retries within the same second. Fully back-compat: pre-v0.9.33 rows have `session_id: null`; new callsites populate it from stdin EVENT JSON `.session_id`.
+
+### Schema
+
+- `[add]` **`rule_hits_append` accepts 5th positional arg `session_id`** (`hooks/lib/rule-hits.sh`). Empty/omitted → JSONL row carries `session_id: null` (matches existing `spec_section` empty-arg semantics). Field positioned between `project` and `spec_section` in row JSON for grouping (project + session metadata together).
+- `[doc]` **`docs/RULE-HITS-SCHEMA.md`** — new field row with `null` cases enumerated (5 hooks not yet plumbed: `sandbox-disposal`, `residue-audit`, `mem-audit`, `session-start`, `version-sync`; pre-v0.9.33 rows). Sub-patch 1A scope = hooks already extracting EVENT; remaining 5 ship in sub-patch 1B with their own EVENT-read addition.
+
+### Hook plumbing (7 of 12 emitter hooks)
+
+- `[change]` **`hooks/banned-vocab-check.sh`** — `SESSION_ID` extracted from EVENT, threaded into both `hook_record` callsites (deny + bypass-escape-hatch).
+- `[change]` **`hooks/ship-baseline-check.sh`** — same pattern, 3 callsites (pass / pass-known-red / deny).
+- `[change]` **`hooks/pre-bash-safety-check.sh`** — same, 4 callsites (deny / bypass × 2 / npx-allow-local).
+- `[change]` **`hooks/memory-read-check.sh`** — existing `SESSION_ID` extraction moved before bypass-escape-hatch branch so both rows carry it; threaded into 2 callsites.
+- `[change]` **`hooks/transcript-structure-scan.sh`** — `SESSION_ID` extracted, threaded into structure-advisory callsite.
+- `[change]` **`hooks/transcript-vocab-scan.sh`** — same, 1 callsite.
+- `[change]` **`hooks/session-end-check.sh`** — existing `SESSION_ID` threaded into 1 callsite.
+
+### Tests
+
+- `[add]` **`tests/hooks/rule-hits.test.sh` Cases 13–15** — Case 13: 5th arg lands as `session_id` field; Case 14 / 14b: omitted + empty-string normalize to null; Case 15: full-shape row (project + session_id + spec_section + extra) byte-exact assertion per `feedback_test_fixture_format_drift.md` (locks today's audit.js consumer field set).
+- 19/19 `tests/hooks/*.test.sh` pass; 360/360 `tests/scripts/*.test.js` pass.
+
+### Out of scope (sub-patch 1B / 1C follow-ups)
+
+- 5 hooks not yet plumbed (`sandbox-disposal`, `residue-audit`, `mem-audit`, `session-start`, `version-sync`) — adding EVENT-read to a hook that doesn't currently call `hook_read_event` is a separate behavior change with its own risk surface.
+- `audit.js` `unique_invocations` dedup view — needs ≥7 days of post-cutover data to be meaningful.
+- `tool_use_id` (sub-patch 1B) + `session_extended_read` (sub-patch 1C).
+
+### Plugin
+
+- Plugin manifests bumped 0.9.32 → 0.9.33 (package.json + plugin.json + marketplace.json). Manifest description fields stay at `v6.11` family per `Versioning policy` (set in v0.2.1).
+
 ## [0.9.32] - 2026-05-11
 
 **Patch — spec v6.11.12 → v6.11.13. Compression-only release: discharges v6.11.12's `MUST net-delete or migrate` carry-forward by removing two long-standing redundancies in extended (§1.5-EXT GLOSSARY duplicate of core §1.5, §10-V illustrative-example bloat).** No rule add/remove/downgrade, no behavior change. Net delete: extended 49835 → 48384 bytes (−1451, recovered to 96.77% utilization from v6.11.12's 99.67% ceiling-grazing).

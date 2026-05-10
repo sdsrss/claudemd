@@ -108,4 +108,42 @@ LAST=$(tail -n 1 "$LOG")
 echo "$LAST" | jq -e '.spec_section == null' >/dev/null \
   || { echo "FAIL: Case 12 empty spec_section should normalize to null (got: $LAST)"; exit 1; }
 
+# Case 13 (v0.10.0): session_id 5th positional arg lands as `session_id`
+# field. Drives audit `unique_invocations` dedup — disambiguates hook
+# double-fire (same session_id) from fast-retry across sessions.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null "§10-V" "abc-123-session"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.session_id == "abc-123-session"' >/dev/null \
+  || { echo "FAIL: Case 13 session_id not threaded through (got: $LAST)"; exit 1; }
+
+# Case 14: omitted/empty session_id arg → null in JSONL row (back-compat for
+# pre-v0.10.0 callers + hooks that can't extract session_id from EVENT).
+run 'rule_hits_append banned-vocab deny null "§10-V"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.session_id == null' >/dev/null \
+  || { echo "FAIL: Case 14 omitted session_id should normalize to null (got: $LAST)"; exit 1; }
+run 'rule_hits_append banned-vocab deny null "§10-V" ""'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '.session_id == null' >/dev/null \
+  || { echo "FAIL: Case 14b empty-string session_id should normalize to null (got: $LAST)"; exit 1; }
+
+# Case 15: session_id + project + spec_section + extra all coexist on one
+# row — full-shape sample. Byte-exact prod sample per
+# feedback_test_fixture_format_drift.md: pin to the exact field set today's
+# audit.js consumes.
+rm -rf "$TMP_HOME/.claude/logs"
+CLAUDE_PROJECT_DIR=/work/p run 'rule_hits_append ship-baseline pass-known-red '\''{"run_id":42}'\'' "§7-ship-baseline" "sess-xyz"'
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e '
+  .hook == "ship-baseline" and
+  .event == "pass-known-red" and
+  .project == "-work-p" and
+  .session_id == "sess-xyz" and
+  .spec_section == "§7-ship-baseline" and
+  .extra.run_id == 42 and
+  (.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+' >/dev/null \
+  || { echo "FAIL: Case 15 full-shape row mismatch (got: $LAST)"; exit 1; }
+
 echo "All cases passed"

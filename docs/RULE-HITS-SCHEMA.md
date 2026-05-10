@@ -12,6 +12,7 @@ Format: one JSON object per line. Append-only. Size-capped rotation at 5 MB
 | `hook` | string | hook name — see "Events" table for valid emitters |
 | `event` | string | event class — see "Events" table |
 | `project` | string | project identifier: `$CLAUDE_PROJECT_DIR` (or `$PWD` fallback) with `/` and `.` replaced by `-`. Empty string when neither var is set. Added v0.6.2. |
+| `session_id` | string \| null | Claude Code session identifier extracted from stdin EVENT JSON `.session_id`. `null` for hooks that don't read EVENT (currently `sandbox-disposal`, `residue-audit`, `mem-audit`, `session-start`, `version-sync`) and for rows written before v0.10.0. Drives audit `unique_invocations` dedup: same `(ts, hook, session_id)` triple twice ⇒ single CC invocation triggered the hook twice (registration / lib bug); same `(ts, hook)` with different `session_id` ⇒ concurrent sessions, not double-fire. Added v0.10.0. |
 | `spec_section` | string \| null | spec section being enforced — drives §0.1/§13.1/§13.2 promotion/demotion accounting. `null` for plugin-internal events (bootstrap, version-sync, upstream-banner) and for rows written before v0.7.0. See "Spec section taxonomy" below. Added v0.7.0. |
 | `extra` | any | hook-specific payload (object / null / string) |
 

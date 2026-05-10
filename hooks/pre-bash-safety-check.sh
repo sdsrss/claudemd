@@ -40,6 +40,7 @@ TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 [[ "$TOOL" == "Bash" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
 # R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
 # When BASH_READONLY_FAST_PATH=1 and CMD is a definitely-read-only shape
@@ -181,7 +182,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
   bypass_rm=0
   if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
     bypass_rm=1
-    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}' '§8-rm-rf-var'
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}' '§8-rm-rf-var' "$SESSION_ID"
   fi
 
   if (( bypass_rm == 0 )); then
@@ -217,7 +218,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   bypass_npx=0
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
     bypass_npx=1
-    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-npx-unpinned"}' '§8-npx'
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-npx-unpinned"}' '§8-npx' "$SESSION_ID"
   fi
 
   if (( bypass_npx == 0 )); then
@@ -245,7 +246,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
           # Unpinned (scoped or unscoped). Per spec §8 lockfile → local → pinned:
           # check lockfile/node_modules in EVENT_CWD before denying.
           if npx_pkg_locally_resolved "$pkg_token" "$EVENT_CWD"; then
-            hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx'
+            hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID"
           else
             case "$pkg_token" in
               @*/*) HITS+=("npx $pkg_token (scoped, unpinned, no lockfile/local)")
@@ -280,5 +281,5 @@ Bypass options:
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
 HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record pre-bash-safety deny "{\"matched\":$HITS_JSON}" '§8'
+hook_record pre-bash-safety deny "{\"matched\":$HITS_JSON}" '§8' "$SESSION_ID"
 hook_deny pre-bash-safety "$REASON_TEXT"

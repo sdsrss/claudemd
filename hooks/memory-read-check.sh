@@ -42,15 +42,17 @@ TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]
 CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
+CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+
 # Per-invocation escape hatch — placed AFTER trigger filter so bypass
 # usage is recorded only when the hook would have actually scanned.
+# SESSION_ID extracted above so bypass row also carries it (v0.10.0 schema).
 if echo "$CMD" | grep -qF '[skip-memory-check]'; then
-  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read'
+  hook_record memory-read-check bypass-escape-hatch '{"token":"skip-memory-check"}' '§11-memory-read' "$SESSION_ID"
   exit 0
 fi
 
-CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 [[ -n "$CWD" && -n "$SESSION_ID" ]] || exit 0
 
 # Derive project-encoded dir — Claude Code converts every non-`[a-zA-Z0-9-]`
@@ -142,5 +144,5 @@ REASON+=$'\n\n'"Options:
 Spec: ~/.claude/CLAUDE.md §11 SESSION — MEMORY.md read-the-file."
 
 MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
-hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read'
+hook_record memory-read-check deny "{\"missing\":$MISS_JSON}" '§11-memory-read' "$SESSION_ID"
 hook_deny memory-read-check "$REASON"
