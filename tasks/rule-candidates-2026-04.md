@@ -46,3 +46,68 @@
 - [ ] Promote eligible (repro ≥ 3 AND counter ≥ 20)
 - [ ] Prune stale (candidate silent for 60 days with no new repros → close as "not a systemic pattern")
 - [ ] Next batch-review: 2026-05-24 OR after 20 L2+ tasks from 2026-04-23, whichever first
+
+---
+
+## Batch review — 2026-05-10 (early, triggered by counter saturation)
+
+**Trigger**: 20-task counter saturated ahead of 2026-05-24 cadence.
+
+**L2+ task counter status** (since 2026-04-23 v6.10.2 §11 Mid-SPINE HARD addition, source: `git log --since="2026-04-23"`):
+
+- **Spec patches (each = L2 per §13)**: v6.11.0, v6.11.1, v6.11.2, v6.11.3, v6.11.4, v6.11.5, v6.11.6, v6.11.7, v6.11.8, v6.11.9 = 10
+- **Plugin L2+ releases (feat / refactor / multi-file fix)**: v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.9.0, v0.9.3, v0.9.4, v0.9.6, v0.9.7, v0.9.10, v0.9.11, v0.9.19, v0.9.22, v0.9.23, v0.9.24 = 15
+- **Hotfixes (L1 mostly, conservative count = 0 in counter)**: v0.9.5, v0.9.8, v0.9.9, v0.9.12–v0.9.18, v0.9.20–v0.9.21 — excluded from counter
+- **Total L2+ counter: ~25** ≥ 20 ✓
+
+### Candidate-by-candidate verdict
+
+#### §9 Parallel-path completeness — **PROMOTION ELIGIBLE**
+- Repro count: 4 ≥ 3 ✓
+- L2+ counter: 25 ≥ 20 ✓
+- **Both conditions met. Action: next spec patch (v6.11.10) promotes core §9 from SHOULD to HARD L2+.** Hard-rules.json gets 13th core entry. Spec wording: drop the trailing `(SHOULD now; §13.2 candidate for HARD promotion — logged in tasks/rule-candidates-2026-04.md.)` clause; promote `MUST enumerate every path and verify each` from soft-prose to HARD-anchored.
+- Plugin-side: no hook needed yet (rule is self-enforcement; no mechanical detection feasible without per-language AST). hard-rules.json `enforcement: "self"` like §iron-law-2.
+
+#### §9 Shared-symbol edit guard — **CONTINUE LOG-ONLY**
+- Repro count: 1 (unchanged from 2026-04 entry)
+- No new repros in 11 days. Below promotion bar.
+- Watching for second repro signal in code-graph-mcp `cross-file static_name` paths.
+
+### New candidates surfaced this batch
+
+#### [candidate] macOS CI shell portability → §EXT SHOULD
+**Proposed rule**: hooks/*.sh that call platform-divergent shell builtins (`stat -f` BSD vs `stat -c` GNU; `find -E`; `timeout`; `wc -l` whitespace; `mktemp -d` template suffixes) MUST go through `hooks/lib/platform.sh` wrapper or use POSIX-portable form. CI matrix MUST include macos-latest.
+
+**Repro count: 3** (from `tasks/lessons.md` 2026-04-29):
+1. `[diagnostic-step-bsd-vs-gnu-stat]` — v0.5.0 §1.A diagnostic used `stat -f %m` (BSD), but CI installs gnubin → GNU `stat` rejects `-f`. macOS CI run 25075330298 errored: `stat: cannot read file system information for '%m'`.
+2. `[macos-tmp-essentially-empty]` — v0.5.0 sandbox-disposal Case 8 assumption about `/tmp` churn refuted by macOS GH runner (`find /tmp -maxdepth 1 | wc -l` = 1).
+3. `[macos-ci-tmp-flake]` — v0.4.1 sandbox-disposal Case 8 PASSED Linux / FAILED macOS, root cause inconclusive after 3 patch attempts.
+
+Plus existing memory `feedback_macos_shell_portability.md` (2026-04-12) documenting the underlying class.
+
+**Repro-bar status**: 3 ≥ 3 ✓. **Counter**: 25 ≥ 20 ✓. **Action**: candidate eligible for SHOULD promotion at v6.11.10 OR §EXT addition. Tier-2 priority — the existing `hooks/lib/platform.sh` wrapper + `feedback_hook_platform_lib_source.md` memory cover the implementation; spec rule would formalize the design contract. Recommended form: §EXT SHOULD (not HARD — implementation-discipline class, low blast radius).
+
+**Companion plugin work**: claudemd-doctor sub-check that greps `hooks/*.sh` for known BSD-only flags. Rule-promotion is independent of doctor work; either can ship first.
+
+#### [candidate, log-only repro=1] Spec Sizing-claim drift
+**Pattern**: spec/CLAUDE-changelog.md Sizing line claims byte-counts for core/extended that diverge from on-disk `wc -c` at session start of next ship.
+
+**Repro count: 1** — v6.11.8 entry claimed extended `46690 bytes`; v6.11.9 session-start measurement showed `45164 bytes` (Δ = −1526). Cause unconfirmed: either (a) Sizing line was estimate-at-write-time not real measure, or (b) intervening plugin patches (v0.9.22-v0.9.24) silently modified extended without bumping spec version. v6.11.9 entry documents the gap.
+
+**Repro-bar status**: 1 / 3 — log-only. Watching for second occurrence at next spec patch ship.
+
+**Mechanical-fix candidate** (orthogonal to spec rule): release-time pre-tag check that `wc -c` on spec files matches the latest Recent-changes Sizing claim ±50 bytes, fail-tag on mismatch. Cost: ~30 LOC bash. Independent of HARD-rule track.
+
+### Outcomes summary
+
+- §9 Parallel-path: ✅ ELIGIBLE → bundle into v6.11.10 spec patch
+- §9 Shared-symbol: ⏸ continue log-only
+- macOS CI portability: 🆕 ELIGIBLE-AS-SHOULD → bundle into v6.11.10 §EXT addition
+- Sizing-claim drift: 🆕 log-only repro=1 → watch
+- Pruning: nothing aged ≥ 60 days silent
+
+### Next batch-review trigger
+
+- Date: 2026-06-10 (30 days from this review, per §13.2 cadence)
+- Or: 20 L2+ tasks since 2026-05-10 (today's review reset the counter)
+- Whichever first.
