@@ -8,6 +8,32 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.9.27] - 2026-05-11
+
+**Patch — new SessionEnd hook `session-end-check.sh` mechanizes core §11 "Session-exit mid-SPINE" HARD self-rule.** First feature shipping under the v6.11.10 §9 Parallel-path HARD regime. Spec unchanged — purely plugin-side enforcement. Hook count 12 → 13. Default ON (Stop hook of comparable plumbing already at default-ON; this hook only writes a `tasks/<slug>-paused.md` checkpoint and stderr warn — never blocks exit).
+
+### Added
+
+- `[feat]` **`hooks/session-end-check.sh` (SessionEnd, timeout 3s)** — at session termination, scans the transcript JSONL for mutation tool_use entries (Edit / Write / NotebookEdit) since the last user-input message and counts VALIDATE signals (Bash matching `node --test|pytest|jest|vitest|npm test|go test|cargo test|bash tests/|tsc|eslint|ruff|clippy|shellcheck|git commit|git push`). If `mutations > 0 AND validates == 0` → writes `<cwd>/tasks/session-end-<short-id>-paused.md` with the last 3 mutation tool calls + suggested verify command, stderrs a one-line `[claudemd] mid-SPINE session-exit: N unvalidated mutation(s)` warn, and appends a `warn` row to rule-hits.jsonl tagged `§11-session-exit`. Single jq pass over `tail -n 200` of transcript. Fail-open + kill-switch `DISABLE_SESSION_END_CHECK_HOOK=1`.
+
+### Tests
+
+- `[test]` **`tests/hooks/session-end-check.test.sh` (new, 9 cases)**: clean exit (Edit + test-runner), mid-SPINE Edit-only, Edit + git commit (commit validates), Write-only, Read-only no-warn, Edit + git push (push validates), kill-switch, missing transcript fail-open, rule-hits row written.
+
+### Changed
+
+- `[change]` **`scripts/lib/hook-registry.js`** — registry length 12 → 13; new entry `session-end-check` (SessionEnd, matcher `*`, timeout 3s, env-var-suffix `SESSION_END_CHECK`).
+- `[change]` **`hooks/hooks.json`** — new `SessionEnd` event with the new hook.
+- `[change]` **`commands/claudemd-toggle.md`** — display-name list adds `session-end-check`.
+- `[change]` **`README.md`** — hook count 12 → 13 in plugin-at-a-glance table; added `DISABLE_SESSION_END_CHECK_HOOK=1` to per-hook kill-switch list.
+- `[change]` **`tests/scripts/hook-registry.test.js`** — `HOOK_REGISTRY.length` pin 12 → 13.
+- `[change]` **`tests/integration/full-lifecycle.test.sh`** — manifest entry-count pin 12 → 13; settings.json residue regex adds `session-end-check`.
+- `[change]` **`tests/scripts/install.test.js`** — `manifest.entries.length` pin 12 → 13.
+
+### Why now (cadence rationale)
+
+T1c was deferred from v0.9.26 ship per the (3) → (1) path so that v6.11.10's §9 Parallel-path HARD promotion stayed clean of mechanical-enforcement scope creep. v0.9.27 ships T1c as a single-concern feat: one new hook, one new test file, three single-source-of-truth registrations + count-pin updates. Independent ship per `feedback_claudemd_ship_from_main_atomic.md` atomic convention.
+
 ## [0.9.26] - 2026-05-10
 
 **Patch — spec v6.11.9 → v6.11.10. First batch-review-driven HARD promotion since v6.10.2 (2026-04-23).** §9 Parallel-path completeness elevated SHOULD → HARD after `tasks/rule-candidates-2026-04.md` 2026-05-10 batch review confirmed both promotion conditions met. New §EXT SHOULD section documenting macOS CI shell portability (3 lessons.md repros). Plugin-side: hard-rules.json gets 13th core entry; spec content + version-pin + manifest-sync only — no hook / runtime behavior change. §13.2 budget cost: 1 new HARD; 20-task counter resets to 0.

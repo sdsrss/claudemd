@@ -22,7 +22,7 @@ test('registry has 12 entries (matches integration MCOUNT)', () => {
   // Pinned to the same number as tests/integration/full-lifecycle.test.sh
   // MCOUNT and tests/scripts/install.test.js manifest.entries.length so the
   // three counts move together when a hook is added or removed.
-  assert.equal(HOOK_REGISTRY.length, 12);
+  assert.equal(HOOK_REGISTRY.length, 13);
 });
 
 test('registry → hooks.json: every entry registered with same event/matcher/timeout', () => {
