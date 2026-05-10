@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.12.0] - 2026-05-11
+
+**Minor — feat: `/claudemd-analyze` spec ↔ implementation coherence audit.** Borrowed from github/spec-kit's `/analyze` pattern, scoped to claudemd's three highest-value drift surfaces. Read-only by default; `--strict` flag exits non-zero on CRITICAL/HIGH for pre-tag ship gate.
+
+### What changed
+
+- **New script** `scripts/spec-coherence-audit.js` (~280 LOC). Three checks:
+  1. **§EXT cross-ref resolution** (CRITICAL on miss) — every `§EXT §<id>` ref in `spec/CLAUDE.md` must resolve to a `##+ §<id>` heading in `spec/CLAUDE-extended.md`. Catches the "core cites section, extended doesn't have it" drift family the v0.9.30 partial-impl bug hinted at structurally.
+  2. **Sizing line accuracy** (HIGH on >±20B drift) — parses the canonical `**Sizing** (...): core N → M bytes; extended N → M bytes` line in `spec/CLAUDE-extended.md`, compares against `fs.statSync().size`. Tolerance per `feedback_spec_sizing_recursive_rewrite.md` accepted-drift envelope.
+  3. **MEMORY.md ↔ files bidirectional** (MEDIUM on dangling refs, LOW on orphan files) — scans the project's MEMORY.md index, cross-references against `~/.claude/projects/<encoded>/memory/*.md`. CC `tr '/._'` encoding consistent with `memory-read-check.sh` + `memory-prompt-hint.sh`.
+- **New slash command** `commands/claudemd-analyze.md`.
+- **Severity scheme** (Spec Kit borrowed): CRITICAL / HIGH / MEDIUM / LOW grouped findings + per-check `[✓]/[△]/[✗]` summary.
+- **Out of scope** (covered by sibling commands; explicitly documented in script header + slash command body to avoid duplication): HARD-rule → hook coverage → `safety-coverage-audit.js`; section_anchor resolution → `hard-rules-drift.test.js`; tag-FP → `claudemd-doctor memory-tag-specificity`; banned-vocab 3-way drift → deferred to v0.13.0.
+- **CLI**: `--json` machine output; `--strict` exit-1 gate; `--project=<cwd>` MEMORY.md scope override.
+
+### Why minor, not patch
+
+Pure additive: new script, new slash command, no existing artifact format / output shape changes. But it introduces a new contract surface (`/claudemd-analyze` as a publicly-supported coherence check + CI-gateable `--strict` mode) — minor bump makes the contract semver-discoverable for downstream automation that wants to depend on it.
+
+### Tests
+
+- New `tests/scripts/spec-coherence-audit.test.js`: 12 cases — real-repo smoke + structured-report shape + synthetic-fixture for each failure class (unresolved §EXT ref → CRITICAL, literal `§X-EXT` placeholder NOT flagged, sizing >±20B → HIGH, sizing within tolerance → ok, dangling memory ref → MEDIUM, orphan memory file → LOW, missing MEMORY.md → silent no-index, slash/dot/underscore cwd encoding parity, severity aggregation).
+- Suite: 396/396 JS + 20/20 hook + 2/2 integration pass.
+
+### Sizing
+
+No spec changes; same `spec/CLAUDE.md` v6.11.13 baseline as v0.11.0.
+
 ## [0.11.0] - 2026-05-11
 
 **Minor — feat: proactive MEMORY.md tag hint at UserPromptSubmit.** New hook `memory-prompt-hint` fires on every user prompt, parses MEMORY.md `[tag, tag]` index, matches against the prompt with the same word-boundary + declension + meta-escape regex as `memory-read-check.sh`, and emits an `additionalContext` block listing un-Read matched memory files. Attacks the observed §11 cite-recall ~8% (2/24) by surfacing relevant memories *before* the agent acts, not waiting for the ship-time deny.
