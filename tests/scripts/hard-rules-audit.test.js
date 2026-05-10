@@ -118,7 +118,7 @@ test('hardRulesAudit cross-refs rule_hits_section to real log', async () => {
 
 test('hard-rules-audit CLI rejects space-form --days 30 (was silent default)', () => {
   // v0.9.16 antipattern recurrence: pre-fix, `--days 30` was silently dropped,
-  // audit ran with default 90-day window, exited 0 — same family as audit.js
+  // audit ran with the default window, exited 0 — same family as audit.js
   // / sparkline.js / clean-residue.js fixes shipped in v0.9.16.
   const result = spawnSync(process.execPath, [HARD_RULES_AUDIT_JS, '--days', '30'], {
     env: { ...process.env, HOME: tmpHome },

@@ -1,10 +1,14 @@
 // v0.8.0 R-N2 — HARD-rules manifest audit.
 // Cross-references spec/hard-rules.json with ~/.claude/logs/claudemd.jsonl
-// to drive §13.1 quarterly demote (rules with 0 hits in 90d) and surface
-// hook-vs-self enforcement split. Pre-fix, §13.1 / §13.2 budget rules
-// were operator-eyeball-only — operator had to grep the spec, count HARD
-// tags by hand, and remember which had fired recently. This script makes
-// it one command.
+// to drive §13.1 demote review (rules with 0 hits in 30d) and surface
+// hook-vs-self enforcement split. v0.13.1 lowered the default window from
+// 90d to 30d after audit data showed the 90d gate was structurally
+// unreachable (log span typically 18-25d → demoteSuppressed permanent).
+// 30d is enough rule-hits density to distinguish "cold" from "rare" while
+// staying within typical operator log retention. Pre-fix, §13.1 / §13.2
+// budget rules were operator-eyeball-only — operator had to grep the
+// spec, count HARD tags by hand, and remember which had fired recently.
+// This script makes it one command.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +23,7 @@ rule-hits.jsonl bySection over the last N days. Surfaces §13.1 quarterly
 demote candidates and stale-review entries.
 
 Options:
-  --days=N       Window in days (positive integer, default 90).
+  --days=N       Window in days (positive integer, default 30).
   --help, -h     Print this message and exit.
 
 Env: CLAUDEMD_RULES_DAYS=N (overridden by --days=N when both set).
@@ -27,7 +31,7 @@ Wrapped by /claudemd-rules.
 
 Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
-const DEFAULT_WINDOW_DAYS = 90;
+const DEFAULT_WINDOW_DAYS = 30;
 
 export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } = {}) {
   if (!pluginRoot) {
@@ -53,9 +57,9 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // Detect log span. If the log doesn't reach `days` days back, "0 hits in
   // window" is uninformative — a rule fixed 5 days ago (e.g., §11-memory-read
   // in v0.9.15, which was silently no-op'd for underscore-cwd projects pre-fix)
-  // would look identical to a rule that's been cold for 90 days. §0.1 HARD
-  // requires "0 hits in 90d" specifically; suppressing demoteCandidates on
-  // insufficient data is the spec-compliant behavior.
+  // would look identical to a rule that's been cold for the full window.
+  // §0.1 (v6.11.15) requires "0 hits in 30d" specifically; suppressing
+  // demoteCandidates on insufficient data is the spec-compliant behavior.
   const firstTs = logFirstTs(log);
   const logSpanDays = firstTs === null ? 0 : (Date.now() - firstTs) / 86400000;
   const insufficientData = firstTs === null || logSpanDays < days;
@@ -119,14 +123,14 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     return new Date(r.last_demote_review).getTime() < cutoff;
   }).map(r => r.id);
 
-  // §0.1 hard-codes a 90d quarterly cadence for demote review. Direct script
+  // §0.1 (v6.11.15) sets the demote-evaluation window at 30d. Direct script
   // invocation accepts arbitrary `--days`, but values < DEFAULT_WINDOW_DAYS
   // produce demote candidates from a window shorter than the contract — e.g.
   // `--days=1` would surface every rule with 0 hits in the last day. Surface
   // the deviation in the JSON so the operator (or `/claudemd-rules` wrapper)
   // can flag it; do not block (some debugging flows want a narrow window).
   const cadenceWarning = days < DEFAULT_WINDOW_DAYS
-    ? `--days=${days} is shorter than the §0.1 quarterly cadence (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
+    ? `--days=${days} is shorter than the §0.1 demote-evaluation window (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
     : null;
 
   return {
@@ -175,7 +179,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (!Number.isInteger(days) || days < 1) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
-      `  Examples: --days=30, --days=90 (default), --days=180.`
+      `  Examples: --days=30 (default), --days=90, --days=180.`
     );
     process.exit(1);
   }

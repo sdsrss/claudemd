@@ -6,6 +6,37 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.15 — 2026-05-11
+
+Patch: §0.1 demote-evaluation window 90d → 30d. Wording fix only — no HARD add/remove/downgrade; agent behavior unchanged (the 90d gate was structurally unreachable, so the rule was already a no-op in practice). **§13.2 budget cost: 0**.
+
+### Background
+
+P3 task from P2/P3 phase plan (P3 #2). The earlier spec audit (v0.12.1 → v6.11.14) surfaced this finding:
+- `scripts/hard-rules-audit.js` enforced `logSpanDays >= 90` before emitting demote candidates. Real-world rule-hits log span: 18.4 days (current session) — never reached 90d under normal retention.
+- Result: `demoteSuppressed.reason: "log spans 18.4d; §0.1 HARD requires 90d of history to evaluate demotion"` fired every audit run. `wouldHaveBeen: ["§8-npx"]` was real signal that the spec contract gated against acting on.
+- §0.1 wording also mixed cadence ("Quarterly") with window size (90d) — operator review cadence and audit window are different concerns.
+
+### Changes
+
+- `[fix]` **§0.1 wording**: "Quarterly `/claudemd-audit` recommends demotion for core entries with 0 hits in 90d." → "`/claudemd-rules` recommends demotion for core entries with 0 hits in 30d." Drops the "Quarterly" qualifier (cadence is operator-controlled) and swaps to the canonical slash-command name (`claudemd-rules`; `claudemd-audit` is a different command).
+- `[fix]` **`scripts/hard-rules-audit.js`**: `DEFAULT_WINDOW_DAYS = 90` → `30`. USAGE help text, `cadenceWarning` template, and CLI error example all updated to match. Behavior preserved: `insufficientData` still gates on `logSpan < days`; now the threshold is reachable.
+- `[fix]` **`commands/claudemd-rules.md`**: frontmatter description + run-line + body all reflect 30-day default.
+
+### §13.2 budget cost
+
+0 (wording fix, no rule add/remove/downgrade). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
+
+### Sizing
+
+Live numbers in `CLAUDE-extended.md §Recent changes` Sizing line. Single post-content-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1 (±20B drift envelope).
+
+### Operator carry-forward
+
+None. Audit can now produce demote candidates after 30d of log accrual (vs 90d). The first such candidates surface a real signal: `§8-npx` was flagged `wouldHaveBeen` in the v6.11.14 audit; expect it to move into `demoteCandidates` proper at the next audit run with sufficient log span.
+
+---
+
 ## v6.11.14 — 2026-05-11
 
 Patch: extended compression release. §11-EXT cluster consolidated (5 sub-sections → 2 + 1 cross-ref), Appendix B trimmed to canonical high-reuse examples (B.1 + B.2 kept; B.3–B.6 removed as covered by §10-R / §2-EXT / §2.S normative text). No rule add/remove/downgrade, no behavior change. **§13.2 budget cost: 0**.

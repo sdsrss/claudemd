@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.13.1] - 2026-05-11
+
+**Patch — fix: AI-CODING-SPEC v6.11.14 → v6.11.15 — §0.1 demote-evaluation window 90d → 30d (unblocks `/claudemd-rules` demote-candidate detection).**
+
+P3 task from P2/P3 phase plan. The earlier spec audit (v0.12.1) flagged that `scripts/hard-rules-audit.js` enforced `logSpanDays >= 90` before surfacing demote candidates — and real-world rule-hits log span is 18-25 days under typical retention. Result: `demoteSuppressed.reason: "log spans Nd; §0.1 HARD requires 90d of history"` fired every audit run; `wouldHaveBeen: ["§8-npx"]` was real signal that the spec contract gated against acting on. Lowering the threshold to 30d makes the gate reachable under normal retention; behavior otherwise unchanged.
+
+### What changed
+
+- **Spec v6.11.14 → v6.11.15**: core §0.1 wording — "Quarterly `/claudemd-audit` recommends demotion for core entries with 0 hits in 90d." → "`/claudemd-rules` recommends demotion for core entries with 0 hits in 30d." Drops the "Quarterly" qualifier (cadence is operator-controlled, decoupled from window size) and swaps to the canonical slash-command name (`claudemd-audit` is a different command; the actual demote-review command is `/claudemd-rules`).
+- **`scripts/hard-rules-audit.js`**: `DEFAULT_WINDOW_DAYS = 90` → `30`. USAGE help text, `cadenceWarning` template, and CLI error example all updated to match. `insufficientData` gate logic preserved — still requires `logSpan >= days`, but `days` now defaults to 30d (reachable) instead of 90d (effectively unreachable).
+- **`commands/claudemd-rules.md`**: frontmatter description + run-line + body all reflect 30-day default. Stale-review row caption "operator's quarterly task list" → "operator's demote-review queue" (cadence not pinned to "quarterly").
+- **Version pins synced**: `spec/CLAUDE.md` header, `spec/CLAUDE-changelog.md` top entry, `tests/scripts/spec-structure.test.js`, `tests/integration/upgrade-lifecycle.test.sh`, `README.md` (2 occurrences). Plugin manifest `description` fields stay at `v6.11` per major.minor-only versioning policy.
+
+### Why patch (not minor)
+
+§13 META: patch = wording / clarification / identical behavior. The 90d gate was structurally unreachable, so it was already a no-op in practice; this change unblocks the audit pipeline rather than altering enforcement semantics. Agent behavior unchanged. §13.2 budget cost: 0.
+
+### Tests
+
+All suites pass (will be re-verified pre-ship): 396/396 JS + 20/20 hooks + 2/2 integration. Existing `tests/scripts/hard-rules-audit.test.js` uses explicit `days: 30` in test calls (no default-value pin to break); CLI test comment "default 90-day window" updated for accuracy.
+
+### Operator carry-forward
+
+Once 30d of rule-hits log accrues (currently 18.4d), the next `/claudemd-rules` run can produce real `demoteCandidates` instead of permanent `demoteSuppressed`. Expected first candidate: `§8-npx` (already flagged `wouldHaveBeen` under the v6.11.14 audit).
+
 ## [0.13.0] - 2026-05-11
 
 **Minor — feat: `memory-coverage-scan` Stop hook closes the §11 auto-memory observation gap.**

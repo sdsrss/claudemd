@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.14 — Core
+# AI-CODING-SPEC v6.11.15 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -24,7 +24,7 @@ Everything else = natural prose, no brackets. Completion claims / level shifts /
 
 ### §0.1 Core growth discipline (HARD)
 
-New rule defaults to extended §X-EXT. Promote to core only after rule-hits data shows ≥5 sessions in 30d where the rule fired AND its elaboration wasn't consulted. Quarterly `/claudemd-audit` recommends demotion for core entries with 0 hits in 90d. **Hard cap** (per §EXT §13.1): core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line.
+New rule defaults to extended §X-EXT. Promote to core only after rule-hits data shows ≥5 sessions in 30d where the rule fired AND its elaboration wasn't consulted. `/claudemd-rules` recommends demotion for core entries with 0 hits in 30d. **Hard cap** (per §EXT §13.1): core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line.
 
 ### §0.2 Mid-task feedback
 

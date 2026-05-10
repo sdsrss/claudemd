@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.11.14 — Extended
+# AI-CODING-SPEC v6.11.15 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
 
@@ -458,6 +458,10 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
+**v6.11.15 (patch, 2026-05-11)** — §0.1 demote-evaluation window lowered from 90d → 30d. Rule wording in core §0.1; audit script `scripts/hard-rules-audit.js` default lowered to match; `commands/claudemd-rules.md` description + run-line aligned. Rationale: 90d gate was structurally unreachable under typical rule-hits log retention (real-world span 18–25d → `demoteSuppressed.reason` "log spans Nd; §0.1 HARD requires 90d" permanently fired). 30d preserves enough rule-hits density to distinguish "cold" from "rare". No HARD add/remove; **§13.2 budget cost: 0**.
+
+- `[fix]` **§0.1 demote window 90d → 30d** (core) — `Quarterly /claudemd-audit recommends demotion for core entries with 0 hits in 90d` → `/claudemd-rules recommends demotion for core entries with 0 hits in 30d`. Drops "Quarterly" qualifier (cadence is operator-controlled, not coupled to window size) and swaps `claudemd-audit` → `claudemd-rules` (matches the actual slash-command name; `claudemd-audit` is a different command).
+
 **v6.11.14 (patch, 2026-05-11)** — extended compression release: §11-EXT cluster consolidated (5 sub-sections → 2 + 1 cross-ref), Appendix B trimmed to high-reuse examples only (B.1 + B.2; B.3–B.6 removed as covered by §10-R / §2-EXT / §2.S normative text). No rule change, no behavior change. No new HARD; **§13.2 budget cost: 0**.
 
 - `[refactor]` **§11-EXT cluster consolidated** — `Session maintenance heuristics` + `Execution heuristics (CC-borrowed)` merged into `§11-EXT Session heuristics (advisory)`; `Memory-system routing` + `Auto-memory decision tree` + `MEMORY-tag-syntax` merged into `§11-EXT Memory operations` (Layer routing / Auto-memory decision tree / MEMORY.md tag syntax as subsections of one node). Reduces fragmentation and the "where does X live in §11-EXT" lookup cost.
@@ -466,7 +470,7 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 
 **§13.2 budget cost**: 0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
 
-**Sizing** (v6.11.14, 2026-05-11, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24614 → 24614 bytes (header digit only, identical byte count); extended 48396 → 42993 bytes (Δ −5403, −11.16%). Size budget (§13.1): core 24614/25000 (**386 bytes headroom, 98.46%** — unchanged); extended 42993/50000 (**7007 bytes headroom, 85.99%** — recovered ~10.8 pp from v6.11.13's 96.77% utilization). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.10k tokens (core unchanged).
+**Sizing** (v6.11.15, 2026-05-11, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24614 → 24604 bytes (Δ −10, §0.1 line tightened by dropping "Quarterly" qualifier + same-length token swap); extended 42993 → 43968 bytes (Δ +975, Recent-changes turnover). Size budget (§13.1): core 24604/25000 (**396 bytes headroom, 98.42%**); extended 43968/50000 (**6032 bytes headroom, 87.94%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.10k tokens.
 
 **Operator carry-forward**: none. Extended utilization recovered well below ceiling. Future minor/patch bumps may add content within budget; §13.2 ratchet and §0.1 demote-candidate audit run unchanged.
 
