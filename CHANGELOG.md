@@ -8,6 +8,46 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.16.0] - 2026-05-11
+
+**Minor — fix: `sandbox-disposal-check` no longer false-positive-flags `version-sync.sh` sentinel files; cuts 95% of 30d warn volume.**
+
+### Background
+
+30-day rule-hits telemetry: `sandbox-disposal` accounted for **47% of all hook log lines** (853/1819), with **70% concentration in the last 3 days** (596/853 since 2026-05-08). Diagnostic sampling across 3 sessions (claudemd ship session 7930b8b6, code-graph-mcp Rust session 892392d9) showed 100% FP rate on the surveyed fires — the hook warned during pure read-only investigation, AskUserQuestion-only turns, and `git tag` / `gh release create` ship sequences with no `mkdtemp` activity.
+
+### Root cause
+
+Two of this plugin's own hooks stepping on each other:
+
+- `hooks/version-sync.sh:27` creates per-session sentinel **files** via `touch "$TMPDIR/claudemd-sync-<sid>"` (intentionally persisted 24h for session-scoped early-exit).
+- `hooks/sandbox-disposal-check.sh:54` scanned the same `~/.claude/tmp/` directory via `platform_find_newer`, filtering by name prefix (`^claudemd-` / `^tmp\.`) but **not by inode type**. Result: `version-sync`'s session-scoping touch-files were detected as "fresh mkdtemp directories from this session."
+
+Live FS state at fix time: `~/.claude/tmp` held **704 matching entries — 668 files (95%), 36 directories (5%)**. Spec §8.V4 explicitly scopes the rule to "`mkdtempSync` / scratch fixtures / HACK `tmp/`+`scripts/` output" — i.e. directories. Hook header (`sandbox-disposal-check.sh:3`) already documented intent: "Warns if `tmp.XXXXXX`-style mkdtemp **directories** were created this session." Implementation drift, not spec misalignment.
+
+### What changed
+
+- **`hooks/sandbox-disposal-check.sh`**: 1 LOC fix — caller-side `[[ -d "$path" ]] || continue` filter (kept the `-type d` semantic local to this hook rather than baking it into `platform_find_newer`, which `tests/hooks/platform.test.sh` exercises with file fixtures).
+- **`tests/hooks/sandbox-disposal.test.sh`**: new Case 9 — `touch claudemd-sync-fake-session-id` + `touch tmp.fake-mktemp-file` must NOT trigger a warn. Regression guard for cross-hook collision.
+
+### Why not also touch `~/.claude/tmp` residue
+
+The 668 stale sentinels are <24h old (high-volume CC session user — 668 sessions / 24h). `version-sync.sh:34`'s `-mmin +1440 -delete` GC will sweep them on next first-prompt-per-session. `/claudemd-clean-residue` already handles manual cleanup if wanted. Fix is the durable solution; cleanup is mechanical recovery from past noise.
+
+### Why not `(b) + (c)` (per-session first-fire sentinel / cwd-`/tmp` skip)
+
+Original 30d telemetry triage proposed 5 cuts (demote / sentinel / cwd-skip / per-session-create tracking / test-trap). Root-cause investigation collapsed them to 1: 95% of the noise pool was version-sync sentinels misclassified. The remaining 5% is real `mkdtemp` residue the hook *should* catch. Adding per-session sentinel or cwd-skip filters on top would now bias toward FN (silencing legitimate residue) without proportional FP reduction.
+
+### Tests
+
+- New `tests/hooks/sandbox-disposal.test.sh` Case 9 (file-shaped match not flagged). 9/9 passed.
+- Full hook suite: 23 files, all green. JS suite: 405 unchanged. Integration: full-lifecycle + upgrade-lifecycle PASS.
+- `platform.test.sh` unchanged — keeping the type-filter at caller rather than helper preserves the generic file-or-dir contract that platform-lib tests depend on.
+
+### Operator notes
+
+Existing `~/.claude/tmp/claudemd-sync-*` residue (any amount) will be silently ignored by sandbox-disposal from this version forward; `version-sync.sh`'s own 24h GC continues to age them out. Warn-noise reduction is immediate on next CC session reload.
+
 ## [0.15.0] - 2026-05-11
 
 **Minor — feat: `mid-spine-yield-scan` Stop hook closes the §11-mid-spine-yield observation gap.**

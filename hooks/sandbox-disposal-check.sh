@@ -44,6 +44,11 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
   filter="${spec##*|}"
   [[ -d "$loc" ]] || continue
   while IFS= read -r path; do
+    # §8.V4 scope is mkdtemp directories. v0.16.0: skip plain files so the
+    # hook stops false-positive-flagging version-sync.sh's per-session
+    # `claudemd-sync-<sid>` sentinel files (touch, not mkdtemp) — two of
+    # this plugin's own hooks were stepping on each other (95% of 30d warns).
+    [[ -d "$path" ]] || continue
     base=$(basename "$path")
     case "$filter" in
       claudemd_only) [[ "$base" =~ ^claudemd- ]] || continue ;;

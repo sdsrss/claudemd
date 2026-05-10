@@ -109,7 +109,25 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
+# Case 9 (v0.16.0): plain files matching the prefix are NOT flagged. Regression
+# guard for the cross-hook conflict where version-sync.sh's
+# `~/.claude/tmp/claudemd-sync-<sid>` sentinel FILES were being flagged as
+# sandbox dir leaks (95% of 30d warn volume in production telemetry).
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
+touch "$HOME/.claude/tmp/claudemd-sync-fake-session-id"
+touch "$HOME/.claude/tmp/tmp.fake-mktemp-file"
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -qE 'claudemd-sync-fake-session-id|tmp\.fake-mktemp-file'; then
+  echo "FAIL: 9 file matching prefix flagged (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 9 plain files with matching prefix NOT flagged"
 fi
-echo "Tests: 8/8 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+fi
+echo "Tests: 9/9 passed"
