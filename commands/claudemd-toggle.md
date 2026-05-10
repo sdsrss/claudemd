@@ -5,7 +5,7 @@ description: Enable or disable a specific claudemd hook (stored as DISABLE_*_HOO
 
 Usage: `/claudemd-toggle <hook-name>`
 
-Valid hook names: `session-start-check`, `version-sync`, `memory-prompt-hint`, `pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`, `session-extended-read`, `residue-audit`, `sandbox-disposal-check`, `mem-audit`, `session-summary`, `transcript-vocab-scan`, `transcript-structure-scan`, `session-end-check`.
+Valid hook names: `session-start-check`, `version-sync`, `memory-prompt-hint`, `pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`, `session-extended-read`, `residue-audit`, `sandbox-disposal-check`, `mem-audit`, `session-summary`, `transcript-vocab-scan`, `transcript-structure-scan`, `memory-coverage-scan`, `session-end-check`.
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/toggle.js $ARGS`
 

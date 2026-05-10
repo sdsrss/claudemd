@@ -8,6 +8,48 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.13.0] - 2026-05-11
+
+**Minor — feat: `memory-coverage-scan` Stop hook closes the §11 auto-memory observation gap.**
+
+Inverse twin of v0.11.0's `memory-prompt-hint`. The hint hook covers proactive READ-side ("your prompt matches memory you haven't Read"); this new hook covers reactive WRITE-side ("you produced lesson/decision tokens this session but called `mem_save` zero times — review whether anything warrants persistence"). Both fire on the §11 surface and close the cite/save bracket on MEMORY.md lifecycle observability.
+
+### Background
+
+P2 audit (this session's earlier turn) flagged the "该存的没存" observation gap: `memory-prompt-hint` 30d=4 hits and `mem-audit` 30d=3 warns gave no read on whether the agent *should have saved* memory it didn't. Without a session-end coverage scan, that question can't be measured — only inferred from absence. Adding the hook converts the unobservable into a logged `coverage-advisory` rule-hits row.
+
+### What changed
+
+- **New hook** `hooks/memory-coverage-scan.sh` (~90 LOC). Stop event; opt-in `MEMORY_COVERAGE_SCAN=1` (default OFF per behavior-layer hook convention — same as `transcript-vocab-scan` / `transcript-structure-scan`).
+- **Detection**: extracts all assistant text from session transcript; line-counts case-insensitive matches against:
+  - **Lesson tokens**: `lesson | gotcha | non-obvious | turns out | 踩坑 | 原因是 | 原来如此 | 学到 | 不该 | 下次`
+  - **Decision tokens**: `non-default | chose .* over | 因为.*所以 | 选 .* 不选 | 非默认`
+- **Offset**: counts `mem_save` tool_use names (MCP shape) and Bash invocations of `claude-mem-lite save` / `mem save`. Fires when `total >= MEMORY_COVERAGE_THRESHOLD` (default 3) AND `mem_saves == 0`.
+- **Per-session dedup**: state sentinel `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — at most one advisory per `session_id` (Stop fires multiple times per session naturally).
+- **Schema additive**: new event `coverage-advisory`; new spec section `§11-mem-coverage` in `docs/RULE-HITS-SCHEMA.md`. Contract test (`tests/hooks/contract.test.sh`) DOCUMENTED array extended.
+- **Registry sync**: 15 → 16 hooks. `scripts/lib/hook-registry.js` adds entry; `tests/scripts/{install,hook-registry}.test.js` count pin moved; `tests/integration/full-lifecycle.test.sh` MCOUNT + regex group moved; `README.md` hook count + name list updated (also catches up `session-extended-read` which was missing from the README since v0.10.1); `commands/claudemd-toggle.md` valid-name list extended.
+- **Kill-switch**: `DISABLE_MEMORY_COVERAGE_HOOK=1` (and the global `DISABLE_CLAUDEMD_HOOKS=1`).
+- **Threshold override**: `MEMORY_COVERAGE_THRESHOLD=<N>` env (default 3).
+
+### Why minor (not patch)
+
+New hook = new contract surface (rule-hits emits `coverage-advisory` rows, schema documents `§11-mem-coverage`). Per `feedback_claudemd_spec_single_source_of_truth.md` § "Plugin semver vs spec semver are independent": plugin minor when feature adds; spec stays at v6.11.14 (no rule change, this is observability instrumentation for existing §11 Auto-memory triggers).
+
+### Tests
+
+- New `tests/hooks/memory-coverage-scan.test.sh`: 12 cases — 3+ lesson tokens (advisory), 3+ 中文 decision tokens, below-threshold silence, mem_save tool_use offsets, claude-mem-lite Bash offsets, opt-in OFF silence, kill-switch silence, per-session dedup, missing transcript fail-open, threshold-override silence, no assistant text silence, telemetry shape (`extra.total = lesson + decision`).
+- Updated `tests/hooks/contract.test.sh`: `coverage-advisory:memory-coverage-scan` in DOCUMENTED array; B/C invariants auto-verify via grep.
+- Updated `tests/scripts/install.test.js` + `tests/scripts/hook-registry.test.js`: count pin 15 → 16.
+- Updated `tests/integration/full-lifecycle.test.sh`: MCOUNT + settings-eviction regex.
+
+### Operator notes
+
+Hook ships default-OFF for ≥30 days FP signal collection before flipping default-ON, mirroring the `transcript-*-scan` precedent. Enable per project via:
+```
+export MEMORY_COVERAGE_SCAN=1
+```
+Lower threshold for high-signal projects: `MEMORY_COVERAGE_THRESHOLD=2`.
+
 ## [0.12.1] - 2026-05-11
 
 **Patch — refactor: AI-CODING-SPEC v6.11.13 → v6.11.14 extended compression (audit-driven trim).**

@@ -40,6 +40,7 @@ source must appear in this table.
 | `fail-open` | any hook calling `hook_record_failopen` (currently `banned-vocab`) | hook silently skipped enforcement due to a missing prerequisite. `extra.reason` ∈ {`jq-missing`, `bad-event`, `patterns-missing`, `prereq-missing`}. Rate-limited to 1 row per (hook, reason) per 60s via `~/.claude/.claudemd-state/failopen-*.ts`. Section: `§hooks-fail-open`. Round-6. |
 | `read` | `session-extended-read` | session loaded the canonical user-global extended spec `~/.claude/CLAUDE-extended.md` (per spec §2.2 EXT LOADING). Per-session dedup via `~/.claude/.claudemd-state/ext-read-<sid>.ts` sentinel — at most one row per `session_id`. Provides the session-denominator signal for §13.1 demote analysis on extended-scope rules: a "0 hits" count is only meaningful against the count of sessions that actually loaded extended. Section: `§13.1-extended-read`. Added v0.10.1. |
 | `suggest` | `memory-prompt-hint` | UserPromptSubmit proactive hint — user's prompt matched MEMORY.md tags and at least one matched file is un-Read this session. `extra.suggested` lists the un-Read file basenames (capped at 5 in output, full list logged); `extra.match_count` carries the total un-Read match count for cite-recall analysis. Section: `§11-memory-hint`. Added v0.11.0. |
+| `coverage-advisory` | `memory-coverage-scan` | Stop advisory — session-aggregate count of lesson/decision trigger tokens in assistant text vs `mem_save` tool-call count. Fires when `total >= threshold AND mem_saves == 0` (default threshold 3). `extra` carries `{lesson, decision, mem_saves, threshold, total}`. Inverse of `suggest`: this catches "should have SAVED" while `suggest` catches "should have READ." Per-session dedup via `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` sentinel. Opt-in `MEMORY_COVERAGE_SCAN=1` (default OFF). Section: `§11-mem-coverage`. Added v0.13.0. |
 
 ## Spec section taxonomy
 
@@ -58,6 +59,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `pre-bash-safety` | `npx-allow-local` | `§8-npx` |
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `memory-prompt-hint` | `suggest` | `§11-memory-hint` |
+| `memory-coverage-scan` | `coverage-advisory` | `§11-mem-coverage` |
 | `residue-audit` | `warn` | `§7-user-global-state` |
 | `sandbox-disposal` | `warn` | `§8.V4` |
 | `transcript-vocab-scan` | `advisory` | `§10-V` |

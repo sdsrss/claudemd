@@ -112,6 +112,7 @@ DOCUMENTED=(
   "version-sync:user-prompt-submit"
   "read:session-extended-read"
   "suggest:memory-prompt-hint"
+  "coverage-advisory:memory-coverage-scan"
 )
 
 for entry in "${DOCUMENTED[@]}"; do
