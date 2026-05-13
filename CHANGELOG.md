@@ -8,6 +8,56 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.2] - 2026-05-14
+
+**Patch — fix: 6-bug end-to-end dogfood pass. §8 SAFETY `rm -rf $VAR` whitelist closure (closes bare-`$HOME` Steam-disaster class); `transcript-vocab-scan` multi-paragraph false-negative; CLI `lint` whitespace-in-positional misclassified as path; CLI `audit` silent-OK on non-JSONL files; manifest `spec_version` drift v6.11.12 → v6.11.16; `update.js` raw Node stack trace on bogus env value.**
+
+### Background
+
+End-to-end agent dogfood across 3 rounds: real user paths through bin CLI, all 17 hooks, install/update/uninstall flows. 411 unit + 2 integration tests as baseline; added 18 regression tests across the 6 fixes. Highest-severity finding: a CRITICAL whitelist gap in `pre-bash-safety-check.sh` that allowed bare `rm -rf $HOME` (and `$PWD`/`$TMPDIR`/`$OLDPWD`) to pass without a `[allow-rm-rf-var]` token. The whitelist was supposed to certify the variable is shell-typed; in practice it also certified the *bare* expansion, which is exactly the Steam-disaster shape (Valve/steam-for-linux#3671: `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT wiped entire home dirs). Spec §8 already forbids `rm -rf $VAR without validating VAR` — the hook was simply not enforcing the spec it was supposed to enforce.
+
+### What changed
+
+- `[fix CRITICAL]` **`hooks/pre-bash-safety-check.sh`** — whitelisted vars (HOME/PWD/OLDPWD/TMPDIR) now require ≥1 non-`/` character in the literal-path residue (the rm-target with all `$VAR` expansions + quotes stripped). `rm -rf $HOME` / `rm -rf "$HOME"` / `rm -rf ${HOME}` / `rm -rf $HOME/` all DENY post-fix. `rm -rf $HOME/cache` / `rm -rf $HOME/*` / `rm -rf "$HOME/sub"` continue to ALLOW — subpath-bounded targets retain the prior behavior. `BASH_SAFETY_INDIRECT_CALL=1` path (`bash -c '...'` unwrapping) inherits the same check. `tests/fixtures/bash-safety/corpus.tsv` +10 rows: 7 new `deny` (bare-var shapes incl. trailing-slash) + 3 new `pass` (glob / quoted / braced subpath) — corpus-driven test goes 62 → 69.
+
+- `[fix HIGH]` **`hooks/transcript-vocab-scan.sh`** — `jq` per-text-block `gsub("[\\r\\n]+"; " ")` before the outer `join(" ")` collapses internal newlines so the whole assistant turn is one scan-friendly line. Pre-fix, an agent turn like `"I significantly improved X.\n\nNext step is Y."` extracted as multi-line text; downstream `tail -n 1` then picked only "Next step is Y." and the §10-V hit in the first paragraph was silently dropped. The hook's docstring comment claimed `join(" ")` made each turn one line, but that only joined CONTENT BLOCKS — embedded `\n` inside a single `.text` block survived. `tests/hooks/transcript-vocab-scan.test.sh` 8 → 10 (+2 multi-paragraph anchors: first-para-only and last-para-only banned word both caught).
+
+- `[fix MED]` **`bin/claudemd-lint.js`** — `lint` positional argument path-shape heuristic now requires no whitespace. Pre-fix, `claudemd-cli lint "Fixed crash in scripts/audit.js:42 (12/12 tests pass)"` exit 2 "file not found" because the heuristic only looked for `/`. Real paths are token-shaped; whitespace-containing positionals are inline sentences with file:line citations. `tests/scripts/lint-cli.test.js` +1 test (`sentence with /file:line citation` → text-scan + banned-vocab variant).
+
+- `[fix MED]` **`bin/claudemd-lint.js`** — `audit` subcommand pre-flight check: a non-empty JSONL file with zero parseable JSON rows exits 2 with `"audit: no parseable JSON rows in <path> (expected JSONL transcript with one JSON object per line)"`. Pre-fix, pointing audit at a non-JSONL file (plain log, CSV, corrupted transcript) silently exited 0 with `"OK: no §10-V hits across 0 assistant turn(s)"` — CI hooks would falsely greenlight a wrong-format input. Same silent-success class as v0.9.14 / v0.9.21 lint fall-through. `parseTranscript`'s documented per-row silent-skip contract is preserved: the guard fires ONLY when 100% of non-empty lines fail to parse. `tests/scripts/lint-cli.test.js` +3 tests (non-JSONL, empty file degenerate-OK, partial-corruption preserves silent-skip).
+
+- `[fix LOW]` **`scripts/update.js`** — `.then().catch()` wrapper translates env-shape errors (unknown `CLAUDEMD_UPDATE_CHOICE` like `YOLO`) into a one-line stderr + exit 1, mirroring the validation-error contract used by audit.js / sparkline.js. Pre-fix, an unknown choice surfaced as a 5-line Node promise-rejection stack trace (`Error: unknown choice: YOLO\n    at update (file:.../update.js:41:11)...`) + exit 1 — same exit code but unreadable for users typo-ing the env var. `tests/scripts/update.test.js` +1 test (assert exit 1 + clean stderr + no `at update (file:...` stack lines).
+
+- `[fix data]` **`spec/hard-rules.json`** — `spec_version` synced `v6.11.12` → `v6.11.16`. Four prior patch releases (v6.11.13–v6.11.16, all compression/wording-only with `§13.2 budget cost: 0`) did not add or remove HARD rules, so the manifest was never bumped. But `/claudemd-rules` and `safety-coverage-audit` both surface this field at the top of their output — users saw "Spec v6.11.12" against a v6.11.16 spec on disk. Manifest is now bumped with every spec H1 change. `tests/scripts/hard-rules-drift.test.js` +1 test (`hard-rules-7`) asserts `manifest.spec_version === spec/CLAUDE.md H1 version` — future H1 bumps that miss the manifest sync will fail CI before reaching users.
+
+### Why patch (not minor)
+
+All 6 changes are `fix:` per CHANGELOG convention — each restores intended/documented behavior:
+
+- §8 SAFETY explicitly forbids `rm -rf $VAR without validating VAR`; bare `$HOME` falls under that rule. The whitelist was an over-permissive shortcut, not the documented intent.
+- §10-V transcript scanning was documented to scan agent assistant text; truncating to the last line of the last turn was a parser implementation bug, not the documented behavior.
+- CLI `lint` whitespace heuristic and `audit` non-JSONL exit 2 both close silent-success / spurious-error variants of the same parser-discipline class fixed in v0.9.14 / v0.9.16 / v0.9.21.
+- `update.js` clean error contract matches the rest of the script suite.
+- `hard-rules.json` `spec_version` sync is a data fix, no behavior change for hook consumers.
+
+No LLM-visible metadata change. No new HARD rules. No new hook surface. No public CLI flag added or removed. Existing `[allow-rm-rf-var]` per-cmd escape hatch unchanged — users with intentional `rm -rf $HOME` patterns (rare) can still bypass with the token.
+
+### Tests
+
+- `bash tests/run-all.sh`: 411 node-test + 2 integration suites pass. Test count unchanged (the 6 new node-test cases offset 0 deletions; corpus + bash hook test counts grew internally: corpus 62 → 69, transcript-vocab-scan 8 → 10).
+- `bash tests/hooks/pre-bash-safety.test.sh`: 69/69 (was 62/62 + 10 corpus rows wired in).
+- `bash tests/hooks/transcript-vocab-scan.test.sh`: 10/10 (was 8/8).
+- Manual end-to-end:
+  - 12 `rm -rf` shape matrix verified: bare `$HOME`/`$PWD`/`$TMPDIR`/`$OLDPWD` + trailing slash all DENY; subpath/glob/quoted/braced all ALLOW.
+  - Real CC transcript audit on 30 recent `~/.claude/projects/-mnt-data-ssd-dev-projects-claudemd/*.jsonl`: 13 flagged with §10-V hits (signal validated against production prose).
+
+### Operator notes
+
+- **Breaking change risk: low.** `rm -rf $HOME` (bare, no subpath) is now denied — but no real workflow runs that intentionally; it's a footgun. Workflows using `rm -rf $HOME/<subpath>` (the normal shape) are unaffected.
+- **Update path:** plugin marketplace update + `/reload-plugins`; the `${CLAUDE_PLUGIN_ROOT}` expansion in hook registration means installed plugin picks up the new hook bodies automatically (`reference_plugin_root_hook_expansion.md`). No manual re-install needed.
+- **If `rm -rf $HOME` is denied for a legitimate use case** (rare — wholesale home wipe in container build, etc.), the existing `[allow-rm-rf-var]` per-cmd escape hatch still works: `rm -rf $HOME [allow-rm-rf-var]`.
+- **`/claudemd-rules` output:** "Spec v6.11.16" header replaces stale "Spec v6.11.12" immediately on first run post-update.
+
 ## [0.17.1] - 2026-05-14
 
 **Patch — fix: `memory-read-check.sh` tag-match phase now sanitizes quoted bodies (and heredoc bodies / line comments) before tag scan; closes the FP class where descriptive text inside `--title "..."` / `-m "..."` / `'release/...'` triggered §11 deny on incidental keyword matches.**

@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { update } from '../../scripts/update.js';
+
+const UPDATE_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/update.js');
 
 let tmpHome, savedHome, pluginRoot;
 
@@ -52,4 +56,20 @@ test('unknown choice throws', async () => {
     () => update({ pluginRoot, choice: 'select' }),
     /unknown choice/
   );
+});
+
+test('CLI: unknown CLAUDEMD_UPDATE_CHOICE → clean stderr + exit 1 (no Node stack trace)', () => {
+  // Pre-fix, an unknown env value surfaced as a raw Node promise-rejection
+  // stack trace dumped to stderr (lines starting with `Error:` and
+  // `    at update (file:.../update.js:41:11)`). The .catch wrapper translates
+  // it into a one-line message + exit 1 — same UX contract as audit.js /
+  // sparkline.js validation errors.
+  const r = spawnSync('node', [UPDATE_JS], {
+    env: { ...process.env, CLAUDEMD_UPDATE_CHOICE: 'YOLO' },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown choice: YOLO/);
+  // No raw Node stack trace lines (the `    at update (file:.../` pattern).
+  assert.doesNotMatch(r.stderr, /^\s*at update \(/m);
 });

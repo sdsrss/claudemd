@@ -324,6 +324,22 @@ test('CLI: lint <single-word-no-slash> stays text scan (no false path-error)', (
   assert.match(r.stdout, /^OK/);
 });
 
+test('CLI: lint "sentence with /file:line citation" stays text scan (whitespace disqualifies path-shape)', () => {
+  // Regression: pre-fix, `lint "Fixed crash in scripts/audit.js:42 (12/12 tests pass)"`
+  // exited 2 with "file not found" because the path-shape heuristic only checked
+  // for `/`. Whitespace-containing positionals are almost always inline sentences
+  // — real paths are token-shaped. Test both the clean-text case (exit 0) and
+  // the banned-vocab case (exit 1) to anchor that the route is text-scan, not
+  // file-scan.
+  const r1 = run(['lint', 'Fixed crash in scripts/audit.js:42 (12/12 tests pass)']);
+  assert.equal(r1.status, 0, 'whitespace + slash should route to text scan, not file lookup');
+  assert.match(r1.stdout, /^OK/);
+
+  const r2 = run(['lint', 'this is robust in src/foo.ts']);
+  assert.equal(r2.status, 1, 'still flags banned vocab in path-citing sentences');
+  assert.match(r2.stderr, /robust/);
+});
+
 // v0.9.18 — argv-shape silent-fallback regression coverage on the public CLI
 // (same antipattern fixed in slash-command CLIs in v0.9.16/0.9.17). These
 // previously silently dropped → either scanned wrong text or returned the
@@ -349,6 +365,55 @@ test('CLI: lint --file=PATH (= form) reads file contents', () => {
     const r = run(['lint', `--file=${msg}`]);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /robust/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit on non-JSONL file (plain log / CSV) → exit 2, not silent OK', () => {
+  // Regression: pre-fix, pointing audit at a non-JSONL file silently exited 0
+  // with "0 assistant turn(s)" because parseTranscript skips unparseable rows.
+  // CI hooks that audit transcript files would falsely greenlight a corrupt
+  // or wrong-format input. Symmetric with the v0.9.21 lint silent-fall-through.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const bad = path.join(tmp, 'not-jsonl.log');
+  fs.writeFileSync(bad, '2025-01-01 INFO server started\n2025-01-01 ERROR boom\nthis is robust and significantly improved\n');
+  try {
+    const r = run(['audit', bad]);
+    assert.equal(r.status, 2, 'non-JSONL file should fail loudly, not exit 0');
+    assert.match(r.stderr, /no parseable JSON rows|expected JSONL/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit on empty file → exit 0 (degenerate but valid)', () => {
+  // Anchor that the silent-success guard does NOT regress the empty-file path.
+  // An empty file has no lines to fail on; "0 turns scanned" is correct.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const empty = path.join(tmp, 'empty.jsonl');
+  fs.writeFileSync(empty, '');
+  try {
+    const r = run(['audit', empty]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /OK.*0 assistant turn/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit on JSONL with one corrupt + one valid row → exit 0 (preserves silent-skip on partial corruption)', () => {
+  // Anchor: parseTranscript's documented contract is to silently skip corrupt
+  // rows. The audit-level "no parseable rows" guard fires ONLY when 100% of
+  // non-empty lines fail to parse, not when SOME rows parse. Mid-write
+  // truncation (CC writes transcripts as one-JSON-per-line append) should
+  // still scan whatever IS parseable.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const mixed = path.join(tmp, 'mixed.jsonl');
+  fs.writeFileSync(mixed, '{"partial":\n' + JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'clean' }] } }) + '\n');
+  try {
+    const r = run(['audit', mixed]);
+    assert.equal(r.status, 0, 'one parseable row is enough to clear the guard');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -133,8 +133,39 @@ else
   ng "8: did not pick last turn (out: $OUT)"
 fi
 
+# --- Case 9: multi-paragraph turn — banned word in FIRST paragraph caught ---
+# Pre-fix, `jq join(" ")` only joined CONTENT BLOCKS — embedded `\n` inside a
+# single .text block survived. Then `tail -n 1` picked only the last line of
+# the turn, silently dropping banned vocab in earlier paragraphs. The
+# per-text-block `gsub("[\\r\\n]+"; " ")` collapses internal newlines before
+# the outer join, so the whole turn becomes one scan-friendly line.
+jq -cn --arg t 'I significantly improved the latency.
+
+The remaining work is straightforward.' '{type:"assistant",message:{content:[{type:"text",text:$t}]}}' > "$TRANSCRIPT"
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+OUT=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT" | grep -qi 'significantly'; then
+  ok "9: multi-paragraph turn — first-paragraph banned word caught"
+else
+  ng "9: missed multi-paragraph banned vocab (out: $OUT)"
+fi
+
+# --- Case 10: multi-paragraph turn — clean first para + dirty last para ----
+# Anchor that case 9's fix doesn't regress the basic detect — both paragraphs
+# in scope, either-position banned word fires.
+jq -cn --arg t 'I shipped the patch.
+
+Follow-up: robust pattern.' '{type:"assistant",message:{content:[{type:"text",text:$t}]}}' > "$TRANSCRIPT"
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+OUT=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT" | grep -qi 'robust'; then
+  ok "10: multi-paragraph turn — last-paragraph banned word also caught"
+else
+  ng "10: missed last-paragraph banned vocab (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((8 - FAIL))/8 passed"
+  echo "Tests: $((10 - FAIL))/10 passed"
   exit 1
 fi
-echo "Tests: 8/8 passed"
+echo "Tests: 10/10 passed"

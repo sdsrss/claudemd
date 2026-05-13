@@ -26,7 +26,24 @@ deny	rm -Rf $VAR (uppercase)	rm -Rf $VAR
 pass	rm -rf $HOME/cache (whitelist)	rm -rf $HOME/cache
 pass	rm -rf $TMPDIR/x (whitelist)	rm -rf $TMPDIR/x
 pass	rm -rf $PWD/build (whitelist)	rm -rf $PWD/build
+pass	rm -rf $HOME/* (whitelist + glob)	rm -rf $HOME/*
+pass	rm -rf "$HOME/cache" (whitelist quoted)	rm -rf "$HOME/cache"
+pass	rm -rf ${HOME}/sub (whitelist braced)	rm -rf ${HOME}/sub
 pass	rm -rf $VAR [allow-rm-rf-var]	rm -rf $VAR [allow-rm-rf-var]
+
+# === pattern 1b: bare whitelisted var (Steam-disaster class) ===
+# Regression for the gap where `rm -rf $HOME` (no subpath) was ALLOWED because
+# HOME is whitelisted. Whitelist only certifies the var is shell-typed, not
+# that the target is bounded — bare `$HOME` rms the user's entire home,
+# and `$HOME/` rms `/` if HOME is somehow unset (Valve/steam-for-linux#3671:
+# `rm -rf "$STEAM_ROOT/"*` deleted users' entire home dirs).
+deny	rm -rf $HOME (bare whitelisted-var)	rm -rf $HOME
+deny	rm -rf "$HOME" (bare quoted)	rm -rf "$HOME"
+deny	rm -rf ${HOME} (bare braced)	rm -rf ${HOME}
+deny	rm -rf $PWD (bare whitelisted-var)	rm -rf $PWD
+deny	rm -rf $TMPDIR (bare whitelisted-var)	rm -rf $TMPDIR
+deny	rm -rf $OLDPWD (bare whitelisted-var)	rm -rf $OLDPWD
+deny	rm -rf $HOME/ (trailing slash, no subpath)	rm -rf $HOME/
 
 # === pattern 2: npx unpinned ===
 deny	npx prettier (bare)	npx prettier

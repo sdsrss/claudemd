@@ -135,6 +135,25 @@ test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest
     `\nResolution: add a manifest entry to spec/hard-rules.json or document the exemption in SPEC_HARD_LINE_EXEMPTIONS.`);
 });
 
+test('hard-rules-7: manifest spec_version matches spec/CLAUDE.md H1 version', () => {
+  // Pre-fix, the manifest's spec_version drifted to v6.11.12 while spec/CLAUDE.md
+  // shipped v6.11.16 (four patch releases of compression / wording — no HARD
+  // rule add/remove, so the manifest was never bumped). Both hard-rules-audit
+  // and safety-coverage-audit display this field at the top of their output,
+  // so users running `/claudemd-rules` saw a stale version tag for the live
+  // spec. Manifests must be bumped with every spec H1 change, even when the
+  // rules list is unchanged — otherwise downstream tooling reports against
+  // a phantom spec.
+  const m = loadManifest();
+  const coreSpec = readSpec('core');
+  const h1 = coreSpec.match(/^#\s*AI-CODING-SPEC\s+(v[\d.]+)/m);
+  assert.ok(h1, 'spec/CLAUDE.md H1 must match `# AI-CODING-SPEC vX.Y.Z`');
+  assert.equal(
+    m.spec_version, h1[1],
+    `manifest spec_version=${m.spec_version} drifted from spec H1=${h1[1]} — bump spec/hard-rules.json:spec_version`
+  );
+});
+
 test('hard-rules-6: manifest schema sanity — required fields present', () => {
   const m = loadManifest();
   const required = ['id', 'name', 'scope', 'section_anchor', 'enforcement', 'rule_hits_section', 'added_version', 'confidence', 'last_demote_review'];

@@ -201,8 +201,22 @@ if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
     if [[ -n "$rm_target" ]] && echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}'; then
       varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
         | sed -E 's/[${}"'"'"']//g')
+      # Strip ALL var expansions + quotes from the target — what remains is the
+      # literal-path residue. A whitelisted var (HOME/PWD/OLDPWD/TMPDIR) is only
+      # "validated" when there's a real subpath bound: `$HOME/cache` rms a
+      # subdir, but bare `$HOME` rms the user's entire home, and `$HOME/` rms
+      # `/` if HOME is somehow empty (Steam-disaster class, ValveSoftware/
+      # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
+      # The whitelist only certifies the var is shell-typed, not that the
+      # target is bounded. Require ≥1 non-`/` character in the residue.
+      residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g')
       case "$varname" in
-        HOME|PWD|OLDPWD|TMPDIR) ;;
+        HOME|PWD|OLDPWD|TMPDIR)
+          if [[ ! "$residue" =~ [^/] ]]; then
+            HITS+=("rm -rf \$$varname with no literal subpath (bare whitelisted-var expansion)")
+            REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+          fi
+          ;;
         *)
           HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
           REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"

@@ -197,7 +197,13 @@ function lintCmd(rawArgs) {
     // pre-commit-hook ergonomic where `--file` is explicit.
     if (positional.length === 1) {
       const arg = positional[0];
-      const looksLikePath = arg.includes('/') || arg === '.' || arg === '..';
+      // Path-shape heuristic: contains `/`, or is `.`/`..`. Whitespace disqualifies
+      // — `lint "Fixed crash in scripts/audit.js:42 (12/12 tests pass)"` is one
+      // quoted positional whose `/` came from a file:line citation inside a
+      // sentence, not a literal file path. Without this guard, the auto-detect
+      // branch saw `/` and exited 2 with "file not found", forcing users to
+      // either omit citations from inline text or explicitly switch to --stdin.
+      const looksLikePath = (arg.includes('/') || arg === '.' || arg === '..') && !/\s/.test(arg);
       try {
         const st = fs.statSync(arg);
         if (st.isFile()) {
@@ -287,6 +293,25 @@ function auditCmd(rawArgs) {
   }
 
   const jsonl = fs.readFileSync(transcriptPath, 'utf8');
+
+  // Silent-success guard: parseTranscript intentionally skips unparseable rows
+  // (matches transcript-vocab-scan.sh). But if the WHOLE file fails to parse
+  // — user pointed audit at a CSV, plain log, or corrupted JSONL — `turns.length`
+  // is 0 and the CLI happily prints "OK: 0 assistant turn(s)" exit 0. Same
+  // silent-OK family as v0.9.14 / v0.9.21. Pre-flight: a non-empty file that
+  // yields zero parseable JSON rows is malformed, not clean.
+  const nonEmptyLines = jsonl.split('\n').filter(l => l.trim().length > 0);
+  if (nonEmptyLines.length > 0) {
+    let parsedAny = false;
+    for (const l of nonEmptyLines) {
+      try { JSON.parse(l); parsedAny = true; break; } catch { /* keep scanning */ }
+    }
+    if (!parsedAny) {
+      process.stderr.write(`audit: no parseable JSON rows in ${transcriptPath} (expected JSONL transcript with one JSON object per line)\n`);
+      process.exit(2);
+    }
+  }
+
   const turns = parseTranscript(jsonl);
   const patterns = readPatterns();
   const annotated = turns.map(t => ({

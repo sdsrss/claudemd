@@ -72,5 +72,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const pluginRoot = resolvePluginRoot(import.meta.url);
   const choice = process.env.CLAUDEMD_UPDATE_CHOICE || 'cancel';
-  update({ pluginRoot, choice }).then(r => console.log(JSON.stringify(r, null, 2)));
+  // `.catch` translates env-shape errors (unknown CLAUDEMD_UPDATE_CHOICE) into
+  // a one-line stderr + exit 1, mirroring the validation-error contract used by
+  // audit.js / sparkline.js. Pre-fix, an unknown choice surfaced as a raw Node
+  // promise-rejection stack trace + exit 1 — same exit code but unreadable for
+  // users running /claudemd-update with a typo'd env var.
+  update({ pluginRoot, choice })
+    .then(r => console.log(JSON.stringify(r, null, 2)))
+    .catch(e => { console.error(e.message); process.exit(1); });
 }

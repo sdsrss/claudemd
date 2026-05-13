@@ -64,11 +64,18 @@ PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patter
 # line — `tail -n 1` then reliably picks the latest turn's text. With "\n",
 # a single turn's multi-line text would be split across output lines and
 # tail would grab only the final paragraph of the last turn.
+#
+# Per-text-block `gsub("[\\r\\n]+"; " ")`: collapse newlines INSIDE each
+# .text block before the outer join. Pre-fix, an assistant turn like
+# `"I significantly improved X.\n\nNext step is Y."` extracted as multi-line
+# text, then `tail -n 1` picked only "Next step is Y." — the §10-V hit
+# in the first paragraph was silently dropped. Normalizing internal
+# newlines first turns the whole turn into one scan-friendly line.
 LAST_TEXT=$(tail -n 200 "$TRANSCRIPT_PATH" 2>/dev/null \
   | jq -R -r 'try fromjson catch empty
               | select(.type == "assistant")
               | (.message.content // [])
-              | map(select(.type == "text") | .text)
+              | map(select(.type == "text") | .text | gsub("[\\r\\n]+"; " "))
               | join(" ")' 2>/dev/null \
   | awk 'NF' \
   | tail -n 1)
