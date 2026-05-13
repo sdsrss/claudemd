@@ -8,6 +8,68 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.4] - 2026-05-14
+
+**Patch — fix: `banned-vocab-check.sh` + `ship-baseline-check.sh` trigger filter false-positives on `git commit` / `git push` substrings inside shell comments and heredoc bodies. Ports the v0.9.28 `memory-read-check.sh` segment-anchor regex (CMD flatten + `^|[[:space:]]*[;&|]+[[:space:]]*` separator) to both hooks. Closes the last two raw-`$CMD`-grep sites identified in the v0.17.3 sister-pattern sweep.**
+
+### Background
+
+After v0.17.3 closed the multi-line CMD §8 bypass in `pre-bash-safety-check.sh`, a sister-pattern grep across all hooks revealed two remaining raw-`$CMD` trigger sites:
+
+```
+hook → reads CMD → has sanitize → has flatten
+pre-bash-safety-check.sh    ✓   ✓   ✓ (v0.17.1 + v0.17.3)
+memory-read-check.sh        ✓   ✓   ✓ (v0.9.28 + v0.17.1)
+banned-vocab-check.sh       ✓   ✗   ✗   ← Bug 16
+ship-baseline-check.sh      ✓   ✗   ✗   ← Bug 15
+```
+
+Both used the loose prefix `(^|[[:space:];&|])` — which accepts ANY whitespace as a separator. That lets a space after `#` (comment) or a space inside a heredoc body line satisfy the prefix, so:
+
+- `# git commit -m "significantly faster"` (comment) → banned-vocab fires, message-extract finds `-m "..."`, hook denies a non-existent commit.
+- `cat <<EOF\ngit push origin main\nEOF` (heredoc body) → ship-baseline fires when CI is red, denying a `cat` command that doesn't push anything.
+
+`memory-read-check.sh` already solved this in v0.9.28 by flattening CMD to a single line and tightening the prefix to `(^|[[:space:]]*[;&|]+[[:space:]]*)` — real shell separator only. This release ports that fix verbatim to the two remaining hooks.
+
+### What changed
+
+- `[fix MED]` **`hooks/banned-vocab-check.sh`** — trigger filter now flattens `$CMD` with `tr '\n' ' '` and uses the segment-anchor `TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'`. Message extraction below the trigger gate is unchanged — its `-m "..."` regex was already quote-aware and only ran AFTER trigger fired, so the upstream tightening alone is enough. `tests/hooks/banned-vocab.test.sh` 20 → 24 (+3 FP-anchor + 1 non-regression on chained `make && git commit`).
+
+- `[fix LOW]` **`hooks/ship-baseline-check.sh`** — same shape: `CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')` + segment-anchor `TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git[[:space:]]+push([[:space:]]|$)'`. The `--help` short-circuit on line 29 also reads `CMD_FLAT` for consistency. `tests/hooks/ship-baseline.test.sh` 11 → 15 (+3 FP-anchor + 1 non-regression on chained `make && git push`).
+
+### Why patch
+
+Both changes restore intended hook behavior — comments and heredoc bodies are not shell-executable contexts; the spec rules (§10-V banned-vocab on real commits, §7 ship-baseline on real pushes) were never supposed to fire on them. `memory-read-check.sh` already shipped this design; the sister hooks were inconsistent. CHANGELOG `fix:` not `change:` — no new behavior, just tighter scoping of an existing rule.
+
+Severity:
+
+- **Bug 16 (banned-vocab) — MED FP**: blocks legitimate commits whenever a previous bash command on the same Claude tool call contained a `# git commit -m "..."` example in a comment or a `cat <<EOF ... git commit ... EOF` shell snippet in a heredoc. Users would see deny on the very next real commit because the agent's running bash CMD included an example-as-text.
+
+- **Bug 15 (ship-baseline) — LOW FP**: only surfaces when CI is currently red; the hook then denies the `cat`/`echo`/`ls` command for containing a `git push` substring. No security impact (FP makes hook overly strict, never overly permissive).
+
+### Non-regression anchors
+
+Each hook test gained an explicit case for chained-real shape (`make && git commit -m "..."` / `make && git push origin main`) that fires the trigger via `&&` separator. These lock that the tightened regex still matches real shell-separator chains, only rejecting whitespace-only prefixes.
+
+### Tests
+
+- `bash tests/run-all.sh`: 411 node-test + 2 integration suites pass.
+- `bash tests/hooks/banned-vocab.test.sh`: 24/24 (was 20).
+- `bash tests/hooks/ship-baseline.test.sh`: 15/15 (was 11).
+- `bash tests/hooks/pre-bash-safety.test.sh`: 76/76 (unchanged).
+- `bash tests/hooks/memory-read-check.test.sh`: 29/29 (unchanged).
+- Manual end-to-end: 8 FP probes (4 per hook: full-comment / inline-comment / heredoc body / quoted string) verified post-fix; 2 non-regression chained-real probes verified.
+
+### Operator notes
+
+- Update path: plugin marketplace update + `/reload-plugins`. `${CLAUDE_PLUGIN_ROOT}` expansion means installed plugin picks up the new hook bodies automatically.
+- Bypass tokens unchanged: `[allow-banned-vocab]` and `known-red baseline: <reason>` continue to work the same.
+- If you'd intentionally been writing bash with `# git commit -m "..."` example comments and getting denied — this release is your fix; no `[allow-banned-vocab]` needed for non-commit contexts.
+
+### Sister-pattern sweep — final state
+
+After this release, all four `*-check.sh` hooks that read `tool_input.command` and act on it (`pre-bash-safety`, `memory-read-check`, `banned-vocab-check`, `ship-baseline-check`) use the same defense-in-depth shape: (1) `tr '\n' ' '` flatten, (2) segment-anchor trigger regex, (3) sanitize (where applicable for tag/message extraction). No remaining raw-multi-line-`$CMD` grep sites in the hook fleet.
+
 ## [0.17.3] - 2026-05-14
 
 **Patch — fix: CRITICAL — `pre-bash-safety-check.sh` multi-line CMD §8 SAFETY bypass closure. Multi-line bash commands containing `rm -rf $UNSAFE_VAR` on any line other than the first silently passed the hook; the matching multi-line `npx pkg@PIN` case wrongly denied as unpinned. One root cause, two opposite-direction defects.**

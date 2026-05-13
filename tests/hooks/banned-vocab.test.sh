@@ -131,8 +131,44 @@ EOF
 assert_pass "20: -F file (no -m captured, fallback to CMD scan — clean CMD) → pass" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# --- v0.17.4: segment-anchor trigger regex — `git commit` in comments / heredoc
+# bodies / inline comments no longer false-triggers. Pre-fix used the loose
+# `[[:space:];&|]` prefix which matched any space — meaning `# git commit ...`
+# fired the trigger, the message-extract regex still found `-m "..."` inside
+# the comment, and the hook denied a non-existent commit. Mirrors v0.9.28
+# memory-read-check.sh segment-anchor + v0.17.3 pre-bash-safety multi-line fix.
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"# git commit -m 'significantly faster routing'"},"cwd":"/tmp"}
+EOF
+assert_pass "21: full-line comment with banned-vocab git commit → pass (not a real cmd)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"ls -la # git commit -m \"robust impl\""},"cwd":"/tmp"}
+EOF
+assert_pass "22: inline trailing comment with banned-vocab git commit → pass" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"cat <<EOF\ngit commit -m \"significantly\"\nEOF"},"cwd":"/tmp"}
+EOF
+assert_pass "23: heredoc body containing git commit -m banned → pass (heredoc body, not exec)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Anchor non-regression: real `make && git commit ...` chain still denies.
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"make && git commit -m 'significantly faster'"},"cwd":"/tmp"}
+EOF
+assert_deny "24: real chained git commit after && — segment-anchor still fires → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((20 - FAIL))/20 passed"
+  echo "Tests: $((24 - FAIL))/24 passed"
   exit 1
 fi
-echo "Tests: 20/20 passed"
+echo "Tests: 24/24 passed"

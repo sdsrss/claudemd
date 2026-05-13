@@ -85,8 +85,37 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 11 timed_out → deny" \
   || { echo "FAIL: 11 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 12-14: v0.17.4 segment-anchor trigger. Pre-fix used the loose
+# `[[:space:];&|]` prefix which let comments and heredoc bodies containing
+# `git push` fire the trigger. With CI red, the hook would then deny a command
+# that doesn't actually push anything. Mirrors v0.9.28 memory-read-check.sh
+# segment-anchor + v0.17.3 pre-bash-safety multi-line fix.
+
+EVENT_COMMENT_FULL='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"# git push origin main"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_COMMENT_FULL")
+[[ -z "$OUT" ]] && echo "PASS: 12 full-line comment containing git push → pass" \
+  || { echo "FAIL: 12 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_COMMENT_INLINE='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"ls -la # then run git push later"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_COMMENT_INLINE")
+[[ -z "$OUT" ]] && echo "PASS: 13 inline comment containing git push → pass" \
+  || { echo "FAIL: 13 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_HEREDOC=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"cat <<EOF\ngit push origin main\nEOF"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_HEREDOC")
+[[ -z "$OUT" ]] && echo "PASS: 14 heredoc body with git push → pass" \
+  || { echo "FAIL: 14 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 15: real chained push after && still denies with red CI — non-regression
+# anchor for the segment-anchor regex (must still match real shell separators).
+EVENT_CHAIN=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"make && git push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CHAIN")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 15 chained real push after && → deny" \
+  || { echo "FAIL: 15 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"
+  echo "Tests: $((15 - FAIL))/15 passed"
   exit 1
 fi
-echo "Tests: 11/11 passed"
+echo "Tests: 15/15 passed"

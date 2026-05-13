@@ -24,9 +24,20 @@ if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD";
   exit 0
 fi
 
-# Filter: git push, not --help
-echo "$CMD" | grep -qE '(^|[[:space:];&|])git[[:space:]]+push([[:space:]]|$)' || exit 0
-echo "$CMD" | grep -qE '\-\-help|\-h\b' && exit 0
+# Filter: git push, not --help.
+# Flatten CMD before regex match so heredoc bodies and other line-2+ content
+# can't masquerade as line-start. Per-line `grep -qE` would otherwise see
+# each heredoc body line's bare `git push origin main` as `^`-anchored.
+CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+# Segment-anchor regex: require `^` (real start-of-command, post-flatten) OR a
+# real shell separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser
+# `[[:space:];&|]` allows ANY whitespace (including space after `#` in
+# `ls # git push later`, or space inside a heredoc body) — produced FPs on
+# comments, heredoc bodies, and trailing-arg references. Mirrors the
+# memory-read-check.sh v0.9.28 segment-anchor fix.
+TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git[[:space:]]+push([[:space:]]|$)'
+echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
+echo "$CMD_FLAT" | grep -qE '\-\-help|\-h\b' && exit 0
 
 # Require gh CLI
 command -v gh >/dev/null 2>&1 || exit 0

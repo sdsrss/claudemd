@@ -40,7 +40,20 @@ fi
 
 # Filter: must be a git commit invocation. `\s` / `\S` aren't portable under
 # BSD grep (macOS); use POSIX character classes so behavior matches Linux.
-echo "$CMD" | grep -qE '(^|[[:space:];&|])git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0
+#
+# Flatten CMD before regex match so heredoc bodies and other line-2+ content
+# can't masquerade as line-start. Per-line `grep -qE` would otherwise see
+# each heredoc body line's bare `git commit -m "..."` as `^`-anchored.
+# Segment-anchor: require `^` (real start, post-flatten) OR a real shell
+# separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser `[[:space:];&|]`
+# allows ANY whitespace (including space after `#` in
+# `ls # git commit -m "msg"`) — produced FPs on comments and heredoc bodies
+# whose `git commit` substring was treated as a real invocation. Mirrors the
+# memory-read-check.sh v0.9.28 segment-anchor fix and the v0.17.4
+# ship-baseline-check.sh sibling.
+CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
+echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
