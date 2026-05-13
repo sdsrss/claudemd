@@ -100,3 +100,19 @@ pass	bash -c 'rm -rf $HOME/cache' (whitelist via unwrap)	bash -c 'rm -rf $HOME/c
 pass	bash -c 'npx prettier@3.0.0' (pinned via unwrap)	bash -c 'npx prettier@3.0.0'	BASH_SAFETY_INDIRECT_CALL=1
 pass	indirect [allow-rm-rf-var] survives unwrap	bash -c 'rm -rf $X [allow-rm-rf-var]'	BASH_SAFETY_INDIRECT_CALL=1
 pass	echo of bash -c string-literal	echo "bash -c 'rm -rf $X'"	BASH_SAFETY_INDIRECT_CALL=1
+
+# === multi-line bash: pattern extraction must not bleed across lines (v0.17.2 dogfood) ===
+# Pre-fix `sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1` + `s/.*${NPX_REGEX}//`
+# operated per-line; lines without rm/npx passed through unchanged and either:
+#   - false-ALLOW: rm-rf on line 2 → head -n1 returns line 1 (no rm content) →
+#     rm_target empty → deny path never fires. §8 SAFETY bypass.
+#   - false-DENY: npx-pin on line 2 → npx_tail starts with line 1's first token
+#     (e.g. `TMP=$(mktemp`) → flagged as unpinned package. Innocent denied.
+# Fix: SANITIZED_CMD_FLAT collapses `\n` → ` ` once, before both extraction passes.
+deny	multi-line rm -rf $VAR (was false-ALLOW)	TMP=$(mktemp -d)__NL__rm -rf $UNSAFE
+deny	multi-line bare $HOME on line 2	TMP=$(mktemp -d)__NL__rm -rf $HOME
+pass	multi-line rm -rf $HOME/cache on line 2	TMP=$(mktemp -d)__NL__rm -rf $HOME/cache
+pass	multi-line npx pinned on line 2 (was false-DENY)	TMP=$(mktemp -d)__NL__npx prettier@3.0.0 --check .
+pass	multi-line npx local path on line 2	TMP=$(mktemp -d)__NL__npx ./node_modules/.bin/foo
+deny	multi-line npx unpinned on line 2 (real catch)	TMP=$(mktemp -d)__NL__npx prettier
+deny	rm -rf $VAR on line 3 of 5	echo step1__NL__cd /tmp__NL__rm -rf $UNSAFE__NL__echo done__NL__cleanup

@@ -8,6 +8,83 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.3] - 2026-05-14
+
+**Patch — fix: CRITICAL — `pre-bash-safety-check.sh` multi-line CMD §8 SAFETY bypass closure. Multi-line bash commands containing `rm -rf $UNSAFE_VAR` on any line other than the first silently passed the hook; the matching multi-line `npx pkg@PIN` case wrongly denied as unpinned. One root cause, two opposite-direction defects.**
+
+### Background
+
+v0.17.2 shipped the bare-`rm -rf $HOME` whitelist closure (Bug 5 / Steam-disaster class). End-to-end dogfood Round 4 — running the *just-shipped* hook against realistic multi-line bash scripts — surfaced that the §8 SAFETY hook's pattern extraction was completely broken for any multi-line CMD where the rm/npx call wasn't on line 1. The fix landed in v0.17.2 reduced bare-`$HOME` to a denied case for *single-line* commands but the hook was systematically failing to fire on multi-line ones.
+
+Minimal repro for the CRITICAL leg (pre-fix):
+
+```
+CMD = "TMP=$(mktemp -d)\nrm -rf $UNSAFE_VAR"
+→ hook output: <empty> (no decision, allow)
+```
+
+The single-line equivalent `rm -rf $UNSAFE_VAR` correctly denied. The multi-line form bypassed §8 SAFETY entirely — the exact spec rule the hook exists to enforce. An agent that issues a heredoc-style bash command with any setup line before the destructive call would slip through.
+
+Reverse leg (false-DENY, also pre-fix):
+
+```
+CMD = "TMP=$(mktemp -d)\nnpx prettier@3.0.0 --check ."
+→ deny: "npx unpinned package: TMP=$(mktemp"
+```
+
+Pinned `prettier@3.0.0` flagged as `TMP=$(mktemp` unpinned. Innocent scripts denied; users would either disable the hook or wrap every npx call in a one-liner — eroding §8 trust.
+
+### Root cause
+
+`pre-bash-safety-check.sh` extracted rm-target and npx-package via per-line sed:
+
+```bash
+rm_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1)
+npx_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${NPX_REGEX}//" | ...)
+```
+
+`sed -E` processes line-by-line. Lines without `rm`/`npx` passed through unchanged; only the rm/npx line had its prefix stripped. Downstream:
+
+- `head -n1` (rm path): always returned line 1 regardless of where the rm sat. If rm was on line ≥2, line 1 had no rm content → `rm_target` empty → deny path never fired. **§8 SAFETY bypass.**
+- `for tok in $npx_tail` (npx path): bash word-splitting iterated tokens from ALL lines. Line 1's first token (typically `TMP=$(mktemp`) became `pkg_token` → flagged as unpinned. **False deny on innocent scripts.**
+
+Sanitize already stripped heredoc bodies / line comments / quoted bodies, so the remaining newlines were between *independent command lines* — safe to flatten.
+
+### What changed
+
+- `[fix CRITICAL]` **`hooks/pre-bash-safety-check.sh`** — new `SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')` computed once after sanitize. Both extraction passes (`rm_tail` and `npx_tail`) now read `SANITIZED_CMD_FLAT` instead of `SANITIZED_CMD`. The `head -n1` on the rm extraction is removed (no longer needed; whole flat string contains all targets after the sed strip).
+
+- `[test]` **`tests/fixtures/bash-safety/corpus.tsv`** +7 multi-line cases (`__NL__` LF marker per corpus convention):
+  - `deny`: multi-line `rm -rf $UNSAFE` (was false-ALLOW — the CRITICAL leg).
+  - `deny`: multi-line bare `rm -rf $HOME` on line 2 (v0.17.2 Bug 5 cross-check — confirms the prior fix is intact when rm is on a later line).
+  - `pass`: multi-line `rm -rf $HOME/cache` on line 2 (whitelist subpath survives multi-line).
+  - `pass`: multi-line `npx prettier@3.0.0` on line 2 (was false-DENY).
+  - `pass`: multi-line `npx ./node_modules/.bin/foo` on line 2 (local path survives).
+  - `deny`: multi-line `npx prettier` unpinned on line 2 (real catch preserved).
+  - `deny`: `rm -rf $UNSAFE` on line 3 of 5 (cross-checks the head -n1 removal — earlier lines no longer hide a deeper rm).
+
+  Corpus 69 → 76. `bash tests/hooks/pre-bash-safety.test.sh` 76/76.
+
+- `[fix LOW]` **`commands/claudemd-rules.md`** — `--verbose` was documented as if it were a script flag (`$ARGS --verbose`), but `scripts/hard-rules-audit.js` rejects it as `Unknown argument`. The command's intent was for `--verbose` to be an agent presentation directive (show full `rules` array in output), not a script flag. A user typing `/claudemd-rules --verbose` would have `CLAUDEMD_RULES_DAYS="--verbose"` set as env, then the script would crash with `--days requires a positive integer (got '--verbose')`. The md now documents a 4-row parsing table (`""` / `90` / `--verbose` / `90 --verbose` → env + agent output) that the LLM follows to split numeric and presentation tokens cleanly.
+
+### Why patch (not minor)
+
+Restores documented §8 SAFETY behavior — the hook was supposed to deny `rm -rf $VAR without validating VAR` per spec §8 (immutable), but multi-line CMDs bypassed it. CHANGELOG `fix:` not `change:` or `feat:`. No new hook surface, no new flag, no new spec rule. The corpus addition is regression-anchor only.
+
+Severity disclosure: the CRITICAL leg means any user on plugin v0.17.2 or earlier had a §8 SAFETY hole for multi-line bash CMDs that included `rm -rf $UNSAFE_VAR` on lines ≥2. We have no telemetry indicating active exploitation, but the spec-coverage gap is real — recommend immediate update.
+
+### Tests
+
+- `bash tests/run-all.sh`: 411 node-test + 2 integration suites pass.
+- `bash tests/hooks/pre-bash-safety.test.sh`: 76/76 (was 69/69 after v0.17.2; +7 multi-line cases this release).
+- Manual end-to-end: 6-scenario rm/npx matrix (multi-line + single-line × bare/subpath/glob/pinned/local/unpinned) verified post-fix; v0.17.2's bare-`$HOME` denials still fire correctly when `$HOME` sits on line ≥2.
+
+### Operator notes
+
+- Update path: plugin marketplace update + `/reload-plugins`. Installed plugin picks up the new hook body via `${CLAUDE_PLUGIN_ROOT}` expansion.
+- **If you have v0.17.2 or earlier, agent-issued multi-line bash with `rm -rf $UNSAFE` was silently allowed**. Audit your `~/.claude/logs/claudemd.jsonl` for the absence of `§8-rm-rf-var` rows on sessions where you expect the hook should have fired.
+- The per-cmd escape hatch `[allow-rm-rf-var]` / `[allow-npx-unpinned]` continues to work in multi-line CMDs (already operates on raw `$CMD`, not sanitized).
+
 ## [0.17.2] - 2026-05-14
 
 **Patch — fix: 6-bug end-to-end dogfood pass. §8 SAFETY `rm -rf $VAR` whitelist closure (closes bare-`$HOME` Steam-disaster class); `transcript-vocab-scan` multi-paragraph false-negative; CLI `lint` whitespace-in-positional misclassified as path; CLI `audit` silent-OK on non-JSONL files; manifest `spec_version` drift v6.11.12 → v6.11.16; `update.js` raw Node stack trace on bogus env value.**

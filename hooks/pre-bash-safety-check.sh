@@ -169,6 +169,20 @@ if [[ "${BASH_SAFETY_INDIRECT_CALL:-0}" == "1" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$CMD")
 fi
 SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")
+# Multi-line collapse for pattern-extraction sed passes. Without this, the
+# downstream `s/.*${RM_FLAG_REGEX}//` / `s/.*${NPX_REGEX}//` operate per-line:
+# lines without `rm`/`npx` pass through unchanged, then `head -n1` (rm path)
+# or `for tok in $tail` (npx path) reads tokens from those unrelated lines.
+# Two opposite-direction failures:
+#   - false-ALLOW (CRITICAL): `TMP=$(mktemp -d)\nrm -rf $UNSAFE_VAR` — head -n1
+#     returns the mktemp line (no rm content), rm_target empty, deny path
+#     never fires. §8 SAFETY bypass.
+#   - false-DENY: `TMP=$(mktemp -d)\nnpx prettier@3.0.0` — npx_tail starts with
+#     `TMP=$(mktemp`, flagged as unpinned package. Innocent script denied.
+# Sanitize already stripped heredoc bodies / line comments / quoted bodies, so
+# the remaining newlines are between independent command lines — replacing with
+# spaces is safe (heredoc-body content can't leak in).
+SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 
 declare -a HITS=()
 REASONS=""
@@ -189,7 +203,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
   if (( bypass_rm == 0 )); then
     # Find the rm subcommand's argv after the flag block. Strip up through
     # the rm flags, then take the next non-flag token as the target.
-    rm_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1)
+    rm_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${RM_FLAG_REGEX}//")
     rm_target=""
     for tok in $rm_tail; do
       case "$tok" in
@@ -238,7 +252,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
 
   if (( bypass_npx == 0 )); then
     # Take everything after the first `npx ` up to a command terminator.
-    npx_tail=$(echo "$SANITIZED_CMD" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
+    npx_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
     pkg_token=""
     skip_next=0
     for tok in $npx_tail; do
