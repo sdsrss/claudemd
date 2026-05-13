@@ -8,6 +8,39 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.1] - 2026-05-14
+
+**Patch — fix: `memory-read-check.sh` tag-match phase now sanitizes quoted bodies (and heredoc bodies / line comments) before tag scan; closes the FP class where descriptive text inside `--title "..."` / `-m "..."` / `'release/...'` triggered §11 deny on incidental keyword matches.**
+
+### Background
+
+User dogfood report: `glab mr create --title "fix(ws): ... 修 Mac packaged ..."` denied by §11 with `feedback_linux_case_audit.md` listed, even though the push had no semantic relationship to the linux-case memory. Root cause: tag `mac` (likely 3-char single-word EN tag, exact-word with declension tolerance) exact-matched `Mac` inside the quoted `--title` body.
+
+v0.9.28 fixed the TRIGGER stage (segment-anchor `release|deploy|ship` so `git commit -m "release notes"` no longer fires the scan; Cases 14 + 22 lock). The TAG-match stage downstream was left scanning raw `$CMD` including quoted bodies — same inconsistency class. Title text is user-written description, not topic declaration; treating it as authoritative for tag matching produces FP fan-out on every MR/PR with a descriptive title.
+
+### What changed
+
+- `[fix]` **`hooks/memory-read-check.sh`** — new `sanitize_for_tagmatch()` function modeled on `pre-bash-safety-check.sh sanitize_cmd()`. Strips heredoc bodies (multi-line state, `<<-?TAG` introducer + bare-TAG terminator), line comments (`# ...` at line start or after whitespace), and ALL quoted-string bodies (both `"..."` and `'...'`). Simpler than `pre-bash-safety` counterpart: tag-match has no `$VAR` expansion sensitivity (the literal `$VAR` string carries no tag-relevant topic info), so `"foo"` and `"$VAR"` strip uniformly. Empty-quote markers preserved to keep token boundaries. Tag-match grep (~L134) switched from `$CMD` to `$CMD_TAGMATCH` (sanitized form). TRIGGER stage unchanged — still reads `$CMD_FLAT` and its v0.9.28 segment-anchor regex is already correct for quoted-body cases.
+
+- `[test]` **`tests/hooks/memory-read-check.test.sh`** — 2 new cases (27 → 29 total):
+  - **Case 28**: `glab mr create --title "fix macos issue"` with MEMORY tag `[mac, ship]` — pre-fix denies on `mac` exact-match against `macos` inside quoted `--title`, post-fix sanitize strips to `--title ""` so no match → pass.
+  - **Case 29**: `git push origin 'release/v1.0'` with MEMORY tag `[release]` — pre-fix denies on `release` matching inside single-quoted branch ref, post-fix single-quote strip eliminates → pass.
+  - **Case 21 setup adjusted**: declension-tolerance test originally used `git push  # added 2 hooks` form. v0.17.1 sanitize correctly strips line-comments before tag scan (comments are descriptive prose, not topic declaration), so `hooks` keyword no longer survives to match tag `hook`. Test rewritten as `git push origin hooks-fix` — branch ref is real tokenized intent and survives sanitize; locks the declension tolerance via a non-comment carrier.
+
+### Why patch (not minor)
+
+Per `feedback_claudemd_spec_single_source_of_truth.md` + core §2 release-requirements: this is a bugfix restoring intended/documented hook behavior (TRIGGER stage already anchored quoted-body in v0.9.28; tag-match should too — same inconsistency class). CHANGELOG `fix:` not `change:`. No LLM-visible metadata bump (spec content unchanged, only hook implementation). No contract break for hook consumers — fewer false denies, never more.
+
+### Tests
+
+- `tests/hooks/memory-read-check.test.sh` 29/29 PASS (was 27/27 + 2 new).
+- All 22 hook test files PASS (no cross-regression): `pre-bash-safety 59/59`, `contract 49/49`, `banned-vocab 20/20`, `memory-coverage-scan 12/12`, etc.
+- Full JS suite + integration test: `OVERALL: all suites passed`.
+
+### Operator notes
+
+No action required — hook lives via `${CLAUDE_PLUGIN_ROOT}` expansion (per `reference_plugin_root_hook_expansion.md`), so installed plugin picks up the new sanitize on next file Read. Existing `[skip-memory-check]` bypass still works for any residual FPs (e.g. unquoted tokens like `git push origin release/v1.0` without quotes are out of scope for this patch — quote-aware strip only). For unquoted-body FPs, run `/claudemd-doctor memory-tag-specificity` on your project to surface broad single-word EN tags (`mac`, `linux`, `case`) that should be made specific (`macos-shell-portability`, `linux-case-audit`).
+
 ## [0.17.0] - 2026-05-11
 
 **Minor — refactor: spec v6.11.16 §2.1 ROUTE single-source collapse; core spec −470B (headroom 396B → 866B).**

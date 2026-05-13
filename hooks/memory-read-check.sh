@@ -42,6 +42,45 @@ TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]
 CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
+# vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-
+# segment-start so `release` inside `git commit -m "release notes"` no longer
+# fires the scan. The TAG-match stage (below) was left scanning the raw command
+# including quoted bodies — so `glab mr create --title "fix macos issue"`
+# fires `glab mr` trigger correctly (intentional), then tag `mac` exact-matches
+# `macos` inside the quoted `--title` argument. Title text is a user-written
+# description, not a topic declaration; treating it as authoritative for tag
+# matching produced FP fan-out on every MR/PR with a descriptive title.
+#
+# Fix: strip heredoc bodies, line comments, and ALL quoted-string bodies before
+# tag matching. Mirrors `pre-bash-safety-check.sh sanitize_cmd()` but simpler:
+# tag-match has no `$VAR` expansion sensitivity (the literal `$VAR` string
+# doesn't carry topic information either way), so both `"foo"` and `"$VAR"`
+# strip uniformly. Empty-quote markers preserved to keep token boundaries.
+sanitize_for_tagmatch() {
+  local raw="$1" out="" line in_heredoc=0 heredoc_tag=""
+  local heredoc_re=$'<<-?[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if (( in_heredoc )); then
+      if [[ "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then
+        in_heredoc=0; heredoc_tag=""
+      fi
+      out+=$'\n'
+      continue
+    fi
+    if [[ "$line" =~ $heredoc_re ]]; then
+      heredoc_tag="${BASH_REMATCH[1]}"
+      in_heredoc=1
+      line="${line%%<<*}"
+    fi
+    out+="$line"$'\n'
+  done <<< "$raw"
+  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
+  out=$(printf '%s' "$out" | sed -E 's/"[^"]*"/""/g')
+  out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
+  printf '%s' "$out"
+}
+CMD_TAGMATCH=$(sanitize_for_tagmatch "$CMD")
+
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
@@ -131,7 +170,7 @@ while IFS= read -r line; do
       # Tag escaping: regex meta chars in tags (`.`, `*`, `+`, `[`, `]`,
       # `(`, `)`, `?`, `{`, `}`, `|`, `^`, `$`, `\`) escaped before use.
       ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
-      if echo "$CMD" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
+      if echo "$CMD_TAGMATCH" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
         MATCHES+=("$FILE")
         break
       fi

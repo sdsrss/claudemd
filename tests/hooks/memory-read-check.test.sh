@@ -347,8 +347,12 @@ touch "$S21_MEM/feedback_hook_lib.md"
 SESS="sess21"
 S21_CWD="${CWD}-s21"
 echo '{"tool":"Read","path":"/unrelated"}' > "$S21_DIR/$SESS.jsonl"
-# CMD contains `hooks` (plural), tag `hook` should match (declension tolerance).
-EVENT_21="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push  # added 2 hooks\"},\"cwd\":\"$S21_CWD\"}"
+# CMD contains `hooks` (plural) in an unquoted branch ref, tag `hook` should
+# match (declension tolerance). Pre-vNEXT used `# added 2 hooks` form; that
+# regressed once vNEXT's sanitize strips line-comments before tag scan
+# (correctly — comments are descriptive prose, not topic declaration). Branch
+# ref `hooks-fix` is real tokenized intent and survives sanitize.
+EVENT_21="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin hooks-fix\"},\"cwd\":\"$S21_CWD\"}"
 OUT=$(bash "$HOOK" <<<"$EVENT_21" 2>&1)
 DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 21 hook tag still matches hooks plural (declension tolerance)" \
@@ -470,7 +474,55 @@ echo "$LAST" | jq -e '.extra.bypass_reason == "no-space"' >/dev/null \
   && echo "PASS: 27 bypass tolerates no space after colon" \
   || { echo "FAIL: 27b (got: $LAST)"; FAIL=$((FAIL+1)); }
 
+# Case 28 (E): vNEXT — tag inside `--title "..."` quoted body must NOT match.
+# v0.9.28 anchored TRIGGER at command-segment-start (Case 14 locked `release`
+# inside quoted commit msg). Tag-match stage was left scanning raw command, so
+# `glab mr create --title "fix macos issue"` fired tag `mac` exact-match against
+# `macos` inside the quoted title. Title text is description, not topic
+# declaration. Fix: sanitize quoted bodies before tag scan.
+S28_DIR="$HOME/.claude/projects/${ENCODED}-s28"
+S28_MEM="$S28_DIR/memory"
+mkdir -p "$S28_MEM"
+cat > "$S28_MEM/MEMORY.md" <<'EOF'
+- [macOS shell portability](feedback_macos.md) `[mac, ship]` — should not match Mac in title
+EOF
+touch "$S28_MEM/feedback_macos.md"
+SESS="sess28"
+S28_CWD="${CWD}-s28"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S28_DIR/$SESS.jsonl"
+EVENT_28="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"glab mr create --title \\\"fix macos issue\\\"\"},\"cwd\":\"$S28_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_28" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 28 mac tag inside --title body → no FP" \
+  || { echo "FAIL: 28 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 29 (E): vNEXT — tag inside single-quoted body must NOT match. Same class
+# as 28, single-quote variant. `git push origin 'release/v1.0'` should not fire
+# tag `release` from the quoted branch ref.
+S29_DIR="$HOME/.claude/projects/${ENCODED}-s29"
+S29_MEM="$S29_DIR/memory"
+mkdir -p "$S29_MEM"
+cat > "$S29_MEM/MEMORY.md" <<'EOF'
+- [Release flow](feedback_release_flow.md) `[release, push]` — release tag should not match quoted branch
+EOF
+touch "$S29_MEM/feedback_release_flow.md"
+SESS="sess29"
+S29_CWD="${CWD}-s29"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S29_DIR/$SESS.jsonl"
+# Tag `push` still matches `push` in the unquoted command verb → deny expected,
+# but Case 29 is about `release` not falsely matching from inside the quoted
+# branch ref. To isolate just the quoted-body sanitize, use a single-tag fixture
+# with only `release` (no `push`); pre-fix this denies, post-fix passes.
+cat > "$S29_MEM/MEMORY.md" <<'EOF'
+- [Release flow](feedback_release_flow.md) `[release]` — release should not match quoted branch
+EOF
+EVENT_29="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin 'release/v1.0'\"},\"cwd\":\"$S29_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_29" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 29 release tag inside 'quoted' branch → no FP" \
+  || { echo "FAIL: 29 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((27 - FAIL))/27 passed"; exit 1
+  echo "Tests: $((29 - FAIL))/29 passed"; exit 1
 fi
-echo "Tests: 27/27 passed"
+echo "Tests: 29/29 passed"
