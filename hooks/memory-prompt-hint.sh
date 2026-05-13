@@ -59,7 +59,13 @@ while IFS= read -r line; do
   [[ -z "$FILE" ]] && continue
 
   # Backtick form first (precise), then plain.
-  TAG_BLOCK=$(echo "$line" | sed -n 's/.*`\[\([^]]*\)\]`.*/\1/p')
+  # Both forms ANCHOR on `.md)` so a backtick-wrapped `[token]` in the
+  # description (e.g. `... — see also `[other]` inline`) does NOT get
+  # mistaken for the tag block. Pre-fix the backtick variant was unanchored
+  # and the greedy `.*` ate through to the LAST `\`[...]\`` on the line —
+  # making the description's decorative backtick block the parsed tag and
+  # the real tag invisible.
+  TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
   if [[ -z "$TAG_BLOCK" ]]; then
     TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*\[\([^]]*\)\][[:space:]]*[—-].*/\1/p')
   fi

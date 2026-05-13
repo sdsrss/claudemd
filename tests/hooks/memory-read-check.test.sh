@@ -522,7 +522,38 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 29 release tag inside 'quoted' branch → no FP" \
   || { echo "FAIL: 29 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 30 (v0.17.5): backtick-form TAG_BLOCK anchors on `.md)` so a decorative
+# `\`[token]\`` inside the description doesn't get parsed as the tag. Pre-fix
+# the greedy `.*\`\[...\]\`.*` matched the LAST backtick block on the line, so
+# a real tag `[shippy]` followed by description "see also `[other]` inline"
+# made `other` the parsed tag — meaning `shippy` keyword in a command silently
+# missed the rule, and `other` in an unrelated context falsely fired.
+S30_DIR="$HOME/.claude/projects/${ENCODED}-s30"
+S30_MEM="$S30_DIR/memory"
+mkdir -p "$S30_MEM"
+cat > "$S30_MEM/MEMORY.md" <<'EOF'
+- [Shippy](feedback_shippy.md) `[shippy]` — see also `[othershippy]` reference
+EOF
+touch "$S30_MEM/feedback_shippy.md"
+SESS="sess30"
+S30_CWD="${CWD}-s30"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S30_DIR/$SESS.jsonl"
+
+# Real tag fires — `shippy` in command should match the parsed tag block.
+EVENT_30_REAL="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin shippy-branch\"},\"cwd\":\"$S30_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_30_REAL" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 30 real tag (backtick form, .md)-anchored) fires deny" \
+  || { echo "FAIL: 30 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Decorative `\`[other]\`` in description does NOT fire.
+EVENT_30_FP="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin othershippy-branch\"},\"cwd\":\"$S30_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_30_FP" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" != "deny" ]] && echo "PASS: 31 decorative backtick-block in desc does NOT match" \
+  || { echo "FAIL: 31 (expected pass, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((29 - FAIL))/29 passed"; exit 1
+  echo "Tests: $((31 - FAIL))/31 passed"; exit 1
 fi
-echo "Tests: 29/29 passed"
+echo "Tests: 31/31 passed"

@@ -8,6 +8,71 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.5] - 2026-05-14
+
+**Patch — fix: `memory-read-check.sh` + `memory-prompt-hint.sh` backtick-form TAG_BLOCK parsing matched the LAST `\`[token]\`` on each MEMORY.md index line — so a decorative backtick block in the description hijacked the parsed tag and silently shadowed the real tag.**
+
+### Background
+
+Round 6 dogfood probe of `memory-prompt-hint.sh` against a synthetic MEMORY.md line:
+
+```
+- [Has both](feedback_btq.md) `[realtag]` — see also `[decortag]` inline
+```
+
+Prompts containing `realtag` were SILENT (no hint emitted). Prompts containing `decortag` (which sits in the description, not the tag block) WERE flagged. Both backtick blocks parsed the same way because the regex was:
+
+```
+sed -n 's/.*`\[\([^]]*\)\]`.*/\1/p'
+```
+
+The greedy `.*` consumed up to the LAST `\`[...]\`` token on the line — so descriptions that decoratively quote a token inside backticks (a very common technical-prose pattern) silently became the parsed tag.
+
+**Production impact**: the project's own `MEMORY.md` has at least one affected entry — `feedback_cc_cwd_encoding_dots.md` is documented as
+
+```
+... `[cwd, encoding, projects, underscore]` — CC encodes every non-`[a-zA-Z0-9-]` char to `-`; ...
+```
+
+Pre-fix, this line's parsed tag was `a-zA-Z0-9-` (the regex example inside the description), not the intended `cwd, encoding, projects, underscore`. Any prompt about cwd encoding / project paths / underscore handling silently missed the §11 read-check rule because the real tags were never registered.
+
+### What changed
+
+- `[fix MED]` **`hooks/memory-read-check.sh`** — backtick TAG_BLOCK regex now anchors on `.md)`:
+
+  ```diff
+  - sed -n 's/.*`\[\([^]]*\)\]`.*/\1/p'
+  + sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p'
+  ```
+
+  The `.md)` anchor forces the match to start at the close of the markdown link, before any decorative backtick block in the description. The greedy `.*` before `.md)` is fine because `.md)` itself is the unambiguous anchor (only one per line in practice — the link target).
+
+  Mirrors the existing plain-form fallback (line 146 of the same file), which already anchored on `.md)` since v0.11.0. The backtick variant was added separately and missed the anchor.
+
+- `[fix MED]` **`hooks/memory-prompt-hint.sh`** — same one-line change; this hook duplicates the parsing logic from `memory-read-check.sh` and was added with the same flaw in v0.11.0.
+
+- `[test]` **`tests/hooks/memory-read-check.test.sh`** Cases 30+31 — real-tag-matched + decorative-token-not-matched pair, anchored on a fresh `S30_DIR/S30_CWD` so the existing Cases don't interfere. 29 → 31.
+
+- `[test]` **`tests/hooks/memory-prompt-hint.test.sh`** Cases 13+14 — same pair on a `BTQ_CWD` fixture. 12 → 14.
+
+### Why patch
+
+Restores the documented spec §11 tag-match contract — only `\`[tag, tag]\`` immediately following the markdown link is a tag block. Description-decorative backtick blocks were never supposed to be tags. CHANGELOG `fix:` not `change:`. No new flags, no new behavior, no LLM-visible metadata bump (the hooks are mechanical filters; spec text is unchanged).
+
+### Tests
+
+- `bash tests/run-all.sh`: 411 node-test + 2 integration suites pass.
+- `bash tests/hooks/memory-read-check.test.sh`: 31/31 (was 29; +2).
+- `bash tests/hooks/memory-prompt-hint.test.sh`: 14/14 (was 12; +2).
+- All other hook suites unchanged (76/76 pre-bash-safety, 24/24 banned-vocab, 15/15 ship-baseline, etc.).
+- `spec-coherence-audit`: 3/3 clean.
+
+### Operator notes
+
+- Update path: plugin marketplace update + `/reload-plugins`. `${CLAUDE_PLUGIN_ROOT}` expansion picks up new hook bodies automatically.
+- **If you have a MEMORY.md entry whose description contains backtick-wrapped tokens** (`` `[regex]` ``, `` `[example]` ``, `` `[type]` ``, etc.), this release re-enables tag-matching on the real tag — you may see hints / denies fire on prompts you previously didn't, because the real tags are now correctly indexed.
+- Audit your project's MEMORY.md: `grep -E '\`\[[^]]+\]\`.*\`\[[^]]+\]\`' <path-to-MEMORY.md>` lists lines with multiple backtick blocks that were ambiguously parsed pre-fix.
+
 ## [0.17.4] - 2026-05-14
 
 **Patch — fix: `banned-vocab-check.sh` + `ship-baseline-check.sh` trigger filter false-positives on `git commit` / `git push` substrings inside shell comments and heredoc bodies. Ports the v0.9.28 `memory-read-check.sh` segment-anchor regex (CMD flatten + `^|[[:space:]]*[;&|]+[[:space:]]*` separator) to both hooks. Closes the last two raw-`$CMD`-grep sites identified in the v0.17.3 sister-pattern sweep.**

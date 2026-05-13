@@ -183,8 +183,45 @@ else
   ng "12 expected 5 lines + overflow footer (got line_count=$LINE_COUNT)"
 fi
 
+# Case 13: backtick-form TAG_BLOCK must anchor on `.md)` — decorative
+# `\`[token]\`` in the description does NOT get parsed as the tag.
+# Pre-fix, the greedy `.*\`\[...\]\`.*` regex matched the LAST backtick
+# block on the line, so a description like "see also `[other]` inline"
+# made `other` the parsed tag and the real tag invisible.
+BTQ_CWD="/work/proj-btq"
+BTQ_ENCODED=$(echo "$BTQ_CWD" | tr '/._' '-')
+BTQ_PROJ="$HOME/.claude/projects/$BTQ_ENCODED"
+BTQ_MEM="$BTQ_PROJ/memory"
+mkdir -p "$BTQ_MEM"
+cat > "$BTQ_MEM/MEMORY.md" <<'EOF'
+- [Has both](feedback_btq.md) `[realtag]` — desc with `[decortag]` inline
+EOF
+touch "$BTQ_MEM/feedback_btq.md"
+SESS13="sess13"
+PROMPT_13_REAL="touching realtag in conversation"
+EVENT_13_REAL=$(jq -cn --arg p "$PROMPT_13_REAL" --arg s "$SESS13" --arg c "$BTQ_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(bash "$HOOK" <<<"$EVENT_13_REAL" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if echo "$CTX" | grep -q "feedback_btq.md"; then
+  ok "13 backtick TAG_BLOCK anchored — real tag matched"
+else
+  ng "13 expected feedback_btq.md for prompt with 'realtag' (got: $CTX)"
+fi
+
+PROMPT_13_FP="touching decortag in conversation"
+EVENT_13_FP=$(jq -cn --arg p "$PROMPT_13_FP" --arg s "$SESS13" --arg c "$BTQ_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(bash "$HOOK" <<<"$EVENT_13_FP" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if [[ -z "$CTX" ]]; then
+  ok "14 decorative \`[token]\` in description does NOT match as tag"
+else
+  ng "14 expected SILENT for 'decortag' (description backtick block); got: $CTX"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"
+  echo "Tests: $((14 - FAIL))/14 passed"
   exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 14/14 passed"
