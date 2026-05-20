@@ -172,6 +172,49 @@ test('status({verbose:true}) reflects persisted kill-switch from settings.json (
   assert.equal(bv.persisted, true, 'persisted reflects settings.json toggle');
 });
 
+test('status.features.bashReadonlyFastPath defaults TRUE when env var unset (v0.20.0)', async () => {
+  // v0.20.0 promotion: default flipped from opt-in OFF to opt-out ON.
+  // Verify the new default state.
+  const saved = process.env.BASH_READONLY_FAST_PATH;
+  try {
+    delete process.env.BASH_READONLY_FAST_PATH;
+    const r = await status();
+    assert.equal(r.features.bashReadonlyFastPath, true,
+      'unset env var must mean fast-path ON per v0.20.0 default flip');
+  } finally {
+    if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
+    else process.env.BASH_READONLY_FAST_PATH = saved;
+  }
+});
+
+test('status.features.bashReadonlyFastPath honors explicit opt-out =0 (v0.20.0)', async () => {
+  const saved = process.env.BASH_READONLY_FAST_PATH;
+  try {
+    process.env.BASH_READONLY_FAST_PATH = '0';
+    const r = await status();
+    assert.equal(r.features.bashReadonlyFastPath, false,
+      'explicit BASH_READONLY_FAST_PATH=0 must opt OUT of fast-path');
+  } finally {
+    if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
+    else process.env.BASH_READONLY_FAST_PATH = saved;
+  }
+});
+
+test('status.features.bashReadonlyFastPath ON for any non-zero value (v0.20.0)', async () => {
+  // Any value other than the literal "0" → ON. Robustness against typos.
+  const saved = process.env.BASH_READONLY_FAST_PATH;
+  try {
+    process.env.BASH_READONLY_FAST_PATH = '1';
+    assert.equal((await status()).features.bashReadonlyFastPath, true);
+    process.env.BASH_READONLY_FAST_PATH = 'on';
+    assert.equal((await status()).features.bashReadonlyFastPath, true,
+      'truthy strings other than the literal "0" must still mean ON');
+  } finally {
+    if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
+    else process.env.BASH_READONLY_FAST_PATH = saved;
+  }
+});
+
 test('status.features.bashSafetyIndirectCall reflects env var (v0.6.0)', async () => {
   const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
   try {

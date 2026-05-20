@@ -43,14 +43,16 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
-# R-N5 readonly fast-path (v0.8.3, opt-in default OFF).
-# When BASH_READONLY_FAST_PATH=1 and CMD is a definitely-read-only shape
+# R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion from
+# v0.8.3 opt-in default-OFF). When CMD is a definitely-read-only shape
 # (no shell-meta, first token in safe-reader whitelist), exit before the
 # sanitize/unwrap pipeline. This is the highest-leverage hook for the
 # fast-path: sanitize_cmd + RM/NPX detectors run on EVERY Bash invocation
 # in the steady-state hook config; readonly skip drops them entirely for
 # `ls`, `cat /etc/foo`, `git log`, etc.
-if [[ "${BASH_READONLY_FAST_PATH:-0}" == "1" ]] && hook_is_readonly_bash "$CMD"; then
+#
+# Opt-out: BASH_READONLY_FAST_PATH=0 (any other value or unset → ON).
+if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD"; then
   exit 0
 fi
 

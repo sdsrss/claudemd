@@ -96,7 +96,7 @@ CC runs all configured PreToolUse hooks for `Bash` sequentially in declaration o
 
 Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per fail-open contract. Stop / SessionStart / UserPromptSubmit / PostToolUse hooks run all declared hooks regardless (none can block; advisories accumulate). Internal hook errors (missing `jq`, malformed event JSON, unreadable patterns file) fail-open; failures do NOT propagate to subsequent hooks.
 
-Opt-in `BASH_READONLY_FAST_PATH=1` short-circuits hooks 1, 2, and 4 when the command is a definitely-read-only shape (no shell-meta, first token in safe-reader whitelist — `ls`, `cat`, `git log`, etc.). Hook 3 only fires on `git push` so the fast-path doesn't apply.
+**Readonly fast-path** (v0.8.3 introduced opt-in default-OFF; **v0.20.0 promoted to default-ON** via §13.3 advisory→enforce gate): hooks 1, 2, and 4 short-circuit when the command is a definitely-read-only shape (no shell-meta, first token in safe-reader whitelist — `ls`, `cat`, `git log`, `git status`, `git diff`, `git rev-parse`, `pwd`, `echo`, `head`, `tail`, etc.). Hook 3 only fires on `git push` so the fast-path doesn't apply. Opt-out: `export BASH_READONLY_FAST_PATH=0` (or any other value than the literal `0` is treated as ON).
 
 ## Commands
 

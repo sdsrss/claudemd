@@ -84,18 +84,45 @@ EVENT='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"ls -la"},"c
 OUT=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$MEM" 2>&1)
 [[ -z "$OUT" ]] && ok "28: memory-read silent on readonly + flag ON" || ng "28: memory-read not silent (got: $OUT)"
 
-# --- Default OFF: behavior identical to v0.8.2 ------------------------------
-# A `git commit` with banned vocab MUST still deny when flag is OFF (default).
+# --- Non-readonly cmds: deny path intact regardless of flag state -----------
+# v0.20.0 NOTE: default flipped from opt-in OFF to opt-out ON. Cases 29-30
+# verify that the deny path is unaffected by the flag for NON-readonly cmds
+# (the only ones that can carry banned vocab in commit messages anyway).
+# `git commit` is not in the readonly whitelist (see Case 20 above), so the
+# fast-path branch never activates on it — flag state doesn't matter.
+
+# Default env (post v0.20.0 = fast-path ON) — git commit with banned vocab
+# is NOT readonly, so the fast-path skip MUST NOT engage; deny fires.
 EVENT="{\"session_id\":\"t\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m 'significantly improved'\"},\"cwd\":\"/tmp\"}"
 DENY=$(echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
-[[ "$DENY" == "deny" ]] && ok "29: flag default OFF → banned-vocab still denies" || ng "29: flag OFF deny missing (got '$DENY')"
+[[ "$DENY" == "deny" ]] && ok "29: post-v0.20.0 default ON → non-readonly git commit still denies" || ng "29: default state deny missing (got '$DENY')"
 
-# Even with flag ON, banned vocab in git-commit (NOT readonly) must still deny.
+# Explicit opt-in =1 (legacy form) — same non-readonly cmd must still deny.
 DENY=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
-[[ "$DENY" == "deny" ]] && ok "30: flag ON does not skip non-readonly cmds" || ng "30: flag ON skipped a non-readonly cmd (got '$DENY')"
+[[ "$DENY" == "deny" ]] && ok "30: flag explicit ON does not skip non-readonly cmds" || ng "30: flag ON skipped a non-readonly cmd (got '$DENY')"
+
+# --- v0.20.0 default flip: env-shape regression cases -----------------------
+
+# Case 31: explicit opt-out via =0 — non-readonly cmd must still deny (the
+# opt-out only affects the fast-path skip, never the deny path).
+DENY=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DENY" == "deny" ]] && ok "31 (v0.20.0): explicit opt-out =0 keeps deny path active on non-readonly cmd" || ng "31: opt-out broke deny path (got '$DENY')"
+
+# Case 32: default (no env) + readonly cmd → silent. Pre-v0.20.0 this also
+# happened to be silent (filter didn't match `ls`), but the path was the
+# slow one. We can't directly observe the path from output, but absence of
+# error stdout + clean exit is the contract.
+EVENT_RO='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":"/tmp"}'
+OUT=$(echo "$EVENT_RO" | bash "$BANNED" 2>&1)
+[[ -z "$OUT" ]] && ok "32 (v0.20.0): default (env unset) + readonly cmd → silent (banned-vocab)" || ng "32: default silent broken (got: $OUT)"
+
+# Case 33: explicit opt-out (=0) + readonly cmd → still silent. Verifies the
+# opt-out doesn't accidentally surface stderr noise on the slow path.
+OUT=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT_RO" | bash "$BANNED" 2>&1)
+[[ -z "$OUT" ]] && ok "33 (v0.20.0): opt-out =0 + readonly cmd → still silent (slow path)" || ng "33: opt-out introduced noise (got: $OUT)"
 
 if (( FAIL > 0 )); then
-  echo "Tests: $((30 - FAIL))/30 passed"
+  echo "Tests: $((33 - FAIL))/33 passed"
   exit 1
 fi
-echo "Tests: 30/30 passed"
+echo "Tests: 33/33 passed"

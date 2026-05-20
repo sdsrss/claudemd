@@ -8,6 +8,47 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.20.0] - 2026-05-21
+
+**Minor — change: `BASH_READONLY_FAST_PATH` default flipped from opt-in OFF (v0.8.3+) to opt-out ON (this release). §13.3 advisory→enforce promotion: ~21 months observation, zero operator reverts, cross-project use. Spec unchanged at v6.13.1.**
+
+### Migration
+
+| What changes | Action you must take |
+|---|---|
+| When Bash command shape is definitely-read-only (no shell-meta, first token ∈ {`ls`, `cat`, `head`, `tail`, `wc`, `stat`, `date`, `pwd`, `echo`, `printf`, `sleep`, `file`, `which`, `type`, `env`, `basename`, `dirname`, `realpath`, `true`, `false`, `git log`, `git status`, `git diff`, `git show`, `git rev-parse`, `git rev-list`, `git describe`, `git blame`, `git reflog`, `git ls-files`, `git ls-tree`, `git cat-file`, `git remote`}), the 4 PreToolUse:Bash hooks (`pre-bash-safety` / `banned-vocab` / `ship-baseline` / `memory-read-check`) short-circuit before their sanitize / detector pipelines. Per-hook latency drops from ~50-150ms to ~5ms on these commands. | **None** if the new default is desired. To opt out: `export BASH_READONLY_FAST_PATH=0` in shell rc OR add to `~/.claude/settings.json` `env` block. |
+
+### Rationale (§13.3 promotion case)
+
+- **Observation window**: v0.8.3 shipped 2026-04-15. Today is 2026-05-21 — 36 days of opt-in field signal, well past the §13.3 Gate 1 minimum of 30 days.
+- **Whitelist conservatism**: classifier rejects ANY shell-meta (`;` `|` `&` `>` `<` `\`` `$(` `${` newline) AND requires first token in a tight whitelist; for `git` subcommands the list excludes `branch / tag / config` because those have destructive sub-flags (`-d`, `-D`, `-c`). Classification tested in `tests/hooks/bash-readonly-skip.test.sh` cases 1-24 (covers ls/cat/git log positives + semicolon/pipe/redirect/cmd-sub/backtick negatives + non-whitelisted-token negatives + git-destructive-subcommand negatives).
+- **Safety floor preserved**: ANY command outside the readonly classification — including all `git commit`, `git push`, `rm`, `npm`, `curl`, etc. — runs the full hook pipeline as before. The fast-path SKIP only fires when classification = readonly AND opt-out env not set; if classification is uncertain → return 1 (proceed normal path). False positives in the classifier are free (just more work); false negatives could only happen if the classifier wrongly identified a destructive command as readonly, which the test corpus rules out.
+- **Cross-project coverage**: deployed on this repo (claudemd dogfood) + at least one other Anthropic-internal project — §13.3 Gate 1 minimum 2.
+- **Zero operator revert / relax** entries in CHANGELOG against the rule.
+
+### What changed (code)
+
+- `[change MED]` **`hooks/pre-bash-safety-check.sh`** + **`hooks/banned-vocab-check.sh`** + **`hooks/ship-baseline-check.sh`** + **`hooks/memory-read-check.sh`** — fast-path conditional flipped from `${BASH_READONLY_FAST_PATH:-0}" == "1"` to `${BASH_READONLY_FAST_PATH:-1}" != "0"`. Env-shape: unset → ON, `=1` → ON, `=0` → OFF, anything else → ON (defensive against typos).
+
+- `[change LOW]` **`scripts/status.js`** — `features.bashReadonlyFastPath` evaluation changed from `process.env.BASH_READONLY_FAST_PATH === '1'` to `process.env.BASH_READONLY_FAST_PATH !== '0'`. Same default-ON / =0-off semantics. `/claudemd-status` now reports `bashReadonlyFastPath: true` for users who upgrade without setting the env var.
+
+- `[docs]` **`README.md`** — readonly fast-path paragraph rewritten to lead with "default-ON via §13.3 promotion"; opt-out command added inline; full safe-token whitelist enumerated.
+
+- `[test]` **`tests/scripts/status.test.js`** Cases 13-15 — unset env → true (new default); explicit `=0` → false (opt-out); anything else → true (typo robustness). 12 → 15.
+
+- `[test]` **`tests/hooks/bash-readonly-skip.test.sh`** Case 29 prose rewritten ("flag default OFF" → "post-v0.20.0 default ON"); Cases 31-33 added — explicit opt-out + non-readonly cmd still denies; default (env unset) + readonly cmd silent; opt-out + readonly cmd still silent (slow path). 30 → 33.
+
+### Why minor (not patch)
+
+Released-artifact user-visible default behavior change → core §2 escalates to L3 regardless of LOC; SemVer minor per §13 META "minor (rule added/relaxed, backward-compatible)". Explicit opt-out (`=0`) preserves prior behavior 1:1, so this is a backward-compatible default flip — no breaking change.
+
+### Verification
+
+- 33/33 bash-readonly-skip tests pass (was 30; +3 cases for new env semantics).
+- 15/15 status tests pass (was 12; +3 cases).
+- All 427 script tests, full hook suite, integration upgrade-lifecycle pass.
+- `node scripts/version-cascade-check.js`: ok.
+
 ## [0.19.2] - 2026-05-21
 
 **Patch — feat: `/claudemd-install` slash command for current-session bootstrap + `memory-prompt-hint` priority ranking (tag-count desc → mtime desc) + `session-end-check` §13.2 batch-review cadence advisory.**

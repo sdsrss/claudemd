@@ -115,13 +115,14 @@ export async function status({ verbose = false } = {}) {
   // v0.6.0+: surface opt-in feature flags so /claudemd-status reflects what
   // the hooks will actually do this session.
   //   bashSafetyIndirectCall (v0.6.0): bash/sh/zsh/eval unwrap in pre-bash-safety
-  //   bashReadonlyFastPath (v0.8.3 R-N5): skip 4 PreToolUse:Bash hooks for
-  //     definitely-read-only commands (ls / cat / git log / etc.)
+  //   bashReadonlyFastPath (v0.8.3 R-N5, **v0.20.0 default-ON**): skip 4
+  //     PreToolUse:Bash hooks for definitely-read-only commands (ls / cat /
+  //     git log / etc.). Default flipped on §13.3 promotion. Opt-out: =0.
   //   transcriptVocabScan (v0.8.3 R-N8): PostToolUse advisory scan of
   //     assistant text against §10-V banned-vocab.patterns
   const features = {
     bashSafetyIndirectCall: process.env.BASH_SAFETY_INDIRECT_CALL === '1',
-    bashReadonlyFastPath: process.env.BASH_READONLY_FAST_PATH === '1',
+    bashReadonlyFastPath: process.env.BASH_READONLY_FAST_PATH !== '0',
     transcriptVocabScan: process.env.TRANSCRIPT_VOCAB_SCAN === '1',
   };
 
