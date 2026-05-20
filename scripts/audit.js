@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -32,9 +32,17 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
   // (no row ever carried a section), in which case bySection falls back to
   // the single-bucket `(unset)` behavior.
   const cutoverTs = detectCutover(log);
+  // v0.17.7 — strip session_id='t'/'test' sentinels (hook unit-test traffic)
+  // from every behavior view. Initial design filtered only bySection/byTrend
+  // and left byHook raw, which produced a 4.7× internal inconsistency
+  // (byHook.banned-vocab.deny=345 vs bySection["§10-V"].deny=73 on the same
+  // run) — operator could not tell which was authoritative. dataIntegrity
+  // alone counts the full set + surfaces the strip-count.
+  const realHits = excludeTestSessions(hits);
+  const realTrendHits = excludeTestSessions(trendHits);
   return {
     windowDays: days,
-    totalHits: hits.length,
+    totalHits: realHits.length,
     // dataIntegrity surfaces silent log corruption so §13.1 reviewers can
     // tell "0 hits because rule is dormant" vs "0 hits because half the
     // log lines failed JSON.parse". skipRatio in [0, 1].
@@ -46,17 +54,21 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
       // ISO-8601 UTC. null ⇒ no spec_section row ever observed; null-section
       // rows in bySection / byTrend collapse to legacy `(unset)`.
       cutoverTs: cutoverTs != null ? new Date(cutoverTs).toISOString() : null,
+      // v0.17.7 — diagnostic: how many session_id='t'/'test' rows were
+      // stripped from every view. Lets the operator confirm the filter ran
+      // and quantify hook-test traffic without grepping the raw log.
+      testSessionsFiltered: hits.length - realHits.length,
     },
-    byHook: groupByHook(hits),
-    bySection: groupBySection(hits, cutoverTs),
-    byBypass: byBypass(hits),
-    byFailOpen: byFailOpen(hits),
-    byTrend: byTrend(trendHits, trendDays, cutoverTs),
+    byHook: groupByHook(realHits),
+    bySection: groupBySection(realHits, cutoverTs),
+    byBypass: byBypass(realHits),
+    byFailOpen: byFailOpen(realHits),
+    byTrend: byTrend(realTrendHits, trendDays, cutoverTs),
     // v0.9.34 R1 — per-hook dedup view; surfaces true single-invocation
     // double-fire (registration / lib bug) vs Claude fast-retry. See
     // hooks/lib/rule-hits.sh tool_use_id doc and uniqueInvocations() comment.
-    uniqueInvocations: uniqueInvocations(hits),
-    topPatterns: topPatterns(hits, 'banned-vocab'),
+    uniqueInvocations: uniqueInvocations(realHits),
+    topPatterns: topPatterns(realHits, 'banned-vocab'),
   };
 }
 

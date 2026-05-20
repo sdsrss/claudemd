@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.17.7] - 2026-05-20
+
+**Patch — fix: `/claudemd-audit` aggregated hook unit-test sentinel sessions (`session_id='t'/'test'`, ~150 rows in a 30d window) alongside real CC sessions, inflating `byTrend` regression-flag ratios with synthetic volume. UX: `/claudemd-update` command refresh sequence rendered as a copyable code block instead of inline prose.**
+
+### What changed
+
+- `[fix MED]` **`scripts/lib/rule-hits-parse.js`** — new `excludeTestSessions(hits)` helper drops rows where `session_id ∈ {'t','test'}` (hook unit-test sentinels; see `tests/hooks/*.test.sh`). `session_id=null` is intentionally NOT filtered — pre-v0.9.34 Stop/SessionStart/UserPromptSubmit hooks and bash CLI invocations legitimately emit null, accounting for ~80% of historical rows. Only the explicit 't'/'test' sentinels (~7%) are stripped.
+
+- `[fix MED]` **`scripts/audit.js`** — applies `excludeTestSessions` to every behavior view (`byHook`, `bySection`, `byBypass`, `byFailOpen`, `byTrend`, `uniqueInvocations`, `topPatterns`). Only `dataIntegrity` retains full counts and exposes the new `testSessionsFiltered` field so the operator can quantify hook-test traffic without grepping the raw log. Initial fix attempted partial filter (bySection/byTrend only) which produced a 4.7× internal inconsistency between `byHook.banned-vocab.deny=345` and `bySection["§10-V"].deny=73` on the same payload — operator could not tell which was authoritative. Full filter resolves this; remaining cross-tab variance (now 1.04×) is legitimate (hooks emit events into multiple spec sections).
+
+- `[docs]` **`commands/claudemd-audit.md`** — documents the new `dataIntegrity.testSessionsFiltered` field.
+
+- `[docs UX]` **`commands/claudemd-update.md`** — `/plugin marketplace update` → uninstall → install → reload sequence now rendered as a 4-line copyable code block, replacing the inline prose form. Each line copy-pastes individually.
+
+- `[test]` **`tests/scripts/rule-hits-parse.test.js`** — Case for `excludeTestSessions`: confirms `'t'`/`'test'` filtered, `null`/UUIDs preserved, partial matches (e.g. `'test-baseline-cv'`) NOT filtered (exact-match only). 13 → 14.
+
+### Why patch
+
+Behavioral fix to audit aggregation accuracy. No API surface change for external consumers (only `audit.js` internally consumes the affected helpers; `scripts/sparkline.js` / `scripts/status.js` don't read these views). No spec change.
+
+### Verification
+
+- 412/412 script tests pass (`node --test tests/scripts/*.test.js`).
+- Audit output on live log: `testSessionsFiltered: 150`; `byHook.banned-vocab.deny`: pre-fix 345 → post-fix 205; `bySection["§10-V"].deny`: pre-fix 73 → post-fix 186 (now reflects real-session activity instead of test-pollution).
+
+### Meta — evidence-validation lesson (saved as mem #8579)
+
+Mid-task, the v0.17.7 P1 was initially scoped on the premise that `§8-npx: regression 7.5×` was test pollution. Verifying via `select(.hook == "pre-bash-safety" and .event == "deny")` returned 0 in 7d, which `seemed` to confirm the premise. False: the 17 `§8-npx` events were `npx-allow-local` + `bypass-escape-hatch` (no deny), so the proxy filter excluded them all and produced a misleading 0. Direct filter via `select(.spec_section == "§8-npx")` showed all 17 were real UUID sessions (mem vitest + daagu vue-tsc). **Lesson**: when auditing a spec_section's trend, filter on `spec_section` directly — never via `hook + event` as proxy. Hook+event is coarser than spec_section; one hook can emit multiple sections, and section-specific events (allow / bypass) vary independently from the deny event. User-correction at AskUserQuestion gate caught this before code shipped on the wrong premise.
+
 ## [0.17.5] - 2026-05-14
 
 **Patch — fix: `memory-read-check.sh` + `memory-prompt-hint.sh` backtick-form TAG_BLOCK parsing matched the LAST `\`[token]\`` on each MEMORY.md index line — so a decorative backtick block in the description hijacked the parsed tag and silently shadowed the real tag.**

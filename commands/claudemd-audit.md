@@ -16,6 +16,7 @@ The JSON contains:
 | `byBypass` | per-token bypass-escape-hatch usage — high counts signal a rule that's too strict and is being routinely overridden |
 | `uniqueInvocations` | per-hook dedup view (v0.9.34): `rows` = raw row count; `unique_invocations` = distinct `(ts, hook, session_id, tool_use_id)` quadruples; `duplicate_rows` = rows−unique; `legacy_rows` = rows with both session_id+tool_use_id null (pre-v0.9.33). When `duplicate_rows > 0` and the affected hook is PreToolUse/PostToolUse with non-null `tool_use_id`, that's a true single-invocation double-fire — registration / lib bug |
 | `dataIntegrity.cutoverTs` | ISO-8601 UTC of the earliest row carrying a non-null `spec_section`; null when log is entirely pre-v0.7.0. Drives the `bySection` cutover-split. |
+| `dataIntegrity.testSessionsFiltered` | v0.17.7 — count of `session_id='t'/'test'` rows stripped from every view (hook unit-test sentinels). Lets the operator confirm filter ran + quantify test traffic; raw byHook/bySection numbers in the same payload are post-filter, real-session-only. |
 | `topPatterns` | banned-vocab matched-word ranking |
 
 Format per-hook sections, the bySection heatmap (sorted by total desc), and call out any `byBypass` token with ≥3 occurrences as "review candidate" per §0.1 demotion principle. Surface `uniqueInvocations.<hook>.duplicate_rows > 0` for any PreToolUse/PostToolUse hook as a candidate bug.

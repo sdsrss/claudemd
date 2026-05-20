@@ -151,6 +151,27 @@ export function topPatterns(hits, hook = 'banned-vocab') {
   return Object.entries(counts).sort((a, b) => b[1] - a[1]);
 }
 
+// v0.17.7 — test-session sentinel filter. Hook unit tests run with
+// session_id='t' or 'test' (see tests/hooks/*.test.sh) so the harness can
+// distinguish synthetic traffic from real CC sessions. /claudemd-audit
+// initially aggregated both together, which inflated byTrend regression
+// ratios when a hook test suite ran (~150 test events in a 30d window).
+// Filter is applied to every audit view (byHook / bySection / byTrend /
+// byBypass / byFailOpen / uniqueInvocations / topPatterns); only
+// dataIntegrity keeps full counts and exposes `testSessionsFiltered` so
+// the operator can quantify hook-test traffic without parsing the raw log.
+//
+// Scope rationale: session_id=null is NOT filtered. ~80% of historical rows
+// carry null because pre-v0.9.34 Stop / SessionStart / UserPromptSubmit
+// hooks did not pass session_id, and bash CLI script invocations lack
+// CC_SESSION_ID. Filtering null would drop legitimate hook fires en masse.
+// Only the explicit 't' / 'test' sentinels (~7% of total) are filtered.
+const TEST_SESSION_SENTINELS = new Set(['t', 'test']);
+
+export function excludeTestSessions(hits) {
+  return hits.filter(h => !TEST_SESSION_SENTINELS.has(h.session_id));
+}
+
 // v0.7.0 — R1 §0.1/§13.1/§13.2 instrumentation. Group rule-hits by spec
 // section so /claudemd-audit can answer "which spec rule is firing", not
 // just "which hook is firing". `spec_section` is populated on rows written

@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { logFirstTs, readHits, groupBySection } from '../../scripts/lib/rule-hits-parse.js';
+import { logFirstTs, readHits, groupBySection, excludeTestSessions } from '../../scripts/lib/rule-hits-parse.js';
 
 function withFixture(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rhp-'));
@@ -153,6 +153,20 @@ test('v0.9.37: groupBySection with cutoverTs splits unset into historical / curr
   assert.equal(g['(unset-current)'].total, 1);
   assert.equal(g['(unset-current)'].byHook['session-start'], 1);
   assert.equal(g['§10-V'].total, 1);
+});
+
+test('v0.17.7: excludeTestSessions drops t/test sentinels, keeps null and UUIDs', () => {
+  const hits = [
+    { session_id: 't', hook: 'banned-vocab' },
+    { session_id: 'test', hook: 'pre-bash-safety' },
+    { session_id: null, hook: 'session-start' },
+    { session_id: 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', hook: 'pre-bash-safety' },
+    { session_id: 'test-baseline-cv', hook: 'banned-vocab' }, // not a sentinel — full match only
+  ];
+  const real = excludeTestSessions(hits);
+  assert.equal(real.length, 3);
+  assert.deepEqual(real.map(h => h.session_id),
+    [null, 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', 'test-baseline-cv']);
 });
 
 test('v0.9.37: detectCutover finds earliest ts with non-null spec_section', async () => {
