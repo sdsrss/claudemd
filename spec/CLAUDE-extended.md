@@ -427,6 +427,26 @@ Permanent ratchet on new HARD rules. Rationale: v6.6 → v6.7.5 (~1 month) added
 
 **Batch-review cadence**: every 20 L2+ tasks OR 30 days (whichever first) — merge overlapping `rule-candidates-*.md` entries, promote eligible, prune stale.
 
+### §13.3 Advisory → enforce promotion (hook-layer, v6.12.0)
+
+Behavior-layer hooks ship default-OFF for FP signal collection (≥30d). Promotion uses `/claudemd-audit` data to advance through two gates. Companion to §0.1 (extended → core spec-text promotion): §0.1 promotes documentation; §13.3 promotes enforcement.
+
+**Gate 1: default-OFF → default-ON (still advisory)**:
+- ≥30 days observed since opt-in shipped
+- Total fires ≥20 in 30d window (signal exists)
+- `bypass-escape-hatch` rate <10% of fires (rule not routinely overridden)
+- No operator `revert:` / `relax:` CHANGELOG entry against the rule
+- Cross-project coverage ≥2 distinct projects (not single-repo accident)
+
+**Gate 2: default-ON advisory → `deny` enforcement**:
+- Further ≥30d in default-ON state; same fire / bypass / operator-feedback gates
+- Cross-project coverage ≥3 distinct projects
+- ≥1 `feedback_*.md` memory citing the rule as load-bearing (durable utility evidence)
+
+**Operator cadence**: paired with §13.2 batch-review (every 20 L2+ tasks OR 30 days). Promotion is operator-judged from audit data; the criteria are entry gates, not auto-execution.
+
+**Budget cost**: NEW META rule, not HARD — exempt from §13.2 ratchet. Patch-level promotion criteria adjustments (threshold tuning, gate wording) further exempt.
+
 ## Appendix B — Canonical examples
 
 Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format + B.2 evidence valid/invalid). B.3 (L3 summary formats), B.4 (EMERGENCY incident report), B.5 (auto-decision one-liners), B.6 (L3 spec example) removed — their normative content is fully covered by §10-R / §2-EXT EMERGENCY / §10-R Auto-decisions / §2.S SPEC ARTIFACT respectively; the example bodies were illustrative, not normative.
@@ -458,6 +478,13 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
+**v6.12.0 (minor, 2026-05-20)** — Two additions:
+
+- `[relax]` **§11-EXT Body-structure scope**: `project_*.md` exempted from `mem-audit` hook's `**Why:**` / `**How to apply:**` scan. Incident-log pattern (`project_<topic>_<date>.md`) fact-only by nature; enforcement produced 16 long-standing non-compliant files across 4 projects without a path to closure. Hook now scans `feedback_*.md` only; CC `memoryTypes.ts` still recommends Why/How for the project type but the audit no longer warns.
+- `[add]` **§13.3 Advisory → enforce promotion** (NEW): two-gate criteria for advancing hook-layer rules from default-OFF → default-ON → `deny` via `/claudemd-audit` data (fire count, bypass rate, cross-project coverage, operator-feedback). Companion to §0.1 (spec-text promotion). Operator-judged, not auto-executed.
+
+Plugin v0.18.0. **§13.2 budget cost: 0** (new META rule, not HARD; project_*.md exemption is SCOPE narrowing of an advisory hook).
+
 **v6.11.17 (patch, 2026-05-20)** — §11-EXT Layer routing: explicit plugin-absent fallback paragraph added (tool-list detection → `recall_<topic>_<YYYYMMDD>.md` durable fallback with `[fallback]` tag); 6-row routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) externalized to `feedback_memory_layer_routing.md` per v6.11.14 "operational discipline → memory anchors" pattern. Zero new hooks, zero mirroring (preserves "one home per fact"). Plugin-present sessions: no behavior change. **§13.2 budget cost: 0**.
 
 **v6.11.16 (patch, 2026-05-11)** — §2.1 ROUTE single-source collapse: 13-row routing table reduced to 8 rows by evicting L3+ / composite / specialized-clarify routes to §EXT §4 FLOW via single catch-all dispatcher row; "Tool escalation" 5-principle list compressed to compact heuristic form; "Anti-patterns" line merged in (sole unique warning preserved as suffix). Net core −470B (24604 → 24134), headroom 396B → 866B (98.42% → 96.54% utilization, ~2× safety margin). No rule change, no behavior change; same terminal skill for all 5 hand-walked routing scenarios (bug / ship / plan-review / migration / Q&A). **§13.2 budget cost: 0**.
@@ -465,15 +492,9 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 - `[refactor]` **§2.1 ROUTE table collapse** (core) — 13 → 8 rows. Removed rows: `env/staging/deploy bug` (merged into `code/logic bug` row's note column), `L3 / auth-payment / migration`, `ship / deploy / PR / release`, `large design / plugin design / architecture`, `plan review (CEO/eng/design/devex)`, `perf / security / design / product-biz clarify`. New single catch-all row covers all 6 evicted triggers via enumerated keyword match → `Load extended → §EXT §4 FLOW`. §EXT §4 FLOW table (21 rows) unchanged in extended — full routing matrix lives there. §EXT §12 cross-ref preserved at core §0 line 5, §2.1 Skill soft-triggers line, and §2.2 Ship-pipeline hardening line (3 references survive).
 - `[refactor]` **§2.1 Tool escalation + Anti-patterns merge** (core) — 5-principle numbered list (386 chars) compressed to compact form (235 chars, −151B). "Anti-patterns" paragraph (215 chars) dropped; sole unique warning (`parallel-dispatch mem + code-graph on the same question`) merged into Tool escalation as `Anti-pattern: …` suffix. Information preservation: 100% — the 3 dropped anti-patterns were textual inverses of escalation principles 1, 2, 4 (literal-via-Grep / concept-via-semantic / unfamiliar-module-via-overview).
 
-**v6.11.14 (patch, 2026-05-11)** — extended compression release: §11-EXT cluster consolidated (5 sub-sections → 2 + 1 cross-ref), Appendix B trimmed to high-reuse examples only (B.1 + B.2; B.3–B.6 removed as covered by §10-R / §2-EXT / §2.S normative text). No rule change, no behavior change. No new HARD; **§13.2 budget cost: 0**.
+**Older entries** (v6.11.14 extended-compression refactor + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-- `[refactor]` **§11-EXT cluster consolidated** — `Session maintenance heuristics` + `Execution heuristics (CC-borrowed)` merged into `§11-EXT Session heuristics (advisory)`; `Memory-system routing` + `Auto-memory decision tree` + `MEMORY-tag-syntax` merged into `§11-EXT Memory operations` (Layer routing / Auto-memory decision tree / MEMORY.md tag syntax as subsections of one node). Reduces fragmentation and the "where does X live in §11-EXT" lookup cost.
-- `[refactor]` **§11-EXT macOS shell portability** — large 12-line apply-list moved out of spec to `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` memory anchors. Spec keeps a one-paragraph cross-ref pointer; implementation discipline lives in memory where it can age with the codebase.
-- `[refactor]` **Appendix B trimmed** — B.1 (AUTH-REQUIRED format) + B.2 (valid/invalid evidence) retained as canonical reuse-cases. B.3 (L3 summary formats), B.4 (EMERGENCY incident report), B.5 (auto-decision one-liners), B.6 (L3 spec example) removed: their normative content lives in §10-R / §2-EXT EMERGENCY allowed-ops + Exit ritual / §10-R Auto-decisions / §2.S SPEC ARTIFACT; the example bodies were illustrative, not normative.
-
-**§13.2 budget cost**: 0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
-
-**Sizing** (v6.11.17, 2026-05-20, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24134 → 24134 bytes (Δ 0, no core edit this version); extended 44901 → 45730 bytes (Δ +829, §11-EXT plugin-absent fallback paragraph + Recent-changes v6.11.17 entry block). Size budget (§13.1): core 24134/25000 (**866 bytes headroom, 96.54%**); extended 45730/50000 (**4270 bytes headroom, 91.46%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens.
+**Sizing** (v6.12.0, 2026-05-20, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24134 → 24133 bytes (Δ −1, version line `v6.11.17`→`v6.12.0` shortens by 1 char); extended 45730 → 46963 bytes (Δ +1233, §11-EXT Body-structure scope paragraph + §13.3 Advisory→enforce subsection + v6.12.0 Recent-changes entry; v6.11.14 entry demoted out to recover headroom). Size budget (§13.1): core 24133/25000 (**867 bytes headroom, 96.53%**); extended 46963/50000 (**3037 bytes headroom, 93.93%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens.
 
 **Operator carry-forward**: none. Extended utilization recovered well below ceiling. Future minor/patch bumps may add content within budget; §13.2 ratchet and §0.1 demote-candidate audit run unchanged.
 
@@ -523,6 +544,8 @@ Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11)
 **Picking the home**: "will this be true 6 months from now?" Yes → durable. No → recall plugin. Conflict: durable wins; recall layer ages out.
 
 **Plugin-absent fallback**: detect via tool list (no `mem_save`/`mem_search` → plugin unloaded). Recall content then writes to `recall_<topic>_<YYYYMMDD>.md` in durable layer with `[fallback]` tag. Routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) → `feedback_memory_layer_routing.md`.
+
+**Body-structure scope** (v6.12.0): `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; enforcing structured Why/How produced 16 long-standing non-compliant files across 4 projects without a path to closure. CC `memoryTypes.ts` still recommends Why/How for the project type, but the hook no longer warns when authors omit it.
 
 **User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189`.
 

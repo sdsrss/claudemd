@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # mem-audit.sh — Stop hook (advisory only, never blocks).
 #
-# Scans ~/.claude/projects/*/memory/feedback_*.md + project_*.md for missing
-# **Why:** / **How to apply:** body-structure markers per CC memoryTypes.ts
-# lines 58/76/132/149 (eval-validated body_structure for feedback + project
-# types). Spec §11 + §EXT §11-EXT also reference this structure.
+# Scans ~/.claude/projects/*/memory/feedback_*.md for missing **Why:** /
+# **How to apply:** body-structure markers per CC memoryTypes.ts lines 58/76
+# (eval-validated body_structure for feedback type). project_*.md exempted
+# in v0.18.0 / spec v6.12.0 (§11-EXT) — incident-log pattern is fact-only
+# by nature; see hook source comment + spec note.
 #
 # Output: stderr only (no JSON to stdout) — Stop event has no
 # hookSpecificOutput.additionalContext schema. Mirrors residue-audit.sh.
@@ -80,8 +81,14 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   # find -maxdepth 1: avoid descending into any subdirs (e.g. logs/).
   while IFS= read -r f; do
     base="$(basename "$f")"
+    # v0.18.0 (spec v6.12.0 §11-EXT) — narrowed to feedback_*.md only.
+    # project_*.md exempted: incident-log pattern (`project_<topic>_<date>.md`)
+    # is fact-only by nature; enforcing Why/How body structure produced 16
+    # long-standing non-compliant files across 4 projects without a path to
+    # closure. CC memoryTypes.ts still recommends Why/How for project type,
+    # but the hook no longer warns when authors omit it.
     case "$base" in
-      feedback_*.md|project_*.md) ;;
+      feedback_*.md) ;;
       *) continue ;;
     esac
 
@@ -163,7 +170,7 @@ if [[ "$MISSING" -gt 0 ]]; then
   joined=$(IFS=, ; echo "${SAMPLE[*]}")
   extra=""
   [[ "$MISSING" -gt "$SAMPLE_LIMIT" ]] && extra=" (+$((MISSING - SAMPLE_LIMIT)) more)"
-  echo "[claudemd] §11-EXT mem-audit: $MISSING feedback/project memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1" >&2
+  echo "[claudemd] §11-EXT mem-audit: $MISSING feedback memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1" >&2
 fi
 
 if [[ "$DRIFT" -gt 0 ]]; then

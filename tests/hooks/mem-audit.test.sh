@@ -231,9 +231,34 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 12 (v0.18.0 / spec v6.12.0): project_*.md exempted from Why/How
+# body-structure scan. incident-log pattern `project_<topic>_<date>.md`
+# is fact-only by nature; spec §11-EXT explicitly exempts it. Same body
+# as Case 5 (missing markers) but project_ prefix → silent, not warned.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+PROJECT_MISSING_BODY='---
+name: incident-2026-05-20
+type: project
+---
+2026-05-20 14:30 — scheduler ghost completion incident in worker queue.
+Cause: stale row not GC-collected; mitigation: nightly sweep. xxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+seed "-proj-" "project_incident_2026_05_20.md" "$PROJECT_MISSING_BODY"
+OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
+ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
+  echo "PASS: 12 project_*.md missing markers → silent (exempted)"
+else
+  echo "FAIL: 12 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Result
 # --------------------------------------------------------------------------
 if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
 fi
-echo "Tests: 11/11 passed"
+echo "Tests: 12/12 passed"

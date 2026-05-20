@@ -8,6 +8,36 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.18.0] - 2026-05-20
+
+**Minor — spec v6.12.0: §11-EXT `project_*.md` exempted from `mem-audit` Why/How body-structure scan; §13.3 NEW Advisory → enforce promotion criteria for hook-layer rules.**
+
+### What changed
+
+- `[relax]` **`hooks/mem-audit.sh`** — case statement narrowed: `feedback_*.md|project_*.md) ;;` → `feedback_*.md) ;;`. Hook docstring + stderr banner copy updated accordingly. Incident-log `project_<topic>_<date>.md` files no longer trigger advisory warns when authors omit Why/How body markers. Closes 16-file long-standing non-compliance (daagu 12 + sdscc 2 + mem 1 + gsd 1 incident logs).
+
+- `[add]` **`spec/CLAUDE-extended.md §13.3`** — NEW subsection codifying advisory → enforce promotion path for hook-layer rules. Two gates (default-OFF → default-ON; default-ON → `deny`) driven by `/claudemd-audit` data: fire count ≥20, bypass-rate <10%, cross-project coverage ≥2/≥3, operator-feedback gate. Companion to §0.1 (extended → core spec-text promotion).
+
+- `[docs]` **`spec/CLAUDE-extended.md §11-EXT Body-structure scope`** — new paragraph documenting the project_*.md exemption rationale.
+
+- `[test]` **`tests/hooks/mem-audit.test.sh`** Case 12 — project_*.md missing markers now silent (exempted). 11 → 12.
+
+- `[version]` Spec v6.11.17 → v6.12.0 (minor — rule relaxed + rule added). Cascade-bumped: `spec/CLAUDE.md` H1, `spec/hard-rules.json`, `tests/integration/upgrade-lifecycle.test.sh`, `tests/scripts/spec-structure.test.js` (3 occurrences).
+
+### Why minor (not patch)
+
+Both changes are backward-compatible additions / relaxations, per §13 META: "minor (rule added/relaxed)" is the prescribed bump.
+
+### Sizing
+
+Core 24134 → 24133 bytes (Δ −1, version line shortens). Extended 45730 → 46573 bytes (Δ +843, S1+S2 spec content + v6.12.0 Recent-changes entry; v6.11.14 entry demoted out to maintain headroom). Headroom: core 867 (96.53%), extended 3427 (93.15%). Drift envelope: ±20B accepted.
+
+### Verification
+
+- 12/12 mem-audit hook tests pass (`bash tests/hooks/mem-audit.test.sh`).
+- Spec structure tests pass (`node --test tests/scripts/spec-structure.test.js`) — v6.12.0 cascade complete.
+- Full hook + script suite: TBD (run pre-ship).
+
 ## [0.17.7] - 2026-05-20
 
 **Patch — fix: `/claudemd-audit` aggregated hook unit-test sentinel sessions (`session_id='t'/'test'`, ~150 rows in a 30d window) alongside real CC sessions, inflating `byTrend` regression-flag ratios with synthetic volume. UX: `/claudemd-update` command refresh sequence rendered as a copyable code block instead of inline prose.**

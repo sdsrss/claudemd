@@ -6,6 +6,29 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.12.0 — 2026-05-20
+
+Minor: two §EXT additions.
+
+- `[relax]` **§11-EXT Body-structure scope**: `project_*.md` exempted from `mem-audit` hook's `**Why:**` / `**How to apply:**` body-structure scan. Hook now scans `feedback_*.md` only. CC `memoryTypes.ts` still recommends Why/How for the project type, but the audit no longer warns when authors omit it.
+- `[add]` **§13.3 Advisory → enforce promotion** (NEW): two-gate criteria advancing hook-layer rules from default-OFF → default-ON → `deny`. Driven by `/claudemd-audit` data (fire count ≥20, bypass rate <10%, cross-project coverage ≥2/≥3, operator-feedback gate). Companion to §0.1 (spec-text promotion).
+
+**§13.2 budget cost: 0** (project_*.md exemption is SCOPE narrowing of an advisory hook, not a HARD rule change; §13.3 is META, not HARD).
+
+### Background
+
+Cross-project mem-audit warnings (5/20) flagged 16 `project_*.md` files across 4 projects (daagu 12, sdscc 2, mem 1, gsd 1) missing `**Why:**` / `**How to apply:**` body markers. Inspection showed all 16 are incident-log pattern (`project_<topic>_<date>.md`) — fact-only recordings of what happened (scheduler ghost completion 2026-05-19, stock prediction outcome 2026-05-18, etc.). The CC memoryTypes "project = fact + Why + How" template assumes deliberate decision-record style ("we moved the merge freeze because X"); incident-log style doesn't fit that shape naturally, and 5+ days of advisory pressure produced 0 cleanup. Spec signal: design too strict. Path forward: narrow the hook to `feedback_*.md` (true behavioral rules), let `project_*.md` follow whatever fact-record shape suits the project's pattern.
+
+§13.3 is the companion question: hook-layer rules currently ship default-OFF for ≥30d FP collection (per §EXT §12 "behavior-layer hooks ship default-off"), but the spec had no documented criteria for advancing them past advisory. Without explicit gates, advisory rules either silently stay advisory forever (mem-audit warn 5 days = 0 cleanup) or get promoted by gut feel without operator-visible data. §13.3 formalizes the path: fire count ≥20 / bypass rate <10% / cross-project coverage / operator-feedback gates, all measurable from `/claudemd-audit`. Companion to §0.1 (extended → core spec text promotion; §13.3 is the enforcement-layer analog).
+
+### Why minor (not patch)
+
+Backward-compatible additions both. `mem-audit` exemption is a scope narrowing of an advisory hook (no false-positives, fewer warnings — strict relaxation). §13.3 introduces a new META rule (META = process around HARD rules, not a HARD rule itself). Minor version per §13 META: "Spec changes: patch (wording/clarification) = L2; minor (rule added/relaxed) / major (protocol shift) = L3." Both items qualify as `minor (rule added/relaxed)`.
+
+### Ship target
+
+Plugin v0.18.0 — minor bump tracking spec minor.
+
 ## v6.11.17 — 2026-05-20
 
 Patch: §11-EXT Layer routing — explicit plugin-absent fallback paragraph added; routing matrix + lesson disambiguation externalized to `feedback_memory_layer_routing.md` per v6.11.14 "operational discipline → memory anchors" pattern. No HARD add/remove/downgrade, no behavior change for plugin-present sessions. **§13.2 budget cost: 0 (core), +~300B (extended)**.
