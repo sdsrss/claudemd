@@ -458,6 +458,8 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
+**v6.11.17 (patch, 2026-05-20)** — §11-EXT Layer routing: explicit plugin-absent fallback paragraph added (tool-list detection → `recall_<topic>_<YYYYMMDD>.md` durable fallback with `[fallback]` tag); 6-row routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) externalized to `feedback_memory_layer_routing.md` per v6.11.14 "operational discipline → memory anchors" pattern. Zero new hooks, zero mirroring (preserves "one home per fact"). Plugin-present sessions: no behavior change. **§13.2 budget cost: 0**.
+
 **v6.11.16 (patch, 2026-05-11)** — §2.1 ROUTE single-source collapse: 13-row routing table reduced to 8 rows by evicting L3+ / composite / specialized-clarify routes to §EXT §4 FLOW via single catch-all dispatcher row; "Tool escalation" 5-principle list compressed to compact heuristic form; "Anti-patterns" line merged in (sole unique warning preserved as suffix). Net core −470B (24604 → 24134), headroom 396B → 866B (98.42% → 96.54% utilization, ~2× safety margin). No rule change, no behavior change; same terminal skill for all 5 hand-walked routing scenarios (bug / ship / plan-review / migration / Q&A). **§13.2 budget cost: 0**.
 
 - `[refactor]` **§2.1 ROUTE table collapse** (core) — 13 → 8 rows. Removed rows: `env/staging/deploy bug` (merged into `code/logic bug` row's note column), `L3 / auth-payment / migration`, `ship / deploy / PR / release`, `large design / plugin design / architecture`, `plan review (CEO/eng/design/devex)`, `perf / security / design / product-biz clarify`. New single catch-all row covers all 6 evicted triggers via enumerated keyword match → `Load extended → §EXT §4 FLOW`. §EXT §4 FLOW table (21 rows) unchanged in extended — full routing matrix lives there. §EXT §12 cross-ref preserved at core §0 line 5, §2.1 Skill soft-triggers line, and §2.2 Ship-pipeline hardening line (3 references survive).
@@ -471,7 +473,7 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 
 **§13.2 budget cost**: 0 (compression only — no rule additions, no semantic change). HARD tally unchanged: 13 core + 4 §EXT-side. 20-task counter preserved.
 
-**Sizing** (v6.11.16, 2026-05-11, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24604 → 24134 bytes (Δ −470, §2.1 ROUTE 13→8 rows + Tool escalation compress + Anti-patterns merge); extended 43982 → 44901 bytes (Δ +919, Recent-changes turnover). Size budget (§13.1): core 24134/25000 (**866 bytes headroom, 96.54%**, headroom ~2.2× pre-edit); extended 44901/50000 (**5099 bytes headroom, 89.80%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 5.98k tokens.
+**Sizing** (v6.11.17, 2026-05-20, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24134 → 24134 bytes (Δ 0, no core edit this version); extended 44901 → 45730 bytes (Δ +829, §11-EXT plugin-absent fallback paragraph + Recent-changes v6.11.17 entry block). Size budget (§13.1): core 24134/25000 (**866 bytes headroom, 96.54%**); extended 45730/50000 (**4270 bytes headroom, 91.46%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens.
 
 **Operator carry-forward**: none. Extended utilization recovered well below ceiling. Future minor/patch bumps may add content within budget; §13.2 ratchet and §0.1 demote-candidate audit run unchanged.
 
@@ -519,6 +521,8 @@ Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11)
 | **Time-sensitive recall plugin** (e.g. `claude-mem-lite` FTS5 + timeline) | plugin-managed | days–weeks, rolls off | bugfix lessons / current-project state / recent activity |
 
 **Picking the home**: "will this be true 6 months from now?" Yes → durable. No → recall plugin. Conflict: durable wins; recall layer ages out.
+
+**Plugin-absent fallback**: detect via tool list (no `mem_save`/`mem_search` → plugin unloaded). Recall content then writes to `recall_<topic>_<YYYYMMDD>.md` in durable layer with `[fallback]` tag. Routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) → `feedback_memory_layer_routing.md`.
 
 **User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189`.
 

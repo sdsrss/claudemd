@@ -6,6 +6,38 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.11.17 — 2026-05-20
+
+Patch: §11-EXT Layer routing — explicit plugin-absent fallback paragraph added; routing matrix + lesson disambiguation externalized to `feedback_memory_layer_routing.md` per v6.11.14 "operational discipline → memory anchors" pattern. No HARD add/remove/downgrade, no behavior change for plugin-present sessions. **§13.2 budget cost: 0 (core), +~300B (extended)**.
+
+### Background
+
+User-observed drift: "lesson" content routing inconsistently between `claude-mem-lite` plugin and durable MEMORY.md. Two root causes — (1) spec assumed plugin present (`e.g. claude-mem-lite`) with no documented fallback; (2) "lesson" overloaded bugfix postmortems (recall) and trap rules (durable). Design rationale: `docs/superpowers/specs/2026-05-20-memory-layer-routing-design.md`.
+
+### Changes
+
+- `[refactor]` **§11-EXT Layer routing +1 paragraph** — "Plugin-absent fallback" paragraph added between "Picking the home" and "User-override filter". Documents tool-list detection (no `mem_save`/`mem_search` → plugin unloaded) and `recall_<topic>_<YYYYMMDD>.md` fallback target with `[fallback]` tag. Cross-refs new memory anchor for the routing matrix.
+- `[memory-anchor]` **`feedback_memory_layer_routing.md`** — new memory file carries 6-row routing matrix, lesson disambiguation (bugfix postmortem vs trap rule), promotion path, and `What does NOT change` invariants. Pattern: v6.11.14 macOS-portability externalization.
+
+### Cross-ref preservation
+
+- "One home per fact" rule (§11-EXT) unchanged — no mirroring introduced.
+- Auto-memory decision tree (3 steps in §11-EXT) unchanged.
+- WHAT-NOT-TO-SAVE filter unchanged.
+- §11 core "MEMORY.md read-the-file" HARD rule unchanged — new memory file gains a tagged index line so the rule resolves it correctly.
+
+### Sizing impact
+
+Core unchanged at 24134 bytes (headroom 866B). Extended 44901 → 45214 bytes (Δ +313B, headroom 5099B → 4786B). Both files inside v6.11.14 envelope.
+
+### Migration / agent impact
+
+- Plugin-present sessions: zero behavior change. Agent continues routing per existing rules.
+- Plugin-absent sessions: agent now has a documented fallback path instead of silent ambiguity.
+- "Lesson" decision: agent has explicit postmortem-vs-trap-rule criterion before save.
+
+---
+
 ## v6.11.16 — 2026-05-11
 
 Patch: §2.1 ROUTE single-source collapse — 13-row routing table reduced to 8 rows; L3 / composite / specialized-clarify routes evicted to §EXT §4 FLOW via single catch-all dispatcher; "Tool escalation" 5-principle list compressed; "Anti-patterns" line merged in (unique warning preserved as suffix). No rule change, no behavior change. Same terminal skill for all 5 hand-walked routing scenarios. **§13.2 budget cost: 0**.
