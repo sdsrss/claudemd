@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.18.1] - 2026-05-20
+
+**Patch — feat: `ship-baseline` hook detects retry-within-5min on the same red CI run (same `session_id` + `run_url`) and escalates the deny REASON wording + emits a new `deny-repeat` audit event.**
+
+### Background
+
+Audit of 7-day real-session ship-baseline events surfaced a recurring pattern: in daagu, 3 distinct red CI run URLs each attracted 2 deny events within 71-230 seconds of each other under the same session — meaning the agent saw the (a)/(b)/(c) options on the 1st deny but retried the push anyway, hitting the same red CI. The hook's prose guidance was being read but not acted on.
+
+Initial assessment claimed "拦了没引导" — wrong: the hook has carried (a)/(b)/(c) Options block since v0.1.0. The actual problem is agent behavior, not hook output. Fix posture: keep all 3 options, but if a same-key retry lands within the cooldown window, escalate the wording AND log a distinct audit event so the operator can see how often "ignored-guidance" retries happen.
+
+### What changed
+
+- `[feat MED]` **`hooks/ship-baseline-check.sh`** — sentinel-based 5-minute retry-cooldown tracking. Sentinel file at `$HOME/.claude/.claudemd-state/ship-baseline-recent/<session_id>_<run_id>.sentinel`. On deny: check existing sentinel mtime, if <300s old → `REPEAT=1` → escalated REASON ("SECOND deny on same red CI run within 5 minutes — your prior retry did NOT change the CI conclusion") + emit `deny-repeat` event. Touch sentinel after lookup; self-prune any sentinel older than 1 day on each invocation (`find -mmin +1440 -delete`, bounded to own STATE_DIR). When `session_id` or `run_url` are empty (CLI fallback / legacy callers), tracking is skipped — falls back to normal deny behavior.
+
+- `[add]` **`docs/RULE-HITS-SCHEMA.md`** — documents the new `deny-repeat` event (emitter, semantics, sentinel state path, 1-day self-prune); updates the spec-section taxonomy row for `ship-baseline` to include the new event variant.
+
+- `[test]` **`tests/hooks/ship-baseline.test.sh`** Cases 16-17 — 16a/16b/16c verify 1st-deny regular wording → 2nd-deny escalated wording within 5min on same `(session_id, run_url)`, both retaining `permissionDecision=deny`; 17 verifies different `session_id` keyed sentinel does NOT inherit. 15 → 19.
+
+- `[test]` **`tests/hooks/contract.test.sh`** DOCUMENTED list — adds `deny-repeat:ship-baseline` entry; both B (documented → has hook_record call in source) and C (emitted → documented) assertions now pass for the new event. 50 → 51.
+
+### Why not spec bump
+
+Hook behavior addition; no spec rule added/relaxed/changed. Spec §7-ship-baseline still defines the gate ("Red → fix/known-red/ASK"); the retry-cooldown is implementation detail of how the hook expresses denial. Patch version per §13 META: "patch (wording / clarification, identical behavior) = L2"; spec text identical.
+
+### Verification
+
+- 412/412 script tests pass (`node --test tests/scripts/*.test.js`).
+- 23/23 hook test files pass (`bash tests/hooks/*.test.sh`); ship-baseline 19/19, contract 51/51, mem-audit 12/12, all others unchanged.
+
 ## [0.18.0] - 2026-05-20
 
 **Minor — spec v6.12.0: §11-EXT `project_*.md` exempted from `mem-audit` Why/How body-structure scan; §13.3 NEW Advisory → enforce promotion criteria for hook-layer rules.**

@@ -114,8 +114,54 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 15 chained real push after && → deny" \
   || { echo "FAIL: 15 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 16-17 (v0.18.1): retry-cooldown sentinel tracking. Real evidence
+# (daagu 5/18-5/20): 3 red CI run URLs each attracted 2 deny events within
+# 71-230s, same session — agent saw (a)/(b)/(c) options on 1st deny but
+# retried anyway. New sentinel-based 5-min window detects repeat → escalated
+# REASON ("SECOND deny ...") + `deny-repeat` audit event.
+
+# Clear sentinel state so Cases 16-17 start fresh (prior cases 2/10/11/15
+# created sentinels with session_id="t" that would otherwise trigger repeat
+# on Case 16's first call).
+rm -rf "$HOME/.claude/.claudemd-state/ship-baseline-recent" 2>/dev/null
+
+# Case 16: 2nd deny on same (session_id, run_url) within 5min → escalated.
+EVENT_CASE16='{"session_id":"case16-uuid","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"/tmp"}'
+OUT1=$(run_hook fail-red "$EVENT_CASE16")
+# 1st deny — must NOT contain "SECOND deny" (regular wording).
+if echo "$OUT1" | grep -q "SECOND deny"; then
+  echo "FAIL: 16a 1st deny should NOT say SECOND deny (got: $OUT1)"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: 16a 1st deny → regular wording"
+fi
+OUT2=$(run_hook fail-red "$EVENT_CASE16")
+# 2nd deny within 5min — MUST contain "SECOND deny".
+if echo "$OUT2" | grep -q "SECOND deny"; then
+  echo "PASS: 16b 2nd deny within 5min → escalated wording"
+else
+  echo "FAIL: 16b 2nd deny should say SECOND deny (got: $OUT2)"; FAIL=$((FAIL + 1))
+fi
+# Both responses must still be permissionDecision=deny.
+DEC1=$(echo "$OUT1" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+DEC2=$(echo "$OUT2" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+if [[ "$DEC1" == "deny" && "$DEC2" == "deny" ]]; then
+  echo "PASS: 16c both denials retain permissionDecision=deny"
+else
+  echo "FAIL: 16c (dec1=$DEC1, dec2=$DEC2)"; FAIL=$((FAIL + 1))
+fi
+
+# Case 17: different session_id, same run_url → NOT repeat (different sentinel
+# key). Same fail-red mock; new session_id.
+EVENT_CASE17='{"session_id":"case17-uuid","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"/tmp"}'
+OUT3=$(run_hook fail-red "$EVENT_CASE17")
+if echo "$OUT3" | grep -q "SECOND deny"; then
+  echo "FAIL: 17 different session must not inherit case16 sentinel (got: $OUT3)"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: 17 different session → regular wording (sentinel keyed by session_id)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((15 - FAIL))/15 passed"
+  echo "Tests: $((19 - FAIL))/19 passed"
   exit 1
 fi
-echo "Tests: 15/15 passed"
+echo "Tests: 19/19 passed"

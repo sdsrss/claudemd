@@ -103,6 +103,7 @@ DOCUMENTED=(
   "bypass-escape-hatch:memory-read-check"
   "npx-allow-local:pre-bash-safety"
   "pass-known-red:ship-baseline"
+  "deny-repeat:ship-baseline"
   "warn:sandbox-disposal"
   "warn:residue-audit"
   "advisory:transcript-vocab-scan"

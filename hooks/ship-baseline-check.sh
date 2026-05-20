@@ -7,6 +7,8 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SHIP_BASELINE || exit 0
 hook_require_jq || exit 0
@@ -72,7 +74,49 @@ fi
 RUN_URL=$(printf '%s' "$RUN_JSON" | jq -r '.[0].url // ""')
 RUN_TITLE=$(printf '%s' "$RUN_JSON" | jq -r '.[0].displayTitle // ""')
 
-REASON="§7 Ship-baseline: base-branch CI is RED — $RUN_TITLE
+# v0.18.1 — retry-cooldown detection. Real session evidence (daagu 5/18-5/20):
+# 3 distinct red CI run URLs each attracted 2 deny events within 71-230s of
+# each other, same session. The agent saw the (a)/(b)/(c) options on first
+# deny but retried anyway. Sentinel-based 5-minute window detects the repeat
+# pattern → escalated REASON wording + `deny-repeat` audit event so the
+# operator can spot "ignored-guidance" retries without parsing the raw log.
+STATE_DIR="$HOME/.claude/.claudemd-state/ship-baseline-recent"
+mkdir -p "$STATE_DIR" 2>/dev/null || true
+# Sentinel key: (session_id, run_id-from-URL-last-segment). Both are
+# filename-safe (UUID + numeric ID). Skip cooldown tracking when either is
+# empty — falls back to normal deny behavior.
+RUN_ID="${RUN_URL##*/}"
+SENTINEL=""
+[[ -n "$SESSION_ID" && -n "$RUN_ID" && -d "$STATE_DIR" ]] && SENTINEL="$STATE_DIR/${SESSION_ID}_${RUN_ID}.sentinel"
+
+REPEAT=0
+if [[ -n "$SENTINEL" && -f "$SENTINEL" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
+  now=$(date +%s 2>/dev/null) || now=0
+  smtime=$(platform_stat_mtime "$SENTINEL" 2>/dev/null) || smtime=0
+  if [[ "$now" -gt 0 && "$smtime" -gt 0 ]]; then
+    age=$(( now - smtime ))
+    [[ "$age" -lt 300 ]] && REPEAT=1
+  fi
+fi
+# Touch (or create) sentinel after the lookup, before emitting deny.
+[[ -n "$SENTINEL" ]] && touch "$SENTINEL" 2>/dev/null
+# Self-prune: drop sentinels older than 1 day. Bounded — only our own
+# directory + filename pattern; never recurses outside STATE_DIR.
+[[ -d "$STATE_DIR" ]] && find "$STATE_DIR" -maxdepth 1 -type f -name '*.sentinel' -mmin +1440 -delete 2>/dev/null
+
+if [[ "$REPEAT" -eq 1 ]]; then
+  REASON="§7 Ship-baseline: SECOND deny on same red CI run within 5 minutes — $RUN_TITLE
+$RUN_URL
+
+Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE the next retry:
+  (a) Fix failing workflow, then retry push.
+  (b) Override: prepend commit body with: known-red baseline: <reason>
+  (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
+
+Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
+  hook_record ship-baseline deny-repeat "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
+else
+  REASON="§7 Ship-baseline: base-branch CI is RED — $RUN_TITLE
 $RUN_URL
 
 Options:
@@ -81,6 +125,6 @@ Options:
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
-
-hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
+  hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
+fi
 hook_deny ship-baseline "$REASON"
