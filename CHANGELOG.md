@@ -8,6 +8,38 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.2] - 2026-05-21
+
+**Patch — add: spec **Sizing** drift pre-tag check in `scripts/version-cascade-check.js`. Plus a v0.21.1 test-hermeticity follow-up triggered by enabling `CLAUDEMD_PATH2_DRY_RUN=1` in `~/.claude/settings.json`. Spec unchanged at v6.13.1.**
+
+### Why this patch
+
+`feedback_spec_sizing_recursive_rewrite.md` documented this 3-times-in-session: operator writes the **Sizing** line in `spec/CLAUDE-extended.md`, post-edit `wc -c` shows the claim diverged from actual by 100-400 bytes (rewriting the Sizing line itself changes extended.md's size — recursive trap). The memory gave two options: accept ±20B drift, or build a mechanical pre-tag check. v0.17.6 / v0.19.0 / v0.21.0 all manually iterated to convergence. `fe88a38` staged v6.14.x net-delete candidates — next spec ship would hit this trap again. Option 2 ships in this patch.
+
+Separately: enabling `CLAUDEMD_PATH2_DRY_RUN=1` in user settings.json during the v0.21.1 rollout surfaced that `tests/hooks/banned-vocab.test.sh` + the doctor `selfTests` Path 2 spawn weren't hermetic — they inherited the dry-run flag from `process.env` and silently degraded "expected deny" cases to "pass under dry-run". Closed in this patch.
+
+### What changed (code)
+
+- `[add]` **`scripts/version-cascade-check.js`** — new `runSpecSizingCheck({root})` export + CLI integration. Parses the canonical `**Sizing**` line in `spec/CLAUDE-extended.md`, extracts the post-arrow byte claims for core / extended / OPERATOR.md, compares to `fs.statSync` actuals. Reports drift with file path, claimed, actual, Δ-with-sign, and threshold. Tolerance ±20B per memory note (Sizing-line rewrite changes extended.md, hence non-zero floor). Handles arrow form (`core 24417 → 24417 bytes`) and plain form (`core 24417 bytes`). Skips cleanly when `spec/CLAUDE-extended.md` absent. CLI exit 0 only when both cascade AND sizing pass.
+
+- `[change]` **`scripts/version-cascade-check.js`** — `--json` output reshaped from flat `{ok, expectedMinor, filesChecked, offenders}` to nested `{ok, cascade:{...}, sizing:{...}}`. Top-level `ok` is the combined gate; consumers that previously read `parsed.expectedMinor` now read `parsed.cascade.expectedMinor`. Only test code references this shape; non-test consumers (`npm run version-check`) only use the exit code.
+
+- `[fix]` **`tests/hooks/banned-vocab.test.sh`** — `unset CLAUDEMD_PATH2_DRY_RUN BANNED_VOCAB_PROSE_SCAN DISABLE_BANNED_VOCAB_HOOK DISABLE_CLAUDEMD_HOOKS` at suite entry. Users who turn on Path 2 dry-run via `settings.json` no longer silently degrade cases 25-33 from "expected deny" to "pass under dry-run". Per-case env prefixes (e.g. case 34's explicit `CLAUDEMD_PATH2_DRY_RUN=1`) still drive what they need.
+
+- `[fix]` **`scripts/doctor.js`** — selfTest spawn env now explicitly clears `CLAUDEMD_PATH2_DRY_RUN` and `BANNED_VOCAB_PROSE_SCAN` (parallel to the existing `DISABLE_CLAUDEMD_HOOKS` clear). Self-test verifies hook CODE integrity, not live enforcement, so user-env Path 2 toggles must not influence the code-path under test.
+
+- `[test]` **`tests/scripts/version-cascade-check.test.js`** Cases 9-17 — 9 new tests. Real-repo smoke (drift=0 baseline against actual repo on every `npm test`), synthetic drift +100B (over threshold) reports correctly, ±20B boundary inclusive, +21B exclusive, missing extended.md skips clean, missing Sizing line fails clean, arrow + plain forms both parse, sizing-only failure short-circuits exit code while cascade passes. CLI `--json` shape test updated for nested layout. 8 → 17.
+
+### Migration
+
+None. The existing `npm run version-check` keeps the same CLI; the new sizing gate is additive (exit 0 still requires green). One subtle break for non-test consumers: if anything parsed the `--json` output's flat shape, switch to `parsed.cascade.expectedMinor` / `parsed.cascade.filesChecked`. Grep confirms only test code touched this surface.
+
+### What this DOES NOT do
+
+- Does not change spec content. Sizing line is still operator-maintained — the check just catches drift before it ships.
+- Does not auto-rewrite the Sizing line. Operator decides what to write; this guard catches the "forgot to update" case.
+- Does not apply to `spec/CLAUDE-changelog.md` (intentionally historical).
+
 ## [0.21.1] - 2026-05-21
 
 **Patch — add: `CLAUDEMD_PATH2_DRY_RUN=1` observability flag + doctor `banned-vocab self-test:prose-scan`. Spec unchanged at v6.13.1.**

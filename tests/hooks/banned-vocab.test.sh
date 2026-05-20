@@ -7,6 +7,17 @@ FIX="$HERE/../fixtures/events"
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 
+# v0.21.2 — test hermeticity. Users who set CLAUDEMD_PATH2_DRY_RUN=1 or
+# BANNED_VOCAB_PROSE_SCAN=0 in ~/.claude/settings.json carry those env vars
+# into npm test subprocesses. Cases 25-33 (Path 2 expected-deny) would
+# silently degrade to "pass under dry-run", masking real regressions. Clear
+# all banned-vocab-related toggles at suite entry; per-case env prefixes still
+# set what they need (e.g. case 34 sets CLAUDEMD_PATH2_DRY_RUN=1 explicitly).
+unset CLAUDEMD_PATH2_DRY_RUN
+unset BANNED_VOCAB_PROSE_SCAN
+unset DISABLE_BANNED_VOCAB_HOOK
+unset DISABLE_CLAUDEMD_HOOKS
+
 FAIL=0
 
 assert_pass() {

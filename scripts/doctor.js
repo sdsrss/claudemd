@@ -295,6 +295,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
         DISABLE_RULE_HITS_LOG: '1',
         DISABLE_CLAUDEMD_HOOKS: '',
         [t.ksEnvVar]: '',
+        // v0.21.2 — neutralize user-env Path 2 toggles. If the user has set
+        // CLAUDEMD_PATH2_DRY_RUN=1 (observability rollout) or
+        // BANNED_VOCAB_PROSE_SCAN=0 (Path 2 disabled), the prose-scan self-
+        // test would silently pass-as-empty instead of testing the deny path.
+        // Self-tests verify hook CODE integrity, not live enforcement —
+        // separate axis from user intent.
+        CLAUDEMD_PATH2_DRY_RUN: '',
+        BANNED_VOCAB_PROSE_SCAN: '',
         ...envOverride,
       },
     });
