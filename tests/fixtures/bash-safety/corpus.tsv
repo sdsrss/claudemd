@@ -146,3 +146,20 @@ deny	:? guard for wrong var (SAFE guarded, EVIL deleted)	: "${SAFE:?msg}" && rm 
 deny	:- default-fallback is not a guard	: "${X:-/tmp}" && rm -rf "$X"
 deny	[[ -n ]] non-empty check is not a recognized guard	[[ -n "$X" ]] && rm -rf "$X"
 deny	backslash-escaped literal guard in echo is not real	echo "use \${X:?msg} guard" && rm -rf $X
+
+# === v0.21.4: rm-flag coverage extension + per-segment iteration ===
+# Pre-fix `RM_FLAG_REGEX` required `rm` followed by a SINGLE `-*[rRfF]*` flag
+# block. Long-form (`--recursive` / `--force`) and split short-form
+# (`rm -v -i -rf`) were FN. Also `.*${RM_FLAG_REGEX}//` was greedy, anchored
+# at the LAST rm-rf in a multi-rm chain — earlier unguarded rm-rfs were
+# silently skipped. Fix: per-segment iteration (split on `;`/`&&`/`||`/`|`/`&`/
+# newline) with token-aware flag detection.
+deny	rm --recursive --force $X (long-form)	rm --recursive --force $X
+deny	rm --recursive -f $X (mixed long/short)	rm --recursive -f $X
+deny	rm -r --force $X (short --recursive equivalent)	rm -r --force $X
+deny	rm -v -i -rf $X (split short flags)	rm -v -i -rf $X
+deny	rm $X -rf (target before flags, valid bash)	rm $X -rf
+deny	multi-rm: unguarded $A then guarded $B	rm -rf "$A" && : "${B:?msg}" && rm -rf "$B"
+pass	multi-rm: both guarded	: "${A:?msg}" && : "${B:?msg}" && rm -rf "$A" && rm -rf "$B"
+pass	rm --recursive --help (long flag w/ help, no var)	rm --recursive --help
+pass	rm -r --force /tmp/literal (long-form + literal)	rm -r --force /tmp/literal

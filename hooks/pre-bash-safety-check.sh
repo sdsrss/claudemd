@@ -219,76 +219,117 @@ SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 declare -a HITS=()
 REASONS=""
 
-# Pattern 1: rm with -r/-R/-f flag combination AND variable-expansion target.
-# Use a token-based approach to keep regex BSD-grep compatible.
-# Match against SANITIZED_CMD (strings/comments/heredoc-bodies stripped) but
-# accept the [allow-rm-rf-var] bypass token from raw CMD so the marker can
-# live anywhere — including inside a quoted string the user wrote intentionally.
-RM_FLAG_REGEX='(^|[[:space:];&|`])rm[[:space:]]+-[[:alpha:]]*[rRfF][[:alpha:]]*[[:space:]]'
-if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
-  bypass_rm=0
-  if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
-    bypass_rm=1
-    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}' '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
-  fi
+# Pattern 1: rm with `-r` / `-R` / `-f` / `-F` / `--recursive` / `--force`
+# in its flag block AND a variable-expansion target.
+#
+# Per-segment iteration (v0.21.4): split SANITIZED_CMD_FLAT on command
+# terminators (`;`, `&&`, `||`, `|`, `&`) and analyze each `rm`-starting
+# segment independently. Pre-fix `.*${RM_FLAG_REGEX}//` was a greedy sed
+# anchored at the LAST `rm -rf ` match; the earlier-segment in a chain
+# was silently skipped. Repro: `rm -rf "$A" && : "${B:?msg}" && rm -rf "$B"`
+# — last rm has a matching guard, accidentally allowing the unguarded `$A` rm.
+# Per-segment iteration analyzes each rm independently.
+#
+# Long-form (`--recursive` / `--force`) and split short-form (`rm -v -i -rf`)
+# flag patterns were also FN in the prior single-shot regex; the token loop
+# below recognizes both shapes.
+#
+# Match against SANITIZED_CMD_FLAT (strings/comments/heredoc-bodies stripped)
+# but accept the [allow-rm-rf-var] bypass token from raw CMD so the marker
+# can live anywhere — including inside a quoted string the user wrote
+# intentionally.
+bypass_rm=0
+if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
+  bypass_rm=1
+  hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-rm-rf-var"}' '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+fi
 
-  if (( bypass_rm == 0 )); then
-    # Find the rm subcommand's argv after the flag block. Strip up through
-    # the rm flags, then take the next non-flag token as the target.
-    rm_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${RM_FLAG_REGEX}//")
+if (( bypass_rm == 0 )); then
+  # Split SANITIZED_CMD on terminators. Operators `&&` / `||` collapse to
+  # newlines (multi-char first); then single-char `;` / `&` / `|`. Two passes
+  # because sed -E alternation with backrefs is awkward for run-length groups.
+  # Use SANITIZED_CMD (multi-line) not SANITIZED_CMD_FLAT — original newlines
+  # ARE natural command terminators; the FLAT version collapses them, joining
+  # otherwise-independent commands and breaking per-segment iteration.
+  RM_SEGMENTS=$(printf '%s\n' "$SANITIZED_CMD" \
+    | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
+    | sed -E 's/[;&|]/\n/g')
+  while IFS= read -r segment; do
+    # Trim leading/trailing whitespace.
+    trimmed="${segment#"${segment%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    # Segment must start with `rm` token (followed by whitespace or end).
+    [[ "$trimmed" == rm || "$trimmed" == rm[[:space:]]* ]] || continue
+    # Parse args. Detect any of: -r / -R / -f / -F in a `-*[rRfF]*` short
+    # flag block; OR `--recursive` / `--force` long form. Find the first
+    # non-flag positional arg as the target. POSIX `--` separator handled.
+    args_only="${trimmed#rm}"
+    args_only="${args_only#"${args_only%%[![:space:]]*}"}"
+    danger=0
     rm_target=""
-    for tok in $rm_tail; do
+    after_dash_dash=0
+    for tok in $args_only; do
+      if (( after_dash_dash == 1 )); then
+        [[ -z "$rm_target" ]] && rm_target="$tok"
+        continue
+      fi
       case "$tok" in
-        -*) continue ;;
-        ';'|'&'|'|'|'&&'|'||') break ;;
-        *)  rm_target="$tok"; break ;;
+        '--')              after_dash_dash=1 ;;
+        --recursive|--force) danger=1 ;;
+        --*)               ;;  # other long-flag, ignore
+        -*[rRfF]*)         danger=1 ;;
+        -*)                ;;  # short flag without r/R/f/F (e.g. -v -i)
+        *)
+          [[ -z "$rm_target" ]] && rm_target="$tok"
+          ;;
       esac
     done
-    if [[ -n "$rm_target" ]] && echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}'; then
-      varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
-        | sed -E 's/[${}"'"'"']//g')
-      # Strip ALL var expansions + quotes from the target — what remains is the
-      # literal-path residue. A whitelisted var (HOME/PWD/OLDPWD/TMPDIR) is only
-      # "validated" when there's a real subpath bound: `$HOME/cache` rms a
-      # subdir, but bare `$HOME` rms the user's entire home, and `$HOME/` rms
-      # `/` if HOME is somehow empty (Steam-disaster class, ValveSoftware/
-      # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
-      # The whitelist only certifies the var is shell-typed, not that the
-      # target is bounded. Require ≥1 non-`/` character in the residue.
-      residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g')
-      case "$varname" in
-        HOME|PWD|OLDPWD|TMPDIR)
-          if [[ ! "$residue" =~ [^/] ]]; then
-            HITS+=("rm -rf \$$varname with no literal subpath (bare whitelisted-var expansion)")
-            REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
-          fi
-          ;;
-        *)
-          # Canonical-guard recognition: bash's `${VARNAME:?msg}` set-or-exit
-          # operator forces the var to be set AND non-empty, or aborts the
-          # shell. This is the exact form the deny message below recommends
-          # ("Validate the var inline: : \"${VAR:?must be set}\""). Match
-          # against the same varname extracted from the rm target so a guard
-          # on a different var (e.g. `: "${SAFE:?msg}" && rm -rf "$EVIL"`)
-          # still denies. Position-agnostic on purpose: if a user writes the
-          # guard AFTER rm-rf, bash still executes rm-rf first, but with VAR
-          # unset $VAR expands to empty → `rm -rf ""` is a no-op error, so
-          # no damage is done either way. Other guard forms ([[ -n ]],
-          # `set -u`, control flow) remain unrecognized — use [allow-rm-rf-var].
-          # `(^|[^\\])` rejects backslash-escaped literals like
-          # `echo "use \${X:?msg} guard"` — the `\$` is bash-literal, not
-          # an actual expansion, so it must not satisfy the guard.
-          guard_re='(^|[^\\])\$\{'"$varname"':\?'
-          if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
-            hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
-          else
-            HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
-            REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
-          fi
-          ;;
-      esac
-    fi
-  fi
+    (( danger == 1 )) || continue
+    [[ -n "$rm_target" ]] || continue
+    echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' || continue
+    varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
+      | sed -E 's/[${}"'"'"']//g')
+    # Strip ALL var expansions + quotes from the target — what remains is the
+    # literal-path residue. A whitelisted var (HOME/PWD/OLDPWD/TMPDIR) is only
+    # "validated" when there's a real subpath bound: `$HOME/cache` rms a
+    # subdir, but bare `$HOME` rms the user's entire home, and `$HOME/` rms
+    # `/` if HOME is somehow empty (Steam-disaster class, ValveSoftware/
+    # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
+    # The whitelist only certifies the var is shell-typed, not that the
+    # target is bounded. Require ≥1 non-`/` character in the residue.
+    residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g')
+    case "$varname" in
+      HOME|PWD|OLDPWD|TMPDIR)
+        if [[ ! "$residue" =~ [^/] ]]; then
+          HITS+=("rm -rf \$$varname with no literal subpath (bare whitelisted-var expansion)")
+          REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+        fi
+        ;;
+      *)
+        # Canonical-guard recognition: bash's `${VARNAME:?msg}` set-or-exit
+        # operator forces the var to be set AND non-empty, or aborts the
+        # shell. This is the exact form the deny message below recommends
+        # ("Validate the var inline: : \"${VAR:?must be set}\""). Match
+        # against the same varname extracted from the rm target so a guard
+        # on a different var (e.g. `: "${SAFE:?msg}" && rm -rf "$EVIL"`)
+        # still denies. Position-agnostic on purpose: if a user writes the
+        # guard AFTER rm-rf, bash still executes rm-rf first, but with VAR
+        # unset $VAR expands to empty → `rm -rf ""` is a no-op error, so
+        # no damage is done either way. Other guard forms ([[ -n ]],
+        # `set -u`, control flow) remain unrecognized — use [allow-rm-rf-var].
+        # `(^|[^\\])` rejects backslash-escaped literals like
+        # `echo "use \${X:?msg} guard"` — the `\$` is bash-literal, not
+        # an actual expansion, so it must not satisfy the guard.
+        guard_re='(^|[^\\])\$\{'"$varname"':\?'
+        if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
+          hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+        else
+          HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
+          REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+        fi
+        ;;
+    esac
+  done <<< "$RM_SEGMENTS"
 fi
 
 # Pattern 2: npx with first non-flag arg being a bare/scoped package name

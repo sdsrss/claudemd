@@ -8,6 +8,38 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.4] - 2026-05-21
+
+**Patch — fix: §8 SAFETY rm-detection coverage gaps surfaced by continued dogfooding of v0.21.3. Per-segment iteration replaces single-shot greedy regex. Spec unchanged at v6.13.1.**
+
+### Why this patch
+
+Round-4 dogfood of v0.21.3 surfaced three more §8 SAFETY rm-rf-var detection holes — same severity class, same file, all reachable. The v0.21.3 fix closed the sanitize-bypass and added `${VAR:?…}` guard recognition but kept the original single-shot `RM_FLAG_REGEX` matching strategy. That strategy fails on three flag/sequencing variants:
+
+1. **Long-form flags** — `rm --recursive --force $X` allowed. The regex required a single `-*[rRfF]*` block; `--recursive` doesn't fit.
+2. **Split short flags** — `rm -v -i -rf $X` allowed. Same root cause — multiple `-*` blocks, only the first considered.
+3. **Multi-rm chain** — `rm -rf "$A" && : "${B:?msg}" && rm -rf "$B"` allowed. The greedy `sed -E "s/.*${RM_FLAG_REGEX}//"` anchored at the LAST `rm -rf` in the command; the earlier unguarded rm-rf on `$A` was silently skipped because its target never reached the for-loop. The guard for `$B` accidentally certified the whole command.
+
+All three were latent in every release back to v0.5.0; v0.21.3's per-varname guard recognition exposed them as exploitable.
+
+### What changed (code)
+
+- `[fix]` **`hooks/pre-bash-safety-check.sh`** rm-detection refactor — replaced the single-shot `RM_FLAG_REGEX` match with per-segment iteration. Splits `SANITIZED_CMD` (multi-line, preserves newline command terminators — `SANITIZED_CMD_FLAT` would have collapsed them) on `&&`, `||`, `;`, `&`, `|`. For each segment starting with the `rm` token, parses args with a token-aware loop that recognizes `--` (POSIX separator), `--recursive` / `--force` (long-form), `-*[rRfF]*` (short with danger letter), `--*` and `-*` (other flags — ignored), and first non-flag positional as target. Each rm-rf-with-var is independently checked for HOME/PWD/OLDPWD/TMPDIR whitelist or `${VAR:?…}` guard. Multiple HITS in one command all surface in the deny message.
+
+- `[test]` **`tests/fixtures/bash-safety/corpus.tsv`** — 9 new corpus cases. Long-form: `rm --recursive --force $X` deny, `rm --recursive -f $X` deny, `rm -r --force $X` deny. Split short: `rm -v -i -rf $X` deny. Target-before-flag: `rm $X -rf` deny. Multi-rm: unguarded-then-guarded deny, both-guarded pass. Long-form FP guards: `rm --recursive --help` pass, `rm -r --force /tmp/literal` pass. Net 90 → 99 cases.
+
+- `[change]` plugin / package / marketplace bump 0.21.3 → 0.21.4.
+
+### Migration
+
+None. `[allow-rm-rf-var]` escape token continues to work. Commands that the v0.21.3 regex missed now correctly deny; legitimate forms (`rm -rf /tmp/literal`, `rm -rf $HOME/cache`, canonical `:?` guard) continue to allow. Multi-line shapes (`TMP=$(mktemp -d)\nrm -rf $UNSAFE`) continue to deny — newlines are now treated as natural segment terminators by the per-segment splitter.
+
+### What this DOES NOT do
+
+- Does not change `${VAR:?…}` guard semantics. Position-agnostic full-command search retained: a guard appearing anywhere in the command still satisfies the same-varname rm-rf, even if positioned syntactically after the rm-rf. (As noted in v0.21.3 CHANGELOG, bash semantics already neutralize the late-guard case — `rm -rf ""` on unset var is a no-op error.)
+- Does not extend recognition to non-`:?` guard forms. `[[ -n ]]` / `set -u` still need `[allow-rm-rf-var]`.
+- Does not handle nested `bash -c "bash -c '...'"` chains under `BASH_SAFETY_INDIRECT_CALL=1`. Single-layer unwrap is the existing design.
+
 ## [0.21.3] - 2026-05-21
 
 **Patch — fix: §8 SAFETY silent bypass in `pre-bash-safety-check.sh` sanitize step + `${VAR:?}` canonical-guard recognition. End-to-end dogfood findings. Spec unchanged at v6.13.1.**
