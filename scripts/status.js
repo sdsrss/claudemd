@@ -120,10 +120,21 @@ export async function status({ verbose = false } = {}) {
   //     git log / etc.). Default flipped on §13.3 promotion. Opt-out: =0.
   //   transcriptVocabScan (v0.8.3 R-N8): PostToolUse advisory scan of
   //     assistant text against §10-V banned-vocab.patterns
+  // v0.20.1 I3: surface session-end-check batch-cadence sub-feature state.
+  // batchCadenceAdvisory defaults ON (env=1 turns it off); batchCadenceThreshold
+  // mirrors session-end-check.sh's CLAUDEMD_BATCH_THRESHOLD env guard (positive
+  // integer override, default 20). Without this, the sub-feature flag had
+  // zero visibility in /claudemd-status output.
+  const batchThresholdRaw = process.env.CLAUDEMD_BATCH_THRESHOLD;
+  const batchCadenceThreshold = /^[1-9][0-9]*$/.test(batchThresholdRaw || '')
+    ? Number(batchThresholdRaw)
+    : 20;
   const features = {
     bashSafetyIndirectCall: process.env.BASH_SAFETY_INDIRECT_CALL === '1',
     bashReadonlyFastPath: process.env.BASH_READONLY_FAST_PATH !== '0',
     transcriptVocabScan: process.env.TRANSCRIPT_VOCAB_SCAN === '1',
+    batchCadenceAdvisory: process.env.DISABLE_BATCH_CADENCE_ADVISORY !== '1',
+    batchCadenceThreshold,
   };
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');

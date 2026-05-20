@@ -215,6 +215,72 @@ test('status.features.bashReadonlyFastPath ON for any non-zero value (v0.20.0)',
   }
 });
 
+test('status.features.batchCadenceAdvisory defaults TRUE when env var unset (v0.20.1)', async () => {
+  // v0.20.1 I3 — sub-feature flag surfaced. Default ON (DISABLE_*=1 turns off).
+  const saved = process.env.DISABLE_BATCH_CADENCE_ADVISORY;
+  try {
+    delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
+    const r = await status();
+    assert.equal(r.features.batchCadenceAdvisory, true);
+  } finally {
+    if (saved === undefined) delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
+    else process.env.DISABLE_BATCH_CADENCE_ADVISORY = saved;
+  }
+});
+
+test('status.features.batchCadenceAdvisory honors DISABLE_BATCH_CADENCE_ADVISORY=1 (v0.20.1)', async () => {
+  const saved = process.env.DISABLE_BATCH_CADENCE_ADVISORY;
+  try {
+    process.env.DISABLE_BATCH_CADENCE_ADVISORY = '1';
+    const r = await status();
+    assert.equal(r.features.batchCadenceAdvisory, false);
+  } finally {
+    if (saved === undefined) delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
+    else process.env.DISABLE_BATCH_CADENCE_ADVISORY = saved;
+  }
+});
+
+test('status.features.batchCadenceThreshold defaults to 20 when env unset (v0.20.1)', async () => {
+  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
+  try {
+    delete process.env.CLAUDEMD_BATCH_THRESHOLD;
+    const r = await status();
+    assert.equal(r.features.batchCadenceThreshold, 20);
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
+    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
+  }
+});
+
+test('status.features.batchCadenceThreshold honors positive-int override (v0.20.1)', async () => {
+  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
+  try {
+    process.env.CLAUDEMD_BATCH_THRESHOLD = '5';
+    assert.equal((await status()).features.batchCadenceThreshold, 5);
+    process.env.CLAUDEMD_BATCH_THRESHOLD = '100';
+    assert.equal((await status()).features.batchCadenceThreshold, 100);
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
+    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
+  }
+});
+
+test('status.features.batchCadenceThreshold falls back to 20 on invalid input (v0.20.1)', async () => {
+  // Non-numeric / zero / negative / float → default 20. Matches the env guard
+  // in session-end-check.sh (CLAUDEMD_BATCH_THRESHOLD requires ^[1-9][0-9]*$).
+  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
+  try {
+    for (const bad of ['0', '-5', '2.5', 'abc', '']) {
+      process.env.CLAUDEMD_BATCH_THRESHOLD = bad;
+      assert.equal((await status()).features.batchCadenceThreshold, 20,
+        `bad input '${bad}' must fall back to default 20`);
+    }
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
+    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
+  }
+});
+
 test('status.features.bashSafetyIndirectCall reflects env var (v0.6.0)', async () => {
   const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
   try {

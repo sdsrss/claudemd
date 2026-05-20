@@ -143,6 +143,32 @@ for e in $EMITTED; do
   fi
 done
 
+# --- C2 (v0.20.1 M3): every ESCAPE_TOKENS literal in scripts/status.js -----
+# must appear in at least one hooks/*.sh file. Catches the "added a 6th bypass
+# token to status.js's --verbose mirror table but didn't implement it in any
+# hook" drift class. status.js's ESCAPE_TOKENS is hand-maintained mirror data;
+# this assertion turns it into a contract check.
+STATUS_JS="$(cd "$HERE/../../scripts" && pwd)/status.js"
+if [[ -r "$STATUS_JS" ]]; then
+  # Extract every `token: '...'` literal from the ESCAPE_TOKENS array.
+  # Single-quoted JS strings; tokens themselves never contain a single quote.
+  ESCAPE_TOKENS_FOUND=$(grep -oE "token: '[^']+'" "$STATUS_JS" | sed -E "s/^token: '(.*)'$/\\1/")
+  if [[ -z "$ESCAPE_TOKENS_FOUND" ]]; then
+    ng "C2 ESCAPE_TOKENS array empty or unparseable in status.js"
+  else
+    while IFS= read -r tok; do
+      [[ -z "$tok" ]] && continue
+      if grep -F -q -r -- "$tok" "$HOOKS_DIR"; then
+        ok "C2 ESCAPE_TOKEN '$tok' is implemented in hooks/"
+      else
+        ng "C2 ESCAPE_TOKEN '$tok' declared in status.js but NOT found in any hook (drift)"
+      fi
+    done <<< "$ESCAPE_TOKENS_FOUND"
+  fi
+else
+  ng "C2 status.js unreadable at $STATUS_JS"
+fi
+
 # --- D: project field is auto-populated -------------------------------------
 
 rm -f "$LOG"

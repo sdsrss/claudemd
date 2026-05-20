@@ -8,6 +8,48 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.20.1] - 2026-05-21
+
+**Patch — fix-forward on code review findings from the v0.19.1→v0.19.2→v0.20.0 arc. Three Important items + three Minor items + one docs cleanup. No spec change (spec stays v6.13.1). No behavioral default flipped.**
+
+### Background
+
+Code review of the v0.19.1+v0.19.2+v0.20.0 release arc (commits `237bf2a`..`984d6df`) surfaced 3 Important + 4 Minor findings. All "fix-forward" class — none blocked the original ships, all addressable in a single patch. This release closes 6 of them (one Minor was a false-alarm self-correction; one was deemed defensive low-ROI and deferred).
+
+### What changed
+
+- `[fix LOW]` **`hooks/session-end-check.sh`** L2+ heuristic comment (I1) — reviewer flagged that `structure-advisory` and `mid-spine-advisory` events in the qualifying set are gated by opt-in env vars (`TRANSCRIPT_STRUCTURE_SCAN=1` / `MID_SPINE_YIELD_SCAN=1`, default OFF), so the prior comment overstated practical breadth. Rewritten to honestly partition always-on `{deny, warn, deny-repeat}` from opt-in `{structure-advisory, mid-spine-advisory}`. Filter logic unchanged — when operators enable opt-in scans, sensitivity grows automatically.
+
+- `[fix MED]` **`hooks/session-end-check.sh`** L2+ rule-hits scan now `tail -n 10000`-bounded (I2) — `jq -R -s 'split("\n")|...'` reads the entire log into memory. At the 5MB doctor warn threshold (~50K rows) this is borderline; `tail -n 10000` cap before jq is a defensive 5× reduction. Single session won't realistically emit 10K rule-hits, so behavior on healthy logs is zero-change.
+
+- `[feat MED]` **`scripts/status.js`** features block exposes `batchCadenceAdvisory` + `batchCadenceThreshold` (I3) — `DISABLE_BATCH_CADENCE_ADVISORY` and `CLAUDEMD_BATCH_THRESHOLD` had zero visibility in `/claudemd-status` output before this. New fields default to `true` and `20` respectively; honor env overrides with the same `^[1-9][0-9]*$` guard that `session-end-check.sh` uses for the threshold (invalid input falls back to default 20).
+
+- `[fix LOW]` **`hooks/memory-prompt-hint.sh`** tag-count regex tightened (M1) — `[[ "$tag_count" =~ ^[0-9]+$ ]]` accepted `0` from `awk -F, '{print NF}'` on an empty string, falling unreachable today only because of an upstream filter. Tightened to `^[1-9][0-9]*$` (positive integer required) so the guard defends against filter-bypass regressions.
+
+- `[test MED]` **`tests/hooks/contract.test.sh`** section C2 added (M3) — every `token: '...'` literal in `scripts/status.js#ESCAPE_TOKENS` is grepped across `hooks/*.sh`; missing tokens fail loudly. Closes the "added a 6th bypass token to status.js verbose mirror but didn't implement it in any hook" drift class. 53 → 58 (one row per token currently declared, all 5 found).
+
+- `[fix LOW]` **`hooks/session-end-check.sh`** `paused.md` template surfaces mutation cap (M5) — recent-mutations jq reducer caps the list at 3 (line 63), but the prior template didn't note this. Operator reading a `paused.md` with `MUTATIONS=12` previously saw 3 entries with no indication 9 were elided. New line: `(showing up to the last 3 of $MUTATIONS total)`.
+
+- `[docs]` **`commands/claudemd-install.md`** strips magic-number `(expected: 17 as of v0.19.x)` from the `entries.length` doc bullet — number would go stale on every hook addition. Now reads just "number of registered hooks."
+
+### Deferred (Minor — low ROI for this patch)
+
+- **M2** `hooks/memory-prompt-hint.sh` mtime fallback when `platform_stat_mtime` missing → `0` for every entry → secondary sort key inert. Reviewer judged this defensive; `platform.sh` ships alongside the hook and won't normally vanish. Deferred indefinitely.
+- **M4** Reviewer self-flagged + retracted (false alarm on banned-vocab in v0.19.2 CHANGELOG). No action.
+
+### Tests
+
+- 20/20 status tests pass (was 15; +5 for I3 batchCadence fields default + override + invalid-input fallback).
+- 58/58 contract tests pass (was 53; +5 for C2 ESCAPE_TOKENS mirror check).
+- 16/16 memory-prompt-hint tests pass (unchanged — M1 fix is regression-defense for unreachable path).
+- 13/13 session-end-check tests pass (unchanged — I1 is comment, I2 is bounded scan, M5 is template prose).
+- All 432 script tests, full hook suite, integration upgrade-lifecycle pass.
+- `node scripts/version-cascade-check.js`: ok.
+
+### Why patch
+
+All 6 items are fix-forward on a review of already-shipped work; no new HARD rule, no spec content change, no behavioral default flipped (the default flips in v0.20.0 stand as-is). New `features.*` fields in status output are additive observability per §13 META "wording / clarification, identical behavior".
+
 ## [0.20.0] - 2026-05-21
 
 **Minor — change: `BASH_READONLY_FAST_PATH` default flipped from opt-in OFF (v0.8.3+) to opt-out ON (this release). §13.3 advisory→enforce promotion: ~21 months observation, zero operator reverts, cross-project use. Spec unchanged at v6.13.1.**

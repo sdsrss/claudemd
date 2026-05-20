@@ -12,7 +12,7 @@ Surface the JSON output as a one-line human summary:
 - `spec`: `fresh` (no prior files) | `backup-and-overwrite` (existing files moved to `backup-<ISO>/`).
 - `backupDir`: path to the backup directory when applicable.
 - `userContentDetected: true` — flag this loudly: the existing `~/.claude/CLAUDE.md` did not look like a claudemd spec; the user's hand-written content is in `backupDir/CLAUDE.md`. To bring it back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
-- `entries.length`: number of registered hooks (expected: 17 as of v0.19.x).
+- `entries.length`: number of registered hooks.
 - `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless).
 
 **When to use**: right after `/plugin install claudemd@claudemd` so hooks fire in THIS session. Claude Code does not honor `postInstall`, so without this command (or restarting the session) `install.js` runs on the next `SessionStart` and the current session sees `/claudemd-status` reporting `plugin.hint == "cache-present-bootstrap-pending"`.

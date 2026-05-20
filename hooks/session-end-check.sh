@@ -101,6 +101,8 @@ these as complete.
 
 ## Last mutation tool call(s)
 
+(showing up to the last 3 of $MUTATIONS total)
+
 $RECENT_LIST
 
 ## Source
@@ -142,12 +144,15 @@ fi
 # the manual /claudemd-sampling-audit run, the §13.2/§13.3 feedback loop
 # went dark.
 #
-# L2+ heuristic: this session emitted ≥1 rule-hits row with event ∈ {deny,
-# structure-advisory, mid-spine-advisory, warn} for this SESSION_ID. These
-# are the events that fire when L2-or-higher work happened (hook denies are
-# §5-hard / §8 / §7 territory; structure-advisory + mid-spine-advisory hit on
-# §iron-law-2 / §10 / §11-mid-spine which only fire on substantive turns;
-# `warn` from session-end-check.sh itself is the unvalidated-mutation signal).
+# L2+ heuristic: this session emitted ≥1 rule-hits row with event in
+# {deny, warn, deny-repeat} (always-on signals) plus the opt-in
+# {structure-advisory, mid-spine-advisory} when their respective Stop scans
+# are enabled (TRANSCRIPT_STRUCTURE_SCAN=1 / MID_SPINE_YIELD_SCAN=1).
+# In default-OFF posture only the first three fire — sufficient coverage
+# (hook denies for §5-hard / §8 / §7 + unvalidated-mutation `warn` from
+# this script + same-CI-run retry escalation `deny-repeat` from
+# ship-baseline). When operators flip the opt-in scans on, sensitivity
+# increases automatically without code change.
 #
 # Counter file: ~/.claude/.claudemd-state/l2-task-counter. Single-line text
 # integer. Increment per L2+ session; at threshold → advisory stderr + reset
@@ -164,7 +169,11 @@ if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
   if [[ -f "$LOG" && -n "${SESSION_ID:-}" && "$SESSION_ID" != "unknown" ]]; then
     # Single jq pass: parse each row, filter to this session_id + L2+ event
     # set, count. -R reads lines, try fromjson catch empty drops malformed.
-    L2_HIT_COUNT=$(jq -R -s --arg sid "$SESSION_ID" '
+    # v0.20.1 I2: `tail -n 10000` bound before jq to prevent linear scan cost
+    # on oversized rule-hits logs (5MB warn threshold ≈ 50K rows; a single
+    # session won't reasonably emit 10K rows, so the tail is a defensive
+    # cap with zero behavior change on healthy logs).
+    L2_HIT_COUNT=$(tail -n 10000 "$LOG" 2>/dev/null | jq -R -s --arg sid "$SESSION_ID" '
       split("\n")
       | map(select(length > 0) | try fromjson catch empty)
       | map(select(.session_id == $sid))
@@ -174,7 +183,7 @@ if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
                    or .event == "warn"
                    or .event == "deny-repeat"))
       | length
-    ' < "$LOG" 2>/dev/null) || L2_HIT_COUNT=0
+    ' 2>/dev/null) || L2_HIT_COUNT=0
     [[ "$L2_HIT_COUNT" =~ ^[0-9]+$ ]] || L2_HIT_COUNT=0
     if (( L2_HIT_COUNT > 0 )); then
       CUR=0

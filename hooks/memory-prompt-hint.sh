@@ -136,7 +136,13 @@ for i in "${!UNREAD_FILES[@]}"; do
   tags="${UNREAD_TAGS[$i]}"
   mfile="$MEM_DIR/$file"
   tag_count=$(printf '%s' "$tags" | awk -F, '{print NF}')
-  [[ "$tag_count" =~ ^[0-9]+$ ]] || tag_count=1
+  # v0.20.1 M1: require positive integer (≥1). `awk NF` returns 0 on an
+  # empty string — numeric but semantically wrong (every entry in
+  # SORT_ROWS has ≥1 matched tag by upstream filter). Pre-this, the
+  # `^[0-9]+$` guard accepted 0, falling unreachable today only because
+  # of the upstream filter. The tighter regex defends against
+  # filter-bypass regressions.
+  [[ "$tag_count" =~ ^[1-9][0-9]*$ ]] || tag_count=1
   mtime=0
   if command -v platform_stat_mtime >/dev/null 2>&1; then
     mtime=$(platform_stat_mtime "$mfile" 2>/dev/null) || mtime=0
