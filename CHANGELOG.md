@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.19.2] - 2026-05-21
+
+**Patch — feat: `/claudemd-install` slash command for current-session bootstrap + `memory-prompt-hint` priority ranking (tag-count desc → mtime desc) + `session-end-check` §13.2 batch-review cadence advisory.**
+
+### What changed
+
+- `[add UX]` **`commands/claudemd-install.md`** + **README Quick start + troubleshooting** — new `/claudemd-install` slash command wraps `node ${CLAUDE_PLUGIN_ROOT}/scripts/install.js` so users can bootstrap the CURRENT Claude Code session right after `/plugin install` instead of waiting for the next `SessionStart`. Background: CC does not fire `postInstall`, so `install.js` previously only ran on session restart; README troubleshooting "Hooks don't fire" path now leads with `/claudemd-install` as option 1, manual `node` invocation as option 3 fallback. README commands table 11 → 12.
+
+- `[feat MED]` **`hooks/memory-prompt-hint.sh`** — un-Read matches now sorted by (1) matched-tag count desc, then (2) file mtime desc. Pre-this, order = MEMORY.md authoring order, so when `COUNT > MAX(5)` the highest entries in the file dominated regardless of how strongly they matched the prompt vs entries lower in the file. New algorithm spends the 5-item cap on the entries most likely to change the agent's path. Sources `hooks/lib/platform.sh` explicitly (per `feedback_hook_platform_lib_source.md` — `command -v platform_*` guard silently falls-through when lib not sourced).
+
+- `[feat MED]` **`hooks/session-end-check.sh`** — adds §13.2 batch-review cadence counter. Increments `~/.claude/.claudemd-state/l2-task-counter` once per L2+ session (heuristic: rule-hits log has ≥1 `deny`, `structure-advisory`, `mid-spine-advisory`, `warn`, or `deny-repeat` event for this `session_id`). At 20 L2+ sessions (threshold per OPERATOR.md §13.2 cadence): emit stderr advisory recommending `/claudemd-sampling-audit` + `/claudemd-rules`, reset counter to 0, record `batch-cadence-advisory` event under `§13.2-batch-review` spec section. Closes the operator-cadence feedback loop that was previously head-tracked; if maintainer skipped manual sampling-audit runs, the §13.2/§13.3 audit-data pipeline went dark.
+
+- `[add]` **`DISABLE_BATCH_CADENCE_ADVISORY=1`** sub-feature kill-switch (README §2a) — disables the cadence advisory half of session-end-check while leaving the mid-SPINE warn-on-unvalidated-mutation behavior active. Threshold tunable via `CLAUDEMD_BATCH_THRESHOLD=N` (positive integer, default 20) — useful for test scenarios and operators who want a different cadence.
+
+- `[test]` **`tests/hooks/memory-prompt-hint.test.sh`** Cases 15-16 — 15 asserts priority ranking (3-tag-match listed before 1-tag-match) defeats prior MEMORY.md authoring order by placing the strong match SECOND in the file; 16 asserts mtime tiebreak (newer entry before older when tag counts tie). 14 → 16.
+
+- `[test]` **`tests/hooks/session-end-check.test.sh`** Cases 10-13 — L2+ session counter increment (10), threshold trip + advisory + reset (11), `DISABLE_BATCH_CADENCE_ADVISORY=1` kill-switch (12), non-L2+ session (pass/bypass only) does NOT increment (13). 9 → 13.
+
+### Why patch
+
+All three changes are additive observability / UX features. No spec rule added or relaxed (spec stays at v6.13.1). No default behavior of existing hooks flipped. New slash command is opt-in; new sub-feature kill-switch is opt-out. CHANGELOG `feat:` not `change:` per §13 META "patch (wording / clarification, identical behavior) = L2".
+
+### Verification
+
+- 16/16 memory-prompt-hint tests pass (was 14; +2 for priority + mtime tiebreak).
+- 13/13 session-end-check tests pass (was 9; +4 for counter / threshold / kill-switch / non-L2+).
+- All 427 script tests, full hook suite, integration upgrade-lifecycle pass.
+- `node scripts/version-cascade-check.js`: ok (spec v6.13 unchanged).
+
 ## [0.19.1] - 2026-05-21
 
 **Patch — feat: spec patch v6.13.1 (§13 META `HARD ≠ always hook-blocked` clarification + `OPERATOR.md` §13.4 `tasks/` filename conventions table) + `/claudemd-status --verbose` mode + `/claudemd-doctor` self-test matrix extended to cover §8-rm-rf-var + §8-npx.**

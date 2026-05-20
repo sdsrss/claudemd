@@ -133,4 +133,74 @@ if [[ -n "${SESSION_ID:-}" && "$SESSION_ID" != "unknown" ]]; then
   rm -f "$HOME/.claude/.claudemd-state/ext-read-${SAFE_SID}.ts" 2>/dev/null || true
 fi
 
+# v0.19.2 B1 — §13.2 batch-review cadence advisory.
+#
+# Mechanizes the operator-facing OPERATOR.md §13.2 line "every 20 L2+ tasks
+# OR 30 days (whichever first) — merge overlapping `rule-candidates-*.md`
+# entries, promote eligible candidates per §13.2 gates, prune stale entries."
+# Pre-this, the cadence was operator-tracked-in-head; if maintainer skipped
+# the manual /claudemd-sampling-audit run, the §13.2/§13.3 feedback loop
+# went dark.
+#
+# L2+ heuristic: this session emitted ≥1 rule-hits row with event ∈ {deny,
+# structure-advisory, mid-spine-advisory, warn} for this SESSION_ID. These
+# are the events that fire when L2-or-higher work happened (hook denies are
+# §5-hard / §8 / §7 territory; structure-advisory + mid-spine-advisory hit on
+# §iron-law-2 / §10 / §11-mid-spine which only fire on substantive turns;
+# `warn` from session-end-check.sh itself is the unvalidated-mutation signal).
+#
+# Counter file: ~/.claude/.claudemd-state/l2-task-counter. Single-line text
+# integer. Increment per L2+ session; at threshold → advisory stderr + reset
+# to 0 + audit event. Threshold = 20 per §13.2.
+#
+# Kill-switch: covered by DISABLE_SESSION_END_CHECK_HOOK at top of file.
+# To disable ONLY this sub-feature without disabling the mid-SPINE check:
+# DISABLE_BATCH_CADENCE_ADVISORY=1 (sub-flag, env-controlled).
+if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
+  LOG="$HOME/.claude/logs/claudemd.jsonl"
+  COUNTER_DIR="$HOME/.claude/.claudemd-state"
+  COUNTER_FILE="$COUNTER_DIR/l2-task-counter"
+  mkdir -p "$COUNTER_DIR" 2>/dev/null || true
+  if [[ -f "$LOG" && -n "${SESSION_ID:-}" && "$SESSION_ID" != "unknown" ]]; then
+    # Single jq pass: parse each row, filter to this session_id + L2+ event
+    # set, count. -R reads lines, try fromjson catch empty drops malformed.
+    L2_HIT_COUNT=$(jq -R -s --arg sid "$SESSION_ID" '
+      split("\n")
+      | map(select(length > 0) | try fromjson catch empty)
+      | map(select(.session_id == $sid))
+      | map(select(.event == "deny"
+                   or .event == "structure-advisory"
+                   or .event == "mid-spine-advisory"
+                   or .event == "warn"
+                   or .event == "deny-repeat"))
+      | length
+    ' < "$LOG" 2>/dev/null) || L2_HIT_COUNT=0
+    [[ "$L2_HIT_COUNT" =~ ^[0-9]+$ ]] || L2_HIT_COUNT=0
+    if (( L2_HIT_COUNT > 0 )); then
+      CUR=0
+      if [[ -r "$COUNTER_FILE" ]]; then
+        CUR=$(cat "$COUNTER_FILE" 2>/dev/null || printf '0')
+        [[ "$CUR" =~ ^[0-9]+$ ]] || CUR=0
+      fi
+      NEXT=$((CUR + 1))
+      # Threshold: 20 L2+ sessions per OPERATOR.md §13.2 cadence. Test-overridable
+      # via CLAUDEMD_BATCH_THRESHOLD (positive integer); other values silently
+      # ignored, keeping the cadence stable for operators who env-typo.
+      THRESHOLD=20
+      if [[ "${CLAUDEMD_BATCH_THRESHOLD:-}" =~ ^[1-9][0-9]*$ ]]; then
+        THRESHOLD="$CLAUDEMD_BATCH_THRESHOLD"
+      fi
+      if (( NEXT >= THRESHOLD )); then
+        echo "[claudemd] §13.2 batch-review cadence: ${THRESHOLD} L2+ sessions since last reset — recommend \`/claudemd-sampling-audit\` to feed §13.2 promotion gates + \`/claudemd-rules\` to spot demote candidates." >&2
+        echo "  Disable advisory: DISABLE_BATCH_CADENCE_ADVISORY=1" >&2
+        printf '0' > "$COUNTER_FILE" 2>/dev/null || true
+        EXTRA=$(jq -cn --argjson n "$THRESHOLD" '{l2_sessions:$n}' 2>/dev/null) || EXTRA='null'
+        hook_record session-end-check batch-cadence-advisory "$EXTRA" '§13.2-batch-review' "$SESSION_ID"
+      else
+        printf '%d' "$NEXT" > "$COUNTER_FILE" 2>/dev/null || true
+      fi
+    fi
+  fi
+fi
+
 exit 0

@@ -115,6 +115,7 @@ DOCUMENTED=(
   "suggest:memory-prompt-hint"
   "coverage-advisory:memory-coverage-scan"
   "mid-spine-advisory:mid-spine-yield-scan"
+  "batch-cadence-advisory:session-end-check"
 )
 
 for entry in "${DOCUMENTED[@]}"; do

@@ -21,20 +21,17 @@ Run **both** slash commands inside Claude Code:
 /plugin install claudemd@claudemd
 ```
 
-Then verify on your next session:
+Then bootstrap the **current** session (skip the wait-for-next-session restart) + verify:
 
 ```
+/claudemd-install
 /claudemd-status
 /claudemd-doctor
 ```
 
-`status` reports plugin version, shipped vs installed spec version, kill-switch state, and rule-hits row count. `doctor` runs 9+ health checks with `[✓] / [△] / [✗]` markers.
+`install` copies the spec into `~/.claude/`, writes the hook manifest, and evicts legacy entries — idempotent, safe to re-run. (Background: Claude Code does not fire `postInstall`, so without `/claudemd-install`, `install.js` runs on the next `SessionStart` instead.) `status` reports plugin version, shipped vs installed spec version, kill-switch state, and rule-hits row count. `doctor` runs 9+ health checks with `[✓] / [△] / [✗]` markers.
 
-The spec-file copy into `~/.claude/` runs from the `SessionStart` hook on the next session. To install in the **current** session, run the script directly (find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`):
-
-```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js
-```
+Fallback (no slash command — e.g. scripting outside CC): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js`. Find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`.
 
 > ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** Claude Code reads this file as your user-global instructions across every project. If you've hand-written personal instructions there (`Always reply in 中文`, `My name is X`, etc.), install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the spec. Since v0.5.3, install prints a `[claudemd] WARN: …` line to stderr when the existing file does not look like a claudemd spec. To bring your personal instructions back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
 
@@ -59,7 +56,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Layer | Contents |
 |---|---|
 | 17 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `memory-coverage-scan` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 11 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` |
+| 12 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.13.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 
@@ -105,7 +102,8 @@ Opt-in `BASH_READONLY_FAST_PATH=1` short-circuits hooks 1, 2, and 4 when the com
 
 | Command | Purpose |
 |---|---|
-| `/claudemd-status` | Plugin version + spec version + kill-switch state + logs line count. |
+| `/claudemd-install` | Bootstrap the current session right after `/plugin install` (copy spec into `~/.claude/`, write manifest, evict legacy entries). Idempotent. CC does not fire `postInstall`, so without this command `install.js` waits until the next `SessionStart`. |
+| `/claudemd-status [--verbose]` | Plugin version + spec version + kill-switch state + logs line count. `--verbose` adds per-hook env-var × event × effective vs persisted state table + 5 escape-token reference. |
 | `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (4-file spec set is lockstep — per-file select would dangle §EXT cross-references). |
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
@@ -195,6 +193,13 @@ export DISABLE_SESSION_SUMMARY_BANNER=1    # v0.8.0+ — only the SessionStart b
                                            # of last-session-summary.json continues so
                                            # the data is captured for /claudemd-audit
                                            # but no additionalContext line is injected.
+
+export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
+                                           # cadence advisory inside session-end-check;
+                                           # mid-SPINE warn-on-unvalidated-mutation
+                                           # behavior remains active. Threshold also
+                                           # configurable via CLAUDEMD_BATCH_THRESHOLD=N
+                                           # (positive integer, default 20).
 ```
 
 **3. Per-invocation escape hatches.** Embed in the command itself, no env var needed:
@@ -273,11 +278,11 @@ The slash command and the script are equivalent — the slash command just suppl
 
 **`Plugin "claudemd" not found in any marketplace`** — you forgot the `/plugin marketplace add sdsrss/claudemd` step. Re-run it, then retry install.
 
-**Hooks don't fire / `~/.claude/CLAUDE*.md` not present after install** — Claude Code's `postInstall` lifecycle is not honored, so `install.js` runs from the `SessionStart` hook on your next session, not at install time. Either start a fresh Claude Code session, or run the script manually right now (replace `<version>` with the installed version dir):
+**Hooks don't fire / `~/.claude/CLAUDE*.md` not present after install** — Claude Code's `postInstall` lifecycle is not honored, so `install.js` runs from the `SessionStart` hook on your next session, not at install time. Three options:
 
-```bash
-node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js
-```
+1. **Recommended**: run `/claudemd-install` in your current session. Wraps `scripts/install.js` exactly the same way `SessionStart` does — idempotent, prints a JSON summary.
+2. Start a fresh Claude Code session (`SessionStart` fires the bootstrap automatically).
+3. Run the script manually outside CC (e.g. shell scripting): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js` (find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`).
 
 Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.
 

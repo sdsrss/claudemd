@@ -158,6 +158,95 @@ else
   ng "Case 9: no rule-hits row (log=$(cat "$LOG"))"
 fi
 
+# --- Case 10 (v0.19.2 B1): L2+ session → batch-cadence counter increments ---
+# This session has a deny event in rule-hits log → L2+. Counter starts at 0,
+# should become 1 after hook runs. Use CLAUDEMD_BATCH_THRESHOLD=3 to keep test
+# fast (assert behavior before threshold trip in this case).
+reset_cwd
+echo -n '' > "$LOG"
+# Pre-seed rule-hits with a deny event tagged to session id "s10".
+printf '%s\n' '{"ts":"2026-05-21T00:00:00Z","hook":"banned-vocab","event":"deny","session_id":"s10","spec_section":"§10-V","extra":null}' > "$LOG"
+T="$TMP_HOME/case10.jsonl"
+make_transcript "$T" "$USER_MSG"   # no mutations → mid-SPINE block does NOT fire
+event=$(jq -cn --arg t "$T" --arg c "$TMP_CWD" --arg s "s10" \
+  '{hook_event_name:"SessionEnd", transcript_path:$t, cwd:$c, session_id:$s}')
+rm -f "$HOME/.claude/.claudemd-state/l2-task-counter"
+printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 bash "$HOOK" 2>"$TMP_HOME/stderr.10"
+COUNTER10=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null || echo "?")
+if [[ "$COUNTER10" == "1" ]] && [[ ! -s "$TMP_HOME/stderr.10" ]]; then
+  ok "Case 10 (B1): L2+ session → counter 0 → 1, no advisory yet"
+else
+  ng "Case 10: counter=$COUNTER10 stderr=$(cat "$TMP_HOME/stderr.10")"
+fi
+
+# --- Case 11 (v0.19.2 B1): counter trips threshold → advisory + reset to 0 ---
+# Pre-seed counter to threshold-1 (= 2 when threshold=3) so the next L2+
+# session trips it. Assert stderr contains the §13.2 cadence banner AND
+# counter file content is "0" after the run AND a rule-hits row was appended
+# with event=batch-cadence-advisory and spec_section=§13.2-batch-review.
+reset_cwd
+echo -n '' > "$LOG"
+printf '%s\n' '{"ts":"2026-05-21T00:00:00Z","hook":"banned-vocab","event":"deny","session_id":"s11","spec_section":"§10-V","extra":null}' > "$LOG"
+T="$TMP_HOME/case11.jsonl"
+make_transcript "$T" "$USER_MSG"
+event=$(jq -cn --arg t "$T" --arg c "$TMP_CWD" --arg s "s11" \
+  '{hook_event_name:"SessionEnd", transcript_path:$t, cwd:$c, session_id:$s}')
+printf '2' > "$HOME/.claude/.claudemd-state/l2-task-counter"
+printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 bash "$HOOK" 2>"$TMP_HOME/stderr.11"
+COUNTER11=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null || echo "?")
+if [[ "$COUNTER11" == "0" ]] \
+   && grep -q "§13.2 batch-review cadence" "$TMP_HOME/stderr.11" \
+   && grep -q '"event":"batch-cadence-advisory"' "$LOG" \
+   && grep -q '"spec_section":"§13.2-batch-review"' "$LOG"; then
+  ok "Case 11 (B1): threshold trip → advisory + counter reset + audit row"
+else
+  ng "Case 11: counter=$COUNTER11 stderr=$(cat "$TMP_HOME/stderr.11") log_tail=$(tail -1 "$LOG")"
+fi
+
+# --- Case 12 (v0.19.2 B1): DISABLE_BATCH_CADENCE_ADVISORY=1 → no counter ----
+# Sub-feature kill-switch must suppress the counter increment AND the advisory.
+# The hook's other behavior (mid-SPINE warn) is unaffected — but case 12 has
+# no mutations so mid-SPINE doesn't fire either; we just verify advisory off.
+reset_cwd
+echo -n '' > "$LOG"
+printf '%s\n' '{"ts":"2026-05-21T00:00:00Z","hook":"banned-vocab","event":"deny","session_id":"s12","spec_section":"§10-V","extra":null}' > "$LOG"
+T="$TMP_HOME/case12.jsonl"
+make_transcript "$T" "$USER_MSG"
+event=$(jq -cn --arg t "$T" --arg c "$TMP_CWD" --arg s "s12" \
+  '{hook_event_name:"SessionEnd", transcript_path:$t, cwd:$c, session_id:$s}')
+# Pre-seed at threshold-1 — without the kill-switch this WOULD trip.
+printf '2' > "$HOME/.claude/.claudemd-state/l2-task-counter"
+printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 DISABLE_BATCH_CADENCE_ADVISORY=1 bash "$HOOK" 2>"$TMP_HOME/stderr.12"
+COUNTER12=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null || echo "?")
+if [[ "$COUNTER12" == "2" ]] \
+   && ! grep -q "§13.2 batch-review cadence" "$TMP_HOME/stderr.12" \
+   && ! grep -q '"event":"batch-cadence-advisory"' "$LOG"; then
+  ok "Case 12 (B1): DISABLE_BATCH_CADENCE_ADVISORY=1 → counter untouched, no advisory"
+else
+  ng "Case 12: counter=$COUNTER12 (expected 2), stderr=$(cat "$TMP_HOME/stderr.12")"
+fi
+
+# --- Case 13 (v0.19.2 B1): non-L2+ session (no qualifying events) → counter unchanged
+# Rule-hits log has only `pass` / `bypass-escape-hatch` events — neither
+# qualifies as L2+. Counter must stay at its prior value (pre-seed 0).
+reset_cwd
+echo -n '' > "$LOG"
+printf '%s\n' '{"ts":"2026-05-21T00:00:00Z","hook":"ship-baseline","event":"pass","session_id":"s13","spec_section":"§7-ship-baseline","extra":null}' >> "$LOG"
+printf '%s\n' '{"ts":"2026-05-21T00:00:00Z","hook":"banned-vocab","event":"bypass-escape-hatch","session_id":"s13","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}' >> "$LOG"
+T="$TMP_HOME/case13.jsonl"
+make_transcript "$T" "$USER_MSG"
+event=$(jq -cn --arg t "$T" --arg c "$TMP_CWD" --arg s "s13" \
+  '{hook_event_name:"SessionEnd", transcript_path:$t, cwd:$c, session_id:$s}')
+rm -f "$HOME/.claude/.claudemd-state/l2-task-counter"
+printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 bash "$HOOK" 2>"$TMP_HOME/stderr.13"
+# Counter file should NOT have been created (no L2+ hits → no increment branch).
+if [[ ! -f "$HOME/.claude/.claudemd-state/l2-task-counter" ]] \
+   && [[ ! -s "$TMP_HOME/stderr.13" ]]; then
+  ok "Case 13 (B1): non-L2+ session (pass/bypass only) → counter untouched"
+else
+  ng "Case 13: counter exists=$(test -f "$HOME/.claude/.claudemd-state/l2-task-counter" && echo yes || echo no), value=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr.13")"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

@@ -220,8 +220,67 @@ else
   ng "14 expected SILENT for 'decortag' (description backtick block); got: $CTX"
 fi
 
+# Case 15 (v0.19.2 B3): priority ranking by tag-match count desc.
+# Entry A has 3 tags ALL matched by prompt; Entry B has 1 tag matched. Both
+# go un-Read. Output must list A BEFORE B (higher matched-tag count = higher
+# priority). Pre-B3, order was MEMORY.md authoring order, so listing B before
+# A in the file would dominate over A's stronger match. The test puts B
+# FIRST in the file to defeat the prior behavior.
+PRI_CWD="/work/proj-pri"
+PRI_ENCODED=$(echo "$PRI_CWD" | tr '/._' '-')
+PRI_MEM="$HOME/.claude/projects/$PRI_ENCODED/memory"
+mkdir -p "$PRI_MEM"
+cat > "$PRI_MEM/MEMORY.md" <<'EOF'
+- [Lonely match](feedback_pri_b.md) `[zzz_release_pri]` — single-tag match
+- [Triple match](feedback_pri_a.md) `[zzz_release_pri, zzz_deploy_pri, zzz_ship_pri]` — 3-tag match
+EOF
+touch "$PRI_MEM/feedback_pri_a.md" "$PRI_MEM/feedback_pri_b.md"
+SESS15="sess15"
+PROMPT_15="zzz_release_pri zzz_deploy_pri zzz_ship_pri all together"
+EVENT_15=$(jq -cn --arg p "$PROMPT_15" --arg s "$SESS15" --arg c "$PRI_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(bash "$HOOK" <<<"$EVENT_15" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+# Find which appears first in the additionalContext block.
+LINE_A=$(echo "$CTX" | grep -n "feedback_pri_a.md" | head -1 | cut -d: -f1)
+LINE_B=$(echo "$CTX" | grep -n "feedback_pri_b.md" | head -1 | cut -d: -f1)
+if [[ -n "$LINE_A" && -n "$LINE_B" && "$LINE_A" -lt "$LINE_B" ]]; then
+  ok "15 priority ranking — 3-tag-match listed before 1-tag-match (A@$LINE_A < B@$LINE_B)"
+else
+  ng "15 expected feedback_pri_a.md before feedback_pri_b.md (A=$LINE_A B=$LINE_B; CTX: $CTX)"
+fi
+
+# Case 16 (v0.19.2 B3): tie on tag count → mtime desc breaks tie.
+# Two entries, each with 1 matching tag. Entry A's file is older, B's newer
+# (touched after A). Output must list B before A. mtime resolution at 1s is
+# enough — sleep 1 ensures B's mtime > A's on the cheapest filesystems.
+TIE_CWD="/work/proj-tie"
+TIE_ENCODED=$(echo "$TIE_CWD" | tr '/._' '-')
+TIE_MEM="$HOME/.claude/projects/$TIE_ENCODED/memory"
+mkdir -p "$TIE_MEM"
+cat > "$TIE_MEM/MEMORY.md" <<'EOF'
+- [Older entry](feedback_tie_a.md) `[zzz_tiebreak_pri]` — older mtime
+- [Newer entry](feedback_tie_b.md) `[zzz_tiebreak_pri]` — newer mtime
+EOF
+touch "$TIE_MEM/feedback_tie_a.md"
+sleep 1
+touch "$TIE_MEM/feedback_tie_b.md"
+SESS16="sess16"
+PROMPT_16="zzz_tiebreak_pri now"
+EVENT_16=$(jq -cn --arg p "$PROMPT_16" --arg s "$SESS16" --arg c "$TIE_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(bash "$HOOK" <<<"$EVENT_16" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+LINE_TIE_A=$(echo "$CTX" | grep -n "feedback_tie_a.md" | head -1 | cut -d: -f1)
+LINE_TIE_B=$(echo "$CTX" | grep -n "feedback_tie_b.md" | head -1 | cut -d: -f1)
+if [[ -n "$LINE_TIE_A" && -n "$LINE_TIE_B" && "$LINE_TIE_B" -lt "$LINE_TIE_A" ]]; then
+  ok "16 mtime tiebreak — newer entry listed before older (B@$LINE_TIE_B < A@$LINE_TIE_A)"
+else
+  ng "16 expected feedback_tie_b.md before feedback_tie_a.md (A=$LINE_TIE_A B=$LINE_TIE_B; CTX: $CTX)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"
+  echo "Tests: $((16 - FAIL))/16 passed"
   exit 1
 fi
-echo "Tests: 14/14 passed"
+echo "Tests: 16/16 passed"

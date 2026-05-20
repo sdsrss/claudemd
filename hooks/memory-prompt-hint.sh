@@ -28,6 +28,12 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# platform.sh provides platform_stat_mtime (BSD-vs-GNU stat portability used by
+# v0.19.2 B3 priority ranking). Per feedback_hook_platform_lib_source.md, the
+# `command -v platform_*` guard alone silently fall-throughs when the lib is
+# not sourced — explicit source required.
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch MEMORY_HINT || exit 0
 hook_require_jq || exit 0
@@ -110,19 +116,61 @@ done
 
 (( ${#UNREAD_FILES[@]} == 0 )) && exit 0
 
-# Cap output at 5 to bound prompt-context inflation. Order = MEMORY.md order
-# (curator authored prioritization). Telemetry records full match count.
+# v0.19.2 B3 — priority ranking. Sort un-Read matches by:
+#   (1) tag-match count desc — more matched tags = stronger signal
+#   (2) mtime desc            — more recent edits = more likely still relevant
+# Pre-this, output order = MEMORY.md authoring order, capped at 5; when COUNT > 5
+# the top-MEMORY.md entries dominated regardless of how strongly they matched
+# vs entries lower in the file. New order surfaces highest-signal first so the
+# 5-item cap is spent on the entries most likely to change the agent's path.
+#
+# Sort key construction:
+#   tag_count = count of commas in MATCHED_TAGS + 1 (single tag has 0 commas)
+#   mtime     = platform_stat_mtime (Unix epoch); 0 fallback if unavailable
+# Sort:  `sort -t<TAB> -k1,1nr -k2,2nr` — numeric desc on both columns.
+# TAB delimiter chosen because tag lists are comma-separated and may contain
+# any printable char; TAB is the only safe ASCII separator left.
+SORT_ROWS=()
+for i in "${!UNREAD_FILES[@]}"; do
+  file="${UNREAD_FILES[$i]}"
+  tags="${UNREAD_TAGS[$i]}"
+  mfile="$MEM_DIR/$file"
+  tag_count=$(printf '%s' "$tags" | awk -F, '{print NF}')
+  [[ "$tag_count" =~ ^[0-9]+$ ]] || tag_count=1
+  mtime=0
+  if command -v platform_stat_mtime >/dev/null 2>&1; then
+    mtime=$(platform_stat_mtime "$mfile" 2>/dev/null) || mtime=0
+  fi
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+  SORT_ROWS+=("${tag_count}"$'\t'"${mtime}"$'\t'"${file}"$'\t'"${tags}")
+done
+
+SORTED_FILES=()
+SORTED_TAGS=()
+while IFS=$'\t' read -r _tc _mt sfile stags; do
+  [[ -z "$sfile" ]] && continue
+  SORTED_FILES+=("$sfile")
+  SORTED_TAGS+=("$stags")
+done < <(printf '%s\n' "${SORT_ROWS[@]}" | sort -t$'\t' -k1,1nr -k2,2nr)
+
+# Cap output at 5 to bound prompt-context inflation. Order now = priority-ranked.
+# Telemetry records full match count + the post-cap suggested list, so audit can
+# tell which matches got dropped by the cap.
 MAX=5
-COUNT=${#UNREAD_FILES[@]}
+COUNT=${#SORTED_FILES[@]}
 EMIT_COUNT=$(( COUNT < MAX ? COUNT : MAX ))
 
 CONTEXT="[mem-hint] §11 — your prompt matches MEMORY.md tags. Consider Reading these before answering:"
 for i in $(seq 0 $((EMIT_COUNT - 1))); do
-  CONTEXT+=$'\n'"  - $MEM_DIR/${UNREAD_FILES[$i]} (tag: ${UNREAD_TAGS[$i]})"
+  CONTEXT+=$'\n'"  - $MEM_DIR/${SORTED_FILES[$i]} (tag: ${SORTED_TAGS[$i]})"
 done
 if (( COUNT > MAX )); then
-  CONTEXT+=$'\n'"  ... and $((COUNT - MAX)) more (capped). Per §11: index is a router, not a substitute."
+  CONTEXT+=$'\n'"  ... and $((COUNT - MAX)) more (capped, priority-ranked). Per §11: index is a router, not a substitute."
 fi
+
+# Maintain back-compat: UNREAD_FILES / UNREAD_TAGS used by telemetry below.
+UNREAD_FILES=("${SORTED_FILES[@]}")
+UNREAD_TAGS=("${SORTED_TAGS[@]}")
 
 # Emit JSON with suppressOutput so model sees additionalContext but UI stays
 # uncluttered (matches session-summary.sh / SessionStart additionalContext
