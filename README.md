@@ -1,12 +1,12 @@
 # claudemd
 
-> Claude Code plugin that enforces **AI-CODING-SPEC v6.11 HARD rules** through shell hooks — and ships the spec itself as part of the plugin.
+> Claude Code plugin that enforces **AI-CODING-SPEC v6.13 HARD rules** through shell hooks — and ships the spec itself as part of the plugin.
 
 [![CI](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/claudemd-cli.svg)](https://www.npmjs.com/package/claudemd-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v6.11 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce.
+claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v6.13 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (v6.13.0: `OPERATOR.md` is the new human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
 
 A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git pre-commit hooks, GitHub Actions, and other agents that don't run inside Claude Code.
 
@@ -61,7 +61,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | 17 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `memory-coverage-scan` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 11 slash commands | `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
-| Spec v6.11.15 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` (backup-before-overwrite) |
+| Spec v6.13.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 
 Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 
@@ -106,7 +106,7 @@ Opt-in `BASH_READONLY_FAST_PATH=1` short-circuits hooks 1, 2, and 4 when the com
 | Command | Purpose |
 |---|---|
 | `/claudemd-status` | Plugin version + spec version + kill-switch state + logs line count. |
-| `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (spec trio is lockstep — per-file select would dangle §EXT cross-references). |
+| `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (4-file spec set is lockstep — per-file select would dangle §EXT cross-references). |
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). |
@@ -228,7 +228,7 @@ After the plugin upgrade, sync the shipped spec into `~/.claude/`:
 /claudemd-update
 ```
 
-The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the spec trio (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
+The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the 4-file spec set (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md` + `~/.claude/OPERATOR.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
 
 ---
 
@@ -251,7 +251,7 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 |---|---|---|
 | `keep` (default) | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
 | `restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. |
-| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes the three spec files. |
+| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`). |
 
 `CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
 
@@ -307,7 +307,7 @@ claudemd/
 ├── commands/                 # 9 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.11.15 CLAUDE*.md trio + hard-rules.json manifest
+├── spec/                     # shipped v6.13.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20) + npm-publish.yml (tag-triggered)
