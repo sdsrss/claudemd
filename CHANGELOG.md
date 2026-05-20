@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.19.1] - 2026-05-21
+
+**Patch — feat: spec patch v6.13.1 (§13 META `HARD ≠ always hook-blocked` clarification + `OPERATOR.md` §13.4 `tasks/` filename conventions table) + `/claudemd-status --verbose` mode + `/claudemd-doctor` self-test matrix extended to cover §8-rm-rf-var + §8-npx.**
+
+### Background
+
+Four self-audit recommendations from a v0.19.0 comprehensive review landed in one patch — all additive, no behavioral default flipped, no Agent contract changed. Each closes a specific observable gap surfaced by reading the spec + walking the hook + script corpus end-to-end.
+
+### What changed
+
+- `[clarify SPEC]` **`spec/CLAUDE-extended.md §13 META`** — one new bullet "HARD ≠ always hook-blocked" pointing Agent at `spec/hard-rules.json#rules[].enforcement`. Today's 22 HARD rules partition as 6 hook / 14 self / 1 both / 1 external; without the cross-ref, Agent could miscalibrate "the hook will block X" for the 14 self-enforced HARDs (e.g. §iron-law-2, §10-four-section-order, §iron-law-1). +545B in extended; well under 50000B ceiling. Patch per §13 META "wording / clarification, identical behavior".
+
+- `[add SPEC]` **`spec/OPERATOR.md §13.4 `tasks/` filename conventions table`** — single 11-row reference for all `tasks/<slug>` filename patterns previously scattered across 7 spec sections (`lessons.md`, `rule-candidates-<YYYY-MM>.md`, `sampling-audit-<YYYY-MM-DD>.md`, `<slug>-paused.md`, `autonomous-run-<date>.md`, `pending-auth-<date>.md`, `auto-approved.md`, `retro-<date>.md`, `specs/<slug>.md`, `perf-<n>.md`, `<n>.md`). +2450B in `OPERATOR.md` — **not Agent-loaded** per v6.13.0 separation, so zero Agent-context cost.
+
+- `[feat MED]` **`scripts/status.js`** + **`commands/claudemd-status.md`** — new `--verbose` flag emits `verbose.killSwitches` (per-hook env var name + event + effective vs persisted state for all 17 shipped hooks, sourced from `scripts/lib/hook-registry.js`) and `verbose.escapeTokens` (5 per-invocation bypass tokens × hook × spec section). Closes "which env var disables hook X" / "what's the bypass token for §Y" lookup-by-README workflow.
+
+- `[feat MED]` **`scripts/doctor.js`** — self-test matrix refactored into a loop covering 3 synthetic events: `banned-vocab` (existing, §10-V), `pre-bash-safety:rm-rf-var` (new, §8-rm-rf-var via `rm -rf $UNSAFE_VAR`), `pre-bash-safety:npx-unpinned` (new, §8-npx via `npx unknown-pkg-x9z2` with empty cwd). Each entry feeds a synthetic event, clears its own kill-switch env var per-spawn so user kill-switch state is surfaced as a note (not as test failure), and asserts deny-JSON comes back. Catches sanitize / detector drift in 2 more §8 SAFETY paths that previously had unit-test-only coverage.
+
+- `[test]` **`tests/scripts/status.test.js`** Cases 8-11 — `--verbose` block omitted by default; perHook covers all 17 entries from `HOOK_REGISTRY`; escapeTokens covers all 5 documented tokens with cross-ref triple; per-hook kill-switch from `settings.json` reflected in `persisted` field. 8 → 12.
+
+- `[test]` **`tests/scripts/doctor.test.js`** Cases 9-11 — new `pre-bash-safety self-test:rm-rf-var` and `pre-bash-safety self-test:npx-unpinned` checks pass on clean tree + carry §section cross-ref in detail; per-hook `settings.json` kill-switch reflected in detail of affected hook only (banned-vocab unaffected when only `DISABLE_PRE_BASH_SAFETY_HOOK=1` is set). 23 → 26.
+
+- `[version]` Spec v6.13.0 → v6.13.1 (patch — clarification + operator handbook addition). Cascade-bumped: `spec/CLAUDE.md` H1, `spec/CLAUDE-extended.md` H1 + Recent changes entry + Sizing line, `spec/hard-rules.json#spec_version`, `tests/integration/upgrade-lifecycle.test.sh`, `tests/scripts/spec-structure.test.js`.
+
+### Sizing
+
+Core 24417 → 24417 bytes (Δ 0, version-line digit only). Extended 45029 → 46071 bytes (Δ +1042, §13 META bullet + v6.13.1 Recent-changes entry). OPERATOR.md 3955 → 6405 bytes (Δ +2450, §13.4 table — not Agent-loaded). Core headroom unchanged at **583 bytes / 97.67%**; extended **3929 bytes / 92.14%** (tightened 2.74 pp from v6.13.0's 89.94%, still well under ceiling).
+
+### Verification
+
+- 12/12 status tests pass (`node --test tests/scripts/status.test.js`).
+- 26/26 doctor tests pass (`node --test tests/scripts/*.test.js` doctor suite).
+- 12/12 spec-coherence-audit tests pass — Sizing drift = 0B (claim 46071, actual 46071).
+- `node scripts/version-cascade-check.js`: ok (v6.13 consistent across README.md + plugin.json + marketplace.json).
+
 ## [0.18.1] - 2026-05-20
 
 **Patch — feat: `ship-baseline` hook detects retry-within-5min on the same red CI run (same `session_id` + `run_url`) and escalates the deny REASON wording + emits a new `deny-repeat` audit event.**

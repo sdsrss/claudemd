@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.13.0 — Core
+# AI-CODING-SPEC v6.13.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 

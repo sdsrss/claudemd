@@ -2,20 +2,33 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
-import { HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
+import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-const USAGE = `Usage: node scripts/status.js
+const USAGE = `Usage: node scripts/status.js [--verbose]
 
 Print plugin / spec / kill-switch / feature / log status as JSON.
-No flags. Wrapped by /claudemd-status.
 
 Options:
+  --verbose      Include per-hook env-var name + persisted state for every
+                 kill-switch AND the per-invocation escape-token table. Use
+                 to audit "which hook am I bypassing" without grepping README.
   --help, -h     Print this message and exit.
 
 Exit codes: 0 success | 2 argv-shape error.`;
 
-export async function status() {
+// Per-invocation escape tokens documented in README. Single source so
+// /claudemd-status --verbose stays in sync with the hook implementations.
+// Spec sections cross-ref hard-rules.json#rules[].rule_hits_section.
+const ESCAPE_TOKENS = [
+  { token: '[allow-banned-vocab]',  where: 'commit message',     bypasses: 'banned-vocab-check.sh',        section: '§10-V' },
+  { token: 'known-red baseline:',   where: 'commit body',        bypasses: 'ship-baseline-check.sh',        section: '§7-ship-baseline' },
+  { token: '[skip-memory-check]',   where: 'bash command',       bypasses: 'memory-read-check.sh',          section: '§11-memory-read' },
+  { token: '[allow-rm-rf-var]',     where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (rm-rf-var path)', section: '§8-rm-rf-var' },
+  { token: '[allow-npx-unpinned]',  where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (npx path)',       section: '§8-npx' },
+];
+
+export async function status({ verbose = false } = {}) {
   const m = readManifest();
   let plugin = { installed: false };
   if (m.exists && m.data) {
@@ -117,7 +130,7 @@ export async function status() {
     ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length
     : 0;
 
-  return {
+  const out = {
     plugin,
     spec: { installed: specVersion, hashes },
     killSwitches,
@@ -125,19 +138,47 @@ export async function status() {
     features,
     log: { lines: logLines },
   };
+
+  if (verbose) {
+    // verbose.killSwitches: per-hook env var name + display name + event + effective + persisted.
+    // Pre-this, the user had to grep README to find which env var to set for which
+    // hook — and which hook covers which spec section. Surfacing here keeps the
+    // single-source-of-truth (hook-registry.js) reachable from a slash command.
+    const hookList = HOOK_REGISTRY.map(h => {
+      const envVar = `DISABLE_${h.envVarSuffix}_HOOK`;
+      return {
+        displayName: h.displayName,
+        envVar,
+        event: h.hookEvent,
+        matcher: h.matcher,
+        effective: isOn(envVar),
+        persisted: persistedOn(envVar),
+      };
+    });
+    out.verbose = {
+      killSwitches: {
+        global: { envVar: 'DISABLE_CLAUDEMD_HOOKS', effective: isOn('DISABLE_CLAUDEMD_HOOKS'), persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS') },
+        perHook: hookList,
+      },
+      escapeTokens: ESCAPE_TOKENS,
+    };
+  }
+
+  return out;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   // Reject unknown args with the same loud-fail contract as the rest of the
-  // slash-command CLIs. status.js takes no flags; pre-fix it silently
-  // ignored ALL arguments (including typos) and exited 0 — the same
-  // silent-fallback antipattern documented in feedback_cli_flag_shape_silent_fallback.md.
+  // slash-command CLIs. Pre-fix it silently ignored ALL arguments (including
+  // typos) and exited 0 — the same silent-fallback antipattern documented in
+  // feedback_cli_flag_shape_silent_fallback.md.
+  let parsed;
   try {
-    parseStrict(process.argv.slice(2), {});
+    parsed = parseStrict(process.argv.slice(2), { bools: ['--verbose'] });
   } catch (e) {
     if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
     throw e;
   }
-  status().then(r => console.log(JSON.stringify(r, null, 2)));
+  status({ verbose: parsed.bools.has('--verbose') }).then(r => console.log(JSON.stringify(r, null, 2)));
 }

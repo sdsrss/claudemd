@@ -106,6 +106,52 @@ test('doctor self-test detail notes kill-switch when user has disabled the hook 
   assert.match(selftest.detail, /will NOT fire in practice/);
 });
 
+test('doctor pre-bash-safety self-test:rm-rf-var passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const r = await doctor({});
+  const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
+  assert.ok(t, 'pre-bash-safety self-test:rm-rf-var check must exist');
+  assert.equal(t.ok, true,
+    `rm-rf-var self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.match(t.detail, /§8-rm-rf-var/);
+  assert.match(t.detail, /UNSAFE_VAR/);
+});
+
+test('doctor pre-bash-safety self-test:npx-unpinned passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const r = await doctor({});
+  const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
+  assert.ok(t, 'pre-bash-safety self-test:npx-unpinned check must exist');
+  assert.equal(t.ok, true,
+    `npx-unpinned self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.match(t.detail, /§8-npx/);
+  assert.match(t.detail, /unknown-pkg-x9z2/);
+});
+
+test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from settings.json (v0.19.1 A2)', async () => {
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  // Per-hook kill-switch (NOT global) — must still pass code-integrity check
+  // while emitting the kill-switch note in detail. Verifies the matrix
+  // implementation reads each hook's own ksEnvVar, not just the global one.
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_PRE_BASH_SAFETY_HOOK: '1' } }));
+  const r = await doctor({});
+  const rmrf = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
+  const npx  = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
+  const banned = r.checks.find(c => c.name === 'banned-vocab self-test');
+  assert.equal(rmrf.ok, true);
+  assert.match(rmrf.detail, /kill-switch engaged/);
+  assert.equal(npx.ok, true);
+  assert.match(npx.detail, /kill-switch engaged/);
+  // banned-vocab uses DISABLE_BANNED_VOCAB_HOOK, which we did NOT set —
+  // its detail must NOT carry the kill-switch note.
+  assert.equal(banned.ok, true);
+  assert.doesNotMatch(banned.detail, /kill-switch engaged/);
+});
+
 test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in process env', async () => {
   const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;

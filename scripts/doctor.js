@@ -152,62 +152,107 @@ export async function doctor({ pruneBackups: prune } = {}) {
       ? `${logLines} rule-hits row(s), ${logMB} MB`
       : `${logLines} rule-hits row(s), ${logMB} MB — exceeds ${LOG_WARN_MB} MB; truncate ~/.claude/logs/claudemd.jsonl`);
 
-  // Live banned-vocab self-test: feed a synthetic event with a known trigger
-  // ("significantly") to the shipped hook and assert a deny JSON comes back.
-  // Catches drift between `banned-vocab.patterns` and the hook's extraction
-  // logic that unit tests (which import the regex or parse the file
-  // directly) can silently paper over. Side-effect-free:
+  // Live self-tests: feed synthetic events into the shipped hooks and assert a
+  // deny JSON comes back. Catches drift between hook patterns (banned-vocab.
+  // patterns, pre-bash-safety detectors) and extraction/sanitize logic that
+  // unit tests (which import regexes or parse files directly) can silently
+  // paper over. Side-effect-free:
   //   - DISABLE_RULE_HITS_LOG=1 suppresses the jsonl append
-  //   - both kill-switch vars cleared so the user's env can't make the test
-  //     pass by disabling the very check we're verifying
-  // Detect user-intent kill-switch BEFORE forcing the env clear in the self-
-  // test spawn. The self-test clears kill-switch vars so it can verify the
-  // hook CODE's enforcement path still works — a separate axis from user
-  // intent. When the user has disabled the hook (env or settings.json), the
-  // pass result is about code integrity, not live enforcement; surface that
-  // distinction in the detail so `/claudemd-doctor` output doesn't look like
-  // everything is enforced when it isn't.
+  //   - kill-switch vars cleared per-spawn so the user's env can't make the
+  //     test pass by disabling the very check we're verifying
+  // Detect user-intent kill-switch BEFORE forcing the env clear. The self-
+  // test clears kill-switch vars so it can verify the hook CODE's enforcement
+  // path still works — a separate axis from user intent. When the user has
+  // disabled the hook, the pass result is about code integrity, not live
+  // enforcement; surface that distinction in the detail so `/claudemd-doctor`
+  // output doesn't look like everything is enforced when it isn't.
   const ksEnvPlugin = process.env.DISABLE_CLAUDEMD_HOOKS === '1';
-  const ksEnvHook = process.env.DISABLE_BANNED_VOCAB_HOOK === '1';
-  let ksSettings = false;
-  if (fs.existsSync(settingsPath())) {
-    try {
-      const s = readSettings();
-      ksSettings = s.env?.DISABLE_CLAUDEMD_HOOKS === '1'
-                 || s.env?.DISABLE_BANNED_VOCAB_HOOK === '1';
-    } catch { /* unparseable settings reported separately above */ }
-  }
-  const killSwitchEngaged = ksEnvPlugin || ksEnvHook || ksSettings;
 
-  const hookPath = path.join(PLUGIN_ROOT, 'hooks/banned-vocab-check.sh');
-  if (!fs.existsSync(hookPath)) {
-    push('banned-vocab self-test', false, `hook missing at ${hookPath}`);
-  } else if (!which('jq') || !which('bash')) {
-    push('banned-vocab self-test', false, 'prerequisite missing (jq + bash required)');
-  } else {
-    const event = JSON.stringify({
-      session_id: 'doctor-selftest',
-      tool_name: 'Bash',
-      tool_input: { command: 'git commit -m "this is significantly better"' },
-    });
+  // v0.19.1 A2 — self-test matrix covers §10-V (banned-vocab) + §8-rm-rf-var +
+  // §8-npx. Each entry feeds a synthetic event into the named hook with the
+  // env-clear pattern (user kill-switch surfaced as note, not as test failure)
+  // so the test always proves CODE integrity even when live enforcement is OFF.
+  // Adding a row = add an entry; loop drives the rest.
+  const selfTests = [
+    {
+      name: 'banned-vocab self-test',
+      hook: 'banned-vocab-check.sh',
+      ksEnvVar: 'DISABLE_BANNED_VOCAB_HOOK',
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        tool_input: { command: 'git commit -m "this is significantly better"' },
+      },
+      successDetail: 'synthetic "significantly" trigger correctly denied',
+    },
+    {
+      name: 'pre-bash-safety self-test:rm-rf-var',
+      hook: 'pre-bash-safety-check.sh',
+      ksEnvVar: 'DISABLE_PRE_BASH_SAFETY_HOOK',
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        tool_input: { command: 'rm -rf $UNSAFE_VAR' },
+      },
+      successDetail: 'synthetic "rm -rf $UNSAFE_VAR" trigger correctly denied (§8-rm-rf-var)',
+    },
+    {
+      name: 'pre-bash-safety self-test:npx-unpinned',
+      hook: 'pre-bash-safety-check.sh',
+      ksEnvVar: 'DISABLE_PRE_BASH_SAFETY_HOOK',
+      // Empty cwd → npx_pkg_locally_resolved returns false → §8-npx denies.
+      // This is the deterministic "no lockfile, no local install" path the
+      // §8 NPX rule actually guards.
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        cwd: '',
+        tool_input: { command: 'npx unknown-pkg-x9z2' },
+      },
+      successDetail: 'synthetic "npx unknown-pkg-x9z2" (no lockfile/local) correctly denied (§8-npx)',
+    },
+  ];
+
+  for (const t of selfTests) {
+    const hookPath = path.join(PLUGIN_ROOT, 'hooks', t.hook);
+    if (!fs.existsSync(hookPath)) {
+      push(t.name, false, `hook missing at ${hookPath}`);
+      continue;
+    }
+    if (!which('jq') || !which('bash')) {
+      push(t.name, false, 'prerequisite missing (jq + bash required)');
+      continue;
+    }
+    // Per-hook kill-switch state — same dual-axis (user-env vs settings.json)
+    // detection the original banned-vocab branch used.
+    const tKsEnv = process.env[t.ksEnvVar] === '1';
+    let tKsSettings = false;
+    if (fs.existsSync(settingsPath())) {
+      try {
+        const s = readSettings();
+        tKsSettings = s.env?.[t.ksEnvVar] === '1';
+      } catch { /* unparseable surfaced separately */ }
+    }
+    const tKsEngaged = ksEnvPlugin || tKsEnv || tKsSettings;
+
     const r = spawnSync('bash', [hookPath], {
-      input: event,
+      input: JSON.stringify(t.event),
       encoding: 'utf8',
       timeout: 5000,
       env: {
         ...process.env,
         DISABLE_RULE_HITS_LOG: '1',
         DISABLE_CLAUDEMD_HOOKS: '',
-        DISABLE_BANNED_VOCAB_HOOK: '',
+        [t.ksEnvVar]: '',
       },
     });
     const denied = r.status === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout || '');
-    const ksNote = killSwitchEngaged
+    const ksNote = tKsEngaged
       ? ' — note: kill-switch engaged in user env/settings; hook will NOT fire in practice'
       : '';
-    push('banned-vocab self-test', denied,
+    push(t.name, denied,
       (denied
-        ? 'synthetic "significantly" trigger correctly denied'
+        ? t.successDetail
         : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`)
       + ksNote);
   }

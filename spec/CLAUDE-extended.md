@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.13.0 — Extended
+# AI-CODING-SPEC v6.13.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -402,6 +402,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` wins per §3 TRUST order. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 22 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 14 self / 1 both / 1 external (v6.13).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
@@ -473,6 +474,11 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
+**v6.13.1 (patch, 2026-05-21)** — clarification + operator-handbook addition; identical Agent behavior:
+
+- `[clarify]` **§13 META — HARD ≠ always hook-blocked** (extended, +545B): one bullet pointing Agent at `spec/hard-rules.json#rules[].enforcement` so the 22 HARD rules' enforcement partition (6 hook / 14 self / 1 both / 1 external) is reachable from the L3/ship/Override load path. Prevents "I assumed the hook would block X" miscalibration on `self`-enforced HARDs.
+- `[add]` **OPERATOR.md §13.4 `tasks/` filename conventions table** (operator-only, not Agent-loaded, +2450B in OPERATOR.md): single reference for the 11 `tasks/<slug>` filename patterns scattered across §0.2 / §2-EXT / §2.S / §10-R / §11-O / §12 / §13.2. No Agent-context cost.
+
 **v6.13.0 (minor, 2026-05-21)** — Three-tier architecture made explicit + operator content evicted:
 
 - `[change]` **§0.1 Three-tier default** (core, ~+280B net): new rules default to Tier 2 (MEMORY.md anchor, keyword-loaded), not Tier 1 (extended). Promotion path Tier 2 → Tier 1 (≥3 sessions in 30d on same trigger) → Tier 0 (≥5 sessions in 30d, rule fired without elaboration consult). Reason: prior default ("new rule → extended §X-EXT") routed every patch addition into Agent-loaded context, growing extended ~6.8K in v6.11.4–v6.11.7 before v6.11.14 reclaim. Tier 2 default + tiered promotion gates make the budget defendable at source instead of via post-hoc cleanup releases.
@@ -480,9 +486,9 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 
 **Older entries** (v6.12.0 §13.3 + body-structure scope, v6.11.17 plugin-absent fallback, v6.11.16 §2.1 ROUTE collapse, v6.11.14 extended-compression + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.13.0, 2026-05-21, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24133 → 24417 bytes (Δ +284, §0.1 three-tier rewrite + version-line +5 chars + cross-ref drop); extended 46963 → 45029 bytes (Δ −1934, §13.1 OPERATOR section removed (~−1418B) + 8-line pointer (~+490B) + version-line +9 chars + Recent-changes turnover demoted 4 prior entries to changelog); new file `OPERATOR.md` 3955 bytes (not Agent-loaded). Size budget: core 24417/25000 (**583 bytes headroom, 97.67%** — tightening from v6.12.0's 96.53%, three-tier policy paragraph paid for itself; next minor MUST net-delete or refuse addition); extended 45029/50000 (**4971 bytes headroom, 89.94%** — large reclaim from §13.1 eviction + Recent-changes demotion, recovered ~4 pp vs v6.12.0's 93.93%). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only; OPERATOR.md not in load path).
+**Sizing** (v6.13.1, 2026-05-21, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24417 → 24417 bytes (Δ 0, version-line digit only); extended 45029 → 46071 bytes (Δ +1042, §13 META `HARD ≠ always hook-blocked` bullet ~+545B + v6.13.1 Recent-changes entry ~+497B); OPERATOR.md 3955 → 6405 bytes (Δ +2450, §13.4 `tasks/` filename conventions table — not Agent-loaded). Size budget: core 24417/25000 (**583 bytes headroom, 97.67%** — unchanged; next minor MUST net-delete or refuse addition); extended 46071/50000 (**3929 bytes headroom, 92.14%** — tighter than v6.13.0's 89.94% but well under ceiling). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only, unchanged; OPERATOR.md not in load path).
 
-**Operator carry-forward**: core headroom now 583B. Subsequent patch/minor releases SHOULD net-delete in core. Candidate compaction targets (none required yet): §5.1 NEVER-downgrade list vs §8 SAFETY (conceptually adjacent, dedup analysis deferred from this release — distinct enforcement semantics, not actually duplicates on reread). Extended utilization recovered well below ceiling; ongoing MEMORY.md anchor migration (per v6.11.14 pattern) remains the larger lever for extended.
+**Operator carry-forward**: core headroom unchanged at 583B (patch did not touch core). Extended utilization tightened 2.7 pp via the new clarification bullet + v6.13.1 entry itself; demote v6.13.0 entry to `~/.claude/CLAUDE-changelog.md` at the next minor bump per the "only current minor's entries live here" convention. Candidate compaction targets unchanged from v6.13.0.
 
 ## §1.5-EXT GLOSSARY
 

@@ -122,6 +122,56 @@ test('status.spec.hashes covers all four spec files (v0.6.0, v0.19.0 adds OPERAT
   assert.equal(typeof main.shipped, 'string');   // real shipped from repo
 });
 
+test('status omits verbose block by default', async () => {
+  const r = await status();
+  assert.equal(r.verbose, undefined, 'default status must not carry verbose block');
+});
+
+test('status({verbose:true}) emits per-hook kill-switch table covering every shipped hook', async () => {
+  const r = await status({ verbose: true });
+  assert.ok(r.verbose, 'verbose block must exist');
+  assert.ok(r.verbose.killSwitches, 'verbose.killSwitches must exist');
+  assert.ok(r.verbose.killSwitches.global, 'global kill-switch entry must exist');
+  assert.equal(r.verbose.killSwitches.global.envVar, 'DISABLE_CLAUDEMD_HOOKS');
+  // perHook must list all 17 shipped hooks (matches hook-registry.js).
+  assert.equal(r.verbose.killSwitches.perHook.length, 17,
+    'perHook must enumerate every entry in HOOK_REGISTRY');
+  const sample = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
+  assert.ok(sample, 'banned-vocab hook must appear in perHook');
+  assert.equal(sample.envVar, 'DISABLE_BANNED_VOCAB_HOOK');
+  assert.equal(sample.event, 'PreToolUse');
+  assert.equal(typeof sample.effective, 'boolean');
+  assert.equal(typeof sample.persisted, 'boolean');
+});
+
+test('status({verbose:true}) emits escapeTokens table covering all 5 per-invocation bypasses', async () => {
+  const r = await status({ verbose: true });
+  assert.ok(Array.isArray(r.verbose.escapeTokens), 'verbose.escapeTokens must be an array');
+  assert.equal(r.verbose.escapeTokens.length, 5, 'all 5 documented escape tokens must appear');
+  const tokens = r.verbose.escapeTokens.map(t => t.token);
+  assert.ok(tokens.includes('[allow-banned-vocab]'));
+  assert.ok(tokens.includes('known-red baseline:'));
+  assert.ok(tokens.includes('[skip-memory-check]'));
+  assert.ok(tokens.includes('[allow-rm-rf-var]'));
+  assert.ok(tokens.includes('[allow-npx-unpinned]'));
+  // Every entry carries the cross-ref triple (where / bypasses / section)
+  for (const e of r.verbose.escapeTokens) {
+    assert.equal(typeof e.where, 'string', `${e.token} missing where`);
+    assert.equal(typeof e.bypasses, 'string', `${e.token} missing bypasses`);
+    assert.match(e.section, /^§/, `${e.token} section must start with §`);
+  }
+});
+
+test('status({verbose:true}) reflects persisted kill-switch from settings.json (per-hook detail)', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  delete process.env.DISABLE_BANNED_VOCAB_HOOK;
+  const r = await status({ verbose: true });
+  const bv = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
+  assert.equal(bv.effective, false, 'effective stays false this process');
+  assert.equal(bv.persisted, true, 'persisted reflects settings.json toggle');
+});
+
 test('status.features.bashSafetyIndirectCall reflects env var (v0.6.0)', async () => {
   const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
   try {

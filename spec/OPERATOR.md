@@ -29,6 +29,28 @@ The agent-executable HARD-rule budget rule (logging incidents to `tasks/rule-can
 
 Hook-layer advisory→enforce promotion gates are defined in `CLAUDE-extended.md §13.3`. The operator-side activity is reviewing `/claudemd-audit` output against those gates on the §13.2 cadence above.
 
+## §13.4 `tasks/` filename conventions (reference table)
+
+Spec sections reference `tasks/<slug>` files across 7 different sections (§0.2 / §2-EXT / §2.S / §10-R / §11-O / §12 / §13.2). Collected here so operators and Agent can find the right home without cross-section search. None are auto-created by the plugin — Agent or operator writes them per the cited spec section.
+
+| Filename pattern | Spec section | Who writes | Purpose | Retention |
+|---|---|---|---|---|
+| `tasks/lessons.md` | §10-R Lessons file | Agent | Project-wide pattern lessons | cap 30, newest-first, drop-oldest |
+| `tasks/rule-candidates-<YYYY-MM>.md` | §13.2 HARD-rule budget | Agent | Candidate HARD rules pending §13.2 promotion gates | merged + pruned on §13.2 batch-review cadence |
+| `tasks/sampling-audit-<YYYY-MM-DD>.md` | `/claudemd-sampling-audit` | `scripts/sampling-audit.js` | Retrospective scan output (§10-V / §iron-law-2 / §10-four-section-order / §10-honesty hits) | manual prune |
+| `tasks/<slug>-paused.md` | §11 Context pressure / Session-exit | Agent | Resume context + exact verify command for un-VALIDATE'd work | until resumed and deleted |
+| `tasks/autonomous-run-<date>.md` | §2-EXT AUTONOMOUS exit ritual | Agent | Ran / blocked / failed / pending-auth summary | manual prune |
+| `tasks/pending-auth-<date>.md` | §2-EXT AUTONOMOUS hard ops | Agent | Op + scope + risk + recommendation, deferred for interactive AUTH | until next interactive session resolves |
+| `tasks/auto-approved.md` | §2-EXT AUTONOMOUS whitelist | Operator | One per line, e.g. `op:deps-bump-patch` | hand-curated |
+| `tasks/retro-<date>.md` | §12 fallback for `gs:/retro` | Agent | Weekly retro when plugin absent | manual prune |
+| `tasks/specs/<slug>.md` | §2.S SPEC ARTIFACT | Agent | L3 mandatory / L2 minimal spec (goal / non-goals / constraints / success-criteria / open-questions) | persists with feature |
+| `tasks/perf-<n>.md` | §12 fallback for `gs:/benchmark` | Agent | Perf measurement when plugin absent | manual prune |
+| `tasks/<n>.md` | §12 fallback for `sp:writing-plans` | Agent | Inline plan file when plugin absent | until feature complete |
+
+**Override**: project `CLAUDE.md` MAY set `SPEC_DIR:` to relocate `tasks/specs/` only (§2.S Spec file). Other filename patterns are not overridable in current spec.
+
+**Worktree note** (§2.S Worktrees): each worktree has its own `tasks/`; on worktree-finish, merge `lessons.md` to main.
+
 ## Rationale
 
 Three-tier separation (v6.13.0):
