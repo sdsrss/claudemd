@@ -200,6 +200,14 @@ export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-
                                            # behavior remains active. Threshold also
                                            # configurable via CLAUDEMD_BATCH_THRESHOLD=N
                                            # (positive integer, default 20).
+
+export BANNED_VOCAB_PROSE_SCAN=0           # v0.21.0+ — disable only the Path 2 prose
+                                           # scan in banned-vocab-check (the v0.21.0
+                                           # §13.3 Gate 2 promotion that denies
+                                           # ship-flow commands when the preceding
+                                           # assistant turn's prose contains a
+                                           # high-fire §10-V pattern). Path 1
+                                           # commit-message scan remains active.
 ```
 
 **3. Per-invocation escape hatches.** Embed in the command itself, no env var needed:

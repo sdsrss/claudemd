@@ -167,8 +167,116 @@ EOF
 assert_deny "24: real chained git commit after && — segment-anchor still fires → deny" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# ============================================================================
+# v0.21.0 Path 2: ship-verb prose scan tests
+# ============================================================================
+# Each case writes a fake transcript at the CC-encoded path
+# ($HOME/.claude/projects/<encoded>/<sid>.jsonl) containing an assistant turn,
+# then drives the hook with a ship-verb command + the matching session_id +
+# cwd. Asserts deny / pass per case intent.
+
+mk_prose_transcript() {
+  # $1 = cwd, $2 = sid, $3 = assistant text
+  local cwd="$1" sid="$2" txt="$3"
+  local encoded transcript_dir transcript
+  encoded=$(printf '%s' "$cwd" | tr '/._' '-')
+  transcript_dir="$HOME/.claude/projects/${encoded}"
+  transcript="$transcript_dir/${sid}.jsonl"
+  mkdir -p "$transcript_dir"
+  # User msg + assistant msg minimal shape.
+  jq -cn --arg t "$txt" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}' > "$transcript"
+}
+
+mk_prose_event() {
+  # $1 = cmd, $2 = cwd, $3 = sid
+  jq -cn --arg c "$1" --arg w "$2" --arg s "$3" \
+    '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}'
+}
+
+# Case 25: prior-turn `significantly` + `git commit` w/ CLEAN message → deny (Path 2 fires)
+PCWD="/work/p25"
+PSID="sess25"
+mk_prose_transcript "$PCWD" "$PSID" "The fix significantly improves throughput."
+EVENT_25=$(mk_prose_event "git commit -m 'fix: throughput'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_25" > "$TMP_FIX"
+assert_deny "25: prior prose 'significantly' + clean commit msg → deny (Path 2)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 26: prior-turn `robust` + `git push` → deny (Path 2 covers push)
+PCWD="/work/p26"
+PSID="sess26"
+mk_prose_transcript "$PCWD" "$PSID" "Implementation is robust under concurrent writes."
+EVENT_26=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_26" > "$TMP_FIX"
+assert_deny "26: prior prose 'robust' + git push → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 27: prior-turn `comprehensive` + `gh release create` → deny
+PCWD="/work/p27"
+PSID="sess27"
+mk_prose_transcript "$PCWD" "$PSID" "Release covers a comprehensive set of fixes."
+EVENT_27=$(mk_prose_event "gh release create v1.2.3 --title 'Release v1.2.3'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_27" > "$TMP_FIX"
+assert_deny "27: prior prose 'comprehensive' + gh release create → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 28: bypass token in CURRENT command shorts circuits Path 2 even with prior prose hit
+PCWD="/work/p28"
+PSID="sess28"
+mk_prose_transcript "$PCWD" "$PSID" "The fix significantly improves throughput."
+EVENT_28=$(mk_prose_event "git commit -m 'fix [allow-banned-vocab]'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_28" > "$TMP_FIX"
+assert_pass "28: [allow-banned-vocab] token in CMD bypasses Path 2 prose scan" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 29: BANNED_VOCAB_PROSE_SCAN=0 opt-out → no deny even with prior prose hit
+PCWD="/work/p29"
+PSID="sess29"
+mk_prose_transcript "$PCWD" "$PSID" "Implementation is robust under load."
+EVENT_29=$(mk_prose_event "git commit -m 'fix: load handling'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_29" > "$TMP_FIX"
+assert_pass "29: BANNED_VOCAB_PROSE_SCAN=0 opt-out keeps Path 1 only" "$TMP_FIX" "BANNED_VOCAB_PROSE_SCAN=0"
+rm -f "$TMP_FIX"
+
+# Case 30: non-ship verb (`git status`) + prior prose hit → no deny (filter excludes)
+PCWD="/work/p30"
+PSID="sess30"
+mk_prose_transcript "$PCWD" "$PSID" "Output is significantly cleaner now."
+EVENT_30=$(mk_prose_event "git status" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_30" > "$TMP_FIX"
+assert_pass "30: non-ship verb (git status) → Path 2 filter rejects, pass" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 31: ship verb + prophylactic-only word (`production-ready`) → no deny
+# (Path 2 scans HIGH-FIRE region only; production-ready is prophylactic.)
+PCWD="/work/p31"
+PSID="sess31"
+mk_prose_transcript "$PCWD" "$PSID" "The code is production-ready and well-tested."
+EVENT_31=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_31" > "$TMP_FIX"
+assert_pass "31: ship verb + prophylactic-only word → no deny (high-fire region only)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 32: ship verb but transcript file absent → fail-open silent
+PCWD="/work/p32"
+PSID="sess32"
+# Intentionally do NOT create transcript file.
+EVENT_32=$(mk_prose_event "git commit -m 'clean msg'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_32" > "$TMP_FIX"
+assert_pass "32: missing transcript → Path 2 fail-open silent" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 33: prior-turn 中文 `显著改善` + git commit clean → deny (中文 high-fire)
+PCWD="/work/p33"
+PSID="sess33"
+mk_prose_transcript "$PCWD" "$PSID" "性能显著改善了。"
+EVENT_33=$(mk_prose_event "git commit -m 'perf: optimize lookup'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_33" > "$TMP_FIX"
+assert_deny "33: 中文 高频 prose hit + clean commit msg → deny (Path 2 中文)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((24 - FAIL))/24 passed"
+  echo "Tests: $((33 - FAIL))/33 passed"
   exit 1
 fi
-echo "Tests: 24/24 passed"
+echo "Tests: 33/33 passed"

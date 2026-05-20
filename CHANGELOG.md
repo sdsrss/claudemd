@@ -8,6 +8,58 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.0] - 2026-05-21
+
+**Minor — change: §13.3 Gate 2 promotion. `banned-vocab-check` Path 2 prose scan added — ship-flow commands (commit/push/pr-create/release-create/publish) now DENY when the preceding assistant turn's chat prose contains a high-fire §10-V pattern. Spec unchanged at v6.13.1.**
+
+### Migration
+
+| What changes | Action you must take |
+|---|---|
+| When you run `git commit / git push / gh release create / gh pr create / npm publish / cargo publish` AND your previous assistant turn contained one of the §10-V high-fire patterns (`significantly`, `robust`, `comprehensive`, `should work`, `显著改善`, or baseline-less `N% faster/slower/better/more efficient`), the hook DENIES the command. | **None** if you want the new safety floor. To bypass per-command: include `[allow-banned-vocab]` in the command. To opt out of Path 2 globally while keeping Path 1 (commit-message scan): `export BANNED_VOCAB_PROSE_SCAN=0`. |
+
+### §13.3 Gate 2 promotion case (audit data)
+
+Ran `node scripts/sampling-audit.js --global --days=30`:
+- Cross-project §10-V coverage: **5 distinct projects** (claudemd, code-graph-mcp, daagu, mem, /tmp) — Gate 2 requires ≥3.
+- Total §10-V hits in 30d window: 151 across 79 transcripts (44 turns).
+- Top high-fire patterns: `comprehensive` (43+10), `significantly` (35), `robust` (11+4), `should work` (9), `显著改善` (10), `production-ready` (4 — kept in prophylactic region, NOT promoted).
+- Default-ON state for advisory `transcript-vocab-scan`: ≥30 days — Gate 2 requires ≥30.
+- ≥1 `feedback_*.md` memory cites §10-V as load-bearing: `feedback_hook_header_quote_partial_impl.md`.
+- Zero operator `revert:` / `relax:` entries against the rule in CHANGELOG.
+
+All Gate 2 gates pass. Operator (user) judged this as the right promotion. Promotion is one-step: PostToolUse advisory STAYS as it is (no removal — chat-prose-everywhere coverage), Path 2 deny ADDS at the highest-stakes surface (ship-flow PreToolUse:Bash). Two enforcement points instead of one.
+
+### Why ship-flow surface only, not all PreToolUse:* (Option A skipped)
+
+The mechanically-stronger Option A — pre-deny ANY tool call when previous turn carries §10-V — was discussed and rejected. UX cost: agent uses `significantly` once → every subsequent tool call requires `[allow-banned-vocab]` token (because prior turns are immutable in CC). Disproportionate to the calibration value. Option B (ship-flow only) gives the strong-training signal at the right moment without the per-tool-call escape-token bloat.
+
+### What changed (code)
+
+- `[change MED]` **`hooks/banned-vocab-check.sh`** — Path 1 commit-msg scan refactored to be gated on new `IS_GIT_COMMIT` flag (preserves existing FP discipline — non-commit ship verbs no longer fall through to whole-CMD scan which would FP on branch names / path args). New `IS_SHIP_VERB` flag covers commit + push + pr create + release create + npm publish + cargo publish. Path 2 prose-scan body (~60 LOC) added at hook tail: reads transcript via `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl` (CC encoding `tr '/._' '-'`), tails 200 jsonl lines + 4096 bytes of joined assistant text, scans `banned-vocab.patterns` high-fire region (markers anchored on `# region: <name> (` to defeat docstring FPs), denies on hit.
+
+- `[fix LOW]` **`hooks/banned-vocab-check.sh`** region-marker regex anchored on trailing `\(` — caught during dev that the patterns file's docstring at top ALSO mentions `region: high-fire` and `region: prophylactic` (with indentation, no trailing paren). The naïve regex `^#[[:space:]]*region:[[:space:]]*<name>` matched the docstring lines too, causing the loop to set `in_high_fire=1` too early then break on the next docstring mention of prophylactic — Path 2 silently scanned 0 patterns and never denied. Fixed regex requires trailing `\(`.
+
+- `[add]` **`BANNED_VOCAB_PROSE_SCAN=0`** sub-feature kill-switch (README §2a) — disables Path 2 prose scan only; Path 1 commit-msg scan remains active. Mirrors `DISABLE_BATCH_CADENCE_ADVISORY` shape from v0.19.2.
+
+- `[add]` **`docs/RULE-HITS-SCHEMA.md`** — new `deny-prose` event documented (emitter `banned-vocab`, semantics, opt-out flag).
+
+- `[add]` **`tests/hooks/contract.test.sh`** DOCUMENTED list — `deny-prose:banned-vocab` added. 58 → 59.
+
+- `[test MED]` **`tests/hooks/banned-vocab.test.sh`** Cases 25-33 — 9 new cases. Prior-prose pattern × ship verb × bypass + opt-out matrix: significantly + commit → deny (25), robust + push → deny (26), comprehensive + gh release create → deny (27), `[allow-banned-vocab]` bypasses Path 2 (28), `BANNED_VOCAB_PROSE_SCAN=0` opt-out (29), non-ship verb skipped (30), prophylactic-only word doesn't trigger (31), missing transcript fail-open (32), 中文 `显著改善` → deny (33). 24 → 33.
+
+### Sizing
+
+No spec content change (spec stays at v6.13.1). Hook code growth: `hooks/banned-vocab-check.sh` +~80 LOC.
+
+### Verification
+
+- 33/33 banned-vocab hook tests pass (was 24; +9 Path 2).
+- 59/59 contract tests pass (was 58; +1 DOCUMENTED entry).
+- All other hook suites unchanged.
+- 432/432 script tests, integration upgrade-lifecycle pass.
+- `node scripts/version-cascade-check.js`: ok.
+
 ## [0.20.1] - 2026-05-21
 
 **Patch — fix-forward on code review findings from the v0.19.1→v0.19.2→v0.20.0 arc. Three Important items + three Minor items + one docs cleanup. No spec change (spec stays v6.13.1). No behavioral default flipped.**

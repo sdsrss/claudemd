@@ -28,6 +28,7 @@ source must appear in this table.
 |---|---|---|
 | `pass` | `ship-baseline` | rule checked, no action needed |
 | `deny` | `banned-vocab`, `ship-baseline`, `memory-read-check`, `pre-bash-safety` | rule denied the tool call |
+| `deny-prose` | `banned-vocab` | v0.21.0 Path 2 — ship-flow command (commit/push/pr-create/release-create/publish) blocked because the preceding assistant turn's chat prose contains a high-fire §10-V banned vocab pattern. `extra.matched` lists the prose hits. Sub-feature opt-out: `BANNED_VOCAB_PROSE_SCAN=0`. Section: `§10-V`. Added v0.21.0. |
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
 | `npx-allow-local` | `pre-bash-safety` | `npx <pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30. |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |

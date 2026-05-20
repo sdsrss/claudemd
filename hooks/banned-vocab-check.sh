@@ -28,6 +28,7 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
+EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion from
 # v0.8.3 opt-in default-OFF). When CMD is a definitely-read-only shape
@@ -53,8 +54,26 @@ fi
 # memory-read-check.sh v0.9.28 segment-anchor fix and the v0.17.4
 # ship-baseline-check.sh sibling.
 CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
-TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
-echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
+
+# Two orthogonal triggers:
+#   GIT_COMMIT_RE (Path 1, existing): scans the commit-message body for any
+#     §10-V pattern. Narrow to `git commit` only — extending Path 1 to other
+#     ship verbs is FP-heavy because their fallback path scans the whole CMD
+#     and would catch banned words in branch names / file paths / etc.
+#   SHIP_VERB_RE (Path 2, v0.21.0): scans the PRIOR assistant turn's chat
+#     prose for high-fire §10-V patterns on broader ship-flow verbs. The
+#     transcript is the input, not CMD, so branch-name / path FPs don't apply.
+GIT_COMMIT_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
+SHIP_VERB_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|$)'
+
+IS_GIT_COMMIT=0
+IS_SHIP_VERB=0
+echo "$CMD_FLAT" | grep -qE "$GIT_COMMIT_RE" && IS_GIT_COMMIT=1
+echo "$CMD_FLAT" | grep -qE "$SHIP_VERB_RE" && IS_SHIP_VERB=1
+(( IS_GIT_COMMIT == 0 && IS_SHIP_VERB == 0 )) && exit 0
+
+# Back-compat alias — body below references TRIGGER_RE in legacy comments.
+TRIGGER_RE="$GIT_COMMIT_RE"
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
@@ -67,6 +86,13 @@ if [[ ! -r "$PATTERNS_FILE" ]]; then
   hook_record_failopen banned-vocab patterns-missing
   exit 0
 fi
+
+# Path 1 (commit-msg scan) gated on git-commit trigger only. Non-commit ship
+# verbs (push / pr-create / release / publish) skip Path 1 and go straight
+# to Path 2 prose scan. Pre-v0.21.0 Path 1 fallback scanned the whole CMD
+# when no -m extracted; broadening the trigger naïvely would FP on branch
+# names / path args. Path 1 logic body unchanged inside the gate.
+if (( IS_GIT_COMMIT == 1 )); then
 
 # Extract commit-message bodies (-m / --message) from CMD. §10-V is about the
 # commit message, not the whole invocation — scanning `git -c core.editor=...
@@ -123,22 +149,130 @@ while IFS= read -r line; do
   fi
 done < "$PATTERNS_FILE"
 
-if (( ${#HITS[@]} == 0 )); then
-  exit 0
-fi
-
-REASON_TEXT="§10-V Specificity: banned terms detected:"
-for i in "${!HITS[@]}"; do
-  REASON_TEXT+=$'\n'"  - ${HITS[$i]}  (${REASONS[$i]})"
-done
-REASON_TEXT+=$'\n\n'"Bypass options:
+if (( ${#HITS[@]} != 0 )); then
+  # Path 1 (existing): commit-message banned vocab found. Deny.
+  REASON_TEXT="§10-V Specificity: banned terms detected:"
+  for i in "${!HITS[@]}"; do
+    REASON_TEXT+=$'\n'"  - ${HITS[$i]}  (${REASONS[$i]})"
+  done
+  REASON_TEXT+=$'\n\n'"Bypass options:
   (a) Rewrite with absolute numbers (preferred).
   (b) Per-commit escape: include [allow-banned-vocab] in the commit message.
   (c) Disable the hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
 
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
 
-HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+  HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
+  hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+  hook_deny banned-vocab "$REASON_TEXT"
+fi
+fi  # end IS_GIT_COMMIT block
 
+# ============================================================================
+# Path 2 (v0.21.0): ship-verb prose scan.
+# ============================================================================
+# When CMD is a ship-flow verb (commit / push / pr create / release create /
+# publish) AND the previous assistant turn's chat prose contains a high-fire
+# §10-V pattern, deny. Per §13.3 Gate 2 promotion data (sampling-audit
+# cross-project ≥5, default-ON ≥30d, ≥1 load-bearing feedback memory).
+#
+# Mechanism: chat prose has no PreToolUse surface of its own — it's emitted
+# during assistant turns. The only blocking surface is "next ship-flow tool
+# call", giving the rule a chance to surface BEFORE a release artifact lands
+# with the vague claim still in the chain of trust.
+#
+# Opt-out: BANNED_VOCAB_PROSE_SCAN=0 disables only this Path 2 branch (Path 1
+# commit-message scan remains active).
+#
+# Scope: scans ONLY the high-fire region of banned-vocab.patterns (markers
+# `# region: high-fire` ... `# region: prophylactic` bound the subset).
+# Prophylactic patterns kept advisory-only via transcript-vocab-scan.sh.
+[[ "${BANNED_VOCAB_PROSE_SCAN:-1}" == "0" ]] && exit 0
+
+# Filter: IS_SHIP_VERB was computed at top — covers commit + push + pr create
+# + release create + npm/cargo publish.
+(( IS_SHIP_VERB == 1 )) || exit 0
+
+# Locate transcript via CC's cwd→encoded-dir convention (per memory
+# feedback_cc_cwd_encoding_dots.md: tr '/._' '-').
+[[ -n "$EVENT_CWD" && -n "$SESSION_ID" ]] || exit 0
+ENCODED=$(printf '%s' "$EVENT_CWD" | tr '/._' '-')
+TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
+[[ -f "$TRANSCRIPT" ]] || exit 0
+
+# Extract last assistant turn's text content. tail -n 200 caps memory.
+# The same parsing shape as transcript-vocab-scan.sh / mid-spine-yield-scan.sh.
+LAST_TEXT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null \
+  | jq -R -r 'try fromjson catch empty
+              | select(.type == "assistant")
+              | (.message.content // [])
+              | map(select(.type == "text") | .text)
+              | join("\n")' 2>/dev/null)
+[[ -n "$LAST_TEXT" ]] || exit 0
+
+# Take only the LAST assistant turn (jq above concatenates ALL assistant turns
+# in tail window; we want the most recent one). Split on the "assistant turn
+# boundary" marker by tracking turn count — simpler approximation: last 4096
+# chars cover one typical agent response.
+LAST_TEXT=$(printf '%s' "$LAST_TEXT" | tail -c 4096)
+
+# Scan high-fire region of PATTERNS_FILE only. Stop at prophylactic marker.
+#
+# Region markers are anchored on the trailing `(` because the file's docstring
+# ALSO mentions "region: high-fire" and "region: prophylactic" as prose
+# (indented, no trailing paren). The actual region headers immediately after
+# the `# ===` ruler look like:
+#   # region: high-fire (last audit window)
+#   # region: prophylactic (kept for §10-V coverage; 0 hits in last audit window)
+# The `\(` anchor is the differentiator that prevents the docstring lines from
+# tripping the markers. Pre-fix the regex matched the docstring's
+# `#   region: high-fire     ≥1 deny in the most recent 30d audit window.`,
+# setting in_high_fire=1 too early, then `#   region: prophylactic  0 hits ...`
+# broke the loop BEFORE any actual pattern was reached — Path 2 silently
+# scanned 0 patterns, all expected denies returned no hits.
+declare -a PROSE_HITS=()
+declare -a PROSE_REASONS=()
+in_high_fire=0
+while IFS= read -r line; do
+  # Region boundary — stop reading
+  if [[ "$line" =~ ^#[[:space:]]region:[[:space:]]prophylactic[[:space:]]*\( ]]; then
+    break
+  fi
+  # Region boundary — start reading
+  if [[ "$line" =~ ^#[[:space:]]region:[[:space:]]high-fire[[:space:]]*\( ]]; then
+    in_high_fire=1
+    continue
+  fi
+  (( in_high_fire == 0 )) && continue
+  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+  local_regex="${line%|*}"
+  local_reason="${line##*|}"
+  # @ratio patterns in prose are LEGIT when baseline-anchored — skip them
+  # in prose scan (chat prose has different conventions than commit msgs;
+  # the baseline-context exemption in Path 1 doesn't transfer cleanly).
+  [[ "$local_reason" == "@ratio "* ]] && continue
+  if echo "$LAST_TEXT" | grep -qiE "$local_regex"; then
+    match=$(echo "$LAST_TEXT" | grep -oiE "$local_regex" | head -n1)
+    PROSE_HITS+=("$match")
+    PROSE_REASONS+=("$local_reason")
+  fi
+done < "$PATTERNS_FILE"
+
+(( ${#PROSE_HITS[@]} == 0 )) && exit 0
+
+REASON_TEXT="§10-V prose scan (v0.21.0): ship-flow command blocked because the preceding assistant turn contains §10-V high-fire banned vocab:"
+for i in "${!PROSE_HITS[@]}"; do
+  REASON_TEXT+=$'\n'"  - \"${PROSE_HITS[$i]}\"  (${PROSE_REASONS[$i]})"
+done
+REASON_TEXT+=$'\n\n'"Why this fires: §10-V (Specificity HARD) bans vague-positive vocab in agent prose, not just commit messages. Ship-flow verbs (commit/push/pr-create/release-create/publish) are the highest-stakes moments — the preceding analysis turn should already be calibrated with numbers + baselines.
+
+Bypass options:
+  (a) Add [allow-banned-vocab] to the current command (acknowledges the slip).
+  (b) Per-flag opt-out: BANNED_VOCAB_PROSE_SCAN=0 (keeps Path 1 commit-msg scan active).
+  (c) Disable the whole hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
+
+Spec: ~/.claude/CLAUDE.md §10 — Specificity (HARD)."
+
+PROSE_HITS_JSON=$(printf '%s\n' "${PROSE_HITS[@]}" | jq -R . | jq -s .)
+hook_record banned-vocab deny-prose "{\"matched\":$PROSE_HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
 hook_deny banned-vocab "$REASON_TEXT"
