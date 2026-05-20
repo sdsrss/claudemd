@@ -25,12 +25,13 @@ test('backupRoot points to ~/.claude', () => {
   assert.equal(backupRoot(), path.join(os.homedir(), '.claude'));
 });
 
-test('specHome returns three CLAUDE*.md paths in ~/.claude', () => {
+test('specHome returns four spec paths in ~/.claude (CLAUDE trio + OPERATOR.md)', () => {
   const paths = specHome();
-  assert.equal(paths.length, 3);
+  assert.equal(paths.length, 4);
   assert.ok(paths.includes(path.join(os.homedir(), '.claude/CLAUDE.md')));
   assert.ok(paths.includes(path.join(os.homedir(), '.claude/CLAUDE-extended.md')));
   assert.ok(paths.includes(path.join(os.homedir(), '.claude/CLAUDE-changelog.md')));
+  assert.ok(paths.includes(path.join(os.homedir(), '.claude/OPERATOR.md')));
 });
 
 test('HOME override respected', () => {

@@ -27,6 +27,7 @@ export const specHome          = () => [
   path.join(home(), '.claude/CLAUDE.md'),
   path.join(home(), '.claude/CLAUDE-extended.md'),
   path.join(home(), '.claude/CLAUDE-changelog.md'),
+  path.join(home(), '.claude/OPERATOR.md'),
 ];
 // Address a single home-spec file by basename. Decoupled from backupRoot()
 // (which happens to share the same dir today) so that a future relocation

@@ -1,6 +1,6 @@
-# AI-CODING-SPEC v6.11.16 — Extended
+# AI-CODING-SPEC v6.13.0 — Extended
 
-Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0).
+Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
 ## §5-EXT Safe-paths whitelist (detail)
 
@@ -403,16 +403,11 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` wins per §3 TRUST order. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
 
-## §13.1 OPERATOR RESPONSIBILITIES (human-facing)
+## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
-Not Agent rules. These govern the human maintaining this spec. Separated so Agents don't allocate attention to directives they cannot execute.
+Operator responsibilities (self-audit cadence / drift monitoring / version discipline / size budget rationale) moved to `OPERATOR.md` — human-only handbook, not Agent-loaded. Agent context no longer carries directives it cannot execute. The `§13.1` anchor name persists in code/hook telemetry (e.g. `§13.1-extended-read`, `bySection` audit accounting) as a stable label; the section text lives in `OPERATOR.md §13.1`.
 
-- **Self-audit cadence**: every ~50 L2+ tasks OR 4 weeks, whichever first — review `tasks/lessons.md`, count rule invocations where captured, prune never-used rules, promote frequently-repeated lessons.
-- **Drift monitoring**: watch for silent spec violations — Agent claiming "Done" without inline evidence tying the claim to tool output, or using §10 banned vocabulary. Each instance signals a rule misunderstood or too burdensome.
-- **Version discipline**: let a minor version run through ≥20 real L2+ tasks before the next. Adding rules without invocation data is how specs bloat.
-- **Size budget** (soft ceilings, v6.9.0 baseline): core ≤ 25k chars, extended ≤ 50k chars. Rationale: every byte in core loads every turn; extended loads every L3/ship/Override turn. Unchecked accretion silently trades user-instruction context for spec-rule context. Over ceiling → next version MUST net-delete (removal bytes > addition bytes) or refuse the addition. Track current size in the `Sizing` line of `CLAUDE-changelog.md` / `Recent changes` entry so the ceiling is a live signal, not a historical aspiration.
-
-### §13.2 HARD-rule budget (rolling, permanent)
+## §13.2 HARD-rule budget (rolling, permanent)
 
 Permanent ratchet on new HARD rules. Rationale: v6.6 → v6.7.5 (~1 month) added 9+ HARD entries, each scar-driven from one incident — §13.1 Version discipline (≥20 real L2+ tasks between minor bumps) was violated. v6.8 shipped a 30-day freeze window; v6.9 makes the ratchet permanent. Budget language (not "freeze") because the door is not closed — it's gated.
 
@@ -478,25 +473,16 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.12.0 (minor, 2026-05-20)** — Two additions:
+**v6.13.0 (minor, 2026-05-21)** — Three-tier architecture made explicit + operator content evicted:
 
-- `[relax]` **§11-EXT Body-structure scope**: `project_*.md` exempted from `mem-audit` hook's `**Why:**` / `**How to apply:**` scan. Incident-log pattern (`project_<topic>_<date>.md`) fact-only by nature; enforcement produced 16 long-standing non-compliant files across 4 projects without a path to closure. Hook now scans `feedback_*.md` only; CC `memoryTypes.ts` still recommends Why/How for the project type but the audit no longer warns.
-- `[add]` **§13.3 Advisory → enforce promotion** (NEW): two-gate criteria for advancing hook-layer rules from default-OFF → default-ON → `deny` via `/claudemd-audit` data (fire count, bypass rate, cross-project coverage, operator-feedback). Companion to §0.1 (spec-text promotion). Operator-judged, not auto-executed.
+- `[change]` **§0.1 Three-tier default** (core, ~+280B net): new rules default to Tier 2 (MEMORY.md anchor, keyword-loaded), not Tier 1 (extended). Promotion path Tier 2 → Tier 1 (≥3 sessions in 30d on same trigger) → Tier 0 (≥5 sessions in 30d, rule fired without elaboration consult). Reason: prior default ("new rule → extended §X-EXT") routed every patch addition into Agent-loaded context, growing extended ~6.8K in v6.11.4–v6.11.7 before v6.11.14 reclaim. Tier 2 default + tiered promotion gates make the budget defendable at source instead of via post-hoc cleanup releases.
+- `[move]` **§13.1 OPERATOR RESPONSIBILITIES → `OPERATOR.md`**: human-only spec-maintenance handbook (self-audit cadence / drift monitoring / version discipline / size budget rationale) extracted from extended (−~1.4KB) into a new top-level `OPERATOR.md` not loaded by the Agent. Spec itself documents these as "Not Agent rules" since v6.9.0 — Agent attention was burned loading directives it could not execute. `§13.1` anchor name persists in code/hook telemetry (`§13.1-extended-read`, `bySection` audit accounting) as a stable label; the section text now lives in `OPERATOR.md §13.1`. §13.2 batch-review cadence + §13.3 promotion-criteria audit also have operator-side slices in `OPERATOR.md`; the agent-executable parts (logging incidents, gate definitions) stay in extended §13.2 / §13.3.
 
-Plugin v0.18.0. **§13.2 budget cost: 0** (new META rule, not HARD; project_*.md exemption is SCOPE narrowing of an advisory hook).
+**Older entries** (v6.12.0 §13.3 + body-structure scope, v6.11.17 plugin-absent fallback, v6.11.16 §2.1 ROUTE collapse, v6.11.14 extended-compression + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**v6.11.17 (patch, 2026-05-20)** — §11-EXT Layer routing: explicit plugin-absent fallback paragraph added (tool-list detection → `recall_<topic>_<YYYYMMDD>.md` durable fallback with `[fallback]` tag); 6-row routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) externalized to `feedback_memory_layer_routing.md` per v6.11.14 "operational discipline → memory anchors" pattern. Zero new hooks, zero mirroring (preserves "one home per fact"). Plugin-present sessions: no behavior change. **§13.2 budget cost: 0**.
+**Sizing** (v6.13.0, 2026-05-21, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24133 → 24417 bytes (Δ +284, §0.1 three-tier rewrite + version-line +5 chars + cross-ref drop); extended 46963 → 45029 bytes (Δ −1934, §13.1 OPERATOR section removed (~−1418B) + 8-line pointer (~+490B) + version-line +9 chars + Recent-changes turnover demoted 4 prior entries to changelog); new file `OPERATOR.md` 3955 bytes (not Agent-loaded). Size budget: core 24417/25000 (**583 bytes headroom, 97.67%** — tightening from v6.12.0's 96.53%, three-tier policy paragraph paid for itself; next minor MUST net-delete or refuse addition); extended 45029/50000 (**4971 bytes headroom, 89.94%** — large reclaim from §13.1 eviction + Recent-changes demotion, recovered ~4 pp vs v6.12.0's 93.93%). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only; OPERATOR.md not in load path).
 
-**v6.11.16 (patch, 2026-05-11)** — §2.1 ROUTE single-source collapse: 13-row routing table reduced to 8 rows by evicting L3+ / composite / specialized-clarify routes to §EXT §4 FLOW via single catch-all dispatcher row; "Tool escalation" 5-principle list compressed to compact heuristic form; "Anti-patterns" line merged in (sole unique warning preserved as suffix). Net core −470B (24604 → 24134), headroom 396B → 866B (98.42% → 96.54% utilization, ~2× safety margin). No rule change, no behavior change; same terminal skill for all 5 hand-walked routing scenarios (bug / ship / plan-review / migration / Q&A). **§13.2 budget cost: 0**.
-
-- `[refactor]` **§2.1 ROUTE table collapse** (core) — 13 → 8 rows. Removed rows: `env/staging/deploy bug` (merged into `code/logic bug` row's note column), `L3 / auth-payment / migration`, `ship / deploy / PR / release`, `large design / plugin design / architecture`, `plan review (CEO/eng/design/devex)`, `perf / security / design / product-biz clarify`. New single catch-all row covers all 6 evicted triggers via enumerated keyword match → `Load extended → §EXT §4 FLOW`. §EXT §4 FLOW table (21 rows) unchanged in extended — full routing matrix lives there. §EXT §12 cross-ref preserved at core §0 line 5, §2.1 Skill soft-triggers line, and §2.2 Ship-pipeline hardening line (3 references survive).
-- `[refactor]` **§2.1 Tool escalation + Anti-patterns merge** (core) — 5-principle numbered list (386 chars) compressed to compact form (235 chars, −151B). "Anti-patterns" paragraph (215 chars) dropped; sole unique warning (`parallel-dispatch mem + code-graph on the same question`) merged into Tool escalation as `Anti-pattern: …` suffix. Information preservation: 100% — the 3 dropped anti-patterns were textual inverses of escalation principles 1, 2, 4 (literal-via-Grep / concept-via-semantic / unfamiliar-module-via-overview).
-
-**Older entries** (v6.11.14 extended-compression refactor + earlier): see `~/.claude/CLAUDE-changelog.md`.
-
-**Sizing** (v6.12.0, 2026-05-20, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24134 → 24133 bytes (Δ −1, version line `v6.11.17`→`v6.12.0` shortens by 1 char); extended 45730 → 46963 bytes (Δ +1233, §11-EXT Body-structure scope paragraph + §13.3 Advisory→enforce subsection + v6.12.0 Recent-changes entry; v6.11.14 entry demoted out to recover headroom). Size budget (§13.1): core 24133/25000 (**867 bytes headroom, 96.53%**); extended 46963/50000 (**3037 bytes headroom, 93.93%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens.
-
-**Operator carry-forward**: none. Extended utilization recovered well below ceiling. Future minor/patch bumps may add content within budget; §13.2 ratchet and §0.1 demote-candidate audit run unchanged.
+**Operator carry-forward**: core headroom now 583B. Subsequent patch/minor releases SHOULD net-delete in core. Candidate compaction targets (none required yet): §5.1 NEVER-downgrade list vs §8 SAFETY (conceptually adjacent, dedup analysis deferred from this release — distinct enforcement semantics, not actually duplicates on reread). Extended utilization recovered well below ceiling; ongoing MEMORY.md anchor migration (per v6.11.14 pattern) remains the larger lever for extended.
 
 ## §1.5-EXT GLOSSARY
 

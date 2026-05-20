@@ -29,6 +29,7 @@ beforeEach(() => {
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# Core v6.9.2\nVersion: 6.9.2\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), '# Extended v6.9.2\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), '# Changelog\n');
+  fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), '# Operator handbook (test fixture)\n');
 
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
   for (const name of ['banned-vocab-check', 'ship-baseline-check', 'residue-audit',

@@ -6,6 +6,45 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.13.0 — 2026-05-21
+
+Minor: three-tier architecture made explicit + operator content evicted from Agent context.
+
+- `[change]` **§0.1 Three-tier default** (core, Δ +284B net): new rules default to Tier 2 (MEMORY.md anchor, keyword-loaded), not Tier 1 (extended). Promotion path: Tier 2 → Tier 1 (≥3 sessions in 30d on same trigger) → Tier 0 (≥5 sessions in 30d, rule fired without elaboration consult). Previously, `§0.1` said "new rule defaults to extended §X-EXT" — that defaulted patches into Agent-loaded context. Tier 2 default routes new rules out of the load path entirely until usage justifies promotion.
+- `[move]` **§13.1 OPERATOR RESPONSIBILITIES → `OPERATOR.md`** (extended, Δ −1418B for §13.1 removal + small pointer): human-only spec-maintenance handbook (self-audit cadence / drift monitoring / version discipline / size budget rationale) extracted into new top-level `OPERATOR.md` (3955B), not loaded by the Agent. Spec marked these "Not Agent rules" since v6.9.0 — Agent attention was burned loading directives it could not execute. `§13.1` anchor name persists in code/hook telemetry (`§13.1-extended-read`, `bySection` audit accounting) as a stable label; section text now lives in `OPERATOR.md §13.1`. Operator-side slices of §13.2 (batch-review cadence, promotion gates summary) and §13.3 (audit cadence) also have pointers in `OPERATOR.md` — agent-executable parts (incident logging, gate definitions) stay in extended §13.2 / §13.3.
+- `[deferred]` **§5.1 NEVER-downgrade vs §8 SAFETY dedupe** (analyzed, NOT executed): initial scoping called them duplicates; rereading showed distinct enforcement semantics — §5.1 names the AUTH-gate floor under AUTONOMY_LEVEL, §8 names operations banned entirely. Not actually overlapping content; merge would conflate two roles. Deferred indefinitely.
+
+### Background
+
+External question: "can we apply the MEMORY.md index model to CLAUDE.md itself?" Answer: partially. MEMORY.md is informational (lookup-on-demand); CLAUDE.md is procedural (per-turn gates that must fire). The right analogy isn't "make CLAUDE.md like MEMORY.md" — it's "ensure CLAUDE.md contains ONLY per-turn gates, push everything else down the tier ladder." This release encodes the three-tier architecture that was implicit since v6.11.14's macOS-portability eviction:
+
+| Tier | File | Loaded by Agent? | Content |
+|---|---|---|---|
+| 0 (always) | `CLAUDE.md` | every turn | per-turn gates (SPINE / AUTH / VALIDATE / SAFETY / Iron Laws) |
+| 1 (triggered) | `CLAUDE-extended.md` | L3 / ship / Override / review | conditional rules (FLOW / evidence ladder / plugin fallback / META) |
+| 2 (keyword) | `MEMORY.md` + `*.md` anchors | on keyword/path match | recall-on-demand (`feedback_*.md` / `project_*.md` / `reference_*.md`) |
+| operator | `OPERATOR.md` | **never auto-loaded** | human spec-maintenance handbook |
+
+Before v6.13.0, the default for new rules was Tier 1. Result: extended grew ~6.8K bytes across v6.11.4–v6.11.7 (logged in `CLAUDE-changelog.md` Sizing lines) before v6.11.14 reclaimed via consolidation refactor. New default = Tier 2 closes that loop at source instead of via post-hoc cleanup releases.
+
+### Why minor (not patch)
+
+`§0.1` default rule change is a policy shift — `feedback_*.md` rule placement was previously informal, now codified as the entry point. The §13.1 file move is mechanical, but the surface area touched (every code/hook/command/test reference to `§13.1`) makes it minor-worthy for downstream version pinning.
+
+### Ship target
+
+Plugin v0.19.0 — minor bump tracking spec minor. CHANGELOG cross-references `OPERATOR.md` as a new top-level artifact in the plugin payload (synced to `~/.claude/OPERATOR.md` alongside `CLAUDE.md` + `CLAUDE-extended.md` via `/claudemd-update`).
+
+### Reviewer notes
+
+Hook telemetry stability: `§13.1-extended-read` event tag in `hooks/session-extended-read.sh` (and asserted in `tests/hooks/session-extended-read.test.sh:25`) preserved. Tag is a stable log marker, not a content cross-reference — content move does not invalidate it. `bySection` audit accounting (`hooks/lib/rule-hits.sh`, `scripts/hard-rules-audit.js`, `scripts/doctor.js`, `scripts/sparkline.js`, `commands/claudemd-rules.md`, `commands/claudemd-audit.md`, `commands/claudemd-sparkline.md`) preserves `§13.1` as the conceptual anchor for "operator audit data" — those references describe operator review activity, not the spec section's location.
+
+`§13.2` rationale still cites "§13.1 Version discipline (≥20 real L2+ tasks between minor bumps) was violated" — historical reference to a rule that now lives in `OPERATOR.md §13.1`. Reference retained verbatim (anchor still resolves conceptually).
+
+`spec/hard-rules.json` `spec_version` bumped to `v6.13.0`. Manifest has no `§13.1` entry (it was never a HARD rule — operator responsibilities are SHOULD-level guardrails for the human, not Agent-enforceable HARDs); manifest content unchanged.
+
+---
+
 ## v6.12.0 — 2026-05-20
 
 Minor: two §EXT additions.

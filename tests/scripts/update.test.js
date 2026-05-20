@@ -21,9 +21,11 @@ beforeEach(() => {
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), 'plugin-new\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), 'plugin-new-ext\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), 'plugin-new-cl\n');
+  fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), 'plugin-new-op\n');
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'home-old\n');
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'), 'plugin-new-ext\n');
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-changelog.md'), 'home-old-cl\n');
+  fs.writeFileSync(path.join(tmpHome, '.claude/OPERATOR.md'), 'plugin-new-op\n');
 });
 
 afterEach(() => {
@@ -35,7 +37,7 @@ afterEach(() => {
 test('dry-run: returns per-file diff summary', async () => {
   const res = await update({ pluginRoot, choice: 'cancel' });
   assert.equal(res.applied, false);
-  assert.equal(res.diffs.length, 3);
+  assert.equal(res.diffs.length, 4);
   const core = res.diffs.find(d => d.file === 'CLAUDE.md');
   assert.ok(core.added > 0 || core.removed > 0);
   const ext = res.diffs.find(d => d.file === 'CLAUDE-extended.md');

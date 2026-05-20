@@ -8,7 +8,7 @@ import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPlugi
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
+const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
 
 const INSTALL_USAGE = `Usage: node scripts/install.js
 

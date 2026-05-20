@@ -106,12 +106,12 @@ test('status flags cache-present-bootstrap-pending when manifest missing but plu
   assert.deepEqual(r.plugin.cacheVersions, ['0.6.4', '0.6.5']);
 });
 
-test('status.spec.hashes covers all three spec files (v0.6.0)', async () => {
+test('status.spec.hashes covers all four spec files (v0.6.0, v0.19.0 adds OPERATOR.md)', async () => {
   const r = await status();
   assert.ok(Array.isArray(r.spec.hashes), 'spec.hashes must be an array');
-  assert.equal(r.spec.hashes.length, 3);
+  assert.equal(r.spec.hashes.length, 4);
   assert.deepEqual(r.spec.hashes.map(h => h.name),
-    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md']);
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']);
   // The fixture installed-spec content does NOT match the shipped spec
   // (test writes a synthetic 6.10.0 stub, not the real shipped spec) — so
   // CLAUDE.md must report match=false. This proves drift is detected, not

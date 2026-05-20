@@ -60,12 +60,14 @@ test('compareSpecs reports match when installed equals shipped', () => {
   writeShipped('CLAUDE.md', body);
   writeShipped('CLAUDE-extended.md', 'ext\n');
   writeShipped('CLAUDE-changelog.md', 'log\n');
+  writeShipped('OPERATOR.md', 'op\n');
   writeInstalled('CLAUDE.md', body);
   writeInstalled('CLAUDE-extended.md', 'ext\n');
   writeInstalled('CLAUDE-changelog.md', 'log\n');
+  writeInstalled('OPERATOR.md', 'op\n');
 
   const r = compareSpecs(tmpPluginRoot);
-  assert.equal(r.length, 3);
+  assert.equal(r.length, 4);
   for (const row of r) {
     assert.equal(row.match, true, `${row.name} should match`);
     assert.equal(row.missing, false);
@@ -77,9 +79,11 @@ test('compareSpecs reports drift when installed differs from shipped', () => {
   writeShipped('CLAUDE.md', 'shipped\n');
   writeShipped('CLAUDE-extended.md', 'ext\n');
   writeShipped('CLAUDE-changelog.md', 'log\n');
+  writeShipped('OPERATOR.md', 'op\n');
   writeInstalled('CLAUDE.md', 'shipped\n');
   writeInstalled('CLAUDE-extended.md', 'EDITED locally\n');
   writeInstalled('CLAUDE-changelog.md', 'log\n');
+  writeInstalled('OPERATOR.md', 'op\n');
 
   const r = compareSpecs(tmpPluginRoot);
   const ext = r.find(x => x.name === 'CLAUDE-extended.md');
@@ -113,12 +117,13 @@ test('compareSpecs reports missing when shipped file absent', () => {
   assert.equal(main.missing, true);
 });
 
-test('compareSpecs covers all three spec files in fixed order', () => {
+test('compareSpecs covers all four spec files in fixed order', () => {
   // The order matters for human-scannable doctor output. Lock it.
   writeShipped('CLAUDE.md', 'a');
   writeShipped('CLAUDE-extended.md', 'b');
   writeShipped('CLAUDE-changelog.md', 'c');
+  writeShipped('OPERATOR.md', 'd');
   const r = compareSpecs(tmpPluginRoot);
   assert.deepEqual(r.map(x => x.name),
-    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md']);
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']);
 });

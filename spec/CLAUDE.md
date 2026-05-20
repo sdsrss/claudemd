@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.12.0 — Core
+# AI-CODING-SPEC v6.13.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -24,7 +24,7 @@ Everything else = natural prose, no brackets. Completion claims / level shifts /
 
 ### §0.1 Core growth discipline (HARD)
 
-New rule defaults to extended §X-EXT. Promote to core only after rule-hits data shows ≥5 sessions in 30d where the rule fired AND its elaboration wasn't consulted. `/claudemd-rules` recommends demotion for core entries with 0 hits in 30d. **Hard cap** (per §EXT §13.1): core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line.
+**Three-tier default** (v6.13.0): Tier 2 = MEMORY.md anchor (`feedback_*.md` / `recall_*.md` / `reference_*.md`), keyword-loaded — new rule lands here. Tier 1 = extended §X-EXT, loaded on L3/ship/Override/review — promote when same trigger fires ≥3 sessions in 30d. Tier 0 = core, every-turn — promote only after rule-hits ≥5 sessions in 30d where the rule fired AND its elaboration wasn't consulted. `/claudemd-rules` recommends demotion for core entries with 0 hits in 30d. **Hard cap**: core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line. Rationale + operator audit cadence: `OPERATOR.md §13.1`.
 
 ### §0.2 Mid-task feedback
 

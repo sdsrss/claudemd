@@ -18,6 +18,7 @@ beforeEach(async () => {
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), 'plugin\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), 'plugin-ext\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), 'plugin-cl\n');
+  fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), 'plugin-op\n');
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
   for (const n of ['banned-vocab-check','ship-baseline-check','residue-audit','memory-read-check','sandbox-disposal-check']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${n}.sh`), '#!/bin/bash\nexit 0\n');

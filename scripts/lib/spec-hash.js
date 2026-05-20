@@ -7,7 +7,7 @@ import { homeSpec } from './paths.js';
 // ~/.claude/<name>. Same list as install.js SPEC_FILES; duplicated here so
 // this lib has no install-side dependency (status/doctor import it; they
 // must not require install.js's settings-merge chain).
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
+const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
 
 export function sha256File(filePath) {
   if (!fs.existsSync(filePath)) return null;

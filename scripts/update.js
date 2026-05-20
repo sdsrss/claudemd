@@ -5,7 +5,7 @@ import { diffSpec } from './lib/spec-diff.js';
 import { createBackup, pruneBackups } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md'];
+const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
 
