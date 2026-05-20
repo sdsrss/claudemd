@@ -8,6 +8,46 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.3] - 2026-05-21
+
+**Patch — fix: §8 SAFETY silent bypass in `pre-bash-safety-check.sh` sanitize step + `${VAR:?}` canonical-guard recognition. End-to-end dogfood findings. Spec unchanged at v6.13.1.**
+
+### Why this patch
+
+Dogfooding the plugin end-to-end uncovered a latent §8 SAFETY bypass in `sanitize_cmd`. The pre-fix regex `sed -E 's/"[^"$]*"/""/g'` could pair the closing `"` of one `$`-containing double-quoted string with the opening `"` of the next, eating any code in between — including `&& rm -rf "$VAR"` — before the rm-rf-var detector ran. Reproducer: `echo "$A" && rm -rf "$B"` sanitized to `echo "$A""$B"`, no `rm` token visible, hook allowed. The same gap also bypassed npx-unpinned detection on `echo "$A" && npx prettier "$B"`. Both shapes silently passed enforcement.
+
+Fixing the sanitizer then exposed a second issue: the spec §8 deny message explicitly recommends `: "${VAR:?must be set}" && rm -rf "$VAR"` as the canonical "validate the var inline" form, but post-fix the hook denied it (no guard recognition existed — the previous accidental allow came from the sanitize bug, not deliberate logic). Hook now recognizes the bash `${VARNAME:?...}` set-or-exit guard when the varname matches the rm-rf target.
+
+Also tightened `industry-standard` (hyphen form) in `banned-vocab.patterns` — canonical fixture already noted the drift; pattern now mirrors `production[- ]ready`.
+
+### What changed (code)
+
+- `[fix]` **`hooks/pre-bash-safety-check.sh`** sanitize_cmd — replaced the broken sed regex `"[^"$]*"` with an awk char-by-char state machine that pairs `"` correctly. Adjacent `$`-containing double-quoted regions stay distinct; the gap between them no longer gets matched as a single quote body. Closes the silent §8 SAFETY bypass for both rm-rf-var (Pattern 1) and npx-unpinned (Pattern 2) detection. Performance: 10KB command sanitized in 52ms (well under the 3s hook timeout).
+
+- `[add]` **`hooks/pre-bash-safety-check.sh`** canonical-guard recognition — after detecting an unguarded non-whitelisted `rm -rf $VAR`, the hook checks for `${VAR:?...}` (bash set-or-exit operator) in `SANITIZED_CMD_FLAT` with the SAME varname. Match → emit `rm-rf-allow-validated` rule-hits row with `extra.var`, allow. Anchored via `(^|[^\\])` so `\${X:?...}` inside a `echo "use \${X:?msg} guard"` literal does NOT satisfy the guard (the backslash escapes the `$` — no expansion happens at runtime). Other guard forms (`[[ -n ]]`, `set -u`, control flow) remain unrecognized — use `[allow-rm-rf-var]`.
+
+- `[change]` **`hooks/banned-vocab.patterns`** `\bindustry standard\b` → `\bindustry[- ]standard\b`. Mirrors existing `\bproduction[- ]ready\b` handling. Spec §10-V uses the hyphenated form; canonical fixture (`tests/fixtures/banned-vocab-canonical.json`) previously noted the drift but did not close it.
+
+- `[doc]` **`docs/RULE-HITS-SCHEMA.md`** — new `rm-rf-allow-validated` event row in the Events table + section taxonomy. Records `extra.var`.
+
+- `[test]` **`tests/fixtures/bash-safety/corpus.tsv`** — 17 new corpus rows. Sanitize cross-quote-region: rm-rf after `&&` / `;` / leading non-echo form (4 rows). Canonical `:?` guard: quoted braces + `&&`, `;` separator, bare braces, preceded by other commands, wrong-var guard, `:-` default not a guard, `[[ -n ]]` not a guard, backslash-escaped literal not a guard (8 rows). npx-unpinned cross-quote-region: bare + scoped (2 rows). Net 76 → 90 cases (+14, plus pre-existing 3 in the sanitize-fix block).
+
+- `[test]` **`tests/fixtures/banned-vocab-canonical.json`** — `industry-standard` pattern updated to char class; note updated to match `production[- ]ready` style.
+
+- `[test]` **`tests/hooks/contract.test.sh`** — `rm-rf-allow-validated:pre-bash-safety` added to KNOWN_EVENTS so drift-test C ("emitted event is documented") passes.
+
+- `[change]` plugin / package / marketplace bump 0.21.2 → 0.21.3.
+
+### Migration
+
+None. `[allow-rm-rf-var]` escape token continues to work. Commands previously allowed via the sanitize bypass now correctly deny — the canonical `: "${VAR:?msg}" && rm -rf "$VAR"` form continues to allow (now via deliberate recognition rather than accidental sanitize bypass).
+
+### What this DOES NOT do
+
+- Does not model backslash-escape sequences inside `"..."` (`\"` still closes the quote — same gap as the prior sed implementation; not widened).
+- Does not recognize non-`:?` guard forms (`[[ -n ]]`, `set -u`, control flow). Use `[allow-rm-rf-var]` if those are your idiom.
+- Does not change the readonly-fast-path: commands starting with whitelisted readers (`echo`, `cat`, `ls`, …) still bypass detection — `echo "$A" rm -rf "$B"` (juxtaposition with no operator) remains allowed because bash-semantically `rm` is just a literal argument to `echo`, not a command.
+
 ## [0.21.2] - 2026-05-21
 
 **Patch — add: spec **Sizing** drift pre-tag check in `scripts/version-cascade-check.js`. Plus a v0.21.1 test-hermeticity follow-up triggered by enabling `CLAUDEMD_PATH2_DRY_RUN=1` in `~/.claude/settings.json`. Spec unchanged at v6.13.1.**

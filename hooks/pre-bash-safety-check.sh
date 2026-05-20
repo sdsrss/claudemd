@@ -106,15 +106,45 @@ sanitize_cmd() {
   # Strip contents of paired quoted strings, keeping the empty-quote markers
   # so token boundaries (e.g. `echo ""` after stripping) are preserved.
   #
-  # Double-quoted strings:
-  #   - Strip iff the body contains NO `$` (no var expansion / command sub).
-  #   - Char class [^"$] excludes both " and $, so "foo bar" matches and strips,
-  #     but "$VAR" / "x$y" / "$(cmd)" do not match — preserved for the rm-rf
-  #     and npx detectors to see the variable expansion they need to deny.
-  # Single-quoted strings:
-  #   - Always strip — no shell expansion ever happens inside '...'.
-  out=$(printf '%s' "$out" | sed -E 's/"[^"$]*"/""/g')
+  # Single-quoted strings — always strip (no shell expansion inside '...').
   out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
+  # Double-quoted strings — state-machine pairing of `"` characters.
+  #   - body contains `$` → preserve verbatim (real var expansion / command sub)
+  #   - body has no `$`   → replace body with empty `""`
+  # The previous sed regex `"[^"$]*"` was a §8 SAFETY silent bypass: it
+  # could pair the closing `"` of one $-containing string with the opening
+  # `"` of the next, eating `&& rm -rf` (or any other danger) between them.
+  # Repro: `echo "$A" && rm -rf "$B"` was sanitized to `echo "$A""$B"` and
+  # the rm-detector saw no `rm` at all. The state machine below walks
+  # char-by-char so adjacent quoted regions stay distinct.
+  # Escape sequences (`\"` inside `"..."`) are not modeled — same gap as
+  # the prior regex; not in scope.
+  out=$(printf '%s' "$out" | awk '
+    BEGIN { RS = "\004" }
+    {
+      n = length($0)
+      in_q = 0; buf = ""; has_dollar = 0; final = ""
+      for (i = 1; i <= n; i++) {
+        ch = substr($0, i, 1)
+        if (in_q == 0) {
+          if (ch == "\"") { in_q = 1; buf = ""; has_dollar = 0 }
+          else final = final ch
+        } else {
+          if (ch == "\"") {
+            if (has_dollar) final = final "\"" buf "\""
+            else final = final "\"\""
+            in_q = 0; buf = ""; has_dollar = 0
+          } else if (ch == "$") {
+            has_dollar = 1; buf = buf ch
+          } else {
+            buf = buf ch
+          }
+        }
+      }
+      if (in_q == 1) final = final "\"" buf
+      printf "%s", final
+    }
+  ')
 
   printf '%s' "$out"
 }
@@ -234,8 +264,27 @@ if echo "$SANITIZED_CMD" | grep -qE "$RM_FLAG_REGEX"; then
           fi
           ;;
         *)
-          HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
-          REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+          # Canonical-guard recognition: bash's `${VARNAME:?msg}` set-or-exit
+          # operator forces the var to be set AND non-empty, or aborts the
+          # shell. This is the exact form the deny message below recommends
+          # ("Validate the var inline: : \"${VAR:?must be set}\""). Match
+          # against the same varname extracted from the rm target so a guard
+          # on a different var (e.g. `: "${SAFE:?msg}" && rm -rf "$EVIL"`)
+          # still denies. Position-agnostic on purpose: if a user writes the
+          # guard AFTER rm-rf, bash still executes rm-rf first, but with VAR
+          # unset $VAR expands to empty → `rm -rf ""` is a no-op error, so
+          # no damage is done either way. Other guard forms ([[ -n ]],
+          # `set -u`, control flow) remain unrecognized — use [allow-rm-rf-var].
+          # `(^|[^\\])` rejects backslash-escaped literals like
+          # `echo "use \${X:?msg} guard"` — the `\$` is bash-literal, not
+          # an actual expansion, so it must not satisfy the guard.
+          guard_re='(^|[^\\])\$\{'"$varname"':\?'
+          if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
+            hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+          else
+            HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
+            REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+          fi
           ;;
       esac
     fi

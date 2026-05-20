@@ -71,7 +71,7 @@
 # ─── EN adjectives ──────────────────────────────────────────────────────────
 \bproduction[- ]ready\b|evaluative adjective — describe what you verified (tests, thresholds) instead
 \bbest practice\b|appeal to authority — cite the specific practice + source if invoking
-\bindustry standard\b|appeal to authority — same as best-practice
+\bindustry[- ]standard\b|appeal to authority — same as best-practice
 \bcleaner code\b|evaluative — describe the concrete change (N fewer LOC, removed helper X)
 \bseems to work\b|hedge — verify and state, or drop the claim
 \bappears correct\b|hedge — verify and state, or drop the claim

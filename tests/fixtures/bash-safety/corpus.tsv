@@ -116,3 +116,33 @@ pass	multi-line npx pinned on line 2 (was false-DENY)	TMP=$(mktemp -d)__NL__npx 
 pass	multi-line npx local path on line 2	TMP=$(mktemp -d)__NL__npx ./node_modules/.bin/foo
 deny	multi-line npx unpinned on line 2 (real catch)	TMP=$(mktemp -d)__NL__npx prettier
 deny	rm -rf $VAR on line 3 of 5	echo step1__NL__cd /tmp__NL__rm -rf $UNSAFE__NL__echo done__NL__cleanup
+
+# === sanitize state-machine fix (silent §8 bypass via adjacent $-quoted regions) ===
+# Pre-fix `sed -E 's/"[^"$]*"/""/g'` could pair the closing `"` of one
+# $-containing string with the opening `"` of the next, eating `&& rm -rf`
+# (or any other danger) between them. Repro: `echo "$A" && rm -rf "$B"`
+# was sanitized to `echo "$A""$B"` and the rm-detector saw no `rm` at all.
+# Fix: state-machine pairing in sanitize_cmd. The juxtaposition form
+# `echo "$A" rm -rf "$B"` (no operator) is allowed by the readonly fast-path
+# — bash-semantically it's just `echo` with 4 literal args, no rm execution.
+deny	rm-rf after && between two $-quoted strings	echo "$A" && rm -rf "$B"
+deny	rm-rf after ; between two $-quoted strings	echo "$A" ; rm -rf "$B"
+deny	rm-rf bare-VAR after && + $-quoted echo arg	echo "$Y" && rm -rf $EVIL
+deny	non-echo leading $-quote then operator + rm-rf	"$A" && rm -rf "$B"
+deny	npx unpinned after && between two $-quoted strings	echo "$A" && npx prettier "$B"
+deny	npx unpinned scoped after && between two $-quoted strings	echo "$A" && npx @types/node "$B"
+
+# === ${VAR:?...} canonical guard recognition ===
+# Spec §8 SAFETY's "Validate the var inline" recommended form. The hook
+# now recognizes a `${VARNAME:?...}` set-or-exit guard whose varname
+# matches the rm-rf target, mirroring the literal form printed in the
+# deny message. Other guard forms ([[ -n ]], `set -u`, control flow) are
+# NOT recognized — use [allow-rm-rf-var] for those.
+pass	canonical :? guard quoted-braces + &&	: "${X:?must set}" && rm -rf "$X"
+pass	canonical :? guard with ; separator	: "${X:?msg}" ; rm -rf "$X"
+pass	bare-brace :? guard	: ${X:?msg} && rm -rf $X
+pass	:? guard preceded by other commands	echo step && : "${X:?abort}" && rm -rf "$X"
+deny	:? guard for wrong var (SAFE guarded, EVIL deleted)	: "${SAFE:?msg}" && rm -rf "$EVIL"
+deny	:- default-fallback is not a guard	: "${X:-/tmp}" && rm -rf "$X"
+deny	[[ -n ]] non-empty check is not a recognized guard	[[ -n "$X" ]] && rm -rf "$X"
+deny	backslash-escaped literal guard in echo is not real	echo "use \${X:?msg} guard" && rm -rf $X

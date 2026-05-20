@@ -32,6 +32,7 @@ source must appear in this table.
 | `deny-prose-dry-run` | `banned-vocab` | v0.21.1 — Path 2 observability mode. Same trigger as `deny-prose` (ship verb + high-fire prose match), but emitted instead of denying when `CLAUDEMD_PATH2_DRY_RUN=1`. `extra.matched` carries the would-deny hits; the tool call passes through. Grep this row to measure TP vs FP rate before committing to live enforcement. Section: `§10-V`. Added v0.21.1. |
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
 | `npx-allow-local` | `pre-bash-safety` | `npx <pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30. |
+| `rm-rf-allow-validated` | `pre-bash-safety` | `rm -rf $VAR` allowed because the same `VAR` is guarded by bash's `${VAR:?…}` set-or-exit operator (spec §8 SAFETY "Validate the var inline" recommended form). Records `extra.var`. Other guard forms (`[[ -n ]]`, `set -u`, control flow) are NOT recognized — use `[allow-rm-rf-var]`. Section: `§8-rm-rf-var`. Added v0.21.3. |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |
 | `deny-repeat` | `ship-baseline` | 2nd `deny` on the same (`session_id`, `run_url`) pair within 5 minutes — agent retried without resolving CI. REASON wording escalated; same `permissionDecision=deny` to the model. Sentinel state in `~/.claude/.claudemd-state/ship-baseline-recent/<session_id>_<run_id>.sentinel` (1-day self-prune). Added v0.18.1. |
 | `warn` | `sandbox-disposal`, `residue-audit` | non-blocking advisory |
@@ -62,6 +63,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-rm-rf-var`) | `§8-rm-rf-var` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-npx-unpinned`) | `§8-npx` |
 | `pre-bash-safety` | `npx-allow-local` | `§8-npx` |
+| `pre-bash-safety` | `rm-rf-allow-validated` | `§8-rm-rf-var` |
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `memory-prompt-hint` | `suggest` | `§11-memory-hint` |
 | `memory-coverage-scan` | `coverage-advisory` | `§11-mem-coverage` |

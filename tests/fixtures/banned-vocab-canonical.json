@@ -12,7 +12,7 @@
     {"term": "cleaner code", "category": "EN-adj", "in_spec": true, "pattern": "\\bcleaner code\\b"},
     {"term": "comprehensive", "category": "EN-adj", "in_spec": true, "pattern": "\\bcomprehensive\\b"},
     {"term": "best practice", "category": "EN-adj", "in_spec": true, "pattern": "\\bbest practice\\b"},
-    {"term": "industry-standard", "category": "EN-adj", "in_spec": true, "pattern": "\\bindustry standard\\b", "note": "spec uses dash; pattern uses space — both forms common in commit text"},
+    {"term": "industry-standard", "category": "EN-adj", "in_spec": true, "pattern": "\\bindustry[- ]standard\\b", "note": "char class accepts both 'industry-standard' and 'industry standard'"},
 
     {"term": "presumably", "category": "EN-hedge", "in_spec": true, "pattern": "\\bpresumably\\b"},
     {"term": "likely", "category": "EN-hedge", "in_spec": true, "pattern": null, "exempt_reason": "too common in legitimate English (banned-vocab.patterns header skip-list policy)"},
