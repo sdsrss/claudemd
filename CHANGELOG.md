@@ -8,6 +8,40 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.1] - 2026-05-21
+
+**Patch — add: `CLAUDEMD_PATH2_DRY_RUN=1` observability flag + doctor `banned-vocab self-test:prose-scan`. Spec unchanged at v6.13.1.**
+
+### Why this patch
+
+v0.21.0 shipped Path 2 prose-scan deny but with no production data — synthetic tests 25-33 prove the mechanism works, FP rate against real assistant prose is unknown. And doctor `selfTests[]` covered Path 1 + rm-rf-var + npx-unpinned only; the v0.21.0 region-marker docstring-FP bug (silent 0-pattern scan) would have shipped green through doctor — only the `tests/hooks/` suite caught it. This patch closes both gaps without changing default behavior.
+
+### What changed (code)
+
+- `[add]` **`hooks/banned-vocab-check.sh`** — `CLAUDEMD_PATH2_DRY_RUN=1` branch logs a `deny-prose-dry-run` event with the would-match hits and exits 0 instead of denying. Grep `~/.claude/logs/claudemd.jsonl` for the rows during rollout to measure TP vs FP rate. Default 0 (live deny per v0.21.0). +10 LOC inside the existing Path 2 branch.
+
+- `[add]` **`scripts/doctor.js`** — 4th `selfTests[]` entry `banned-vocab self-test:prose-scan`. Extended the loop with optional `setup(tmpDir) → {event, envOverride}` callback: the new entry stages a synthetic transcript at `$tmpDir/.claude/projects/<encoded-cwd>/<sid>.jsonl` with a §10-V high-fire token in an assistant turn, then drives the hook with `git push` + `HOME=$tmpDir` overridden in the spawn env. Catches: region-marker regex regression (the v0.21.0 docstring-FP class) at doctor invocation, not just test-suite. Synthetic transcript lands in `mkdtempSync` dir, cleaned up after spawn per §8.V4. +60 LOC including new selfTest entry and setup-handling fork in the loop.
+
+- `[add]` **`docs/RULE-HITS-SCHEMA.md`** — `deny-prose-dry-run` event row added.
+
+- `[add]` **`tests/hooks/contract.test.sh`** DOCUMENTED list — `deny-prose-dry-run:banned-vocab` added. 59 → 60.
+
+- `[add]` **`README.md`** — `CLAUDEMD_PATH2_DRY_RUN` entry in env-var section with sample jq query for grepping the dry-run rows.
+
+- `[test]` **`tests/hooks/banned-vocab.test.sh`** Cases 34-35 — `CLAUDEMD_PATH2_DRY_RUN=1` + would-deny prose + ship verb → pass (case 34); same + verify `deny-prose-dry-run` row written to `rule-hits.jsonl` (case 35). 33 → 35.
+
+- `[test]` **`tests/scripts/doctor.test.js`** — new test asserts the `banned-vocab self-test:prose-scan` check exists, passes, and detail mentions Path 2 + the trigger word.
+
+### Migration
+
+None. Live enforcement unchanged: Path 2 still denies by default. Set `CLAUDEMD_PATH2_DRY_RUN=1` only if you want to observe-without-blocking during a calibration window (typical use: 1-2 weeks of normal ship cadence, then unset).
+
+### What this DOES NOT do
+
+- Does not auto-collect / report FP rate — that's left to `node scripts/audit.js` after dry-run data accumulates.
+- Does not change Path 1 (commit-message scan) or any spec content.
+- Does not affect `transcript-vocab-scan` (PostToolUse advisory) — that path is independent and unchanged.
+
 ## [0.21.0] - 2026-05-21
 
 **Minor — change: §13.3 Gate 2 promotion. `banned-vocab-check` Path 2 prose scan added — ship-flow commands (commit/push/pr-create/release-create/publish) now DENY when the preceding assistant turn's chat prose contains a high-fire §10-V pattern. Spec unchanged at v6.13.1.**

@@ -275,8 +275,46 @@ TMP_FIX=$(mktemp); printf '%s' "$EVENT_33" > "$TMP_FIX"
 assert_deny "33: 中文 高频 prose hit + clean commit msg → deny (Path 2 中文)" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# ============================================================================
+# v0.21.1: CLAUDEMD_PATH2_DRY_RUN observability flag
+# ============================================================================
+# When the env flag is set, Path 2 logs a `deny-prose-dry-run` event instead of
+# emitting deny JSON. Operators staging the rollout grep rule-hits.jsonl to
+# measure TP vs FP rate before committing to live enforcement. Same input as
+# case 25 (would deny under default), inverted assertion to pass.
+
+PCWD="/work/p34"
+PSID="sess34"
+mk_prose_transcript "$PCWD" "$PSID" "The fix significantly improves throughput."
+EVENT_34=$(mk_prose_event "git commit -m 'fix: throughput'" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_34" > "$TMP_FIX"
+assert_pass "34: CLAUDEMD_PATH2_DRY_RUN=1 logs but does NOT deny" "$TMP_FIX" "CLAUDEMD_PATH2_DRY_RUN=1"
+rm -f "$TMP_FIX"
+
+# Case 35: dry-run leaves a `deny-prose-dry-run` row in rule-hits.jsonl. This
+# is the observability contract — without the event row, dry-run would be
+# silent and operators couldn't measure FP rate.
+PCWD="/work/p35"
+PSID="sess35"
+mk_prose_transcript "$PCWD" "$PSID" "Implementation is robust under load."
+EVENT_35=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_35" > "$TMP_FIX"
+RULE_HITS_LOG="$HOME/.claude/logs/claudemd.jsonl"
+# Ensure log dir exists; hook will create file. Truncate to scope this assertion.
+mkdir -p "$(dirname "$RULE_HITS_LOG")"
+: > "$RULE_HITS_LOG"
+CLAUDEMD_PATH2_DRY_RUN=1 bash "$HOOK" < "$TMP_FIX" >/dev/null 2>&1
+if grep -q '"event":"deny-prose-dry-run"' "$RULE_HITS_LOG" 2>/dev/null; then
+  echo "PASS: 35: dry-run emits deny-prose-dry-run row in rule-hits.jsonl"
+else
+  echo "FAIL: 35: expected deny-prose-dry-run row, log contents:"
+  cat "$RULE_HITS_LOG"
+  FAIL=$((FAIL + 1))
+fi
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((33 - FAIL))/33 passed"
+  echo "Tests: $((35 - FAIL))/35 passed"
   exit 1
 fi
-echo "Tests: 33/33 passed"
+echo "Tests: 35/35 passed"

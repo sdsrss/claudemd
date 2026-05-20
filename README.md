@@ -208,6 +208,15 @@ export BANNED_VOCAB_PROSE_SCAN=0           # v0.21.0+ — disable only the Path 
                                            # assistant turn's prose contains a
                                            # high-fire §10-V pattern). Path 1
                                            # commit-message scan remains active.
+
+export CLAUDEMD_PATH2_DRY_RUN=1            # v0.21.1+ — Path 2 observability mode.
+                                           # When set, ship-verb + prior-prose §10-V
+                                           # match logs a `deny-prose-dry-run` event
+                                           # row to ~/.claude/logs/claudemd.jsonl
+                                           # instead of denying. Grep the rows to
+                                           # measure true-positive vs false-positive
+                                           # rate before committing to live deny.
+                                           # Sample: jq -r 'select(.event=="deny-prose-dry-run") | .extra.matched' ~/.claude/logs/claudemd.jsonl
 ```
 
 **3. Per-invocation escape hatches.** Embed in the command itself, no env var needed:

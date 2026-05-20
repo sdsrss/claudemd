@@ -260,6 +260,18 @@ done < "$PATTERNS_FILE"
 
 (( ${#PROSE_HITS[@]} == 0 )) && exit 0
 
+# v0.21.1 — observability before enforcement. When CLAUDEMD_PATH2_DRY_RUN=1,
+# log a `deny-prose-dry-run` event with the matched hits but allow the command
+# through. Operators staging Path 2 rollout (or auditing FP rate after a
+# pattern-set edit) can grep ~/.claude/logs/claudemd.jsonl for the dry-run
+# rows to measure true-positive vs false-positive density without blocking
+# real ship flows. Default 0 (live enforcement).
+if [[ "${CLAUDEMD_PATH2_DRY_RUN:-0}" == "1" ]]; then
+  PROSE_HITS_JSON=$(printf '%s\n' "${PROSE_HITS[@]}" | jq -R . | jq -s .)
+  hook_record banned-vocab deny-prose-dry-run "{\"matched\":$PROSE_HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+  exit 0
+fi
+
 REASON_TEXT="§10-V prose scan (v0.21.0): ship-flow command blocked because the preceding assistant turn contains §10-V high-fire banned vocab:"
 for i in "${!PROSE_HITS[@]}"; do
   REASON_TEXT+=$'\n'"  - \"${PROSE_HITS[$i]}\"  (${PROSE_REASONS[$i]})"

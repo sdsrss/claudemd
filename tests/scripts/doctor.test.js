@@ -130,6 +130,23 @@ test('doctor pre-bash-safety self-test:npx-unpinned passes when hook denies synt
   assert.match(t.detail, /unknown-pkg-x9z2/);
 });
 
+test('doctor runs banned-vocab self-test:prose-scan and passes when Path 2 denies synthetic transcript trigger (v0.21.1)', async () => {
+  // Closes the gap between v0.21.0 ship and doctor coverage: Path 2 was test-
+  // suite-only — the region-marker docstring-FP bug (silent 0-pattern scan)
+  // would have shipped green through doctor. This selfTest stages a synthetic
+  // transcript at HOME/.claude/projects/<encoded>/<sid>.jsonl with a §10-V
+  // high-fire token, then drives the hook with `git push`. Must deny.
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const r = await doctor({});
+  const t = r.checks.find(c => c.name === 'banned-vocab self-test:prose-scan');
+  assert.ok(t, 'banned-vocab self-test:prose-scan check must exist');
+  assert.equal(t.ok, true,
+    `Path 2 self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.match(t.detail, /Path 2/);
+  assert.match(t.detail, /significantly/);
+});
+
 test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from settings.json (v0.19.1 A2)', async () => {
   const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;

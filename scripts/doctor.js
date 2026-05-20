@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -211,6 +212,42 @@ export async function doctor({ pruneBackups: prune } = {}) {
       },
       successDetail: 'synthetic "npx unknown-pkg-x9z2" (no lockfile/local) correctly denied (§8-npx)',
     },
+    {
+      // v0.21.1 — Path 2 prose scan code-integrity check. Stages a synthetic
+      // transcript at $HOME/.claude/projects/<encoded-cwd>/<sid>.jsonl with a
+      // §10-V high-fire token in the assistant turn, then drives the hook with
+      // a ship-verb command. Fail-mode this catches: region-marker regex
+      // regression silently scanning 0 patterns (the v0.21.0 docstring-FP bug)
+      // — tests caught it but doctor was blind. Setup writes to a mkdtemp HOME
+      // so the synth transcript never lands in the user's real projects tree.
+      name: 'banned-vocab self-test:prose-scan',
+      hook: 'banned-vocab-check.sh',
+      ksEnvVar: 'DISABLE_BANNED_VOCAB_HOOK',
+      setup: (tmpDir) => {
+        const synthCwd = '/doctor/selftest';
+        const synthSid = 'doctor-selftest-prose';
+        // Match banned-vocab-check.sh `tr '/._' '-'` per
+        // feedback_cc_cwd_encoding_dots.md.
+        const encoded = synthCwd.replace(/[/._]/g, '-');
+        const transDir = path.join(tmpDir, '.claude/projects', encoded);
+        fs.mkdirSync(transDir, { recursive: true });
+        const turn = JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'This significantly improves throughput.' }] },
+        });
+        fs.writeFileSync(path.join(transDir, `${synthSid}.jsonl`), turn + '\n');
+        return {
+          event: {
+            session_id: synthSid,
+            tool_name: 'Bash',
+            cwd: synthCwd,
+            tool_input: { command: 'git push origin main' },
+          },
+          envOverride: { HOME: tmpDir },
+        };
+      },
+      successDetail: 'synthetic prose "significantly" + git push correctly denied (Path 2 prose scan)',
+    },
   ];
 
   for (const t of selfTests) {
@@ -235,8 +272,22 @@ export async function doctor({ pruneBackups: prune } = {}) {
     }
     const tKsEngaged = ksEnvPlugin || tKsEnv || tKsSettings;
 
+    // v0.21.1 — selfTests with `setup` stage fixtures into a mkdtemp dir and
+    // get an `envOverride.HOME` so the spawned hook sees the staged tree.
+    // Cleanup is the creating-task's responsibility per §8.V4. Leaks here
+    // would land under os.tmpdir(), not the user's ~/.claude/projects/.
+    let event = t.event;
+    let envOverride = {};
+    let cleanupDir = null;
+    if (t.setup) {
+      cleanupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-dr-selftest-'));
+      const s = t.setup(cleanupDir);
+      event = s.event;
+      envOverride = s.envOverride || {};
+    }
+
     const r = spawnSync('bash', [hookPath], {
-      input: JSON.stringify(t.event),
+      input: JSON.stringify(event),
       encoding: 'utf8',
       timeout: 5000,
       env: {
@@ -244,8 +295,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
         DISABLE_RULE_HITS_LOG: '1',
         DISABLE_CLAUDEMD_HOOKS: '',
         [t.ksEnvVar]: '',
+        ...envOverride,
       },
     });
+
+    if (cleanupDir) {
+      try { fs.rmSync(cleanupDir, { recursive: true, force: true }); } catch { /* tmp leak benign */ }
+    }
+
     const denied = r.status === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout || '');
     const ksNote = tKsEngaged
       ? ' — note: kill-switch engaged in user env/settings; hook will NOT fire in practice'
