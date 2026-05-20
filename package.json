@@ -17,7 +17,8 @@
     "test": "bash tests/run-all.sh",
     "test:scripts": "node --test tests/scripts/*.test.js",
     "test:hooks": "bash tests/hooks/*.test.sh",
-    "lint:argv": "node scripts/lint-argv.js"
+    "lint:argv": "node scripts/lint-argv.js",
+    "version-check": "node scripts/version-cascade-check.js"
   },
   "engines": {
     "node": ">=20"

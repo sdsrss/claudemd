@@ -304,9 +304,9 @@ claudemd/
 │   └── marketplace.json      # marketplace catalog entry
 ├── hooks/                    # 11 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 9 slash-command markdown files
+├── commands/                 # 11 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 10 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
+├── scripts/                  # 15 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.13.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
