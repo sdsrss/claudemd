@@ -17,13 +17,14 @@
 #   (c) Global kill: DISABLE_CLAUDEMD_HOOKS=1
 #
 # Feature flags:
-#   BASH_SAFETY_INDIRECT_CALL=1 — opt-in indirect-exec coverage (v0.6.0).
-#     Unwraps `bash -c '<inner>'` / `sh -c '<inner>'` / `zsh -c '<inner>'` /
-#     `eval '<inner>'` (single OR double quoted) to the same patterns above.
-#     Default OFF for v0.6.0 to gather FP signal in the wild before flipping
-#     the default. Heuristic — escaped quotes / heredoc forms / nested
-#     substitutions can defeat it. Bypass tokens (a) survive unwrap so an
-#     authorized indirect call still works with `[allow-rm-rf-var]` /
+#   BASH_SAFETY_INDIRECT_CALL — indirect-exec coverage. **v0.21.8 default-ON**
+#     (was opt-in default-OFF v0.6.0–v0.21.7 to gather FP signal; closes §8
+#     SAFETY silent-bypass for `bash -c "rm -rf $X"` / `eval "rm -rf $X"`).
+#     Set to `0` to opt out. Unwraps `bash -c '<inner>'` / `sh -c '<inner>'` /
+#     `zsh -c '<inner>'` / `eval '<inner>'` (single OR double quoted) to the
+#     same patterns above. Heuristic — escaped quotes / heredoc forms /
+#     nested substitutions can defeat it. Bypass tokens (a) survive unwrap
+#     so an authorized indirect call still works with `[allow-rm-rf-var]` /
 #     `[allow-npx-unpinned]` inside the inner string.
 
 set -uo pipefail
@@ -197,7 +198,7 @@ npx_pkg_locally_resolved() {
 }
 
 PROCESSED_CMD="$CMD"
-if [[ "${BASH_SAFETY_INDIRECT_CALL:-0}" == "1" ]]; then
+if [[ "${BASH_SAFETY_INDIRECT_CALL:-1}" != "0" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$CMD")
 fi
 SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")

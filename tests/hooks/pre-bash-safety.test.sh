@@ -11,6 +11,10 @@ HOOK="$HERE/../../hooks/pre-bash-safety-check.sh"
 CORPUS="$HERE/../fixtures/bash-safety/corpus.tsv"
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
+# Hermeticity (per feedback_hook_env_test_hermeticity): BASH_SAFETY_INDIRECT_CALL
+# is user-tunable via ~/.claude/settings.json env block; if set there it inherits
+# into npm test and silently flips default-ON deny cases to pass.
+unset BASH_SAFETY_INDIRECT_CALL
 
 if [[ ! -f "$CORPUS" ]]; then
   echo "FAIL: corpus missing at $CORPUS"; exit 1

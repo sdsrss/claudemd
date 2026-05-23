@@ -8,6 +8,26 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.8] - 2026-05-24
+
+**Patch — fix: §8 SAFETY indirect-exec coverage default-ON (`BASH_SAFETY_INDIRECT_CALL` flip from opt-in to opt-out). Spec unchanged at v6.13.2.**
+
+### Why this patch
+
+`hooks/pre-bash-safety-check.sh` has shipped indirect-exec unwrap (`bash -c '<inner>'`, `sh -c`, `zsh -c`, `eval`) behind `BASH_SAFETY_INDIRECT_CALL=1` opt-in since v0.6.0 to gather FP signal. The flag stayed default-OFF for 21 minor releases — meaning `bash -c "rm -rf $UNSAFE"` and `eval "rm -rf $X"` silently bypassed §8 SAFETY rm-detection in steady-state, inside the §5.1 Never-downgrade SAFETY family. v0.21.4 closed the direct-path silent bypass (sanitize / per-segment iteration); this patch closes the matching indirect path. Audit-driven (2026-05-24 full-project review surfaced it as the only §8 silent-bypass remaining after v0.21.4).
+
+### What changed
+
+- `hooks/pre-bash-safety-check.sh`: `${BASH_SAFETY_INDIRECT_CALL:-0}` → `${BASH_SAFETY_INDIRECT_CALL:-1}` (line 200; matches `BASH_READONLY_FAST_PATH` default-ON style from v0.20.0). Header comment block updated; `BASH_SAFETY_INDIRECT_CALL=0` remains as the documented opt-out escape hatch for users who hit FP from the heuristic unwrap.
+- `tests/fixtures/bash-safety/corpus.tsv`: three "default OFF allows" pass cases (rm-rf via `bash -c` / `eval` / `sh -c`) flipped to **deny** under default behavior; nine pre-existing `BASH_SAFETY_INDIRECT_CALL=1` deny cases simplified to test default (env-prefix removed since redundant); three new `BASH_SAFETY_INDIRECT_CALL=0` opt-out **pass** cases verify the escape hatch; four FP-guard pass cases (`$HOME/cache` whitelist, `prettier@3.0.0` pin, `[allow-rm-rf-var]` token, `echo "bash -c ..."` string-literal) simplified to test default.
+- `tests/hooks/pre-bash-safety.test.sh`: `unset BASH_SAFETY_INDIRECT_CALL` at suite entry per `feedback_hook_env_test_hermeticity` — user can set the flag in `~/.claude/settings.json` env block and silently flip deny cases to pass under `npm test`, same v0.21.2 trap as `CLAUDEMD_PATH2_DRY_RUN`.
+
+### Heuristic limits (unchanged)
+
+`unwrap_indirect` is regex-based — escaped quotes, nested heredocs, and substitution forms (`bash -c "$(cat <<X ... X)"`) can still defeat it. `[allow-rm-rf-var]` / `[allow-npx-unpinned]` bypass tokens survive the unwrap and remain the authorized escape for legitimate indirect calls.
+
+Lesson sources: `feedback_demote_needs_data_not_intuition.md` (today's audit surfaced this as the highest-leverage §8 close after demote-review was data-rejected), `feedback_hook_env_test_hermeticity.md` (env teardown pattern).
+
 ## [0.21.7] - 2026-05-24
 
 **Patch — fix: audit `uniqueInvocations.duplicate_rows` was misleading without the "non-null tool_use_id" guard. Now split into `_real` / `_legacy`. Spec unchanged at v6.13.2.**
