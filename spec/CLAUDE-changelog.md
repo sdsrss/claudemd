@@ -6,6 +6,61 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.14.0 — 2026-05-24
+
+Minor: §10 REPORT template defaults relaxed + §10 banned-vocab inline list trimmed.
+
+- `[relax]` **§10 L1-bugfix template** (core, Δ ≈ +90B): "four-section always" → "single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files". Iron Law #2 bugfix anchor (cite prior-failing state) preserved — only the structural shell relaxes. ~80% of L1-bugfix tasks are single-file single-failure-mode where four-section was over-applied. Stop hook `transcript-structure-scan.sh:13–15` already gates four-section-order detection on ALL-four-present, so single-line Done passes through silently.
+- `[change]` **§10 Banned-vocab inline list trimmed to top-5 quick-check** (core, Δ ≈ -320B): full enumeration (10 EN adjectives + 7 中文 + baseline-less ratios) already cross-referenced to §EXT §10-V; core inline now lists 5 EN + 3 中文. Full list lives in §EXT §10-V (unchanged) + new memory anchor `reference_banned_vocab_examples.md`. Positive rule unchanged.
+
+### Background
+
+User-driven optimization audit (turn series 2026-05-24, "claude 编程结合度" thread) surfaced two cumulative frictions: (a) L1-bugfix four-section template was over-applied to single-file single-failure-mode fixes — `feedback_done_section_chinese_prose.md` flagged the over-formatting pattern; (b) banned-vocab inline list in core §10 was already cross-referenced to §EXT §10-V, with each new synonym adding inline bytes without changing the underlying positive rule. **Measured impact**: core delta -15B (R4 +89B, R5 -104B — R5 yielded less than the ~320B initial estimate because the original line was ~400B not ~600B); extended delta -1071B (v6.13.x Recent-changes evictions to `CLAUDE-changelog.md`). The real headroom win was extended-side.
+
+Initial scope explored a larger R1 (add `instrumentable` field to `hard-rules.json` + cross-layer `hookId` mapping); on read-through of existing manifest + `scripts/hard-rules-audit.js` the work was discovered to be ~95% already shipped via existing `enforcement` + `rule_hits_section` fields. Pivoted to R4+R5 as the next-leverage step. R-N8 self-enforced transcript scan (audit script comment names it as the actual remaining gap) deferred to a dedicated spike.
+
+### Why minor (not patch)
+
+`[relax]` on L1-bugfix default = behavioral change to default REPORT shape per §13 META ("rule added/relaxed → minor"). R5 alone would be patch (wording slim with cross-ref preserved); combined with R4 the bump is minor.
+
+### §13.2 budget cost
+
+R4 relax adds budget back (per §13.2 "Rule removal and HARD→SHOULD downgrades explicitly encouraged — no budget cost; they *add* budget back"). R5 is content-move within §10 Specificity HARD, no rule change. Net: +0 added rules, headroom freed.
+
+### Ship target
+
+Plugin v0.22.0 — minor bump tracking spec minor.
+
+### Reviewer notes
+
+- No tests assert on the exact `**Banned-vocab quick-list**` body string or the literal phrase `four-section always` (verified via `grep -rln` across `tests/` `scripts/` `hooks/` `bin/`).
+- `tests/integration/upgrade-lifecycle.test.sh` `NEW_SPEC_VER` bumped to `v6.14.0`; `NEW_RULE_NEEDLE="Memory routing"` still present in v6.14.0 (no change needed).
+- `spec/hard-rules.json` `spec_version` bumped to `v6.14.0`; manifest content (rule list / enforcement classifications) unchanged.
+- Stop hook `transcript-structure-scan.sh` design already accommodates partial reports — its four-section-order detection requires ALL FOUR of `Done:` `Not done:` `Failed:` `Uncertain:` to appear within a 50-line window (`transcript-structure-scan.sh:13`). Single-line Done (the new L1-bugfix default) passes through without firing.
+- New memory file `reference_banned_vocab_examples.md` follows CC built-in `reference` type — content lookup table, not external-system pointer; canonical source remains §EXT §10-V.
+
+---
+
+## v6.13.2 — 2026-05-24
+
+Patch: terminology disambiguation for `claude-mem-lite` plugin vs `MEMORY.md` durable layer. Identical Agent behavior.
+
+- `[clarify]` **§11-EXT Memory operations — Terminology bullet** (extended, ~+625B): names `claude-mem-lite` (recall plugin) and `MEMORY.md` (durable layer) as distinct, bans bare `mem` in new spec/hook text. Scopes existing `mem_*` / `mem-audit` identifiers so renames are not triggered. Driven by user audit: hook prefix `[mem-hint]` from `memory-prompt-hint.sh` and claude-mem-lite's own `[mem]` startup output collided in agent-visible context — disambiguation at terminology layer is the lowest-blast-radius fix.
+- `[change]` **`[mem-hint]` → `[claudemd] §11 memory-hint:`** (hook output, not spec): `memory-prompt-hint.sh:169` brought into the existing `[claudemd] §<section> <hook-name>:` prefix convention used by `mem-audit.sh:173/181`. No semantic change; LLM still sees same payload + same instructions.
+- `[clarify]` **§11 SPINE Mid-SPINE turn-yield — `[mem]` annotation** (core, +21B): inline qualifier `(claude-mem-lite)` after the bare `[mem]` token in the mid-turn context example.
+- `[clarify]` **§13 META — HARD ≠ always hook-blocked** (extended, +545B): one bullet pointing Agent at `spec/hard-rules.json#rules[].enforcement` so the 22 HARD rules' enforcement partition (6 hook / 14 self / 1 both / 1 external) is reachable from the L3/ship/Override load path. Prevents "I assumed the hook would block X" miscalibration on `self`-enforced HARDs.
+- `[add]` **OPERATOR.md §13.4 `tasks/` filename conventions table** (operator-only, not Agent-loaded, +2450B in OPERATOR.md): single reference for the 11 `tasks/<slug>` filename patterns scattered across §0.2 / §2-EXT / §2.S / §10-R / §11-O / §12 / §13.2. No Agent-context cost.
+
+### Why patch (not minor)
+
+All five changes are clarify/change (additive context + hook-output rename) with no rule add/remove or behavior change. Per §13 META: `patch (wording / clarification, identical behavior)`.
+
+### Ship target
+
+Plugin v0.21.x — patch tracking spec patch.
+
+---
+
 ## v6.13.0 — 2026-05-21
 
 Minor: three-tier architecture made explicit + operator content evicted from Agent context.

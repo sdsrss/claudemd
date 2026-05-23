@@ -8,6 +8,50 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.22.0] - 2026-05-24
+
+**Minor — spec v6.14.0: §10 REPORT template defaults relaxed (L1-bugfix single-line) + §10 banned-vocab inline list trimmed to top-5.**
+
+### Why this release
+
+User-driven optimization audit thread ("claude 编程结合度" 2026-05-24) surfaced two cumulative frictions in §10 REPORT:
+
+1. **L1-bugfix four-section over-application**: `feedback_done_section_chinese_prose.md` flagged the over-formatting pattern — ~80% of L1-bugfix tasks are single-file single-failure-mode fixes where four-section was structural ceremony, not evidence. Iron Law #2's bugfix anchor (cite prior-failing state) is what carries the load; the four-section shell was redundant.
+2. **Banned-vocab inline list growth**: core §10 carried ~400B of EN+中文 banned-vocab examples that were also cross-referenced to §EXT §10-V. Each new synonym added an inline byte without changing the underlying positive rule.
+
+Initial scope (R1) explored adding `instrumentable` field to `spec/hard-rules.json` for §13.1 demote-queue separation, but on read-through the existing `enforcement` partition (`hook | self | external | both`) + `rule_hits_section` mapping were found to ~95% cover the proposal. Pivoted to R4+R5 (template + vocab) as the next-leverage spec-text optimization. R-N8 (self-enforced transcript scan, named in `scripts/hard-rules-audit.js:99–101` as the real remaining gap) deferred.
+
+### What changed (spec v6.14.0)
+
+- `[relax]` **§10 L1-bugfix template**: "four-section always" → "single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files". Stop hook `hooks/transcript-structure-scan.sh:13–15` already gates four-section-order detection on ALL-four-present, so single-line Done passes through without firing. No hook code change needed. Core delta: +89B.
+- `[change]` **§10 Banned-vocab inline list trimmed**: full enumeration (10 EN + 7 中文 + baseline-less ratios) lifted to `reference_banned_vocab_examples.md` (new memory anchor, `reference` type) + §EXT §10-V (existing); core inline now lists top-5 EN + 3 中文 quick-check items. Positive rule unchanged. Core delta: -104B (smaller than the ~320B initial estimate; original line was ~400B, not ~600B).
+
+### Measured sizing impact
+
+`wc -c` post-edit: core 24432 → 24417 bytes (Δ -15B); extended 47572 → 46501 bytes (Δ -1071B); OPERATOR.md unchanged. The substantive headroom win is extended-side via v6.13.x Recent-changes evictions to `spec/CLAUDE-changelog.md`. Core net -15B is below the cosmetic threshold — R4+R5 on core is more about template defaults than byte reclaim.
+
+### What changed (plugin)
+
+- `spec/CLAUDE.md`: §10 L1-bugfix line + §10 Banned-vocab line edited; title bumped to v6.14.0.
+- `spec/CLAUDE-extended.md`: title bumped; Recent changes block rewritten (v6.13.x entries evicted to changelog per "only current minor's entries live here" convention; v6.14.0 entry added); Sizing line updated.
+- `spec/CLAUDE-changelog.md`: v6.14.0 + v6.13.2 entries prepended.
+- `spec/hard-rules.json`: `spec_version` → v6.14.0; rule list unchanged.
+- `tests/integration/upgrade-lifecycle.test.sh`: `NEW_SPEC_VER` → v6.14.0.
+- New: `~/.claude/projects/<encoded>/memory/reference_banned_vocab_examples.md` (full banned-vocab table with usage notes).
+- `MEMORY.md`: new index line for the reference file.
+
+### Cascade-grep verification
+
+Per `feedback_spec_version_bump_cascade_grep.md`: grepped `v6.13.2` + `0.21.9` across `spec/` `scripts/` `tests/` `bin/` `hooks/` `package.json`. All occurrences updated except `spec/CLAUDE-extended.md` Recent-changes / Sizing historical references that intentionally cite v6.13.2 as past context.
+
+### Reviewer notes
+
+- No hooks/scripts/tests assert on the literal phrase `four-section always` or the exact `**Banned-vocab quick-list**` body — verified empty via `grep -rln` across `tests/` `scripts/` `hooks/` `bin/`.
+- `transcript-structure-scan.sh:13` four-section-order detection: "only fires when ALL 4 of (Done:, Not done:, Failed:, Uncertain:) appear line-anchored within a 50-line window. Single sections (just Done:) intentionally don't fire." R4 default-flip is hook-safe.
+- §0.1 Three-tier discipline applied: new content (banned-vocab full list) lands in Tier 2 (`reference_*.md`, keyword-loaded), not Tier 1 extended or Tier 0 core. Extended §10-V kept as canonical source.
+
+Lesson sources: `feedback_done_section_chinese_prose.md` (over-formatting pattern), `feedback_demote_needs_data_not_intuition.md` (read code before proposing schema changes), `feedback_spec_version_bump_cascade_grep.md` (cascade-grep before listing modify-targets), Lesson #337 (memory-system quality from data not intuition).
+
 ## [0.21.9] - 2026-05-24
 
 **Patch — fix: §8 SAFETY unquoted-`eval` indirect-exec coverage + docs alignment from end-to-end QA pass. Spec unchanged at v6.13.2.**
