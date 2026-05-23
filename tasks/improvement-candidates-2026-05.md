@@ -39,7 +39,7 @@ Source: user audit dated 2026-05-24, session 25/05 ultrathink analysis of "claud
 
 **Observation**: current MEMORY.md is 7176 B / 28 lines. CC truncates `MEMORY.md` past 200 lines. Growth rate over v6.10 → v6.13 ≈ 4-5 lines per minor — comfortable.
 
-**Trigger to act**: MEMORY.md crosses 50 lines OR 10 KB. At that point, split into:
+**Trigger to act** (tightened 2026-05-24 per v0.21.5 code review): MEMORY.md crosses **40 lines** OR 10 KB. Reviewer's reasoning: at 4-5 lines/minor, the original 50-line trigger fires around v6.18.x (≥6 months). Pulling to 40 lines lands the sub-index design *before* truncation pressure, not after — buying head-room for the design itself rather than absorbing it under deadline. At that point, split into:
 - `MEMORY.md` (index of indexes, router)
 - `INDEX-feedback.md`, `INDEX-reference.md`, `INDEX-project.md` per-type sub-indexes
 - Both `memory-prompt-hint.sh` and `memory-read-check.sh` learn to traverse sub-indexes.
@@ -57,6 +57,20 @@ Source: user audit dated 2026-05-24, session 25/05 ultrathink analysis of "claud
 **Status**: not actionable. The improvement is already shipped. Closed candidate.
 
 **Lesson**: when citing inline comments as evidence of stale behavior, Read the surrounding comment block first — a `// before this change, X` annotation is documenting an improvement, not flagging a bug.
+
+---
+
+## P6 — Mechanical Sizing pre-tag check (SHIPPED in v0.21.6)
+
+**Status**: shipped 2026-05-24 in plugin v0.21.6 (spec unchanged at v6.13.2).
+
+**What landed**: `scripts/version-cascade-check.js#runSpecSizingCheck` over-threshold drifts now carry `suggested: {old, new}` — the exact OLD/NEW Sizing-line substrings to edit. CLI prints them as a 3-line block under each drift. Works for both arrowed (`core 24417 → 24432 bytes`) and plain (`OPERATOR.md 6405 bytes`) claim forms.
+
+**Verification**: 446 unit + 2 integration suites pass; functional smoke against synthetic fixtures (arrowed +50B drift on extended, plain +100B drift on OPERATOR.md) produced correct OLD/NEW substrings.
+
+**Effort vs estimate**: estimated ~25 LOC + 1 test; actual ~35 LOC (script) + 2 tests (arrowed + plain forms). Plain-form coverage was added after re-reading `extractSizingClaim` and noticing OPERATOR.md uses plain form when unchanged.
+
+**Why this matters**: next Sizing-rewrite patch (whenever one touches CLAUDE-extended.md content), the corrective edit is one Edit-tool replacement instead of arithmetic-in-head. v0.21.5 burned 2 extra turns on this; v0.21.6+ should land in 1 corrective pass.
 
 ---
 

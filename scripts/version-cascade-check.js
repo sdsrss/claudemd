@@ -144,14 +144,37 @@ const SIZING_TARGETS = [
   { name: 'OPERATOR.md', file: 'spec/OPERATOR.md',        threshold: 20 },
 ];
 
+// v0.21.6 P6 — returns null when no claim found, else
+//   { value, matched, suggestReplacement(actual) → string }
+// so over-threshold drift reporting can emit copy-paste-ready OLD/NEW edits
+// instead of just naming the bytes off. Saves the iterate-edit-iterate
+// cycle observed across 4 in-session repros (see
+// feedback_spec_sizing_recursive_rewrite.md).
 function extractSizingClaim(line, prefix) {
   const esc = prefix.replace(/\./g, '\\.');
   // Arrowed form: "core 24417 → 24417 bytes" or "core 24417 -> 24417 bytes".
-  const arrowed = new RegExp(`\\b${esc}\\s+\\d+\\s*(?:→|->)\\s*(\\d+)\\s*bytes`, 'i').exec(line);
-  if (arrowed) return Number(arrowed[1]);
+  const arrowedRe = new RegExp(`\\b${esc}\\s+(\\d+)\\s*(?:→|->)\\s*(\\d+)\\s*bytes`, 'i');
+  const arrowed = arrowedRe.exec(line);
+  if (arrowed) {
+    return {
+      value: Number(arrowed[2]),
+      matched: arrowed[0],
+      suggestReplacement: (actual) =>
+        arrowed[0].replace(/(\s+(?:→|->)\s*)\d+(\s*bytes)/, `$1${actual}$2`),
+    };
+  }
   // Plain form: "core 24417 bytes" (no arrow / no diff).
-  const plain = new RegExp(`\\b${esc}\\s+(\\d+)\\s*bytes`, 'i').exec(line);
-  return plain ? Number(plain[1]) : null;
+  const plainRe = new RegExp(`\\b${esc}\\s+(\\d+)\\s*bytes`, 'i');
+  const plain = plainRe.exec(line);
+  if (plain) {
+    return {
+      value: Number(plain[1]),
+      matched: plain[0],
+      suggestReplacement: (actual) =>
+        plain[0].replace(/\d+(\s*bytes)/, `${actual}$1`),
+    };
+  }
+  return null;
 }
 
 export function runSpecSizingCheck({ root }) {
@@ -173,14 +196,15 @@ export function runSpecSizingCheck({ root }) {
 
   const drifts = [];
   for (const t of SIZING_TARGETS) {
-    const claimed = extractSizingClaim(sizingLine, t.name);
-    if (claimed == null) {
+    const claim = extractSizingClaim(sizingLine, t.name);
+    if (claim == null) {
       drifts.push({
         name: t.name, file: t.file, claimed: null, actual: null, delta: null,
         threshold: t.threshold, reason: 'claim-parse-failed',
       });
       continue;
     }
+    const claimed = claim.value;
     const abs = path.join(root, t.file);
     if (!fs.existsSync(abs)) {
       drifts.push({
@@ -195,6 +219,10 @@ export function runSpecSizingCheck({ root }) {
       drifts.push({
         name: t.name, file: t.file, claimed, actual, delta,
         threshold: t.threshold, reason: 'over-threshold',
+        suggested: {
+          old: claim.matched,
+          new: claim.suggestReplacement(actual),
+        },
       });
     }
   }
@@ -252,11 +280,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             } else {
               const sign = d.delta > 0 ? '+' : '';
               process.stderr.write(`  ${d.file}: claimed ${d.claimed}B, actual ${d.actual}B (Δ ${sign}${d.delta}B, exceeds ±${d.threshold}B)\n`);
+              if (d.suggested) {
+                process.stderr.write(`    Suggested edit in **Sizing** line:\n`);
+                process.stderr.write(`      OLD: ${d.suggested.old}\n`);
+                process.stderr.write(`      NEW: ${d.suggested.new}\n`);
+              }
             }
           }
           process.stderr.write(
-            `\nFix sizing: update the **Sizing** line in spec/CLAUDE-extended.md so each "<name> N → M bytes" reflects actual fs sizes. ` +
-            `Iterate until \`node scripts/version-cascade-check.js\` exits 0 (drift ≤ ±20B for each target).\n`
+            `\nFix sizing: apply the "Suggested edit" OLD→NEW pairs above to the **Sizing** line in spec/CLAUDE-extended.md. ` +
+            `A single corrective pass typically lands inside the ±20B envelope. ` +
+            `Re-run \`node scripts/version-cascade-check.js\` to confirm exit 0.\n`
           );
         }
       }

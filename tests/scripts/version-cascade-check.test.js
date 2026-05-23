@@ -220,6 +220,41 @@ test('synthetic: drift +21B → reported (exclusive boundary)', () => {
   }
 });
 
+// v0.21.6 P6 — over-threshold drift must include copy-paste-ready OLD/NEW edit.
+test('synthetic: over-threshold drift emits suggested edit (P6 arrowed form)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
+  try {
+    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    // core: claim 1000, write 1100 → +100B drift, over threshold.
+    makeSizingFixture(tmp, { sizingLine, coreBytes: 1100, extPadding: 1500, opBytes: 500 });
+    const r = runSpecSizingCheck({ root: tmp });
+    assert.equal(r.ok, false);
+    const coreDrift = r.drifts.find(d => d.name === 'core');
+    assert.ok(coreDrift.suggested, 'over-threshold drift must carry suggested edit');
+    assert.equal(coreDrift.suggested.old, 'core 1000 → 1000 bytes');
+    assert.equal(coreDrift.suggested.new, 'core 1000 → 1100 bytes');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('synthetic: plain-form claim drift also emits suggested edit (P6)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
+  try {
+    // OPERATOR.md uses plain form "N bytes" (no arrow) — common when file is unchanged.
+    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 bytes.';
+    makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 600 });
+    const r = runSpecSizingCheck({ root: tmp });
+    assert.equal(r.ok, false);
+    const opDrift = r.drifts.find(d => d.name === 'OPERATOR.md');
+    assert.ok(opDrift.suggested, 'plain-form drift must carry suggested edit');
+    assert.equal(opDrift.suggested.old, 'OPERATOR.md 500 bytes');
+    assert.equal(opDrift.suggested.new, 'OPERATOR.md 600 bytes');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('synthetic: extended.md missing → skipped cleanly (does not block ship)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {

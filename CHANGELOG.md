@@ -8,6 +8,37 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.6] - 2026-05-24
+
+**Patch — feat: `runSpecSizingCheck` now emits copy-paste-ready OLD/NEW edits on drift. Spec unchanged at v6.13.2.**
+
+### Why this patch
+
+`feedback_spec_sizing_recursive_rewrite.md` hit its 4th in-session repro during the v0.21.5 ship: initial Sizing claim was −127B off from actual, requiring a second corrective edit to land inside the ±20B envelope. The drift detection itself worked (since v0.21.2) — what wasted iterations was the manual translation from "claim says 47700, actual is 47573" to "I need to edit the Sizing line to say 47573". Post-ship code review elevated this from candidate to next-patch actionable; this patch lands it.
+
+### What changed
+
+- `scripts/version-cascade-check.js#extractSizingClaim`: return shape changed from `number | null` to `{value, matched, suggestReplacement(actual)} | null`. The `matched` substring captures the exact span in the Sizing line (e.g. `extended 46071 → 47700 bytes`); `suggestReplacement(actual)` produces the corrected form (e.g. `extended 46071 → 47573 bytes`).
+- `runSpecSizingCheck`: over-threshold drifts now include a `suggested: {old, new}` field with the OLD/NEW pair. Backward-compatible — the `claimed / actual / delta` fields are unchanged; consumers ignoring `suggested` keep working.
+- CLI output: each over-threshold drift now prints a 3-line block — original drift line + indented `Suggested edit in **Sizing** line:` header + OLD/NEW pair. Bottom hint reworded from "Iterate until exit 0" to "apply the OLD→NEW pairs above (single corrective pass typically suffices)".
+- `tests/scripts/version-cascade-check.test.js`: +2 synthetic tests — arrowed-form drift carries correct suggested edit; plain-form drift (no arrow) also carries correct suggested edit.
+
+### Backward compatibility
+
+- `extractSizingClaim` return-shape change is internal (not exported). Only `runSpecSizingCheck` is exported.
+- `runSpecSizingCheck` return shape gains a `suggested` field on `over-threshold` drifts only. `claim-parse-failed` and `file-missing` drifts unchanged. Existing tests at all 3 boundary cases (no drift / ±20B inclusive / ±21B exclusive) keep passing without touching the assertions.
+- CLI stderr format adds 3 lines per over-threshold drift. No change to exit codes or success-case stdout.
+
+### Verification
+
+- `npm test`: 447 unit + 2 integration suites pass (previously 445 unit; +2 new synthetic tests for arrowed-form and plain-form drift).
+- Functional smoke: synthetic fixture with extended +50B drift (arrowed) and OPERATOR.md +100B drift (plain) → both `suggested.old` / `suggested.new` produce the expected corrected substrings.
+
+### Followup status
+
+- P6 (this patch) shipped. `tasks/improvement-candidates-2026-05.md` marks it done.
+- P1 / P2 / P4 unchanged; P5 closed in v0.21.5.
+
 ## [0.21.5] - 2026-05-24
 
 **Patch — clarify: memory-layer terminology cleanup. Spec bumped v6.13.1 → v6.13.2 (clarification only, identical Agent behavior).**
