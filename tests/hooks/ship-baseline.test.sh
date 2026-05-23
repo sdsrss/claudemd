@@ -160,8 +160,45 @@ else
   echo "PASS: 17 different session → regular wording (sentinel keyed by session_id)"
 fi
 
+# Cases 18-21 (v0.23.1): heredoc-body strip. v0.17.4 anchor passed bare
+# `git push` inside heredoc (Case 14) because no shell separator preceded
+# `git`, but missed the real-world pattern: release commit message bodies
+# quoting `&& git push --tags` (or `; git push`, `| git push`). Adjacent
+# separator + `git push` matched segment-anchor → `git commit` denied even
+# though no push occurs, and the (b) escape (`--amend` adding marker) hit
+# the same FP → unreachable.
+
+# Case 18: real-world false-positive. Commit body contains `&& git push --tags`
+# as prose. Single-quoted heredoc, message-style content.
+EVENT_HD_AMP=$(jq -nc '{session_id:"hd-amp","tool_name":"Bash","tool_input":{command:"git add file && git commit -m \"$(cat <<'\''EOF'\''\nci(release): fix release-please && git push --tags race\nEOF\n)\""},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_HD_AMP")
+[[ -z "$OUT" ]] && echo "PASS: 18 heredoc body containing '&& git push' → pass" \
+  || { echo "FAIL: 18 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 19: semicolon variant. `; git push` inside heredoc body.
+EVENT_HD_SEMI=$(jq -nc '{session_id:"hd-semi","tool_name":"Bash","tool_input":{command:"git commit -m \"$(cat <<EOF\nfix: was triggered by; git push --force\nEOF\n)\""},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_HD_SEMI")
+[[ -z "$OUT" ]] && echo "PASS: 19 heredoc body containing '; git push' → pass" \
+  || { echo "FAIL: 19 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 20: `--amend` escape path. Agent retries with known-red baseline marker;
+# body still quotes && git push. Pre-fix: amend also denied → escape unreachable.
+# Post-fix: heredoc stripped, amend passes (no real push). HEAD update succeeds.
+EVENT_HD_AMEND=$(jq -nc '{session_id:"hd-amend","tool_name":"Bash","tool_input":{command:"git commit --amend -m \"$(cat <<'\''EOF'\''\nknown-red baseline: fixing the workflow itself\nci(release): explicit tag_name && git push --tags\nEOF\n)\""},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_HD_AMEND")
+[[ -z "$OUT" ]] && echo "PASS: 20 --amend with marker + git push in body → pass" \
+  || { echo "FAIL: 20 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 21: non-regression — real `git commit ... && git push` outside any
+# heredoc still triggers + denies on red CI. The strip must not over-reach.
+EVENT_REAL_CHAIN=$(jq -nc '{session_id:"real-chain","tool_name":"Bash","tool_input":{command:"git commit -m fix && git push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_REAL_CHAIN")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 21 real chained push outside heredoc → deny (non-regression)" \
+  || { echo "FAIL: 21 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((19 - FAIL))/19 passed"
+  echo "Tests: $((23 - FAIL))/23 passed"
   exit 1
 fi
-echo "Tests: 19/19 passed"
+echo "Tests: 23/23 passed"

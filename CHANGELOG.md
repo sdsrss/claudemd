@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.1] - 2026-05-24
+
+**Patch — `ship-baseline-check.sh` heredoc-body FP fix. Strip heredoc bodies before trigger match so commit-body prose quoting `&& git push` doesn't fire the push hook. Closes the agent-loop escape gap where the `(b) known-red baseline:` override was unreachable. Spec unchanged at v6.14.0.**
+
+### Why this release
+
+Real-world failure (claudemd consumer, 2026-05-24): a release-commit body contained shell prose quoting `&& git push --tags`. After `tr '\n' ' '` flatten, the v0.17.4 segment-anchor regex `(^|[[:space:]]*[;&|]+[[:space:]]*)git[[:space:]]+push` matched the body's `&&` separator + `git push` as if it were a top-level chained push. Consequences:
+
+1. `git add ... && git commit -m "$(cat <<'EOF' ... && git push --tags ... EOF)"` denied as if it were `git push` on red CI.
+2. Per the deny prose, agent tried `(b)` override = `git commit --amend -m "<same body>"` to prepend `known-red baseline:`. Amend hit the same FP → escape unreachable.
+3. v0.18.1 cooldown then escalated to `SECOND deny within 5 minutes` with "Your prior retry did NOT change the CI conclusion" — misleading: the agent WAS adding the marker, but the hook never let the amend land.
+
+v0.17.4 Cases 12-14 covered comment + standalone-heredoc-body patterns. They missed adjacent-separator-inside-heredoc-body because Case 14 used bare `git push origin main` rather than `&& git push`.
+
+### What ships
+
+- **`hooks/ship-baseline-check.sh`**: new `strip_heredocs` bash state machine. Tracks `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` / `<<-DELIM` (tab-strip mode) openers and elides body lines until matching delimiter line. Applied to CMD before flatten + trigger regex. Bash-native, no awk/python dependency.
+- **`tests/hooks/ship-baseline.test.sh`**: Cases 18-21 (now 23/23):
+  - 18: heredoc body containing `&& git push --tags` → pass (FP closed).
+  - 19: heredoc body containing `; git push --force` → pass.
+  - 20: `--amend` with `known-red baseline:` marker and body still quoting `&& git push` → pass (escape path now reachable).
+  - 21: non-regression — `git commit -m fix && git push origin main` outside any heredoc still denies on red CI.
+
+### Not in this release
+
+- Cooldown REASON wording unchanged. With the heredoc FP gone, the escape path works; the "Your prior retry did NOT change the CI conclusion" line is correct again in practice. Re-evaluate only if a different FP class reappears.
+- No spec edit. The behavior of §7 Ship-baseline is unchanged — this is a pure hook-implementation bugfix that restores the documented contract (`git push` triggers, `git commit` doesn't).
+
 ## [0.23.0] - 2026-05-24
 
 **Minor — R3 Step 2 lesson-bypass detector. New `scripts/lesson-bypass-audit.js` + `/claudemd-bypass-audit` slash command + 20 tests. Makes §11 MEMORY.md read-the-file effectiveness observable from claudemd's own telemetry for the first time. Spec unchanged at v6.14.0.**

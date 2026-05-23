@@ -27,11 +27,45 @@ if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD";
   exit 0
 fi
 
+# v0.23.1 — strip heredoc bodies before trigger match. Real-world failure
+# (claudemd downstream consumer, 5/24): commit-body heredoc containing
+# `&& git push --tags` (quoting a shell snippet in a release commit message)
+# tripped the segment-anchor trigger after flatten, denying `git commit -m
+# "$(cat <<EOF ... EOF)"`. Worse: the (b) escape requires `git commit
+# --amend` to add the `known-red baseline:` marker, but the amend re-uses
+# the same body and trips the same FP → escape unreachable, agent loops.
+# v0.17.4 Cases 12-14 covered comments + bare heredoc bodies, but the
+# adjacent-separator pattern (`&& git push` inside a heredoc body) slipped
+# through because the case used `git push` standalone, not `&& git push`.
+# Strip body between `<<DELIM` (or `<<'DELIM'`, `<<"DELIM"`, `<<-DELIM`)
+# and the closing DELIM line. Bash-native state machine — no external awk
+# script needed.
+strip_heredocs() {
+  local in_hd=0 delim="" dash=0 line test_line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if (( in_hd )); then
+      test_line="$line"
+      if (( dash )); then
+        while [[ "$test_line" == $'\t'* ]]; do test_line="${test_line#?}"; done
+      fi
+      [[ "$test_line" == "$delim" ]] && in_hd=0
+      continue
+    fi
+    if [[ "$line" =~ \<\<(-)?[[:space:]]*[\'\"]?([A-Za-z_][A-Za-z0-9_]*)[\'\"]? ]]; then
+      [[ -n "${BASH_REMATCH[1]}" ]] && dash=1 || dash=0
+      delim="${BASH_REMATCH[2]}"
+      in_hd=1
+    fi
+    printf '%s\n' "$line"
+  done
+}
+
 # Filter: git push, not --help.
-# Flatten CMD before regex match so heredoc bodies and other line-2+ content
-# can't masquerade as line-start. Per-line `grep -qE` would otherwise see
-# each heredoc body line's bare `git push origin main` as `^`-anchored.
-CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+# Strip heredoc bodies (v0.23.1) THEN flatten — segment-anchor regex needs
+# real shell separators to be the only `&&`/`;`/`|` candidates, not commit
+# message prose quoting `&& git push --tags`.
+CMD_STRIPPED=$(printf '%s' "$CMD" | strip_heredocs)
+CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | tr '\n' ' ')
 # Segment-anchor regex: require `^` (real start-of-command, post-flatten) OR a
 # real shell separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser
 # `[[:space:];&|]` allows ANY whitespace (including space after `#` in
