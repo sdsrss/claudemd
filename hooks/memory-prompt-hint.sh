@@ -166,7 +166,7 @@ MAX=5
 COUNT=${#SORTED_FILES[@]}
 EMIT_COUNT=$(( COUNT < MAX ? COUNT : MAX ))
 
-CONTEXT="[mem-hint] §11 — your prompt matches MEMORY.md tags. Consider Reading these before answering:"
+CONTEXT="[claudemd] §11 memory-hint: your prompt matches MEMORY.md tags. Consider Reading these before answering:"
 for i in $(seq 0 $((EMIT_COUNT - 1))); do
   CONTEXT+=$'\n'"  - $MEM_DIR/${SORTED_FILES[$i]} (tag: ${SORTED_TAGS[$i]})"
 done

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.13.1 — Extended
+# AI-CODING-SPEC v6.13.2 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -474,7 +474,13 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.13.1 (patch, 2026-05-21)** — clarification + operator-handbook addition; identical Agent behavior:
+**v6.13.2 (patch, 2026-05-24)** — terminology disambiguation for `claude-mem-lite` plugin vs `MEMORY.md` durable layer; identical Agent behavior:
+
+- `[clarify]` **§11-EXT Memory operations — Terminology bullet** (extended, ~+625B): names `claude-mem-lite` (recall plugin) and `MEMORY.md` (durable layer) as distinct, bans bare `mem` in new spec/hook text. Scopes existing `mem_*` / `mem-audit` identifiers so renames are not triggered. Driven by user audit: hook prefix `[mem-hint]` from `memory-prompt-hint.sh` and claude-mem-lite's own `[mem]` startup output collided in agent-visible context — disambiguation at terminology layer is the lowest-blast-radius fix.
+- `[change]` **`[mem-hint]` → `[claudemd] §11 memory-hint:`** (hook output, not spec): `memory-prompt-hint.sh:169` brought into the existing `[claudemd] §<section> <hook-name>:` prefix convention used by `mem-audit.sh:173/181`. No semantic change; LLM still sees same payload + same instructions.
+- `[clarify]` **§11 SPINE Mid-SPINE turn-yield — `[mem]` annotation** (core, +21B): inline qualifier `(claude-mem-lite)` after the bare `[mem]` token in the mid-turn context example.
+
+
 
 - `[clarify]` **§13 META — HARD ≠ always hook-blocked** (extended, +545B): one bullet pointing Agent at `spec/hard-rules.json#rules[].enforcement` so the 22 HARD rules' enforcement partition (6 hook / 14 self / 1 both / 1 external) is reachable from the L3/ship/Override load path. Prevents "I assumed the hook would block X" miscalibration on `self`-enforced HARDs.
 - `[add]` **OPERATOR.md §13.4 `tasks/` filename conventions table** (operator-only, not Agent-loaded, +2450B in OPERATOR.md): single reference for the 11 `tasks/<slug>` filename patterns scattered across §0.2 / §2-EXT / §2.S / §10-R / §11-O / §12 / §13.2. No Agent-context cost.
@@ -486,9 +492,9 @@ Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only
 
 **Older entries** (v6.12.0 §13.3 + body-structure scope, v6.11.17 plugin-absent fallback, v6.11.16 §2.1 ROUTE collapse, v6.11.14 extended-compression + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.13.1, 2026-05-21, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24417 → 24417 bytes (Δ 0, version-line digit only); extended 45029 → 46071 bytes (Δ +1042, §13 META `HARD ≠ always hook-blocked` bullet ~+545B + v6.13.1 Recent-changes entry ~+497B); OPERATOR.md 3955 → 6405 bytes (Δ +2450, §13.4 `tasks/` filename conventions table — not Agent-loaded). Size budget: core 24417/25000 (**583 bytes headroom, 97.67%** — unchanged; next minor MUST net-delete or refuse addition); extended 46071/50000 (**3929 bytes headroom, 92.14%** — tighter than v6.13.0's 89.94% but well under ceiling). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only, unchanged; OPERATOR.md not in load path).
+**Sizing** (v6.13.2, 2026-05-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24417 → 24432 bytes (Δ +15, version-line digit + §11 SPINE `[mem]` (claude-mem-lite) inline qualifier); extended 46071 → 47573 bytes (Δ +1502, §11-EXT Terminology bullet ~+620B + v6.13.2 Recent-changes entry ~+882B); OPERATOR.md 6405 bytes (unchanged). Size budget: core 24432/25000 (**568 bytes headroom, 97.73%** — tightened 15B); extended 47573/50000 (**2427 bytes headroom, 95.15%** — tightened 1502B but well under ceiling). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only).
 
-**Operator carry-forward**: core headroom unchanged at 583B (patch did not touch core). Extended utilization tightened 2.7 pp via the new clarification bullet + v6.13.1 entry itself; demote v6.13.0 entry to `~/.claude/CLAUDE-changelog.md` at the next minor bump per the "only current minor's entries live here" convention. Candidate compaction targets unchanged from v6.13.0.
+**Operator carry-forward**: core headroom 568B (patch tightened 15B from §11 `[mem]` qualifier). Extended utilization tightened from 92.14% to 95.15% — Terminology bullet is durable; future v6.13.x patches should net-zero or net-delete in extended. Candidate compaction target: v6.13.0 Recent-changes entry (~1100B) due for demotion to `~/.claude/CLAUDE-changelog.md` at next minor bump per "only current minor's entries live here" convention.
 
 ## §1.5-EXT GLOSSARY
 
@@ -525,6 +531,8 @@ Demoted from core §11 in v6.11.0 + CC-borrowed in v6.11.7; consolidated in v6.1
 ## §11-EXT Memory operations
 
 Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11) in v6.11.14. One home per fact — double-writing creates drift.
+
+**Terminology** (v6.13.2): `claude-mem-lite` = the recall-layer plugin only (FTS5 / timeline / `[mem]` prefix); `MEMORY.md` / **durable layer** = CC built-in 4-type memory only. Avoid bare `mem` in new spec text or hook output — it's ambiguous between the two layers. Existing identifiers carrying `mem` are scoped: plugin tool/CLI names `mem_save / mem_search / mem_recall / mem_recent` refer to the plugin; `mem-audit.sh` and `mem-audit` in hook telemetry refer to the claudemd Stop hook over durable layer.
 
 ### Layer routing
 

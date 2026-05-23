@@ -56,7 +56,7 @@ test('core version header matches current spec version', () => {
   // v6.10.0: header is "# AI-CODING-SPEC vX.Y.Z — Core" (no standalone `Version:` line).
   const m = text.match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
   assert.ok(m, 'core header must declare semver version inline');
-  assert.equal(m[1], '6.13.1');
+  assert.equal(m[1], '6.13.2');
 });
 
 test('changelog top entry is v6.13.0', () => {

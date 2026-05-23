@@ -8,6 +8,46 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.5] - 2026-05-24
+
+**Patch — clarify: memory-layer terminology cleanup. Spec bumped v6.13.1 → v6.13.2 (clarification only, identical Agent behavior).**
+
+### Why this patch
+
+User audit of the `claude-mem-lite` plugin × `MEMORY.md` durable layer integration surfaced a terminology collision in agent-visible context:
+
+- claude-mem-lite plugin emits `[mem] Startup dashboard:` / `[mem] events: ...` / mid-turn `[mem]` recall blocks
+- claudemd plugin's `memory-prompt-hint.sh` emitted `[mem-hint]` for MEMORY.md tag matches
+- claudemd plugin's `mem-audit.sh` Stop hook outputs `[claudemd] §11-EXT mem-audit:` (already prefixed, OK)
+
+Two `mem-`-prefixed channels referring to different layers — ambiguous when the agent reasons about "what does mem mean here". User's audit flagged the bare `mem` overload as a routing-quality issue.
+
+### What changed
+
+- **Hook output**: `hooks/memory-prompt-hint.sh:169` — `[mem-hint] §11 —` → `[claudemd] §11 memory-hint:`. Brings the only outlier into the existing `[claudemd] §<section> <hook-name>:` convention used by `mem-audit.sh`. Same payload, same instructions; LLM behavior unchanged.
+- **Spec §11-EXT Memory operations**: added Terminology bullet (~+620B) defining `claude-mem-lite` = recall plugin, `MEMORY.md` = durable layer, ban bare `mem` in new spec/hook text. Scopes existing `mem_*` plugin tool names and `mem-audit` hook name so no renames are triggered.
+- **Spec §11 SPINE Mid-SPINE turn-yield**: inline qualifier added — `mid-turn `[mem]` context` → `mid-turn `[mem]` claude-mem-lite recall` (+15B core delta).
+- **Memory file `feedback_memory_layer_routing.md`**: replaced the "(out of scope; not yet shipped) `claude-mem-lite import-recall-fallback`" promise with a manual-migration note. The plugin-absent → re-detect path is narrow enough that a shipped importer has no clear ROI; durable layer should not carry vaporware tool references.
+
+### What was NOT changed (deliberately, per user-confirmed minimal scope)
+
+- Hook file names (`hooks/mem-audit.sh` stays) — file-name rename would cascade into `hooks.json`, `scripts/lib/hook-registry.js`, tests + sentinel paths; cost > benefit at terminology layer.
+- Published env var `DISABLE_MEM_AUDIT_HOOK` — rename would be a breaking change for users who set it; deprecation grace would need a different release shape (L3 minor).
+- Plugin tool/CLI names `mem_save / mem_search / mem_recall / mem_recent` — those are claude-mem-lite plugin's published surface, not in this repo.
+
+### Verification
+
+- `node scripts/version-cascade-check.js` → ok (v6.13 consistent across 3 file(s); Sizing drift within ±20B for 3 target(s))
+- `grep -rn "mem-hint\\|\\[mem-hint" tests/ scripts/` → 0 results pre-edit (no test depends on the old literal)
+- spec extended 46071 → 47573 bytes (Δ +1502, 2427B headroom remaining, 95.15% of 50000B ceiling)
+
+### Followup candidates (not in this patch, logged to `tasks/improvement-candidates-2026-05.md`)
+
+- P1: type-distribution audit (84% of memory files are `feedback_*` in this project — needs `claudemd-audit` data before any spec change)
+- P2: lesson-promotion candidate counter (semi-auto `mem_search` aggregation by similarity)
+- P4: MEMORY.md sub-index threshold at 50 lines / 10 KB (preemptive; not active need)
+- ~~P5: `memory-prompt-hint.sh` sort order ratchet~~ — CLOSED on re-verify: hook already sorts by `match_count desc, mtime desc` since v0.19.2 B3. Original audit misread the changelog-style comment at lines 122-123 as current behavior. Lesson logged in candidates file.
+
 ## [0.21.4] - 2026-05-21
 
 **Patch — fix: §8 SAFETY rm-detection coverage gaps surfaced by continued dogfooding of v0.21.3. Per-segment iteration replaces single-shot greedy regex. Spec unchanged at v6.13.1.**
