@@ -108,23 +108,44 @@ export function groupByHook(hits) {
 // (ts, hook, session_id) — for non-tool events, same-second + same-session
 // is genuinely one event.
 //
-// Returns: per-hook count of distinct invocations (de-duplicated rows).
-//   { hook: { rows: N, unique_invocations: M, duplicate_rows: N-M } }
+// Returns: per-hook count of distinct invocations + dupe split.
+//   { hook: { rows, unique_invocations, duplicate_rows,
+//             duplicate_rows_real, duplicate_rows_legacy, legacy_rows } }
 //
-// Interpretation: duplicate_rows > 0 with all rows carrying a populated
-// tool_use_id ⇒ same tool_use_id appeared in multiple rows ⇒ true
-// double-fire bug. duplicate_rows > 0 with tool_use_id null on Stop/
-// SessionStart hooks is normal (concurrent sessions or rapid Stop firings).
+// **Reading the dupe metrics** (v0.21.7 split — fixes the "duplicate_rows
+// looks alarming but is all legacy collision noise" misread that surfaced
+// in the v0.21.5 audit):
+// - `duplicate_rows_real` — collision row has non-null tool_use_id.
+//   This is the TRUE single-invocation double-fire signal (registration /
+//   lib bug). PreToolUse / PostToolUse hook with this > 0 = investigate.
+// - `duplicate_rows_legacy` — collision row has null tool_use_id. Two
+//   sub-causes lumped together because both are expected behavior:
+//     (a) pre-v0.9.34 legacy rows (session_id+tool_use_id both null),
+//         where seconds-precision ts collisions across distinct
+//         invocations are unavoidable noise.
+//     (b) Stop / SessionStart / SessionEnd / UserPromptSubmit hooks
+//         (tool_use_id legitimately null even post-v0.9.34) where same
+//         second + same session + same hook can be one or many events
+//         — the dedup key can't tell, and erring toward "one" is fine.
+// - `duplicate_rows` (= `_real` + `_legacy`) — kept for backward compat.
+//   Don't gate bug reports on this alone; check `_real` specifically.
 //
-// Pre-v0.9.33 rows have session_id=null and tool_use_id=null; their dedup
-// key collapses to (ts, hook), which over-collapses across sessions in
-// historical data. The `legacy_rows` counter surfaces this — operator can
-// see "N legacy rows weren't reliably deduped" and discount accordingly.
+// `legacy_rows` (separate counter) — rows where session_id AND tool_use_id
+// are both null. Surfaces "N legacy rows weren't reliably deduped" so the
+// operator can discount the noise floor.
 export function uniqueInvocations(hits) {
   const out = {};
   for (const h of hits) {
     const hook = h.hook;
-    out[hook] ||= { rows: 0, unique_invocations: 0, duplicate_rows: 0, legacy_rows: 0, _seen: new Set() };
+    out[hook] ||= {
+      rows: 0,
+      unique_invocations: 0,
+      duplicate_rows: 0,
+      duplicate_rows_real: 0,
+      duplicate_rows_legacy: 0,
+      legacy_rows: 0,
+      _seen: new Set(),
+    };
     out[hook].rows++;
     if (h.session_id == null && h.tool_use_id == null) {
       out[hook].legacy_rows++;
@@ -132,6 +153,11 @@ export function uniqueInvocations(hits) {
     const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}`;
     if (out[hook]._seen.has(key)) {
       out[hook].duplicate_rows++;
+      if (h.tool_use_id == null) {
+        out[hook].duplicate_rows_legacy++;
+      } else {
+        out[hook].duplicate_rows_real++;
+      }
     } else {
       out[hook]._seen.add(key);
       out[hook].unique_invocations++;

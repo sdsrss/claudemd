@@ -8,6 +8,39 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.7] - 2026-05-24
+
+**Patch — fix: audit `uniqueInvocations.duplicate_rows` was misleading without the "non-null tool_use_id" guard. Now split into `_real` / `_legacy`. Spec unchanged at v6.13.2.**
+
+### Why this patch
+
+The v0.21.5 audit incorrectly flagged "PreToolUse double-fire bug" against `banned-vocab` (90 dupes) and `pre-bash-safety` (59 dupes). Phase-1 reproduction against `~/.claude/logs/claudemd.jsonl` found:
+
+- banned-vocab: 6 real-session rows with non-null `tool_use_id`, **0 collisions**
+- pre-bash-safety: 48 real-session rows with non-null `tool_use_id`, **0 collisions**
+- All-hook global check: 0 true double-fires
+
+The 90 / 59 reported "dupes" were all from pre-v0.9.34 legacy rows (null `tool_use_id`) where two distinct hook invocations within the same wall-clock second collided on the `(ts, hook, session, tool_use_id)` quadruple — an artifact of seconds-precision `date -u +%Y-%m-%dT%H:%M:%SZ` timestamps in `rule_hits_append`, NOT a registration / lib bug.
+
+The audit docs (`rule-hits-parse.js:114-117` and `commands/claudemd-audit.md` field table) DID name the "non-null tool_use_id" guard, but the headline metric (`duplicate_rows`) was a bare sum across both legacy noise and real signal. Easy to misread under reading-fatigue.
+
+### What changed
+
+- `scripts/lib/rule-hits-parse.js#uniqueInvocations`: per-hook output gains `duplicate_rows_real` (collision row has non-null `tool_use_id` → true double-fire bug signal) and `duplicate_rows_legacy` (collision row has null `tool_use_id` → expected noise from pre-v0.9.34 legacy rows OR Stop/SessionStart-class hooks). `duplicate_rows = _real + _legacy` retained for backward compat. Docstring rewritten with explicit reading guide.
+- `commands/claudemd-audit.md`: field-table entry for `uniqueInvocations` rewritten with the split; the operator-format paragraph changed from "Surface `duplicate_rows > 0`..." to "Surface `duplicate_rows_real > 0`... **Do NOT report bare `duplicate_rows`**". The bare-sum is now explicitly called out as a misread trap.
+- `tests/scripts/audit.test.js`: existing v0.9.34 test extended with `duplicate_rows_real=1, duplicate_rows_legacy=0` assertion. New v0.21.7 test covers three collision shapes (real bug / Stop-class noise / pre-v0.9.34 legacy noise) and asserts each routes to the correct counter.
+- `feedback_audit_no_reverify.md`: trap-rule bullet added — "Read field-guards in full, not just headline metrics". Cites today's misread as the origin.
+
+### Backward compatibility
+
+- `duplicate_rows` field unchanged (sum). Consumers reading the bare sum keep working but will under-report or over-report depending on interpretation; new readers should switch to `_real` / `_legacy`.
+- No change to any hook code; no spec change; no migration. Pure reporting-layer fix.
+
+### Verification
+
+- 448 unit + 2 integration tests pass (was 447 unit; +1 new test).
+- Functional re-check against current `~/.claude/logs/claudemd.jsonl` (30d window): all hooks `duplicate_rows_real = 0`. The original audit's "bug" disappears once the gate is applied correctly.
+
 ## [0.21.6] - 2026-05-24
 
 **Patch — feat: `runSpecSizingCheck` now emits copy-paste-ready OLD/NEW edits on drift. Spec unchanged at v6.13.2.**

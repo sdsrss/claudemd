@@ -157,10 +157,13 @@ test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use
     `{"ts":"${ts2}","hook":"ship-baseline","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
   );
   const r = await audit({ days: 30 });
-  // banned-vocab: 3 rows, but two share (ts, session, tool_use_id) → 1 dup
+  // banned-vocab: 3 rows, but two share (ts, session, tool_use_id) → 1 dup;
+  // the dup row has non-null tool_use_id (toolu_A) → counted as _real.
   assert.equal(r.uniqueInvocations['banned-vocab'].rows, 3);
   assert.equal(r.uniqueInvocations['banned-vocab'].unique_invocations, 2);
   assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows, 1);
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows_real, 1);
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows_legacy, 0);
   assert.equal(r.uniqueInvocations['banned-vocab'].legacy_rows, 0);
   // sandbox-disposal: 1 row, no dup possible, not legacy (session_id present)
   assert.equal(r.uniqueInvocations['sandbox-disposal'].rows, 1);
@@ -170,6 +173,41 @@ test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use
   // ship-baseline: 1 legacy row (both null), counted under legacy_rows
   assert.equal(r.uniqueInvocations['ship-baseline'].rows, 1);
   assert.equal(r.uniqueInvocations['ship-baseline'].legacy_rows, 1);
+});
+
+test('v0.21.7: duplicate_rows split into real (non-null tool_use_id) vs legacy (null)', async () => {
+  // Fixture covering all three collision shapes:
+  //   - 2 banned-vocab rows: same (ts, session, tool_use_id) → real bug (tool_use_id non-null) → 1 dup_real
+  //   - 2 mem-audit Stop rows: same (ts, session, hook), tool_use_id null →
+  //       expected Stop-class collision (not a registration bug) → 1 dup_legacy
+  //   - 2 pre-bash-safety legacy rows: same ts, session_id+tool_use_id BOTH null →
+  //       pre-v0.9.34 seconds-precision noise → 1 dup_legacy + 2 legacy_rows
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const ts1 = '2026-05-24T10:00:00Z';
+  const ts2 = '2026-05-24T10:00:01Z';
+  const ts3 = '2026-05-24T10:00:02Z';
+  fs.writeFileSync(log,
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"s2","tool_use_id":null,"extra":null}\n` +
+    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"s2","tool_use_id":null,"extra":null}\n` +
+    `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n` +
+    `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
+  );
+  const r = await audit({ days: 30 });
+  // banned-vocab: real double-fire signal.
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows, 1);
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows_real, 1);
+  assert.equal(r.uniqueInvocations['banned-vocab'].duplicate_rows_legacy, 0);
+  // mem-audit: Stop-class hook, collision is expected noise → legacy.
+  assert.equal(r.uniqueInvocations['mem-audit'].duplicate_rows, 1);
+  assert.equal(r.uniqueInvocations['mem-audit'].duplicate_rows_real, 0);
+  assert.equal(r.uniqueInvocations['mem-audit'].duplicate_rows_legacy, 1);
+  // pre-bash-safety: pre-v0.9.34 legacy → legacy dup + 2 legacy_rows.
+  assert.equal(r.uniqueInvocations['pre-bash-safety'].duplicate_rows, 1);
+  assert.equal(r.uniqueInvocations['pre-bash-safety'].duplicate_rows_real, 0);
+  assert.equal(r.uniqueInvocations['pre-bash-safety'].duplicate_rows_legacy, 1);
+  assert.equal(r.uniqueInvocations['pre-bash-safety'].legacy_rows, 2);
 });
 
 test('audit byBypass empty when no bypass-escape-hatch events present', async () => {
