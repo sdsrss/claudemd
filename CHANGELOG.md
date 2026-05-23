@@ -8,6 +8,36 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.2] - 2026-05-24
+
+**Patch — `ship-baseline-check.sh` chained-commit-with-marker reachability. v0.23.1 closed the heredoc-body FP class but missed the *actual* user case: a chained `git commit -m "...known-red baseline: x" && git push origin main` still denied because PreToolUse fires before the commit runs → HEAD has no marker → deny → trapped. v0.23.2 also scans the CMD payload for the marker. Spec unchanged at v6.14.0.**
+
+### Why this release (and why v0.23.1 wasn't enough)
+
+v0.23.1 was shipped on a misdiagnosis. The reported user transcript was truncated; I assumed the FP was heredoc-body-containing-`&& git push`. The real commit body (code-graph-mcp `1da27a7`) did NOT contain `git push` at all — the trigger was almost certainly a chained `... && git commit -m "..." && git push origin main` at the end of the truncated command. Real and intended.
+
+The actual bug is a PreToolUse chicken-and-egg:
+
+1. Agent runs `git commit -m "<body>" && git push origin main` (standard ship flow). PreToolUse fires *before* anything runs. Hook reads HEAD — no marker (commit hasn't landed) — deny.
+2. Agent reads the (b) escape, retries `git commit --amend -m "<body + known-red baseline:>" && git push origin main`. Same PreToolUse → same HEAD (amend hasn't landed) → deny again, escalated to "SECOND deny" via cooldown.
+3. Agent gives up or bypasses with kill-switch.
+
+Pre-fix the (b) escape required the agent to split the chain — first `git commit --amend -m "<body+marker>"` standalone (no push), then `git push origin main` (now HEAD has marker → pass). That workflow split was nowhere in the deny prose.
+
+### What ships
+
+- **`hooks/ship-baseline-check.sh`**: after the existing HEAD message scan, also `grep -qi 'known-red baseline:'` on the CMD itself. Marker in the `-m` payload, heredoc body, or anywhere else in the command text counts. Worst-case FP (e.g. `grep 'known-red baseline:' file && git push`) requires the agent to literally type the marker — a strong intent signal, not accidental.
+- **`hooks/ship-baseline-check.sh`**: REASON wording for both regular deny and cooldown SECOND deny updated. New (b) text: *"include 'known-red baseline: <reason>' in the commit body. Works in EITHER current HEAD message OR the proposed -m payload, so chained 'git commit -m "...known-red baseline: x" && git push' passes in one shot — no need to amend separately."*
+- **New event `pass-known-red-incmd`**: distinct from `pass-known-red` (which only fires on HEAD match) so telemetry can measure how often the CMD-payload path saves an agent from the trap. Documented in `docs/RULE-HITS-SCHEMA.md` events table + spec-section taxonomy + `tests/hooks/contract.test.sh` DOCUMENTED list.
+- **`tests/hooks/ship-baseline.test.sh`**: Cases 22-24 (now 26/26):
+  - 22: `git commit -m "...known-red baseline: x" && git push origin main`, HEAD has no marker → pass (CMD scan).
+  - 23: real user scenario — `git commit --amend -m "...known-red baseline: prior dispatch failed" && git push origin main` → pass.
+  - 24: marker inside heredoc body of `-m "$(cat <<EOF ... EOF)"` chained with push → pass.
+
+### Process lesson
+
+Diagnosed v0.23.1 from a truncated transcript without verifying against the actual commit body. The heredoc fix is real hardening (and Cases 18-21 are real coverage gaps closed) but it didn't address the reported failure. Captured as [[feedback_diagnosis_against_real_artifact]] — when a user reports a hook FP, reproduce against the actual command, don't synthesize from the truncated rendering.
+
 ## [0.23.1] - 2026-05-24
 
 **Patch — `ship-baseline-check.sh` heredoc-body FP fix. Strip heredoc bodies before trigger match so commit-body prose quoting `&& git push` doesn't fire the push hook. Closes the agent-loop escape gap where the `(b) known-red baseline:` override was unreachable. Spec unchanged at v6.14.0.**

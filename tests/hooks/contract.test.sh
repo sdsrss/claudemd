@@ -104,6 +104,7 @@ DOCUMENTED=(
   "npx-allow-local:pre-bash-safety"
   "rm-rf-allow-validated:pre-bash-safety"
   "pass-known-red:ship-baseline"
+  "pass-known-red-incmd:ship-baseline"
   "deny-repeat:ship-baseline"
   "warn:sandbox-disposal"
   "warn:residue-audit"

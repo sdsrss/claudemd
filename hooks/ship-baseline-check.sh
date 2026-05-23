@@ -99,10 +99,32 @@ case "$CONCLUSION" in
   *) hook_record ship-baseline pass null '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"; exit 0 ;;
 esac
 
-# known-red baseline bypass
+# known-red baseline bypass — accept marker in EITHER (a) current HEAD or
+# (b) the proposed `-m` / heredoc payload inside CMD itself.
+#
+# v0.23.2 — Real-world chicken-and-egg (claudemd consumer, 2026-05-24):
+# typical ship flow chains `git commit -m "<body>" && git push origin main`
+# in one bash call. PreToolUse fires BEFORE the commit runs → HEAD has no
+# marker yet, deny. Agent retries `git commit --amend -m "<body+marker>" &&
+# git push ...` — same trap: amend hasn't landed, HEAD unchanged. Loop.
+# Pre-fix the (b) escape required the agent to break the chain: amend first
+# (standalone, no push) THEN push — non-obvious from the deny prose, and
+# the cooldown then escalated to "SECOND deny" wording implying ignored
+# guidance.
+#
+# Accepting the marker in CMD itself (typical forms: `-m "...known-red
+# baseline: ..."` or `<<EOF ... known-red baseline: ... EOF`) makes the
+# (b) escape reachable from the natural chained workflow. Worst case for
+# this looser check: a command like `grep 'known-red baseline:' file && git
+# push` would pass — but typing the literal marker is a strong intent
+# signal, not accidental.
 HEAD_MSG=$(git log -1 --format=%B 2>/dev/null || true)
 if printf '%s' "$HEAD_MSG" | grep -qi 'known-red baseline:'; then
   hook_record ship-baseline pass-known-red null '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
+  exit 0
+fi
+if printf '%s' "$CMD" | grep -qi 'known-red baseline:'; then
+  hook_record ship-baseline pass-known-red-incmd null '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi
 
@@ -145,7 +167,9 @@ $RUN_URL
 
 Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE the next retry:
   (a) Fix failing workflow, then retry push.
-  (b) Override: prepend commit body with: known-red baseline: <reason>
+  (b) Override: include 'known-red baseline: <reason>' in the commit body
+      (the -m payload or HEAD message). Chained commit+push in one bash
+      call works — marker is detected in CMD itself, no separate amend.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
@@ -156,7 +180,10 @@ $RUN_URL
 
 Options:
   (a) Fix failing workflow, then retry push.
-  (b) Override: prepend commit body with: known-red baseline: <reason>
+  (b) Override: include 'known-red baseline: <reason>' in the commit body.
+      Works in EITHER current HEAD message OR the proposed -m payload,
+      so chained 'git commit -m \"...known-red baseline: x\" && git push'
+      passes in one shot — no need to amend separately.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."

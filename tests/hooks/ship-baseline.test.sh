@@ -197,8 +197,43 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 21 real chained push outside heredoc → deny (non-regression)" \
   || { echo "FAIL: 21 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 22-24 (v0.23.2): chained-commit-with-marker escape reachability.
+# v0.23.1 only checked HEAD for the `known-red baseline:` marker. In the
+# typical ship flow (`git commit -m "<body>" && git push origin main`)
+# PreToolUse fires BEFORE the commit runs → HEAD has no marker → deny,
+# and amend retries chain push the same way → trapped. v0.23.2 also scans
+# the proposed CMD payload for the marker.
+
+# Reset HEAD so the marker is NOT in HEAD (otherwise Case 22 would pass
+# via the HEAD branch even pre-fix).
+cd "$TMP_HOME" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "no marker baseline"
+# Clear sentinel so cooldown doesn't pollute these cases.
+rm -rf "$HOME/.claude/.claudemd-state/ship-baseline-recent" 2>/dev/null
+
+# Case 22: chained commit+push, marker in -m payload only. Pre-fix: deny.
+# Post-fix: pass (CMD scan finds marker).
+EVENT_CHAIN_MARKER=$(jq -nc '{session_id:"chain-marker","tool_name":"Bash","tool_input":{command:"git commit -m \"ci(release): fix\n\nknown-red baseline: prior dispatch failed at GH release step\" && git push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CHAIN_MARKER")
+[[ -z "$OUT" ]] && echo "PASS: 22 chained commit+push with marker in -m payload → pass" \
+  || { echo "FAIL: 22 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 23: amend chained with push, marker in -m. Same as the actual user
+# scenario (code-graph-mcp v0.32.3 fix attempt, 2026-05-24).
+rm -rf "$HOME/.claude/.claudemd-state/ship-baseline-recent" 2>/dev/null
+EVENT_AMEND_MARKER=$(jq -nc '{session_id:"amend-marker","tool_name":"Bash","tool_input":{command:"git commit --amend -m \"ci(release): set explicit tag_name\n\nknown-red baseline: previous dispatch failed at GH Release step\" && git push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_AMEND_MARKER")
+[[ -z "$OUT" ]] && echo "PASS: 23 chained amend+push with marker in -m → pass (real user scenario)" \
+  || { echo "FAIL: 23 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 24: marker in heredoc body (real release-commit ergonomics).
+rm -rf "$HOME/.claude/.claudemd-state/ship-baseline-recent" 2>/dev/null
+EVENT_HD_MARKER=$(jq -nc '{session_id:"hd-marker","tool_name":"Bash","tool_input":{command:"git commit -m \"$(cat <<'\''EOF'\''\nci(release): x\n\nknown-red baseline: workflow under repair\nEOF\n)\" && git push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_HD_MARKER")
+[[ -z "$OUT" ]] && echo "PASS: 24 chained commit+push with marker in heredoc body → pass" \
+  || { echo "FAIL: 24 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((23 - FAIL))/23 passed"
+  echo "Tests: $((26 - FAIL))/26 passed"
   exit 1
 fi
-echo "Tests: 23/23 passed"
+echo "Tests: 26/26 passed"

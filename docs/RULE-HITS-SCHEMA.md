@@ -33,7 +33,8 @@ source must appear in this table.
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
 | `npx-allow-local` | `pre-bash-safety` | `npx <pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30. |
 | `rm-rf-allow-validated` | `pre-bash-safety` | `rm -rf $VAR` allowed because the same `VAR` is guarded by bash's `${VAR:?…}` set-or-exit operator (spec §8 SAFETY "Validate the var inline" recommended form). Records `extra.var`. Other guard forms (`[[ -n ]]`, `set -u`, control flow) are NOT recognized — use `[allow-rm-rf-var]`. Section: `§8-rm-rf-var`. Added v0.21.3. |
-| `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker |
+| `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker (HEAD message) |
+| `pass-known-red-incmd` | `ship-baseline` | v0.23.2 — same bypass but marker found in the CMD itself (typical chained `git commit -m "...known-red baseline: x" && git push origin main`). Closes the PreToolUse chicken-and-egg where amend hasn't run yet so HEAD lacks the marker. Section: `§7-ship-baseline`. Added v0.23.2. |
 | `deny-repeat` | `ship-baseline` | 2nd `deny` on the same (`session_id`, `run_url`) pair within 5 minutes — agent retried without resolving CI. REASON wording escalated; same `permissionDecision=deny` to the model. Sentinel state in `~/.claude/.claudemd-state/ship-baseline-recent/<session_id>_<run_id>.sentinel` (1-day self-prune). Added v0.18.1. |
 | `warn` | `sandbox-disposal`, `residue-audit` | non-blocking advisory |
 | `advisory` | `transcript-vocab-scan` | PostToolUse advisory — agent-text §10-V hit (cannot block; v0.8.3 R-N8) |
@@ -58,7 +59,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | Hook | Event | spec_section |
 |---|---|---|
 | `banned-vocab` | `deny` / `bypass-escape-hatch` | `§10-V` |
-| `ship-baseline` | `pass` / `pass-known-red` / `deny` / `deny-repeat` | `§7-ship-baseline` |
+| `ship-baseline` | `pass` / `pass-known-red` / `pass-known-red-incmd` / `deny` / `deny-repeat` | `§7-ship-baseline` |
 | `pre-bash-safety` | `deny` (combined patterns) | `§8` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-rm-rf-var`) | `§8-rm-rf-var` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-npx-unpinned`) | `§8-npx` |
