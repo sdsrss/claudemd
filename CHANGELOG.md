@@ -8,6 +8,54 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.0] - 2026-05-24
+
+**Minor — R3 Step 2 lesson-bypass detector. New `scripts/lesson-bypass-audit.js` + `/claudemd-bypass-audit` slash command + 20 tests. Makes §11 MEMORY.md read-the-file effectiveness observable from claudemd's own telemetry for the first time. Spec unchanged at v6.14.0.**
+
+### Why this release
+
+§11 MEMORY.md read-the-file is a HARD rule but its observed effectiveness has been measured externally (e.g. claude-mem-lite startup banner's "cite-recall N%" line, which tracks a different signal — claude-mem-lite's `#NN` injected lessons, not claudemd's MEMORY.md suggestions). v0.11.0's `memory-prompt-hint.sh` already emits `suggest` events (`spec_section: §11-memory-hint`) carrying the per-prompt matched memory filenames in `extra.suggested`. What was missing: a script joining those events with subsequent transcript activity to compute actual cite-recall over claudemd's own telemetry.
+
+R3 Step 2 (per "claude 编程结合度" optimization thread, 2026-05-24) closes that loop.
+
+### What ships
+
+- **NEW** `scripts/lesson-bypass-audit.js`: reads `~/.claude/logs/claudemd.jsonl` for `memory-prompt-hint` `suggest` events, joins per-session with `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl` transcripts, and computes `citeRecall = applied / (applied + bypassed)` plus per-memory and per-session breakdowns. `totalMissingTranscript` separated from `applied`/`bypassed` so synthetic / dogfood sessions don't inflate the bypass rate.
+- **NEW** `commands/claudemd-bypass-audit.md`: slash-command wrapper following the same `$ARGS` → `--days` + `--verbose` parsing as `/claudemd-rules`.
+- **NEW** `tests/scripts/lesson-bypass-audit.test.js`: 20 tests covering pure helpers (`encodeCcCwd` / `rowText` / `wasApplied` / `readTranscript`), full-pipeline integration with synthetic logs + transcripts, edge cases (missing transcript, test-session filter, ancient events outside window), byte-exact production-fixture sanity check (per `feedback_test_fixture_format_drift.md`), and CLI argv discipline (per `feedback_cli_flag_shape_silent_fallback.md`).
+
+### "Applied" definition
+
+After a `suggest` event at timestamp T in session S:
+1. **Read tool** invocation with `file_path` containing the memory filename → applied.
+2. **Filename mention** in any post-T text block (assistant text / user prompt / tool_result / thinking) → applied.
+3. Neither before next event in session or session end → bypassed.
+
+User-prompted reads count as applied — when the lesson surfaces through the user channel, the bypass-loop is still closed.
+
+### Real signal on shipping
+
+`node scripts/lesson-bypass-audit.js --days=30` against the claudemd project's own 30d log (2026-04-24 → 2026-05-24):
+
+- 40 suggest events, 61 total suggestions
+- 31 applied, 9 bypassed, 21 missing-transcript (synthetic dogfood sessions)
+- **cite-recall: 77.5%** / **bypass-rate: 22.5%**
+- Top bypassed: `feedback_audit_no_reverify.md` (3/9, 33% — ironic given it teaches "trust audit script output, don't re-grep"), `feedback_brainstorm_for_design_tasks.md` (2/3, n=3), `feedback_test_fixture_format_drift.md` (1/1, n=1).
+
+77.5% over claudemd's MEMORY.md suggestions is much higher than the externally-reported "0%" — different signals were being measured. R3 Step 2 reveals that claudemd-side cite-recall is functional; the bypassed minority gives the operator a concrete next-investigation target (top-bypassed memory) instead of a vague "improve cite-recall" goal.
+
+### Not in this release
+
+- **No Stop-hook integration**. Per §13.3 (advisory→enforce promotion), new behavior-layer signal collection runs ≥30d default-OFF for FP analysis before enforcement wiring. v0.23.0 ships the measurement script only; promotion to real-time advisory or Stop-deny is gated on future operator-judged data.
+- **No realtime advisory in agent's transcript** during the task. Would require a different hook surface (PostToolUse / Stop) and FP-collection ceremony; deferred.
+- **R-N8 self-enforced rule transcript scan** remains a separate spike. R-N8 scans agent text for violations of self-enforced HARD rules (§iron-law-2, §8.V1–V4 etc.) — a different join (rule pattern, not filename match).
+
+### Cascade-grep verification
+
+Per `feedback_spec_version_bump_cascade_grep.md`: bumped `0.22.1` → `0.23.0` across `package.json` + both `.claude-plugin/*.json`. Spec version unchanged at `v6.14.0` (no spec file modified). README count rows updated (12 → 13 slash commands, 15 → 16 scripts).
+
+Lesson sources: `feedback_test_fixture_format_drift.md` (byte-exact prod fixture test pattern), `feedback_cli_flag_shape_silent_fallback.md` (parseStrict + space-form rejection), `feedback_demote_needs_data_not_intuition.md` (read existing code before proposing new infrastructure — checked `memory-prompt-hint.sh` first to confirm signal source exists).
+
 ## [0.22.1] - 2026-05-24
 
 **Patch — operator cadence: §13.1 staleReviews baseline established. 22 HARD rules now carry `last_demote_review: "2026-05-24"`. Spec unchanged at v6.14.0.**

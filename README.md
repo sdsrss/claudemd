@@ -56,7 +56,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Layer | Contents |
 |---|---|
 | 17 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `memory-coverage-scan` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 12 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` |
+| 13 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.14.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 
@@ -328,7 +328,7 @@ claudemd/
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 12 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 15 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
+├── scripts/                  # 16 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.14.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
