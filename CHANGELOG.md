@@ -8,6 +8,41 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.22.1] - 2026-05-24
+
+**Patch — operator cadence: §13.1 staleReviews baseline established. 22 HARD rules now carry `last_demote_review: "2026-05-24"`. Spec unchanged at v6.14.0.**
+
+### Why this patch
+
+v0.22.0 ship `hard-rules-audit.js` output flagged `staleReviews: [<all 22 rules>]` — every rule's `last_demote_review` field was `null` since the manifest's inception. The §13.1 quarterly demote-review cadence had never been executed-and-recorded; the cadence queue was structurally permanent regardless of actual review activity. Per `feedback_demote_needs_data_not_intuition.md`, staleReviews is the *cadence queue*, distinct from the *demote queue* (`demoteCandidates`). Draining requires operator action.
+
+### Review verdict
+
+`node scripts/hard-rules-audit.js --days=30` output on v0.22.0 ship — partitioned by enforcement:
+
+- **6 hook-enforced rules** (`§7-ship-baseline 304` / `§7-user-global-state` / `§8.V4-sandbox-disposal 480` / `§8-rm-rf-var 23` / `§8-npx` / `§11-memory-read` — all firing in 30d window): **keep**. Active and load-bearing.
+- **1 both-enforced rule** (`§10-specificity` — 452 total, 435 deny): **keep**. Highest-utility rule by hit count.
+- **14 self-enforced rules** (`hits: null` — no transcript-scan signal yet): **keep**. Can't demote without R-N8 transcript-side instrumentation (`scripts/hard-rules-audit.js:99–101` names it as the actual fix path); deferred to dedicated spike.
+- **1 external rule** (`§0.1-core-growth` — operator-managed via `/claudemd-rules` + size budget): **keep**. Spec backbone.
+
+Net: 0 demotions, 0 downgrades. Baseline date `2026-05-24` recorded across all 22 entries.
+
+### What changed
+
+- `spec/hard-rules.json`: 22 entries' `last_demote_review` field bulk-set to `"2026-05-24"` (replace_all on the single literal `"last_demote_review": null`).
+- `package.json` / `.claude-plugin/plugin.json` / `.claude-plugin/marketplace.json`: version bumped to 0.22.1.
+
+### Verification
+
+Post-edit `hard-rules-audit.js --days=30` → `staleReviews: []`, `demoteCandidates: []`. Cadence machine round-trips cleanly. Next demote review cadence: ~2026-08-22 (90d) or earlier on incident-driven trigger.
+
+### Not changed
+
+- Spec version stays v6.14.0 (no rule add / remove / relax).
+- `spec/CLAUDE.md` / `spec/CLAUDE-extended.md` / `spec/CLAUDE-changelog.md` / Sizing line — all unchanged (data-only manifest edit).
+
+Lesson sources: `feedback_demote_needs_data_not_intuition.md` (staleReviews vs demoteCandidates distinction), `feedback_audit_no_reverify.md` (trust audit script output, don't re-grep).
+
 ## [0.22.0] - 2026-05-24
 
 **Minor — spec v6.14.0: §10 REPORT template defaults relaxed (L1-bugfix single-line) + §10 banned-vocab inline list trimmed to top-5.**
