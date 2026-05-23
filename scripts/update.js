@@ -10,10 +10,10 @@ const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'O
 const UPDATE_USAGE = `Usage: node scripts/update.js
 
 Sync ~/.claude/CLAUDE*.md with the plugin-cache shipped spec. Read-only by
-default (shows diffs); set CLAUDEMD_UPDATE_CHOICE=apply to write.
+default (shows diffs); set CLAUDEMD_UPDATE_CHOICE=apply-all to write.
 
 No flags. Behavior is read from the following env vars:
-  CLAUDEMD_UPDATE_CHOICE  cancel (default — diff-only) | apply
+  CLAUDEMD_UPDATE_CHOICE  cancel (default — diff-only) | apply-all
 
 Options:
   --help, -h     Print this message and exit.

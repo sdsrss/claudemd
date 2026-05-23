@@ -21,11 +21,15 @@
 #     (was opt-in default-OFF v0.6.0–v0.21.7 to gather FP signal; closes §8
 #     SAFETY silent-bypass for `bash -c "rm -rf $X"` / `eval "rm -rf $X"`).
 #     Set to `0` to opt out. Unwraps `bash -c '<inner>'` / `sh -c '<inner>'` /
-#     `zsh -c '<inner>'` / `eval '<inner>'` (single OR double quoted) to the
-#     same patterns above. Heuristic — escaped quotes / heredoc forms /
-#     nested substitutions can defeat it. Bypass tokens (a) survive unwrap
-#     so an authorized indirect call still works with `[allow-rm-rf-var]` /
-#     `[allow-npx-unpinned]` inside the inner string.
+#     `zsh -c '<inner>'` / `eval '<inner>'` (single OR double quoted) AND the
+#     unquoted form `eval rm -rf $X` (bash joins eval's argv with spaces
+#     before evaluating, so the unquoted form is execution-equivalent to the
+#     quoted one — `bash -c` / `sh -c` / `zsh -c` are NOT the same because
+#     they only treat their first non-flag arg as the script). Heuristic —
+#     escaped quotes / heredoc forms / nested substitutions can defeat it.
+#     Bypass tokens (a) survive unwrap so an authorized indirect call still
+#     works with `[allow-rm-rf-var]` / `[allow-npx-unpinned]` inside the
+#     inner string.
 
 set -uo pipefail
 
@@ -163,6 +167,16 @@ unwrap_indirect() {
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\3 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
+  # Unquoted eval form: `eval rm -rf $X` — bash collapses the words with
+  # spaces and evaluates the result, so this is execution-equivalent to
+  # `eval "rm -rf $X"`. Without this rule, the quoted-only unwrap above is
+  # a §8 SAFETY silent bypass — an attacker just drops the quotes. Inner
+  # capture group stops at the next command terminator (`;`, `&`, `|`) so
+  # `eval rm -rf $X && ls` still treats `ls` as its own segment. Leading
+  # char of the inner must not be `'`/`"` (quoted forms above already
+  # handled) so a same-line `eval "..."` further down the buffer is not
+  # double-unwrapped.
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+([^'\"[:space:];&|][^;&|]*)/\\1; \\2 ;/g")
   printf '%s' "$s"
 }
 

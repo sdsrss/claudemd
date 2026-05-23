@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.21.9] - 2026-05-24
+
+**Patch — fix: §8 SAFETY unquoted-`eval` indirect-exec coverage + docs alignment from end-to-end QA pass. Spec unchanged at v6.13.2.**
+
+### Why this patch
+
+End-to-end user simulation (running every CLI surface, script, and hook as a real user would) surfaced one §8 SAFETY silent-bypass plus two doc/UX inconsistencies that would bite users following the documentation literally:
+
+1. `hooks/pre-bash-safety-check.sh` `unwrap_indirect` only handled **quoted** eval forms — `eval 'rm -rf $X'` / `eval "rm -rf $X"`. The unquoted form `eval rm -rf $X` (bash joins eval's argv with spaces before evaluating, so it's execution-equivalent) silently bypassed §8 SAFETY. Same family as v0.21.4 direct-path bypass and v0.21.8 indirect default-ON — a final coverage gap inside the §5.1 Never-downgrade SAFETY family.
+2. `scripts/update.js` help text wrote `CLAUDEMD_UPDATE_CHOICE=apply` while the code accepts only `apply-all`. A user following the help verbatim hits `unknown choice: apply. Valid: 'apply-all' | 'cancel'` exit 1.
+3. `README.md` `/claudemd-rules` row claimed default 90 / "matches §13.1 quarterly cadence"; actual default has been 30 since v0.13.1 (90d gate was structurally unreachable under typical log retention). Project-layout block listed 11 hooks / 11 commands; actual 17 / 12.
+
+### What changed
+
+- `hooks/pre-bash-safety-check.sh`: new sed rule in `unwrap_indirect` handling `(prefix)eval[ws]+(non-quote-start)...(stop-at-terminator)` — same prefix class as the existing quoted-eval handler so quoted-string `"eval rm -rf $X"` and word-boundary `evaluate ...` don't false-fire. Header docstring updated to note the unquoted-eval extension and to call out that `bash -c` / `sh -c` / `zsh -c` are NOT extended the same way (those builtins only treat their first non-flag arg as the script; unquoted form is not execution-equivalent — eval is the only shape where joining the argv with spaces yields the same result).
+- `tests/fixtures/bash-safety/corpus.tsv`: +3 deny cases covering the unquoted-eval forms (`eval rm -rf $X`, `eval rm -rf "$X"`, `cmd && eval rm -rf $X`) and +5 pass cases for FP guards (`$HOME/cache` whitelist via unwrap, `[allow-rm-rf-var]` token survives unwrap, echo-of-quoted-string-literal stays inert, `evaluate` word-boundary not eval, `eval ls -la` benign).
+- `scripts/update.js`: help text + env-var documentation line aligned to the only accepted value `apply-all` (matches `commands/claudemd-update.md` slash-command markdown which has been correct since v0.2.x; the script help was the lone outlier).
+- `README.md`: `/claudemd-rules` row updated (default 30, with v0.13.1 lowering rationale inline); project-layout block updated (17 hooks / 12 commands).
+
+### Heuristic limits (unchanged from v0.21.8)
+
+`unwrap_indirect` remains regex-based — escaped quotes, nested heredocs, command-substitution (`$(rm -rf $X)`, `` `rm -rf $X` ``) at top level still escape detection. `[allow-rm-rf-var]` / `[allow-npx-unpinned]` bypass tokens survive unwrap and remain the authorized escape for legitimate indirect calls. `BASH_SAFETY_INDIRECT_CALL=0` opts out of the entire unwrap path (eval + bash-c + sh-c + zsh-c).
+
+Lesson sources: `feedback_hook_env_test_hermeticity.md` (fixture-default discipline), `feedback_audit_tool_before_sweep.md` (run measurement before sweeping — end-to-end probe drove this catch).
+
 ## [0.21.8] - 2026-05-24
 
 **Patch — fix: §8 SAFETY indirect-exec coverage default-ON (`BASH_SAFETY_INDIRECT_CALL` flip from opt-in to opt-out). Spec unchanged at v6.13.2.**

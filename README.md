@@ -108,7 +108,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). |
-| `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 90, matches §13.1 quarterly cadence). Surfaces `demoteCandidates` (hook-enforced rules with 0 hits) and `staleReviews` (rules whose `last_demote_review` is null/old). |
+| `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 30 — lowered from 90d in v0.13.1 after the 90d gate was structurally unreachable under typical log retention). Surfaces `demoteCandidates` (hook-enforced rules with 0 hits) and `staleReviews` (rules whose `last_demote_review` is null/old). |
 | `/claudemd-sparkline [--days=A,B,C]` | v0.8.4+ R-N9 — per-`spec_section` cumulative counts of signal events across 3 windows (default 30/60/90d). Trend arrow compares per-period rate; `(newly active)` / `(silenced)` annotations flag activation/deactivation transitions. Markdown block suitable for CHANGELOG header pre-release. |
 | `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
 | `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
@@ -324,9 +324,9 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 11 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
+├── hooks/                    # 17 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 11 slash-command markdown files
+├── commands/                 # 12 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 15 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.13.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest

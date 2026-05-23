@@ -86,6 +86,9 @@ deny	sh -c 'rm -rf $X'	sh -c 'rm -rf $X'
 deny	zsh -c 'rm -rf $X'	zsh -c 'rm -rf $X'
 deny	eval 'rm -rf $X'	eval 'rm -rf $X'
 deny	eval "rm -rf $X"	eval "rm -rf $X"
+deny	eval rm -rf $X (unquoted form)	eval rm -rf $X
+deny	eval rm -rf "$X" (partial quote)	eval rm -rf "$X"
+deny	eval rm -rf $X after && operator	cmd && eval rm -rf $X
 deny	bash -c 'npx prettier' (unpinned)	bash -c 'npx prettier'
 deny	eval "npx prettier"	eval "npx prettier"
 deny	indirect after && operator	cmd && bash -c 'rm -rf $X'
@@ -100,6 +103,11 @@ pass	bash -c 'rm -rf $HOME/cache' (whitelist via unwrap)	bash -c 'rm -rf $HOME/c
 pass	bash -c 'npx prettier@3.0.0' (pinned via unwrap)	bash -c 'npx prettier@3.0.0'
 pass	indirect [allow-rm-rf-var] survives unwrap	bash -c 'rm -rf $X [allow-rm-rf-var]'
 pass	echo of bash -c string-literal	echo "bash -c 'rm -rf $X'"
+pass	unquoted eval whitelist (eval rm -rf "$HOME/cache")	eval rm -rf "$HOME/cache"
+pass	unquoted eval [allow-rm-rf-var] survives	eval rm -rf $X [allow-rm-rf-var]
+pass	echo of unquoted eval rm-rf string-literal	echo "eval rm -rf $X"
+pass	evaluate as prefix is not eval (token boundary)	evaluate rm -rf $X
+pass	eval ls -la (innocuous unquoted eval)	eval ls -la
 
 # === multi-line bash: pattern extraction must not bleed across lines (v0.17.2 dogfood) ===
 # Pre-fix `sed -E "s/.*${RM_FLAG_REGEX}//" | head -n1` + `s/.*${NPX_REGEX}//`
