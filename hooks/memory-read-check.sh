@@ -76,8 +76,17 @@ sanitize_for_tagmatch() {
     out+="$line"$'\n'
   done <<< "$raw"
   out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
-  out=$(printf '%s' "$out" | sed -E 's/"[^"]*"/""/g')
-  out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
+  # Strip quoted-string bodies. Flatten newlines to \r first so the (line-based)
+  # sed also strips MULTI-LINE quoted args — e.g. a multi-paragraph
+  # `gh release create --notes "..."`. Without the flatten, an opening quote
+  # left unclosed on its own line leaks the whole body into tag matching — the
+  # exact FP this strip exists to prevent (v0.23.10: a multi-line release-notes
+  # body's "self-dogfood" matched a `dogfood` tag and forced a spurious deny).
+  # \r is the placeholder — bash command strings carry no literal CR.
+  out=$(printf '%s' "$out" | tr '\n' '\r' \
+    | sed -E 's/"[^"]*"/""/g' \
+    | sed -E "s/'[^']*'/''/g" \
+    | tr '\r' '\n')
   # vNEXT: strip filesystem-path / URL tokens (any unquoted run containing `/`).
   # A path segment is not a topic declaration — e.g. `~/.claude/projects/...`
   # would otherwise match a `projects` tag and deny an unrelated command.

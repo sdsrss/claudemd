@@ -583,7 +583,40 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 33 bare tag word (not in a path) still matches → deny" \
   || { echo "FAIL: 33 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 34 (v0.23.10 regression): a MULTI-LINE quoted --notes/--title body MUST
+# be stripped before tag matching. sanitize_for_tagmatch's quote strip was a
+# line-based sed (`s/"[^"]*"/""/g`), so a multi-paragraph `gh release create
+# --notes "..."` leaked its prose into tag matching — the FP the strip exists
+# to prevent. Live-reproduced: the v0.23.8/v0.23.9 release notes' "self-dogfood"
+# matched a `dogfood` tag and forced a spurious deny + bypass. Fixed by
+# flattening newlines around the quote strip.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Audit conduct](feedback_audit_conduct.md) `[dogfood, read-only]` — read-only eval guidance
+EOF
+touch "$MEM_DIR/feedback_audit_conduct.md"
+SESS="sess34"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+ML_CMD=$(printf 'gh release create v1 --notes "Release batch.\n\n- splits deny into self-dogfood vs external\n- lead with external as the real signal\n\nDone."')
+EVENT_34=$(jq -cn --arg c "$ML_CMD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_34" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 34 multi-line quoted --notes stripped → no FP deny" \
+  || { echo "FAIL: 34 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 35: the multi-line quote strip must be SURGICAL — a tag word appearing
+# BARE (unquoted) elsewhere in the command still matches. Locks: the flatten
+# fix removes only quoted bodies, not real bare tokens. Reuses Case 34's
+# MEMORY.md (`dogfood` tag); the bare `dogfood-cut` positional arg matches
+# while the multi-line --notes body (no tag word) is stripped.
+SESS="sess35"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+ML_CMD2=$(printf 'gh release create dogfood-cut --notes "prose line one\nprose line two"')
+EVENT_35=$(jq -cn --arg c "$ML_CMD2" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_35" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 35 bare tag token outside quotes still matches (strip is surgical)" \
+  || { echo "FAIL: 35 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((33 - FAIL))/33 passed"; exit 1
+  echo "Tests: $((35 - FAIL))/35 passed"; exit 1
 fi
-echo "Tests: 33/33 passed"
+echo "Tests: 35/35 passed"

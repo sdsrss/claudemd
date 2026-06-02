@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.10] - 2026-06-03
+
+**Patch — fix: `memory-read-check` sanitizer leaked multi-line quoted command bodies into tag matching.** `sanitize_for_tagmatch` strips quoted `--notes` / `--title` / `-m` bodies before MEMORY.md tag matching (so release-note prose does not spuriously match memory tags), but its quote-strip `sed` was line-based and silently failed on MULTI-LINE quoted strings. A multi-paragraph `gh release create --notes "..."` leaked its prose, matching unrelated memory tags and forcing a spurious `§11 MEMORY.md read-the-file` deny + bypass — live-reproduced on the v0.23.8 / v0.23.9 release notes (their "self-dogfood" matched a `dogfood` tag).
+
+### Fixed
+
+- `hooks/memory-read-check.sh` `sanitize_for_tagmatch`: flatten newlines (→ `\r`) around the quoted-body strip so multi-line `"..."` / `'...'` args are stripped before tag matching, then restore. The comment / heredoc / slash-token passes stay line-based. Portable (tr + sed, no `sed -z`), bash-3.2-safe.
+- `tests/hooks/memory-read-check.test.sh`: +2 cases — Case 34 locks the multi-line FP (a multi-paragraph `--notes` with a tag word no longer denies), Case 35 confirms the strip stays surgical (a bare unquoted tag token still matches). 33 → 35 tests.
+
 ## [0.23.9] - 2026-06-03
 
 **Patch — ship the ARCHITECTURE + HOOK-PROTOCOL reference docs.** Moves the two functional-reference docs out of `.gitignore`'s local-only set so adopters/contributors receive them in the npm tarball + marketplace package (joining `ADDING-NEW-HOOK` / `RULE-HITS-SCHEMA` / `cross-project-pilot`).
