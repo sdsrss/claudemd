@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.5] - 2026-06-03
+
+**Patch — `status.js` feature-flag reporting fix: `bashSafetyIndirectCall` misreported as OFF when unset.** `/claudemd-status` showed `bashSafetyIndirectCall: false` even though the indirect-exec unwrap defaults ON — `pre-bash-safety-check.sh` reads `${BASH_SAFETY_INDIRECT_CALL:-1} != 0`. status.js used a stale `=== '1'` (explicit-set) check predating the v0.21.8 default-ON flip, so unset → `false`. **No enforcement impact** — the §8 SAFETY indirect-call coverage (`bash -c "rm -rf $X"` / `eval`) was active the whole time; only the status readout was wrong. Spec unchanged at v6.14.1.
+
+### Fixed
+
+- `scripts/status.js`: `features.bashSafetyIndirectCall` now uses `!== '0'` (mirrors the hook's `:-1` default-ON semantics and the sibling `bashReadonlyFastPath` check) instead of `=== '1'`. Surfaced by a `/claudemd-status` reporting-accuracy check during the v0.23.4 impact-audit follow-up. +2 tests; the stale `reflects env var (v0.6.0)` test (which asserted `unset → false`, encoding the pre-v0.21.8 default-OFF) repurposed to `ON for any non-zero value`.
+
 ## [0.23.4] - 2026-06-03
 
 **Patch — ships spec v6.14.1: §2.1 skill-MUST-invoke override clarified.** Resolves the instruction-collision surfaced by the v0.23.3 cross-project impact audit (audit item #5): superpowers / gstack `MUST invoke` skill wording vs §2.1's L0–L2 proceed-without default.

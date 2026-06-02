@@ -215,6 +215,36 @@ test('status.features.bashReadonlyFastPath ON for any non-zero value (v0.20.0)',
   }
 });
 
+test('status.features.bashSafetyIndirectCall defaults TRUE when env var unset (v0.21.8 default-ON)', async () => {
+  // v0.21.8 flipped this flag from opt-in OFF to default-ON (the hook reads
+  // `${BASH_SAFETY_INDIRECT_CALL:-1} != 0`). status.js must mirror that
+  // default-ON semantics, like bashReadonlyFastPath — not the stale
+  // `=== '1'` (explicit-set) check that misreports unset as OFF.
+  const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
+  try {
+    delete process.env.BASH_SAFETY_INDIRECT_CALL;
+    const r = await status();
+    assert.equal(r.features.bashSafetyIndirectCall, true,
+      'unset env var must report indirect-call ON per v0.21.8 default flip');
+  } finally {
+    if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
+    else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
+  }
+});
+
+test('status.features.bashSafetyIndirectCall honors explicit opt-out =0 (v0.21.8)', async () => {
+  const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
+  try {
+    process.env.BASH_SAFETY_INDIRECT_CALL = '0';
+    const r = await status();
+    assert.equal(r.features.bashSafetyIndirectCall, false,
+      'explicit BASH_SAFETY_INDIRECT_CALL=0 must report indirect-call OFF');
+  } finally {
+    if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
+    else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
+  }
+});
+
 test('status.features.batchCadenceAdvisory defaults TRUE when env var unset (v0.20.1)', async () => {
   // v0.20.1 I3 — sub-feature flag surfaced. Default ON (DISABLE_*=1 turns off).
   const saved = process.env.DISABLE_BATCH_CADENCE_ADVISORY;
@@ -281,16 +311,18 @@ test('status.features.batchCadenceThreshold falls back to 20 on invalid input (v
   }
 });
 
-test('status.features.bashSafetyIndirectCall reflects env var (v0.6.0)', async () => {
+test('status.features.bashSafetyIndirectCall ON for any non-zero value (v0.21.8)', async () => {
+  // Was "reflects env var (v0.6.0)" with a stale `unset → false` assertion
+  // encoding the pre-v0.21.8 default-OFF semantics; that contradicted the
+  // hook's `:-1` default-ON and is now covered (true) by the unset test above.
+  // Any value other than the literal "0" → ON (mirrors bashReadonlyFastPath).
   const saved = process.env.BASH_SAFETY_INDIRECT_CALL;
   try {
-    delete process.env.BASH_SAFETY_INDIRECT_CALL;
-    const off = await status();
-    assert.equal(off.features.bashSafetyIndirectCall, false);
-
     process.env.BASH_SAFETY_INDIRECT_CALL = '1';
-    const on = await status();
-    assert.equal(on.features.bashSafetyIndirectCall, true);
+    assert.equal((await status()).features.bashSafetyIndirectCall, true);
+    process.env.BASH_SAFETY_INDIRECT_CALL = 'on';
+    assert.equal((await status()).features.bashSafetyIndirectCall, true,
+      'truthy strings other than the literal "0" must still mean ON');
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
