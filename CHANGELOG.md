@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.9] - 2026-06-03
+
+**Patch — ship the ARCHITECTURE + HOOK-PROTOCOL reference docs.** Moves the two functional-reference docs out of `.gitignore`'s local-only set so adopters/contributors receive them in the npm tarball + marketplace package (joining `ADDING-NEW-HOOK` / `RULE-HITS-SCHEMA` / `cross-project-pilot`).
+
+### Added (now tracked + shipped)
+
+- `docs/ARCHITECTURE.md` — three-layer design (L1 hooks / L2 scripts / L3 commands), invariants, data flow, state locations, and the refreshed 17-hook taxonomy (event → hook → spec_section, extracted from the live `hook_record` arguments).
+- `docs/HOOK-PROTOCOL.md` — hook stdin/stdout I/O contract (PreToolUse envelope, deny output, exit-code semantics, Stop-can't-block).
+
+Historical / analysis docs stay local-only (`claude-spec-hooks-PLAN.md`, `spec-audit-*.md`, the `*.txt` review reports).
+
 ## [0.23.8] - 2026-06-03
 
 **Patch — audit-remediation batch from the 2026-06-03 maturity audit + adversarial verification.** New self-vs-external deny telemetry, a mechanized spec-headroom gate, and a macOS bash-3.2 static CI gate. Spec version v6.14.1 unchanged (the OPERATOR.md + Sizing-line edits below are human-only handbook / metadata, not Agent-ruleset changes).
