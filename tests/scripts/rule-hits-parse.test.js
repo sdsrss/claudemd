@@ -9,7 +9,66 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { logFirstTs, readHits, groupBySection, excludeTestSessions } from '../../scripts/lib/rule-hits-parse.js';
+import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny } from '../../scripts/lib/rule-hits-parse.js';
+
+// v0.23.8 — self-dogfood vs external classification + per-hook split.
+test('classifyProject: claudemd repo (both cwd encodings) → self', () => {
+  assert.equal(classifyProject('-mnt-data-ssd-dev-projects-claudemd'), 'self');
+  assert.equal(classifyProject('-mnt-data_ssd-dev-projects-claudemd'), 'self'); // legacy underscore form
+});
+
+test('classifyProject: downstream repo → external; missing → unknown', () => {
+  assert.equal(classifyProject('-home-u-dev-daagu'), 'external');
+  assert.equal(classifyProject('-work-code-graph-mcp'), 'external');
+  assert.equal(classifyProject(null), 'unknown');
+  assert.equal(classifyProject(''), 'unknown');
+  assert.equal(classifyProject(undefined), 'unknown');
+});
+
+test('classifyProject: trailing-segment anchor, not bare substring', () => {
+  assert.equal(classifyProject('-work-claudemd-fork-experiments'), 'external'); // mid-path
+  assert.equal(classifyProject('-home-u-myclaudemd'), 'external');              // suffix, not a segment
+  assert.equal(classifyProject('-home-u-claudemd'), 'self');                    // true trailing segment
+  assert.equal(classifyProject('claudemd'), 'self');                            // bare
+});
+
+test('isBlockingDeny: deny family counts; deny-prose-dry-run excluded', () => {
+  assert.equal(isBlockingDeny('deny'), true);
+  assert.equal(isBlockingDeny('deny-repeat'), true);          // ship-baseline escalation, still hook_deny
+  assert.equal(isBlockingDeny('deny-prose'), true);           // banned-vocab real prose block
+  assert.equal(isBlockingDeny('deny-prose-dry-run'), false);  // exits 0, observability only — not a block
+  assert.equal(isBlockingDeny('bypass-escape-hatch'), false);
+  assert.equal(isBlockingDeny('pass'), false);
+  assert.equal(isBlockingDeny(null), false);
+});
+
+test('byProjectClass: deny-family per-hook self/external/unknown split', () => {
+  const hits = [
+    { hook: 'banned-vocab', event: 'deny', project: '-x-claudemd' },
+    { hook: 'banned-vocab', event: 'deny', project: '-x-data_ssd-claudemd' },
+    { hook: 'banned-vocab', event: 'deny', project: '-home-daagu' },
+    { hook: 'banned-vocab', event: 'deny-prose-dry-run', project: '-home-daagu' }, // excluded (exits 0)
+    { hook: 'banned-vocab', event: 'bypass-escape-hatch', project: '-home-daagu' }, // excluded (not deny)
+    { hook: 'ship-baseline', event: 'deny', project: '-home-daagu' },
+    { hook: 'ship-baseline', event: 'deny-repeat', project: '-home-gsd' },          // counts — still hook_deny
+    { hook: 'pre-bash-safety', event: 'deny' },                                     // no project → unknown
+  ];
+  const r = byProjectClass(hits, { mode: 'deny' });
+  assert.deepEqual(r['banned-vocab'], { total: 3, self: 2, external: 1, unknown: 0 });
+  assert.deepEqual(r['ship-baseline'], { total: 2, self: 0, external: 2, unknown: 0 }); // deny + deny-repeat
+  assert.deepEqual(r['pre-bash-safety'], { total: 1, self: 0, external: 0, unknown: 1 });
+});
+
+test('byProjectClass: mode:all classifies every event regardless of type', () => {
+  const hits = [
+    { hook: 'banned-vocab', event: 'deny', project: '-x-claudemd' },
+    { hook: 'banned-vocab', event: 'bypass-escape-hatch', project: '-home-daagu' },
+  ];
+  const r = byProjectClass(hits, { mode: 'all' });
+  assert.equal(r['banned-vocab'].total, 2);
+  assert.equal(r['banned-vocab'].self, 1);
+  assert.equal(r['banned-vocab'].external, 1);
+});
 
 function withFixture(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rhp-'));

@@ -18,6 +18,9 @@ The JSON contains:
 | `dataIntegrity.cutoverTs` | ISO-8601 UTC of the earliest row carrying a non-null `spec_section`; null when log is entirely pre-v0.7.0. Drives the `bySection` cutover-split. |
 | `dataIntegrity.testSessionsFiltered` | v0.17.7 — count of `session_id='t'/'test'` rows stripped from every view (hook unit-test sentinels). Lets the operator confirm filter ran + quantify test traffic; raw byHook/bySection numbers in the same payload are post-filter, real-session-only. |
 | `topPatterns` | banned-vocab matched-word ranking |
+| `denyByProjectClass` | v0.23.8 — per-hook **blocking-deny** (`deny`/`deny-repeat`/`deny-prose`; excludes `deny-prose-dry-run`) split into `self` (the plugin dogfooding itself — project path ends in `-claudemd`) / `external` (real downstream repos) / `unknown` (no project field). Raw deny counts overstate enforcement value when claudemd's own repo dominates traffic (banned-vocab ~498/516 historically self). |
+
+For `denyByProjectClass`: report each hook's deny split as `<external> external / <self> self / <unknown> unknown` and **lead with the `external` count as the real downstream-interception signal** — do NOT present the raw deny total as the enforcement value (most of it is the plugin's own dogfood; see the 498/516 banned-vocab finding).
 
 Format per-hook sections, the bySection heatmap (sorted by total desc), and call out any `byBypass` token with ≥3 occurrences as "review candidate" per §0.1 demotion principle. Surface `uniqueInvocations.<hook>.duplicate_rows_real > 0` for any PreToolUse/PostToolUse hook as a candidate registration/lib bug. **Do NOT report bare `duplicate_rows`** — that number includes legacy collision noise (`duplicate_rows_legacy`) which is expected for pre-v0.9.34 rows and Stop/SessionStart-class hooks. Always read the `_real` / `_legacy` split, never the bare sum.
 

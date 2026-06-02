@@ -6,6 +6,13 @@
 
 set -uo pipefail
 
+# Hermeticity (feedback_hook_env_test_hermeticity): npm test inherits the
+# operator's settings.json env. If MEMORY_COVERAGE_SCAN=1 is set there (the
+# v0.23.8 local-dogfood opt-in), Case 6 "opt-in OFF → silent" inherits =1 and
+# fires the advisory instead of staying silent. Clear it so each case controls
+# the gate explicitly. Same precedent as banned-vocab/transcript-structure tests.
+unset MEMORY_COVERAGE_SCAN
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/memory-coverage-scan.sh"
 TMP_HOME=$(mktemp -d -t claudemd-memcov-XXXXXX)

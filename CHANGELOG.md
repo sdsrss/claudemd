@@ -8,6 +8,29 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.8] - 2026-06-03
+
+**Patch — audit-remediation batch from the 2026-06-03 maturity audit + adversarial verification.** New self-vs-external deny telemetry, a mechanized spec-headroom gate, and a macOS bash-3.2 static CI gate. Spec version v6.14.1 unchanged (the OPERATOR.md + Sizing-line edits below are human-only handbook / metadata, not Agent-ruleset changes).
+
+### Added
+
+- `scripts/lib/rule-hits-parse.js` + `scripts/audit.js`: `denyByProjectClass` — per-hook **blocking-deny** split into `self` (the plugin dogfooding itself; project path ends in `-claudemd`) / `external` (real downstream repos) / `unknown`. Raw deny counts overstated enforcement value when claudemd's own repo dominates traffic (live: banned-vocab 198 deny = 194 self / 1 external; ship-baseline 59 = 8 self / 37 external). Scoped to the deny family (`deny` / `deny-repeat` / `deny-prose`; excludes the non-blocking `deny-prose-dry-run`) so escalation variants are not dropped. `/claudemd-audit` renders the split, leading with `external` as the real-enforcement number.
+- `scripts/spec-coherence-audit.js`: `sizing-headroom` check — mechanizes the §0.1 HARD char caps. `actual > cap` → HIGH (fails `--strict`); `cap·0.97 < actual ≤ cap` → LOW advisory. Surfaces the core-at-98.2% headroom state on every run instead of relying on the manual Sizing-line ritual.
+- `.github/workflows/ci.yml`: static gate rejecting bash-4+ constructs (`declare`/`local`/`typeset -…A`, `mapfile`, `readarray`, array/pattern case-mod) in `hooks/*.sh`. Backstops the v0.23.6 `declare -A` regression class that Linux CI (bash 5) and the gnubin-shimmed macOS leg both missed. Whitespace/flag-tolerant; strips comments per-line so fix-note prose does not trip it.
+
+### Fixed
+
+- `tests/hooks/memory-coverage-scan.test.sh`: `unset MEMORY_COVERAGE_SCAN` at entry. The suite inherits the operator's `settings.json` env; with a local dogfood opt-in set, Case 6 ("opt-in OFF → silent") inherited `=1` and fired the advisory. Same hermeticity precedent as the `banned-vocab` / `transcript-structure-scan` tests.
+
+### Spec files (v6.14.1 unchanged)
+
+- `spec/OPERATOR.md` §13.1: added a patch-release batching note (the maintenance-treadmill finding — 117 release commits over 43 days, 41% corrective). Human-only handbook, not Agent-loaded.
+- `spec/CLAUDE-extended.md`: Sizing line reconciled for the OPERATOR.md byte change (6405 → 7018; extended stays within ±20B).
+
+### Verification
+
+Full suite green on Linux. Adversarial multi-agent verification (4 reviewers) caught and fixed pre-ship: the deny-family undercount (ship-baseline external 33 → 37), a `classifyProject` trailing-substring vs segment-anchor defect, CI-gate false-negatives on tab / flag-reorder / array-case-mod, and a missing `/claudemd-audit` render directive for the new field.
+
 ## [0.23.7] - 2026-06-03
 
 **Patch — hotfix: restore §8 enforcement on macOS (bash 3.2 regression from v0.23.6).** v0.23.6's deny-telemetry-attribution used `declare -A` (associative array), a bash 4+ feature. macOS ships **bash 3.2**, where it errors out — and the error aborted the deny path *before* `hook_deny`, so `rm -rf $VAR` / unpinned `npx` were **not denied on macOS** (Linux CI passed on bash 5, masking it; macOS CI caught `FAIL [deny]: rm -rf $WORK_DIR … declare: -A: invalid option`). v0.23.6 was published ~minutes before this hotfix; macOS users should skip it.

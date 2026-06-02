@@ -177,6 +177,55 @@ export function topPatterns(hits, hook = 'banned-vocab') {
   return Object.entries(counts).sort((a, b) => b[1] - a[1]);
 }
 
+// v0.23.8 — self-dogfood vs external classification. The plugin's own repo
+// generates the bulk of banned-vocab / §8 deny traffic (writing spec/CHANGELOG
+// cites banned vocab; hook-dev sessions probe `rm -rf $VAR` with placeholder
+// vars), so a raw deny count overstates real-world enforcement value — the
+// 2026-06-03 maturity audit measured 498/516 banned-vocab denies as claudemd's
+// own dogfood. `self` = the project path's trailing segment is `claudemd`
+// (matches both the current `…-projects-claudemd` form and the legacy
+// underscore-encoded `…-data_ssd-…-claudemd` form; only the basename matters).
+// `unknown` = no project field (pre-v0.6.2 rows / bare CLI invocations).
+export function classifyProject(project) {
+  if (project == null || project === '') return 'unknown';
+  // Anchor on the trailing path SEGMENT, not a bare substring: CC encodes
+  // every path separator to '-', so the plugin's own repo always ends in
+  // '-claudemd' (or is the literal string 'claudemd'). `/claudemd$/` alone
+  // would misclassify a downstream repo like '…-myclaudemd' as self.
+  return /(^|-)claudemd$/.test(project) ? 'self' : 'external';
+}
+
+// Blocking-deny family. The emitting hooks use distinct event labels for the
+// same actual block — ship-baseline emits `deny` OR `deny-repeat` (both call
+// hook_deny), banned-vocab emits `deny` OR `deny-prose` (both block) — so
+// scoping to the literal string 'deny' undercounts real downstream
+// interception (live: ship-baseline external 33 vs true 37). `deny-prose-dry-
+// run` is the lone exception: it EXITS 0 (observability, no block) so it is
+// NOT a real deny and must stay excluded.
+const NON_BLOCKING_DENY = new Set(['deny-prose-dry-run']);
+export function isBlockingDeny(event) {
+  return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
+}
+
+// byProjectClass — split events per hook into self / external / unknown so
+// /claudemd-audit can report "banned-vocab 198 deny = 11 external / 187 self"
+// instead of a misleading raw 198. `mode`:
+//   'deny' (default) — the blocking-deny family (isBlockingDeny); the real
+//                      enforcement-value question.
+//   'all'            — every event regardless of type.
+export function byProjectClass(hits, { mode = 'deny' } = {}) {
+  const out = {};
+  for (const h of hits) {
+    if (mode === 'deny' && !isBlockingDeny(h.event)) continue;
+    const hook = h.hook || '(unknown)';
+    const cls = classifyProject(h.project);
+    out[hook] ||= { total: 0, self: 0, external: 0, unknown: 0 };
+    out[hook].total++;
+    out[hook][cls]++;
+  }
+  return out;
+}
+
 // v0.17.7 — test-session sentinel filter. Hook unit tests run with
 // session_id='t' or 'test' (see tests/hooks/*.test.sh) so the harness can
 // distinguish synthetic traffic from real CC sessions. /claudemd-audit

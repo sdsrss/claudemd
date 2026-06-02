@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -69,6 +69,14 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
     // hooks/lib/rule-hits.sh tool_use_id doc and uniqueInvocations() comment.
     uniqueInvocations: uniqueInvocations(realHits),
     topPatterns: topPatterns(realHits, 'banned-vocab'),
+    // v0.23.8 — deny self-dogfood vs external split. Raw deny counts overstate
+    // enforcement value when the plugin's own repo is the dominant traffic
+    // source (e.g. banned-vocab 498/516 historically self). This view
+    // separates real downstream interception from self-dogfood, per hook.
+    // Scoped to the blocking-deny family (deny / deny-repeat / deny-prose;
+    // excludes deny-prose-dry-run which doesn't block). See byProjectClass +
+    // isBlockingDeny + classifyProject in rule-hits-parse.js.
+    denyByProjectClass: byProjectClass(realHits, { mode: 'deny' }),
   };
 }
 

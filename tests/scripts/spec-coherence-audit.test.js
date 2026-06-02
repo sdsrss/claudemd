@@ -19,8 +19,8 @@ const REPO_ROOT = path.resolve(HERE, '../..');
 
 test('audit runs against the real repo and returns structured report', () => {
   const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: '/nonexistent-cwd-for-test' });
-  assert.equal(r.checks.length, 3, 'expected 3 checks');
-  assert.ok(r.summary.checksRun === 3);
+  assert.equal(r.checks.length, 4, 'expected 4 checks');
+  assert.ok(r.summary.checksRun === 4);
   assert.ok(Array.isArray(r.checks));
   for (const c of r.checks) {
     assert.ok(typeof c.name === 'string');
@@ -47,6 +47,65 @@ test('sizing-accuracy: shipped Sizing line within ±20B of actual wc -c', () => 
   // line during ship; CI catches drift beyond tolerance.
   assert.equal(check.ok, true,
     `Sizing drift beyond tolerance: ${JSON.stringify(check.findings)} | stats: ${JSON.stringify(check.stats)}`);
+});
+
+test('sizing-headroom: shipped core/extended within HARD caps (no HIGH breach)', () => {
+  const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: '/nonexistent-cwd-for-test' });
+  const check = r.checks.find(c => c.name === 'sizing-headroom');
+  assert.ok(check, 'sizing-headroom check should exist');
+  // Real invariant: shipped spec must never exceed the §0.1 HARD cap. If a
+  // future edit pushes core past 25K, this fails — which is the gate's point.
+  assert.ok(check.stats.coreActual <= check.stats.coreCap,
+    `core ${check.stats.coreActual}B exceeds HARD cap ${check.stats.coreCap}B`);
+  assert.ok(check.stats.extendedActual <= check.stats.extendedCap,
+    `extended ${check.stats.extendedActual}B exceeds HARD cap ${check.stats.extendedCap}B`);
+  assert.ok(!check.findings.some(f => f.severity === 'HIGH'),
+    `within-cap spec must never emit HIGH; got ${JSON.stringify(check.findings)}`);
+});
+
+test('sizing-headroom: HIGH when core exceeds the 25K HARD cap (--strict-blocking)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-hr-'));
+  try {
+    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(25001), extendedContent: 'y'.repeat(100) });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'sizing-headroom');
+    assert.equal(check.ok, false);
+    assert.equal(check.severity, 'HIGH');
+    assert.ok(check.findings.some(f => f.severity === 'HIGH' && /core/.test(f.detail) && /HARD cap/.test(f.detail)),
+      `expected HIGH core-over-cap finding; got ${JSON.stringify(check.findings)}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('sizing-headroom: LOW advisory in the 97–100% danger band (not --strict-blocking)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-hr-'));
+  try {
+    // 24600B = 98.4% of 25000 — past the 0.97 danger ratio, under the cap.
+    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(24600), extendedContent: 'y'.repeat(100) });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'sizing-headroom');
+    assert.equal(check.ok, false);
+    assert.equal(check.severity, 'LOW', 'danger band is advisory, never HIGH');
+    assert.ok(check.findings.length >= 1 && check.findings.every(f => f.severity === 'LOW'),
+      `danger band should yield only LOW findings; got ${JSON.stringify(check.findings)}`);
+    assert.ok(/core/.test(check.findings[0].detail));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('sizing-headroom: clean when both files comfortably under the danger band', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-hr-'));
+  try {
+    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(1000), extendedContent: 'y'.repeat(1000) });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'sizing-headroom');
+    assert.equal(check.ok, true);
+    assert.equal(check.findings.length, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // --- Synthetic-fixture tests for failure cases ------------------------------

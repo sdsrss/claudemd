@@ -61,6 +61,13 @@ Exit codes: 0 success | 1 strict-mode CRITICAL/HIGH | 2 argv-shape error.`;
 
 const SIZING_TOLERANCE_BYTES = 20;
 
+// v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤25K / extended
+// ≤50K. The danger ratio (0.97) is the standing-advisory band: once a file
+// crosses it, §0.1 says the next addition must pair with a net-delete.
+const CORE_CAP_BYTES = 25000;
+const EXT_CAP_BYTES = 50000;
+const HEADROOM_DANGER_RATIO = 0.97;
+
 // CHECK 1 — §EXT cross-ref resolution -----------------------------------------
 
 // Extract §EXT refs from core. Pattern: `§EXT §<id>` where <id> is a section
@@ -192,6 +199,56 @@ function checkSizingAccuracy(specDir) {
   };
 }
 
+// CHECK 4 — Sizing headroom / HARD cap gate ----------------------------------
+//
+// v0.23.8 — mechanize §0.1's HARD char caps so CI catches a breach instead of
+// relying on the human Sizing-line ritual (the 2026-06-03 maturity audit
+// flagged that net-zero discipline was doc-only self-enforcement). Two bands:
+//   actual > cap            → HIGH: §0.1 HARD cap breached; next version MUST
+//                             net-delete or refuse the addition. --strict
+//                             fails CI — this is the real enforcement edge.
+//   cap·0.97 < actual ≤ cap → LOW: headroom critical; any addition this
+//                             version must pair with a net-delete (§0.1).
+//                             Advisory only — net-zero near the cap is the
+//                             permanent posture (section-demote #4 rejected
+//                             2026-06-03), so a hard fail in this band would
+//                             wrongly block every release.
+function checkSizingHeadroom(specDir) {
+  const targets = [
+    { label: 'core', file: 'CLAUDE.md', cap: CORE_CAP_BYTES },
+    { label: 'extended', file: 'CLAUDE-extended.md', cap: EXT_CAP_BYTES },
+  ];
+  const findings = [];
+  const stats = {};
+  for (const t of targets) {
+    const p = path.join(specDir, t.file);
+    const actual = fs.existsSync(p) ? fs.statSync(p).size : 0;
+    const pct = t.cap > 0 ? Math.round((actual / t.cap) * 1000) / 10 : 0;
+    stats[`${t.label}Actual`] = actual;
+    stats[`${t.label}Cap`] = t.cap;
+    stats[`${t.label}Pct`] = pct;
+    if (actual > t.cap) {
+      findings.push({
+        severity: 'HIGH',
+        detail: `${t.label}: ${actual}B exceeds §0.1 HARD cap ${t.cap}B (${pct}%) — next version MUST net-delete or refuse the addition`,
+      });
+    } else if (actual > t.cap * HEADROOM_DANGER_RATIO) {
+      findings.push({
+        severity: 'LOW',
+        detail: `${t.label}: ${actual}B at ${pct}% of ${t.cap}B cap (${t.cap - actual}B headroom) — any addition this version must pair with a net-delete (§0.1)`,
+      });
+    }
+  }
+  const hasHigh = findings.some(f => f.severity === 'HIGH');
+  return {
+    name: 'sizing-headroom',
+    ok: findings.length === 0,
+    severity: hasHigh ? 'HIGH' : (findings.length > 0 ? 'LOW' : null),
+    findings,
+    stats: { ...stats, dangerRatio: HEADROOM_DANGER_RATIO },
+  };
+}
+
 // CHECK 3 — MEMORY.md ↔ files bidirectional ----------------------------------
 
 // CC encoding: every non-`[a-zA-Z0-9-]` char in the cwd path becomes `-`.
@@ -269,6 +326,7 @@ export function auditSpecCoherence({ pluginRoot, projectCwd } = {}) {
   const checks = [
     checkExtCrossRefs(specDir),
     checkSizingAccuracy(specDir),
+    checkSizingHeadroom(specDir),
     checkMemoryIndex(projectCwd),
   ];
 

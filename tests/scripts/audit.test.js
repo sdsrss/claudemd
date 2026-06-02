@@ -52,6 +52,27 @@ test('audit top patterns for banned-vocab', async () => {
   assert.ok(names.includes('significantly'));
 });
 
+test('audit denyByProjectClass splits self-dogfood vs external (deny-family)', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(log,
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-mnt-data_ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny-prose-dry-run","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["clearly"]}}\n` +
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","project":"-home-u-dev-daagu","extra":null}\n` +
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny-repeat","project":"-home-u-dev-gsd","extra":null}\n` +
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","project":"-home-u-dev-daagu","extra":{"token":"allow-banned-vocab"}}\n`
+  );
+  const r = await audit({ days: 30 });
+  // banned-vocab: 2 self (both cwd encodings of the plugin's own repo) + 1
+  // external (daagu); the dry-run row (exits 0) and the bypass row are excluded.
+  assert.deepEqual(r.denyByProjectClass['banned-vocab'], { total: 3, self: 2, external: 1, unknown: 0 });
+  // ship-baseline: deny + deny-repeat both blocked → 2 external (the deny-repeat
+  // undercount the adversarial verifier caught).
+  assert.deepEqual(r.denyByProjectClass['ship-baseline'], { total: 2, self: 0, external: 2, unknown: 0 });
+});
+
 test('audit bySection aggregates v0.7.0 spec_section field', async () => {
   const r = await audit({ days: 30 });
   // §10-V fired 3× (2 deny + 1 bypass on banned-vocab)

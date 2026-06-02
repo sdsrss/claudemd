@@ -28,6 +28,30 @@ jobs:
           fi
       - name: Shellcheck hooks (warn-only)
         run: shellcheck hooks/*.sh hooks/lib/*.sh || echo "shellcheck warnings (non-blocking)"
+      - name: Reject bash 4+ constructs in hooks (macOS bash 3.2 portability gate)
+        run: |
+          # v0.23.8 — static backstop for the macOS bash-3.2 regression class.
+          # v0.23.6 shipped `declare -A`, which errors on the system /bin/bash
+          # 3.2 the CC harness runs hooks under; Linux CI was green and the
+          # macOS leg uses Homebrew bash 5 (gnubin on PATH), so neither caught
+          # it at runtime (see feedback_macos_shell_portability). Rejects
+          # bash-4+ constructs in hook sources. Patterns are whitespace- and
+          # flag-tolerant (declare/local/typeset with any -...A flag cluster,
+          # tab or multi-space) and cover array/pattern case-mod
+          # (${arr[@]^^}, ${name^a}). Comments are stripped per-line first so
+          # prose mentioning a construct (the fix-notes in mem-audit.sh /
+          # pre-bash-safety-check.sh) does not trip the gate.
+          set -u
+          pat='(declare|local|typeset)[[:space:]]+-[A-Za-z]*A|mapfile|readarray|\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?(\^\^|,,|\^|,)'
+          found=0
+          for f in hooks/*.sh hooks/lib/*.sh; do
+            m=$(sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' "$f" | grep -nE "$pat") || continue
+            echo "::error::bash 4+ construct in $f (breaks macOS /bin/bash 3.2):"
+            printf '%s\n' "$m" | sed 's|^|  |'
+            found=1
+          done
+          [ "$found" = 0 ] || exit 1
+          echo "OK: no bash 4+ constructs in hooks (macOS bash 3.2 safe)"
       - name: Diagnose macOS /tmp + find behavior (informational, non-gating)
         if: runner.os == 'macOS'
         continue-on-error: true
