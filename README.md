@@ -329,7 +329,7 @@ claudemd/
 ├── commands/                 # 12 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 16 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.14.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
+├── spec/                     # shipped v6.14.1 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20) + npm-publish.yml (tag-triggered)

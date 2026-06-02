@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.14.0 — Extended
+# AI-CODING-SPEC v6.14.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -474,24 +474,19 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.14.0 (minor, 2026-05-24)** — §10 REPORT template defaults relaxed (L1-bugfix single-line default) + §10 banned-vocab inline list trimmed to top-5 quick-check:
+**v6.14.1 (patch, 2026-06-03)** — §2.1 skill-MUST-invoke override clarified:
 
-- `[relax]` **§10 L1-bugfix template** (core, Δ ≈ +90B): default changed from "four-section always" to "single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files". Iron Law #2 bugfix anchor (cite prior-failing state) preserved — only the structural shell relaxes. ~80% of L1-bugfix tasks are single-file single-failure-mode where four-section was over-applied (see `feedback_done_section_chinese_prose.md` over-formatting pattern). Stop hook `transcript-structure-scan.sh:13–15` already only fires four-section-order on ALL-four-present; single-line Done passes through silently.
-- `[change]` **§10 Banned-vocab inline list trimmed to top-5 quick-check** (core, Δ ≈ -320B net): full enumeration (10 EN adjectives + 7 中文 + baseline-less ratios) already cross-referenced to §EXT §10-V; core inline now lists top-5 EN + 3 中文 quick-check items. Full list lives in §EXT §10-V (unchanged) + new memory anchor `reference_banned_vocab_examples.md`. Positive rule unchanged: "value claims about own work MUST cite absolute number OR ratio+baseline".
+- `[clarify]` **§2.1 skill collision** (core, Δ +136B): the existing "this spec wins for L0–L2" clause is now bolded and carries a concrete example — superpowers / gstack `MUST invoke` wording (`sp:test-driven-development` "before writing implementation code", `gs:investigate` "do NOT debug directly") does NOT force a clear-scope L1 bug out of fix→test-direct into TDD / investigate ceremony. No rule added or removed; the precedence was already stated, just buried mid-paragraph. Surfaced by the 2026-06-03 cross-project impact audit (instruction-collision finding).
 
-### Why minor (not patch)
+### Why patch (not minor)
 
-`[relax]` on L1-bugfix default = behavioral change to default REPORT shape per §13 META ("rule added/relaxed → minor"). R5 alone would be patch (wording slim with cross-ref preserved); combined with R4 the bump is minor.
-
-### §13.2 budget cost
-
-R4 relax adds budget back (per §13.2 "Rule removal and HARD→SHOULD downgrades explicitly encouraged — no budget cost; they *add* budget back"). R5 is content-move within §10 Specificity HARD, no rule change. Net: +0 added rules, headroom freed in core.
+No rule added, removed, or relaxed — `[clarify]` only makes an existing precedence prominent and adds an example per §13 META. v6.14.0 (minor) detail: `~/.claude/CLAUDE-changelog.md`.
 
 **Older entries** (v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.17 plugin-absent fallback, v6.11.16 §2.1 ROUTE collapse, v6.11.14 extended-compression + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.14.0, 2026-05-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24432 → 24417 bytes (Δ -15, R4 L1-bugfix-template ≈ +89B + R5 banned-vocab trim ≈ -104B + version line ±0 — smaller than initial estimate, original banned-vocab line was ~400B not ~600B); extended 47572 → 46501 bytes (Δ -1071, v6.13.0 + v6.13.2 Recent-changes evictions to changelog ≈ -2600B + v6.14.0 entry + Sizing-line rewrite ≈ +1500B); OPERATOR.md 6405 bytes (unchanged). Size budget: core 24417/25000 (**583 bytes headroom, 97.67%** — freed 15B); extended 46501/50000 (**3499 bytes headroom, 93.00%** — freed 1071B via v6.13.x demotion to changelog). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.05k tokens (core only).
+**Sizing** (v6.14.1, 2026-06-03, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24417 → 24553 bytes (Δ +136, §2.1 skill-MUST-invoke override clarified + bolded with `sp:tdd` / `gs:investigate` example resolving the superpowers/gstack collision); extended 46501 → 45276 bytes (condensed); OPERATOR.md 6405 bytes (unchanged). Size budget: core 24553/25000 (**447 bytes headroom, 98.21%**); extended 45276/50000 (**4724 bytes headroom, 90.55%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.08k tokens (core only).
 
-**Operator carry-forward**: core post-R4+R5 net delta is -15B (R4 +89B addition vs R5 -104B trim — R5 yielded less than the ~320B initial estimate because the original `**Banned-vocab quick-list**` line was ~400B, not ~600B as projected); extended net delta is -1071B (v6.13.x Recent-changes block evictions, partially offset by Sizing-line rewrite). The headroom story is extended-side, not core. Candidate next compaction: §10-V extended block (~700B) once `reference_banned_vocab_examples.md` is verified as the canonical lookup via /claudemd-rules hit data over ≥30d. v6.14.x patches should target net-zero or net-delete on core given the small R4+R5 yield.
+**Operator carry-forward**: v6.14.1 spent +136B of core headroom on a single §2.1 clarification (447B left, 98.21%). The headroom story is now core-tight — the queued path to reclaim it is the impact-audit #4 demote (~12.6K zero-activation core → extended; see `project_impact_audit_followups_v0233.md`), which dwarfs this +136B. Until #4 lands, further v6.14.x core patches MUST be net-zero or net-delete. Extended remains comfortable (3499B). Candidate compaction: §10-V extended block (~700B) once `reference_banned_vocab_examples.md` is confirmed canonical via /claudemd-rules hit data over ≥30d.
 
 ## §1.5-EXT GLOSSARY
 

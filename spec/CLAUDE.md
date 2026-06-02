@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.14.0 — Core
+# AI-CODING-SPEC v6.14.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -101,7 +101,7 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative; this table c
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.
 
-**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). Skill "MUST invoke" → per §3 TRUST this spec wins for L0–L2 default-proceed-without.
+**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). **Skill "MUST invoke" wording (sp/gs) does NOT override §2.1 at L0–L2** (per §3 TRUST this spec wins): a clear-scope L1 bug goes fix→test direct, not forced into `sp:test-driven-development` / `gs:investigate` ceremony.
 
 **Ambiguous trigger** → ASK per §0.
 

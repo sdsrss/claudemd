@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.4] - 2026-06-03
+
+**Patch — ships spec v6.14.1: §2.1 skill-MUST-invoke override clarified.** Resolves the instruction-collision surfaced by the v0.23.3 cross-project impact audit (audit item #5): superpowers / gstack `MUST invoke` skill wording vs §2.1's L0–L2 proceed-without default.
+
+### Changed
+
+- **`spec/CLAUDE.md` §2.1** (core, Δ +136B → 24553B; 447B headroom, 98.21%): the existing "this spec wins for L0–L2" clause is now **bolded** and carries a concrete example — `sp:test-driven-development` ("before writing implementation code") / `gs:investigate` ("do NOT debug directly") MUST-invoke wording does NOT force a clear-scope L1 bug out of fix→test-direct into TDD / investigate ceremony. No rule added or removed (`[clarify]` only); the precedence was already stated, just buried mid-paragraph.
+- Spec version **v6.14.0 → v6.14.1** (patch). Cascade per `feedback_spec_version_bump_cascade_grep.md`: `spec/CLAUDE-extended.md` (title + Recent-changes entry + Sizing line), `spec/CLAUDE-changelog.md` (new entry), `spec/hard-rules.json` (`spec_version`), `tests/integration/upgrade-lifecycle.test.sh` + `tests/scripts/spec-structure.test.js` (version assertions), `README.md`. Manifest `description` fields unchanged (major.minor still `v6.14` per the v0.2.1 versioning policy).
+
+Run `/claudemd-update` to sync the new spec into `~/.claude/CLAUDE*.md` (the current session keeps the old copy until then).
+
 ## [0.23.3] - 2026-06-03
 
 **Patch — three false-positive / telemetry-hygiene fixes surfaced by a cross-project impact audit (daagu + sibling-plugin sessions). All are bugfixes restoring intended hook behavior; spec unchanged at v6.14.0.**

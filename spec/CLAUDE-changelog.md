@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.14.1 — 2026-06-03
+
+Patch: §2.1 skill-MUST-invoke override clarified (no rule change).
+
+- `[clarify]` **§2.1 skill collision** (core, Δ +136B): the "this spec wins for L0–L2" clause is now bolded and carries a concrete example — superpowers / gstack `MUST invoke` wording (`sp:test-driven-development` "before writing implementation code", `gs:investigate` "do NOT debug directly") does NOT force a clear-scope L1 bug out of fix→test-direct into TDD / investigate ceremony. The precedence was already stated, just buried mid-paragraph.
+
+### Background
+
+A 2026-06-03 cross-project impact audit (workflow `claudemd-impact-audit`) flagged an instruction-collision: superpowers `using-superpowers` ("invoke skill before ANY response") and TDD ("before writing implementation code") create MUST-invoke pressure that competes with §2.1's L0–L2 proceed-without default — a model facing the louder "MUST" tends to add the very ceremony §2.1 sheds. The fix is prominence + one worked example, not a behavior change. Shipped in plugin v0.23.4.
+
+### §13.2 budget cost
+
+No rule added/removed/relaxed — `[clarify]` only. Core +136B (447B headroom remains, 98.21%); the queued impact-audit #4 demote (~12.6K core → extended) is the path to reclaim headroom.
+
 ## v6.14.0 — 2026-05-24
 
 Minor: §10 REPORT template defaults relaxed + §10 banned-vocab inline list trimmed.
