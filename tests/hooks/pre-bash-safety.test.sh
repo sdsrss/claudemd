@@ -152,6 +152,23 @@ run_cwd_case pass "v0.9.30: npx vitest with yarn.lock entry"             "npx vi
 run_cwd_case deny "v0.9.30: npx vitest in empty cwd (no lockfile/local)" "npx vitest"            "$SANDBOX/empty"
 run_cwd_case deny "v0.9.30: npx vitest with cwd field empty (fallback)"  "npx vitest"            ""
 
+# === vNEXT: npx resolution must follow a leading `cd <subdir>` in the command ===
+# Repro: monorepo where the tool is a devDependency of a SUBDIR and the agent
+# runs `cd subdir && npx tool`. CC's event .cwd is the PARENT (the shell cwd
+# *before* the command runs), so resolving node_modules against .cwd alone
+# misses the subdir install and false-denies. Observed 5x on the daagu
+# frontend/backend monorepo (vue-tsc in frontend/, .cwd reported as backend/).
+mkdir -p "$SANDBOX/mono/frontend/node_modules/vue-tsc"
+echo '{}' > "$SANDBOX/mono/frontend/node_modules/vue-tsc/package.json"
+mkdir -p "$SANDBOX/mono/backend"   # sibling without the dep
+
+run_cwd_case pass "vNEXT: cd frontend && npx (dep in cd'd subdir)"        "cd frontend && npx vue-tsc --noEmit"      "$SANDBOX/mono"
+run_cwd_case pass "vNEXT: cd ./frontend && npx (relative dot prefix)"     "cd ./frontend && npx vue-tsc"             "$SANDBOX/mono"
+run_cwd_case pass "vNEXT: cd <abs subdir> && npx (absolute cd target)"    "cd $SANDBOX/mono/frontend && npx vue-tsc" "$SANDBOX/mono"
+run_cwd_case pass "vNEXT: cd a ; npx (semicolon-chained cd)"              "cd frontend ; npx vue-tsc"                "$SANDBOX/mono"
+run_cwd_case deny "vNEXT: cd backend && npx (dep NOT in cd'd subdir)"     "cd backend && npx vue-tsc"                "$SANDBOX/mono"
+run_cwd_case deny "vNEXT: cd missing-subdir && npx (cd target absent)"    "cd nope && npx vue-tsc"                   "$SANDBOX/mono"
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

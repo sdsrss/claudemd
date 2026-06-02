@@ -33,6 +33,17 @@ rule_hits_append() {
   local session_id="${5:-}"
   local tool_use_id="${6:-}"
 
+  # Reserved test sentinel. `t` is the fixture session_id used across most of
+  # the hook test suite. The suite sandboxes HOME so its writes are disposable,
+  # but ad-hoc *manual* hook invocations in the real $HOME with a fixture event
+  # were leaking these into production telemetry (309 rows / 11.5% of the log
+  # as of the 2026-06-03 impact audit), inflating deny counts ~2x and obscuring
+  # real signal. Real CC session_ids are UUIDs, never `t`; the few tests that
+  # assert on log content use distinct ids (e.g. sess35, and the `test`
+  # sentinel for transcript-*-scan) — so dropping `t` is invisible to every
+  # real caller and every test.
+  [[ "$session_id" == "t" ]] && return 0
+
   # Project: encoded with `/`, `.`, AND `_` → `-` to match Claude Code's
   # ~/.claude/projects/<encoded>/ convention. CC encodes every non-`[a-zA-Z0-9-]`
   # char; `tr '/._'` covers the three observed in real cwds. See

@@ -553,7 +553,37 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" != "deny" ]] && echo "PASS: 31 decorative backtick-block in desc does NOT match" \
   || { echo "FAIL: 31 (expected pass, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 32 (vNEXT): a tag word that appears only inside a filesystem PATH must
+# NOT match. Live-reproduced twice during the 2026-06-03 impact audit: a
+# read-only command whose path contained `~/.claude/projects/...` matched the
+# `projects` tag of feedback_cc_cwd_encoding_dots.md and denied. A path segment
+# is not a topic declaration (same logic as the quoted-title FP, Case 28). Fix:
+# strip slash-containing (path / URL) tokens in sanitize_for_tagmatch.
+S32_DIR="$HOME/.claude/projects/${ENCODED}-s32"
+S32_MEM="$S32_DIR/memory"
+mkdir -p "$S32_MEM"
+cat > "$S32_MEM/MEMORY.md" <<'EOF'
+- [CWD encoding](feedback_cwd_enc.md) `[projects, encoding]` — path word must not match
+EOF
+touch "$S32_MEM/feedback_cwd_enc.md"
+SESS="sess32"
+S32_CWD="${CWD}-s32"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S32_DIR/$SESS.jsonl"
+EVENT_32="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main && ls /home/user/.claude/projects/foo\"},\"cwd\":\"$S32_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_32" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ -z "$OUT" || "$DEC" != "deny" ]] && echo "PASS: 32 tag word inside filesystem path → no FP" \
+  || { echo "FAIL: 32 (out: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 33 (vNEXT regression): the slash-token strip must be SURGICAL — a tag
+# word appearing as a bare standalone token (not in a path) still matches.
+EVENT_33="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main && echo encoding\"},\"cwd\":\"$S32_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_33" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 33 bare tag word (not in a path) still matches → deny" \
+  || { echo "FAIL: 33 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((31 - FAIL))/31 passed"; exit 1
+  echo "Tests: $((33 - FAIL))/33 passed"; exit 1
 fi
-echo "Tests: 31/31 passed"
+echo "Tests: 33/33 passed"

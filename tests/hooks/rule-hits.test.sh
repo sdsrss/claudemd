@@ -184,4 +184,27 @@ echo "$LAST" | jq -e '
 ' >/dev/null \
   || { echo "FAIL: Case 18 full-shape row with tool_use_id mismatch (got: $LAST)"; exit 1; }
 
+# Case 19 (vNEXT): reserved test sentinel — session_id "t" must NOT write a
+# row. Fixtures across the hook suite use session_id:"t"; ad-hoc manual hook
+# invocations in the real $HOME with such a fixture leaked 309 rows (11.5% of
+# production telemetry) into ~/.claude/logs/claudemd.jsonl, inflating
+# banned-vocab deny counts ~2x and obscuring real signal (2026-06-03 impact
+# audit). Sandboxed test runs that assert on log *content* use distinct ids
+# (e.g. sess35, "test"), so guarding only "t" never hides a real assertion.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null "§10-V" "t"'
+[[ ! -f "$LOG" ]] || { echo "FAIL: Case 19 sentinel session_id 't' wrote a row: $(cat "$LOG")"; exit 1; }
+
+# Case 20a (vNEXT regression): a real (UUID-ish) session_id still writes — the
+# sentinel skip must be surgical.
+run 'rule_hits_append banned-vocab deny null "§10-V" "abc-123-real"'
+[[ -f "$LOG" && "$(wc -l < "$LOG" | tr -d ' ')" == "1" ]] \
+  || { echo "FAIL: Case 20a real session_id did not write (got: $(cat "$LOG" 2>/dev/null))"; exit 1; }
+
+# Case 20b (vNEXT regression): "test" is NOT guarded — transcript-*-scan tests
+# assert on rows written with the "test" sentinel, so it must still write.
+run 'rule_hits_append transcript-structure-scan structure-advisory null "§10-honesty" "test"'
+[[ "$(wc -l < "$LOG" | tr -d ' ')" == "2" ]] \
+  || { echo "FAIL: Case 20b 'test' sentinel should still write (got: $(cat "$LOG" 2>/dev/null))"; exit 1; }
+
 echo "All cases passed"

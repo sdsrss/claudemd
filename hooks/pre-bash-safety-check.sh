@@ -211,6 +211,42 @@ npx_pkg_locally_resolved() {
   return 1
 }
 
+# effective_npx_cwd BASE FLAT
+#   CC's event `.cwd` is the shell cwd *before* the command runs. When the
+#   command prefixes a `cd <dir>` (e.g. `cd frontend && npx vue-tsc` in a
+#   monorepo whose tool is a devDependency of frontend/), npx actually runs in
+#   BASE/<dir>, not BASE — so npx_pkg_locally_resolved against BASE alone
+#   false-denies a locally-installed tool. Observed 5× on the daagu
+#   frontend/backend monorepo. Walk the `cd` commands that appear BEFORE the
+#   first `npx ` token and apply each to a running cwd via subshell `cd`
+#   (resolves relative / absolute / `..` against the real filesystem).
+#
+#   Safety: only ALLOWS when a real local install exists at the composed path,
+#   so this can never weaken the gate — at worst it allows an npx whose package
+#   is genuinely installed in the cd'd dir (the intended allow). Targets with
+#   shell expansion (`$VAR` / backtick / glob / `~`) or a failed `cd` are
+#   unresolvable, so we bail to BASE (keeping the conservative deny).
+effective_npx_cwd() {
+  local base="$1" flat="$2" target resolved
+  local eff="$base"                       # separate stmt: `local a=.. b="$a"` is unbound under set -u
+  local before="${flat%%npx *}"          # cd's after npx don't affect its cwd
+  while read -r target; do
+    [[ -z "$target" ]] && continue
+    case "$target" in
+      *'$'*|*'`'*|*'*'*|*'?'*|'~'*|-*) eff="$base"; break ;;  # unresolvable: keep base
+    esac
+    if [[ "$target" == /* ]]; then
+      resolved=$(cd "$target" 2>/dev/null && pwd)
+    else
+      resolved=$(cd "$eff" 2>/dev/null && cd "$target" 2>/dev/null && pwd)
+    fi
+    if [[ -n "$resolved" ]]; then eff="$resolved"; else eff="$base"; break; fi
+  done < <(printf '%s\n' "$before" \
+    | grep -oE '(^|[[:space:];&|])cd[[:space:]]+[^[:space:];&|]+' \
+    | sed -E 's/.*cd[[:space:]]+//')
+  printf '%s' "$eff"
+}
+
 PROCESSED_CMD="$CMD"
 if [[ "${BASH_SAFETY_INDIRECT_CALL:-1}" != "0" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$CMD")
@@ -358,6 +394,8 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   fi
 
   if (( bypass_npx == 0 )); then
+    # Resolve the cwd npx will actually run in (follows leading `cd <dir>`).
+    NPX_EFFECTIVE_CWD=$(effective_npx_cwd "$EVENT_CWD" "$SANITIZED_CMD_FLAT")
     # Take everything after the first `npx ` up to a command terminator.
     npx_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
     pkg_token=""
@@ -381,14 +419,14 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
         *)
           # Unpinned (scoped or unscoped). Per spec §8 lockfile → local → pinned:
           # check lockfile/node_modules in EVENT_CWD before denying.
-          if npx_pkg_locally_resolved "$pkg_token" "$EVENT_CWD"; then
+          if npx_pkg_locally_resolved "$pkg_token" "$NPX_EFFECTIVE_CWD"; then
             hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
           else
             case "$pkg_token" in
               @*/*) HITS+=("npx $pkg_token (scoped, unpinned, no lockfile/local)")
-                    REASONS+=$'\n  - npx unpinned scoped package (no lockfile/local in '"${EVENT_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+                    REASONS+=$'\n  - npx unpinned scoped package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
               *)    HITS+=("npx $pkg_token (unpinned, no lockfile/local)")
-                    REASONS+=$'\n  - npx unpinned package (no lockfile/local in '"${EVENT_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+                    REASONS+=$'\n  - npx unpinned package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
             esac
           fi
           ;;

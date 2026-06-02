@@ -78,6 +78,12 @@ sanitize_for_tagmatch() {
   out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
   out=$(printf '%s' "$out" | sed -E 's/"[^"]*"/""/g')
   out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
+  # vNEXT: strip filesystem-path / URL tokens (any unquoted run containing `/`).
+  # A path segment is not a topic declaration — e.g. `~/.claude/projects/...`
+  # would otherwise match a `projects` tag and deny an unrelated command.
+  # Live-reproduced twice in the 2026-06-03 impact audit. Same intent as the
+  # quoted-title sanitize above; bare-word tags (no slash) are unaffected.
+  out=$(printf '%s' "$out" | sed -E 's#[^[:space:]]*/[^[:space:]]*# #g')
   printf '%s' "$out"
 }
 CMD_TAGMATCH=$(sanitize_for_tagmatch "$CMD")

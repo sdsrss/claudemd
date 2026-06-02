@@ -8,6 +8,25 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.3] - 2026-06-03
+
+**Patch — three false-positive / telemetry-hygiene fixes surfaced by a cross-project impact audit (daagu + sibling-plugin sessions). All are bugfixes restoring intended hook behavior; spec unchanged at v6.14.0.**
+
+### Fixes
+
+1. **`pre-bash-safety-check.sh` — npx resolution now follows a leading `cd <subdir>`.** CC's PreToolUse event `.cwd` is the shell cwd *before* the command runs, so `cd frontend && npx vue-tsc` in a monorepo (tool installed in `frontend/`, `.cwd` reported as the repo root or `backend/`) resolved `node_modules` against the wrong directory and false-denied a locally-installed tool. Observed 5x on the daagu frontend/backend monorepo (05-12, 05-12, 05-22, 05-25, 06-01) — the single most frequent real-work interruption from the plugin. New `effective_npx_cwd()` walks the `cd` targets preceding the first `npx ` token and resolves the effective cwd via subshell `cd` (relative / absolute / `..` / semicolon-chained). Cannot weaken the gate: it only ever *allows* when a genuine local install exists at the composed path; unresolvable targets (`$VAR` / glob / `~` / failed `cd`) keep the conservative deny. +6 corpus cases.
+
+2. **`memory-read-check.sh` — tag match no longer fires on path/URL tokens.** A tag word appearing only inside a filesystem path (e.g. `~/.claude/projects/...` matching the `projects` tag of an unrelated memory) triggered a §11 read-the-file deny on commands unrelated to the memory's topic. Live-reproduced twice during the audit itself. `sanitize_for_tagmatch()` now strips slash-containing tokens before tag matching (same intent as the v0.9.28 quoted-title fix); bare-word tags are unaffected. +2 cases (FP guard + surgical-scope regression).
+
+3. **`rule-hits.sh` — reserved test sentinel `t` no longer writes to the production log.** The fixture `session_id:"t"` used across the hook suite was leaking into `~/.claude/logs/claudemd.jsonl` via ad-hoc *manual* hook invocations in the real `$HOME` — 309 rows (11.5% of all telemetry), inflating banned-vocab deny counts ~2x and obscuring real signal in `/claudemd-audit`. `rule_hits_append` now drops `session_id == "t"` before writing. Real CC session_ids are UUIDs; the `test` sentinel (used by transcript-*-scan row assertions) is intentionally left writable. +2 cases.
+
+### Audit notes (scope reconciliation)
+
+Two audit-flagged items did **not** become fixes — verified against the source rather than transcript narration (per `feedback_diagnosis_against_real_artifact.md`):
+
+- **"banned-vocab deny resets git staging"** — misdiagnosis. `banned-vocab-check.sh` only calls `hook_deny`; it never touches the git index. The denied commit in the cited daagu session used `git commit -F -` (heredoc) so it never ran — staging was intact; the agent re-ran `git add` out of its own confusion and *narrated* a reset that did not happen. No code change; the `"robust"` catch is working as intended (`[allow-banned-vocab]` or rephrase).
+- **"deregister opt-in-OFF PostToolUse hooks"** — wontfix. `transcript-vocab-scan.sh`'s early `exit 0` is the runtime env-gate (`TRANSCRIPT_VOCAB_SCAN`); deregistering it from `hooks.json` would break the documented opt-in. The per-call spawn is the intended cost of a toggleable hook.
+
 ## [0.23.2] - 2026-05-24
 
 **Patch — `ship-baseline-check.sh` chained-commit-with-marker reachability. v0.23.1 closed the heredoc-body FP class but missed the *actual* user case: a chained `git commit -m "...known-red baseline: x" && git push origin main` still denied because PreToolUse fires before the commit runs → HEAD has no marker → deny → trapped. v0.23.2 also scans the CMD payload for the marker. Spec unchanged at v6.14.0.**
