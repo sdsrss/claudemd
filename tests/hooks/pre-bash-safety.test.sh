@@ -169,6 +169,36 @@ run_cwd_case pass "vNEXT: cd a ; npx (semicolon-chained cd)"              "cd fr
 run_cwd_case deny "vNEXT: cd backend && npx (dep NOT in cd'd subdir)"     "cd backend && npx vue-tsc"                "$SANDBOX/mono"
 run_cwd_case deny "vNEXT: cd missing-subdir && npx (cd target absent)"    "cd nope && npx vue-tsc"                   "$SANDBOX/mono"
 
+# v0.23.6 — deny telemetry attribution. Denies must be recorded under the
+# granular §8 section that triggered them (§8-rm-rf-var / §8-npx), NOT the
+# generic §8 bucket, so the doctor's per-section bypass ratio counts denies in
+# the denominator (pre-fix: denies under §8, bypasses under §8-npx → misleading
+# 100% bypass). Enforcement is unchanged — the corpus above asserts the deny
+# decision; this locks the RECORD section.
+tel_home=$(mktemp -d)
+mkdir -p "$tel_home/.claude/logs"
+tel_log="$tel_home/.claude/logs/claudemd.jsonl"
+jq -cn '{session_id:"tel",tool_name:"Bash",tool_input:{command:"rm -rf $TELVAR_UNSET"}}' \
+  | HOME="$tel_home" bash "$HOOK" >/dev/null 2>&1
+jq -cn '{session_id:"tel",cwd:"/tmp",tool_name:"Bash",tool_input:{command:"npx tel-unpinned-pkg"}}' \
+  | HOME="$tel_home" bash "$HOOK" >/dev/null 2>&1
+tel_rmrf=$(jq -rc 'select(.event=="deny" and .spec_section=="§8-rm-rf-var")' "$tel_log" 2>/dev/null | head -1)
+tel_npx=$(jq -rc 'select(.event=="deny" and .spec_section=="§8-npx")' "$tel_log" 2>/dev/null | head -1)
+tel_generic=$(jq -rc 'select(.event=="deny" and .spec_section=="§8")' "$tel_log" 2>/dev/null | wc -l | tr -d ' ')
+if [[ -n "$tel_rmrf" && -n "$tel_npx" ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [deny-telemetry]: deny not filed under granular §8-rm-rf-var + §8-npx (rmrf='$tel_rmrf' npx='$tel_npx')"
+  FAIL=$((FAIL + 1))
+fi
+if [[ "$tel_generic" == "0" ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [deny-telemetry-generic]: $tel_generic deny row(s) still under generic §8 bucket"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "$tel_home"
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

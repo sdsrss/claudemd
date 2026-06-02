@@ -18,7 +18,7 @@ A 2026-06-03 cross-project impact audit (workflow `claudemd-impact-audit`) flagg
 
 ### §13.2 budget cost
 
-No rule added/removed/relaxed — `[clarify]` only. Core +136B (447B headroom remains, 98.21%); the queued impact-audit #4 demote (~12.6K core → extended) is the path to reclaim headroom.
+No rule added/removed/relaxed — `[clarify]` only. Core +136B (447B headroom remains, 98.21%). Headroom note (corrected v0.23.6): impact-audit #4 (the proposed ~12.6K core→extended demote) was investigated 2026-06-03 and **rejected** as a category error — `0 telemetry` on §0/§1/§1.5/§2/§3/§5/§9 means "read-and-follow foundational, fires no hook," not "unused" (`hard-rules-audit.js` → `demoteCandidates=[]`). Core has no safe demotion target, so **net-zero / net-delete is the permanent posture**, not a wait-for-#4 measure. Do NOT re-attempt #4.
 
 ## v6.14.0 — 2026-05-24
 

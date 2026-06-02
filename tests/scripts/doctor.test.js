@@ -330,27 +330,83 @@ test('R-N6+: demotion-candidate detail names the dominant bypass token (single t
 });
 
 test('R-N6+: demotion-candidate detail sorts mixed tokens by count desc', async () => {
-  // §8-rm-rf-var: 3× allow-rm-rf-var + 1× allow-npx-unpinned + 1 deny.
-  // ratio 80%, two tokens, output must list them sorted by count desc:
-  //   [allow-rm-rf-var]×3, [allow-npx-unpinned]×1
+  // §11-memory-read (a demotable, non-immutable section): 3× skip-memory-check
+  // + 1× force-skip + 1 deny. ratio 80%, two tokens, output must list them
+  // sorted by count desc: [skip-memory-check]×3, [force-skip]×1.
+  // (§8 sections are immutable-exempt — see the dedicated test below.)
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n`.repeat(3),
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-npx-unpinned"}}\n`,
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"deny","spec_section":"§8-rm-rf-var","extra":null}\n`,
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(3),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"force-skip"}}\n`,
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
   const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§8-rm-rf-var');
+  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
   assert.ok(usage);
   assert.equal(usage.ok, false);
-  // Sort order: count desc → [allow-rm-rf-var]×3 must appear BEFORE
-  // [allow-npx-unpinned]×1 in the detail string.
-  const idxRm = usage.detail.indexOf('[allow-rm-rf-var]×3');
-  const idxNpx = usage.detail.indexOf('[allow-npx-unpinned]×1');
-  assert.ok(idxRm > -1 && idxNpx > -1, `both tokens must appear; detail="${usage.detail}"`);
-  assert.ok(idxRm < idxNpx, 'higher-count token must come first');
+  // Sort order: count desc → [skip-memory-check]×3 must appear BEFORE
+  // [force-skip]×1 in the detail string.
+  const idxHi = usage.detail.indexOf('[skip-memory-check]×3');
+  const idxLo = usage.detail.indexOf('[force-skip]×1');
+  assert.ok(idxHi > -1 && idxLo > -1, `both tokens must appear; detail="${usage.detail}"`);
+  assert.ok(idxHi < idxLo, 'higher-count token must come first');
+});
+
+test('v0.23.6: rule-usage never flags an immutable §8 section as a demotion candidate', async () => {
+  // §8 SAFETY is §5.1 Never-downgrade. An 83%-bypass ratio (5 bypass + 1 deny,
+  // above the 50% demote threshold) must surface for visibility but NOT carry
+  // the "§0.1 demotion candidate"
+  // label — that would recommend an action the policy forbids.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-npx","extra":{"token":"allow-npx-unpinned"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"deny","spec_section":"§8-npx","extra":null}\n`,
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§8-npx');
+  assert.ok(usage, 'rule-usage:§8-npx check must exist (visibility preserved)');
+  assert.equal(usage.ok, true, 'immutable §8 must not fail as a demotion candidate');
+  assert.doesNotMatch(usage.detail, /demotion candidate/, 'must not label immutable §8 a demotion candidate');
+  assert.match(usage.detail, /immutable §8 SAFETY/);
+});
+
+test('v0.23.6: hook-fail-open — bad-event fail-open is advisory (ok:true)', async () => {
+  // Row shape matches real hook output: hook_record_failopen never threads
+  // session_id, so the row is session_id:null. reason=bad-event = empty stdin
+  // (`echo "" | hook`, fail-open.test.sh leak) — impossible on a live
+  // PreToolUse pipe → advisory, must NOT false-flag a healthy install.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows =
+    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"bad-event"},"session_id":null}\n`.repeat(2);
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.ok(c, 'hook-fail-open check must exist');
+  assert.equal(c.ok, true, 'bad-event fail-open must be advisory, not ok:false');
+  assert.match(c.detail, /bad-event/);
+});
+
+test('v0.23.6: hook-fail-open — patterns-missing fail-open flags a live bypass (ok:false)', async () => {
+  // Row shape matches real hook output (session_id:null — hook_record_failopen
+  // does not thread it; verified by running banned-vocab-check.sh with an
+  // unreadable patterns file). reason=patterns-missing / jq-missing is a
+  // genuine live-env failure that disables enforcement → ok:false. Gating on
+  // reason (not session_id) is what makes this branch reachable in production.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows =
+    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"patterns-missing"},"session_id":null}\n`;
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.ok(c, 'hook-fail-open check must exist');
+  assert.equal(c.ok, false, 'live-env fail-open must flag a bypass regardless of null session_id');
+  assert.match(c.detail, /patterns-missing/);
 });
 
 test('R-N6+: healthy rows stay terse — no token detail attached', async () => {

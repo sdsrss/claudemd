@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.6] - 2026-06-03
+
+**Patch — doctor false-alarm fixes + safety-hook deny telemetry attribution (no enforcement change).** Five fixes from a spec/global-prompt audit (`docs/spec-audit-v6.14.1-2026-06-03.md`), adversarially reviewed by 5 fresh-context agents before ship. Spec unchanged at v6.14.1 (two doc errata only). **No §8 enforcement behavior changed** — `pre-bash-safety-check.sh` still denies the identical command set (113→115 corpus tests); only the rule-hits *record* section moved.
+
+### Fixed
+
+- `scripts/doctor.js` **hook-fail-open** no longer false-flags a healthy install. Pre-fix it was unconditionally `ok:false` on any `fail-open` row; 2 stray `bad-event` rows (empty-stdin synthetic/manual invocation, impossible on a live PreToolUse pipe) read as "enforcement silently bypassed." Now gated on **reason**: `bad-event` → advisory `ok:true`; `jq-missing`/`patterns-missing` → `ok:false` (genuine live-env bypass). Gating on `session_id` was rejected in review — `hook_record_failopen` never threads it, so every row is `session_id:null` and that gate would have been dead code. +2 tests (real-row shape).
+- `scripts/doctor.js` **rule-usage** no longer labels immutable §8 SAFETY sections (`§8`, `§8.V*`, `§8-rm-rf-var`, `§8-npx`) as "§0.1 demotion candidate" — §8 is §5.1 Never-downgrade, so the recommendation was policy-forbidden. High-bypass §8 now surfaces as an immutable-ceremony advisory; healthy §8 keeps the normal "healthy" row. +1 test, 1 retargeted to a demotable section.
+- `hooks/pre-bash-safety-check.sh` **deny telemetry attribution**: denies now record under the granular section that triggered them (`§8-rm-rf-var` / `§8-npx`) instead of the generic `§8` bucket. Pre-fix, denies sat in `§8` while bypass tokens / auto-allows sat in the granular sections, making `/claudemd-doctor`'s per-section bypass ratio read a misleading 100% for `§8-npx`/`§8-rm-rf-var` (denominator missing the denies). Enforcement unchanged — only the `hook_record` section label moved; the `hook_deny` block is identical. +2 telemetry assertions (deny lands granular; nothing lands in generic `§8`).
+- `spec/CLAUDE-changelog.md` + `spec/CLAUDE-extended.md` **errata**: the v6.14.1 operator carry-forward cited impact-audit #4 (a ~12.6K core→extended demote) as "the queued path to reclaim headroom," but #4 was investigated 2026-06-03 and rejected as a category error (0-telemetry foundational sections ≠ unused). Corrected to "core has no safe demotion target; net-zero/net-delete is permanent." Also fixed a `~4.7K`→`~4.4K` headroom self-contradiction (operator prose vs. corrected Sizing line). Byte-neutral; `spec-coherence-audit` 3/3, sizing delta 0.
+- MEMORY.md tag hygiene (`~/.claude`, not shipped): 3 generic tags (`brainstorm`/`design`/`audit`) → multi-word per spec §11-EXT; `/claudemd-doctor` now reports `0 generic-tag candidates`.
+
+### Investigated, no change
+
+- `sandbox-disposal-check.sh` 709/30d advisory warns: reproduction disproved the "re-counting the same pool every turn" hypothesis (`SESSION_REF` advances correctly — each fresh dir counted once). The volume is correct advisory signal on genuinely-fresh-per-session test sandboxes (dogfood: dev `TMPDIR` resolves under the scanned path). A recency guard would not reduce the count and would mask long-session undisposed sandboxes — rejected.
+
 ## [0.23.5] - 2026-06-03
 
 **Patch — `status.js` feature-flag reporting fix: `bashSafetyIndirectCall` misreported as OFF when unset.** `/claudemd-status` showed `bashSafetyIndirectCall: false` even though the indirect-exec unwrap defaults ON — `pre-bash-safety-check.sh` reads `${BASH_SAFETY_INDIRECT_CALL:-1} != 0`. status.js used a stale `=== '1'` (explicit-set) check predating the v0.21.8 default-ON flip, so unset → `false`. **No enforcement impact** — the §8 SAFETY indirect-call coverage (`bash -c "rm -rf $X"` / `eval`) was active the whole time; only the status readout was wrong. Spec unchanged at v6.14.1.

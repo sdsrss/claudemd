@@ -41,6 +41,19 @@ const RULE_USAGE_DEMOTION_RATIO = 0.5;
 // 3 events over 30 days is the smallest sample where a 50%+ override rate
 // reliably distinguishes signal from a single-incident artifact.
 const RULE_USAGE_MIN_TOTAL = 3;
+// v0.23.6 — §8 SAFETY family (§8, §8.V*, §8-rm-rf-var, §8-npx) is immutable
+// per spec §5.1 Never-downgrade: it can never be demoted. A high bypass ratio
+// here is expected ceremony on inherently-risky-but-known-safe ops (npx with
+// no lockfile under user trust, rm -rf on a validated var) — NOT a "rule too
+// strict → demote" signal. Surface the ratio for visibility, but never emit
+// the "§0.1 demotion candidate" label, which would recommend an action the
+// policy forbids. Anchored so §8/§8./§8- match but a hypothetical §80 wouldn't.
+// Scope is deliberately §8-only: the other §5.1 Never-downgrade sections that
+// own a rule-hits label (§7-user-global-state, §iron-law-2) are advisory
+// Stop-hook-only (warn / structure-advisory, never deny+bypass), so total=0 <
+// RULE_USAGE_MIN_TOTAL and they cannot reach this demote branch — §8-npx /
+// §8-rm-rf-var are the only immutable sections that actually do.
+const IMMUTABLE_SECTION_RE = /^§8([.\-]|$)/;
 
 export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
@@ -336,16 +349,26 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // candidates; healthy rows stay terse.
   const ruleHitsLog = path.join(logsDir(), 'claudemd.jsonl');
   const { hits: recentHits, totalLines: rhTotal, skipped: rhSkipped } = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
-  // Hook fail-open advisory. Any `fail-open` event in the window means at
-  // least one hook silently bypassed enforcement; with rate-limiting at 60s
-  // per (hook,reason), a single event corresponds to ≥1 minute of impacted
-  // session time — worth surfacing. Always advisory `[△]`, never `ok:false`,
-  // because resilience-first is the design choice; we just don't want it
-  // happening invisibly.
+  // Hook fail-open advisory. A `fail-open` row means a hook hit a missing
+  // prerequisite and exited 0 instead of enforcing. Classify by REASON, not by
+  // session attribution: hook_record_failopen (hooks/lib/hook-common.sh) does
+  // NOT thread session_id, so every fail-open row is session_id:null (real or
+  // synthetic) — gating on session_id would make the ok:false branch dead code
+  // and silently downgrade genuine bypasses. The discriminating signal is the
+  // reason:
+  //   - `bad-event` (empty/malformed stdin) CANNOT occur on a live CC
+  //     PreToolUse pipe (CC always pipes the event JSON) → synthetic/manual
+  //     invocation (`echo "" | hook`, fail-open.test.sh) → advisory ok:true.
+  //   - `jq-missing` / `patterns-missing` are genuine live-env failures that
+  //     disable enforcement → ok:false, investigate and restore.
+  // Pre-fix this was unconditional ok:false, so 2 stray bad-event rows
+  // mis-reported a healthy install.
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
   if (failOpenEvents.length > 0) {
+    const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');
+    const noiseCount = failOpenEvents.length - liveFailOpen.length;
     const byReason = {};
-    for (const h of failOpenEvents) {
+    for (const h of liveFailOpen) {
       const key = `${h.hook}:${h.extra?.reason || '(unspecified)'}`;
       byReason[key] = (byReason[key] || 0) + 1;
     }
@@ -353,11 +376,19 @@ export async function doctor({ pruneBackups: prune } = {}) {
       .sort((a, b) => b[1] - a[1])
       .map(([k, n]) => `${k}=${n}`)
       .join(', ');
-    checks.push({
-      name: 'hook-fail-open',
-      ok: false,
-      detail: `${failOpenEvents.length} fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summary}); enforcement silently bypassed. Investigate the named prerequisite (jq install / patterns file integrity / event-pipe shape).`,
-    });
+    if (liveFailOpen.length > 0) {
+      checks.push({
+        name: 'hook-fail-open',
+        ok: false,
+        detail: `${liveFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summary}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore.`,
+      });
+    } else {
+      checks.push({
+        name: 'hook-fail-open',
+        ok: true,
+        detail: `${noiseCount} bad-event fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (empty-stdin synthetic/manual hook invocation — cannot occur on a live PreToolUse pipe); advisory only, not a live bypass.`,
+      });
+    }
   }
   // Surface log-corruption signal as an advisory check. Threshold 1% — below
   // that is normal noise (race writes during rotation, partial last-line
@@ -385,6 +416,15 @@ export async function doctor({ pruneBackups: prune } = {}) {
     if (total < RULE_USAGE_MIN_TOTAL) continue;
     const ratio = bypass / total;
     const ratioPct = (ratio * 100).toFixed(0);
+    if (ratio > RULE_USAGE_DEMOTION_RATIO && IMMUTABLE_SECTION_RE.test(section)) {
+      // §8 SAFETY is §5.1 Never-downgrade — a high bypass ratio is expected
+      // ceremony on known-safe ops, NOT a demote signal. Surface for visibility,
+      // but never the "§0.1 demotion candidate" label (an action policy forbids).
+      // Low-ratio §8 falls through to the normal healthy branch below.
+      push(`rule-usage:${section}`, true,
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, immutable §8 SAFETY — high bypass is known-safe-op ceremony, not a §0.1 demote signal)`);
+      continue;
+    }
     if (ratio > RULE_USAGE_DEMOTION_RATIO) {
       // R-N6+: per-token breakdown of the section's bypass events. Sort by
       // count desc, secondary alpha so output is deterministic across runs.

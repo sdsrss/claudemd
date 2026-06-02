@@ -268,6 +268,13 @@ SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")
 SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 
 declare -a HITS=()
+# v0.23.6 — parallel to HITS: the granular §8 section each hit belongs to, so
+# the deny telemetry can be filed under §8-rm-rf-var / §8-npx instead of the
+# generic §8 bucket. Pre-fix all denies were recorded under §8 while bypass
+# tokens / auto-allows were recorded granular, making the doctor's per-section
+# bypass ratio read a misleading 100% for §8-npx / §8-rm-rf-var (denies sat in
+# a different bucket from the denominator). Enforcement is unchanged.
+declare -a HIT_SECTIONS=()
 REASONS=""
 
 # Pattern 1: rm with `-r` / `-R` / `-f` / `-F` / `--recursive` / `--force`
@@ -353,6 +360,7 @@ if (( bypass_rm == 0 )); then
       HOME|PWD|OLDPWD|TMPDIR)
         if [[ ! "$residue" =~ [^/] ]]; then
           HITS+=("rm -rf \$$varname with no literal subpath (bare whitelisted-var expansion)")
+          HIT_SECTIONS+=('§8-rm-rf-var')
           REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
         fi
         ;;
@@ -376,6 +384,7 @@ if (( bypass_rm == 0 )); then
           hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
         else
           HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
+          HIT_SECTIONS+=('§8-rm-rf-var')
           REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
         fi
         ;;
@@ -424,8 +433,10 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
           else
             case "$pkg_token" in
               @*/*) HITS+=("npx $pkg_token (scoped, unpinned, no lockfile/local)")
+                    HIT_SECTIONS+=('§8-npx')
                     REASONS+=$'\n  - npx unpinned scoped package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
               *)    HITS+=("npx $pkg_token (unpinned, no lockfile/local)")
+                    HIT_SECTIONS+=('§8-npx')
                     REASONS+=$'\n  - npx unpinned package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
             esac
           fi
@@ -454,6 +465,19 @@ Bypass options:
       in the command (records as bypass in rule-hits log).
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
-HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
-hook_record pre-bash-safety deny "{\"matched\":$HITS_JSON}" '§8' "$SESSION_ID" "$TOOL_USE_ID"
+# v0.23.6 — file the deny telemetry under the granular §8 section(s) that
+# triggered it (§8-rm-rf-var / §8-npx), one record per distinct section with
+# that section's own hits, so the doctor's per-section bypass ratio counts
+# denies in the denominator. A command mixing both categories emits one record
+# each. Falls back to generic §8 only if a hit somehow lacks a section tag.
+# Enforcement is identical to pre-fix: the single hook_deny below still blocks.
+declare -A _sec_hits=()
+for i in "${!HITS[@]}"; do
+  sec="${HIT_SECTIONS[$i]:-§8}"
+  _sec_hits[$sec]+="${HITS[$i]}"$'\n'
+done
+for sec in "${!_sec_hits[@]}"; do
+  sec_hits_json=$(printf '%s' "${_sec_hits[$sec]}" | sed '/^$/d' | jq -R . | jq -s .)
+  hook_record pre-bash-safety deny "{\"matched\":$sec_hits_json}" "$sec" "$SESSION_ID" "$TOOL_USE_ID"
+done
 hook_deny pre-bash-safety "$REASON_TEXT"
