@@ -466,18 +466,31 @@ Bypass options:
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
 # v0.23.6 — file the deny telemetry under the granular §8 section(s) that
-# triggered it (§8-rm-rf-var / §8-npx), one record per distinct section with
+# triggered it (§8-rm-rf-var / §8-npx), one record per section present with
 # that section's own hits, so the doctor's per-section bypass ratio counts
 # denies in the denominator. A command mixing both categories emits one record
 # each. Falls back to generic §8 only if a hit somehow lacks a section tag.
-# Enforcement is identical to pre-fix: the single hook_deny below still blocks.
-declare -A _sec_hits=()
+# Enforcement is identical to pre-fix: hook_deny below blocks regardless of the
+# telemetry outcome.
+# v0.23.7 portability fix: indexed arrays + plain string accumulators ONLY —
+# macOS ships bash 3.2, which has no associative arrays (`declare -A` errors out
+# and, worse, aborts the deny path before hook_deny → §8 not enforced on macOS).
+# The granular section set is fixed and small, so hardcode the three buckets.
+_rmrf_hits=""; _npx_hits=""; _other_hits=""
 for i in "${!HITS[@]}"; do
-  sec="${HIT_SECTIONS[$i]:-§8}"
-  _sec_hits[$sec]+="${HITS[$i]}"$'\n'
+  case "${HIT_SECTIONS[$i]:-§8}" in
+    '§8-rm-rf-var') _rmrf_hits+="${HITS[$i]}"$'\n' ;;
+    '§8-npx')       _npx_hits+="${HITS[$i]}"$'\n' ;;
+    *)              _other_hits+="${HITS[$i]}"$'\n' ;;
+  esac
 done
-for sec in "${!_sec_hits[@]}"; do
-  sec_hits_json=$(printf '%s' "${_sec_hits[$sec]}" | sed '/^$/d' | jq -R . | jq -s .)
-  hook_record pre-bash-safety deny "{\"matched\":$sec_hits_json}" "$sec" "$SESSION_ID" "$TOOL_USE_ID"
-done
+record_section_deny() {  # $1=section  $2=newline-delimited hits blob
+  [[ -n "$2" ]] || return 0
+  local hj
+  hj=$(printf '%s' "$2" | sed '/^$/d' | jq -R . | jq -s .)
+  hook_record pre-bash-safety deny "{\"matched\":$hj}" "$1" "$SESSION_ID" "$TOOL_USE_ID"
+}
+record_section_deny '§8-rm-rf-var' "$_rmrf_hits"
+record_section_deny '§8-npx'       "$_npx_hits"
+record_section_deny '§8'           "$_other_hits"
 hook_deny pre-bash-safety "$REASON_TEXT"

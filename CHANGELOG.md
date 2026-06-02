@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.7] - 2026-06-03
+
+**Patch — hotfix: restore §8 enforcement on macOS (bash 3.2 regression from v0.23.6).** v0.23.6's deny-telemetry-attribution used `declare -A` (associative array), a bash 4+ feature. macOS ships **bash 3.2**, where it errors out — and the error aborted the deny path *before* `hook_deny`, so `rm -rf $VAR` / unpinned `npx` were **not denied on macOS** (Linux CI passed on bash 5, masking it; macOS CI caught `FAIL [deny]: rm -rf $WORK_DIR … declare: -A: invalid option`). v0.23.6 was published ~minutes before this hotfix; macOS users should skip it.
+
+### Fixed
+
+- `hooks/pre-bash-safety-check.sh`: replaced the associative-array deny-record loop with indexed arrays + plain string accumulators + a small helper (three fixed buckets: `§8-rm-rf-var` / `§8-npx` / `§8`). bash 3.2-compatible; granular deny attribution preserved; `hook_deny` now fires regardless of telemetry outcome. Verified: shellcheck clean, no `declare -A` remains in `hooks/` (mirrors the existing `mem-audit.sh` bash-3.2 note), full suite + 115/115 corpus on Linux; macOS CI is the portability gate.
+
 ## [0.23.6] - 2026-06-03
 
 **Patch — doctor false-alarm fixes + safety-hook deny telemetry attribution (no enforcement change).** Five fixes from a spec/global-prompt audit (`docs/spec-audit-v6.14.1-2026-06-03.md`), adversarially reviewed by 5 fresh-context agents before ship. Spec unchanged at v6.14.1 (two doc errata only). **No §8 enforcement behavior changed** — `pre-bash-safety-check.sh` still denies the identical command set (113→115 corpus tests); only the rule-hits *record* section moved.
