@@ -8,6 +8,10 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.12] - 2026-06-05
+
+**Patch — remove the `memory-coverage-scan` Stop hook (17 → 16 hooks).** The save-side "should-have-saved" advisory shipped default-OFF since v0.13.0 and never earned its keep: 9 advisory events in 30 days, all from a single opt-in repo (this one), against a HARD-blocking read-side already in place. Cutting it resolves the only open item from the 2026-06-03 maturity audit and ends the internal-feature backlog. No spec change (`spec/CLAUDE*.md` stays v6.14.1; the hook was never a `hard-rules.json` rule). Removed: `hooks/memory-coverage-scan.sh` + its test; the `hooks.json` Stop registration; the `hook-registry.js` entry (drops the `MEMORY_COVERAGE` kill-switch + `MEMORY_COVERAGE_SCAN` / `DISABLE_MEMORY_COVERAGE_HOOK` env vars — now no-ops if still set); references in README, ARCHITECTURE.md, RULE-HITS-SCHEMA.md, `claudemd-toggle.md`, `mid-spine-yield-scan.sh` header, and the contract / full-lifecycle / hook-registry / install test count assertions (all moved 17 → 16 together).
+
 ## [0.23.11] - 2026-06-05
 
 **Patch — batched bugfix release from a 5-round end-to-end user-test sweep + an adversarial re-audit.** 39 confirmed bugs fixed across hooks, scripts, and the standalone CLI; spec content (`spec/CLAUDE*.md`) is unchanged (stays v6.14.1). Every fix carries a reproduction + a regression test; suite 484 → 513 node tests + integration, all green. Highlights grouped by class.

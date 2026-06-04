@@ -52,7 +52,7 @@ Stop hook
 - `~/.claude/logs/claudemd-bootstrap.log` — session-start install bootstrap log (rotated at 64 KiB → tail 32 KiB)
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
 
-## Hook taxonomy (17 hooks)
+## Hook taxonomy (16 hooks)
 
 `spec_section` values below are the literal arguments each hook passes to `hook_record` (source-of-truth, not prose — refresh by re-extracting from `hooks/*.sh` rather than hand-editing this table).
 
@@ -69,7 +69,6 @@ Stop hook
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
 | Stop | `sandbox-disposal-check.sh` | mkdtemp residue advisory | `§8.V4` |
 | Stop | `mem-audit.sh` | MEMORY.md orphan/dangling advisory | `§11-EXT-mem-audit` |
-| Stop | `memory-coverage-scan.sh` | save-side "should-have-saved" advisory (opt-in, default OFF) | `§11-mem-coverage` |
 | Stop | `mid-spine-yield-scan.sh` | mid-SPINE turn-yield detection | `§11-mid-spine-yield` |
 | Stop | `transcript-structure-scan.sh` | REPORT four-section structure scan | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (dynamic) |
 | Stop | `session-summary.sh` | session deny/bypass/warn aggregation | n/a (writes to state file, not jsonl) |

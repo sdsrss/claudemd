@@ -3,9 +3,8 @@
 #
 # v0.15.0 P2 #1 (a-mini) — agent self-rule observation for §11-mid-spine-yield.
 # Pairs with transcript-vocab-scan (§10-V) / transcript-structure-scan
-# (§iron-law-2 + §10-four-section-order + §10-honesty) / memory-coverage-scan
-# (§11-mem-coverage) as the observability surface for self-enforced HARD rules
-# that have no hard-deny path.
+# (§iron-law-2 + §10-four-section-order + §10-honesty) as the observability
+# surface for self-enforced HARD rules that have no hard-deny path.
 #
 # Rule (core §11 Mid-SPINE turn-yield): once a turn has executed ≥1 tool call
 # inside an active SPINE cycle, continue planned steps through VALIDATE. Yield
@@ -31,7 +30,7 @@
 # Per-session dedup via state sentinel — emits at most once per session_id.
 #
 # Opt-in: MID_SPINE_YIELD_SCAN=1 (default OFF). Same precedent as
-# transcript-vocab-scan / transcript-structure-scan / memory-coverage-scan.
+# transcript-vocab-scan / transcript-structure-scan.
 #
 # Kill-switches:
 #   DISABLE_MID_SPINE_YIELD_HOOK=1 — disable after opt-in

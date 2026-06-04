@@ -145,8 +145,8 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   assert.ok(r.verbose.killSwitches, 'verbose.killSwitches must exist');
   assert.ok(r.verbose.killSwitches.global, 'global kill-switch entry must exist');
   assert.equal(r.verbose.killSwitches.global.envVar, 'DISABLE_CLAUDEMD_HOOKS');
-  // perHook must list all 17 shipped hooks (matches hook-registry.js).
-  assert.equal(r.verbose.killSwitches.perHook.length, 17,
+  // perHook must list all 16 shipped hooks (matches hook-registry.js).
+  assert.equal(r.verbose.killSwitches.perHook.length, 16,
     'perHook must enumerate every entry in HOOK_REGISTRY');
   const sample = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
   assert.ok(sample, 'banned-vocab hook must appear in perHook');

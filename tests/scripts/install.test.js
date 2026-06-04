@@ -154,7 +154,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 17);
+  assert.equal(manifest.entries.length, 16);
 });
 
 test('logs directory and empty jsonl created', async () => {
