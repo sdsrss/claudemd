@@ -164,6 +164,20 @@ test('only signal events counted; pass / pass-known-red / bootstrap / (unset) ex
   assert.equal(r.rows.find(x => x.section === '§8.V4').counts[0], 1);
 });
 
+test('v0.23.11: deny FAMILY (deny-repeat / deny-prose) counted; deny-prose-dry-run excluded', () => {
+  // Re-audit: SIGNAL_EVENTS had literal `deny` only, undercounting §11-memory-read
+  // (deny-repeat) and §10-V (deny-prose) in the release trend. dry-run stays out.
+  writeRows([
+    { daysAgo: 5, section: '§11-memory-read', event: 'deny' },
+    { daysAgo: 5, section: '§11-memory-read', event: 'deny-repeat' },
+    { daysAgo: 5, section: '§10-V', event: 'deny-prose', hook: 'banned-vocab' },
+    { daysAgo: 5, section: '§10-V', event: 'deny-prose-dry-run', hook: 'banned-vocab' }, // EXCLUDED
+  ]);
+  const r = sparkline();
+  assert.equal(r.rows.find(x => x.section === '§11-memory-read').counts[0], 2, 'deny + deny-repeat');
+  assert.equal(r.rows.find(x => x.section === '§10-V').counts[0], 1, 'deny-prose counted, dry-run excluded');
+});
+
 test('formatMarkdown emits aligned table with header + arrows', () => {
   // Add daysAgo:89 sentinel so log span covers all default windows and the
   // partial-coverage banner does NOT fire (Round-6: a banner line on the

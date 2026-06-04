@@ -45,6 +45,15 @@ emit_session_summary_banner() {
   warns=$(jq -r '.warns // 0' "$f" 2>/dev/null) || return 0
   top_section=$(jq -r '.top_section // ""' "$f" 2>/dev/null) || return 0
 
+  # Numeric-guard before arithmetic. jq's `// 0` only substitutes on null /
+  # missing, NOT on a wrong-typed value: a corrupt summary whose `denies` is a
+  # JSON string ("oops") flows through, and `$((oops + ...))` treats it as an
+  # unbound varname under `set -u` → the banner fn crashes the SessionStart
+  # hook (exit 1, not fail-open). Coerce any non-integer to 0.
+  [[ "$denies"   =~ ^[0-9]+$ ]] || denies=0
+  [[ "$bypasses" =~ ^[0-9]+$ ]] || bypasses=0
+  [[ "$warns"    =~ ^[0-9]+$ ]] || warns=0
+
   # Suppress empty banner — session-summary.sh skips writing on total=0,
   # but defensive against partial writes.
   local total=$((denies + bypasses + warns))
@@ -80,7 +89,7 @@ upstream_check() {
     local now smtime age
     now=$(date +%s 2>/dev/null) || return 0
     smtime=$(platform_stat_mtime "$sentinel" 2>/dev/null) || return 0
-    if [[ -n "$smtime" ]]; then
+    if [[ "$smtime" =~ ^[0-9]+$ ]]; then  # numeric-guard before `set -u` arithmetic
       age=$(( now - smtime ))
       [[ "$age" -lt 86400 ]] && return 0
     fi
@@ -107,10 +116,18 @@ upstream_check() {
   )
   [[ -z "$local_max" ]] && return 0
 
+  # Consume the once-per-24h budget BEFORE the network call. The sentinel used
+  # to be touched only after a SUCCESSFUL semver-tag fetch (below), so an
+  # offline user / transient git failure / non-semver remote ref never wrote
+  # it — and every single SessionStart then re-ran the 3s `git ls-remote`,
+  # hanging session start indefinitely. Touching here rate-limits the expensive
+  # attempt itself: one network probe per 24h regardless of outcome.
+  touch "$sentinel" 2>/dev/null || true
+
   local remote_url remote_output remote_tag
   remote_url="${CLAUDEMD_REMOTE_URL:-https://github.com/sdsrss/claudemd}"
   read -ra ls_remote_args <<< "${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}"
-  remote_output=$(timeout 3 "${ls_remote_args[@]}" --tags --refs --sort=-v:refname "$remote_url" 'v*.*.*' 2>/dev/null) || return 0
+  remote_output=$(platform_timeout 3 "${ls_remote_args[@]}" --tags --refs --sort=-v:refname "$remote_url" 'v*.*.*' 2>/dev/null) || return 0
   remote_tag=$(printf '%s' "$remote_output" | head -1 | awk '{print $2}' | sed 's|refs/tags/||')
   [[ -z "$remote_tag" ]] && return 0
   # Defensive semver gate before embedding in jq output. jq's --arg already
@@ -118,8 +135,6 @@ upstream_check() {
   # chars from a compromised remote) would still produce a confusing banner.
   # Reject anything that doesn't match strict v<major>.<minor>.<patch>.
   [[ "$remote_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
-
-  touch "$sentinel" 2>/dev/null || true
 
   [[ "v$local_max" == "$remote_tag" ]] && return 0
   local newer
@@ -205,7 +220,7 @@ fi
 (
   {
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart bootstrap → $PLUGIN_ROOT/scripts/install.js"
-    timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] bootstrap exited non-zero or timed out"
+    platform_timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] bootstrap exited non-zero or timed out"
   } >> "$LOG"
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true

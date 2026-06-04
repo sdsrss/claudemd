@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { settingsPath } from './paths.js';
 
 export function readSettings() {
@@ -55,9 +56,16 @@ export function mergeHook(settings, spec) {
 // `hookBasenames` is passed in (rather than imported from install.js) to
 // avoid the lib → top-level circular dependency.
 export function isClaudemdLegacyHookCommand(c, hookBasenames) {
+  // Anchor the hand-install match to the USER's own ~/.claude/hooks/ (derived
+  // from settingsPath → its dirname is ~/.claude). Pre-fix the bare substring
+  // `/.claude/hooks/<basename>` also matched a FOREIGN plugin installed under a
+  // different root that happened to reuse a claudemd basename
+  // (`/opt/otherplugin/.claude/hooks/banned-vocab-check.sh`), so claudemd's
+  // uninstall would evict that other plugin's hook.
+  const handHooksDir = path.join(path.dirname(settingsPath()), 'hooks') + path.sep;
   return hookBasenames.some(b => {
     const inPluginCache = c.includes('/plugins/cache/claudemd/') && c.includes(`/hooks/${b}`);
-    const inHandInstall = c.includes(`/.claude/hooks/${b}`);
+    const inHandInstall = c.includes(`${handHooksDir}${b}`);
     const inEnvLiteral  = c.includes(`\${CLAUDE_PLUGIN_ROOT}/hooks/${b}`);
     return inPluginCache || inHandInstall || inEnvLiteral;
   });

@@ -35,8 +35,15 @@ if [[ ! -f "$BASELINE_FILE" ]]; then
 fi
 
 BASELINE=$(cat "$BASELINE_FILE" 2>/dev/null || echo 0)
+# Numeric-guard before arithmetic — under `set -u`, `$((CURRENT - garbage))`
+# treats a non-numeric value as an unbound varname and crashes the hook (exit 1,
+# NOT fail-open), and a corrupt baseline would then crash EVERY subsequent Stop
+# since the file is never re-validated. A corrupt baseline self-heals to CURRENT
+# (DELTA=0, no false alarm) and is rewritten below; a bad threshold falls to 20.
+[[ "$BASELINE" =~ ^[0-9]+$ ]] || BASELINE=$CURRENT
 DELTA=$((CURRENT - BASELINE))
 THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
+[[ "$THRESHOLD" =~ ^[0-9]+$ ]] || THRESHOLD=20
 
 if (( DELTA > THRESHOLD )); then
   echo "[claudemd] §7 residue audit: ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2

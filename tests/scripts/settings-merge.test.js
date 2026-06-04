@@ -201,9 +201,19 @@ test('D6.2: matches ≤0.1.1 absolute plugin-cache path form', () => {
   assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), true);
 });
 
-test('D6.3: matches v0 hand-install form ~/.claude/hooks/<basename>', () => {
-  const cmd = 'bash "/home/user/.claude/hooks/memory-read-check.sh"';
+test('D6.3: matches v0 hand-install form under the USER home ~/.claude/hooks/<basename>', () => {
+  // v0.23.11: predicate now anchors to the actual HOME (tmpHome), not any
+  // `/.claude/hooks/`, so this path is built from the test's HOME.
+  const cmd = `bash "${path.join(tmpHome, '.claude/hooks/memory-read-check.sh')}"`;
   assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), true);
+});
+
+test('D6.7 (v0.23.11): does NOT evict a FOREIGN plugin reusing a claudemd basename under a different root', () => {
+  // The bug: `/opt/otherplugin/.claude/hooks/banned-vocab-check.sh` contains
+  // `/.claude/hooks/banned-vocab-check.sh` but is NOT under the user's home —
+  // claudemd uninstall must not remove it.
+  const cmd = 'bash "/opt/otherplugin/.claude/hooks/banned-vocab-check.sh"';
+  assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), false);
 });
 
 test('D6.4: does NOT match same-basename hook from a different plugin', () => {

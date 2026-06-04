@@ -29,6 +29,29 @@ export function printHelpAndExit(argv, usage) {
   }
 }
 
+// Strict positive-integer validator for numeric flags (`--days` / `--age-days`
+// / `--prune-backups` / `--sample`). Returns the integer when `raw` (after
+// trimming surrounding whitespace) is a plain base-10 positive integer with no
+// leading zero, else null. `Number()` alone is too permissive — it coerces
+// '0x1e' → 30, '1e2' → 100, ' 30 ' → 30 — all of which pass `Number.isInteger`
+// despite help text promising a "positive integer", a silent contract
+// divergence (inverse of the `parseInt` truncation footgun). Mirrors the
+// `/^[1-9][0-9]*$/` guard already used for CLAUDEMD_BATCH_THRESHOLD in status.js.
+export function parsePositiveInt(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  // Plain base-10 notation only — rejects hex ('0x1e'), exponential ('1e2'),
+  // signs, and interior junk that `Number()` would coerce. A trailing-zero
+  // decimal ('30.0', '30.00') is allowed through the shape gate so the
+  // integer-valued-float check below can accept it (existing contract: callers
+  // / scripts may pass '30.0'); a true fraction ('1.5') passes the shape gate
+  // but fails Number.isInteger and is rejected.
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
 export function parseStrict(argv, { bools = [], values = [] } = {}) {
   const out = { bools: new Set(), values: {} };
   const knownBool = new Set(bools);

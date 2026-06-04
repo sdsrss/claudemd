@@ -85,7 +85,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const apply = parsed.bools.has('--apply');
   const rawAge = parsed.values['--age-days'] ?? '1';
   const ageDaysMin = Number(rawAge);
-  if (!Number.isFinite(ageDaysMin) || ageDaysMin < 0) {
+  // String-shape guard (not parsePositiveInt — this flag allows 0 and fractional
+  // days). Rejects '0x1e'/'1e2'/' 2 ' that `Number()` would silently coerce,
+  // while keeping '0', '1', '0.5' valid.
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(String(rawAge).trim()) || !Number.isFinite(ageDaysMin) || ageDaysMin < 0) {
     console.error(`--age-days requires a non-negative number (got '${rawAge}').`);
     process.exit(1);
   }

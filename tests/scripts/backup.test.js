@@ -58,6 +58,22 @@ test('pruneBackups keeps N newest and removes rest', () => {
   assert.equal(listBackups().length, 5);
 });
 
+test('v0.23.11: collision-suffix backup dirs (-N) are listed, sorted, and pruned', () => {
+  // createBackup appends `-N` on a same-ms collision. Pre-fix BACKUP_DIR_REGEX
+  // lacked `(-\d+)?`, so those dirs were invisible to listBackups/pruneBackups —
+  // they leaked in ~/.claude forever and were excluded from restore.
+  for (const name of ['backup-20260101T000000000Z', 'backup-20260102T000000000Z',
+                      'backup-20260103T000000000Z', 'backup-20260103T000000000Z-1',
+                      'backup-20260103T000000000Z-2']) {
+    fs.mkdirSync(path.join(tmpHome, '.claude', name));
+  }
+  assert.equal(listBackups().length, 5, 'collision dirs must be listed');
+  // -2 sorts newest (longest string > base), then -1, then the 3 plain stamps.
+  assert.ok(listBackups()[0].dir.endsWith('Z-2'));
+  pruneBackups(2);
+  assert.equal(listBackups().length, 2, 'prune must reach collision dirs too');
+});
+
 test('pruneSettingsBackups: keeps N newest settings.json.claudemd-backup-* files', () => {
   const dir = path.join(tmpHome, '.claude');
   const iso = ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z',

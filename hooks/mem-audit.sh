@@ -46,7 +46,7 @@ mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 if [[ -f "$SENTINEL" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   now=$(date +%s 2>/dev/null) || exit 0
   smtime=$(platform_stat_mtime "$SENTINEL" 2>/dev/null) || exit 0
-  if [[ -n "$smtime" ]]; then
+  if [[ "$smtime" =~ ^[0-9]+$ ]]; then  # numeric-guard before `set -u` arithmetic
     age=$(( now - smtime ))
     [[ "$age" -lt 86400 ]] && exit 0
   fi
@@ -175,11 +175,13 @@ fi
 
 if [[ "$DRIFT" -gt 0 ]]; then
   # Drift banner — MEMORY.md ↔ files mismatch (v0.9.7).
-  drift_joined=$(IFS=$'\n  - ' ; echo "${DRIFT_SAMPLE[*]}")
+  # `printf '  - %s\n'` per element, NOT `IFS=$'\n  - '`: IFS is a SET of single
+  # chars, so `${arr[*]}` joined on just `\n` and dropped the `  - ` bullet on
+  # every line except the first (which got its bullet from the echo prefix).
   drift_extra=""
   [[ "$DRIFT" -gt "$DRIFT_SAMPLE_LIMIT" ]] && drift_extra=" (+$((DRIFT - DRIFT_SAMPLE_LIMIT)) more)"
   echo "[claudemd] §11-EXT mem-audit: $DRIFT MEMORY.md drift entries${drift_extra}:" >&2
-  echo "  - $drift_joined" >&2
+  printf '  - %s\n' "${DRIFT_SAMPLE[@]}" >&2
 fi
 
 hook_record mem-audit warn "{\"missing\":$MISSING,\"drift\":$DRIFT}" '§11-EXT-mem-audit' "$SESSION_ID"

@@ -17,6 +17,9 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# platform.sh for platform_timeout (BSD/macOS without coreutils has no `timeout`).
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch USER_PROMPT_SUBMIT || exit 0
 
@@ -77,7 +80,7 @@ LOG="$LOG_DIR/claudemd-bootstrap.log"
 (
   {
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) UserPromptSubmit piggy-back: manifest $INSTALLED_VER → plugin $PLUGIN_VER"
-    timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] piggy-back install exited non-zero or timed out"
+    platform_timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] piggy-back install exited non-zero or timed out"
   } >> "$LOG"
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true

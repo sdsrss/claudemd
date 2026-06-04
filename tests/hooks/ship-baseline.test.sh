@@ -40,6 +40,21 @@ OUT=$(run_hook fail-red "$EVENT_PUSH")
 OUT=$(run_hook fail-red "$EVENT_HELP")
 [[ -z "$OUT" ]] && echo "PASS: 4 --help → pass" || { echo "FAIL: 4 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Case 4b (v0.23.11): incidental `-h` must NOT exempt a real red-CI push.
+# Pre-fix the help-exemption grep'd the whole command, so a branch named
+# `feature-h` (or a commit msg mentioning `-h` chained before the push)
+# matched `-h\b` and silently skipped the §7 CI gate.
+cd "$TMP_HOME" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean for 4b"
+EVENT_BRANCH_H='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push origin feature-h"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_BRANCH_H")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 4b branch -h does not exempt red push" || { echo "FAIL: 4b (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 4c (v0.23.11): real `git push -h` (standalone help flag) still exempts.
+EVENT_PUSH_H='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push -h"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_PUSH_H")
+[[ -z "$OUT" ]] && echo "PASS: 4c git push -h still exempt" || { echo "FAIL: 4c (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 # Case 5: non-push command → pass
 OUT=$(run_hook fail-red "$EVENT_COMMIT")
 [[ -z "$OUT" ]] && echo "PASS: 5 non-push → pass" || { echo "FAIL: 5 (got: $OUT)"; FAIL=$((FAIL + 1)); }

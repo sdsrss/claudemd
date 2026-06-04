@@ -67,7 +67,18 @@ const SCANNED_FILES = [
   '.claude-plugin/marketplace.json',
 ];
 
-const VERSION_TOKEN = /v6\.\d+(?:\.\d+)?/g;
+// Token regex is derived per-run from the spec major (see specMajorTokenRe),
+// NOT a fixed `/v6\./`. Scanning a fixed major means that after a `v7.0.0`
+// bump the check goes silent — a stale `v7.5` in README/plugin.json never
+// matches `/v6\./`, so the cascade-staleness it exists to catch (v0.17.6 /
+// v0.19.0 incidents) slips through with ok:true. Deriving the major from
+// spec_version keeps the check live across major bumps while still ignoring
+// the plugin's own `v0.x` version tokens that share these files.
+function specMajorTokenRe(specVersion) {
+  const m = specVersion.match(/^v(\d+)\./);
+  if (!m) throw new Error(`spec_version '${specVersion}' is not v<major>.<minor>[.patch]`);
+  return new RegExp(`v${m[1]}\\.\\d+(?:\\.\\d+)?`, 'g');
+}
 
 function toMinor(token) {
   // "v6.13.0" → "v6.13" ; "v6.13" → "v6.13"
@@ -83,6 +94,7 @@ export function runVersionCascadeCheck({ root }) {
     throw new Error(`spec/hard-rules.json#spec_version missing or not a string (got: ${typeof specVersion})`);
   }
   const expectedMinor = toMinor(specVersion);
+  const versionToken = specMajorTokenRe(specVersion);
 
   const offenders = [];
   const filesChecked = [];
@@ -98,7 +110,7 @@ export function runVersionCascadeCheck({ root }) {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const matches = line.match(VERSION_TOKEN);
+      const matches = line.match(versionToken);
       if (!matches) continue;
       for (const token of matches) {
         const tokenMinor = toMinor(token);

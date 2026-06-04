@@ -152,6 +152,41 @@ test('ext-cross-refs: literal §X-EXT placeholder is NOT treated as a ref', () =
   }
 });
 
+test('v0.23.11: ext-cross-refs distinguishes suffix siblings (§10-R dangling though §10-V exists)', () => {
+  // Pre-fix the regex dropped non-EXT suffixes, normalizing both `§10-R` and
+  // `§10-V` to `10`, so a dangling `§10-R` matched the unrelated `§10-V`
+  // heading and was reported clean. Now suffixes are preserved + matched exact.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
+  try {
+    makeSpecFixture(tmpDir, {
+      coreContent: 'For the report format see §EXT §10-R.\n',
+      extendedContent: '## §10-V Banned vocab\n\nbody text only — no §10-R heading\n',
+    });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'ext-cross-refs');
+    assert.equal(check.ok, false, 'dangling §10-R must be flagged despite §10-V existing');
+    assert.equal(check.findings[0].severity, 'CRITICAL');
+    assert.match(check.findings[0].detail, /§10-R/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('v0.23.11: ext-cross-refs resolves matching suffix siblings (§10-R ref + §10-R heading)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
+  try {
+    makeSpecFixture(tmpDir, {
+      coreContent: 'See §EXT §10-R and §EXT §10-V.\n',
+      extendedContent: '## §10-R Report format\n\n## §10-V Banned vocab\n',
+    });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'ext-cross-refs');
+    assert.equal(check.ok, true, `both suffix siblings resolve: ${JSON.stringify(check.findings)}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('sizing-accuracy: HIGH when actual exceeds claim by >20B', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
   try {

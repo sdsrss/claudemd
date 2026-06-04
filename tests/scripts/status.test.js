@@ -86,6 +86,18 @@ test('status reports not-installed when manifest missing', async () => {
   assert.equal(r.plugin.hint, undefined);
 });
 
+test('status survives a manifest with version but no entries array (v0.23.11)', async () => {
+  // A legacy / hand-edited / truncated manifest may carry `version` without
+  // `entries`. Pre-fix `m.data.entries.length` threw an unguarded TypeError
+  // + raw stack (exit 1) — the lone manifest consumer that didn't guard.
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({ version: '9.9.9' }));
+  const r = await status();
+  assert.equal(r.plugin.installed, true);
+  assert.equal(r.plugin.version, '9.9.9');
+  assert.equal(r.plugin.entries, 0);
+});
+
 test('status flags cache-present-bootstrap-pending when manifest missing but plugin cache exists', async () => {
   // CC's `/plugin install claudemd@claudemd` lands the version dir in
   // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire

@@ -33,7 +33,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lesson-bypass-audit.js [--days=N] [--cwd=<path>] [--json]
 
@@ -230,9 +230,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_BYPASS_DAYS || String(DEFAULT_WINDOW_DAYS));
-  // Number() not parseInt — '2.7' → 2.7, isInteger rejects. parseInt would silently truncate.
-  const days = Number(raw);
-  if (!Number.isInteger(days) || days < 1) {
+  // parsePositiveInt rejects '2.7' (truncation footgun) AND '0x1e'/'1e2'
+  // (Number() over-coercion) — this site was missed by the round-1 sweep.
+  const days = parsePositiveInt(raw);
+  if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
       `  Examples: --days=30 (default), --days=7, --days=90.`

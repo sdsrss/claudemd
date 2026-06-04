@@ -274,6 +274,41 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 13 (v0.23.11): only the LAST assistant turn is scanned. A stale
+# wrong-order report from an EARLIER turn must NOT be re-flagged as "last turn"
+# drift when the actual last turn is clean. Pre-fix all turns were concatenated.
+# --------------------------------------------------------------------------
+TX13=$(mktemp)
+cat > "$TX13" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: w\nNot done: z\nFailed: y\nUncertain: x"}]}}
+{"type":"user","message":{"content":[{"type":"text","text":"thanks"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Glad to help. Anything else?"}]}}
+EOF
+FIX13=$(mktemp); jq -cn --arg p "$TX13" '{session_id:"test",transcript_path:$p}' > "$FIX13"
+STDERR13=$(TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$FIX13" 2>&1)
+if [[ -z "$STDERR13" ]]; then
+  echo "PASS: 13 stale prior-turn report not flagged when last turn is clean"; PASS=$((PASS+1))
+else
+  echo "FAIL: 13 phantom flag from earlier turn (out: $STDERR13)"; FAIL=$((FAIL+1))
+fi
+rm -f "$TX13" "$FIX13"
+
+# Case 14: a genuinely out-of-order report in the ACTUAL last turn still flags.
+TX14=$(mktemp)
+cat > "$TX14" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"hello there"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done: a\nUncertain: b\nFailed: c\nNot done: d"}]}}
+EOF
+FIX14=$(mktemp); jq -cn --arg p "$TX14" '{session_id:"test",transcript_path:$p}' > "$FIX14"
+STDERR14=$(TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$FIX14" 2>&1)
+if [[ -n "$STDERR14" ]]; then
+  echo "PASS: 14 out-of-order last turn still flagged"; PASS=$((PASS+1))
+else
+  echo "FAIL: 14 missed real out-of-order in last turn"; FAIL=$((FAIL+1))
+fi
+rm -f "$TX14" "$FIX14"
+
+# --------------------------------------------------------------------------
 # Result
 # --------------------------------------------------------------------------
 TOTAL=$((PASS+FAIL))

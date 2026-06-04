@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny } from '../../scripts/lib/rule-hits-parse.js';
+import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny, blockingDenyCount, detectCutover } from '../../scripts/lib/rule-hits-parse.js';
 
 // v0.23.8 — self-dogfood vs external classification + per-hook split.
 test('classifyProject: claudemd repo (both cwd encodings) → self', () => {
@@ -40,6 +40,28 @@ test('isBlockingDeny: deny family counts; deny-prose-dry-run excluded', () => {
   assert.equal(isBlockingDeny('bypass-escape-hatch'), false);
   assert.equal(isBlockingDeny('pass'), false);
   assert.equal(isBlockingDeny(null), false);
+});
+
+test('v0.23.11: blockingDenyCount sums the deny family, excludes dry-run + bypass', () => {
+  const byEvent = { deny: 1, 'deny-repeat': 2, 'deny-prose': 1, 'deny-prose-dry-run': 5, 'bypass-escape-hatch': 3, pass: 9 };
+  assert.equal(blockingDenyCount(byEvent), 4); // 1 + 2 + 1, NOT dry-run/bypass/pass
+  assert.equal(blockingDenyCount({}), 0);
+  assert.equal(blockingDenyCount(null), 0);
+  assert.equal(blockingDenyCount(undefined), 0);
+});
+
+test('v0.23.11: detectCutover treats a section-bearing null-ts row as corrupt, not epoch-0', () => {
+  // Pre-fix `new Date(null).getTime() === 0` is finite, so a null-ts row with a
+  // spec_section set cutover to 1970 and collapsed the (unset-historical/current)
+  // split. Must use the next valid ts instead.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cutover-'));
+  const f = path.join(dir, 'h.jsonl');
+  fs.writeFileSync(f,
+    '{"ts":null,"hook":"h","event":"deny","spec_section":"§A"}\n' +
+    '{"ts":"2026-06-01T00:00:00Z","hook":"h","event":"deny","spec_section":"§B"}\n'
+  );
+  assert.equal(detectCutover(f), new Date('2026-06-01T00:00:00Z').getTime());
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('byProjectClass: deny-family per-hook self/external/unknown split', () => {
@@ -166,6 +188,28 @@ test('readHits: surfaces skipped count for malformed rows', () => {
     assert.equal(parsed, 5);
     assert.equal(skipped, 3);
     assert.equal(hits.length, 5);
+  });
+});
+
+test('readHits: JSON-valid rows with bad/missing ts count as skipped, not silently dropped', () => {
+  // v0.23.11 user-test round: a row that JSON.parses but has a missing / null /
+  // non-date `ts` yields NaN from new Date().getTime(); `NaN >= cutoff` is
+  // false, so pre-fix it vanished from `hits` while still counting as `parsed`
+  // with skipped:0 — a false 0% skipRatio that hid truncated rows from §13.1.
+  withFixture((file) => {
+    const ts = new Date(Date.now() - 1 * 86400 * 1000).toISOString();
+    fs.writeFileSync(file,
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +    // valid
+      `{"ts":"not-a-date","hook":"x","event":"deny"}\n` + // bad ts
+      `{"hook":"x","event":"deny"}\n` +                   // missing ts
+      `{"ts":null,"hook":"x","event":"deny"}\n`           // null ts
+    );
+    const { hits, totalLines, parsed, skipped } = readHits(file, 3650);
+    assert.equal(totalLines, 4);
+    assert.equal(parsed, 1);       // only the finite-ts row is usable
+    assert.equal(skipped, 3);      // 3 corrupt-ts rows surfaced as corruption
+    assert.equal(hits.length, 1);
+    assert.equal(parsed + skipped, totalLines); // invariant
   });
 });
 

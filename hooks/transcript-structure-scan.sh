@@ -63,12 +63,24 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 # Read the LAST assistant turn from the transcript jsonl. Bound to last 200
 # lines; mirror transcript-vocab-scan.sh parsing (try fromjson catch empty).
 # join("\n") here (not " ") because we need line anchors for ^Done: etc.
+#
+# Pre-v0.23.11 BUG: this lacked any last-turn selection — the per-row jq output
+# of EVERY assistant turn was concatenated by command substitution, so the awk
+# below line-numbered the whole multi-turn document as one turn. Four-section
+# labels scattered across different turns synthesized phantom blocks, and stale
+# reports from earlier in the session were re-flagged as "last turn" drift on
+# every Stop. Fix: slurp into an array, take the LAST non-empty-text assistant
+# turn (mirrors transcript-vocab-scan.sh's `awk 'NF' | tail -n 1`, but preserves
+# the multi-line structure within that one turn). Two-stage jq is BSD-portable
+# (no GNU `tail -z`).
 LAST_TEXT=$(tail -n 200 "$TRANSCRIPT_PATH" 2>/dev/null \
-  | jq -R -r 'try fromjson catch empty
-              | select(.type == "assistant")
-              | (.message.content // [])
-              | map(select(.type == "text") | .text)
-              | join("\n")' 2>/dev/null)
+  | jq -R 'try fromjson catch empty' 2>/dev/null \
+  | jq -s -r 'map(select(.type == "assistant")
+                  | (.message.content // [])
+                  | map(select(.type == "text") | .text)
+                  | join("\n"))
+              | map(select(. != ""))
+              | last // ""' 2>/dev/null)
 [[ -n "$LAST_TEXT" ]] || exit 0
 
 declare -a HITS=()

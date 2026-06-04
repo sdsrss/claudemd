@@ -174,6 +174,39 @@ else
   echo "FAIL: 11 fail-open broken (ec=$EC11 out=$OUT11 err=$ERR11)"; FAIL=$((FAIL+1))
 fi
 
+# Case 11b (v0.23.11): ls-remote FAILURE must still consume the 24h budget —
+# touch the sentinel even when the network probe fails. Pre-fix the touch only
+# happened after a successful semver fetch, so offline users re-ran the 3s
+# `git ls-remote` on EVERY SessionStart.
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-fail.sh" \
+CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+DISABLE_UPSTREAM_CHECK=0 \
+  bash "$HOOK" <<<'{}' >/dev/null 2>&1
+if [[ -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" ]]; then
+  echo "PASS: 11b ls-remote failure still writes 24h sentinel"
+else
+  echo "FAIL: 11b sentinel absent after failed probe (re-runs every session)"; FAIL=$((FAIL+1))
+fi
+
+# Case 11c (v0.23.11): non-semver remote tag (e.g. a `nightly` ref) must also
+# consume the budget — pre-fix the strict-semver gate `return 0`'d before touch.
+cat > "$TMP_HOME/mock-ls-remote-nonsemver.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'abc123\trefs/tags/nightly\n'
+MOCK
+chmod +x "$TMP_HOME/mock-ls-remote-nonsemver.sh"
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-nonsemver.sh" \
+CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+DISABLE_UPSTREAM_CHECK=0 \
+  bash "$HOOK" <<<'{}' >/dev/null 2>&1
+if [[ -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" ]]; then
+  echo "PASS: 11c non-semver remote tag still writes 24h sentinel"
+else
+  echo "FAIL: 11c sentinel absent on non-semver tag"; FAIL=$((FAIL+1))
+fi
+
 # Case 12: bootstrap log rotation. Pre-load >64 KiB of stale content; assert
 # the next hook run truncates it to ≤32 KiB before appending its own line.
 # Without this, the file grew unbounded across sessions.
@@ -202,7 +235,21 @@ else
   echo "FAIL: 12 log rotation not applied (pre=$PRE_BYTES post=$POST_BYTES)"; FAIL=$((FAIL+1))
 fi
 
+# Case 13 (v0.23.11): a corrupt last-session-summary.json whose `denies` is a
+# non-numeric JSON string must NOT crash the SessionStart hook. jq's `// 0`
+# only catches null/missing, so the string flowed into `$((denies + ...))` and
+# crashed under `set -u` (exit 1, not fail-open). Manifest must match plugin
+# version to reach the banner path.
+PLUGIN_VER_REAL=$(jq -r .version "$PLUGIN_ROOT/package.json")
+echo "{\"version\":\"$PLUGIN_VER_REAL\",\"entries\":[]}" > "$HOME/.claude/.claudemd-manifest.json"
+mkdir -p "$HOME/.claude/.claudemd-state"
+printf '{"denies":"oops","bypasses":0,"warns":0}' > "$HOME/.claude/.claudemd-state/last-session-summary.json"
+touch "$HOME/.claude/.claudemd-state/upstream-check.lastrun"  # skip network
+bash "$HOOK" <<<'{}' >/dev/null 2>&1; EC=$?
+[[ "$EC" == "0" ]] && echo "PASS: 13 corrupt non-numeric summary fails open (exit 0)" \
+  || { echo "FAIL: 13 (exit=$EC)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
+  echo "Tests: $((13 - FAIL))/13 passed"; exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 13/13 passed"

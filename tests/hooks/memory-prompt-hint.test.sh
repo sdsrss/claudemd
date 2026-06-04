@@ -176,7 +176,7 @@ EVENT_12=$(jq -cn --arg p "$PROMPT_12" --arg s "$SESS" --arg c "$CAP_CWD" \
 OUT=$(bash "$HOOK" <<<"$EVENT_12" 2>/dev/null)
 CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
 # Should see exactly 5 file lines + "... and 2 more" footer.
-LINE_COUNT=$(echo "$CTX" | grep -cE "^\s+- " || true)
+LINE_COUNT=$(echo "$CTX" | grep -cE "^[[:space:]]+- " || true)
 if [[ "$LINE_COUNT" == "5" ]] && echo "$CTX" | grep -qF "2 more"; then
   ok "12 cap at 5 + overflow footer"
 else

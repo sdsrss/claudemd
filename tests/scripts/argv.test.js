@@ -1,6 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStrict, ArgvError } from '../../scripts/lib/argv.js';
+import { parseStrict, ArgvError, parsePositiveInt } from '../../scripts/lib/argv.js';
+
+test('parsePositiveInt: accepts plain + integer-valued-float, rejects fraction/hex/exp/zero/junk', () => {
+  // Accepted
+  assert.equal(parsePositiveInt('30'), 30);
+  assert.equal(parsePositiveInt('1'), 1);
+  assert.equal(parsePositiveInt('30.0'), 30);   // trailing-zero float = integer value
+  assert.equal(parsePositiveInt('30.00'), 30);
+  assert.equal(parsePositiveInt(' 30 '), 30);   // surrounding whitespace trimmed
+  assert.equal(parsePositiveInt(7), 7);          // numeric input
+  // Rejected → null
+  assert.equal(parsePositiveInt('1.5'), null);   // true fraction
+  assert.equal(parsePositiveInt('0x1e'), null);  // hex over-coercion
+  assert.equal(parsePositiveInt('1e2'), null);   // exponential over-coercion
+  assert.equal(parsePositiveInt('0'), null);     // not positive
+  assert.equal(parsePositiveInt('-5'), null);    // sign
+  assert.equal(parsePositiveInt('abc'), null);   // junk
+  assert.equal(parsePositiveInt(''), null);
+  assert.equal(parsePositiveInt(null), null);
+  assert.equal(parsePositiveInt(undefined), null);
+});
 
 test('happy path: bool + value flag together', () => {
   const r = parseStrict(['--apply', '--age-days=7'], {

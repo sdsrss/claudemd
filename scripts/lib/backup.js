@@ -3,8 +3,14 @@ import path from 'node:path';
 import { backupRoot, settingsPath } from './paths.js';
 
 // Second-precision (legacy) vs millisecond-precision (current). Both accepted
-// by listBackups so pre-existing backups keep sorting correctly.
-const BACKUP_DIR_REGEX = /^backup-\d{8}T\d{6}(\d{3})?Z$/;
+// by listBackups so pre-existing backups keep sorting correctly. The optional
+// `-N` suffix matches createBackup's same-ms collision path — without it those
+// dirs were invisible to listBackups/pruneBackups (never listed, never pruned,
+// never restored → leaked in ~/.claude forever). The sibling SETTINGS_BK_REGEX
+// already carried `(-\d+)?`; this regex had drifted out of sync. The `-N` dir
+// sorts just after its base stamp (longer string > shorter), matching creation
+// order (the collision dir is written second).
+const BACKUP_DIR_REGEX = /^backup-\d{8}T\d{6}(\d{3})?Z(-\d+)?$/;
 // Matches the pre-merge settings.json backup files install.js writes before
 // any modification. Same iso-stamp grammar, plus an optional `-N` numeric
 // suffix from the sub-ms collision path in install.js.

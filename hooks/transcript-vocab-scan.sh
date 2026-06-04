@@ -81,6 +81,26 @@ LAST_TEXT=$(tail -n 200 "$TRANSCRIPT_PATH" 2>/dev/null \
   | tail -n 1)
 [[ -n "$LAST_TEXT" ]] || exit 0
 
+# Per-session dedup. This is PostToolUse, but the agent's prose precedes a whole
+# CHAIN of tool calls — without dedup the SAME last-text turn re-fires the
+# advisory row + stderr banner on every tool call in the chain (an agent that
+# writes a plan then runs 6 tools would emit the identical §10-V banner 6×).
+# Skip when the scanned text is byte-identical to the last text processed this
+# session. Fail TOWARD firing on any sentinel I/O error — never silently
+# suppress a real advisory. cksum is POSIX-portable (GNU + BSD).
+if [[ -n "$SESSION_ID" ]]; then
+  VS_STATE_DIR="$HOME/.claude/.claudemd-state"
+  VS_SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
+  VS_SENTINEL="$VS_STATE_DIR/vocab-scan-${VS_SAFE_SID}.last"
+  VS_HASH=$(printf '%s' "$LAST_TEXT" | cksum 2>/dev/null | awk '{print $1"-"$2}')
+  if [[ -n "$VS_HASH" && -f "$VS_SENTINEL" && "$(cat "$VS_SENTINEL" 2>/dev/null)" == "$VS_HASH" ]]; then
+    exit 0
+  fi
+  if [[ -n "$VS_HASH" ]]; then
+    mkdir -p "$VS_STATE_DIR" 2>/dev/null && printf '%s' "$VS_HASH" > "$VS_SENTINEL" 2>/dev/null || true
+  fi
+fi
+
 # Scan against banned-vocab.patterns. Skip @ratio-tagged patterns — those
 # are commit-baseline-context; chat prose uses ratios in narrative form and
 # the @ratio detectors produce too many FPs on text like "70% faster"

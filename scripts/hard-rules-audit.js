@@ -13,8 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
-import { readHits, groupBySection, logFirstTs } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { readHits, groupBySection, logFirstTs, excludeTestSessions, blockingDenyCount } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
 
@@ -51,8 +51,11 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   }
 
   const log = path.join(logsDir(), 'claudemd.jsonl');
+  // Strip hook-unit-test sentinels (session_id 't'/'test') BEFORE grouping —
+  // mirrors audit.js. Without it, ~150 test events/window can mask a genuinely
+  // cold rule from §13.1 demotion (the script's primary purpose).
   const { hits } = readHits(log, days);
-  const bySection = groupBySection(hits);
+  const bySection = groupBySection(excludeTestSessions(hits));
 
   // Detect log span. If the log doesn't reach `days` days back, "0 hits in
   // window" is uninformative — a rule fixed 5 days ago (e.g., §11-memory-read
@@ -69,7 +72,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     // at hits=0 — that's expected, not a demotion signal for self-rules.
     const sectionHits = r.rule_hits_section ? bySection[r.rule_hits_section] : null;
     const total = sectionHits?.total || 0;
-    const deny = sectionHits?.byEvent?.deny || 0;
+    const deny = blockingDenyCount(sectionHits?.byEvent);  // deny + deny-repeat + deny-prose, not just literal `deny`
     const bypass = sectionHits?.byEvent?.['bypass-escape-hatch'] || 0;
     const warn = sectionHits?.byEvent?.warn || 0;
     return {
@@ -173,10 +176,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
-  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
-  // Pre-fix `parseInt('2.7', 10) === 2` silently truncated.
-  const days = Number(raw);
-  if (!Number.isInteger(days) || days < 1) {
+  // parsePositiveInt rejects '2.7' (truncation footgun) + '0x1e'/'1e2'
+  // (Number() over-coercion) + 0/negatives — only a plain positive integer passes.
+  const days = parsePositiveInt(raw);
+  if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
       `  Examples: --days=30 (default), --days=90, --days=180.`

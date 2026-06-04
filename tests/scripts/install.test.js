@@ -26,7 +26,7 @@ beforeEach(() => {
   fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '9.9.9-test' }));
 
   fs.mkdirSync(path.join(pluginRoot, 'spec'), { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# Core v6.9.2\nVersion: 6.9.2\n');
+  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), '# Extended v6.9.2\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), '# Changelog\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), '# Operator handbook (test fixture)\n');
@@ -86,7 +86,7 @@ afterEach(() => {
 test('fresh HOME: spec copied, no backup', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.spec, 'fresh');
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# Core v6.9.2\nVersion: 6.9.2\n');
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')));
 });
@@ -98,7 +98,7 @@ test('existing spec: backup created, new spec in place', async () => {
   assert.equal(res.spec, 'backup-and-overwrite');
   assert.ok(res.backupDir && fs.existsSync(res.backupDir));
   assert.equal(fs.readFileSync(path.join(res.backupDir, 'CLAUDE.md'), 'utf8'), 'OLD\n');
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# Core v6.9.2\nVersion: 6.9.2\n');
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
 });
 
 test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)', async () => {
@@ -196,17 +196,61 @@ test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved
     'personal content must be preserved verbatim in backup'
   );
   // And install proceeded — the plugin spec is now in place.
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# Core v6.9.2\nVersion: 6.9.2\n');
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
 });
 
-test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content', async () => {
-  // Anything matching `# AI-CODING-SPEC vX.Y.Z` in the first 256 bytes is
-  // assumed to be a prior claudemd install — this is a routine spec upgrade,
-  // not a user-content overwrite. Silent backup-and-overwrite (no warning).
+test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content (v0.23.11: spec-on-spec = no backup)', async () => {
+  // Anything matching `# AI-CODING-SPEC vX.Y.Z` in the first 256 bytes is a
+  // prior claudemd install — a routine spec upgrade, NOT user content. v0.23.11
+  // root-cause fix: spec-over-spec must NOT create a backup (it would bury the
+  // user's personal-content backup and make restore return the old spec). The
+  // prior spec is recoverable from git / plugin cache / update.js backups.
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.10.0 — Core\n\nold spec content\n');
   const res = await install({ pluginRoot });
   assert.equal(res.userContentDetected, false, 'spec-headed file must not trip user-content flag');
-  assert.equal(res.spec, 'backup-and-overwrite');
+  assert.equal(res.spec, 'overwrite-spec');
+  assert.equal(res.backupDir, null, 'spec-over-spec must not create a backup');
+});
+
+test('v0.23.11: repeated same-version re-install does NOT bury the user-content backup', async () => {
+  // Data-loss regression: user had personal CLAUDE.md → 1st install backs it up.
+  // Pre-fix every subsequent (byte-identical) re-install backed up the SPEC,
+  // making the spec the newest backup; restore picks newest + pruneBackups(5)
+  // evicts the oldest, so restore returned the spec and ≥5 re-runs lost the
+  // personal content permanently. Now identical re-installs are a no-op.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal user-global instructions\nReply in 中文.\n');
+  const first = await install({ pluginRoot });
+  assert.equal(first.spec, 'backup-and-overwrite');
+  assert.equal(first.userContentDetected, true);
+  for (let i = 0; i < 6; i++) {
+    const r = await install({ pluginRoot });
+    assert.equal(r.spec, 'overwrite-spec', `re-install #${i + 2} must be a no-op, not a backup`);
+    assert.equal(r.backupDir, null);
+  }
+  const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('backup-'));
+  assert.equal(backupDirs.length, 1, 'only the original personal-content backup should exist');
+  const backedUp = fs.readFileSync(path.join(tmpHome, '.claude', backupDirs[0], 'CLAUDE.md'), 'utf8');
+  assert.match(backedUp, /My personal user-global instructions/);
+});
+
+test('v0.23.11: a spec UPGRADE after a personal install still restores PERSONAL content, not the old spec', async () => {
+  // Re-audit finding: the byte-identical-only guard left the upgrade path
+  // broken — install personal → backup#1=personal; upgrade (different spec
+  // bytes) → backup#2=old-spec; restore picked backup#2 (old spec). Now
+  // spec-over-spec never backs up, so the personal backup stays the only one
+  // and restore returns it.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal instructions\nReply in 中文.\n');
+  const first = await install({ pluginRoot });
+  assert.equal(first.spec, 'backup-and-overwrite');
+  // Simulate a spec version upgrade: change the shipped spec content.
+  const shippedCore = path.join(pluginRoot, 'spec/CLAUDE.md');
+  fs.writeFileSync(shippedCore, fs.readFileSync(shippedCore, 'utf8') + '\nUPGRADED CONTENT\n');
+  const upgrade = await install({ pluginRoot });
+  assert.equal(upgrade.spec, 'overwrite-spec', 'spec upgrade must not create a second backup');
+  const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('backup-'));
+  assert.equal(backupDirs.length, 1, 'still only the personal-content backup');
+  assert.match(fs.readFileSync(path.join(tmpHome, '.claude', backupDirs[0], 'CLAUDE.md'), 'utf8'),
+    /My personal instructions/, 'the single backup is the personal content, not the old spec');
 });
 
 test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag', async () => {

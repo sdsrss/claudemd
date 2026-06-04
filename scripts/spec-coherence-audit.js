@@ -78,7 +78,12 @@ const HEADROOM_DANGER_RATIO = 0.97;
 // describe the pattern itself — not a real ref).
 function extractExtRefs(coreText) {
   const refs = new Set();
-  const re = /§EXT[ \t]+§([0-9.]+(?:-EXT)?)/g;
+  // Capture the FULL suffix (-EXT / -R / -V / -O / …), not just `-EXT`. Pre-fix
+  // `§10-R` normalized to `10` (suffix dropped) on both ref and heading sides,
+  // so a dangling `§10-R` ref matched an unrelated `§10-V` heading — defeating
+  // CHECK 1 (the audit's flagship "core cites §X but section never landed") for
+  // every suffix except -EXT.
+  const re = /§EXT[ \t]+§([0-9.]+(?:-[A-Za-z]+)?)/g;
   let m;
   while ((m = re.exec(coreText)) !== null) {
     let id = m[1];
@@ -96,7 +101,7 @@ function extractExtRefs(coreText) {
 function extractExtendedSections(extendedText) {
   const sections = new Set();
   const lines = extendedText.split('\n');
-  const re = /^#{2,}\s+§([0-9.]+(?:-EXT)?)/;
+  const re = /^#{2,}\s+§([0-9.]+(?:-[A-Za-z]+)?)/;  // full suffix, see extractExtRefs
   for (const line of lines) {
     const m = re.exec(line);
     if (m) sections.add(m[1]);

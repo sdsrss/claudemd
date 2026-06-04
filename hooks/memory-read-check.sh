@@ -75,7 +75,6 @@ sanitize_for_tagmatch() {
     fi
     out+="$line"$'\n'
   done <<< "$raw"
-  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
   # Strip quoted-string bodies. Flatten newlines to \r first so the (line-based)
   # sed also strips MULTI-LINE quoted args — e.g. a multi-paragraph
   # `gh release create --notes "..."`. Without the flatten, an opening quote
@@ -87,6 +86,14 @@ sanitize_for_tagmatch() {
     | sed -E 's/"[^"]*"/""/g' \
     | sed -E "s/'[^']*'/''/g" \
     | tr '\r' '\n')
+  # Strip line comments LAST — AFTER the quote strips. Pre-v0.23.11 this ran
+  # first, so a `#` inside a quoted commit message (`git commit -m "closes #42"`)
+  # was mistaken for a real comment and everything after it — including chained
+  # ship verbs + topic tags (`&& deploy <topic>`) — was deleted, silently
+  # bypassing the §11 memory gate. Issue/PR numbers in commit messages make this
+  # routine. By this point all quoted bodies are emptied, so any surviving `#` is
+  # a genuine unquoted comment. (Same ordering fix as pre-bash-safety-check.sh.)
+  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
   # vNEXT: strip filesystem-path / URL tokens (any unquoted run containing `/`).
   # A path segment is not a topic declaration — e.g. `~/.claude/projects/...`
   # would otherwise match a `projects` tag and deny an unrelated command.

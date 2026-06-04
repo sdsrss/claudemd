@@ -8,9 +8,9 @@ import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
-import { readHits, groupBySection } from './lib/rule-hits-parse.js';
+import { readHits, groupBySection, blockingDenyCount } from './lib/rule-hits-parse.js';
 import { scanMemoryTags } from './lib/memory-tags.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
@@ -410,7 +410,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
     // candidates if scored against deny/bypass ratio.
     if (section === '(unset)' || section.startsWith('(unset-')) continue;
     const data = bySection[section];
-    const deny = data.byEvent.deny || 0;
+    // Count the full blocking-deny family (deny + deny-repeat + deny-prose),
+    // not just literal `deny`. Pre-fix this undercounted blocks for §11-memory-
+    // read (deny-repeat) and §10-V (deny-prose), inflating bypass:deny and
+    // FALSELY flagging healthy rules as §0.1 demote candidates.
+    const deny = blockingDenyCount(data.byEvent);
     const bypass = data.byEvent['bypass-escape-hatch'] || 0;
     const total = deny + bypass;
     if (total < RULE_USAGE_MIN_TOTAL) continue;
@@ -495,11 +499,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let prune;
   const raw = parsed.values['--prune-backups'];
   if (raw !== undefined) {
-    // `Number()` (not `parseInt`) so '2.5' yields 2.5 — `isInteger(2.5)` rejects.
-    // Pre-fix `parseInt('2.5', 10) === 2` silently truncated, deleting backups
-    // using the wrong retain count — destructive on a numeric-shape mismatch.
-    const val = Number(raw);
-    if (!Number.isInteger(val) || val < 1) {
+    // parsePositiveInt rejects '2.5' (truncation footgun) AND '0x1e'/'1e2'
+    // (Number() over-coercion) — extra important here because this flag is
+    // DESTRUCTIVE: e.g. `--prune-backups=0x1` would silently retain only 1.
+    const val = parsePositiveInt(raw);
+    if (val === null) {
       console.error(
         `--prune-backups requires a positive integer retain count (got '${raw}').\n` +
         `  Examples: --prune-backups=5 (keep 5 newest), --prune-backups=1 (keep only the newest).\n` +

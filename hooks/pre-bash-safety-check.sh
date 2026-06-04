@@ -105,9 +105,6 @@ sanitize_cmd() {
     out+="$line"$'\n'
   done <<< "$raw"
 
-  # Strip line comments (# at line start or after whitespace, to end of line).
-  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
-
   # Strip contents of paired quoted strings, keeping the empty-quote markers
   # so token boundaries (e.g. `echo ""` after stripping) are preserved.
   #
@@ -136,7 +133,7 @@ sanitize_cmd() {
           else final = final ch
         } else {
           if (ch == "\"") {
-            if (has_dollar) final = final "\"" buf "\""
+            if (has_dollar) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
             else final = final "\"\""
             in_q = 0; buf = ""; has_dollar = 0
           } else if (ch == "$") {
@@ -146,10 +143,20 @@ sanitize_cmd() {
           }
         }
       }
-      if (in_q == 1) final = final "\"" buf
+      if (in_q == 1) { gsub(/#/, "", buf); final = final "\"" buf }
       printf "%s", final
     }
   ')
+
+  # Strip line comments LAST (# at line start or after whitespace, to end of
+  # line). Must run AFTER the quote strips: pre-v0.23.11 the comment strip ran
+  # first, so a `#` sitting inside a quoted string but preceded by whitespace
+  # (`git commit -m 'msg # note' && rm -rf $X`) was mistaken for a real comment,
+  # deleting the chained `&& rm -rf $X` before the detector saw it — a §8 SAFETY
+  # bypass. By this point single-quoted bodies are `''`, $-less double-quoted
+  # bodies are `""`, and `#` inside preserved $-double-quoted bodies has been
+  # gsub'd out above, so any surviving `#` is a genuine unquoted comment.
+  out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
 
   printf '%s' "$out"
 }
@@ -163,8 +170,15 @@ sanitize_cmd() {
 # `echo "bash -c 'rm -rf $X'"` (where the bash sits behind `"`) does not.
 unwrap_indirect() {
   local s="$1"
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\3 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\3 ;/g")
+  # `-c` is matched as a flag BUNDLE ending in (or containing) `c`, optionally
+  # preceded by other flag tokens: `bash -c`, `bash -lc`, `bash -xc`,
+  # `sh -lc`, `bash --norc -c`, `bash -x -c` all run the next arg as a shell
+  # command, so all must be unwrapped. Pre-v0.23.11 only the bare `-c` form
+  # was matched — `bash -lc 'rm -rf $X'` was a §8 SAFETY silent bypass. The
+  # `([[:space:]]+-[a-zA-Z-]+)*` group eats leading flags; the required
+  # `-[a-zA-Z]*c[a-zA-Z]*` is the bundle that consumes the command string.
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
   # Unquoted eval form: `eval rm -rf $X` — bash collapses the words with
@@ -316,6 +330,29 @@ if (( bypass_rm == 0 )); then
     # Trim leading/trailing whitespace.
     trimmed="${segment#"${segment%%[![:space:]]*}"}"
     trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    # Strip leading env-var ASSIGNMENTS and transparent EXEC-WRAPPER commands
+    # before the `rm` check. `FOO=bar rm -rf $X` (assignment) runs rm with FOO
+    # in its env; `env rm`, `command rm`, `nohup rm`, `setsid rm`, `time rm`
+    # (and `env FOO=x rm`) all exec rm too. Pre-fix the segment-start `rm` check
+    # below skipped any segment that began with an assignment OR a wrapper word —
+    # a §8 SAFETY silent bypass (`DEBUG=1 rm -rf $HOME`, `command rm -rf $X`).
+    # Loop because they stack (`A=1 B=2 rm`, `env FOO=x rm`). No FP: the `rm`
+    # check still gates, so stripping a wrapper off a non-rm command (`env node`)
+    # changes nothing. NOT covered (best-effort; documented): flag-bearing
+    # wrappers (`nice -n10 rm`, `timeout 5 rm`), `xargs` (stdin model), `sudo`
+    # (explicit elevated intent). The [allow-rm-rf-var] token is the escape.
+    while [[ -n "$trimmed" ]]; do
+      first="${trimmed%%[[:space:]]*}"
+      if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+         || [[ "$first" == env || "$first" == command || "$first" == nohup \
+            || "$first" == setsid || "$first" == time \
+            || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+        rest="${trimmed#"$first"}"
+        trimmed="${rest#"${rest%%[![:space:]]*}"}"
+      else
+        break
+      fi
+    done
     # Segment must start with `rm` token (followed by whitespace or end).
     [[ "$trimmed" == rm || "$trimmed" == rm[[:space:]]* ]] || continue
     # Parse args. Detect any of: -r / -R / -f / -F in a `-*[rRfF]*` short

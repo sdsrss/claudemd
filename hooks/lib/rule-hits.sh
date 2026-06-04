@@ -70,6 +70,10 @@ rule_hits_append() {
   # the race. Acceptable under the fail-open contract — flock would add a
   # dependency for a ~0.01% occurrence.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
+  # Numeric-guard: a non-integer env value (user typo) would make
+  # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because
+  # this runs before the JSONL write, the telemetry row would be silently lost.
+  [[ "$max_mb" =~ ^[0-9]+$ ]] || max_mb=5
   local max_bytes=$((max_mb * 1024 * 1024))
   if [[ -f "$log_file" ]]; then
     local size

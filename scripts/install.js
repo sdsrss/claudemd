@@ -72,9 +72,28 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
       userContentDetected = true;
     }
   }
+  // Is a claudemd spec already at ~/.claude/CLAUDE.md? Then the existing spec
+  // files are claudemd's OWN — a no-op re-install OR a version upgrade — not
+  // user content. There is nothing user-owned to preserve, so we do NOT back
+  // them up.
+  const claudeMdIsSpec = existing.includes(claudeMdPath) && !userContentDetected;
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
+  } else if (claudeMdIsSpec) {
+    // DATA-LOSS ROOT-CAUSE FIX (v0.23.11): never back up spec-on-spec — neither
+    // a byte-identical re-install NOR a version upgrade. Pre-fix BOTH created a
+    // backup of the spec itself; restore picks the NEWEST backup (uninstall.js)
+    // and pruneBackups(5) evicts the oldest, so `CLAUDEMD_SPEC_ACTION=restore`
+    // after a re-install OR an upgrade restored the SPEC instead of the user's
+    // original personal CLAUDE.md, and enough of them permanently evicted the
+    // personal backup. By only ever backing up genuine user content (the no-H1
+    // branch below), the personal backup is the SOLE backup → restore always
+    // returns it and prune can never bury it. The prior spec version is
+    // recoverable from git / the plugin cache / update.js's own backups.
+    // (The earlier v0.23.11 "byte-identical only" guard left the upgrade path
+    // broken — restore after any upgrade returned the old spec.)
+    specResult = 'overwrite-spec';
   } else {
     const bk = createBackup(existing, { label: 'backup' });
     backupDir = bk.dir;

@@ -8,6 +8,61 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.11] - 2026-06-05
+
+**Patch — batched bugfix release from a 5-round end-to-end user-test sweep + an adversarial re-audit.** 39 confirmed bugs fixed across hooks, scripts, and the standalone CLI; spec content (`spec/CLAUDE*.md`) is unchanged (stays v6.14.1). Every fix carries a reproduction + a regression test; suite 484 → 513 node tests + integration, all green. Highlights grouped by class.
+
+### Fixed — §8 SAFETY (immutable) bypasses
+
+- `hooks/lib/hook-common.sh` `hook_is_readonly_bash`: removed `env` from the readonly-command allowlist. `env <cmd>` executes an arbitrary command, so `env rm -rf $VAR` / `env npx <pkg>` / `env curl …` hit the readonly fast-path (`exit 0`) and bypassed ALL FOUR PreToolUse:Bash enforcement hooks. First-token matching cannot tell bare `env` (print environment) from `env <cmd>` (exec).
+- `hooks/pre-bash-safety-check.sh` `unwrap_indirect`: matches combined/extra-flag indirect-shell forms (`bash -lc`, `bash -xc`, `sh -lc`, `bash --norc -c`, `bash -x -c`) — previously only bare `-c` was unwrapped, so `bash -lc 'rm -rf $X'` slipped through.
+- `hooks/pre-bash-safety-check.sh` rm-segment detector: strips leading env-var assignments AND transparent exec-wrappers (`FOO=bar rm`, `env rm`, `command rm`, `nohup rm`, `setsid rm`, `time rm`) before the `rm` check — these all execute `rm` but began with a non-`rm` token.
+- `hooks/pre-bash-safety-check.sh` `sanitize_cmd`: line-comment strip runs AFTER the quote strips, and `#` inside `$`-double-quoted bodies is neutralized — so `git commit -m 'msg # note' && rm -rf $X` no longer has its chained `&& rm -rf $X` eaten as a comment.
+
+### Fixed — §7 / §11 enforcement gaps
+
+- `hooks/ship-baseline-check.sh`: the `-h`/`--help` exemption is scoped to the `git push` segment and requires a standalone flag token, so a branch named `feature-h` or a `-h` in a commit message no longer exempts a red-CI push.
+- `hooks/memory-read-check.sh` `sanitize_for_tagmatch`: line-comment strip moved after quote strips — `git commit -m "closes #42" && deploy <topic>` no longer has the trigger verb + topic tag eaten by the `#42`, which had silently bypassed the §11 memory gate.
+
+### Fixed — fail-open: hooks must never crash
+
+- `hooks/residue-audit.sh`, `hooks/lib/rule-hits.sh`, `hooks/session-start-check.sh`, `hooks/mem-audit.sh`, `hooks/ship-baseline-check.sh`: numeric-guard every arithmetic on a corrupt/external value (`tmp-baseline.txt`, `SPEC_RESIDUE_THRESHOLD`, `CLAUDEMD_LOG_MAX_MB`, a non-numeric `denies` in `last-session-summary.json`, `smtime`). Under `set -u` these were unbound-variable crashes (exit 1) instead of fail-open; a corrupt baseline crashed every subsequent Stop.
+- `hooks/session-start-check.sh` upstream-check: the 24h sentinel is touched BEFORE the network probe, so an offline user / transient git failure / non-semver remote tag no longer re-runs the 3s `git ls-remote` on every SessionStart.
+
+### Fixed — aggregation / audit correctness
+
+- `scripts/lib/rule-hits-parse.js`: `readHits` counts JSON-valid-but-bad/missing/null-`ts` rows as `skipped` (was silently dropped with `skipped:0`, hiding log corruption from §13.1 review); `detectCutover` / `groupBySection` / `byTrend` guard null `ts` (`new Date(null).getTime()===0` collapsed the historical/current split to 1970). New `blockingDenyCount` helper.
+- `scripts/doctor.js`, `scripts/hard-rules-audit.js`, `scripts/sparkline.js`: count the full blocking-deny family (`deny` + `deny-repeat` + `deny-prose`) instead of literal `deny` — undercounting inflated the bypass:deny ratio and FALSELY flagged healthy rules (e.g. §11-memory-read) as §0.1 demote candidates.
+- `scripts/hard-rules-audit.js`, `scripts/sparkline.js`: strip hook-unit-test session sentinels (`t`/`test`) before grouping (audit.js already did), so test traffic no longer masks a cold rule or pollutes the release trend.
+- `scripts/version-cascade-check.js`: derive the spec-major token from `spec_version` instead of a hardcoded `/v6\./` — a stale `v7.x` reference after a major bump is no longer silently ignored, while the plugin's own `v0.x` versions stay ignored.
+
+### Fixed — data loss
+
+- `scripts/install.js`: never back up spec-over-spec (a byte-identical re-install OR a version upgrade). Pre-fix each re-install/upgrade backed up the spec itself; `restore` picks the newest backup and `pruneBackups(5)` evicts the oldest, so `CLAUDEMD_SPEC_ACTION=restore` returned the spec and enough re-runs permanently evicted the user's original personal `CLAUDE.md`. The personal backup is now the sole backup → restore always returns it. (The first cut fixed only the identical-re-install path; the re-audit completed the upgrade path.)
+
+### Fixed — advisory-scan false positives + cross-platform
+
+- `hooks/transcript-structure-scan.sh`: scans only the LAST assistant turn (was concatenating all turns → phantom four-section blocks + stale prior-turn reports re-flagged every Stop).
+- `hooks/transcript-vocab-scan.sh`: per-session content-hash dedup — the same prose turn no longer re-fires the §10-V advisory on every tool call in a chain.
+- `hooks/session-end-check.sh`: VALIDATE detection anchored to command position — `echo "TODO: git commit later"` no longer counts as a validation and suppresses the mid-SPINE checkpoint.
+- `hooks/mem-audit.sh`: drift banner bullets every entry (`IFS=$'\n  - '` is a char-set, not a separator string, so it dropped the bullet on all lines but the first).
+- `hooks/banned-vocab.patterns` + `scripts/lib/lint.js`: patterns use POSIX `[[:space:]]` not GNU `\s` (BSD/macOS grep treats `\s` as literal `s`, silently disabling the ratio deny); the JS CLI translates POSIX classes back to JS regex.
+- `hooks/lib/platform.sh`: new `platform_timeout` (timeout → gtimeout → bash watchdog) so the upstream-check / ship-baseline CI gate / bootstrap install no longer silently no-op on a stock macOS without coreutils; `${1:-}` guards on the stat/find helpers.
+- `scripts/spec-coherence-audit.js`: cross-ref regex preserves the full suffix (`-R` / `-V` / `-O`, not only `-EXT`), so a dangling `§10-R` ref no longer matches an unrelated `§10-V` heading on the audit's flagship check.
+
+### Fixed — CLI / lib robustness
+
+- `scripts/status.js`: guard a manifest with `version` but no `entries` array (was a `TypeError` crash).
+- `scripts/lib/argv.js` `parsePositiveInt`: numeric flags (`--days` / `--age-days` / `--prune-backups` / `--sample`) reject hex / exponential / non-integer (`0x1e`, `1e2`, `1.5`) that `Number()` silently coerced — applied across `audit.js`, `sparkline.js`, `hard-rules-audit.js`, `sampling-audit.js`, `doctor.js`, `clean-residue.js`, `lesson-bypass-audit.js`.
+- `scripts/lib/backup.js`: `BACKUP_DIR_REGEX` matches same-ms collision dirs (`backup-…Z-1`) so they are listed / sorted / pruned instead of leaking forever.
+- `scripts/lib/settings-merge.js`: the hand-install eviction predicate is anchored to the user's own `~/.claude/hooks/`, so claudemd uninstall no longer evicts a foreign plugin that reuses a claudemd hook basename under a different root.
+- `scripts/lib/memory-tags.js`: resolve the LAST `(...md)` link target (matches the hook's greedy sed) so doctor/scan report the same file the hook enforces against.
+
+### Notes
+
+- Documented best-effort limits of the §8 wrapper handling (flag-bearing `nice -n10 rm` / `timeout 5 rm`, `xargs`, `sudo` are not unwrapped) and added static guards: `tests/scripts/spec-pattern-drift.test.js` drift-7 + `tests/scripts/hook-portability.test.js` reject GNU-only `\s/\d/\w` in hook sources / patterns.
+- 8 spec-content quality items (prose clarity / cross-ref) were identified but deferred to a future v6.14.2 spec patch; spec files are untouched here.
+
 ## [0.23.10] - 2026-06-03
 
 **Patch — fix: `memory-read-check` sanitizer leaked multi-line quoted command bodies into tag matching.** `sanitize_for_tagmatch` strips quoted `--notes` / `--title` / `-m` bodies before MEMORY.md tag matching (so release-note prose does not spuriously match memory tags), but its quote-strip `sed` was line-based and silently failed on MULTI-LINE quoted strings. A multi-paragraph `gh release create --notes "..."` leaked its prose, matching unrelated memory tags and forcing a spurious `§11 MEMORY.md read-the-file` deny + bypass — live-reproduced on the v0.23.8 / v0.23.9 release notes (their "self-dogfood" matched a `dogfood` tag).

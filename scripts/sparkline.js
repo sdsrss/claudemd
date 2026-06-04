@@ -25,8 +25,8 @@
 
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupBySection, logFirstTs } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { readHits, groupBySection, logFirstTs, excludeTestSessions } from './lib/rule-hits-parse.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
 
@@ -44,14 +44,21 @@ Wrapped by /claudemd-sparkline.
 Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const DEFAULT_WINDOWS = [30, 60, 90];
-const SIGNAL_EVENTS = new Set(['deny', 'warn', 'advisory', 'bypass-escape-hatch']);
+// Include the full blocking-deny family (deny + deny-repeat + deny-prose), not
+// just literal `deny` — otherwise §11-memory-read (deny-repeat) and §10-V
+// (deny-prose) are undercounted in the release-header trend. Mirrors the
+// blockingDenyCount sweep applied to doctor.js / hard-rules-audit.js. The
+// advisory `deny-prose-dry-run` stays OUT (it's an observation, not a block).
+const SIGNAL_EVENTS = new Set(['deny', 'deny-repeat', 'deny-prose', 'warn', 'advisory', 'bypass-escape-hatch']);
 
 export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const log = logPath || path.join(logsDir(), 'claudemd.jsonl');
   const sortedWindows = [...windows].sort((a, b) => a - b);
   const longest = sortedWindows[sortedWindows.length - 1];
 
-  const allHits = readHits(log, longest).hits
+  // excludeTestSessions: drop hook-unit-test sentinels ('t'/'test') so the
+  // release-header trend block isn't polluted by test traffic (mirrors audit.js).
+  const allHits = excludeTestSessions(readHits(log, longest).hits)
     .filter(h => SIGNAL_EVENTS.has(h.event))
     .filter(h => h.spec_section); // drop (unset)
 
@@ -191,11 +198,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
-  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
-  // Pre-fix `parseInt('1.5,2,3', 10)` silently truncated to [1,2,3] and ran
-  // with the wrong window header. Same silent-fallback family.
-  const windows = raw.split(',').map(s => Number(s.trim()));
-  if (!windows.every(w => Number.isInteger(w) && w >= 1) || windows.length < 2) {
+  // parsePositiveInt rejects per-element '1.5' (truncation footgun) +
+  // '0x1e'/'1e2' (Number() over-coercion) + 0/empty; returns null on any of
+  // them. Pre-fix '1.5,2,3' silently truncated to [1,2,3] with a wrong header.
+  const windows = raw.split(',').map(s => parsePositiveInt(s));
+  if (windows.some(w => w === null) || windows.length < 2) {
     console.error(
       `--days expects ≥2 comma-separated positive integers (got '${raw}').\n` +
       `  Examples: --days=30,60,90 (default), --days=7,14,28.`

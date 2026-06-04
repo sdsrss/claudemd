@@ -9,6 +9,13 @@
 //     feedback_cli_flag_shape_silent_fallback.md.
 // Fix: `parseInt(raw, 10)` → `Number(raw)`. `Number('1.5') === 1.5` then the
 // existing `Number.isInteger` guard rejects.
+//
+// Round-N follow-up: `Number()` is too permissive in the OTHER direction —
+// `Number('0x1e') === 30`, `Number('1e2') === 100` pass `Number.isInteger`
+// despite the "positive integer" contract. Centralized into
+// `parsePositiveInt` (scripts/lib/argv.js), which gates on plain-decimal
+// shape first. The OVERCOERCE_CASES below lock that: hex / exponential are
+// rejected, integer-valued floats ('30.0') still accepted.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,6 +31,7 @@ const CASES = [
   ['scripts/sparkline.js',        '--days',           '1.5,2,3', '30,60,90',   /≥2 comma-separated positive integers/],
   ['scripts/hard-rules-audit.js', '--days',           '2.7',     '90',         /requires a positive integer/],
   ['scripts/doctor.js',           '--prune-backups',  '2.5',     '5',          /requires a positive integer/],
+  ['scripts/lesson-bypass-audit.js', '--days',        '2.7',     '30',         /requires a positive integer/],
 ];
 
 const run = (relScript, args) => spawnSync(
@@ -52,4 +60,14 @@ for (const [rel, flag, bad, valid, errorRe] of CASES) {
     const r = run(rel, [`${flag}=${trailingZero}`]);
     assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
   });
+
+  // Over-coercion regression: hex / exponential must be rejected (Number()
+  // alone would coerce '0x1e'→30, '1e2'→100 past Number.isInteger).
+  for (const over of ['0x1e', '1e2']) {
+    const overVal = valid.includes(',') ? valid.split(',').map(() => over).join(',') : over;
+    test(`${rel}: ${flag}=${overVal} (over-coerced ${over}) rejects with exit 1`, () => {
+      const r = run(rel, [`${flag}=${overVal}`]);
+      assert.equal(r.status, 1, `expected exit 1; stdout=${r.stdout} stderr=${r.stderr}`);
+    });
+  }
 }

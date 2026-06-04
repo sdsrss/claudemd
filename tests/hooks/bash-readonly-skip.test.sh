@@ -47,6 +47,10 @@ classify() {
 [[ "$(classify 'rm foo')" == "NO" ]] && ok "17: rm not whitelisted" || ng "17: rm"
 [[ "$(classify 'npm install')" == "NO" ]] && ok "18: npm not whitelisted" || ng "18: npm"
 [[ "$(classify 'curl http://x')" == "NO" ]] && ok "19: curl not whitelisted" || ng "19: curl"
+# v0.23.11 re-audit: `env <cmd>` executes an arbitrary command → must NOT be
+# readonly (was a fast-path bypass of all 4 PreToolUse:Bash enforcement hooks).
+[[ "$(classify 'env rm -rf /tmp/x')" == "NO" ]] && ok "19b: env rm not readonly (exec wrapper)" || ng "19b: env rm classified readonly (bypass!)"
+[[ "$(classify 'env npx pkg')" == "NO" ]] && ok "19c: env npx not readonly" || ng "19c: env npx classified readonly"
 
 # --- Classifier: git destructive subcommands → NO ---------------------------
 [[ "$(classify 'git commit -m foo')" == "NO" ]] && ok "20: git commit" || ng "20: git commit"
@@ -122,7 +126,7 @@ OUT=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT_RO" | bash "$BANNED" 2>&1)
 [[ -z "$OUT" ]] && ok "33 (v0.20.0): opt-out =0 + readonly cmd → still silent (slow path)" || ng "33: opt-out introduced noise (got: $OUT)"
 
 if (( FAIL > 0 )); then
-  echo "Tests: $((33 - FAIL))/33 passed"
+  echo "Tests: $((35 - FAIL))/35 passed"
   exit 1
 fi
-echo "Tests: 33/33 passed"
+echo "Tests: 35/35 passed"

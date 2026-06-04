@@ -113,8 +113,14 @@ export function parseMemoryIndex(content) {
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trimEnd();
     // Match: `- [Title](file.md) [tag1, tag2] — desc` OR with backticks.
-    const fileMatch = line.match(/\(([^)]+\.md)\)/);
-    if (!fileMatch) continue;
+    // Take the LAST `(...md)` group — the markdown link target sits after the
+    // title, and a title may itself embed a `(foo.md)` token. memory-read-check.sh
+    // resolves the file with a greedy `s/.*(\(...\.md\)).*/` (last match); using
+    // `.match()` (first match) here diverged — doctor/scan would report tag
+    // findings against a different file than the hook enforces against.
+    const fileMatches = [...line.matchAll(/\(([^)]+\.md)\)/g)];
+    if (fileMatches.length === 0) continue;
+    const fileMatch = fileMatches[fileMatches.length - 1];
     let tagBlock = line.match(/`\[([^\]]*)\]`/);
     if (!tagBlock) {
       // Plain form: anchor on `(file.md)` then `[tag, tag]` before `— ` or `- `.

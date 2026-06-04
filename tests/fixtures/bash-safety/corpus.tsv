@@ -171,3 +171,32 @@ deny	multi-rm: unguarded $A then guarded $B	rm -rf "$A" && : "${B:?msg}" && rm -
 pass	multi-rm: both guarded	: "${A:?msg}" && : "${B:?msg}" && rm -rf "$A" && rm -rf "$B"
 pass	rm --recursive --help (long flag w/ help, no var)	rm --recursive --help
 pass	rm -r --force /tmp/literal (long-form + literal)	rm -r --force /tmp/literal
+
+# === v0.23.11 user-test round: §8 FN regressions (combined-flag indirect / env-prefix rm / quoted-# chain) ===
+deny	bash -lc rm-rf (login+command combined flag)	bash -lc 'rm -rf $X'	
+deny	bash -xc rm-rf (xtrace+command combined flag)	bash -xc 'rm -rf $X'	
+deny	sh -lc rm-rf (sh combined flags)	sh -lc 'rm -rf $X'	
+deny	bash --norc -c rm-rf (long flag then -c)	bash --norc -c 'rm -rf $X'	
+deny	bash -x -c rm-rf (separate flag then -c)	bash -x -c 'rm -rf $X'	
+deny	bash -lc npx unpinned (combined flag, npx)	bash -lc 'npx prettier'	
+deny	env-prefixed rm-rf var (FOO=bar rm -rf $X)	FOO=bar rm -rf $DANGEROUS	
+deny	stacked env-prefix rm-rf var (A=1 B=2 rm)	A=1 B=2 rm -rf $Z	
+deny	quoted-# then chained rm-rf (single-quote msg)	git commit -m 'msg # note' && rm -rf $X	
+deny	quoted-# inside $-double-quote then chained rm-rf	echo "a $X # b" && rm -rf $Y	
+pass	env-prefix non-rm command (FOO=bar npm test)	FOO=bar npm test	
+pass	env-prefix make build (VERSION=1.2.3)	VERSION=1.2.3 make build	
+pass	env-prefix rm whitelisted subpath (DEBUG=1 rm -rf $HOME/x)	DEBUG=1 rm -rf $HOME/x	
+pass	quoted-# in commit msg no chain (no FP)	git commit -m 'msg # note'	
+
+# === re-audit round: §8 command-wrapper + env-readonly-bypass regressions ===
+deny	command rm-rf var (builtin wrapper)	command rm -rf $UNVALIDATED	
+deny	nohup rm-rf var	nohup rm -rf $UNVALIDATED	
+deny	time rm-rf var	time rm -rf $UNVALIDATED	
+deny	env rm-rf var (was readonly-fast-path bypass)	env rm -rf $UNVALIDATED	
+deny	env assignment rm-rf var	env FOO=x rm -rf $UNVALIDATED	
+deny	env-wrapped npx unpinned (was readonly bypass)	env npx unknown-pkg-xyz	
+pass	bare env (print environment, no exec)	env	
+pass	env on safe command (node)	env node script.js	
+pass	env assignment on non-rm (npm test)	env FOO=x npm test	
+pass	env rm literal path (not a var)	env rm -rf /tmp/literal	
+pass	command on safe command (ls)	command ls -la	

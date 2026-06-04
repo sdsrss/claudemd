@@ -247,6 +247,33 @@ else
   ng "Case 13: counter exists=$(test -f "$HOME/.claude/.claudemd-state/l2-task-counter" && echo yes || echo no), value=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr.13")"
 fi
 
+# --- Case 14 (v0.23.11): a Bash command that merely MENTIONS a validate verb
+# inside a quoted string / comment must NOT count as a validation. Pre-fix the
+# detector was a bare substring test, so `echo "TODO: git commit later"`
+# suppressed the mid-SPINE checkpoint despite zero real validation.
+reset_cwd
+echo_commit_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"echo \"TODO: git commit later\""}}]}}'
+T="$TMP_HOME/case14.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$echo_commit_call" "$TR_OK"
+run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+  ok "Case 14: echo mentioning 'git commit' does NOT count as validate → paused.md written"
+else
+  ng "Case 14: substring FN — checkpoint suppressed by a mere mention (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
+fi
+
+# --- Case 15 (FP guard for Case 14's anchor): a REAL test after `&&` still validates.
+reset_cwd
+chained_test_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd pkg && npm test"}}]}}'
+T="$TMP_HOME/case15.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$chained_test_call" "$TR_OK"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 15: real 'cd pkg && npm test' still validates → no warn"
+else
+  ng "Case 15: anchor too strict — real chained validate missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

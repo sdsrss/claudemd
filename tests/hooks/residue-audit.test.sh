@@ -45,7 +45,22 @@ rm -rf "$HOME/.claude/tmp"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 [[ -z "$STDERR" ]] && echo "PASS: 6 missing tmp dir silent" || { echo "FAIL: 6"; FAIL=$((FAIL+1)); }
 
+# Case 7 (v0.23.11): corrupt/non-numeric baseline must fail open (exit 0), not
+# crash under `set -u`. Pre-fix `$((CURRENT - garbage))` was an unbound-variable
+# error → exit 1, and the bad baseline crashed EVERY subsequent Stop.
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+printf 'garbage-not-a-number' > "$HOME/.claude/.claudemd-state/tmp-baseline.txt"
+bash "$HOOK" <<<'{}' >/dev/null 2>&1; EC=$?
+[[ "$EC" == "0" ]] && echo "PASS: 7 corrupt baseline fails open (exit 0)" || { echo "FAIL: 7 (exit=$EC)"; FAIL=$((FAIL+1)); }
+grep -qE '^[0-9]+$' "$HOME/.claude/.claudemd-state/tmp-baseline.txt" && echo "PASS: 7b baseline self-healed to numeric" || { echo "FAIL: 7b baseline still corrupt"; FAIL=$((FAIL+1)); }
+
+# Case 8 (v0.23.11): non-numeric SPEC_RESIDUE_THRESHOLD must fail open, not crash.
+rm -f "$HOME/.claude/.claudemd-state/tmp-baseline.txt"
+echo 0 > "$HOME/.claude/.claudemd-state/tmp-baseline.txt"
+SPEC_RESIDUE_THRESHOLD=notanumber bash "$HOOK" <<<'{}' >/dev/null 2>&1; EC=$?
+[[ "$EC" == "0" ]] && echo "PASS: 8 non-numeric threshold fails open (exit 0)" || { echo "FAIL: 8 (exit=$EC)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((6 - FAIL))/6 passed"; exit 1
+  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
 fi
-echo "Tests: 6/6 passed"
+echo "Tests: 8/8 passed"

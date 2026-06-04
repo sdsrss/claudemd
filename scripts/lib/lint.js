@@ -12,7 +12,8 @@
 // JS regex notes:
 //   * Patterns were authored for grep -iE (POSIX ERE). Most carry over to
 //     JS regex unchanged. `\b` and `[0-9]` are equivalent. POSIX char classes
-//     like [[:space:]] are NOT in the .patterns file.
+//     like [[:space:]] ARE used (they're BSD-grep-safe; `\s` is not) and are
+//     translated to JS equivalents by posixClassesToJs() in scan() below.
 //   * `\s` means whitespace in JS — also fine.
 //   * Case-insensitive matching is the contract; we always pass /i flag.
 //   * Invalid regex (a future bad pattern checked in by mistake) is skipped
@@ -58,6 +59,27 @@ export function readPatterns(patternsFile = DEFAULT_PATTERNS_FILE) {
 //     (commit-message context is the most common use); CLI `audit` defaults
 //     to excludeRatio=true to mirror transcript-vocab-scan.sh behavior.
 //   opts.patterns: pre-loaded patterns array (lets callers cache the read).
+// Translate the POSIX bracket classes the patterns file uses (grep -E canonical)
+// into their JS-regex equivalents. The .patterns file is authored for grep -iE
+// and MUST stay BSD-grep-safe: `\s`/`\d`/`\w` are GNU-grep extensions that BSD
+// (macOS) grep treats as literal letters, so the file uses `[[:space:]]` etc.
+// But JS regex has no POSIX classes — `[[:space:]]` there is a char class of
+// `[`,`:`,`s`,`p`,`a`,`c`,`e` — so the CLI/JS scan would silently mis-match
+// without this translation. `\b` is universal (BSD grep + JS both support it).
+const POSIX_TO_JS = [
+  [/\[\[:space:\]\]/g, '\\s'],
+  [/\[\[:digit:\]\]/g, '\\d'],
+  [/\[\[:alnum:\]\]/g, 'A-Za-z0-9'],   // typically already inside a [...]
+  [/\[\[:alpha:\]\]/g, 'A-Za-z'],
+  [/\[\[:upper:\]\]/g, 'A-Z'],
+  [/\[\[:lower:\]\]/g, 'a-z'],
+];
+function posixClassesToJs(regex) {
+  let out = regex;
+  for (const [re, repl] of POSIX_TO_JS) out = out.replace(re, repl);
+  return out;
+}
+
 export function scan(text, { excludeRatio = false, patterns } = {}) {
   if (!text) return [];
   const pats = patterns || readPatterns();
@@ -66,7 +88,7 @@ export function scan(text, { excludeRatio = false, patterns } = {}) {
     if (excludeRatio && p.isRatio) continue;
     let re;
     try {
-      re = new RegExp(p.regex, 'i');
+      re = new RegExp(posixClassesToJs(p.regex), 'i');
     } catch {
       continue; // bad regex — skip (fail-open)
     }

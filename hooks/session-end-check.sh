@@ -63,7 +63,13 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s '
       | .recent = ((.recent + [{name: $t.name, target: ($t.input.file_path // $t.input.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
     elif $t.name == "Bash" then
       ($t.input.command // "") as $cmd |
-      if ($cmd | test("(node --test|pytest|npm test|jest|vitest|go test|cargo test|bash tests/|tsc |eslint|ruff |clippy|shellcheck|git commit|git push)")) then
+      # Anchor each validate verb to a command position — start of string or
+      # right after a shell separator (; && || | newline). Pre-v0.23.11 this was
+      # a bare substring test, so `echo "TODO: git commit later"` /
+      # `grep "npm test" file` counted as a validation and suppressed the
+      # mid-SPINE paused.md checkpoint. A stricter anchor errs toward WRITING
+      # the checkpoint (the safe side for this advisory safety-net).
+      if ($cmd | test("(^|[;&|\n]+[ \t]*)(node --test|pytest|npm test|jest|vitest|go test|cargo test|bash tests/|tsc |eslint|ruff |clippy|shellcheck|git commit|git push)")) then
         .validates += 1
       else . end
     else . end

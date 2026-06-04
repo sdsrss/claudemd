@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
 import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
@@ -90,11 +90,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_AUDIT_DAYS || '30');
-  // `Number()` (not `parseInt`) so '1.5' yields 1.5 — `isInteger(1.5)` rejects.
-  // Pre-fix `parseInt('1.5', 10) === 1` silently truncated and ran with the
-  // wrong window. Same silent-fallback family as feedback_cli_flag_shape_silent_fallback.md.
-  const days = Number(raw);
-  if (!Number.isInteger(days) || days < 1) {
+  // parsePositiveInt rejects '1.5' (truncation footgun), '0x1e'/'1e2'
+  // (Number() over-coercion), and 0/negatives — only a plain positive integer
+  // passes. Same silent-fallback family as feedback_cli_flag_shape_silent_fallback.md.
+  const days = parsePositiveInt(raw);
+  if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
       `  Examples: --days=30 (default), --days=90.`

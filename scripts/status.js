@@ -32,7 +32,11 @@ export async function status({ verbose = false } = {}) {
   const m = readManifest();
   let plugin = { installed: false };
   if (m.exists && m.data) {
-    plugin = { installed: true, version: m.data.version, entries: m.data.entries.length };
+    // Guard `entries` — a legacy / hand-edited / truncated manifest may carry a
+    // valid `version` but no `entries` array. Pre-fix this threw an unguarded
+    // `TypeError: ... reading 'length'` + raw stack (exit 1), the only manifest
+    // consumer that didn't `?? []`-guard (cf. uninstall.js). Treat missing as 0.
+    plugin = { installed: true, version: m.data.version, entries: Array.isArray(m.data.entries) ? m.data.entries.length : 0 };
   } else {
     // CC's `/plugin install claudemd@claudemd` lands the version dir under
     // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire

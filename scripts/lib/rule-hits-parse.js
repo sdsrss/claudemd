@@ -10,11 +10,15 @@ import fs from 'node:fs';
 // Returns: { hits, totalLines, parsed, skipped }
 //   hits        — array of parsed rows within the window (existing contract)
 //   totalLines  — total non-empty lines read from the file
-//   parsed      — lines that JSON.parse'd successfully (regardless of window)
-//   skipped     — lines that failed JSON.parse (malformed / truncated)
+//   parsed      — usable rows: JSON.parse'd AND carry a finite `ts` (any window)
+//   skipped     — corrupt rows: failed JSON.parse OR missing/unparseable `ts`
 //
-// Out-of-window rows count as `parsed`, not `skipped` — `skipped` is reserved
-// for parse-time corruption signals.
+// `parsed + skipped === totalLines` always. Out-of-window (finite-ts) rows
+// count as `parsed`, not `skipped`. A row that JSON-parses but has a
+// missing/null/non-date `ts` is corruption, not a valid out-of-window row:
+// `new Date(bad).getTime()` is NaN, `NaN >= cutoff` is false, so pre-fix it
+// vanished from `hits` while still counting as `parsed` with `skipped:0` — a
+// false 0% skipRatio that hid truncated rows from §13.1 demote reviewers.
 export function readHits(path, daysBack = 30) {
   if (!fs.existsSync(path)) return { hits: [], totalLines: 0, parsed: 0, skipped: 0 };
   const cutoff = Date.now() - daysBack * 86400 * 1000;
@@ -23,13 +27,21 @@ export function readHits(path, daysBack = 30) {
   let parsed = 0;
   let skipped = 0;
   for (const line of lines) {
+    let row;
     try {
-      const row = JSON.parse(line);
-      parsed++;
-      if (new Date(row.ts).getTime() >= cutoff) hits.push(row);
+      row = JSON.parse(line);
     } catch {
       skipped++;
+      continue;
     }
+    // `row.ts == null` guard is load-bearing: `new Date(null).getTime() === 0`
+    // (epoch, finite) and `new Date(undefined)` is NaN, so a null `ts` would
+    // otherwise be silently treated as a valid 1970 event rather than the
+    // missing-field corruption it is.
+    const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
+    if (!Number.isFinite(t)) { skipped++; continue; }
+    parsed++;
+    if (t >= cutoff) hits.push(row);
   }
   return { hits, totalLines: lines.length, parsed, skipped };
 }
@@ -47,7 +59,8 @@ export function logFirstTs(path) {
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
-      const t = new Date(row.ts).getTime();
+      // null/missing ts → NaN (not epoch-0); see readHits for the rationale.
+      const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
       if (!Number.isFinite(t)) continue;
       if (firstTs === null || t < firstTs) firstTs = t;
     } catch { /* skip malformed */ }
@@ -82,7 +95,11 @@ export function detectCutover(path) {
     try {
       const row = JSON.parse(line);
       if (row.spec_section == null) continue;
-      const t = new Date(row.ts).getTime();
+      // null/missing ts → NaN (not epoch-0). `new Date(null).getTime() === 0`
+      // is finite, so without this guard a section-bearing null-ts row would
+      // set cutover to 1970 and collapse the (unset-historical)/(unset-current)
+      // split — every null-section row then falls into (unset-current).
+      const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
       if (!Number.isFinite(t)) continue;
       if (cutover === null || t < cutover) cutover = t;
     } catch { /* skip malformed */ }
@@ -207,6 +224,22 @@ export function isBlockingDeny(event) {
   return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
 }
 
+// blockingDenyCount(byEvent) — sum every blocking-deny-family event in a
+// groupBySection `byEvent` map (deny + deny-repeat + deny-prose, excluding the
+// advisory deny-prose-dry-run). Callers that hardcoded `byEvent.deny` undercount
+// real blocks: banned-vocab Path-2 emits `deny-prose`, ship-baseline + memory-
+// read-check emit `deny-repeat`. Undercounting the deny side inflates the
+// bypass:deny ratio and can FALSELY flag a healthy rule as a §0.1 demote
+// candidate (doctor.js) or misreport per-rule blocks (hard-rules-audit.js).
+export function blockingDenyCount(byEvent) {
+  if (!byEvent) return 0;
+  let n = 0;
+  for (const [event, count] of Object.entries(byEvent)) {
+    if (isBlockingDeny(event)) n += count;
+  }
+  return n;
+}
+
 // byProjectClass — split events per hook into self / external / unknown so
 // /claudemd-audit can report "banned-vocab 198 deny = 11 external / 187 self"
 // instead of a misleading raw 198. `mode`:
@@ -266,7 +299,7 @@ export function groupBySection(hits, cutoverTs = null) {
     } else if (cutoverTs == null) {
       key = '(unset)';
     } else {
-      const t = new Date(h.ts).getTime();
+      const t = (h.ts == null) ? NaN : new Date(h.ts).getTime();
       key = (Number.isFinite(t) && t < cutoverTs) ? '(unset-historical)' : '(unset-current)';
     }
     bySection[key] ||= { total: 0, byEvent: {}, byHook: {} };
@@ -331,7 +364,7 @@ export function byTrend(hits, windowDays = 7, cutoverTs = null) {
   const recent = {};
   const prior = {};
   for (const h of hits) {
-    const t = new Date(h.ts).getTime();
+    const t = (h.ts == null) ? NaN : new Date(h.ts).getTime();
     let key;
     if (h.spec_section) {
       key = h.spec_section;

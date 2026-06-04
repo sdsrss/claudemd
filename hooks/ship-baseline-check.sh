@@ -74,7 +74,14 @@ CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | tr '\n' ' ')
 # memory-read-check.sh v0.9.28 segment-anchor fix.
 TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git[[:space:]]+push([[:space:]]|$)'
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
-echo "$CMD_FLAT" | grep -qE '\-\-help|\-h\b' && exit 0
+# Help-invocation exemption (`git push --help` / `git push -h` does nothing, so
+# never gate it on CI). Pre-v0.23.11 this grep'd `--help|-h\b` across the WHOLE
+# command, so any incidental `-h` — a branch named `feature-h`, or a commit
+# message mentioning `-h` chained before the push — exempted a real red-CI push
+# (§7 bypass). Now isolate the `git push …` segment (up to the next shell
+# separator) and require `-h`/`--help` to be a standalone flag token within it.
+PUSH_SEG=$(echo "$CMD_FLAT" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -n1)
+echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0
 
 # Require gh CLI
 command -v gh >/dev/null 2>&1 || exit 0
@@ -84,9 +91,9 @@ command -v gh >/dev/null 2>&1 || exit 0
 # green. Detached HEAD / non-git: skip the filter (old unfiltered behavior).
 BRANCH=$(git branch --show-current 2>/dev/null)
 if [[ -n "$BRANCH" ]]; then
-  RUN_JSON=$(timeout 2 gh run list --branch "$BRANCH" --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(platform_timeout 2 gh run list --branch "$BRANCH" --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 else
-  RUN_JSON=$(timeout 2 gh run list --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(platform_timeout 2 gh run list --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 fi
 [[ -n "$RUN_JSON" ]] || exit 0
 
@@ -150,7 +157,9 @@ REPEAT=0
 if [[ -n "$SENTINEL" && -f "$SENTINEL" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   now=$(date +%s 2>/dev/null) || now=0
   smtime=$(platform_stat_mtime "$SENTINEL" 2>/dev/null) || smtime=0
-  if [[ "$now" -gt 0 && "$smtime" -gt 0 ]]; then
+  # Regex-guard before arithmetic: `[[ "$smtime" -gt 0 ]]` itself crashes under
+  # `set -u` when smtime is non-numeric-non-empty (treats it as an unbound var).
+  if [[ "$now" =~ ^[1-9][0-9]*$ && "$smtime" =~ ^[1-9][0-9]*$ ]]; then
     age=$(( now - smtime ))
     [[ "$age" -lt 300 ]] && REPEAT=1
   fi

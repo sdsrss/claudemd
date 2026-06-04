@@ -4,6 +4,12 @@
 # Empty lines and lines starting with # are ignored.
 # Patterns are matched case-insensitive via grep -iE.
 #
+# PORTABILITY (v0.23.11): use POSIX bracket classes ([[:space:]], [[:digit:]]),
+# NOT the GNU escapes \s / \d / \w — BSD/macOS grep treats those as literal
+# letters, silently disabling the pattern there. `\b` is fine (BSD-supported).
+# The JS CLI (scripts/lib/lint.js) translates the POSIX classes back to \s/\d.
+# tests/scripts/spec-pattern-drift.test.js guards against \s/\d/\w reappearing.
+#
 # Scope: applied to extracted `-m` / `--message` body when present (the
 # common case); falls back to the ENTIRE command string when no message is
 # captured (editor-mode `git commit`, `git commit --file=PATH`, `--amend
@@ -62,7 +68,7 @@
 显著改善|值述无具体数字 — 改写成 before → after 的具体数字
 
 # ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
-\b[0-9]+%\s+(faster|slower|better|more efficient)\b|@ratio ratio without baseline — cite before → after numbers
+\b[0-9]+%[[:space:]]+(faster|slower|better|more efficient)\b|@ratio ratio without baseline — cite before → after numbers
 
 # ============================================================================
 # region: prophylactic (kept for §10-V coverage; 0 hits in last audit window)
@@ -91,7 +97,7 @@
 相当不错|评价性形容词 — 描述具体属性
 
 # ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
-\b[0-9]+x\s+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
+\b[0-9]+x[[:space:]]+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
 
 # ─── Baseline-less ratios (中文) ────────────────────────────────────────────
 [0-9]+%(更快|更慢|更好|更高效)|@ratio 无基线的比率 — 给出 before → after 数字

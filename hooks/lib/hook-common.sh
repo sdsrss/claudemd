@@ -137,8 +137,13 @@ hook_is_readonly_bash() {
   local trimmed="${cmd#"${cmd%%[![:space:]]*}"}"
   local first="${trimmed%%[[:space:]]*}"
   case "$first" in
-    ls|cat|head|tail|wc|stat|date|pwd|echo|printf|sleep|file|which|type|env|basename|dirname|realpath|true|false)
+    ls|cat|head|tail|wc|stat|date|pwd|echo|printf|sleep|file|which|type|basename|dirname|realpath|true|false)
       return 0 ;;
+    # `env` REMOVED (v0.23.11): `env <cmd>` executes an arbitrary command, so it
+    # is NOT readonly — whitelisting it let `env rm -rf $VAR` / `env npx <pkg>`
+    # skip the readonly fast-path and bypass ALL four PreToolUse:Bash enforcement
+    # hooks. First-token matching can't distinguish bare `env` (print env, safe)
+    # from `env <cmd>` (exec), so it must not be on the safe-reader list.
     git)
       local rest="${trimmed#git}"
       rest="${rest#"${rest%%[![:space:]]*}"}"

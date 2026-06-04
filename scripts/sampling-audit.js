@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const RULE_KEYS = ['§10-V', '§iron-law-2', '§10-four-section-order', '§10-honesty'];
 
@@ -321,15 +321,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const rawDays = parsed.values['--days'] ?? (process.env.CLAUDEMD_SAMPLING_DAYS || String(DEFAULT_WINDOW_DAYS));
-  const days = Number(rawDays);
-  if (!Number.isInteger(days) || days < 1) {
+  const days = parsePositiveInt(rawDays);
+  if (days === null) {
     console.error(`--days requires a positive integer (got '${rawDays}').`);
     process.exit(1);
   }
   let sample = null;
   if (parsed.values['--sample'] != null) {
-    const s = Number(parsed.values['--sample']);
-    if (!Number.isInteger(s) || s < 1) {
+    const s = parsePositiveInt(parsed.values['--sample']);
+    if (s === null) {
       console.error(`--sample requires a positive integer (got '${parsed.values['--sample']}').`);
       process.exit(1);
     }

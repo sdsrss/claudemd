@@ -164,8 +164,29 @@ else
   ng "10: missed last-paragraph banned vocab (out: $OUT)"
 fi
 
+# --- Case 11/12 (v0.23.11): per-session dedup. PostToolUse fires after every
+# tool call; the same prose turn must NOT re-emit the advisory on each tool call
+# in a chain — fires once, silent on identical re-scan, fires again on NEW prose.
+jq -cn '{type:"assistant",message:{content:[{type:"text",text:"this is significantly better overall"}]}}' > "$TRANSCRIPT"
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+OUT_A=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+OUT_B=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT_A" | grep -qi significantly && [[ -z "$OUT_B" ]]; then
+  ok "11: identical prose re-scan deduped (fires once, silent on repeat)"
+else
+  ng "11: dedup failed (A nonempty=$([[ -n "$OUT_A" ]] && echo y), B='$OUT_B')"
+fi
+
+jq -cn '{type:"assistant",message:{content:[{type:"text",text:"now it is robust and comprehensive"}]}}' > "$TRANSCRIPT"
+OUT_C=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT_C" | grep -qiE 'robust|comprehensive'; then
+  ok "12: new prose after dedup still fires"
+else
+  ng "12: dedup wrongly suppressed new prose (out: $OUT_C)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((10 - FAIL))/10 passed"
+  echo "Tests: $((12 - FAIL))/12 passed"
   exit 1
 fi
-echo "Tests: 10/10 passed"
+echo "Tests: 12/12 passed"

@@ -58,7 +58,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | 17 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `memory-coverage-scan` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 13 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
-| Spec v6.14.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
+| Spec v6.14 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 
 Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 

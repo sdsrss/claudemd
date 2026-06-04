@@ -146,3 +146,22 @@ test('drift-6: no canonical entries cover neither spec nor pattern', () => {
     both_null.map(t => `  ${t}`).join('\n') +
     `\nResolution: an entry must be enforced via spec, via pattern, or both. Otherwise delete.`);
 });
+
+test('drift-7 (v0.23.11): patterns file uses POSIX classes, not BSD-unsafe \\s/\\d/\\w', () => {
+  // BSD/macOS grep treats \s/\d/\w as literal letters → the pattern silently
+  // stops matching there (the 70% faster ratio deny never fired on macOS).
+  // Patterns MUST use [[:space:]]/[[:digit:]] etc.; \b is fine (BSD-supported).
+  // lint.js translates the POSIX classes back to JS \s/\d for the CLI.
+  const lines = fs.readFileSync(PATTERNS_FILE, 'utf8').split('\n');
+  const offenders = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim() || line.startsWith('#')) continue;
+    const regex = line.slice(0, line.lastIndexOf('|'));
+    if (/\\[sdwSDW]/.test(regex)) offenders.push(`L${i + 1}: ${line}`);
+  }
+  assert.deepEqual(offenders, [],
+    `banned-vocab.patterns lines using BSD-unsafe GNU escapes (\\s/\\d/\\w):\n` +
+    offenders.join('\n') +
+    `\nResolution: replace \\s→[[:space:]], \\d→[[:digit:]], \\w→[[:alnum:]_].`);
+});

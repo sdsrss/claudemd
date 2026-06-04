@@ -616,7 +616,34 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 35 bare tag token outside quotes still matches (strip is surgical)" \
   || { echo "FAIL: 35 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 36 (v0.23.11 regression): an in-quote `#` (issue/PR number in a commit
+# message) must NOT swallow the rest of the command. Pre-fix the line-comment
+# strip ran BEFORE the quote strips, so `git commit -m "closes #42" && deploy
+# <topic>` deleted everything after `#42` — including the trigger verb + topic
+# tag — silently bypassing the §11 gate. Same ordering bug as pre-bash-safety.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Apple topic](feedback_apple_topic.md) `[appletopicz]` — about appletopicz
+EOF
+touch "$MEM_DIR/feedback_apple_topic.md"
+SESS="sess36"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+HASH_CMD='git commit -m "closes #42" && deploy appletopicz'
+EVENT_36=$(jq -cn --arg c "$HASH_CMD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_36" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 36 in-quote # does not bypass §11 gate" \
+  || { echo "FAIL: 36 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 37: a REAL unquoted comment is still ignored (FP guard for Case 36's reorder).
+SESS="sess37"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+CMT_CMD='ls # deploy appletopicz later'
+EVENT_37=$(jq -cn --arg c "$CMT_CMD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_37" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 37 real unquoted comment still ignored" \
+  || { echo "FAIL: 37 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((35 - FAIL))/35 passed"; exit 1
+  echo "Tests: $((37 - FAIL))/37 passed"; exit 1
 fi
-echo "Tests: 35/35 passed"
+echo "Tests: 37/37 passed"

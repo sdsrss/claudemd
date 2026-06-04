@@ -282,6 +282,26 @@ test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 5
   assert.match(usage.detail, /83%/);
 });
 
+test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false demote flag', async () => {
+  // §11-memory-read emits `deny-repeat` for re-denies. 1 deny + 2 deny-repeat
+  // = 3 real blocks vs 2 bypasses → true ratio 40% (healthy). Pre-fix doctor
+  // counted only literal `deny` (=1) → ratio 67% → FALSE demote candidate.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows = [
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny-repeat","spec_section":"§11-memory-read","extra":null}\n`.repeat(2),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(2),
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
+  assert.ok(usage);
+  assert.equal(usage.ok, true, 'deny-family count must keep this healthy');
+  assert.match(usage.detail, /deny=3/);
+  assert.match(usage.detail, /healthy/);
+});
+
 test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () => {
   // 5 denies + 1 bypass = 17% override rate — below threshold, healthy.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');

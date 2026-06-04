@@ -60,7 +60,7 @@ touch -d '1 second ago' "$HOME/.claude/.claudemd-state/session-start.ref" 2>/dev
   || { touch "$HOME/.claude/.claudemd-state/session-start.ref"; sleep 1; }
 mkdir -p "$HOME/.claude/tmp/tmp.p3a_bullet_test"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
-if echo "$STDERR" | grep -E '^\s*-\s*$'; then
+if echo "$STDERR" | grep -E '^[[:space:]]*-[[:space:]]*$'; then
   echo "FAIL: 6 trailing blank bullet present — sed '/^$/d' regression (stderr: $STDERR)"
   FAIL=$((FAIL+1))
 else
