@@ -1,6 +1,6 @@
 # claudemd
 
-> Claude Code plugin that enforces **AI-CODING-SPEC v6.14 HARD rules** through shell hooks — and ships the spec itself as part of the plugin.
+> A **personal AI-coding discipline harness**: one developer's opinionated **AI-CODING-SPEC v6.14**, encoded as Claude Code shell hooks and shipped with the plugin. Built and dogfooded on my own repos — fork and adapt, don't adopt wholesale.
 
 [![CI](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/claudemd-cli.svg)](https://www.npmjs.com/package/claudemd-cli)
@@ -9,6 +9,8 @@
 claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v6.14 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (`OPERATOR.md` is the human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
 
 A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git pre-commit hooks, GitHub Actions, and other agents that don't run inside Claude Code.
+
+> **Status & scope.** This is a single-maintainer tool that encodes one developer's working discipline — not a general-purpose product. It's exercised almost entirely on my own repositories, the spec is opinionated, and the defaults reflect my preferences rather than a consensus. If you install it, expect to fork `CLAUDE.md` and tune the rules to your own workflow. Treat it as a reference implementation of "spec-as-enforced-hooks," not a turnkey solution. Issues and PRs are welcome.
 
 ---
 
