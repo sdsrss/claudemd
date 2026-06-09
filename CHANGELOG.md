@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.15] - 2026-06-10
+
+**Patch — ship-baseline false-positive: a commit message quoting `&& git push` was denied on red CI.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the PreToolUse hooks.
+
+### Fixed — inline `-m "..."` commit-message prose tripped the push trigger
+
+- `hooks/ship-baseline-check.sh`: v0.23.1 stripped heredoc bodies before the `git push` segment-anchor match so commit-message prose quoting `&& git push` would not trip the CI gate — but only for heredocs. The far more common inline form `git commit -m "fix && git push in docs"` (a pure commit, no push at all) still matched the trigger and was denied on red CI, with a deny message telling the user to add a `known-red baseline:` push-bypass marker — nonsensical for a command that never pushes. Fix: also strip `"..."` and `'...'` quoted bodies (after the heredoc strip + flatten) before the trigger match. A real push is always unquoted, so this removes the false positive without a false negative — `git commit -m "x" && git push` keeps its outside-quote `&& git push` and still gates. The `known-red baseline:` marker check reads the raw command, so the override inside a quoted `-m` payload is unaffected. Added Cases 25–26 (`&&` and `;` inside an inline `-m` quote → pass) alongside the existing non-regression case 21 (real chained push → deny).
+
 ## [0.23.14] - 2026-06-10
 
 **Patch — SessionStart emitted invalid JSON when two banners fired together, dropping both.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the SessionStart / UserPromptSubmit hooks.

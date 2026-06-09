@@ -61,11 +61,19 @@ strip_heredocs() {
 }
 
 # Filter: git push, not --help.
-# Strip heredoc bodies (v0.23.1) THEN flatten — segment-anchor regex needs
-# real shell separators to be the only `&&`/`;`/`|` candidates, not commit
-# message prose quoting `&& git push --tags`.
+# Strip heredoc bodies (v0.23.1) THEN flatten THEN strip quoted bodies — the
+# segment-anchor regex needs real shell separators to be the only `&&`/`;`/`|`
+# candidates, not commit-message prose quoting them. v0.23.1 stripped heredoc
+# bodies; the far more common `-m "..."` inline form was still vulnerable:
+# `git commit -m "fix && git push in docs"` (a pure commit, no push) tripped the
+# trigger and was denied on red CI with a nonsensical push-bypass message. Strip
+# "..." and '...' bodies AFTER flattening (a multi-line -m payload is one line by
+# then). A real push is always UNQUOTED, so this drops the FP without an FN —
+# `git commit -m "x" && git push` keeps its outside-quote `&& git push`. The
+# known-red marker check below reads the raw $CMD, so the (b) escape inside a
+# quoted -m payload still works.
 CMD_STRIPPED=$(printf '%s' "$CMD" | strip_heredocs)
-CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | tr '\n' ' ')
+CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | tr '\n' ' ' | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g")
 # Segment-anchor regex: require `^` (real start-of-command, post-flatten) OR a
 # real shell separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser
 # `[[:space:];&|]` allows ANY whitespace (including space after `#` in

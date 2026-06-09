@@ -247,8 +247,28 @@ OUT=$(run_hook fail-red "$EVENT_HD_MARKER")
 [[ -z "$OUT" ]] && echo "PASS: 24 chained commit+push with marker in heredoc body → pass" \
   || { echo "FAIL: 24 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 25-26 (v0.23.14): inline `-m "..."` quoted-body FP. v0.23.1 stripped
+# heredoc bodies, but the far more common `git commit -m "...prose with
+# && git push..."` form still tripped the segment-anchor — a PURE COMMIT (no
+# push) was denied on red CI with a nonsensical push-bypass message. Quote-body
+# strip (post-flatten) fixes it; a real push is always unquoted, so Case 21
+# (chained push outside quotes) still denies.
+rm -rf "$HOME/.claude/.claudemd-state/ship-baseline-recent" 2>/dev/null
+
+# Case 25: `&& git push` inside an inline -m quote → pass (pure commit).
+EVENT_INLINE_AMP=$(jq -nc '{session_id:"inline-amp","tool_name":"Bash","tool_input":{command:"git commit -m \"fix && git push in docs\""},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_INLINE_AMP")
+[[ -z "$OUT" ]] && echo "PASS: 25 inline -m body containing '&& git push' → pass" \
+  || { echo "FAIL: 25 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 26: semicolon variant inside an inline -m quote → pass.
+EVENT_INLINE_SEMI=$(jq -nc '{session_id:"inline-semi","tool_name":"Bash","tool_input":{command:"git commit -m \"see notes; git push --force is banned\""},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_INLINE_SEMI")
+[[ -z "$OUT" ]] && echo "PASS: 26 inline -m body containing '; git push' → pass" \
+  || { echo "FAIL: 26 (got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((26 - FAIL))/26 passed"
+  echo "Tests: $((28 - FAIL))/28 passed"
   exit 1
 fi
-echo "Tests: 26/26 passed"
+echo "Tests: 28/28 passed"
