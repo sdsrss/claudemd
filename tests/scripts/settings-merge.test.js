@@ -164,6 +164,40 @@ test('17: unmergeHook removes entire matcher block + event key + hooks key when 
   assert.equal(s.hooks, undefined);
 });
 
+test('17b (v0.23.18): unmergeHook tolerates malformed-but-valid-JSON settings without throwing', () => {
+  // Hand-edited / third-party-written settings.json can be valid JSON yet have
+  // a shape unmergeHook did not expect. Pre-fix these threw a cryptic
+  // `Cannot read properties of undefined (reading 'length')` that surfaced as
+  // "install failed: …" during the adopter's first-touch flow. Each must now
+  // no-op gracefully and leave the malformed structure untouched.
+  const malformed = [
+    { hooks: { PreToolUse: 'oops' } },                                  // event value not an array
+    { hooks: { PreToolUse: [{ matcher: 'Bash' }] } },                   // block missing hooks[]
+    { hooks: { PreToolUse: [null] } },                                  // null block
+    { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [null] }] } },    // null hook entry
+    { hooks: [] },                                                      // hooks itself an array
+  ];
+  for (const s of malformed) {
+    const snapshot = JSON.stringify(s);
+    const { removed } = unmergeHook(s, { commandPredicate: () => true });
+    assert.equal(removed, 0, `expected no removals for ${snapshot}`);
+    assert.equal(JSON.stringify(s), snapshot, `malformed structure must be left untouched: ${snapshot}`);
+  }
+});
+
+test('17c (v0.23.18): unmergeHook still evicts claudemd + preserves a user hook in a mixed block', () => {
+  // Well-formed path is unchanged by the malformed-tolerance guards: evict the
+  // claudemd entry, keep the user's own hook, keep the (still non-empty) block.
+  const s = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [
+    { type: 'command', command: '/home/me/mine.sh' },
+    { type: 'command', command: '/x/plugins/cache/claudemd/hooks/h.sh' },
+  ] }] } };
+  const { removed } = unmergeHook(s, { commandPredicate: (c) => c.includes('claudemd') });
+  assert.equal(removed, 1);
+  const cmds = s.hooks.PreToolUse[0].hooks.map(h => h.command);
+  assert.deepEqual(cmds, ['/home/me/mine.sh']);
+});
+
 test('18: mergeHook handles settings where hooks key is missing', () => {
   const s = { env: { FOO: 'bar' } };
   mergeHook(s, HOOK_SPEC);

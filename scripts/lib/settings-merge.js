@@ -72,19 +72,38 @@ export function isClaudemdLegacyHookCommand(c, hookBasenames) {
 }
 
 export function unmergeHook(settings, { commandPredicate }) {
-  if (!settings.hooks) return { removed: 0 };
+  if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) {
+    return { removed: 0 };
+  }
   let removed = 0;
   for (const event of Object.keys(settings.hooks)) {
     const blocks = settings.hooks[event];
+    // Tolerate malformed-but-valid-JSON settings (hand-edited or written by a
+    // third-party tool): a non-array event value, a non-object block, or a
+    // block whose `hooks` is not an array cannot hold a claudemd entry in any
+    // form claudemd ever wrote. Pre-fix, iterating these threw a cryptic
+    // `Cannot read properties of undefined (reading 'length')` that surfaced as
+    // "install failed: …" / "uninstall failed: …" during the adopter's
+    // first-touch flow. Skip the malformed parts and leave them untouched —
+    // never mutate or drop structure we don't understand.
+    if (!Array.isArray(blocks)) continue;
     for (const block of blocks) {
+      if (!block || typeof block !== 'object' || !Array.isArray(block.hooks)) continue;
       const before = block.hooks.length;
-      block.hooks = block.hooks.filter(h => !commandPredicate(h.command));
+      // Keep an entry unless it is a well-formed claudemd command. Malformed
+      // entries (null, non-object, non-string command) are preserved as-is.
+      block.hooks = block.hooks.filter(h =>
+        !h || typeof h !== 'object' || typeof h.command !== 'string' || !commandPredicate(h.command)
+      );
       removed += before - block.hooks.length;
     }
-    settings.hooks[event] = blocks.filter(b => b.hooks.length > 0);
-    // Drop the event key entirely if no blocks remain — otherwise every
+    // Drop only well-formed blocks that are now empty — otherwise every
     // install/uninstall cycle leaves a `"PreToolUse": []` residue and
-    // settings.json accumulates empty scaffolding visible in diffs.
+    // settings.json accumulates empty scaffolding visible in diffs. Malformed
+    // blocks are passed through unchanged.
+    settings.hooks[event] = blocks.filter(
+      b => !b || typeof b !== 'object' || !Array.isArray(b.hooks) || b.hooks.length > 0
+    );
     if (settings.hooks[event].length === 0) delete settings.hooks[event];
   }
   if (Object.keys(settings.hooks).length === 0) delete settings.hooks;

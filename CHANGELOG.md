@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.18] - 2026-06-10
+
+**Patch — install/uninstall crashed with a cryptic error on a malformed-but-valid-JSON settings.json.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the install path.
+
+### Fixed — `unmergeHook` did not tolerate unexpected settings.json shapes
+
+- `scripts/lib/settings-merge.js`: `unmergeHook` (run by both install.js and uninstall.js to evict legacy claudemd hook entries) assumed every `settings.hooks[event]` is an array and every block carries a `hooks` array. A hand-edited or third-party-written settings.json can be valid JSON yet have a different shape — an event value that is a string, a block missing its `hooks` array, a `null` block or entry. Pre-fix these threw `Cannot read properties of undefined (reading 'length')`, which install.js/uninstall.js surfaced as `install failed: …` / `uninstall failed: …` during an adopter's first-touch flow (it failed safe — settings.json was never written — but the message pointed nowhere). Fix: skip malformed parts and leave them untouched (never mutate or drop structure claudemd did not write), processing only well-formed blocks. The well-formed path is unchanged — claudemd entries are still evicted, user hooks preserved, emptied blocks/events pruned. Added regression tests 17b (5 malformed shapes → no-op, byte-identical) and 17c (mixed block → evict claudemd, keep user hook).
+
 ## [0.23.17] - 2026-06-10
 
 **Patch — §8 SAFETY: `dash -c "rm -rf $X"` and other Bourne-family shells were not unwrapped, bypassing the rm-rf-var / npx gate.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the §8 hook.
