@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.17] - 2026-06-10
+
+**Patch — §8 SAFETY: `dash -c "rm -rf $X"` and other Bourne-family shells were not unwrapped, bypassing the rm-rf-var / npx gate.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the §8 hook.
+
+### Fixed — indirect-shell unwrap missed dash / ksh / ash
+
+- `hooks/pre-bash-safety-check.sh`: `unwrap_indirect` expands `bash -c '<inner>'` / `sh -c` / `zsh -c` / `eval` so the inner command is re-checked for §8 violations, but the shell set was only `bash|sh|zsh`. `dash` — the Debian/Ubuntu default `/bin/sh` — plus `ksh` and `ash` (busybox) were not unwrapped, so `dash -c "rm -rf $X"` (empty `$X` → `rm -rf /…`) and `dash -c 'npx <unpinned>'` sailed through on the most common CI/server platform. This is distinct from the documented best-effort wrapper exclusions (`sudo` / `timeout` / `xargs` / `nice`, which carry the `[allow-rm-rf-var]` escape and are intentionally not covered) — dash/ksh/ash are in the *covered* indirect-shell class and were simply missed. Fix: widen the shell set to `bash|sh|zsh|dash|ksh|ash` in both unwrap regexes, closing the whole Bourne family rather than one instance. Each name stays separator-anchored, so it never matches inside a longer word (`dashboard`, `stash`). csh/tcsh excluded (different `-c` quoting, rare). Added 7 corpus rows (5 deny incl. `dash -lc` and unpinned-npx, 2 pass FP-guards). Corpus 140 → 147.
+
 ## [0.23.16] - 2026-06-10
 
 **Patch — cwd→projects-dir encoding silently no-op'd the §11 gate (and 3 more hooks) for paths with a space / `+` / `@`.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep.

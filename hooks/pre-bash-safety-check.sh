@@ -177,8 +177,15 @@ unwrap_indirect() {
   # was matched — `bash -lc 'rm -rf $X'` was a §8 SAFETY silent bypass. The
   # `([[:space:]]+-[a-zA-Z-]+)*` group eats leading flags; the required
   # `-[a-zA-Z]*c[a-zA-Z]*` is the bundle that consumes the command string.
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
+  # Shell set = the Bourne family whose `-c "<cmd>"` execs the arg identically:
+  # bash/sh/zsh + dash/ksh/ash. v0.23.17 added dash/ksh/ash — `dash` is the
+  # Debian/Ubuntu default `/bin/sh`, so `dash -c 'rm -rf $X'` was a §8 bypass on
+  # the most common CI/server platform; covering the whole family closes the
+  # class rather than the one instance. Each name is separator-anchored
+  # (`(^|[[:space:];&|\`(])`) so it never matches inside a longer word
+  # (`dashboard`, `stash`). csh/tcsh excluded — different `-c` quoting + rare.
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
   # Unquoted eval form: `eval rm -rf $X` — bash collapses the words with

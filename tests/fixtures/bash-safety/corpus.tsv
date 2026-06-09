@@ -200,3 +200,12 @@ pass	env on safe command (node)	env node script.js
 pass	env assignment on non-rm (npm test)	env FOO=x npm test	
 pass	env rm literal path (not a var)	env rm -rf /tmp/literal	
 pass	command on safe command (ls)	command ls -la	
+
+# === indirect-call: Bourne-family shells beyond bash/sh/zsh (v0.23.17) ===
+deny	dash -c rm-rf (Debian /bin/sh)	dash -c 'rm -rf $X'
+deny	ksh -c rm-rf	ksh -c 'rm -rf $X'
+deny	ash -c rm-rf (busybox)	ash -c 'rm -rf $X'
+deny	dash -lc rm-rf (flag bundle)	dash -lc 'rm -rf $X'
+deny	dash -c npx unpinned	dash -c 'npx prettier'
+pass	dashboard is not a shell (no unwrap FP)	dashboard --config $X
+pass	stash -c is not a shell	stash -c list
