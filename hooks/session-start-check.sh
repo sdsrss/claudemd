@@ -183,8 +183,27 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
   # Match: local install is current. Run upstream check before exiting — this
   # is the canonical "everything in order locally, look outward" branch.
   if [[ "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
-    upstream_check
-    emit_session_summary_banner
+    # Both helpers can emit a SessionStart additionalContext JSON object. CC
+    # parses hook stdout with a strict single-value JSON.parse, so printing two
+    # objects back-to-back is INVALID JSON and BOTH banners are silently dropped
+    # — the upgrade notice vanishes exactly when the user also had session
+    # activity (a summary to show). Capture each (side effects — sentinel touch,
+    # file rename, hook_record — still run inside the command substitution) and
+    # emit at most ONE object, merging additionalContext when both fire.
+    up_json=$(upstream_check)
+    sum_json=$(emit_session_summary_banner)
+    printf '%s\n%s\n' "$up_json" "$sum_json" | jq -s -c '
+      map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
+      | if length == 0 then empty
+        elif length == 1 then .[0]
+        else {
+          suppressOutput: true,
+          hookSpecificOutput: {
+            hookEventName: "SessionStart",
+            additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
+          }
+        } end
+    ' 2>/dev/null
     exit 0
   fi
   # Mismatch: log intent, then fall through to the install block below which

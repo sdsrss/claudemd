@@ -249,7 +249,31 @@ bash "$HOOK" <<<'{}' >/dev/null 2>&1; EC=$?
 [[ "$EC" == "0" ]] && echo "PASS: 13 corrupt non-numeric summary fails open (exit 0)" \
   || { echo "FAIL: 13 (exit=$EC)"; FAIL=$((FAIL+1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((13 - FAIL))/13 passed"; exit 1
+# Case 14 (v0.23.13): upstream-upgrade banner + session-summary banner firing in
+# the SAME SessionStart must emit ONE JSON object, not two concatenated. CC
+# parses hook stdout with a strict single-value JSON.parse — two objects are
+# invalid JSON and BOTH banners are silently dropped (the upgrade notice
+# vanishes exactly when the user also had session activity). `jq -s length`
+# counts top-level JSON values: pre-fix this was 2, post-fix it must be 1.
+PLUGIN_VER_REAL=$(jq -r .version "$PLUGIN_ROOT/package.json")
+echo "{\"version\":\"$PLUGIN_VER_REAL\",\"entries\":[]}" > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" \
+      "$HOME/.claude/.claudemd-state/last-session-summary.json.last-shown" 2>/dev/null || true
+printf '{"denies":2,"bypasses":1,"warns":0,"top_section":"§8"}' > "$HOME/.claude/.claudemd-state/last-session-summary.json"
+OUT14=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
+        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+        DISABLE_UPSTREAM_CHECK=0 \
+        bash "$HOOK" <<<'{}' 2>/dev/null)
+OBJCOUNT14=$(printf '%s' "$OUT14" | jq -s 'length' 2>/dev/null)
+if [[ "$OBJCOUNT14" == "1" ]] \
+   && echo "$OUT14" | grep -q 'v9.9.9' \
+   && echo "$OUT14" | grep -q 'last session'; then
+  echo "PASS: 14 upstream + summary merge into one valid JSON object"
+else
+  echo "FAIL: 14 double-emit not merged (objects=$OBJCOUNT14, out: $OUT14)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 13/13 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
+fi
+echo "Tests: 14/14 passed"

@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.14] - 2026-06-10
+
+**Patch — SessionStart emitted invalid JSON when two banners fired together, dropping both.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the SessionStart / UserPromptSubmit hooks.
+
+### Fixed — upgrade banner silently lost when the user also had session activity
+
+- `hooks/session-start-check.sh`: in the "local install is current" branch, `upstream_check` (upgrade-available banner) and `emit_session_summary_banner` (last-session deny/bypass/warn counts) were called back-to-back, and **each prints its own complete SessionStart `additionalContext` JSON object**. CC parses hook stdout with a strict single-value `JSON.parse`, so two objects concatenated is invalid JSON — `Unexpected non-whitespace character after JSON` — and CC drops **both** banners. The two conditions co-occur exactly in the case that matters: a user with a pending upgrade who also had rule activity last session, so the upgrade notice vanishes precisely when they are active. The existing upstream-check tests (Cases 8–11) ran with no summary file present, so they never produced the two-object output, and their assertions grep for substrings rather than validating JSON. Fix: capture both helpers' output (their side effects — sentinel touch, file rename, `hook_record` — still run inside the command substitution) and emit at most one object via `jq -s`, merging the two `additionalContext` fields with a blank line when both fire. Added Case 14 asserting `jq -s length == 1` on the combined-banner stdout (was 2 pre-fix).
+
 ## [0.23.13] - 2026-06-10
 
 **Patch — 4 bugfixes from a 3-round end-to-end user-test sweep (Stop hooks, standalone CLI, sampling audit).** Spec content (`spec/CLAUDE*.md`) unchanged (stays v6.14.1). Each fix carries a reproduction + regression test; node suite 513 → 515, plus added bash hook regression cases (transcript-structure-scan +3, session-end-check +2); all suites + integration green.
