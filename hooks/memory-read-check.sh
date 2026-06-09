@@ -141,9 +141,15 @@ fi
 # ~/.claude/projects/ — e.g. /mnt/data_ssd → -mnt-data-ssd, my.project → my-project,
 # ~/.claude → --claude). Earlier `tr '/.' '-'` missed `_`, silently mis-locating
 # the memory dir for any cwd with an underscore (turning the HARD §11 rule into
-# a no-op for those projects). `tr '/._'` is the minimal extension covering all
-# three observed encoded chars.
-ENCODED=$(printf '%s' "$CWD" | tr '/._' '-')
+# a no-op for those projects). `tr -c 'a-zA-Z0-9-' '-'` converts EVERY non-
+# `[a-zA-Z0-9-]` char (space, `+`, `@`, …) to `-`, exactly matching CC's
+# encoding — the narrower `tr '/._'` only handled the three chars seen in this
+# maintainer's own cwds and silently mis-located the dir for any project path
+# with a special char beyond those, no-op'ing the HARD §11 rule there too.
+# For `/._`-only paths the two forms are byte-identical, so this is a strict
+# superset fix. (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh,
+# lib/rule-hits.sh — all derive the same projects-dir encoding.)
+ENCODED=$(printf '%s' "$CWD" | tr -c 'a-zA-Z0-9-' '-')
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"

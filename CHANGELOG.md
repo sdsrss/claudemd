@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.16] - 2026-06-10
+
+**Patch — cwd→projects-dir encoding silently no-op'd the §11 gate (and 3 more hooks) for paths with a space / `+` / `@`.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep.
+
+### Fixed — narrow `tr '/._'` cwd encoding mis-located the per-project dir
+
+- `hooks/memory-read-check.sh`, `hooks/memory-prompt-hint.sh`, `hooks/banned-vocab-check.sh`, `hooks/lib/rule-hits.sh`: all four derive `~/.claude/projects/<encoded>/` from the cwd, and all used `tr '/._' '-'`. But Claude Code replaces **every** char outside `[a-zA-Z0-9-]` with `-` (the code comments and `feedback_cc_cwd_encoding_dots` both say so). The narrow three-char transform left a space / `+` / `@` / etc. intact, so for any project path containing one (e.g. a macOS path under `Application Support`), the derived dir was wrong → the memory index / transcript was not found → fail-open. Concretely: the HARD §11 memory-read gate silently no-op'd, the §11 memory-hint went dark, the §10-V transcript-vocab scan mis-located the transcript, and `rule-hits` telemetry attributed rows to the wrong project. Fix: all four now use `tr -c 'a-zA-Z0-9-' '-'`, the exact CC transform. For `/._`-only paths the two forms are byte-identical, so this is a strict superset with no behavior change for common paths. Added memory-read-check Case 8b (space-in-cwd → correct encoding → deny); a `/._`-only fixture passes under both the bug and the fix, so the new fixture deliberately uses a space.
+
 ## [0.23.15] - 2026-06-10
 
 **Patch — ship-baseline false-positive: a commit message quoting `&& git push` was denied on red CI.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the PreToolUse hooks.

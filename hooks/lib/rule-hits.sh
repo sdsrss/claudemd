@@ -44,14 +44,17 @@ rule_hits_append() {
   # real caller and every test.
   [[ "$session_id" == "t" ]] && return 0
 
-  # Project: encoded with `/`, `.`, AND `_` → `-` to match Claude Code's
-  # ~/.claude/projects/<encoded>/ convention. CC encodes every non-`[a-zA-Z0-9-]`
-  # char; `tr '/._'` covers the three observed in real cwds. See
-  # hooks/memory-read-check.sh for the matching consumer + bug-history note.
-  # Empty string when neither var is set.
+  # Project: encode to match Claude Code's ~/.claude/projects/<encoded>/
+  # convention — CC replaces every non-`[a-zA-Z0-9-]` char with `-`, so
+  # `tr -c 'a-zA-Z0-9-' '-'` is the exact transform. The earlier `tr '/._'`
+  # only handled the three chars seen in this maintainer's cwds and mis-encoded
+  # the project field for any path with another special char (telemetry then
+  # attributed those rows to the wrong / a non-existent project). For `/._`-only
+  # paths the forms are identical. See hooks/memory-read-check.sh for the
+  # matching consumer + bug-history note. Empty string when neither var is set.
   local project_raw="${CLAUDE_PROJECT_DIR:-${PWD:-}}"
   local project=""
-  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr '/._' '-')
+  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr -c 'a-zA-Z0-9-' '-')
 
   local log_dir="$HOME/.claude/logs"
   local log_file="$log_dir/claudemd.jsonl"

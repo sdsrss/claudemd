@@ -45,9 +45,10 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
 [[ -n "$PROMPT" && -n "$CWD" && -n "$SESSION_ID" ]] || exit 0
 
-# Project-dir encoding: tr '/._' → '-' (matches CC convention, see
-# memory-read-check.sh:84-86 for the empirical derivation).
-ENCODED=$(printf '%s' "$CWD" | tr '/._' '-')
+# Project-dir encoding: convert EVERY non-`[a-zA-Z0-9-]` char to `-` (CC
+# convention; see memory-read-check.sh for the empirical derivation + why the
+# narrower `tr '/._'` mis-located the dir for cwds with other special chars).
+ENCODED=$(printf '%s' "$CWD" | tr -c 'a-zA-Z0-9-' '-')
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"

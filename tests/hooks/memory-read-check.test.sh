@@ -93,6 +93,30 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 8 dot-in-cwd → correct encoding → deny" \
   || { echo "FAIL: 8 (out: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 8b (v0.23.16): cwd with a SPECIAL char beyond `/._` (here a space) must
+# also encode correctly. CC replaces every non-`[a-zA-Z0-9-]` char with `-`, so
+# the hook must use `tr -c 'a-zA-Z0-9-' '-'`. The narrower `tr '/._'` left the
+# space intact → looked for the memory dir at the wrong path → MEM_INDEX absent
+# → fail-open → the HARD §11 gate silently no-op'd for any project path with a
+# space / `+` / `@` / etc. (e.g. macOS "Application Support"). The expected dir
+# below is computed with the wide transform to match CC + the fixed hook.
+SP_CWD="/work/my proj"
+SP_ENCODED=$(printf '%s' "$SP_CWD" | tr -c 'a-zA-Z0-9-' '-')
+SP_PROJ="$HOME/.claude/projects/$SP_ENCODED"
+SP_MEM="$SP_PROJ/memory"
+mkdir -p "$SP_MEM"
+cat > "$SP_MEM/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$SP_MEM/feedback_ship.md"
+SESS="sess8b"
+echo '{"tool":"Read","path":"/unrelated"}' > "$SP_PROJ/$SESS.jsonl"
+EVENT_8B="{\"session_id\":\"$SESS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$SP_CWD\"}"
+OUT=$(bash "$HOOK" <<<"$EVENT_8B" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 8b space-in-cwd → correct encoding → deny" \
+  || { echo "FAIL: 8b (out: $OUT)"; FAIL=$((FAIL+1)); }
+
 # Case 9: tag containing regex metacharacters is matched literally (H3). Before
 # the v6.10.1 `-qiF` fix, a tag like `v6.9` would regex-match `v6X9`, `v699`,
 # etc. — drifting into false-positive territory as tag vocab grows. Locks the

@@ -194,9 +194,9 @@ fi  # end IS_GIT_COMMIT block
 (( IS_SHIP_VERB == 1 )) || exit 0
 
 # Locate transcript via CC's cwd→encoded-dir convention (per memory
-# feedback_cc_cwd_encoding_dots.md: tr '/._' '-').
+# feedback_cc_cwd_encoding_dots.md: every non-`[a-zA-Z0-9-]` char → `-`).
 [[ -n "$EVENT_CWD" && -n "$SESSION_ID" ]] || exit 0
-ENCODED=$(printf '%s' "$EVENT_CWD" | tr '/._' '-')
+ENCODED=$(printf '%s' "$EVENT_CWD" | tr -c 'a-zA-Z0-9-' '-')
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 [[ -f "$TRANSCRIPT" ]] || exit 0
 
