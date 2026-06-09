@@ -303,11 +303,27 @@ function auditCmd(rawArgs) {
   const nonEmptyLines = jsonl.split('\n').filter(l => l.trim().length > 0);
   if (nonEmptyLines.length > 0) {
     let parsedAny = false;
+    let sawTypeField = false;
     for (const l of nonEmptyLines) {
-      try { JSON.parse(l); parsedAny = true; break; } catch { /* keep scanning */ }
+      let row;
+      try { row = JSON.parse(l); } catch { continue; }
+      parsedAny = true;
+      if (row && typeof row === 'object' && row.type !== undefined) { sawTypeField = true; break; }
     }
     if (!parsedAny) {
       process.stderr.write(`audit: no parseable JSON rows in ${transcriptPath} (expected JSONL transcript with one JSON object per line)\n`);
+      process.exit(2);
+    }
+    // Parseable JSON but NO row carries a `type` field → not a Claude Code
+    // transcript (wrong file, other-agent export, or a coerced CSV/log). Every
+    // real CC row carries `type` (assistant / user / system / summary / …).
+    // Without this, parseTranscript yields 0 turns and audit prints
+    // "OK: no §10-V hits across 0 assistant turn(s)" exit 0 — a silent
+    // false-pass in CI, same silent-success family as the v0.9.14 / v0.9.21
+    // literal-string-scan bugs. A legit transcript whose only rows are
+    // non-assistant still has `type`, so it passes this gate and exits 0.
+    if (!sawTypeField) {
+      process.stderr.write(`audit: ${transcriptPath} parses as JSON but no row has a 'type' field — does not look like a Claude Code transcript (expected rows like {"type":"assistant",...}). Wrong file?\n`);
       process.exit(2);
     }
   }

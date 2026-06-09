@@ -49,7 +49,21 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s '
   split("\n") |
   map(select(length > 0) | try fromjson catch null) |
   map(select(. != null)) |
-  (map(.type == "user" and ((.message.content // []) | any(.type == "text")))) as $mask |
+  (map(.type == "user" and (
+        # A human-typed user message carries text input in EITHER shape:
+        #   - string content (the common CC form for a typed prompt), or
+        #   - array content with a {type:"text"} block.
+        # tool_result rows are array content WITHOUT a text block, not input.
+        # The bare any(.type=="text") here pre-fix iterated the content
+        # unconditionally; on a string it threw jq "Cannot iterate over
+        # string", the whole filter errored under 2>/dev/null, RESULT came
+        # back empty, and the hook silently exited 0. Because every real
+        # session has >=1 string-content prompt in the last 200 lines, the
+        # section-11 session-exit safety net never fired in production. The
+        # array-only test fixtures masked it (format drift). Guard iterate by type.
+        ((.message.content | type) == "string")
+        or ((.message.content | type) == "array" and (.message.content | any(.type == "text")))
+      ))) as $mask |
   ($mask | to_entries | map(select(.value)) | (last // {key: -1}) | .key) as $lastUser |
   .[$lastUser + 1:] |
   map(select(.type == "assistant") | (.message.content // [])) |

@@ -163,6 +163,41 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 9b: 中文 Uncertain with 由于 (canonical 中文 rationale, not 因为)
+#   → silent. Regression for the §10-honesty FP where only 因为 was accepted.
+# --------------------------------------------------------------------------
+TX=$(seed_transcript $'Some prose.\n\nUncertain: 由于 CI 未跑完，无法确认部署时间。\n\nEnd.')
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 && -z "$STDERR" ]]; then
+  echo "PASS: 9b Uncertain with 由于 → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 9b (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 9c: English Uncertain with 'due to' → silent (rationale connector).
+# --------------------------------------------------------------------------
+TX=$(seed_transcript $'Uncertain: blocked due to missing credentials.')
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 && -z "$STDERR" ]]; then
+  echo "PASS: 9c Uncertain with 'due to' → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 9c (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 9d: still flag a genuinely reasonless short Uncertain (no FN regression
+#   from the widened connector list).
+# --------------------------------------------------------------------------
+TX=$(seed_transcript $'Uncertain: 可能有问题。')
+TRANSCRIPT_STRUCTURE_SCAN=1 drive "$TX"; rc=$?
+if [[ "$rc" -eq 0 ]] && echo "$STDERR" | grep -q '§10-honesty'; then
+  echo "PASS: 9d reasonless 中文 Uncertain still flagged"; PASS=$((PASS+1))
+else
+  echo "FAIL: 9d (rc=$rc, stderr='$STDERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Case 10: kill-switch DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1 → silent.
 # --------------------------------------------------------------------------
 TX=$(seed_transcript "Uncertain: short hedge.")

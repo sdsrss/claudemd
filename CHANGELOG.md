@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.13] - 2026-06-10
+
+**Patch — 4 bugfixes from a 3-round end-to-end user-test sweep (Stop hooks, standalone CLI, sampling audit).** Spec content (`spec/CLAUDE*.md`) unchanged (stays v6.14.1). Each fix carries a reproduction + regression test; node suite 513 → 515, plus added bash hook regression cases (transcript-structure-scan +3, session-end-check +2); all suites + integration green.
+
+### Fixed — §11-session-exit safety net was silently dead in production
+
+- `hooks/session-end-check.sh`: the "last user-input message" detector ran `(.message.content // []) | any(.type=="text")`, but a human-typed prompt is **string** content in a CC transcript (only tool_results are arrays). `any()` over a string throws jq `Cannot iterate over string`; the surrounding `2>/dev/null` swallowed it, the filter returned empty, and the hook hit its `[[ -n "$RESULT" ]] || exit 0` guard — a silent no-op. Because every real session has ≥1 string-content prompt in its last 200 transcript lines, the §11 session-exit `paused.md` safety net (a §5.1 Never-downgrade rule) never fired live; the array-only test fixtures masked it. Fix: guard the iterate by content type (string → input; array → check for a text block), matching the `mid-spine-yield-scan.sh` pattern. Verified end-to-end: a string-prompt + Edit + no-validate transcript wrote no `paused.md` pre-fix, writes it post-fix. Added a string-content fixture + 2 regression cases.
+
+### Fixed — §10-honesty false positive on 中文 / non-`because` rationale
+
+- `hooks/transcript-structure-scan.sh`: the `uncertain-hedge` detector accepted only `because/since/reason:/因为` as rationale connectors, so an Uncertain line written with `由于` / `鉴于` (canonical 中文 equivalents) or English `due to` / `owing to` was flagged as a reasonless hedge though it states a reason. Widened the connector set. Added 3 cases (中文 `由于`, English `due to`, and a still-flagged reasonless line — no false-negative regression).
+
+### Fixed — standalone CLI + sampling audit
+
+- `bin/claudemd-lint.js` `audit`: a JSON-parseable file that is not a CC transcript (e.g. a `{role,content}` export or coerced log) yielded 0 assistant turns and exited 0 with "OK" — a silent false-pass for CI gates. Now exits 2 when parseable rows carry no `type` field (every real CC row has one; confirmed 0/900+ rows lacking it across 4 transcripts). Added 2 cases (wrong-shape → exit 2; legit transcript with only non-assistant rows → exit 0).
+- `scripts/sampling-audit.js`: `--sample N` used `arr.sort(() => Math.random() - 0.5)`, a non-uniform shuffle (the comparator violates total-order; V8 biases toward input order — the first element stayed at position 0 32% of trials vs 20% uniform), skewing the sample toward whichever transcripts `readdir` lists first. Replaced with a partial Fisher-Yates; inclusion rate is now ~40% per element at sample=2/N=5 (uniform baseline 40%).
+
 ## [0.23.12] - 2026-06-05
 
 **Patch — remove the `memory-coverage-scan` Stop hook (17 → 16 hooks).** The save-side "should-have-saved" advisory shipped default-OFF since v0.13.0 and never earned its keep: 9 advisory events in 30 days, all from a single opt-in repo (this one), against a HARD-blocking read-side already in place. Cutting it resolves the only open item from the 2026-06-03 maturity audit and ends the internal-feature backlog. No spec change (`spec/CLAUDE*.md` stays v6.14.1; the hook was never a `hard-rules.json` rule). Removed: `hooks/memory-coverage-scan.sh` + its test; the `hooks.json` Stop registration; the `hook-registry.js` entry (drops the `MEMORY_COVERAGE` kill-switch + `MEMORY_COVERAGE_SCAN` / `DISABLE_MEMORY_COVERAGE_HOOK` env vars — now no-ops if still set); references in README, ARCHITECTURE.md, RULE-HITS-SCHEMA.md, `claudemd-toggle.md`, `mid-spine-yield-scan.sh` header, and the contract / full-lifecycle / hook-registry / install test count assertions (all moved 17 → 16 together).

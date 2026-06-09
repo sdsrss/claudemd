@@ -196,8 +196,15 @@ while IFS= read -r ln_str; do
   echo "$line" | grep -qE '^##[[:space:]]+Uncertain[[:space:]]*$' && continue
   # Empty / explicit-none → skip.
   echo "$norm" | grep -qE '^Uncertain[[:space:]]*[:—-][[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
-  # Has rationale connector → skip.
-  echo "$norm" | grep -qiE '\b(because|since)\b|reason:|因为' && continue
+  # Has rationale connector → skip. The list must cover both halves of the
+  # spec's bilingual canonical form: English `because/since/due to/owing to`
+  # and 中文 `因为/由于/鉴于`. Pre-fix it only had `因为`, so a 中文 report
+  # writing the equally-canonical `由于 …`/`鉴于 …` (or English `due to …`)
+  # was falsely flagged as a reasonless hedge — a §10-honesty FP against the
+  # rule's own intent (the line DOES state a reason). These connectors only
+  # match when a real reason follows, so adding them removes FPs without
+  # letting reasonless hedges ("Uncertain: maybe broken") pass.
+  echo "$norm" | grep -qiE '\b(because|since|due to|owing to)\b|reason:|因为|由于|鉴于' && continue
   # Bare Uncertain header without : or — separator and no body → skip
   # (typically markdown form where reason follows on next line).
   echo "$norm" | grep -qE '^Uncertain[[:space:]]*$' && continue

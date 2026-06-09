@@ -35,6 +35,11 @@ make_transcript() {
 
 # Common JSONL shapes for the 3 entry kinds we exercise.
 USER_MSG='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Do X"}]}}'
+# Real CC writes a human-typed prompt as STRING content (not an array). The
+# array-only USER_MSG above masked a bug where jq `any(.type=="text")` threw
+# "Cannot iterate over string" on this shape, erroring the whole filter under
+# 2>/dev/null and silently no-op'ing the hook in every real session.
+USER_MSG_STR='{"type":"user","message":{"role":"user","content":"修复这个 bug"}}'
 TR_OK='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'
 edit_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"a.js","old_string":"x","new_string":"y"}}]}}'
 write_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"b.js","content":"x"}}]}}'
@@ -77,6 +82,32 @@ if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$T
   ok "Case 2: Edit alone → warn + paused.md"
 else
   ng "Case 2: missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
+fi
+
+# --- Case 2b: STRING-content user msg + Edit only → warn + paused.md ---------
+# Regression: the real-CC string-content prompt shape must still find the last
+# user message, slice forward, and detect the unvalidated mutation. Pre-fix
+# this silently no-op'd (jq iterate-over-string error swallowed by 2>/dev/null).
+reset_cwd
+T="$TMP_HOME/case2b.jsonl"
+make_transcript "$T" "$USER_MSG_STR" "$edit_call" "$TR_OK"
+run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+  ok "Case 2b: string-content user + Edit → warn + paused.md"
+else
+  ng "Case 2b: string-content user missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
+fi
+
+# --- Case 2c: STRING-content user msg + Edit + test → no warn ----------------
+# The string-shape path must also correctly count validates (not just bail).
+reset_cwd
+T="$TMP_HOME/case2c.jsonl"
+make_transcript "$T" "$USER_MSG_STR" "$edit_call" "$TR_OK" "$test_call" "$TR_OK"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 2c: string-content user + Edit + test → no warn"
+else
+  ng "Case 2c: false-positive (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
 fi
 
 # --- Case 3: Edit + Bash(git commit) → no warn (commit is validate signal) ---

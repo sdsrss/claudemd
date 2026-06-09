@@ -180,7 +180,17 @@ export async function samplingAudit({
   });
 
   if (sample && sample > 0 && sample < files.length) {
-    const shuffled = files.slice().sort(() => Math.random() - 0.5);
+    // Fisher-Yates: `sort(() => Math.random() - 0.5)` is NOT a uniform shuffle —
+    // the comparator violates total-order, so V8 biases toward the input order
+    // (empirically the first/last elements stay put ~30% of the time vs 20%
+    // uniform). For a *sampling* audit that skews drift estimates toward
+    // whichever sessions readdir lists first. Partial F-Y: we only need the
+    // first `sample` slots, so stop once they're filled.
+    const shuffled = files.slice();
+    for (let i = 0; i < sample; i++) {
+      const j = i + Math.floor(Math.random() * (shuffled.length - i));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
     files = shuffled.slice(0, sample);
   }
 

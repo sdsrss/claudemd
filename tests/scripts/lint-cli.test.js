@@ -192,6 +192,45 @@ test('CLI: audit missing file → exit 2', () => {
   assert.match(r.stderr, /file not found/);
 });
 
+test('CLI: audit JSON-but-not-CC-transcript → exit 2, not silent OK', () => {
+  // Valid JSON rows (so the "no parseable JSON" guard passes) but no `type`
+  // field — e.g. an old/other-agent export shaped {role,content}. Pre-fix,
+  // parseTranscript found 0 assistant turns and audit exited 0 with
+  // "OK: ... 0 assistant turn(s)" — a silent false-pass that would let banned
+  // vocab slip a CI gate. Now it must exit 2 and say it's not a CC transcript.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'wrong-shape.jsonl');
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ role: 'assistant', content: 'this is significantly improved' }),
+    JSON.stringify({ role: 'user', content: 'hi' }),
+  ].join('\n') + '\n');
+  try {
+    const r = run(['audit', transcript]);
+    assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /does not look like a Claude Code transcript/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit transcript with only non-assistant rows → exit 0 (legit empty)', () => {
+  // A real CC transcript that happens to have no assistant turns still carries
+  // `type` on every row, so the not-a-transcript gate must NOT fire here.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'only-user.jsonl');
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ type: 'user', message: { content: 'significantly improved?' } }),
+    JSON.stringify({ type: 'system', content: 'hook fired' }),
+  ].join('\n') + '\n');
+  try {
+    const r = run(['audit', transcript]);
+    assert.equal(r.status, 0, `expected exit 0; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stdout, /0 assistant turn/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('CLI: unknown subcommand → exit 2 + usage', () => {
   const r = run(['nope']);
   assert.equal(r.status, 2);
