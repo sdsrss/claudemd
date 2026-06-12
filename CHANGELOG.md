@@ -8,6 +8,18 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.20] - 2026-06-13
+
+**Patch — two telemetry-integrity fixes found by a 7-day /claudemd-audit self-review: ad-hoc debug sentinels polluted audit views, and banned-vocab's bypass event violated its own documented schema.** Spec content unchanged (stays v6.14.1).
+
+### Fixed — audit views: ad-hoc manual-debug sentinel rows counted as real traffic
+
+- `scripts/lib/rule-hits-parse.js` (`excludeTestSessions`): the v0.17.7 filter full-matched only `session_id='t'/'test'`, so manual hook debugging with other one-char sentinels slipped through — eight 2026-06-09 ship-baseline fixture rows with `session_id='s'` / `tool_use_id='t'` / `run_url=https://x/runs/99` inflated self-deny counts (9 denies reported, 8 synthetic) AND faked `duplicate_rows_real=6`, the signal /claudemd-audit documents as a "registration/lib double-fire bug candidate". Fix: also strip any non-null session_id of ≤7 chars — real CC session ids are 36-char UUIDs; all observed synthetic values (`s`, `p`, `probe`, `r4-test`, 353 rows all-time) fall under the cap, while longer one-offs (`dogfood-fresh`, 7 rows) age out naturally. Post-fix on the live log (7-day window): `testSessionsFiltered` 0 → 33, ship-baseline `duplicate_rows_real` 6 → 0, ship-baseline denies 9 → 1 (the survivor is the genuine daagu red-CI interception). Three test fixtures using short ids (`s1`/`s2`/`sess-A`) renamed to ≥8 chars — they simulated real sessions with a shape real sessions never have. Docs synced: `commands/claudemd-audit.md` + `scripts/audit.js` comments.
+
+### Fixed — `banned-vocab`: bypass-escape-hatch recorded `extra:null`, contradicting RULE-HITS-SCHEMA
+
+- `hooks/banned-vocab-check.sh:80`: `docs/RULE-HITS-SCHEMA.md` line 33 documents bypass-escape-hatch as "records token name in `extra`", and the pre-bash-safety siblings do (`{"token":"allow-rm-rf-var"}`), but banned-vocab passed literal `null` — the audit's `byBypass` showed `(unspecified)` ×3 sitting exactly on the ≥3 §0.1 review-candidate threshold with no way to tell which token fired (same spec≠impl gap class as `feedback_hook_header_quote_partial_impl`). Fix: record `{"token":"allow-banned-vocab"}`; `tests/hooks/contract.test.sh` A.1 tightened from event-presence to `.extra.token=="allow-banned-vocab"` (pre-fix FAIL showing `extra:null`, post-fix PASS). A `tests/hooks/session-end-check.test.sh` fixture already assumed this shape — implementation now matches it. Full run post-fix: `OVERALL: all suites passed` (4 mid-bundle failures from the sentinel-cap widening fixed by the fixture renames above).
+
 ## [0.23.19] - 2026-06-13
 
 **Patch — two field-report FPs (external transcript, bat-html-website session 2026-06-12): §8-npx denied a fetch-free `npx --no-install` probe; §10-V Path 2 denied 3 consecutive pushes on a banned word living only inside a branch name.** Spec content unchanged (stays v6.14.1).

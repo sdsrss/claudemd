@@ -41,7 +41,7 @@ drive() {
 rm -f "$LOG"
 drive "$HOOKS_DIR/banned-vocab-check.sh" \
   "git commit -m 'should work [allow-banned-vocab]'"
-if [[ -f "$LOG" ]] && jq -e 'select(.hook=="banned-vocab" and .event=="bypass-escape-hatch")' "$LOG" >/dev/null 2>&1; then
+if [[ -f "$LOG" ]] && jq -e 'select(.hook=="banned-vocab" and .event=="bypass-escape-hatch" and .extra.token=="allow-banned-vocab")' "$LOG" >/dev/null 2>&1; then
   ok "A.1 banned-vocab [allow-banned-vocab] records bypass"
 else
   ng "A.1 banned-vocab bypass not recorded (log: $(cat "$LOG" 2>/dev/null))"

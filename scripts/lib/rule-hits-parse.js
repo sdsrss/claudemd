@@ -274,10 +274,20 @@ export function byProjectClass(hits, { mode = 'deny' } = {}) {
 // hooks did not pass session_id, and bash CLI script invocations lack
 // CC_SESSION_ID. Filtering null would drop legitimate hook fires en masse.
 // Only the explicit 't' / 'test' sentinels (~7% of total) are filtered.
+//
+// v0.23.20 — manual hook debugging writes ad-hoc sentinels too ('s', 'p',
+// 'probe', 'r4-test'); on 2026-06-09 eight ship-baseline fixture rows with
+// session_id='s' slipped past the full-match set, inflating self-deny counts
+// and faking a duplicate_rows_real double-fire signal in /claudemd-audit.
+// Real CC session ids are 36-char UUIDs, so any non-null id of ≤7 chars is
+// synthetic. Longer one-off sentinels ('dogfood-fresh', 'smoke-test') are
+// deliberately NOT filtered — 7 rows all-time, they age out of every window.
 const TEST_SESSION_SENTINELS = new Set(['t', 'test']);
+const SENTINEL_MAX_LEN = 7;
 
 export function excludeTestSessions(hits) {
-  return hits.filter(h => !TEST_SESSION_SENTINELS.has(h.session_id));
+  return hits.filter(h => h.session_id == null
+    || (!TEST_SESSION_SENTINELS.has(h.session_id) && h.session_id.length > SENTINEL_MAX_LEN));
 }
 
 // v0.7.0 — R1 §0.1/§13.1/§13.2 instrumentation. Group rule-hits by spec

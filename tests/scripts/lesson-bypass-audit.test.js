@@ -138,13 +138,13 @@ test('audit: 1 applied + 1 bypassed → cite-recall 50%', () => {
       ts: now,
       hook: 'memory-prompt-hint',
       event: 'suggest',
-      session_id: 'sess-A',
+      session_id: 'sess-AAAA',
       spec_section: '§11-memory-hint',
       extra: { suggested: ['feedback_applied.md', 'feedback_bypassed.md'], match_count: 2 },
     },
   ]);
   const projectDir = path.join(tmpHome, '.claude/projects/-test-cwd');
-  writeTranscript(projectDir, 'sess-A', [
+  writeTranscript(projectDir, 'sess-AAAA', [
     { timestamp: now, message: { content: [{ type: 'text', text: 'reading feedback_applied.md' }] } },
     // feedback_bypassed.md never mentioned post-suggest → bypassed.
   ]);
@@ -263,12 +263,12 @@ test('audit: events outside window not counted', () => {
 test('audit: non-suggest events ignored (only memory-prompt-hint + suggest)', () => {
   const now = new Date().toISOString();
   writeLog([
-    { ts: now, hook: 'memory-prompt-hint', event: 'suggest', session_id: 's1', extra: { suggested: ['feedback_a.md'], match_count: 1 } },
-    { ts: now, hook: 'memory-read-check', event: 'deny', session_id: 's1', extra: null },
-    { ts: now, hook: 'banned-vocab', event: 'deny', session_id: 's2', extra: null },
+    { ts: now, hook: 'memory-prompt-hint', event: 'suggest', session_id: 'sess-0001', extra: { suggested: ['feedback_a.md'], match_count: 1 } },
+    { ts: now, hook: 'memory-read-check', event: 'deny', session_id: 'sess-0001', extra: null },
+    { ts: now, hook: 'banned-vocab', event: 'deny', session_id: 'sess-0002', extra: null },
   ]);
   const projectDir = path.join(tmpHome, '.claude/projects/-test-cwd');
-  writeTranscript(projectDir, 's1', [
+  writeTranscript(projectDir, 'sess-0001', [
     { timestamp: now, message: { content: 'mention of feedback_a.md' } },
   ]);
 

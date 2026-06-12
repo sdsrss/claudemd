@@ -77,7 +77,7 @@ TRIGGER_RE="$GIT_COMMIT_RE"
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
-  hook_record banned-vocab bypass-escape-hatch null '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+  hook_record banned-vocab bypass-escape-hatch '{"token":"allow-banned-vocab"}' '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi
 

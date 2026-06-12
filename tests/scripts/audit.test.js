@@ -174,10 +174,10 @@ test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use
   const ts1 = new Date(base).toISOString();
   const ts2 = new Date(base + 1000).toISOString();
   fs.writeFileSync(log,
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_B","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts2}","hook":"sandbox-disposal","event":"warn","session_id":"s1","tool_use_id":null,"extra":{"count":1}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts2}","hook":"sandbox-disposal","event":"warn","session_id":"sess-0001","tool_use_id":null,"extra":{"count":1}}\n` +
     `{"ts":"${ts2}","hook":"ship-baseline","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
   );
   const r = await audit({ days: 30 });
@@ -213,10 +213,10 @@ test('v0.21.7: duplicate_rows split into real (non-null tool_use_id) vs legacy (
   const ts2 = new Date(base + 1000).toISOString();
   const ts3 = new Date(base + 2000).toISOString();
   fs.writeFileSync(log,
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"s2","tool_use_id":null,"extra":null}\n` +
-    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"s2","tool_use_id":null,"extra":null}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
+    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
+    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
     `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n` +
     `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
   );

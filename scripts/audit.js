@@ -32,7 +32,8 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
   // (no row ever carried a section), in which case bySection falls back to
   // the single-bucket `(unset)` behavior.
   const cutoverTs = detectCutover(log);
-  // v0.17.7 — strip session_id='t'/'test' sentinels (hook unit-test traffic)
+  // v0.17.7 — strip session_id='t'/'test' sentinels (hook unit-test traffic;
+  // v0.23.20 also ≤7-char ad-hoc debug sentinels like 's'/'probe')
   // from every behavior view. Initial design filtered only bySection/byTrend
   // and left byHook raw, which produced a 4.7× internal inconsistency
   // (byHook.banned-vocab.deny=345 vs bySection["§10-V"].deny=73 on the same
@@ -54,7 +55,7 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
       // ISO-8601 UTC. null ⇒ no spec_section row ever observed; null-section
       // rows in bySection / byTrend collapse to legacy `(unset)`.
       cutoverTs: cutoverTs != null ? new Date(cutoverTs).toISOString() : null,
-      // v0.17.7 — diagnostic: how many session_id='t'/'test' rows were
+      // v0.17.7 — diagnostic: how many test-sentinel rows were
       // stripped from every view. Lets the operator confirm the filter ran
       // and quantify hook-test traffic without grepping the raw log.
       testSessionsFiltered: hits.length - realHits.length,
