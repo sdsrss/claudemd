@@ -152,6 +152,19 @@ run_cwd_case pass "v0.9.30: npx vitest with yarn.lock entry"             "npx vi
 run_cwd_case deny "v0.9.30: npx vitest in empty cwd (no lockfile/local)" "npx vitest"            "$SANDBOX/empty"
 run_cwd_case deny "v0.9.30: npx vitest with cwd field empty (fallback)"  "npx vitest"            ""
 
+# === v0.23.19: npx --no-install / --no forbid registry fetch — allow ===
+# Field report (claudemd.txt, bat-html-website session 2026-06-12):
+# `npx --no-install htmlhint --version` in a lockfile-less cwd was denied.
+# --no-install (npx v6) / --no (npm 7+) make npx run an already-installed
+# binary or exit non-zero — no unknown-origin code can be fetched, which is
+# exactly what the §8 NPX chain guards. Flags AFTER the package name belong
+# to the package, not npx, so they must NOT lift the gate.
+run_cwd_case pass "v0.23.19: npx --no-install in empty cwd (cannot fetch)" "npx --no-install htmlhint --version" "$SANDBOX/empty"
+run_cwd_case pass "v0.23.19: npx --no in empty cwd (npm7+ form)"           "npx --no htmlhint" "$SANDBOX/empty"
+run_cwd_case pass "v0.23.19: real-artifact probe chain (byte-exact)"       'which htmlhint tidy jq python3 2>/dev/null; echo "---"; npx --no-install htmlhint --version 2>/dev/null || echo "htmlhint not local"' "$SANDBOX/empty"
+run_cwd_case deny "v0.23.19: plain npx htmlhint in empty cwd still denies" "npx htmlhint" "$SANDBOX/empty"
+run_cwd_case deny "v0.23.19: --no-install AFTER pkg name does not lift"    "npx htmlhint --no-install" "$SANDBOX/empty"
+
 # === vNEXT: npx resolution must follow a leading `cd <subdir>` in the command ===
 # Repro: monorepo where the tool is a devDependency of a SUBDIR and the agent
 # runs `cd subdir && npx tool`. CC's event .cwd is the PARENT (the shell cwd

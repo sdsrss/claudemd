@@ -168,8 +168,11 @@ test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use
   //   - 1 ship-baseline LEGACY row (session_id + tool_use_id null) → unique,
   //     but counted under legacy_rows.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
-  const ts1 = '2026-05-11T12:00:00Z';
-  const ts2 = '2026-05-11T12:00:01Z';
+  // Relative timestamps — hardcoded dates ('2026-05-11') silently aged out
+  // of the days:30 window and the bucket lookups threw on undefined.
+  const base = Date.now() - 60_000;
+  const ts1 = new Date(base).toISOString();
+  const ts2 = new Date(base + 1000).toISOString();
   fs.writeFileSync(log,
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
@@ -204,9 +207,11 @@ test('v0.21.7: duplicate_rows split into real (non-null tool_use_id) vs legacy (
   //   - 2 pre-bash-safety legacy rows: same ts, session_id+tool_use_id BOTH null →
   //       pre-v0.9.34 seconds-precision noise → 1 dup_legacy + 2 legacy_rows
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
-  const ts1 = '2026-05-24T10:00:00Z';
-  const ts2 = '2026-05-24T10:00:01Z';
-  const ts3 = '2026-05-24T10:00:02Z';
+  // Relative timestamps — see v0.9.34 test above for the aging-out trap.
+  const base = Date.now() - 60_000;
+  const ts1 = new Date(base).toISOString();
+  const ts2 = new Date(base + 1000).toISOString();
+  const ts3 = new Date(base + 2000).toISOString();
   fs.writeFileSync(log,
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"s1","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +

@@ -102,6 +102,7 @@ DOCUMENTED=(
   "bypass-escape-hatch:pre-bash-safety"
   "bypass-escape-hatch:memory-read-check"
   "npx-allow-local:pre-bash-safety"
+  "npx-allow-no-install:pre-bash-safety"
   "rm-rf-allow-validated:pre-bash-safety"
   "pass-known-red:ship-baseline"
   "pass-known-red-incmd:ship-baseline"

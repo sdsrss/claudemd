@@ -453,6 +453,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
     npx_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
     pkg_token=""
     skip_next=0
+    no_install=0
     for tok in $npx_tail; do
       if (( skip_next == 1 )); then
         pkg_token="$tok"
@@ -460,10 +461,20 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
       fi
       case "$tok" in
         -p|--package|-c|--call) skip_next=1 ;;
+        # v0.23.19 — --no-install (npx v6) / --no (npm 7+) forbid registry
+        # fetch: npx runs an already-installed binary or exits non-zero, so
+        # no unknown-origin code can land — which is what the §8 NPX chain
+        # guards. Only flags BEFORE the package name count (loop breaks at
+        # the first non-flag token; trailing flags belong to the package).
+        --no-install|--no) no_install=1 ;;
         --*=*|--*|-[a-zA-Z]) continue ;;
         *) pkg_token="$tok"; break ;;
       esac
     done
+    if [[ -n "$pkg_token" && $no_install -eq 1 ]]; then
+      hook_record pre-bash-safety npx-allow-no-install "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
+      pkg_token=""
+    fi
     if [[ -n "$pkg_token" ]]; then
       case "$pkg_token" in
         ./*|/*|../*) ;;                       # local path — allow

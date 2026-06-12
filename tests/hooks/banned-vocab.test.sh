@@ -324,8 +324,109 @@ else
 fi
 rm -f "$TMP_FIX"
 
+# ============================================================================
+# v0.23.19 Path 2 FP fixes: identifier/path mentions + turn boundary
+# ============================================================================
+# Field report (claudemd.txt, bat-html-website session 2026-06-12): pushing
+# branch docs/comprehensive-audit-2026-06-12 was denied 3× in a row because
+# (a) `\b`-anchored patterns match INSIDE slashed/hyphenated identifiers
+# ('-' and '/' are word boundaries), and (b) the scan concatenated ALL
+# assistant text in the tail-200 window, so a slip in an EARLIER turn kept
+# re-firing after the user intervened and the agent re-calibrated.
+# Shape variants per feedback_test_coverage_shape_fp_class: slashed path /
+# backtick-wrapped / fenced block / bare-prose regression guard.
+
+mk_prose_transcript_multi() {
+  # $1 = cwd, $2 = sid; remaining args = pre-built JSONL entry strings
+  local cwd="$1" sid="$2"
+  shift 2
+  local encoded transcript_dir transcript line
+  encoded=$(printf '%s' "$cwd" | tr '/._' '-')
+  transcript_dir="$HOME/.claude/projects/${encoded}"
+  mkdir -p "$transcript_dir"
+  transcript="$transcript_dir/${sid}.jsonl"
+  : > "$transcript"
+  for line in "$@"; do printf '%s\n' "$line" >> "$transcript"; done
+}
+ent_assistant() {
+  jq -cn --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'
+}
+ent_user_prompt() {
+  # Real typed prompt: STRING content (feedback_cc_user_content_string_vs_array)
+  jq -cn --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'
+}
+ent_user_toolresult() {
+  # Mid-turn tool_result: ARRAY content — must NOT count as a turn boundary
+  jq -cn '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"tu1",content:[{type:"text",text:"ok"}]}]}}'
+}
+
+# Case 36: high-fire word only inside a slashed branch token → pass (was the
+# field-report deny loop; byte-near the real artifact).
+PCWD="/work/p36"
+PSID="sess36"
+mk_prose_transcript "$PCWD" "$PSID" "审计完成。已创建分支 docs/comprehensive-audit-2026-06-12,推送后创建 PR。"
+EVENT_36=$(mk_prose_event "git push -u origin docs/comprehensive-audit-2026-06-12" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_36" > "$TMP_FIX"
+assert_pass "36: high-fire word inside slashed branch token → no deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 37: high-fire word only inside an inline backtick span → pass.
+PCWD="/work/p37"
+PSID="sess37"
+mk_prose_transcript "$PCWD" "$PSID" 'Dropped the `comprehensive` wording from the README heading.'
+EVENT_37=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_37" > "$TMP_FIX"
+assert_pass "37: high-fire word inside backtick span → no deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 38: high-fire word only inside a fenced code block → pass.
+PCWD="/work/p38"
+PSID="sess38"
+FENCED=$'Updated the doc excerpt:\n```\nThis is a comprehensive guide\n```\nPushing now.'
+mk_prose_transcript "$PCWD" "$PSID" "$FENCED"
+EVENT_38=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_38" > "$TMP_FIX"
+assert_pass "38: high-fire word inside fenced code block → no deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 39: regression guard — bare prose violation NEXT TO a path token still
+# denies (sanitizer must not eat surrounding prose).
+PCWD="/work/p39"
+PSID="sess39"
+mk_prose_transcript "$PCWD" "$PSID" "The fix significantly improves throughput. Branch docs/comprehensive-audit-2026-06-12 pushed."
+EVENT_39=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_39" > "$TMP_FIX"
+assert_deny "39: bare prose violation beside path token → still deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 40: violation in a PRIOR turn (before a real typed user prompt) must
+# not deny the current turn's clean ship attempt.
+PCWD="/work/p40"
+PSID="sess40"
+mk_prose_transcript_multi "$PCWD" "$PSID" \
+  "$(ent_assistant 'Release covers a comprehensive set of fixes.')" \
+  "$(ent_user_prompt '继续推送')" \
+  "$(ent_assistant 'Branch renamed; pushing with calibrated notes (12/12 tests).')"
+EVENT_40=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_40" > "$TMP_FIX"
+assert_pass "40: prior-turn violation before real user prompt → no deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 41: a tool_result user entry (ARRAY content) is mid-turn, NOT a turn
+# boundary — same-turn violation before it still denies.
+PCWD="/work/p41"
+PSID="sess41"
+mk_prose_transcript_multi "$PCWD" "$PSID" \
+  "$(ent_assistant 'The fix significantly improves throughput.')" \
+  "$(ent_user_toolresult)" \
+  "$(ent_assistant 'Tests green; pushing.')"
+EVENT_41=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp); printf '%s' "$EVENT_41" > "$TMP_FIX"
+assert_deny "41: tool_result entry is not a turn boundary → same-turn deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((35 - FAIL))/35 passed"
+  echo "Tests: $((41 - FAIL))/41 passed"
   exit 1
 fi
-echo "Tests: 35/35 passed"
+echo "Tests: 41/41 passed"

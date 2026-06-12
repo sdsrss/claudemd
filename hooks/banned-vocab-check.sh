@@ -200,21 +200,49 @@ ENCODED=$(printf '%s' "$EVENT_CWD" | tr -c 'a-zA-Z0-9-' '-')
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 [[ -f "$TRANSCRIPT" ]] || exit 0
 
-# Extract last assistant turn's text content. tail -n 200 caps memory.
-# The same parsing shape as transcript-vocab-scan.sh / mid-spine-yield-scan.sh.
+# Extract the LAST assistant turn's text: assistant entries AFTER the last
+# real typed user prompt. Real prompt = type=="user" with STRING content
+# (typed prompts are strings; tool_results arrive as user entries with ARRAY
+# content and are mid-turn, NOT turn boundaries — per
+# feedback_cc_user_content_string_vs_array), excluding isMeta /
+# <system-reminder> injections. Pre-v0.23.19 this concatenated ALL assistant
+# text in the tail window, so a slip in an EARLIER turn kept denying every
+# ship attempt even after the user intervened and the agent re-calibrated —
+# un-escapable without the bypass token (field report: 3 consecutive push
+# denies, claudemd.txt 2026-06-12). No real prompt in the tail window →
+# max // -1 → slice from 0 = pre-fix whole-window behavior. tail -n 200
+# caps memory.
 LAST_TEXT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null \
-  | jq -R -r 'try fromjson catch empty
-              | select(.type == "assistant")
-              | (.message.content // [])
-              | map(select(.type == "text") | .text)
-              | join("\n")' 2>/dev/null)
+  | jq -R -r -n '
+      [inputs | try fromjson catch empty] as $e
+      | ([ $e | to_entries[]
+           | select(.value.type == "user")
+           | select(.value.isMeta != true)
+           | select((.value.message.content | type) == "string")
+           | select(.value.message.content | startswith("<system-reminder") | not)
+           | .key ] | max // -1) as $u
+      | [ $e[($u + 1):][]
+          | select(.type == "assistant")
+          | (.message.content // [])
+          | map(select(type == "object" and .type == "text") | .text)
+          | join("\n") ]
+      | join("\n")' 2>/dev/null)
 [[ -n "$LAST_TEXT" ]] || exit 0
 
-# Take only the LAST assistant turn (jq above concatenates ALL assistant turns
-# in tail window; we want the most recent one). Split on the "assistant turn
-# boundary" marker by tracking turn count — simpler approximation: last 4096
-# chars cover one typical agent response.
+# Cap to the trailing 4096 chars (very long turns; most recent prose wins).
 LAST_TEXT=$(printf '%s' "$LAST_TEXT" | tail -c 4096)
+
+# v0.23.19 — identifier/path mentions are not value claims. `\b` treats '-'
+# and '/' as word boundaries, so a branch name like
+# docs/comprehensive-audit-2026-06-12 quoted in prose fires \bcomprehensive\b
+# (the field-report deny loop: renaming the branch could not clear the prior
+# prose, so every retry denied). Strip, in order: fenced code blocks, inline
+# backtick spans, then path-like ASCII runs containing '/' (branch names,
+# file paths, URLs). The path class is ASCII-only on purpose — 中文 prose
+# around a path stays intact, and bare-prose violations still match.
+LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
+  | awk '/^[[:space:]]*```/{f=!f; next} !f' \
+  | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g')
 
 # Scan high-fire region of PATTERNS_FILE only. Stop at prophylactic marker.
 #

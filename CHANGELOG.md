@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.19] - 2026-06-13
+
+**Patch — two field-report FPs (external transcript, bat-html-website session 2026-06-12): §8-npx denied a fetch-free `npx --no-install` probe; §10-V Path 2 denied 3 consecutive pushes on a banned word living only inside a branch name.** Spec content unchanged (stays v6.14.1).
+
+### Fixed — `pre-bash-safety`: `npx --no-install <pkg>` denied despite being unable to fetch
+
+- `hooks/pre-bash-safety-check.sh`: the npx flag loop treated `--no-install` as a generic skippable flag, took the following token as the package name, and denied when the cwd had no lockfile/local install. But `--no-install` (npx v6) / `--no` (npm 7+) forbid registry fetch entirely — npx runs an already-installed binary or exits non-zero, so no unknown-origin code can land, which is what the §8 NPX chain guards. The denied command was the agent's harmless capability probe (`npx --no-install htmlhint --version … || echo "htmlhint not local"`), and the deny forced it to abandon the tool instead. Fix: recognize `--no-install` / `--no` BEFORE the package token and allow, recording a new `npx-allow-no-install` telemetry event (documented in `docs/RULE-HITS-SCHEMA.md` + contract test). Flags after the package name belong to the package and do NOT lift the gate. Tests: +5 (incl. byte-exact field-report chain; pre-fix 149/152 → post-fix 152/152).
+
+### Fixed — `banned-vocab` Path 2: identifier/path mentions and prior-turn text caused an un-escapable deny loop
+
+- `hooks/banned-vocab-check.sh` (two FP vectors, one field report): pushing `docs/comprehensive-audit-2026-06-12` was denied; the agent renamed the branch and was denied twice more, because (a) `\b`-anchored high-fire patterns match INSIDE slashed/hyphenated identifiers (`-` and `/` are word boundaries), so the branch name quoted in prose fired the scan, and (b) the "last assistant turn" extraction actually concatenated ALL assistant text in the tail-200 window (`tail -c 4096` cap), so the original prose kept re-firing on every retry — only the bypass token could exit the loop, contradicting the deny message's own "preceding assistant turn" claim. Fix (a): sanitize the scanned prose before matching — strip fenced code blocks, inline backtick spans, and path-like ASCII runs containing `/` (the path class is ASCII-only so 中文 prose around a path stays intact; bare-prose violations still match). Fix (b): extract assistant entries AFTER the last real typed user prompt (STRING content per `feedback_cc_user_content_string_vs_array`; tool_result ARRAY entries and `<system-reminder>`/`isMeta` injections are mid-turn, NOT boundaries; no prompt in window → pre-fix whole-window fallback). Tests: +6 — slashed-branch (byte-near field report), backtick span, fenced block, bare-prose-beside-path regression guard, prior-turn-before-prompt pass, tool_result-not-a-boundary deny (pre-fix 37/41 → post-fix 41/41). Sibling advisory scanners (`transcript-vocab-scan.sh`, CLI lint) share the identifier FP class at advisory-only severity — queued in `tasks/banned-vocab-sanitizer-siblings.md`.
+
+### Fixed — `tests/scripts/audit.test.js`: two tests were date time-bombs (mid-bundle discovery)
+
+- Tests `v0.9.34` and `v0.21.7` pinned fixture timestamps to literal dates (`2026-05-11`, `2026-05-24`); once today's date drifted past the `days: 30` audit window the rows were filtered out and the bucket lookups threw `Cannot read properties of undefined (reading 'rows')`. The first expired on 2026-06-10 (red on clean main since then, locally; CI last ran 2026-06-09 so it never surfaced there), the second would expire 2026-06-23. Fix: derive timestamps from `Date.now() - 60s` with per-row second offsets — dedup semantics (same-second collisions) preserved. Found because this release's full-suite run hit it; unrelated to the field report.
+
 ## [0.23.18] - 2026-06-10
 
 **Patch — install/uninstall crashed with a cryptic error on a malformed-but-valid-JSON settings.json.** Spec content unchanged (stays v6.14.1). Continues the end-to-end user-test sweep into the install path.
