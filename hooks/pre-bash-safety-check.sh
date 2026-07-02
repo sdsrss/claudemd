@@ -513,6 +513,38 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   fi
 fi
 
+# Pattern 3: pipe / process-substitute a network fetch into a shell interpreter
+# — spec §8 "execute scripts of unknown origin". The LEFT side must be a network
+# fetch (curl/wget) in COMMAND position; `cat local.sh | sh` / `echo cmd | bash`
+# are known-origin and stay allowed (no curl/wget), and non-shell sinks
+# (`| jq`, `| tar`) do not match (the pipe target must be sh/bash/zsh/dash/ksh/
+# ash, optionally via sudo). Per-pipeline-segment (split on newline / ; / && /
+# ||) so a curl in one command and a `| sh` in the next never cross-match.
+# Matches on SANITIZED_CMD (quotes/heredoc/comments stripped) so a curl|sh
+# quoted in prose does not fire; unwrap_indirect already exposed the inner of
+# `sh -c "curl x | sh"`. Command-substitution form `eval "$(curl x)"` is a
+# documented residual (tasks/s8-false-negative-audit-2026-07-03.md). 2026-07-03
+# §8 false-negative audit: this class had no detector at all.
+bypass_curlsh=0
+if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
+CURLSH_PIPE='(^|[|;&(])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:]]|$)'
+CURLSH_PROCSUB='(^|[|;&(])[[:space:]]*(sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
+curlsh_hit=0
+while IFS= read -r cseg; do
+  if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
+    curlsh_hit=1; break
+  fi
+done < <(printf '%s\n' "$SANITIZED_CMD" | sed -E 's/&&/\n/g; s/\|\|/\n/g; s/;/\n/g')
+if (( curlsh_hit == 1 )); then
+  if (( bypass_curlsh == 1 )); then
+    hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-curl-sh"}' '§8-curl-sh' "$SESSION_ID" "$TOOL_USE_ID"
+  else
+    HITS+=("curl/wget piped or <()-substituted into a shell (unknown-origin execution)")
+    HIT_SECTIONS+=('§8-curl-sh')
+    REASONS+=$'\n  - network fetch (curl/wget) run by a shell — executes unknown-origin code'
+  fi
+fi
+
 if (( ${#HITS[@]} == 0 )); then
   exit 0
 fi
@@ -522,14 +554,17 @@ REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
 Spec: ~/.claude/CLAUDE.md §8 SAFETY —
   • \"rm -rf \$VAR without validating VAR\" (forbidden)
   • NPX: \"lockfile → local → pinned whitelist; none → [AUTH REQUIRED]\"
+    (covers npx / bunx / pnpm dlx / yarn dlx)
+  • \"execute scripts of unknown origin\" (forbidden) — curl/wget … | sh
 
 Bypass options:
   (a) Fix the invocation:
       • Validate the var inline:  : \"\${VAR:?must be set}\" && rm -rf \"\$VAR\"
       • Pin the package:          npx pkg@1.2.3   /   npx @scope/pkg@1.2.3
       • Use a literal path:       rm -rf /tmp/work-dir
-  (b) Per-command escape token: include [allow-rm-rf-var] or [allow-npx-unpinned]
-      in the command (records as bypass in rule-hits log).
+      • Download then inspect:    curl -o s.sh URL && less s.sh && sh s.sh
+  (b) Per-command escape token: include [allow-rm-rf-var], [allow-npx-unpinned],
+      or [allow-curl-sh] in the command (records as bypass in rule-hits log).
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
 # v0.23.6 — file the deny telemetry under the granular §8 section(s) that
@@ -543,11 +578,12 @@ Bypass options:
 # macOS ships bash 3.2, which has no associative arrays (`declare -A` errors out
 # and, worse, aborts the deny path before hook_deny → §8 not enforced on macOS).
 # The granular section set is fixed and small, so hardcode the three buckets.
-_rmrf_hits=""; _npx_hits=""; _other_hits=""
+_rmrf_hits=""; _npx_hits=""; _curlsh_hits=""; _other_hits=""
 for i in "${!HITS[@]}"; do
   case "${HIT_SECTIONS[$i]:-§8}" in
     '§8-rm-rf-var') _rmrf_hits+="${HITS[$i]}"$'\n' ;;
     '§8-npx')       _npx_hits+="${HITS[$i]}"$'\n' ;;
+    '§8-curl-sh')   _curlsh_hits+="${HITS[$i]}"$'\n' ;;
     *)              _other_hits+="${HITS[$i]}"$'\n' ;;
   esac
 done
@@ -559,5 +595,6 @@ record_section_deny() {  # $1=section  $2=newline-delimited hits blob
 }
 record_section_deny '§8-rm-rf-var' "$_rmrf_hits"
 record_section_deny '§8-npx'       "$_npx_hits"
+record_section_deny '§8-curl-sh'   "$_curlsh_hits"
 record_section_deny '§8'           "$_other_hits"
 hook_deny pre-bash-safety "$REASON_TEXT"
