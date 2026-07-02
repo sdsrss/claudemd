@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny, blockingDenyCount, detectCutover } from '../../scripts/lib/rule-hits-parse.js';
+import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny, blockingDenyCount, detectCutover, uniqueInvocations } from '../../scripts/lib/rule-hits-parse.js';
 
 // v0.23.8 — self-dogfood vs external classification + per-hook split.
 test('classifyProject: claudemd repo (both cwd encodings) → self', () => {
@@ -322,4 +322,38 @@ test('v0.9.37: detectCutover returns null when no spec_section row exists', asyn
 test('v0.9.37: detectCutover returns null when log missing', async () => {
   const { detectCutover } = await import('../../scripts/lib/rule-hits-parse.js');
   assert.equal(detectCutover('/tmp/definitely-not-here-xyz.jsonl'), null);
+});
+
+// v0.23.22 — unit-level guard for uniqueInvocations (previously covered only
+// through audit() in audit.test.js). Pins the extra-key canonicalization: a
+// real double-fire on a multi-key extra must still collide even if the two
+// rows serialized their keys in a different order. Fixed ts is a bare dedup-key
+// component here — uniqueInvocations never parses it as a Date and applies no
+// day-window filter, so there is no aging-out trap.
+test('v0.23.22: uniqueInvocations canonicalizes extra key order — reordered keys still collide as one double-fire', () => {
+  const ts = '2026-07-02T00:00:00Z';
+  const hits = [
+    { ts, hook: 'pre-bash-safety', event: 'deny', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { a: 1, b: 2 } },
+    { ts, hook: 'pre-bash-safety', event: 'deny', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { b: 2, a: 1 } },
+  ];
+  const r = uniqueInvocations(hits);
+  // Without canonicalization the two reordered-key rows hash to different keys
+  // → 2 unique / 0 _real, hiding the double-fire. Canonicalized → 1 / 1.
+  assert.equal(r['pre-bash-safety'].unique_invocations, 1);
+  assert.equal(r['pre-bash-safety'].duplicate_rows_real, 1);
+  assert.equal(r['pre-bash-safety'].duplicate_rows_legacy, 0);
+});
+
+// v0.23.22 — companion: legitimate multi-emit (distinct extra in one
+// invocation) must NOT collapse — the FP the v0.23.21 key extension fixed,
+// pinned here at unit level too.
+test('v0.23.22: uniqueInvocations keeps distinct-extra rows of one invocation separate', () => {
+  const ts = '2026-07-02T00:00:00Z';
+  const hits = [
+    { ts, hook: 'pre-bash-safety', event: 'rm-rf-allow-validated', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { var: 'TMP' } },
+    { ts, hook: 'pre-bash-safety', event: 'rm-rf-allow-validated', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { var: 'TMP2' } },
+  ];
+  const r = uniqueInvocations(hits);
+  assert.equal(r['pre-bash-safety'].unique_invocations, 2);
+  assert.equal(r['pre-bash-safety'].duplicate_rows_real, 0);
 });

@@ -158,7 +158,7 @@ test('v0.9.37: cutoverTs is null when no spec_section row exists; legacy (unset)
   assert.equal(r.bySection['(unset-current)'], undefined);
 });
 
-test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use_id, event, extra)', async () => {
+test('v0.9.34: uniqueInvocations dedups byte-identical rows; distinct tool_use_id stays unique', async () => {
   // Replace fixture with rows specifically designed to exercise dedup:
   //   - 2 banned-vocab rows at same ts with same tool_use_id → 1 dup
   //   - 1 banned-vocab row at same ts with different tool_use_id → unique

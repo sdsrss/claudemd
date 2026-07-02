@@ -18,11 +18,18 @@
 #                 format `toolu_[alnum]`). Empty arg → null in row. Only
 #                 PreToolUse / PostToolUse events carry this; Stop /
 #                 SessionStart / SessionEnd / UserPromptSubmit do not.
-#                 Added v0.9.34 to enable audit `unique_invocations` dedup:
-#                 same (ts, hook, session_id, tool_use_id) row twice ⇒ true
+#                 Added v0.9.34 to enable audit `unique_invocations` dedup.
+#                 Dedup key (extended v0.23.21) is (ts, hook, session_id,
+#                 tool_use_id, event, extra): BYTE-IDENTICAL rows twice ⇒ true
 #                 single-invocation double-fire (registration / lib bug);
 #                 different tool_use_id at same ts ⇒ Claude fast-retry after
-#                 deny, not a duplicate.
+#                 deny, not a duplicate. NOTE multi-emit hooks (pre-bash-safety
+#                 logs one row per matched pattern in a compound command)
+#                 legitimately repeat (ts, hook, session_id, tool_use_id) with
+#                 differing extra — the event+extra key keeps those distinct;
+#                 a byte-identical residual can still come from one command
+#                 repeating the same pattern, so confirm against the source
+#                 command before calling a pre-bash-safety `_real` a bug.
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 

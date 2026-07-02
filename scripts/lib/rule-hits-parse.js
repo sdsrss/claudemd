@@ -165,6 +165,27 @@ export function groupByHook(hits) {
 // `legacy_rows` (separate counter) — rows where session_id AND tool_use_id
 // are both null. Surfaces "N legacy rows weren't reliably deduped" so the
 // operator can discount the noise floor.
+// v0.23.22 — canonicalize `extra` before it enters the dedup key. The key
+// compares (event, extra) to separate a real double-fire (byte-identical
+// rows) from legitimate multi-emit (differing extra), so it depends on stable
+// key order in the serialized extra. Today every hook builds `extra` from
+// fixed literal templates or single-key objects, and the only multi-key extra
+// (mem-audit `{missing,drift}`) is emitted with a null tool_use_id so it never
+// reaches `_real` — but a future multi-key extra on a tool_use_id-bearing hook
+// built from an unordered source (`declare -A` iteration) would let a genuine
+// double-fire evade detection. Sorting top-level keys closes that hazard with
+// zero behavior change on current data (single-key / null / array extras are
+// unaffected). Extras are shallow by convention, so top-level order is the
+// whole surface.
+function stableExtraKey(extra) {
+  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) {
+    return JSON.stringify(extra ?? null);
+  }
+  const sorted = {};
+  for (const k of Object.keys(extra).sort()) sorted[k] = extra[k];
+  return JSON.stringify(sorted);
+}
+
 export function uniqueInvocations(hits) {
   const out = {};
   for (const h of hits) {
@@ -182,7 +203,7 @@ export function uniqueInvocations(hits) {
     if (h.session_id == null && h.tool_use_id == null) {
       out[hook].legacy_rows++;
     }
-    const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}|${h.event ?? ''}|${JSON.stringify(h.extra ?? null)}`;
+    const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}|${h.event ?? ''}|${stableExtraKey(h.extra)}`;
     if (out[hook]._seen.has(key)) {
       out[hook].duplicate_rows++;
       if (h.tool_use_id == null) {

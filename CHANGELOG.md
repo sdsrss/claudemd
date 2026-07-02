@@ -8,6 +8,18 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.22] - 2026-07-02
+
+**Patch — follow-up to v0.23.21 (code review): sync the two remaining dedup-key reference docs + harden the `extra` key against future key-order variance.** Spec content unchanged (stays v6.14.1).
+
+### Fixed — two dedup-key reference docs still taught the pre-v0.23.21 4-field model
+
+- v0.23.21 extended the `uniqueInvocations` dedup key to `(ts, hook, session_id, tool_use_id, event, extra)` and synced the parse-fn comment + `commands/claudemd-audit.md`, but two other canonical descriptions were left on the old 4-field model — and `scripts/audit.js:70` cross-references the first as authoritative, routing a maintainer straight into the pre-fix "byte-identical multi-emit looks like a bug" misread. Synced both: `hooks/lib/rule-hits.sh:21-25` (the `TOOL_USE_ID` param doc — ships with the plugin) and `docs/RULE-HITS-SCHEMA.md:16` (the `tool_use_id` field row — tracked via the `docs/*` + `!docs/<file>` gitignore allowlist) now carry the 6-field key + the multi-emit "confirm against the source command" caveat. Found by a `superpowers:requesting-code-review` pass on v0.23.21.
+
+### Changed — canonicalize `extra` before the dedup key (defensive hardening)
+
+- `scripts/lib/rule-hits-parse.js`: the key serialized `extra` with bare `JSON.stringify`, so double-fire detection silently depended on stable key order. Unreachable for `_real` today (every hook emits `extra` from fixed templates / single-key objects; the only multi-key extra — mem-audit `{missing,drift}` — carries a null `tool_use_id` → lands in `_legacy`), but a future multi-key extra on a `tool_use_id`-bearing hook built from an unordered source (`declare -A`) would let a genuine double-fire evade. New `stableExtraKey()` sorts top-level keys before serializing — behavior-preserving on current data (live-log `pre-bash-safety` `duplicate_rows_real` stays 34). Two direct unit tests added in `tests/scripts/rule-hits-parse.test.js` (reordered-key double-fire still collides → 1 unique / 1 `_real`; distinct-extra multi-emit stays separate → 2 / 0); `uniqueInvocations` previously had no unit-level coverage, only via `audit()`. Also noted: the v0.23.21 key extension incidentally narrows `duplicate_rows_legacy` (distinct event/extra rows at a null `tool_use_id` now count as unique — more correct; `_legacy` is documented non-gating noise). Renamed the v0.9.34 audit test title to state what it verifies (byte-identical collapse) instead of over-claiming the full key. Full suite 519 → 521 pass.
+
 ## [0.23.21] - 2026-07-02
 
 **Patch — audit `duplicate_rows_real` over-counted multi-emit hooks as registration double-fires; found by a 30-day /claudemd-audit self-review.** Spec content unchanged (stays v6.14.1).
