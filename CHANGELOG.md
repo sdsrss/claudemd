@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.21] - 2026-07-02
+
+**Patch — audit `duplicate_rows_real` over-counted multi-emit hooks as registration double-fires; found by a 30-day /claudemd-audit self-review.** Spec content unchanged (stays v6.14.1).
+
+### Fixed — `uniqueInvocations` dedup key mis-counted `pre-bash-safety` multi-emit rows as double-fires
+
+- `scripts/lib/rule-hits-parse.js` (`uniqueInvocations`): the v0.9.34 dedup key was `(ts, hook, session_id, tool_use_id)`, but `pre-bash-safety` is a MULTI-EMIT hook — one compound command logs one row per matched pattern (distinct `extra.var`, or mixed `§8-rm-rf-var` + `§8-npx` sections), all four key fields identical across those rows. Every row after the first was therefore counted as `duplicate_rows_real` — the signal `/claudemd-audit` documents as a "registration/lib double-fire bug candidate" — producing 77 phantom `_real` on a 30-day live-log window. Same "an audit red flag can be an artifact" class as the v0.23.20 sentinel-filter fix, different root cause. Fix: include `(event, extra)` in the key. A true double-fire emits BYTE-IDENTICAL rows (same event+extra) and still collides, so detection for single-emit hooks (banned-vocab / ship-baseline / memory-read-check) is preserved. Post-fix on the live log: `pre-bash-safety` `duplicate_rows_real` 77 → 34 — the residual is one command legitimately repeating the SAME pattern (`rm -rf $D/a; rm -rf $D/b`), which telemetry cannot distinguish from a double-registration; a real double-REGISTRATION would double EVERY row (~600/1191), not 34, so the residual is not a bug. Regression test `tests/scripts/audit.test.js` "v0.23.21: multi-emit hook…" pins it (pre-fix `unique_invocations`=3 / `_real`=3, post-fix 5 / 1). Docs synced: `rule-hits-parse.js` header comment + `commands/claudemd-audit.md` field-guard now carry the multi-emit caveat (confirm a `pre-bash-safety` `_real` against the source command before reporting a bug). Full suite: 519 pass + integration green.
+
 ## [0.23.20] - 2026-06-13
 
 **Patch — two telemetry-integrity fixes found by a 7-day /claudemd-audit self-review: ad-hoc debug sentinels polluted audit views, and banned-vocab's bypass event violated its own documented schema.** Spec content unchanged (stays v6.14.1).

@@ -119,11 +119,20 @@ export function groupByHook(hits) {
 
 // v0.9.34 — R1 instrumentation point 2: unique_invocations dedup view.
 // Distinguishes "one CC invocation logged twice" (registration / lib bug)
-// from "Claude fast-retry within same second" (not a bug). Dedup key:
-// (ts, hook, session_id, tool_use_id). When tool_use_id is null (Stop /
-// SessionStart / SessionEnd / UserPromptSubmit hooks), falls back to
-// (ts, hook, session_id) — for non-tool events, same-second + same-session
-// is genuinely one event.
+// from "Claude fast-retry within same second" (not a bug). Dedup key
+// (v0.23.21): (ts, hook, session_id, tool_use_id, event, extra). The
+// original four-field key mis-counted MULTI-EMIT hooks: pre-bash-safety
+// logs one row per matched pattern in a compound command (distinct
+// extra.var, or mixed §8-rm-rf-var + §8-npx sections), all sharing one
+// (ts, hook, session_id, tool_use_id) — so every row after the first was
+// counted as a duplicate, faking the registration double-fire signal (77
+// phantom duplicate_rows_real on a 30-day live-log window, 2026-07-02
+// audit). Including (event, extra) makes the metric mean what its doc
+// claims — a true double-fire emits BYTE-IDENTICAL rows (same event+extra)
+// and still collides. When tool_use_id is null (Stop / SessionStart /
+// SessionEnd / UserPromptSubmit hooks), it contributes '' to the key —
+// for non-tool events, same-second + same-session + same event+extra is
+// genuinely one event.
 //
 // Returns: per-hook count of distinct invocations + dupe split.
 //   { hook: { rows, unique_invocations, duplicate_rows,
@@ -132,9 +141,15 @@ export function groupByHook(hits) {
 // **Reading the dupe metrics** (v0.21.7 split — fixes the "duplicate_rows
 // looks alarming but is all legacy collision noise" misread that surfaced
 // in the v0.21.5 audit):
-// - `duplicate_rows_real` — collision row has non-null tool_use_id.
-//   This is the TRUE single-invocation double-fire signal (registration /
-//   lib bug). PreToolUse / PostToolUse hook with this > 0 = investigate.
+// - `duplicate_rows_real` — collision row has non-null tool_use_id AND is
+//   byte-identical (same event+extra) to an earlier row in the same
+//   invocation. This is the TRUE single-invocation double-fire signal
+//   (registration / lib bug). PreToolUse / PostToolUse hook with this > 0
+//   = investigate — BUT for MULTI-EMIT hooks (pre-bash-safety) a residual
+//   can still arise when one command repeats the SAME pattern
+//   (`rm -rf $D; …; rm -rf $D` → two identical rows); telemetry can't
+//   tell that from a double-registration, so confirm against the source
+//   command before treating it as a bug.
 // - `duplicate_rows_legacy` — collision row has null tool_use_id. Two
 //   sub-causes lumped together because both are expected behavior:
 //     (a) pre-v0.9.34 legacy rows (session_id+tool_use_id both null),
@@ -167,7 +182,7 @@ export function uniqueInvocations(hits) {
     if (h.session_id == null && h.tool_use_id == null) {
       out[hook].legacy_rows++;
     }
-    const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}`;
+    const key = `${h.ts}|${hook}|${h.session_id ?? ''}|${h.tool_use_id ?? ''}|${h.event ?? ''}|${JSON.stringify(h.extra ?? null)}`;
     if (out[hook]._seen.has(key)) {
       out[hook].duplicate_rows++;
       if (h.tool_use_id == null) {

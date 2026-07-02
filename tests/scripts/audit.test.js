@@ -158,7 +158,7 @@ test('v0.9.37: cutoverTs is null when no spec_section row exists; legacy (unset)
   assert.equal(r.bySection['(unset-current)'], undefined);
 });
 
-test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use_id)', async () => {
+test('v0.9.34: uniqueInvocations deduplicates by (ts, hook, session_id, tool_use_id, event, extra)', async () => {
   // Replace fixture with rows specifically designed to exercise dedup:
   //   - 2 banned-vocab rows at same ts with same tool_use_id → 1 dup
   //   - 1 banned-vocab row at same ts with different tool_use_id → unique
@@ -234,6 +234,41 @@ test('v0.21.7: duplicate_rows split into real (non-null tool_use_id) vs legacy (
   assert.equal(r.uniqueInvocations['pre-bash-safety'].duplicate_rows_real, 0);
   assert.equal(r.uniqueInvocations['pre-bash-safety'].duplicate_rows_legacy, 1);
   assert.equal(r.uniqueInvocations['pre-bash-safety'].legacy_rows, 2);
+});
+
+test('v0.23.21: multi-emit hook (distinct event/extra in one invocation) is not a double-fire', async () => {
+  // pre-bash-safety logs one row per matched pattern in a compound command.
+  // Rows sharing (ts, hook, session_id, tool_use_id) but differing in event
+  // OR extra are legitimate multi-emit — NOT a registration double-fire.
+  // Pre-v0.23.21 the 4-field dedup key counted every such row as
+  // duplicate_rows_real (unique_invocations=3, _real=3 for this fixture),
+  // faking the audit's "registration/lib bug candidate" signal — the exact
+  // 77-phantom-_real FP a 2026-07-02 /claudemd-audit self-review surfaced.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  // Relative timestamp — see the v0.9.34 test for the hardcoded-date aging trap.
+  const base = Date.now() - 60_000;
+  const ts1 = new Date(base).toISOString();
+  fs.writeFileSync(log,
+    // toolu_A: one command, two rm -rf validations, DIFFERENT extra.var → legit, 0 dup
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"var":"TMP"}}\n` +
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"var":"TMP2"}}\n` +
+    // toolu_B: one compound command, mixed sections (DIFFERENT event) → legit, 0 dup
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"var":"D"}}\n` +
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"npx-allow-local","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"pkg":"eslint"}}\n` +
+    // toolu_C: BYTE-IDENTICAL rows (same event+extra) in one invocation → residual
+    //   _real=1 — indistinguishable from a double-fire by telemetry alone
+    //   (documented multi-emit limitation; needs source-command confirmation).
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n` +
+    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n`
+  );
+  const r = await audit({ days: 30 });
+  const u = r.uniqueInvocations['pre-bash-safety'];
+  assert.equal(u.rows, 6);
+  // A (2 distinct) + B (2 distinct) + C (1 unique) = 5 distinct invocations.
+  assert.equal(u.unique_invocations, 5);
+  assert.equal(u.duplicate_rows_real, 1);   // only the byte-identical toolu_C pair
+  assert.equal(u.duplicate_rows_legacy, 0);
+  assert.equal(u.legacy_rows, 0);
 });
 
 test('audit byBypass empty when no bypass-escape-hatch events present', async () => {
