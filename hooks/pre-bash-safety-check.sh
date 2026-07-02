@@ -436,10 +436,22 @@ if (( bypass_rm == 0 )); then
   done <<< "$RM_SEGMENTS"
 fi
 
-# Pattern 2: npx with first non-flag arg being a bare/scoped package name
-# without @<version> pin.
-NPX_REGEX='(^|[[:space:];&|`])npx[[:space:]]+'
+# Pattern 2: fetch-execute package runner (npx / pnpm dlx / yarn dlx / bunx)
+# with first non-flag arg being a bare/scoped package name without @<version>
+# pin. §8 forbids "execute scripts of unknown origin"; npx's siblings fetch+run
+# an unpinned unknown package identically, so the §8 NPX gate (lockfile → local
+# → pinned) applies to the whole family. `pnpm install` / `yarn add` are NOT
+# fetch-execute one-offs and stay excluded (the regex requires the `dlx`
+# subcommand). 2026-07-03 §8 false-negative audit found all three siblings
+# bypassed the npx-only detector; local/lockfile resolution below already reads
+# pnpm-lock.yaml / yarn.lock, so the gate is symmetric across ecosystems.
+NPX_REGEX='(^|[[:space:];&|`])(npx|bunx|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
 if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
+  # Name the matched runner (npx / bunx / pnpm dlx / yarn dlx) for honest deny
+  # text — the leading (^|sep) + trailing space anchors keep it off identifier
+  # substrings (`bunxtool`, `pnpm install`).
+  runner=$(printf '%s' "$SANITIZED_CMD" | grep -oE "$NPX_REGEX" | head -n1 \
+    | sed -E 's/^[[:space:];&|`]+//; s/[[:space:]]+$//')
   bypass_npx=0
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
     bypass_npx=1
@@ -487,12 +499,12 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
             hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
           else
             case "$pkg_token" in
-              @*/*) HITS+=("npx $pkg_token (scoped, unpinned, no lockfile/local)")
+              @*/*) HITS+=("$runner $pkg_token (scoped, unpinned, no lockfile/local)")
                     HIT_SECTIONS+=('§8-npx')
-                    REASONS+=$'\n  - npx unpinned scoped package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
-              *)    HITS+=("npx $pkg_token (unpinned, no lockfile/local)")
+                    REASONS+=$'\n  - '"$runner"' unpinned scoped package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+              *)    HITS+=("$runner $pkg_token (unpinned, no lockfile/local)")
                     HIT_SECTIONS+=('§8-npx')
-                    REASONS+=$'\n  - npx unpinned package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
+                    REASONS+=$'\n  - '"$runner"' unpinned package (no lockfile/local in '"${NPX_EFFECTIVE_CWD:-<no-cwd>}"'): '"$pkg_token" ;;
             esac
           fi
           ;;

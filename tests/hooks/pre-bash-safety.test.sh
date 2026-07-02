@@ -152,6 +152,22 @@ run_cwd_case pass "v0.9.30: npx vitest with yarn.lock entry"             "npx vi
 run_cwd_case deny "v0.9.30: npx vitest in empty cwd (no lockfile/local)" "npx vitest"            "$SANDBOX/empty"
 run_cwd_case deny "v0.9.30: npx vitest with cwd field empty (fallback)"  "npx vitest"            ""
 
+# === §8 NPX rule covers sibling fetch-execute runners (pnpm dlx / yarn dlx / bunx) ===
+# §8 forbids "execute scripts of unknown origin"; npx's modern equivalents
+# fetch+run an unpinned unknown package identically, but the detector matched
+# only literal `npx`. 2026-07-03 §8 false-negative audit: all three ALLOWed an
+# unknown package. Same lockfile→local→pinned gate, extended to the runner family.
+run_cwd_case deny "pnpm dlx unknown pkg in empty cwd"      "pnpm dlx unknown-pkg-xyz9" "$SANDBOX/empty"
+run_cwd_case deny "yarn dlx unknown pkg in empty cwd"      "yarn dlx unknown-pkg-xyz9" "$SANDBOX/empty"
+run_cwd_case deny "bunx unknown pkg in empty cwd"          "bunx unknown-pkg-xyz9"     "$SANDBOX/empty"
+run_cwd_case deny "pnpm dlx unknown with cwd empty (fallback)" "pnpm dlx unknown-pkg-xyz9" ""
+# FP controls — pinned / local-resolvable / non-dlx must still pass.
+run_cwd_case pass "pnpm dlx pinned pkg allowed"           "pnpm dlx prettier@3.0.0"   "$SANDBOX/empty"
+run_cwd_case pass "pnpm dlx local-resolved (pnpm-lock)"   "pnpm dlx vitest"           "$SANDBOX/with-pnpm-lock"
+run_cwd_case pass "pnpm install is not dlx (untouched)"   "pnpm install"              "$SANDBOX/empty"
+run_cwd_case pass "yarn add is not dlx (untouched)"       "yarn add lodash"           "$SANDBOX/empty"
+run_cwd_case pass "bunx pinned pkg allowed"               "bunx prettier@3.0.0"       "$SANDBOX/empty"
+
 # === v0.23.19: npx --no-install / --no forbid registry fetch — allow ===
 # Field report (claudemd.txt, bat-html-website session 2026-06-12):
 # `npx --no-install htmlhint --version` in a lockfile-less cwd was denied.
