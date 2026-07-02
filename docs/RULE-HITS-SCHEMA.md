@@ -31,7 +31,7 @@ source must appear in this table.
 | `deny-prose` | `banned-vocab` | v0.21.0 Path 2 — ship-flow command (commit/push/pr-create/release-create/publish) blocked because the preceding assistant turn's chat prose contains a high-fire §10-V banned vocab pattern. `extra.matched` lists the prose hits. Sub-feature opt-out: `BANNED_VOCAB_PROSE_SCAN=0`. Section: `§10-V`. Added v0.21.0. |
 | `deny-prose-dry-run` | `banned-vocab` | v0.21.1 — Path 2 observability mode. Same trigger as `deny-prose` (ship verb + high-fire prose match), but emitted instead of denying when `CLAUDEMD_PATH2_DRY_RUN=1`. `extra.matched` carries the would-deny hits; the tool call passes through. Grep this row to measure TP vs FP rate before committing to live enforcement. Section: `§10-V`. Added v0.21.1. |
 | `bypass-escape-hatch` | `banned-vocab`, `pre-bash-safety`, `memory-read-check` | per-invocation escape token used (records token name in `extra`) |
-| `npx-allow-local` | `pre-bash-safety` | `npx <pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30. |
+| `npx-allow-local` | `pre-bash-safety` | fetch-execute runner (`npx` / `bunx` / `npm exec` / `pnpm dlx` / `yarn dlx`) `<pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30; runner family v0.23.23. |
 | `npx-allow-no-install` | `pre-bash-safety` | `npx --no-install <pkg>` / `npx --no <pkg>` allowed regardless of lockfile state — these flags forbid registry fetch, so npx runs an already-installed binary or exits non-zero; no unknown-origin code can land (the §8 NPX chain's target). Flags after the package name do NOT lift the gate. Records `extra.pkg`. Section: `§8-npx`. Added v0.23.19. |
 | `rm-rf-allow-validated` | `pre-bash-safety` | `rm -rf $VAR` allowed because the same `VAR` is guarded by bash's `${VAR:?…}` set-or-exit operator (spec §8 SAFETY "Validate the var inline" recommended form). Records `extra.var`. Other guard forms (`[[ -n ]]`, `set -u`, control flow) are NOT recognized — use `[allow-rm-rf-var]`. Section: `§8-rm-rf-var`. Added v0.21.3. |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker (HEAD message) |
@@ -60,9 +60,10 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 |---|---|---|
 | `banned-vocab` | `deny` / `bypass-escape-hatch` | `§10-V` |
 | `ship-baseline` | `pass` / `pass-known-red` / `pass-known-red-incmd` / `deny` / `deny-repeat` | `§7-ship-baseline` |
-| `pre-bash-safety` | `deny` (combined patterns) | `§8` |
+| `pre-bash-safety` | `deny` | granular per triggering pattern: `§8-rm-rf-var` / `§8-npx` / `§8-curl-sh` (one deny row per section present; untagged hits fall back to `§8`) |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-rm-rf-var`) | `§8-rm-rf-var` |
 | `pre-bash-safety` | `bypass-escape-hatch` (`allow-npx-unpinned`) | `§8-npx` |
+| `pre-bash-safety` | `bypass-escape-hatch` (`allow-curl-sh`) | `§8-curl-sh` |
 | `pre-bash-safety` | `npx-allow-local` | `§8-npx` |
 | `pre-bash-safety` | `npx-allow-no-install` | `§8-npx` |
 | `pre-bash-safety` | `rm-rf-allow-validated` | `§8-rm-rf-var` |

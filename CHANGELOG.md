@@ -8,6 +8,25 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.23.23] - 2026-07-03
+
+**Patch — a self-audit found a doctor↔audit telemetry-parity gap, then an adversarial §8 false-negative sweep (hardened by a code review) closed four "execute scripts of unknown origin" bypass classes in the pre-bash-safety hook.** Spec content unchanged (stays v6.14.1).
+
+### Fixed — `doctor`: rule-usage counted test-session/probe rows that `audit.js` filters
+
+- `scripts/doctor.js`: the `rule-usage` health check derived its deny/bypass counts (and the §0.1 demote verdict downstream of them) from the raw `readHits` output, while the sibling `audit.js` strips manual-probe / sentinel-session rows via `excludeTestSessions`. On the same 30-day window doctor over-reported — `§7-ship-baseline` deny 17 vs audit's 9, `§8-rm-rf-var` 121 vs 101. Both rule-usage consumers (the `groupBySection` count + the demote-candidate token-breakdown loop) now filter identically; the `fail-open` check stays on raw hits by design (its rows are `session_id:null`). Doctor now matches audit.js across every section. Tests: `doctor.test.js` +2 (sentinel-exclusion count + token-breakdown).
+
+### Fixed — §8: four "execute scripts of unknown origin" false negatives in `pre-bash-safety`
+
+A 2026-07-03 adversarial audit (feed dangerous commands to the detector, observe allow/deny) plus a `superpowers` code review found the hook enforced only the literal forms of §8's unknown-origin / NPX rules. Four classes now covered — each adds denials only, verified against a false-positive control set:
+
+- **Fetch-execute runner family**: the NPX gate matched only literal `npx`; `pnpm dlx` / `yarn dlx` / `bunx` / `npm exec` of an unpinned unknown package bypassed it (identical fetch-execute — `npx` is a shortcut for `npm exec`). `NPX_REGEX` extended to the family, reusing the existing pinned/local/lockfile resolution (already reads pnpm-lock.yaml / yarn.lock). `npm install` / `pnpm install` / `yarn add` stay excluded (the regex requires the `exec` / `dlx` subcommand).
+- **`curl … | sh`** (new Pattern 3): no detector existed for piping or `<()`-substituting a network fetch into a shell. Fires when `curl`/`wget` in command position feeds `sh`/`bash`/`zsh`/`dash`/`ksh`/`ash` (optionally via `sudo`), matched per pipeline segment on the sanitized command. Local/literal sources (`cat x.sh | sh`), non-shell sinks (`| jq`), download-only (`curl -o`), and prose-in-quotes stay allowed. New `§8-curl-sh` telemetry section + `[allow-curl-sh]` bypass token.
+- **rm behind wrappers**: `sudo` / `doas` / `timeout N` / `nice -nN` / `stdbuf` / `ionice` / `chrt` before `rm -rf $VAR` bypassed the segment-start `rm` check. The wrapper-strip loop now handles them (arg-less + flag-bearing, consuming a wrapper's options and numeric/duration args, stopping at the first command word). Stripping only removes prefixes, so a non-rm command or a safe rm (literal path / `$HOME` subpath) never false-denies.
+- **Code review follow-up** (folded in): `sudo -E/-i/-H/-n rm` (sudo is flag-bearing, not arg-less), `npm exec`, and brace-group `{ curl … | sh; }` were caught adversarially after the initial fixes. Documented residuals: option-with-argument wrapper forms (`sudo -u svc rm`, `timeout -s KILL 5 rm`), `eval "$(curl)"`, `find -delete`.
+
+Hook tests +50 (206 in `pre-bash-safety.test.sh`); full suite 523 pass. `docs/RULE-HITS-SCHEMA.md` synced (new `§8-curl-sh` section + `allow-curl-sh` token). Findings + deferred residuals recorded in `tasks/s8-false-negative-audit-2026-07-03.md` and `tasks/project-audit-findings-2026-07-03.md`.
+
 ## [0.23.22] - 2026-07-02
 
 **Patch — follow-up to v0.23.21 (code review): sync the two remaining dedup-key reference docs + harden the `extra` key against future key-order variance.** Spec content unchanged (stays v6.14.1).
