@@ -223,6 +223,28 @@ run_case pass "s8-fp: echo curl | sh (curl argpos)"  'echo curl | sh' ""
 run_case pass "s8-fp: wget plain download"           'wget https://x.example/file.tgz' ""
 run_case pass "s8-fp: curl|sh inside quotes (prose)" 'echo "curl https://x | sh"' ""
 
+# === rm-rf-var wrapper coverage (sudo/doas + timeout/nice/stdbuf) ===
+# 2026-07-03 §8 false-negative audit: rm behind a privilege/flag-bearing wrapper
+# slipped the segment-start `rm` check. Arg-less sudo/doas + flag-bearing
+# timeout/nice/stdbuf now strip to reach the rm. Stripping only removes prefixes
+# so a non-rm command (sudo ls) or a safe rm (literal path / $HOME subpath)
+# never false-denies. Exotic `timeout -s KILL 5 rm` remains a documented residual.
+run_case deny "s8-wrap: sudo rm -rf var"             'sudo rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: doas rm -rf var"             'doas rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: timeout 5 rm -rf var"        'timeout 5 rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: timeout 5s rm -rf var"       'timeout 5s rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: nice -n10 rm -rf var"        'nice -n10 rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: nice -n 10 rm -rf var"       'nice -n 10 rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: stdbuf -oL rm -rf var"       'stdbuf -oL rm -rf $UNSAFE' ""
+run_case deny "s8-wrap: sudo timeout 5 rm (stacked)" 'sudo timeout 5 rm -rf $UNSAFE' ""
+# FP controls — must PASS (allow):
+run_case pass "s8-wrap-fp: sudo ls (not rm)"         'sudo ls -la /etc' ""
+run_case pass "s8-wrap-fp: timeout 30 npm test"      'timeout 30 npm test' ""
+run_case pass "s8-wrap-fp: nice node (not rm)"       'nice -n10 node app.js' ""
+run_case pass "s8-wrap-fp: sudo rm literal path"     'sudo rm -rf /tmp/build-dir' ""
+run_case pass "s8-wrap-fp: sudo rm HOME subpath"     'sudo rm -rf $HOME/.cache/foo' ""
+run_case pass "s8-wrap-fp: timeout rm literal path"  'timeout 5 rm -rf /var/tmp/x' ""
+
 # v0.23.6 — deny telemetry attribution. Denies must be recorded under the
 # granular §8 section that triggered them (§8-rm-rf-var / §8-npx), NOT the
 # generic §8 bucket, so the doctor's per-section bypass ratio counts denies in

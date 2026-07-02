@@ -343,19 +343,47 @@ if (( bypass_rm == 0 )); then
     # (and `env FOO=x rm`) all exec rm too. Pre-fix the segment-start `rm` check
     # below skipped any segment that began with an assignment OR a wrapper word —
     # a §8 SAFETY silent bypass (`DEBUG=1 rm -rf $HOME`, `command rm -rf $X`).
-    # Loop because they stack (`A=1 B=2 rm`, `env FOO=x rm`). No FP: the `rm`
-    # check still gates, so stripping a wrapper off a non-rm command (`env node`)
-    # changes nothing. NOT covered (best-effort; documented): flag-bearing
-    # wrappers (`nice -n10 rm`, `timeout 5 rm`), `xargs` (stdin model), `sudo`
-    # (explicit elevated intent). The [allow-rm-rf-var] token is the escape.
+    # Loop because they stack (`A=1 B=2 rm`, `env FOO=x rm`, `sudo timeout 5 rm`).
+    # No FP: the `rm` check still gates, so stripping a wrapper off a non-rm
+    # command (`env node`, `sudo ls`) changes nothing. Covered: arg-less
+    # sudo/doas + flag-bearing timeout/nice/stdbuf/ionice/chrt (2026-07-03 §8 FN
+    # audit). NOT covered (best-effort; documented residual): `xargs rm` (target
+    # arrives on stdin, not argv — no `$VAR` in the rm args to gate), and
+    # option-arg wrapper forms where a non-numeric arg precedes the command
+    # (`timeout -s KILL 5 rm`). The [allow-rm-rf-var] token is the escape.
     while [[ -n "$trimmed" ]]; do
       first="${trimmed%%[[:space:]]*}"
       if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
          || [[ "$first" == env || "$first" == command || "$first" == nohup \
-            || "$first" == setsid || "$first" == time \
-            || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+            || "$first" == setsid || "$first" == time || "$first" == sudo \
+            || "$first" == doas || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+        # Arg-less transparent wrappers (+ v0.23.x sudo/doas: `sudo rm -rf $X`
+        # runs rm as root — the unvalidated-var danger is amplified, not exempt).
         rest="${trimmed#"$first"}"
         trimmed="${rest#"${rest%%[![:space:]]*}"}"
+      elif [[ "$first" == timeout || "$first" == nice || "$first" == stdbuf \
+            || "$first" == ionice || "$first" == chrt ]]; then
+        # Flag-bearing wrappers: strip the wrapper word, then its option tokens
+        # (-*) and one/more bare numeric-or-duration args (timeout's DURATION,
+        # nice's priority). `timeout 5 rm -rf $X` / `nice -n10 rm -rf $X` /
+        # `stdbuf -oL rm` were §8 false-negatives (2026-07-03 audit). Consumption
+        # stops at the first command word (rm or another cmd), so rm's own flags
+        # are never eaten and a non-rm command is untouched — stripping only
+        # removes prefixes, it can never CREATE a target/danger-flag, so there is
+        # no false-deny. Exotic option-arg forms (`timeout -s KILL 5 rm`) where a
+        # non-numeric option-argument sits before the command remain a documented
+        # residual — [allow-rm-rf-var] is the escape.
+        rest="${trimmed#"$first"}"
+        trimmed="${rest#"${rest%%[![:space:]]*}"}"
+        while [[ -n "$trimmed" ]]; do
+          w="${trimmed%%[[:space:]]*}"
+          if [[ "$w" == -* || "$w" =~ ^[0-9]+[smhd]?$ ]]; then
+            rest="${trimmed#"$w"}"
+            trimmed="${rest#"${rest%%[![:space:]]*}"}"
+          else
+            break
+          fi
+        done
       else
         break
       fi

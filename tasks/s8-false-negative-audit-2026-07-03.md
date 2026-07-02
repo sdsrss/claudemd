@@ -22,10 +22,11 @@
 - **证据(RED→GREEN)**: `tests/hooks/pre-bash-safety.test.sh` +18 用例(8 deny + 10 FP 控制)+ 遥测断言扩展(§8-curl-sh 落自己桶、generic §8 仍为空)。161→179→全套件 523 pass。
 - **文档化残留(未覆盖,低频)**: 命令替换形 `eval "$(curl x)"` / `sh -c "$(curl x)"`(与 unwrap 交互复杂);`curl|python`/`|node`/`|perl`(非 shell 但同样执行远端,为控 FP 面不纳入);full-path `/usr/bin/curl|sh`(命令位置锚定只认裸 curl/wget)。待真实命中再评估。
 
-### FN-3 flag-bearing wrapper + xargs(`sudo`/`timeout`/`nice`/`stdbuf` rm -rf $X)—— 未修,已文档化的已知 gap
-- **危险**: hook 头注释自己列为 "NOT covered";`sudo rm -rf $EMPTY/`(提权+空变量=root 删根)尤其值得。
-- **现有覆盖**: 无参 wrapper(`env`/`command`/`nohup`/`setsid`/`time`)已 strip;有参的(`timeout 5 rm`/`nice -n10 rm`)因 wrapper 与 rm 之间夹参数,strip 循环停在参数 token。
-- **建议**: `sudo`(无参、首个非 flag 即命令)是干净微修——加进 line 353-356 的 strip 列表即可(strip 非 rm 命令的 wrapper 无副作用)。有参 wrapper 需识别"跳过 N 个参数"逻辑,FP 风险略高,与 xargs(stdin 模型)一起攒。`[allow-rm-rf-var]` 是现有逃生舱。
+### ✅ FN-3 rm wrapper 覆盖(`sudo`/`doas` + `timeout`/`nice`/`stdbuf`/`ionice`/`chrt`)—— 已修复本会话(未发版,攒批)
+- **危险**: rm 藏在提权/flag-bearing wrapper 后绕过 segment-start `rm` 检查;`sudo rm -rf $EMPTY/`(提权+空变量=root 删根)尤其值得。
+- **修复**: 同一个 strip 循环——arg-less 加 `sudo`/`doas`;flag-bearing 加 `timeout`/`nice`/`stdbuf`/`ionice`/`chrt`(剥 wrapper 词后,内层循环消费其 option token `-*` + 裸数值/时长 `[0-9]+[smhd]?`,停在第一个命令词)。stacking 靠外层循环(`sudo timeout 5 rm` 逐层剥)。**无 FP**:剥离只删前缀,永远不会 CREATE 目标或危险 flag,所以不会误 deny——`sudo ls`/`timeout 30 npm test` 非 rm 放行,`sudo rm -rf /tmp/x` 字面路径 + `$HOME/.cache` 子路径放行(已验证)。
+- **证据(RED→GREEN)**: +14 用例(8 deny 含 stacked/`nice -n 10` 分离形 + 6 FP 控制)。179→193→全套件 523 pass。hook 头注释同步更新。
+- **文档化残留**: `xargs rm`(target 从 stdin 来,rm 的 argv 里没 `$VAR` 可 gate,本质不同);option-arg 形 `timeout -s KILL 5 rm`(非数值 option-argument 夹在命令前)。`[allow-rm-rf-var]` 是逃生舱。
 
 ### FN-4 `find $DIR -delete` / `find -exec rm`(非 rm 工具的等效删除)—— 未修
 - **危险**: `find / -name x -delete`、`find $DIR -exec rm -rf {} +` 等效于递归删除,检测器只认 `rm` 段起始。
@@ -36,8 +37,9 @@
 - **建议**: 拓宽 target 正则到 `$(...)` 会显著增加 FP(大量合法 `rm -rf $(some-safe-path)`)。低收益,记录待真实命中再评估。
 - **注**: 矩阵里 `r''m` 那条测试**无效**——探测脚本自身的 shell 把 `'r''m'` 拼回 `rm` 才喂进去,没真正测到分裂 token 绕过;若要测需从 JSON 层构造。
 
-## 建议的下一步优先级（FN-1 + FN-2 已修，剩余）
-1. **FN-3 的 `sudo` 子项**——干净微修(`sudo` 无参、首个非 flag 即命令),加进 rm wrapper strip 列表即可,可随下个 §8 批次带上。
-2. **FN-4 (find -delete) + FN-3 有参 wrapper (`timeout`/`nice`/`stdbuf`/`xargs`) + FN-5 (command-sub 目标)**——攒成一个"新检测器/拓宽"批,一次审慎 TDD,别逐条塞进 §8 核心。
-3. **FN-2 残留**(`eval "$(curl)"` 命令替换形)——若要闭合,需处理与 unwrap_indirect 的交互,单独小心。
-4. 全部按 internal-freeze 攒批发版(§8 是 live enforcement,但这些是加固不是回归,无紧急性)。已修的 FN-1/FN-2 是非 release commit,随 07-10 §10-V 批次发。
+## 建议的下一步优先级（FN-1 + FN-2 + FN-3 已修，剩余）
+1. **FN-4 (`find … -delete` / `-exec rm`)**——新检测器。FP 面较大(合法 `find . -name x -delete` 常见),要仔细:仅当 path 是 `$VAR`(未验证)或危险字面(`/`/`~`/裸 `$HOME`)时 gate。单独一个审慎会话。
+2. **FN-5 (command-sub 目标 `rm -rf $(cat)` / 变量间接 `X=rm;$X`)**——低收益,拓宽 target 正则 FP 高,记录待真实命中。
+3. **FN-2 残留**(`eval "$(curl)"` 命令替换形)+ **FN-3 残留**(`xargs rm` stdin 模型、`timeout -s KILL 5 rm` option-arg 形)——都低频,若要闭合需单独小心。
+4. **收敛判断**: 两个高危大项(npx 家族 fetch-execute、curl|sh)+ 常见 wrapper 已闭合。剩余全是低频长尾,FP 风险递增而真实危险递减——是收益递减区。建议**停在这里**,剩余项待真实命中(不是假想)再逐个做,别为长尾持续加码 §8 核心(正是 #1 诊断风险"维护跑步机")。
+5. 全部按 internal-freeze 攒批发版(§8 是 live enforcement,但这些是加固不是回归,无紧急性)。已修的 FN-1/FN-2/FN-3 是非 release commit,随 07-10 §10-V 批次发。
