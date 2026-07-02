@@ -37,6 +37,14 @@
 - **建议**: 拓宽 target 正则到 `$(...)` 会显著增加 FP(大量合法 `rm -rf $(some-safe-path)`)。低收益,记录待真实命中再评估。
 - **注**: 矩阵里 `r''m` 那条测试**无效**——探测脚本自身的 shell 把 `'r''m'` 拼回 `rm` 才喂进去,没真正测到分裂 token 绕过;若要测需从 JSON 层构造。
 
+## Code-review 跟进（2026-07-03，`superpowers:requesting-code-review`)
+
+评审 agent 实测 ~60 探针,抓到 5 项(全部核验属实,已修,commit 见下):
+- **Critical**: FN-3 我把 `sudo`/`doas` 放进了**arg-less** 分支,但 sudo 本质带 flag——`sudo -E/-H/-i/-n rm -rf $X` 一有 flag 就绕过(恰好漏掉声称要防的 `sudo -E rm -rf $空` root 删根)。**修正**:移到 flag-bearing 分支。残留 `sudo -u svc rm`(option-带-arg,同 `timeout -s KILL` 类)已文档化。
+- **Important**: 漏了 `npm exec <unpinned>`(npx 本就是 `npm exec` 的快捷方式,同类 fetch-execute)。**修正**:`npm[[:space:]]+exec` 加进 NPX_REGEX;`npm install`/`npm run` 靠 `exec` 子命令要求排除。
+- **Minor**: `{ curl|sh; }` 花括号组绕过(锚点加 `{`)、缺 `curl|shasum` 词界 FP 控制测试、头部 docstring 过时(pattern 列表 + `[allow-curl-sh]` 已补)。
+- **独立复验**: 评审给的 7 个绕过命令现全 DENY,残留 `sudo -u`/FP 控制(`sudo -E make`/`$HOME` 子路径/`npm install`/`curl|shasum`)全 ALLOW。+11 测试(206/206),全套件 523 pass。
+
 ## 建议的下一步优先级（FN-1 + FN-2 + FN-3 已修，剩余）
 1. **FN-4 (`find … -delete` / `-exec rm`)**——新检测器。FP 面较大(合法 `find . -name x -delete` 常见),要仔细:仅当 path 是 `$VAR`(未验证)或危险字面(`/`/`~`/裸 `$HOME`)时 gate。单独一个审慎会话。
 2. **FN-5 (command-sub 目标 `rm -rf $(cat)` / 变量间接 `X=rm;$X`)**——低收益,拓宽 target 正则 FP 高,记录待真实命中。

@@ -3,16 +3,23 @@
 # Denies dangerous Bash patterns enumerated in spec §8 SAFETY (immutable):
 #   1. `rm -rf $VAR` / `rm -rf "$VAR"` / `rm -rf ${VAR}` — variable expansion
 #      in the target without inline validation. Whitelists $HOME, $PWD,
-#      $OLDPWD, $TMPDIR (always-set, low-blast vars).
-#   2. `npx <pkg>` without version pin AND not resolvable from cwd's lockfile
-#      / node_modules — spec §8 NPX rule "lockfile → local → pinned whitelist;
-#      none → [AUTH REQUIRED]". v0.9.30: previously only the pinned link was
-#      enforced, denying any `npx <pkg>` with a project-installed dep.
+#      $OLDPWD, $TMPDIR (always-set, low-blast vars). Also strips leading
+#      wrappers before the check: env-assignments, env/command/nohup/setsid/time,
+#      and flag-bearing sudo/doas/timeout/nice/stdbuf/ionice/chrt.
+#   2. Fetch-execute package runner without a version pin AND not resolvable from
+#      cwd's lockfile / node_modules — spec §8 NPX rule "lockfile → local →
+#      pinned whitelist; none → [AUTH REQUIRED]". Covers `npx` / `npm exec` /
+#      `bunx` / `pnpm dlx` / `yarn dlx` (`npm install` / `pnpm install` etc. are
+#      not fetch-execute one-offs and stay excluded).
+#   3. Network fetch piped/`<()`-substituted into a shell — spec §8 "execute
+#      scripts of unknown origin": `curl|wget … | [sudo] sh/bash/…` or
+#      `sh <(curl …)`. Local/literal sources and non-shell sinks stay allowed.
 #
 # Bypass:
 #   (a) Per-invocation escape token in command:
 #       [allow-rm-rf-var]   — bypasses pattern 1
 #       [allow-npx-unpinned]— bypasses pattern 2
+#       [allow-curl-sh]     — bypasses pattern 3
 #   (b) Kill-switch: DISABLE_PRE_BASH_SAFETY_HOOK=1 (whole hook off)
 #   (c) Global kill: DISABLE_CLAUDEMD_HOOKS=1
 #
@@ -355,24 +362,27 @@ if (( bypass_rm == 0 )); then
       first="${trimmed%%[[:space:]]*}"
       if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
          || [[ "$first" == env || "$first" == command || "$first" == nohup \
-            || "$first" == setsid || "$first" == time || "$first" == sudo \
-            || "$first" == doas || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
-        # Arg-less transparent wrappers (+ v0.23.x sudo/doas: `sudo rm -rf $X`
-        # runs rm as root — the unvalidated-var danger is amplified, not exempt).
+            || "$first" == setsid || "$first" == time \
+            || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+        # Arg-less transparent wrappers + leading env-var assignments.
         rest="${trimmed#"$first"}"
         trimmed="${rest#"${rest%%[![:space:]]*}"}"
       elif [[ "$first" == timeout || "$first" == nice || "$first" == stdbuf \
-            || "$first" == ionice || "$first" == chrt ]]; then
+            || "$first" == ionice || "$first" == chrt || "$first" == sudo \
+            || "$first" == doas ]]; then
         # Flag-bearing wrappers: strip the wrapper word, then its option tokens
-        # (-*) and one/more bare numeric-or-duration args (timeout's DURATION,
-        # nice's priority). `timeout 5 rm -rf $X` / `nice -n10 rm -rf $X` /
-        # `stdbuf -oL rm` were §8 false-negatives (2026-07-03 audit). Consumption
-        # stops at the first command word (rm or another cmd), so rm's own flags
-        # are never eaten and a non-rm command is untouched — stripping only
-        # removes prefixes, it can never CREATE a target/danger-flag, so there is
-        # no false-deny. Exotic option-arg forms (`timeout -s KILL 5 rm`) where a
-        # non-numeric option-argument sits before the command remain a documented
-        # residual — [allow-rm-rf-var] is the escape.
+        # (-*) and bare numeric-or-duration args (timeout's DURATION, nice's
+        # priority), stopping at the first command word (rm or another cmd) so
+        # rm's own flags are never eaten and a non-rm command is untouched.
+        # `timeout 5 rm -rf $X` / `nice -n10 rm` / `stdbuf -oL rm` were §8 FNs
+        # (2026-07-03 audit). sudo/doas belong HERE, not in the arg-less set:
+        # `sudo -E rm -rf $X` (preserve-env, common in CI) / `sudo -i rm` carry a
+        # boolean flag before the command — code review 2026-07-03 caught them
+        # bypassing from the arg-less branch. `sudo rm -rf $EMPTY` runs rm as root
+        # (danger amplified, not exempt). No false-deny: stripping only removes
+        # prefixes, never CREATES a target/danger-flag. Documented residual:
+        # option-WITH-argument forms where a non-numeric arg precedes the command
+        # — `sudo -u svc rm`, `timeout -s KILL 5 rm`. [allow-rm-rf-var] escapes.
         rest="${trimmed#"$first"}"
         trimmed="${rest#"${rest%%[![:space:]]*}"}"
         while [[ -n "$trimmed" ]]; do
@@ -464,16 +474,18 @@ if (( bypass_rm == 0 )); then
   done <<< "$RM_SEGMENTS"
 fi
 
-# Pattern 2: fetch-execute package runner (npx / pnpm dlx / yarn dlx / bunx)
-# with first non-flag arg being a bare/scoped package name without @<version>
-# pin. §8 forbids "execute scripts of unknown origin"; npx's siblings fetch+run
-# an unpinned unknown package identically, so the §8 NPX gate (lockfile → local
-# → pinned) applies to the whole family. `pnpm install` / `yarn add` are NOT
-# fetch-execute one-offs and stay excluded (the regex requires the `dlx`
-# subcommand). 2026-07-03 §8 false-negative audit found all three siblings
-# bypassed the npx-only detector; local/lockfile resolution below already reads
-# pnpm-lock.yaml / yarn.lock, so the gate is symmetric across ecosystems.
-NPX_REGEX='(^|[[:space:];&|`])(npx|bunx|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
+# Pattern 2: fetch-execute package runner (npx / npm exec / pnpm dlx / yarn dlx
+# / bunx) with first non-flag arg being a bare/scoped package name without
+# @<version> pin. §8 forbids "execute scripts of unknown origin"; npx's siblings
+# fetch+run an unpinned unknown package identically (npx is literally a shortcut
+# for `npm exec`), so the §8 NPX gate (lockfile → local → pinned) applies to the
+# whole family. `npm install` / `npm run` / `pnpm install` / `yarn add` are NOT
+# fetch-execute one-offs and stay excluded (the regex requires the `exec`/`dlx`
+# subcommand). 2026-07-03 §8 false-negative audit + code review found the
+# siblings bypassed the npx-only detector; local/lockfile resolution below
+# already reads pnpm-lock.yaml / yarn.lock, so the gate is symmetric across
+# ecosystems.
+NPX_REGEX='(^|[[:space:];&|`])(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
 if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   # Name the matched runner (npx / bunx / pnpm dlx / yarn dlx) for honest deny
   # text — the leading (^|sep) + trailing space anchors keep it off identifier
@@ -555,8 +567,12 @@ fi
 # §8 false-negative audit: this class had no detector at all.
 bypass_curlsh=0
 if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
-CURLSH_PIPE='(^|[|;&(])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:]]|$)'
-CURLSH_PROCSUB='(^|[|;&(])[[:space:]]*(sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
+# Command-position anchor `[|;&({]` includes `{` so a brace-group `{ curl … |
+# sh; }` is caught like the subshell `( … )` form (code review 2026-07-03). A
+# var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
+# requires a space, which `${curl}` (curl followed by `}`) never has.
+CURLSH_PIPE='(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:]]|$)'
+CURLSH_PROCSUB='(^|[|;&({])[[:space:]]*(sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
 curlsh_hit=0
 while IFS= read -r cseg; do
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
