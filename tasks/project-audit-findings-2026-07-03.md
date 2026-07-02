@@ -3,7 +3,11 @@
 **性质**: 只读审计（架构/功能/代码/规范），无 ship。遵守 internal-freeze（`project_internal_freeze_v02312`）：下列条目是候选决策与到期事项，不是执行队列。
 **基线证据**（本次全部现跑）: `npm test` OVERALL all suites passed（含 upgrade-lifecycle v0.2.3→0.23.22）；doctor 25/26 ok（唯一 fail = hook-drift）；spec-coherence 3/4 clean（LOW = core headroom 447B/98.2%）；telemetry 4627/4627 parsed、0 skipped、byFailOpen={}；memory-index 40/40。
 
-## F1 — doctor rule-usage 未过滤 test-session/probe 行（新发现，待合批修复）
+## F1 — doctor rule-usage 未过滤 test-session/probe 行 ✅ 代码已修（2026-07-03，未发版，攒批）
+
+**Resolution**: `scripts/doctor.js` 取数处补 `excludeTestSessions`（走选项 1 最小 diff），两个消费点同口径过滤——`bySection`（计数）+ demote token 分解循环；fail-open 检查故意保留 raw（其 rows 是 session_id:null，本就被保留，且按 reason 而非 session 分类）。回归测试 2 个（`tests/scripts/doctor.test.js`：sentinel 计数排除 + demote token breakdown 排除），RED→GREEN 验证：修复前 doctor `§7-ship-baseline` deny=17，修复后 =9，与 `audit.js` 全 section 逐项对齐（rm-rf 101、npx 6…）。全套件 521→523 pass。**未 ship**：按 internal-freeze「telemetry polish 不单独发版」+ OPERATOR §13.1 batching，随 F5a（§10-V 压缩，07-10）合批 release。commit（非 release）已推 main。原始分析保留于下：
+
+
 
 - **证据**: 同一 30d 窗口，doctor `rule-usage:§7-ship-baseline` deny=17 vs `audit.js`（走 `excludeTestSessions`，audit.js:42）deny=9（+8 = v0.23.20 记载的 8 条 `session_id='s'` 合成行）；`§8-rm-rf-var` 121 vs 100（+21）；`§8-npx` 7 vs 6。grep 证实 `scripts/doctor.js` 全文无 `excludeTestSessions` 引用（doctor.js:405 直接 `groupBySection(recentHits)`）。
 - **影响**: doctor 的 "§0.1 demotion candidate" 判定（doctor.js:446）输入含探针噪声。本窗口全部 ratio 仍落 healthy 带，未产生错误 verdict —— 潜伏测量偏差，非活跃误判。与 v0.23.20/21/22 同类（telemetry 消费侧视图漏同步的第 4 例）。

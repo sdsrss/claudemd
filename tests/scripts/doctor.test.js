@@ -461,6 +461,56 @@ test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () 
   assert.equal(unset, undefined, '(unset) bucket must not generate a rule-usage check');
 });
 
+test('rule-usage excludes test-session/probe rows (parity with audit.js)', async () => {
+  // Bug (2026-07-03 audit F1): doctor computed rule-usage from UNFILTERED
+  // hits, so manual-probe / sentinel-session rows (session_id ≤7 chars — the
+  // excludeTestSessions cohort, e.g. v0.23.20's 8 session_id='s' ship-baseline
+  // fixtures) inflated deny counts. audit.js filters via excludeTestSessions;
+  // doctor did not → same 30d window showed doctor ship-baseline deny=17 vs
+  // audit deny=9. §0.1 demote verdicts are downstream of this count, so they
+  // must count REAL sessions only.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const realUuid = '11111111-2222-3333-4444-555555555555'; // 36-char real session
+  const rows = [
+    // 3 real denies (kept)
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"${realUuid}","extra":null}\n`.repeat(3),
+    // 5 sentinel denies (session_id='s' — manual probe, must be excluded)
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"s","extra":null}\n`.repeat(5),
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§7-ship-baseline');
+  assert.ok(usage, 'rule-usage:§7-ship-baseline check must exist');
+  // Pre-fix: deny=8 (3 real + 5 sentinel). Post-fix: deny=3 (real only).
+  assert.match(usage.detail, /deny=3\b/, `sentinel-session rows must be excluded; detail="${usage.detail}"`);
+  assert.doesNotMatch(usage.detail, /deny=8/, 'must not count sentinel-session rows');
+});
+
+test('rule-usage demote token breakdown also excludes sentinel bypasses', async () => {
+  // The demote-candidate token breakdown iterates the hit list a SECOND time
+  // (parallel consumer of the same data). It must filter sentinels identically
+  // to the count, else "bypass=N" and the [token]×k breakdown disagree.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const realUuid = '11111111-2222-3333-4444-555555555555';
+  const rows = [
+    // Real: 3 bypass via skip-memory-check + 1 deny → 75% override (demote candidate)
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":{"token":"skip-memory-check"}}\n`.repeat(3),
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":null}\n`,
+    // Sentinel: 4 bypass via force-skip (manual probe) — must NOT appear anywhere
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"probe","extra":{"token":"force-skip"}}\n`.repeat(4),
+  ].join('');
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
+  assert.ok(usage);
+  assert.equal(usage.ok, false, 'real-only 3 bypass / 1 deny = 75% → demote candidate');
+  assert.match(usage.detail, /bypass=3\b/, 'count must exclude sentinel bypasses');
+  assert.match(usage.detail, /\[skip-memory-check\]×3/, 'real bypass token present');
+  assert.doesNotMatch(usage.detail, /force-skip/, 'sentinel-session token must not appear in breakdown');
+});
+
 test('doctor CLI rejects space-form --prune-backups 5 (was silent default)', () => {
   // v0.9.16 antipattern recurrence: pre-fix, space-form was silently dropped,
   // doctor ran without prune, exited 0 — same family as audit.js / sparkline.js

@@ -8,7 +8,7 @@ import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
-import { readHits, groupBySection, blockingDenyCount } from './lib/rule-hits-parse.js';
+import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { scanMemoryTags } from './lib/memory-tags.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
@@ -402,7 +402,16 @@ export async function doctor({ pruneBackups: prune } = {}) {
       detail: `${rhSkipped}/${rhTotal} rule-hits log lines failed JSON.parse (${pct}%); §13.1 audit data is biased. Inspect ~/.claude/logs/claudemd.jsonl for truncated rows.`,
     });
   }
-  const bySection = groupBySection(recentHits);
+  // Rule-usage (and its §0.1 demote verdict) must count REAL sessions only,
+  // matching audit.js (excludeTestSessions). readHits returns raw rows; without
+  // this filter, manual-probe / sentinel-session rows (session_id ≤7 chars —
+  // the excludeTestSessions cohort) inflate deny/bypass counts: the 2026-07-03
+  // audit observed ship-baseline deny=17 here vs =9 in audit.js on the same 30d
+  // window. The fail-open check above intentionally stays on raw recentHits —
+  // its rows are session_id:null (excludeTestSessions keeps them) and it
+  // classifies by reason, not session.
+  const realHits = excludeTestSessions(recentHits);
+  const bySection = groupBySection(realHits);
   for (const section of Object.keys(bySection).sort()) {
     // v0.9.37: skip all (unset*) variants — `(unset)` (single-bucket legacy)
     // + `(unset-historical)` / `(unset-current)` (cutover-split). All three
@@ -433,7 +442,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
       // R-N6+: per-token breakdown of the section's bypass events. Sort by
       // count desc, secondary alpha so output is deterministic across runs.
       const tokens = {};
-      for (const h of recentHits) {
+      for (const h of realHits) {
         if (h.event !== 'bypass-escape-hatch') continue;
         if ((h.spec_section || '(unset)') !== section) continue;
         const tok = h.extra?.token || '(unspecified)';
