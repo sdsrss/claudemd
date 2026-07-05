@@ -276,3 +276,31 @@ test('no-manifest uninstall still removes a claudemd-owned statusLine (M3)', asy
   assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
     'renderer deleted, not left dangling');
 });
+
+test('uninstall unregisters a guest claudemd from a composite host, leaving the host slot untouched', async () => {
+  // Arrange: code-graph (a composite host) owns the settings.json statusLine
+  // slot, and claudemd is registered as a guest inside its registry alongside
+  // code-graph itself — the host+guestRegistered branch of remove() at
+  // statusline.js:128 (Task 5), previously unexercised by this suite.
+  const registryPath = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  fs.writeFileSync(registryPath, JSON.stringify([
+    { id: 'claudemd', command: `bash "${path.join(tmpHome, '.claude/claudemd-statusline.sh')}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]));
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
+    statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+  }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/claudemd-statusline.sh'), '#!/usr/bin/env bash\necho x\n');
+
+  const res = await uninstall({});
+
+  assert.equal(res.statusline.action, 'unregistered');
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  assert.ok(!registry.some((p) => p.id === 'claudemd'), 'claudemd must be unregistered from the host registry');
+  assert.ok(registry.some((p) => p.id === 'code-graph'), 'host entry must survive uninstall');
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')), 'renderer must be deleted');
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"',
+    'host keeps the slot — settings.json statusLine must be unchanged');
+});

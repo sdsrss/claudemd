@@ -23,6 +23,12 @@ const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {})
 
 export function detect(pluginRoot = null) {
   const settings = loadSettings();
+  // Presence — not command-parseability — decides absent-vs-occupied. A slot
+  // holding ANY shape/command we don't recognise as ours is still someone
+  // else's: a composite host we know how to guest-register under → 'host',
+  // anything else → 'foreign'. Classifying either as 'absent' would let the
+  // empty-slot install path clobber it, breaking the never-touch-a-foreign-slot
+  // invariant. Only a missing / null / '' slot is genuinely 'absent'.
   const present = settings.statusLine != null && settings.statusLine !== '';
   const cmd = settings.statusLine && typeof settings.statusLine.command === 'string'
     ? settings.statusLine.command

@@ -1,6 +1,6 @@
 ---
 name: claudemd-statusline
-description: Register claudemd's PS1-style statusLine (user@host:path (branch) model [ctx:N%]) in ~/.claude/settings.json. Use when (1) the user asks to add / configure / set up a statusline or status bar, (2) a fresh machine has no statusline and the user wants the claudemd one, (3) the user wants claudemd to take over the statusline from another provider (--force). Modes - check (report current owner, no writes), remove (un-wire + restore prior). Idempotent: never duplicates, never clobbers another provider's slot without --force.
+description: Register claudemd's PS1-style statusLine (user@host:path (branch) model [ctx:N%]) in ~/.claude/settings.json. Use when (1) the user asks to add / configure / set up a statusline or status bar, (2) a fresh machine has no statusline and the user wants the claudemd one, (3) the user wants claudemd to take over the statusline from another provider (--force), (4) another composite provider (e.g. code-graph) already owns the slot and the user wants claudemd's segment shown alongside it. Modes - check (report current owner, no writes), remove (un-wire + restore prior). Idempotent: never duplicates, never clobbers another provider's slot without --force.
 ---
 
 Usage: `/claudemd-statusline` | `/claudemd-statusline --force` | `/claudemd-statusline check` | `/claudemd-statusline remove`
@@ -29,7 +29,7 @@ Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For 
 
 ## Step 1 — consent gate (always, binds under AUTONOMY_LEVEL: aggressive)
 
-Writing `~/.claude/settings.json` is a §5 hard-AUTH action. BEFORE writing, show the user exactly what changes:
+Writing `~/.claude/settings.json` — or, for the host/guest path, the host's registry files (`~/.cache/code-graph/statusline-registry.json` + `~/.claude/statusline-providers.json`) — is a §5 hard-AUTH action: both are user-global writes. BEFORE writing, show the user exactly what changes:
 - the `statusLine` command that will be set: `bash "$HOME/.claude/claudemd-statusline.sh"`
 - for `foreign` + `--force`: the current command that will be saved for restore
 - that the renderer is copied to `~/.claude/claudemd-statusline.sh`
