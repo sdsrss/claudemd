@@ -35,7 +35,7 @@ test('detect on empty slot → absent', () => {
 });
 
 test('adopt then detect → claudemd', () => {
-  assert.equal(JSON.parse(run(['adopt']).stdout).action, 'set');
+  assert.equal(JSON.parse(run(['adopt', '--json']).stdout).action, 'set');
   assert.equal(JSON.parse(run(['detect', '--json']).stdout).verdict, 'claudemd');
   assert.ok(fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')));
 });
@@ -52,4 +52,14 @@ test('--help → exit 0 with usage', () => {
   const r = run(['--help']);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /Usage: node scripts\/statusline-adopt\.js/);
+});
+
+test('M5: detect default is human-readable, --json is machine-readable', () => {
+  // fresh empty slot in the sandbox HOME
+  const r1 = run(['detect']);
+  assert.doesNotMatch(r1.stdout, /^\s*\{/, 'default output is not raw JSON');
+  assert.match(r1.stdout, /absent/, 'human summary names the verdict');
+  const r2 = run(['detect', '--json']);
+  const obj = JSON.parse(r2.stdout);
+  assert.equal(obj.verdict, 'absent');
 });

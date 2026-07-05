@@ -18,8 +18,9 @@ Modes:
 Flags:
   --force           adopt: replace a foreign statusLine (saves prior for remove).
   --empty-only      adopt: only write when the slot is empty (install-time guard).
+  --supersede=<id>  adopt(host): supersede a named provider (saves it for remove).
   --dry-run         adopt: print the transition, write nothing.
-  --json            Machine-readable JSON (adopt/remove always emit JSON regardless).
+  --json            Machine-readable JSON (default is a human-readable summary).
   --help, -h        Print this message and exit.
 
 Exit codes: 0 success | 1 failure | 2 argv-shape error.`;
@@ -31,6 +32,19 @@ const invokedAsMain = (() => {
   catch { return false; }
 })();
 
+function renderHuman(mode, out) {
+  if (mode === 'detect') {
+    const bits = [`verdict: ${out.verdict}`];
+    if (out.host) bits.push(`host: ${out.host}`, `claudemd-registered: ${out.guestRegistered}`);
+    if (out.current) bits.push(`current: ${out.current}`);
+    bits.push(`renderer: ${out.dest.exists ? 'present' : 'absent'}${out.dest.exists ? (out.dest.matchesShipped ? ' (matches shipped)' : ' (differs from shipped)') : ''}`);
+    return bits.join('\n');
+  }
+  // adopt / remove
+  const tail = [out.host && `host=${out.host}`, out.superseded && `superseded=${out.superseded}`, out.restored && `restored=${out.restored}`, out.to && `to=${out.to}`].filter(Boolean).join('  ');
+  return `action: ${out.action}${tail ? '  ' + tail : ''}`;
+}
+
 if (invokedAsMain) {
   const argv = process.argv.slice(2);
   printHelpAndExit(argv, USAGE);
@@ -41,7 +55,7 @@ if (invokedAsMain) {
   }
   let parsed;
   try {
-    parsed = parseStrict(rest, { bools: ['--force', '--empty-only', '--dry-run', '--json'] });
+    parsed = parseStrict(rest, { bools: ['--force', '--empty-only', '--dry-run', '--json'], values: ['--supersede'] });
   } catch (e) {
     if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
     throw e;
@@ -55,9 +69,14 @@ if (invokedAsMain) {
       force: parsed.bools.has('--force'),
       emptyOnly: parsed.bools.has('--empty-only'),
       dryRun: parsed.bools.has('--dry-run'),
+      supersede: parsed.values['--supersede'] || null,
     });
     else out = remove();
-    process.stdout.write(JSON.stringify(out) + '\n');
+    if (parsed.bools.has('--json')) {
+      process.stdout.write(JSON.stringify(out) + '\n');
+    } else {
+      process.stdout.write(renderHuman(mode, out) + '\n');
+    }
     process.exit(0);
   } catch (e) {
     console.error(`statusline-adopt failed: ${e.message}`);
