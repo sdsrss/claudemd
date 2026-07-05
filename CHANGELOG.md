@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.26.0] - 2026-07-06
+
+**Minor — statusLine multi-provider coexistence.** When a composite host (code-graph) owns the `statusLine` slot, `/claudemd-statusline` now registers claudemd as a *guest* provider in the host's registry so both segments render (`claudemd | code-graph`), instead of clobbering the slot. Empty-slot behavior is unchanged. Spec content unchanged (v6.14.1).
+
+- **Adaptive strategy** (`scripts/lib/statusline.js` + new `scripts/lib/statusline-hosts.js`): `detect()` reports `absent | claudemd | host | foreign`. `host` → guest-register (front of the host registry, absolute-path command so code-graph's `execFileSync` runner — which expands `~` but not `$HOME` — can run it); `absent` → own the slot (v0.25.x); non-composite `foreign` → report/`--force` (host-wrap deferred to v0.26.1, see `tasks/statusline-host-wrap-deferred.md`).
+- **Supersede consent**: `/claudemd-statusline` offers to replace a detected hand-made PS1 provider (`--supersede=<id>`, saved for restore) or keep both — never silent.
+- **Install**: a composite host in the slot yields a `host-detected` note (run `/claudemd-statusline`) — install never writes another plugin's registry.
+- **remove/uninstall**: guest mode unregisters claudemd from the host registry (restoring a superseded provider) and deletes the renderer; the host keeps the slot.
+- **M2**: renderer strips embedded newlines in cwd/model (one-line guarantee). **M5**: CLI default is human-readable, `--json` for machine output; `--supersede=<id>` added.
+- **Tests (+22 → 596 Node tests)**: `statusline-hosts.test.js` (adapter), plus host/guest/supersede cases across `statusline-adopt.test.js`, `statusline-cli.test.js`, `install.test.js`.
+
 ## [0.25.1] - 2026-07-06
 
 **Patch — post-release review hardening of the v0.25.0 statusLine detector: a present-but-unrecognised `statusLine` slot is now treated as `foreign` (never overwritten by the empty-slot install), closing a latent hole in the never-clobber invariant.** No behavior change for any valid Claude Code config; spec unchanged (stays v6.14.1).
