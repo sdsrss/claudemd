@@ -4,6 +4,7 @@ import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand }
 import { listBackups, restoreBackup } from './lib/backup.js';
 import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { remove as removeStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
@@ -56,6 +57,12 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     writeSettings(s);
   }
 
+  // StatusLine cleanup — runs unconditionally (like the settings eviction
+  // above) so a manifest-less uninstall still un-wires our statusLine. No-op
+  // when the slot is empty or owned by another provider.
+  let statusline = { action: 'not-ours', restored: null };
+  try { statusline = removeStatusline(); } catch (e) { statusline = { action: 'error', error: e.message }; }
+
   // No manifest = no path forward for state/log/spec disposition (you can't
   // remove what you don't know about). settingsRemoved still surfaces the
   // partial outcome so callers can see the eviction did happen. specAction
@@ -63,7 +70,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // unconditionally without a missing-key branch — same shape as the success
   // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
-    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved };
+    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved, statusline };
   }
   const activeManifestPath = m.path;
   const legacyPath = legacyManifestPath();
@@ -100,7 +107,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  return { specAction: outcome, settingsRemoved };
+  return { specAction: outcome, settingsRemoved, statusline };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

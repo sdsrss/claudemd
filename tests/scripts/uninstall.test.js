@@ -14,6 +14,7 @@ beforeEach(async () => {
   savedHome = process.env.HOME;
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
   fs.mkdirSync(path.join(pluginRoot, 'spec'), { recursive: true });
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), 'plugin\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), 'plugin-ext\n');
@@ -212,4 +213,30 @@ test('D6: settingsRemoved field present on normal keep path (manifest exists)', 
   assert.equal(res.specAction, 'keep');
   assert.equal(typeof res.settingsRemoved, 'number',
     'settingsRemoved must be a number on normal keep path');
+});
+
+test('uninstall removes a claudemd-owned statusLine + the renderer', async () => {
+  // Arrange: adopt claudemd's statusLine into the sandbox home.
+  const pluginRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-unpkg-'));
+  fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), '#!/usr/bin/env bash\necho x\n');
+  const { adopt } = await import('../../scripts/lib/statusline.js');
+  adopt({ pluginRoot });
+  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')));
+
+  const res = await uninstall({});
+  assert.equal(res.statusline.action, 'removed');
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine, undefined);
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')));
+  fs.rmSync(pluginRoot, { recursive: true, force: true });
+});
+
+test('uninstall leaves a foreign statusLine untouched', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } }));
+  const res = await uninstall({});
+  assert.equal(res.statusline.action, 'not-ours');
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine.command, 'node /foreign/sl.js');
 });
