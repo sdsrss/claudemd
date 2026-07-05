@@ -1,0 +1,6 @@
+{
+  "name": "fixture-siblingtokens-web",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": { "vue": "^3.4.0", "element-plus": "^2.4.4" }
+}

@@ -1,0 +1,15 @@
+/* Tailwind v4 CSS-first: tokens live in @theme, NOT :root, and there is no
+   tailwind.config.* file. The pre-fix detector (bare /:root/ gate) missed this. */
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #2563eb;
+  --color-accent: #f59e0b;
+  --color-surface: #0b1220;
+  --color-ink: #e5e7eb;
+  --spacing-gutter: 16px;
+  --spacing-page: 32px;
+  --radius-card: 8px;
+  --font-display: "Inter", sans-serif;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.1);
+}

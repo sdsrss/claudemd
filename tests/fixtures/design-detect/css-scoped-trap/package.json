@@ -1,0 +1,8 @@
+{
+  "name": "fixture-css-scoped-trap",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.2.0"
+  }
+}

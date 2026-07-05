@@ -1,0 +1,7 @@
+/* #143 lock: an incidental marketing/docs site/ inside a BACKEND repo. The root
+   has no UI signal; site/ is NOT a strong SPA-root name (frontend|web|client),
+   so the repo must verdict no-ui and never nag the backend dev to adopt. */
+:root {
+  --brand: #2563eb; --ink: #111; --bg: #fff; --accent: #f59e0b;
+  --sp-1: 8px; --sp-2: 16px; --radius: 6px; --font: system-ui;
+}

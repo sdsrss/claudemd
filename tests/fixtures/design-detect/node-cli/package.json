@@ -1,0 +1,8 @@
+{
+  "name": "fixture-node-cli",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "commander": "^12.0.0"
+  }
+}

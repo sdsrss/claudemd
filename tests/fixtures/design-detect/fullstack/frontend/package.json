@@ -1,0 +1,12 @@
+{
+  "name": "fixture-fullstack-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "element-plus": "^2.4.4",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "sass": "^1.69.5"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "fixture-monorepo-web",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "unocss": "^0.58.0"
+  }
+}

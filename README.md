@@ -58,7 +58,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Layer | Contents |
 |---|---|
 | 16 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 13 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` |
+| 14 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.14 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 
@@ -113,6 +113,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 30 — lowered from 90d in v0.13.1 after the 90d gate was structurally unreachable under typical log retention). Surfaces `demoteCandidates` (hook-enforced rules with 0 hits) and `staleReviews` (rules whose `last_demote_review` is null/old). |
 | `/claudemd-sparkline [--days=A,B,C]` | v0.8.4+ R-N9 — per-`spec_section` cumulative counts of signal events across 3 windows (default 30/60/90d). Trend arrow compares per-period rate; `(newly active)` / `(silenced)` annotations flag activation/deactivation transitions. Markdown block suitable for CHANGELOG header pre-release. |
 | `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
+| `/claudemd-design-adopt [check\|remove]` | v0.24.0 — for a UI project, generate a thin, fact-based `DESIGN.md` from its real design-token sources (deterministic detector `scripts/design-detect.js`; evidence-gated rules menu; never invents values) and wire a sentinel block into project CLAUDE.md. `check` verifies pointers resolve; `remove` unwires. Always shows the diff and asks before writing. Manual/opt-in — no SessionStart hook, nothing auto-fires. |
 | `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---

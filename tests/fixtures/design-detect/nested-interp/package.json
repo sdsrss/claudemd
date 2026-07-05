@@ -1,0 +1,7 @@
+{
+  "name": "fixture-nested-interp",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": { "vue": "^3.4.0", "element-plus": "^2.4.4" },
+  "devDependencies": { "sass": "^1.69.5" }
+}

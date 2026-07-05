@@ -1,0 +1,15 @@
+// #196 lock: a :root token block whose values use NESTED SCSS interpolation
+// #{ map-get($m, #{$k}) }. A naive [^{}]* block scan is truncated by the inner
+// brace and counts 0. main.scss is not a TOKEN_BASENAME, so it must be found by
+// content scan, not filename.
+:root {
+  --color-primary: #{map-get($tokens, #{$brand})};
+  --color-secondary: #{map-get($tokens, #{$accent})};
+  --color-bg: #{map-get($tokens, #{$bg})};
+  --color-text: #{map-get($tokens, #{$ink})};
+  --spacing-sm: #{$space * 1};
+  --spacing-md: #{$space * 2};
+  --radius: #{$radius-base};
+  --shadow: #{$elevation-1};
+  --font-body: #{$font-sans};
+}

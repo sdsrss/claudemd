@@ -1,0 +1,13 @@
+{
+  "name": "fixture-react-tailwind",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.0"
+  }
+}

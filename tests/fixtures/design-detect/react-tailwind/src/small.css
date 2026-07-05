@@ -1,0 +1,5 @@
+/* FP trap: :root with fewer than 8 custom props is NOT a token source. */
+:root {
+  --gap: 8px;
+  --radius: 4px;
+}

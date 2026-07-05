@@ -1,0 +1,9 @@
+{
+  "name": "fixture-nuxt",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "nuxt": "^3.11.0",
+    "sass": "^1.69.5"
+  }
+}

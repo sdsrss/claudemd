@@ -1,0 +1,13 @@
+/* FP trap: ':root' appears only in this comment, and the >=8 custom properties
+   below are all COMPONENT-scoped (.btn), not a design-token system. The pre-fix
+   bare-substring gate + whole-file count wrongly verdicted this adoptable. */
+.btn {
+  --btn-bg: #2563eb;
+  --btn-fg: #ffffff;
+  --btn-border: #1d4ed8;
+  --btn-radius: 6px;
+  --btn-pad-x: 12px;
+  --btn-pad-y: 8px;
+  --btn-gap: 6px;
+  --btn-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+}

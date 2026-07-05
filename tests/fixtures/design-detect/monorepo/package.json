@@ -1,0 +1,9 @@
+{
+  "name": "fixture-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["packages/*"],
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+/* Nuxt token file — vue is transitive (never in package.json), framework dep is `nuxt`. */
+:root {
+  --color-primary: #00dc82;
+  --color-secondary: #0f172a;
+  --color-bg: #ffffff;
+  --color-text: #1e293b;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --radius: 6px;
+  --font-body: system-ui;
+}

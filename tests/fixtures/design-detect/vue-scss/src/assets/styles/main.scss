@@ -1,0 +1,16 @@
+// Real-shape fixture (mirrors daagu main.scss): maps SCSS tokens onto Element
+// Plus --el-* custom properties via #{…} INTERPOLATION, dark-first. The #{}
+// braces are the worst case that a naive [^{}]* block scan trips on.
+html.dark,
+:root {
+  --el-bg-color: #{$bg-primary};
+  --el-bg-color-page: #{$bg-primary};
+  --el-bg-color-overlay: #{$bg-card};
+  --el-fill-color: #{$bg-secondary};
+  --el-fill-color-light: #{$bg-tertiary};
+  --el-text-color-primary: #{$text-primary};
+  --el-text-color-regular: #{rgba(#F3F4F6, 0.85)};
+  --el-border-color: #{$border-color};
+  --el-color-primary: #{$imperial-gold};
+  --el-color-primary-light-3: #{rgba($imperial-gold, 0.7)};
+}

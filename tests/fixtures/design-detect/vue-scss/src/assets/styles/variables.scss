@@ -1,0 +1,96 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  东方赛博玄学 (Oriental Cyber-Mysticism) - 色彩宪法                        ║
+// ║  设计理念: 红涨绿跌 × 高维升级 × 量化游资美学                               ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 核心色板 - Core Color Palette
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 涨势能量 (Rise/Yang Energy) - 荧光朱砂红
+$neon-vermilion: #FF2E2E;
+$neon-vermilion-bright: #FF4444;
+$neon-vermilion-glow: rgba(255, 46, 46, 0.6);
+$neon-vermilion-soft: rgba(255, 46, 46, 0.15);
+
+// 跌势冷静 (Fall/Yin Calm) - 矩阵祖母绿
+$matrix-emerald: #00E676;
+$matrix-emerald-bright: #00FF88;
+$matrix-emerald-glow: rgba(0, 230, 118, 0.5);
+$matrix-emerald-soft: rgba(0, 230, 118, 0.12);
+
+// 玄学智慧 (Metaphysics Wisdom)
+$imperial-gold: #FFD700;
+$imperial-gold-bright: #FFEA00;
+$imperial-gold-glow: rgba(255, 215, 0, 0.5);
+$imperial-gold-soft: rgba(255, 215, 0, 0.1);
+
+$deep-ink-purple: #6200EA;
+$deep-ink-purple-bright: #7C4DFF;
+$deep-ink-purple-glow: rgba(98, 0, 234, 0.5);
+$deep-ink-purple-soft: rgba(98, 0, 234, 0.15);
+
+// 虚空背景 (Void Background) - 深水墨黑
+$void-black: #030305;
+$void-black-secondary: #0A0A0F;
+$void-black-tertiary: #111118;
+$void-black-elevated: #16161F;
+
+// 短别名 (向后兼容)
+$void-secondary: $void-black-secondary;
+$void-tertiary: $void-black-tertiary;
+$neon-green: $matrix-emerald;  // 组件中常用的别名
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 语义化颜色 - Semantic Colors
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 股票涨跌 (A股铁律: 红涨绿跌)
+$stock-up-color: $neon-vermilion;
+$stock-up-glow: $neon-vermilion-glow;
+$stock-down-color: $matrix-emerald;
+$stock-down-glow: $matrix-emerald-glow;
+$stock-flat-color: #6B7280;
+
+// 主题色
+$primary-color: $imperial-gold;
+$primary-glow: $imperial-gold-glow;
+$secondary-color: $deep-ink-purple;
+$secondary-glow: $deep-ink-purple-glow;
+
+// 功能色
+$success-color: $matrix-emerald;
+$warning-color: #F59E0B;
+$danger-color: $neon-vermilion;
+$info-color: #8B5CF6;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 文字颜色 - Text Colors
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 文字对比度遵循 WCAG 2.1 AA（≥4.5:1 正文，≥3:1 大字/禁用）
+//   · primary   #F3F4F6 on #030305 ≈ 16:1 ✓
+//   · secondary #9CA3AF on #030305 ≈ 5.5:1 ✓
+$text-primary: #F3F4F6;
+$text-secondary: #9CA3AF;
+$text-muted: #9AA0AB;
+$text-disabled: #7A8090;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 间距系统 - Spacing System
+// ═══════════════════════════════════════════════════════════════════════════
+
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-2xl: 48px;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 圆角系统 - Border Radius (硬朗风格)
+// ═══════════════════════════════════════════════════════════════════════════
+
+$border-radius-sm: 4px;
+$border-radius-md: 6px;      // 主圆角 - 禁止圆滚滚
+$border-radius-lg: 8px;

@@ -1,0 +1,6 @@
+// #247 lock: a NON-UI sibling package (emails) carries token files. The
+// walk-from-subproject must NOT attribute these to the UI package (web), or a
+// token-less UI app would look adoptable via an unrelated package's tokens.
+$primary: #2563eb;
+$spacing: 16px;
+$radius: 6px;
