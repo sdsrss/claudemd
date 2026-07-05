@@ -124,7 +124,25 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
 }
 
 export function remove() {
-  const { verdict } = detect();
+  const d = detect();
+  if (d.verdict === 'host' && d.guestRegistered) {
+    const adapter = HOST_ADAPTERS.find((a) => a.id === d.host);
+    adapter.unregister(CLAUDEMD_PROVIDER_ID);
+    let restored = null;
+    if (fs.existsSync(prevPath())) {
+      try {
+        const prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8'));
+        if (prev && prev.superseded && prev.superseded.id) {
+          adapter.register(prev.superseded, { front: true });
+          restored = prev.superseded.id;
+        }
+      } catch { /* prev unreadable — just drop it */ }
+      try { fs.unlinkSync(prevPath()); } catch { /* best-effort */ }
+    }
+    try { fs.unlinkSync(destPath()); } catch { /* best-effort */ }
+    return { action: 'unregistered', host: d.host, restored };
+  }
+  const { verdict } = d;
   if (verdict !== 'claudemd') return { action: 'not-ours', restored: null };
   const settings = loadSettings();
   let action = 'removed';

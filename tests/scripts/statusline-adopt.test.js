@@ -241,3 +241,27 @@ test('adopt: host + dry-run → no writes', () => {
   assert.equal(cgReg().some((p) => p.id === 'claudemd'), false);
   assert.ok(!fs.existsSync(destFile()));
 });
+
+test('remove: guest → unregister claudemd, code-graph slot + entry intact', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  adopt({ pluginRoot });
+  const r = remove();
+  assert.equal(r.action, 'unregistered');
+  assert.equal(r.host, 'code-graph');
+  assert.deepEqual(cgReg().map((p) => p.id), ['code-graph'], 'code-graph provider survives');
+  assert.equal(readS().statusLine.command, 'node "/cg/scripts/statusline-composite.js"', 'host still owns the slot');
+  assert.ok(!fs.existsSync(destFile()), 'renderer deleted');
+});
+
+test('remove: guest that superseded a PS1 → restores it', () => {
+  seedCg([
+    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  adopt({ pluginRoot, supersede: 'user-ps1' });
+  const r = remove();
+  assert.equal(r.action, 'unregistered');
+  assert.equal(r.restored, 'user-ps1');
+  assert.deepEqual(cgReg().map((p) => p.id), ['user-ps1', 'code-graph'], 'user-ps1 back at front, claudemd gone');
+  assert.ok(!fs.existsSync(prevFile()));
+});
