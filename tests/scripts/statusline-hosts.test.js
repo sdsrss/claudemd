@@ -77,6 +77,25 @@ test('read prefers primary, falls back to durable mirror', () => {
   assert.equal(codeGraphAdapter.isRegistered('code-graph'), true, 'self-heals from mirror when primary absent');
 });
 
+test('cgWrite writes the durable mirror first and does not swallow: a mirror failure aborts before the volatile primary diverges', () => {
+  // The durable ~/.claude mirror is the backstop code-graph self-heals the
+  // primary from, so it must be the reliable write. Force its atomic write to
+  // fail (make the mirror PATH a directory → rename-onto-dir throws) and assert
+  // the volatile ~/.cache primary was NOT written — no divergence where the
+  // primary holds our entry but the mirror (that a later cache eviction restores
+  // from) lacks it, which would silently drop claudemd's segment.
+  fs.mkdirSync(path.dirname(mirror()), { recursive: true });
+  fs.mkdirSync(mirror(), { recursive: true }); // mirror path is now a dir → its atomic write fails
+  assert.throws(
+    () => codeGraphAdapter.register(
+      { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/h/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { front: true },
+    ),
+    'a failed durable-mirror write must surface, not be swallowed',
+  );
+  assert.equal(fs.existsSync(primary()), false, 'primary not written when the durable mirror write fails');
+});
+
 test('manualPsCandidates picks a ~/.claude bash PS1, not plugins or claudemd', () => {
   const providers = [
     { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },

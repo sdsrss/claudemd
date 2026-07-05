@@ -15,7 +15,7 @@ Branch on `verdict`:
 - `foreign` → another provider owns the slot (report `current`). Do NOT write. Tell the user their existing statusline is untouched and that `/claudemd-statusline --force` will take it over (saving the current command so `remove` can restore it). Continue to Step 1 ONLY if the user passed `--force`.
 - `host` → the slot is owned by a composite host (`host`, e.g. `code-graph`) that renders multiple providers. Do NOT clobber it. Run `detect --json` and read `providers` + `guestRegistered`:
   - `guestRegistered: true` → claudemd is already a segment. Report and STOP unless the user wants a refresh (re-run adopt).
-  - `guestRegistered: false` → claudemd will register as a guest so both segments show (`claudemd | code-graph`). If any provider looks like a hand-made PS1 (a `bash` script under `~/.claude/` that isn't a plugin — e.g. `user-ps1`), list it and ASK: supersede it (`adopt --supersede=<id>`, saved for restore) or keep both (`adopt`). Continue to Step 1.
+  - `guestRegistered: false` → claudemd will register as a guest so both segments show (`claudemd | code-graph`). Read the `psCandidates` array from `detect --json` — each entry is a hand-made PS1 (a `bash` script under `~/.claude/` that isn't a plugin, e.g. `user-ps1`) claudemd can supersede. If it is non-empty, list those `id`s and ASK: supersede one (`adopt --supersede=<id>`, saved for restore) or keep both (`adopt`). Continue to Step 1.
 
 ## `check` mode (no writes)
 
@@ -44,4 +44,4 @@ Run (add `--force` only for the `foreign` take-over the user approved; for the h
 
 ## Step 3 — verify + report
 
-Re-run `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js detect --json` and cite `verdict: claudemd` as the completion evidence. Report: the `action` from Step 2 (`set` / `replaced` / `refreshed`), the settings backup path (if any), and — for a `--force` replace — that the prior command was saved and is restorable via `/claudemd-statusline remove`. For the host case, cite `guestRegistered: true` from a re-run `detect --json` and the `action` (`registered` / `already-registered`), plus the superseded id if any.
+Re-run `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js detect --json` and cite `verdict: claudemd` as the completion evidence. Report: the `action` from Step 2 (`set` / `replaced` / `refreshed`), the settings backup path (if any), and — for a `--force` replace — that the prior command was saved and is restorable via `/claudemd-statusline remove`. For the host case, cite `guestRegistered: true` from a re-run `detect --json` and the `action` (`registered` / `already-registered`), plus the superseded id if any. If `adopt` returned `supersedeMissed`, tell the user that supersede target was not in the registry (a stale id) so nothing was superseded — claudemd still registered.

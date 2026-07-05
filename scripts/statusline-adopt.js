@@ -47,7 +47,8 @@ function renderHuman(mode, out) {
   // back, unresolved since nothing was actually replaced yet).
   const sup = out.superseded || out.supersede;
   const tail = [out.host && `host=${out.host}`, sup && `superseded=${sup}`, out.restored && `restored=${out.restored}`, out.to && `to=${out.to}`].filter(Boolean).join('  ');
-  return `action: ${out.action}${tail ? '  ' + tail : ''}`;
+  const missed = out.supersedeMissed ? `\n⚠ supersede target '${out.supersedeMissed}' not found — nothing superseded` : '';
+  return `action: ${out.action}${tail ? '  ' + tail : ''}${missed}`;
 }
 
 if (invokedAsMain) {

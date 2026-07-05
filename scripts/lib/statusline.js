@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readSettings, writeSettings } from './settings-merge.js';
 import { settingsPath, stateDir, homeSpec } from './paths.js';
 import { backupSettingsFile } from './backup.js';
-import { detectHost, HOST_ADAPTERS, CLAUDEMD_PROVIDER_ID } from './statusline-hosts.js';
+import { detectHost, HOST_ADAPTERS, CLAUDEMD_PROVIDER_ID, manualPsCandidates } from './statusline-hosts.js';
 
 // Ownership is a substring match on our stable renderer basename. A foreign
 // statusLine command that happened to embed this exact substring would
@@ -33,7 +33,7 @@ export function detect(pluginRoot = null) {
   const cmd = settings.statusLine && typeof settings.statusLine.command === 'string'
     ? settings.statusLine.command
     : null;
-  let verdict, host = null, providers = null, guestRegistered = false;
+  let verdict, host = null, providers = null, guestRegistered = false, psCandidates = null;
   if (!present) {
     verdict = 'absent';
   } else if (cmd && cmd.includes(MARKER)) {
@@ -45,6 +45,10 @@ export function detect(pluginRoot = null) {
       host = adapter.id;
       providers = adapter.listProviders();
       guestRegistered = adapter.isRegistered(CLAUDEMD_PROVIDER_ID);
+      // Providers a user might want claudemd to supersede (hand-made PS1s). The
+      // tested predicate is the single source of truth — the command surfaces
+      // this field instead of re-deriving the heuristic in prose.
+      psCandidates = manualPsCandidates(providers);
     } else {
       verdict = 'foreign';
     }
@@ -57,7 +61,7 @@ export function detect(pluginRoot = null) {
       matchesShipped = fs.readFileSync(dest, 'utf8') === fs.readFileSync(shippedRenderer(pluginRoot), 'utf8');
     } catch { matchesShipped = false; }
   }
-  return { verdict, host, current: cmd, providers, guestRegistered, dest: { exists, matchesShipped } };
+  return { verdict, host, current: cmd, providers, guestRegistered, psCandidates, dest: { exists, matchesShipped } };
 }
 
 function copyRenderer(pluginRoot) {
@@ -89,6 +93,7 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
     if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND(), supersede };
     copyRenderer(pluginRoot);
     let superseded = null;
+    let supersedeMissed = null;
     if (supersede) {
       const prov = adapter.listProviders().find((p) => p.id === supersede);
       if (prov) {
@@ -96,13 +101,18 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
         fs.writeFileSync(prevPath(), JSON.stringify({ superseded: prov }, null, 2));
         adapter.unregister(supersede);
         superseded = prov.id;
+      } else {
+        // Requested a supersede target not in the registry (stale id, or a TOCTOU
+        // change since detect). Don't fail the register — surface the miss so the
+        // caller/CLI can tell the user nothing was superseded.
+        supersedeMissed = supersede;
       }
     }
     const changed = adapter.register(
       { id: CLAUDEMD_PROVIDER_ID, command: GUEST_COMMAND(), needsStdin: true },
       { front: true },
     );
-    return { action: (changed || superseded) ? 'registered' : 'already-registered', host: adapter.id, to: GUEST_COMMAND(), superseded };
+    return { action: (changed || superseded) ? 'registered' : 'already-registered', host: adapter.id, to: GUEST_COMMAND(), superseded, ...(supersedeMissed ? { supersedeMissed } : {}) };
   }
 
   if (verdict === 'foreign') {

@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.26.1] - 2026-07-06
+
+**Patch — post-release review hardening of v0.26.0 statusLine coexistence.** Three fixes from an independent post-ship review (`superpowers:requesting-code-review`); no user-visible behavior change on the normal path. Spec unchanged (stays v6.14.1).
+
+- **Durability fix** (`scripts/lib/statusline-hosts.js`): the guest-registry write now writes the durable `~/.claude` mirror **first** and no longer swallows its errors. Previously the volatile `~/.cache` primary was written first and unguarded while the durable mirror — the backstop code-graph self-heals the primary from — was best-effort; a silently-dropped mirror write could diverge from the primary and, after a `~/.cache` eviction, drop claudemd's segment. A failed durable write now surfaces instead of hiding.
+- **Observability** (`scripts/lib/statusline.js`, `scripts/statusline-adopt.js`): `adopt --supersede=<id>` for an id not in the host registry no longer silently no-ops — `adopt()` returns `supersedeMissed:<id>` and the CLI warns, so a stale / TOCTOU id is visible instead of passing as a successful supersede.
+- **Single source of truth for the supersede heuristic** (`scripts/lib/statusline.js`, `commands/claudemd-statusline.md`): `detect()` now surfaces the tested `manualPsCandidates()` predicate as a `psCandidates` array; the command reads that field instead of re-deriving the hand-made-PS1 heuristic in prose, removing drift between the tested predicate and the one that runs.
+- **Tests (+5 → 603 Node tests)**: durable-mirror-first-no-swallow (`statusline-hosts.test.js`), `psCandidates` on host + null off-host and `supersedeMissed` (`statusline-adopt.test.js`), CLI supersede-missed warning (`statusline-cli.test.js`).
+
 ## [0.26.0] - 2026-07-06
 
 **Minor — statusLine multi-provider coexistence.** When a composite host (code-graph) owns the `statusLine` slot, `/claudemd-statusline` now registers claudemd as a *guest* provider in the host's registry so both segments render (`claudemd | code-graph`), instead of clobbering the slot. Empty-slot behavior is unchanged. Spec content unchanged (v6.14.1).

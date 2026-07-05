@@ -94,3 +94,23 @@ test('M5 review fix: adopt --supersede dry-run (human, default) names the supers
   assert.equal(obj.action, 'dry-run');
   assert.equal(obj.supersede, 'user-ps1');
 });
+
+test('adopt --supersede a non-existent id → human warns, --json surfaces supersedeMissed', () => {
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }),
+  );
+  fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
+    JSON.stringify([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]),
+  );
+  const human = run(['adopt', '--supersede=ghost']);
+  assert.equal(human.status, 0);
+  assert.match(human.stdout, /supersede target 'ghost' not found/, 'human output warns the target was missed');
+  const json = run(['adopt', '--supersede=ghost', '--json']);
+  assert.equal(json.status, 0);
+  const obj = JSON.parse(json.stdout);
+  assert.equal(obj.supersedeMissed, 'ghost');
+  assert.equal(obj.superseded, null);
+});

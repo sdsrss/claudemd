@@ -185,6 +185,25 @@ test('detect: a plain non-composite command stays foreign', () => {
   assert.equal(detect().host, null);
 });
 
+test('detect: host surfaces manualPsCandidates as psCandidates (single source of truth)', () => {
+  writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
+  const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(reg, JSON.stringify([
+    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]));
+  const d = detect();
+  assert.equal(d.verdict, 'host');
+  assert.deepEqual(d.psCandidates.map((p) => p.id), ['user-ps1'], 'the tested predicate, not prose, drives the supersede offer');
+});
+
+test('detect: non-host verdicts carry psCandidates: null', () => {
+  assert.equal(detect().psCandidates, null, 'absent → null');
+  writeS({ statusLine: { type: 'command', command: 'node /other/x.js' } });
+  assert.equal(detect().psCandidates, null, 'foreign → null');
+});
+
 const seedCg = (list) => {
   const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
   const mir = path.join(tmpHome, '.claude/statusline-providers.json');
@@ -236,6 +255,16 @@ test('adopt: host + supersede → old provider saved to prev and removed', () =>
   const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
   assert.equal(prev.superseded.id, 'user-ps1');
   assert.equal(prev.superseded.command, 'bash "/home/x/.claude/statusline-command.sh"');
+});
+
+test('adopt: host + supersede a non-existent id → supersedeMissed, still registers, no prev saved', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  const r = adopt({ pluginRoot, supersede: 'ghost-ps1' });
+  assert.equal(r.action, 'registered');
+  assert.equal(r.superseded, null, 'nothing was superseded');
+  assert.equal(r.supersedeMissed, 'ghost-ps1', 'the missed target is surfaced, not silently dropped');
+  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'claudemd still registered at front');
+  assert.ok(!fs.existsSync(prevFile()), 'no prev saved when nothing was superseded');
 });
 
 test('adopt: host + dry-run → no writes', () => {

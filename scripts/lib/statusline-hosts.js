@@ -20,8 +20,9 @@ function writeJsonAtomic(p, data) {
 // --- code-graph adapter ---
 // Registry format (code-graph's): [{ id, command, needsStdin }]. Read prefers
 // the volatile ~/.cache primary and falls back to the durable ~/.claude mirror
-// (which code-graph self-heals the primary from); write updates BOTH, mirroring
-// code-graph's own writeRegistry so a later code-graph run preserves our entry.
+// (which code-graph self-heals the primary from); write updates BOTH — durable
+// mirror first (see cgWrite) — mirroring code-graph's own writeRegistry so a
+// later code-graph run preserves our entry.
 function cgRead() {
   const primary = readJson(codeGraphRegistryPath());
   if (Array.isArray(primary) && primary.length) return primary;
@@ -35,8 +36,14 @@ function cgWrite(list) {
     }
     return;
   }
+  // Durable mirror FIRST, then the volatile primary — and neither write is
+  // swallowed. The mirror is the backstop code-graph self-heals the primary
+  // from (see cgRead), so it must be the reliable write: if it fails we abort
+  // before the primary diverges. A best-effort mirror could leave the primary
+  // holding our entry while the mirror lacks it → a later ~/.cache eviction
+  // restores a stale primary from the mirror and claudemd's segment vanishes.
+  writeJsonAtomic(codeGraphProvidersBackupPath(), list);
   writeJsonAtomic(codeGraphRegistryPath(), list);
-  try { writeJsonAtomic(codeGraphProvidersBackupPath(), list); } catch { /* mirror best-effort */ }
 }
 
 export const codeGraphAdapter = {
