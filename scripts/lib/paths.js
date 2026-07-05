@@ -22,6 +22,12 @@ export const manifestPath      = () => path.join(home(), '.claude/.claudemd-mani
 export const legacyManifestPath = () => path.join(stateDir(), 'installed.json');
 export const logsDir           = () => path.join(home(), '.claude/logs');
 export const settingsPath      = () => path.join(home(), '.claude/settings.json');
+// code-graph's composite statusline registry — primary in ~/.cache (volatile)
+// + durable mirror in ~/.claude (code-graph self-heals the primary from it).
+// claudemd registers itself as a guest provider here rather than clobbering the
+// single statusLine slot. Both are code-graph-owned; we read/write our own entry.
+export const codeGraphRegistryPath        = () => path.join(home(), '.cache/code-graph/statusline-registry.json');
+export const codeGraphProvidersBackupPath = () => path.join(home(), '.claude/statusline-providers.json');
 export const backupRoot        = () => path.join(home(), '.claude');
 export const specHome          = () => [
   path.join(home(), '.claude/CLAUDE.md'),
