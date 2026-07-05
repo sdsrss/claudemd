@@ -8,6 +8,12 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.24.1] - 2026-07-05
+
+**Patch — fix the macOS CI red on v0.24.0: `design-detect.js`'s "run as main" guard now realpaths both sides so a symlinked invocation path resolves.** Spec unchanged.
+
+- `scripts/design-detect.js`: the ESM main guard `import.meta.url === pathToFileURL(process.argv[1]).href` failed whenever node resolved `import.meta.url` through a symlink while `process.argv[1]` stayed unresolved — on macOS a mkdtemp under `/var/folders/…` is symlinked to `/private/var/folders/…`, so the CLI block never ran and stdout was silently empty (the v0.24.0 macOS CI failure; ubuntu was green). It would also bite a symlinked plugin dir. Fixed by comparing `fs.realpathSync(fileURLToPath(import.meta.url))` against `fs.realpathSync(process.argv[1])` — spaces, non-ASCII, and symlinks all resolve. The `#3` main-guard test now doubles as the symlink regression lock (its mkdtemp base is the symlink on macOS). Same macOS-symlink class as `feedback_macos_shell_portability`.
+
 ## [0.24.0] - 2026-07-05
 
 **Minor — design-adopt: a new `/claudemd-design-adopt` command generates a thin, fact-based `DESIGN.md` from a UI project's real design-token sources and wires it into project CLAUDE.md, so agents use the project's tokens instead of inventing colors/spacing.** Spec content unchanged (stays v6.14.1). Origin: comparative analysis of a community AGENTS.md generator (whose template-stuffing approach is this feature's explicit anti-goal) + a manual prototype on a real Vue/Element-Plus product repo; spec at `tasks/specs/design-adopt.md`.

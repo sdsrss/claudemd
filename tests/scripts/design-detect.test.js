@@ -180,7 +180,10 @@ test('CLI: --json verdict, --help exit 0, unknown flag exit 2, fail-open on bogu
   assert.equal(JSON.parse(execFileSync('node', [SCRIPT, '--json', '--cwd=/nonexistent-xyz'], { env, encoding: 'utf8' })).verdict, 'no-ui');
 });
 
-test('#3 main guard fires when the script path contains a space (pathToFileURL)', () => {
+test('#3 main guard fires from a path with a space AND a symlinked path (realpath)', () => {
+  // On macOS the mkdtemp base (/var/folders/…) is itself a symlink to
+  // /private/var/folders/…, so this also exercises the symlinked-invocation case
+  // the plain pathToFileURL guard missed (CI macOS regression).
   const base = path.join(TMP, 'with space', 'scripts');
   fs.mkdirSync(path.join(base, 'lib'), { recursive: true });
   fs.copyFileSync(SCRIPT, path.join(base, 'design-detect.js'));
