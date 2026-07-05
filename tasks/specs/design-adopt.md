@@ -1,7 +1,9 @@
 ---
-status: draft
-revision: 6
+status: implemented
+revision: 7
 ---
+
+> **SHIPPED v0.24.1 (2026-07-05), CI green (ubuntu+macOS) + npm published.** v0.24.0 shipped first but hit a macOS-only CI red (ESM main-guard vs symlinked mkdtemp); v0.24.1 realpath-fixed it. Command-only; no SessionStart hook. See the review-outcome section below for the full 2-round history.
 
 > **2026-07-05 — PIVOTED TO COMMAND-ONLY after 2 adversarial reviews.** Round-1 review (15 root causes) drove a hot-path redesign + detector sweep. Round-2 adversarial re-review (15 more) showed the severe findings concentrate in the **SessionStart auto-hint** (cache/pending collisions, statefile races, FP nagging, residue). User decision (this session): **cut the auto-hint** — the detector is now stateless + command-only, deleting the entire hint-path failure class; the command's diff+consent gate is the safety net. Round-2's detector-CORE findings (nested interpolation #196, digit/underscore props #199, unterminated comment #191, cross-package misattribution #247, `site/` FP #143, wiring-basename FP #291) all fixed with regression tests. Full suite 542 pass; detector verified stateless. **Non-goal now includes**: no SessionStart hook, no auto-firing, no cache/state files. Ship posture per user: pending final go (surface much smaller than reviewed). Findings + resolutions: `tasks/design-adopt-review-findings-2026-07-05.md`.
 
