@@ -22,6 +22,7 @@ beforeEach(() => {
   savedHome = process.env.HOME;
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
 
   fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '9.9.9-test' }));
 
@@ -75,6 +76,9 @@ beforeEach(() => {
       ] }],
     },
   }));
+
+  fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), '#!/usr/bin/env bash\necho fixture-sl\n');
 });
 
 afterEach(() => {
@@ -391,4 +395,35 @@ test('same-stamp settings.json backup gets numeric suffix (F10)', async () => {
   assert.notEqual(r1.settingsBackup, r2.settingsBackup, 'each install must produce a distinct settings backup');
   assert.ok(fs.existsSync(r1.settingsBackup));
   assert.ok(fs.existsSync(r2.settingsBackup));
+});
+
+test('fresh install sets claudemd statusLine into the empty slot', async () => {
+  const res = await install({ pluginRoot });
+  assert.equal(res.statusline.action, 'set');
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine.command, 'bash "$HOME/.claude/claudemd-statusline.sh"');
+  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')));
+});
+
+test('install does NOT clobber a foreign statusLine', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } }));
+  const res = await install({ pluginRoot });
+  assert.equal(res.statusline.action, 'skipped-foreign');
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine.command, 'node /foreign/sl.js');
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')));
+});
+
+test('CLAUDEMD_NO_STATUSLINE=1 skips the statusLine write', async () => {
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  try {
+    const res = await install({ pluginRoot });
+    assert.equal(res.statusline.action, 'opted-out');
+    const sPath = path.join(tmpHome, '.claude/settings.json');
+    const s = fs.existsSync(sPath) ? JSON.parse(fs.readFileSync(sPath, 'utf8')) : {};
+    assert.equal(s.statusLine, undefined);
+  } finally {
+    delete process.env.CLAUDEMD_NO_STATUSLINE;
+  }
 });

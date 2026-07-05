@@ -6,6 +6,7 @@ import { createBackup, pruneBackups, backupSettingsFile } from './lib/backup.js'
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
@@ -208,7 +209,27 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   try { cachePruned = pruneCache(pluginRoot, { keep: 3 }); }
   catch { /* install succeeded — swallow prune FS errors */ }
 
-  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned, userContentDetected };
+  // StatusLine auto-adopt — empty-slot-only (never clobbers a foreign provider),
+  // opt-out via CLAUDEMD_NO_STATUSLINE. best-effort: a statusline failure must
+  // never fail the install (same posture as cachePrune). settings.json was
+  // already backed up above, so backupSettings:false.
+  let statusline;
+  if (process.env.CLAUDEMD_NO_STATUSLINE === '1') {
+    statusline = { action: 'opted-out' };
+  } else {
+    try {
+      statusline = adoptStatusline({ pluginRoot, emptyOnly: true, backupSettings: false });
+    } catch (e) {
+      statusline = { action: 'error', error: e.message };
+    }
+  }
+  if (statusline.action === 'set') {
+    process.stderr.write('[claudemd] statusLine set (user@host:path (branch) model [ctx:N%]). Undo: /claudemd-statusline remove\n');
+  } else if (statusline.action === 'skipped-foreign') {
+    process.stderr.write('[claudemd] statusLine already owned by another provider — left untouched. Take over: /claudemd-statusline --force\n');
+  }
+
+  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned, userContentDetected, statusline };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
