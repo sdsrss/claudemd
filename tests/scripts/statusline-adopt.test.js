@@ -180,3 +180,64 @@ test('detect: a plain non-composite command stays foreign', () => {
   assert.equal(detect().verdict, 'foreign');
   assert.equal(detect().host, null);
 });
+
+const seedCg = (list) => {
+  const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
+  const mir = path.join(tmpHome, '.claude/statusline-providers.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(reg, JSON.stringify(list));
+  fs.writeFileSync(mir, JSON.stringify(list));
+  writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
+};
+const cgReg = () => JSON.parse(fs.readFileSync(path.join(tmpHome, '.cache/code-graph/statusline-registry.json'), 'utf8'));
+
+test('adopt: host + emptyOnly → host-detected, nothing written', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  const r = adopt({ pluginRoot, emptyOnly: true });
+  assert.equal(r.action, 'host-detected');
+  assert.equal(r.host, 'code-graph');
+  assert.equal(cgReg().some((p) => p.id === 'claudemd'), false);
+  assert.ok(!fs.existsSync(destFile()));
+});
+
+test('adopt: host (command) → registers claudemd at front, copies renderer', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  const r = adopt({ pluginRoot });
+  assert.equal(r.action, 'registered');
+  assert.equal(r.host, 'code-graph');
+  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph']);
+  const me = cgReg().find((p) => p.id === 'claudemd');
+  assert.equal(me.command, `bash "${destFile()}"`, 'guest command is absolute path');
+  assert.equal(me.needsStdin, true);
+  assert.ok(fs.existsSync(destFile()));
+});
+
+test('adopt: host re-register is idempotent → already-registered', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  adopt({ pluginRoot });
+  const r = adopt({ pluginRoot });
+  assert.equal(r.action, 'already-registered');
+  assert.equal(cgReg().filter((p) => p.id === 'claudemd').length, 1);
+});
+
+test('adopt: host + supersede → old provider saved to prev and removed', () => {
+  seedCg([
+    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  const r = adopt({ pluginRoot, supersede: 'user-ps1' });
+  assert.equal(r.action, 'registered');
+  assert.equal(r.superseded, 'user-ps1');
+  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'user-ps1 gone, claudemd at front');
+  const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
+  assert.equal(prev.superseded.id, 'user-ps1');
+  assert.equal(prev.superseded.command, 'bash "/home/x/.claude/statusline-command.sh"');
+});
+
+test('adopt: host + dry-run → no writes', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  const r = adopt({ pluginRoot, dryRun: true });
+  assert.equal(r.action, 'dry-run');
+  assert.equal(cgReg().some((p) => p.id === 'claudemd'), false);
+  assert.ok(!fs.existsSync(destFile()));
+});

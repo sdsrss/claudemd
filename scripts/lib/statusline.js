@@ -67,14 +67,36 @@ function setStatusLine() {
   writeSettings(settings);
 }
 
-export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = false, backupSettings = true } = {}) {
+export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = false, supersede = null, backupSettings = true } = {}) {
   if (!pluginRoot) throw new Error('adopt: pluginRoot required');
-  const { verdict, current } = detect(pluginRoot);
+  const { verdict, current, host } = detect(pluginRoot);
 
   if (verdict === 'claudemd') {
     if (dryRun) return { action: 'dry-run', from: current, to: current };
     copyRenderer(pluginRoot);
     return { action: 'refreshed', from: current, to: current };
+  }
+
+  if (verdict === 'host') {
+    const adapter = HOST_ADAPTERS.find((a) => a.id === host);
+    if (emptyOnly) return { action: 'host-detected', host: adapter.id, to: null };
+    if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND(), supersede };
+    copyRenderer(pluginRoot);
+    let superseded = null;
+    if (supersede) {
+      const prov = adapter.listProviders().find((p) => p.id === supersede);
+      if (prov) {
+        fs.mkdirSync(stateDir(), { recursive: true });
+        fs.writeFileSync(prevPath(), JSON.stringify({ superseded: prov }, null, 2));
+        adapter.unregister(supersede);
+        superseded = prov.id;
+      }
+    }
+    const changed = adapter.register(
+      { id: CLAUDEMD_PROVIDER_ID, command: GUEST_COMMAND(), needsStdin: true },
+      { front: true },
+    );
+    return { action: (changed || superseded) ? 'registered' : 'already-registered', host: adapter.id, to: GUEST_COMMAND(), superseded };
   }
 
   if (verdict === 'foreign') {
