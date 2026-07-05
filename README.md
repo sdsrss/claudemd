@@ -58,9 +58,10 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Layer | Contents |
 |---|---|
 | 16 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 14 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` |
+| 15 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.14 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
+| StatusLine (opt-out) | PS1-style line — `user@host:/path (branch) Model [ctx:N%]` — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
 
 Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 
@@ -114,6 +115,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-sparkline [--days=A,B,C]` | v0.8.4+ R-N9 — per-`spec_section` cumulative counts of signal events across 3 windows (default 30/60/90d). Trend arrow compares per-period rate; `(newly active)` / `(silenced)` annotations flag activation/deactivation transitions. Markdown block suitable for CHANGELOG header pre-release. |
 | `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
 | `/claudemd-design-adopt [check\|remove]` | v0.24.0 — for a UI project, generate a thin, fact-based `DESIGN.md` from its real design-token sources (deterministic detector `scripts/design-detect.js`; evidence-gated rules menu; never invents values) and wire a sentinel block into project CLAUDE.md. `check` verifies pointers resolve; `remove` unwires. Always shows the diff and asks before writing. Manual/opt-in — no SessionStart hook, nothing auto-fires. |
+| `/claudemd-statusline [check\|remove] [--force]` | v0.25.0 — register claudemd's PS1-style statusLine into `~/.claude/settings.json`. Default adopts into an empty slot; `check` reports the current owner with no writes; `remove` restores the prior statusline (or clears the slot) and deletes `~/.claude/claudemd-statusline.sh`; `--force` takes over another provider's slot, saving its command so `remove` can restore it. Always shows the diff and asks before writing. Install-time auto-adopt is empty-slot-only (opt-out: `CLAUDEMD_NO_STATUSLINE=1`). |
 | `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---

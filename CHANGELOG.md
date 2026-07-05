@@ -8,6 +8,35 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.25.0] - 2026-07-05
+
+**Minor — statusLine auto-registration: a new PS1-style statusLine — `user@host:/path (branch) Model [ctx:N%]` — with a semantic context-pressure color (`[ctx:N%]` green <50%, yellow 50–79%, red ≥80%).** Spec content unchanged (stays v6.14.1).
+
+- **Auto (install):** a fresh install wires the statusLine into `~/.claude/settings.json` **only when the `statusLine` slot is empty**. An existing statusline (any other provider) is left untouched; a statusline error never fails the install.
+- **Command:** `/claudemd-statusline` (adopt) · `check` (report the current owner, no writes) · `remove` (restore the prior statusline or clear the slot; delete the renderer) · `--force` (take over a foreign slot, saving its command so `remove` can restore it). Always shows the diff and asks before writing (`~/.claude/settings.json` is a §5 hard-AUTH path).
+- **Opt-out:** set `CLAUDEMD_NO_STATUSLINE=1` before install to skip the statusLine write entirely.
+- **Revert:** `/claudemd-statusline remove` restores the prior statusline (or clears the slot) and deletes `~/.claude/claudemd-statusline.sh`.
+
+Migration: existing users with a statusline already configured see no change (empty-slot-only install). To adopt claudemd's line, run `/claudemd-statusline` (`--force` to replace another provider's).
+
+### Added — `scripts/lib/statusline.js` + `scripts/statusline-adopt.js` (CLI: detect/adopt/remove) + `scripts/statusline.sh` (renderer)
+
+- `detect` reports `absent | claudemd | foreign` plus whether `~/.claude/claudemd-statusline.sh` matches the shipped renderer. `adopt` writes the stable-path command `bash "$HOME/.claude/claudemd-statusline.sh"` and copies the renderer (`--empty-only` install-time guard, `--force` foreign-slot takeover with prior-command save, `--dry-run` preview). `remove` restores the saved prior command (or clears the slot) and deletes the copied renderer; no-op if claudemd doesn't own the slot.
+- `scripts/statusline.sh`: single NUL-delimited `jq` read so an embedded newline in a field can't misalign cwd/model/context; `[ctx:N%]` from `.context_window.used_percentage`, threshold-colored (green/yellow/red at 50/80).
+
+### Added — `/claudemd-statusline` (agent contract)
+
+- `commands/claudemd-statusline.md`: detect → consent gate (always, binds under `AUTONOMY_LEVEL: aggressive`) → adopt/remove → re-verify and cite `verdict: claudemd` as completion evidence.
+
+### Changed — `install.js` / `uninstall.js`
+
+- Install: best-effort empty-slot-only statusLine adopt runs after the spec/hook/manifest steps; `CLAUDEMD_NO_STATUSLINE=1` skips it entirely.
+- Uninstall: un-wires a claudemd-owned statusLine entry and deletes `~/.claude/claudemd-statusline.sh`; a foreign statusline is left untouched.
+
+### Tests
+
+- `tests/scripts/statusline.test.js`, `statusline-adopt.test.js`, `statusline-cli.test.js`; install/uninstall coverage in `install.test.js` (#200-202: empty-slot set, foreign no-clobber, `CLAUDEMD_NO_STATUSLINE` opt-out) and `uninstall.test.js` (#546-547: cleanup + foreign-untouched). Full suite: 570 Node tests + 22 shell hook suites + 2 integration suites (`full-lifecycle`, `upgrade-lifecycle`) all pass; `upgrade-lifecycle` explicitly asserts `manifest.version upgraded to 0.25.0`.
+
 ## [0.24.1] - 2026-07-05
 
 **Patch — fix the macOS CI red on v0.24.0: `design-detect.js`'s "run as main" guard now realpaths both sides so a symlinked invocation path resolves.** Spec unchanged.
