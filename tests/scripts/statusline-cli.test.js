@@ -63,3 +63,34 @@ test('M5: detect default is human-readable, --json is machine-readable', () => {
   const obj = JSON.parse(r2.stdout);
   assert.equal(obj.verdict, 'absent');
 });
+
+test('M5 review fix: adopt --supersede dry-run (human, default) names the supersede target', () => {
+  // Seed a code-graph composite-host slot with two registered providers.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }),
+  );
+  fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
+    JSON.stringify([
+      { id: 'user-ps1', command: 'bash "/h/.claude/x.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ]),
+  );
+
+  // Default human output must name the target even though adopt()'s host
+  // dry-run branch returns it under `supersede` (echoed id), not `superseded`
+  // (id replaced) — renderHuman must read either key.
+  const human = run(['adopt', '--supersede=user-ps1', '--dry-run']);
+  assert.equal(human.status, 0);
+  assert.match(human.stdout, /dry-run/, 'names the dry-run action');
+  assert.match(human.stdout, /user-ps1/, 'names the supersede target');
+
+  // --json path is unaffected by the human-render fix; confirm it still parses.
+  const json = run(['adopt', '--supersede=user-ps1', '--dry-run', '--json']);
+  assert.equal(json.status, 0);
+  const obj = JSON.parse(json.stdout);
+  assert.equal(obj.action, 'dry-run');
+  assert.equal(obj.supersede, 'user-ps1');
+});

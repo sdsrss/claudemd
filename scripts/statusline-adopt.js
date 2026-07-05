@@ -10,7 +10,7 @@ const USAGE = `Usage: node scripts/statusline-adopt.js <detect|adopt|remove> [fl
 Manage claudemd's statusLine registration in ~/.claude/settings.json.
 
 Modes:
-  detect            Print JSON verdict (absent|claudemd|foreign) + dest state. No writes.
+  detect            Verdict (absent|claudemd|host|foreign) + dest state; human summary by default, --json for machine-readable. No writes.
   adopt             Empty slot → set. claudemd → refresh renderer. foreign → no-op
                     unless --force. Copies the renderer to ~/.claude/claudemd-statusline.sh.
   remove            Remove claudemd's statusLine (restore prior if saved). No-op if not ours.
@@ -41,7 +41,12 @@ function renderHuman(mode, out) {
     return bits.join('\n');
   }
   // adopt / remove
-  const tail = [out.host && `host=${out.host}`, out.superseded && `superseded=${out.superseded}`, out.restored && `restored=${out.restored}`, out.to && `to=${out.to}`].filter(Boolean).join('  ');
+  // adopt() returns the supersede target under different keys depending on
+  // branch: a real host-register returns `superseded` (id replaced); the
+  // host dry-run branch (lib/statusline.js) returns `supersede` (id echoed
+  // back, unresolved since nothing was actually replaced yet).
+  const sup = out.superseded || out.supersede;
+  const tail = [out.host && `host=${out.host}`, sup && `superseded=${sup}`, out.restored && `restored=${out.restored}`, out.to && `to=${out.to}`].filter(Boolean).join('  ');
   return `action: ${out.action}${tail ? '  ' + tail : ''}`;
 }
 
