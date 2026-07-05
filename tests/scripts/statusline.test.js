@@ -78,3 +78,9 @@ test('detached HEAD → (detached:<sha>) segment', () => {
   assert.ok(out.includes(`${ESC}[00;35m(detached:${sha})${ESC}[00m`));
   fs.rmSync(repo, { recursive: true, force: true });
 });
+
+test('M2: a field containing a newline still yields a single output line', () => {
+  const out = render({ cwd: '/tmp/a\nb', model: { display_name: 'Opus\n4.8' }, context_window: { used_percentage: 5 } });
+  assert.equal(out.split('\n').length, 1, 'output must be exactly one line');
+  assert.match(out, /Opus 4\.8/, 'newline in model collapsed to a space');
+});

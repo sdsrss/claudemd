@@ -26,6 +26,12 @@ if [ -n "$input" ]; then
   ' <<<"$input" 2>/dev/null)
 fi
 
+# M2: a field carrying a literal newline (pathological cwd/model) would break the
+# one-line contract even though NUL-delimiting keeps the FIELDS aligned. Collapse
+# CR/LF in the two free-text fields to a space (bash-3.2 parameter expansion).
+cwd=${cwd//$'\r'/}; cwd=${cwd//$'\n'/ }
+model=${model//$'\r'/}; model=${model//$'\n'/ }
+
 # user@host — bold green
 user_host="${esc}[01;32m$(whoami)@$(hostname -s)${esc}[00m"
 
