@@ -24,6 +24,11 @@ beforeEach(async () => {
   for (const n of ['banned-vocab-check','ship-baseline-check','residue-audit','memory-read-check','sandbox-disposal-check']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${n}.sh`), '#!/bin/bash\nexit 0\n');
   }
+  // Renderer the install-time statusLine adopt copies to ~/.claude. Without it
+  // install()'s adopt hits ENOENT → {action:'error'} and the suite never
+  // exercises a successful install-time statusLine set (M4).
+  fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), '#!/usr/bin/env bash\necho x\n');
   // Co-existing foreign hook
   fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
     hooks: { PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node /foreign/hook.mjs', timeout: 5 }] }] }
@@ -246,4 +251,28 @@ test('uninstall leaves a foreign statusLine untouched', async () => {
   assert.equal(res.statusline.action, 'not-ours');
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
   assert.equal(s.statusLine.command, 'node /foreign/sl.js');
+});
+
+test('no-manifest uninstall still removes a claudemd-owned statusLine (M3)', async () => {
+  // beforeEach install() adopted claudemd's statusLine into the empty slot and
+  // wrote the renderer. Deleting the manifest sends uninstall down the
+  // no-manifest early return (uninstall.js:73) — removeStatusline() runs
+  // *before* that return, so the slot must still be un-wired and the renderer
+  // deleted, not left orphaned pointing at a live settings.json command. This
+  // is the constraint-#5 no-manifest sub-case, previously unasserted.
+  const sBefore = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.ok(sBefore.statusLine?.command?.includes('claudemd-statusline.sh'),
+    'precondition: beforeEach install set a claudemd statusLine');
+  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
+    'precondition: renderer present');
+
+  fs.unlinkSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'));
+  const res = await uninstall({ specAction: 'keep' });
+
+  assert.equal(res.warning, 'already-uninstalled', 'no-manifest early return taken');
+  assert.equal(res.statusline.action, 'removed', 'statusLine un-wired despite missing manifest');
+  const sAfter = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(sAfter.statusLine, undefined, 'slot cleared');
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
+    'renderer deleted, not left dangling');
 });

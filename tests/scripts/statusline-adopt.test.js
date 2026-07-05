@@ -110,3 +110,51 @@ test('dry-run → no writes', () => {
 test('adopt throws without pluginRoot', () => {
   assert.throws(() => adopt({}), /pluginRoot/);
 });
+
+test('present-but-unrecognised slot shapes classify foreign, never absent (I1)', () => {
+  // The #1 invariant: the empty-slot install path must never clobber a slot it
+  // does not own. Any present statusLine that is not our {command:<MARKER>} —
+  // a bare string, {}, empty command, a numeric command, an alternate type —
+  // must read as 'foreign' (occupied), not 'absent' (free to take), and the
+  // emptyOnly install path must skip it untouched.
+  const foreignShapes = [
+    'x.sh',                                       // bare string (undocumented shorthand)
+    {},                                           // object, no command
+    { command: '' },                              // empty command
+    { command: 123 },                             // non-string command
+    { type: 'static', text: 'hi' },               // alternate type, no command
+    { type: 'command', command: 'node /o.js' },   // real foreign
+  ];
+  for (const shape of foreignShapes) {
+    writeS({ statusLine: shape });
+    assert.equal(detect().verdict, 'foreign', `shape ${JSON.stringify(shape)} must be foreign`);
+    const r = adopt({ pluginRoot, emptyOnly: true });
+    assert.equal(r.action, 'skipped-foreign', `install must skip ${JSON.stringify(shape)}`);
+    assert.deepEqual(readS().statusLine, shape, 'foreign slot left byte-for-byte intact');
+    assert.ok(!fs.existsSync(destFile()), 'no renderer copied when skipping foreign');
+  }
+});
+
+test('genuinely empty slot shapes still classify absent (I1 boundary)', () => {
+  // null / '' / a missing key must stay 'absent' so the empty-slot install
+  // still adopts a truly-free slot.
+  writeS({ statusLine: null });
+  assert.equal(detect().verdict, 'absent');
+  writeS({ statusLine: '' });
+  assert.equal(detect().verdict, 'absent');
+  writeS({ other: 1 });
+  assert.equal(detect().verdict, 'absent');
+});
+
+test('set over a stale prev file → remove clears, does not resurrect it (M1)', () => {
+  // A leftover statusline-prev.json from an earlier --force undone out-of-band
+  // must not make a plain empty-slot set → remove restore the stale command.
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(prevFile(), JSON.stringify({ command: 'node /stale/foreign.js' }));
+  const r = adopt({ pluginRoot });               // empty slot → set
+  assert.equal(r.action, 'set');
+  assert.ok(!fs.existsSync(prevFile()), 'stale prev cleared on absent→set');
+  const rm = remove();
+  assert.equal(rm.action, 'removed');            // cleared, not 'restored'
+  assert.equal(readS().statusLine, undefined);
+});

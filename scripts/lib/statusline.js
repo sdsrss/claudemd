@@ -20,7 +20,14 @@ export function detect(pluginRoot = null) {
   const cmd = settings.statusLine && typeof settings.statusLine.command === 'string'
     ? settings.statusLine.command
     : null;
-  const verdict = !cmd ? 'absent' : (cmd.includes(MARKER) ? 'claudemd' : 'foreign');
+  // Presence — not command-parseability — decides absent-vs-occupied. A slot
+  // holding ANY shape we don't recognise (bare string, {}, {command:''}, a
+  // {command:123}, an alternate `type`) is still someone else's: classifying it
+  // 'absent' would let the empty-slot install path clobber it, breaking the
+  // never-touch-a-foreign-slot invariant. Only a missing / null / '' slot is
+  // genuinely 'absent'.
+  const present = settings.statusLine != null && settings.statusLine !== '';
+  const verdict = !present ? 'absent' : ((cmd && cmd.includes(MARKER)) ? 'claudemd' : 'foreign');
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -70,6 +77,10 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
   // absent
   if (dryRun) return { action: 'dry-run', from: null, to: COMMAND };
   const settingsBackup = backupSettings ? backupSettingsFile().backup : null;
+  // Clear any stale prev left by an earlier --force that was later undone
+  // out-of-band, so a subsequent remove() empties this freshly-taken empty slot
+  // instead of resurrecting the old foreign command.
+  try { fs.unlinkSync(prevPath()); } catch { /* no stale prev to clear */ }
   copyRenderer(pluginRoot);
   setStatusLine();
   return { action: 'set', from: null, to: COMMAND, settingsBackup };

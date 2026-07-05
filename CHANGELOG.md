@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.25.1] - 2026-07-06
+
+**Patch — post-release review hardening of the v0.25.0 statusLine detector: a present-but-unrecognised `statusLine` slot is now treated as `foreign` (never overwritten by the empty-slot install), closing a latent hole in the never-clobber invariant.** No behavior change for any valid Claude Code config; spec unchanged (stays v6.14.1).
+
+- **`detect()` presence check (`scripts/lib/statusline.js`):** classification now keys on slot *presence*, not command-parseability. Any present slot that isn't claudemd's `{command:"…claudemd-statusline.sh"}` — a bare string, `{}`, `{command:""}`, `{command:123}`, or an alternate `type` — reads as `foreign`, so the empty-slot install skips it instead of collapsing it to `absent` and clobbering it. Only a missing / `null` / `""` slot is `absent`. CC's real slot is `{type:"command",command:"<string>"}` (already classified `foreign` and skipped), so no confirmed valid config reached the old path: this is defense-in-depth on the #1 "never touch a foreign slot" invariant, not a fix to observed data loss.
+- **Stale prev cleanup:** a plain empty-slot `set` now clears any leftover `statusline-prev.json` from an earlier `--force` undone out-of-band, so a later `remove` empties the slot instead of resurrecting the stale foreign command.
+- **Tests (+4 → 574 Node tests):** `statusline-adopt.test.js` locks the foreign-shape classification (bare string / `{}` / empty / numeric / alt-`type` all skip untouched), the absent boundary (`null` / `""` / missing still adopt), and the stale-prev case; `uninstall.test.js` now ships a renderer fixture so `beforeEach` exercises a real install-time statusLine set, and asserts the no-manifest uninstall still un-wires a claudemd slot and deletes the renderer (constraint-#5 no-manifest sub-case, previously unasserted).
+
+Provenance: `superpowers:requesting-code-review` whole-feature audit of `60312c8..cce65ee` — 0 Critical, 1 Important (the detector hole above), 5 Minor; verdict "Ready to merge: Yes" for v0.25.0 with this patch recommended. Minors M2 (renderer newline-strip) and M5 (`--json` / `--dry-run` UX) deferred to `tasks/statusline-v0251-deferred.md`.
+
 ## [0.25.0] - 2026-07-05
 
 **Minor — statusLine auto-registration: a new PS1-style statusLine — `user@host:/path (branch) Model [ctx:N%]` — with a semantic context-pressure color (`[ctx:N%]` green <50%, yellow 50–79%, red ≥80%).** Spec content unchanged (stays v6.14.1).
