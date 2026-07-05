@@ -427,3 +427,16 @@ test('CLAUDEMD_NO_STATUSLINE=1 skips the statusLine write', async () => {
     delete process.env.CLAUDEMD_NO_STATUSLINE;
   }
 });
+
+test('install with a code-graph host in the slot → host-detected, no registry write', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }));
+  const res = await install({ pluginRoot });
+  assert.equal(res.statusline.action, 'host-detected');
+  assert.equal(res.statusline.host, 'code-graph');
+  // install must NOT have written claudemd into code-graph's registry
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.cache/code-graph/statusline-registry.json')));
+  // slot untouched
+  const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
+  assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"');
+});
