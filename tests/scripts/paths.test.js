@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, codeGraphRegistryPath, codeGraphProvidersBackupPath } from '../../scripts/lib/paths.js';
@@ -117,18 +117,15 @@ test('readManifest prefers new manifest over stale legacy (v0.1.9)', () => {
   }
 });
 
-let tmpHome, savedHome;
-beforeEach(() => {
-  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-paths-'));
-  savedHome = process.env.HOME;
-  process.env.HOME = tmpHome;
-});
-afterEach(() => {
-  process.env.HOME = savedHome;
-  fs.rmSync(tmpHome, { recursive: true, force: true });
-});
-
 test('code-graph registry paths derive from HOME', () => {
-  assert.equal(codeGraphRegistryPath(), path.join(tmpHome, '.cache/code-graph/statusline-registry.json'));
-  assert.equal(codeGraphProvidersBackupPath(), path.join(tmpHome, '.claude/statusline-providers.json'));
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-paths-'));
+  const saved = process.env.HOME;
+  process.env.HOME = tmpHome;
+  try {
+    assert.equal(codeGraphRegistryPath(), path.join(tmpHome, '.cache/code-graph/statusline-registry.json'));
+    assert.equal(codeGraphProvidersBackupPath(), path.join(tmpHome, '.claude/statusline-providers.json'));
+  } finally {
+    process.env.HOME = saved;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });
