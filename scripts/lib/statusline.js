@@ -3,12 +3,18 @@ import path from 'node:path';
 import { readSettings, writeSettings } from './settings-merge.js';
 import { settingsPath, stateDir, homeSpec } from './paths.js';
 import { backupSettingsFile } from './backup.js';
+import { detectHost, HOST_ADAPTERS, CLAUDEMD_PROVIDER_ID } from './statusline-hosts.js';
 
 // Ownership is a substring match on our stable renderer basename. A foreign
 // statusLine command that happened to embed this exact substring would
 // misclassify as ours — accepted: no other tool references this basename.
 const MARKER = 'claudemd-statusline.sh';
 const COMMAND = 'bash "$HOME/.claude/claudemd-statusline.sh"';
+
+// Slot-owner command (CC runs it through a shell → $HOME expands).
+// Guest command (a composite host runs it via execFileSync → no shell, only
+// ~ expands, NOT $HOME) MUST be an absolute path, or it ENOENTs and blanks.
+const GUEST_COMMAND = () => `bash "${destPath()}"`;
 
 const destPath = () => homeSpec('claudemd-statusline.sh');
 const prevPath = () => path.join(stateDir(), 'statusline-prev.json');
@@ -17,17 +23,26 @@ const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {})
 
 export function detect(pluginRoot = null) {
   const settings = loadSettings();
+  const present = settings.statusLine != null && settings.statusLine !== '';
   const cmd = settings.statusLine && typeof settings.statusLine.command === 'string'
     ? settings.statusLine.command
     : null;
-  // Presence — not command-parseability — decides absent-vs-occupied. A slot
-  // holding ANY shape we don't recognise (bare string, {}, {command:''}, a
-  // {command:123}, an alternate `type`) is still someone else's: classifying it
-  // 'absent' would let the empty-slot install path clobber it, breaking the
-  // never-touch-a-foreign-slot invariant. Only a missing / null / '' slot is
-  // genuinely 'absent'.
-  const present = settings.statusLine != null && settings.statusLine !== '';
-  const verdict = !present ? 'absent' : ((cmd && cmd.includes(MARKER)) ? 'claudemd' : 'foreign');
+  let verdict, host = null, providers = null, guestRegistered = false;
+  if (!present) {
+    verdict = 'absent';
+  } else if (cmd && cmd.includes(MARKER)) {
+    verdict = 'claudemd';
+  } else {
+    const adapter = cmd ? detectHost(cmd) : null;
+    if (adapter) {
+      verdict = 'host';
+      host = adapter.id;
+      providers = adapter.listProviders();
+      guestRegistered = adapter.isRegistered(CLAUDEMD_PROVIDER_ID);
+    } else {
+      verdict = 'foreign';
+    }
+  }
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -36,7 +51,7 @@ export function detect(pluginRoot = null) {
       matchesShipped = fs.readFileSync(dest, 'utf8') === fs.readFileSync(shippedRenderer(pluginRoot), 'utf8');
     } catch { matchesShipped = false; }
   }
-  return { verdict, current: cmd, dest: { exists, matchesShipped } };
+  return { verdict, host, current: cmd, providers, guestRegistered, dest: { exists, matchesShipped } };
 }
 
 function copyRenderer(pluginRoot) {

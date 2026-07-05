@@ -158,3 +158,25 @@ test('set over a stale prev file → remove clears, does not resurrect it (M1)',
   assert.equal(rm.action, 'removed');            // cleared, not 'restored'
   assert.equal(readS().statusLine, undefined);
 });
+
+test('detect: a code-graph composite slot → verdict host (not foreign)', () => {
+  writeS({ statusLine: { type: 'command', command: 'node "/cg/0.1/scripts/statusline-composite.js"' } });
+  const d = detect();
+  assert.equal(d.verdict, 'host');
+  assert.equal(d.host, 'code-graph');
+  assert.equal(d.guestRegistered, false);
+});
+
+test('detect: host + claudemd already in registry → guestRegistered true', () => {
+  writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
+  const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(reg, JSON.stringify([{ id: 'claudemd', command: 'bash "/x/claudemd-statusline.sh"', needsStdin: true }]));
+  assert.equal(detect().guestRegistered, true);
+});
+
+test('detect: a plain non-composite command stays foreign', () => {
+  writeS({ statusLine: { type: 'command', command: 'node /other/x.js' } });
+  assert.equal(detect().verdict, 'foreign');
+  assert.equal(detect().host, null);
+});
