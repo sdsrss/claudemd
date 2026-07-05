@@ -86,6 +86,25 @@ export function pruneSettingsBackups(retainCount = 5) {
   return removed;
 }
 
+// Pre-mutation safety copy of settings.json, shared by install.js and the
+// statusline adopt path. Mirrors the inline block install.js used pre-extraction:
+// `.claudemd-backup-<isoStamp>` sibling, numeric-suffixed on the (vanishingly
+// rare) same-ms collision, then rotate to `retainCount` newest.
+export function backupSettingsFile(retainCount = 5) {
+  const p = settingsPath();
+  if (!fs.existsSync(p)) return { backup: null, pruned: [] };
+  let candidate = `${p}.claudemd-backup-${isoStamp()}`;
+  if (fs.existsSync(candidate)) {
+    for (let i = 1; i < 1000; i++) {
+      const next = `${candidate}-${i}`;
+      if (!fs.existsSync(next)) { candidate = next; break; }
+    }
+  }
+  fs.copyFileSync(p, candidate);
+  const pruned = pruneSettingsBackups(retainCount);
+  return { backup: candidate, pruned };
+}
+
 export function restoreBackup(backupDir, targetRoot) {
   const restored = [];
   for (const name of fs.readdirSync(backupDir)) {
