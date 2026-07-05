@@ -78,6 +78,13 @@ test('idempotent: running uninstall twice is safe', async () => {
   await uninstall({ specAction: 'keep' });
   const second = await uninstall({ specAction: 'keep' });
   assert.equal(second.warning, 'already-uninstalled');
+  // Coverage: the no-manifest early return (uninstall.js:73) also carries a
+  // `statusline` field. On this second call there is no claudemd-owned
+  // statusLine left to remove, so removeStatusline() reports 'not-ours' —
+  // asserting it here guards that field from silently disappearing from the
+  // no-manifest branch (the only other test touching `statusline` exercises
+  // the final, manifest-present return at uninstall.js:110).
+  assert.equal(second.statusline.action, 'not-ours');
 });
 
 test('aborted delete (no confirm) does not mutate settings.json or manifest (F14)', async () => {
