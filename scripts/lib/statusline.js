@@ -4,6 +4,9 @@ import { readSettings, writeSettings } from './settings-merge.js';
 import { settingsPath, stateDir, homeSpec } from './paths.js';
 import { backupSettingsFile } from './backup.js';
 
+// Ownership is a substring match on our stable renderer basename. A foreign
+// statusLine command that happened to embed this exact substring would
+// misclassify as ours — accepted: no other tool references this basename.
 const MARKER = 'claudemd-statusline.sh';
 const COMMAND = 'bash "$HOME/.claude/claudemd-statusline.sh"';
 
@@ -73,7 +76,7 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
 }
 
 export function remove() {
-  const { verdict, current } = detect();
+  const { verdict } = detect();
   if (verdict !== 'claudemd') return { action: 'not-ours', restored: null };
   const settings = loadSettings();
   let action = 'removed';

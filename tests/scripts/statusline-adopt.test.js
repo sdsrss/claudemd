@@ -69,6 +69,7 @@ test('foreign + force → replaced, prior saved', () => {
   writeS({ statusLine: { type: 'command', command: 'node /other/x.js' } });
   const r = adopt({ pluginRoot, force: true });
   assert.equal(r.action, 'replaced');
+  assert.ok(r.settingsBackup && fs.existsSync(r.settingsBackup), 'settings.json backed up before force-replace');
   assert.equal(readS().statusLine.command, CMD);
   assert.equal(JSON.parse(fs.readFileSync(prevFile(), 'utf8')).command, 'node /other/x.js');
 });
