@@ -54,3 +54,27 @@ test('git repo → branch segment; non-repo → none', () => {
   assert.ok(!render({ cwd: nonrepo, model: { display_name: '' } }).includes(`${ESC}[00;35m(`));
   fs.rmSync(nonrepo, { recursive: true, force: true });
 });
+
+test('field with backslash escape does not truncate the line', () => {
+  const out = render({ cwd: 'C:\\code\\proj', model: { display_name: 'Opus 4.8 (1M context)' }, context_window: { used_percentage: 6 } });
+  assert.ok(out.includes('C:\\code\\proj'), 'backslash path rendered literally');
+  assert.ok(out.includes('Opus 4.8 (1M context)'), 'model survives backslash in cwd');
+  assert.ok(out.includes('[ctx:6%]'), 'ctx survives backslash in cwd');
+});
+
+test('embedded newline in a field does not misalign later segments', () => {
+  const out = render({ cwd: 'a\nb', model: { display_name: 'ModelX' }, context_window: { used_percentage: 10 } });
+  assert.ok(out.includes('ModelX'), 'model not overwritten by cwd tail');
+  assert.ok(out.includes('[ctx:10%]'), 'ctx present');
+});
+
+test('detached HEAD → (detached:<sha>) segment', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sl-detach-'));
+  const genv = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  execSync('git init -q && git commit -q --allow-empty -m one && git commit -q --allow-empty -m two', { cwd: repo, env: genv });
+  const sha = execSync('git rev-parse --short HEAD', { cwd: repo, encoding: 'utf8' }).trim();
+  execSync(`git checkout -q ${sha}`, { cwd: repo, env: genv });
+  const out = render({ cwd: repo, model: { display_name: '' } });
+  assert.ok(out.includes(`${ESC}[00;35m(detached:${sha})${ESC}[00m`));
+  fs.rmSync(repo, { recursive: true, force: true });
+});
