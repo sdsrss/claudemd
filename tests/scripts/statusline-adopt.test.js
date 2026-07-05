@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { detect, adopt, remove } from '../../scripts/lib/statusline.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 let tmpHome, savedHome, pluginRoot;
 const settingsFile = () => path.join(tmpHome, '.claude/settings.json');
@@ -264,4 +268,31 @@ test('remove: guest that superseded a PS1 → restores it', () => {
   assert.equal(r.restored, 'user-ps1');
   assert.deepEqual(cgReg().map((p) => p.id), ['user-ps1', 'code-graph'], 'user-ps1 back at front, claudemd gone');
   assert.ok(!fs.existsSync(prevFile()));
+});
+
+test('guest-exec regression: code-graph\'s execFileSync runner (no shell) can run the registered command', () => {
+  // code-graph renders each provider by spawning its `command` via execFileSync
+  // — there is no shell, so `$HOME` in a command string is passed through
+  // literally (never expanded) and ENOENTs. The guest command must therefore
+  // be an absolute path. This is the #1-risk regression lock for that command
+  // form: adopt for real (using the actual shipped renderer, not the fixture
+  // stub), read back exactly what landed in the registry, parse it the way
+  // code-graph's no-shell runner would, and spawn it the same way.
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  const r = adopt({ pluginRoot: REPO_ROOT }); // real scripts/statusline.sh, so output is genuine
+  assert.equal(r.action, 'registered');
+
+  const entry = cgReg().find((p) => p.id === 'claudemd');
+  assert.ok(entry, 'claudemd must be registered in the code-graph registry');
+  const m = /^bash "(.+)"$/.exec(entry.command);
+  assert.ok(m, `guest command must be of the form bash "<abspath>": got ${entry.command}`);
+  const abspath = m[1];
+  assert.ok(path.isAbsolute(abspath), 'guest command path must be absolute');
+  assert.ok(!abspath.includes('$HOME'), 'guest command must not carry the literal $HOME — execFileSync has no shell to expand it');
+  assert.equal(abspath, destFile());
+
+  const payload = { cwd: '/tmp', model: { display_name: 'Opus' }, context_window: { used_percentage: 5 } };
+  const out = execFileSync('bash', [abspath], { input: JSON.stringify(payload), encoding: 'utf8' });
+  assert.ok(out.length > 0, 'renderer produced non-empty output');
+  assert.match(out, /Opus/, 'rendered output contains the model name');
 });

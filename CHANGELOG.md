@@ -17,7 +17,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Install**: a composite host in the slot yields a `host-detected` note (run `/claudemd-statusline`) — install never writes another plugin's registry.
 - **remove/uninstall**: guest mode unregisters claudemd from the host registry (restoring a superseded provider) and deletes the renderer; the host keeps the slot.
 - **M2**: renderer strips embedded newlines in cwd/model (one-line guarantee). **M5**: CLI default is human-readable, `--json` for machine output; `--supersede=<id>` added.
-- **Tests (+22 → 596 Node tests)**: `statusline-hosts.test.js` (adapter), plus host/guest/supersede cases across `statusline-adopt.test.js`, `statusline-cli.test.js`, `install.test.js`.
+- **Tests (+24 → 598 Node tests)**: `statusline-hosts.test.js` (adapter), plus host/guest/supersede cases across `statusline-adopt.test.js`, `statusline-cli.test.js`, `install.test.js`.
 
 ## [0.25.1] - 2026-07-06
 
