@@ -425,8 +425,38 @@ TMP_FIX=$(mktemp); printf '%s' "$EVENT_41" > "$TMP_FIX"
 assert_deny "41: tool_result entry is not a turn boundary → same-turn deny" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# --- Combined short-flag message extraction (`-am` / `-vam`). `git commit -am
+# "…"` is one of the most common forms; pre-fix it fell through to the whole-CMD
+# fallback, so a banned word in a CHAINED segment falsely denied a clean commit
+# that the identical `-m` form passed. `-[[:alpha:]]*m` now isolates the message.
+
+# Case 42: `-am` message clean, banned word only in a CHAINED command → pass
+# (message is isolated; pre-fix the whole-CMD fallback flagged "comprehensive").
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -am \"clean fix\" && npm run comprehensive-tests"},"cwd":"/tmp"}
+EOF
+assert_pass "42: -am clean msg + banned word in chained cmd → pass (message isolated)" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 43: banned vocab INSIDE the `-am` message body → still deny.
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -am \"significantly faster now\""},"cwd":"/tmp"}
+EOF
+assert_deny "43: banned vocab in -am message body → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 44: three-flag block `-vam` (verbose+all+message) with banned message → deny.
+TMP_FIX=$(mktemp)
+cat > "$TMP_FIX" <<'EOF'
+{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git commit -vam \"add robust error handling\""},"cwd":"/tmp"}
+EOF
+assert_deny "44: -vam combined flag block with banned message → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((41 - FAIL))/41 passed"
+  echo "Tests: $((44 - FAIL))/44 passed"
   exit 1
 fi
-echo "Tests: 41/41 passed"
+echo "Tests: 44/44 passed"

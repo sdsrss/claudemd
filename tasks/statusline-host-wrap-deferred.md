@@ -36,15 +36,19 @@ independent Minors, each re-confirmed against the code:
    latent-correctness item. **Fix:** write the durable mirror FIRST and drop the swallow, so a
    mirror failure aborts before the primary diverges (the only divergence mirror-first can produce
    is the benign self-healing direction). Fold in first if any v0.26.1 ships.
-2. **Superseded provider restored to front, not its original index** — `scripts/lib/statusline.js:142`.
-   `remove()` restores via `register(prev.superseded, {front:true})` regardless of original
-   position → reorders a non-index-0 PS1 to front. Cosmetic (segment order); the "restore"
-   contract doesn't advertise the move. **Fix:** capture the original index in adopt()'s
-   `{superseded}` record and restore to `min(idx, len)`.
-3. **A second `--supersede` clobbers the first's restore record** — `scripts/lib/statusline.js:96`.
-   `prevPath()` holds a single `{superseded}`; `--supersede=A` then `--supersede=B` overwrites A →
-   `remove()` can only restore B. Narrow (doc flow supersedes one manual PS1). **Fix:** store a
-   `{superseded:[...]}` list (append + restore all), or refuse a second supersede while a prev exists.
+2. **[PARTIALLY FIXED — working tree] Superseded provider restored to front, not its original index** — `scripts/lib/statusline.js`.
+   `remove()` restored via `register(prev.superseded, {front:true})` regardless of original
+   position → reordered a non-index-0 PS1 to front. The #3 fix (below) now restores the whole
+   list in REVERSE order with front-insert, so superseded providers regain their original
+   RELATIVE order. Still open: ABSOLUTE index when non-superseded providers sat between them
+   (front-anchored, not original index). Cosmetic (segment order); left as-is.
+3. **[FIXED — working tree, pending release] A second `--supersede` clobbers the first's restore record** — `scripts/lib/statusline.js`.
+   `prevPath()` held a single `{superseded}`; `--supersede=A` then `--supersede=B` overwrote A →
+   `remove()` could only restore B (A permanently lost — real data loss, reproduced end-to-end).
+   **Fixed:** the record is now a `{superseded:[...]}` list — `adopt()` appends (dedup by id),
+   `remove()` restores ALL in reverse order. Legacy singular `{superseded:<prov>}` records are
+   tolerated (`readSupersededList()` normalizes) so an upgrade taken mid-supersede still restores.
+   Regression tests: `statusline-adopt.test.js` "restores BOTH" + "legacy singular … still restores".
 4. **[SHIPPED v0.26.1] `--supersede=<id-not-in-registry>` no longer a silent no-op** — `scripts/lib/statusline.js:92-100`.
    Unknown id → supersede block skipped, `superseded` stays null, adopt still returns
    `action:'registered'` with no signal the target was missed. **Fix (cheap):** surface a
@@ -56,5 +60,6 @@ independent Minors, each re-confirmed against the code:
    `unlinkSync(destPath())` when `dest.exists && dest.matchesShipped` (never delete a foreign file).
 
 **Shipped in v0.26.1:** #1 (durability) + #4 (supersedeMissed observability) + `manualPsCandidates`
-wiring (`psCandidates` field). **Remaining for a future patch:** #2 (restore index) / #3 (multi-supersede)
-/ #5 (orphan renderer) + the whole-branch-review dry-run-foreign wart + coverage gaps above.
+wiring (`psCandidates` field). **Fixed in working tree (pending release):** #3 (multi-supersede
+data loss) + #2 relative-order (absolute-index still open, cosmetic). **Remaining for a future
+patch:** #5 (orphan renderer) + the whole-branch-review dry-run-foreign wart + coverage gaps above.

@@ -185,8 +185,31 @@ else
   ng "12: dedup wrongly suppressed new prose (out: $OUT_C)"
 fi
 
+# --- Case 13 (identifier/path sanitizer): a high-fire word appearing ONLY in a
+# filename / slashed path / backtick span is not a value claim → clean, no
+# advisory (else it inflates the §10-V telemetry count). ---------------------
+write_transcript 'refactored comprehensive-parser.js and the docs/robust-guide.md file'
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+OUT=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+HITS=$(log_hits)
+if [[ -z "$OUT" && "$HITS" == "0" ]]; then
+  ok "13: high-fire word only in filename/path identifier → clean (no FP)"
+else
+  ng "13: identifier FP triggered (out: $OUT, hits: $HITS)"
+fi
+
+# --- Case 14: bare-prose violation BESIDE an identifier still fires (no FN) --
+write_transcript 'the coverage is comprehensive; edited comprehensive-parser.js'
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+OUT=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT" | grep -qi 'comprehensive'; then
+  ok "14: bare-prose violation beside an identifier still fires (no FN)"
+else
+  ng "14: missed bare-prose violation next to identifier (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"
+  echo "Tests: $((14 - FAIL))/14 passed"
   exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 14/14 passed"

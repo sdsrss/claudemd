@@ -253,8 +253,9 @@ test('adopt: host + supersede → old provider saved to prev and removed', () =>
   assert.equal(r.superseded, 'user-ps1');
   assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'user-ps1 gone, claudemd at front');
   const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
-  assert.equal(prev.superseded.id, 'user-ps1');
-  assert.equal(prev.superseded.command, 'bash "/home/x/.claude/statusline-command.sh"');
+  // Restore record is a LIST (append-safe for multi-supersede); single → one entry.
+  assert.deepEqual(prev.superseded.map((p) => p.id), ['user-ps1']);
+  assert.equal(prev.superseded[0].command, 'bash "/home/x/.claude/statusline-command.sh"');
 });
 
 test('adopt: host + supersede a non-existent id → supersedeMissed, still registers, no prev saved', () => {
@@ -297,6 +298,36 @@ test('remove: guest that superseded a PS1 → restores it', () => {
   assert.equal(r.restored, 'user-ps1');
   assert.deepEqual(cgReg().map((p) => p.id), ['user-ps1', 'code-graph'], 'user-ps1 back at front, claudemd gone');
   assert.ok(!fs.existsSync(prevFile()));
+});
+
+test('remove: guest that superseded TWO PS1s → restores BOTH (regression: multi-supersede data loss)', () => {
+  seedCg([
+    { id: 'ps1-A', command: 'bash "/home/x/.claude/a.sh"', needsStdin: true },
+    { id: 'ps1-B', command: 'bash "/home/x/.claude/b.sh"', needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  adopt({ pluginRoot, supersede: 'ps1-A' });
+  adopt({ pluginRoot, supersede: 'ps1-B' });   // second supersede must NOT clobber the first's record
+  const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
+  assert.deepEqual(prev.superseded.map((p) => p.id), ['ps1-A', 'ps1-B'], 'both superseded providers recorded');
+  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'both PS1s removed, claudemd front');
+  const r = remove();
+  assert.equal(r.restored, 'ps1-A,ps1-B', 'both restored (pre-fix: only ps1-B; ps1-A lost)');
+  assert.deepEqual(cgReg().map((p) => p.id), ['ps1-A', 'ps1-B', 'code-graph'], 'both back in original relative order');
+  assert.ok(!fs.existsSync(prevFile()));
+});
+
+test('remove: legacy singular prev.superseded shape still restores (≤v0.26.1 upgrade tolerance)', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  adopt({ pluginRoot });                       // guest-register claudemd (no supersede)
+  // A restore record written by ≤v0.26.1: a singular object, not a list.
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(prevFile(), JSON.stringify({
+    superseded: { id: 'legacy-ps1', command: 'bash "/home/x/.claude/legacy.sh"', needsStdin: true },
+  }));
+  const r = remove();
+  assert.equal(r.restored, 'legacy-ps1', 'legacy singular shape restored, not dropped');
+  assert.ok(cgReg().some((p) => p.id === 'legacy-ps1'), 'legacy provider back in registry');
 });
 
 test('guest-exec regression: code-graph\'s execFileSync runner (no shell) can run the registered command', () => {

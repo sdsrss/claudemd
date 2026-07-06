@@ -21,6 +21,19 @@ const prevPath = () => path.join(stateDir(), 'statusline-prev.json');
 const shippedRenderer = (pluginRoot) => path.join(pluginRoot, 'scripts', 'statusline.sh');
 const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {});
 
+// The supersede restore-record accepts both the current list shape
+// ({superseded:[<prov>,…]}) and the legacy singular shape ({superseded:<prov>},
+// written by ≤v0.26.1) so an upgrade taken mid-supersede still restores. Returns
+// an array of provider objects with an id (possibly empty). A {command:…}
+// foreign-takeover record (no `superseded` key) normalizes to [].
+function readSupersededList() {
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8')); } catch { return []; }
+  if (!prev || prev.superseded == null) return [];
+  const arr = Array.isArray(prev.superseded) ? prev.superseded : [prev.superseded];
+  return arr.filter((p) => p && p.id);
+}
+
 export function detect(pluginRoot = null) {
   const settings = loadSettings();
   // Presence — not command-parseability — decides absent-vs-occupied. A slot
@@ -98,7 +111,13 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
       const prov = adapter.listProviders().find((p) => p.id === supersede);
       if (prov) {
         fs.mkdirSync(stateDir(), { recursive: true });
-        fs.writeFileSync(prevPath(), JSON.stringify({ superseded: prov }, null, 2));
+        // Append to a list (dedup by id) rather than overwrite, so a SECOND
+        // --supersede does not clobber the first's restore record — remove()
+        // restores EVERY superseded provider, not just the last. Without this,
+        // `adopt --supersede=A` then `--supersede=B` left A unrecoverable.
+        const list = fs.existsSync(prevPath()) ? readSupersededList() : [];
+        if (!list.some((p) => p.id === prov.id)) list.push(prov);
+        fs.writeFileSync(prevPath(), JSON.stringify({ superseded: list }, null, 2));
         adapter.unregister(supersede);
         superseded = prov.id;
       } else {
@@ -146,13 +165,15 @@ export function remove() {
     adapter.unregister(CLAUDEMD_PROVIDER_ID);
     let restored = null;
     if (fs.existsSync(prevPath())) {
-      try {
-        const prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8'));
-        if (prev && prev.superseded && prev.superseded.id) {
-          adapter.register(prev.superseded, { front: true });
-          restored = prev.superseded.id;
-        }
-      } catch { /* prev unreadable — just drop it */ }
+      // Restore EVERY superseded provider (list shape; legacy singular tolerated).
+      // Reverse order + front-insert so they regain their original relative
+      // order: the last superseded, restored first, ends up behind the earlier
+      // ones. `restored` is a comma-joined id list (single case → the one id).
+      const list = readSupersededList();
+      for (let i = list.length - 1; i >= 0; i--) {
+        adapter.register(list[i], { front: true });
+      }
+      if (list.length) restored = list.map((p) => p.id).join(',');
       try { fs.unlinkSync(prevPath()); } catch { /* best-effort */ }
     }
     try { fs.unlinkSync(destPath()); } catch { /* best-effort */ }

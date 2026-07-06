@@ -98,13 +98,20 @@ if (( IS_GIT_COMMIT == 1 )); then
 # commit message, not the whole invocation — scanning `git -c core.editor=...
 # commit -m "fix"` across all tokens used to flag unrelated config text.
 # Supported forms: `-m "..."`, `-m '...'`, `--message="..."`, `--message='...'`,
-# `--message "..."`, `--message '...'`. BSD-safe: uses octal \047 for single
-# quote inside regex (some macOS seds/greps don't understand \x27).
+# `--message "..."`, `--message '...'`, AND combined short-flag blocks ending in
+# `m` (`-am`, `-vam`, `-Sam` — `git commit -am "…"` is one of the most common
+# forms). `-[[:alpha:]]*m` matches the whole block; a bare `-m` still matches
+# with zero leading alphas, so this is a strict superset of the prior `-m`-only
+# regex. Without it, `-am` fell through to the whole-CMD fallback, so a banned
+# word in a CHAINED segment (`git commit -am "fix" && npm run comprehensive-x`)
+# denied a clean-message commit that the identical `-m` form would have passed.
+# BSD-safe: uses octal \047 for single quote inside regex (some macOS seds/greps
+# don't understand \x27).
 SQ=$'\047'
-MSG_REGEX="-m[[:space:]]+\"[^\"]*\"|-m[[:space:]]+${SQ}[^${SQ}]*${SQ}|--message=\"[^\"]*\"|--message=${SQ}[^${SQ}]*${SQ}|--message[[:space:]]+\"[^\"]*\"|--message[[:space:]]+${SQ}[^${SQ}]*${SQ}"
+MSG_REGEX="-[[:alpha:]]*m[[:space:]]+\"[^\"]*\"|-[[:alpha:]]*m[[:space:]]+${SQ}[^${SQ}]*${SQ}|--message=\"[^\"]*\"|--message=${SQ}[^${SQ}]*${SQ}|--message[[:space:]]+\"[^\"]*\"|--message[[:space:]]+${SQ}[^${SQ}]*${SQ}"
 MSG_TEXT=""
 while IFS= read -r match; do
-  body=$(printf '%s' "$match" | sed -E "s/^(-m|--message([= ]))[\"${SQ}]?//; s/[\"${SQ}]\$//")
+  body=$(printf '%s' "$match" | sed -E "s/^(-[[:alpha:]]*m|--message([= ]))[\"${SQ}]?//; s/[\"${SQ}]\$//")
   [[ -n "$body" ]] && MSG_TEXT+="$body"$'\n'
 done < <(printf '%s' "$CMD" | grep -oE -- "$MSG_REGEX" 2>/dev/null)
 

@@ -81,6 +81,19 @@ LAST_TEXT=$(tail -n 200 "$TRANSCRIPT_PATH" 2>/dev/null \
   | tail -n 1)
 [[ -n "$LAST_TEXT" ]] || exit 0
 
+# Identifier/path mentions are not value claims (mirrors banned-vocab-check.sh's
+# v0.23.19 Path 2 + lib/lint.js stripIdentifiers). `\b` treats '-', '/', '.' as
+# word boundaries, so a filename/branch/backtick span quoting a high-fire word
+# (`comprehensive-parser.js`, `docs/comprehensive-audit`, `\`robust\``) fires
+# `\bcomprehensive\b` and inflates the advisory count in rule-hits telemetry.
+# Strip, in order: fenced code blocks → inline backtick spans → slashed-path
+# runs → bare `name.ext` files (lowercase extension only, so decimals/versions
+# like "3.5x"/"v6.14" survive and a bare-word claim still matches).
+LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
+  | awk '/^[[:space:]]*```/{f=!f; next} !f' \
+  | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g')
+[[ -n "${LAST_TEXT//[[:space:]]/}" ]] || exit 0
+
 # Per-session dedup. This is PostToolUse, but the agent's prose precedes a whole
 # CHAIN of tool calls — without dedup the SAME last-text turn re-fires the
 # advisory row + stderr banner on every tool call in the chain (an agent that

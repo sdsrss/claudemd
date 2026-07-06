@@ -80,8 +80,47 @@ function posixClassesToJs(regex) {
   return out;
 }
 
-export function scan(text, { excludeRatio = false, patterns } = {}) {
+// stripIdentifiers — remove code / identifier / path regions before §10-V
+// matching so a filename, branch, or backtick span quoting a high-fire word is
+// not read as a value claim. `\b` treats '-', '/', '.' as word boundaries, so
+// `\bcomprehensive\b` fires INSIDE `comprehensive-parser.js` or a branch name
+// `docs/comprehensive-audit`. Mirrors hooks/banned-vocab-check.sh's v0.23.19
+// Path 2 sanitizer (fenced blocks → inline backtick spans → slashed-path runs)
+// and adds a bare dotted-file token strip, because the CLI's primary input —
+// commit messages — commonly names bare files (`refactor comprehensive-parser.js`)
+// without backticks or a leading path. Token classes are ASCII-only so 中文
+// prose and bare-word claims (the real violations) stay intact and still match.
+export function stripIdentifiers(text) {
+  if (!text) return text;
+  // 1. Fenced code blocks: line-based fence toggle, mirroring the bash awk
+  //    `/^[[:space:]]*```/{f=!f; next} !f` — drop the ``` marker lines AND the
+  //    body between them. An unterminated fence drops to EOF (in_fence stays on).
+  const kept = [];
+  let inFence = false;
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
+    if (!inFence) kept.push(line);
+  }
+  return kept.join('\n')
+    // 2. Inline backtick spans.
+    .replace(/`[^`]*`/g, ' ')
+    // 3. Slashed-path runs (branch names, file paths, URLs) — Path 2's rule.
+    .replace(/[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
+    // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts) — CLI
+    //    extension. The extension must start with a LOWERCASE letter, which
+    //    (a) excludes decimals / versions ("3.5x", "v6.14") whose ".5x"/".14"
+    //    could otherwise swallow a baseline-less ratio claim → false negative,
+    //    and (b) excludes sentence-boundary typos ("comprehensive.Next", capital
+    //    after the dot) so a real claim isn't stripped. Only true `name.ext`
+    //    identifiers with a lowercase extension are removed.
+    .replace(/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/g, ' ');
+}
+
+export function scan(text, { excludeRatio = false, patterns, sanitize = false } = {}) {
   if (!text) return [];
+  // Sanitize identifier/path regions when asked (CLI lint/audit opt in). Match
+  // against the stripped text; the caller keeps the original for display.
+  const scanText = sanitize ? stripIdentifiers(text) : text;
   const pats = patterns || readPatterns();
   const hits = [];
   for (const p of pats) {
@@ -92,7 +131,7 @@ export function scan(text, { excludeRatio = false, patterns } = {}) {
     } catch {
       continue; // bad regex — skip (fail-open)
     }
-    const m = text.match(re);
+    const m = scanText.match(re);
     if (m) hits.push({ match: m[0], regex: p.regex, reason: p.reason, isRatio: p.isRatio });
   }
   return hits;

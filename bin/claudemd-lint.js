@@ -252,7 +252,7 @@ function lintCmd(rawArgs) {
   const HAS_BASELINE = /baseline/i;
   const baselineExempt = HAS_NUMERIC_ARROW.test(text) || HAS_BASELINE.test(text);
 
-  const hits = scan(text, { excludeRatio: baselineExempt });
+  const hits = scan(text, { excludeRatio: baselineExempt, sanitize: true });
   if (json) {
     process.stdout.write(formatJSON({ scope: 'lint', text, hits }) + '\n');
   } else {
@@ -332,7 +332,7 @@ function auditCmd(rawArgs) {
   const patterns = readPatterns();
   const annotated = turns.map(t => ({
     ...t,
-    hits: scan(t.text, { excludeRatio: !includeRatio, patterns }),
+    hits: scan(t.text, { excludeRatio: !includeRatio, patterns, sanitize: true }),
   }));
   const flaggedCount = annotated.reduce((n, t) => n + (t.hits.length > 0 ? 1 : 0), 0);
 
