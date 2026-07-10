@@ -2,6 +2,7 @@ import path from 'node:path';
 import { logsDir } from './lib/paths.js';
 import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
@@ -78,6 +79,38 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
     // excludes deny-prose-dry-run which doesn't block). See byProjectClass +
     // isBlockingDeny + classifyProject in rule-hits-parse.js.
     denyByProjectClass: byProjectClass(realHits, { mode: 'deny' }),
+    // v0.28.0 A5 — self-enforced-rule compliance from the retrospective
+    // transcript scan (current project, same window). A4 pre-registered gate:
+    // a rule's `rate` stays null (withheld) until hand-labeled precision ≥
+    // PRECISION_GATE — heuristic counts are collected, not presented, before
+    // calibration. See scripts/sampling-audit.js header + plan A2/A4.
+    selfCompliance: await selfCompliance(days),
+  };
+}
+
+async function selfCompliance(days) {
+  const sa = await samplingAudit({ days });
+  const rules = {};
+  for (const [k, v] of Object.entries(sa.byRule)) {
+    const calibrated = v.precision != null && v.precision >= PRECISION_GATE;
+    rules[k] = {
+      opportunities: v.opportunities,
+      violations: v.violations,
+      rate: calibrated && v.opportunities > 0
+        ? Math.round((v.violations / v.opportunities) * 1000) / 1000
+        : null,
+      precision: v.precision,
+      status: calibrated
+        ? 'calibrated'
+        : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
+    };
+  }
+  return {
+    windowDays: sa.windowDays,
+    scannedTranscripts: sa.scannedTranscripts,
+    totalTurns: sa.totalTurns,
+    metricContract: sa.metricContract,
+    rules,
   };
 }
 

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { samplingAudit } from '../../scripts/sampling-audit.js';
+import { samplingAudit, samplingAuditGlobal, PRECISION_GATE } from '../../scripts/sampling-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -116,6 +116,125 @@ test('aggregate shape: byRule keys are all 4 rules with hits+transcriptsAffected
     assert.equal(typeof r.totalTurns, 'number');
     assert.ok(Array.isArray(r.perTranscript), 'perTranscript must be array');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// —— v0.28.0 A2/A3: denominators + 4 new sequence/claim detectors ——————————
+
+test('A3 turn-yield fixture: §11-turn-yield counts typed-after-tool-turn opportunities, tells as violations, ignores sidechains', async () => {
+  const dir = stageFixture('turn-yield');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // 2 main-line typed messages follow a turn containing ≥1 tool_use:
+    // "继续" (tell → violation) and "looks good, thanks" (benign). The
+    // sidechain tool_use + sidechain "继续" pair must NOT count (would be 3/2).
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 2);
+    assert.equal(r.byRule['§11-turn-yield'].violations, 1);
+    assert.equal(r.byRule['§11-turn-yield'].transcriptsAffected, 1);
+    // Done line cites "was: TypeError" → bugfix-anchor opportunity, no violation.
+    assert.equal(r.byRule['§7-bugfix-anchor'].opportunities, 1);
+    assert.equal(r.byRule['§7-bugfix-anchor'].violations, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A3 bugfix-anchor fixture: §7-bugfix-anchor fires on fix-claim without prior-failing token', async () => {
+  const dir = stageFixture('bugfix-anchor');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // Turn 1 "Done: fixed the parser bug … 5 passed." has no prior-failing
+    // token → violation. Turn 2 cites crash/pre-fix/TypeError → compliant.
+    assert.equal(r.byRule['§7-bugfix-anchor'].opportunities, 2);
+    assert.equal(r.byRule['§7-bugfix-anchor'].violations, 1);
+    assert.equal(r.byRule['§7-bugfix-anchor'].transcriptsAffected, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A3 post-compaction fixture: §11-post-compaction dedups boundary+summary pair, flags missing plan/spec re-read', async () => {
+  const dir = stageFixture('post-compaction');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // 2 compaction events (each = compact_boundary + isCompactSummary user
+    // line — the pair must count ONCE, not twice). Event 1 is followed by a
+    // Read of docs/…plan….md → compliant; event 2 runs npm test only → violation.
+    assert.equal(r.byRule['§11-post-compaction'].opportunities, 2);
+    assert.equal(r.byRule['§11-post-compaction'].violations, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A3 hard-auth fixture: §5-hard-auth covered op passes, op outside lookback window fires', async () => {
+  const dir = stageFixture('hard-auth');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // Write to ~/.claude/settings.json 2 assistant events after "[AUTH REQUIRED"
+    // → covered. `npm install left-pad` after 10 filler assistant texts →
+    // AUTH marker outside the 10-event lookback → violation.
+    assert.equal(r.byRule['§5-hard-auth'].opportunities, 2);
+    assert.equal(r.byRule['§5-hard-auth'].violations, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A2 denominators: existing detectors expose opportunities alongside hits', async () => {
+  const dir = stageFixture('iron-law-2-miss');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // One four-section block → 1 Done line examined, 1 order check, 1
+    // substantive Uncertain line; 1 assistant text turn = 1 §10-V opportunity.
+    assert.equal(r.byRule['§iron-law-2'].opportunities, 1);
+    assert.equal(r.byRule['§iron-law-2'].violations, 1);
+    assert.equal(r.byRule['§10-four-section-order'].opportunities, 1);
+    assert.equal(r.byRule['§10-four-section-order'].violations, 0);
+    assert.equal(r.byRule['§10-honesty'].opportunities, 1);
+    assert.equal(r.byRule['§10-honesty'].violations, 0);
+    assert.equal(r.byRule['§10-V'].opportunities, r.totalTurns);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A2 §10-V violations = turns with ≥1 match (rate stays ≤ 1), hits = raw matches', async () => {
+  const dir = stageFixture('vocab-hit');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // Single turn matching 3 patterns: hits ≥ 3 raw, violations = 1 turn.
+    assert.ok(r.byRule['§10-V'].hits >= 3, `expected ≥3 raw matches, got ${r.byRule['§10-V'].hits}`);
+    assert.equal(r.byRule['§10-V'].violations, 1);
+    assert.equal(r.byRule['§10-V'].opportunities, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A4 calibration gate: all 8 rules present, precision null, status collecting, gate pre-registered at 0.8', async () => {
+  const dir = stageFixture('clean');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(PRECISION_GATE, 0.8, 'pre-registered threshold (plan A4) must not drift');
+    const keys = Object.keys(r.byRule);
+    assert.equal(keys.length, 8, `expected 8 detectors, got ${keys.length}: ${keys.join(', ')}`);
+    for (const [k, v] of Object.entries(r.byRule)) {
+      assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
+      assert.equal(typeof v.violations, 'number', `${k} missing violations`);
+      assert.equal(v.precision, null, `${k} precision must start null (uncalibrated)`);
+      assert.equal(v.status, 'collecting', `${k} status must start 'collecting'`);
+    }
+    assert.match(r.metricContract, /violations\s*\/\s*opportunities/,
+      'A2 metric contract must ride in the result');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A2 stratification: samplingAuditGlobal splits byClass self vs external', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-root-'));
+  try {
+    // Dir names mirror CC cwd-encoding; classifyProject keys on the trailing
+    // segment: '…-claudemd' → self, anything else → external.
+    const selfDir = path.join(root, '-mnt-x-dev-claudemd');
+    const extDir = path.join(root, '-home-u-dev-daagu');
+    fs.mkdirSync(selfDir); fs.mkdirSync(extDir);
+    fs.copyFileSync(path.join(FIXTURE_DIR, 'vocab-hit.jsonl'), path.join(selfDir, 'a.jsonl'));
+    fs.copyFileSync(path.join(FIXTURE_DIR, 'clean.jsonl'), path.join(extDir, 'b.jsonl'));
+    const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.scannedTranscripts, 2);
+    assert.equal(r.byClass.self.scannedTranscripts, 1);
+    assert.equal(r.byClass.external.scannedTranscripts, 1);
+    assert.ok(r.byClass.self.byRule['§10-V'].violations >= 1, 'self class must carry the vocab hit');
+    assert.equal(r.byClass.external.byRule['§10-V'].violations, 0);
+    assert.equal(r.byClass.external.byRule['§10-V'].opportunities, 1);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('missing projectsDir: returns zero result, no throw', async () => {

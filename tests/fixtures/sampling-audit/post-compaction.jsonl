@@ -1,0 +1,12 @@
+{"type":"user","isSidechain":false,"message":{"role":"user","content":"big refactor task"}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Working through the module list."}]}}
+{"type":"system","subtype":"compact_boundary","isSidechain":false,"content":"Conversation compacted","level":"info","compactMetadata":{"trigger":"auto","preTokens":180000,"postTokens":9000}}
+{"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation that ran out of context. Summary: refactor in progress."}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_11","name":"Read","input":{"file_path":"/repo/docs/spec-optimization-plan-2026-07-10.md"}}]}}
+{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_11","content":"plan body"}]}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Plan re-read; resuming step 4."}]}}
+{"type":"system","subtype":"compact_boundary","isSidechain":false,"content":"Conversation compacted","level":"info","compactMetadata":{"trigger":"manual","preTokens":200000,"postTokens":8000}}
+{"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation that ran out of context. Summary: step 5 pending."}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_12","name":"Bash","input":{"command":"npm test"}}]}}
+{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_12","content":"12 passed"}]}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Suite green: 12 passed, continuing without re-reading the plan."}]}}

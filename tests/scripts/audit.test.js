@@ -345,6 +345,23 @@ test('R-N3: byTrend marks recovery when ratio ≤ 0.5', async () => {
   assert.equal(r.byTrend['§10-V'].flag, 'recovery');
 });
 
+test('A5 selfCompliance: section present, rate withheld while precision uncalibrated', async () => {
+  // HOME is redirected to tmpHome (no transcripts) — the section must still
+  // appear with all 8 rules, and the A4 gate must withhold `rate` (null) while
+  // precision is uncalibrated, reporting status 'collecting' instead.
+  const r = await audit({ days: 30 });
+  assert.ok(r.selfCompliance, 'selfCompliance section must exist');
+  assert.equal(typeof r.selfCompliance.scannedTranscripts, 'number');
+  const rules = r.selfCompliance.rules;
+  assert.equal(Object.keys(rules).length, 8, `expected 8 rules, got ${Object.keys(rules).join(', ')}`);
+  for (const [k, v] of Object.entries(rules)) {
+    assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
+    assert.equal(typeof v.violations, 'number', `${k} missing violations`);
+    assert.equal(v.rate, null, `${k} rate must be withheld (null) until precision ≥ 0.8`);
+    assert.match(v.status, /collecting/, `${k} status must say collecting`);
+  }
+});
+
 test('audit CLI rejects non-numeric --days (L1)', () => {
   // Regression: parseInt('garbage', 10) → NaN → cutoff NaN → every row
   // filtered out silently. Previous runs returned 0 hits with no error.
