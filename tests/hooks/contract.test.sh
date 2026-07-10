@@ -113,6 +113,7 @@ DOCUMENTED=(
   "structure-advisory:transcript-structure-scan"
   "bootstrap:session-start"
   "upstream-banner:session-start"
+  "compact-reminder:session-start"
   "version-sync:user-prompt-submit"
   "read:session-extended-read"
   "suggest:memory-prompt-hint"

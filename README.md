@@ -198,6 +198,11 @@ export DISABLE_SESSION_SUMMARY_BANNER=1    # v0.8.0+ — only the SessionStart b
                                            # the data is captured for /claudemd-audit
                                            # but no additionalContext line is injected.
 
+export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compaction §11
+                                           # re-read reminder banner (SessionStart with
+                                           # source=="compact"); compact events still
+                                           # skip bootstrap/upgrade-banner either way.
+
 export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
                                            # cadence advisory inside session-end-check;
                                            # mid-SPINE warn-on-unvalidated-mutation
@@ -333,7 +338,7 @@ claudemd/
 ├── commands/                 # 12 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 16 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.14.1 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
+├── spec/                     # shipped v6.14.2 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20) + npm-publish.yml (tag-triggered)

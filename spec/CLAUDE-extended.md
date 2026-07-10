@@ -1,6 +1,6 @@
-# AI-CODING-SPEC v6.14.1 — Extended
+# AI-CODING-SPEC v6.14.2 — Extended
 
-Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
+Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
 ## §5-EXT Safe-paths whitelist (detail)
 
@@ -26,8 +26,8 @@ Core NEVER clauses and `SAFE_DELETE_PATHS:` extension rule still bind — see co
 Universal: Iron Law #2 + §8 SAFETY + §8 Anti-hallucination bind every mode. Per-task scope. Announce mode entry/exit inline ("entering HACK: prototyping in tmp/ — exits when promoted"). Modes cannot coexist.
 
 **Mode entry**:
-- **[HACK]** ("try / benchmark / spike / explore / 试试 / 探索" + scope clearly `tmp/` or `scripts/`): silent enter.
-- **[EMERGENCY]** ("prod / incident / outage / 500 / rollback / 故障 / 回滚 / 挂了" + user ack): silent enter.
+- **[HACK]** (e.g. "try / benchmark / spike / explore / 试试 / 探索" + scope clearly `tmp/` or `scripts/`): silent enter.
+- **[EMERGENCY]** (e.g. "prod / incident / outage / 500 / rollback / 故障 / 回滚 / 挂了" + user ack): silent enter.
 - **[AUTONOMOUS]** (ScheduleWakeup / CronCreate / RemoteTrigger / no interactive user): silent enter.
 - **Weak/ambiguous** trigger: ASK once. "No" → normal flow.
 
@@ -141,7 +141,7 @@ Common drift sources to watch: Haiku-sourced type lists differing from schema CH
 | design/UI | **gs:/design-consultation** → gs:/design-review | |
 | perf check | **gs:/benchmark** (before/after) | |
 | security audit | **gs:/cso** | |
-| Q&A (no code) | direct answer; context7 for API claims | |
+| Q&A (no code) | direct answer; docs-lookup for API claims (e.g. context7, if available) | |
 | product/biz clarify | **gs:/office-hours** | |
 | tech/arch clarify | **sp:brainstorming** | |
 | mixed product+tech | combined ask, tag `[product]`/`[tech]` | |
@@ -208,7 +208,7 @@ sideways          → STOP + stash → re-plan (note pivot reason)
 Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Symptom-only fixes banned at L2+.
 
 ### Three-strike rule
-Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user "又失败 / 又挂 / again" counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.
+Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user repeat-failure feedback (e.g. "又失败 / 又挂 / again") counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.
 
 ### Dead-end record
 Append to plan: `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
@@ -390,6 +390,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | gs:/benchmark | hyperfine/time/native; `tasks/perf-<n>.md` |
 | gs:/cso | manual STRIDE on auth/payment/crypto paths |
 | gs:/codex | skip; note "no second-opinion review" in §10 |
+| context7 (API docs-lookup) | WebFetch official docs; cite lookup source in answer |
 | gs:/freeze, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
 
 Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change.
@@ -474,19 +475,21 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.14.1 (patch, 2026-06-03)** — §2.1 skill-MUST-invoke override clarified:
+**v6.14.2 (patch, 2026-07-10)** — trigger-list `e.g.` markers + EXT-header load-scope alignment + context7 conditionalized:
 
-- `[clarify]` **§2.1 skill collision** (core, Δ +136B): the existing "this spec wins for L0–L2" clause is now bolded and carries a concrete example — superpowers / gstack `MUST invoke` wording (`sp:test-driven-development` "before writing implementation code", `gs:investigate` "do NOT debug directly") does NOT force a clear-scope L1 bug out of fix→test-direct into TDD / investigate ceremony. No rule added or removed; the precedence was already stated, just buried mid-paragraph. Surfaced by the 2026-06-03 cross-project impact audit (instruction-collision finding).
+- `[clarify]` **Extended header load-scope** (extended): "Applies to … ship / review / orchestration" → "ship / pre-ship review / orchestration", aligning with core §2.2's trigger list. Per-task code review does NOT load extended; the header's bare "review" read wider than §2.2 grants (stricter reading per §3).
+- `[clarify]` **Trigger-word lists marked non-exhaustive** (core §0.2 quality-slider + §2 depth-triggers; extended §2-EXT HACK/EMERGENCY entry + §6 three-strike manual trigger + §0.2-EXT continuation/cancel/switch): literal phrase lists now carry `e.g.` — they are intent examples, not exact-match gates. Detector definitions (core §11 mid-SPINE tell) intentionally stay exact-list: they feed transcript detectors and must not fuzz.
+- `[clarify]` **context7 conditionalized** (core §2.1 + extended §4 Q&A rows; §12 fallback row added): hard reference to a tool that may be absent in a given session → "docs-lookup for API claims (e.g. context7, if available)"; §12 fallback = WebFetch official docs, cite lookup source.
 
 ### Why patch (not minor)
 
-No rule added, removed, or relaxed — `[clarify]` only makes an existing precedence prominent and adds an example per §13 META. v6.14.0 (minor) detail: `~/.claude/CLAUDE-changelog.md`.
+No rule added, removed, or relaxed — `[clarify]` only, identical behavior per §13 META. Source: `docs/spec-optimization-plan-2026-07-10.md` P6 items F1–F3. F4 (post-compaction §11 re-read reminder) ships in the same plugin release (v0.27.0) as hook behavior, not spec text — the §11 rule itself is unchanged.
 
-**Older entries** (v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.17 plugin-absent fallback, v6.11.16 §2.1 ROUTE collapse, v6.11.14 extended-compression + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.14.1, 2026-06-03, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24417 → 24553 bytes (Δ +136, §2.1 skill-MUST-invoke override clarified + bolded with `sp:tdd` / `gs:investigate` example resolving the superpowers/gstack collision); extended 46501 → 45620 bytes (condensed); OPERATOR.md 7018 bytes (updated). Size budget: core 24553/25000 (**447 bytes headroom, 98.21%**); extended 45620/50000 (**4380 bytes headroom, 91.24%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.08k tokens (core only).
+**Sizing** (v6.14.2, 2026-07-10, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24553 → 24596 bytes (Δ +43, `e.g.` markers + docs-lookup wording); extended 45620 → 46148 bytes (Δ +528, v6.14.2 entry + §12 fallback row); OPERATOR.md 7018 bytes (unchanged). Size budget: core 24596/25000 (**404 bytes headroom, 98.38%**); extended 46148/50000 (**3852 bytes headroom, 92.30%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.1k tokens (core only).
 
-**Operator carry-forward**: v6.14.1 spent +136B of core headroom on a single §2.1 clarification (447B left, 98.21%). The headroom story is now core-tight. Impact-audit #4 (proposed ~12.6K core→extended demote) was investigated 2026-06-03 and **rejected as a category error** (corrected v0.23.6) — `0 telemetry` on §0/§1/§1.5/§2/§3/§5/§9 means "read-and-follow foundational, fires no hook," not "unused"; demoting them would strip SPINE/AUTH/TRUST/QUALITY from every L0–L2 task (`hard-rules-audit.js` → `demoteCandidates=[]`; see `project_impact_audit_followups_v0233.md`, do NOT re-attempt). Core therefore has no safe demotion target, so **net-zero / net-delete is the permanent posture** — not a wait-for-#4 measure. Extended remains comfortable (~4.4K headroom). Candidate compaction: §10-V extended block (~700B) once `reference_banned_vocab_examples.md` is confirmed canonical via /claudemd-rules hit data over ≥30d.
+**Operator carry-forward**: v6.14.2 spent +43B of core headroom on `e.g.` markers + the docs-lookup wording (404B left, 98.38%). Net-zero / net-delete remains the permanent core posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Extended remains comfortable (~4K headroom). Candidate compaction: §10-V extended block (~700B) once `reference_banned_vocab_examples.md` is confirmed canonical via /claudemd-rules hit data over ≥30d. Measurement track: first real sampling baseline landed 2026-07-10 (`tasks/sampling-audit-2026-07-10.md`); next per `docs/spec-optimization-plan-2026-07-10.md` A2–A5.
 
 ## §1.5-EXT GLOSSARY
 
@@ -557,9 +560,9 @@ After any `memory/*.md` write: refresh `MEMORY.md` index line.
 
 Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains the three non-obvious cases — Refinement / Quality slider / Scope-expansion — and points here for the rest).
 
-- **Continuation** ("继续/next"): same SPINE.
-- **Cancel** ("停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
-- **Switch** ("先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
+- **Continuation** (e.g. "继续/next"): same SPINE.
+- **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
+- **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
 
 ### MEMORY.md tag syntax
 

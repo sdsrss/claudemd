@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.27.0] - 2026-07-10
+
+**Minor — post-compaction §11 re-read reminder (new SessionStart behavior) + spec v6.14.2 wording patch.** First implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P6 items F1–F4).
+
+- **Compaction re-read reminder** (`hooks/session-start-check.sh`): SessionStart events with `source=="compact"` (auto or manual compaction — verified against code.claude.com/docs/en/hooks) now emit a one-line `additionalContext` banner: re-read the active plan + spec state per core §11 before continuing L2+ work. Rationale: §11 post-compaction re-read is a self-enforced rule guarding exactly the state where model attention is least reliable — it depended on the very attention it protects; the banner makes it hook-assisted. Advisory only, never blocks. **Opt-out**: `DISABLE_COMPACT_REREAD_REMINDER=1` (README §2a). Telemetry event: `session-start / compact-reminder / §11`.
+- **Behavior change on compact events**: `source=="compact"` now exits early — bootstrap, upgrade-banner, and summary-banner no longer run on compaction. They are session-START concerns; re-running `install.js` mid-session on a compaction event was never desirable. Startup / resume / clear paths are unchanged (stdin is now parsed whenever `jq` is present, previously only when `CLAUDE_SESSION_ID` was unset — needed for the `source` field; no observable difference on those paths).
+- **Spec v6.14.2** (patch — wording only, no rule change; detail in `spec/CLAUDE-changelog.md`): (1) extended header load-scope "review" → "pre-ship review", aligning with core §2.2 (per-task code review does not load extended); (2) trigger-word lists marked non-exhaustive with `e.g.` (quality-slider / depth-triggers / HACK / EMERGENCY / three-strike / continuation-cancel-switch) — detector-consumed lists (§11 mid-SPINE tell) stay exact; (3) context7 hard references conditionalized to "docs-lookup for API claims (e.g. context7, if available)" + a §12 fallback-table row (WebFetch official docs).
+- **Tests**: `session-start.test.sh` 14 → 17 — compact banner emits exactly ONE JSON object (`jq -s length == 1`, per the v0.23.13 double-emit lesson); `DISABLE_COMPACT_REREAD_REMINDER=1` suppresses; compact does NOT spawn bootstrap even when the manifest is missing. Version-pin cascade updated (`spec-structure.test.js`, `upgrade-lifecycle.test.sh`, `hard-rules.json#spec_version`).
+
 ## [0.26.2] - 2026-07-07
 
 **Patch — dogfood QA hardening: three false-positive / data-loss fixes surfaced by an end-to-end usage pass.** All `fix:` (restore intended behavior); spec unchanged (stays v6.14.1). No new user-facing features.

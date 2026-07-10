@@ -19,10 +19,38 @@ hook_kill_switch SESSION_START || exit 0
 # v0.9.34: best-effort session_id from SessionStart stdin for audit attribution.
 # Fail-open on any read error; SessionStart hooks cannot block. CLAUDE_SESSION_ID
 # env var is a fallback when stdin isn't structured.
+# v0.27.0: stdin is now read whenever jq is present (not only when session_id
+# is missing) — the compact branch below needs the `source` field.
 SESSION_ID="${CLAUDE_SESSION_ID:-}"
-if [[ -z "$SESSION_ID" ]] && command -v jq >/dev/null 2>&1; then
+EVENT=""
+SOURCE=""
+if command -v jq >/dev/null 2>&1; then
   EVENT=$(cat 2>/dev/null || true)
-  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+  if [[ -n "$EVENT" ]]; then
+    [[ -z "$SESSION_ID" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+    SOURCE=$(printf '%s' "$EVENT" | jq -r '.source // ""' 2>/dev/null)
+  fi
+fi
+
+# v0.27.0 — post-compaction re-read reminder (spec-optimization-plan P6/F4).
+# SessionStart fires with source=="compact" after auto/manual compaction
+# (docs: code.claude.com/docs/en/hooks). Core §11 post-compaction re-read is a
+# self-enforced rule guarding exactly the state where model attention is least
+# reliable; this banner makes it hook-assisted. Compact events exit here —
+# bootstrap / upgrade-banner / summary-banner are session-START concerns, and
+# running install.js mid-session on a compaction event is never desirable.
+if [[ "$SOURCE" == "compact" ]]; then
+  if [[ "${DISABLE_COMPACT_REREAD_REMINDER:-0}" != "1" ]]; then
+    jq -cn '{
+      suppressOutput: true,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: "[claudemd] compaction detected — §11: before continuing L2+ work, re-read the active plan + spec state (compaction may have dropped constraints). Disable: DISABLE_COMPACT_REREAD_REMINDER=1"
+      }
+    }' 2>/dev/null
+    hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
+  fi
+  exit 0
 fi
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"

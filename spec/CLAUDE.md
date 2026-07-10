@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.14.1 — Core
+# AI-CODING-SPEC v6.14.2 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -29,7 +29,7 @@ Everything else = natural prose, no brackets. Completion claims / level shifts /
 ### §0.2 Mid-task feedback
 
 - **Refinement** (text/style/wording): apply inline.
-- **Quality slider** ("更严 / make rigorous"): re-validate current scope stricter per §7; do NOT add features. <30% LOC + explicit direction → inline merge. Ambiguous slider vs scope-expansion → ASK once.
+- **Quality slider** (e.g. "更严 / make rigorous"): re-validate current scope stricter per §7; do NOT add features. <30% LOC + explicit direction → inline merge. Ambiguous slider vs scope-expansion → ASK once.
 - **Scope-expansion**: re-plan. Cross-level → Serial; same-level → Inline. Announce level shift in one prose line.
 - **Continuation / Cancel / Switch** → §EXT §0.2-EXT.
 
@@ -82,7 +82,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 **Override modes** (§EXT §2-EXT): **HACK** (prototype) / **EMERGENCY** (incident) / **AUTONOMOUS** (scheduled). All: Iron Law #2 + §8 bind; per-task scope. Strong trigger → silent enter; weak/ambiguous → ASK once. Announce mode shift inline; load extended first.
 
-**Depth triggers** (`ultrathink / deep / think harder / 全面 / 仔细 / 深入`): reasoning-budget signal for the current turn, **NOT** task-level upgrade — a deep analysis of an L1 typo stays L1. Level = what proof you owe; depth = how hard you think before writing it.
+**Depth triggers** (e.g. `ultrathink / deep / think harder / 全面 / 仔细 / 深入`): reasoning-budget signal for the current turn, **NOT** task-level upgrade — a deep analysis of an L1 typo stays L1. Level = what proof you owe; depth = how hard you think before writing it.
 
 ### §2.1 ROUTE (unified)
 
@@ -96,7 +96,7 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative; this table c
 | 2+ disjoint tasks | `sp:dispatching-parallel-agents` | |
 | UI/visual verify | `gs:/browse` ONLY | never `mcp__chrome` / computer-use |
 | tech/arch clarify (no code) | `sp:brainstorming` | |
-| Q&A no code | direct answer; context7 for API claims | |
+| Q&A no code | direct answer; docs-lookup for API claims (e.g. context7, if available) | |
 | L3 / ship / deploy / PR / release / migration / design / plan-review / perf / security / specialized-clarify | Load extended → §EXT §4 FLOW | full table + §4.FULL / §4.FULL-lite chains in extended |
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.

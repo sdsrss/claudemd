@@ -14,6 +14,9 @@ mkdir -p "$HOME/.claude/logs"
 # Cases 1-7 should NOT exercise upstream-check — keep them network-free and
 # stdout-clean. Cases 8-11 explicitly override DISABLE_UPSTREAM_CHECK=0.
 export DISABLE_UPSTREAM_CHECK=1
+# Hermeticity: a user-level DISABLE_COMPACT_REREAD_REMINDER=1 in settings env
+# would silently degrade Case 15 (expected-emit) into a false pass elsewhere.
+unset DISABLE_COMPACT_REREAD_REMINDER
 
 FAIL=0
 
@@ -273,7 +276,43 @@ else
   echo "FAIL: 14 double-emit not merged (objects=$OBJCOUNT14, out: $OUT14)"; FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
+# --- v0.27.0 compact-reminder cases ---
+# Case 15: source=="compact" emits the §11 re-read banner as exactly ONE JSON
+# object (jq -s length — the v0.23.13 double-emit lesson: two concatenated
+# objects are invalid JSON and CC drops both).
+OUT15=$(bash "$HOOK" <<<'{"session_id":"t","source":"compact"}' 2>/dev/null)
+OBJCOUNT15=$(printf '%s' "$OUT15" | jq -s 'length' 2>/dev/null)
+if [[ "$OBJCOUNT15" == "1" ]] \
+   && echo "$OUT15" | grep -q 'compaction detected' \
+   && echo "$OUT15" | grep -q 'DISABLE_COMPACT_REREAD_REMINDER'; then
+  echo "PASS: 15 compact source emits single-object §11 reminder"
+else
+  echo "FAIL: 15 compact banner missing/malformed (objects=$OBJCOUNT15, out: $OUT15)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 14/14 passed"
+
+# Case 16: DISABLE_COMPACT_REREAD_REMINDER=1 suppresses the banner; exit 0.
+OUT16=$(DISABLE_COMPACT_REREAD_REMINDER=1 bash "$HOOK" <<<'{"session_id":"t","source":"compact"}' 2>/dev/null); EC16=$?
+if [[ "$EC16" == "0" && -z "$OUT16" ]]; then
+  echo "PASS: 16 DISABLE_COMPACT_REREAD_REMINDER=1 suppresses banner"
+else
+  echo "FAIL: 16 opt-out leaked (ec=$EC16 out: $OUT16)"; FAIL=$((FAIL+1))
+fi
+
+# Case 17: compact events must NOT spawn bootstrap even when the manifest is
+# missing — compaction is mid-session; install.js runs are session-start
+# concerns. Early-exit semantics pinned here.
+rm -f "$HOME/.claude/.claudemd-manifest.json" "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+bash "$HOOK" <<<'{"session_id":"t","source":"compact"}' >/dev/null 2>&1
+sleep 2
+LOG_SIZE17=$(wc -c < "$HOME/.claude/logs/claudemd-bootstrap.log" | tr -d ' ')
+if [[ ! -f "$HOME/.claude/.claudemd-manifest.json" && "$LOG_SIZE17" == "0" ]]; then
+  echo "PASS: 17 compact source skips bootstrap despite missing manifest"
+else
+  echo "FAIL: 17 compact event triggered bootstrap (log_size=$LOG_SIZE17)"; FAIL=$((FAIL+1))
+fi
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((17 - FAIL))/17 passed"; exit 1
+fi
+echo "Tests: 17/17 passed"

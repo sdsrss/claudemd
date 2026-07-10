@@ -6,6 +6,22 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.14.2 — 2026-07-10
+
+Patch: trigger-list `e.g.` markers + EXT-header load-scope alignment + context7 conditionalized (no rule change).
+
+- `[clarify]` **Extended header load-scope**: "review" → "pre-ship review", aligning the extended file header with core §2.2's trigger list — per-task code review does not load extended (stricter reading per §3 resolved a 2-way drift).
+- `[clarify]` **Trigger-word lists marked non-exhaustive**: core §0.2 quality-slider, core §2 depth-triggers, extended §2-EXT HACK/EMERGENCY entries, §6 three-strike manual trigger, §0.2-EXT continuation/cancel/switch — all literal phrase lists now carry `e.g.`. Detector definitions (core §11 mid-SPINE tell) intentionally stay exact-list because transcript detectors consume them.
+- `[clarify]` **context7 conditionalized**: core §2.1 + extended §4 Q&A rows now say "docs-lookup for API claims (e.g. context7, if available)"; extended §12 fallback table gains a context7 row (WebFetch official docs).
+
+### Background
+
+2026-07-10 consumer-perspective spec review (P6 small-drift findings) → `docs/spec-optimization-plan-2026-07-10.md`. Shipped in plugin v0.27.0 together with the P6/F4 post-compaction §11 re-read reminder (hook behavior, not spec text).
+
+### §13.2 budget cost
+
+No rule added/removed/relaxed — `[clarify]` only. Core Δ ≈ +48B (`e.g.` ×2 + docs-lookup wording).
+
 ## v6.14.1 — 2026-06-03
 
 Patch: §2.1 skill-MUST-invoke override clarified (no rule change).
