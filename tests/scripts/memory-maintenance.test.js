@@ -40,6 +40,13 @@ function stage({ now }) {
   return { tmp, memDir, logPath };
 }
 
+// node:sqlite landed in Node 22.5 — the CI matrix still runs Node 20, where
+// the lib degrades to promoteSkipped (covered by the other tests). Only the
+// DB-fixture test needs the real module; skip it there instead of failing.
+async function sqliteAvailable() {
+  try { await import('node:sqlite'); return true; } catch { return false; }
+}
+
 async function makeMemLiteDb(dir, project, now) {
   const { DatabaseSync } = await import('node:sqlite');
   const dbPath = path.join(dir, 'claude-mem-lite.db');
@@ -84,7 +91,11 @@ test('E2 (b)+(c): recall repatriation + stale-durable candidates, in-window ment
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
-test('E2 (a): promote-to-durable from mem-lite — cite>=3, age>=30d, live, same project only', async () => {
+test('E2 (a): promote-to-durable from mem-lite — cite>=3, age>=30d, live, same project only', async (t) => {
+  if (!(await sqliteAvailable())) {
+    t.skip('node:sqlite unavailable (Node < 22.5) — lib degrades to promoteSkipped, covered elsewhere');
+    return;
+  }
   const now = Date.now();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-mm-db-'));
   try {
