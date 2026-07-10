@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.29.0] - 2026-07-10
+
+**Minor — C1 over-ceremony detector (superpowers collision cost measurement).** Third implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P3 item C1).
+
+- **`overCeremony` section** in `scripts/sampling-audit.js` (same event-stream scan): segments the main-line transcript into tasks at typed user messages (bare `继续`/`next`/`怎么停了`/`why did you stop` continuations extend the current segment, mirroring §1.5), classifies a segment L0/L1-shaped when it edited ≥1 file, ≤2 distinct files, <80 estimated LOC (Edit old+new / Write content line sums), and counts model-initiated ceremony `Skill` calls (sp `brainstorming` / `test-driven-development` / `systematic-debugging` / `writing-plans` / `executing-plans`) landing in those segments. Q&A segments (0 edits) are not opportunities — ceremony there can be correct §2.1 routing. User-typed /commands are not counted.
+- **C2 pre-registered threshold** exported as `OVER_CEREMONY_THRESHOLD = 0.05` (test-pinned): after 30d collection, rate < 5% → keep superpowers, close P3; ≥ 5% → evaluate uninstall (§EXT §12 fallback table) / fork / hook-level disable. Fixed before data collection.
+- Markdown report gains an `## Over-ceremony (C1)` section; `--global` aggregates the measure across project dirs.
+- **Tests**: sampling-audit 17 → 19 (segmentation + continuation-no-split + large-task-ceremony-excluded + threshold pin).
+- First live run (this repo, 30d): 281 segments / 11 L0/L1-shaped / 0 over-ceremony (brainstorming×2, writing-plans×2 all in large or Q&A segments).
+
 ## [0.28.0] - 2026-07-10
 
 **Minor — sampling-audit detector expansion 4 → 8, opportunity denominators, self/external stratification, pre-registered calibration gate.** Second implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P1 items A2–A5).

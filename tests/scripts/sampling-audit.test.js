@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { samplingAudit, samplingAuditGlobal, PRECISION_GATE } from '../../scripts/sampling-audit.js';
+import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD } from '../../scripts/sampling-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -234,7 +234,43 @@ test('A2 stratification: samplingAuditGlobal splits byClass self vs external', a
     assert.ok(r.byClass.self.byRule['§10-V'].violations >= 1, 'self class must carry the vocab hit');
     assert.equal(r.byClass.external.byRule['§10-V'].violations, 0);
     assert.equal(r.byClass.external.byRule['§10-V'].opportunities, 1);
+    // C1 aggregates across dirs in global mode too (1 typed segment each).
+    assert.equal(r.overCeremony.totalSegments, 2);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// —— v0.29.0 C1: over-ceremony detector (plan P3) ——————————————————————————
+
+test('C1 over-ceremony fixture: ceremony skill on L0/L1-shaped segment counts; large-task ceremony does not; 继续 does not split segments', async () => {
+  const dir = stageFixture('over-ceremony');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const oc = r.overCeremony;
+    assert.ok(oc, 'overCeremony section must exist');
+    // 3 typed task segments (the bare "继续" continuation stays in segment 3).
+    assert.equal(oc.totalSegments, 3);
+    // Segments 1+2 are L0/L1-shaped (1 file, tiny est. LOC); segment 3 writes
+    // 3 files → excluded even though it invoked brainstorming.
+    assert.equal(oc.l0l1Segments, 2);
+    // Only segment 1 (TDD skill on a typo edit) is over-ceremony.
+    assert.equal(oc.overCeremonySegments, 1);
+    assert.deepEqual(oc.ceremonyInvocations, {
+      'test-driven-development': 1,
+      'brainstorming': 1,
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('C1 threshold pre-registered at 5% (plan C2) — constant must not drift', async () => {
+  assert.equal(OVER_CEREMONY_THRESHOLD, 0.05);
+  const dir = stageFixture('clean');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // clean fixture: 1 typed segment, no edits → 0 L0/L1-shaped opportunities.
+    assert.equal(r.overCeremony.totalSegments, 1);
+    assert.equal(r.overCeremony.l0l1Segments, 0);
+    assert.equal(r.overCeremony.overCeremonySegments, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('missing projectsDir: returns zero result, no throw', async () => {

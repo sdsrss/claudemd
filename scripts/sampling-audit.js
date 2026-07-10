@@ -263,6 +263,77 @@ function isHardOp(tu) {
 const AUTH_MARKER_RE = /\[AUTH REQUIRED/;
 const AUTH_LOOKBACK = 10;
 
+// C1 over-ceremony (plan P3 — superpowers SessionStart injection vs §2.1
+// conflict cost): model-initiated ceremony-skill invocations on tasks whose
+// final shape is L0/L1. C2 disposition threshold is PRE-REGISTERED: after 30d
+// collection, over-ceremony rate < 5% of L0/L1-shaped segments → keep the
+// plugin, close P3; ≥ 5% → evaluate uninstall / fork / hook-level disable.
+// Fixed before data collection — do not adjust to fit the data.
+export const OVER_CEREMONY_THRESHOLD = 0.05;
+
+// Process-ceremony skills only (Skill tool, model-initiated). User-typed
+// /commands are the user's own choice and are not counted.
+const CEREMONY_SKILL_RE = /^(?:superpowers|sp)[:\/](brainstorming|test-driven-development|systematic-debugging|writing-plans|executing-plans)$/;
+const L0L1_MAX_FILES = 2;
+const L0L1_MAX_EST_LOC = 80;
+
+function countLines(s) {
+  return String(s || '').split('\n').length;
+}
+
+// Segment the main-line stream into tasks at typed user messages (bare
+// continuation nudges — YIELD_TELL_RE — extend the current segment, matching
+// §1.5 "new user request = new task unless explicit continuation"). A segment
+// is L0/L1-shaped when it edited ≥1 file, ≤2 distinct files, and the summed
+// old+new line estimate stays under 80 — the mechanical proxy for §2 L1.
+// Q&A / design segments (0 edits) are NOT opportunities: ceremony there can
+// be correct routing (§2.1 sends arch clarify to brainstorming).
+function scanOverCeremony(events) {
+  const main = events.filter(e => !e.sidechain);
+  const segments = [];
+  let cur = null;
+  const newSeg = () => ({ edits: 0, files: new Set(), estLoc: 0, ceremony: [] });
+  for (const e of main) {
+    if (e.kind === 'user-typed' && !e.compactSummary) {
+      const isTell = YIELD_TELL_RE.test(e.text.trim());
+      if (!cur || !isTell) {
+        if (cur) segments.push(cur);
+        cur = newSeg();
+      }
+      continue;
+    }
+    if (!cur || e.kind !== 'assistant') continue;
+    for (const tu of e.toolUses) {
+      const input = tu.input || {};
+      if (tu.name === 'Skill') {
+        const m = String(input.skill || '').match(CEREMONY_SKILL_RE);
+        if (m) cur.ceremony.push(m[1]);
+      } else if (tu.name === 'Edit') {
+        cur.edits += 1;
+        cur.files.add(String(input.file_path || ''));
+        cur.estLoc += countLines(input.old_string) + countLines(input.new_string);
+      } else if (tu.name === 'Write') {
+        cur.edits += 1;
+        cur.files.add(String(input.file_path || ''));
+        cur.estLoc += countLines(input.content);
+      }
+    }
+  }
+  if (cur) segments.push(cur);
+
+  const out = { totalSegments: segments.length, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} };
+  for (const seg of segments) {
+    for (const c of seg.ceremony) {
+      out.ceremonyInvocations[c] = (out.ceremonyInvocations[c] || 0) + 1;
+    }
+    const isL0L1 = seg.edits > 0 && seg.files.size <= L0L1_MAX_FILES && seg.estLoc < L0L1_MAX_EST_LOC;
+    if (!isL0L1) continue;
+    out.l0l1Segments += 1;
+    if (seg.ceremony.length > 0) out.overCeremonySegments += 1;
+  }
+  return out;
+}
+
 // Walk the main-line (non-sidechain) event sequence for the 3 detectors that
 // need cross-turn context. Sidechain (subagent) traffic is excluded — it
 // interleaves with the main conversation and would corrupt turn boundaries.
@@ -357,8 +428,18 @@ function emptyResult(windowDays, projectsDir) {
     scannedTranscripts: 0,
     totalTurns: 0,
     byRule: emptyByRule(),
+    overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
     perTranscript: [],
   };
+}
+
+function mergeOverCeremony(dst, src) {
+  dst.totalSegments += src.totalSegments;
+  dst.l0l1Segments += src.l0l1Segments;
+  dst.overCeremonySegments += src.overCeremonySegments;
+  for (const [k, v] of Object.entries(src.ceremonyInvocations)) {
+    dst.ceremonyInvocations[k] = (dst.ceremonyInvocations[k] || 0) + v;
+  }
 }
 
 export async function samplingAudit({
@@ -460,6 +541,8 @@ export async function samplingAudit({
       }
     }
 
+    mergeOverCeremony(result.overCeremony, scanOverCeremony(events));
+
     const seq = scanSequence(events);
     const seqMap = {
       '§11-turn-yield': seq.turnYield,
@@ -502,6 +585,7 @@ export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_
     const sub = await samplingAudit({ projectsDir: dir, days, sample, pluginRoot });
     result.scannedTranscripts += sub.scannedTranscripts;
     result.totalTurns += sub.totalTurns;
+    mergeOverCeremony(result.overCeremony, sub.overCeremony);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalTurns += sub.totalTurns;
@@ -565,6 +649,20 @@ function formatMarkdown(r) {
     }
     out.push('');
   }
+  if (r.overCeremony) {
+    const oc = r.overCeremony;
+    const rate = oc.l0l1Segments > 0 ? fmtRate(oc.overCeremonySegments, oc.l0l1Segments) : 'n/a';
+    const inv = Object.entries(oc.ceremonyInvocations).map(([k, v]) => `${k}×${v}`).join(', ') || '(none)';
+    out.push('## Over-ceremony (C1)');
+    out.push('');
+    out.push(`Task segments: ${oc.totalSegments} · L0/L1-shaped (≤2 files, <80 est. LOC): ${oc.l0l1Segments} · with ceremony skill: ${oc.overCeremonySegments} · rate: ${rate}`);
+    out.push(`Ceremony invocations (all segments): ${inv}`);
+    out.push('');
+    out.push('> C2 pre-registered disposition (plan P3): after 30d collection, rate < 5% → keep');
+    out.push('> superpowers, close P3; ≥ 5% → evaluate uninstall (EXT §12 fallback table) / fork /');
+    out.push('> hook-level disable. Threshold fixed before data collection.');
+    out.push('');
+  }
   if (r.perTranscript.length > 0) {
     out.push('## Per-transcript hits');
     out.push('');
@@ -592,6 +690,8 @@ Retrospective batch scan of historical transcripts for 8 self-enforced HARD rule
   sequence/claim    §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth
 Every rule reports violations WITH its opportunity denominator (A2 metric
 contract); heuristic rates stay 'collecting' until hand-labeled precision ≥ 0.8.
+Also collects the C1 over-ceremony measure: ceremony-skill invocations
+(sp:brainstorming / test-driven-development / …) on L0/L1-shaped task segments.
 
 Options:
   --days=N       Window in days (positive integer, default 30).
