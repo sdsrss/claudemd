@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.32.1] - 2026-07-10
+
+**Patch — statusline: ctx segment no longer disappears right after `/clear`.** Reported live: immediately after `/clear` the meter rendered `[5h:0% · 7d:52%]` with no ctx segment. Root cause (verified against the CC 2.1.206 binary's payload constructor): before the first API response of a fresh session, CC sends `context_window` with an **explicit `used_percentage: null`** ("no usage yet"), which the renderer treated as "no data" and omitted. The `5h:0%` in the report was real data (new 5-hour window, fractional utilization floored), not part of the bug.
+
+- **Fix** (`scripts/statusline.sh`): ctx extraction now distinguishes explicit-null from absent — `context_window` object present with a `used_percentage` key → null renders as `ctx:0%`; missing key / missing object / non-object still hides the segment (no fabricated 0% on foreign or pre-2.1.206 payloads). Side hardening: a non-object `context_window` (e.g. a string) no longer errors the jq program mid-stream.
+- **Tests**: `tests/scripts/statusline.test.js` 20 → 23 cases (byte-shape post-/clear fixture with explicit nulls, object-without-key hidden, non-object garbage keeps later fields aligned).
+- **Action on upgrade**: re-run `/claudemd-statusline` or any install/update to refresh `~/.claude/claudemd-statusline.sh`.
+
 ## [0.32.0] - 2026-07-10
 
 **Minor — spec v6.15.0: §2.1 Model tiering (spawned-agent model selection).** Core §2.1 gains a SHOULD-level block after Tool escalation: spawned agents default to inheriting the session model (omit `model` when unsure); whitelist downgrade — sonnet for mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits, opus for test-gated plan-step code; decision-shaped stages (orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8) NEVER downgrade. Invariants: verifier tier ≥ generator; anomalous downgraded output → one re-run at inherited tier; evidence bar tier-independent. Paired net-delete: §7 metric-coupled row's 6 project-specific examples removed (Candidate 1 of `tasks/core-net-delete-candidates-v6.14.md`, −169B measured vs −280~340 estimated). Core lands at 24978/25000 (22B headroom — next core addition must fully net-delete). Design doc: `tasks/specs/model-tiering.md`.

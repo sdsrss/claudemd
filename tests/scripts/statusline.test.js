@@ -128,6 +128,38 @@ test('ctx hidden when absent or non-numeric', () => {
   assert.ok(!render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 'N/A' } }).includes('ctx:'));
 });
 
+test('post-/clear payload (explicit used_percentage:null) → ctx:0%, green', () => {
+  // Byte-shape mirror of CC 2.1.206's fresh-session payload: rNn() returns
+  // {used:null} until the first API response, so used_percentage is an
+  // EXPLICIT null while the context_window object is fully present.
+  const out = render({
+    cwd: '',
+    model: { display_name: '' },
+    context_window: {
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      context_window_size: 1000000,
+      current_usage: null,
+      used_percentage: null,
+      remaining_percentage: null,
+    },
+    rate_limits: limits(0.4, 52.3),
+  });
+  assert.ok(out.includes(`${ESC}[02;32mctx:0%`), `ctx:0% shown; got: ${JSON.stringify(out)}`);
+  assert.ok(out.includes('5h:0%') && out.includes('7d:52%'), 'quota segments unaffected');
+});
+
+test('context_window object without used_percentage key → ctx hidden (no fabricated 0%)', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, context_window: { context_window_size: 1000000 } });
+  assert.ok(!out.includes('ctx:'), `got: ${JSON.stringify(out)}`);
+});
+
+test('non-object context_window → ctx hidden, no jq error blanking the line', () => {
+  const out = render({ cwd: '/tmp/z', model: { display_name: 'M' }, context_window: 'garbage', rate_limits: limits(10) });
+  assert.ok(!out.includes('ctx:'), `ctx hidden; got: ${JSON.stringify(out)}`);
+  assert.ok(out.includes('5h:10%'), 'later fields still aligned');
+});
+
 test('no meter data at all → no bracket', () => {
   // ANSI escapes contain "["; the meter bracket is the only " [" (space-prefixed)
   const out = render({ cwd: '', model: { display_name: '' } });

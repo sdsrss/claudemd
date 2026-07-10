@@ -6,7 +6,8 @@
 # 5h / 7d = rate-limit quota windows), each threshold-colored the same way:
 # <50 green, 50-79 yellow, >=80 red — rendered FAINT (SGR 2) so the meter
 # doesn't pull attention from the prompt.
-# Segments with no data are omitted; no data at all → no bracket. Set
+# Segments with no data are omitted; no data at all → no bracket. A fresh
+# session (post-/clear, used_percentage:null) counts as data → ctx:0%. Set
 # DISABLE_STATUSLINE_QUOTA=1 to hide the 5h/7d segments (ctx stays).
 # Never exits non-zero and never blanks/corrupts on hostile input: fields are
 # NUL-delimited (jq -j) so an embedded newline can't misalign them, and the
@@ -29,7 +30,11 @@ if [ -n "$input" ]; then
   } < <(jq -j '
     (.cwd // .workspace.current_dir // ""), ([0]|implode),
     (.model.display_name // ""), ([0]|implode),
-    ((.context_window.used_percentage // "") | tostring), ([0]|implode),
+    # ctx: right after /clear (before the first API response) CC sends
+    # context_window with an EXPLICIT used_percentage:null ("no usage yet"),
+    # which must render as ctx:0% — only a missing key/object means "no data".
+    (.context_window | if type == "object" and has("used_percentage")
+       then ((.used_percentage // 0) | tostring) else "" end), ([0]|implode),
     ((.rate_limits.five_hour.used_percentage // "") | tostring), ([0]|implode),
     ((.rate_limits.seven_day.used_percentage // "") | tostring), ([0]|implode)
   ' <<<"$input" 2>/dev/null)
