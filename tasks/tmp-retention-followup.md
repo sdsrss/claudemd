@@ -13,3 +13,7 @@ Extend `/claudemd-clean-residue` (command + consent, dry-run default — same sh
 
 - NO SessionStart auto-clean: §7-EXT says "no auto-clean without AUTH"; design-adopt v0.24.0 lesson — silent heuristics are bug magnets, prefer command+consent.
 - NO safe-path carve-out for `~/.claude/tmp` in `pre-bash-safety-check.sh`: literal-path rm already passes; guarded/`[allow-rm-rf-var]` var rm already passes; a prefix allow-rule would open a traversal FN (`rm -rf ~/.claude/tmp/$X` with `X=../..`) and §8 is never-downgrade. Run the FN matrix before any §8 edit (feedback_s8_false_negative_audit).
+
+## Status: SHIPPED in v0.33.0 (2026-07-10, fc7be39)
+
+Implemented exactly as the candidate above (command+consent, dry-run default). Extra hardening found in self-review: pre-existing CLI `--apply` tests inherited the real `~/.claude/tmp` as default target — all test spawns now pin `CLAUDEMD_CLAUDE_TMP_DIR` to a fixture (V3).
