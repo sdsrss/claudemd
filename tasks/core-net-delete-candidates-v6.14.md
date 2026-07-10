@@ -61,6 +61,42 @@
 
 ---
 
+## Candidate 3 — §0.1 操作员细节收缩为 OPERATOR.md 指针（2026-07-10 追加）
+
+**位置**: `spec/CLAUDE.md` §0.1 Three-tier default 段（全段 788B，实测 `awk '/^### §0.1/,/^### §0.2/'`）。
+
+**问题**: Tier 1/Tier 0 的 promotion 阈值（"≥3 sessions in 30d" / "≥5 sessions … elaboration wasn't consulted"）和 `/claudemd-rules` demotion 推荐是**操作员治理内容**（§13 META enforcement=external），agent 逐 turn 执行时只消费三件事：新规则默认落 Tier 2、hard cap 数字、over-ceiling → net-delete。阈值细节已在 `OPERATOR.md §13.1` 有完整版。
+
+**改动**: 段落收缩为 "Tier 2 default + hard cap + net-delete + Sizing 行跟踪 + 阈值细节 → OPERATOR.md §13.1"。
+
+**估算**: −350 ~ −400 字节。
+
+**风险**: 低。与 2026-06-03 被否的 #4 bulk demote 不同类——不是 "0 telemetry = 搬走"，而是受众判定（operator-facing 阈值 vs agent-facing 默认值）；agent 需要的三个事实全部保留在 core。
+
+**Verify gate**: `spec-coherence-audit.js` 0 unresolved；`OPERATOR.md §13.1` 确含被删阈值原文（先 Read 核对再删）；npm test 全绿。
+
+---
+
+## Candidate 4 — §2.1 Model tiering 压缩为 invariants + §EXT 指针（2026-07-10 追加）
+
+**位置**: `spec/CLAUDE.md` §2.1 Model tiering 块（550B 实测）。v6.15.0 刚加入，是 core 里"每 turn 注意力成本 vs 触发频率"比值最差的段（仅 spawn subagent 时 actionable）。
+
+**改动**: core 保留安全不变量（default inherit / NEVER-downgrade 清单 / verifier ≥ generator / anomalous → 1 re-run inherited / tier 不降证据档），Sonnet/Opus 适用类别枚举移入 §EXT §2-EXT。
+
+**估算**: core −230 ~ −280 字节；extended +300 ~ +350（当前 extended 余量 3347B，可容纳）。
+
+**风险**: 中。L2 spawn agent 时 extended 未加载，类别枚举不可见 → agent 退化为 "不确定就 inherit"（这本身是该规则的声明默认，行为安全侧不降级，只可能少用 Sonnet 省钱路径）。刚 ship 两个版本就动它有折腾嫌疑——仅在需要 paired deletion 且 Candidate 1/3 字节不够时启用。
+
+**Verify gate**: 同 Candidate 1 + §EXT §2-EXT 新增块与 core 指针互指核对。
+
+---
+
+## Sizing 更新（2026-07-10）
+
+v6.15.0 ship 后 core = **24978/25000（headroom 22B）**——决策树里 "N ≤ headroom 可直加" 的分支实际已关闭：**任何新增都必须配对净删**。**C1 已于 v6.15.0 执行**（−169B 实测，见 extended Recent-changes）；**C3 已于 v6.15.1 执行**（−239B 实测 vs −350~400 估算，做成 move：core 删 + OPERATOR.md §13.1 增阈值条目，因 OPERATOR.md 原文不含阈值）。剩余候选池：C2 (−250~300，audit gate 前置) + C4 (−230~280，中风险)。连续三个候选实测低于估算（C1 −169/−280、Sizing-rewrite 同款、C3 −239/−350）——启用 C2/C4 前先重测。
+
+---
+
 ## 决策树（真要 net-delete 那一刻）
 
 ```

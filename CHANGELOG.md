@@ -8,6 +8,10 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.32.3] - 2026-07-10
+
+**Patch — spec v6.15.1: §0.1 operator-threshold relocation (Candidate 3 net-delete).** Core §0.1's tier promotion/demotion thresholds ("≥3 sessions in 30d" / "≥5 sessions + elaboration wasn't consulted" gates + `/claudemd-rules` demotion recommendation) move to `OPERATOR.md §13.1` — they are operator-executed (`external` enforcement), so Agent-loaded core carried thresholds the Agent cannot act on at runtime. Core keeps the Agent-consumed facts: Tier-2 default landing zone, hard cap, net-delete clause, Sizing tracking. Core 24978 → 24739 bytes (−239B, headroom 261B); OPERATOR.md 7018 → 7546 (+528B, human-only, unbudgeted). Origin: 2026-07-10 core-attention review; Candidate 3 of `tasks/core-net-delete-candidates-v6.14.md`, executed as user-authorized standalone compression (C1 was already consumed by v6.15.0). No hook / script / rule change — `hard-rules.json` `spec_version` only.
+
 ## [0.32.2] - 2026-07-10
 
 **Patch — §13.2 batch review (overdue since 2026-06-10) + doctor tag-scan parser-parity fix.**

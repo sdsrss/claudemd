@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.15.1 — 2026-07-10
+
+Patch: §0.1 operator-threshold relocation to `OPERATOR.md §13.1` (Candidate 3, no rule change).
+
+- `[move]` **§0.1 tier promotion/demotion thresholds** (core → `OPERATOR.md §13.1`): promotion gates ("≥3 sessions in 30d" / "≥5 sessions + elaboration wasn't consulted") and the `/claudemd-rules` demotion recommendation relocated — enforcement is operator-side (`external`), the Agent cannot act on them at runtime. Core keeps Tier-2 default landing zone, tier structure, hard cap + net-delete clause, Sizing tracking. Candidate 3 of `tasks/core-net-delete-candidates-v6.14.md`; −239B measured (core 24978 → 24739, headroom 261B).
+
+### Background
+
+2026-07-10 user-requested core-attention review ("核心规范占上下文多不多、有没有分散注意力、能不能压缩"). Data path re-confirmed demote closed (`hard-rules-audit.js` `demoteCandidates=[]`); the review instead identified an audience mismatch — operator-executed thresholds living in Agent-loaded core. Executed as user-authorized standalone compression (paired-with-addition default overridden by explicit instruction). Shipped in plugin v0.32.3.
+
+### §13.2 budget cost
+
+No rule added/removed/relaxed — `[move]` only. Core −239B; OPERATOR.md +528B (human-only, unbudgeted).
+
 ## v6.15.0 — 2026-07-10
 
 Minor: §2.1 Model tiering rule (spawned-agent model selection) + Candidate-1 net-delete.
