@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.33.0] - 2026-07-10
+
+**Minor — `/claudemd-clean-residue` now also purges stale `~/.claude/tmp` tool-exhaust (spec §EXT §7-EXT retention).**
+
+- **Feature** (`scripts/clean-residue.js`): new `scanClaudeTmp`/`cleanClaudeTmp` pass over `~/.claude/tmp` — purges depth-1 entries with `mtime > TMP_RETENTION_DAYS` (default 7); per-UID dirs (`claude-<uid>`) are descended one level (children purged, shell kept — the shell's mtime churns while stale sessions pile up inside); dirs carrying a `.keep` marker are exempt (§8.V4 deliberately-retained fixtures). Retention resolution: `--retention-days=N` flag > `TMP_RETENTION_DAYS:` in the invoking project's CLAUDE.md > 7; malformed CLAUDE.md values warn and fall back (no silent-ignore). Still dry-run by default, `--apply` gates deletion, `CLAUDEMD_CLAUDE_TMP_DIR` env is the test seam. Origin: 2026-07-10 manual AUTH'd purge found 550M / 5157 stale entries because spec §7-EXT's "harness SHOULD purge mtime > 7d" had no implementing surface — `residue-audit.sh` only *recommends* the find command (`tasks/tmp-retention-followup.md`; telemetry showed the §8 rm-rf-var hook was NOT the blocker: 715 validated-rm allows vs 206 denies).
+- **Command doc** (`commands/claudemd-clean-residue.md`): documents the new scope, flags, and the active-session-older-than-retention caveat.
+- **Tests**: `tests/scripts/clean-residue.test.js` 14 → 22 (uid-dir descent, `.keep` exemption, dry-run/apply, missing dir, CLI claudeTmp section, retention-days flag shape, CLAUDE.md override + flag precedence).
+- Explicit non-goals kept: no SessionStart auto-clean (§7-EXT "no auto-clean without AUTH"), no §8 safe-path carve-out for `~/.claude/tmp` (prefix allow would open a `$X=../..` traversal FN; §8 is never-downgrade).
+
 ## [0.32.3] - 2026-07-10
 
 **Patch — spec v6.15.1: §0.1 operator-threshold relocation (Candidate 3 net-delete).** Core §0.1's tier promotion/demotion thresholds ("≥3 sessions in 30d" / "≥5 sessions + elaboration wasn't consulted" gates + `/claudemd-rules` demotion recommendation) move to `OPERATOR.md §13.1` — they are operator-executed (`external` enforcement), so Agent-loaded core carried thresholds the Agent cannot act on at runtime. Core keeps the Agent-consumed facts: Tier-2 default landing zone, hard cap, net-delete clause, Sizing tracking. Core 24978 → 24739 bytes (−239B, headroom 261B); OPERATOR.md 7018 → 7546 (+528B, human-only, unbudgeted). Origin: 2026-07-10 core-attention review; Candidate 3 of `tasks/core-net-delete-candidates-v6.14.md`, executed as user-authorized standalone compression (C1 was already consumed by v6.15.0). No hook / script / rule change — `hard-rules.json` `spec_version` only.
