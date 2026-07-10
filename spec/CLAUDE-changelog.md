@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.15.0 — 2026-07-10
+
+Minor: §2.1 Model tiering rule (spawned-agent model selection) + Candidate-1 net-delete.
+
+- `[add]` **§2.1 Model tiering** (core, after Tool escalation): spawned agents default to inheriting the session model (omit `model` when unsure); whitelist downgrade — sonnet for mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits (pair `effort:'low'`), opus for test-gated plan-step code. NEVER downgrade decision-shaped stages: orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8 content. Invariants: verifier tier ≥ generator; anomalous downgraded output → one re-run at inherited tier; evidence bar is tier-independent (Iron Law #2). SHOULD-level guidance, NOT HARD (`hard-rules.json` untouched). Design: `tasks/specs/model-tiering.md` — tier by error shape, not task difficulty.
+- `[net-delete]` **§7 metric-coupled row examples** (core): 6 project-specific examples removed per Candidate 1 (`tasks/core-net-delete-candidates-v6.14.md`), −169B measured. Category names + "Metric-coupling typical triggers" sentence remain the anchors.
+
 ## v6.14.2 — 2026-07-10
 
 Patch: trigger-list `e.g.` markers + EXT-header load-scope alignment + context7 conditionalized (no rule change).

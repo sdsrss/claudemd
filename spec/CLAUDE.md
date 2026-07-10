@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.14.2 — Core
+# AI-CODING-SPEC v6.15.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -101,6 +101,8 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative; this table c
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.
 
+**Model tiering (spawned agents only)**: default inherit — omit `model` when unsure. Sonnet: mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits (pair `effort:'low'`). Opus: test-gated plan-step code. NEVER downgrade: orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8 content. Invariants: verifier tier ≥ generator; anomalous downgraded output (empty / malformed / contradictory) → one re-run at inherited tier; tier never lowers the evidence bar (Iron Law #2).
+
 **Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). **Skill "MUST invoke" wording (sp/gs) does NOT override §2.1 at L0–L2** (per §3 TRUST this spec wins): a clear-scope L1 bug goes fix→test direct, not forced into `sp:test-driven-development` / `gs:investigate` ceremony.
 
 **Ambiguous trigger** → ASK per §0.
@@ -182,7 +184,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers, each with its ow
 |---|---|---|---|
 | Push fires CI/Release (pre-action) | HARD | `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any) | green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK |
 | Code writes to user-global / cross-project path: `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` (post-action) | HARD | residue count via `find <path> -newer <baseline>` / `du -sh` / equivalent | inline count cited |
-| Edit touches metric-coupled code — bench / oracle / compile-time budget (e.g. `routing_bench.rs` P@1, `semantic_search` vs `MAX_SEARCH_CODE_LEN`, MCP `instructions` ≤ harness cutoff, token / latency SLOs, `const _: () = assert!()` guards) | SHOULD | record baseline before, re-run after | both numbers cited; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK |
+| Edit touches metric-coupled code — bench / oracle / compile-time budget | SHOULD | record baseline before, re-run after | both numbers cited; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK |
 
 `mkdtempSync` leaks / orphan writes / cache bloat are invisible to exit code; "vibe-check from one manual test" is not metric-neutral evidence. Metric-coupling typical triggers: tool descriptions / adoption-memory / field compression / prompt templates. `~/.claude/tmp/` retention + Iron Law #1 + L3 evidence + cold-start → §EXT §7-EXT.
 

@@ -8,6 +8,13 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.32.0] - 2026-07-10
+
+**Minor — spec v6.15.0: §2.1 Model tiering (spawned-agent model selection).** Core §2.1 gains a SHOULD-level block after Tool escalation: spawned agents default to inheriting the session model (omit `model` when unsure); whitelist downgrade — sonnet for mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits, opus for test-gated plan-step code; decision-shaped stages (orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8) NEVER downgrade. Invariants: verifier tier ≥ generator; anomalous downgraded output → one re-run at inherited tier; evidence bar tier-independent. Paired net-delete: §7 metric-coupled row's 6 project-specific examples removed (Candidate 1 of `tasks/core-net-delete-candidates-v6.14.md`, −169B measured vs −280~340 estimated). Core lands at 24978/25000 (22B headroom — next core addition must fully net-delete). Design doc: `tasks/specs/model-tiering.md`.
+
+- **No hook / script changes** — spec text + version cascade only. `hard-rules.json` rules array unchanged (spec_version field bump only; rule is SHOULD, not HARD, per §13.2 budget gates).
+- Version cascade: spec headers ×2, `spec/hard-rules.json` spec_version, `tests/scripts/spec-structure.test.js` (2 asserts), `tests/integration/upgrade-lifecycle.test.sh` NEW_SPEC_VER, manifest descriptions v6.14 → v6.15 per v0.2.1 policy.
+
 ## [0.31.0] - 2026-07-10
 
 **Minor — statusline 5h/7d quota segments (user-visible default change).** The shipped statusline renderer's meter bracket grows from `[ctx:N%]` to `[ctx:N% · 5h:N% · 7d:N%]` — context window plus the 5-hour and weekly rate-limit windows, all **used %** with uniform thresholds (<50 green, 50-79 yellow, >=80 red), rendered faint (SGR 2) so the meter doesn't pull attention. **Action on upgrade**: none — re-run `/claudemd-statusline` (or any install/update, which refreshes `~/.claude/claudemd-statusline.sh`) to pick up the new renderer. **Opt-out**: `DISABLE_STATUSLINE_QUOTA=1` hides the quota segments (exact-match `1`, matching the repo's toggle convention); full revert = pin v0.30.0 or `/claudemd-statusline remove`.
