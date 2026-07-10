@@ -115,3 +115,43 @@ Plus existing memory `feedback_macos_shell_portability.md` (2026-04-12) document
 - Date: 2026-06-10 (30 days from this review, per §13.2 cadence)
 - Or: 20 L2+ tasks since 2026-05-10 (today's review reset the counter)
 - Whichever first.
+
+---
+
+## Batch review — 2026-07-10 (overdue; cadence was 2026-06-10)
+
+**Trigger**: user-directed spec audit surfaced 22/22 rules in `hard-rules-audit` `staleReviews` (all `last_demote_review: 2026-05-24`, 47 days > 30d cadence).
+
+**L2+ task counter**: 74 release commits since 2026-05-10 (`git log --oneline --since=2026-05-10 | grep -cE "^[0-9a-f]+ release"`) ≥ 20 ✓ — counter saturated; not blocking for any eligible promotion.
+
+### Candidate-by-candidate verdict
+
+#### §9 Parallel-path completeness — **CLOSED (promoted)**
+Shipped as core §9 HARD L2+ in spec v6.11.10 per the 2026-05-10 review. Present in current core v6.15.0 (`**Parallel-path completeness** (HARD, L2+)`). Nothing further.
+
+#### §9 Shared-symbol edit guard — **repro 1 → 2, CONTINUE LOG-ONLY**
+New repro (2026-07, claudemd v0.26.0): contract-changing edit where `code-graph-mcp impact/callgraph` under-counted callers — `uninstall.js` imported the symbol under an alias (`import { X as Y }`) and was missed; grep-the-importers found it. Same trigger surface (edit shared symbol + silent dependent). Anchor: `feedback_code_graph_impact_aliased_imports.md` (claudemd MEMORY.md). 2/3 — below promotion bar; continue log-only.
+
+#### macOS CI shell portability — **CLOSED (landed as Tier 1/2)**
+Disposition changed from the 2026-05-10 "SHOULD in §EXT" plan: v6.11.14 moved the patterns out of spec into memory anchors (`feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md`) with a §EXT §11-EXT cross-ref; CI runs ubuntu+macos matrix. Implementation-discipline class is fully covered without spec bytes. Close.
+
+#### Sizing-claim drift — **CLOSED (mechanically enforced)**
+§13.2 evidence-rebuttal shortcut: mechanical fix supersedes rule promotion. `runSpecSizingCheck` (v0.21.6, copy-paste OLD/NEW suggested edits) + `spec-coherence-audit.js` `sizing-accuracy` / `sizing-headroom` gates (v0.23.8) enforce at release time. No spec rule needed; close.
+
+### §13.1 stale-review sweep (22 rules)
+
+Reviewed against 30d rule-hits window (2078 hits, parse 5586/5586): `demoteCandidates = []` — no rule meets demote criteria. Hook-enforced rules all healthy per doctor rule-usage (e.g. §8-rm-rf-var deny=149 bypass=3 (2%), §7-ship-baseline deny=10 bypass=0, §10-V deny=13 bypass=7 (35%)). Self-enforced rules: hits=null is the expected read-and-follow posture (2026-06-03 category-error ruling — do not demote on 0 telemetry); sampling-audit self-compliance detectors (v0.28.0) are collecting, rates withheld until A4 labeling. **Verdict: keep all 22; `last_demote_review` stamped 2026-07-10 in `spec/hard-rules.json`.**
+
+### Outcomes summary
+
+- §9 Parallel-path: ✅ CLOSED (promoted v6.11.10)
+- §9 Shared-symbol: ⏸ repro 2/3, continue log-only
+- macOS CI portability: ✅ CLOSED (memory anchors + §EXT cross-ref + CI matrix)
+- Sizing-claim drift: ✅ CLOSED (mechanical enforcement)
+- Pruning: no candidate aged ≥60 days silent (shared-symbol got a fresh repro)
+- Open candidates remaining: 1 (shared-symbol edit guard)
+
+### Next batch-review trigger
+
+- Date: 2026-08-09 (30 days), or 20 L2+ tasks from 2026-07-10, whichever first.
+- Watch item: §5-hard-auth sampling detector 7/7 raw violations — pre-registered FP-heavy; include in first A4 hand-labeling batch (with §iron-law-2 + §7-bugfix-anchor) before reading as real.

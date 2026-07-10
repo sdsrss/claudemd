@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.32.2] - 2026-07-10
+
+**Patch — §13.2 batch review (overdue since 2026-06-10) + doctor tag-scan parser-parity fix.**
+
+- **`spec/hard-rules.json`**: all 22 rules' `last_demote_review` stamped `2026-05-24` → `2026-07-10`. Review evidence: 30d rule-hits window (2078 hits, parse 5586/5586), `hard-rules-audit` `demoteCandidates=[]`, doctor rule-usage 5/5 healthy — keep all 22, no demotions. Full verdicts (2 candidates closed, shared-symbol repro 1→2 log-only) in `tasks/rule-candidates-2026-04.md` "Batch review — 2026-07-10". Next cadence: 2026-08-09.
+- **Fix** (`scripts/lib/memory-tags.js`): `parseMemoryIndex` backtick tag-block regex was not anchored on `.md)` while the hook's sed (memory-read-check.sh) is — a prose/blockquote line quoting a decorative `` `[label]` `` token plus any `` `(….md)` `` token parsed as a tagged entry. Live FP: code-graph-mcp's MEMORY.md header line produced a `memory-tag-specificity` finding `{file: '…​.md', tag: 'label'}` against a non-entry. Both tag-block forms now carry the hook's greedy `.*\.md)` anchor. Same parser-parity family as the v0.23.11 first-vs-last file-match fix.
+- **Tests**: `tests/scripts/memory-tags.test.js` 18 → 19 (blockquote header fixture is the live FP line verbatim).
+
 ## [0.32.1] - 2026-07-10
 
 **Patch — statusline: ctx segment no longer disappears right after `/clear`.** Reported live: immediately after `/clear` the meter rendered `[5h:0% · 7d:52%]` with no ctx segment. Root cause (verified against the CC 2.1.206 binary's payload constructor): before the first API response of a fresh session, CC sends `context_window` with an **explicit `used_percentage: null`** ("no usage yet"), which the renderer treated as "no data" and omitted. The `5h:0%` in the report was real data (new 5-hour window, fractional utilization floored), not part of the bug.

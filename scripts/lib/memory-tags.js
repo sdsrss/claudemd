@@ -121,10 +121,15 @@ export function parseMemoryIndex(content) {
     const fileMatches = [...line.matchAll(/\(([^)]+\.md)\)/g)];
     if (fileMatches.length === 0) continue;
     const fileMatch = fileMatches[fileMatches.length - 1];
-    let tagBlock = line.match(/`\[([^\]]*)\]`/);
+    // Both tag-block forms anchor on `.md)` (greedy prefix = LAST occurrence),
+    // mirroring memory-read-check.sh. An unanchored backtick match diverged:
+    // a prose line quoting a decorative `[label]` token plus any `(….md)`
+    // token (e.g. code-graph-mcp's MEMORY.md blockquote header) parsed as a
+    // tagged entry and produced a doctor finding against a non-entry line.
+    let tagBlock = line.match(/.*\.md\)\s*`\[([^\]]*)\]`/);
     if (!tagBlock) {
       // Plain form: anchor on `(file.md)` then `[tag, tag]` before `— ` or `- `.
-      tagBlock = line.match(/\.md\)\s*\[([^\]]*)\]\s*[—-]/);
+      tagBlock = line.match(/.*\.md\)\s*\[([^\]]*)\]\s*[—-]/);
     }
     if (!tagBlock) continue;
     const tags = tagBlock[1].split(',').map(t => t.trim()).filter(Boolean);

@@ -131,6 +131,20 @@ test('v0.23.11: parser-parity — title embedding a (foo.md) token resolves the 
   assert.equal(entries[0].file, 'real_file.md');
 });
 
+test('v0.32.2: blockquote prose quoting `[label]` + `(…​.md)` tokens is not a tagged entry', () => {
+  // Live FP: code-graph-mcp's MEMORY.md header line
+  //   > … Visible `[label]` is short; real filename is in the `(…​.md)` link — …
+  // parsed as {file: '…​.md', tags: ['label']} because the backtick tag-block
+  // regex was not anchored on `.md)` (the hook's sed IS anchored — parser-parity
+  // divergence, same family as the v0.23.11 first-vs-last file-match fix).
+  const md = '> One line per memory = router only. Visible `[label]` is short; real filename is in the `(…​.md)` link — match task keywords against filename/tags.\n' +
+    '- [Real](a.md) `[real-tag-one]` — d\n';
+  const entries = parseMemoryIndex(md);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].file, 'a.md');
+  assert.deepEqual(entries[0].tags, ['real-tag-one']);
+});
+
 test('parseMemoryIndex: skips lines without tag block (untagged entries)', () => {
   const md = '- [Just title](file.md) — no tags here\n- [Has tags](other.md) `[tag1]` — yes\n';
   const entries = parseMemoryIndex(md);
