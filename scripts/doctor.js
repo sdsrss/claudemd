@@ -10,6 +10,7 @@ import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { scanMemoryTags } from './lib/memory-tags.js';
+import { memoryMaintenance, CITE_MIN, PROMOTE_MIN_AGE_DAYS, RECALL_MAX_AGE_DAYS, STALE_AGE_DAYS } from './lib/memory-maintenance.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
@@ -490,6 +491,31 @@ export async function doctor({ pruneBackups: prune } = {}) {
       `Samples: ${sample.join(' | ')}${more}. ` +
       `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`);
   }
+
+  // v0.30.0 E2 — cross-layer memory maintenance (plan P5). Wrong-layer
+  // placement fails silently; this surfaces candidates only — migration is a
+  // §5-scoped write and stays the operator's call. See lib/memory-maintenance.js.
+  const mm = await memoryMaintenance();
+  const promoteDetail = mm.promoteSkipped
+    ? `skipped: ${mm.promoteSkipped}`
+    : (mm.promoteToDurable.length === 0
+      ? `0 candidates (mem-lite lessons cited ≥${CITE_MIN}× alive ≥${PROMOTE_MIN_AGE_DAYS}d)`
+      : `${mm.promoteToDurable.length} promote-to-durable candidate(s) — high-frequency recall is de-facto ` +
+        `long-term knowledge; consider a MEMORY.md entry (operator's call, no auto-migration): ` +
+        mm.promoteToDurable.slice(0, 5).map(c => `#${c.id} "${c.title}" (cited ${c.citedCount}×)`).join(', '));
+  push('memory-maintenance:promote', mm.promoteSkipped != null || mm.promoteToDurable.length === 0, promoteDetail);
+  push('memory-maintenance:recall-repatriation', mm.recallRepatriation.length === 0,
+    mm.recallRepatriation.length === 0
+      ? `0 recall_*.md older than ${RECALL_MAX_AGE_DAYS}d in ${mm.memDir}`
+      : `${mm.recallRepatriation.length} plugin-absent fallback file(s) linger past ${RECALL_MAX_AGE_DAYS}d — ` +
+        `migrate into claude-mem-lite or delete: ` +
+        mm.recallRepatriation.slice(0, 5).map(c => `${c.file} (${c.ageDays}d)`).join(', '));
+  push('memory-maintenance:stale', mm.staleDurable.length === 0,
+    mm.staleDurable.length === 0
+      ? `0 durable files >${STALE_AGE_DAYS}d without a telemetry keyword mention (${mm.scannedDurableFiles} scanned)`
+      : `${mm.staleDurable.length} durable file(s) >${STALE_AGE_DAYS}d old with zero keyword mentions in the ` +
+        `telemetry window — review tags or retire: ` +
+        mm.staleDurable.slice(0, 5).map(c => `${c.file} (${c.ageDays}d)`).join(', '));
 
   const pruned = prune != null ? pruneBackups(prune) : [];
 

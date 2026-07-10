@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.30.0] - 2026-07-10
+
+**Minor — E2 cross-layer memory maintenance report (doctor checks).** Fourth implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P5 item E2). Wrong-layer memory placement fails silently; these checks make it observable. Candidates only — no auto-migration (a §5-scoped write, operator's call).
+
+- **`scripts/lib/memory-maintenance.js`** + three `/claudemd-doctor` checks:
+  - `memory-maintenance:promote` — claude-mem-lite lessons cited ≥3× and alive ≥30d (reads `~/.claude-mem-lite/claude-mem-lite.db` read-only via `node:sqlite`, project-scoped by the mem-lite `parent--name` convention; degrades to `skipped: …` when the DB or `node:sqlite` is absent). High-frequency recall = de-facto durable knowledge → MEMORY.md candidate.
+  - `memory-maintenance:recall-repatriation` — durable `recall_*.md` plugin-absent fallback files older than 30d (migrate into mem-lite or delete).
+  - `memory-maintenance:stale` — durable files >90d with zero `*.md` keyword mentions in the telemetry log window (review tags per §11-EXT or retire).
+- **Tests**: new `tests/scripts/memory-maintenance.test.js` (3 cases: in-window vs out-of-window mention liveness, promote filter matrix — young / under-cited / superseded / foreign-project all excluded, missing-dir graceful empty). Relative timestamps throughout (absolute-date fixtures are time bombs).
+- First live run: 1 promote candidate (#8264 "jq -R required for JSONL parsing", cited ≥3×), 0 recall-repatriation, 0 stale across 47 durable files.
+
 ## [0.29.0] - 2026-07-10
 
 **Minor — C1 over-ceremony detector (superpowers collision cost measurement).** Third implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P3 item C1).
