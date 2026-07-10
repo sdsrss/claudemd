@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.31.0] - 2026-07-10
+
+**Minor — statusline 5h/7d quota segments (user-visible default change).** The shipped statusline renderer's meter bracket grows from `[ctx:N%]` to `[ctx:N% · 5h:N% · 7d:N%]` — context window plus the 5-hour and weekly rate-limit windows, all **used %** with uniform thresholds (<50 green, 50-79 yellow, >=80 red), rendered faint (SGR 2) so the meter doesn't pull attention. **Action on upgrade**: none — re-run `/claudemd-statusline` (or any install/update, which refreshes `~/.claude/claudemd-statusline.sh`) to pick up the new renderer. **Opt-out**: `DISABLE_STATUSLINE_QUOTA=1` hides the quota segments (exact-match `1`, matching the repo's toggle convention); full revert = pin v0.30.0 or `/claudemd-statusline remove`.
+
+- **Data source**: Claude Code >= 2.1.206 statusLine stdin payload carries top-level `rate_limits: {five_hour: {used_percentage, resets_at}, seven_day: {…}}` (verified against the CC binary's payload constructor; `used_percentage` = utilization x 100, fractional, may exceed 100). On older CC / absent data the segments auto-hide — the line degrades to the previous `[ctx:N%]` content.
+- **Renderer** (`scripts/statusline.sh`): one `used_seg()` for all three segments — floor the integer part, hide on non-numeric or >3-digit input (nonsense that would also overflow bash int64 in `[ -ge ]`), per-segment color, uncolored bracket/`·` separators. jq extraction widened 3 → 5 NUL-delimited fields.
+- **Review findings fixed pre-tag** (fresh-subagent review, 2 Low): int64-overflow garbage rendering on huge digit strings (jq prints `1e19` as plain digits → was rendering `5h:8446744073709551716%` in green); `DISABLE_STATUSLINE_QUOTA` disabled on ANY non-empty value including `0` (now exact `== "1"`).
+- **Tests**: `tests/scripts/statusline.test.js` 9 → 20 cases (bracket format + separator, both threshold scales at exact boundaries, floor semantics, partial/absent windows, overflow band, toggle `0`/`1`, hostile backslash/newline inputs).
+- Docs synced: README statusline row, `/claudemd-statusline` command description, install stderr banner.
+
 ## [0.30.0] - 2026-07-10
 
 **Minor — E2 cross-layer memory maintenance report (doctor checks).** Fourth implementation tranche of `docs/spec-optimization-plan-2026-07-10.md` (P5 item E2). Wrong-layer memory placement fails silently; these checks make it observable. Candidates only — no auto-migration (a §5-scoped write, operator's call).

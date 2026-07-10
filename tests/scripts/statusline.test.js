@@ -10,30 +10,128 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const SCRIPT = path.join(REPO_ROOT, 'scripts/statusline.sh');
 const ESC = '\x1b';
 
-function render(payload) {
-  return spawnSync('bash', [SCRIPT], { input: JSON.stringify(payload), encoding: 'utf8' }).stdout;
+function render(payload, env) {
+  return spawnSync('bash', [SCRIPT], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    env: { ...process.env, DISABLE_STATUSLINE_QUOTA: '', ...env },
+  }).stdout;
 }
 
+// All meter segments (ctx / 5h / 7d) show USED percentage, floored.
+const limits = (fh, sd) => ({
+  ...(fh !== undefined && { five_hour: { used_percentage: fh, resets_at: 'x' } }),
+  ...(sd !== undefined && { seven_day: { used_percentage: sd, resets_at: 'x' } }),
+});
+
 test('full payload renders PS1-colored segments', () => {
-  const out = render({ cwd: '/tmp/nonrepo-xyz', model: { display_name: 'Opus 4.8 (1M context)' }, context_window: { used_percentage: 6 } });
+  const out = render({
+    cwd: '/tmp/nonrepo-xyz',
+    model: { display_name: 'Opus 4.8 (1M context)' },
+    context_window: { used_percentage: 6 },
+    rate_limits: limits(10, 16),
+  });
   assert.match(out, new RegExp(`^${ESC}\\[01;32m.+@.+${ESC}\\[00m:`));            // user@host green + colon
   assert.ok(out.includes(`${ESC}[01;34m/tmp/nonrepo-xyz${ESC}[00m`));             // path blue
   assert.ok(out.includes(`${ESC}[00;36mOpus 4.8 (1M context)${ESC}[00m`));        // model cyan
-  assert.ok(out.includes(`${ESC}[00;32m[ctx:6%]${ESC}[00m`));                     // ctx green (<50)
+  const seg = (body, c) => `${ESC}[02;${c}m${body}${ESC}[00m`;   // meter segments are faint
+  assert.ok(out.includes(` [${seg('ctx:6%', 32)} · ${seg('5h:10%', 32)} · ${seg('7d:16%', 32)}]`),
+    `single bracket, dot-separated, per-segment color; got: ${JSON.stringify(out)}`);
 });
 
 test('ctx threshold colors at boundaries', () => {
   const ctx = (p) => render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: p } });
-  assert.ok(ctx(49).includes(`${ESC}[00;32m[ctx:49%]`), 'green <50');
-  assert.ok(ctx(50).includes(`${ESC}[00;33m[ctx:50%]`), 'yellow 50');
-  assert.ok(ctx(79).includes(`${ESC}[00;33m[ctx:79%]`), 'yellow 79');
-  assert.ok(ctx(80).includes(`${ESC}[00;31m[ctx:80%]`), 'red 80');
-  assert.ok(ctx(6.2).includes(`${ESC}[00;32m[ctx:6%]`), 'decimal floored');
+  assert.ok(ctx(49).includes(`${ESC}[02;32mctx:49%`), 'green <50');
+  assert.ok(ctx(50).includes(`${ESC}[02;33mctx:50%`), 'yellow 50');
+  assert.ok(ctx(79).includes(`${ESC}[02;33mctx:79%`), 'yellow 79');
+  assert.ok(ctx(80).includes(`${ESC}[02;31mctx:80%`), 'red 80');
+  assert.ok(ctx(6.2).includes(`${ESC}[02;32mctx:6%`), 'decimal floored');
+});
+
+test('quota threshold colors at boundaries (same scale as ctx)', () => {
+  const q = (used) => render({ cwd: '', model: { display_name: '' }, rate_limits: limits(used) });
+  assert.ok(q(49).includes(`${ESC}[02;32m5h:49%`), 'used 49 green');
+  assert.ok(q(50).includes(`${ESC}[02;33m5h:50%`), 'used 50 yellow');
+  assert.ok(q(79).includes(`${ESC}[02;33m5h:79%`), 'used 79 yellow');
+  assert.ok(q(80).includes(`${ESC}[02;31m5h:80%`), 'used 80 red');
+  assert.ok(q(100).includes(`${ESC}[02;31m5h:100%`), 'used 100 red');
+});
+
+test('quota used percentage is floored', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, rate_limits: limits(90.3) });
+  assert.ok(out.includes('5h:90%'), `got: ${JSON.stringify(out)}`);
+  const out2 = render({ cwd: '', model: { display_name: '' }, rate_limits: limits('90.0') });
+  assert.ok(out2.includes('5h:90%'), `got: ${JSON.stringify(out2)}`);
+});
+
+test('quota used_percentage slightly above 100 renders as-is, red (like ctx)', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, rate_limits: limits(105) });
+  assert.ok(out.includes(`${ESC}[02;31m5h:105%`), `got: ${JSON.stringify(out)}`);
+});
+
+test('partial rate_limits → only the present window renders', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 6 }, rate_limits: limits(10) });
+  assert.ok(out.includes('5h:10%'));
+  assert.ok(!out.includes('7d:'));
+  const sdOnly = render({ cwd: '', model: { display_name: '' }, rate_limits: limits(undefined, 16) });
+  assert.ok(sdOnly.includes('7d:16%'));
+  assert.ok(!sdOnly.includes('5h:'));
+});
+
+test('rate_limits absent → ctx-only bracket, no separator', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 6 } });
+  assert.ok(out.includes(` [${ESC}[02;32mctx:6%${ESC}[00m]`), `got: ${JSON.stringify(out)}`);
+  assert.ok(!out.includes('·'));
+});
+
+test('quotas without ctx → bracket with quota segments only', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, rate_limits: limits(10, 16) });
+  assert.ok(out.includes(` [${ESC}[02;32m5h:10%${ESC}[00m · ${ESC}[02;32m7d:16%${ESC}[00m]`), `got: ${JSON.stringify(out)}`);
+  assert.ok(!out.includes('ctx:'));
+});
+
+test('non-numeric quota value → segment hidden', () => {
+  const out = render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 6 }, rate_limits: limits('N/A', -5) });
+  assert.ok(!out.includes('5h:'));
+  assert.ok(!out.includes('7d:'));
+  assert.ok(out.includes('ctx:6%'));
+});
+
+test('absurd magnitude (int part >3 digits) hides the segment instead of rendering garbage', () => {
+  // jq prints 1e19 as a plain digit string; bash [ -ge ] overflows past int64
+  const out = render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 10000000000000000000 }, rate_limits: limits(10000000000000000000) });
+  assert.ok(!out.includes('ctx:'), `ctx hidden; got: ${JSON.stringify(out)}`);
+  assert.ok(!out.includes('5h:'), `quota hidden; got: ${JSON.stringify(out)}`);
+});
+
+test('DISABLE_STATUSLINE_QUOTA=0 keeps quota segments (only "1" disables)', () => {
+  const out = render(
+    { cwd: '', model: { display_name: '' }, rate_limits: limits(10, 16) },
+    { DISABLE_STATUSLINE_QUOTA: '0' },
+  );
+  assert.ok(out.includes('5h:10%'));
+  assert.ok(out.includes('7d:16%'));
+});
+
+test('DISABLE_STATUSLINE_QUOTA=1 hides quota segments, keeps ctx', () => {
+  const out = render(
+    { cwd: '', model: { display_name: '' }, context_window: { used_percentage: 6 }, rate_limits: limits(10, 16) },
+    { DISABLE_STATUSLINE_QUOTA: '1' },
+  );
+  assert.ok(out.includes('ctx:6%'));
+  assert.ok(!out.includes('5h:'));
+  assert.ok(!out.includes('7d:'));
 });
 
 test('ctx hidden when absent or non-numeric', () => {
   assert.ok(!render({ cwd: '', model: { display_name: '' } }).includes('[ctx:'));
-  assert.ok(!render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 'N/A' } }).includes('[ctx:'));
+  assert.ok(!render({ cwd: '', model: { display_name: '' }, context_window: { used_percentage: 'N/A' } }).includes('ctx:'));
+});
+
+test('no meter data at all → no bracket', () => {
+  // ANSI escapes contain "["; the meter bracket is the only " [" (space-prefixed)
+  const out = render({ cwd: '', model: { display_name: '' } });
+  assert.ok(!out.includes(' ['), `got: ${JSON.stringify(out)}`);
 });
 
 test('empty stdin → user@host only, exit 0', () => {
@@ -56,16 +154,18 @@ test('git repo → branch segment; non-repo → none', () => {
 });
 
 test('field with backslash escape does not truncate the line', () => {
-  const out = render({ cwd: 'C:\\code\\proj', model: { display_name: 'Opus 4.8 (1M context)' }, context_window: { used_percentage: 6 } });
+  const out = render({ cwd: 'C:\\code\\proj', model: { display_name: 'Opus 4.8 (1M context)' }, context_window: { used_percentage: 6 }, rate_limits: limits(10, 16) });
   assert.ok(out.includes('C:\\code\\proj'), 'backslash path rendered literally');
   assert.ok(out.includes('Opus 4.8 (1M context)'), 'model survives backslash in cwd');
-  assert.ok(out.includes('[ctx:6%]'), 'ctx survives backslash in cwd');
+  assert.ok(out.includes('ctx:6%'), 'ctx survives backslash in cwd');
+  assert.ok(out.includes('5h:10%'), 'quota survives backslash in cwd');
 });
 
 test('embedded newline in a field does not misalign later segments', () => {
-  const out = render({ cwd: 'a\nb', model: { display_name: 'ModelX' }, context_window: { used_percentage: 10 } });
+  const out = render({ cwd: 'a\nb', model: { display_name: 'ModelX' }, context_window: { used_percentage: 10 }, rate_limits: limits(10, 16) });
   assert.ok(out.includes('ModelX'), 'model not overwritten by cwd tail');
-  assert.ok(out.includes('[ctx:10%]'), 'ctx present');
+  assert.ok(out.includes('ctx:10%'), 'ctx present');
+  assert.ok(out.includes('7d:16%'), 'quota present');
 });
 
 test('detached HEAD → (detached:<sha>) segment', () => {

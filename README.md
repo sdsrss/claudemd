@@ -61,7 +61,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | 15 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.14 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
-| StatusLine (opt-out) | PS1-style line — `user@host:/path (branch) Model [ctx:N%]` — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
+| StatusLine (opt-out) | PS1-style line — `user@host:/path (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
 
 Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 

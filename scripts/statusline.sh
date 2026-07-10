@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# claudemd statusLine — PS1-style: user@host:path (branch) model [ctx:N%]
+# claudemd statusLine — PS1-style: user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%]
 # Reads Claude Code's statusLine JSON on stdin; prints one line to stdout.
 # Colors mirror bash PS1 (green user@host, blue path, magenta branch, cyan
-# model); [ctx:N%] is threshold-colored: <50 green, 50-79 yellow, >=80 red.
+# model). The meter bracket holds up to three USED-% segments (ctx = context,
+# 5h / 7d = rate-limit quota windows), each threshold-colored the same way:
+# <50 green, 50-79 yellow, >=80 red — rendered FAINT (SGR 2) so the meter
+# doesn't pull attention from the prompt.
+# Segments with no data are omitted; no data at all → no bracket. Set
+# DISABLE_STATUSLINE_QUOTA=1 to hide the 5h/7d segments (ctx stays).
 # Never exits non-zero and never blanks/corrupts on hostile input: fields are
 # NUL-delimited (jq -j) so an embedded newline can't misalign them, and the
 # final printf uses %s over pre-embedded ESC bytes so a backslash sequence in a
@@ -10,19 +15,23 @@
 # interpreted as a printf escape.
 esc=$'\033'
 input=$(cat)
-cwd=""; model=""; used=""
+cwd=""; model=""; used=""; fh_used=""; sd_used=""
 if [ -n "$input" ]; then
-  # One jq call, three NUL-separated outputs. NUL cannot occur in a JSON string
-  # value or a real path, so the three reads always align regardless of field
-  # content. `// ""` (NOT `// empty`) keeps all three fields present.
+  # One jq call, five NUL-separated outputs. NUL cannot occur in a JSON string
+  # value or a real path, so the reads always align regardless of field
+  # content. `// ""` (NOT `// empty`) keeps all fields present.
   {
     IFS= read -r -d '' cwd
     IFS= read -r -d '' model
     IFS= read -r -d '' used
+    IFS= read -r -d '' fh_used
+    IFS= read -r -d '' sd_used
   } < <(jq -j '
     (.cwd // .workspace.current_dir // ""), ([0]|implode),
     (.model.display_name // ""), ([0]|implode),
-    ((.context_window.used_percentage // "") | tostring), ([0]|implode)
+    ((.context_window.used_percentage // "") | tostring), ([0]|implode),
+    ((.rate_limits.five_hour.used_percentage // "") | tostring), ([0]|implode),
+    ((.rate_limits.seven_day.used_percentage // "") | tostring), ([0]|implode)
   ' <<<"$input" 2>/dev/null)
 fi
 
@@ -55,17 +64,32 @@ fi
 model_part=""
 [ -n "$model" ] && model_part=" ${esc}[00;36m${model}${esc}[00m"
 
-# context usage — semantic threshold color (guards non-numeric before arithmetic)
-ctx_part=""
-used_int=${used%.*}
-case "$used_int" in
-  ''|*[!0-9]*) : ;;
-  *)
-    if   [ "$used_int" -ge 80 ]; then c=31
-    elif [ "$used_int" -ge 50 ]; then c=33
-    else c=32; fi
-    ctx_part=" ${esc}[00;${c}m[ctx:${used_int}%]${esc}[00m"
-  ;;
-esac
+# meter bracket — up to three ` · `-joined segments; bracket/separators uncolored
+segs=""
+add_seg() { # $1 = pre-colored segment
+  [ -z "$1" ] && return
+  [ -n "$segs" ] && segs="${segs} · "
+  segs="${segs}$1"
+}
 
-printf '%s' "${user_host}:${path_part}${branch_part}${model_part}${ctx_part}"
+# USED-% segment from a percentage string: floored; hidden when non-numeric or
+# >3 digits (nonsense input that would also overflow bash int64 in [ -ge ]).
+used_seg() { # $1 = label, $2 = used-percentage string
+  local int=${2%%.*} c
+  case "$int" in ''|*[!0-9]*|????*) return ;; esac
+  if   [ "$int" -ge 80 ]; then c=31
+  elif [ "$int" -ge 50 ]; then c=33
+  else c=32; fi
+  add_seg "${esc}[02;${c}m$1:${int}%${esc}[00m"
+}
+
+used_seg "ctx" "$used"
+if [ "${DISABLE_STATUSLINE_QUOTA:-0}" != "1" ]; then
+  used_seg "5h" "$fh_used"
+  used_seg "7d" "$sd_used"
+fi
+
+meter_part=""
+[ -n "$segs" ] && meter_part=" [${segs}]"
+
+printf '%s' "${user_host}:${path_part}${branch_part}${model_part}${meter_part}"

@@ -224,7 +224,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     }
   }
   if (statusline.action === 'set') {
-    process.stderr.write('[claudemd] statusLine set (user@host:path (branch) model [ctx:N%]). Undo: /claudemd-statusline remove\n');
+    process.stderr.write('[claudemd] statusLine set (user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%]). Undo: /claudemd-statusline remove\n');
   } else if (statusline.action === 'host-detected') {
     process.stderr.write(`[claudemd] statusLine owned by a composite host (${statusline.host}) — run /claudemd-statusline to add claudemd's segment alongside it.\n`);
   } else if (statusline.action === 'skipped-foreign') {

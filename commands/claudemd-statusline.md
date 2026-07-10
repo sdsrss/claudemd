@@ -1,6 +1,6 @@
 ---
 name: claudemd-statusline
-description: Register claudemd's PS1-style statusLine (user@host:path (branch) model [ctx:N%]) in ~/.claude/settings.json. Use when (1) the user asks to add / configure / set up a statusline or status bar, (2) a fresh machine has no statusline and the user wants the claudemd one, (3) the user wants claudemd to take over the statusline from another provider (--force), (4) another composite provider (e.g. code-graph) already owns the slot and the user wants claudemd's segment shown alongside it. Modes - check (report current owner, no writes), remove (un-wire + restore prior). Idempotent: never duplicates, never clobbers another provider's slot without --force.
+description: Register claudemd's PS1-style statusLine (user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%] — context / 5h quota / weekly quota, all used %) in ~/.claude/settings.json. Use when (1) the user asks to add / configure / set up a statusline or status bar, (2) a fresh machine has no statusline and the user wants the claudemd one, (3) the user wants claudemd to take over the statusline from another provider (--force), (4) another composite provider (e.g. code-graph) already owns the slot and the user wants claudemd's segment shown alongside it. Modes - check (report current owner, no writes), remove (un-wire + restore prior). Idempotent: never duplicates, never clobbers another provider's slot without --force.
 ---
 
 Usage: `/claudemd-statusline` | `/claudemd-statusline --force` | `/claudemd-statusline check` | `/claudemd-statusline remove`
