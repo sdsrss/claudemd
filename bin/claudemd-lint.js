@@ -21,6 +21,7 @@ import {
   scan,
   readPatterns,
   parseTranscript,
+  countStringContentAssistantRows,
   formatHumanReadable,
   formatJSON,
 } from '../scripts/lib/lint.js';
@@ -329,6 +330,20 @@ function auditCmd(rawArgs) {
   }
 
   const turns = parseTranscript(jsonl);
+  // QA ISSUE-002 (option c): string-shape assistant rows are outside the
+  // block-array input domain and never reach the scanner. Keep the verdict
+  // based on scanned turns, but say so on stderr — a silent skip here is the
+  // same silent-success family as the isFile()/no-type guards above. User
+  // rows are legitimately string-shape (typed prompts); only assistant rows
+  // count.
+  const skippedStringRows = countStringContentAssistantRows(jsonl);
+  if (skippedStringRows > 0) {
+    process.stderr.write(
+      `audit: warning: skipped ${skippedStringRows} assistant row(s) with string-shape ` +
+      `message.content — not the Claude Code block-array shape, so their text was NOT scanned. ` +
+      `Non-CC transcript export?\n`
+    );
+  }
   const patterns = readPatterns();
   const annotated = turns.map(t => ({
     ...t,

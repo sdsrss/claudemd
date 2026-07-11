@@ -163,6 +163,28 @@ export function parseTranscript(jsonlText) {
   return turns;
 }
 
+// countStringContentAssistantRows(jsonlText) → number
+//   QA ISSUE-002: an assistant row whose .message.content is a STRING (not the
+//   CC block array) is outside parseTranscript's input domain — the for..of
+//   over a string yields characters, texts stays empty, and the row is
+//   silently skipped, so its text is never scanned. Real CC transcripts
+//   always use block arrays for assistant turns (only typed user prompts are
+//   string-shape), but the CLI is documented for other-agent exports too.
+//   The CLI uses this count to surface the skip on stderr (verdict unchanged)
+//   — same silent-success family as the v0.9.14 / v0.9.21 guards.
+export function countStringContentAssistantRows(jsonlText) {
+  let count = 0;
+  for (const line of jsonlText.split('\n')) {
+    if (!line.trim()) continue;
+    let row;
+    try { row = JSON.parse(line); } catch { continue; }
+    if (row?.type !== 'assistant') continue;
+    const content = row.message?.content;
+    if (typeof content === 'string' && content.trim().length > 0) count++;
+  }
+  return count;
+}
+
 // Format helpers — keep the CLI thin.
 export function formatHumanReadable({ scope, hits, turns }) {
   if (scope === 'lint') {

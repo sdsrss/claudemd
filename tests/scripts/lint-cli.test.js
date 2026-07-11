@@ -473,3 +473,60 @@ test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('CLI: audit warns on skipped string-content assistant rows (QA ISSUE-002)', () => {
+  // A string-shape assistant row ({message:{content:"..."}}) is outside the
+  // CC block-array input domain: parseTranscript skips it, so its text is
+  // never scanned. Real CC transcripts always use block arrays, but the CLI
+  // is documented for other-agent exports too — a silent skip is the same
+  // silent-success family as v0.9.14 / v0.9.21. Option (c): keep the verdict
+  // unchanged, surface the skip on stderr.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'session.jsonl');
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'tests 30 → 35, clean' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: 'string shape: should work' } }),
+  ].join('\n') + '\n');
+  try {
+    const r = run(['audit', transcript]);
+    assert.equal(r.status, 0, `verdict must stay based on scanned turns; stderr=${r.stderr}`);
+    assert.match(r.stderr, /skipped 1 assistant row/i);
+    assert.match(r.stderr, /string/i);
+    assert.match(r.stderr, /not scanned/i);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit --json keeps stdout pure JSON when string-shape warning fires', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'session.jsonl');
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok line' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: 'string shape row' } }),
+  ].join('\n') + '\n');
+  try {
+    const r = run(['audit', transcript, '--json']);
+    assert.doesNotThrow(() => JSON.parse(r.stdout), `stdout must stay parseable; got: ${r.stdout}`);
+    assert.match(r.stderr, /skipped 1 assistant row/i);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: audit emits NO skip warning on pure block-array transcripts', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
+  const transcript = path.join(tmp, 'session.jsonl');
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'all good, 5/5 pass' }] } }),
+    JSON.stringify({ type: 'user', message: { content: 'typed prompts are string-shape by design' } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }] } }),
+  ].join('\n') + '\n');
+  try {
+    const r = run(['audit', transcript]);
+    assert.equal(r.status, 0);
+    assert.doesNotMatch(r.stderr, /skipped/i, 'no noise on normal CC transcripts (user rows + tool_use-only rows are fine)');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
