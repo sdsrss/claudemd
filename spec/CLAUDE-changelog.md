@@ -6,6 +6,29 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.17.0 — 2026-07-11
+
+Minor: four-method spec-audit letter-fix batch — 7 core fixes from verified red-team findings + C5/C6 net-delete (core Δ −91B). Audit dossier: `tasks/spec-audit-2026-07-11.md`.
+
+- `[change]` **§3 stricter-reading scoped** (audit #3): applies to safety/AUTH-relevant ambiguity; explicit whitelists/skip-lists stay effective. Root cause of the S1 probe fork and the "letter-stricter voids relaxations" leak class — the only deviation direction the 12-probe cold-start suite found.
+- `[change]` **§2.2 targeted-Read exception** (audit #6): targeted Read of a core-referenced §EXT section OK at any level (full-file load stays L3/ship). Un-strands §5.1-EXT / §7-EXT relaxations that govern L1/L2 but were unreachable there.
+- `[add]` **8.V1 + test-runner pass-fail count** (audit #1): Iron Law #2's most typical confabulation shape ("7 passed" from memory) now inside the anti-hallucination list; channel widened to Read/Grep/tool output.
+- `[add]` **§2 self-reference resolution** (audit #5): LLM-visible-metadata L3 clause points spec self-edits at §EXT §13 META — the v6.16.0 changelog had to argue this from §13 alone.
+- `[change]` **§7 residue-check example §8-conformant** (audit #2): `find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` — two HARDs (one immutable) no longer collide on `~/.claude/`.
+- `[delete]` **Fast-Path "pre-classified follow-up"** (audit #10): self-referential unbounded L0 authorization out of the whitelist.
+- `[delete]` **§1.5 LOC "excl. blank/comment-only"** (audit #8): not computable from `git diff --stat`; raw counts were always the operating definition.
+- `[move]` **C5 — §0.1 tier definitions → `OPERATOR.md §13.1`** (≈ −185B derived): core keeps Tier-2 default landing + hard cap + net-delete + pointer.
+- `[delete]` **C6 — §9 Parallel-first compressed** (−116B measured): the harness parallelizes independent tool calls natively; one-line rule retained.
+- Deferred: audit #4 (§0↔§12 ship parenthetical — status quo: ship always loads extended; §12 manual-ship-atomicity + runbook memory cover it) and audit #7 (§1.5 Module fallback — external-adoption-facing, internal freeze).
+
+### Background
+
+2026-07-11 four-method audit (first-person use / 12 pre-registered cold-start probes / red-team + main-context verification / 30d telemetry). Headline: 0 safety failures, 0 honesty failures, retrieval quiz 5/5; every confirmed drift points toward over-strictness (attention cost), never under-enforcement. Red-team yield after cross-layer verification: 8 confirmed / 2 partial / 1 rejected — this batch executes the confirmed letter-level set. Plugin-side siblings shipped in v0.35.0 (R1 hint source-filter + dedupe, R2 MEMORY.md 12KB doctor budget, R3 mem-lite defer D#65).
+
+### §13.2 budget cost
+
+No HARD added (letter fixes patch-exempt; two relaxations are minor-level). Rule *removals* add budget back per §13.2. Core net-delete −91B: paired adds ≈ +264, deletes #8+#10 −54, C5 ≈ −185, C6 −116. Same-day second minor after v6.16.0: both under the one operator-requested audit session, every change backed by probe/telemetry invocation data — the evidence class §13.1 minor-spacing protects.
+
 ## v6.16.0 — 2026-07-11
 
 Minor: §11-EXT ship-runbook consolidation (SHOULD).

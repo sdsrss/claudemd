@@ -9,7 +9,7 @@ import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
-import { scanMemoryTags } from './lib/memory-tags.js';
+import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
 import { memoryMaintenance, CITE_MIN, PROMOTE_MIN_AGE_DAYS, RECALL_MAX_AGE_DAYS, STALE_AGE_DAYS } from './lib/memory-maintenance.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
@@ -516,6 +516,29 @@ export async function doctor({ pruneBackups: prune } = {}) {
       : `${mm.staleDurable.length} durable file(s) >${STALE_AGE_DAYS}d old with zero keyword mentions in the ` +
         `telemetry window — review tags or retire: ` +
         mm.staleDurable.slice(0, 5).map(c => `${c.file} (${c.ageDays}d)`).join(', '));
+
+  // v0.35.0 R2 — Tier-2 index size budget (soft). See lib/memory-tags.js
+  // MEMORY_INDEX_BUDGET_BYTES for rationale (2026-07-11 spec-audit R2: the
+  // index loads every session and had no size governance; §0.1 only caps
+  // core/extended). Advisory: doctor reports, operator prunes.
+  const idx = scanMemoryIndexSizes();
+  const budgetKb = (MEMORY_INDEX_BUDGET_BYTES / 1024).toFixed(0);
+  const overBudget = idx.indexes.filter(i => i.bytes > MEMORY_INDEX_BUDGET_BYTES);
+  if (overBudget.length === 0) {
+    const largest = idx.indexes[0]; // scan returns bytes-desc sorted
+    push('memory-index-size', true,
+      `${idx.scannedFiles} MEMORY.md file(s) within ${budgetKb}KB soft budget` +
+      (largest ? ` (largest ${(largest.bytes / 1024).toFixed(1)}KB, ${largest.entries} entries)` : ''));
+  } else {
+    const sample = overBudget.slice(0, 3)
+      .map(i => `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${(i.bytes / 1024).toFixed(1)}KB (${i.entries} entries)`)
+      .join(', ');
+    const more = overBudget.length > 3 ? ` +${overBudget.length - 3} more` : '';
+    push('memory-index-size', false,
+      `${overBudget.length}/${idx.scannedFiles} MEMORY.md file(s) exceed the ${budgetKb}KB soft budget: ${sample}${more}. ` +
+      `The Tier-2 index loads into context every session of its project — prune closed-loop project_* entries ` +
+      `or compress descriptions/tags (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`);
+  }
 
   const pruned = prune != null ? pruneBackups(prune) : [];
 

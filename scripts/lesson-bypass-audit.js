@@ -13,8 +13,9 @@
 //
 // Definitions:
 //   - Suggest event: one row in rule-hits.jsonl with hook=memory-prompt-hint
-//     event=suggest. `extra.suggested` is the (priority-ranked, ≤5-capped) list
-//     of memory filenames the hook surfaced to the model.
+//     event=suggest. `extra.suggested` is the priority-ranked FULL match list;
+//     only its first EMIT_CAP entries were emitted to the model, so this
+//     audit slices to that prefix before scoring.
 //   - Applied: after the suggest's timestamp, the session transcript contains
 //     the filename (either as Read tool input or in any text block — assistant
 //     prose, user prompt, tool_result). Treats user-prompted reads as applied
@@ -153,10 +154,20 @@ export function lessonBypassAudit({
   // Cache transcripts so multi-event sessions don't re-read the file.
   const transcriptCache = {};
 
+  // Emission cap of memory-prompt-hint.sh (MAX). extra.suggested logs the
+  // FULL match list, but only the first EMIT_CAP entries were shown to the
+  // model — counting capped-out entries as "bypassed" penalizes lessons the
+  // agent never saw (2026-07-11 pre-ship review; live rows exist with
+  // match_count 8/10). suggested is priority-ordered, so the shown set is
+  // exactly the first min(EMIT_CAP, length) entries.
+  const EMIT_CAP = 5;
+
   for (const ev of suggestEvents) {
     const sessionId = ev.session_id;
-    const suggested = ev.extra?.suggested;
-    if (!sessionId || !Array.isArray(suggested) || suggested.length === 0) continue;
+    const suggested = Array.isArray(ev.extra?.suggested)
+      ? ev.extra.suggested.slice(0, EMIT_CAP)
+      : null;
+    if (!sessionId || !suggested || suggested.length === 0) continue;
     if (!(sessionId in transcriptCache)) {
       const transcriptPath = path.join(projectDir, `${sessionId}.jsonl`);
       transcriptCache[sessionId] = readTranscript(transcriptPath);

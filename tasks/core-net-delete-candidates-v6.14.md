@@ -41,6 +41,8 @@
 
 ## Candidate 2 — §7 Trigger 1 (Push fires CI/Release) 搬到 §EXT §12 ship-hardening
 
+**❌ CLOSED 2026-07-11（audit gate 判负，勿再评估）**: 四路审计遥测显示 ship-baseline 30d 内在 **15 个不同日期**开火（254 评估事件）vs 仅 20 个 release——ad-hoc `git push`（不走 ship skill、extended 未加载）真实依赖 core §7 这行 HARD。Verify gate 第二分支（"若也 fire 在 ad-hoc git push 之后 → 不要 move"）命中。详见 `tasks/spec-audit-2026-07-11.md` 遥测节。
+
 **位置**: `spec/CLAUDE.md` §7 第二个表第 1 行 "Push fires CI/Release (pre-action) | HARD | gh run list ..."
 
 **当前**: 这行是 ship-pipeline 专属（gh CLI / known-red baseline 等），但放在 core 让每个 L1/L2 turn 都看到。实际只在 push/release 时 actionable。
@@ -91,9 +93,21 @@
 
 ---
 
+## Candidate 5 — §0.1 剩余主体外移 OPERATOR.md（2026-07-11 审计追加）
+
+**✅ CONSUMED v6.17.0**（≈ −185B derived；估算 −250~300，again 低于估算——连续第四例）。core §0.1 收缩为 "Tier-2 default landing + hard cap + net-delete + `OPERATOR.md §13.1` 指针"；tier 定义（Tier 0/1/2 加载时机 + anchor 文件名模式）并入 OPERATOR.md §13.1 阈值条目与 Rationale 表。风险评估同 C3（受众判定，非 telemetry-demote）；agent 每 turn 消费的三件事全保留。
+
+## Candidate 6 — §9 Parallel-first 压缩（2026-07-11 审计追加）
+
+**✅ CONSUMED v6.17.0**（**−116B 实测**，两次 `wc -c` 快照 24764→24648；估算 −145）。依据：harness 原生并行独立 tool calls（S12 探针 + 主会话独立复核一致）；保留段首引子一行 "independent tool calls → single message; dependent → serial"。§9 Parallel-path completeness（HARD，另一条 bullet）未动，hard-rules.json 锚完好。
+
 ## Sizing 更新（2026-07-10）
 
 v6.15.0 ship 后 core = **24978/25000（headroom 22B）**——决策树里 "N ≤ headroom 可直加" 的分支实际已关闭：**任何新增都必须配对净删**。**C1 已于 v6.15.0 执行**（−169B 实测，见 extended Recent-changes）；**C3 已于 v6.15.1 执行**（−239B 实测 vs −350~400 估算，做成 move：core 删 + OPERATOR.md §13.1 增阈值条目，因 OPERATOR.md 原文不含阈值）。剩余候选池：C2 (−250~300，audit gate 前置) + C4 (−230~280，中风险)。连续三个候选实测低于估算（C1 −169/−280、Sizing-rewrite 同款、C3 −239/−350）——启用 C2/C4 前先重测。
+
+## Sizing 更新（2026-07-11，v6.17.0 审计批次后）
+
+core = **24648/25000（headroom 352B，98.59%）**，批次净删 −91B（配对增 ≈+264 / 删 #8+#10 −54 / C5 ≈−185 / C6 −116 实测）。**池内状态：C2 CLOSED（audit gate 判负）；C5、C6 已消费；C4 为唯一存量候选**（−230~280，中风险，"仅在 C1/C3 字节不够时启用"的前提已消失——下次 core 加规则若 >352B headroom 需 C4 或新增候选）。实测低于估算已成惯例（C1/C3/C5/C6 四例），启用 C4 前先 `awk` 实测段落字节。
 
 ---
 

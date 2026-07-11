@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.16.0 — Core
+# AI-CODING-SPEC v6.17.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -20,11 +20,11 @@ CLASSIFY (§2) → AUTH (§5) → ROUTE (§2.1) → EXECUTE → VALIDATE (§7) �
 
 Everything else = natural prose, no brackets. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).
 
-**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / log-string / pre-classified follow-up / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
+**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
 
 ### §0.1 Core growth discipline (HARD)
 
-**Three-tier default**: new rule lands Tier 2 = MEMORY.md anchor (`feedback_*.md` / `recall_*.md` / `reference_*.md`), keyword-loaded. Tier 1 = extended §X-EXT (loaded on L3/ship/Override/review). Tier 0 = core, every-turn. Promotion/demotion thresholds + audit cadence + rationale: `OPERATOR.md §13.1`. **Hard cap**: core ≤25K chars / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Track headroom in `CLAUDE-changelog.md` Sizing line.
+**Three-tier default**: new rule lands Tier 2 = MEMORY.md anchor; tier definitions + promotion/demotion + cadence: `OPERATOR.md §13.1`. **Hard cap**: core ≤25K / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: `CLAUDE-changelog.md` Sizing line.
 
 ### §0.2 Mid-task feedback
 
@@ -56,7 +56,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 ## §1.5 GLOSSARY
 
 Core-resident (L1/L2 routing decisions reference these — Extended is not loaded at L1/L2):
-- **LOC**: additions+deletions per `git diff --stat`, excl. blank/comment-only.
+- **LOC**: additions+deletions per `git diff --stat`.
 - **Local-Δ**: ≤2 files (source + co-located test = one); no exported-symbol / import-surface / config / schema change.
 - **Module**: single-package = each `src/<subdir>/`; monorepo = each workspace/package root. Sub-folders inside a Module are NOT separate modules.
 - **Evidence**: tool-call output showing specific behavior. *Fresh* = same turn or re-run after last change.
@@ -74,7 +74,7 @@ L2  contract-Δ / multi-file / new test surface (new file/suite — not L1-bugfi
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
-Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artifact user-visible default behavior change** (npm / crates.io / marketplace package) → L3 regardless of LOC; **LLM-visible metadata** (MCP tool descriptions / MCP `instructions` field / adoption-memory files / shipped prompt templates / plugin skill descriptions) → L3 regardless of LOC — these steer Claude Code routing and are effectively runtime behavior. **Excluded**: bugfix restoring documented/intended behavior (CHANGELOG `fix:`, not `change:`/`feat:`) → L2 max. Release-requirements checklist: §EXT §2-EXT.
+Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artifact user-visible default behavior change** (npm / crates.io / marketplace package) → L3 regardless of LOC; **LLM-visible metadata** (MCP tool descriptions / MCP `instructions` field / adoption-memory files / shipped prompt templates / plugin skill descriptions) → L3 regardless of LOC — these steer Claude Code routing and are effectively runtime behavior (spec self-edits: §EXT §13 META). **Excluded**: bugfix restoring documented/intended behavior (CHANGELOG `fix:`, not `change:`/`feat:`) → L2 max. Release-requirements checklist: §EXT §2-EXT.
 
 **Schema-Δ**: additive (new table / optional col w/ default / index / FK on new col) = L2 + hard AUTH on migration. Breaking (drop / rename / type-change / required-no-default / data-migration) = L3.
 
@@ -117,13 +117,13 @@ Load `~/.claude/CLAUDE-extended.md` when:
 
 **Ship-pipeline hardening** on `ship` / `deploy` / `create-release` / `merge-and-push`: `ship` skill required + `manual ship because <reason>` in REPORT if overridden. Full → §EXT §12.
 
-**L0/L1/L2**: do NOT load extended. Wanting extended content at L2 usually signals re-classify to L3 — re-classify, don't load-and-continue.
+**L0/L1/L2**: do NOT load extended (targeted Read of a core-referenced §EXT section: OK at any level). Wanting the full file at L2 usually signals re-classify to L3 — re-classify, don't load-and-continue.
 
 **How**: Read whole file at task start, before ROUTE. No per-task re-read absent compaction. Post-compaction on L3/Override/ship: re-Read.
 
 ## §3 TRUST
 
-Stricter reading wins — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
+Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
 Order: §8 SAFETY (immutable) > this spec > current-turn user > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
 **Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults** — e.g. `feedback_autonomous_fixes.md` overrides "L2 bugfix → investigate"). `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
@@ -183,7 +183,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers, each with its ow
 | Trigger | Severity | Check | Evidence in REPORT |
 |---|---|---|---|
 | Push fires CI/Release (pre-action) | HARD | `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any) | green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK |
-| Code writes to user-global / cross-project path: `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` (post-action) | HARD | residue count via `find <path> -newer <baseline>` / `du -sh` / equivalent | inline count cited |
+| Code writes to user-global / cross-project path: `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` (post-action) | HARD | residue count via `find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` / equivalent | inline count cited |
 | Edit touches metric-coupled code — bench / oracle / compile-time budget | SHOULD | record baseline before, re-run after | both numbers cited; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK |
 
 `mkdtempSync` leaks / orphan writes / cache bloat are invisible to exit code; "vibe-check from one manual test" is not metric-neutral evidence. Metric-coupling typical triggers: tool descriptions / adoption-memory / field compression / prompt templates. `~/.claude/tmp/` retention + Iron Law #1 + L3 evidence + cold-start → §EXT §7-EXT.
@@ -209,7 +209,7 @@ HACK / EMERGENCY / AUTONOMOUS do NOT exempt §8.
 
 Principle: extraordinary claims require fresh tool-call evidence.
 
-- **8.V1 Anti-hallucination**: cited file path / function / API / config key / version MUST be verified this turn via Read/Grep (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
+- **8.V1 Anti-hallucination**: cited file path / function / API / config key / version / test-runner pass-fail count MUST be verified this turn via Read/Grep/tool output (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
 - **8.V2 Tool-noise vs ground-truth**: editor/IDE diagnostics (LSP unused-import / pure-JS type errors / SQL-literal warnings) are **advisory**. Conflict with project linter (ESLint / biome / ruff / clippy / `tsc --noEmit`) or grep/Read → trust linter + evidence.
 - **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) MUST sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
 - **8.V4 Sandbox-artifact disposal**: creating task deletes its sandbox artifacts (`mkdtempSync` / scratch fixtures / HACK `tmp/`+`scripts/` output) on exit — creating-task responsibility, not timer-based. HACK promotion prereq (§EXT §2-EXT). Carryover voids next task's residue baseline. Exception: `.keep`-marked or `tasks/<slug>-paused.md`-referenced fixtures.
@@ -219,7 +219,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **Simplicity**: smallest diff, fewest files.
 - **Root cause**: no temporary patches at L2+.
 - **YAGNI**: grep usage before adding code.
-- **Parallel-first**: independent Read/Grep/Bash (no data dependency) → single message, multiple tool calls; dependent → serial. Skipping parallelism is the largest wall-clock waste in L2+ research.
+- **Parallel-first**: independent tool calls → single message; dependent → serial.
 - **Parallel-path completeness** (HARD, L2+): a change touching a node with multiple parallel implementation paths — fallback / feature flag / `match` default arm / SQL `ORDER BY` + `LIMIT` combo / early-return branch / FTS-vs-LIKE fallback / multi-language `config.name` dispatch — MUST enumerate every path and verify each. Main-path green + silent siblings = not evidence. Enumerate before edit; verify after. Triggers: `fallback / default arm / early return / else branch / feature flag / fts vs like / multi-dispatch`.
 
 ## §10 REPORT

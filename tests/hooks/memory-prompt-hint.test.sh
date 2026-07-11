@@ -279,8 +279,93 @@ else
   ng "16 expected feedback_tie_b.md before feedback_tie_a.md (A=$LINE_TIE_A B=$LINE_TIE_B; CTX: $CTX)"
 fi
 
+# Case 17 (v0.35.0 R1): non-human prompt source (<agent-message>) → NO
+# additionalContext emission, but telemetry records event=suppress-source with
+# the would-have-been suggested list (avalanche stays measurable; lesson-
+# bypass-audit joins event=suggest only, so these stop polluting cite-recall).
+SESS="sess17"
+RULE_LOG="$HOME/.claude/logs/claudemd.jsonl"
+rm -f "$RULE_LOG"
+PROMPT_17='<agent-message from="probe-x">report discusses the macos CI failure</agent-message>'
+OUT=$(mkevent "$PROMPT_17" "$SESS" | bash "$HOOK" 2>/dev/null)
+if [[ -z "$OUT" ]] && [[ -f "$RULE_LOG" ]] \
+   && tail -n 1 "$RULE_LOG" | jq -e '.event == "suppress-source" and (.extra.suggested | index("feedback_macos.md")) != null' >/dev/null 2>&1; then
+  ok "17 agent-message source → no emission + suppress-source telemetry row"
+else
+  ng "17 (out: $OUT; last log row: $(tail -n 1 "$RULE_LOG" 2>/dev/null))"
+fi
+
+# Case 18 (v0.35.0 R1): other harness-generated sources also suppressed.
+SESS="sess18"
+OUT=$(mkevent '<task-notification>background job touched macos path</task-notification>' "$SESS" | bash "$HOOK" 2>/dev/null)
+[[ -z "$OUT" ]] && ok "18 task-notification source → silent" || ng "18 (out: $OUT)"
+
+# Case 19 (v0.35.0 R1): per-session per-file dedupe. No transcript file exists
+# for the session (so the transcript-based implicit dedupe CANNOT fire — this
+# is the rapid-fire flush-lag shape from the 2026-07-11 audit); the second
+# prompt matching the same file must be suppressed via the rule-hits lookup.
+SESS="sess19"
+OUT1=$(mkevent "first ask about the macos issue" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX1=$(echo "$OUT1" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+OUT2=$(mkevent "second ask about macos here" "$SESS" | bash "$HOOK" 2>/dev/null)
+if echo "$CTX1" | grep -qF "feedback_macos.md" && [[ -z "$OUT2" ]]; then
+  ok "19 per-session dedupe — same file not re-suggested in one session"
+else
+  ng "19 (out1: $OUT1; out2: $OUT2)"
+fi
+
+# Case 20 (v0.35.0 R1): dedupe is scoped per-session — a NEW session gets the
+# same hint even though sess19 was already suggested it.
+SESS="sess20"
+OUT=$(mkevent "new session asks about macos" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if echo "$CTX" | grep -qF "feedback_macos.md"; then
+  ok "20 dedupe per-session scope — new session still hinted"
+else
+  ng "20 (out: $OUT)"
+fi
+
+# Case 21 (v0.35.0 R1): suppress-source rows must NOT feed the dedupe — a
+# suppressed hint was never shown to the model, so a later HUMAN prompt
+# matching the same file still gets the emission.
+SESS="sess21"
+OUT1=$(mkevent '<agent-message from="x">chatter mentioning macos</agent-message>' "$SESS" | bash "$HOOK" 2>/dev/null)
+OUT2=$(mkevent "human now asks about macos directly" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX2=$(echo "$OUT2" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if [[ -z "$OUT1" ]] && echo "$CTX2" | grep -qF "feedback_macos.md"; then
+  ok "21 suppress-source does not dedupe-block a later human hint"
+else
+  ng "21 (out1: $OUT1; out2: $OUT2)"
+fi
+
+# Case 22 (v0.35.0 R1, pre-ship review finding): dedupe must key on the
+# EMITTED prefix (first MAX=5), not the full logged match list. Prompt 1
+# matches 7 files → 5 emitted, 7 logged in extra.suggested. Prompt 2 (same
+# session) matches ONLY a capped-out file (#6-7 by priority) → it was never
+# shown, so the hint MUST still emit. Reuses the proj-cap fixture (7 entries,
+# tag shipcap1..7; priority order for equal tag-counts = mtime desc, so make
+# the two capped-out files deterministic by touching them oldest).
+SESS="sess22"
+touch "$CAP_MEM/feedback_6.md" "$CAP_MEM/feedback_7.md"
+sleep 1
+for i in 1 2 3 4 5; do touch "$CAP_MEM/feedback_$i.md"; done
+EVENT_22A=$(jq -cn --arg p "$PROMPT_12" --arg s "$SESS" --arg c "$CAP_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT1=$(bash "$HOOK" <<<"$EVENT_22A" 2>/dev/null)
+CTX1=$(echo "$OUT1" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+EVENT_22B=$(jq -cn --arg p "now only shipcap6 please" --arg s "$SESS" --arg c "$CAP_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT2=$(bash "$HOOK" <<<"$EVENT_22B" 2>/dev/null)
+CTX2=$(echo "$OUT2" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if ! echo "$CTX1" | grep -qF "feedback_6.md" \
+   && echo "$CTX2" | grep -qF "feedback_6.md"; then
+  ok "22 capped-out (never-shown) file is NOT dedupe-masked — later hint emits"
+else
+  ng "22 (ctx1: $CTX1; out2: $OUT2)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((16 - FAIL))/16 passed"
+  echo "Tests: $((22 - FAIL))/22 passed"
   exit 1
 fi
-echo "Tests: 16/16 passed"
+echo "Tests: 22/22 passed"

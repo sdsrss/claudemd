@@ -138,6 +138,47 @@ export function parseMemoryIndex(content) {
   return entries;
 }
 
+// v0.35.0 R2 — Tier-2 index soft size budget. MEMORY.md loads into context
+// every session of its project; spec §0.1 caps core (25K) / extended (50K)
+// but the Tier-2 index had no budget at all — the 2026-07-11 spec audit
+// measured this repo's own index at 19788B = 80% of core (51 entries), the
+// largest unmanaged per-session attention item. 12KB ≈ 3k tokens is the soft
+// ceiling; doctor surfaces overruns, pruning stays the operator's call
+// (closed-loop project_* entries first — index edits are §5-scoped writes).
+export const MEMORY_INDEX_BUDGET_BYTES = 12 * 1024;
+
+// scanMemoryIndexSizes({rootDir}) — walks the same MEMORY.md set as
+// scanMemoryTags and returns per-index byte size + entry count.
+//
+// Returns: { indexes: [{memDir, bytes, entries}], scannedFiles: N }
+//   - entries counts `- [Title](file.md)` bullet lines (the loaded index rows).
+export function scanMemoryIndexSizes({ rootDir } = {}) {
+  const root = rootDir || path.join(os.homedir(), '.claude', 'projects');
+  const indexes = [];
+  let scannedFiles = 0;
+
+  let projects = [];
+  try { projects = fs.readdirSync(root, { withFileTypes: true }); }
+  catch { return { indexes, scannedFiles }; }
+
+  for (const ent of projects) {
+    if (!ent.isDirectory()) continue;
+    const memIdx = path.join(root, ent.name, 'memory', 'MEMORY.md');
+    let content;
+    try { content = fs.readFileSync(memIdx, 'utf8'); }
+    catch { continue; }
+    scannedFiles++;
+    const entries = content.split('\n').filter(l => /^- \[/.test(l)).length;
+    indexes.push({
+      memDir: path.dirname(memIdx),
+      bytes: Buffer.byteLength(content, 'utf8'),
+      entries,
+    });
+  }
+  indexes.sort((a, b) => b.bytes - a.bytes);
+  return { indexes, scannedFiles };
+}
+
 // scanMemoryTags({rootDir}) — walks ~/.claude/projects/*/memory/MEMORY.md
 // files, applies classifyTag to every parsed tag, returns findings.
 //

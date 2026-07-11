@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { classifyTag, parseMemoryIndex, scanMemoryTags } from '../../scripts/lib/memory-tags.js';
+import { classifyTag, parseMemoryIndex, scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from '../../scripts/lib/memory-tags.js';
 
 test('classifyTag: multi-word tag passes', () => {
   assert.deepEqual(classifyTag('find-references'), []);
@@ -195,5 +195,62 @@ test('scanMemoryTags: integration on fixture tree', () => {
 test('scanMemoryTags: missing root dir → empty findings, no throw', () => {
   const { findings, scannedFiles } = scanMemoryTags({ rootDir: '/nonexistent/path/xyz' });
   assert.equal(findings.length, 0);
+  assert.equal(scannedFiles, 0);
+});
+
+// --- v0.35.0 R2: scanMemoryIndexSizes -----------------------------------
+
+test('scanMemoryIndexSizes: reports bytes + entry count, sorted bytes-desc', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-idxsize-'));
+  try {
+    const projSmall = path.join(tmp, '-proj-small', 'memory');
+    const projBig = path.join(tmp, '-proj-big', 'memory');
+    fs.mkdirSync(projSmall, { recursive: true });
+    fs.mkdirSync(projBig, { recursive: true });
+    const small = '# Memory index\n\n- [One](feedback_one.md) `[tag-a]` — desc\n';
+    fs.writeFileSync(path.join(projSmall, 'MEMORY.md'), small);
+    // 3 entries + padding to guarantee projBig sorts first.
+    const big = '# Memory index\n\n' +
+      '- [A](feedback_a.md) `[tag-b]` — desc\n' +
+      '- [B](feedback_b.md) `[tag-c]` — desc\n' +
+      `- [C](feedback_c.md) \`[tag-d]\` — ${'x'.repeat(200)}\n` +
+      'not an entry line\n';
+    fs.writeFileSync(path.join(projBig, 'MEMORY.md'), big);
+
+    const { indexes, scannedFiles } = scanMemoryIndexSizes({ rootDir: tmp });
+    assert.equal(scannedFiles, 2);
+    assert.equal(indexes.length, 2);
+    // Sorted bytes-desc: big first.
+    assert.ok(indexes[0].memDir.includes('-proj-big'));
+    assert.equal(indexes[0].entries, 3);
+    assert.equal(indexes[0].bytes, Buffer.byteLength(big, 'utf8'));
+    assert.equal(indexes[1].entries, 1);
+    assert.equal(indexes[1].bytes, Buffer.byteLength(small, 'utf8'));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('scanMemoryIndexSizes: budget constant flags a >12KB index', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-idxbudget-'));
+  try {
+    const proj = path.join(tmp, '-proj-over', 'memory');
+    fs.mkdirSync(proj, { recursive: true });
+    // One entry line padded past the budget — mirrors the doctor check's
+    // filter (bytes > MEMORY_INDEX_BUDGET_BYTES).
+    const content = `- [Fat](project_fat.md) \`[fat-tag]\` — ${'y'.repeat(MEMORY_INDEX_BUDGET_BYTES)}\n`;
+    fs.writeFileSync(path.join(proj, 'MEMORY.md'), content);
+    const { indexes } = scanMemoryIndexSizes({ rootDir: tmp });
+    const over = indexes.filter(i => i.bytes > MEMORY_INDEX_BUDGET_BYTES);
+    assert.equal(over.length, 1);
+    assert.equal(over[0].entries, 1);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('scanMemoryIndexSizes: missing root dir → empty, no throw', () => {
+  const { indexes, scannedFiles } = scanMemoryIndexSizes({ rootDir: '/nonexistent/path/xyz' });
+  assert.equal(indexes.length, 0);
   assert.equal(scannedFiles, 0);
 });
