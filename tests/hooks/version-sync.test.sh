@@ -150,7 +150,27 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((7 - FAIL))/7 passed"; exit 1
+# Case 8 (v0.36.0): manifest NEWER than this plugin root → stale gate skips
+# the spawn. RED baseline (pre-gate): the piggy-back ran the stale root's
+# install.js and downgraded the manifest (repro 2026-07-11, tasks/manifest-
+# pluginroot-stale-cache.md). stdout stays 0 bytes (hook contract); bootstrap
+# log records the skip; stale-root rule-hits row written; manifest untouched.
+reset_state
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+jq -n '{version:"9.9.9",entries:[]}' > "$HOME/.claude/.claudemd-manifest.json"
+STDOUT=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+sleep 3
+POST8=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null)
+if [[ -z "$STDOUT" && "$POST8" == "9.9.9" ]] \
+   && grep -q 'stale plugin root' "$HOME/.claude/logs/claudemd-bootstrap.log" \
+   && jq -e 'select(.hook=="user-prompt-submit" and .event=="stale-root" and .extra.installed_version=="9.9.9")' "$HOME/.claude/logs/claudemd.jsonl" >/dev/null 2>&1; then
+  echo "PASS: 8 stale-root gate skips piggy-back downgrade (log + telemetry recorded)"
+else
+  echo "FAIL: 8 (stdout=$STDOUT post_ver=$POST8 log=$(head -3 "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null))"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 7/7 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
+fi
+echo "Tests: 8/8 passed"

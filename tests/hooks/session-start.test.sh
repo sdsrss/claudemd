@@ -312,7 +312,33 @@ else
   echo "FAIL: 17 compact event triggered bootstrap (log_size=$LOG_SIZE17)"; FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((17 - FAIL))/17 passed"; exit 1
+# Case 18 (v0.36.0): manifest NEWER than this plugin root → stale-registration
+# gate. RED baseline (pre-gate): the hook logged "auto-upgrade: manifest 9.9.9
+# → plugin <ver>" and the background install DOWNGRADED the manifest (repro
+# 2026-07-11, tasks/manifest-pluginroot-stale-cache.md). Post-gate: no install
+# spawn, single-object refresh banner, stale-root rule-hits row, bootstrap log
+# records the skip, manifest untouched.
+echo '{"version":"9.9.9","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+RULE_LOG_18="$HOME/.claude/logs/claudemd.jsonl"
+rm -f "$RULE_LOG_18"
+OUT18=$(bash "$HOOK" <<<'{"session_id":"sess-stale-18"}' 2>/dev/null)
+sleep 3
+OBJ18=$(printf '%s' "$OUT18" | jq -s 'length' 2>/dev/null)
+POST18=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null)
+if [[ "$OBJ18" == "1" && "$POST18" == "9.9.9" ]] \
+   && echo "$OUT18" | grep -q 'stale plugin registration' \
+   && echo "$OUT18" | grep -q '/plugin install claudemd@claudemd' \
+   && grep -q 'stale plugin root' "$HOME/.claude/logs/claudemd-bootstrap.log" \
+   && jq -e 'select(.hook=="session-start" and .event=="stale-root" and .extra.installed_version=="9.9.9")' "$RULE_LOG_18" >/dev/null 2>&1; then
+  echo "PASS: 18 stale-root gate skips downgrade + emits refresh banner + telemetry"
+else
+  echo "FAIL: 18 (objects=$OBJ18 post_ver=$POST18 out=$OUT18 log=$(head -3 "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null))"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 17/17 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((18 - FAIL))/18 passed"; exit 1
+fi
+echo "Tests: 18/18 passed"

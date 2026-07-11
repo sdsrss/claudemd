@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # session-start-check.sh — SessionStart hook.
 # 1. Auto-runs install.js when the plugin is present but the manifest is missing
-#    or version-mismatched (v0.1.9 / v0.2.5).
+#    or version-mismatched (v0.1.9 / v0.2.5). Upgrade direction only: a manifest
+#    NEWER than this hook's own plugin root means the hook is firing from a
+#    stale versioned cache dir — v0.36.0 skips the sync (it would downgrade)
+#    and banners the refresh commands instead.
 # 2. Emits an "upgrade available" banner via additionalContext when the GitHub
 #    remote has a newer tag than the local cache max version (v0.4.0).
 # Fail-open on any hiccup — SessionStart must never delay the user's session.
@@ -233,6 +236,32 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
         } end
     ' 2>/dev/null
     exit 0
+  fi
+  # v0.36.0 — direction gate. INSTALLED_VER newer than this hook's own
+  # PLUGIN_VER means CC fired the hook from a STALE versioned cache dir
+  # (registration lag after an upgrade). The old fall-through ran the stale
+  # root's install.js and regressed ~/.claude spec + manifest every session
+  # (reproduced 2026-07-11, bootstrap.log: "auto-upgrade: manifest 9.9.9 to
+  # plugin 0.35.0"; tasks/manifest-pluginroot-stale-cache.md). install.js now
+  # refuses downgrades on its own; here we also skip the futile spawn and tell
+  # the user the fix, which only they can run. Non-semver values fall through
+  # to the historical path (dev-mode roots have no reliable ordering).
+  if [[ "$PLUGIN_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$INSTALLED_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    NEWER=$(printf '%s\n%s\n' "$PLUGIN_VER" "$INSTALLED_VER" | sort -V | tail -1)
+    if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
+      mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
+      echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+      jq -cn --arg old "$PLUGIN_VER" --arg new "$INSTALLED_VER" '{
+        suppressOutput: true,
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix:\n/plugin marketplace update claudemd\n/plugin uninstall claudemd@claudemd\n/plugin install claudemd@claudemd\n/reload-plugins")
+        }
+      }' 2>/dev/null
+      STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
+      hook_record session-start stale-root "$STALE_EXTRA" '' "$SESSION_ID" 2>/dev/null || true
+      exit 0
+    fi
   fi
   # Mismatch: log intent, then fall through to the install block below which
   # writes the real bootstrap trail. Skip upstream-check on mismatch — the

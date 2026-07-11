@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, backupSettingsFile } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
-import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, manifestPath, legacyManifestPath } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -17,7 +17,10 @@ Install claudemd hooks + spec from the plugin cache into ~/.claude/. Idempotent
 (safe to re-run). Wired by Claude Code's plugin install lifecycle.
 
 No flags. Behavior is read from the plugin cache + the following env vars:
-  (none — reserved)
+  CLAUDEMD_NO_STATUSLINE=1      skip statusLine auto-adopt
+  CLAUDEMD_ALLOW_DOWNGRADE=1    permit installing a version OLDER than the
+                                manifest records (deliberate rollback; without
+                                it a stale-cache-dir run is refused)
 
 Options:
   --help, -h     Print this message and exit.
@@ -50,6 +53,39 @@ function readPluginHookSpecs(pluginRoot) {
 
 export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {}) {
   if (!pluginRoot) throw new Error('install: pluginRoot missing');
+
+  // v0.36.0 — never-downgrade guard (tasks/manifest-pluginroot-stale-cache.md,
+  // reproduced 2026-07-11). CC keeps versioned plugin cache dirs around and can
+  // fire hooks from a STALE one after an upgrade; the bootstrap hooks'
+  // direction-blind version comparison then ran THIS function from the old
+  // root, regressing ~/.claude spec + manifest every session (observed as
+  // v6.16.0 / v6.15.1 flapping). install.js is the choke point every AUTOMATIC
+  // sync path funnels through (SessionStart bootstrap, UserPromptSubmit
+  // piggy-back, manual runs from any cache dir), so the refusal lives here.
+  // update.js stays a separate USER-gated spec writer (diff shown first,
+  // explicit CLAUDEMD_UPDATE_CHOICE=apply-all) and is intentionally outside
+  // this guard — documented in tasks/manifest-pluginroot-stale-cache.md. The
+  // check runs before any other mutation (readManifest() itself may relocate
+  // a pre-0.1.9 legacy manifest file — lossless, documented side effect).
+  // Deliberate rollbacks stay possible via CLAUDEMD_ALLOW_DOWNGRADE=1.
+  // Non-semver versions (dev-mode 'unknown', test fixtures) skip the guard —
+  // fail-open, never fail-block.
+  const incomingVersion = readPluginVersion(pluginRoot);
+  const priorManifest = readManifest();
+  const installedVersion = priorManifest.exists && priorManifest.data?.version
+    ? String(priorManifest.data.version)
+    : null;
+  if (installedVersion
+      && SEMVER_RE.test(incomingVersion) && SEMVER_RE.test(installedVersion)
+      && semverCmp(incomingVersion, installedVersion) < 0
+      && process.env.CLAUDEMD_ALLOW_DOWNGRADE !== '1') {
+    throw new Error(
+      `install: refusing downgrade — this plugin root is v${incomingVersion} but the installed manifest records v${installedVersion}. ` +
+      `A hook or script is likely running from a stale versioned cache dir. Refresh the plugin registration ` +
+      `(/plugin marketplace update claudemd, /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins), ` +
+      `or set CLAUDEMD_ALLOW_DOWNGRADE=1 to force a rollback from ${pluginRoot}.`
+    );
+  }
 
   // Ensure ~/.claude exists
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
@@ -187,7 +223,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   fs.mkdirSync(stateDir(), { recursive: true });
   fs.mkdirSync(path.dirname(manifestPath()), { recursive: true });
   fs.writeFileSync(manifestPath(), JSON.stringify({
-    version: readPluginVersion(pluginRoot),
+    version: incomingVersion,
     installedAt: new Date().toISOString(),
     pluginRoot,
     entries,

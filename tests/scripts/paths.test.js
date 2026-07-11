@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, codeGraphRegistryPath, codeGraphProvidersBackupPath } from '../../scripts/lib/paths.js';
+import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, codeGraphRegistryPath, codeGraphProvidersBackupPath, SEMVER_RE, semverCmp } from '../../scripts/lib/paths.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -115,6 +115,23 @@ test('readManifest prefers new manifest over stale legacy (v0.1.9)', () => {
     process.env.HOME = saved;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
+});
+
+test('semverCmp orders MAJOR.MINOR.PATCH numerically (v0.36.0)', () => {
+  assert.equal(semverCmp('0.33.0', '0.34.0'), -1);
+  assert.equal(semverCmp('0.34.0', '0.33.0'), 1);
+  assert.equal(semverCmp('0.35.0', '0.35.0'), 0);
+  // Numeric, not lexicographic — '0.9.9' < '0.10.0' even though '9' > '1' as a string.
+  assert.equal(semverCmp('0.9.9', '0.10.0'), -1);
+  assert.equal(semverCmp('1.0.0', '0.99.99'), 1);
+});
+
+test('SEMVER_RE accepts strict x.y.z only (v0.36.0)', () => {
+  assert.ok(SEMVER_RE.test('0.36.0'));
+  assert.ok(!SEMVER_RE.test('9.9.9-test'));
+  assert.ok(!SEMVER_RE.test('unknown'));
+  assert.ok(!SEMVER_RE.test('v0.36.0'));
+  assert.ok(!SEMVER_RE.test('0.36'));
 });
 
 test('code-graph registry paths derive from HOME', () => {

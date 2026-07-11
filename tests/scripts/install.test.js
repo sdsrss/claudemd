@@ -23,6 +23,9 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
   delete process.env.CLAUDEMD_NO_STATUSLINE;
+  // Hermeticity: a user-level CLAUDEMD_ALLOW_DOWNGRADE=1 in the invoking shell
+  // would silently disable the downgrade-guard tests below.
+  delete process.env.CLAUDEMD_ALLOW_DOWNGRADE;
 
   fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '9.9.9-test' }));
 
@@ -93,6 +96,50 @@ test('fresh HOME: spec copied, no backup', async () => {
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')));
+});
+
+test('downgrade guard: refuses when manifest records a newer version (v0.36.0)', async () => {
+  // Reproduces the 2026-07-11 stale-cache defect (tasks/manifest-pluginroot-
+  // stale-cache.md): a hook firing from an old versioned cache dir ran that
+  // dir's install.js and regressed home spec + manifest. Pre-guard this test
+  // fails with the home spec downgraded to the old fixture content.
+  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '0.33.0' }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.16.0 — Core\n');
+  await assert.rejects(() => install({ pluginRoot }), /refusing downgrade/);
+  // No mutation: home spec and manifest must be untouched by the refused run.
+  assert.match(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), /v6\.16\.0/);
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
+    '0.34.0');
+  const items = fs.readdirSync(path.join(tmpHome, '.claude'));
+  assert.ok(!items.some(n => n.startsWith('backup-')), 'refused install must not create backups');
+});
+
+test('downgrade guard: CLAUDEMD_ALLOW_DOWNGRADE=1 permits a deliberate rollback (v0.36.0)', async () => {
+  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '0.33.0' }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] }));
+  process.env.CLAUDEMD_ALLOW_DOWNGRADE = '1';
+  try {
+    await install({ pluginRoot });
+  } finally {
+    delete process.env.CLAUDEMD_ALLOW_DOWNGRADE;
+  }
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
+    '0.33.0');
+});
+
+test('downgrade guard: non-semver plugin version skips the guard (dev-mode fail-open, v0.36.0)', async () => {
+  // Default fixture version is '9.9.9-test' (not strict semver). Even with a
+  // semver manifest present, the guard must not block — dev-mode roots have
+  // no reliable ordering and the guard fails open.
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '8.8.8', pluginRoot: '/nonexistent/8.8.8', entries: [] }));
+  const res = await install({ pluginRoot });
+  assert.ok(res.spec, 'install must proceed for non-semver plugin versions');
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
+    '9.9.9-test');
 });
 
 test('existing spec: backup created, new spec in place', async () => {

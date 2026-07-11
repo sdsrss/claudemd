@@ -364,8 +364,25 @@ else
   ng "22 (ctx1: $CTX1; out2: $OUT2)"
 fi
 
+# Case 23 (v0.36.0, review finding #5): a source-filtered prompt whose matches
+# were ALL already suggested to a human prompt earlier in the session must
+# still log suppress-source. Pre-fix the row was logged after the dedupe, so
+# this exact shape exited at the empty-list check without a row and the
+# avalanche count under-reported. The row now logs the pre-dedupe un-Read list.
+SESS="sess23"
+OUT1=$(mkevent "human asks about macos first" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX1=$(echo "$OUT1" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+OUT2=$(mkevent '<agent-message from="y">relay repeats macos chatter</agent-message>' "$SESS" | bash "$HOOK" 2>/dev/null)
+LAST23=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+if echo "$CTX1" | grep -qF "feedback_macos.md" && [[ -z "$OUT2" ]] \
+   && printf '%s' "$LAST23" | jq -e '.event == "suppress-source" and .session_id == "sess23" and (.extra.suggested | index("feedback_macos.md")) != null' >/dev/null 2>&1; then
+  ok "23 all-deduped relay still logs suppress-source (avalanche stays countable)"
+else
+  ng "23 (out1: $OUT1; out2: $OUT2; last: $LAST23)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((22 - FAIL))/22 passed"
+  echo "Tests: $((23 - FAIL))/23 passed"
   exit 1
 fi
-echo "Tests: 22/22 passed"
+echo "Tests: 23/23 passed"

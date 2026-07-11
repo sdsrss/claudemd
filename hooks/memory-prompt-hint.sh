@@ -16,14 +16,16 @@
 #   3. Match prompt against tagged MEMORY.md entries (same word-boundary +
 #      declension + meta-escape logic as memory-read-check.sh).
 #   4. For each matched file, check session transcript for prior Read.
-#   5. Drop files already suggested this session (rule-hits log lookup,
+#   5. Non-human prompt sources (<agent-message>/<task-notification>/command
+#      relays/system-reminders) never emit: log `suppress-source` with the
+#      un-Read match list and stop here (v0.35.0 R1; row moved BEFORE the
+#      dedupe in v0.36.0 so it fires even when every match was already
+#      suggested to a human prompt — review finding #5).
+#   6. Drop files already suggested this session (rule-hits log lookup,
 #      event=suggest only — beats transcript flush lag; v0.35.0 R1).
-#   6. If any un-Read matches → emit additionalContext (suppressOutput=true
-#      so model sees it, UI stays quiet). Cap at 5 to bound prompt noise.
-#      Non-human prompt sources (<agent-message>/<task-notification>/command
-#      relays/system-reminders) suppress the emission entirely (v0.35.0 R1).
-#   7. Log `suggest` (emitted) or `suppress-source` (matched but non-human
-#      source) to rule-hits.jsonl for cite-recall measurement.
+#   7. If any un-Read matches remain, emit additionalContext
+#      (suppressOutput=true so model sees it, UI stays quiet), capped at 5 to
+#      bound prompt noise, and log `suggest` for cite-recall measurement.
 #
 # Fail-open on every branch: missing MEMORY.md / transcript / jq / empty
 # prompt → silent exit 0.
@@ -138,6 +140,24 @@ done
 
 (( ${#UNREAD_FILES[@]} == 0 )) && exit 0
 
+# v0.36.0 (review finding #5, 2026-07-11): source-filtered prompts log their
+# suppress-source row HERE — after the un-Read filter, BEFORE the dedupe —
+# then stop. Dedupe, priority sort, and the cap are emission machinery, and a
+# filtered prompt never emits. Pre-fix the row was logged after dedupe, so a
+# relay prompt whose matches had all been suggested to a HUMAN prompt earlier
+# in the session exited at the empty-list check without logging, and exactly
+# the avalanche rows this metric exists to count went missing. suggested =
+# post-unRead match list in MEMORY.md authoring order (nothing is shown, so
+# emission order is meaningless); match_count = its length. The dedupe reads
+# event=suggest rows only, so these rows never mask a later human hint.
+if (( SOURCE_FILTERED == 1 )); then
+  FILES_JSON=$(printf '%s\n' "${UNREAD_FILES[@]}" | jq -R . | jq -s .)
+  EXTRA=$(jq -cn --argjson files "$FILES_JSON" --argjson n "${#UNREAD_FILES[@]}" \
+    '{suggested:$files, match_count:$n}' 2>/dev/null) || EXTRA='null'
+  hook_record memory-prompt-hint suppress-source "$EXTRA" '§11-memory-hint' "$SESSION_ID"
+  exit 0
+fi
+
 # v0.35.0 R1 — per-session per-file dedupe. The transcript check above already
 # suppresses a re-suggest once a prior hint's additionalContext (which embeds
 # the full memory path) is flushed to the transcript — but rapid-fire prompts
@@ -247,32 +267,24 @@ UNREAD_TAGS=("${SORTED_TAGS[@]}")
 
 # Emit JSON with suppressOutput so model sees additionalContext but UI stays
 # uncluttered (matches session-summary.sh / SessionStart additionalContext
-# rendering pattern). v0.35.0 R1: non-human prompt sources get NO emission —
-# the would-have-been list goes to telemetry as suppress-source instead, so
-# the avalanche stays measurable and lesson-bypass-audit (which joins only
-# event=suggest) no longer counts these as bypassed lessons.
-if (( SOURCE_FILTERED == 0 )); then
-  jq -cn --arg ctx "$CONTEXT" '{
-    suppressOutput: true,
-    hookSpecificOutput: {
-      hookEventName: "UserPromptSubmit",
-      additionalContext: $ctx
-    }
-  }' 2>/dev/null
-fi
+# rendering pattern). Only human-source prompts reach this point — the
+# source-filtered path logged suppress-source and exited above the dedupe.
+jq -cn --arg ctx "$CONTEXT" '{
+  suppressOutput: true,
+  hookSpecificOutput: {
+    hookEventName: "UserPromptSubmit",
+    additionalContext: $ctx
+  }
+}' 2>/dev/null
 
-# Telemetry: one row per emission (or suppressed emission). extra carries the
-# matched file count (capped + un-capped) so cite-recall analysis can join
-# against subsequent Read events in the same session_id. Two literal call
-# sites (not a $VAR event name) — tests/hooks/contract.test.sh part B greps
-# `hook_record <hook> <event>` literally.
+# Telemetry: one row per emission. extra carries the matched file count
+# (capped + un-capped) so cite-recall analysis can join against subsequent
+# Read events in the same session_id. This and the suppress-source call above
+# are literal call sites (not a $VAR event name) — tests/hooks/contract.test.sh
+# part B greps `hook_record <hook> <event>` literally.
 FILES_JSON=$(printf '%s\n' "${UNREAD_FILES[@]}" | jq -R . | jq -s .)
 EXTRA=$(jq -cn --argjson files "$FILES_JSON" --argjson n "$COUNT" \
   '{suggested:$files, match_count:$n}' 2>/dev/null) || EXTRA='null'
-if (( SOURCE_FILTERED == 1 )); then
-  hook_record memory-prompt-hint suppress-source "$EXTRA" '§11-memory-hint' "$SESSION_ID"
-else
-  hook_record memory-prompt-hint suggest "$EXTRA" '§11-memory-hint' "$SESSION_ID"
-fi
+hook_record memory-prompt-hint suggest "$EXTRA" '§11-memory-hint' "$SESSION_ID"
 
 exit 0

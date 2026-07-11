@@ -33,6 +33,54 @@ test('doctor returns checks array with at least 5 entries', async () => {
   assert.ok(r.checks.length >= 5);
 });
 
+test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)', async () => {
+  const staleRoot = path.join(tmpHome, 'cache/0.1.0');
+  fs.mkdirSync(staleRoot, { recursive: true });
+  fs.writeFileSync(path.join(staleRoot, 'package.json'), JSON.stringify({ version: '0.1.0' }));
+  const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  fs.mkdirSync(mkt, { recursive: true });
+  fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
+    version: '0.1.0', pluginRoot: staleRoot, entries: []
+  }));
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'plugin cache:staleness');
+  assert.ok(c, 'staleness check must exist when pluginRoot + marketplace are comparable');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /stale registration/);
+  assert.match(c.detail, /reload-plugins/);
+});
+
+test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.36.0)', async () => {
+  const root = path.join(tmpHome, 'cache/9.9.9');
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+  const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  fs.mkdirSync(mkt, { recursive: true });
+  fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
+    version: '9.9.9', pluginRoot: root, entries: []
+  }));
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'plugin cache:staleness');
+  assert.ok(c);
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /current/);
+});
+
+test('plugin cache staleness: absent when marketplace has no comparable version (v0.36.0)', async () => {
+  // beforeEach manifest has no pluginRoot; give it one but no marketplace dir.
+  const root = path.join(tmpHome, 'cache/1.2.3');
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.3' }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
+    version: '1.2.3', pluginRoot: root, entries: []
+  }));
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'plugin cache:staleness');
+  assert.equal(c, undefined, 'no staleness row when versions are not comparable');
+});
+
 test('doctor --prune-backups removes old backups', async () => {
   for (const iso of ['20260101T000000Z','20260201T000000Z','20260301T000000Z',
                      '20260401T000000Z','20260501T000000Z','20260601T000000Z']) {

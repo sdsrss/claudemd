@@ -67,6 +67,25 @@ if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" || "$INSTALLED_VER" == "$PLUGIN_VE
   exit 0
 fi
 
+# v0.36.0 — direction gate (same defect family as session-start-check.sh;
+# reproduced 2026-07-11, tasks/manifest-pluginroot-stale-cache.md). An
+# INSTALLED_VER newer than this hook's own PLUGIN_VER means the hook is firing
+# from a stale versioned cache dir; spawning the stale root's install.js would
+# downgrade ~/.claude spec + manifest. Skip the spawn — stdout stays 0 bytes
+# (this hook's contract); the SessionStart banner + bootstrap log carry the
+# user-facing fix, and install.js refuses downgrades on its own (depth).
+if [[ "$PLUGIN_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$INSTALLED_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  NEWER=$(printf '%s\n%s\n' "$PLUGIN_VER" "$INSTALLED_VER" | sort -V | tail -1)
+  if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
+    LOG_DIR="$HOME/.claude/logs"
+    mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
+    echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root (piggy-back): hook v$PLUGIN_VER < installed v$INSTALLED_VER — sync skipped (would downgrade)" >> "$LOG_DIR/claudemd-bootstrap.log" 2>/dev/null || true
+    STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
+    hook_record user-prompt-submit stale-root "$STALE_EXTRA" '' "${CLAUDE_SESSION_ID:-}"
+    exit 0
+  fi
+fi
+
 # Mismatch. node required to run install.js — silent no-op if absent.
 command -v node >/dev/null 2>&1 || exit 0
 

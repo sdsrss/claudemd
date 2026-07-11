@@ -84,3 +84,20 @@ export function readPluginVersion(pluginRoot) {
     return 'unknown';
   }
 }
+
+// Strict MAJOR.MINOR.PATCH — the only shape this plugin ships and the manifest
+// records. Version-direction logic (install.js downgrade guard, doctor
+// staleness check) is SKIPPED when either side fails this shape (dev-mode
+// 'unknown', test fixtures like '9.9.9-test'): fail-open on unparseable
+// versions, never fail-block.
+export const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+$/;
+
+// Numeric x.y.z compare: -1 | 0 | 1. Callers gate inputs through SEMVER_RE.
+export function semverCmp(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+}

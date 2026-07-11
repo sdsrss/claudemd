@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
@@ -80,6 +80,27 @@ export async function doctor({ pruneBackups: prune } = {}) {
           `Likely cause: /plugin uninstall claudemd@claudemd ran without /claudemd-uninstall first. ` +
           `Either /plugin install claudemd@claudemd to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
         : `present at ${m.data.pluginRoot}`);
+    // v0.36.0 — stale-pluginRoot detection (tasks/manifest-pluginroot-stale-
+    // cache.md): the recorded root still exists but holds an OLDER plugin than
+    // the marketplace. CC may keep firing hooks from that dir until the
+    // registration is refreshed; pre-guard those hooks downgraded the home
+    // spec every session (reproduced 2026-07-11). The bootstrap paths now
+    // refuse the downgrade; this check surfaces the state so the user runs
+    // the refresh instead of wondering why hooks lag a version. Skipped when
+    // either side has no strict-semver version (dev-mode root, no marketplace
+    // install) — nothing comparable to diagnose.
+    if (!orphan) {
+      const rootVer = readPluginVersion(m.data.pluginRoot);
+      const mktVer = readPluginVersion(marketplacePluginRoot());
+      if (SEMVER_RE.test(rootVer) && SEMVER_RE.test(mktVer)) {
+        const stale = semverCmp(rootVer, mktVer) < 0;
+        push('plugin cache:staleness', !stale,
+          stale
+            ? `manifest.pluginRoot holds v${rootVer} but the marketplace has v${mktVer} — stale registration; ` +
+              `hooks may run old code. Fix: /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins.`
+            : `manifest.pluginRoot v${rootVer} is current vs marketplace v${mktVer}`);
+      }
+    }
   }
 
   if (fs.existsSync(settingsPath())) {
