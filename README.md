@@ -63,7 +63,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Spec v6.17 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 | StatusLine (opt-out) | PS1-style line — `user@host:/path (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
 
-Install moves any existing `~/.claude/CLAUDE*.md` to `~/.claude/backup-<ISO>/` (last 5 kept automatically). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
+Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec is overwritten **without** a backup — deliberate (v0.23.11): the sole backup is always your own content, so `restore` can never return a stale spec instead. Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 
 > Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks. Claude Code's plugin-lifecycle `postInstall` field is not honored, so the script runs from `SessionStart` instead.
 
@@ -81,11 +81,11 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | Bash command matching ship/push/deploy/release with an unread matched `MEMORY.md` entry | `memory-read-check` | Blocks the command with a list of memory files to Read first. |
 | Session end with `~/.claude/tmp/` growth > 20 entries | `residue-audit` | Advisory stderr warning; never blocks. |
 | Session end with fresh `tmp.XXXXXX`-style directories | `sandbox-disposal-check` | Advisory stderr warning. |
-| Stop event with `Why:`-less hard-rule citations in the assistant turn | `mem-audit` (v0.9.4+) | Detects spec-citation patterns missing the `Why:` rationale token; advisory log. |
+| Session end (Stop), at most once per 24h | `mem-audit` (v0.9.4+) | Scans CC auto-memory `~/.claude/projects/*/memory/feedback_*.md` for missing `**Why:**` / `**How to apply:**` body structure plus MEMORY.md ↔ files index drift; advisory stderr, never blocks. |
 | Session end | `session-summary` (v0.8.0+) | Writes `~/.claude/.claudemd-state/last-session-summary.json`; banner emit at next `SessionStart`. |
 | New session start with GitHub remote tag newer than local cache max version | `session-start-check` (v0.4.0+) | Injects an "upgrade available" banner via `additionalContext`. Rate-limited to once per 24h via `~/.claude/.claudemd-state/upstream-check.lastrun` sentinel. 3-second `git ls-remote` timeout, fail-open. |
 | First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
-| `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. |
+| `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
 | Session end with last assistant turn carrying §10 four-section out of order, `Done:` lines lacking evidence fingerprints, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
 
 ### Execution order (PreToolUse:Bash)
@@ -108,7 +108,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-install` | Bootstrap the current session right after `/plugin install` (copy spec into `~/.claude/`, write manifest, evict legacy entries). Idempotent. CC does not fire `postInstall`, so without this command `install.js` waits until the next `SessionStart`. |
 | `/claudemd-status [--verbose]` | Plugin version + spec version + kill-switch state + logs line count. `--verbose` adds per-hook env-var × event × effective vs persisted state table + 5 escape-token reference. |
 | `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (4-file spec set is lockstep — per-file select would dangle §EXT cross-references). |
-| `/claudemd-audit [--days N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. |
+| `/claudemd-audit [--days=N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. Flag takes `=` form only (`--days=90`). |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). |
 | `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 30 — lowered from 90d in v0.13.1 after the 90d gate was structurally unreachable under typical log retention). Surfaces `demoteCandidates` (hook-enforced rules with 0 hits) and `staleReviews` (rules whose `last_demote_review` is null/old). |
@@ -116,7 +116,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup of stale `claudemd-sync-*` sentinels and historical `claudemd-(mockgh\|work).*` test sandboxes. |
 | `/claudemd-design-adopt [check\|remove]` | v0.24.0 — for a UI project, generate a thin, fact-based `DESIGN.md` from its real design-token sources (deterministic detector `scripts/design-detect.js`; evidence-gated rules menu; never invents values) and wire a sentinel block into project CLAUDE.md. `check` verifies pointers resolve; `remove` unwires. Always shows the diff and asks before writing. Manual/opt-in — no SessionStart hook, nothing auto-fires. |
 | `/claudemd-statusline [check\|remove] [--force]` | v0.25.0 — register claudemd's PS1-style statusLine into `~/.claude/settings.json`. Default adopts into an empty slot; `check` reports the current owner with no writes; `remove` restores the prior statusline (or clears the slot) and deletes `~/.claude/claudemd-statusline.sh`; `--force` takes over another provider's slot, saving its command so `remove` can restore it. Always shows the diff and asks before writing. Install-time auto-adopt is empty-slot-only (opt-out: `CLAUDEMD_NO_STATUSLINE=1`). When another composite provider (e.g. code-graph) owns the slot, claudemd registers as a guest so both segments render; `--supersede=<id>` replaces a named provider. |
-| `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + state + log + legacy `settings.json` hook entries. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
+| `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + legacy `settings.json` hook entries; add `CLAUDEMD_PURGE=1` to also drop `~/.claude/.claudemd-state/` + the rule-hits log. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---
 
@@ -268,7 +268,7 @@ The command prints per-file diff summary, then prompts `apply-all` or `cancel`. 
 Claude Code's marketplace lifecycle does not fire `preUninstall`, so `/plugin uninstall claudemd@claudemd` alone leaves orphan state behind (`~/.claude/.claudemd-manifest.json`, `~/.claude/.claudemd-state/`, `~/.claude/logs/claudemd.jsonl`). Use the **two-step flow**:
 
 ```
-/claudemd-uninstall                    # clear manifest + state + log (plugin still installed)
+/claudemd-uninstall                    # clear manifest (+ state & log with CLAUDEMD_PURGE=1)
 /plugin uninstall claudemd@claudemd    # CC removes plugin cache itself
 ```
 
@@ -335,9 +335,9 @@ claudemd/
 │   └── marketplace.json      # marketplace catalog entry
 ├── hooks/                    # 16 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 12 slash-command markdown files
+├── commands/                 # 15 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 16 Node.js management scripts + scripts/lib/ (single-source registry, lint, etc.)
+├── scripts/                  # 18 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.17.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
