@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD } from '../../scripts/sampling-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -280,4 +281,30 @@ test('missing projectsDir: returns zero result, no throw', async () => {
     pluginRoot: REPO_ROOT,
   });
   assert.equal(r.scannedTranscripts, 0);
+});
+
+test('CLI: zero scanned transcripts → no tasks/ report file written (skip message instead)', () => {
+  // Pre-fix, a 0-transcript run still wrote tasks/sampling-audit-<date>.md —
+  // an all-zeros stub that reads like a completed audit and litters tasks/
+  // (observed live during the 2026-07-11 QA loop: sandbox run wrote a stub
+  // into the real repo's tasks/). Zero data → say so on stdout, write nothing.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-cli-'));
+  const fakeHome = path.join(tmp, 'home');
+  const fakeCwd = path.join(tmp, 'cwd');
+  fs.mkdirSync(path.join(fakeHome, '.claude', 'projects'), { recursive: true });
+  fs.mkdirSync(fakeCwd, { recursive: true });
+  try {
+    const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), '--days=30'], {
+      cwd: fakeCwd,
+      env: { ...process.env, HOME: fakeHome },
+      encoding: 'utf8',
+      timeout: 15000,
+    });
+    assert.equal(r.status, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /skipped writing|no transcripts/i);
+    assert.equal(fs.existsSync(path.join(fakeCwd, 'tasks')), false,
+      'tasks/ must not be created on a zero-transcript run');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

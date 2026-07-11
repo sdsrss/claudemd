@@ -749,8 +749,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       return;
     }
 
-    const md = formatMarkdown(result);
     const today = new Date().toISOString().slice(0, 10);
+    // Zero scanned transcripts → an all-zeros report reads like a completed
+    // audit and litters tasks/ with stubs. Say so and write nothing.
+    if (result.scannedTranscripts === 0) {
+      console.log(`No transcripts in the ${days}d window — skipped writing tasks/sampling-audit-${today}.md (nothing scanned, nothing to report).`);
+      return;
+    }
+    const md = formatMarkdown(result);
     const outPath = path.join(process.cwd(), 'tasks', `sampling-audit-${today}.md`);
     try {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });

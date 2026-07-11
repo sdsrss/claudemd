@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # transcript-vocab-scan.test.sh — tests for v0.8.3 R-N8 PostToolUse hook.
 # Covers: opt-in gate (default OFF), advisory-only behavior, transcript jsonl
 # parsing, banned-vocab pattern matching against assistant text, kill-switch.

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # fail-open.test.sh — Round-6: lock the hook-fail-open observability contract.
 #
 # Pre-fix: hooks silently `exit 0` when prerequisites were missing (jq absent,

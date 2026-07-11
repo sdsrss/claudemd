@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # mid-spine-yield-scan.test.sh — v0.15.0 P2 #1 (a-mini) hook coverage.
 # Verifies opt-in gate, mid-SPINE-yield detection, FP mitigations, kill-switch,
 # per-session dedup.

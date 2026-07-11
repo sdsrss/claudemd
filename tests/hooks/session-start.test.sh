@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # session-start-check.sh tests — self-bootstrap behavior (v0.1.9 P1b)
 # + upstream-check banner behavior (v0.4.0 Cases 8-11).
 # shellcheck disable=SC2015  # `cmd && PASS || FAIL` is the test-assertion idiom here; PASS branch is `echo` which does not fail

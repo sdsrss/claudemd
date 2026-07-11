@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # End-to-end upgrade flow: install v0.2.3 → /claudemd-update to current HEAD
 # → re-install with current plugin → uninstall. Complements full-lifecycle
 # (which covers fresh-install → hook → uninstall only, no upgrade path).

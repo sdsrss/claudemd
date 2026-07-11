@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.37.1] - 2026-07-11
+
+**Patch — QA tech-debt closure: per-suite env hygiene + README drift guards + sampling-audit zero-data skip.** Closes the three follow-ups filed by the 2026-07-11 QA loop. Spec unchanged (stays v6.17.0).
+
+- **Fix** (all 25 `tests/hooks/*.test.sh` + `tests/integration/*.test.sh`): every bash suite now sources `tests/lib/env-hygiene.sh` at entry, so a direct `bash tests/hooks/x.test.sh` run is as hermetic as a `run-all.sh` run (0.37.0 only scrubbed the run-all entry point). env-hygiene suite grows 3 → 5 cases (structural all-suites-wired check + polluted direct-invocation spot check).
+- **Tests** (new `tests/scripts/readme-drift.test.js`, 3 cases): locks the README claim classes that drifted before — §Project layout counts (`commands/*.md`, `scripts/*.js`) vs the filesystem, and opt-in-gated hooks (`${VAR:-0}` gate) appearing in the fires-when table must carry an "Opt-in" marker. Sibling of `kill-switch-doc-drift.test.js`.
+- **Fix** (`scripts/sampling-audit.js`): a zero-scanned-transcripts run no longer writes an all-zeros `tasks/sampling-audit-<date>.md` stub — it prints a skip line and writes nothing (`--json` mode unchanged). +1 CLI test.
+
 ## [0.37.0] - 2026-07-11
 
 **Minor — QA self-test loop output: `audit` string-shape skip warning (user-visible) + test-suite env hygiene + README↔implementation drift fixes.** Product of a 3-round QA self-test loop over CLI / lifecycle scripts / all 16 hooks / docs (8 issues filed, 8 fixed + replay-verified; ledger kept as local-only `qa/`). Spec unchanged (stays v6.17.0).

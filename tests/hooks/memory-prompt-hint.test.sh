@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # memory-prompt-hint.test.sh — tests for v0.11.0 UserPromptSubmit memory
 # tag pre-matcher hook. Proactive twin of memory-read-check.sh.
 

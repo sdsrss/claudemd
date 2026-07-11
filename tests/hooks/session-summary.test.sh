@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # session-summary.test.sh — tests for v0.8.0 R-N4 Stop hook +
 # session-start banner emission. Exercises both halves end-to-end:
 # (1) session-summary.sh aggregates rule-hits.jsonl since session ref

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # pre-bash-safety hook tests — corpus-driven.
 # Cases live in tests/fixtures/bash-safety/corpus.tsv (label / note / cmd / env).
 # This runner loads the corpus and drives the hook for each row, asserting

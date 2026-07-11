@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # session-end-check.test.sh — tests for v0.9.27 R-N10 SessionEnd hook
 # enforcing core §11 "Session-exit mid-SPINE" HARD self-rule.
 #

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # bash-readonly-skip.test.sh — tests for v0.8.3 R-N5 readonly fast-path.
 # Covers (a) hook_is_readonly_bash classification and (b) end-to-end:
 # with BASH_READONLY_FAST_PATH=1, all 4 PreToolUse:Bash hooks short-circuit

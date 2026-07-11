@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # env-hygiene.test.sh — regression for QA ISSUE-001: user-tunable claudemd env
 # vars leaking from the invoking shell (e.g. DISABLE_RULE_HITS_LOG=1 exported
 # for manual hook probing per the telemetry-hygiene practice, or the
@@ -70,6 +73,30 @@ if grep -q 'env-hygiene.sh' "$RUN_ALL" && grep -q 'claudemd_reset_test_env' "$RU
   echo "PASS: 3 run-all.sh sources env-hygiene"
 else
   echo "FAIL: 3 run-all.sh does not wire env-hygiene"
+  FAIL=$((FAIL + 1))
+fi
+
+# Case 4: EVERY bash suite self-scrubs — a direct `bash tests/hooks/x.test.sh`
+# run must behave like a run-all.sh run (tech-debt follow-up to Case 3, which
+# only guards the run-all entry point).
+MISSING=""
+for suite in "$HERE"/*.test.sh "$HERE"/../integration/*.test.sh; do
+  grep -q 'claudemd_reset_test_env' "$suite" || MISSING="$MISSING $(basename "$suite")"
+done
+if [[ -z "$MISSING" ]]; then
+  echo "PASS: 4 all bash suites source env-hygiene"
+else
+  echo "FAIL: 4 suites missing scrub:$MISSING"
+  FAIL=$((FAIL + 1))
+fi
+
+# Case 5: behavioral spot check — a rule-hits-asserting suite run DIRECTLY
+# under the polluting env must pass (the exact ISSUE-001 shape that broke 15
+# suites via run-all, now hit via direct invocation).
+if DISABLE_RULE_HITS_LOG=1 TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HERE/rule-hits.test.sh" >/dev/null 2>&1; then
+  echo "PASS: 5 rule-hits suite passes under polluted direct invocation"
+else
+  echo "FAIL: 5 rule-hits suite fails under polluted direct invocation"
   FAIL=$((FAIL + 1))
 fi
 

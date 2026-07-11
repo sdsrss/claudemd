@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
+# matches run-all.sh behavior (which scrubs once for the whole suite pass).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # transcript-structure-scan.test.sh — v0.9.10 P1.2 hook coverage.
 # Verifies opt-in gate, three detections, FP mitigations, kill-switches.
 set -uo pipefail
