@@ -5,6 +5,8 @@
 前提核验：installed==repo==v6.16.0/0.34.0（status.js 4 hash match，doctor 29/29 OK）——遥测口径可信。
 性质：操作者决策文档。所有 spec/hook 改动执行时各走 §13 META / §13.3 流程，本文件不是执行授权。探针判分预期在收结果前按规范原文预注册。
 
+> **执行状态（2026-07-11，用户授权"按建议依次优化"）**：A 类 R1/R2 已 ship（v0.35.0），R3 = 验证已有分母正确 + EMIT_CAP 切片 + mem-lite 侧 defer D#65；B 类 C2 关闭、C5/C6 建档并消费；C 类 7 项 core 修正已 ship（spec v6.17.0，#4 维持现状、#7 冻结延后）。MEMORY.md 修剪 19788B→12248B。遗留：C 类 #7、code-graph-mcp/daagu 索引超额（各自会话处理）、`tasks/manifest-pluginroot-stale-cache.md`（发版后发现的降级环缺陷）。
+
 ## 探针计分（12/12 收齐）
 
 | # | 场景 | 结果 |
