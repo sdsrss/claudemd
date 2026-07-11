@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.16.0 — 2026-07-11
+
+Minor: §11-EXT ship-runbook consolidation (SHOULD).
+
+- `[add]` **§11-EXT MEMORY.md tag syntax → Ship-runbook consolidation**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; ship-adjacent lessons keep topical tags and are `[[linked]]` from the runbook. Effect: the §11 read-the-file HARD gate at ship costs one predictable Read instead of tag fan-out.
+
+### Background
+
+2026-07-11 user request: ship-time memory reads felt slow and token-expensive ("每次发版都要被拦住读一堆记忆文件"). memory-read-check telemetry 2026-05-20 → 2026-07-10 (~20 deny events) showed modal match_count=1 but recurring generic-tag FP fan-out (bypass reasons "residual keyword tag hits are FPs") plus repeat re-reads of the same atomic-ship memory. The user proposed a per-project single ship.md; this rule lands that as a MEMORY.md convention on the existing tag mechanism — no hook change. Shipped in plugin v0.34.0; claudemd's own runbook is `feedback_claudemd_ship_from_main_atomic.md` (rewritten same day).
+
+### §13.2 budget cost
+
+SHOULD-level, not HARD — no budget cost. `OPERATOR.md §13.1` ≥20-task minor-spacing overridden by explicit operator request; acceptable because the rule is telemetry-derived (7 weeks of rule-hits), which is the failure mode the spacing rule guards against.
+
 ## v6.15.1 — 2026-07-10
 
 Patch: §0.1 operator-threshold relocation to `OPERATOR.md §13.1` (Candidate 3, no rule change).

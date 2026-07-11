@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.34.0] - 2026-07-11
+
+**Minor — spec v6.16.0: §11-EXT ship-runbook consolidation (SHOULD).** Per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook holding the full release flow (pre-ship checks → atomic steps → post-ship); ship-adjacent lessons keep topical tags and are `[[linked]]` from the runbook instead of carrying own ship tags. Effect: the §11 MEMORY.md read-the-file HARD gate costs one predictable Read per ship session instead of tag fan-out. Grounded in memory-read-check telemetry 2026-05-20 → 2026-07-10 (~20 deny events: modal match_count=1, recurring generic-tag FP fan-out, bypass reasons "residual keyword tag hits are FPs"). No hook / script changes — spec text + version cascade only (`hard-rules.json` spec_version field bump; rule is SHOULD, not HARD, per §13.2 budget gates).
+
+- Version cascade: spec headers ×2, `spec/CLAUDE-changelog.md` entry, `hard-rules.json` spec_version, `spec-structure.test.js` (2 asserts + test name), `upgrade-lifecycle.test.sh` NEW_SPEC_VER, README v6.15 → v6.16 family ×3 + repo-tree comment, manifest descriptions ×3 per v0.2.1 policy.
+- §13.1 minor-spacing note: ships one day after v6.15.0 by explicit operator request; the rule is telemetry-derived (7 weeks of rule-hits), which is the risk the spacing discipline guards against.
+- Reference implementation (user-global, not in repo): `feedback_claudemd_ship_from_main_atomic.md` rewritten as claudemd's single ship-tagged runbook; MEMORY.md generic-tag hygiene (`timeout` → `missing-timeout`, `cwd/encoding/projects/underscore` → hyphenated compounds) closing the measured FP sources.
+
 ## [0.33.0] - 2026-07-10
 
 **Minor — `/claudemd-clean-residue` now also purges stale `~/.claude/tmp` tool-exhaust (spec §EXT §7-EXT retention).**
