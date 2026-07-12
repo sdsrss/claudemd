@@ -11,9 +11,19 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SHIP_BASELINE || exit 0
-hook_require_jq || exit 0
+# Record fail-open on missing prereqs (roadmap OBS-1): don't let a jq-less /
+# malformed-stdin environment silently no-op this §7 gate — the §13.1 audit
+# must see the bypass, not read it as "never fired".
+if ! hook_require_jq; then
+  hook_record_failopen ship-baseline jq-missing
+  exit 0
+fi
 
-EVENT=$(hook_read_event) || exit 0
+EVENT=$(hook_read_event)
+if [[ -z "$EVENT" ]]; then
+  hook_record_failopen ship-baseline bad-event
+  exit 0
+fi
 TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 [[ "$TOOL" == "Bash" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)

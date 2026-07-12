@@ -34,6 +34,32 @@ test('README §Project layout: scripts count matches scripts/*.js', () => {
     `README says ${m[1]} Node.js scripts, scripts/ has ${actual}`);
 });
 
+test('README "N shell hooks" count(s) match hooks/*.sh', () => {
+  // TEST-2 (roadmap): the "16 shell hooks" claim appears twice (§capabilities
+  // table row + §Project layout tree) and was previously guarded only
+  // indirectly via HOOK_REGISTRY.length in hook-registry.test.js — the README
+  // text itself could drift silently (a hook added without bumping the number).
+  const actual = fs.readdirSync(path.join(REPO_ROOT, 'hooks')).filter(f => f.endsWith('.sh')).length;
+  const counts = [...README.matchAll(/(\d+) shell hooks/g)].map(m => Number(m[1]));
+  assert.ok(counts.length >= 2, `expected ≥2 "N shell hooks" mentions in README, found ${counts.length}`);
+  for (const c of counts) {
+    assert.equal(c, actual, `README says "${c} shell hooks" but hooks/ has ${actual} .sh files`);
+  }
+});
+
+test('README §capabilities hook list enumerates exactly the real hooks/*.sh', () => {
+  // Stronger than the count alone: the ·-separated enumerated row must name
+  // every hook and only real hooks — catches a hook silently dropped from the
+  // table (or a renamed/stale entry) even if the number still happens to match.
+  const actual = fs.readdirSync(path.join(REPO_ROOT, 'hooks'))
+    .filter(f => f.endsWith('.sh')).map(f => f.replace(/\.sh$/, '')).sort();
+  const row = README.split('\n').find(l => /\|\s*\d+ shell hooks\s*\|/.test(l));
+  assert.ok(row, '§capabilities "N shell hooks" table row not found');
+  const listed = [...row.matchAll(/`([a-z0-9-]+)`/g)].map(m => m[1]).sort();
+  assert.deepEqual(listed, actual,
+    `README hook list ≠ hooks/*.sh.\n  only in README: ${listed.filter(h => !actual.includes(h))}\n  only on disk:   ${actual.filter(h => !listed.includes(h))}`);
+});
+
 test('README hooks table: every opt-in gated hook with a table row says Opt-in', () => {
   const hooksDir = path.join(REPO_ROOT, 'hooks');
   const optInHooks = fs.readdirSync(hooksDir).filter(f => f.endsWith('.sh')).filter(f => {

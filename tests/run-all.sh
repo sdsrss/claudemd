@@ -9,16 +9,23 @@ FAIL=0
 # it explicitly per-case.
 # shellcheck source=lib/env-hygiene.sh
 source "$HERE/lib/env-hygiene.sh" && claudemd_reset_test_env
+# Per-suite wall-clock guard (TEST-1): bound each bash suite so one hung test
+# can't stall the whole run to the CI job-level kill. node --test gets its own
+# per-test timeout below.
+# shellcheck source=lib/run-suite.sh
+source "$HERE/lib/run-suite.sh"
 
 echo "== Shell hook tests =="
 for t in "$HERE"/hooks/*.test.sh; do
   [[ -f "$t" ]] || continue
   echo "-- $(basename "$t")"
-  bash "$t" || FAIL=$((FAIL + 1))
+  run_suite "$t" || FAIL=$((FAIL + 1))
 done
 
 echo "== Node.js script tests =="
-if ! node --test "$HERE"/scripts/*.test.js; then
+# --test-timeout caps EACH test (ms); a single deadlocked test fails instead of
+# hanging the run (Node ≥20 default is Infinity).
+if ! node --test --test-timeout=60000 "$HERE"/scripts/*.test.js; then
   FAIL=$((FAIL + 1))
 fi
 
@@ -26,7 +33,7 @@ echo "== Integration tests =="
 for t in "$HERE"/integration/*.test.sh; do
   [[ -f "$t" ]] || continue
   echo "-- $(basename "$t")"
-  bash "$t" || FAIL=$((FAIL + 1))
+  run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
 
 if (( FAIL > 0 )); then

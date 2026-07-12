@@ -138,6 +138,29 @@ test('doctor runs banned-vocab self-test and reports pass when hook denies synth
   assert.doesNotMatch(selftest.detail, /kill-switch engaged/);
 });
 
+test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a clean tree', async () => {
+  // Requires jq + bash; CI installs both. The deny self-tests cover only
+  // banned-vocab + pre-bash-safety (2/16); these liveness checks close the
+  // gap on the 6 Stop hooks + PostToolUse + the other advisory hooks that
+  // never emit a deny. A hook dropped from the livenessTests list → find()
+  // returns undefined → this test fails (coverage lock). session-start-check
+  // + version-sync are intentionally excluded (bootstrap/network side-effects).
+  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const EXPECTED = [
+    'memory-read-check', 'ship-baseline-check', 'session-extended-read',
+    'transcript-vocab-scan', 'session-end-check', 'session-summary',
+    'mem-audit', 'mid-spine-yield-scan', 'residue-audit',
+    'sandbox-disposal-check', 'transcript-structure-scan', 'memory-prompt-hint',
+  ];
+  const r = await doctor({});
+  for (const h of EXPECTED) {
+    const c = r.checks.find(x => x.name === `${h} liveness`);
+    assert.ok(c, `liveness check for ${h} must exist`);
+    assert.equal(c.ok, true, `${h} liveness must pass on a clean tree; detail="${c.detail}"`);
+  }
+});
+
 test('doctor self-test detail notes kill-switch when user has disabled the hook via settings.json', async () => {
   const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;

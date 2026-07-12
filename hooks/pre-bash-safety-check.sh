@@ -45,9 +45,19 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch PRE_BASH_SAFETY || exit 0
-hook_require_jq || exit 0
+# Record fail-open on missing prereqs (roadmap OBS-1): a jq-less / malformed-stdin
+# environment must not turn this §8 gate into a silent no-op the §13.1 audit reads
+# as "never fired". banned-vocab-check.sh models the same contract.
+if ! hook_require_jq; then
+  hook_record_failopen pre-bash-safety jq-missing
+  exit 0
+fi
 
-EVENT=$(hook_read_event) || exit 0
+EVENT=$(hook_read_event)
+if [[ -z "$EVENT" ]]; then
+  hook_record_failopen pre-bash-safety bad-event
+  exit 0
+fi
 TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
 [[ "$TOOL" == "Bash" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)

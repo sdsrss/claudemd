@@ -64,6 +64,27 @@ else
   ng "T4 DISABLE_RULE_HITS_LOG=1 did not suppress (log: $(cat "$LOG" 2>/dev/null))"
 fi
 
+# T5-T7 (roadmap OBS-1, 2026-07-12 audit): the three safety-critical hooks
+# (§8 pre-bash-safety / §11 memory-read / §7 ship-baseline) must ALSO record
+# fail-open on a bad event, not silently `exit 0`. A jq-less or malformed-stdin
+# environment otherwise turns the hardest gates into silent no-ops the §13.1
+# audit can't distinguish from "rule never fired". banned-vocab already models
+# this (T1); these lock the same contract on the safety hooks.
+check_bad_event_failopen() {  # $1=hook-file $2=hook-name $3=label
+  rm -rf "$TMP_HOME/.claude"; mkdir -p "$TMP_HOME/.claude/logs"
+  echo "" | bash "$HOOKS_DIR/$1" >/dev/null 2>&1
+  if [[ -f "$LOG" ]] && jq -e --arg h "$2" \
+       'select(.hook==$h and .event=="fail-open" and .extra.reason=="bad-event" and .spec_section=="§hooks-fail-open")' \
+       "$LOG" >/dev/null 2>&1; then
+    ok "$3 records fail-open reason=bad-event"
+  else
+    ng "$3 did not record fail-open (log: $(cat "$LOG" 2>/dev/null))"
+  fi
+}
+check_bad_event_failopen pre-bash-safety-check.sh pre-bash-safety   "T5 pre-bash-safety empty stdin"
+check_bad_event_failopen memory-read-check.sh    memory-read-check  "T6 memory-read-check empty stdin"
+check_bad_event_failopen ship-baseline-check.sh  ship-baseline      "T7 ship-baseline empty stdin"
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

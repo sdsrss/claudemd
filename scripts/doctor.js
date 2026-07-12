@@ -357,6 +357,62 @@ export async function doctor({ pruneBackups: prune } = {}) {
       + ksNote);
   }
 
+  // OBS-2 (roadmap, 2026-07-12 audit): field-liveness self-checks for the
+  // advisory hooks the deny self-tests above don't reach. The 6 Stop hooks +
+  // PostToolUse fire every turn but never emit a deny, so a silent breakage (an
+  // introduced jq/syntax error, an unbound var under `set -u`) was invisible to
+  // doctor — it self-tested only 2 of 16 hooks. Each entry feeds a synthetic
+  // event of the hook's registered type under an ISOLATED mkdtemp HOME (so the
+  // state-writing hooks — residue-audit / session-summary / mem-audit /
+  // sandbox-disposal — can't touch the real ~/.claude) and asserts the hook
+  // exits 0 with no shell-crash signature on stderr. session-start-check +
+  // version-sync are intentionally EXCLUDED: they perform bootstrap / network /
+  // background-spawn side-effects unsafe to trigger from a health command; their
+  // own suites + the upgrade-lifecycle integration test cover them.
+  const CRASH_RE = /: line \d+:|syntax error|unbound variable|: command not found/;
+  const stopEvt = { session_id: 'doctor-selftest', hook_event_name: 'Stop', transcript_path: '/tmp/claudemd-doctor-none.jsonl' };
+  const livenessTests = [
+    { hook: 'memory-read-check.sh',         ks: 'DISABLE_MEMORY_READ_HOOK',              event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
+    { hook: 'ship-baseline-check.sh',       ks: 'DISABLE_SHIP_BASELINE_HOOK',            event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } } },
+    { hook: 'session-extended-read.sh',     ks: 'DISABLE_SESSION_EXTENDED_READ_HOOK',    event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
+    { hook: 'transcript-vocab-scan.sh',     ks: 'DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK',    event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' }, tool_response: {} } },
+    { hook: 'session-end-check.sh',         ks: 'DISABLE_SESSION_END_CHECK_HOOK',        event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' } },
+    { hook: 'session-summary.sh',           ks: 'DISABLE_SESSION_SUMMARY_HOOK',          event: stopEvt },
+    { hook: 'mem-audit.sh',                 ks: 'DISABLE_MEM_AUDIT_HOOK',                event: stopEvt },
+    { hook: 'mid-spine-yield-scan.sh',      ks: 'DISABLE_MID_SPINE_YIELD_HOOK',          event: stopEvt },
+    { hook: 'residue-audit.sh',             ks: 'DISABLE_RESIDUE_AUDIT_HOOK',            event: stopEvt },
+    { hook: 'sandbox-disposal-check.sh',    ks: 'DISABLE_SANDBOX_DISPOSAL_HOOK',         event: stopEvt },
+    { hook: 'transcript-structure-scan.sh', ks: 'DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK', event: stopEvt },
+    { hook: 'memory-prompt-hint.sh',        ks: 'DISABLE_MEMORY_HINT_HOOK',              event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' } },
+  ];
+  for (const t of livenessTests) {
+    const hookPath = path.join(PLUGIN_ROOT, 'hooks', t.hook);
+    const name = `${t.hook.replace(/\.sh$/, '')} liveness`;
+    if (!fs.existsSync(hookPath)) { push(name, false, `hook missing at ${hookPath}`); continue; }
+    if (!which('jq') || !which('bash')) { push(name, false, 'prerequisite missing (jq + bash required)'); continue; }
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-dr-live-'));
+    let r;
+    try {
+      fs.mkdirSync(path.join(tmp, '.claude/logs'), { recursive: true });
+      r = spawnSync('bash', [hookPath], {
+        input: JSON.stringify(t.event),
+        encoding: 'utf8',
+        timeout: 5000,
+        // Isolated HOME + kill-switches cleared → tests CODE integrity, not live
+        // enforcement; any state write lands in tmp and is removed below.
+        env: { ...process.env, HOME: tmp, DISABLE_RULE_HITS_LOG: '1', DISABLE_CLAUDEMD_HOOKS: '', [t.ks]: '' },
+      });
+    } finally {
+      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* tmp leak benign */ }
+    }
+    const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
+    const crash = CRASH_RE.test(r.stderr || '');
+    const ok = r.status === 0 && !crash && !timedOut;
+    push(name, ok, ok
+      ? 'ran clean on synthetic event (exit 0, no shell crash)'
+      : `hook errored (status=${r.status}${timedOut ? ', TIMED OUT' : ''}, stderr="${(r.stderr || '').slice(0, 120).replace(/\s+/g, ' ').trim()}")`);
+  }
+
   // v0.7.1 R-N6 — bypass:deny ratio per spec section. Surfaces §0.1
   // demotion candidates from v0.7.0's `byBypass` data. Sections firing < 3
   // events in 30d are skipped (statistical floor); the (unset) bucket is
