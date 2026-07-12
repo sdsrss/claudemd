@@ -211,3 +211,15 @@ run 'rule_hits_append transcript-structure-scan structure-advisory null "§10-ho
   || { echo "FAIL: Case 20b 'test' sentinel should still write (got: $(cat "$LOG" 2>/dev/null))"; exit 1; }
 
 echo "All cases passed"
+
+# ARCH-1 (2026-07-12 audit): hook_encode_project is the single source for the
+# CC projects-dir encoding (every non-[a-zA-Z0-9-] char → '-'). Binds the leaf
+# definition so the 4 former inline `tr -c` copies can't silently diverge.
+EObase="/mnt/data_ssd/dev/projects/claude.md_v2"
+EOgot=$(run "hook_encode_project '$EObase'")
+EOexp="-mnt-data-ssd-dev-projects-claude-md-v2"
+[[ "$EOgot" == "$EOexp" ]] || { echo "FAIL: hook_encode_project got '$EOgot' expected '$EOexp'"; exit 1; }
+# empty input → empty output (no crash)
+[[ -z "$(run 'hook_encode_project ""')" ]] || { echo "FAIL: hook_encode_project empty should be empty"; exit 1; }
+echo "PASS: hook_encode_project encoding"
+

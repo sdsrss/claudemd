@@ -32,6 +32,7 @@ import os from 'node:os';
 import { resolvePluginRoot } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { readPatterns, scan } from './lib/lint.js';
 
 const RULE_KEYS = [
   '§10-V', '§iron-law-2', '§10-four-section-order', '§10-honesty',
@@ -64,24 +65,17 @@ function defaultProjectsDir() {
   return path.join(os.homedir(), '.claude/projects', encodeCwd(process.cwd()));
 }
 
-// Load §10-V banned-vocab patterns from the shipped hook config. Skip
-// `@ratio`-tagged patterns — those are commit-baseline context and FP-heavy
-// on chat prose (matches transcript-vocab-scan.sh).
-function loadVocabPatterns(pluginRoot) {
-  const file = path.join(pluginRoot, 'hooks/banned-vocab.patterns');
-  if (!fs.existsSync(file)) return [];
-  const out = [];
-  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const sep = line.indexOf('|');
-    if (sep < 0) continue;
-    const regex = line.slice(0, sep);
-    const reason = line.slice(sep + 1);
-    if (reason.trim().startsWith('@ratio')) continue;
-    try { out.push({ re: new RegExp(regex, 'i'), reason }); } catch { /* bad regex — skip */ }
-  }
-  return out;
+// Load §10-V banned-vocab patterns from the shipped hook config. Delegates to
+// lint.js readPatterns — the SANCTIONED single parser shared with the CLI
+// (bin/claudemd-lint.js) and the source of the bash hook's matching semantics.
+// DRIFT-1 (2026-07-12 audit): the prior inline loader used `indexOf('|')` (FIRST
+// bar — truncates any alternation-bearing regex like `\b(a|b)\b|reason`) and
+// omitted posixClassesToJs, so a future non-`@ratio` pattern with an alternation
+// or a POSIX class would be silently dropped/mis-matched here while still active
+// in lint.js + the bash hook — a false-optimistic §10-V compliance number.
+// @ratio filtering is applied at scan time (excludeRatio, see scanVocab).
+export function loadVocabPatterns(pluginRoot) {
+  return readPatterns(path.join(pluginRoot, 'hooks/banned-vocab.patterns'));
 }
 
 // Full event-stream extraction. Verified shapes (real transcript, 2026-07-10):
@@ -131,13 +125,13 @@ function extractEvents(filePath) {
   return events;
 }
 
-function scanVocab(text, patterns) {
-  const hits = [];
-  for (const p of patterns) {
-    const m = text.match(p.re);
-    if (m) hits.push(m[0]);
-  }
-  return hits;
+// DRIFT-1: delegate matching to lint.js scan() so §10-V semantics (lastIndexOf
+// separator, posixClassesToJs, per-pattern fail-open, @ratio exclusion) are
+// identical to the CLI + bash hook. excludeRatio:true mirrors the prior
+// @ratio-skip; sanitize stays OFF to preserve this scanner's raw-text baseline
+// (the A1 2026-07-10 comparison depends on it — NOT the CLI's identifier strip).
+export function scanVocab(text, patterns) {
+  return scan(text, { patterns, excludeRatio: true }).map(h => h.match);
 }
 
 // Mirror transcript-structure-scan.sh awk: strip leading `## `, then test for

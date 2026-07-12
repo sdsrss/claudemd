@@ -2,6 +2,14 @@
 # hook-common.sh — fail-open library for claudemd hooks.
 # All functions return safely; callers can exit 0 silently on non-zero return.
 
+# Eager-source the rule-hits leaf lib so every hook that sources hook-common gets
+# its helpers at top-level — notably hook_encode_project (ARCH-1), used by the
+# hooks OUTSIDE hook_record to encode the cwd for transcript-path lookup. Only
+# defines functions (no side effects); hook_record re-sources idempotently.
+_HC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=rule-hits.sh
+source "$_HC_LIB_DIR/rule-hits.sh" 2>/dev/null || true
+
 # hook_kill_switch NAME
 #   returns 0 to proceed, 1 to short-circuit.
 hook_kill_switch() {

@@ -8,6 +8,19 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.41.0] - 2026-07-12
+
+**Minor — latent-cleanup batch (roadmap B2): detector-parity, encoding-helper dedup, install validate-before-move, strict toggle argv, architecture-doc refresh.** Closes the five B2 items from the 2026-07-12 production-readiness audit. Spec unchanged (stays v6.17.0). No user-visible enforcement change.
+
+- **DRIFT-1** (`scripts/sampling-audit.js`): `loadVocabPatterns` + `scanVocab` now delegate to lint.js `readPatterns`/`scan` — the sanctioned §10-V parser shared with the CLI and the bash hook. The prior inline loader used `indexOf('|')` (truncates any alternation-bearing regex) and omitted `posixClassesToJs`, so a future non-`@ratio` pattern with an alternation or POSIX class would be silently dropped/mis-matched here while active elsewhere → false-optimistic §10-V compliance. `@ratio` exclusion preserved via `excludeRatio`; raw-text baseline preserved (no identifier strip). +2 parity tests (alternation regex survives; POSIX class matches; `@ratio` excluded).
+- **ARCH-1** (`hooks/lib/rule-hits.sh` + `hooks/lib/hook-common.sh` + 3 hooks): the CC projects-dir encoding (`tr -c 'a-zA-Z0-9-' '-'`) was hand-inlined in 4 places (a class with prior bug history). Extracted to a single `hook_encode_project` in the rule-hits leaf lib, eagerly sourced by hook-common so all consumers share ONE definition (no `declare -F`-guarded inline fallback — that silent-divergence antipattern). +1 binding test.
+- **SCRIPT-1** (`scripts/install.js`): the shipped-spec completeness check now runs BEFORE the backup branch `renameSync`-moves the user's `~/.claude/CLAUDE.md` (pre-fix an incomplete plugin checkout left the user's spec only in the backup dir, home path empty, manifest unwritten). Added a closing post-copy sha256 integrity assertion so a partial/failed copy that doesn't throw surfaces at install time, not on the next doctor run. +1 test (incomplete spec → throws, user content untouched, no backup created).
+- **SCRIPT-2** (`scripts/toggle.js`): the only CLI entrypoint reading `process.argv[2]` directly — `toggle banned-vocab --json` silently dropped `--json`. Now takes the first positional as the hook name and feeds the remainder to `parseStrict`, so an unknown flag / extra positional rejects loudly with exit 2 (shape error, distinct from exit 1). +2 tests.
+- **DOC-1** (`docs/ARCHITECTURE.md`): "Three layers" → four (adds the `bin/claudemd-lint.js` npm-CLI layer the doc omitted); new "§8 is a guardrail, not a security boundary" positioning section.
+- **Test-harness fix** (`tests/hooks/contract.test.sh`): the C-check event extraction now strips comments before matching `hook_record <hook> <event>`, so a docstring mentioning `hook_record` no longer false-flags schema drift (anchor on code syntax only).
+- **OPS-1 confirmed no-op** (already shipped): jsonl size-capped rotation exists in `rule-hits.sh` (documented in the roadmap; the audit's "no rotation" finding was inaccurate).
+- **Tests**: full `npm test` green; shellcheck + bash-3.2 gate clean; `lint:argv` 0 hits.
+
 ## [0.40.0] - 2026-07-12
 
 **Minor — observability + test-robustness batch (roadmap B1): safety-hook fail-open telemetry + doctor hook-liveness self-checks + CI execution timeouts + README hook-count drift guard.** Product of the 2026-07-12 production-readiness audit (`docs/production-readiness-audit-2026-07-12.md`) B1 batch. Spec unchanged (stays v6.17.0). No user-visible enforcement change — these harden observability and the test harness.

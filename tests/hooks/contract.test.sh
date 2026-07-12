@@ -142,7 +142,14 @@ done
 # --- C: every emitted event in source is documented -------------------------
 
 DOC_EVENTS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | cut -d: -f1 | sort -u)
-EMITTED=$(grep -hRE 'hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+[a-z-]+' "$HOOKS_DIR" \
+# Strip comments before extracting emitted events: a prose mention of
+# `hook_record` in a docstring (e.g. "hook_record re-sources idempotently")
+# otherwise reads as a real emission and false-flags drift. Anchor on code
+# syntax only (feedback_self_referential_marker_regex). Full-line `# …` and
+# trailing ` # …` comments removed; real `hook_record <hook> <event>` calls
+# are code, never comments, so extraction is unchanged for them.
+EMITTED=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' {} + \
+  | grep -hE 'hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+[a-z-]+' \
   | sed -E 's/.*hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+([a-z-]+).*/\1/' \
   | sort -u)
 

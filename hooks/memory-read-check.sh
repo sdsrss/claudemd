@@ -159,7 +159,7 @@ fi
 # For `/._`-only paths the two forms are byte-identical, so this is a strict
 # superset fix. (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh,
 # lib/rule-hits.sh — all derive the same projects-dir encoding.)
-ENCODED=$(printf '%s' "$CWD" | tr -c 'a-zA-Z0-9-' '-')
+ENCODED=$(hook_encode_project "$CWD")
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"

@@ -2,13 +2,18 @@
 
 For full design rationale, see `docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md`. This file is the post-implementation reference.
 
-## Three layers
+## Four layers
 
-1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code.
-2. **L2 Management scripts** (`scripts/*.js`) — Node.js 20, handle install/uninstall/update/status/audit/toggle/doctor/hard-rules-audit/clean-residue. Share a `scripts/lib/` module set.
+1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`).
+2. **L2 Management scripts** (`scripts/*.js`) — Node.js ≥20, handle install/uninstall/update/status/audit/toggle/doctor/hard-rules-audit/clean-residue/sampling-audit/…. Share a `scripts/lib/` module set (acyclic, rooted at `paths.js`).
 3. **L3 Slash commands** (`commands/*.md`) — markdown stubs that tell the agent which L2 script to invoke.
+4. **Standalone CLI** (`bin/claudemd-lint.js`) — the npm-published `claudemd-cli` (`lint` + `audit` for §10-V banned-vocab / transcript scanning in git hooks, CI, or other agents). Imports `scripts/lib/lint.js` (downward dependency only — no duplication of the matcher).
 
-L1 never imports L2. A broken plugin install leaves hooks functional (or fail-open). Broken hooks leave commands functional.
+Dependency flow is strictly downward: L1 never imports L2; `bin/` imports `scripts/lib/` but never the reverse. A broken plugin install leaves hooks functional (or fail-open). Broken hooks leave commands functional.
+
+## Positioning: §8 is a guardrail, not a security boundary
+
+The `pre-bash-safety-check.sh` §8 gate (rm -rf $VAR / unpinned npx / curl|sh) steers the agent away from its **own** mistakes and makes rule-adherence observable — it is NOT an anti-injection security boundary. Any `DISABLE_*` env var or in-command `[allow-*]` escape token bypasses it by design, and it matches command shapes with a heuristic (normalized then blocklisted), so a motivated adversary can evade it. Investment goes to closing false-negatives for *natural* command shapes (e.g. `/bin/rm`, `${IFS}`-split), not to becoming a sandbox. Treat it as discipline tooling with a kill-switch.
 
 ## Invariants
 

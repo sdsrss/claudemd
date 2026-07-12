@@ -114,6 +114,23 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // user content. There is nothing user-owned to preserve, so we do NOT back
   // them up.
   const claudeMdIsSpec = existing.includes(claudeMdPath) && !userContentDetected;
+
+  // SCRIPT-1 (2026-07-12 audit): validate the shipped spec is COMPLETE *before*
+  // the backup branch below moves the user's ~/.claude/CLAUDE.md (createBackup
+  // uses renameSync). Pre-fix this ran AFTER the move, so an incomplete plugin
+  // checkout (partial git checkout / truncated tarball / CI packaging that
+  // excluded spec/) left the user's home spec only in the backup dir, the home
+  // path empty, and the manifest unwritten — recoverable but alarming. Fail
+  // before touching anything the user owns.
+  const missingSpecs = SPEC_FILES.filter(n => !fs.existsSync(path.join(pluginRoot, 'spec', n)));
+  if (missingSpecs.length > 0) {
+    throw new Error(
+      `install: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
+      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
+      `re-clone from https://github.com/sdsrss/claudemd.`
+    );
+  }
+
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
@@ -146,23 +163,22 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
       );
     }
   }
-  // Fail loudly if the shipped spec dir is incomplete — otherwise the silent
-  // skip below would leave home-spec partially populated (or empty on a fresh
-  // install) while still writing the manifest, leaving the user thinking the
-  // install succeeded. Triggers seen in the wild: partial git checkout,
-  // truncated tarball, CI packaging that excluded `spec/`.
-  const missingSpecs = SPEC_FILES.filter(n => !fs.existsSync(path.join(pluginRoot, 'spec', n)));
-  if (missingSpecs.length > 0) {
-    throw new Error(
-      `install: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
-      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
-      `re-clone from https://github.com/sdsrss/claudemd.`
-    );
-  }
+  // Completeness of the shipped spec was validated above (before any backup
+  // move). Copy each file, then assert the installed bytes match the source —
+  // a closing integrity check (SCRIPT-1) so a partial/failed copyFileSync that
+  // does not throw surfaces HERE, not on the next `/claudemd-doctor` run.
   for (const name of SPEC_FILES) {
     const src = path.join(pluginRoot, 'spec', name);
     const dest = path.join(path.dirname(settingsPath()), name);
     fs.copyFileSync(src, dest);
+    const srcHash = crypto.createHash('sha256').update(fs.readFileSync(src)).digest('hex');
+    const destHash = crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex');
+    if (srcHash !== destHash) {
+      throw new Error(
+        `install: post-copy integrity check failed for ${name} ` +
+        `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run the install.`
+      );
+    }
   }
 
   // 2a. Migrate hand-installed banned-vocab hook files (pre-plugin v0 artifact).

@@ -487,3 +487,20 @@ test('install with a code-graph host in the slot → host-detected, no registry 
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
   assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"');
 });
+
+test('SCRIPT-1: incomplete shipped spec fails BEFORE moving user content', async () => {
+  // A partial plugin checkout (a spec file missing) must be rejected before the
+  // backup branch renameSync-moves the user's ~/.claude/CLAUDE.md. Pre-fix the
+  // completeness check ran after the move → home spec ended up only in backup/.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal global instructions\nBe concise.\n');
+  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'));  // incomplete checkout
+
+  await assert.rejects(() => install({ pluginRoot }), /shipped spec missing/);
+
+  // User content untouched at its home path — NOT moved into a backup dir.
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# My personal global instructions\nBe concise.\n');
+  const items = fs.readdirSync(path.join(tmpHome, '.claude'));
+  assert.ok(!items.some(n => n.startsWith('backup-')), 'no backup dir — nothing was moved');
+});

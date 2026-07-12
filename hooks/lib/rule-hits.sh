@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # rule-hits.sh — append-only JSONL log for §13.1 self-audit data.
 
+# hook_encode_project RAW → stdout
+#   Encode a path to Claude Code's ~/.claude/projects/<encoded>/ convention: CC
+#   replaces EVERY non-`[a-zA-Z0-9-]` char with `-`. ARCH-1 (2026-07-12 audit):
+#   the single source for what were 4 inlined `tr -c 'a-zA-Z0-9-' '-'` copies
+#   (here + memory-prompt-hint / memory-read-check / banned-vocab-check). The
+#   earlier `tr '/._'` form mis-encoded any path with another special char →
+#   telemetry mis-attribution (feedback_cc_cwd_encoding_dots). Lives in this leaf
+#   lib (sourced standalone by tests AND eagerly by hook-common.sh) so all
+#   consumers share ONE definition — no `declare -F`-guarded inline fallback
+#   (that silent-divergence anti-pattern is feedback_hook_platform_lib_source).
+hook_encode_project() {
+  printf '%s' "${1:-}" | tr -c 'a-zA-Z0-9-' '-'
+}
+
 # rule_hits_append HOOK EVENT EXTRA_JSON [SPEC_SECTION] [SESSION_ID] [TOOL_USE_ID]
 #   HOOK        — hook name (banned-vocab, ship-baseline, ...)
 #   EVENT       — see docs/RULE-HITS-SCHEMA.md "Events" table for the
@@ -61,7 +75,7 @@ rule_hits_append() {
   # matching consumer + bug-history note. Empty string when neither var is set.
   local project_raw="${CLAUDE_PROJECT_DIR:-${PWD:-}}"
   local project=""
-  [[ -n "$project_raw" ]] && project=$(printf '%s' "$project_raw" | tr -c 'a-zA-Z0-9-' '-')
+  [[ -n "$project_raw" ]] && project=$(hook_encode_project "$project_raw")
 
   local log_dir="$HOME/.claude/logs"
   local log_file="$log_dir/claudemd.jsonl"

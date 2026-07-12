@@ -1,6 +1,6 @@
 import { readSettings, writeSettings } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
-import { printHelpAndExit } from './lib/argv.js';
+import { printHelpAndExit, parseStrict, ArgvError } from './lib/argv.js';
 
 // Display name → env-var suffix. Source of truth: scripts/lib/hook-registry.js.
 // `version-sync` maps to `USER_PROMPT_SUBMIT` (event name, not file name) —
@@ -42,8 +42,24 @@ export async function toggle(name) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  printHelpAndExit(process.argv.slice(2), USAGE);
-  const name = process.argv[2];
+  const raw = process.argv.slice(2);
+  printHelpAndExit(raw, USAGE);
+  // SCRIPT-2 (2026-07-12 audit): toggle took a positional hook name but read
+  // process.argv[2] directly, so `toggle.js banned-vocab --json` flipped the
+  // hook and SILENTLY dropped --json (the silent-flag-drop antipattern every
+  // sibling CLI fixed via parseStrict). Take the first positional as the hook
+  // name; feed everything else (stray flags + extra positionals) to parseStrict
+  // so an unknown flag / extra arg rejects loudly with exit 2 (shape error),
+  // distinct from exit 1 (missing/unknown hook).
+  const positionals = raw.filter(a => !a.startsWith('-'));
+  const name = positionals[0];
+  const leftover = raw.filter(a => a.startsWith('-')).concat(positionals.slice(1));
+  try {
+    parseStrict(leftover);
+  } catch (e) {
+    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    throw e;
+  }
   if (!name) {
     console.error(USAGE);
     process.exit(1);

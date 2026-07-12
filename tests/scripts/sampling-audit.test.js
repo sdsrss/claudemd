@@ -5,7 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD } from '../../scripts/sampling-audit.js';
+import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD, loadVocabPatterns, scanVocab } from '../../scripts/sampling-audit.js';
+import { readPatterns } from '../../scripts/lib/lint.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -307,4 +308,45 @@ test('CLI: zero scanned transcripts → no tasks/ report file written (skip mess
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// DRIFT-1 (2026-07-12 audit): sampling-audit's §10-V matcher must share lint.js's
+// parser/scanner, not a divergent inline copy. The prior inline loader used
+// indexOf('|') (truncates alternation regexes) and omitted posixClassesToJs.
+test('DRIFT-1: loadVocabPatterns delegates to lint.js readPatterns (parity)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-drift1-'));
+  const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
+  fs.mkdirSync(path.dirname(pf), { recursive: true });
+  fs.writeFileSync(pf, [
+    '# fixture patterns',
+    '\\b(foo|bar)\\b|alternation reason',          // FIRST-bar indexOf would truncate to `\b(foo`
+    'quick[[:space:]]+win|posix class reason',      // needs posixClassesToJs
+    '\\bcheapish\\b|@ratio ratio-tagged reason',    // must be excluded by excludeRatio
+  ].join('\n') + '\n');
+
+  const pats = loadVocabPatterns(tmp);
+  // byte-for-byte identical to the sanctioned lint.js parser
+  assert.deepEqual(pats, readPatterns(pf));
+  // alternation regex survived intact (indexOf bug would have truncated it)
+  assert.equal(pats.find(p => p.reason.includes('alternation')).regex, '\\b(foo|bar)\\b');
+  assert.equal(pats.find(p => p.reason.includes('ratio-tagged')).isRatio, true);
+});
+
+test('DRIFT-1: scanVocab matches alternation + POSIX class, excludes @ratio', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-drift1b-'));
+  const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
+  fs.mkdirSync(path.dirname(pf), { recursive: true });
+  fs.writeFileSync(pf, [
+    '\\b(foo|bar)\\b|alternation reason',
+    'quick[[:space:]]+win|posix class reason',
+    '\\bcheapish\\b|@ratio ratio-tagged reason',
+  ].join('\n') + '\n');
+  const pats = loadVocabPatterns(tmp);
+
+  // alternation: both arms match (old indexOf loader dropped this pattern entirely)
+  assert.deepEqual(scanVocab('this bar is here', pats), ['bar']);
+  // POSIX class translated → matches real whitespace (old loader mis-matched)
+  assert.deepEqual(scanVocab('a quick   win today', pats), ['quick   win']);
+  // @ratio excluded
+  assert.deepEqual(scanVocab('this is cheapish', pats), []);
 });

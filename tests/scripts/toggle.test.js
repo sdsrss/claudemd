@@ -76,3 +76,19 @@ test('toggle CLI -h exits 0 with usage on stdout', () => {
   assert.equal(result.status, 0, `expected exit 0; stderr=${result.stderr}`);
   assert.match(result.stdout, /Usage:.*toggle\.js/);
 });
+
+test('SCRIPT-2: unknown trailing flag rejects with exit 2 (no silent drop)', () => {
+  // `toggle banned-vocab --json` previously flipped the hook and dropped --json.
+  const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', '--json'], {
+    encoding: 'utf8', env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-')) },
+  });
+  assert.equal(r.status, 2, `expected exit 2 (shape error); stderr=${r.stderr}`);
+  assert.match(r.stderr, /Unknown flag|Unknown argument/);
+});
+
+test('SCRIPT-2: extra positional rejects with exit 2', () => {
+  const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', 'pre-bash-safety'], {
+    encoding: 'utf8', env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-')) },
+  });
+  assert.equal(r.status, 2, `expected exit 2; stderr=${r.stderr}`);
+});
