@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# claudemd statusLine — PS1-style: user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%]
+# claudemd statusLine — PS1-style: user@host:dir (branch) model [ctx:N% · 5h:N% · 7d:N%]
+# (dir = basename of cwd, not the full path)
 # Reads Claude Code's statusLine JSON on stdin; prints one line to stdout.
 # Colors mirror bash PS1 (green user@host, blue path, magenta branch, cyan
 # model). The meter bracket holds up to three USED-% segments (ctx = context,
@@ -49,9 +50,13 @@ model=${model//$'\r'/}; model=${model//$'\n'/ }
 # user@host — bold green
 user_host="${esc}[01;32m$(whoami)@$(hostname -s)${esc}[00m"
 
-# path — bold blue
+# path — bold blue; basename only (a full path crowds out the meter segments).
+# ${cwd##*/} of "/" (or a trailing-slash path) is empty → fall back to full cwd.
 path_part=""
-[ -n "$cwd" ] && path_part="${esc}[01;34m${cwd}${esc}[00m"
+if [ -n "$cwd" ]; then
+  dir=${cwd##*/}
+  path_part="${esc}[01;34m${dir:-$cwd}${esc}[00m"
+fi
 
 # branch — magenta; detached HEAD → short SHA; only inside a repo
 branch_part=""

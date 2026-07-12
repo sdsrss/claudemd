@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.38.0] - 2026-07-12
+
+**Minor — statusline path segment renders cwd basename only.** Spec unchanged (stays v6.17.0).
+
+- **User-visible change** (`scripts/statusline.sh`): the blue path segment now shows the cwd basename — `sds@nb:claudemd (main) …` — instead of the full path, which crowded out the branch/model/meter segments on deep project paths. `cwd="/"` (or any cwd whose basename is empty, e.g. trailing slash) falls back to the full cwd; branch detection is untouched (still runs against the full path). Revert: the rendering script is a stable copy at `~/.claude/claudemd-statusline.sh` — restore it from an older plugin cache dir, or point the statusLine slot elsewhere via `/claudemd-statusline remove`.
+- **Docs** (`README.md`): StatusLine row format string updated (`user@host:/path` → `user@host:dir`, `dir` = cwd basename).
+- **Tests** (`tests/scripts/statusline.test.js`): 23 → 24 — full-payload assertion now expects the basename AND asserts the full path is absent; new `cwd:"/"` fallback case.
+
 ## [0.37.1] - 2026-07-11
 
 **Patch — QA tech-debt closure: per-suite env hygiene + README drift guards + sampling-audit zero-data skip.** Closes the three follow-ups filed by the 2026-07-11 QA loop. Spec unchanged (stays v6.17.0).

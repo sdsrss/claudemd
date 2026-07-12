@@ -32,7 +32,8 @@ test('full payload renders PS1-colored segments', () => {
     rate_limits: limits(10, 16),
   });
   assert.match(out, new RegExp(`^${ESC}\\[01;32m.+@.+${ESC}\\[00m:`));            // user@host green + colon
-  assert.ok(out.includes(`${ESC}[01;34m/tmp/nonrepo-xyz${ESC}[00m`));             // path blue
+  assert.ok(out.includes(`${ESC}[01;34mnonrepo-xyz${ESC}[00m`));                  // path blue, basename only
+  assert.ok(!out.includes('/tmp/nonrepo-xyz'), 'full path must not render');
   assert.ok(out.includes(`${ESC}[00;36mOpus 4.8 (1M context)${ESC}[00m`));        // model cyan
   const seg = (body, c) => `${ESC}[02;${c}m${body}${ESC}[00m`;   // meter segments are faint
   assert.ok(out.includes(` [${seg('ctx:6%', 32)} · ${seg('5h:10%', 32)} · ${seg('7d:16%', 32)}]`),
@@ -183,6 +184,11 @@ test('git repo → branch segment; non-repo → none', () => {
   const nonrepo = fs.mkdtempSync(path.join(os.tmpdir(), 'sl-nonrepo-'));
   assert.ok(!render({ cwd: nonrepo, model: { display_name: '' } }).includes(`${ESC}[00;35m(`));
   fs.rmSync(nonrepo, { recursive: true, force: true });
+});
+
+test('cwd "/" falls back to full path (basename would be empty)', () => {
+  const out = render({ cwd: '/', model: { display_name: '' } });
+  assert.ok(out.includes(`${ESC}[01;34m/${ESC}[00m`), `got: ${JSON.stringify(out)}`);
 });
 
 test('field with backslash escape does not truncate the line', () => {
