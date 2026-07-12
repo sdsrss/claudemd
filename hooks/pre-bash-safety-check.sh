@@ -275,9 +275,27 @@ effective_npx_cwd() {
   printf '%s' "$eff"
 }
 
-PROCESSED_CMD="$CMD"
+# Normalize shell-lexer evasions BEFORE unwrap/sanitize/tokenize (v0.39.0 §8 FN
+# closure, 2026-07-12 audit F2/F3). The detectors below match SOURCE TEXT, so an
+# attacker can hide a danger token from them with lexer tricks the shell itself
+# transparently undoes at exec time:
+#   - ${IFS}/$IFS word-split (F2): `rm${IFS}-rf${IFS}$X`, `npx${IFS}pkg` — fold to
+#     a space so the token loop sees `rm -rf $X` / `npx pkg`. Bare `$IFS` is only
+#     folded when NOT followed by an identifier char (so `$IFSFOO` = var IFSFOO is
+#     untouched).
+#   - backslash-newline continuation (F3): `rm -r\<newline>f $X` — bash joins the
+#     line, so remove `\`+newline (portable bash 3.2 param-expansion, not sed `\n`
+#     which is non-portable on BSD).
+# Folding can only EXPOSE tokens the shell would see, never hide one, so it
+# strictly closes false-negatives on these deny-on-match detectors.
+_nl=$'\n'
+NORMALIZED_CMD="${CMD//\\$_nl/}"
+# shellcheck disable=SC2016  # single quotes intentional: sed must see $IFS literally
+NORMALIZED_CMD=$(printf '%s' "$NORMALIZED_CMD" | sed -E 's/\$\{IFS\}/ /g; s/\$IFS([^A-Za-z0-9_]|$)/ \1/g')
+
+PROCESSED_CMD="$NORMALIZED_CMD"
 if [[ "${BASH_SAFETY_INDIRECT_CALL:-1}" != "0" ]]; then
-  PROCESSED_CMD=$(unwrap_indirect "$CMD")
+  PROCESSED_CMD=$(unwrap_indirect "$NORMALIZED_CMD")
 fi
 SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")
 # Multi-line collapse for pattern-extraction sed passes. Without this, the
@@ -362,7 +380,7 @@ if (( bypass_rm == 0 )); then
       first="${trimmed%%[[:space:]]*}"
       if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
          || [[ "$first" == env || "$first" == command || "$first" == nohup \
-            || "$first" == setsid || "$first" == time \
+            || "$first" == setsid || "$first" == time || "$first" == busybox \
             || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
         # Arg-less transparent wrappers + leading env-var assignments.
         rest="${trimmed#"$first"}"
@@ -398,12 +416,19 @@ if (( bypass_rm == 0 )); then
         break
       fi
     done
-    # Segment must start with `rm` token (followed by whitespace or end).
-    [[ "$trimmed" == rm || "$trimmed" == rm[[:space:]]* ]] || continue
+    # Segment must start with an `rm` token. Canonicalize the command word to
+    # its basename and strip a leading backslash so path-prefixed (`/bin/rm`,
+    # `./rm`) and alias-defeating (`\rm`) forms are recognized as rm — matching
+    # what the shell EXECS, not the source spelling (v0.39.0 §8 FN closure F1).
+    # `busybox rm` (multiplexer) is handled earlier by the wrapper-strip loop.
+    # Exact `== rm` after canonicalization keeps `charm`/`norm`/`perm` etc. off.
+    rm_word="${trimmed%%[[:space:]]*}"
+    rm_canon="${rm_word#\\}"; rm_canon="${rm_canon##*/}"
+    [[ "$rm_canon" == rm ]] || continue
     # Parse args. Detect any of: -r / -R / -f / -F in a `-*[rRfF]*` short
     # flag block; OR `--recursive` / `--force` long form. Find the first
     # non-flag positional arg as the target. POSIX `--` separator handled.
-    args_only="${trimmed#rm}"
+    args_only="${trimmed#"$rm_word"}"
     args_only="${args_only#"${args_only%%[![:space:]]*}"}"
     danger=0
     rm_target=""
@@ -572,7 +597,11 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
 # requires a space, which `${curl}` (curl followed by `}`) never has.
 CURLSH_PIPE='(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:]]|$)'
-CURLSH_PROCSUB='(^|[|;&({])[[:space:]]*(sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
+# `source` and `.` are builtins that EXECUTE their file argument in the current
+# shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
+# x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
+# a bare `.` before ` <(curl…)` is only ever the source builtin.
+CURLSH_PROCSUB='(^|[|;&({])[[:space:]]*(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
 curlsh_hit=0
 while IFS= read -r cseg; do
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then

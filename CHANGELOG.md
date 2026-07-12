@@ -8,6 +8,18 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.39.0] - 2026-07-12
+
+**Minor — §8 Bash-gate false-negative closure: command-name canonicalization + shell-lexer normalization (roadmap SEC-1).** Closes 4 novel §8 bypasses surfaced by the 2026-07-12 production-readiness audit (`docs/production-readiness-audit-2026-07-12.md`, all reproduced live before the fix). Spec unchanged (stays v6.17.0). **User-visible enforcement change**: commands previously ALLOWED are now denied — see below.
+
+- **Fix** (`hooks/pre-bash-safety-check.sh`): the rm-detector's segment gate matched only the bare literal token `rm`, and the sanitizer never normalized `${IFS}` or backslash-newline, so four natural-looking evasions slipped the gate. All now denied:
+  - **F1 command-name canonicalization** — the rm command word is canonicalized to its basename with one leading backslash stripped, so `/bin/rm -rf $VAR`, `./rm`, and the alias-defeating `\rm -rf $VAR` are recognized as rm (matching what the shell execs, not the source spelling). `busybox rm` (multiplexer) added to the wrapper-strip set. Exact `== rm` after canonicalization keeps `charm`/`norm`/`perm` off.
+  - **F2 `${IFS}`/`$IFS` word-split** — folded to a space before tokenizing, so `rm${IFS}-rf${IFS}$HOME` and `npx${IFS}pkg` read as `rm -rf $HOME` / `npx pkg`. Bare `$IFS` folds only when not followed by an identifier char (`$IFSFOO` untouched).
+  - **F3 backslash-newline continuation** — `rm -r\`+newline+`f $X` rejoins before tokenizing (portable bash-3.2 param-expansion, not BSD-unsafe sed `\n`).
+  - **F4 `source <(curl)` / `. <(curl)`** — `source` and `.` added to the curl-process-substitution interpreter set; they exec fetched content in the current shell like `bash <(curl x)`.
+  Folding/canonicalization can only EXPOSE tokens the shell itself sees at exec time, never hide one, so these strictly close false-negatives on the deny-on-match detectors. **Positioning unchanged**: §8 remains a guardrail (steers the agent off its own mistakes + makes rule-adherence observable), NOT an anti-injection security boundary — any `DISABLE_*` env var or `[allow-*]` token still bypasses by design. Documented residuals (`xargs rm`, option-with-arg wrappers like `sudo -u svc rm`, non-shell interpreter sinks) remain out of scope (diminishing returns; don't change the guardrail framing).
+- **Tests** (`tests/fixtures/bash-safety/corpus.tsv`, +16 rows → suite 211 → 222): 11 adversarial deny cases (F1–F4) + 5 FP controls (`/bin/rm` literal path, `charm` basename exact-match, `${IFS}` in echo, `source`/`.` on local files) — the red-team evasion corpus the roadmap called for, driven by `pre-bash-safety.test.sh` inside the CI-gated run-all. `npm test` all suites pass; shellcheck clean; bash-3.2 portability gate clean.
+
 ## [0.38.0] - 2026-07-12
 
 **Minor — statusline path segment renders cwd basename only.** Spec unchanged (stays v6.17.0).
