@@ -178,6 +178,40 @@ sanitize_cmd() {
   printf '%s' "$out"
 }
 
+# Canonicalize the command-position leading word of every segment: strip a
+# leading backslash (alias-defeat `\npx`) and a path prefix (`/usr/bin/npx`),
+# leaving the basename the shell actually EXECs. Only the FIRST token after a
+# true command separator (^ ; & | ( { backtick newline) is touched — NEVER a
+# plain-space-preceded argument — so `echo foo/npx bar` is untouched (foo/npx is
+# an arg, not a command). This gives the npx/curl gates the same command-name
+# awareness the rm gate's token loop already has (2026-07-13 SEC-2; SEC-1 v0.39.0
+# basenamed the rm gate only, leaving \npx / /usr/bin/npx and \curl / path-curl
+# evading). The shell resolves these to npx/curl/sh at exec time, so
+# canonicalizing can only EXPOSE deny tokens the shell would run, never hide one.
+canon_cmd_words() {
+  printf '%s' "$1" | awk '
+    {
+      s=$0; out=""; n=length(s); i=1; cmdpos=1
+      while (i<=n) {
+        ch=substr(s,i,1)
+        if (cmdpos && ch!=" " && ch!="\t") {
+          word=""
+          while (i<=n) {
+            ch=substr(s,i,1)
+            if (ch==" "||ch=="\t"||ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="{"||ch=="`") break
+            word=word ch; i++
+          }
+          sub(/^\\/,"",word); sub(/.*\//,"",word)
+          out=out word; cmdpos=0; continue
+        }
+        out=out ch
+        if (ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="{"||ch=="`") cmdpos=1
+        i++
+      }
+      print out
+    }'
+}
+
 # Indirect-call unwrap (opt-in v0.6.0).
 # Order: unwrap BEFORE sanitize. Sanitize strips single-quoted bodies entirely
 # and double-quoted bodies w/o `$`; once we unwrap, the inner sits as a
@@ -300,14 +334,30 @@ effective_npx_cwd() {
 # strictly closes false-negatives on these deny-on-match detectors.
 _nl=$'\n'
 NORMALIZED_CMD="${CMD//\\$_nl/}"
+# Fold ${IFS}/$IFS word-splitting to a space. The braced ${IFS} form is a plain
+# global replace, but the bare-$IFS sed `s/\$IFS([^A-Za-z0-9_]|$)/ \1/` CONSUMES
+# the trailing delimiter into the backref, so an ADJACENT `$IFS$IFS` leaves the
+# second unfolded after one pass (2026-07-13 SEC-2 F6). Run the bare form to a
+# FIXED POINT — folding only ever removes `$IFS`, so it decreases monotonically
+# and terminates.
 # shellcheck disable=SC2016  # single quotes intentional: sed must see $IFS literally
-NORMALIZED_CMD=$(printf '%s' "$NORMALIZED_CMD" | sed -E 's/\$\{IFS\}/ /g; s/\$IFS([^A-Za-z0-9_]|$)/ \1/g')
+NORMALIZED_CMD=$(printf '%s' "$NORMALIZED_CMD" | sed -E 's/\$\{IFS\}/ /g')
+while :; do
+  # shellcheck disable=SC2016  # single quotes intentional: sed must see $IFS literally
+  _folded=$(printf '%s' "$NORMALIZED_CMD" | sed -E 's/\$IFS([^A-Za-z0-9_]|$)/ \1/g')
+  [[ "$_folded" == "$NORMALIZED_CMD" ]] && break
+  NORMALIZED_CMD="$_folded"
+done
 
 PROCESSED_CMD="$NORMALIZED_CMD"
 if [[ "${BASH_SAFETY_INDIRECT_CALL:-1}" != "0" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$NORMALIZED_CMD")
 fi
 SANITIZED_CMD=$(sanitize_cmd "$PROCESSED_CMD")
+# Canonicalize command-position words (\npx → npx, /usr/bin/npx → npx) so the
+# npx/curl gates below match what the shell EXECs — sibling parity with the rm
+# gate's own basename step (2026-07-13 SEC-2 F5).
+SANITIZED_CMD=$(canon_cmd_words "$SANITIZED_CMD")
 # Multi-line collapse for pattern-extraction sed passes. Without this, the
 # downstream `s/.*${RM_FLAG_REGEX}//` / `s/.*${NPX_REGEX}//` operate per-line:
 # lines without `rm`/`npx` pass through unchanged, then `head -n1` (rm path)
