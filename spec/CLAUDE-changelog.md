@@ -6,6 +6,10 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.19.0 — 2026-07-13
+
+Minor: §2.2 **Runbook fast-path** — when extended would load solely because of ship/release (incl. released-artifact L3) and the project's ship-runbook memory carries a current-version coverage stamp (`covers: §EXT §12 … @ v<spec>`), the ship reads the runbook + targeted-reads the stamped §EXT sections instead of the full file. Stamp missing/stale/doubtful → full load + stamp refresh (self-healing, one full re-read per spec release). Bounds in §EXT §12: ship-trigger only — architecture/breaking-schema/migration/prod/infra L3, Override modes, and three-strike still full-load; a stamp is void unless the runbook inlines the §12 obligations it waives; every §12 HARD obligation binds unchanged. Paired net-delete per §0.1: **C4 consumed** — §2.1 Model-tiering Sonnet/Opus category enumeration → new §EXT §2.1-EXT (safety invariants stay in core). Operator-requested token-efficiency relaxation: closes the extended side of the ship read cost after v6.16.0 closed the memory side. Core/extended Δ: extended Sizing line.
+
 ## v6.18.0 — 2026-07-13
 
 Minor: §1 Language-contract refinement — **reasoning moves to English** (was user's-language), plus an explicit docs split: local analysis/audit docs follow the user's language while shipped reference/contract docs (ARCHITECTURE / HOOK-PROTOCOL / RULE-HITS-SCHEMA / ADDING-NEW-HOOK / cross-project-pilot) stay English for adopters. Done narrative made explicit in the user's-language bucket. Code / comments / commits / CHANGELOG / PR / log-strings / config-keys / CLI-labels unchanged (English). Core Δ ≈ +79B (within headroom, no net-delete required).

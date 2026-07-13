@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.18.0 — Extended
+# AI-CODING-SPEC v6.19.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -91,6 +91,14 @@ When a change qualifies as "released-artifact user-visible default behavior chan
 - **One-time discoverability signal**: stderr banner / first-run log / release-note callout — so users who don't read CHANGELOG still notice.
 
 Missing any item on a user-visible default change = incomplete ship; file as Uncertain in REPORT.
+
+## §2.1-EXT MODEL TIERING (downgrade categories)
+
+Core §2.1 keeps the invariants (default inherit / NEVER-downgrade list / verifier ≥ generator / anomalous → one re-run at inherited tier / tier never lowers the evidence bar). Downgrade-eligible categories (moved from core, v6.19.0):
+
+- **Sonnet**: mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits (pair `effort:'low'`).
+- **Opus**: test-gated plan-step code.
+- **Anomalous** = empty / malformed / contradictory output from a downgraded agent.
 
 ## §2.S SPEC ARTIFACT
 
@@ -364,6 +372,8 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 
 **Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. Rationale: without a skill's step-list pulling the agent forward, `git commit` looks like a natural pause, and the user's ship AUTH — which per §5 "per-task, per-scope" already covers push/tag/release — gets re-litigated one manual step at a time. User's single `[AUTH]` on ship is one AUTH on the full pipeline.
 
+**Runbook fast-path (ship-trigger only, v6.19.0)**: a project's ship-runbook memory (§11-EXT Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
+
 ### Review-finding repair
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.
 - **Security (any severity)**: failing test must reproduce vulnerability (not just touch code path). No "added a check" without RED test.
@@ -475,22 +485,20 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.18.0 (minor, 2026-07-13)** — §1 Language-contract refinement (operator-requested):
+**v6.19.0 (minor, 2026-07-13)** — §2.2 Runbook fast-path (operator-requested token-efficiency relaxation):
 
-- `[change]` **reasoning → English** (was user's-language): internal reasoning/思考 now written in English, joining code / comments / commits. Rationale: reasoning is code-adjacent working text, not user-facing prose.
-- `[add]` **docs split**: local analysis/audit/roadmap docs follow the user's language; shipped reference/contract docs (ARCHITECTURE / HOOK-PROTOCOL / RULE-HITS-SCHEMA / ADDING-NEW-HOOK / cross-project-pilot) stay English for third-party adopters.
-- `[add]` **Done narrative** made explicit in the user's-language bucket (already implied by §7/§10; now stated at source).
-- Unchanged (English): code / comments / docstrings / commits / CHANGELOG / PR text / log-strings / config-keys / CLI-labels / paths / branches. Unchanged (user's language): chat prose / plans / summaries / `tasks/*.md` bodies. Memory routing (§1 Memory line) untouched.
+- `[add]` **§2.2 Runbook fast-path + §12 rules**: when extended would load solely because of ship/release (incl. released-artifact L3) and the project's ship-runbook memory carries a current-version coverage stamp (`covers: §EXT §12 … @ v<spec>`), ship reads runbook + stamped §EXT sections instead of the full file (~47KB → ~7KB read on claudemd). Stamp missing/stale → full load + stamp refresh — self-healing, one full re-read per spec release. All §12 HARD obligations bind unchanged.
+- `[move]` **C4 — §2.1 Model-tiering categories → §EXT §2.1-EXT**: core keeps the safety invariants (inherit default / NEVER-downgrade / verifier ≥ generator / re-run / evidence bar); Sonnet/Opus category enumeration moves here. Paired net-delete for the fast-path addition per §0.1.
 
 ### Why minor (and why now)
 
-Behavior change to a core rule that governs all agent output language → minor per §13 META (not patch); the §13.2 HARD budget is untouched (no HARD rule added/removed — this re-buckets an existing contract). Operator-requested with boundaries confirmed before edit (git/code artifacts + shipped contract docs stay English; only reasoning re-buckets + a docs split is added).
+One rule relaxed (§2.2 load scope) → minor per §13 META; no HARD added — the fast-path's bounds live inside the existing §12 HARD block. Operator-requested same-week as v6.18.0: the ship-time full-extended load was the largest recurring token cost the spec imposes on itself; v6.16.0 runbook consolidation already made the memory side one predictable Read — this closes the extended side.
 
-**Older entries** (v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 §11-EXT ship-runbook consolidation, v6.15.1 §0.1 operator-threshold relocation, v6.15.0 §2.1 Model tiering + Candidate-1 net-delete, v6.14.2 trigger-list `e.g.` markers + context7 conditionalized, v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 §11-EXT ship-runbook consolidation, v6.15.1 §0.1 operator-threshold relocation, v6.15.0 §2.1 Model tiering + Candidate-1 net-delete, v6.14.2 trigger-list `e.g.` markers + context7 conditionalized, v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.18.0, 2026-07-13, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24648 → 24727 bytes (Δ +79: §1 reasoning re-bucket + docs split + Done narrative, no net-delete — within headroom); extended 48488 → 47060 bytes (Δ −1428, v6.17.0 audit-batch entry swapped for the compact v6.18.0 entry); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24727/25000 (**273 bytes headroom, 98.91%**); extended 47060/50000 (**2940 bytes headroom, 94.12%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.19.0, 2026-07-13, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24727 → 24823 bytes (Δ +96: §2.2 Runbook fast-path ≈ +276, C4 move ≈ −180); extended 47060 → 48706 bytes (Δ +1646: §12 fast-path block + §2.1-EXT + entry swap); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24823/25000 (**177 bytes headroom, 99.29%**); extended 48706/50000 (**1294 bytes headroom, 97.41%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.18.0 spent +79B of core headroom on the operator-requested §1 change (273B remain, 98.91%) — §0.1 net-delete NOT triggered (under cap); the "next addition pairs a net-delete" line is a preference, deferred here for a small user-requested re-bucket. Candidate pool (`tasks/core-net-delete-candidates-v6.14.md`): **C4 is the only remaining candidate** (−230~280, medium risk) — pair it with the next SIZABLE core addition, not this one. Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar).
+**Operator carry-forward**: v6.19.0 paired the §2.2 fast-path addition with **C4 (consumed)** — the candidate pool (`tasks/core-net-delete-candidates-v6.14.md`) is now **empty**; the next core addition needs fresh staging before it lands. Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Fast-path adoption note: each project opting in must stamp its own runbook; claudemd's runbook stamped `@ v6.19.0` at ship.
 
 ## §1.5-EXT GLOSSARY
 

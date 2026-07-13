@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.45.0] - 2026-07-13
+
+**Minor — ships spec v6.19.0: §2.2 Runbook fast-path (ship-time token-efficiency relaxation).** When extended would load solely because of ship/release (incl. released-artifact L3) and the project's ship-runbook memory carries a current-version coverage stamp (`covers: §EXT §12 … @ v<spec>`), the ship reads the runbook + targeted-reads the stamped §EXT sections instead of the full ~47KB file. Stamp missing/stale → full load + stamp refresh (self-healing, one full re-read per spec release). All §12 HARD obligations bind unchanged. Companion to the v6.16.0 ship-runbook memory consolidation — the two together make a routine ship cost one runbook Read + ~7KB of targeted spec reads.
+
+- **Spec** (`spec/CLAUDE.md` §2.2 + §2.1, `spec/CLAUDE-extended.md` §12 + new §2.1-EXT + Recent changes + Sizing, `spec/CLAUDE-changelog.md`): v6.18.0 → v6.19.0. Paired net-delete per §0.1: **C4 consumed** — §2.1 Model-tiering Sonnet/Opus category enumeration moved to new §EXT §2.1-EXT; safety invariants (inherit default / NEVER-downgrade list / verifier ≥ generator / anomalous re-run / evidence bar) stay in core. Candidate pool now empty.
+- **Manifest** (`spec/hard-rules.json`): `spec_version` v6.18.0 → v6.19.0 (no rule add/remove — fast-path bounds live inside the existing `§12-ship-pipeline-hardening` HARD block; anchor unchanged).
+- **Descriptions** (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` ×2, `README.md` ×3): spec family tag v6.18 → v6.19.
+- **Memory (project-side, not in repo)**: claudemd ship runbook (`feedback_claudemd_ship_from_main_atomic.md`) gains the coverage stamp `covers: §EXT §12, §EXT §13 META, §EXT §2-EXT released-artifact checklist @ v6.19.0`.
+- **Tests**: full `npm test` green; `version-cascade-check` v6.19 consistent + Sizing within ±20B; shellcheck + bash-3.2 gate clean.
+
 ## [0.44.0] - 2026-07-13
 
 **Minor — ships spec v6.18.0: §1 Language-contract refinement.** Reasoning/思考 moves from the user's-language bucket to English (joining code / comments / commits); a docs split is added — local analysis/audit docs follow the user's language, shipped reference/contract docs (ARCHITECTURE / HOOK-PROTOCOL / RULE-HITS-SCHEMA / ADDING-NEW-HOOK / cross-project-pilot) stay English for adopters; Done narrative made explicit in the user's-language bucket. Code artifacts / CHANGELOG / PR / log-strings / config-keys / CLI-labels unchanged (English). Operator-requested with boundaries confirmed before edit.

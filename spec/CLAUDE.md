@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.18.0 — Core
+# AI-CODING-SPEC v6.19.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -101,7 +101,7 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative; this table c
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.
 
-**Model tiering (spawned agents only)**: default inherit — omit `model` when unsure. Sonnet: mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits (pair `effort:'low'`). Opus: test-gated plan-step code. NEVER downgrade: orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8 content. Invariants: verifier tier ≥ generator; anomalous downgraded output (empty / malformed / contradictory) → one re-run at inherited tier; tier never lowers the evidence bar (Iron Law #2).
+**Model tiering (spawned agents only)**: default inherit — omit `model` when unsure; downgrade-eligible categories → §EXT §2.1-EXT. NEVER downgrade: orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8 content. Verifier tier ≥ generator; anomalous downgraded output → one re-run at inherited tier; tier never lowers the evidence bar (Iron Law #2).
 
 **Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). **Skill "MUST invoke" wording (sp/gs) does NOT override §2.1 at L0–L2** (per §3 TRUST this spec wins): a clear-scope L1 bug goes fix→test direct, not forced into `sp:test-driven-development` / `gs:investigate` ceremony.
 
@@ -114,6 +114,8 @@ Load `~/.claude/CLAUDE-extended.md` when:
 - User: **ship / deploy / PR / pre-ship review / benchmark / security audit**
 - Entering **HACK / EMERGENCY / AUTONOMOUS**
 - **L1-bugfix same signature 3×** (→ §EXT §6)
+
+**Runbook fast-path**: extended load owed to ship/release alone (incl. released-artifact L3) + ship-runbook memory stamped `covers: §EXT §12 … @ v<current spec>` → Read runbook + stamped sections, not the full file; else full load. Rules: §EXT §12.
 
 **Ship-pipeline hardening** on `ship` / `deploy` / `create-release` / `merge-and-push`: `ship` skill required + `manual ship because <reason>` in REPORT if overridden. Full → §EXT §12.
 

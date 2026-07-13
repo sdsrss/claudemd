@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 OLD_TAG="v0.2.3"
 OLD_SPEC_VER="v6.10.1"
-NEW_SPEC_VER="v6.18.0"
+NEW_SPEC_VER="v6.19.0"
 NEW_RULE_NEEDLE="Memory routing"
 
 # macOS `mktemp -d` returns `/var/folders/...` which is a symlink to
