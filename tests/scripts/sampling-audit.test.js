@@ -6,7 +6,6 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD, loadVocabPatterns, scanVocab } from '../../scripts/sampling-audit.js';
-import { readPatterns } from '../../scripts/lib/lint.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -325,11 +324,21 @@ test('DRIFT-1: loadVocabPatterns delegates to lint.js readPatterns (parity)', ()
   ].join('\n') + '\n');
 
   const pats = loadVocabPatterns(tmp);
-  // byte-for-byte identical to the sanctioned lint.js parser
-  assert.deepEqual(pats, readPatterns(pf));
-  // alternation regex survived intact (indexOf bug would have truncated it)
-  assert.equal(pats.find(p => p.reason.includes('alternation')).regex, '\\b(foo|bar)\\b');
-  assert.equal(pats.find(p => p.reason.includes('ratio-tagged')).isRatio, true);
+  // Assert the CONCRETE parse output — proves the parser produced the right
+  // structure, not merely that it equals a second call to itself. The prior
+  // `assert.deepEqual(pats, readPatterns(pf))` was tautological: loadVocabPatterns
+  // internally IS readPatterns(pf), so it compared readPatterns(pf) to itself and
+  // could not have caught a parse regression (2026-07-13 TEST-4).
+  const byReason = r => pats.find(p => p.reason.includes(r));
+  assert.equal(pats.length, 3, 'the 3 non-comment fixture lines parse to 3 patterns');
+  // alternation regex survived intact (the old indexOf('|') bug truncated to `\b(foo`)
+  assert.equal(byReason('alternation').regex, '\\b(foo|bar)\\b');
+  assert.equal(byReason('alternation').isRatio, false);
+  // POSIX class preserved verbatim in the stored source form (translated at scan time)
+  assert.equal(byReason('posix class').regex, 'quick[[:space:]]+win');
+  // @ratio-tagged line kept with its isRatio flag (excluded at scan, not at load)
+  assert.equal(byReason('ratio-tagged').regex, '\\bcheapish\\b');
+  assert.equal(byReason('ratio-tagged').isRatio, true);
 });
 
 test('DRIFT-1: scanVocab matches alternation + POSIX class, excludes @ratio', () => {

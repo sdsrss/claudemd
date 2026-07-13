@@ -17,11 +17,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MANIFEST = path.join(ROOT, 'spec/hard-rules.json');
 const CORE_SPEC = path.join(ROOT, 'spec/CLAUDE.md');
 const EXT_SPEC = path.join(ROOT, 'spec/CLAUDE-extended.md');
+const HOOKS_DIR = path.join(ROOT, 'hooks');
 
 // v0.7.0 spec_section taxonomy — keep in sync with docs/RULE-HITS-SCHEMA.md
 // "Spec section taxonomy" table. Updating this requires the same in both.
 const KNOWN_HOOK_SECTIONS = new Set([
-  '§10-V', '§7-ship-baseline', '§8', '§8-rm-rf-var', '§8-npx',
+  '§10-V', '§7-ship-baseline', '§8', '§8-rm-rf-var', '§8-npx', '§8-curl-sh',
   '§11-memory-read', '§7-user-global-state', '§8.V4',
   // v0.9.23 (Round-6): plugin-internal observability — fail-open events from
   // hook_record_failopen. Never targeted by spec/hard-rules.json (it's not a
@@ -152,6 +153,37 @@ test('hard-rules-7: manifest spec_version matches spec/CLAUDE.md H1 version', ()
     m.spec_version, h1[1],
     `manifest spec_version=${m.spec_version} drifted from spec H1=${h1[1]} — bump spec/hard-rules.json:spec_version`
   );
+});
+
+test('hard-rules-8: every hook DENY section is backed by a manifest entry', () => {
+  // Reverse-completeness (SEC-2 / MANIFEST-1, 2026-07-13): hard-rules-2/3 assert
+  // manifest→taxonomy and hook-entries→section, but nothing asserted hook→
+  // manifest — a hook could file a blocking deny under a section that has NO
+  // manifest entry, making that section invisible to /claudemd-rules §13.1
+  // demote accounting. Exactly what happened to §8-curl-sh: the curl|sh gate
+  // emitted `HIT_SECTIONS+=('§8-curl-sh')` and filed denies under it, but the
+  // manifest (which self-describes as "every HARD rule") had no entry, so its
+  // deny/bypass hits were uncounted. Enumerate the sections hooks attach to an
+  // actual deny hit and require each to have a hook/both manifest entry.
+  const denySections = new Set();
+  for (const f of fs.readdirSync(HOOKS_DIR)) {
+    if (!f.endsWith('.sh')) continue;
+    const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
+    for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) {
+      denySections.add(m[1]);
+    }
+  }
+  const m = loadManifest();
+  const covered = new Set(
+    m.rules
+      .filter(r => (r.enforcement === 'hook' || r.enforcement === 'both') && r.rule_hits_section)
+      .map(r => r.rule_hits_section)
+  );
+  const uncovered = [...denySections].filter(s => !covered.has(s)).sort();
+  assert.deepEqual(uncovered, [],
+    `Hook deny sections with no hook/both manifest entry:\n` +
+    uncovered.map(s => `  ${s} (emitted via HIT_SECTIONS+= but absent from spec/hard-rules.json)`).join('\n') +
+    `\nResolution: add a manifest entry with rule_hits_section: <section> so /claudemd-rules can account its denies/bypasses.`);
 });
 
 test('hard-rules-6: manifest schema sanity — required fields present', () => {

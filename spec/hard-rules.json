@@ -108,6 +108,17 @@
       "last_demote_review": "2026-07-10"
     },
     {
+      "id": "§8-curl-sh",
+      "name": "curl/wget piped into a shell (unknown-origin execution)",
+      "scope": "core",
+      "section_anchor": "execute scripts of unknown origin",
+      "enforcement": "hook",
+      "rule_hits_section": "§8-curl-sh",
+      "added_version": "v6.0",
+      "confidence": "high",
+      "last_demote_review": "2026-07-13"
+    },
+    {
       "id": "§10-four-section-order",
       "name": "Four-section REPORT order (Done → Not done → Failed → Uncertain)",
       "scope": "core",
