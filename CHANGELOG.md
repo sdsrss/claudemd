@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.44.0] - 2026-07-13
+
+**Minor — ships spec v6.18.0: §1 Language-contract refinement.** Reasoning/思考 moves from the user's-language bucket to English (joining code / comments / commits); a docs split is added — local analysis/audit docs follow the user's language, shipped reference/contract docs (ARCHITECTURE / HOOK-PROTOCOL / RULE-HITS-SCHEMA / ADDING-NEW-HOOK / cross-project-pilot) stay English for adopters; Done narrative made explicit in the user's-language bucket. Code artifacts / CHANGELOG / PR / log-strings / config-keys / CLI-labels unchanged (English). Operator-requested with boundaries confirmed before edit.
+
+- **Spec** (`spec/CLAUDE.md` §1, `spec/CLAUDE-extended.md` Recent changes + Sizing, `spec/CLAUDE-changelog.md`): v6.17.0 → v6.18.0. Core Δ ≈ +79B (24648 → 24727, within the 25000 cap — 273B headroom, no net-delete required per §0.1).
+- **Manifest** (`spec/hard-rules.json`): `spec_version` v6.17.0 → v6.18.0 (no rule add/remove — the language contract is `self`-enforced, not a hook-emitting HARD rule, so no new manifest entry).
+- **Descriptions** (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` ×2, `README.md` ×3): spec family tag v6.17 → v6.18.
+- **Tests**: full `npm test` green; `version-cascade-check` v6.18 consistent + Sizing drift within ±20B; shellcheck + bash-3.2 gate clean.
+
 ## [0.43.0] - 2026-07-13
 
 **Minor — hard-rules manifest reverse-completeness + telemetry-hygiene batch (roadmap B1+B2).** Product of the 2026-07-13 production-readiness re-audit. Spec rule content unchanged (stays v6.17.0); `spec/hard-rules.json` is the HARD-rule ledger, not spec prose.

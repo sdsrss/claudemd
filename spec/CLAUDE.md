@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.17.0 — Core
+# AI-CODING-SPEC v6.18.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -38,8 +38,8 @@ Everything else = natural prose, no brackets. Completion claims / level shifts /
 Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 
 **Language contract**:
-- **User's language (default 中文)**: chat prose / reasoning / plans / summaries / `tasks/*.md` bodies.
-- **English**: code / comments / docstrings / commits / CHANGELOG / PR text / paths / branches / log strings / config keys / CLI labels.
+- **User's language (default 中文)**: chat prose / plans / summaries / Done narrative / `tasks/*.md` bodies / local analysis+audit docs.
+- **English**: code / comments / docstrings / commits / CHANGELOG / PR text / reasoning / shipped reference+contract docs / paths / branches / log strings / config keys / CLI labels.
 - **Memory**: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
 
 **Principles** (reference when ambiguous):

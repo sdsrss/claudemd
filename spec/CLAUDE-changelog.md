@@ -6,6 +6,10 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.18.0 — 2026-07-13
+
+Minor: §1 Language-contract refinement — **reasoning moves to English** (was user's-language), plus an explicit docs split: local analysis/audit docs follow the user's language while shipped reference/contract docs (ARCHITECTURE / HOOK-PROTOCOL / RULE-HITS-SCHEMA / ADDING-NEW-HOOK / cross-project-pilot) stay English for adopters. Done narrative made explicit in the user's-language bucket. Code / comments / commits / CHANGELOG / PR / log-strings / config-keys / CLI-labels unchanged (English). Core Δ ≈ +79B (within headroom, no net-delete required).
+
 ## v6.17.0 — 2026-07-11
 
 Minor: four-method spec-audit letter-fix batch — 7 core fixes from verified red-team findings + C5/C6 net-delete (core Δ −91B). Audit dossier: `tasks/spec-audit-2026-07-11.md`.
