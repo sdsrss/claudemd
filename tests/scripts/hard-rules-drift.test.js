@@ -165,11 +165,22 @@ test('hard-rules-8: every hook DENY section is backed by a manifest entry', () =
   // manifest (which self-describes as "every HARD rule") had no entry, so its
   // deny/bypass hits were uncounted. Enumerate the sections hooks attach to an
   // actual deny hit and require each to have a hook/both manifest entry.
+  // Two idioms attach a section to a blocking deny; the completeness claim only
+  // holds if BOTH are enumerated. (1) `HIT_SECTIONS+=('§…')` — pre-bash-safety
+  // batches sections then emits once. (2) `hook_record <hook> <deny-verb> "<json>"
+  // '§…'` — banned-vocab / memory-read-check / ship-baseline attach the section
+  // directly. The original assertion parsed only (1), so a novel section reached
+  // via (2) would slip past the very demote-accounting blind spot this test
+  // guards. Blocking verbs only: deny / deny-repeat / deny-prose — NOT
+  // deny-prose-dry-run (exits 0, files no HARD hit, needs no manifest entry).
   const denySections = new Set();
   for (const f of fs.readdirSync(HOOKS_DIR)) {
     if (!f.endsWith('.sh')) continue;
     const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
     for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) {
+      denySections.add(m[1]);
+    }
+    for (const m of src.matchAll(/hook_record\s+\S+\s+(?:deny|deny-repeat|deny-prose)\s+.*?'(§[^']+)'/g)) {
       denySections.add(m[1]);
     }
   }

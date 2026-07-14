@@ -34,6 +34,7 @@ source must appear in this table.
 | `npx-allow-local` | `pre-bash-safety` | fetch-execute runner (`npx` / `bunx` / `npm exec` / `pnpm dlx` / `yarn dlx`) `<pkg>` allowed because pkg resolves from cwd's lockfile or `node_modules/<pkg>/` (spec §8 lockfile/local link). Records `extra.pkg`. Added v0.9.30; runner family v0.23.23. |
 | `npx-allow-no-install` | `pre-bash-safety` | `npx --no-install <pkg>` / `npx --no <pkg>` allowed regardless of lockfile state — these flags forbid registry fetch, so npx runs an already-installed binary or exits non-zero; no unknown-origin code can land (the §8 NPX chain's target). Flags after the package name do NOT lift the gate. Records `extra.pkg`. Section: `§8-npx`. Added v0.23.19. |
 | `rm-rf-allow-validated` | `pre-bash-safety` | `rm -rf $VAR` allowed because the same `VAR` is guarded by bash's `${VAR:?…}` set-or-exit operator (spec §8 SAFETY "Validate the var inline" recommended form). Records `extra.var`. Other guard forms (`[[ -n ]]`, `set -u`, control flow) are NOT recognized — use `[allow-rm-rf-var]`. Section: `§8-rm-rf-var`. Added v0.21.3. |
+| `rm-rf-allow-provenance` | `pre-bash-safety` | `rm -rf $VAR` allowed because the same `VAR` is assigned in the same command from `$(mktemp …)` / `` `mktemp …` `` — mktemp output is a fresh, uniquely-named path, so cleaning it up is the §8.V4 sandbox-disposal idiom, not an unvalidated-var danger. Records `extra.var`. Cross-command mktemp, fake `mktemp` (e.g. `$(echo mktemp)`), and transitive vars (`$S/x`) stay strict — use `${VAR:?}` / literal rm target / `[allow-rm-rf-var]`. Section: `§8-rm-rf-var`. Added v0.46.0. |
 | `pass-known-red` | `ship-baseline` | red CI baseline bypassed via commit-body `known-red baseline:` marker (HEAD message) |
 | `pass-known-red-incmd` | `ship-baseline` | v0.23.2 — same bypass but marker found in the CMD itself (typical chained `git commit -m "...known-red baseline: x" && git push origin main`). Closes the PreToolUse chicken-and-egg where amend hasn't run yet so HEAD lacks the marker. Section: `§7-ship-baseline`. Added v0.23.2. |
 | `deny-repeat` | `ship-baseline` | 2nd `deny` on the same (`session_id`, `run_url`) pair within 5 minutes — agent retried without resolving CI. REASON wording escalated; same `permissionDecision=deny` to the model. Sentinel state in `~/.claude/.claudemd-state/ship-baseline-recent/<session_id>_<run_id>.sentinel` (1-day self-prune). Added v0.18.1. |
@@ -70,6 +71,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `pre-bash-safety` | `npx-allow-local` | `§8-npx` |
 | `pre-bash-safety` | `npx-allow-no-install` | `§8-npx` |
 | `pre-bash-safety` | `rm-rf-allow-validated` | `§8-rm-rf-var` |
+| `pre-bash-safety` | `rm-rf-allow-provenance` | `§8-rm-rf-var` |
 | `memory-read-check` | `deny` / `bypass-escape-hatch` | `§11-memory-read` |
 | `memory-prompt-hint` | `suggest` / `suppress-source` | `§11-memory-hint` |
 | `mid-spine-yield-scan` | `mid-spine-advisory` | `§11-mid-spine-yield` |

@@ -417,7 +417,7 @@ if (( bypass_rm == 0 )); then
   # otherwise-independent commands and breaking per-segment iteration.
   RM_SEGMENTS=$(printf '%s\n' "$SANITIZED_CMD" \
     | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
-    | sed -E 's/[;&|]/\n/g')
+    | sed -E 's/[;&|()`]/\n/g')
   while IFS= read -r segment; do
     # Trim leading/trailing whitespace.
     trimmed="${segment#"${segment%%[![:space:]]*}"}"
@@ -482,6 +482,10 @@ if (( bypass_rm == 0 )); then
     # what the shell EXECS, not the source spelling (v0.39.0 §8 FN closure F1).
     # `busybox rm` (multiplexer) is handled earlier by the wrapper-strip loop.
     # Exact `== rm` after canonicalization keeps `charm`/`norm`/`perm` etc. off.
+    # SEC-3 (2026-07-13): strip a leading group/subshell opener so `(rm`/`{ rm`
+    # (command inside (...) / { ...; } / $(...)) is seen as rm.
+    trimmed="${trimmed#[({]}"
+    trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
     rm_word="${trimmed%%[[:space:]]*}"
     rm_canon="${rm_word#\\}"; rm_canon="${rm_canon##*/}"
     [[ "$rm_canon" == rm ]] || continue
@@ -522,7 +526,7 @@ if (( bypass_rm == 0 )); then
     # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
     # The whitelist only certifies the var is shell-typed, not that the
     # target is bounded. Require ≥1 non-`/` character in the residue.
-    residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g')
+    residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g; s/[(){}]//g')
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
         if [[ ! "$residue" =~ [^/] ]]; then
@@ -546,13 +550,26 @@ if (( bypass_rm == 0 )); then
         # `(^|[^\\])` rejects backslash-escaped literals like
         # `echo "use \${X:?msg} guard"` — the `\$` is bash-literal, not
         # an actual expansion, so it must not satisfy the guard.
-        guard_re='(^|[^\\])\$\{'"$varname"':\?'
-        if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
-          hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+        # SEC-4 (2026-07-13): mktemp-provenance recognition — a var assigned in the
+        # SAME command from $(mktemp …) / `mktemp …` is a validated rm target: mktemp
+        # creates a fresh, uniquely-named path that cannot be / or a wildcard, so
+        # cleaning it up is the §8.V4 disposal idiom, not an unvalidated-var danger.
+        # mktemp survives canon_cmd_words (no path to basename); literal-prefix vars
+        # do NOT (canon basenames them) and transitive vars ($S/x) can't be resolved,
+        # so both stay strict — use ${VAR:?} / literal rm target / [allow-rm-rf-var].
+        # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
+        prov_mktemp='(^|[[:space:];&|`(])'"$varname"'=(\$\(|`)[[:space:]]*mktemp([[:space:]`)]|$)'
+        if echo "$SANITIZED_CMD_FLAT" | grep -qE "$prov_mktemp"; then
+          hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
         else
-          HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
-          HIT_SECTIONS+=('§8-rm-rf-var')
-          REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+          guard_re='(^|[^\\])\$\{'"$varname"':\?'
+          if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
+            hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+          else
+            HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
+            HIT_SECTIONS+=('§8-rm-rf-var')
+            REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+          fi
         fi
         ;;
     esac
@@ -570,7 +587,7 @@ fi
 # siblings bypassed the npx-only detector; local/lockfile resolution below
 # already reads pnpm-lock.yaml / yarn.lock, so the gate is symmetric across
 # ecosystems.
-NPX_REGEX='(^|[[:space:];&|`])(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
+NPX_REGEX='(^|[[:space:];&|`({])(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
 if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
   # Name the matched runner (npx / bunx / pnpm dlx / yarn dlx) for honest deny
   # text — the leading (^|sep) + trailing space anchors keep it off identifier
@@ -656,7 +673,7 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # sh; }` is caught like the subshell `( … )` form (code review 2026-07-03). A
 # var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
 # requires a space, which `${curl}` (curl followed by `}`) never has.
-CURLSH_PIPE='(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:]]|$)'
+CURLSH_PIPE='(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)'
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
