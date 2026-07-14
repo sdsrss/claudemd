@@ -1,4 +1,17 @@
-# B-1 deferred — npx command-position anchor rework (2026-07-13)
+# B-1 — npx command-position anchor rework (2026-07-13)
+
+## STATUS: SHIPPED in v0.47.0 (2026-07-13)
+
+Implemented via approach (1) below — the npx gate now splits into command segments,
+strips env-assignments + transparent wrappers (mirroring the rm gate), and matches a
+runner only at command position. FN-matrix 32/32 (message/prose runner-words allow;
+`env`/`sudo -E`/`FOO=bar`/`time` npx + `$(npx)` + `\npx`/`/usr/bin/npx` deny; pinned-under-
+wrapper allow), full corpus 255 → 264 zero-regression, shellcheck clean. Accepted residual:
+`xargs npx <pkg>` now allowed (same long-tail class as `xargs rm`). Original analysis below
+kept for the record.
+
+---
+
 
 ## Problem (confirmed, reproduced)
 

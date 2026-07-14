@@ -587,13 +587,54 @@ fi
 # siblings bypassed the npx-only detector; local/lockfile resolution below
 # already reads pnpm-lock.yaml / yarn.lock, so the gate is symmetric across
 # ecosystems.
-NPX_REGEX='(^|[[:space:];&|`({])(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)[[:space:]]+'
-if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
-  # Name the matched runner (npx / bunx / pnpm dlx / yarn dlx) for honest deny
-  # text — the leading (^|sep) + trailing space anchors keep it off identifier
-  # substrings (`bunxtool`, `pnpm install`).
-  runner=$(printf '%s' "$SANITIZED_CMD" | grep -oE "$NPX_REGEX" | head -n1 \
-    | sed -E 's/^[[:space:];&|`]+//; s/[[:space:]]+$//')
+# B-1 (2026-07-13): find a runner at COMMAND POSITION, not anywhere. Split into
+# command segments (same boundaries as the rm gate), strip leading env-assignments
+# + transparent wrappers (env/command/sudo/timeout/… — mirrors the rm gate), then
+# check if the segment's command word is a runner. A runner name sitting inside a
+# quoted argument (`git commit -m "add npx setup for $X"`) is NOT at a segment's
+# command position, so prose no longer false-denies; `env npx` / `$(npx …)` still do.
+NPX_CMD_REGEX='^(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)([[:space:]]|$)'
+runner=""
+npx_seg=""
+NPX_SEGMENTS=$(printf '%s\n' "$SANITIZED_CMD" \
+  | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
+  | sed -E 's/[;&|()`]/\n/g')
+while IFS= read -r nseg; do
+  nseg="${nseg#"${nseg%%[![:space:]]*}"}"; nseg="${nseg%"${nseg##*[![:space:]]}"}"
+  [[ -n "$nseg" ]] || continue
+  nseg="${nseg#[({]}"; nseg="${nseg#"${nseg%%[![:space:]]*}"}"
+  # Strip env-var assignments + transparent exec-wrappers (same set as the rm gate).
+  while [[ -n "$nseg" ]]; do
+    nfirst="${nseg%%[[:space:]]*}"
+    if [[ "$nfirst" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+       || [[ "$nfirst" == env || "$nfirst" == command || "$nfirst" == nohup \
+          || "$nfirst" == setsid || "$nfirst" == time || "$nfirst" == busybox \
+          || "$nfirst" == /usr/bin/env || "$nfirst" == /bin/env ]]; then
+      nrest="${nseg#"$nfirst"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
+    elif [[ "$nfirst" == timeout || "$nfirst" == nice || "$nfirst" == stdbuf \
+          || "$nfirst" == ionice || "$nfirst" == chrt || "$nfirst" == sudo \
+          || "$nfirst" == doas ]]; then
+      nrest="${nseg#"$nfirst"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
+      while [[ -n "$nseg" ]]; do
+        nw="${nseg%%[[:space:]]*}"
+        if [[ "$nw" == -* || "$nw" =~ ^[0-9]+[smhd]?$ ]]; then
+          nrest="${nseg#"$nw"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
+        else break; fi
+      done
+    else break; fi
+  done
+  # Canonicalize the command word (basename + strip a leading backslash) so
+  # `\npx` / `/usr/bin/npx` at command position match what the shell EXECs.
+  ncmd="${nseg%%[[:space:]]*}"; ncmd="${ncmd#\\}"; ncmd="${ncmd##*/}"
+  seg_canon="$ncmd${nseg#"${nseg%%[[:space:]]*}"}"
+  if printf '%s' "$seg_canon" | grep -qE "$NPX_CMD_REGEX"; then
+    runner=$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')
+    npx_seg="$seg_canon"
+    break
+  fi
+done <<< "$NPX_SEGMENTS"
+
+if [[ -n "$runner" ]]; then
   bypass_npx=0
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
     bypass_npx=1
@@ -604,7 +645,7 @@ if echo "$SANITIZED_CMD" | grep -qE "$NPX_REGEX"; then
     # Resolve the cwd npx will actually run in (follows leading `cd <dir>`).
     NPX_EFFECTIVE_CWD=$(effective_npx_cwd "$EVENT_CWD" "$SANITIZED_CMD_FLAT")
     # Take everything after the first `npx ` up to a command terminator.
-    npx_tail=$(printf '%s' "$SANITIZED_CMD_FLAT" | sed -E "s/.*${NPX_REGEX}//" | sed -E 's/[[:space:]]*[;&|].*$//')
+    npx_tail="${npx_seg#"$runner"}"; npx_tail="${npx_tail#"${npx_tail%%[![:space:]]*}"}"
     pkg_token=""
     skip_next=0
     no_install=0

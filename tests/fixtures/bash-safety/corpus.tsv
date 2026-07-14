@@ -283,3 +283,17 @@ deny	F8-fp: mktemphack is not mktemp	T=$(mktemphack); rm -rf "$T"
 deny	F8-fp: cross-call rm $T (no provenance visible)	rm -rf "$T"
 deny	F8-fp: transitive var $S/x unresolvable	R="$S/x"; rm -rf "$R"
 deny	F8-fp: dotdot escape under $HOME	R="$HOME/../../etc"; rm -rf "$R"
+
+# === §8 FP closure F9 (2026-07-13 comprehensive audit, roadmap B-1) ===
+# F9: runner detection moved to COMMAND POSITION (segment split + wrapper strip,
+# mirroring the rm gate) so a runner NAME inside a quoted arg (a commit message)
+# no longer false-denies, while wrapper-prefixed real invocations still deny.
+pass	F9-fp: npx prose in $-commit message	git commit -m "add npx setup step for $PROJECT"
+pass	F9-fp: npx as echo argument	echo npx hello
+pass	F9-fp: which npx (npx is the arg)	which npx
+pass	F9-fp: npx prose with $ in echo	echo "installing via npx foo for $HOME"
+deny	F9: env-wrapped npx unpinned (command pos)	env npx unknown-pkg-xyz9
+deny	F9: sudo -E npx unpinned (flag wrapper)	sudo -E npx unknown-pkg-xyz9
+deny	F9: assignment-prefixed npx unpinned	FOO=bar npx unknown-pkg-xyz9
+deny	F9: time-wrapped npx unpinned	time npx unknown-pkg-xyz9
+pass	F9-fp: env-wrapped npx pinned (allow)	env npx prettier@3.0.0

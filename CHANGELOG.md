@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.47.0] - 2026-07-13
+
+**Minor — B-1: npx/runner gate moves to command-position detection, closing the runner-word-in-quoted-message false positive** (the deferred item from v0.46.0). Hook-code only; spec text unchanged (stays v6.19.0). Sandbox-verified against a 32-case FN-matrix + the full corpus before landing.
+
+- **B-1 — command-position runner detection** (`hooks/pre-bash-safety-check.sh`): the npx/bunx/npm-exec/pnpm-dlx/yarn-dlx gate no longer matches the runner name **anywhere** in the flattened command. It now splits into command segments (same boundaries as the rm gate), strips leading env-assignments + transparent wrappers (`env`/`command`/`sudo`/`timeout`/…), and checks whether the segment's **command word** is a runner. Effect: a runner name inside a quoted argument — `git commit -m "add npx setup for $PROJECT"`, `echo npx hello`, `which npx` — is no longer at a command position and is **allowed** (this was the `npx cd ×4` telemetry-FP smell and the user-reported "commit blocked without rm"). Real invocations still deny: `env npx`, `sudo -E npx`, `FOO=bar npx`, `time npx`, `$(npx …)`, `\npx`, `/usr/bin/npx`, and the whole runner family. Pinned/local/lockfile resolution unchanged.
+- **Accepted residual**: `xargs npx <pkg>` (runner as an xargs argument) is now allowed — same long-tail class as the documented `xargs rm` residual (`tasks/s8-false-negative-audit-2026-07-03.md`); env/bypass-token guardrail positioning unchanged.
+- **Corpus** (`tests/fixtures/bash-safety/corpus.tsv`): +9 rows (F9 — quoted-message runner-word allow, wrapper-prefixed runner deny, pinned-under-wrapper allow). Suite 255 → 264.
+- **Tests**: full `npm test` green; shellcheck clean; bash-3.2-safe (only plain string vars + the wrapper-strip loop the rm gate already uses).
+
 ## [0.46.0] - 2026-07-13
 
 **Minor — §8 detection-precision batch: close command-grouping/substitution false-negatives (SEC-3) + recognize mktemp-provenance temp cleanup (SEC-4).** Hook-code only; spec text unchanged (stays v6.19.0). From the 2026-07-13 comprehensive audit + the §8 detection-precision design review (`docs/s8-detection-precision-design-2026-07-13.md`). All changes sandbox-verified against the full corpus + adversarial FN-matrix (`DISABLE_RULE_HITS_LOG=1`) before landing.
