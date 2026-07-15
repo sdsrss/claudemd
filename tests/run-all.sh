@@ -25,7 +25,20 @@ done
 echo "== Node.js script tests =="
 # --test-timeout caps EACH test (ms); a single deadlocked test fails instead of
 # hanging the run (Node ≥20 default is Infinity).
-if ! node --test --test-timeout=60000 "$HERE"/scripts/*.test.js; then
+#
+# 180s, not 60s (2026-07-15). The cap must be a multiple of the SLOWEST platform's
+# real duration, not the fastest. doctor.test.js is spawn-bound (~15s on Linux CI,
+# user≈sys≈8s), and macOS runners are roughly 4x slower at process creation — so it
+# lands near 60s there and the old cap had ~zero margin. It went red on the v0.47.2
+# and v0.47.3 releases (green on re-run: pure runner-speed luck), then twice in a row
+# on v0.47.4 once +5 tests added ~0.5s of local load. Every one of those reported
+# `# fail 0` with `failureType: 'testTimeoutFailure'` at `location: …:1:1` — the FILE
+# blew the cap, no assertion failed. A real deadlock hangs FOREVER, so 180s catches it
+# exactly as well as 60s; the only cost is 2 extra minutes to report a hang that
+# already means someone is debugging. This keeps the TEST-1 guard while giving macOS
+# the same ~4x margin Linux had. Fixing the cause (cutting doctor.test.js's spawn
+# count) stays open — see the deferred item.
+if ! node --test --test-timeout=180000 "$HERE"/scripts/*.test.js; then
   FAIL=$((FAIL + 1))
 fi
 
