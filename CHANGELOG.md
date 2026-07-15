@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.51.0] - 2026-07-15
+
+Third deferred item from the 2026-07-15 four-dimension audit: the §8 shared-tokenizer consolidation, scoped to the safe single-source subset. No spec change (spec stays **v6.20.0**). **Behaviour-preserving** — every deny/allow verdict is provably unchanged; this is a refactor of the enforcement plumbing, not a rule change.
+
+- **refactor(§8): single-source the rm/npx segment plumbing.** The wrapper name-set was spelled three times and the segment-splitter + wrapper-strip loop were hand-copied between the rm gate and the npx gate (the duplicated-seam class the audit flagged). Extracted into `hooks/lib`-adjacent helpers in the hook: `S8_WRAP_ARGLESS` / `S8_WRAP_FLAGGED` arrays + `s8_in_list`, `s8_split_segments`, and `s8_strip_wrappers` (the ~55-line assignment/exec-wrapper loop, now one copy). Adding a new wrapper is now a one-line array edit instead of a three-site change.
+- **Call-site order preserved per gate.** The rm gate strips wrappers *before* its `{`/`(` opener-strip; the npx gate strips *after* — an asymmetry that makes `{ env rm` a latent miss but `{ env npx` a catch. Both behaviours predate the refactor and are kept exactly; a naive unification would have silently moved a verdict.
+- **test(§8): curl-sh wrapper-set parity gate.** `CURLSH_WRAP` stays a literal regex (rebuilding it from the arrays would add `timeout` and flip `curl x | timeout bash` allow→deny) but a new test asserts its members ⊆ the shared arrays, so the regex and the arrays cannot drift.
+- **Deliberately NOT done**: folding curl-sh's cross-pipe sink detection into the segment/tokenizer model. curl-sh matches *across* a `|` while segments split *on* `|`; unifying it would require re-architecting the gate — the Turing-tarpit the audit explicitly warned against. Recorded as a permanent non-goal in `tasks/audit-2026-07-15-deferred.md`.
+- **Equivalence proof**: `tasks/s8-tokenizer/s8-diff-scan.sh` snapshots the pre-refactor deny/allow verdict for every corpus row (163 deny / 120 allow) and asserts 0 changes after each step; a fresh-context reviewer independently re-ran it against the real pre-refactor hook (git worktree) over 64 adversarial probes with 0 divergence.
+- **Tests**: hook suite 365 → 366 (+curl-sh parity); FN adversarial matrix (12 wrapper bypasses across all three gates) all deny; full `npm test` green; bash-3.2 gate + shellcheck clean; `node scripts/version-cascade-check.js` exit 0 (plugin semver 0.51.0 across 4 sites).
+
 ## [0.50.0] - 2026-07-15
 
 Two deferred items from the 2026-07-15 four-dimension audit (recorded in `tasks/audit-2026-07-15-deferred.md`). No spec change (spec stays **v6.20.0**). Minor bump: one additive user-visible behavior — a new SessionStart notice.

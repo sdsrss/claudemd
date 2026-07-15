@@ -21,10 +21,15 @@
 - 注意：CI 配置属 §5 hard-AUTH。
 - 验收：打测试 tag → CI 跑测试；红灯 tag 不产 release 资产。
 
-## 3. 共享 tokenizer 大重构（理想终态，需单独决策）
+## 3. ✅ 共享 tokenizer 大重构（安全子集）— shipped v0.51.0
 
-- hooks 侧建议的收敛终态：bash 预检测 sanitize/tokenize 逻辑归一到单一共享实现，
-  消除"打地鼠式"逐 gate 补 parity。
-- 风险/收益需单独决策，不在一个 turn 里做；动手前先列 FN 矩阵
-  （`feedback_s8_false_negative_audit`）。
-- 前置：§8 curl-sh parity（0.49.1 已收敛）是此方向的第一步，已完成。
+- 用户 2026-07-15 选定"只做安全单源 1-3"范围：抽 `s8_split_segments` +
+  `s8_strip_wrappers` + `S8_WRAP_ARGLESS/FLAGGED` 数组，rm/npx 共用；curl-sh
+  regex 保持字面 + parity 测试断言 ⊆ 共享集。**行为保持**，非 FN 方向变更。
+- **刻意排除**：curl-sh sink 检测折进 tokenizer 模型（第 4 层）—— curl-sh 跨管道
+  匹配而 segment 按管道切分，需重架整个门，正是审计警告的 Turing-tarpit
+  （`project_audit_2026-07-15_seams`）。留作永久 non-goal。
+- 证明：`tasks/s8-tokenizer/s8-diff-scan.sh` 差分 corpus（163 deny/120 allow 基线）
+  0 verdict 变化；fresh-subagent 复核用 worktree 跑真·pre-refactor hook 差分 64 探针
+  全同；hook 套件 365→366（+parity）；FN 对抗矩阵 12 例全 deny。
+- 前置：§8 curl-sh parity（0.49.1 已收敛）是此方向的第一步。
