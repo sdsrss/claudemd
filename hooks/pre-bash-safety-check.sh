@@ -459,6 +459,71 @@ SANITIZED_CMD=$(canon_cmd_words "$SANITIZED_CMD")
 # spaces is safe (heredoc-body content can't leak in).
 SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 
+# Shared §8 wrapper taxonomy (single source; consumed by the rm + npx segment
+# loops via s8_strip_wrappers, and parity-tested against the curl-sh CURLSH_WRAP
+# regex — 2026-07-15 seam consolidation). ARGLESS = transparent exec-wrappers that
+# take no option before the command (env rm, command rm). FLAGGED = wrappers that
+# carry option/duration tokens first (timeout 5 rm, sudo -E rm, nice -n10 rm).
+# Bash 3.2: indexed arrays only. Shell keywords (do/then/else/!) and path-form env
+# are handled inline at each gate — not exec-wrappers, and curl-sh (a pipe SINK,
+# never a control structure) does not share them.
+S8_WRAP_ARGLESS=(env command nohup setsid time busybox)
+S8_WRAP_FLAGGED=(timeout nice stdbuf ionice chrt sudo doas)
+
+# s8_in_list WORD ELEM... → returns 0 if WORD equals any ELEM.
+s8_in_list() {
+  local w="$1"; shift
+  local e
+  for e in "$@"; do [[ "$w" == "$e" ]] && return 0; done
+  return 1
+}
+
+# s8_split_segments CMD → split on command terminators, one segment per line.
+# Byte-identical to the rm/npx gates' formerly-inline split. `&&`/`||` collapse
+# first (multi-char), then single-char `; & | ( ) backtick`. NOT used by the
+# curl-sh gate (which needs a pipe-continuation join and must keep `|` joins).
+s8_split_segments() {
+  printf '%s\n' "$1" | sed -E 's/&&/\n/g; s/\|\|/\n/g' | sed -E 's/[;&|()`]/\n/g'
+}
+
+# s8_strip_wrappers SEGMENT → SEGMENT minus leading env-assignments and transparent
+# exec-wrappers, stopped at the first command word. Single source for the rm and npx
+# gates (were two hand-copied loops). Covers: `FOO=bar` assignments; ARGLESS wrappers;
+# shell keywords do/then/else/! (segments split on `;`, so `if …; then rm …` lands the
+# keyword at segment head); path-form env; FLAGGED wrappers with their option/bare-
+# numeric-duration args consumed. Stripping only ever removes a prefix, so a non-rm/
+# non-runner command behind a wrapper is unaffected (the gate still no-ops on it).
+# Residual (documented, unchanged): `xargs rm` (target on stdin) and option-with-arg
+# wrapper forms (`sudo -u svc rm`, `timeout -s KILL 5 rm`). [allow-*] is the escape.
+# CALL-SITE ORDER IS LOAD-BEARING: rm calls this BEFORE its `${x#[({]}` opener-strip,
+# npx calls it AFTER — that difference makes `{ env rm` a (latent) miss and `{ env npx`
+# a catch. Both behaviours predate this extraction and must be preserved; the
+# differential corpus scan proves no verdict moved.
+s8_strip_wrappers() {
+  local seg="$1" first w rest
+  while [[ -n "$seg" ]]; do
+    first="${seg%%[[:space:]]*}"
+    if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+       || s8_in_list "$first" "${S8_WRAP_ARGLESS[@]}" \
+       || [[ "$first" == 'do' || "$first" == 'then' || "$first" == 'else' \
+          || "$first" == '!' \
+          || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+      rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+    elif s8_in_list "$first" "${S8_WRAP_FLAGGED[@]}"; then
+      rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+      while [[ -n "$seg" ]]; do
+        w="${seg%%[[:space:]]*}"
+        if [[ "$w" == -* || "$w" =~ ^[0-9]+[smhd]?$ ]]; then
+          rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+        else break; fi
+      done
+    else
+      break
+    fi
+  done
+  printf '%s' "$seg"
+}
+
 declare -a HITS=()
 # v0.23.6 — parallel to HITS: the granular §8 section each hit belongs to, so
 # the deny telemetry can be filed under §8-rm-rf-var / §8-npx instead of the
@@ -501,82 +566,20 @@ if (( bypass_rm == 0 )); then
   # Use SANITIZED_CMD (multi-line) not SANITIZED_CMD_FLAT — original newlines
   # ARE natural command terminators; the FLAT version collapses them, joining
   # otherwise-independent commands and breaking per-segment iteration.
-  RM_SEGMENTS=$(printf '%s\n' "$SANITIZED_CMD" \
-    | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
-    | sed -E 's/[;&|()`]/\n/g')
+  RM_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
   while IFS= read -r segment; do
     # Trim leading/trailing whitespace.
     trimmed="${segment#"${segment%%[![:space:]]*}"}"
     trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-    # Strip leading env-var ASSIGNMENTS and transparent EXEC-WRAPPER commands
-    # before the `rm` check. `FOO=bar rm -rf $X` (assignment) runs rm with FOO
-    # in its env; `env rm`, `command rm`, `nohup rm`, `setsid rm`, `time rm`
-    # (and `env FOO=x rm`) all exec rm too. Pre-fix the segment-start `rm` check
-    # below skipped any segment that began with an assignment OR a wrapper word —
-    # a §8 SAFETY silent bypass (`DEBUG=1 rm -rf $HOME`, `command rm -rf $X`).
-    # Loop because they stack (`A=1 B=2 rm`, `env FOO=x rm`, `sudo timeout 5 rm`).
-    # No FP: the `rm` check still gates, so stripping a wrapper off a non-rm
-    # command (`env node`, `sudo ls`) changes nothing. Covered: arg-less
-    # sudo/doas + flag-bearing timeout/nice/stdbuf/ionice/chrt (2026-07-03 §8 FN
-    # audit). NOT covered (best-effort; documented residual): `xargs rm` (target
-    # arrives on stdin, not argv — no `$VAR` in the rm args to gate), and
-    # option-arg wrapper forms where a non-numeric arg precedes the command
-    # (`timeout -s KILL 5 rm`). The [allow-rm-rf-var] token is the escape.
-    while [[ -n "$trimmed" ]]; do
-      first="${trimmed%%[[:space:]]*}"
-      if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
-         || [[ "$first" == env || "$first" == command || "$first" == nohup \
-            || "$first" == setsid || "$first" == time || "$first" == busybox \
-            || "$first" == 'do' || "$first" == 'then' || "$first" == 'else' \
-            || "$first" == '!' \
-            || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
-        # Arg-less transparent wrappers + leading env-var assignments.
-        # `do` / `then` / `else` / `!` (v0.48.0): shell RESERVED WORDS, not commands.
-        # Segments are split on `;`, so `if true; then rm -rf $X; fi` yields the segment
-        # `then rm -rf $X` — first word `then`, rm_canon != rm, and the whole segment was
-        # skipped. Every §8 rm/npx danger inside a same-line control structure was
-        # therefore unguarded: `if [ -d "$X" ]; then rm -rf "$X"; fi` (the single most
-        # ordinary cleanup idiom in shell), `for x in …; do rm -rf $X; done`,
-        # `while …; do …; done`, `if …; then :; else rm -rf $X; fi`. Pre-existing since
-        # per-segment iteration landed in v0.21.4; found 2026-07-15 while probing an
-        # unrelated for-loop shape. The newline-separated form was always caught (the
-        # keyword lands on its own segment) — only the same-line form slipped.
-        # No FP risk: none of these is a command name, so stripping one can only expose
-        # the real command word behind it; if that word is not rm/a runner, the gate
-        # still does nothing.
-        rest="${trimmed#"$first"}"
-        trimmed="${rest#"${rest%%[![:space:]]*}"}"
-      elif [[ "$first" == timeout || "$first" == nice || "$first" == stdbuf \
-            || "$first" == ionice || "$first" == chrt || "$first" == sudo \
-            || "$first" == doas ]]; then
-        # Flag-bearing wrappers: strip the wrapper word, then its option tokens
-        # (-*) and bare numeric-or-duration args (timeout's DURATION, nice's
-        # priority), stopping at the first command word (rm or another cmd) so
-        # rm's own flags are never eaten and a non-rm command is untouched.
-        # `timeout 5 rm -rf $X` / `nice -n10 rm` / `stdbuf -oL rm` were §8 FNs
-        # (2026-07-03 audit). sudo/doas belong HERE, not in the arg-less set:
-        # `sudo -E rm -rf $X` (preserve-env, common in CI) / `sudo -i rm` carry a
-        # boolean flag before the command — code review 2026-07-03 caught them
-        # bypassing from the arg-less branch. `sudo rm -rf $EMPTY` runs rm as root
-        # (danger amplified, not exempt). No false-deny: stripping only removes
-        # prefixes, never CREATES a target/danger-flag. Documented residual:
-        # option-WITH-argument forms where a non-numeric arg precedes the command
-        # — `sudo -u svc rm`, `timeout -s KILL 5 rm`. [allow-rm-rf-var] escapes.
-        rest="${trimmed#"$first"}"
-        trimmed="${rest#"${rest%%[![:space:]]*}"}"
-        while [[ -n "$trimmed" ]]; do
-          w="${trimmed%%[[:space:]]*}"
-          if [[ "$w" == -* || "$w" =~ ^[0-9]+[smhd]?$ ]]; then
-            rest="${trimmed#"$w"}"
-            trimmed="${rest#"${rest%%[![:space:]]*}"}"
-          else
-            break
-          fi
-        done
-      else
-        break
-      fi
-    done
+    # Strip leading env-var ASSIGNMENTS + transparent EXEC-WRAPPERS before the `rm`
+    # check (shared s8_strip_wrappers — was an inline loop, single-sourced with the
+    # npx gate 2026-07-15). `FOO=bar rm -rf $X`, `env rm`, `sudo -E rm`, `timeout 5 rm`,
+    # `if …; then rm …` all reach the rm word after stripping; pre-fix each was a §8
+    # SAFETY silent bypass (segment-start `rm` check skipped the whole segment). Order:
+    # this runs BEFORE the `${trimmed#[({]}` opener-strip below — load-bearing, do not
+    # reorder (see s8_strip_wrappers header). Residual (unchanged): `xargs rm`,
+    # option-with-arg wrappers (`timeout -s KILL 5 rm`). [allow-rm-rf-var] escapes.
+    trimmed=$(s8_strip_wrappers "$trimmed")
     # Segment must start with an `rm` token. Canonicalize the command word to
     # its basename and strip a leading backslash so path-prefixed (`/bin/rm`,
     # `./rm`) and alias-defeating (`\rm`) forms are recognized as rm — matching
@@ -814,35 +817,16 @@ fi
 NPX_CMD_REGEX='^(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)([[:space:]]|$)'
 runner=""
 npx_seg=""
-NPX_SEGMENTS=$(printf '%s\n' "$SANITIZED_CMD" \
-  | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
-  | sed -E 's/[;&|()`]/\n/g')
+NPX_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
 while IFS= read -r nseg; do
   nseg="${nseg#"${nseg%%[![:space:]]*}"}"; nseg="${nseg%"${nseg##*[![:space:]]}"}"
   [[ -n "$nseg" ]] || continue
   nseg="${nseg#[({]}"; nseg="${nseg#"${nseg%%[![:space:]]*}"}"
-  # Strip env-var assignments + transparent exec-wrappers (same set as the rm gate).
-  while [[ -n "$nseg" ]]; do
-    nfirst="${nseg%%[[:space:]]*}"
-    if [[ "$nfirst" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
-       || [[ "$nfirst" == env || "$nfirst" == command || "$nfirst" == nohup \
-          || "$nfirst" == setsid || "$nfirst" == time || "$nfirst" == busybox \
-          || "$nfirst" == 'do' || "$nfirst" == 'then' || "$nfirst" == 'else' \
-          || "$nfirst" == '!' \
-          || "$nfirst" == /usr/bin/env || "$nfirst" == /bin/env ]]; then
-      nrest="${nseg#"$nfirst"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
-    elif [[ "$nfirst" == timeout || "$nfirst" == nice || "$nfirst" == stdbuf \
-          || "$nfirst" == ionice || "$nfirst" == chrt || "$nfirst" == sudo \
-          || "$nfirst" == doas ]]; then
-      nrest="${nseg#"$nfirst"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
-      while [[ -n "$nseg" ]]; do
-        nw="${nseg%%[[:space:]]*}"
-        if [[ "$nw" == -* || "$nw" =~ ^[0-9]+[smhd]?$ ]]; then
-          nrest="${nseg#"$nw"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
-        else break; fi
-      done
-    else break; fi
-  done
+  # Strip env-var assignments + transparent exec-wrappers (shared s8_strip_wrappers,
+  # same set as the rm gate). Order: this runs AFTER the `${nseg#[({]}` opener-strip
+  # above (the rm gate runs its strip BEFORE — that asymmetry is load-bearing and
+  # preserved; see s8_strip_wrappers header).
+  nseg=$(s8_strip_wrappers "$nseg")
   # Canonicalize the command word (basename + strip a leading backslash) so
   # `\npx` / `/usr/bin/npx` at command position match what the shell EXECs.
   ncmd="${nseg%%[[:space:]]*}"; ncmd="${ncmd#\\}"; ncmd="${ncmd##*/}"
