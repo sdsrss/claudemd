@@ -134,7 +134,7 @@ OUT8=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
        DISABLE_UPSTREAM_CHECK=0 \
        bash "$HOOK" <<<'{}' 2>/dev/null)
-if echo "$OUT8" | grep -q '"additionalContext"' && echo "$OUT8" | grep -q 'v9.9.9' && echo "$OUT8" | grep -q 'plugin marketplace update claudemd'; then
+if echo "$OUT8" | grep -q '"additionalContext"' && echo "$OUT8" | grep -q 'v9.9.9' && echo "$OUT8" | grep -q '/claudemd-refresh'; then
   echo "PASS: 8 upstream-check banner emitted on newer remote tag"
 else
   echo "FAIL: 8 banner malformed or missing (out: $OUT8)"; FAIL=$((FAIL+1))
@@ -332,7 +332,7 @@ OBJ18=$(printf '%s' "$OUT18" | jq -s 'length' 2>/dev/null)
 POST18=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null)
 if [[ "$OBJ18" == "1" && "$POST18" == "9.9.9" ]] \
    && echo "$OUT18" | grep -q 'stale plugin registration' \
-   && echo "$OUT18" | grep -q '/plugin install claudemd@claudemd' \
+   && echo "$OUT18" | grep -q '/claudemd-refresh' \
    && grep -q 'stale plugin root' "$HOME/.claude/logs/claudemd-bootstrap.log" \
    && jq -e 'select(.hook=="session-start" and .event=="stale-root" and .extra.installed_version=="9.9.9")' "$RULE_LOG_18" >/dev/null 2>&1; then
   echo "PASS: 18 stale-root gate skips downgrade + emits refresh banner + telemetry"

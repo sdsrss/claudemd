@@ -179,7 +179,7 @@ upstream_check() {
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] " + $new + " available (you have " + $cur + "). Run these 4 commands to upgrade:\n/plugin marketplace update claudemd\n/plugin uninstall claudemd@claudemd\n/plugin install claudemd@claudemd\n/reload-plugins\n\nDisable this notice: DISABLE_UPSTREAM_CHECK=1")
+        additionalContext: ("[claudemd] " + $new + " available (you have " + $cur + "). Run /claudemd-refresh, then restart Claude Code. Disable this notice: DISABLE_UPSTREAM_CHECK=1")
       }
     }' 2>/dev/null
 
@@ -255,7 +255,7 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
         suppressOutput: true,
         hookSpecificOutput: {
           hookEventName: "SessionStart",
-          additionalContext: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix:\n/plugin marketplace update claudemd\n/plugin uninstall claudemd@claudemd\n/plugin install claudemd@claudemd\n/reload-plugins")
+          additionalContext: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix: run /claudemd-refresh, then restart Claude Code.")
         }
       }' 2>/dev/null
       STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
