@@ -99,12 +99,19 @@ fi
 #     Stripping quotes therefore does not weaken any case the original detected.
 sanitize_cmd() {
   local raw="$1" out="" line
-  local in_heredoc=0 heredoc_tag=""
+  local in_heredoc=0 heredoc_tag="" has_term j n
   # ['"]? = optional surround quote on tag (handles <<EOF, <<'EOF', <<"EOF").
   # \047 = single quote (octal); double quote can sit literally inside char class.
   local heredoc_re=$'<<-?[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
 
-  while IFS= read -r line || [[ -n "$line" ]]; do
+  # Read into an array so the heredoc test can look ahead for a terminator.
+  local -a lines=()
+  while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done <<< "$raw"
+  n=${#lines[@]}
+
+  local i
+  for (( i=0; i<n; i++ )); do
+    line="${lines[i]}"
     if (( in_heredoc )); then
       # Terminator: optional leading whitespace (for <<-TAG indented form), tag, optional trailing whitespace.
       if [[ "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then
@@ -115,12 +122,42 @@ sanitize_cmd() {
     fi
     if [[ "$line" =~ $heredoc_re ]]; then
       heredoc_tag="${BASH_REMATCH[1]}"
-      in_heredoc=1
-      # Keep portion of line BEFORE the `<<` introducer.
-      line="${line%%<<*}"
+      # Only a REAL heredoc if a matching terminator line exists later. `heredoc_re`
+      # matches any `<<word`, but `<<` is also a left-shift operator ($((a<<b)),
+      # $[a<<b], `let a<<b`), sits inside quoted strings (`echo "a<<b"`), and
+      # appears in comparison prose — none of which is a redirection. Treating those
+      # as a heredoc set in_heredoc=1, truncated the line at `<<`, and blanked every
+      # following line, deleting the rm/npx/curl after it from the text ALL three
+      # detectors scan → §8 silent bypass (D2 + 2026-07-15 fresh-review findings).
+      # A genuine heredoc always closes with its tag on its own line; a shift /
+      # quoted `<<` / comparison never does. Requiring the terminator can ONLY make
+      # us treat FEWER things as heredocs → expose MORE text to the deny-on-match
+      # detectors → never a new bypass, at worst a false-deny on a terminator-less
+      # body (which is not a runnable command anyway). This closes the whole
+      # "arithmetic/quoted `<<` fakes a heredoc" class without enumerating syntaxes.
+      # heredoc_tag is a clean identifier ([[:alpha:]_][[:alnum:]_]*), so
+      # interpolating it into the terminator regex carries no metacharacter risk.
+      # KNOWN RESIDUAL (deliberate-crafting, same class as the indirect-rebind note
+      # below; not closed): a FAKE heredoc whose tag name is then repeated as its own
+      # bare line — `echo $((1<<n))\nrm -rf $EVIL\nn` — acquires a coincidental
+      # terminator and blanks the rm. This predates this guard (the original blanked
+      # it too, with no terminator required) and requires appending a line equal to
+      # the shift variable, which bash then runs as a failing command. It does not
+      # clear the "ordinary mistake" bar, so it is not chased here.
+      has_term=0
+      for (( j=i+1; j<n; j++ )); do
+        if [[ "${lines[j]}" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then has_term=1; break; fi
+      done
+      if (( has_term )); then
+        in_heredoc=1
+        # Keep portion of line BEFORE the `<<` introducer.
+        line="${line%%<<*}"
+      else
+        heredoc_tag=""
+      fi
     fi
     out+="$line"$'\n'
-  done <<< "$raw"
+  done
 
   # Strip contents of paired quoted strings, keeping the empty-quote markers
   # so token boundaries (e.g. `echo ""` after stripping) are preserved.
@@ -234,7 +271,16 @@ canon_cmd_words() {
           out=out word; cmdpos=0; continue
         }
         out=out ch
-        if (ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="{"||ch=="`") cmdpos=1
+        # `{` re-opens command position ONLY as a brace-group introducer (`{ rm; }`).
+        # `${VAR}` parameter expansion also contains `{`, but there the `{` is
+        # preceded by `$` and is NOT a command boundary — treating it as one made
+        # canon read the post-`{` text as a command word and basename it, so
+        # `rm -rf "${SP}/build"` became `rm -rf "${build"`, erasing the `${SP}`
+        # the var-detector greps for → §8 silent bypass (D1, 2026-07-15). Guard
+        # the `{` case on the preceding char not being `$`. `(`/backtick still
+        # open command position ($(...) / `...` genuinely hold a command).
+        if (ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="`") cmdpos=1
+        else if (ch=="{" && substr(s,i-1,1)!="$") cmdpos=1
         i++
       }
       print out

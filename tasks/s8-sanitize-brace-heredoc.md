@@ -1,12 +1,26 @@
 # §8: two pre-existing bypasses upstream of all three gates
 
-**Status**: confirmed, not fixed. This is step 2 of the 2026-07-15 plan (step 1 = v0.47.3).
-**Severity**: both blind the gate on shapes it exists to catch. Live in every release
-through v0.47.3, including whatever is currently installed.
+**Status**: RESOLVED in v0.48.1 (2026-07-15). D1 (brace-subpath) and D2 (arithmetic/quoted
+`<<` fakes a heredoc) both fixed; the fresh-review follow-ups (`$[a<<b]` / `let a<<b` /
+quoted `<<`) were the same class and closed by the same root-cause D2 fix (heredoc requires a
+real terminator line). RED-proven: 10 deny corpus rows fail on the pre-fix hook, pass after
+(347→357). Two adversarial review rounds; second confirmed the subset invariant (0 new
+bypasses). The sections below are kept as the design record + the still-open residuals.
 
-Found by a fresh-subagent adversarial review, 2026-07-15. **The author refuted both, then
-re-verified and was wrong** — see "How the first refutation failed" below before trusting
-any probe in this file.
+**Original severity note**: both blinded the gate on shapes it exists to catch. Live in every
+release through v0.48.0. Found by a fresh-subagent adversarial review, 2026-07-15. **The
+author refuted both, then re-verified and was wrong** — see "How the first refutation failed"
+below before trusting any probe in this file.
+
+**Still open (deliberate-crafting residuals, documented in the hook, NOT chased — they do not
+clear the "ordinary mistake" bar)**: indirect-name rebind (`unset "$T"`, `printf -v "$T"`,
+`declare -n r=$T`, `trap 'S=' DEBUG`); a fake heredoc whose tag is repeated as a bare line to
+get a coincidental terminator (`echo $((1<<n))\nrm -rf $EVIL\nn` — present in the original
+code too, this fix does not widen it). `IFS=/; rm -rf $SP/build` was probed 2026-07-15 and
+DENIES (leading `IFS=/` strips as an assignment; `$SP` still detected) — not a bypass in that
+shape; a crafted IFS routed elsewhere stays in the deliberate-crafting class. The parser/
+literal-provenance escalation (`tasks/specs/s8-literal-provenance.md`) remains its own spec,
+not pulled in here.
 
 ## D1 — `canon_cmd_words` tears `${VAR}/subpath` apart
 

@@ -412,3 +412,48 @@ pass	F17-fp: reads do not count as rebinds	S=$(mktemp -d); mkdir -p "$S/a"; cd "
 pass	F17-fp: unset of an unrelated var	S=$(mktemp -d); unset OTHER; rm -rf "$S"
 deny	F17: eval can rebind from an opaque string	S=$(mktemp -d); eval "$CODE"; rm -rf "$S/build"
 pass	F17-fp: two mktemp assignments (both classified)	S=$(mktemp -d); S=$(mktemp -d); rm -rf "$S"
+
+# === D1 (2026-07-15): canon_cmd_words must not treat ${VAR} brace as a
+# command-position boundary. It set cmdpos=1 on `{`, so `rm -rf "${SP}/build"`
+# had `SP}/build"` read as a command word and basenamed to `build"`, erasing
+# the `${SP}` the var-detector greps for -> silent bypass. `rm -rf "${HOME}/"`
+# (empty HOME = rm -rf /, the steam-for-linux#3671 residue case) bypassed too.
+deny	D1: rm -rf "${SP}/build" (brace + subpath)	rm -rf "${SP}/build"
+deny	D1: rm -rf ${SP}/build (bare brace + subpath)	rm -rf ${SP}/build
+deny	D1: rm -rf "${HOME}/" (braced empty-HOME rm -rf /)	rm -rf "${HOME}/"
+pass	D1-fp: rm -rf "${HOME}/.cache/foo" (HOME subpath)	rm -rf "${HOME}/.cache/foo"
+pass	D1-fp: rm -rf ${TMPDIR}/scratch (TMPDIR subpath)	rm -rf ${TMPDIR}/scratch
+pass	D1-fp: { cd sub; rm -rf /tmp/x; } real brace-group literal path	{ cd sub; rm -rf /tmp/x; }
+
+# === D2 (2026-07-15): heredoc_re matched `<<bits` inside $((1<<bits)), setting
+# in_heredoc, truncating the line at `<<` and blanking following lines -> the
+# rm/npx/curl after the arithmetic was deleted from the text ALL three detectors
+# scan -> silent bypass of every gate. Arithmetic spans are masked before the
+# heredoc test; a real heredoc whose body contains arithmetic is unaffected.
+deny	D2: $((1<<b)) then rm, same line	SHIFT=$((1<<bits)); rm -rf "$EVIL/build"
+deny	D2: $((1<<b)) line then rm line	echo $((1<<n))__NL__rm -rf "$EVIL/build"
+deny	D2: $((1<<b)) blinds the npx gate too	echo $((1<<n))__NL__npx unknown-pkg-xyz9
+pass	D2-fp: arithmetic left-shift alone	echo $((1<<4))
+pass	D2-fp: arithmetic assign then echo	result=$((1<<8)); echo "$result"
+pass	D2-fp: real heredoc, arithmetic in body	cat <<EOF__NL__value is $((1<<2))__NL__EOF
+
+# IFS as a leading assignment does not hide the rm target (reviewer NOT-PROBED
+# item, probed 2026-07-15): `IFS=/` is stripped as a leading env-assignment, so
+# `$SP` is still detected. A crafted IFS routed elsewhere is deliberate-bypass
+# territory (same class as the indirect-name rebind residual documented in the
+# hook) and is not chased -- it does not clear the "ordinary mistake" bar.
+deny	IFS=/ leading assignment still catches $SP	IFS=/; rm -rf $SP/build
+
+# === 2026-07-15 fresh-review: the D2 class is broader than $(( )). heredoc_re
+# matched `<<word` in ANY context, so a left-shift in $[a<<b] / `let a<<b`, a
+# `<<` inside a quoted string, or `<<` in comparison prose all faked a heredoc
+# and blanked the following rm/npx/curl. Root-cause fix: only treat `<<TAG` as a
+# heredoc when a matching terminator line exists (a real heredoc always closes;
+# a shift / quoted `<<` / comparison never does).
+deny	rev1: $[a<<b] deprecated-arith shift then rm	echo $[a<<b]; rm -rf $EVIL
+deny	rev1: let a<<b builtin-arith shift then rm	let x=a<<b; rm -rf $EVIL
+deny	rev2: << inside double-quoted string then rm	echo "a<<b"; rm -rf $EVIL
+deny	rev2: << inside single-quoted string then rm	echo 'a<<b'; rm -rf $EVIL
+pass	rev-fp: real heredoc body containing rm (data)	cat <<EOF__NL__rm -rf $X__NL__EOF
+pass	rev-fp: << inside quotes, no danger	echo "a<<b"
+pass	rev-fp: grep for << literal	grep "<<" file.txt

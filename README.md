@@ -260,6 +260,8 @@ Manual fallback (e.g. the `claude` CLI is not on PATH):
 
 Or open the interactive UI via `/plugin` → **Installed** tab → select `claudemd` → follow upgrade prompts.
 
+> **Other open Claude Code windows:** run `/reload-plugins` in each of them too. A refresh removes the old versioned plugin-cache dir, but every already-running session pinned its hook paths to that dir at startup — those windows error on every hook event (claudemd enforcement is off there) until they reload or restart.
+
 After the plugin upgrade, sync the shipped spec into `~/.claude/`:
 
 ```
