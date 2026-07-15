@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.49.0] - 2026-07-15
+
+Spec **v6.20.0** — §2.1 Model tiering rule removed (spec-only; no hook/script change).
+
+- **Removed the spawned-agent model-tiering rule** (core §2.1 paragraph + `spec/CLAUDE-extended.md §2.1-EXT MODEL TIERING`): downgrade-eligible category enumeration, the NEVER-downgrade list, the verifier ≥ generator invariant, and the anomalous-output re-run clause are all deleted. The model now self-allocates subagent tiers on its own judgment — quality-first with zero spec constraint. Rationale: the `Agent` tool already defaults to inheriting the parent (session) model when `model` is omitted, so quality-first is the harness default without any spec text. SHOULD-level rule — `spec/hard-rules.json` untouched, so no hook behavior changes and no enforcement surface moves.
+- **Why now**: the first real-world sample of the rule firing (2026-07-15, a sibling project running subagents) showed the orchestrator self-allocating verify/review subagents to a lower tier including same-tier self-review — the exact pattern the guardrail targeted. The operator chose to trust the model's own allocation over re-adding the constraint (tracked in the durable-memory note `feedback_tiering_verify_downgrade_gap.md`, reopenable if the pattern recurs and hurts quality).
+- **Manifest descriptions** bumped `AI-CODING-SPEC v6.19 → v6.20` (major.minor per the versioning policy above). README spec-version references bumped to v6.20.
+- **Tests**: full `npm test` green; `node scripts/version-cascade-check.js` exit 0 (v6.20 consistent across spec trio + README + 3 manifests; plugin semver 0.49.0 consistent across 4 sites; Sizing drift within ±20B).
+
 ## [0.48.1] - 2026-07-15
 
 **Patch — three §8 pre-detector silent bypasses closed (D1 brace-subpath, D2 arithmetic/quoted `<<` fakes a heredoc). Bugfix restoring intended deny behavior; no new gate, no §8 detector added.**

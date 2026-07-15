@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.19.0 — Extended
+# AI-CODING-SPEC v6.20.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -91,14 +91,6 @@ When a change qualifies as "released-artifact user-visible default behavior chan
 - **One-time discoverability signal**: stderr banner / first-run log / release-note callout — so users who don't read CHANGELOG still notice.
 
 Missing any item on a user-visible default change = incomplete ship; file as Uncertain in REPORT.
-
-## §2.1-EXT MODEL TIERING (downgrade categories)
-
-Core §2.1 keeps the invariants (default inherit / NEVER-downgrade list / verifier ≥ generator / anomalous → one re-run at inherited tier / tier never lowers the evidence bar). Downgrade-eligible categories (moved from core, v6.19.0):
-
-- **Sonnet**: mechanical fan-out (search / fetch / extract / classify / enumerate) + lint-or-test-gated bulk edits (pair `effort:'low'`).
-- **Opus**: test-gated plan-step code.
-- **Anomalous** = empty / malformed / contradictory output from a downgraded agent.
 
 ## §2.S SPEC ARTIFACT
 
@@ -388,7 +380,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | sp:systematic-debugging, gs:/investigate | §6 + Iron Law #3 |
 | sp:writing-plans | inline `tasks/<n>.md`; user reviews |
 | sp:brainstorming, gs:/office-hours, /design-* | self-ask: intent→constraints→options→recommend |
-| sp:dispatching-parallel-agents | sequential; note downgrade |
+| sp:dispatching-parallel-agents | sequential |
 | sp:using-git-worktrees | single tree + branch; stash before switch |
 | sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD). No subagent → L3 not executable, escalate |
 | sp:*-code-review, gs:/review | fresh subagent + review brief; serves per-task and pre-ship |
@@ -485,20 +477,19 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.19.0 (minor, 2026-07-13)** — §2.2 Runbook fast-path (operator-requested token-efficiency relaxation):
+**v6.20.0 (minor, 2026-07-15)** — §2.1 Model tiering removed (operator decision: model self-allocates spawned-agent tiers; quality-first, zero spec constraint):
 
-- `[add]` **§2.2 Runbook fast-path + §12 rules**: when extended would load solely because of ship/release (incl. released-artifact L3) and the project's ship-runbook memory carries a current-version coverage stamp (`covers: §EXT §12 … @ v<spec>`), ship reads runbook + stamped §EXT sections instead of the full file (~47KB → ~7KB read on claudemd). Stamp missing/stale → full load + stamp refresh — self-healing, one full re-read per spec release. All §12 HARD obligations bind unchanged.
-- `[move]` **C4 — §2.1 Model-tiering categories → §EXT §2.1-EXT**: core keeps the safety invariants (inherit default / NEVER-downgrade / verifier ≥ generator / re-run / evidence bar); Sonnet/Opus category enumeration moves here. Paired net-delete for the fast-path addition per §0.1.
+- `[remove]` **§2.1 Model tiering (core) + §2.1-EXT MODEL TIERING (extended)**: the entire spawned-agent tier-selection rule — downgrade-eligible category enumeration, the NEVER-downgrade list, the verifier ≥ generator invariant, and the anomalous-output re-run clause. Rationale: the `Agent` tool already defaults to inheriting the parent (session) model when `model` is omitted, so quality-first is the harness default with no spec text; the model picks per-spawn tiers on its own judgment. SHOULD-level rule, `hard-rules.json` untouched — no hook change. §2.1 ROUTE `sp:dispatching-parallel-agents` row lost its "note downgrade" annotation.
 
 ### Why minor (and why now)
 
-One rule relaxed (§2.2 load scope) → minor per §13 META; no HARD added — the fast-path's bounds live inside the existing §12 HARD block. Operator-requested same-week as v6.18.0: the ship-time full-extended load was the largest recurring token cost the spec imposes on itself; v6.16.0 runbook consolidation already made the memory side one predictable Read — this closes the extended side.
+One SHOULD-level rule removed → minor per §13 META; no HARD touched (`hard-rules.json` unchanged). Rule removal adds budget back per §13.2 and resets the 20-task counter. Operator rationale: the single real-world sample of the rule firing (2026-07-15 ubuntu-sec) showed the orchestrator self-allocating verify/review subagents to sonnet — including same-tier self-review — which the removed guardrail was meant to prevent; the operator judged that trusting the model's own allocation (with the harness's inherit-by-default) beats a spec constraint that added ceremony without reliably improving quality. Quality-first: default inherit already routes spawns to the best model; nothing nudges toward cheaper tiers anymore. Trade-off accepted: no spec text stops a future verify-downgrade — tracked in `feedback_tiering_verify_downgrade_gap.md`, reopenable if it recurs.
 
-**Older entries** (v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 §11-EXT ship-runbook consolidation, v6.15.1 §0.1 operator-threshold relocation, v6.15.0 §2.1 Model tiering + Candidate-1 net-delete, v6.14.2 trigger-list `e.g.` markers + context7 conditionalized, v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 §11-EXT ship-runbook consolidation, v6.15.1 §0.1 operator-threshold relocation, v6.15.0 §2.1 Model tiering + Candidate-1 net-delete, v6.14.2 trigger-list `e.g.` markers + context7 conditionalized, v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.19.0, 2026-07-13, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24727 → 24823 bytes (Δ +96: §2.2 Runbook fast-path ≈ +276, C4 move ≈ −180); extended 47060 → 48706 bytes (Δ +1646: §12 fast-path block + §2.1-EXT + entry swap); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24823/25000 (**177 bytes headroom, 99.29%**); extended 48706/50000 (**1294 bytes headroom, 97.41%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.20.0, 2026-07-15, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24823 → 24434 bytes (Δ −389: §2.1 Model tiering paragraph removed); extended 48706 → 48700 bytes (Δ −6: §2.1-EXT MODEL TIERING removed ≈ −447, offset by the longer v6.20.0 Recent-changes/Why-minor/carry-forward prose); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24434/25000 (**566 bytes headroom, 97.74%**); extended 48700/50000 (**1300 bytes headroom, 97.40%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.19.0 paired the §2.2 fast-path addition with **C4 (consumed)** — the candidate pool (`tasks/core-net-delete-candidates-v6.14.md`) is now **empty**; the next core addition needs fresh staging before it lands. Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Fast-path adoption note: each project opting in must stamp its own runbook; claudemd's runbook stamped `@ v6.19.0` at ship.
+**Operator carry-forward**: v6.20.0 is a standalone net-delete (§2.1 Model tiering removed, core + extended) — frees core + extended budget, no paired addition needed (§0.1 net-delete is fine standalone; the candidate pool `tasks/core-net-delete-candidates-v6.14.md` stays **empty**). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Runbook stamp: claudemd's ship-runbook re-stamped `@ v6.20.0` at ship (covered §EXT sections §12/§13 META/§2-EXT content unchanged).
 
 ## §1.5-EXT GLOSSARY
 

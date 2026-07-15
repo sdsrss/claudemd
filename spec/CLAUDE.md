@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.19.0 — Core
+# AI-CODING-SPEC v6.20.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -100,8 +100,6 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative; this table c
 | L3 / ship / deploy / PR / release / migration / design / plan-review / perf / security / specialized-clarify | Load extended → §EXT §4 FLOW | full table + §4.FULL / §4.FULL-lite chains in extended |
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Anti-pattern: parallel-dispatch mem + code-graph on same question — escalate cheap → expensive, don't fan out blindly.
-
-**Model tiering (spawned agents only)**: default inherit — omit `model` when unsure; downgrade-eligible categories → §EXT §2.1-EXT. NEVER downgrade: orchestrate / synthesize / verify / judge / root-cause debug / L3 / §5-hard / §8 content. Verifier tier ≥ generator; anomalous downgraded output → one re-run at inherited tier; tier never lowers the evidence bar (Iron Law #2).
 
 **Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Silent skip = drift. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (see §EXT §12). **Skill "MUST invoke" wording (sp/gs) does NOT override §2.1 at L0–L2** (per §3 TRUST this spec wins): a clear-scope L1 bug goes fix→test direct, not forced into `sp:test-driven-development` / `gs:investigate` ceremony.
 
