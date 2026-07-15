@@ -61,8 +61,29 @@ const STOP_WORDS = new Set([
   'pkg', 'cwd', 'var', 'etc', 'fix', 'link', 'note',
 ]);
 
+// Split a claim into clauses on '→' / ';' — but NOT on separators inside a
+// backticked code span. Hook comments illustrate shell shapes (`S=$(mktemp -d);
+// S=$EVIL; rm -rf "$S"`), whose semicolons are shell syntax, not clause
+// separators. Splitting them minted phantom clauses like `S=$EVIL` whose only
+// keyword ("sevil") can never appear in code, so a FIXED bug's own repro was
+// reported as an unimplemented rule (2026-07-15, v0.47.2 F14 comment).
+// Span text is kept in the clause — clauseKeywords() strips the backticks and
+// still harvests real keywords (e.g. "mktemp") from it.
+// Residual: an odd number of backticks leaves the scanner in code state to the
+// end of the claim, suppressing later splits. That loses granularity (fewer,
+// longer clauses) rather than inventing gaps — the safe direction for a
+// heuristic whose output is advisory.
 function splitClauses(text) {
-  return text.split(/[→;]/).map(s => s.trim()).filter(Boolean);
+  const parts = [];
+  let buf = '';
+  let inCode = false;
+  for (const ch of text) {
+    if (ch === '`') { inCode = !inCode; buf += ch; continue; }
+    if (!inCode && (ch === ';' || ch === '→')) { parts.push(buf); buf = ''; continue; }
+    buf += ch;
+  }
+  parts.push(buf);
+  return parts.map(s => s.trim()).filter(Boolean);
 }
 
 function clauseKeywords(clause) {

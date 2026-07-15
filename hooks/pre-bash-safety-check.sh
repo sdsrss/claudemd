@@ -594,20 +594,58 @@ if (( bypass_rm == 0 )); then
         # SAME command from $(mktemp …) / `mktemp …` is a validated rm target: mktemp
         # creates a fresh, uniquely-named path that cannot be / or a wildcard, so
         # cleaning it up is the §8.V4 disposal idiom, not an unvalidated-var danger.
-        # Provenance recognition is deliberately limited to mktemp. Literal-prefix
-        # vars (`SP="$HOME/work"; rm -rf "$SP/x"`) and transitive vars (`R="$S/x"`)
-        # stay strict — use ${VAR:?} / a literal rm target / [allow-rm-rf-var].
-        # NB (v0.47.1): the old rationale here — "literal-prefix vars do not survive
-        # canon_cmd_words, which basenames them" — is no longer true. That was a
-        # description of the F10 defect (canon mangling assignments), not a reason;
-        # assignments now pass through canon intact. The strictness is a live CHOICE,
-        # not a limitation: unlike mktemp — which provably yields a fresh, unique,
-        # non-`/` path — a literal prefix is only as bounded as the literal, and
-        # `R="$HOME/../../etc"` (corpus F8-fp) shows the residue can escape upward.
-        # Recognizing it would need real path analysis. Revisit only with that.
-        # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
-        prov_mktemp='(^|[[:space:];&|`(])'"$varname"'=(\$\(|`)[[:space:]]*mktemp([[:space:]`)]|$)'
-        if echo "$SANITIZED_CMD_FLAT" | grep -qE "$prov_mktemp"; then
+        # Provenance recognition is limited to mktemp. Literal assignments
+        # (`SP=/home/me/work; rm -rf "$SP"`) and transitive vars (`R="$S/x"`) stay
+        # strict — use ${VAR:?} / a literal rm target / [allow-rm-rf-var]. (The
+        # literal case is a known false-deny, tracked in
+        # tasks/s8-literal-provenance.md; widening allow is a separate decision
+        # from this deny-only fix.)
+        #
+        # v0.47.2 (2026-07-15) — the SEC-4 recognizer was a single grep for
+        # `VAR=$(mktemp` ANYWHERE in the flat command. Three false-NEGATIVES, all
+        # reaching the exact empty-var/subpath class this gate exists for
+        # (ValveSoftware/steam-for-linux#3671, cited in the whitelist branch above):
+        #   1. REASSIGNMENT — `S=$(mktemp -d); S=$EVIL; rm -rf "$S/build"` matched the
+        #      first assignment and ALLOWed. $EVIL is env-supplied and invisible; if
+        #      empty the rm becomes `rm -rf /build`. Control (`rm -rf "$EVIL/build"`
+        #      with no mktemp mention) correctly denied — the stray mktemp opened it.
+        #   2. POSITION-BLINDNESS — `rm -rf "$S"; S=$(mktemp -d)` ALLOWed, but bash
+        #      runs the rm FIRST, with $S still inherited from the environment. (The
+        #      ${VAR:?} guard below is position-agnostic for a documented reason that
+        #      does NOT transfer here: an unset var makes `rm -rf ""` a harmless
+        #      no-op, whereas provenance is claiming the value is a known temp dir.)
+        #   3. UNBOUNDED TARGET — `rm -rf "$S/$SUB"` ALLOWed on S's provenance while
+        #      $SUB stayed unknown; empty $SUB collapses the target to the temp root.
+        # Replaced by three conditions, all textual and all conservative:
+        #   (1) >=1 assignment to varname strictly BEFORE this rm segment;
+        #   (2) EVERY assignment to varname anywhere in the command is a mktemp one
+        #       (position-blind on purpose — an assignment after the rm cannot make it
+        #       safe, and refusing on one over-denies rather than under-allows);
+        #   (3) the rm target expands no var other than varname.
+        # Documented residual: `S=$( mktemp -d)` (space after the paren) now denies —
+        # the RHS capture stops at the space. Deny-direction, use [allow-rm-rf-var].
+        prov_prefix="${SANITIZED_CMD_FLAT%%"$segment"*}"
+        prov_safe=0
+        if printf '%s' "$prov_prefix" | grep -qE "(^|[[:space:];&|\`(])${varname}="; then
+          prov_safe=1
+          # (2) every assignment to varname in the whole command must be mktemp
+          while IFS= read -r prov_rhs; do
+            [[ -n "$prov_rhs" ]] || continue
+            # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
+            printf '%s' "$prov_rhs" | grep -qE '^(\$\(|`)mktemp([[:space:]`)]|$)' \
+              || { prov_safe=0; break; }
+          done < <(printf '%s' "$SANITIZED_CMD_FLAT" \
+            | grep -oE "(^|[[:space:];&|\`(])${varname}=[^[:space:];&|]*" \
+            | sed -E "s/^[[:space:];&|\`(]+//; s/^${varname}=//")
+          # (3) target must not depend on any var other than varname
+          if (( prov_safe == 1 )); then
+            prov_other=$(printf '%s' "$rm_target" \
+              | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' \
+              | sed -E 's/[${}"'"'"']//g' | grep -vxF "$varname" | head -n1)
+            [[ -n "$prov_other" ]] && prov_safe=0
+          fi
+        fi
+        if (( prov_safe == 1 )); then
           hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
         else
           guard_re='(^|[^\\])\$\{'"$varname"':\?'

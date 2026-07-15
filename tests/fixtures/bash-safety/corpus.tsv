@@ -338,3 +338,27 @@ pass	F11-fp: dquoted rm target still preserved (dollar body)	rm -rf "$HOME/.cach
 pass	F12-fp: multi-line squote literal mentioning rm	python -c 'print(1)__NL__rm -rf $X'
 pass	F12-fp: multi-line squote literal mentioning npx	python -c 'print(1)__NL__npx unknown-pkg-xyz9'
 deny	F12: real rm after a closed multi-line squote literal	python -c 'print(1)__NL__print(2)'__NL__rm -rf $DANGEROUS
+
+# === 2026-07-15 F14: mktemp-provenance FN closure (v0.47.2) ===
+# SEC-4 (v0.46.0) recognized temp-dir cleanup with ONE grep for `VAR=$(mktemp`
+# anywhere in the flat command. Three FNs, each reaching the empty-var/subpath
+# class the gate exists for (steam-for-linux#3671, cited in the whitelist branch):
+# reassignment, position-blindness, and an unbounded target. Now: >=1 assignment
+# strictly before the rm + EVERY assignment to that var is mktemp + the target
+# expands no other var.
+deny	F14: mktemp then reassigned from env var, subpath target	S=$(mktemp -d); S=$EVIL; rm -rf "$S/build"
+deny	F14: mktemp then reassigned from env var	S=$(mktemp -d); S=$EVIL; rm -rf "$S"
+deny	F14: mktemp then reassigned to root literal	S=$(mktemp -d); S=/; rm -rf "$S"
+deny	F14: mktemp then reassigned from cmd-sub	S=$(mktemp -d); S=$(cat f); rm -rf "$S"
+deny	F14: mktemp assigned AFTER the rm (position-blind)	rm -rf "$S"; S=$(mktemp -d)
+deny	F14: mktemp var but unknown second var in target	S=$(mktemp -d); rm -rf "$S/$SUB"
+deny	F14: mktemp var but unknown var is the subpath	S=$(mktemp -d); rm -rf "$S/$SUB/dist"
+# Intended mktemp allows — the §8.V4 disposal idiom must keep working.
+pass	F14-fp: mktemp then rm the temp root	S=$(mktemp -d); rm -rf "$S"
+pass	F14-fp: mktemp then rm a literal subpath	S=$(mktemp -d); rm -rf "$S/build"
+pass	F14-fp: mktemp with no args	S=$(mktemp); rm -rf "$S"
+pass	F14-fp: mktemp via backticks	S=`mktemp -d`; rm -rf "$S"
+pass	F14-fp: mktemp joined with &&	S=$(mktemp -d) && rm -rf "$S"
+pass	F14-fp: mktemp with intervening commands	S=$(mktemp -d); mkdir -p "$S/a"; echo hi > "$S/a/f"; rm -rf "$S"
+pass	F14-fp: two mktemp assignments to same var	S=$(mktemp -d); S=$(mktemp -d); rm -rf "$S"
+pass	F14-fp: mktemp -p form	S=$(mktemp -d -p /tmp); rm -rf "$S"
