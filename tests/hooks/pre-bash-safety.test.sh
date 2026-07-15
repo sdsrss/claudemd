@@ -319,6 +319,30 @@ else
 fi
 rm -rf "$tel_home"
 
+# --- v0.51.0 curl-sh wrapper-set parity ---
+# Every wrapper the curl-sh regex accepts must exist in the shared taxonomy
+# (S8_WRAP_ARGLESS ∪ S8_WRAP_FLAGGED), so the single-source arrays and the regex
+# cannot silently drift apart. Enforces the relationship without re-spelling the
+# regex (which legitimately omits `timeout` — see the CURLSH_WRAP comment).
+CURLSH_MEMBERS=$(grep -oE "CURLSH_WRAP='\(([^)]*)\)" "$HOOK" | sed -E "s/CURLSH_WRAP='\(//; s/\)$//" | tr '|' ' ')
+SHARED_SET=$(grep -oE 'S8_WRAP_(ARGLESS|FLAGGED)=\([^)]*\)' "$HOOK" | sed -E 's/.*\(//; s/\)//' | tr '\n' ' ')
+parity_ok=1
+if [[ -z "$CURLSH_MEMBERS" || -z "$SHARED_SET" ]]; then
+  echo "FAIL [curl-sh-parity]: could not extract CURLSH_WRAP or S8_WRAP_* (members='$CURLSH_MEMBERS' shared='$SHARED_SET')"
+  parity_ok=0
+fi
+for m in $CURLSH_MEMBERS; do
+  case " $SHARED_SET " in
+    *" $m "*) ;;
+    *) echo "FAIL [curl-sh-parity]: curl-sh wrapper '$m' not in shared taxonomy"; parity_ok=0 ;;
+  esac
+done
+if (( parity_ok == 1 )); then
+  echo "PASS: curl-sh wrapper set ⊆ shared taxonomy"; PASS=$((PASS + 1))
+else
+  FAIL=$((FAIL + 1))
+fi
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

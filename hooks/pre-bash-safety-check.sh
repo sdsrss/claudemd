@@ -927,6 +927,15 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # live). Residual (documented, same as the rm gate): `env FOO=x bash` /
 # `FOO=x bash` (assignment args) and path-prefixed wrappers (`/usr/bin/env bash`)
 # are not modeled in this single regex; `[allow-curl-sh]` is the escape.
+#
+# Members MUST be a subset of S8_WRAP_ARGLESS ∪ S8_WRAP_FLAGGED (parity-tested in
+# pre-bash-safety.test.sh — the single-source arrays and this regex cannot silently
+# drift apart). Kept as a literal string, NOT rebuilt from the arrays: as a bare
+# regex prefix a duration-taking wrapper can't match anyway (`timeout 5 bash` — the
+# `5` breaks `(WRAP)*(sink)`), so `timeout` is deliberately absent; re-deriving the
+# string from the full arrays would ADD `timeout` and flip `curl x | timeout bash`
+# allow→deny — a verdict change, not a refactor. Shell keywords (do/then/else/!) are
+# absent for the same reason a pipe sink is never a control-structure keyword.
 CURLSH_WRAP='(sudo|doas|env|command|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
 CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CURLSH_WRAP})*(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
