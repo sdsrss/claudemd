@@ -1,24 +1,41 @@
-# Update-notify design — SessionStart release check + /claudemd-refresh
+# Update-refresh UX design — one-command refresh behind the existing upgrade banner
 
 status: approved
-revision: 1
+revision: 2
 date: 2026-07-15
-level: L3 (released-artifact user-visible behavior change, core spec §2)
+level: L3 (released-artifact user-visible behavior change + LLM-visible command metadata, core spec §2)
 
 ## Goal
 
-Close the "knowing an update exists" gap in the plugin refresh flow. Today the
-refresh mechanics are already automated (`update.sh` collapses marketplace-update
-→ uninstall → install into one command; `hooks/version-sync.sh` +
-`hooks/session-start-check.sh` sync spec/manifest automatically after reload),
-but nothing tells the user a new release shipped. Target UX:
+Cut the plugin update flow from "4 pasted commands + /claudemd-install" to
+"one command + restart". Target UX:
 
 ```
-SessionStart notice: [claudemd] v0.48.0 available (installed 0.47.4) — run /claudemd-refresh, then restart
-user: /claudemd-refresh        # wraps bash "${CLAUDE_PLUGIN_ROOT}/update.sh"
+SessionStart banner: [claudemd] v0.48.0 available (you have v0.47.4). Run /claudemd-refresh, then restart Claude Code.
+user: /claudemd-refresh        # runs scripts/refresh-plugin.sh via claude CLI
 user: restart Claude Code      # CC platform requirement to load new hook code
 (spec/manifest sync then happens automatically via existing hooks)
 ```
+
+## r2 scope correction (what already exists)
+
+r1 assumed the notify layer had to be built. Verification against source showed
+most of the pipeline already ships:
+
+- **Notify**: `hooks/session-start-check.sh` `upstream_check()` (v0.4.0) already
+  emits a SessionStart "upgrade available" banner — 24h sentinel throttle
+  (`~/.claude/.claudemd-state/upstream-check.lastrun`), `git ls-remote --tags`
+  with 3s timeout, fail-open, `DISABLE_UPSTREAM_CHECK=1` kill switch. The
+  4-command list the user pastes today IS this banner's current text.
+- **Post-refresh sync**: `hooks/version-sync.sh` (UserPromptSubmit) +
+  session-start bootstrap already auto-run `install.js` on version mismatch —
+  `/claudemd-install` is never needed in the update flow.
+- **One-shot refresh**: existed only as a local untracked `update.sh`
+  (`.git/info/exclude`), never shipped. User confirmed dropping it (deleted
+  2026-07-15) in favor of a shipped equivalent.
+
+Remaining gap = ship the one-command refresh + point all "how to update" copy
+at it. No new hook, no new state file, no GitHub API.
 
 ## Non-goals
 
@@ -28,87 +45,74 @@ user: restart Claude Code      # CC platform requirement to load new hook code
   §5 hard-AUTH-class action performed silently, plus a concurrent-session race.
   (The `plugin-auto-update` skill's downloadAndInstall pattern targets
   install.mjs-distributed plugins, not marketplace ones — per its own notes.)
+- No new SessionStart hook and no GitHub Releases API — `upstream_check()`
+  already covers detection via `git ls-remote`.
 - No change to the release pipeline / marketplace layout.
-- No removal of `update.sh` (the `/claudemd-refresh` command wraps it).
 
 ## Design
 
-### 1. New hook `hooks/update-check.sh` (SessionStart, own registration entry)
+### 1. New shipped script `scripts/refresh-plugin.sh`
 
-- **Throttle**: state file records `lastCheck`; skip if < 24h ago. A GitHub 403
-  (rate limit) sets `rateLimited: true`; while set, interval is treated as
-  satisfied for 6h minimum regardless of `lastCheck`.
-- **Check**: `curl --max-time 3 -s https://api.github.com/repos/sdsrss/claudemd/releases/latest`
-  → `tag_name` (strip leading `v`) → semver-compare against installed plugin
-  version (`"$CLAUDE_PLUGIN_ROOT"/package.json`, same source version-sync.sh uses).
-- **Fail-open everywhere**: no network / timeout / no jq / malformed API response /
-  unreadable package.json → exit 0 with zero output. Never blocks a session.
-- **Conventions**: sources `hooks/lib/hook-common.sh`, respects
-  `hook_kill_switch SESSION_START`-style toggle (own `DISABLE_UPDATE_CHECK_HOOK`
-  key so `/claudemd-toggle` can disable it independently), logs a `suggest`-class
-  rule-hit to the telemetry sink like sibling hooks.
+Tracked, tested replacement for the local `update.sh`: `claude plugin
+marketplace update claudemd` → `claude plugin uninstall claudemd@claudemd -y`
+→ `claude plugin install claudemd@claudemd`, `set -euo pipefail` so a failed
+step stops the pipeline. Loud failure when the `claude` CLI is not on PATH.
 
-### 2. Notification shape
+### 2. New command `commands/claudemd-refresh.md`
 
-- Newer release found → single `additionalContext` line via the standard hook
-  JSON envelope:
-  `[claudemd] v<latest> available (installed v<current>) — run /claudemd-refresh, then restart Claude Code`
-- Installed == latest (or check skipped/failed) → **zero output**. No "you are
-  up to date" noise.
+Thin wrapper: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/refresh-plugin.sh"`,
+then tell the user to restart (or `/reload-plugins`); spec+manifest sync is
+automatic afterwards. Includes the manual 4-command fallback for machines
+without the `claude` CLI on PATH.
 
-### 3. New command `commands/claudemd-refresh.md`
+### 3. Banner + message copy sweep (parallel-path completeness, §9)
 
-- Thin wrapper: instruct Claude to run `bash "${CLAUDE_PLUGIN_ROOT}/update.sh"`
-  and then tell the user to restart (or `/reload-plugins`), after which
-  version-sync.sh / session-start-check.sh finish the spec+manifest sync — no
-  manual `/claudemd-install` needed.
-- Works for third-party adopters with no repo checkout (update.sh ships in the
-  plugin; `${CLAUDE_PLUGIN_ROOT}` expands in commands/hooks).
+Every site that teaches the 4-command sequence points to `/claudemd-refresh`
+first (manual sequence stays documented in README as fallback):
 
-### 4. State file
-
-- `~/.claude/.claudemd-update-state.json` — sibling + same style as
-  `.claudemd-manifest.json`. Fields: `lastCheck`, `latestSeen`, `rateLimited`.
-- Lifecycle: created by the hook on first check; `scripts/uninstall.js` must
-  remove it (user-global write → owned residue).
+- `hooks/session-start-check.sh:182` upstream banner → "Run /claudemd-refresh,
+  then restart Claude Code."
+- `hooks/session-start-check.sh:258` stale-registration banner Fix line.
+- `commands/claudemd-update.md` canonical-refresh block.
+- `scripts/install.js:85` refusing-downgrade message.
+- `scripts/doctor.js:100` staleness fix + `:161` hook-drift fix (keep
+  `/reload-plugins` wording — `tests/scripts/doctor.test.js:51` pins it).
+- `README.md`: feature-table count (15 → 16 slash commands), commands table row,
+  §Project layout commands count (pinned by `readme-drift.test.js`), Update
+  section lead, `/plugin update` troubleshooting entry.
 
 ## Constraints
 
-- SessionStart budget: hook must finish well inside its registered timeout even
-  on no-network machines (curl `--max-time 3`, registration timeout 5, matching
-  the existing session-start-check.sh entry).
-- §7 user-global-write rule: implementation task must show residue evidence for
-  `~/.claude/` writes (exactly one new file, counted).
-- §8.V3: no destructive paths here (notify-only), but tests must not hit the real
-  network or real `~/.claude/` — curl mocked via PATH shim, HOME pointed at a
-  sandbox.
-- Released-artifact checklist (§EXT §2-EXT): minor version bump; CHANGELOG note
-  at top; opt-out documented (`DISABLE_UPDATE_CHECK_HOOK=1` via /claudemd-toggle);
-  the notify line itself is the discoverability signal.
+- Tests hermetic: no real network, no real `~/.claude`, no real `claude` CLI —
+  PATH shim + `CLAUDEMD_LS_REMOTE_CMD`/`CLAUDEMD_CACHE_PARENT` overrides
+  (existing pattern in `tests/hooks/session-start.test.sh`).
+- Controls-first harness (feedback_probe_harness_controls_first): refresh-script
+  test opens with two cases that must produce opposite outcomes.
+- No new `~/.claude` writes (existing sentinel reused) → no uninstall.js change.
+- Released-artifact checklist (§EXT §2-EXT): minor bump 0.48.0; CHANGELOG note
+  at top; opt-out unchanged (`DISABLE_UPSTREAM_CHECK=1`); the banner itself is
+  the discoverability signal.
 
 ## Success criteria
 
-1. With a mocked newer release, a fresh SessionStart emits exactly one
-   additionalContext line naming both versions and `/claudemd-refresh`.
-2. With mocked equal/older release, network failure, 403, or missing jq: zero
-   stdout, exit 0.
-3. Second SessionStart within 24h performs no network call (throttle hit,
-   verified via curl-shim call counter).
-4. `/claudemd-refresh` on this machine refreshes the plugin cache to the latest
-   released version (`node scripts/status.js` shows installed == latest after
-   restart).
-5. `scripts/uninstall.js` removes the state file (sandbox-tested per §8.V3).
-6. Controls-first test harness: the mock suite starts with two fixtures that
-   MUST produce different results (newer-version vs up-to-date) before any
-   other assertion is trusted (feedback_probe_harness_controls_first).
+1. Mocked newer remote tag → SessionStart banner names both versions and
+   `/claudemd-refresh` (Case 8 updated, RED→GREEN).
+2. Stale-registration banner names `/claudemd-refresh` (Case 18 extended).
+3. `refresh-plugin.sh` with success shim: exactly 3 `claude plugin` calls in
+   order, exit 0. With step-1-failing shim: non-zero exit, no uninstall call.
+   Without `claude` on PATH: exit 1 + stderr message.
+4. `npm test` green including drift suites (readme-drift, help-discoverability).
+5. On this machine post-release: `/claudemd-refresh` + restart →
+   `node scripts/status.js` shows installed == repo.
 
 ## Open questions
 
-- None blocking. Deferred consideration: `skipVersion` field (user wants to
-  ignore a specific release) — YAGNI until requested.
+- None blocking. Deferred: `skipVersion` (ignore a specific release) — YAGNI.
 
 ## Change log
 
-- r1 (2026-07-15): initial approved design. Option chosen: notify-only, over
-  (a) background pre-pull (hook mutating CC plugin state — race + silent
-  hard-AUTH) and (b) status-quo docs-only (no version awareness for adopters).
+- r2 (2026-07-15): scope corrected after source verification — notify layer
+  already shipped (v0.4.0 `upstream_check`); design shrinks to shipped refresh
+  script + command + copy sweep. Local `update.sh` deleted per user.
+- r1 (2026-07-15): initial approved design (notify-only tier chosen over
+  background pre-pull and docs-only status quo).
