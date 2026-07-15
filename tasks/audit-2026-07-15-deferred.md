@@ -3,14 +3,17 @@
 来源：0.49.1 审计 follow-up 发版（`4194a51`）时明确延后的三项。审计上下文见记忆
 `project_audit_2026-07-15_seams`（重复接缝无单源/parity 门是共同根因）。
 
-## 1. 后台 install.js 升级失败的会话内 banner（arch HIGH）
+**状态更新 2026-07-15**：第 1、2 项已在 v0.50.0（`git tag v0.50.0`）发版完成；
+仅第 3 项（共享 tokenizer 重构）仍延后，等单独决策。
+
+## 1. ✅ 后台 install.js 升级失败的会话内 banner（arch HIGH）— shipped v0.50.0
 
 - 现状：SessionStart 后台升级失败只留 `bootstrap.log` 痕迹，会话内无提示，用户以为已升级。
 - 非阻断（有日志痕迹），但属静默失败面。
 - 实现面：SessionStart hook 检测上次 bootstrap 失败标记 → additionalContext 单行 banner。
 - 验收：模拟 install.js 失败 → 下一会话 banner 出现；成功路径无残留 banner。
 
-## 2. marketplace 通道 tag 触发 CI gate（tests MEDIUM）
+## 2. ✅ marketplace 通道 tag 触发 CI gate（tests MEDIUM）— shipped v0.50.0
 
 - 现状：CI 只护 push-to-main，tag/release 通道无 gate —— 双通道保护不对称，
   打 tag 发版可绕过测试红灯。
