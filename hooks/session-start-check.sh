@@ -106,6 +106,40 @@ emit_session_summary_banner() {
   mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
 }
 
+# emit_bootstrap_failed_banner — v0.50.0. Surface a background install.js
+# failure from a PRIOR session (hook_spawn_install wrote the sentinel; the
+# failure itself was invisible in-session — bootstrap.log only). Emits one
+# SessionStart additionalContext JSON object and consumes the sentinel
+# (rename → shown once; a repeat failure rewrites it). Always returns 0.
+# Skipped on: DISABLE_BOOTSTRAP_FAIL_BANNER=1, jq missing, sentinel absent.
+emit_bootstrap_failed_banner() {
+  [[ "${DISABLE_BOOTSTRAP_FAIL_BANNER:-0}" == "1" ]] && return 0
+  local f="$HOME/.claude/.claudemd-state/bootstrap-failed.json"
+  [[ -f "$f" ]] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local ts from to
+  ts=$(jq -r '.ts // ""' "$f" 2>/dev/null) || ts=""
+  from=$(jq -r '.from // ""' "$f" 2>/dev/null) || from=""
+  to=$(jq -r '.to // ""' "$f" 2>/dev/null) || to=""
+
+  local msg="[claudemd] background upgrade failed"
+  [[ -n "$ts" ]] && msg+=" at $ts"
+  [[ -n "$from" && -n "$to" ]] && msg+=" (manifest $from → plugin $to)"
+  msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs, run /claudemd-refresh and restart Claude Code. Disable: DISABLE_BOOTSTRAP_FAIL_BANNER=1"
+
+  jq -cn --arg ctx "$msg" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $ctx
+    }
+  }' 2>/dev/null
+
+  mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
+  hook_record session-start bootstrap-fail-banner null '' "$SESSION_ID" 2>/dev/null || true
+}
+
 # upstream_check — emit "upgrade available" SessionStart additionalContext
 # banner when remote GitHub tag exceeds local cache max version.
 # Always returns 0 (fail-open). Outputs JSON to stdout on banner emit; nothing
@@ -214,6 +248,10 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
   # Match: local install is current. Run upstream check before exiting — this
   # is the canonical "everything in order locally, look outward" branch.
   if [[ "$INSTALLED_VER" == "$PLUGIN_VER" ]]; then
+    # Versions agree → any bootstrap-failed sentinel is stale (state healed
+    # out-of-band, e.g. a manual /claudemd-refresh succeeded). Clear it
+    # silently — a "upgrade failed" banner over healthy state is noise.
+    rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" 2>/dev/null || true
     # Both helpers can emit a SessionStart additionalContext JSON object. CC
     # parses hook stdout with a strict single-value JSON.parse, so printing two
     # objects back-to-back is INVALID JSON and BOTH banners are silently dropped
@@ -269,6 +307,13 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
   echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
 fi
 
+# Reached on the mismatch fall-through and the no-manifest (fresh install)
+# path — exactly the states a prior failed background install leaves behind.
+# Banner it before retrying. Only stdout writer on these paths (stale-root,
+# match, and compact branches all exited above), so the single-JSON-object
+# contract holds without a merge.
+emit_bootstrap_failed_banner
+
 # node required to run install.js — silent no-op if absent.
 command -v node >/dev/null 2>&1 || exit 0
 
@@ -293,13 +338,11 @@ if [[ -f "$LOG" ]]; then
   fi
 fi
 
-(
-  {
-    echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart bootstrap → $PLUGIN_ROOT/scripts/install.js"
-    platform_timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] bootstrap exited non-zero or timed out"
-  } >> "$LOG"
-) </dev/null >/dev/null 2>&1 &
-disown 2>/dev/null || true
+# Shared spawn (hook-common.sh): background install with a 10s ceiling,
+# detached; writes/clears the bootstrap-failed sentinel on failure/success.
+hook_spawn_install "$PLUGIN_ROOT" "$LOG" \
+  "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart bootstrap → $PLUGIN_ROOT/scripts/install.js" \
+  "${INSTALLED_VER:-}" "${PLUGIN_VER:-}"
 
 hook_record session-start bootstrap null '' "$SESSION_ID"
 exit 0

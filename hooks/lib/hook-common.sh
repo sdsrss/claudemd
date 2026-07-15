@@ -164,3 +164,38 @@ hook_is_readonly_bash() {
   esac
   return 1
 }
+
+# hook_spawn_install PLUGIN_ROOT LOG_FILE HEADER [FROM_VER] [TO_VER]
+# Shared background install.js runner — single source for the session-start
+# bootstrap and the version-sync piggy-back (2026-07-15 seam audit: the two
+# hand-copied spawn blocks had already drifted once). Detached, 10s ceiling,
+# stdout+stderr appended to LOG_FILE. Success clears the bootstrap-failed
+# sentinel; failure (non-zero exit or timeout) rewrites it so the NEXT
+# SessionStart can banner the otherwise-silent background failure.
+# Caller must have sourced platform.sh (platform_timeout) — both callers do;
+# if it is missing the run fails and the sentinel records that, which is the
+# desired visible-failure behavior, not a silent skip.
+hook_spawn_install() {
+  local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
+  local state_dir="$HOME/.claude/.claudemd-state"
+  local sentinel="$state_dir/bootstrap-failed.json"
+  # Versions land in hand-built JSON — constrain to the semver-ish charset
+  # (dev-mode roots can carry arbitrary package.json version strings).
+  from=$(printf '%s' "$from" | tr -cd '0-9A-Za-z._-')
+  to=$(printf '%s' "$to" | tr -cd '0-9A-Za-z._-')
+  (
+    {
+      echo "$header"
+      if platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1; then
+        rm -f "$sentinel" 2>/dev/null || true
+      else
+        echo "[claudemd] bootstrap exited non-zero or timed out"
+        mkdir -p "$state_dir" 2>/dev/null \
+          && printf '{"ts":"%s","from":"%s","to":"%s"}\n' \
+               "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$from" "$to" > "$sentinel" 2>/dev/null \
+          || true
+      fi
+    } >> "$log"
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+}

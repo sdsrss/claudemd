@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.50.0] - 2026-07-15
+
+Two deferred items from the 2026-07-15 four-dimension audit (recorded in `tasks/audit-2026-07-15-deferred.md`). No spec change (spec stays **v6.20.0**). Minor bump: one additive user-visible behavior — a new SessionStart notice.
+
+**What changes for users**: when a background `install.js` upgrade fails (non-zero exit or 10s timeout), the NEXT session now shows a one-line `[claudemd] background upgrade failed …` notice instead of failing silently into `~/.claude/logs/claudemd-bootstrap.log` only. No action needed on upgrade; opt out with `export DISABLE_BOOTSTRAP_FAIL_BANNER=1`.
+
+- **feat: in-session banner for background install failures.** Both background `install.js` runners (SessionStart bootstrap + UserPromptSubmit piggy-back) now record failures to a sentinel (`~/.claude/.claudemd-state/bootstrap-failed.json`); the next SessionStart banners it once (sentinel consumed via rename; a repeat failure re-arms it) and retries. A versions-match session clears a stale sentinel silently — no banner over healthy state. Emitted on the mismatch / no-manifest paths only, where the hook writes no other stdout object, so the single-JSON-object contract holds. New rule-hits event `bootstrap-fail-banner` (registered in `docs/RULE-HITS-SCHEMA.md`).
+- **refactor: single-source the background install spawn.** The two hand-copied detached-spawn blocks (session-start-check.sh / version-sync.sh) — the same duplicated-seam class as the 0.49.1 findings — consolidated into `hook_spawn_install` in `hooks/lib/hook-common.sh` (10s ceiling, detached, log-append, sentinel write/clear).
+- **ci: tag pushes now run the full test matrix.** `ci.yml` previously triggered only on push-to-main + PR, so the marketplace channel (which serves the git tag/release directly) had no tag-time check — only the npm channel was gated (`npm-publish.yml`, Linux-only). Tags matching `v*.*.*` now run the full ubuntu+macos matrix; the atomic ship's main-push + tag-push duplicate run on the same commit is the accepted cost for channel parity.
+- **Tests**: session-start.test.sh 18 → 22 cases (failure-sentinel write, single-object banner emit + consume, match-path stale-sentinel cleanup, `DISABLE_BOOTSTRAP_FAIL_BANNER=1` suppression); version-sync.test.sh 8 → 9 (piggy-back failure writes sentinel). Failure injection via a PATH-prepended fake `node` shim.
+
 ## [0.49.1] - 2026-07-15
 
 Audit follow-up (2026-07-15 four-dimension review): three duplicated seams consolidated to a single source with a parity gate. No spec change (spec stays **v6.20.0**); all `fix:`/refactor, no user-facing feature.

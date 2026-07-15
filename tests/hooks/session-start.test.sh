@@ -341,7 +341,90 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((18 - FAIL))/18 passed"; exit 1
+# --- v0.50.0 bootstrap-failure banner cases ---
+# Background install.js failures were invisible in-session (only a
+# claudemd-bootstrap.log line). The wrapper now writes a failure sentinel;
+# the NEXT SessionStart banners it and consumes the sentinel.
+BOOT_SENTINEL="$HOME/.claude/.claudemd-state/bootstrap-failed.json"
+
+# Failure injection: fake `node` shim that exits 1, prepended to PATH — the
+# hook's `command -v node` resolves the shim, so install.js "runs" and fails.
+mkdir -p "$TMP_HOME/fakebin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
+chmod +x "$TMP_HOME/fakebin/node"
+
+# Case 19: background install failure writes the failure sentinel with the
+# attempted from→to versions, and the bootstrap log records the non-zero exit.
+rm -f "$BOOT_SENTINEL" "$BOOT_SENTINEL.last-shown" 2>/dev/null || true
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$BOOT_SENTINEL" ]] && break
+  sleep 0.5
+done
+TO19=$(jq -r '.to // ""' "$BOOT_SENTINEL" 2>/dev/null)
+PLUGIN_VER_REAL=$(jq -r .version "$PLUGIN_ROOT/package.json")
+if [[ -f "$BOOT_SENTINEL" && "$TO19" == "$PLUGIN_VER_REAL" ]] \
+   && grep -q 'non-zero or timed out' "$HOME/.claude/logs/claudemd-bootstrap.log"; then
+  echo "PASS: 19 failed background install writes failure sentinel"
+else
+  echo "FAIL: 19 (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo yes || echo no) to=$TO19 log=$(tail -2 "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null))"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 18/18 passed"
+
+# Case 20: sentinel present + manifest still mismatched → next SessionStart
+# emits exactly ONE JSON banner (the retry spawn is stdout-silent) and
+# consumes the sentinel so a healthy follow-up session stays quiet.
+[[ -f "$BOOT_SENTINEL" ]] || printf '{"ts":"2026-07-15T00:00:00Z","from":"0.0.1","to":"%s"}\n' "$PLUGIN_VER_REAL" > "$BOOT_SENTINEL"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+OUT20=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+OBJ20=$(printf '%s' "$OUT20" | jq -s 'length' 2>/dev/null)
+# Wait out the background retry (real node — it will succeed) so its writes
+# can't bleed into later cases.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  V=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
+  [[ "$V" == "$PLUGIN_VER_REAL" ]] && break
+  sleep 0.5
+done
+if [[ "$OBJ20" == "1" && ! -f "$BOOT_SENTINEL" ]] \
+   && echo "$OUT20" | grep -q 'background upgrade failed' \
+   && echo "$OUT20" | grep -q '/claudemd-refresh'; then
+  echo "PASS: 20 sentinel + mismatch emits single-object failure banner, consumed"
+else
+  echo "FAIL: 20 (objects=$OBJ20 sentinel=$([[ -f $BOOT_SENTINEL ]] && echo kept || echo gone) out: $OUT20)"
+  FAIL=$((FAIL+1))
+fi
+
+# Case 21: sentinel present but versions MATCH (state self-healed, e.g. a
+# manual /claudemd-refresh succeeded) → no banner, sentinel silently removed.
+printf '{"ts":"2026-07-15T00:00:00Z","from":"0.0.1","to":"%s"}\n' "$PLUGIN_VER_REAL" > "$BOOT_SENTINEL"
+echo "{\"version\":\"$PLUGIN_VER_REAL\",\"entries\":[]}" > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/last-session-summary.json" 2>/dev/null || true
+touch "$HOME/.claude/.claudemd-state/upstream-check.lastrun"  # skip network
+OUT21=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT21" && ! -f "$BOOT_SENTINEL" ]]; then
+  echo "PASS: 21 version-match clears stale failure sentinel without banner"
+else
+  echo "FAIL: 21 (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo kept || echo gone) out: $OUT21)"
+  FAIL=$((FAIL+1))
+fi
+
+# Case 22: DISABLE_BOOTSTRAP_FAIL_BANNER=1 suppresses the banner on the
+# mismatch path (failing retry keeps the sentinel for a later enabled session).
+printf '{"ts":"2026-07-15T00:00:00Z","from":"0.0.1","to":"%s"}\n' "$PLUGIN_VER_REAL" > "$BOOT_SENTINEL"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+OUT22=$(DISABLE_BOOTSTRAP_FAIL_BANNER=1 PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' 2>/dev/null)
+sleep 1
+if [[ -z "$OUT22" && -f "$BOOT_SENTINEL" ]]; then
+  echo "PASS: 22 DISABLE_BOOTSTRAP_FAIL_BANNER=1 suppresses banner, keeps sentinel"
+else
+  echo "FAIL: 22 (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo yes || echo no) out: $OUT22)"
+  FAIL=$((FAIL+1))
+fi
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((22 - FAIL))/22 passed"; exit 1
+fi
+echo "Tests: 22/22 passed"

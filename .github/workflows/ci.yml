@@ -1,8 +1,15 @@
 name: ci
 
+# Tag pushes run the full matrix too (v0.50.0). The marketplace channel
+# serves the git tag/release directly, but only the npm channel had a
+# tag-time test gate (npm-publish.yml, Linux-only). Without this trigger a
+# red-at-tag-time release reached marketplace consumers with no check status
+# on the tagged commit. The atomic ship flow (push main + push tag) runs the
+# matrix twice on the same commit — accepted cost for channel parity.
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
 
 jobs:

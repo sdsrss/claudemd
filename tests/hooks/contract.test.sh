@@ -117,6 +117,7 @@ DOCUMENTED=(
   "structure-advisory:transcript-structure-scan"
   "bootstrap:session-start"
   "upstream-banner:session-start"
+  "bootstrap-fail-banner:session-start"
   "compact-reminder:session-start"
   "stale-root:session-start"
   "version-sync:user-prompt-submit"

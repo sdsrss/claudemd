@@ -204,6 +204,12 @@ export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compacti
                                            # source=="compact"); compact events still
                                            # skip bootstrap/upgrade-banner either way.
 
+export DISABLE_BOOTSTRAP_FAIL_BANNER=1     # v0.50.0+ — only the SessionStart banner
+                                           # reporting that a PRIOR session's background
+                                           # install.js upgrade failed; the failure
+                                           # sentinel + bootstrap.log trail keep being
+                                           # written so the state stays diagnosable.
+
 export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
                                            # cadence advisory inside session-end-check;
                                            # mid-SPINE warn-on-unvalidated-mutation

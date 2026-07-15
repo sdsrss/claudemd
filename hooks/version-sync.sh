@@ -96,13 +96,12 @@ LOG="$LOG_DIR/claudemd-bootstrap.log"
 # Same backgrounding pattern as session-start-check.sh: 10s ceiling, detached,
 # all output to log. UserPromptSubmit MUST return promptly — the user is
 # waiting on the next assistant turn.
-(
-  {
-    echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) UserPromptSubmit piggy-back: manifest $INSTALLED_VER → plugin $PLUGIN_VER"
-    platform_timeout 10 node "$PLUGIN_ROOT/scripts/install.js" 2>&1 || echo "[claudemd] piggy-back install exited non-zero or timed out"
-  } >> "$LOG"
-) </dev/null >/dev/null 2>&1 &
-disown 2>/dev/null || true
+# Shared spawn (hook-common.sh): same detached 10s-ceiling pattern as the
+# SessionStart bootstrap; failure writes the bootstrap-failed sentinel so the
+# next SessionStart banners it (stdout here stays 0 bytes — hook contract).
+hook_spawn_install "$PLUGIN_ROOT" "$LOG" \
+  "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) UserPromptSubmit piggy-back: manifest $INSTALLED_VER → plugin $PLUGIN_VER" \
+  "$INSTALLED_VER" "$PLUGIN_VER"
 
 hook_record user-prompt-submit version-sync null '' "${CLAUDE_SESSION_ID:-}"
 exit 0

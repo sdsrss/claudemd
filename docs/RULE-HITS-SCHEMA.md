@@ -44,6 +44,7 @@ source must appear in this table.
 | `bootstrap` | `session-start` | one-shot install on session start |
 | `upstream-banner` | `session-start` | upstream version available banner |
 | `compact-reminder` | `session-start` | SessionStart `source=="compact"` — emitted the §11 post-compaction re-read banner (advisory; opt-out `DISABLE_COMPACT_REREAD_REMINDER=1`). Section: `§11-post-compaction`. Added v0.27.0. |
+| `bootstrap-fail-banner` | `session-start` | v0.50.0 — a PRIOR session's background install.js run (SessionStart bootstrap or UserPromptSubmit piggy-back) exited non-zero / timed out; `hook_spawn_install` left `~/.claude/.claudemd-state/bootstrap-failed.json` and this session bannered it (sentinel consumed via rename → shown once per failure). Opt-out `DISABLE_BOOTSTRAP_FAIL_BANNER=1`. Section: `null` (plugin-internal). |
 | `version-sync` | `user-prompt-submit` | mid-session manifest sync triggered |
 | `stale-root` | `session-start`, `user-prompt-submit` | v0.36.0 — the firing hook's own plugin root is OLDER than the installed manifest version (strict-semver compare): CC is executing hooks from a stale versioned cache dir after an upgrade. Auto-sync is skipped (running the stale root's install.js would downgrade the home spec — the 2026-07-11 reproduced defect, `tasks/manifest-pluginroot-stale-cache.md`); SessionStart additionally banners the 4-command refresh. `extra` carries `{hook_version, installed_version}`. Section: `null` (plugin-internal). |
 | `fail-open` | any hook calling `hook_record_failopen` (currently `banned-vocab`) | hook silently skipped enforcement due to a missing prerequisite. `extra.reason` ∈ {`jq-missing`, `bad-event`, `patterns-missing`, `prereq-missing`}. Rate-limited to 1 row per (hook, reason) per 60s via `~/.claude/.claudemd-state/failopen-*.ts`. Section: `§hooks-fail-open`. Round-6. |
@@ -80,7 +81,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `transcript-vocab-scan` | `advisory` | `§10-V` |
 | `transcript-structure-scan` | `structure-advisory` | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (one row per §-section detected) |
 | `session-extended-read` | `read` | `§13.1-extended-read` |
-| `session-start` | `bootstrap` / `upstream-banner` / `stale-root` | `null` |
+| `session-start` | `bootstrap` / `upstream-banner` / `stale-root` / `bootstrap-fail-banner` | `null` |
 | `session-start` | `compact-reminder` | `§11-post-compaction` |
 | `user-prompt-submit` | `version-sync` / `stale-root` | `null` |
 | any hook calling `hook_record_failopen` | `fail-open` | `§hooks-fail-open` (plugin-internal observability — not a spec rule) |

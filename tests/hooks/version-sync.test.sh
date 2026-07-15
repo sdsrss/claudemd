@@ -173,7 +173,32 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((8 - FAIL))/8 passed"; exit 1
+# Case 9 (v0.50.0): failed piggy-back install writes the bootstrap-failed
+# sentinel (same shared wrapper as session-start bootstrap) so the next
+# SessionStart can banner the silent background failure. Failure injection:
+# fake `node` shim exiting 1, prepended to PATH.
+reset_state
+BOOT_SENTINEL="$HOME/.claude/.claudemd-state/bootstrap-failed.json"
+rm -f "$BOOT_SENTINEL" 2>/dev/null || true
+mkdir -p "$TMP_HOME/fakebin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
+chmod +x "$TMP_HOME/fakebin/node"
+jq -n '{version:"0.0.1",entries:[]}' > "$HOME/.claude/.claudemd-manifest.json"
+PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$BOOT_SENTINEL" ]] && break
+  sleep 0.5
+done
+PLUGIN_VER=$(jq -r .version "$PLUGIN_ROOT/package.json")
+TO9=$(jq -r '.to // ""' "$BOOT_SENTINEL" 2>/dev/null)
+if [[ -f "$BOOT_SENTINEL" && "$TO9" == "$PLUGIN_VER" ]]; then
+  echo "PASS: 9 failed piggy-back install writes bootstrap-failed sentinel"
+else
+  echo "FAIL: 9 (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo yes || echo no) to=$TO9)"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 8/8 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+fi
+echo "Tests: 9/9 passed"
