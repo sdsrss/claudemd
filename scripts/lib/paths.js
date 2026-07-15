@@ -69,6 +69,18 @@ export function readManifest() {
   return { exists: false, path: newPath, data: null, migrated: false };
 }
 
+// CC encodes a project cwd → the `~/.claude/projects/<dir>` directory name by
+// replacing EVERY non-[a-zA-Z0-9-] char with '-'. This is the single JS source
+// for that transform and MUST stay identical to the production hooks'
+// `hook_encode_project` (hooks/lib/rule-hits.sh:15 — `tr -c 'a-zA-Z0-9-' '-'`);
+// a JS-side encoder that locates a transcript/project dir the hooks wrote has
+// to agree byte-for-byte or it silently points at a non-existent dir. The
+// narrow `/[/._]/g` form (abandoned in the hooks, rule-hits.sh:9) leaves
+// spaces/+/@/() untouched and mis-locates any such cwd.
+export function encodeProjectCwd(cwd) {
+  return String(cwd).replace(/[^a-zA-Z0-9-]/g, '-');
+}
+
 export function resolvePluginRoot(importMetaUrl) {
   const explicit = process.env.CLAUDE_PLUGIN_ROOT;
   if (explicit) return explicit;

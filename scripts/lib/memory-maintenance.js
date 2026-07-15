@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { encodeProjectCwd } from './paths.js';
 
 export const CITE_MIN = 3;
 export const PROMOTE_MIN_AGE_DAYS = 30;
@@ -27,11 +28,6 @@ export const RECALL_MAX_AGE_DAYS = 30;
 export const STALE_AGE_DAYS = 90;
 
 const DAY_MS = 86400000;
-
-// Mirrors CC cwd encoding (see sampling-audit.js encodeCwd).
-function encodeCwd(cwd) {
-  return cwd.replace(/[^a-zA-Z0-9-]/g, '-');
-}
 
 // claude-mem-lite canonical project name: "<parent-dir-basename>--<basename>"
 // (mem project-utils.mjs inferProject convention, verified 2026-07-10).
@@ -112,7 +108,7 @@ export async function memoryMaintenance({
   memLiteDbPath,
   memLiteProjectName,
 } = {}) {
-  if (!memDir) memDir = path.join(homeDir, '.claude/projects', encodeCwd(cwd), 'memory');
+  if (!memDir) memDir = path.join(homeDir, '.claude/projects', encodeProjectCwd(cwd), 'memory');
   if (!logPath) logPath = path.join(homeDir, '.claude/logs/claudemd.jsonl');
   if (!memLiteDbPath) memLiteDbPath = path.join(homeDir, '.claude-mem-lite/claude-mem-lite.db');
   if (!memLiteProjectName) memLiteProjectName = memLiteProject(cwd);

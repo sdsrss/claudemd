@@ -38,7 +38,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { resolvePluginRoot } from './lib/paths.js';
+import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
@@ -256,14 +256,8 @@ function checkSizingHeadroom(specDir) {
 
 // CHECK 3 — MEMORY.md ↔ files bidirectional ----------------------------------
 
-// CC encoding: every non-`[a-zA-Z0-9-]` char in the cwd path becomes `-`.
-// Matches hooks/memory-read-check.sh:84 + hooks/memory-prompt-hint.sh:46.
-function encodeProjectDir(cwd) {
-  return cwd.replace(/[^a-zA-Z0-9-]/g, '-');
-}
-
 function checkMemoryIndex(projectCwd) {
-  const encoded = encodeProjectDir(projectCwd);
+  const encoded = encodeProjectCwd(projectCwd);
   const memDir = path.join(os.homedir(), '.claude', 'projects', encoded, 'memory');
   const memIndex = path.join(memDir, 'MEMORY.md');
 

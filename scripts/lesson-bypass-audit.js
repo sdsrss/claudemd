@@ -32,7 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { logsDir, resolvePluginRoot } from './lib/paths.js';
+import { logsDir, resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
@@ -55,12 +55,11 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const DEFAULT_WINDOW_DAYS = 30;
 
-// CC project-dir encoding: every non-[a-zA-Z0-9-] char → '-'. Per
-// feedback_cc_cwd_encoding_dots.md (v0.9.15: '_' included), but the safe
-// universal form is tr '/._' — matches memory-prompt-hint.sh:50 exactly.
-export function encodeCcCwd(cwd) {
-  return cwd.replace(/[/._]/g, '-');
-}
+// CC project-dir encoding — single source in paths.js (must match the hooks'
+// `tr -c 'a-zA-Z0-9-' '-'`). Re-exported under the historical name so callers
+// and the regression test keep one import; the prior local `/[/._]/g` form was
+// a silent divergence that mis-located transcripts for cwds with a space/+/@.
+export const encodeCcCwd = encodeProjectCwd;
 
 export function readTranscript(transcriptPath) {
   if (!fs.existsSync(transcriptPath)) return [];

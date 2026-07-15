@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd } from './lib/paths.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
@@ -261,9 +261,9 @@ export async function doctor({ pruneBackups: prune } = {}) {
       setup: (tmpDir) => {
         const synthCwd = '/doctor/selftest';
         const synthSid = 'doctor-selftest-prose';
-        // Match banned-vocab-check.sh `tr '/._' '-'` per
-        // feedback_cc_cwd_encoding_dots.md.
-        const encoded = synthCwd.replace(/[/._]/g, '-');
+        // banned-vocab-check.sh locates the transcript via hook_encode_project
+        // (`tr -c 'a-zA-Z0-9-' '-'`); use the same single-source JS encoder.
+        const encoded = encodeProjectCwd(synthCwd);
         const transDir = path.join(tmpDir, '.claude/projects', encoded);
         fs.mkdirSync(transDir, { recursive: true });
         const turn = JSON.stringify({

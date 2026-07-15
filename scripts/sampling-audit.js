@@ -29,7 +29,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { resolvePluginRoot } from './lib/paths.js';
+import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
@@ -55,14 +55,8 @@ const METRIC_CONTRACT =
 
 const DEFAULT_WINDOW_DAYS = 30;
 
-// CC encodes process.cwd() by replacing every non-`[a-zA-Z0-9-]` char with `-`
-// (per memory feedback_cc_cwd_encoding_dots — `.` `_` `/` all collapse to `-`).
-function encodeCwd(cwd) {
-  return cwd.replace(/[^a-zA-Z0-9-]/g, '-');
-}
-
 function defaultProjectsDir() {
-  return path.join(os.homedir(), '.claude/projects', encodeCwd(process.cwd()));
+  return path.join(os.homedir(), '.claude/projects', encodeProjectCwd(process.cwd()));
 }
 
 // Load §10-V banned-vocab patterns from the shipped hook config. Delegates to

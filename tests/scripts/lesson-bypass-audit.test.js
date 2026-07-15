@@ -32,7 +32,7 @@ afterEach(() => {
 
 // --- Pure helpers ----------------------------------------------------------
 
-test('encodeCcCwd: replaces /, ., _ with -', () => {
+test('encodeCcCwd: replaces EVERY non-[a-zA-Z0-9-] char with -', () => {
   assert.equal(
     encodeCcCwd('/mnt/data_ssd/dev/projects/claudemd'),
     '-mnt-data-ssd-dev-projects-claudemd',
@@ -40,6 +40,11 @@ test('encodeCcCwd: replaces /, ., _ with -', () => {
   // Per feedback_cc_cwd_encoding_dots.md (v0.9.15): underscore included.
   assert.equal(encodeCcCwd('/home/user/my_project'), '-home-user-my-project');
   assert.equal(encodeCcCwd('/a.b/c'), '-a-b-c');
+  // Divergence stressors — must match the hooks' `tr -c 'a-zA-Z0-9-' '-'`
+  // (rule-hits.sh:15), NOT the abandoned narrow `/[/._]/g` form which leaves
+  // spaces/+/@/() untouched and mis-locates the transcript dir.
+  assert.equal(encodeCcCwd('/home/a b/c'), '-home-a-b-c');
+  assert.equal(encodeCcCwd('/home/u/proj+v2 (old)@x'), '-home-u-proj-v2--old--x');
 });
 
 test('rowText: string content returns as-is', () => {

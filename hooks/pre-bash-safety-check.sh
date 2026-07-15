@@ -934,18 +934,37 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # sh; }` is caught like the subshell `( … )` form (code review 2026-07-03). A
 # var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
 # requires a space, which `${curl}` (curl followed by `}`) never has.
-CURLSH_PIPE='(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)'
+# Transparent exec-wrappers on the SINK, at parity with the rm/npx gates (which
+# strip env/command/nohup/setsid/time/busybox + nice/stdbuf/ionice/chrt/sudo/doas
+# — see the segment loop ~line 528). The curl-sh gate is pure regex, so the same
+# set is spelled here as an optional-repeated prefix: `curl | env bash`,
+# `curl | command sh`, `curl | nice bash`, `curl | sudo env bash` (chains) all
+# resolve to a shell running fetched code (2026-07-15 §8 FN audit F18, reproduced
+# live). Residual (documented, same as the rm gate): `env FOO=x bash` /
+# `FOO=x bash` (assignment args) and path-prefixed wrappers (`/usr/bin/env bash`)
+# are not modeled in this single regex; `[allow-curl-sh]` is the escape.
+CURLSH_WRAP='(sudo|doas|env|command|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
+CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CURLSH_WRAP})*(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
-# a bare `.` before ` <(curl…)` is only ever the source builtin.
-CURLSH_PROCSUB='(^|[|;&({])[[:space:]]*(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]'
+# a bare `.` before ` <(curl…)` is only ever the source builtin. Same wrapper
+# prefix as the pipe form (`env bash <(curl x)`); `source`/`.` are builtins so a
+# wrapper before them never resolves, but the group is harmless there.
+CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
     curlsh_hit=1; break
   fi
-done < <(printf '%s\n' "$SANITIZED_CMD" | sed -E 's/&&/\n/g; s/\|\|/\n/g; s/;/\n/g')
+done < <(printf '%s\n' "$SANITIZED_CMD" \
+  | awk '{ line=(h==""?$0:h" "$0); if (line ~ /(^|[^|])\|[[:space:]]*$/){h=line;next} print line; h="" } END{ if(h!="")print h }' \
+  | sed -E 's/&&/\n/g; s/\|\|/\n/g; s/;/\n/g')
+# The awk pass joins a pipe-then-newline continuation (`curl x |⏎bash`, a valid
+# shell pipeline the line-based grep would otherwise split) before segmenting.
+# A line ending in a SINGLE `|` continues the pipeline; `||` (OR-list) is NOT
+# joined — the regex requires a non-`|` before the trailing `|` — so it still
+# segments on `||` below, keeping `curl x || bash` correctly out of the gate.
 if (( curlsh_hit == 1 )); then
   if (( bypass_curlsh == 1 )); then
     hook_record pre-bash-safety bypass-escape-hatch '{"token":"allow-curl-sh"}' '§8-curl-sh' "$SESSION_ID" "$TOOL_USE_ID"

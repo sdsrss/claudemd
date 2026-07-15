@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.49.1] - 2026-07-15
+
+Audit follow-up (2026-07-15 four-dimension review): three duplicated seams consolidated to a single source with a parity gate. No spec change (spec stays **v6.20.0**); all `fix:`/refactor, no user-facing feature.
+
+- **fix(§8): curl-to-shell gate reached parity with the rm/npx gates.** `pre-bash-safety-check.sh`'s curl-sh detector never learned the transparent-exec-wrapper set the rm/npx gates strip, and its per-segment grep is line-based, so `curl … | env bash`, `curl … | command sh`, `curl … | nice bash` (and chains like `| sudo env bash`) plus a pipe-then-newline continuation (`curl … |⏎bash`) all ALLOWED — ordinary install one-liners running unknown-origin code. Both false-negatives reproduced against the live hook. Fix: a shared wrapper alternation on both the pipe and process-substitution sinks + an awk pass that joins a single-pipe line continuation before segmenting (`||` OR-lists are NOT joined, so `curl … || bash` stays correctly out of the gate). FN-direction change → verified through the full corpus, not just the FP set. Residual (documented, same as the rm gate): `env FOO=x bash` / `FOO=x bash` assignment args and path-prefixed wrappers; `[allow-curl-sh]` is the escape.
+- **fix: `lesson-bypass-audit.js` project-cwd encoder diverged from the hooks' encoder.** It used `/[/._]/g` while every production hook locates transcript/project dirs via `hook_encode_project` (`tr -c 'a-zA-Z0-9-' '-'`); a project path with a space/`+`/`@` encoded differently → the script pointed at a non-existent dir and silently computed cite-recall over an empty set. The five hand-copied JS encoders (lesson-bypass, sampling-audit, memory-maintenance, spec-coherence, doctor) are now one exported `encodeProjectCwd` in `scripts/lib/paths.js`.
+- **test: §10-V dual-engine parity gate.** `banned-vocab.patterns` is consumed by two regex engines (`grep -iE` in the commit hook, `RegExp` in `lint.js`/the CLI) with no test proving they agree. New `banned-vocab-engine-parity.test.js` asserts identical verdicts across all patterns × a probe corpus + a coverage gate (every pattern exercised by ≥1 probe).
+- **Corpus + regression tests**: 6 new curl-sh deny rows + 2 FP-guards (`bash-safety/corpus.tsv` → 365/365); encoder divergence stressor added to `lesson-bypass-audit.test.js`.
+- **Tests**: full `npm test` green (686 script tests + all hook/integration suites); `node scripts/version-cascade-check.js` exit 0 (plugin semver 0.49.1 across 4 sites; spec v6.20 unchanged; Sizing within ±20B).
+
 ## [0.49.0] - 2026-07-15
 
 Spec **v6.20.0** — §2.1 Model tiering rule removed (spec-only; no hook/script change).
