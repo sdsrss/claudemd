@@ -82,7 +82,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     throw new Error(
       `install: refusing downgrade — this plugin root is v${incomingVersion} but the installed manifest records v${installedVersion}. ` +
       `A hook or script is likely running from a stale versioned cache dir. Refresh the plugin registration ` +
-      `(/plugin marketplace update claudemd, /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins), ` +
+      `(/claudemd-refresh — or manually: /plugin marketplace update claudemd, /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins), ` +
       `or set CLAUDEMD_ALLOW_DOWNGRADE=1 to force a rollback from ${pluginRoot}.`
     );
   }

@@ -7,7 +7,7 @@ Usage: `/claudemd-update`
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/update.js` (dry-run summary first).
 
-If the user says apply, re-run with `choice=apply-all` via `CLAUDEMD_UPDATE_CHOICE=apply-all node ${CLAUDE_PLUGIN_ROOT}/scripts/update.js`. Backup is automatic (retained to 5). Do not fetch from GitHub — plugin fetching is a separate step owned by CC. Canonical refresh sequence (paste each line):
+If the user says apply, re-run with `choice=apply-all` via `CLAUDEMD_UPDATE_CHOICE=apply-all node ${CLAUDE_PLUGIN_ROOT}/scripts/update.js`. Backup is automatic (retained to 5). Do not fetch from GitHub — plugin fetching is a separate step owned by CC. Canonical plugin refresh: `/claudemd-refresh` (one command; restart afterwards). Manual fallback (paste each line):
 
 ```
 /plugin marketplace update claudemd

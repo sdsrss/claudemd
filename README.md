@@ -58,7 +58,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Layer | Contents |
 |---|---|
 | 16 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `mid-spine-yield-scan` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 15 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
+| 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.19 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 | StatusLine (opt-out) | PS1-style line — `user@host:dir (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (`dir` = cwd basename; context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
@@ -108,6 +108,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 | `/claudemd-install` | Bootstrap the current session right after `/plugin install` (copy spec into `~/.claude/`, write manifest, evict legacy entries). Idempotent. CC does not fire `postInstall`, so without this command `install.js` waits until the next `SessionStart`. |
 | `/claudemd-status [--verbose]` | Plugin version + spec version + kill-switch state + logs line count. `--verbose` adds per-hook env-var × event × effective vs persisted state table + 5 escape-token reference. |
 | `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (4-file spec set is lockstep — per-file select would dangle §EXT cross-references). |
+| `/claudemd-refresh` | v0.48.0 — one-shot plugin refresh (marketplace update → uninstall → install via the `claude` CLI). Restart Claude Code afterwards; spec + manifest sync is automatic. Fired by the SessionStart upgrade banner. |
 | `/claudemd-audit [N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. Slash form takes a bare number (`/claudemd-audit 90`); direct script invocation takes `--days=N` (= form only). |
 | `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
 | `/claudemd-doctor [--prune-backups=N]` | Health checks; optionally prune `~/.claude/backup-*` dirs older than N. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). |
@@ -242,7 +243,13 @@ export CLAUDEMD_PATH2_DRY_RUN=1            # v0.21.1+ — Path 2 observability m
 
 ## Update
 
-Claude Code has **no** `/plugin update` slash command — it's silently ignored as unrecognized. The canonical upgrade sequence is:
+Claude Code has **no** `/plugin update` slash command — it's silently ignored as unrecognized. The canonical upgrade is one command (v0.48.0+):
+
+```
+/claudemd-refresh                                   # marketplace update → uninstall → install, then restart
+```
+
+Manual fallback (e.g. the `claude` CLI is not on PATH):
 
 ```
 /plugin marketplace update claudemd                 # refresh local marketplace clone (git fetch)
@@ -312,7 +319,7 @@ The slash command and the script are equivalent — the slash command just suppl
 
 Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.
 
-**`/plugin update claudemd` does nothing / empty stdout** — `/plugin update` is not a valid Claude Code slash command; CC silently ignores unrecognized commands. Use the canonical sequence in the [Update](#update) section: `/plugin marketplace update claudemd` → `/plugin uninstall claudemd@claudemd` → `/plugin install claudemd@claudemd` → `/reload-plugins`. If that also fails (marketplace clone refuses to refresh), manually `git -C ~/.claude/plugins/marketplaces/claudemd fetch origin main --tags && git merge --ff-only origin/main`, then `git archive v<version> | tar -x -C ~/.claude/plugins/cache/claudemd/claudemd/<version>/`, then run that version's `scripts/install.js`.
+**`/plugin update claudemd` does nothing / empty stdout** — `/plugin update` is not a valid Claude Code slash command; CC silently ignores unrecognized commands. Use `/claudemd-refresh` — or the manual sequence in the [Update](#update) section: `/plugin marketplace update claudemd` → `/plugin uninstall claudemd@claudemd` → `/plugin install claudemd@claudemd` → `/reload-plugins`. If that also fails (marketplace clone refuses to refresh), manually `git -C ~/.claude/plugins/marketplaces/claudemd fetch origin main --tags && git merge --ff-only origin/main`, then `git archive v<version> | tar -x -C ~/.claude/plugins/cache/claudemd/claudemd/<version>/`, then run that version's `scripts/install.js`.
 
 **`Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated with a plugin`** (5 errors on every `Bash` tool call + every session end) — you're on claudemd 0.1.2 / 0.1.3 / 0.1.4. Those releases wrote hook commands into `~/.claude/settings.json` under the literal `${CLAUDE_PLUGIN_ROOT}` token, but the CC harness only expands that variable for hooks defined in a plugin's own `hooks/hooks.json` — never in `settings.json`. The fix is v0.1.5+, which moves hook registration into the plugin's `hooks/hooks.json` (where the token expands correctly) and evicts the stale settings.json entries on install. Upgrade via the canonical sequence in the [Update](#update) section, then restart the Claude Code session to clear the cached hook registry.
 
@@ -335,7 +342,7 @@ claudemd/
 │   └── marketplace.json      # marketplace catalog entry
 ├── hooks/                    # 16 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 15 slash-command markdown files
+├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 18 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.19.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest

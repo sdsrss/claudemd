@@ -97,7 +97,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         push('plugin cache:staleness', !stale,
           stale
             ? `manifest.pluginRoot holds v${rootVer} but the marketplace has v${mktVer} — stale registration; ` +
-              `hooks may run old code. Fix: /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins.`
+              `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).`
             : `manifest.pluginRoot v${rootVer} is current vs marketplace v${mktVer}`);
       }
     }
@@ -158,7 +158,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
     const more = drift2.diffs.length > 3 ? ` +${drift2.diffs.length - 3} more` : '';
     push('hook-drift', false,
       `${drift2.driftCount} hook script(s) differ between source and ${marketplacePluginRoot()}: ${sample}${more}. ` +
-      `Likely cause: /plugin update is a silent no-op. Fix: /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins.`);
+      `Likely cause: /plugin update is a silent no-op. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`);
   }
 
   const which = (bin) => {
