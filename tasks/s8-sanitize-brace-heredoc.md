@@ -69,6 +69,39 @@ Rules for this task:
   broken and every other row is noise.
 - `export DISABLE_RULE_HITS_LOG=1` first ([[feedback_manual_hook_probe_pollutes_telemetry]]).
 
+## Direction — decide this BEFORE writing any fix
+
+The reviewer's framing is the one that matters: these defects mean **the gate's input text
+is not the text bash executes**, and every guard in the file is a claim about that text.
+That is an architectural signal, not a bug list. Data points from 2026-07-15 alone: one
+review pass produced 5 bypasses in one feature; `if …; then rm -rf $X; fi` — the most
+ordinary cleanup idiom in shell — went unguarded for ~26 releases; two CRITICALs are still
+open. Chasing shell semantics with grep/sed/awk yields defects linearly in "how many shapes
+did the author think of", and shell's shapes do not enumerate.
+
+**Recommended: fix these two, then stop patching — do NOT escalate to a parser.** §8 already
+declares itself a guardrail, and `DISABLE_*` / `[allow-*]` are bypassable by design. So the
+honest bar is "catches ordinary mistakes an agent or a tired human actually makes", not
+"resists a crafted command". Both D1 and D2 clear that bar and are worth fixing: D1 makes
+`rm -rf "${HOME}/"` — a shape people write by habit — silently allowed, and D2 makes any
+command containing `$((a<<b))` blind the whole gate. Neither needs adversarial intent to
+trigger. The already-open indirect-name rebind (`unset "$T"`) and `trap 'S=' DEBUG` do NOT
+clear that bar — they require someone deliberately routing around the gate — so leave them,
+and say so in the code rather than pretending otherwise.
+
+What that implies for scope: D1 wants `canon_cmd_words` to stop treating `{` as a
+command-position boundary (it was added for `{ rm …; }` brace groups; `${VAR}` is the far
+more common `{`). D2 wants the heredoc regex to not match when the `<<` sits inside `$((…))`.
+Both are narrow. If a proposed fix starts growing toward tokenizing the command, that is the
+signal to stop and re-ask this question rather than push through.
+
+The rejected alternative (real command-position parsing, the treatment B-1 gave the npx gate
+in v0.47.0) is what a *correct* literal-provenance would have needed — see
+`tasks/specs/s8-literal-provenance.md`. It is not needed for D1/D2, and pulling it in here
+would mean rewriting the shared pipeline that has produced two silent bypasses in 24h. If
+someone later wants provenance widened, that parser is the prerequisite and it deserves its
+own spec, not a rider on this task.
+
 ## Why this is not a drive-by
 
 Both defects are in the shared pre-detector pipeline (`sanitize_cmd` / `canon_cmd_words`)
