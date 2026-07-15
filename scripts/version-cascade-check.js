@@ -11,7 +11,25 @@
 //      recursive_rewrite.md` (writing the Sizing line itself changes
 //      extended.md's byte count, hence the floor isn't 0).
 //
+//   3. Plugin semver agreement (v0.47.4): the plugin's own semver MUST be
+//      identical in `package.json#version`, `.claude-plugin/plugin.json#version`,
+//      `.claude-plugin/marketplace.json#metadata.version`, and
+//      `.claude-plugin/marketplace.json#plugins[0].version`. Distinct from check
+//      1, which is about the SPEC version (v6.X) — the plugin semver and the spec
+//      semver are independent by policy (see CHANGELOG "Versioning policy").
+//
 // History (failure modes these guards exist for):
+//   - v0.47.1 / v0.47.2 / v0.47.3 all shipped with `package.json` still at
+//     0.47.0 while both `.claude-plugin/` manifests advanced. The ship runbook's
+//     step-2 grep list is `spec/ tests/ scripts/ README.md .claude-plugin/` —
+//     package.json is not in it, so three consecutive releases followed the
+//     runbook faithfully and missed the same file. It matters because
+//     `scripts/lib/paths.js#readPluginVersion` reads **package.json**, not
+//     plugin.json: install.js stamps that value into
+//     `~/.claude/.claudemd-manifest.json`, so /claudemd-status and /claudemd-doctor
+//     reported 0.47.0 for a live 0.47.3 install, and the v0.36.0 stale-root guard
+//     — which compares exactly this number — could not tell 0.47.0 from 0.47.3.
+//     Memory rule was not the fix; this check is (mechanical > remembered).
 //   - v0.17.6 minor-bump shipped with 3 cascade files still pointing at the
 //     prior spec version. Captured as `feedback_spec_version_bump_cascade_grep.md`
 //     — "grep OLD_VER across spec/hard-rules.json + tests/ before listing
@@ -84,6 +102,31 @@ function toMinor(token) {
   // "v6.13.0" → "v6.13" ; "v6.13" → "v6.13"
   const m = token.match(/^(v\d+\.\d+)/);
   return m ? m[1] : token;
+}
+
+// Check 3 — the plugin's own semver must agree across every manifest that
+// carries it. `package.json` is listed FIRST deliberately: it is the one
+// readPluginVersion() actually reads, and the one three consecutive releases
+// forgot. Missing file or missing key => a site with value null, which cannot
+// equal `expected`, so the check fails loudly rather than skipping.
+export function runPluginSemverCheck({ root }) {
+  const readJson = (rel) => {
+    try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); }
+    catch { return null; }
+  };
+  const pkg = readJson('package.json');
+  const plugin = readJson('.claude-plugin/plugin.json');
+  const market = readJson('.claude-plugin/marketplace.json');
+  const sites = [
+    { file: 'package.json', path: 'version', value: pkg?.version ?? null },
+    { file: '.claude-plugin/plugin.json', path: 'version', value: plugin?.version ?? null },
+    { file: '.claude-plugin/marketplace.json', path: 'metadata.version', value: market?.metadata?.version ?? null },
+    { file: '.claude-plugin/marketplace.json', path: 'plugins[0].version', value: market?.plugins?.[0]?.version ?? null },
+  ];
+  // package.json is the reference: it is what install.js stamps into the manifest.
+  const expected = sites[0].value;
+  const ok = expected != null && sites.every(s => s.value === expected);
+  return { ok, expected, sites };
 }
 
 export function runVersionCascadeCheck({ root }) {
@@ -249,20 +292,38 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const root = resolvePluginRoot(import.meta.url);
     const cascadeResult = runVersionCascadeCheck({ root });
     const sizingResult = runSpecSizingCheck({ root });
-    const overallOk = cascadeResult.ok && sizingResult.ok;
+    const semverResult = runPluginSemverCheck({ root });
+    const overallOk = cascadeResult.ok && sizingResult.ok && semverResult.ok;
 
     if (argv.bools.has('--json')) {
       process.stdout.write(JSON.stringify({
         ok: overallOk,
         cascade: cascadeResult,
         sizing: sizingResult,
+        pluginSemver: semverResult,
       }, null, 2) + '\n');
     } else if (overallOk) {
       process.stdout.write(
         `version-cascade-check: ok (${cascadeResult.expectedMinor} consistent across ${cascadeResult.filesChecked.length} file(s); ` +
-        `Sizing drift within ±20B for ${SIZING_TARGETS.length} target(s))\n`
+        `Sizing drift within ±20B for ${SIZING_TARGETS.length} target(s); ` +
+        `plugin semver ${semverResult.expected} consistent across ${semverResult.sites.length} site(s))\n`
       );
     } else {
+      if (!semverResult.ok) {
+        process.stderr.write(
+          `version-cascade-check: plugin semver disagrees across manifests:\n`
+        );
+        for (const s of semverResult.sites) {
+          process.stderr.write(`  ${s.value === semverResult.expected ? ' ' : '✗'} ${s.file}#${s.path} = ${s.value}\n`);
+        }
+        process.stderr.write(
+          `\nAll four MUST match. package.json is the one the runbook's grep list historically missed, ` +
+          `and it is the one that matters most: scripts/lib/paths.js#readPluginVersion reads package.json ` +
+          `(NOT .claude-plugin/plugin.json), so a stale value there is what install.js stamps into ` +
+          `~/.claude/.claudemd-manifest.json — making status/doctor report the wrong version and blinding ` +
+          `the v0.36.0 stale-root guard, which compares exactly this number.\n`
+        );
+      }
       if (!cascadeResult.ok) {
         process.stderr.write(
           `version-cascade-check: ${cascadeResult.offenders.length} stale mention(s) (expected ${cascadeResult.expectedMinor}):\n`

@@ -9,7 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { runVersionCascadeCheck, runSpecSizingCheck } from '../../scripts/version-cascade-check.js';
+import { runVersionCascadeCheck, runSpecSizingCheck, runPluginSemverCheck } from '../../scripts/version-cascade-check.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -326,4 +326,65 @@ test('CLI: sizing drift exits 1 with stderr Δ line + actionable Fix sizing note
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// === Check 3: plugin semver agreement (v0.47.4) ===
+// v0.47.1/0.47.2/0.47.3 each shipped with package.json still at 0.47.0 while both
+// .claude-plugin manifests advanced — the ship runbook's grep list does not include
+// package.json. It is the file readPluginVersion() reads, so install.js stamped a
+// stale version into the manifest and /claudemd-status reported 0.47.0 for a live
+// 0.47.3 install. These lock the class.
+
+function semverFixture(dir, { pkg, plugin, meta, entry }) {
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
+  if (pkg !== undefined) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: pkg }));
+  fs.writeFileSync(path.join(dir, '.claude-plugin/plugin.json'), JSON.stringify({ version: plugin }));
+  fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ metadata: { version: meta }, plugins: [{ version: entry }] }));
+  return dir;
+}
+
+test('pluginSemver: all four sites agree -> ok', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
+    const r = runPluginSemverCheck({ root: d });
+    assert.equal(r.ok, true);
+    assert.equal(r.expected, '1.2.3');
+    assert.equal(r.sites.length, 4);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pluginSemver: stale package.json is caught (the v0.47.1-0.47.3 shape)', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { pkg: '0.47.0', plugin: '0.47.3', meta: '0.47.3', entry: '0.47.3' });
+    const r = runPluginSemverCheck({ root: d });
+    assert.equal(r.ok, false, 'stale package.json must fail — it is what install.js stamps');
+    assert.equal(r.expected, '0.47.0');
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pluginSemver: a stale marketplace entry is caught too', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.2' });
+    assert.equal(runPluginSemverCheck({ root: d }).ok, false);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pluginSemver: missing package.json fails loudly, does not skip', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
+    const r = runPluginSemverCheck({ root: d });
+    assert.equal(r.ok, false, 'absent package.json must fail, not fail-open');
+    assert.equal(r.sites[0].value, null);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pluginSemver: the real repo agrees across all four sites', () => {
+  const root = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
+  const r = runPluginSemverCheck({ root });
+  assert.equal(r.ok, true, `real repo semver drift: ${JSON.stringify(r.sites)}`);
 });
