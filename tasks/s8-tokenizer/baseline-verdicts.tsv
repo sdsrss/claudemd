@@ -1,0 +1,283 @@
+allow	git status
+allow	rm -rf /tmp/foo (literal)
+allow	rm -f file.txt (no -r)
+deny	rm -rf $WORK_DIR (bare)
+deny	rm -rf "$WORK_DIR" (quoted)
+deny	rm -rf ${WORK_DIR} (braced)
+deny	rm -fr $VAR (flag swap)
+deny	rm -rfv $VAR (extra flag)
+deny	rm -Rf $VAR (uppercase)
+allow	rm -rf $HOME/cache (whitelist)
+allow	rm -rf $TMPDIR/x (whitelist)
+allow	rm -rf $PWD/build (whitelist)
+allow	rm -rf $HOME/* (whitelist + glob)
+allow	rm -rf "$HOME/cache" (whitelist quoted)
+allow	rm -rf ${HOME}/sub (whitelist braced)
+allow	rm -rf $VAR [allow-rm-rf-var]
+deny	rm -rf $HOME (bare whitelisted-var)
+deny	rm -rf "$HOME" (bare quoted)
+deny	rm -rf ${HOME} (bare braced)
+deny	rm -rf $PWD (bare whitelisted-var)
+deny	rm -rf $TMPDIR (bare whitelisted-var)
+deny	rm -rf $OLDPWD (bare whitelisted-var)
+deny	rm -rf $HOME/ (trailing slash, no subpath)
+deny	npx prettier (bare)
+deny	npx @types/node (scoped bare)
+deny	npx -p create-react-app foo
+allow	npx prettier@3.0.0 (pinned)
+allow	npx @types/node@20 (scoped+pin)
+allow	npx pkg@latest tag
+allow	npx ./local.tgz path
+allow	npx /abs/path.tgz path
+allow	npx --help flag only
+allow	npx -v short flag
+allow	npx prettier [allow-npx-unpinned]
+allow	DISABLE_PRE_BASH_SAFETY_HOOK=1 short-circuits
+allow	DISABLE_CLAUDEMD_HOOKS=1 short-circuits
+allow	echo "X: npx pkg" double-quoted arg
+allow	echo 'X: npx pkg' single-quoted arg
+allow	echo -n flag + space-prefix string
+allow	printf "label: npx pkg\\n"
+allow	leading # comment with npx
+allow	trailing # comment with npx
+allow	heredoc body with npx
+allow	heredoc with quoted tag + npx in body
+allow	echo "rm -rf $X" rm in echo arg
+allow	# rm -rf $X comment line
+deny	bash -c 'rm -rf $WORK_DIR' (single)
+deny	bash -c "rm -rf $X" (double)
+deny	sh -c 'rm -rf $X'
+deny	zsh -c 'rm -rf $X'
+deny	eval 'rm -rf $X'
+deny	eval "rm -rf $X"
+deny	eval rm -rf $X (unquoted form)
+deny	eval rm -rf "$X" (partial quote)
+deny	eval rm -rf $X after && operator
+deny	bash -c 'npx prettier' (unpinned)
+deny	eval "npx prettier"
+deny	indirect after && operator
+allow	opt-out bash -c rm-rf (no unwrap)
+allow	opt-out eval rm-rf (no unwrap)
+allow	opt-out sh -c rm-rf (no unwrap)
+allow	bash -c 'rm -rf $HOME/cache' (whitelist via unwrap)
+allow	bash -c 'npx prettier@3.0.0' (pinned via unwrap)
+allow	indirect [allow-rm-rf-var] survives unwrap
+allow	echo of bash -c string-literal
+allow	unquoted eval whitelist (eval rm -rf "$HOME/cache")
+allow	unquoted eval [allow-rm-rf-var] survives
+allow	echo of unquoted eval rm-rf string-literal
+allow	evaluate as prefix is not eval (token boundary)
+allow	eval ls -la (innocuous unquoted eval)
+deny	multi-line rm -rf $VAR (was false-ALLOW)
+deny	multi-line bare $HOME on line 2
+allow	multi-line rm -rf $HOME/cache on line 2
+allow	multi-line npx pinned on line 2 (was false-DENY)
+allow	multi-line npx local path on line 2
+deny	multi-line npx unpinned on line 2 (real catch)
+deny	rm -rf $VAR on line 3 of 5
+deny	rm-rf after && between two $-quoted strings
+deny	rm-rf after ; between two $-quoted strings
+deny	rm-rf bare-VAR after && + $-quoted echo arg
+deny	non-echo leading $-quote then operator + rm-rf
+deny	npx unpinned after && between two $-quoted strings
+deny	npx unpinned scoped after && between two $-quoted strings
+allow	canonical :? guard quoted-braces + &&
+allow	canonical :? guard with ; separator
+allow	bare-brace :? guard
+allow	:? guard preceded by other commands
+deny	:? guard for wrong var (SAFE guarded, EVIL deleted)
+deny	:- default-fallback is not a guard
+deny	[[ -n ]] non-empty check is not a recognized guard
+deny	backslash-escaped literal guard in echo is not real
+deny	rm --recursive --force $X (long-form)
+deny	rm --recursive -f $X (mixed long/short)
+deny	rm -r --force $X (short --recursive equivalent)
+deny	rm -v -i -rf $X (split short flags)
+deny	rm $X -rf (target before flags, valid bash)
+deny	multi-rm: unguarded $A then guarded $B
+allow	multi-rm: both guarded
+allow	rm --recursive --help (long flag w/ help, no var)
+allow	rm -r --force /tmp/literal (long-form + literal)
+deny	bash -lc rm-rf (login+command combined flag)
+deny	bash -xc rm-rf (xtrace+command combined flag)
+deny	sh -lc rm-rf (sh combined flags)
+deny	bash --norc -c rm-rf (long flag then -c)
+deny	bash -x -c rm-rf (separate flag then -c)
+deny	bash -lc npx unpinned (combined flag, npx)
+deny	env-prefixed rm-rf var (FOO=bar rm -rf $X)
+deny	stacked env-prefix rm-rf var (A=1 B=2 rm)
+deny	quoted-# then chained rm-rf (single-quote msg)
+deny	quoted-# inside $-double-quote then chained rm-rf
+allow	env-prefix non-rm command (FOO=bar npm test)
+allow	env-prefix make build (VERSION=1.2.3)
+allow	env-prefix rm whitelisted subpath (DEBUG=1 rm -rf $HOME/x)
+allow	quoted-# in commit msg no chain (no FP)
+deny	command rm-rf var (builtin wrapper)
+deny	nohup rm-rf var
+deny	time rm-rf var
+deny	env rm-rf var (was readonly-fast-path bypass)
+deny	env assignment rm-rf var
+deny	env-wrapped npx unpinned (was readonly bypass)
+allow	bare env (print environment, no exec)
+allow	env on safe command (node)
+allow	env assignment on non-rm (npm test)
+allow	env rm literal path (not a var)
+allow	command on safe command (ls)
+deny	dash -c rm-rf (Debian /bin/sh)
+deny	ksh -c rm-rf
+deny	ash -c rm-rf (busybox)
+deny	dash -lc rm-rf (flag bundle)
+deny	dash -c npx unpinned
+allow	dashboard is not a shell (no unwrap FP)
+allow	stash -c is not a shell
+deny	F1: /bin/rm -rf var (path-prefixed)
+deny	F1: backslash-escaped rm (alias defeat)
+deny	F1: busybox rm -rf var (multiplexer)
+allow	F1-fp: /bin/rm literal path (not var)
+allow	F1-fp: charm is not rm (basename exact-match)
+deny	F2: rm ${IFS}-split -rf var
+deny	F2: rm -rf ${IFS}var
+deny	F2: bare $IFS split
+deny	F2: npx ${IFS}pkg unpinned (empty cwd)
+allow	F2-fp: ${IFS} in echo (no danger token)
+deny	F3: rm -r\<nl>f continuation
+deny	F3: rm -rf \<nl>var continuation
+deny	F4: source <(curl) procsub
+deny	F4: . <(curl) procsub
+allow	F4-fp: source local file (no curl)
+allow	F4-fp: . dotfile (no curl)
+deny	F5: /usr/bin/npx unpinned (path-prefixed)
+deny	F5: backslash-escaped npx (alias defeat)
+deny	F5: backslash-escaped curl|sh
+deny	F5: /usr/bin/curl|sh (path-prefixed)
+deny	F5: curl | /bin/sh (path-prefixed sink)
+deny	F5: npx path-prefixed after ; separator
+allow	F5-fp: foo/npx in echo arg (not command pos)
+allow	F5-fp: /usr/bin/rm as arg to cat (not command pos)
+allow	F5-fp: npx pinned path-prefixed
+deny	F6: adjacent double $IFS split
+allow	F6-fp: $IFSFOO is a distinct var (untouched)
+deny	F7: cmd-subst rm -rf $var
+deny	F7: subshell rm -rf $HOME
+deny	F7: backtick rm -rf $var
+deny	F7: brace-group rm -rf $var
+deny	F7: assignment cmd-subst rm
+deny	F7: cmd-subst npx unpinned
+deny	F7: subshell npx unpinned
+deny	F7: cmd-subst curl|sh
+deny	F7: subshell curl|sh
+allow	F7-fp: harmless echo $(date)
+allow	F7-fp: cmd-subst in commit -m arg
+allow	F7-fp: rm -rf $(dirname $FOO) (pre-existing allow)
+allow	F7-fp: find -exec rm {} + (braces, no var)
+allow	F7-fp: subshell non-rm
+allow	F8: mktemp -d provenance cleanup
+allow	F8: backtick mktemp provenance
+allow	F8: mktemp then cd then cleanup
+deny	F8-fp: echo mktemp is not real mktemp
+deny	F8-fp: mktemphack is not mktemp
+deny	F8-fp: cross-call rm $T (no provenance visible)
+deny	F8-fp: transitive var $S/x unresolvable
+deny	F8-fp: dotdot escape under $HOME
+allow	F9-fp: npx prose in $-commit message
+allow	F9-fp: npx as echo argument
+allow	F9-fp: which npx (npx is the arg)
+allow	F9-fp: npx prose with $ in echo
+deny	F9: env-wrapped npx unpinned (command pos)
+deny	F9: sudo -E npx unpinned (flag wrapper)
+deny	F9: assignment-prefixed npx unpinned
+deny	F9: time-wrapped npx unpinned
+allow	F9-fp: env-wrapped npx pinned (allow)
+deny	F10: assignment w/ slash-value then rm-rf var
+deny	F10: assignment w/ deep slash-value then rm-rf var
+deny	F10: two assignments, slash-value, then rm-rf var
+deny	F10: assignment w/ slash-value then npx unpinned
+deny	F10: assignment w/ slash-value then bunx unpinned
+deny	F10: slash-value assignment + path-npx (canon still applies)
+allow	F10-fp: slash-value assignment + rm literal path
+allow	F10-fp: slash-value assignment + rm HOME subpath
+allow	F10-fp: slash-value assignment + npx pinned
+deny	F11: apostrophe prose straddling rm-rf var
+deny	F11: apostrophe prose straddling npx unpinned
+deny	F11: apostrophe prose straddling curl-sh
+deny	F11: single apostrophe before rm-rf var
+deny	F11: dquote inside squote must not open dquote state
+allow	F11-fp: apostrophe prose alone (no danger token)
+allow	F11-fp: squote prose mentioning rm is still stripped
+allow	F11-fp: dquoted rm target still preserved (dollar body)
+allow	F12-fp: multi-line squote literal mentioning rm
+allow	F12-fp: multi-line squote literal mentioning npx
+deny	F12: real rm after a closed multi-line squote literal
+deny	F14: mktemp then reassigned from env var, subpath target
+deny	F14: mktemp then reassigned from env var
+deny	F14: mktemp then reassigned to root literal
+deny	F14: mktemp then reassigned from cmd-sub
+deny	F14: mktemp assigned AFTER the rm (position-blind)
+deny	F14: mktemp var but unknown second var in target
+deny	F14: mktemp var but unknown var is the subpath
+allow	F14-fp: mktemp then rm the temp root
+allow	F14-fp: mktemp then rm a literal subpath
+allow	F14-fp: mktemp with no args
+allow	F14-fp: mktemp via backticks
+allow	F14-fp: mktemp joined with &&
+allow	F14-fp: mktemp with intervening commands
+allow	F14-fp: two mktemp assignments to same var
+allow	F14-fp: mktemp -p form
+deny	F16: rm -rf var after `then` (if)
+deny	F16: rm -rf var after `do` (for)
+deny	F16: rm -rf var after `do` (while)
+deny	F16: rm -rf var after `else`
+deny	F16: the canonical guarded-cleanup idiom
+deny	F16: rm -rf var after `!` negation
+deny	F16: npx unpinned after `then`
+deny	F16: npx unpinned after `do`
+deny	F16: nested — then + wrapper
+deny	F16: then + assignment prefix
+allow	F16-fp: literal rm target inside then
+allow	F16-fp: reserved words as echo prose
+allow	F16-fp: ordinary for-loop, no danger
+allow	F16-fp: pinned npx inside then
+allow	F16-fp: HOME subpath inside then
+deny	F17: unset rebind after mktemp
+deny	F17: unset after a mktemp assignment
+deny	F17: append-operator rebind after mktemp
+deny	F17: printf -v rebind after mktemp
+deny	F17: for-loop rebinds the target var
+deny	F17: read rebind after mktemp (bare)
+deny	F17: read rebind after mktemp
+deny	F17: mapfile rebind after mktemp
+deny	F17: declare -n nameref rebind after mktemp
+deny	F17: source can rebind from another file
+deny	F17: dot-source can rebind
+allow	F17-fp: reads do not count as rebinds
+allow	F17-fp: unset of an unrelated var
+deny	F17: eval can rebind from an opaque string
+allow	F17-fp: two mktemp assignments (both classified)
+deny	D1: rm -rf "${SP}/build" (brace + subpath)
+deny	D1: rm -rf ${SP}/build (bare brace + subpath)
+deny	D1: rm -rf "${HOME}/" (braced empty-HOME rm -rf /)
+allow	D1-fp: rm -rf "${HOME}/.cache/foo" (HOME subpath)
+allow	D1-fp: rm -rf ${TMPDIR}/scratch (TMPDIR subpath)
+allow	D1-fp: { cd sub; rm -rf /tmp/x; } real brace-group literal path
+deny	D2: $((1<<b)) then rm, same line
+deny	D2: $((1<<b)) line then rm line
+deny	D2: $((1<<b)) blinds the npx gate too
+allow	D2-fp: arithmetic left-shift alone
+allow	D2-fp: arithmetic assign then echo
+allow	D2-fp: real heredoc, arithmetic in body
+deny	IFS=/ leading assignment still catches $SP
+deny	rev1: $[a<<b] deprecated-arith shift then rm
+deny	rev1: let a<<b builtin-arith shift then rm
+deny	rev2: << inside double-quoted string then rm
+deny	rev2: << inside single-quoted string then rm
+allow	rev-fp: real heredoc body containing rm (data)
+allow	rev-fp: << inside quotes, no danger
+allow	rev-fp: grep for << literal
+deny	F18: curl | env bash (wrapper on sink)
+deny	F18: curl | command sh (wrapper on sink)
+deny	F18: curl | nice bash (wrapper on sink)
+deny	F18: curl | sudo env bash (wrapper chain)
+deny	F18: curl pipe-then-newline continuation
+deny	F18: env bash <(curl) procsub wrapper
+allow	F18-fp: curl | envsubst (env-prefix, not a sink)
+allow	F18-fp: env cat, no curl
