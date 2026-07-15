@@ -94,5 +94,6 @@
 
 ## 决策点日历
 - 2026-08-09：A4 人工标注（首标 §iron-law-2 + §7-bugfix-anchor）+ C2-superpowers 决策点重跑（--global）。
+- 2026-08-09（追加，2026-07-15 提示词审核）：banned-vocab bypass 构成复查——14d bypass 13 / deny 9（59%），doctor 30d 口径 deny 16 / bypass 14（47%，其 healthy 带内）。§13.3 10% 门只管 advisory→enforce 晋升，此规则已 enforce；复查目的是判 bypass 主体是 FP（探针/引用语境）还是规则过严，再定是否动作。数据源：`audit.js --days=N` banned-vocab 段 + `extra.bypass_reason`。
 - 下一次 spec 批次：执行 C 类修正 + 视需要消费 C5/C6。
 - reference_banned_vocab_examples.md 已 ship 48d：§10-V extended 块（~700B）压缩 gate 可评估（extended 侧，非 core）。

@@ -155,3 +155,15 @@ Reviewed against 30d rule-hits window (2078 hits, parse 5586/5586): `demoteCandi
 
 - Date: 2026-08-09 (30 days), or 20 L2+ tasks from 2026-07-10, whichever first.
 - Watch item: §5-hard-auth sampling detector 7/7 raw violations — pre-registered FP-heavy; include in first A4 hand-labeling batch (with §iron-law-2 + §7-bugfix-anchor) before reading as real.
+
+---
+
+## [candidate, log-only, NOT a HARD rule] §2.1 model-tiering observability
+
+**Logged**: 2026-07-15 (提示词五维审核, `docs/prompt-audit-2026-07-15.md` 建议 3).
+
+**Pattern**: §2.1 Model tiering (SHOULD, v6.15.0) has zero telemetry — no rule-hits event records spawned-agent downgrade decisions, so downgrade frequency / anomalous-rerun rate / verifier≥generator compliance are all unobservable. Any future §13.3-style data-driven review of the rule is impossible without a data source.
+
+**Proposed mechanism (if ever justified)**: advisory-only logging (e.g. Stop-hook transcript scan for `model:`/`effort:` in Agent/Workflow calls, or a `model-tiering` rule-hits event) — observability, not enforcement.
+
+**Status**: log-only under internal freeze (`project_internal_freeze_v02312.md`); do NOT build unprompted. Activation trigger: a real incident where a downgraded agent produced wrong output that survived verification, OR external adoption asks for tiering data. Repro-count: 0 (no incident — this is an observability gap, not a scar).
