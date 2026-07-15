@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.48.0] - 2026-07-15
+
+**Minor — one-command plugin refresh: `/claudemd-refresh`.** Closes the update-UX gap: the upgrade banner used to teach a 4-command paste sequence; now it names one command. Detection (v0.4.0 `upstream_check`, 24h-throttled `git ls-remote`) and post-refresh spec/manifest sync (version-sync hook / SessionStart bootstrap) were already automatic — this release ships the missing middle step.
+
+- **New `scripts/refresh-plugin.sh` + `/claudemd-refresh`**: `claude plugin marketplace update claudemd` → `claude plugin uninstall claudemd@claudemd -y` → `claude plugin install claudemd@claudemd` in one shot (`set -euo pipefail`; loud exit 1 when the `claude` CLI is not on PATH). Restart Claude Code afterwards — nothing else needed; `/claudemd-install` was never part of the update flow. Replaces the author's local-only untracked `update.sh`.
+- **Banner copy**: upgrade banner and stale-registration banner now say "run /claudemd-refresh, then restart Claude Code" instead of listing 4 commands. Sweep also covers `commands/claudemd-update.md`, `scripts/install.js` refusing-downgrade message, both `scripts/doctor.js` fix strings, and README (§Update leads with the one-command path).
+- **Migration**: nothing to do. The manual 4-command sequence still works and stays documented in README §Update as the fallback. Banner opt-out unchanged: `DISABLE_UPSTREAM_CHECK=1` (via `/claudemd-toggle`).
+- **Tests**: +3 (`tests/scripts/refresh-plugin.test.js` — PATH-shim CLI: 3-call order, fail-stops-pipeline, missing-CLI loud failure; controls-first pair up front). Banner assertions in `tests/hooks/session-start.test.sh` Cases 8/18 re-pinned RED→GREEN. Suite: node 681 → 684 tests; full `npm test` green.
+
 ## [0.47.4] - 2026-07-15
 
 **Patch — `package.json` had been stale since v0.47.0, and it is the file that decides what the installed manifest reports.** No hook-code change; §8 behavior identical to v0.47.3.
