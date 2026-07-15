@@ -362,3 +362,53 @@ pass	F14-fp: mktemp joined with &&	S=$(mktemp -d) && rm -rf "$S"
 pass	F14-fp: mktemp with intervening commands	S=$(mktemp -d); mkdir -p "$S/a"; echo hi > "$S/a/f"; rm -rf "$S"
 pass	F14-fp: two mktemp assignments to same var	S=$(mktemp -d); S=$(mktemp -d); rm -rf "$S"
 pass	F14-fp: mktemp -p form	S=$(mktemp -d -p /tmp); rm -rf "$S"
+
+
+# === 2026-07-15 F16: rm/npx danger inside a same-line control structure (v0.48.0) ===
+# PRE-EXISTING since per-segment iteration landed in v0.21.4. Segments split on `;`, so
+# `if true; then rm -rf $X; fi` yields the segment `then rm -rf $X` — first word `then`,
+# rm_canon != rm, segment skipped entirely. Every §8 rm/npx danger inside a same-line
+# if/for/while was unguarded, including `if [ -d "$X" ]; then rm -rf "$X"; fi` — the most
+# ordinary cleanup idiom in shell. The newline-separated form always denied (the keyword
+# lands on its own segment); only the same-line form slipped. Fixed by treating do/then/
+# else/! as reserved words in the wrapper-strip loop of both gates.
+deny	F16: rm -rf var after `then` (if)	if true; then rm -rf $DANGEROUS; fi
+deny	F16: rm -rf var after `do` (for)	for x in a; do rm -rf $DANGEROUS; done
+deny	F16: rm -rf var after `do` (while)	while true; do rm -rf $DANGEROUS; done
+deny	F16: rm -rf var after `else`	if false; then :; else rm -rf $DANGEROUS; fi
+deny	F16: the canonical guarded-cleanup idiom	if [ -d "$X" ]; then rm -rf "$X"; fi
+deny	F16: rm -rf var after `!` negation	! rm -rf $DANGEROUS
+deny	F16: npx unpinned after `then`	if true; then npx unknown-pkg-xyz9; fi
+deny	F16: npx unpinned after `do`	for x in a; do npx unknown-pkg-xyz9; done
+deny	F16: nested — then + wrapper	if true; then sudo -E rm -rf $DANGEROUS; fi
+deny	F16: then + assignment prefix	if true; then DEBUG=/tmp/x rm -rf $DANGEROUS; fi
+pass	F16-fp: literal rm target inside then	if true; then rm -rf /tmp/build-dir; fi
+pass	F16-fp: reserved words as echo prose	if true; then echo "do then else"; fi
+pass	F16-fp: ordinary for-loop, no danger	for f in *.txt; do cat "$f"; done
+pass	F16-fp: pinned npx inside then	if true; then npx prettier@3.0.0; fi
+pass	F16-fp: HOME subpath inside then	if true; then rm -rf $HOME/.cache/foo; fi
+#
+# === 2026-07-15 F17: provenance rebind guard (v0.48.0) ===
+# Provenance rests on "VAR's value is determinable from the command text". That holds only
+# if nothing else rebinds VAR. Enumerating rebind SYNTAX is a denylist that cannot be
+# completed — probing found 7 forms invisible to the `VAR=` scan, all of which ALLOWed on
+# v0.46.0-v0.47.2 (the mktemp recognizer had the same hole; this closes both kinds).
+# Inverted: every rebind must NAME the var, so count bare (non-`$`) mentions and require
+# the count to EQUAL the number of assignments actually classified. Surplus = unseen
+# rebind. `source`/`.` is the one residual the count cannot see (rebinds from another
+# file without naming the var here), so it is rejected outright.
+deny	F17: unset rebind after mktemp	S=$(mktemp -d); unset S; rm -rf "$S/build"
+deny	F17: unset after a mktemp assignment	S=$(mktemp -d); unset S; rm -rf "$S/build"
+deny	F17: append-operator rebind after mktemp	S=$(mktemp -d); S+=$EVIL; rm -rf "$S"
+deny	F17: printf -v rebind after mktemp	S=$(mktemp -d); printf -v S "%s" "$EVIL"; rm -rf "$S"
+deny	F17: for-loop rebinds the target var	S=$(mktemp -d); for S in $EVIL; do rm -rf "$S"; done
+deny	F17: read rebind after mktemp (bare)	S=$(mktemp -d); read S; rm -rf "$S"
+deny	F17: read rebind after mktemp	S=$(mktemp -d); read S; rm -rf "$S/build"
+deny	F17: mapfile rebind after mktemp	S=$(mktemp -d); mapfile -t S < f; rm -rf "$S"
+deny	F17: declare -n nameref rebind after mktemp	S=$(mktemp -d); declare -n r=S; r=$EVIL; rm -rf "$S"
+deny	F17: source can rebind from another file	S=$(mktemp -d); source ./cfg.sh; rm -rf "$S/build"
+deny	F17: dot-source can rebind	S=$(mktemp -d); . ./cfg.sh; rm -rf "$S/build"
+pass	F17-fp: reads do not count as rebinds	S=$(mktemp -d); mkdir -p "$S/a"; cd "$S"; rm -rf "$S"
+pass	F17-fp: unset of an unrelated var	S=$(mktemp -d); unset OTHER; rm -rf "$S"
+deny	F17: eval can rebind from an opaque string	S=$(mktemp -d); eval "$CODE"; rm -rf "$S/build"
+pass	F17-fp: two mktemp assignments (both classified)	S=$(mktemp -d); S=$(mktemp -d); rm -rf "$S"

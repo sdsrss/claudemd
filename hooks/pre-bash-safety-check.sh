@@ -481,8 +481,23 @@ if (( bypass_rm == 0 )); then
       if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
          || [[ "$first" == env || "$first" == command || "$first" == nohup \
             || "$first" == setsid || "$first" == time || "$first" == busybox \
+            || "$first" == 'do' || "$first" == 'then' || "$first" == 'else' \
+            || "$first" == '!' \
             || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
         # Arg-less transparent wrappers + leading env-var assignments.
+        # `do` / `then` / `else` / `!` (v0.48.0): shell RESERVED WORDS, not commands.
+        # Segments are split on `;`, so `if true; then rm -rf $X; fi` yields the segment
+        # `then rm -rf $X` — first word `then`, rm_canon != rm, and the whole segment was
+        # skipped. Every §8 rm/npx danger inside a same-line control structure was
+        # therefore unguarded: `if [ -d "$X" ]; then rm -rf "$X"; fi` (the single most
+        # ordinary cleanup idiom in shell), `for x in …; do rm -rf $X; done`,
+        # `while …; do …; done`, `if …; then :; else rm -rf $X; fi`. Pre-existing since
+        # per-segment iteration landed in v0.21.4; found 2026-07-15 while probing an
+        # unrelated for-loop shape. The newline-separated form was always caught (the
+        # keyword lands on its own segment) — only the same-line form slipped.
+        # No FP risk: none of these is a command name, so stripping one can only expose
+        # the real command word behind it; if that word is not rm/a runner, the gate
+        # still does nothing.
         rest="${trimmed#"$first"}"
         trimmed="${rest#"${rest%%[![:space:]]*}"}"
       elif [[ "$first" == timeout || "$first" == nice || "$first" == stdbuf \
@@ -596,10 +611,18 @@ if (( bypass_rm == 0 )); then
         # cleaning it up is the §8.V4 disposal idiom, not an unvalidated-var danger.
         # Provenance recognition is limited to mktemp. Literal assignments
         # (`SP=/home/me/work; rm -rf "$SP"`) and transitive vars (`R="$S/x"`) stay
-        # strict — use ${VAR:?} / a literal rm target / [allow-rm-rf-var]. (The
-        # literal case is a known false-deny, tracked in
-        # tasks/s8-literal-provenance.md; widening allow is a separate decision
-        # from this deny-only fix.)
+        # strict — use ${VAR:?} / a literal rm target / [allow-rm-rf-var].
+        #
+        # The literal case is a KNOWN FALSE-DENY and is deliberately not fixed:
+        # `tasks/specs/s8-literal-provenance.md` (status: rejected) records the attempt.
+        # A v0.48.0 candidate recognized unquoted literal assignments; an adversarial
+        # review broke it five independent ways within one pass — prose injection into
+        # the assignment scan (`echo " SP=/tmp/x $HOME"; rm -rf "$SP/build"`), fake
+        # assignments manufactured by unwrap_indirect, indirect-name rebinds, `eval`
+        # with a non-literal argument, and `trap 'SP=' DEBUG`. Root cause: the scan uses
+        # TEXT position as a proxy for COMMAND position — the same error the npx gate was
+        # rewritten to fix in v0.47.0 (B-1), one block below. Do not re-attempt without
+        # real command-position parsing. `${VAR:?}` is the supported answer.
         #
         # v0.47.2 (2026-07-15) — the SEC-4 recognizer was a single grep for
         # `VAR=$(mktemp` ANYWHERE in the flat command. Three false-NEGATIVES, all
@@ -624,19 +647,82 @@ if (( bypass_rm == 0 )); then
         #   (3) the rm target expands no var other than varname.
         # Documented residual: `S=$( mktemp -d)` (space after the paren) now denies —
         # the RHS capture stops at the space. Deny-direction, use [allow-rm-rf-var].
-        prov_prefix="${SANITIZED_CMD_FLAT%%"$segment"*}"
+        #
+        # v0.47.3 REBIND GUARD. mktemp provenance rests on "VAR still holds the mktemp
+        # path when the rm runs", which holds only if nothing else in the command rebinds
+        # VAR. The `VAR=` scan cannot see most rebinds: probing found `unset SP`,
+        # `SP+=$EVIL`, `printf -v SP`, `for SP in $EVIL`, `read SP`, `mapfile -t SP`, and
+        # `declare -n r=SP; r=$EVIL` — each able to leave VAR empty and collapse
+        # `rm -rf "$VAR/build"` into `rm -rf /build`, the steam-for-linux#3671 class.
+        # `S=$(mktemp -d); unset S; rm -rf "$S/build"` ALLOWed on v0.46.0–v0.47.2.
+        # Enumerating rebind SYNTAX is a denylist that cannot be completed, so invert it:
+        # a rebind that spells the name must MENTION the name. Count occurrences of
+        # varname in BARE position (not preceded by `$` / `${`) and require the count to
+        # EQUAL the number of `VAR=` assignments actually classified below — a surplus is
+        # a rebind the scan could not see. Reads (`$SP`, `${SP}`) do not count, so
+        # `S=$(mktemp -d); mkdir -p "$S/a"; rm -rf "$S"` still passes; and multiple
+        # assignments are fine because each one IS classified.
+        #
+        # KNOWN LIMIT (do not mistake this for completeness): the bare-count is an
+        # allowlist on the SHAPE OF THE NAME, so an INDIRECT-name rebind defeats it —
+        # `unset "$T"` / `printf -v "$T" ""` / `declare -n r=$T` never spell SP at all.
+        # A 2026-07-15 adversarial review demonstrated this against a wider design built
+        # on the same scan; those forms are not closed here. What IS closed is the
+        # literal-name spelling of every such builtin, which is what real cleanup scripts
+        # write. Treat provenance as a convenience for the §8.V4 disposal idiom, not as a
+        # boundary against a crafted command — `DISABLE_*` and `[allow-rm-rf-var]` remain
+        # bypassable by design (§8 is a guardrail, not an anti-injection boundary).
+        #   - varname must be a clean identifier: it is interpolated into greps below,
+        #     and a metacharacter-bearing extraction (`${SP:?}` yields `SP:?`) would
+        #     otherwise make those patterns match the wrong thing.
+        #   - `source` / `.` / `eval` execute code IN THE CURRENT SHELL that the scan
+        #     cannot see, and can rebind without naming varname — reject outright.
+        #     (`bash -c` / subshells cannot affect the parent.)
+        #     Matched against NORMALIZED_CMD, i.e. BEFORE unwrap_indirect: unwrap rewrites
+        #     `eval "$CODE"` into `; $CODE ;`, so by the time SANITIZED_CMD_FLAT exists the
+        #     word `eval` is gone and a grep there never fires. (Caught by a corpus row;
+        #     unwrap only ever exposes LITERAL inner text, so an opaque `eval "$CODE"`
+        #     stays opaque.) Matching pre-sanitize means quoted prose mentioning `eval` /
+        #     `source` also blocks provenance — FP-direction on an allow-path only, i.e.
+        #     it falls back to the same deny the gate gives today.
         prov_safe=0
-        if printf '%s' "$prov_prefix" | grep -qE "(^|[[:space:];&|\`(])${varname}="; then
+        prov_eligible=1
+        [[ "$varname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || prov_eligible=0
+        if (( prov_eligible == 1 )) \
+           && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]'; then
+          prov_eligible=0
+        fi
+        prov_prefix="${SANITIZED_CMD_FLAT%%"$segment"*}"
+        if (( prov_eligible == 1 )) && printf '%s' "$prov_prefix" | grep -qE "(^|[[:space:];&|\`(])${varname}="; then
           prov_safe=1
-          # (2) every assignment to varname in the whole command must be mktemp
+          prov_nassign=0
+          # (2) EVERY assignment to varname in the whole command must be a safe class.
+          # No `continue` on an empty RHS: `VAR=` (empty value) must fall through to the
+          # unsafe branch. v0.47.2 skipped blank lines here and thereby skipped genuine
+          # empty assignments, so `SP=; rm -rf "$SP/build"` ALLOWed — the steam class F14
+          # was written to close. Empty matches neither regex below, so it now denies.
           while IFS= read -r prov_rhs; do
-            [[ -n "$prov_rhs" ]] || continue
+            prov_nassign=$((prov_nassign + 1))
             # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
-            printf '%s' "$prov_rhs" | grep -qE '^(\$\(|`)mktemp([[:space:]`)]|$)' \
-              || { prov_safe=0; break; }
+            if printf '%s' "$prov_rhs" | grep -qE '^(\$\(|`)mktemp([[:space:]`)]|$)'; then
+              continue
+            fi
+            prov_safe=0
+            break
           done < <(printf '%s' "$SANITIZED_CMD_FLAT" \
             | grep -oE "(^|[[:space:];&|\`(])${varname}=[^[:space:];&|]*" \
             | sed -E "s/^[[:space:];&|\`(]+//; s/^${varname}=//")
+          # (0b) REBIND GUARD, second half — bare mentions must be exactly the
+          # assignments classified above. A surplus is `unset SP` / `SP+=…` /
+          # `printf -v SP` / `for SP in …` / `read SP` / `mapfile -t SP` /
+          # `declare -n r=SP` — a rebind the `VAR=` scan cannot see, after which the
+          # value is no longer determinable from the command text.
+          if (( prov_safe == 1 )); then
+            prov_bare=$(printf '%s' "$SANITIZED_CMD_FLAT" \
+              | sed -E "s/\\\$\\{${varname}[^}]*\\}//g; s/\\\$${varname}([^A-Za-z0-9_]|\$)/\\1/g" \
+              | grep -oE "(^|[^A-Za-z0-9_\$])${varname}([^A-Za-z0-9_]|\$)" | wc -l | tr -d ' ')
+            [[ "$prov_bare" == "$prov_nassign" ]] || prov_safe=0
+          fi
           # (3) target must not depend on any var other than varname
           if (( prov_safe == 1 )); then
             prov_other=$(printf '%s' "$rm_target" \
@@ -695,6 +781,8 @@ while IFS= read -r nseg; do
     if [[ "$nfirst" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
        || [[ "$nfirst" == env || "$nfirst" == command || "$nfirst" == nohup \
           || "$nfirst" == setsid || "$nfirst" == time || "$nfirst" == busybox \
+          || "$nfirst" == 'do' || "$nfirst" == 'then' || "$nfirst" == 'else' \
+          || "$nfirst" == '!' \
           || "$nfirst" == /usr/bin/env || "$nfirst" == /bin/env ]]; then
       nrest="${nseg#"$nfirst"}"; nseg="${nrest#"${nrest%%[![:space:]]*}"}"
     elif [[ "$nfirst" == timeout || "$nfirst" == nice || "$nfirst" == stdbuf \
