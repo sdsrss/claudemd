@@ -125,34 +125,51 @@ sanitize_cmd() {
   # Strip contents of paired quoted strings, keeping the empty-quote markers
   # so token boundaries (e.g. `echo ""` after stripping) are preserved.
   #
-  # Single-quoted strings — always strip (no shell expansion inside '...').
-  out=$(printf '%s' "$out" | sed -E "s/'[^']*'/''/g")
-  # Double-quoted strings — state-machine pairing of `"` characters.
-  #   - body contains `$` → preserve verbatim (real var expansion / command sub)
-  #   - body has no `$`   → replace body with empty `""`
-  # The previous sed regex `"[^"$]*"` was a §8 SAFETY silent bypass: it
-  # could pair the closing `"` of one $-containing string with the opening
-  # `"` of the next, eating `&& rm -rf` (or any other danger) between them.
-  # Repro: `echo "$A" && rm -rf "$B"` was sanitized to `echo "$A""$B"` and
-  # the rm-detector saw no `rm` at all. The state machine below walks
-  # char-by-char so adjacent quoted regions stay distinct.
-  # Escape sequences (`\"` inside `"..."`) are not modeled — same gap as
-  # the prior regex; not in scope.
+  # ONE state machine walks both quote types (v0.47.1). Single- and double-quote
+  # context are mutually exclusive in the shell — a `'` inside "..." is a literal
+  # apostrophe, a `"` inside '...' is a literal quote — so they cannot be stripped
+  # in two independent passes. Pre-fix the single-quote pass was a line-based sed
+  # `s/'[^']*'/''/g` that ran FIRST, blind to double-quote context, giving two
+  # defects:
+  #   - §8 SILENT BYPASS: `echo "it's fine" && rm -rf $X && echo "don't"` — the
+  #     apostrophes in `it's` and `don't` paired, eating `&& rm -rf $X &&`, so the
+  #     rm-detector saw no rm at all → ALLOW. Identical failure mode to the
+  #     double-quote regex bug below, which was fixed with a state machine while
+  #     the single-quote sed was left as a regex (2026-07-15 repro).
+  #   - FALSE DENY: sed is line-based, so a multi-line '...' literal
+  #     (`python -c 'print(1)\nrm -rf $X'`) kept its body and false-denied.
+  #     RS="\004" reads the whole buffer, so multi-line bodies now strip.
+  # The double-quote regex `"[^"$]*"` this replaced was itself a §8 bypass: it
+  # could pair the closing `"` of one $-containing string with the opening `"` of
+  # the next, eating `&& rm -rf` between them (`echo "$A" && rm -rf "$B"` →
+  # `echo "$A""$B"`). Walking char-by-char keeps adjacent quoted regions distinct.
+  #
+  # Body handling, per quote type:
+  #   '...'  → always drop (no shell expansion inside single quotes)
+  #   "..."  → body has `$` → preserve verbatim (real var expansion / command sub)
+  #            body has no `$` → replace with empty `""`
+  # Unterminated quote → keep the body verbatim: exposing text to a deny-on-match
+  # detector can only false-DENY, never bypass. Escape sequences (`\"` inside
+  # "...") are not modeled — pre-existing gap, not in scope.
   out=$(printf '%s' "$out" | awk '
     BEGIN { RS = "\004" }
     {
       n = length($0)
-      in_q = 0; buf = ""; has_dollar = 0; final = ""
+      st = 0; buf = ""; has_dollar = 0; final = ""
       for (i = 1; i <= n; i++) {
         ch = substr($0, i, 1)
-        if (in_q == 0) {
-          if (ch == "\"") { in_q = 1; buf = ""; has_dollar = 0 }
+        if (st == 0) {
+          if (ch == "\047") { st = 1; buf = "" }
+          else if (ch == "\"") { st = 2; buf = ""; has_dollar = 0 }
           else final = final ch
+        } else if (st == 1) {
+          if (ch == "\047") { final = final "\047\047"; st = 0; buf = "" }
+          else buf = buf ch
         } else {
           if (ch == "\"") {
             if (has_dollar) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
             else final = final "\"\""
-            in_q = 0; buf = ""; has_dollar = 0
+            st = 0; buf = ""; has_dollar = 0
           } else if (ch == "$") {
             has_dollar = 1; buf = buf ch
           } else {
@@ -160,7 +177,8 @@ sanitize_cmd() {
           }
         }
       }
-      if (in_q == 1) { gsub(/#/, "", buf); final = final "\"" buf }
+      if (st == 1)      { gsub(/#/, "", buf); final = final "\047" buf }
+      else if (st == 2) { gsub(/#/, "", buf); final = final "\"" buf }
       printf "%s", final
     }
   ')
@@ -188,6 +206,16 @@ sanitize_cmd() {
 # basenamed the rm gate only, leaving \npx / /usr/bin/npx and \curl / path-curl
 # evading). The shell resolves these to npx/curl/sh at exec time, so
 # canonicalizing can only EXPOSE deny tokens the shell would run, never hide one.
+#
+# Leading env-var ASSIGNMENTS (`DEBUG=1`, `PREFIX=/opt/app`) sit at command
+# position but are NOT command names — basenaming them destroys the assignment
+# and reopens the §8 bypass the rm/npx gates' own assignment-strip loops close.
+# Repro (2026-07-15): `DEBUG=/tmp/x rm -rf $EVIL` canon'd to `x rm -rf $EVIL`, so
+# the strip loop broke at `x`, rm_canon != rm, and the whole segment was skipped
+# — ALLOW. `DEBUG=1` (no slash) was unaffected, which is why the class survived
+# SEC-2 review. Emit assignments verbatim and KEEP cmdpos=1: the real command
+# word follows, and it still gets canonicalized (`FOO=/a/b /usr/bin/npx pkg` →
+# `FOO=/a/b npx pkg`).
 canon_cmd_words() {
   printf '%s' "$1" | awk '
     {
@@ -201,6 +229,7 @@ canon_cmd_words() {
             if (ch==" "||ch=="\t"||ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="{"||ch=="`") break
             word=word ch; i++
           }
+          if (word ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { out=out word; continue }
           sub(/^\\/,"",word); sub(/.*\//,"",word)
           out=out word; cmdpos=0; continue
         }
@@ -298,6 +327,17 @@ npx_pkg_locally_resolved() {
 #   is genuinely installed in the cd'd dir (the intended allow). Targets with
 #   shell expansion (`$VAR` / backtick / glob / `~`) or a failed `cd` are
 #   unresolvable, so we bail to BASE (keeping the conservative deny).
+#
+#   The cd-extractor anchor class includes `(` / `{` so the SUBSHELL form
+#   `(cd sub && npx tool)` — the idiom for "cd without disturbing the caller's
+#   cwd" — is followed like the bare `cd sub && npx tool` form. Pre-fix the class
+#   was `(^|[[:space:];&|])`: `(cd` matched neither `^` nor a listed separator, so
+#   the cd was invisible, eff fell back to BASE, and a package installed only in
+#   the subdir false-DENIED (2026-07-15 repro on the daagu monorepo:
+#   `(cd frontend && npx vue-tsc)` denied with vue-tsc present in
+#   frontend/node_modules). The rm gate + npx segment splitter already treat
+#   `(`/`{` as separators; this extractor was the odd one out. The target class
+#   excludes `)`/`}` so `(cd sub)` yields `sub`, not `sub)`.
 effective_npx_cwd() {
   local base="$1" flat="$2" target resolved
   local eff="$base"                       # separate stmt: `local a=.. b="$a"` is unbound under set -u
@@ -314,7 +354,7 @@ effective_npx_cwd() {
     fi
     if [[ -n "$resolved" ]]; then eff="$resolved"; else eff="$base"; break; fi
   done < <(printf '%s\n' "$before" \
-    | grep -oE '(^|[[:space:];&|])cd[[:space:]]+[^[:space:];&|]+' \
+    | grep -oE '(^|[[:space:];&|({])cd[[:space:]]+[^[:space:];&|(){}]+' \
     | sed -E 's/.*cd[[:space:]]+//')
   printf '%s' "$eff"
 }

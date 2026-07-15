@@ -205,6 +205,24 @@ run_cwd_case pass "vNEXT: cd ./frontend && npx (relative dot prefix)"     "cd ./
 run_cwd_case pass "vNEXT: cd <abs subdir> && npx (absolute cd target)"    "cd $SANDBOX/mono/frontend && npx vue-tsc" "$SANDBOX/mono"
 run_cwd_case pass "vNEXT: cd a ; npx (semicolon-chained cd)"              "cd frontend ; npx vue-tsc"                "$SANDBOX/mono"
 run_cwd_case deny "vNEXT: cd backend && npx (dep NOT in cd'd subdir)"     "cd backend && npx vue-tsc"                "$SANDBOX/mono"
+
+# --- 2026-07-15: the SUBSHELL cd form `(cd sub && npx tool)` ---
+# The cases above fixed the bare `cd sub && npx tool` shape but left the subshell
+# idiom — the standard way to cd without disturbing the caller's cwd, and what an
+# agent writes when chaining commands. effective_npx_cwd's cd-extractor anchor
+# class was `(^|[[:space:];&|])`, which `(cd` matches neither way, so the cd was
+# invisible and eff fell back to the parent → false-DENY on a dep that IS
+# installed. Live repro 2026-07-15: `(cd daagu/frontend && npx vue-tsc --noEmit)`
+# denied with vue-tsc present in frontend/node_modules/.
+run_cwd_case pass "F13: (cd frontend && npx) subshell form"              "(cd frontend && npx vue-tsc --noEmit)"     "$SANDBOX/mono"
+run_cwd_case pass "F13: (cd <abs> && npx) subshell, absolute target"     "(cd $SANDBOX/mono/frontend && npx vue-tsc)" "$SANDBOX/mono"
+run_cwd_case pass "F13: (cd frontend && npx ...) piped + trailing echo"  '(cd frontend && npx vue-tsc --noEmit 2>&1 | tail -3; echo "exit=$?")' "$SANDBOX/mono"
+run_cwd_case pass "F13: { cd frontend; npx ...; } brace-group form"      "{ cd frontend; npx vue-tsc; }"             "$SANDBOX/mono"
+# FP controls — the subshell form must NOT become a blanket allow.
+run_cwd_case deny "F13-fp: (cd backend && npx) dep not in cd'd subdir"   "(cd backend && npx vue-tsc)"               "$SANDBOX/mono"
+run_cwd_case deny "F13-fp: (cd frontend && npx) other unknown pkg"       "(cd frontend && npx unknown-pkg-xyz9)"     "$SANDBOX/mono"
+run_cwd_case deny "F13-fp: (cd \$VAR && npx) unresolvable target"        '(cd $SOMEDIR && npx vue-tsc)'              "$SANDBOX/mono"
+run_cwd_case deny "F13-fp: (cd nonexistent && npx) failed cd"            "(cd no-such-dir && npx vue-tsc)"           "$SANDBOX/mono"
 run_cwd_case deny "vNEXT: cd missing-subdir && npx (cd target absent)"    "cd nope && npx vue-tsc"                   "$SANDBOX/mono"
 
 # === Pattern 3: fetch-to-shell — §8 "execute scripts of unknown origin" ===
