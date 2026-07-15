@@ -594,9 +594,17 @@ if (( bypass_rm == 0 )); then
         # SAME command from $(mktemp …) / `mktemp …` is a validated rm target: mktemp
         # creates a fresh, uniquely-named path that cannot be / or a wildcard, so
         # cleaning it up is the §8.V4 disposal idiom, not an unvalidated-var danger.
-        # mktemp survives canon_cmd_words (no path to basename); literal-prefix vars
-        # do NOT (canon basenames them) and transitive vars ($S/x) can't be resolved,
-        # so both stay strict — use ${VAR:?} / literal rm target / [allow-rm-rf-var].
+        # Provenance recognition is deliberately limited to mktemp. Literal-prefix
+        # vars (`SP="$HOME/work"; rm -rf "$SP/x"`) and transitive vars (`R="$S/x"`)
+        # stay strict — use ${VAR:?} / a literal rm target / [allow-rm-rf-var].
+        # NB (v0.47.1): the old rationale here — "literal-prefix vars do not survive
+        # canon_cmd_words, which basenames them" — is no longer true. That was a
+        # description of the F10 defect (canon mangling assignments), not a reason;
+        # assignments now pass through canon intact. The strictness is a live CHOICE,
+        # not a limitation: unlike mktemp — which provably yields a fresh, unique,
+        # non-`/` path — a literal prefix is only as bounded as the literal, and
+        # `R="$HOME/../../etc"` (corpus F8-fp) shows the residue can escape upward.
+        # Recognizing it would need real path analysis. Revisit only with that.
         # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
         prov_mktemp='(^|[[:space:];&|`(])'"$varname"'=(\$\(|`)[[:space:]]*mktemp([[:space:]`)]|$)'
         if echo "$SANITIZED_CMD_FLAT" | grep -qE "$prov_mktemp"; then
