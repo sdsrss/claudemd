@@ -337,8 +337,26 @@ for m in $CURLSH_MEMBERS; do
     *) echo "FAIL [curl-sh-parity]: curl-sh wrapper '$m' not in shared taxonomy"; parity_ok=0 ;;
   esac
 done
+# Reverse direction (2026-07-17 audit L1): every ARGLESS shared wrapper must
+# also appear in CURLSH_WRAP. This is the direction that actually protects
+# against curl-sh FNs — adding a wrapper to S8_WRAP_ARGLESS (rm/npx gates)
+# without spelling it in the curl-sh regex silently opens
+# `curl … | <newwrap> sh` while the subset gate above stays green. FLAGGED
+# wrappers are legitimately absent (a bare `(WRAP)+` prefix can't match
+# `timeout 5 bash` — the duration token breaks the chain; see CURLSH_WRAP
+# comment), so only ARGLESS is asserted.
+ARGLESS_SET=$(grep -oE 'S8_WRAP_ARGLESS=\([^)]*\)' "$HOOK" | sed -E 's/.*\(//; s/\)//')
+if [[ -z "$ARGLESS_SET" ]]; then
+  echo "FAIL [curl-sh-parity]: could not extract S8_WRAP_ARGLESS"; parity_ok=0
+fi
+for m in $ARGLESS_SET; do
+  case " $CURLSH_MEMBERS " in
+    *" $m "*) ;;
+    *) echo "FAIL [curl-sh-parity]: ARGLESS wrapper '$m' missing from CURLSH_WRAP (silent curl-sh FN)"; parity_ok=0 ;;
+  esac
+done
 if (( parity_ok == 1 )); then
-  echo "PASS: curl-sh wrapper set ⊆ shared taxonomy"; PASS=$((PASS + 1))
+  echo "PASS: curl-sh wrapper set ⊆ shared taxonomy ∧ ARGLESS ⊆ curl-sh set"; PASS=$((PASS + 1))
 else
   FAIL=$((FAIL + 1))
 fi

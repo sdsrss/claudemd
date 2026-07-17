@@ -17,7 +17,12 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: [20]
+        # 20 = engines floor (node:sqlite absent — exercises the degradation
+        # path where memory-maintenance self-skips); 22 = node:sqlite present —
+        # exercises the real cross-layer query. With only [20] the actual SQL
+        # path was CI-invisible: a query/schema regression shipped green while
+        # the suite reported the test as skipped (2026-07-17 audit).
+        node: [20, 22]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6

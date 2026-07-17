@@ -182,14 +182,43 @@ sanitize_cmd() {
   # `echo "$A""$B"`). Walking char-by-char keeps adjacent quoted regions distinct.
   #
   # Body handling, per quote type:
-  #   '...'  → always drop (no shell expansion inside single quotes)
+  #   '...'  → simple literal word ([A-Za-z0-9_./-]+) → UNWRAP to the bare word;
+  #            anything else → drop to `''` (no shell expansion inside singles)
   #   "..."  → body has `$` → preserve verbatim (real var expansion / command sub)
-  #            body has no `$` → replace with empty `""`
+  #            simple literal word → UNWRAP to the bare word
+  #            anything else → replace with empty `""`
+  #   empty pair (`""`/`''`) → DROP when adjacent to a word or quote char on
+  #            either side (it glues word halves: `ba""sh` execs bash); KEEP the
+  #            marker when standalone (`echo ""` token boundary preserved).
+  # The unwrap + adjacent-drop close the quoted/split command-word §8 bypass
+  # (2026-07-17 audit F1): `"rm" -rf $X`, `r""m`, `ba''sh`, `curl x | "bash"`
+  # previously canonicalized to `""`/`ba''sh` and matched NO gate, while the
+  # shell execs rm/bash. The shell strips quotes at exec time, so unwrapping a
+  # LITERAL word can only EXPOSE tokens the shell would run — never hide one
+  # (same monotonic argument as canon_cmd_words). Quoted bodies with spaces /
+  # `$` / metachars keep today's treatment, so phrases (`-m "fix rm usage"`)
+  # still strip and never false-deny.
   # Unterminated quote → keep the body verbatim: exposing text to a deny-on-match
   # detector can only false-DENY, never bypass. Escape sequences (`\"` inside
-  # "...") are not modeled — pre-existing gap, not in scope.
+  # "...") are not modeled — pre-existing gap, not in scope. KNOWN RESIDUAL
+  # (deliberate double-evasion, same bar as the heredoc note above): a quoted
+  # RUNNER before an indirect payload (`"bash" -c 'rm -rf $X'`) unwraps only
+  # AFTER unwrap_indirect already ran, so the payload stays stripped — the
+  # combo is not chased here.
   out=$(printf '%s' "$out" | awk '
-    BEGIN { RS = "\004" }
+    BEGIN { RS = "\004"; WORDC = "[A-Za-z0-9_./-]" }
+    # close_quote(body, marker): emit for one terminated quoted region.
+    #   simple literal word → the bare word (shell strips quotes at exec time);
+    #   empty body → drop entirely when glued to a word/quote char on either
+    #   side (`ba""sh`), keep the marker when standalone (`echo ""`);
+    #   anything else → the empty marker (existing stripping).
+    function close_quote(body, marker, prevch, nextch) {
+      if (body ~ ("^" WORDC "+$")) return body
+      if (body == "" && (prevch ~ WORDC || nextch ~ WORDC \
+                         || prevch == "\047" || prevch == "\"" \
+                         || nextch == "\047" || nextch == "\"")) return ""
+      return marker
+    }
     {
       n = length($0)
       st = 0; buf = ""; has_dollar = 0; final = ""
@@ -200,12 +229,15 @@ sanitize_cmd() {
           else if (ch == "\"") { st = 2; buf = ""; has_dollar = 0 }
           else final = final ch
         } else if (st == 1) {
-          if (ch == "\047") { final = final "\047\047"; st = 0; buf = "" }
+          if (ch == "\047") {
+            final = final close_quote(buf, "\047\047", substr(final, length(final), 1), substr($0, i+1, 1))
+            st = 0; buf = ""
+          }
           else buf = buf ch
         } else {
           if (ch == "\"") {
             if (has_dollar) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
-            else final = final "\"\""
+            else final = final close_quote(buf, "\"\"", substr(final, length(final), 1), substr($0, i+1, 1))
             st = 0; buf = ""; has_dollar = 0
           } else if (ch == "$") {
             has_dollar = 1; buf = buf ch

@@ -72,11 +72,17 @@ export function readManifest() {
 // CC encodes a project cwd → the `~/.claude/projects/<dir>` directory name by
 // replacing EVERY non-[a-zA-Z0-9-] char with '-'. This is the single JS source
 // for that transform and MUST stay identical to the production hooks'
-// `hook_encode_project` (hooks/lib/rule-hits.sh:15 — `tr -c 'a-zA-Z0-9-' '-'`);
+// `hook_encode_project` (hooks/lib/rule-hits.sh — character-wise bash loop);
 // a JS-side encoder that locates a transcript/project dir the hooks wrote has
 // to agree byte-for-byte or it silently points at a non-existent dir. The
-// narrow `/[/._]/g` form (abandoned in the hooks, rule-hits.sh:9) leaves
-// spaces/+/@/() untouched and mis-locates any such cwd.
+// narrow `/[/._]/g` form (abandoned in the hooks) leaves spaces/+/@/()
+// untouched and mis-locates any such cwd. The identity is PINNED by a
+// cross-language parity test (tests/hooks/rule-hits.test.sh ARCH-2, CJK +
+// accented + specials fixtures) — pre-2026-07-17 the bash side was `tr -c`
+// (byte-wise) and every CJK char diverged (1 dash here, 3 there). Known
+// residual: non-BMP chars (emoji) — this replace counts UTF-16 code units
+// (2 dashes), the bash loop counts codepoints (1 dash); no real project
+// path hits this.
 export function encodeProjectCwd(cwd) {
   return String(cwd).replace(/[^a-zA-Z0-9-]/g, '-');
 }

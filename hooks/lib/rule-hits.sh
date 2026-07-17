@@ -11,8 +11,30 @@
 #   lib (sourced standalone by tests AND eagerly by hook-common.sh) so all
 #   consumers share ONE definition — no `declare -F`-guarded inline fallback
 #   (that silent-divergence anti-pattern is feedback_hook_platform_lib_source).
+#
+#   CHARACTER-wise, not byte-wise (2026-07-17 audit): CC's encoder is a Node
+#   String.replace, so a CJK char yields ONE `-`. The previous `tr -c` was
+#   byte-wise — `/home/项目x` became `-home-------x` (3 dashes per CJK char)
+#   while scripts/lib/paths.js#encodeProjectCwd (and CC itself) produce
+#   `-home---x` — the two sides of the language seam disagreed and every JS
+#   auditor mis-located ~/.claude/projects/<encoded> for non-ASCII cwds.
+#   Cross-language parity is now pinned by rule-hits.test.sh (CJK fixture).
+#   The character class is spelled out (no `[a-z]` ranges): bash pattern ranges
+#   collate per-locale and can swallow accented letters JS would map to `-`.
+#   ${s:i:1} slicing needs a UTF-8 LC_CTYPE (CC always runs in one); under
+#   LC_ALL=C it degrades to byte-wise — exactly the old tr behavior, never worse.
+#   Non-BMP chars (emoji) remain a known residual: JS counts UTF-16 units (2
+#   dashes), bash counts codepoints (1 dash). No real project path hits this.
 hook_encode_project() {
-  printf '%s' "${1:-}" | tr -c 'a-zA-Z0-9-' '-'
+  local s="${1:-}" out="" c i
+  for (( i=0; i<${#s}; i++ )); do
+    c="${s:i:1}"
+    case "$c" in
+      [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-]) out+="$c" ;;
+      *) out+="-" ;;
+    esac
+  done
+  printf '%s' "$out"
 }
 
 # rule_hits_append HOOK EVENT EXTRA_JSON [SPEC_SECTION] [SESSION_ID] [TOOL_USE_ID]

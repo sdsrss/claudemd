@@ -223,3 +223,40 @@ EOexp="-mnt-data-ssd-dev-projects-claude-md-v2"
 [[ -z "$(run 'hook_encode_project ""')" ]] || { echo "FAIL: hook_encode_project empty should be empty"; exit 1; }
 echo "PASS: hook_encode_project encoding"
 
+# ARCH-2 (2026-07-17 audit): CROSS-LANGUAGE parity — bash hook_encode_project
+# must agree with scripts/lib/paths.js#encodeProjectCwd for every BMP input.
+# The two sides of the seam are consumed jointly (bash hooks WRITE encoded
+# project fields / CC writes ~/.claude/projects dirs; JS auditors READ both);
+# pre-fix the bash side was byte-wise so any CJK cwd diverged (`/home/项目x` →
+# bash `-home-------x` vs JS `-home---x`) and JS auditors silently mis-located
+# the project dir. Fixtures stress each divergence class: multibyte CJK
+# (byte-vs-codepoint), accented Latin (locale range collation), specials
+# (`+`/`@`/space — the feedback_cc_cwd_encoding_dots class), plain ASCII.
+# Non-BMP (emoji) is a documented residual (UTF-16 units vs codepoints), not
+# tested. Skips (with FAIL) if node is unavailable — CI always has it.
+PATHS_JS="$(cd "$(dirname "$0")/../../scripts/lib" && pwd)/paths.js"
+js_encode() {
+  node --input-type=module -e '
+    import { pathToFileURL } from "node:url";
+    const [lib, raw] = process.argv.slice(1);
+    const m = await import(pathToFileURL(lib).href);
+    process.stdout.write(m.encodeProjectCwd(raw));
+  ' "$PATHS_JS" "$1"
+}
+if ! command -v node >/dev/null 2>&1; then
+  echo "FAIL: ARCH-2 parity needs node on PATH"; exit 1
+fi
+ARCH2_FIXTURES=(
+  "/home/项目x"
+  "/home/usér/prôjet"
+  "/home/user/my proj+x@y"
+  "/mnt/data_ssd/dev/projects/claude.md_v2"
+)
+for f in "${ARCH2_FIXTURES[@]}"; do
+  bash_enc=$(run "hook_encode_project '$f'")
+  js_enc=$(js_encode "$f")
+  [[ -n "$bash_enc" && "$bash_enc" == "$js_enc" ]] \
+    || { echo "FAIL: ARCH-2 parity on '$f': bash='$bash_enc' js='$js_enc'"; exit 1; }
+done
+echo "PASS: hook_encode_project ≡ encodeProjectCwd (cross-language parity, ${#ARCH2_FIXTURES[@]} fixtures)"
+
