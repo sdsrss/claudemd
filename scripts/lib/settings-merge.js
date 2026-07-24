@@ -23,6 +23,13 @@ export function writeSettings(obj) {
   fs.renameSync(tmp, p);
 }
 
+// NOT live production wiring (2026-07-24 audit P2-10): hooks register via the
+// plugin's own hooks/hooks.json since v0.1.5 — install.js only EVICTS from
+// settings.json (unmergeHook below) and never merges in. Retained because the
+// settings-merge test suite uses it as the canonical fixture builder for the
+// historical merged shape that unmergeHook must still evict. Do not wire it
+// back into install without re-reading the v0.1.2-0.1.4 ${CLAUDE_PLUGIN_ROOT}
+// expansion incident in isClaudemdLegacyHookCommand's comment.
 export function mergeHook(settings, spec) {
   const { event, matcher, command, timeout } = spec;
   if (!settings.hooks) settings.hooks = {};

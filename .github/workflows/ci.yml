@@ -38,8 +38,15 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             sudo apt-get update -y && sudo apt-get install -y jq shellcheck
           fi
-      - name: Shellcheck hooks (warn-only)
-        run: shellcheck hooks/*.sh hooks/lib/*.sh || echo "shellcheck warnings (non-blocking)"
+      - name: Shellcheck (blocking at warning+; info advisory)
+        run: |
+          # 2026-07-24 audit P2-11: was warn-only (`|| echo`) — a real regression
+          # (unquoted expansion in a new hook) could never redden CI. Baseline
+          # cleaned same day (env-hygiene shell directive, dead TRIGGER_RE);
+          # warning+ now blocks, info-level stays a visible non-blocking report.
+          shellcheck --severity=warning hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh
+          shellcheck hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh \
+            || echo "shellcheck info-level notes above (non-blocking)"
       - name: Reject bash 4+ constructs in hooks (macOS bash 3.2 portability gate)
         run: |
           # v0.23.8 — static backstop for the macOS bash-3.2 regression class.

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.20.0 — Extended
+# AI-CODING-SPEC v6.20.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -364,7 +364,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 
 **Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. Rationale: without a skill's step-list pulling the agent forward, `git commit` looks like a natural pause, and the user's ship AUTH — which per §5 "per-task, per-scope" already covers push/tag/release — gets re-litigated one manual step at a time. User's single `[AUTH]` on ship is one AUTH on the full pipeline.
 
-**Runbook fast-path (ship-trigger only, v6.19.0)**: a project's ship-runbook memory (§11-EXT Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
+**Runbook fast-path (ship-trigger only, v6.19.0)**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
 
 ### Review-finding repair
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.
@@ -405,7 +405,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` wins per §3 TRUST order. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 22 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 14 self / 1 both / 1 external (v6.13).
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 23 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 14 self / 1 both / 1 external (v6.20.1).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
@@ -477,19 +477,17 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.20.0 (minor, 2026-07-15)** — §2.1 Model tiering removed (operator decision: model self-allocates spawned-agent tiers; quality-first, zero spec constraint):
+**v6.20.1 (patch, 2026-07-24)** — production-readiness-audit letter fixes (wording / cross-ref, identical behavior):
 
-- `[remove]` **§2.1 Model tiering (core) + §2.1-EXT MODEL TIERING (extended)**: the entire spawned-agent tier-selection rule — downgrade-eligible category enumeration, the NEVER-downgrade list, the verifier ≥ generator invariant, and the anomalous-output re-run clause. Rationale: the `Agent` tool already defaults to inheriting the parent (session) model when `model` is omitted, so quality-first is the harness default with no spec text; the model picks per-spawn tiers on its own judgment. SHOULD-level rule, `hard-rules.json` untouched — no hook change. §2.1 ROUTE `sp:dispatching-parallel-agents` row lost its "note downgrade" annotation.
+- `[fix]` **§13 META partition counts**: "22 HARD rules … 6 hook" → "23 … 7 hook" — stale since the §8-curl-sh manifest entry (2026-07-13). New drift test `hard-rules-9` pins the §13 prose counts to the reduce-computed `hard-rules.json` partition, closing the class.
+- `[fix]` **Duplicate §EXT heading ids made unique**: `§7-EXT TMP_RETENTION` → `§7-EXT-TMP`, `§11-EXT Memory operations` → `§11-EXT-MEM`, `§11-EXT macOS` → `§11-EXT-MAC` (`§7-EXT VALIDATE` / `§11-EXT Session heuristics` stay canonical); `### MEMORY.md tag syntax` relocated from under §0.2-EXT (structural orphan) into §11-EXT-MEM; core pointers updated. `spec-coherence-audit` CHECK 1 now flags duplicate `##+ §id` headings.
+- `[change]` **Recent-changes externalization**: the v6.20.0 entry now lives only in `CLAUDE-changelog.md` (it was already recorded there); extended keeps the current entry per the v6.9.0 convention.
 
-### Why minor (and why now)
+**Older entries** (v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-One SHOULD-level rule removed → minor per §13 META; no HARD touched (`hard-rules.json` unchanged). Rule removal adds budget back per §13.2 and resets the 20-task counter. Operator rationale: the single real-world sample of the rule firing (2026-07-15 ubuntu-sec) showed the orchestrator self-allocating verify/review subagents to sonnet — including same-tier self-review — which the removed guardrail was meant to prevent; the operator judged that trusting the model's own allocation (with the harness's inherit-by-default) beats a spec constraint that added ceremony without reliably improving quality. Quality-first: default inherit already routes spawns to the best model; nothing nudges toward cheaper tiers anymore. Trade-off accepted: no spec text stops a future verify-downgrade — tracked in `feedback_tiering_verify_downgrade_gap.md`, reopenable if it recurs.
+**Sizing** (v6.20.1, 2026-07-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24434 → 24467 bytes (Δ +33: §7/§11 pointer suffixes); extended 48699 → 47720 bytes (Δ −979: v6.20.0 Recent-changes entry externalized, offset by anchor suffixes + v6.20.1 entry); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24467/25000 (**533 bytes headroom, 97.87%**); extended 47720/50000 (**2280 bytes headroom, 95.44%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Older entries** (v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 §11-EXT ship-runbook consolidation, v6.15.1 §0.1 operator-threshold relocation, v6.15.0 §2.1 Model tiering + Candidate-1 net-delete, v6.14.2 trigger-list `e.g.` markers + context7 conditionalized, v6.14.1 §2.1 skill-MUST-invoke clarification, v6.14.0 §10 template relax + vocab trim, v6.13.2 terminology + §13 enforcement partition, v6.13.0 Three-tier default, v6.12.0 §13.3 + body-structure scope, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
-
-**Sizing** (v6.20.0, 2026-07-15, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24823 → 24434 bytes (Δ −389: §2.1 Model tiering paragraph removed); extended 48706 → 48700 bytes (Δ −6: §2.1-EXT MODEL TIERING removed ≈ −447, offset by the longer v6.20.0 Recent-changes/Why-minor/carry-forward prose); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24434/25000 (**566 bytes headroom, 97.74%**); extended 48700/50000 (**1300 bytes headroom, 97.40%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
-
-**Operator carry-forward**: v6.20.0 is a standalone net-delete (§2.1 Model tiering removed, core + extended) — frees core + extended budget, no paired addition needed (§0.1 net-delete is fine standalone; the candidate pool `tasks/core-net-delete-candidates-v6.14.md` stays **empty**). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Runbook stamp: claudemd's ship-runbook re-stamped `@ v6.20.0` at ship (covered §EXT sections §12/§13 META/§2-EXT content unchanged).
+**Operator carry-forward**: v6.20.1 is a prose-only patch — no HARD rule change (`hard-rules.json` bumps spec_version only). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` restocked 2026-07-24 (C7-C12 ≈ −790B; C4 void); extended regained ~2.2KB headroom via Recent-changes externalization. Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Runbook stamp: claudemd's ship-runbook stamp `@ v6.20.0` is now stale — next ship full-loads extended and re-stamps `@ v6.20.1` (self-healing per §2.2).
 
 ## §1.5-EXT GLOSSARY
 
@@ -508,7 +506,7 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 **Published client** (binds `aggressive` Δ-contract judgment): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 
-## §7-EXT TMP_RETENTION policy
+## §7-EXT-TMP TMP_RETENTION policy
 
 **`~/.claude/tmp/` retention**: harness SHOULD purge `mtime > 7d` at SessionStart (tool-exhaust, not WIP). Residue check ≥100 stale (>7d) + unconfigured harness → surface recommendation inline; no auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
 
@@ -523,7 +521,7 @@ Demoted from core §11 in v6.11.0 + CC-borrowed in v6.11.7; consolidated in v6.1
 - **Diagnose-before-pivot** (`prompts.ts:178`): approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
 - **Existing-comment protection** (`prompts.ts:161`): don't remove old comments unless removing the code they describe OR verified them wrong this session. §1 "default to writing no comments" addresses *new* comments, not pruning old.
 
-## §11-EXT Memory operations
+## §11-EXT-MEM Memory operations
 
 Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11) in v6.11.14. One home per fact — double-writing creates drift.
 
@@ -556,14 +554,6 @@ Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11)
 
 After any `memory/*.md` write: refresh `MEMORY.md` index line.
 
-## §0.2-EXT Mid-task feedback (continued)
-
-Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains the three non-obvious cases — Refinement / Quality slider / Scope-expansion — and points here for the rest).
-
-- **Continuation** (e.g. "继续/next"): same SPINE.
-- **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
-- **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
-
 ### MEMORY.md tag syntax
 
 - Optional `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before Read.
@@ -572,6 +562,14 @@ Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains
 - Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.
 - **Ship-runbook consolidation (SHOULD, v6.16.0)**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook, holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; other ship-adjacent lessons keep their topical tags and get `[[links]]` from the runbook instead of own ship tags. Effect: §11 read-the-file at ship costs one predictable Read instead of tag fan-out.
 
-## §11-EXT macOS shell portability (cross-ref)
+## §0.2-EXT Mid-task feedback (continued)
+
+Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains the three non-obvious cases — Refinement / Quality slider / Scope-expansion — and points here for the rest).
+
+- **Continuation** (e.g. "继续/next"): same SPINE.
+- **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
+- **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
+
+## §11-EXT-MAC macOS shell portability (cross-ref)
 
 Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) captured in memory anchors — moved out of spec in v6.11.14 because the patterns are repo-implementation detail, not spec rules. See `feedback_macos_shell_portability.md` (4 patterns) + `feedback_hook_platform_lib_source.md` (silent fallthrough — must `source` `hooks/lib/platform.sh`, `command -v` guard alone falls silently false). Failures surface in CI red, not silent prod.

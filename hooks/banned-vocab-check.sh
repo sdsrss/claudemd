@@ -72,8 +72,6 @@ echo "$CMD_FLAT" | grep -qE "$GIT_COMMIT_RE" && IS_GIT_COMMIT=1
 echo "$CMD_FLAT" | grep -qE "$SHIP_VERB_RE" && IS_SHIP_VERB=1
 (( IS_GIT_COMMIT == 0 && IS_SHIP_VERB == 0 )) && exit 0
 
-# Back-compat alias — body below references TRIGGER_RE in legacy comments.
-TRIGGER_RE="$GIT_COMMIT_RE"
 
 # Per-invocation escape hatch
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then

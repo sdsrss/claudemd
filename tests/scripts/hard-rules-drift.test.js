@@ -197,6 +197,34 @@ test('hard-rules-8: every hook DENY section is backed by a manifest entry', () =
     `\nResolution: add a manifest entry with rule_hits_section: <section> so /claudemd-rules can account its denies/bypasses.`);
 });
 
+test('hard-rules-9: §13 META partition prose matches computed manifest partition', () => {
+  // 2026-07-24 audit P1-2: the §13 META line in CLAUDE-extended.md tells the
+  // agent how many HARD rules exist and how many auto-block ("Today: N hook /
+  // N self / N both / N external"). It drifted silently when §8-curl-sh joined
+  // the manifest (22→23 rules, 6→7 hook) because tests 1-8 verify anchors and
+  // coverage but nothing verified these prose COUNTS. A model reading a stale
+  // "6 hook" under-counts the mechanical gate and trusts self-enforcement
+  // where a hook exists. This test closes the class: parse the prose counts
+  // and assert they equal the reduce-computed partition of hard-rules.json.
+  const m = loadManifest();
+  const ext = readSpec('extended');
+  const totalM = ext.match(/partitions the (\d+) HARD rules/);
+  assert.ok(totalM, 'CLAUDE-extended.md §13 META must contain "partitions the <N> HARD rules"');
+  const todayM = ext.match(/Today: (\d+) hook \/ (\d+) self \/ (\d+) both \/ (\d+) external/);
+  assert.ok(todayM, 'CLAUDE-extended.md §13 META must contain "Today: N hook / N self / N both / N external"');
+  const tally = { hook: 0, self: 0, both: 0, external: 0 };
+  for (const r of m.rules) tally[r.enforcement] += 1;
+  const prose = {
+    total: Number(totalM[1]),
+    hook: Number(todayM[1]), self: Number(todayM[2]),
+    both: Number(todayM[3]), external: Number(todayM[4]),
+  };
+  const actual = { total: m.rules.length, ...tally };
+  assert.deepEqual(prose, actual,
+    `§13 META partition prose drifted from spec/hard-rules.json — update the "partitions the N HARD rules" / "Today: …" line in CLAUDE-extended.md to: ` +
+    `${actual.total} HARD rules, Today: ${actual.hook} hook / ${actual.self} self / ${actual.both} both / ${actual.external} external`);
+});
+
 test('hard-rules-6: manifest schema sanity — required fields present', () => {
   const m = loadManifest();
   const required = ['id', 'name', 'scope', 'section_anchor', 'enforcement', 'rule_hits_section', 'added_version', 'confidence', 'last_demote_review'];

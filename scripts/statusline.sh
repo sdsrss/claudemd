@@ -58,14 +58,20 @@ if [ -n "$cwd" ]; then
   path_part="${esc}[01;34m${dir:-$cwd}${esc}[00m"
 fi
 
-# branch — magenta; detached HEAD → short SHA; only inside a repo
+# branch — magenta; detached HEAD → short SHA; only inside a repo.
+# git can hang on a stale NFS/fuse mount and the statusline renders constantly,
+# so bound it with `timeout 1` where coreutils timeout exists (macOS stock has
+# none — bare git there; CC's own statusline timeout stays the backstop).
+git_bounded() {
+  if command -v timeout >/dev/null 2>&1; then timeout 1 git "$@"; else git "$@"; fi
+}
 branch_part=""
 if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-  branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  branch=$(git_bounded -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
   if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
     branch_part=" ${esc}[00;35m(${branch})${esc}[00m"
   elif [ -n "$branch" ]; then
-    sha=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
+    sha=$(git_bounded -C "$cwd" rev-parse --short HEAD 2>/dev/null)
     [ -n "$sha" ] && branch_part=" ${esc}[00;35m(detached:${sha})${esc}[00m"
   fi
 fi

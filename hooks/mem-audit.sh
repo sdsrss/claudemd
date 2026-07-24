@@ -52,6 +52,14 @@ if [[ -f "$SENTINEL" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   fi
 fi
 
+# Touch the sentinel BEFORE the scan (2026-07-24 audit P2-4): the per-project
+# loop can exceed the 3s hooks.json timeout on installs with many projects; CC
+# kills the hook before a post-loop touch, so the sentinel never advanced and
+# EVERY subsequent Stop re-ran the full scan. Touching first means even a
+# timeout-killed run buys 24h of quiet; the cost is one skipped report cycle
+# after a killed scan (acceptable — this hook is advisory-only).
+touch "$SENTINEL" 2>/dev/null || true
+
 PROJECTS_ROOT="$HOME/.claude/projects"
 [[ -d "$PROJECTS_ROOT" ]] || exit 0
 
@@ -157,9 +165,6 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
     fi
   done <<< "$on_disk_list"
 done
-
-# Touch sentinel even on zero-missing — prevents repeat scans within 24h.
-touch "$SENTINEL" 2>/dev/null || true
 
 if [[ "$MISSING" -eq 0 && "$DRIFT" -eq 0 ]]; then
   exit 0

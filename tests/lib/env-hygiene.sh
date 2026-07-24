@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # env-hygiene.sh — scrub user-tunable claudemd env vars at test entry.
 #
 # QA ISSUE-001: the invoking shell commonly exports claudemd knobs

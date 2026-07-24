@@ -136,6 +136,42 @@ test('ext-cross-refs: surfaces unresolved §EXT ref as CRITICAL', () => {
   }
 });
 
+test('ext-cross-refs: duplicate ##+ §id headings surface as HIGH (v6.20.1 audit P2-14)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
+  try {
+    makeSpecFixture(tmpDir, {
+      coreContent: 'See §EXT §11-EXT for detail.\n',
+      extendedContent: '## §11-EXT Session heuristics\n\n## §11-EXT Memory operations\n',
+    });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'ext-cross-refs');
+    assert.equal(check.ok, false, 'duplicate heading ids must fail the check');
+    const dup = check.findings.find(f => f.severity === 'HIGH');
+    assert.ok(dup, 'expected a HIGH duplicate-heading finding');
+    assert.match(dup.detail, /2 `##\+ §11-EXT` headings/);
+    assert.equal(check.stats.duplicateHeadingCount, 1);
+    assert.equal(check.stats.unresolvedCount, 0, 'the ref itself still resolves — ambiguity, not breakage');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('ext-cross-refs: multi-suffix ids (§11-EXT-MEM) resolve as one id', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
+  try {
+    makeSpecFixture(tmpDir, {
+      coreContent: 'Memory routing: full → §EXT §11-EXT-MEM.\n',
+      extendedContent: '## §11-EXT-MEM Memory operations\n',
+    });
+    const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
+    const check = r.checks.find(c => c.name === 'ext-cross-refs');
+    assert.equal(check.ok, true, `multi-suffix ref must resolve (findings: ${JSON.stringify(check.findings)})`);
+    assert.equal(check.stats.unresolvedCount, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('ext-cross-refs: literal §X-EXT placeholder is NOT treated as a ref', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
   try {

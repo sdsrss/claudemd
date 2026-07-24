@@ -979,6 +979,21 @@ CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CUR
 CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
+  # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments
+  # and transparent exec-wrappers from the FETCH side (shared s8_strip_wrappers —
+  # parity with the rm/npx gates), so `sudo curl … | sh` / `FOO=1 curl … | sh` /
+  # `nohup curl … | sh` deny like the bare form. The sink side already strips via
+  # CURLSH_WRAP in the regex. Monotonic: stripping only ever removes a prefix,
+  # exposing more text to a deny-on-match regex — no allow→deny flip is possible
+  # for a segment whose stripped head is not curl/wget. Residuals (documented):
+  # option-with-arg wrapper forms (`sudo -u svc curl`) and a wrapper after a
+  # mid-segment background `&` (`foo & sudo curl x | sh` — `&` is not a split
+  # char here); [allow-curl-sh] is the escape.
+  cseg="${cseg#"${cseg%%[![:space:]]*}"}"
+  while [[ "$cseg" == \(* || "$cseg" == \{* ]]; do
+    cseg="${cseg#?}"; cseg="${cseg#"${cseg%%[![:space:]]*}"}"
+  done
+  cseg=$(s8_strip_wrappers "$cseg")
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
     curlsh_hit=1; break
   fi

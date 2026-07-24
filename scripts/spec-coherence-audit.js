@@ -83,7 +83,11 @@ function extractExtRefs(coreText) {
   // so a dangling `§10-R` ref matched an unrelated `§10-V` heading — defeating
   // CHECK 1 (the audit's flagship "core cites §X but section never landed") for
   // every suffix except -EXT.
-  const re = /§EXT[ \t]+§([0-9.]+(?:-[A-Za-z]+)?)/g;
+  // Multi-suffix ids (`§11-EXT-MEM`, `§7-EXT-TMP`) are one id — `*` not `?`
+  // (v6.20.1 made duplicate anchors unique via a second suffix segment).
+  // Dot segments must carry an alnum tail (`4.FULL`, `2.S`, `5.1`) so a
+  // sentence-terminating dot after `§EXT §12.` is never captured.
+  const re = /§EXT[ \t]+§([0-9]+(?:\.[0-9A-Za-z]+)*(?:-[A-Za-z]+)*)/g;
   let m;
   while ((m = re.exec(coreText)) !== null) {
     let id = m[1];
@@ -97,16 +101,27 @@ function extractExtRefs(coreText) {
 }
 
 // Extract section anchors from extended. Pattern: `^##+ §<id>` at line start.
-// Returns a Set of <id> strings.
+// Returns { sections: Set<id>, duplicates: [{id, count}] }. Duplicates matter
+// because refs resolve into a Set: two `## §11-EXT …` headings both "resolve",
+// but a reader following a bare `§EXT §11-EXT` pointer lands on whichever they
+// read first — the exact ambiguity the 2026-07-24 audit flagged (P2-14). The
+// v6.20.1 rename made today's set unique; this check keeps it that way.
 function extractExtendedSections(extendedText) {
-  const sections = new Set();
+  const counts = new Map();
   const lines = extendedText.split('\n');
-  const re = /^#{2,}\s+§([0-9.]+(?:-[A-Za-z]+)?)/;  // full suffix, see extractExtRefs
+  // Same token shape as extractExtRefs. The dot-segment alnum tail matters
+  // here too: the old `[0-9.]+` collapsed `### §4.FULL` and `### §4.FULL-lite`
+  // both to id `4.` — a phantom duplicate the moment duplicates were counted.
+  const re = /^#{2,}\s+§([0-9]+(?:\.[0-9A-Za-z]+)*(?:-[A-Za-z]+)*)/;
   for (const line of lines) {
     const m = re.exec(line);
-    if (m) sections.add(m[1]);
+    if (m) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
   }
-  return sections;
+  return {
+    sections: new Set(counts.keys()),
+    duplicates: [...counts.entries()].filter(([, n]) => n > 1)
+      .map(([id, count]) => ({ id, count })),
+  };
 }
 
 function checkExtCrossRefs(specDir) {
@@ -124,20 +139,31 @@ function checkExtCrossRefs(specDir) {
   const coreText = fs.readFileSync(corePath, 'utf8');
   const extText = fs.readFileSync(extPath, 'utf8');
   const refs = extractExtRefs(coreText);
-  const sections = extractExtendedSections(extText);
+  const { sections, duplicates } = extractExtendedSections(extText);
   const unresolved = [...refs].filter(r => !sections.has(r)).sort();
+  const findings = unresolved.map(id => ({
+    severity: 'CRITICAL',
+    detail: `core references §${id} but no matching ##+ §${id} heading in spec/CLAUDE-extended.md`,
+  }));
+  // Duplicate heading ids: resolution "succeeds" but the target is ambiguous.
+  // HIGH (not CRITICAL): navigation trap, not a broken contract.
+  for (const d of duplicates) {
+    findings.push({
+      severity: 'HIGH',
+      detail: `spec/CLAUDE-extended.md has ${d.count} \`##+ §${d.id}\` headings — a §EXT §${d.id} pointer is ambiguous; give each a unique suffix (e.g. §${d.id}-TMP)`,
+    });
+  }
   return {
     name: 'ext-cross-refs',
-    ok: unresolved.length === 0,
-    severity: unresolved.length > 0 ? 'CRITICAL' : null,
-    findings: unresolved.map(id => ({
-      severity: 'CRITICAL',
-      detail: `core references §${id} but no matching ##+ §${id} heading in spec/CLAUDE-extended.md`,
-    })),
+    ok: findings.length === 0,
+    severity: findings.some(f => f.severity === 'CRITICAL') ? 'CRITICAL'
+      : (findings.length > 0 ? 'HIGH' : null),
+    findings,
     stats: {
       refsFound: refs.size,
       sectionsFound: sections.size,
       unresolvedCount: unresolved.length,
+      duplicateHeadingCount: duplicates.length,
     },
   };
 }
