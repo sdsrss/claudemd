@@ -458,8 +458,34 @@ EOF
 assert_deny "44: -vam combined flag block with banned message → deny" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# Case 45 (v0.57.0): the bypass row carries the term it suppressed + which path.
+# Pre-0.57.0 the token short-circuited before the scan, so the row held only
+# `{token}` and the §13.2 demote review could not join overrides to terms.
+BV_LOG_HOME=$(mktemp -d)
+TMP_FIX=$(mktemp)
+jq -cn '{session_id:"bv45",tool_name:"Bash",tool_input:{command:"git commit -m \"significantly improved parser [allow-banned-vocab]\""}}' > "$TMP_FIX"
+HOME="$BV_LOG_HOME" bash "$HOOK" < "$TMP_FIX" >/dev/null 2>&1
+BV_ROW=$(tail -n 1 "$BV_LOG_HOME/.claude/logs/claudemd.jsonl" 2>/dev/null)
+if echo "$BV_ROW" | jq -e '.event == "bypass-escape-hatch" and .extra.matched[0] == "significantly" and .extra.path == "commit-msg"' >/dev/null 2>&1; then
+  echo "PASS 45: bypass row carries matched term + path"
+else
+  echo "FAIL 45: bypass row missing matched/path (got: $BV_ROW)"; FAIL=$((FAIL + 1))
+fi
+# 45b: a token on a command that would have passed records NOTHING (prophylactic
+# tokens no longer inflate the override rate).
+jq -cn '{session_id:"bv45b",tool_name:"Bash",tool_input:{command:"git commit -m \"fix: 12/12 tests pass [allow-banned-vocab]\""}}' > "$TMP_FIX"
+BV_BEFORE=$(wc -l < "$BV_LOG_HOME/.claude/logs/claudemd.jsonl")
+HOME="$BV_LOG_HOME" bash "$HOOK" < "$TMP_FIX" >/dev/null 2>&1
+BV_AFTER=$(wc -l < "$BV_LOG_HOME/.claude/logs/claudemd.jsonl")
+if [[ "$BV_BEFORE" == "$BV_AFTER" ]]; then
+  echo "PASS 45b: prophylactic token on a clean command records no row"
+else
+  echo "FAIL 45b: clean-command token still recorded a bypass row"; FAIL=$((FAIL + 1))
+fi
+rm -f "$TMP_FIX"; rm -rf "$BV_LOG_HOME"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((44 - FAIL))/44 passed"
+  echo "Tests: $((46 - FAIL))/46 passed"
   exit 1
 fi
-echo "Tests: 44/44 passed"
+echo "Tests: 46/46 passed"

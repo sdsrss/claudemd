@@ -15,6 +15,17 @@ source "$HERE/lib/env-hygiene.sh" && claudemd_reset_test_env
 # shellcheck source=lib/run-suite.sh
 source "$HERE/lib/run-suite.sh"
 
+# Repo-write guard (2026-07-25 audit): no test or script may commit into the
+# real repository. This is a CLASS gate, not a per-file one — `perf-baseline.sh`
+# escaped through for two months precisely because only the files someone
+# thought to check were checked: its `git commit --allow-empty -m noop` probe
+# ran in the CALLER's cwd and left 46 empty commits on main across two clusters
+# (6 on 2026-05-10, 40 on 2026-07-17), pushed with the next release. Two lines
+# here cover every existing and future suite. Zero FP risk: a suite that needs
+# commits must make them in its own mktemp sandbox (§8.V3).
+GUARD_REPO="$(cd "$HERE/.." && pwd)"
+COMMITS_BEFORE=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo skip)
+
 echo "== Shell hook tests =="
 for t in "$HERE"/hooks/*.test.sh; do
   [[ -f "$t" ]] || continue
@@ -48,6 +59,14 @@ for t in "$HERE"/integration/*.test.sh; do
   echo "-- $(basename "$t")"
   run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
+
+COMMITS_AFTER=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo skip)
+if [[ "$COMMITS_BEFORE" != "skip" && "$COMMITS_BEFORE" != "$COMMITS_AFTER" ]]; then
+  echo "FAIL: the suite committed into the real repo ($COMMITS_BEFORE -> $COMMITS_AFTER)."
+  echo "      A test or script wrote commits outside its sandbox — find it with:"
+  echo "      git -C \"$GUARD_REPO\" log --oneline HEAD~$((COMMITS_AFTER - COMMITS_BEFORE))..HEAD"
+  FAIL=$((FAIL + 1))
+fi
 
 if (( FAIL > 0 )); then
   echo "OVERALL: $FAIL suite(s) failed"

@@ -126,7 +126,6 @@ DOCUMENTED=(
   "read:session-extended-read"
   "suggest:memory-prompt-hint"
   "suppress-source:memory-prompt-hint"
-  "mid-spine-advisory:mid-spine-yield-scan"
   "batch-cadence-advisory:session-end-check"
   "deny-prose:banned-vocab"
   "deny-prose-dry-run:banned-vocab"

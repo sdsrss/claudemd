@@ -77,7 +77,6 @@ Stop hook
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
 | Stop | `sandbox-disposal-check.sh` | mkdtemp residue advisory | `§8.V4` |
 | Stop | `mem-audit.sh` | MEMORY.md orphan/dangling advisory | `§11-EXT-mem-audit` |
-| Stop | `mid-spine-yield-scan.sh` | mid-SPINE turn-yield detection | `§11-mid-spine-yield` |
 | Stop | `transcript-structure-scan.sh` | REPORT four-section structure scan | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (dynamic) |
 | Stop | `session-summary.sh` | session deny/bypass/warn aggregation | n/a (writes to state file, not jsonl) |
 | SessionStart | `session-start-check.sh` | bootstrap on mismatch + upstream banner + session-summary banner | n/a |

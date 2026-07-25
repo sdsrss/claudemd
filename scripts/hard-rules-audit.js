@@ -109,8 +109,21 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // that; deferred to v0.8.1). When `insufficientData` is true (log span <
   // requested window), candidates are suppressed but surfaced in `demoteSuppressed`
   // so the operator sees what's potentially cold without auto-acting on it.
+  // Safety-class exemption (v0.57.0): §8 rules are §5.1 Never-downgrade — they
+  // cannot be demoted whatever the count, and their hit counts are sparse BY
+  // DESIGN (the attack surface they guard is rare, not absent). Listing them as
+  // demote candidates recommends a forbidden action and costs a re-adjudication
+  // every review — `§8-curl-sh` sat in the queue with `demoteSuppressed: null`
+  // through the 2026-07-25 audit. Same anchoring as doctor's IMMUTABLE_SECTION_RE.
+  // They still appear in `safetyClassExempt` so a zero-hit safety rule is
+  // visible (a gate that never fires may be broken — that is a correctness
+  // question for the FN matrix, not a demotion question).
+  const isSafetyClass = r => /^§8([.\-]|$)/.test(r.id);
+  const safetyClassExempt = hookEnforced
+    .filter(r => isSafetyClass(r) && r.hits && r.hits.total === 0)
+    .map(r => r.id);
   const wouldBeDemoteCandidates = hookEnforced
-    .filter(r => r.hits && r.hits.total === 0)
+    .filter(r => !isSafetyClass(r) && r.hits && r.hits.total === 0)
     .map(r => r.id);
   const demoteCandidates = insufficientData ? [] : wouldBeDemoteCandidates;
   const demoteSuppressed = insufficientData ? {
@@ -161,6 +174,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     insufficientData,
     demoteCandidates,
     demoteSuppressed,
+    safetyClassExempt,
     staleReviews,
     rules,
   };

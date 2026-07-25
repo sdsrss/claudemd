@@ -166,7 +166,8 @@ fi
 #
 # L2+ heuristic: this session emitted ≥1 rule-hits row with event in
 # {deny, warn, deny-repeat} (always-on signals) plus the opt-in
-# {structure-advisory, mid-spine-advisory} when their respective Stop scans
+# {structure-advisory} when its Stop scan is enabled (mid-spine-advisory
+# retired with its hook in v0.57.0 — the jq arm below still counts historical rows)
 # are enabled (TRANSCRIPT_STRUCTURE_SCAN=1 / MID_SPINE_YIELD_SCAN=1).
 # In default-OFF posture only the first three fire — sufficient coverage
 # (hook denies for §5-hard / §8 / §7 + unvalidated-mutation `warn` from

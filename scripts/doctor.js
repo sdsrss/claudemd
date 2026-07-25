@@ -379,7 +379,6 @@ export async function doctor({ pruneBackups: prune } = {}) {
     { hook: 'session-end-check.sh',         ks: 'DISABLE_SESSION_END_CHECK_HOOK',        event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' } },
     { hook: 'session-summary.sh',           ks: 'DISABLE_SESSION_SUMMARY_HOOK',          event: stopEvt },
     { hook: 'mem-audit.sh',                 ks: 'DISABLE_MEM_AUDIT_HOOK',                event: stopEvt },
-    { hook: 'mid-spine-yield-scan.sh',      ks: 'DISABLE_MID_SPINE_YIELD_HOOK',          event: stopEvt },
     { hook: 'residue-audit.sh',             ks: 'DISABLE_RESIDUE_AUDIT_HOOK',            event: stopEvt },
     { hook: 'sandbox-disposal-check.sh',    ks: 'DISABLE_SANDBOX_DISPOSAL_HOOK',         event: stopEvt },
     { hook: 'transcript-structure-scan.sh', ks: 'DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK', event: stopEvt },
@@ -530,8 +529,18 @@ export async function doctor({ pruneBackups: prune } = {}) {
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
         .map(([tok, n]) => `[${tok}]×${n}`)
         .join(', ');
+      // v0.57.0 — label corrected. This branch used to read "§0.1 demotion
+      // candidate", citing a rule the spec does not contain: §0.1 demotes on
+      // ZERO hits, and a bypass-rate threshold appears in the spec only as a
+      // §13.3 PROMOTION gate (<10% to advance). A high override rate is a real
+      // signal, but the action it licenses is a review, not a demotion — and
+      // the mislabel cost the operator a full re-adjudication every run
+      // (2026-07-25 audit; `tasks/banned-vocab-demote-evaluation-2026-07-25.md`
+      // settled the same question for §10-V). Since v0.57.0 `banned-vocab`
+      // bypass rows carry `extra.matched`, so the review can act per-term.
       push(`rule-usage:${section}`, false,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, §0.1 demotion candidate; bypass via ${tokenList})`);
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, high override — take to the §13.2 batch review; ` +
+        `no demote-by-bypass-rate rule exists, so this is not a demotion candidate); bypass via ${tokenList}`);
     } else {
       push(`rule-usage:${section}`, true,
         `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);

@@ -73,10 +73,22 @@ echo "$CMD_FLAT" | grep -qE "$SHIP_VERB_RE" && IS_SHIP_VERB=1
 (( IS_GIT_COMMIT == 0 && IS_SHIP_VERB == 0 )) && exit 0
 
 
-# Per-invocation escape hatch
+# Per-invocation escape hatch.
+#
+# v0.57.0 — the token no longer short-circuits before the scan. Pre-fix the row
+# carried only `{"token":"allow-banned-vocab"}`, so the question the §13.2
+# demote review has to answer — WHICH term does the operator keep overriding —
+# had no data behind it (deny rows carry `matched`, bypass rows did not; 30d:
+# 15 denies vs 16 bypasses, join impossible). The scan now runs first and the
+# bypass row is emitted AT the hit, carrying the same `matched` array.
+#
+# Measurement-semantics change (deliberate): a token on a command that would
+# have passed anyway now records NOTHING, where it previously recorded a bypass.
+# Prophylactic tokens were inflating the override rate — post-fix the count is
+# overrides only. Series before/after 0.57.0 are not comparable.
+BYPASS_VOCAB=0
 if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
-  hook_record banned-vocab bypass-escape-hatch '{"token":"allow-banned-vocab"}' '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
-  exit 0
+  BYPASS_VOCAB=1
 fi
 
 PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patterns"
@@ -168,6 +180,12 @@ if (( ${#HITS[@]} != 0 )); then
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
 
   HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
+  if (( BYPASS_VOCAB == 1 )); then
+    hook_record banned-vocab bypass-escape-hatch \
+      "{\"token\":\"allow-banned-vocab\",\"matched\":$HITS_JSON,\"path\":\"commit-msg\"}" \
+      '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+    exit 0
+  fi
   hook_record banned-vocab deny "{\"matched\":$HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
   hook_deny banned-vocab "$REASON_TEXT"
 fi
@@ -319,5 +337,11 @@ Bypass options:
 Spec: ~/.claude/CLAUDE.md §10 — Specificity (HARD)."
 
 PROSE_HITS_JSON=$(printf '%s\n' "${PROSE_HITS[@]}" | jq -R . | jq -s .)
+if (( BYPASS_VOCAB == 1 )); then
+  hook_record banned-vocab bypass-escape-hatch \
+    "{\"token\":\"allow-banned-vocab\",\"matched\":$PROSE_HITS_JSON,\"path\":\"prose\"}" \
+    '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
+  exit 0
+fi
 hook_record banned-vocab deny-prose "{\"matched\":$PROSE_HITS_JSON}" '§10-V' "$SESSION_ID" "$TOOL_USE_ID"
 hook_deny banned-vocab "$REASON_TEXT"

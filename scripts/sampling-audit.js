@@ -796,7 +796,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--global', '--json'],
+      bools: ['--global', '--json', '--force'],
       values: ['--days', '--sample'],
     });
   } catch (e) {
@@ -840,6 +840,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     const md = formatMarkdown(result);
     const outPath = path.join(process.cwd(), 'tasks', `sampling-audit-${today}.md`);
+    // Overwrite guard (v0.57.0). A plain re-run used to replace whatever sat at
+    // that path — on 2026-07-25 it silently reduced a committed, hand-annotated
+    // 216-line calibration record to a 16-line fresh scan (recovered via git).
+    // The file name is date-based, so a same-day second run always collides,
+    // and the annotated version is exactly the one worth keeping. Refuse unless
+    // --force; --json never writes at all.
+    if (fs.existsSync(outPath) && !parsed.bools.has('--force')) {
+      console.log(`${outPath} already exists — not overwriting.`);
+      console.log('  A same-day re-run would replace any hand-annotation on that file.');
+      console.log('  Re-run with --force to replace it, or --json to print without writing.');
+      return;
+    }
     try {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, md);

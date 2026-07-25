@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { status } from '../../scripts/status.js';
+import { HOOK_REGISTRY } from '../../scripts/lib/hook-registry.js';
 
 let tmpHome, savedHome;
 
@@ -145,9 +146,15 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   assert.ok(r.verbose.killSwitches, 'verbose.killSwitches must exist');
   assert.ok(r.verbose.killSwitches.global, 'global kill-switch entry must exist');
   assert.equal(r.verbose.killSwitches.global.envVar, 'DISABLE_CLAUDEMD_HOOKS');
-  // perHook must list all 16 shipped hooks (matches hook-registry.js).
-  assert.equal(r.verbose.killSwitches.perHook.length, 16,
+  // Dynamic join, not a pinned count (v0.57.0): a literal here needed a hand
+  // edit on every hook add/remove and asserted nothing the registry did not
+  // already state. What matters is that status enumerates the WHOLE registry.
+  assert.equal(r.verbose.killSwitches.perHook.length, HOOK_REGISTRY.length,
     'perHook must enumerate every entry in HOOK_REGISTRY');
+  const registryNames = new Set(HOOK_REGISTRY.map(h => h.displayName));
+  for (const h of r.verbose.killSwitches.perHook) {
+    assert.ok(registryNames.has(h.displayName), `perHook lists unknown hook ${h.displayName}`);
+  }
   const sample = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
   assert.ok(sample, 'banned-vocab hook must appear in perHook');
   assert.equal(sample.envVar, 'DISABLE_BANNED_VOCAB_HOOK');

@@ -147,13 +147,22 @@ test('demoteCandidates list hook-rules with zero hits (sufficient log span)', as
   );
   const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
   assert.equal(r.insufficientData, false, 'log span 31d > window 30d → sufficient');
-  // §8-rm-rf-var is enforcement="hook" — should appear as candidate when no
-  // signal in window AND log span is sufficient to evaluate.
-  assert.ok(r.demoteCandidates.includes('§8-rm-rf-var'),
-    'sufficient-span empty-window must surface §8-rm-rf-var as demote candidate');
+  // §11-memory-read is enforcement="hook" and NOT safety-class — it should
+  // appear as a candidate when no signal in window AND log span is sufficient.
+  assert.ok(r.demoteCandidates.includes('§11-memory-read'),
+    'sufficient-span empty-window must surface §11-memory-read as demote candidate');
   // §iron-law-2 is enforcement="self" — must NOT appear (would be false signal).
   assert.ok(!r.demoteCandidates.includes('§iron-law-2'),
     'self-enforced rules must NOT be demote candidates');
+  // v0.57.0: §8 rules are §5.1 Never-downgrade AND sparse by design (the attack
+  // surface they guard is rare, not absent) — listing them recommends a
+  // forbidden action. They move to safetyClassExempt, still visible.
+  for (const id of ['§8-rm-rf-var', '§8-npx', '§8-curl-sh']) {
+    assert.ok(!r.demoteCandidates.includes(id),
+      `safety-class ${id} must not be a demote candidate`);
+    assert.ok(r.safetyClassExempt.includes(id),
+      `safety-class ${id} must still surface under safetyClassExempt`);
+  }
 });
 
 // Bug surfaced v0.9.20 in dogfood session: log span 17d < requested 90d window
@@ -172,9 +181,11 @@ test('insufficientData flag set when log span < requested window', async () => {
     'insufficient-data must suppress demoteCandidates to prevent false demote signals');
   assert.ok(r.demoteSuppressed, 'demoteSuppressed must surface when insufficient');
   assert.match(r.demoteSuppressed.reason, /log spans 0\.0d.*requires 30d/);
+  assert.ok(!r.demoteSuppressed.wouldHaveBeen.some(id => id.startsWith('§8')),
+    'safety-class rules stay out of wouldHaveBeen too (exempt before suppression)');
   assert.ok(Array.isArray(r.demoteSuppressed.wouldHaveBeen),
     'wouldHaveBeen surfaces what would have been demoted with sufficient data');
-  assert.ok(r.demoteSuppressed.wouldHaveBeen.includes('§8-rm-rf-var'),
+  assert.ok(r.demoteSuppressed.wouldHaveBeen.includes('§11-memory-read'),
     'wouldHaveBeen retains the candidates so operator can see them as provisional');
 });
 

@@ -150,7 +150,7 @@ test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a cle
   const EXPECTED = [
     'memory-read-check', 'ship-baseline-check', 'session-extended-read',
     'transcript-vocab-scan', 'session-end-check', 'session-summary',
-    'mem-audit', 'mid-spine-yield-scan', 'residue-audit',
+    'mem-audit', 'residue-audit',
     'sandbox-disposal-check', 'transcript-structure-scan', 'memory-prompt-hint',
   ];
   const r = await doctor({});

@@ -29,7 +29,6 @@ export const HOOK_REGISTRY = [
   { basename: 'session-summary.sh',       displayName: 'session-summary',       envVarSuffix: 'SESSION_SUMMARY',   hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'transcript-vocab-scan.sh', displayName: 'transcript-vocab-scan', envVarSuffix: 'TRANSCRIPT_VOCAB_SCAN', hookEvent: 'PostToolUse',  matcher: '*',    timeout: 3 },
   { basename: 'transcript-structure-scan.sh', displayName: 'transcript-structure-scan', envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN', hookEvent: 'Stop', matcher: '*', timeout: 3 },
-  { basename: 'mid-spine-yield-scan.sh',  displayName: 'mid-spine-yield-scan',  envVarSuffix: 'MID_SPINE_YIELD',   hookEvent: 'Stop',             matcher: '*',    timeout: 3 },
   { basename: 'session-end-check.sh',     displayName: 'session-end-check',     envVarSuffix: 'SESSION_END_CHECK', hookEvent: 'SessionEnd',      matcher: '*',    timeout: 3 },
 ];
 

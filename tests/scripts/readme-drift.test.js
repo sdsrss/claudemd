@@ -72,7 +72,7 @@ test('README hooks table: every opt-in gated hook with a table row says Opt-in',
   const tableRows = README.split('\n').filter(l => /^\|.+\|.+\|.+\|$/.test(l));
   for (const hook of optInHooks) {
     const row = tableRows.find(l => l.includes(`\`${hook}\``) && !l.includes('DISABLE_'));
-    if (!row) continue; // not in the fires-when table (e.g. mid-spine) — nothing to mislead
+    if (!row) continue; // not in the fires-when table — nothing to mislead
     assert.match(row, /[Oo]pt-in/,
       `hooks/${hook}.sh is opt-in gated but its README table row does not say "Opt-in":\n${row}`);
   }
