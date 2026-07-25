@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.53.0] - 2026-07-24
+
+Ships spec **v6.21.0** (minor) plus the drift test that pins it. No hook, script, or command behavior changes.
+
+**What changes for users**: the §EXT §12 fallback table now covers `gs:/qa` / `gs:/qa-only`, and its Detection clause no longer assumes a missing skill announces itself by failing. Agents routed at a skill that is disabled via `skillOverrides` (or absent from the install) are told to check the session skill list first, take the documented fallback, and say which substitution they made — instead of either calling a skill that is not there or silently improvising. Manifest descriptions move to the `v6.21` family per the versioning policy above.
+
+- **spec v6.21.0** (minor): `§EXT §12` Fallback table gains `gs:/qa, /qa-only` → `gs:/browse` pass over the changed user-facing surface, report per §7 L2 evidence, repair via §12 Review-finding repair. It was the only §4 Routing primary without a fallback row while §4's `ship L2` row routes user-facing ships at it. Detection premise widened to **absent-from-listing = missing**: `skillOverrides: "off"` produces no failing call, so call-failure auto-degrade never fired for it. Trigger: 2026-07-24 `/doctor` found 6 §4 Routing primaries off in `~/.claude/settings.json#skillOverrides` (`office-hours` `freeze` `benchmark` `qa` `canary` `design-consultation`) — 5 already had fallback rows. SHOULD-level spec text: `hard-rules.json` bumps `spec_version` only, no rule added to the manifest and no hook touched.
+- **test: `§12: every §4 Routing primary has a §12 Fallback-table row`** (`tests/scripts/spec-structure.test.js`) closes the drift class rather than just the one gap — it joins the §4 Routing table's Primary column against the §12 Fallback table's Missing column, resolving family globs (`/design-*`, `sp:*-code-review`) and the `sp:TDD` / `sp:finishing` shorthands. Against the pre-change spec it fails with exactly `gs/qa, gs/qa-only`; suite 689 → 690.
+
 ## [0.52.0] - 2026-07-24
 
 Fix batch from the 2026-07-24 production-readiness audit (`docs/2026-07-24-production-readiness-audit.md`) — items 1-3 and 5-10 of its action table, plus the restocked core net-delete candidate pool (C7-C12, item 4 core-side). Ships spec **v6.20.1** (patch). Minor bump: the curl-sh gate's deny surface widens (user-visible default behavior change).

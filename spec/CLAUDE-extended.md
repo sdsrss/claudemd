@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.20.1 — Extended
+# AI-CODING-SPEC v6.21.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -388,6 +388,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | gs:/autoplan | user reviews; inline 3-view self-critique (CEO/design/eng) |
 | gs:/ship, /land-and-deploy | manual git push + `[AUTH REQUIRED op:manual-deploy]` |
 | gs:/browse | request user screenshot/log |
+| gs:/qa, /qa-only | gs:/browse pass over the changed user-facing surface; report per §7 L2 evidence, repair via §12 Review-finding repair |
 | gs:/canary | monitoring checklist (metrics/thresholds/rollback trigger/command); user monitors |
 | gs:/benchmark | hyperfine/time/native; `tasks/perf-<n>.md` |
 | gs:/cso | manual STRIDE on auth/payment/crypto paths |
@@ -395,7 +396,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | context7 (API docs-lookup) | WebFetch official docs; cite lookup source in answer |
 | gs:/freeze, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
 
-Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change.
+Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing (v6.21.0)**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
 
 ## §13 META (Agent-facing)
@@ -405,7 +406,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` wins per §3 TRUST order. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 23 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 14 self / 1 both / 1 external (v6.20.1).
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 23 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 14 self / 1 both / 1 external (v6.21.0).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
@@ -477,17 +478,16 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.20.1 (patch, 2026-07-24)** — production-readiness-audit letter fixes (wording / cross-ref, identical behavior):
+**v6.21.0 (minor, 2026-07-24)** — §EXT §12 fallback completeness: routing-vs-availability drift closed for disabled skills.
 
-- `[fix]` **§13 META partition counts**: "22 HARD rules … 6 hook" → "23 … 7 hook" — stale since the §8-curl-sh manifest entry (2026-07-13). New drift test `hard-rules-9` pins the §13 prose counts to the reduce-computed `hard-rules.json` partition, closing the class.
-- `[fix]` **Duplicate §EXT heading ids made unique**: `§7-EXT TMP_RETENTION` → `§7-EXT-TMP`, `§11-EXT Memory operations` → `§11-EXT-MEM`, `§11-EXT macOS` → `§11-EXT-MAC` (`§7-EXT VALIDATE` / `§11-EXT Session heuristics` stay canonical); `### MEMORY.md tag syntax` relocated from under §0.2-EXT (structural orphan) into §11-EXT-MEM; core pointers updated. `spec-coherence-audit` CHECK 1 now flags duplicate `##+ §id` headings.
-- `[change]` **Recent-changes externalization**: the v6.20.0 entry now lives only in `CLAUDE-changelog.md` (it was already recorded there); extended keeps the current entry per the v6.9.0 convention.
+- `[add]` **§12 Fallback table gains `gs:/qa, /qa-only`** — the only §4 Routing primary with no fallback row, while §4's `ship L2` row routes user-facing ships at it.
+- `[change]` **§12 Detection premise widened — absent-from-listing = missing**: `skillOverrides: "off"` produces no failing call, so call-failure auto-degrade never fired for a disabled skill. Trigger + full rationale: `CLAUDE-changelog.md` v6.21.0.
 
-**Older entries** (v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.20.1, 2026-07-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24434 → 24467 bytes (Δ +33: §7/§11 pointer suffixes); extended 48699 → 47720 bytes (Δ −979: v6.20.0 Recent-changes entry externalized, offset by anchor suffixes + v6.20.1 entry); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24467/25000 (**533 bytes headroom, 97.87%**); extended 47720/50000 (**2280 bytes headroom, 95.44%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.21.0, 2026-07-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24467 → 24467 bytes (Δ 0: version digit only); extended 47720 → 48115 bytes (Δ +395: §12 qa fallback row + Detection premise clause + v6.21.0 entry, offset by v6.20.1 entry externalized); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24467/25000 (**533 bytes headroom, 97.87%**); extended 48115/50000 (**1885 bytes headroom, 96.23%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.20.1 is a prose-only patch — no HARD rule change (`hard-rules.json` bumps spec_version only). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` restocked 2026-07-24 (C7-C12 ≈ −790B; C4 void); extended regained ~2.2KB headroom via Recent-changes externalization. Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Runbook stamp: claudemd's ship-runbook stamp `@ v6.20.0` is now stale — next ship full-loads extended and re-stamps `@ v6.20.1` (self-healing per §2.2).
+**Operator carry-forward**: v6.21.0 adds no HARD rule (§12 fallback table + Detection sentence are SHOULD-level; `hard-rules.json` bumps spec_version only) — §13.2 ratchet untouched, §0.1 headroom sufficient so the addition is unpaired. Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` restocked 2026-07-24 (C7-C12 ≈ −790B; C4 void). Candidate compaction: §10-V extended block (~700B) — `reference_banned_vocab_examples.md` gate evaluable via /claudemd-rules hit data. Measurement track: A4 hand-labeling decision point 2026-08-09 (`tasks/spec-audit-2026-07-11.md` calendar). Runbook stamp: claudemd's ship-runbook is re-stamped `@ v6.21.0` this ship (self-healing per §2.2). Open operator question this release surfaced: 6 §4 Routing primaries are `off` in `skillOverrides` with 0 measured invocations — spec now degrades cleanly, but the routing table still names them as primary; re-enable-vs-rewrite deferred to the next batch review.
 
 ## §1.5-EXT GLOSSARY
 

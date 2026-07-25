@@ -5,15 +5,15 @@
     "name": "sdsrss"
   },
   "metadata": {
-    "description": "claudemd marketplace: a personal AI-coding discipline harness (AI-CODING-SPEC v6.20 enforced as Claude Code hooks)",
-    "version": "0.52.0"
+    "description": "claudemd marketplace: a personal AI-coding discipline harness (AI-CODING-SPEC v6.21 enforced as Claude Code hooks)",
+    "version": "0.53.0"
   },
   "plugins": [
     {
       "name": "claudemd",
       "source": "./",
-      "description": "Personal AI-coding discipline harness — one developer's opinionated AI-CODING-SPEC v6.20, enforced via Claude Code hooks + shipped with the plugin",
-      "version": "0.52.0",
+      "description": "Personal AI-coding discipline harness — one developer's opinionated AI-CODING-SPEC v6.21, enforced via Claude Code hooks + shipped with the plugin",
+      "version": "0.53.0",
       "category": "development"
     }
   ]
