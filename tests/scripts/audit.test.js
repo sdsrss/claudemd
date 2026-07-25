@@ -347,8 +347,15 @@ test('R-N3: byTrend marks recovery when ratio ≤ 0.5', async () => {
 
 test('A5 selfCompliance: section present, rate withheld while precision uncalibrated', async () => {
   // HOME is redirected to tmpHome (no transcripts) — the section must still
-  // appear with all 8 rules, and the A4 gate must withhold `rate` (null) while
-  // precision is uncalibrated, reporting status 'collecting' instead.
+  // appear with all 8 rules and the A4 gate must withhold `rate` (null) while
+  // precision is uncalibrated. Detectors CLOSED by the 2026-07-24 labeling
+  // pass (0.54.0) must surface status 'closed' + their closedReason — the
+  // dashboard contradicted the calibration record by recomputing 'collecting'
+  // from precision alone (2026-07-25 audit, loop-F1). This list mirrors the
+  // CALIBRATION table in scripts/sampling-audit.js; a drift means one of the
+  // two moved without the other.
+  const CLOSED = ['§iron-law-2', '§10-four-section-order', '§10-honesty',
+    '§7-bugfix-anchor', '§11-post-compaction', '§5-hard-auth'];
   const r = await audit({ days: 30 });
   assert.ok(r.selfCompliance, 'selfCompliance section must exist');
   assert.equal(typeof r.selfCompliance.scannedTranscripts, 'number');
@@ -358,7 +365,13 @@ test('A5 selfCompliance: section present, rate withheld while precision uncalibr
     assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
     assert.equal(typeof v.violations, 'number', `${k} missing violations`);
     assert.equal(v.rate, null, `${k} rate must be withheld (null) until precision ≥ 0.8`);
-    assert.match(v.status, /collecting/, `${k} status must say collecting`);
+    if (CLOSED.includes(k)) {
+      assert.equal(v.status, 'closed', `${k} must report closed, got: ${v.status}`);
+      assert.ok(typeof v.closedReason === 'string' && v.closedReason.length > 0,
+        `${k} must carry its closedReason`);
+    } else {
+      assert.match(v.status, /collecting/, `${k} status must say collecting`);
+    }
   }
 });
 

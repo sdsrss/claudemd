@@ -52,7 +52,7 @@ case "$MODE" in
     LIVE=$(mktemp); run_corpus > "$LIVE"
     DIFFS=0
     # Join by note (line order is stable — same corpus, same skip rules).
-    paste "$FILE" "$LIVE" | while IFS=$'\t' read -r bv bn lv ln; do
+    paste "$FILE" "$LIVE" | while IFS=$'\t' read -r bv bn lv _ln; do
       if [[ "$bv" != "$lv" ]]; then echo "DIFF [$bn] baseline=$bv live=$lv"; fi
     done
     # Recount outside the subshell-pipe (while-pipe can't export DIFFS).

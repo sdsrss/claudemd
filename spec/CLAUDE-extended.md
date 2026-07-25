@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.21.2 — Extended
+# AI-CODING-SPEC v6.22.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -221,7 +221,7 @@ L3  TDD + full suite + e2e                    → inline evidence with numbers+b
     (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). L3 adds TDD discipline (Iron Law #1 below), 5-tier evidence ladder, and cold-start handling.
+L2 evidence rules → core §7 (inline prose with numbers+baseline). L3 adds the 5-tier evidence ladder and cold-start handling. Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -384,7 +384,8 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | gs:/cso | manual STRIDE on auth/payment/crypto paths |
 | gs:/codex | skip; note "no second-opinion review" in §10 |
 | context7 (API docs-lookup) | WebFetch official docs; cite lookup source in answer |
-| gs:/freeze, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
+| gs:/freeze, /careful, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
+| gs:/document-release | release notes by hand from the CHANGELOG top entry (gh release body); name the substitution |
 
 Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing (v6.21.0)**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
@@ -395,7 +396,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **Version bump**: patch (wording/clarification, identical behavior) / minor (rule added/relaxed, backward-compatible) / major (protocol shift).
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
-- **Drift check**: project `CLAUDE.md` wins per §3 TRUST order. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
+- **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
 - **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 23 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 14 self / 1 both / 1 external (v6.21.0).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
@@ -468,15 +469,15 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.21.2 (patch, 2026-07-25)** — §EXT §10-V compressed to OK-shapes + pointers.
+**v6.22.0 (minor, 2026-07-25)** — level/precedence seam closure (2026-07-25 audit).
 
-- `[change]` **§10-V Banned enumeration externalized**: the five `**Banned …**` lines move out of extended — mechanical enforcement stays in the plugin's `hooks/banned-vocab.patterns` (untouched), prose lookup in `reference_banned_vocab_examples.md`; core §10 quick-check untouched. Grounds (2026-07-25 audit): 30d hook data shows 15/15 denied matches were core-quick-check members (robust ×8, comprehensive ×6, significantly ×1) — the extended long tail earned zero incremental catches while costing ~0.8KB of every L3/ship load. Demoting the deny gate itself was evaluated and REJECTED: `hard-rules-audit.js` demote queue does not list §10-V (31 hits ≠ zero-hit); the 51.6% bypass-escape-hatch rate is flagged to the next §13.2 batch review instead. Record: `tasks/banned-vocab-demote-evaluation-2026-07-25.md`; join fixture `banned-vocab-canonical.json` updated in step (drift-3/4 stay green).
+- `[fix]` **Iron Law #1 surfaces in core at L2+**: core's only pointer filed the rule under "L3 evidence rules" while the definition here binds L2+ — and §2.2 forbids L2 loading this file, so an L2 agent had no trigger the rule existed. Core §7 now carries the one-line form; §7-EXT intro corrected. `[fix]` **§11 Tell "closed" now includes a compliant L1 single-line `Done:`** (v6.21.1 regression: four-section-only definition misread clean L1 closes as yields — rule relaxed → minor). `[fix]` **§3 Order line ranks project CLAUDE.md** (with current-turn user); §13 Drift check states the delegation boundary instead of citing a rank §3 never held. `[fix]` **§2 L0 row drops `config`** (conflicted with §0 whitelist + §5 hard-AUTH; stricter wins). Paired net-delete: C9 (§9↔§1 double-write) + C11 (footer pointer dup) + §1 `reasoning` (visible thinking follows user language). §12 Fallback gains `gs:/document-release` + `/careful` rows. Class pinned by two new spec-structure joins (level-tag ↔ heading; §3-rank citation coverage). Full entry: `~/.claude/CLAUDE-changelog.md`.
 
-**Older entries** (v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.21.2, 2026-07-25, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24649 → 24715 bytes (Δ +66: §10 pointer retarget); extended 48375 → 48293 bytes (Δ -82: §10-V Banned enumeration externalized, entry + carry-forward refresh); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24715/25000 (**285 bytes headroom, 98.86%**); extended 48293/50000 (**1707 bytes headroom, 96.59%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.22.0, 2026-07-25, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24715 → 24714 bytes (Δ -1: level/precedence fixes offset by C9+C11 paired net-delete); extended 48293 → 48900 bytes (Δ +607: §7-EXT/§13/§12 corrections + this entry); OPERATOR.md 8314 → 8737 bytes (Δ +423: fix-rate metric caveat, 2026-07-25 audit). Size budget: core 24714/25000 (**286 bytes headroom, 98.86%**); extended 48900/50000 (**1100 bytes headroom, 97.80%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.21.2 is a prose-only patch — no HARD rule change (`hard-rules.json` bumps spec_version only; enforcement identical, patterns file untouched). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` (C7-C12 ≈ −790B; C4 void); the §10-V compaction candidate is CONSUMED this version (extended regained ~0.8KB); core headroom remains under 400B — next core addition of any size must pair with a trim. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. NEW for the next §13.2 batch review: banned-vocab deny-gate bypass-escape-hatch rate 16/31 (51.6%, 30d, 8 projects; demote-by-bypass-rate has no codified rule — decide there, record `tasks/banned-vocab-demote-evaluation-2026-07-25.md`). Carried open question (unchanged from v6.21.0): 6 §4 Routing primaries are `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite deferred to the same batch review. Runbook stamp: re-stamped `@ v6.21.2` this ship (self-healing per §2.2).
+**Operator carry-forward**: v6.22.0 is a minor (turn-yield "closed" definition relaxed; level-tag corrections; no HARD added — `hard-rules.json` bumps spec_version only, enforcement partition unchanged). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md`: **C9 + C11 CONSUMED this version** (−192B, paired with the seam fixes); remaining C7/C8/C10/C12 ≈ −600B; core headroom 286B — next core addition of any size must still pair with a trim. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. Carried to the next §13.2 batch review (unchanged): banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite. Runbook stamp: re-stamp `@ v6.22.0` at next ship (self-healing per §2.2).
 
 ## §1.5-EXT GLOSSARY
 

@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"show me"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Intro.\n```\ncode here\nThe system is robust."}]}}

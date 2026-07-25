@@ -268,7 +268,12 @@ const YIELD_TELL_RE = /^(?:继续|next|continue|怎么停了|why did you stop|�
 //
 // ASK window is the tail of the prior turn — an offer made in the middle of a
 // long report, then followed by more prose, is not what the user is answering.
-const YIELD_ASK_RE = /[?？]\s*$|要(不要|继续|我)?[^。\n]{0,14}(吗|么)[?？]?|还是先停|(就|或)?说一声|要继续|继续的话|下一步(建议|在你|由你)|由你定|等你的(信号|指示)|你(来)?(定|拍板|决定)/;
+// `么` counts as a question particle only when NOT the tail of 什么/怎么/
+// 这么/那么/多么 (2026-07-25 audit: "要处理什么边界情况，先记下来" and
+// "要这么写才能过 lint" are mid-work statements, not asks — the bare-么
+// alternation flagged both; reproduced 2 FPs). Lookbehind is ES2018, in-range
+// for engines >=20.
+const YIELD_ASK_RE = /[?？]\s*$|要(不要|继续|我)?[^。\n]{0,14}(吗|(?<![什怎这那多])么)[?？]?|还是先停|(就|或)?说一声|要继续|继续的话|下一步(建议|在你|由你)|由你定|等你的(信号|指示)|你(来)?(定|拍板|决定)/;
 // CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
 // the next typed message starts a new task (§1.5), it is not a nudge.
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;

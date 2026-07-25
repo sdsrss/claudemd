@@ -10,8 +10,9 @@
 # Why a separate hook (not folded into residue-audit / sandbox-disposal):
 # residue/sandbox already write `~/.claude/.claudemd-state/*` for their own
 # baselines; mixing concerns would couple summary-write to advisory behavior
-# the user can disable independently. Per §9 Simplicity: smallest diff,
-# fewest files — but here "fewest files" loses to single-responsibility.
+# the user can disable independently. Per §1 Smallest diff wins (fewest files
+# — the §9 duplicate was C9-deduped in v6.22.0) — but here "fewest files"
+# loses to single-responsibility.
 #
 # Fail-open on any hiccup. Stop hooks cannot block the session anyway.
 

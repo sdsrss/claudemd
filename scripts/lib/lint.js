@@ -92,13 +92,28 @@ function posixClassesToJs(regex) {
 // prose and bare-word claims (the real violations) stay intact and still match.
 export function stripIdentifiers(text) {
   if (!text) return text;
-  // 1. Fenced code blocks: line-based fence toggle, mirroring the bash awk
-  //    `/^[[:space:]]*```/{f=!f; next} !f` — drop the ``` marker lines AND the
-  //    body between them. An unterminated fence drops to EOF (in_fence stays on).
+  // 1. Fenced code blocks: line-based fence toggle with a TERMINATOR GUARD
+  //    (2026-07-25 audit): an opening ``` only starts a fence if a closing
+  //    fence line exists later — otherwise it is literal text and everything
+  //    after it stays scannable. Pre-fix an unterminated fence blanked to EOF,
+  //    silently under-counting relative to the live hook: the bash side
+  //    (transcript-vocab-scan.sh) flattens newlines during jq extraction, so
+  //    its fence-awk never fires and an unterminated-fence claim HITs there —
+  //    node=miss/bash=hit was the one divergence a 12-shape differential
+  //    found. Same strict-AND-narrowing shape as the §8 heredoc terminator
+  //    guard: blanked text is a subset of before, so this can only EXPOSE
+  //    more text to the detector, never hide a claim.
+  const lines = text.split('\n');
   const kept = [];
   let inFence = false;
-  for (const line of text.split('\n')) {
-    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      if (inFence) { inFence = false; continue; }
+      if (lines.slice(i + 1).some(l => /^\s*```/.test(l))) { inFence = true; continue; }
+      kept.push(line);
+      continue;
+    }
     if (!inFence) kept.push(line);
   }
   return kept.join('\n')

@@ -260,3 +260,16 @@ for f in "${ARCH2_FIXTURES[@]}"; do
 done
 echo "PASS: hook_encode_project ≡ encodeProjectCwd (cross-language parity, ${#ARCH2_FIXTURES[@]} fixtures)"
 
+
+# Case ARCH-3 (2026-07-25 audit, loop-F2): every row carries hook_version =
+# the emitting plugin build's package.json version, so telemetry written by a
+# STALE registered hook dir (0.52.0 hooks while 0.55.0 installed — 242
+# stale-root events across 12 version gaps in the live log) can be stratified
+# instead of pooled indistinguishably into calibration windows.
+run 'rule_hits_append banned-vocab deny null "§10-V" sess-hv'
+PKG_VER=$(jq -r '.version' "$(cd "$(dirname "$0")/../.." && pwd)/package.json")
+LAST=$(tail -n 1 "$LOG")
+echo "$LAST" | jq -e --arg v "$PKG_VER" '.hook_version == $v' >/dev/null \
+  || { echo "FAIL: ARCH-3 hook_version missing or wrong (want $PKG_VER, got: $LAST)"; exit 1; }
+
+echo "rule-hits: all cases passed"

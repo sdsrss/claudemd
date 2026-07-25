@@ -44,7 +44,13 @@ jobs:
           # (unquoted expansion in a new hook) could never redden CI. Baseline
           # cleaned same day (env-hygiene shell directive, dead TRIGGER_RE);
           # warning+ now blocks, info-level stays a visible non-blocking report.
-          shellcheck --severity=warning hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh
+          # 2026-07-25 audit L2: scope was 24/53 shell files — the excluded set
+          # held a live semantic bug of exactly the class this gate exists for
+          # (session-summary.test.sh env-prefix-on-assignment guard that never
+          # exported). Tests + integration + run-all + task scripts now gated.
+          shellcheck --severity=warning hooks/*.sh hooks/lib/*.sh scripts/*.sh \
+            tests/lib/*.sh tests/hooks/*.sh tests/integration/*.sh tests/run-all.sh \
+            tasks/s8-tokenizer/*.sh
           shellcheck hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh \
             || echo "shellcheck info-level notes above (non-blocking)"
       - name: Reject bash 4+ constructs in hooks (macOS bash 3.2 portability gate)

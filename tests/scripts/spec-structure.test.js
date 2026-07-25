@@ -51,19 +51,26 @@ test('core contains §0.1 + §2.1 (unified ROUTE absorbs former §2.3 TOOLS)', (
   assert.match(text, /Tool escalation/);
 });
 
-test('core version header matches current spec version', () => {
-  const text = fs.readFileSync(CORE, 'utf8');
-  // v6.10.0: header is "# AI-CODING-SPEC vX.Y.Z — Core" (no standalone `Version:` line).
-  const m = text.match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
-  assert.ok(m, 'core header must declare semver version inline');
-  assert.equal(m[1], '6.21.2');
+// Version pins are DYNAMIC consistency joins (2026-07-25 audit L3: the pinned
+// form required a manual test edit every release and its test NAME had already
+// drifted one version behind its own assertion). Cross-file version equality is
+// what these guard; "did the release land" is version-cascade-check.js + the
+// upgrade-lifecycle NEW_SPEC_VER pin.
+test('core / extended / hard-rules.json declare the same spec version', () => {
+  const core = fs.readFileSync(CORE, 'utf8').match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
+  const ext = fs.readFileSync(EXT, 'utf8').match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Extended/);
+  const hr = JSON.parse(fs.readFileSync('spec/hard-rules.json', 'utf8'));
+  assert.ok(core, 'core header must declare semver version inline');
+  assert.ok(ext, 'extended header must declare semver version inline');
+  assert.equal(ext[1], core[1], 'extended header version must match core');
+  assert.equal(hr.spec_version, `v${core[1]}`, 'hard-rules.json spec_version must match core');
 });
 
-test('changelog top entry is v6.21.1', () => {
-  const text = fs.readFileSync(CL, 'utf8');
-  const first = text.match(/^##\s+v(\d+\.\d+\.\d+)/m);
-  assert.ok(first);
-  assert.equal(first[1], '6.21.2');
+test('changelog top entry matches the core header version', () => {
+  const core = fs.readFileSync(CORE, 'utf8').match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/);
+  const first = fs.readFileSync(CL, 'utf8').match(/^##\s+v(\d+\.\d+\.\d+)/m);
+  assert.ok(core && first);
+  assert.equal(first[1], core[1]);
 });
 
 test('§2.1 table contains sp:brainstorming row', () => {
@@ -128,4 +135,44 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
     `§4 Routing primaries with no §12 Fallback row: ${orphans.join(', ')} — add a row to the Fallback table `
     + 'or drop the skill from §4 Routing. A routed-but-uncovered skill leaves the agent with no documented '
     + 'degradation path when it is disabled via skillOverrides or not installed.');
+});
+
+// 2026-07-25 audit (spec HIGH-1/MEDIUM-3): content consistency was test-gated
+// but LEVEL/PRECEDENCE semantics were gated by nothing — Iron Law #1 was L3 in
+// core's pointer and (L2+) in extended's definition; §13 cited a §3 TRUST rank
+// (project CLAUDE.md) that §3 never enumerated. These two joins close the class.
+
+test('§7: Iron Law #1 level tag agrees between core and the extended heading', () => {
+  const core = fs.readFileSync(CORE, 'utf8');
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const extHead = ext.match(/^###\s+Iron Law #1:[^\n]*\((L\d\+?)\)/m);
+  assert.ok(extHead, 'extended must carry the Iron Law #1 heading with a level tag');
+  const level = extHead[1];
+  const coreLines = core.split('\n').filter((l) => l.includes('Iron Law #1'));
+  assert.ok(coreLines.length > 0, 'core must mention Iron Law #1 (L2 agents cannot load extended)');
+  for (const l of coreLines) {
+    assert.ok(l.includes(`(${level}`),
+      `every core Iron Law #1 mention must carry its ${level} tag (an L3-grouped pointer hides an L2+ rule): ${l}`);
+  }
+});
+
+test('§3: every entity extended cites as ranked "per §3" appears in the core §3 Order line', () => {
+  const core = fs.readFileSync(CORE, 'utf8');
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const orderLine = core.split('\n').find((l) => l.startsWith('Order:'));
+  assert.ok(orderLine, 'core §3 must carry the Order: enumeration line');
+  // Only the RANK phrase counts ("per §3 TRUST order"), and only entities
+  // BEFORE it — they are the ranked subject; text after the citation is
+  // elaboration (delegation examples etc.). "per §3 stricter-reading" cites a
+  // different §3 rule and is out of scope.
+  const citing = ext.split('\n').filter((l) => l.includes('per §3 TRUST order'));
+  assert.ok(citing.length > 0, 'vacuity guard: extended must still cite the §3 rank somewhere');
+  for (const line of citing) {
+    const prefix = line.slice(0, line.indexOf('per §3 TRUST order'));
+    for (const raw of prefix.match(/`[^`]+`/g) || []) {
+      const ent = raw.replace(/`/g, '');
+      assert.ok(orderLine.includes(ent),
+        `extended cites \`${ent}\` as ranked per §3 TRUST order, but core §3 Order line never enumerates it: ${line.trim()}`);
+    }
+  }
 });

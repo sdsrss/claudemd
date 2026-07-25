@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.21.2 — Core
+# AI-CODING-SPEC v6.22.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -39,7 +39,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 
 **Language contract**:
 - **User's language (default 中文)**: chat prose / plans / summaries / Done narrative / `tasks/*.md` bodies / local analysis+audit docs.
-- **English**: code / comments / docstrings / commits / CHANGELOG / PR text / reasoning / shipped reference+contract docs / paths / branches / log strings / config keys / CLI labels.
+- **English**: code / comments / docstrings / commits / CHANGELOG / PR text / shipped reference+contract docs / paths / branches / log strings / config keys / CLI labels.
 - **Memory**: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
 
 **Principles** (reference when ambiguous):
@@ -68,7 +68,7 @@ Extended-only (L3+ load resolves these): **Assumption** → §EXT §1.5-EXT.
 ## §2 LEVEL
 
 ```
-L0  docs / comment / style / config                       → Fast-Path
+L0  docs / comment / style                                → Fast-Path
 L1  files ≤2, LOC <80, Local-Δ only                       → §7.L1
 L2  contract-Δ / multi-file / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
@@ -124,7 +124,7 @@ Load `~/.claude/CLAUDE-extended.md` when:
 ## §3 TRUST
 
 Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
-Order: §8 SAFETY (immutable) > this spec > current-turn user > inferred context.
+Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
 **Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults** — e.g. `feedback_autonomous_fixes.md` overrides "L2 bugfix → investigate"). `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
@@ -186,9 +186,9 @@ Green tests / passing lint ≠ done. Three orthogonal triggers, each with its ow
 | Code writes to user-global / cross-project path: `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` (post-action) | HARD | residue count via `find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` / equivalent | inline count cited |
 | Edit touches metric-coupled code — bench / oracle / compile-time budget | SHOULD | record baseline before, re-run after | both numbers cited; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK |
 
-`mkdtempSync` leaks / orphan writes / cache bloat are invisible to exit code; "vibe-check from one manual test" is not metric-neutral evidence. Metric-coupling typical triggers: tool descriptions / adoption-memory / field compression / prompt templates. `~/.claude/tmp/` retention → §EXT §7-EXT-TMP; Iron Law #1 + L3 evidence + cold-start → §EXT §7-EXT.
+`mkdtempSync` leaks / orphan writes / cache bloat are invisible to exit code; "vibe-check from one manual test" is not metric-neutral evidence. Metric-coupling typical triggers: tool descriptions / adoption-memory / field compression / prompt templates. `~/.claude/tmp/` retention → §EXT §7-EXT-TMP.
 
-**L3 evidence rules, Iron Law #1 (additive exception), evidence ladder, cold-start → §EXT §7-EXT.**
+**Iron Law #1 (L2+): NO CHANGE WITHOUT FAILING EVIDENCE** — bugfix = prior repro; additive = RED-first (exception detail → §EXT §7-EXT). L3 evidence rules, ladder, cold-start → §EXT §7-EXT.
 
 ## §8 SAFETY (immutable, never exempt)
 
@@ -216,9 +216,8 @@ Principle: extraordinary claims require fresh tool-call evidence.
 
 ## §9 QUALITY
 
-- **Simplicity**: smallest diff, fewest files.
-- **Root cause**: no temporary patches at L2+.
-- **YAGNI**: grep usage before adding code.
+Simplicity / root-cause / reuse: single home = §1 Principles (C9 dedup, v6.22.0).
+
 - **Parallel-first**: independent tool calls → single message; dependent → serial.
 - **Parallel-path completeness** (HARD, L2+): a change touching a node with multiple parallel implementation paths — fallback / feature flag / `match` default arm / SQL `ORDER BY` + `LIMIT` combo / early-return branch / FTS-vs-LIKE fallback / multi-language `config.name` dispatch — MUST enumerate every path and verify each. Main-path green + silent siblings = not evidence. Enumerate before edit; verify after. Triggers: `fallback / default arm / early return / else branch / feature flag / fts vs like / multi-dispatch`.
 
@@ -252,11 +251,11 @@ Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MU
   Always skip: `git log`-recoverable, code invariant, session-local, clean-root-cause bugfix.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
   - Optional tag syntax `- [Title](file.md) [tags] — desc`; agent matches task keywords against tags before Read. Untagged → agent decides per-line from title/desc (NOT hook-blocked). Detail: §EXT §11-EXT-MEM MEMORY-tag-syntax.
-- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn `[mem]` claude-mem-lite recall, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or context pressure (§11 Context pressure → `tasks/<slug>-paused.md`). "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: next user message is `继续 / next / 怎么停了 / why did you stop` **and** the prior turn neither asked nor closed (no question, no four-section) → confirmed prior yield. Prior turn asked → `继续` answers it, NOT a tell; treating it as one pressures you to stop asking.
+- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn `[mem]` claude-mem-lite recall, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or context pressure (§11 Context pressure → `tasks/<slug>-paused.md`). "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: next user message is `继续 / next / 怎么停了 / why did you stop` **and** the prior turn neither asked nor closed (no question, no §10-format close — four-section OR a compliant L1 single-line `Done:`) → confirmed prior yield. Prior turn asked → `继续` answers it, NOT a tell; treating it as one pressures you to stop asking.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → MUST NOT list under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
 
 Multi-task / subagent / cross-session → §EXT §11-O.
 
 ---
 
-EXT loading rule → §2.2. Version history → `~/.claude/CLAUDE-changelog.md`. Current entry + sizing → `CLAUDE-extended.md §Recent changes`.
+EXT loading rule → §2.2. Current entry + sizing → `CLAUDE-extended.md §Recent changes`.

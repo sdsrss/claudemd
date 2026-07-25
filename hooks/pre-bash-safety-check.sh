@@ -298,7 +298,13 @@ canon_cmd_words() {
             if (ch==" "||ch=="\t"||ch==";"||ch=="&"||ch=="|"||ch=="("||ch=="{"||ch=="`") break
             word=word ch; i++
           }
-          if (word ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { out=out word; continue }
+          # `+=` is an assignment too (`D+=/x cmd` is a valid prefix assignment).
+          # Excluding it made canon basename `D+=/../../etc` to `etc`, erasing the
+          # bare `D` mention that the rm rebind guard counts — a mktemp-provenance
+          # bypass (2026-07-25 adversarial review). Emitting verbatim exposes more
+          # text to the detectors, never less. NOTE: this awk body is inside a
+          # single-quoted shell string — no apostrophes in these comments.
+          if (word ~ /^[A-Za-z_][A-Za-z0-9_]*\+?=/) { out=out word; continue }
           sub(/^\\/,"",word); sub(/.*\//,"",word)
           out=out word; cmdpos=0; continue
         }
@@ -769,6 +775,15 @@ if (( bypass_rm == 0 )); then
         prov_safe=0
         prov_eligible=1
         [[ "$varname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || prov_eligible=0
+        # An IFS assignment re-splits an UNQUOTED target at runtime: with `IFS=/`,
+        # `rm -rf $S` turns the temp path into relative words deleted from the cwd
+        # (sandbox-confirmed, 2026-07-25 review). The gate cannot model shell word
+        # splitting, so provenance is simply withdrawn whenever the command binds
+        # IFS — deny-direction, and quoting the target is the fix.
+        if (( prov_eligible == 1 )) \
+           && printf '%s' "$SANITIZED_CMD_FLAT" | grep -qE '(^|[[:space:];&|`(])IFS\+?='; then
+          prov_eligible=0
+        fi
         if (( prov_eligible == 1 )) \
            && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]'; then
           prov_eligible=0
@@ -784,10 +799,37 @@ if (( bypass_rm == 0 )); then
           # was written to close. Empty matches neither regex below, so it now denies.
           while IFS= read -r prov_rhs; do
             prov_nassign=$((prov_nassign + 1))
+            # Optional leading double-quote (F20, 2026-07-25 audit): `bak="$(mktemp
+            # …)"` is the QUOTING-CORRECT spelling of the same idiom and was the
+            # top real false-deny shape in transcripts. The capture stops at the
+            # first space, so only the `"$(mktemp` head is inspected — same as the
+            # unquoted form.
             # shellcheck disable=SC2016  # single quotes intentional: literal regex, not expansion
-            if printf '%s' "$prov_rhs" | grep -qE '^(\$\(|`)mktemp([[:space:]`)]|$)'; then
+            if printf '%s' "$prov_rhs" | grep -qE '^"?(\$\(|`)mktemp([[:space:]`)]|$)'; then
               continue
             fi
+            # A temp-root LITERAL provenance class (`D=/tmp/job.1; rm -rf "$D"`,
+            # the scratchpad-cleanup shape behind 86% of §8-rm-rf-var denies) was
+            # BUILT AND REVERTED on 2026-07-25. Adversarial review broke it four
+            # ways within one pass, three sandbox-confirmed deleting real dirs:
+            #   1. backslash-escaped traversal — hook text `D=/tmp/\.\./\.\./etc`
+            #      vs runtime `/etc`; the `..` check reads raw text (CRITICAL);
+            #   2. `( D=/tmp/x ); rm -rf "$D"` / `false && D=…` / `true | D=…` —
+            #      s8_split_segments splits on exactly the chars that create
+            #      subshells and short-circuits, so an assignment that never binds
+            #      the parent shell still lands at a "segment head";
+            #   3. `rm -rf "$D/../.."` — provenance validates the VAR, never the
+            #      literal residue appended to it;
+            #   4. `IFS=/` word-splitting an unquoted target, and `$IFS` folding
+            #      truncating the captured RHS to a PREFIX of the runtime value.
+            # Root cause is the one `tasks/specs/s8-literal-provenance.md` already
+            # records for the rejected v0.48.0 candidate: TEXT position is not
+            # COMMAND position. The general invariant this class needs is that the
+            # captured RHS EQUALS the runtime value — unreachable without a real
+            # parser. Do not re-attempt from text scanning. The DX cost (scratch
+            # cleanup denies) is tracked as an operator decision in
+            # `tasks/audit-2026-07-25-deferred.md`; `${VAR:?}` and
+            # [allow-rm-rf-var] remain the supported answers.
             prov_safe=0
             break
           done < <(printf '%s' "$SANITIZED_CMD_FLAT" \
@@ -799,18 +841,36 @@ if (( bypass_rm == 0 )); then
           # `declare -n r=SP` — a rebind the `VAR=` scan cannot see, after which the
           # value is no longer determinable from the command text.
           if (( prov_safe == 1 )); then
+            # Adjacent `.` `/` `-` disqualify a mention (F20, 2026-07-25): no
+            # rebind syntax puts those next to the NAME (shell identifiers
+            # cannot contain them), but file paths do — a var named `bak` was
+            # false-counted inside `cfg.bak.XXXXXX`, denying the quoted-mktemp
+            # idiom it sat next to. `unset X` / `X+=` / `read X` / `r=X` all
+            # still count.
             prov_bare=$(printf '%s' "$SANITIZED_CMD_FLAT" \
               | sed -E "s/\\\$\\{${varname}[^}]*\\}//g; s/\\\$${varname}([^A-Za-z0-9_]|\$)/\\1/g" \
-              | grep -oE "(^|[^A-Za-z0-9_\$])${varname}([^A-Za-z0-9_]|\$)" | wc -l | tr -d ' ')
+              | grep -oE "(^|[^A-Za-z0-9_\$./-])${varname}([^A-Za-z0-9_./-]|\$)" | wc -l | tr -d ' ')
             [[ "$prov_bare" == "$prov_nassign" ]] || prov_safe=0
           fi
-          # (3) target must not depend on any var other than varname
+          # (3) NO argument of this rm may depend on a var other than varname.
+          # Scanned over the FULL args tail, not just the first positional
+          # (F20 hardening, 2026-07-25): `rm -rf "$D" "$EVIL"` rode along on
+          # $D's provenance while $EVIL stayed unvalidated — the first-target
+          # scan predates F20 and leaked through the mktemp class too.
           if (( prov_safe == 1 )); then
-            prov_other=$(printf '%s' "$rm_target" \
+            prov_other=$(printf '%s' "$args_only" \
               | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' \
               | sed -E 's/[${}"'"'"']//g' | grep -vxF "$varname" | head -n1)
             [[ -n "$prov_other" ]] && prov_safe=0
           fi
+          # (4) the LITERAL residue appended to the provenance var must not
+          # traverse out of it: `S=$(mktemp -d); rm -rf "$S/../../home/u/proj"`
+          # rode on S's provenance while deleting outside the temp dir entirely
+          # (2026-07-25 adversarial review, sandbox-confirmed). Provenance
+          # certifies where the var POINTS, not where a `..` walk from it lands.
+          case "/$rm_target/" in
+            */../*|*'..'*) prov_safe=0 ;;
+          esac
         fi
         if (( prov_safe == 1 )); then
           hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
@@ -960,6 +1020,16 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # `FOO=x bash` (assignment args) and path-prefixed wrappers (`/usr/bin/env bash`)
 # are not modeled in this single regex; `[allow-curl-sh]` is the escape.
 #
+# F19 (2026-07-25 audit): a WRAPPER occupying command position hid a path-
+# prefixed / backslash-escaped fetch or sink binary from the global
+# canon_cmd_words pass (:478) — `sudo /usr/bin/curl … | sh` and
+# `curl … | sudo /bin/sh` both ALLOWed while the rm/npx gates re-canonicalize
+# after their wrapper strip. Closure is the same canon-after-strip the sibling
+# gates use (fetch side, loop below) plus CURLSH_SINKPFX tolerance for a path/
+# backslash prefix on the sink word behind a wrapper (the sink is regex-matched,
+# not word-looped, so canon cannot reach it there). Both are monotonic:
+# canon/prefix-tolerance only expose tokens the shell EXECs, never hide one.
+#
 # Members MUST be a subset of S8_WRAP_ARGLESS ∪ S8_WRAP_FLAGGED (parity-tested in
 # pre-bash-safety.test.sh — the single-source arrays and this regex cannot silently
 # drift apart). Kept as a literal string, NOT rebuilt from the arrays: as a bare
@@ -969,14 +1039,20 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # allow→deny — a verdict change, not a refactor. Shell keywords (do/then/else/!) are
 # absent for the same reason a pipe sink is never a control-structure keyword.
 CURLSH_WRAP='(sudo|doas|env|command|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
-CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CURLSH_WRAP})*(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
+# Optional sink prefix: one leading backslash (`\bash`, alias-defeat) OR a
+# path ending in `/` (`/bin/sh`, `/usr/local/bin/bash`). The path branch MUST
+# end with `/` so `flash` / `./mysh` can never satisfy it — the shell word
+# after the prefix still has to be exactly one of the sink names, keeping the
+# non-shell-sink FP guard intact (F19).
+CURLSH_SINKPFX='(\\|/[^[:space:]|;&]*/)?'
+CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
 # a bare `.` before ` <(curl…)` is only ever the source builtin. Same wrapper
 # prefix as the pipe form (`env bash <(curl x)`); `source`/`.` are builtins so a
 # wrapper before them never resolves, but the group is harmless there.
-CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]"
+CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments
@@ -990,10 +1066,21 @@ while IFS= read -r cseg; do
   # mid-segment background `&` (`foo & sudo curl x | sh` — `&` is not a split
   # char here); [allow-curl-sh] is the escape.
   cseg="${cseg#"${cseg%%[![:space:]]*}"}"
+  # Perf guard, verdict-neutral: both CURLSH regexes require the literal
+  # substring curl/wget, and neither strip nor canon can CREATE it (basename
+  # of a path containing curl still contains curl) — a segment without it can
+  # never match, so skip the strip/canon/grep spawns entirely.
+  [[ "$cseg" == *curl* || "$cseg" == *wget* ]] || continue
   while [[ "$cseg" == \(* || "$cseg" == \{* ]]; do
     cseg="${cseg#?}"; cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   done
   cseg=$(s8_strip_wrappers "$cseg")
+  # F19: re-canonicalize command-position words after the wrapper strip — the
+  # global :478 canon ran while the wrapper still held command position, so a
+  # path/backslash-prefixed fetch binary behind `sudo `/`env ` kept its prefix
+  # (`sudo /usr/bin/curl` → strip → `/usr/bin/curl`, canon → `curl`). Same
+  # canon-after-strip order the rm (:626) and npx (:864) gates already use.
+  cseg=$(canon_cmd_words "$cseg")
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
     curlsh_hit=1; break
   fi
@@ -1030,6 +1117,8 @@ Spec: ~/.claude/CLAUDE.md §8 SAFETY —
 Bypass options:
   (a) Fix the invocation:
       • Validate the var inline:  : \"\${VAR:?must be set}\" && rm -rf \"\$VAR\"
+      • Scratch cleanup: create it with mktemp in the SAME command:
+        D=\$(mktemp -d) … rm -rf \"\$D\"
       • Pin the package:          npx pkg@1.2.3   /   npx @scope/pkg@1.2.3
       • Use a literal path:       rm -rf /tmp/work-dir
       • Download then inspect:    curl -o s.sh URL && less s.sh && sh s.sh

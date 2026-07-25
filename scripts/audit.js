@@ -93,6 +93,11 @@ async function selfCompliance(days) {
   const rules = {};
   for (const [k, v] of Object.entries(sa.byRule)) {
     const calibrated = v.precision != null && v.precision >= PRECISION_GATE;
+    // Honor the CALIBRATION record's status verbatim (2026-07-25 audit,
+    // loop-F1): recomputing from precision alone showed permanently-CLOSED
+    // detectors as 'collecting' — advertising exactly the "keep collecting"
+    // posture the 2026-07-24 labeling pass rejected. Rate stays A4-withheld
+    // for closed detectors (their precision upper bounds sit below the gate).
     rules[k] = {
       opportunities: v.opportunities,
       violations: v.violations,
@@ -100,9 +105,12 @@ async function selfCompliance(days) {
         ? Math.round((v.violations / v.opportunities) * 1000) / 1000
         : null,
       precision: v.precision,
-      status: calibrated
-        ? 'calibrated'
-        : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
+      status: v.status === 'closed'
+        ? 'closed'
+        : calibrated
+          ? 'calibrated'
+          : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
+      ...(v.closedReason ? { closedReason: v.closedReason } : {}),
     };
   }
   return {

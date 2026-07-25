@@ -403,6 +403,35 @@ test('parity: node scanVocab and the bash transcript-vocab hook agree (path-only
   }
 });
 
+test('parity: node scanVocab and the bash transcript-vocab hook agree (unterminated fence)', () => {
+  // 2026-07-25 audit: node blanked an unterminated fence to EOF while the
+  // bash hook (jq gsub newline-flattening makes its fence-awk inert) scanned
+  // the claim after the ``` — node=miss/bash=hit, the one divergence in a
+  // 12-shape differential. Terminator guard in stripIdentifiers restores
+  // parity in the HIT direction; both engines must flag the trailing claim.
+  const dir = stageFixture('vocab-fence-unterminated');
+  try {
+    const tp = path.join(dir, 'vocab-fence-unterminated.jsonl');
+    const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
+      .message.content.map(c => c.text).join(' ');
+    const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
+    const bashHit = bashVocabHit(tp, dir);
+    assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on unterminated fence`);
+    assert.equal(nodeHit, true, 'claim after an unterminated fence is scannable text');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('yieldTellSuppressed: bare 么 inside 什么/这么 is not an ask (2 reproduced FPs)', () => {
+  // Mid-work statements, no question — must NOT suppress-exempt:
+  assert.equal(yieldTellSuppressed('我看了一下这个函数要处理什么边界情况，先记下来。'), false);
+  assert.equal(yieldTellSuppressed('改动要这么写才能过 lint，我已经落盘了。'), false);
+  // True asks keep firing (control arms):
+  assert.equal(yieldTellSuppressed('要继续么'), true);
+  assert.equal(yieldTellSuppressed('要继续吗？'), true);
+});
+
 test('parity: node scanVocab and the bash transcript-vocab hook agree (real claim)', () => {
   const dir = stageFixture('vocab-hit');
   try {

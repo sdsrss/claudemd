@@ -133,6 +133,18 @@ rule_hits_append() {
   local ts
   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+  # hook_version (ARCH-3, 2026-07-25 audit): stamp every row with the emitting
+  # build's version so rows written by a STALE registered hook dir (other live
+  # CC windows keep old hooks until restart — 242 stale-root events across 12
+  # version gaps in the live log) are stratifiable by consumers instead of
+  # pooling into calibration windows. Cached per process; empty → null field
+  # (fail-open, matches session_id posture). Version source = plugin root
+  # package.json, two levels up from this lib file.
+  if [[ -z "${RULE_HITS_HOOK_VERSION+x}" ]]; then
+    RULE_HITS_HOOK_VERSION=$(jq -r '.version // empty' \
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/package.json" 2>/dev/null) || RULE_HITS_HOOK_VERSION=""
+  fi
+
   jq -cn \
     --arg ts "$ts" \
     --arg hook "$hook" \
@@ -141,11 +153,13 @@ rule_hits_append() {
     --arg session_id "$session_id" \
     --arg tool_use_id "$tool_use_id" \
     --arg section "$section" \
+    --arg hv "${RULE_HITS_HOOK_VERSION:-}" \
     --argjson extra "$extra" \
     '{ts: $ts, hook: $hook, event: $event, project: $project,
       session_id: (if $session_id == "" then null else $session_id end),
       tool_use_id: (if $tool_use_id == "" then null else $tool_use_id end),
       spec_section: (if $section == "" then null else $section end),
+      hook_version: (if $hv == "" then null else $hv end),
       extra: $extra}' \
     2>/dev/null >> "$log_file" || return 0
 }

@@ -18,7 +18,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
-SCHEMA="$HERE/../../docs/RULE-HITS-SCHEMA.md"
+# (SCHEMA path was never read — the DOCUMENTED array at :96 is hand-synced with the doc; SC2034)
+# SCHEMA="$HERE/../../docs/RULE-HITS-SCHEMA.md"
 
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"

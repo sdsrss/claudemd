@@ -70,14 +70,17 @@ The first row that fills this table is what this framework was written for.
 ## Companion: hook overhead measurement
 
 `scripts/perf-baseline.sh` measures hook chain overhead on 6
-representative bash commands. Run from the claudemd repo root, against
-the pilot project's working directory:
+representative bash commands. **Since 0.55.0 the script is hermetic: every
+probe runs inside its own throwaway `mktemp -d` repo, so the caller's cwd
+has no effect** — `cd <pilot-project>` first is a silent no-op (the 48
+stray-`noop`-commits incident is why). Hook overhead is project-independent
+(the chain reads the command string, not the repo), so run it anywhere:
 
 ```bash
-cd <pilot-project>
 bash <claudemd-repo>/scripts/perf-baseline.sh --runs 20
 ```
 
-Quote the output's `delta_ms` column in the pilot log. The audit-era
-estimate was 200-400 ms per command (5月9日 audit, never measured).
-Replace with whatever this script produces.
+Quote the output's `delta_ms` column in the pilot log. Two caveats when
+comparing against pre-0.55.0 recorded series: `off_ms` now times the
+synthetic sandbox repo (not comparable), and the script exports
+`DISABLE_RULE_HITS_LOG=1`, so "hooks ON" excludes rule-hits I/O.

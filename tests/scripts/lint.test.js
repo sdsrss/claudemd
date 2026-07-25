@@ -140,6 +140,15 @@ test('stripIdentifiers: removes fenced blocks, backtick spans, slashed paths, do
   assert.doesNotMatch(stripIdentifiers('```\nrobust = true\n```'), /robust/);
 });
 
+test('stripIdentifiers: unterminated fence is literal text, not a blank-to-EOF (terminator guard)', () => {
+  // Pre-fix the opening ``` with no closer blanked everything to EOF — the
+  // claim after it vanished node-side while the live bash hook (newline-
+  // flattened extraction, fence-awk inert) still HIT it. 2026-07-25 audit.
+  assert.match(stripIdentifiers('Intro.\n```\ncode here\nThe system is robust.'), /robust/);
+  // Control: a TERMINATED fence still strips its body.
+  assert.doesNotMatch(stripIdentifiers('Intro.\n```\nrobust = true\n```\ntail.'), /robust/);
+});
+
 test('stripIdentifiers: preserves bare prose words and decimals (no over-strip)', () => {
   assert.match(stripIdentifiers('the coverage is comprehensive'), /comprehensive/);
   assert.match(stripIdentifiers('3.5x faster'), /3\.5x/);          // decimal survives → ratio still catchable
