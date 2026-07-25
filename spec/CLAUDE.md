@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.21.1 — Core
+# AI-CODING-SPEC v6.21.2 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -236,7 +236,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - "Did this work?" → yes/no first, evidence second.
 - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
 - **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, NOT PARTIAL — defensive PARTIAL on done work = own honesty failure.
-- **Banned-vocab quick-check** (top-5 EN): `should work / robust / significantly / N× faster (no baseline) / comprehensive`. 中文 quick-check: `显著提升 / 应该可以 / 基本可用`. Full enumeration → §EXT §10-V + [[reference_banned_vocab_examples]]. Fix = strip + cite case with number.
+- **Banned-vocab quick-check** (top-5 EN): `should work / robust / significantly / N× faster (no baseline) / comprehensive`. 中文 quick-check: `显著提升 / 应该可以 / 基本可用`. Full enumeration → plugin `banned-vocab.patterns` (mechanical gate) + [[reference_banned_vocab_examples]]; §EXT §10-V keeps OK-shapes. Fix = strip + cite case with number.
 
 ## §11 SESSION (universal)
 

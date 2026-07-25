@@ -33,6 +33,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HOOKS_DIR="$REPO_ROOT/hooks"
 
+# All probe commands execute inside a throwaway git repo. The git probes used
+# to run in the CALLER's cwd — a high --runs invocation from the claudemd repo
+# root left 48 stray `noop` commits on main (2026-07-17, pushed with the next
+# release). §8.V3: probes never touch the live repo. Telemetry is disabled for
+# the direct hook invocations — they are synthetic probes, not real sessions
+# (feedback_manual_hook_probe_pollutes_telemetry).
+export DISABLE_RULE_HITS_LOG=1
+SANDBOX="$(mktemp -d)"
+cleanup_sandbox() { [[ -n "${SANDBOX:-}" && -d "$SANDBOX" ]] && rm -rf "$SANDBOX"; }
+trap cleanup_sandbox EXIT
+git -C "$SANDBOX" init -q
+git -C "$SANDBOX" config user.email perf-baseline@claudemd.local
+git -C "$SANDBOX" config user.name perf-baseline
+echo "perf-baseline fixture" > "$SANDBOX/README.md"
+git -C "$SANDBOX" add README.md
+git -C "$SANDBOX" commit -qm seed
+cd "$SANDBOX" || exit 1
+
 # Construct a synthetic Bash event envelope and pipe it to each PreToolUse
 # Bash hook in declaration order. Mirrors hooks/hooks.json L20-26.
 run_pretoolse_bash() {

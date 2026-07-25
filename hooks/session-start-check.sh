@@ -140,6 +140,21 @@ emit_bootstrap_failed_banner() {
   hook_record session-start bootstrap-fail-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
+# semver_cache_max <parent-dir> — print the highest semver-named subdir of
+# <parent-dir> (the marketplace versioned-cache layout), empty when none.
+# Shared by upstream_check + stale_cache_check. SC2010 avoidance: glob
+# iteration tolerates non-alphanumeric filenames in the cache parent and
+# pre-filters to semver-named dirs before sort -V.
+semver_cache_max() {
+  local parent="$1" entry base
+  [[ -d "$parent" ]] || return 0
+  for entry in "$parent"/*; do
+    [[ -d "$entry" ]] || continue
+    base="${entry##*/}"
+    [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s\n' "$base"
+  done | sort -V | tail -1
+}
+
 # upstream_check — emit "upgrade available" SessionStart additionalContext
 # banner when remote GitHub tag exceeds local cache max version.
 # Always returns 0 (fail-open). Outputs JSON to stdout on banner emit; nothing
@@ -168,17 +183,7 @@ upstream_check() {
   else
     cache_parent="$(cd "$PLUGIN_ROOT/.." 2>/dev/null && pwd)" || return 0
   fi
-  [[ -d "$cache_parent" ]] || return 0
-  # SC2010 avoidance: glob iteration tolerates non-alphanumeric filenames in the
-  # cache parent and lets us pre-filter to semver-named dirs before sort -V.
-  local entry base
-  local_max=$(
-    for entry in "$cache_parent"/*; do
-      [[ -d "$entry" ]] || continue
-      base="${entry##*/}"
-      [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s\n' "$base"
-    done | sort -V | tail -1
-  )
+  local_max=$(semver_cache_max "$cache_parent")
   [[ -z "$local_max" ]] && return 0
 
   # Consume the once-per-24h budget BEFORE the network call. The sentinel used
@@ -220,6 +225,46 @@ upstream_check() {
   hook_record session-start upstream-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
+# stale_cache_check — emit a "stale registration" banner when the versioned
+# cache parent holds a NEWER build than the plugin root this hook runs from.
+# Axis upstream_check is blind to: after a release + local marketplace update,
+# cache max == remote tag, so the remote>local banner never fires — yet CC is
+# still loading hooks from the previously registered older dir. Reproduced
+# 2026-07-25: running 0.52.0, cache + remote both 0.54.0, zero banners across
+# two shipped releases. Local-only (no network, no 24h sentinel — repeats
+# every SessionStart until /claudemd-refresh re-registers the new root).
+# Telemetry reuses the `stale-root` event (same condition family as the
+# v0.36.0 direction gate; distinguished by cache_max_version in extra).
+stale_cache_check() {
+  [[ "${DISABLE_UPSTREAM_CHECK:-0}" == "1" ]] && return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  [[ "${PLUGIN_VER:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+
+  local cache_parent local_max
+  if [[ -n "${CLAUDEMD_CACHE_PARENT:-}" ]]; then
+    cache_parent="$CLAUDEMD_CACHE_PARENT"
+  else
+    cache_parent="$(cd "$PLUGIN_ROOT/.." 2>/dev/null && pwd)" || return 0
+  fi
+  local_max=$(semver_cache_max "$cache_parent")
+  [[ -z "$local_max" || "$local_max" == "$PLUGIN_VER" ]] && return 0
+  local newer
+  newer=$(printf '%s\n%s\n' "$PLUGIN_VER" "$local_max" | sort -V | tail -1)
+  [[ "$newer" != "$local_max" ]] && return 0
+
+  jq -cn --arg run "v$PLUGIN_VER" --arg cache "v$local_max" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: ("[claudemd] stale plugin registration: hooks are running from " + $run + " but the marketplace cache holds " + $cache + ". Run /claudemd-refresh, then restart Claude Code. Disable this notice: DISABLE_UPSTREAM_CHECK=1")
+    }
+  }' 2>/dev/null
+
+  local stale_extra
+  stale_extra=$(jq -cn --arg h "$PLUGIN_VER" --arg c "$local_max" '{hook_version:$h, cache_max_version:$c}' 2>/dev/null) || stale_extra='null'
+  hook_record session-start stale-root "$stale_extra" '' "$SESSION_ID" 2>/dev/null || true
+}
+
 # Manifest-exists path: check for version mismatch (v0.2.5). Pre-0.2.5 this
 # was a plain `manifest-exists → exit`. Users who installed 0.2.2 then used
 # `/plugin install` on 0.2.3/0.2.4 got silently stuck: CC's marketplace
@@ -259,9 +304,13 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
     # activity (a summary to show). Capture each (side effects — sentinel touch,
     # file rename, hook_record — still run inside the command substitution) and
     # emit at most ONE object, merging additionalContext when both fire.
-    up_json=$(upstream_check)
+    stale_json=$(stale_cache_check)
+    up_json=""
+    # Cache already newer than the running root → the remote check is
+    # redundant this session (and would double-banner); skip it.
+    [[ -z "$stale_json" ]] && up_json=$(upstream_check)
     sum_json=$(emit_session_summary_banner)
-    printf '%s\n%s\n' "$up_json" "$sum_json" | jq -s -c '
+    printf '%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" | jq -s -c '
       map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
       | if length == 0 then empty
         elif length == 1 then .[0]

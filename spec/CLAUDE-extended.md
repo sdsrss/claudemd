@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.21.1 — Extended
+# AI-CODING-SPEC v6.21.2 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -267,23 +267,13 @@ Annotation form when overriding: commit body line `known-red baseline: <one-line
 
 ## §10-V Banned-vocab (reference list)
 
-Core §10 Specificity rule lifted the full list here (v6.8). Core keeps examples + scope; full enumeration below — consult only when drafting a claim you're unsure about.
+Core §10 keeps the quick-check (top-5 EN + 中文). The full term enumeration is externalized (v6.21.2): the mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); usage notes + fix recipes live in `reference_banned_vocab_examples.md`. 30d hit data at externalization: 15/15 denied matches were core-quick-check members — the long tail printed here earned zero incremental catches.
 
 **OK (absolute)**: "reduced p99 580ms → 140ms" / "12/12 tests pass" / "65 → 64 tests after consolidation".
 
 **OK (ratio with baseline)**: "1453 → 1490 tests (+2.5%)" / "cut FTS latency from 380ms to 95ms (4×)".
 
 **OK (中文 with baseline)**: "FTS 查询 380ms → 95ms（4×）" / "fixed at schema.mjs:147, 12/12 tests pass".
-
-**Banned — adjectives (EN)**: "significantly improved" / "robust" / "production-ready" / "more efficient" / "should work" / "cleaner code" / "comprehensive" / "best practice" / "industry-standard".
-
-**Banned — hedges (EN)**: "presumably" / "likely" / "in principle" / "arguably" / "in theory" / "seems to work" / "appears correct" / "it should be fine".
-
-**Banned — baseline-less ratios (EN)**: "70-80% faster" / "2× better" / "most of the time" / "usually passes" / "often fails".
-
-**Banned — adjectives (中文)**: "显著提升 / 大幅改善 / 更高效 / 明显优于 / 基本可用 / 相当不错 / 通常如此 / 一般来说 / 大部分情况".
-
-**Banned — baseline-less ratios (中文)**: "N 倍提升 / M% 更快 / 大多数时候 / 多数情况下" (no stated reference).
 
 When banned, fix = strip the hedge, state the specific case with absolute or baseline-anchored number.
 
@@ -478,15 +468,15 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.21.1 (patch, 2026-07-24)** — §11 turn-yield tell gains its missing precondition.
+**v6.21.2 (patch, 2026-07-25)** — §EXT §10-V compressed to OK-shapes + pointers.
 
-- `[fix]` **The tell is no longer sufficient on its own**: `继续 / next / 怎么停了` confirms a prior yield ONLY when the prior turn neither asked nor closed with a four-section. Hand-labeling every flagged instance across all 151 transcripts found 0/37 true positives — 28 prior turns had ended with an explicit question, and twice the agent itself had written "说一声或 `继续`". Treating an answered question as an indictment pressures the agent to stop asking, which undercuts §5 hard-AUTH, §0 ambiguity-ASK and §1 Recommend-first. Record: `tasks/sampling-detector-labeling-2026-07-24.md`; rationale: `CLAUDE-changelog.md` v6.21.1.
+- `[change]` **§10-V Banned enumeration externalized**: the five `**Banned …**` lines move out of extended — mechanical enforcement stays in the plugin's `hooks/banned-vocab.patterns` (untouched), prose lookup in `reference_banned_vocab_examples.md`; core §10 quick-check untouched. Grounds (2026-07-25 audit): 30d hook data shows 15/15 denied matches were core-quick-check members (robust ×8, comprehensive ×6, significantly ×1) — the extended long tail earned zero incremental catches while costing ~0.8KB of every L3/ship load. Demoting the deny gate itself was evaluated and REJECTED: `hard-rules-audit.js` demote queue does not list §10-V (31 hits ≠ zero-hit); the 51.6% bypass-escape-hatch rate is flagged to the next §13.2 batch review instead. Record: `tasks/banned-vocab-demote-evaluation-2026-07-25.md`; join fixture `banned-vocab-canonical.json` updated in step (drift-3/4 stay green).
 
-**Older entries** (v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.21.1, 2026-07-24, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24467 → 24649 bytes (Δ +182: §11 turn-yield precondition); extended 48115 → 48375 bytes (Δ: v6.21.1 entry replacing v6.21.0, carry-forward refresh); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24649/25000 (**351 bytes headroom, 98.60%**); extended 48375/50000 (**1625 bytes headroom, 96.75%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.21.2, 2026-07-25, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24649 → 24715 bytes (Δ +66: §10 pointer retarget); extended 48375 → 48293 bytes (Δ -82: §10-V Banned enumeration externalized, entry + carry-forward refresh); OPERATOR.md 8314 bytes (unchanged). Size budget: core 24715/25000 (**285 bytes headroom, 98.86%**); extended 48293/50000 (**1707 bytes headroom, 96.59%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.21.1 adds no HARD rule (§11 turn-yield already HARD; the change narrows its trigger) — §13.2 ratchet untouched, §0.1 headroom sufficient so the +182B ships unpaired. Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` (C7-C12 ≈ −790B; C4 void) — core headroom is now under 400B, so the next core addition of any size must pair with a trim. **A4 measurement track CLOSED ahead of the 2026-08-09 decision point**: the hand-labeling pass ran 2026-07-24 over the entire flagged population (178 instances, both strata), pooled precision upper bound ≤0.17; 6 of 8 detectors closed, 2 repaired and re-baselined. Do NOT re-open A4 as pending calibration work — the record is `tasks/sampling-detector-labeling-2026-07-24.md`. Runbook stamp: re-stamped `@ v6.21.1` this ship (self-healing per §2.2). Carried open question (unchanged from v6.21.0): 6 §4 Routing primaries are `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite deferred to the next batch review.
+**Operator carry-forward**: v6.21.2 is a prose-only patch — no HARD rule change (`hard-rules.json` bumps spec_version only; enforcement identical, patterns file untouched). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md` (C7-C12 ≈ −790B; C4 void); the §10-V compaction candidate is CONSUMED this version (extended regained ~0.8KB); core headroom remains under 400B — next core addition of any size must pair with a trim. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. NEW for the next §13.2 batch review: banned-vocab deny-gate bypass-escape-hatch rate 16/31 (51.6%, 30d, 8 projects; demote-by-bypass-rate has no codified rule — decide there, record `tasks/banned-vocab-demote-evaluation-2026-07-25.md`). Carried open question (unchanged from v6.21.0): 6 §4 Routing primaries are `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite deferred to the same batch review. Runbook stamp: re-stamped `@ v6.21.2` this ship (self-healing per §2.2).
 
 ## §1.5-EXT GLOSSARY
 

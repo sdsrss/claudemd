@@ -424,7 +424,43 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((22 - FAIL))/22 passed"; exit 1
+# Case 23 (v0.55.0): marketplace cache holds a build NEWER than the running
+# plugin root → local stale-registration banner fires, with NO network (the
+# ls-remote mock hard-fails, proving the check is cache-local). This is the
+# axis upstream_check is blind to: after a release + marketplace update,
+# cache max == remote tag, so remote>local never fires — reproduced
+# 2026-07-25 (running 0.52.0, cache + remote both 0.54.0, zero banners).
+mkdir -p "$TMP_HOME/cache/9.9.9"
+rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun" 2>/dev/null || true
+rm -f "$HOME/.claude/.claudemd-state/last-session-summary.json" 2>/dev/null || true
+echo "{\"version\":\"$PLUGIN_VER_REAL\",\"entries\":[]}" > "$HOME/.claude/.claudemd-manifest.json"
+OUT23=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-fail.sh" \
+        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+        DISABLE_UPSTREAM_CHECK=0 \
+        bash "$HOOK" <<<'{}' 2>/dev/null)
+if echo "$OUT23" | grep -q 'stale plugin registration' \
+   && echo "$OUT23" | grep -q 'v9.9.9' \
+   && echo "$OUT23" | grep -q '/claudemd-refresh'; then
+  echo "PASS: 23 stale-cache banner fires when cache max > running root (network-free)"
+else
+  echo "FAIL: 23 stale-cache banner missing (out: $OUT23)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 22/22 passed"
+
+# Case 24: DISABLE_UPSTREAM_CHECK=1 suppresses the stale-cache banner too
+# (same knob as the remote upstream banner — one env var governs both axes).
+rm -f "$HOME/.claude/.claudemd-state/last-session-summary.json" 2>/dev/null || true
+OUT24=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-fail.sh" \
+        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
+        DISABLE_UPSTREAM_CHECK=1 \
+        bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT24" ]]; then
+  echo "PASS: 24 DISABLE_UPSTREAM_CHECK=1 suppresses stale-cache banner"
+else
+  echo "FAIL: 24 banner leaked under DISABLE_UPSTREAM_CHECK=1 (out: $OUT24)"; FAIL=$((FAIL+1))
+fi
+rmdir "$TMP_HOME/cache/9.9.9" 2>/dev/null || true
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((24 - FAIL))/24 passed"; exit 1
+fi
+echo "Tests: 24/24 passed"

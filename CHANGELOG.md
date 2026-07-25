@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.55.0] - 2026-07-25
+
+Ships spec **v6.21.2** (patch) plus two hermeticity/observability fixes surfaced by the 2026-07-25 spec audit ("按建议执行" pass over the audit's P0-P3).
+
+**What changes for users**: SessionStart now banners when Claude Code is loading hooks from an older build than the marketplace cache holds — the exact drift that let two releases (0.53.0, 0.54.0) run unnoticed on a stale 0.52.0 install; `scripts/perf-baseline.sh` can no longer commit into your repo or write live telemetry.
+
+- **feat(session-start): stale-registration banner (`stale_cache_check`).** `upstream_check` compares the cache max against the REMOTE tag, so after a release + local marketplace update (cache == remote) it stays silent even though the registered root is older — reproduced 2026-07-25: hooks running v0.52.0 while cache and remote both held v0.54.0, zero banners for two releases; only `doctor`'s on-demand `plugin cache:staleness` check saw it. The new check compares the running root against the local cache max — no network, no 24h sentinel, repeats every SessionStart until `/claudemd-refresh` re-registers. Skips the redundant remote probe when it fires. Telemetry reuses the registered `stale-root` event with `{hook_version, cache_max_version}` extra (no new event name). Shared `semver_cache_max()` helper replaces the inline glob in `upstream_check` (one source for the cache scan). Tests: `session-start.test.sh` cases 23-24 — case 23 RED pre-fix (hook emitted nothing on a newer cache), 24/24 post-fix.
+- **fix(perf-baseline): probes run in a throwaway repo + telemetry off.** The `git commit --allow-empty -m 'noop'` probe executed in the CALLER's cwd — 48 stray `noop` commits landed on this repo's main on 2026-07-17 (all stamped 15:14:04-05) and were pushed with the next release. All probe commands now execute inside a `mktemp -d` sandbox repo (trap-cleaned, spec §8.V3), and the script exports `DISABLE_RULE_HITS_LOG=1` so its synthetic hook invocations stop polluting live telemetry (`feedback_manual_hook_probe_pollutes_telemetry`). New regression gate `tests/integration/perf-baseline-hermetic.test.sh`: RED pre-fix (caller repo commits 1 → 3 at `--runs 1`), 3/3 post-fix.
+- **change(spec v6.21.2): §EXT §10-V compressed to OK-shapes + pointers** — rationale and demote-evaluation record in `spec/CLAUDE-changelog.md`. `banned-vocab-canonical.json` updated in step (pattern rows kept as in_spec=false, ten spec-only rows retired); `hooks/banned-vocab.patterns` untouched — mechanical enforcement byte-identical.
+
 ## [0.54.0] - 2026-07-24
 
 Ships spec **v6.21.1** (patch) plus the detector repairs and closures that the same labeling pass produced. Two detectors changed behavior; six stopped presenting themselves as pending calibration work.
