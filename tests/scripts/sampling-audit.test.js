@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD, loadVocabPatterns, scanVocab } from '../../scripts/sampling-audit.js';
+import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD, loadVocabPatterns, scanVocab, yieldTellSuppressed } from '../../scripts/sampling-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -200,7 +200,7 @@ test('A2 §10-V violations = turns with ≥1 match (rate stays ≤ 1), hits = ra
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('A4 calibration gate: all 8 rules present, precision null, status collecting, gate pre-registered at 0.8', async () => {
+test('A4 calibration gate: all 8 rules present, precision null, status collecting-or-closed, gate pre-registered at 0.8', async () => {
   const dir = stageFixture('clean');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
@@ -211,7 +211,11 @@ test('A4 calibration gate: all 8 rules present, precision null, status collectin
       assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
       assert.equal(typeof v.violations, 'number', `${k} missing violations`);
       assert.equal(v.precision, null, `${k} precision must start null (uncalibrated)`);
-      assert.equal(v.status, 'collecting', `${k} status must start 'collecting'`);
+      // 'closed' joined 'collecting' in the 2026-07-24 labeling pass: a
+      // detector that was labeled, failed the 0.8 gate, and is not worth
+      // repairing stops presenting itself as pending work. The invariant that
+      // still binds is the one that matters — NO rate is ever presented.
+      assert.ok(['collecting', 'closed'].includes(v.status), `${k} unexpected status ${v.status}`);
     }
     assert.match(r.metricContract, /violations\s*\/\s*opportunities/,
       'A2 metric contract must ride in the result');
@@ -358,4 +362,131 @@ test('DRIFT-1: scanVocab matches alternation + POSIX class, excludes @ratio', ()
   assert.deepEqual(scanVocab('a quick   win today', pats), ['quick   win']);
   // @ratio excluded
   assert.deepEqual(scanVocab('this is cheapish', pats), []);
+});
+
+// DRIFT-2 (2026-07-24 labeling): the header claims the fixtures "pin both this
+// script and the bash hooks to the same expected hit-counts on identical
+// inputs" — but no test ever ran the bash hook, so the two silently diverged.
+// hooks/transcript-vocab-scan.sh has sanitized identifier/path spans since
+// v0.23.19 (its lines 92-94); scanVocab did not, so a bare path like
+// `docs/comprehensive-audit-….md` fired `\bcomprehensive\b` node-side only.
+// 7 of the 8 §10-V "violations" in the 30d sampling audit were this class.
+// This is the missing join test: same transcript, both engines, same verdict.
+function bashVocabHit(transcriptPath, homeDir) {
+  const hook = path.join(REPO_ROOT, 'hooks/transcript-vocab-scan.sh');
+  const r = spawnSync('bash', [hook], {
+    input: JSON.stringify({ session_id: 'parity-test', tool_use_id: 'tu', transcript_path: transcriptPath }),
+    encoding: 'utf8',
+    // Explicit env, not a spread of process.env: operator shells carry
+    // DISABLE_*/TRANSCRIPT_* knobs that would silently no-op the hook
+    // (feedback_hook_env_test_hermeticity). DISABLE_RULE_HITS_LOG keeps the
+    // probe out of live telemetry.
+    env: { PATH: process.env.PATH, HOME: homeDir, TRANSCRIPT_VOCAB_SCAN: '1', DISABLE_RULE_HITS_LOG: '1' },
+  });
+  return /§10-V drift detected/.test(r.stderr || '');
+}
+
+test('parity: node scanVocab and the bash transcript-vocab hook agree (path-only text)', () => {
+  const dir = stageFixture('vocab-path-only');
+  try {
+    const tp = path.join(dir, 'vocab-path-only.jsonl');
+    const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
+      .message.content.map(c => c.text).join(' ');
+    const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
+    const bashHit = bashVocabHit(tp, dir);
+    assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on path-only text`);
+    // Both must be silent: the only banned word sits inside a file path, which
+    // is an identifier mention, not a value claim about the agent's own work.
+    assert.equal(nodeHit, false, 'a banned word inside a file path is not a §10-V value claim');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('parity: node scanVocab and the bash transcript-vocab hook agree (real claim)', () => {
+  const dir = stageFixture('vocab-hit');
+  try {
+    const tp = path.join(dir, 'vocab-hit.jsonl');
+    const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
+      .message.content.map(c => c.text).join(' ');
+    const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
+    const bashHit = bashVocabHit(tp, dir);
+    assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on a real claim`);
+    // Control arm: a bare-word value claim must still fire on BOTH sides —
+    // without this, "sanitize everything" would pass the parity test too.
+    assert.equal(nodeHit, true, 'a bare-word value claim must still be caught');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A4 labeling 2026-07-24: `继续` after a turn that ASKED is the user answering,
+// not a "why did you stop" tell. 37/37 external-stratum flags were this class;
+// twice the agent had literally written "说一声或 `继续`". Spec §11 now carries
+// the precondition — these lock its mechanical form.
+test('turn-yield precondition: an asking prior turn suppresses the tell', () => {
+  assert.equal(yieldTellSuppressed('下一步建议 M5.2：fw-rules 静态分析器。要继续吗？'), true);
+  assert.equal(yieldTellSuppressed('继续 M2（采集与白名单），还是先停在这里？'), true);
+  assert.equal(yieldTellSuppressed('说一声(或 `继续`),我接着干。默认我会走 M12-a-2 → b4。'), true);
+  assert.equal(yieldTellSuppressed('下一步在你:拍板 D0 四决策点,我即可接 M12-c 开工。'), true);
+  assert.equal(yieldTellSuppressed('backlog 全为触发型,等你的信号或新需求。'), true);
+});
+
+test('turn-yield precondition: a closed four-section turn suppresses the tell', () => {
+  assert.equal(yieldTellSuppressed('Done: x landed.\n\nNot done: 无。\n\nFailed: 无。\n\nUncertain: 无。'), true);
+  assert.equal(yieldTellSuppressed('## Done\nx\n## Failed\n无'), true);
+});
+
+test('turn-yield precondition: an untermined/empty prior turn is not attributable', () => {
+  assert.equal(yieldTellSuppressed(''), true);
+  assert.equal(yieldTellSuppressed('   '), true);
+  assert.equal(yieldTellSuppressed(undefined), true);
+});
+
+test('turn-yield precondition: a plain mid-work statement still counts as a tell', () => {
+  // Control arm — without this, "suppress everything" would pass the tests above.
+  assert.equal(yieldTellSuppressed('I found the null deref; the fix is to guard the empty-input branch.'), false);
+  assert.equal(yieldTellSuppressed('读完了 parser，问题在空输入分支。'), false);
+});
+
+test('turn-yield-asked fixture: opportunities counted, tells suppressed', async () => {
+  const dir = stageFixture('turn-yield-asked');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 2, 'both 继续 messages follow tool-active turns');
+    assert.equal(r.byRule['§11-turn-yield'].violations, 0, 'one prior turn asked, the other closed four-section');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CALIBRATION closure: six detectors report closed with a reason, two stay collecting', async () => {
+  const dir = stageFixture('clean');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const closed = Object.entries(r.byRule).filter(([, v]) => v.status === 'closed');
+    assert.equal(closed.length, 6, `expected 6 closed detectors, got ${closed.map(([k]) => k).join(',')}`);
+    for (const [k, v] of closed) {
+      assert.ok(v.closedReason && v.closedReason.length > 10, `${k} closed without a reason`);
+      assert.equal(v.precision, null, `${k} must not present a rate while closed`);
+    }
+    assert.equal(r.byRule['§10-V'].status, 'collecting');
+    assert.equal(r.byRule['§11-turn-yield'].status, 'collecting');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2 stratification: per-class rows carry closure status (the stratified view is the read path)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-cls-'));
+  try {
+    const proj = path.join(root, '-mnt-data-ssd-dev-projects-claudemd');
+    fs.mkdirSync(proj);
+    fs.copyFileSync(path.join(FIXTURE_DIR, 'clean.jsonl'), path.join(proj, 'c.jsonl'));
+    const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byClass.self.byRule['§5-hard-auth'].status, 'closed',
+      'a closed detector must read as closed in the stratified view too');
+    assert.ok(r.byClass.self.byRule['§5-hard-auth'].closedReason);
+    assert.equal(r.byClass.self.byRule['§10-V'].status, 'collecting');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

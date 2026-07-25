@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"where is the report"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Report written to docs/comprehensive-audit-2026-07-17-v0.51.0.md and the batch is closed."}]}}

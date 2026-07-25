@@ -43,10 +43,34 @@ const RULE_KEYS = [
 // dashboard and tests bind to the same constant instead of a copied literal.
 export const PRECISION_GATE = 0.8;
 
-// Hand-labeling results land here (operator edits this table after labeling
-// ~50 flagged + ~50 unflagged samples per rule). precision stays null until
-// a labeling pass happens; status derives from precision vs PRECISION_GATE.
-const CALIBRATION = Object.fromEntries(RULE_KEYS.map(k => [k, { precision: null, labeledAt: null }]));
+// Hand-labeling results land here. precision stays null until a labeling pass
+// happens; status derives from precision vs PRECISION_GATE. A rule may also be
+// CLOSED: labeled, failed the gate, and not worth repairing at proportionate
+// cost — closed rules keep running (the counts are still emitted) but stop
+// presenting themselves as pending calibration work.
+//
+// 2026-07-24 labeling pass (tasks/sampling-detector-labeling-2026-07-24.md):
+// 178 flagged instances hand-labeled across both strata — the ENTIRE flagged
+// population, not a subsample. ≥147 confirmed false positives, ≤31 possible
+// true positives, pooled precision upper bound ≤0.17. Six detectors closed on
+// three joint grounds: (a) opportunity denominators of 3–87 even across all
+// 151 transcripts, (b) FP roots needing command-vs-string-data semantics or
+// per-project plan-file naming rather than a regex patch, (c) their only
+// consumer is the §13.2 demote queue, which is itself empty. Two detectors
+// kept: §10-V and §11-turn-yield both have real denominators (13140 / 1815)
+// and both were repaired in this release, so their precision must be
+// re-measured from scratch — precision stays null, status returns to
+// collecting, and the pre-2026-07-24 series is NOT comparable.
+const CALIBRATION = {
+  '§10-V': { precision: null, labeledAt: '2026-07-24', note: 'sanitize parity restored this release — re-baselined, prior counts not comparable' },
+  '§11-turn-yield': { precision: null, labeledAt: '2026-07-24', note: 'tell precondition added this release — re-baselined' },
+  '§iron-law-2': { precision: null, labeledAt: '2026-07-24', closed: 'evidence fingerprint misses markdown-bolded numbers (255→**264**) and N/N ratios; denominator 55' },
+  '§10-four-section-order': { precision: null, labeledAt: '2026-07-24', closed: 'zero positives across 14056 turns; nothing to calibrate' },
+  '§10-honesty': { precision: null, labeledAt: '2026-07-24', closed: 'placeholder skip-list misses bare 无; denominator 4' },
+  '§7-bugfix-anchor': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.25; fires on 修复 as a noun and on branch names like fix-ux-audit' },
+  '§11-post-compaction': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.41; PLAN_SPEC_RE hardcodes this repo\'s plan-file naming (tasks/*.md|plan*.md)' },
+  '§5-hard-auth': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.16; cannot separate an executed command from a command string passed as data' },
+};
 
 const METRIC_CONTRACT =
   'compliance = 1 - violations/opportunities; opportunities = detected trigger contexts, ' +
@@ -121,11 +145,21 @@ function extractEvents(filePath) {
 
 // DRIFT-1: delegate matching to lint.js scan() so §10-V semantics (lastIndexOf
 // separator, posixClassesToJs, per-pattern fail-open, @ratio exclusion) are
-// identical to the CLI + bash hook. excludeRatio:true mirrors the prior
-// @ratio-skip; sanitize stays OFF to preserve this scanner's raw-text baseline
-// (the A1 2026-07-10 comparison depends on it — NOT the CLI's identifier strip).
+// identical to the CLI + bash hook. excludeRatio:true mirrors the @ratio-skip.
+//
+// DRIFT-2 (2026-07-24 hand-labeling): sanitize was OFF here "to preserve this
+// scanner's raw-text baseline", but hooks/transcript-vocab-scan.sh — the hook
+// this file claims to mirror — has stripped identifier/path spans since
+// v0.23.19 (its lines 92-94). So the raw-text baseline was measuring something
+// the live hook never enforced: 7 of the 8 §10-V hits in the 30d sampling audit
+// were `\bcomprehensive\b` firing inside `docs/comprehensive-audit-….md`, and
+// 51 more in the external stratum. Precision on the labeled set was 0/8.
+// sanitize:true restores parity; tests/scripts/sampling-audit.test.js now has
+// the join test (both engines, one transcript) that should have caught this.
+// Baseline note: §10-V counts before 2026-07-24 are raw-text and NOT comparable
+// with counts after — the A1 2026-07-10 series ends here by design.
 export function scanVocab(text, patterns) {
-  return scan(text, { patterns, excludeRatio: true }).map(h => h.match);
+  return scan(text, { patterns, excludeRatio: true, sanitize: true }).map(h => h.match);
 }
 
 // Mirror transcript-structure-scan.sh awk: strip leading `## `, then test for
@@ -221,8 +255,33 @@ function scanBugfixAnchor(text) {
 // typed user message is a bare continuation nudge. Whole-message match
 // (trimmed, trailing punctuation tolerated) to control FPs: "继续下一步" is a
 // legitimate next-step instruction, "继续" alone after a tool-active turn is
-// the yield tell. Recall is knowingly partial until A4 labeling calibrates.
+// the yield tell.
 const YIELD_TELL_RE = /^(?:继续|next|continue|怎么停了|why did you stop|为什么停了?)[\s!.。!?~]*$/i;
+
+// A4 labeling, 2026-07-24: the tell above is NOT sufficient on its own —
+// 37/37 flagged instances in the external stratum were false positives. The
+// prior turn had ASKED ("要继续吗?" / "还是先停在这里?" / "说一声或 `继续`" —
+// twice the agent literally solicited the word) or had CLOSED with a
+// four-section report. `继续` there is the user ANSWERING, not complaining
+// about a premature stop. Spec §11 was corrected in the same release to carry
+// this precondition; this predicate is its mechanical form.
+//
+// ASK window is the tail of the prior turn — an offer made in the middle of a
+// long report, then followed by more prose, is not what the user is answering.
+const YIELD_ASK_RE = /[?？]\s*$|要(不要|继续|我)?[^。\n]{0,14}(吗|么)[?？]?|还是先停|(就|或)?说一声|要继续|继续的话|下一步(建议|在你|由你)|由你定|等你的(信号|指示)|你(来)?(定|拍板|决定)/;
+// CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
+// the next typed message starts a new task (§1.5), it is not a nudge.
+const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
+const YIELD_ASK_WINDOW = 260;
+
+// Returns true when the prior assistant turn makes the tell inapplicable.
+export function yieldTellSuppressed(priorText) {
+  // No prior assistant text at all (e.g. the turn was cut off by a spend limit
+  // or an API error) — the stop is not attributable to the agent.
+  if (!priorText || !priorText.trim()) return true;
+  if (YIELD_CLOSED_RE.test(priorText)) return true;
+  return YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
+}
 
 // §11 post-compaction: after a compaction event, a plan/spec re-read should
 // appear within the next READ_WINDOW main-line assistant events.
@@ -333,16 +392,25 @@ function scanSequence(events) {
     hardAuth: { violations: 0, opportunities: 0 },
   };
 
-  // §11-turn-yield
+  // §11-turn-yield — tell + precondition (see yieldTellSuppressed). The prior
+  // assistant TEXT is tracked separately from tool activity: a turn can end
+  // with tool calls and no prose, which is itself a signal (nothing was asked).
   let toolUseInTurn = false;
+  let priorText = '';
   for (const e of main) {
-    if (e.kind === 'assistant' && e.toolUses.length > 0) toolUseInTurn = true;
+    if (e.kind === 'assistant') {
+      if (e.toolUses.length > 0) toolUseInTurn = true;
+      if (e.hasText) priorText = e.text;
+    }
     if (e.kind === 'user-typed' && !e.compactSummary) {
       if (toolUseInTurn) {
         out.turnYield.opportunities += 1;
-        if (YIELD_TELL_RE.test(e.text.trim())) out.turnYield.violations += 1;
+        if (YIELD_TELL_RE.test(e.text.trim()) && !yieldTellSuppressed(priorText)) {
+          out.turnYield.violations += 1;
+        }
       }
       toolUseInTurn = false;
+      priorText = '';
     }
   }
 
@@ -397,6 +465,13 @@ function scanSequence(events) {
   return out;
 }
 
+function ruleStatus(k) {
+  const c = CALIBRATION[k];
+  if (c.closed) return 'closed';
+  if (c.precision != null && c.precision >= PRECISION_GATE) return 'calibrated';
+  return 'collecting';
+}
+
 function emptyByRule() {
   return Object.fromEntries(RULE_KEYS.map(k => [k, {
     hits: 0,
@@ -404,7 +479,11 @@ function emptyByRule() {
     opportunities: 0,
     transcriptsAffected: 0,
     precision: CALIBRATION[k].precision,
-    status: CALIBRATION[k].precision != null && CALIBRATION[k].precision >= PRECISION_GATE ? 'calibrated' : 'collecting',
+    status: ruleStatus(k),
+    // Surfaced so a reader of the JSON sees WHY a rule is closed without
+    // having to open the labeling record.
+    ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
+    ...(CALIBRATION[k].note ? { note: CALIBRATION[k].note } : {}),
   }]));
 }
 
@@ -559,8 +638,18 @@ export async function samplingAudit({
 export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_DAYS, sample = null, pluginRoot } = {}) {
   if (!projectsRoot) projectsRoot = path.join(os.homedir(), '.claude/projects');
   const result = emptyResult(days, projectsRoot);
+  // Per-class rows carry `status` too. The stratified view is the one a reader
+  // should be reading (pooled counts already misled once — see the A2 note in
+  // this file's header), so a detector CLOSED in the 2026-07-24 labeling pass
+  // must say so here as well; otherwise `byClass.external['§5-hard-auth']`
+  // reads as a live 83/86 compliance signal with nothing marking it retired.
   const emptyClass = () => ({ scannedTranscripts: 0, totalTurns: 0,
-    byRule: Object.fromEntries(RULE_KEYS.map(k => [k, { violations: 0, opportunities: 0 }])) });
+    byRule: Object.fromEntries(RULE_KEYS.map(k => [k, {
+      violations: 0,
+      opportunities: 0,
+      status: ruleStatus(k),
+      ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
+    }])) });
   result.byClass = { self: emptyClass(), external: emptyClass(), unknown: emptyClass() };
   const affected = Object.fromEntries(RULE_KEYS.map(k => [k, new Set()]));
   let subDirs = [];
