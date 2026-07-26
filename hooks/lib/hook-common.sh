@@ -218,7 +218,12 @@ hook_spawn_install() {
 #     (`cat <<EOF && git push` — bash runs that push).
 #   - body lines are blanked, not dropped, so line-anchored callers keep their
 #     line numbering; a caller that flattens sees the same thing either way.
-HOOK_HEREDOC_AWK=$(cat <<'AWKPROG'
+# bash 3.2 (macOS /bin/bash) cannot parse a heredoc nested inside `$( … )`:
+# its command-substitution scanner counts the parens and quotes in the heredoc
+# BODY, and this awk program has plenty of both — the file then fails to source
+# at all, taking every hook with it. `read -r -d ''` assigns the same text
+# without nesting. It returns non-zero at EOF, hence the `|| true`.
+IFS= read -r -d '' HOOK_HEREDOC_AWK <<'AWKPROG' || true
 { lines[NR] = $0 }
 END {
   n = NR
@@ -248,7 +253,6 @@ END {
   }
 }
 AWKPROG
-)
 
 hook_strip_heredoc_bodies() {
   awk "$HOOK_HEREDOC_AWK"

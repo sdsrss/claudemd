@@ -77,6 +77,37 @@ jobs:
           done
           [ "$found" = 0 ] || exit 1
           echo "OK: no bash 4+ constructs in hooks (macOS bash 3.2 safe)"
+      - name: Reject constructs bash 3.2 cannot PARSE (real 3.2 syntax check)
+        if: runner.os == 'Linux' && matrix.node == 20
+        run: |
+          # v0.58.1 — the pattern gate above catches bash-4 SYNTAX it knows to
+          # look for; it cannot catch a construct 3.2 fails to PARSE. v0.58.0
+          # shipped `VAR=$(cat <<'EOF' … )` in hooks/lib/hook-common.sh: bash
+          # 3.2's command-substitution scanner counts parens/quotes inside the
+          # heredoc BODY, so the file failed to source and took every hook with
+          # it. Linux CI (bash 5) and the macOS leg (Homebrew bash 5 on PATH)
+          # were both green; only the macOS runner's /bin/bash surfaced it, at
+          # runtime, in the release CI. Parse every hook with a REAL 3.2 built
+          # for this job — a `bash -n` under 5.x proves nothing about 3.2.
+          set -eu
+          curl -sSL -o /tmp/bash32.tar.gz https://ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz
+          tar xzf /tmp/bash32.tar.gz -C /tmp
+          cd /tmp/bash-3.2.57
+          ./configure --quiet --without-bash-malloc >/dev/null 2>&1
+          make -s -j"$(nproc)" >/dev/null 2>&1
+          cd "$GITHUB_WORKSPACE"
+          B32=/tmp/bash-3.2.57/bash
+          "$B32" --version | head -1
+          found=0
+          for f in hooks/*.sh hooks/lib/*.sh tests/lib/*.sh; do
+            if ! "$B32" -n "$f" 2>/tmp/b32err; then
+              echo "::error::$f does not parse under bash 3.2:"
+              sed 's|^|  |' /tmp/b32err
+              found=1
+            fi
+          done
+          [ "$found" = 0 ] || exit 1
+          echo "OK: all hook sources parse under a real bash 3.2"
       - name: Diagnose macOS /tmp + find behavior (informational, non-gating)
         if: runner.os == 'macOS'
         continue-on-error: true

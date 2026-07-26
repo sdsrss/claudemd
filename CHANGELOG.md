@@ -8,6 +8,13 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.58.1] - 2026-07-26
+
+Hotfix for a macOS regression shipped in 0.58.0. Live enforcement was off on macOS: `hooks/lib/hook-common.sh` failed to parse under `/bin/bash` 3.2, and every hook sources it.
+
+- **fix: `HOOK_HEREDOC_AWK` assignment no longer nests a heredoc inside `$( … )`.** bash 3.2's command-substitution scanner counts the parens and quotes in the heredoc *body*, and the awk program added in 0.58.0 has both — so the file failed to source and took all 15 hooks with it. Replaced with `IFS= read -r -d '' … <<'AWKPROG'`, which assigns the same text without nesting. Linux and the macOS Homebrew-bash-5 leg were both green; the failure surfaced only on the macOS runner's system bash, in the release CI itself.
+- **ci: a real bash 3.2 is now built and used to parse every hook source.** The existing portability gate greps for bash-4 constructs it knows to look for, which cannot catch a construct 3.2 fails to *parse* — `bash -n` under 5.x proves nothing about 3.2. Runs on one Linux leg per commit. This is the second macOS bash-3.2 incident in this repo (`declare -A` in v0.23.6 was the first).
+
 ## [0.58.0] - 2026-07-25
 
 Fix batch from the 2026-07-25 deep four-dimension audit (`docs/comprehensive-audit-2026-07-25-v0.57.0-deep.md`, local-only per the `docs/` gitignore convention). Ships spec **v6.23.0**. Minor bump: the §8 deny surface widens across all three gates and two §7/§11 gates start firing on shapes they previously let through — user-visible default behavior change.
