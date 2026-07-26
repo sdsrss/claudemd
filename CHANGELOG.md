@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.59.1] - 2026-07-26
+
+Hotfix for a macOS CI regression shipped in 0.59.0. Tests only — no hook, script, or spec behavior changes.
+
+- **fix: the ARCH-2 encoder-parity locale probe now tests BEHAVIOR instead of parsing `locale -a`.** 0.59.0 replaced an inherited locale with an explicit pin, and got it wrong twice in a row: the first form asked whether *either* candidate was listed and then kept the first regardless (pinning a `C.UTF-8` macOS does not ship, caught in pre-tag review); the corrected form matched `locale -a` lines exactly, found nothing on the macOS runner, and **hard-failed** the suite — taking `env-hygiene` case 5 with it, since that case runs this suite under a polluted environment and expects it to pass. What actually matters is whether bash slices by codepoint under the candidate, so that is now measured directly on a known 3-codepoint string.
+- **fix: no usable UTF-8 locale is a loud SKIP, not a failure.** With byte-wise slicing the parity property is genuinely unassertable, and `rule-hits.sh` already documents that degradation as accepted. Same posture as `upgrade-lifecycle`'s unreachable-tag skip: the operator sees it, rather than being blocked by it.
+
+The lesson generalizes past this fixture: a portability probe that parses a tool's *output format* inherits that format's platform variance. Probing the behavior you actually depend on does not.
+
 ## [0.59.0] - 2026-07-26
 
 Clears the audit's deferred queue: all 17 items from `tasks/audit-2026-07-26-deferred.md` A+B, in one release. Minor bump: two instruments change what they report and one hook gains a banner on a path where it previously stayed silent. No §8 verdict moves — the differential against the pre-fix hook is still 0 changes across all 330 baseline corpus rows.
