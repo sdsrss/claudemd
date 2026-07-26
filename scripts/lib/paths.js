@@ -87,6 +87,22 @@ export function encodeProjectCwd(cwd) {
   return String(cwd).replace(/[^a-zA-Z0-9-]/g, '-');
 }
 
+// Claude Code's per-project transcript root, and the per-project dir inside it.
+// The ENCODER was single-sourced by the 2026-07-15 audit; the DIRECTORY it feeds
+// was still rebuilt from a `.claude/projects` literal in five call sites
+// (sampling-audit ×2, lesson-bypass-audit ×2, memory-maintenance), so a change to
+// the layout had five places to miss. `home` is injectable for tests.
+export function projectsRoot(home = os.homedir()) {
+  return path.join(home, '.claude', 'projects');
+}
+
+// Encoded per-project dir. Pass an already-encoded name through `encoded`
+// (rule-hits rows carry one) or a raw cwd through `cwd`.
+export function projectDir({ cwd, encoded, home = os.homedir() } = {}) {
+  const name = encoded !== undefined ? encoded : encodeProjectCwd(cwd);
+  return path.join(projectsRoot(home), name);
+}
+
 export function resolvePluginRoot(importMetaUrl) {
   const explicit = process.env.CLAUDE_PLUGIN_ROOT;
   if (explicit) return explicit;

@@ -1169,7 +1169,12 @@ while IFS= read -r cseg; do
   # is not a split char here), and a herestring carrying a command substitution
   # (`sh <<< "$(curl x)"`, whose quoted body sanitize strips before any gate sees
   # it); [allow-curl-sh] is the escape. Option-with-arg wrapper forms
-  # (`sudo -u svc curl`) closed in F24 via s8_wrap_optarg.
+  # (`sudo -u svc curl`) closed in F24 on the FETCH side only — that side runs
+  # through s8_strip_wrappers. The SINK side is matched by the CURLSH_WRAP regex,
+  # which consumes no options, so `curl … | sudo -u root bash` / `| env -i bash`
+  # / `| nice -n 10 bash` remain allowed. Pre-existing, documented, not chased:
+  # closing it means giving the regex an optarg model or routing the sink through
+  # the word loop, and neither is a local change.
   cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   # Perf guard, verdict-neutral: both CURLSH regexes require the literal
   # substring curl/wget, and neither strip nor canon can CREATE it (basename

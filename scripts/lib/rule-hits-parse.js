@@ -322,8 +322,17 @@ const TEST_SESSION_SENTINELS = new Set(['t', 'test']);
 const SENTINEL_MAX_LEN = 7;
 
 export function excludeTestSessions(hits) {
-  return hits.filter(h => h.session_id == null
-    || (!TEST_SESSION_SENTINELS.has(h.session_id) && h.session_id.length > SENTINEL_MAX_LEN));
+  return hits.filter(h => {
+    if (h.session_id == null) return true;
+    // A non-string session_id used to be dropped silently: `(12345).length` is
+    // undefined and `undefined > 7` is false, so the row vanished from every
+    // audit view without being counted anywhere — unlike the deliberate sentinel
+    // filter, which reports `testSessionsFiltered` (2026-07-26 audit). Hooks write
+    // strings or null today, so this is latent; keep such a row rather than lose
+    // it, since only the SENTINEL shapes are meant to be excluded.
+    if (typeof h.session_id !== 'string') return true;
+    return !TEST_SESSION_SENTINELS.has(h.session_id) && h.session_id.length > SENTINEL_MAX_LEN;
+  });
 }
 
 // v0.7.0 — R1 §0.1/§13.1/§13.2 instrumentation. Group rule-hits by spec

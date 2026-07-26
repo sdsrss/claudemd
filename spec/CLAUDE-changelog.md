@@ -6,6 +6,17 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.23.1 (patch, 2026-07-26) — manifest enforcement-claim corrections
+
+Two entries in `hard-rules.json` described enforcement the code does not provide. §13 META tells the agent to calibrate expectations from that field, so a wrong value is the same class of defect as v6.23.0's "Stop hook enforces" — a false promise about whether anything will catch a violation.
+
+- **`[fix]` §11-memory-read `hook` → `both`** + coverage note. `memory-read-check.sh`'s TRIGGER_RE covers the ship/release verbs only; `grep -cE "destructive|L3"` over that hook returns 0, while the core rule reads "HARD at ship/release/destructive-path/L3". Two of the four stated triggers are Agent-enforced, which is exactly what `both` means — and `§10-specificity` already used that value plus an explanatory note for the identical shape.
+- **`[add]` §iron-law-3 entry.** Iron Law #3 (no fix without root cause, L2+) is graded by heading convention rather than a `(HARD)` token, so the manifest's own coverage scan never demanded an entry and the rule was invisible to §13.1/§13.2 accounting. Iron Laws #1 and #2 both had entries.
+
+Partition: 6 hook / 16 self / 2 both / 1 external over 25 rules. Rule TEXT is unchanged in both cases — this corrects metadata to match the code, so no §13.2 budget cost.
+
+---
+
 ## v6.23.0 (minor, 2026-07-25) — false-enforcement-claim + level/precedence batch
 
 Source: 2026-07-25 deep four-dimension audit. Five text-level defects, one of which was a false statement about mechanical enforcement.

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir } from './lib/paths.js';
+import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir, settingsPath } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -83,7 +83,11 @@ export async function status({ verbose = false } = {}) {
   // remains the canonical "this session" value (back-compat).
   const persistedEnv = (() => {
     try {
-      const sp = path.join(process.env.HOME || '', '.claude', 'settings.json');
+      // settingsPath() from lib/paths.js — this was hand-rolled with a `''`
+      // HOME fallback (cwd-relative) where paths.js falls back to os.homedir(),
+      // so with HOME unset the pendingKillSwitches drift this block exists to
+      // report went silently empty (2026-07-26 audit).
+      const sp = settingsPath();
       if (!fs.existsSync(sp)) return {};
       const s = JSON.parse(fs.readFileSync(sp, 'utf8'));
       return (s && s.env) || {};

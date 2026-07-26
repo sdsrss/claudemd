@@ -1,6 +1,6 @@
 {
   "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md. Drives §13.1 quarterly demote (rules with 0 hits in 90d) and §13.2 budget accounting (≥3 repros + ≥20 L2+ tasks since last HARD addition). v0.8.0 R-N2. Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file. /claudemd-rules cross-references against rule-hits.jsonl bySection data.",
-  "spec_version": "v6.23.0",
+  "spec_version": "v6.23.1",
   "spec_files": {
     "core": "spec/CLAUDE.md",
     "extended": "spec/CLAUDE-extended.md"
@@ -157,11 +157,12 @@
       "name": "MEMORY.md read-the-file at ship/release/destructive/L3",
       "scope": "core",
       "section_anchor": "**MEMORY.md read-the-file** (HARD",
-      "enforcement": "hook",
+      "enforcement": "both",
       "rule_hits_section": "§11-memory-read",
       "added_version": "v6.10",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-07-10",
+      "note": "Hook enforces the ship/release half only (memory-read-check.sh TRIGGER_RE covers git push / gh release / npm publish / cargo publish / make release / deploy / ship); the destructive-path and L3 triggers the rule also names are Agent-enforced. Corrected from enforcement=hook 2026-07-26: the field is what \u00a713 META tells the agent to calibrate from, and it claimed mechanical coverage the hook does not have."
     },
     {
       "id": "§11-mid-spine-yield",
@@ -207,6 +208,18 @@
       "confidence": "high",
       "last_demote_review": "2026-07-10",
       "note": "Self-enforced — no feasible per-language AST mechanical detection at hook layer. Promoted from SHOULD on 2026-05-10 after 4 repros + 25 L2+ tasks counter saturation; see tasks/rule-candidates-2026-04.md batch review."
+    },
+    {
+      "id": "§iron-law-3",
+      "name": "Iron Law #3: no fix without root cause",
+      "scope": "extended",
+      "section_anchor": "### Iron Law #3: NO FIX WITHOUT ROOT CAUSE (L2+)",
+      "enforcement": "self",
+      "rule_hits_section": null,
+      "added_version": "v6.6",
+      "confidence": "medium",
+      "last_demote_review": null,
+      "note": "Graded by heading convention rather than a (HARD) token, so the manifest's own coverage scan never required an entry — added 2026-07-26. Iron Laws #1 and #2 both had entries; #3 was structurally invisible to \u00a713.1/\u00a713.2 accounting."
     },
     {
       "id": "§iron-law-1",

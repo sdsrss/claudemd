@@ -26,7 +26,7 @@ The JSON contains:
 | `byEnforcement` | hook / self / external / both — which rules are mechanically gated vs agent self-discipline |
 | `byConfidence` | high / medium / low — author's pre-data assessment of rule reliability |
 | `demoteCandidates` | hook-enforced rules with 0 hits in window — §13.1 demotion review queue |
-| `staleReviews` | rules whose `last_demote_review` is null or older than window — operator's demote-review queue |
+| `staleReviews` | rules whose `last_demote_review` is null, unparseable, or older than the §13.1 review cadence (28d, per OPERATOR.md) — operator's demote-review queue. Independent of `--days`, which only sets the hit-counting window. |
 | `rules` | per-rule rows with `hits: {total, deny, bypass, warn}` (null for self/external — agent text not yet captured; R-N8 transcript scan is the fix path) |
 
 Format: surface `byEnforcement` + `byConfidence` summary first, then list `demoteCandidates` and `staleReviews` as action items. Suppress full `rules` array unless `$ARGS` contained `--verbose` (per the parsing table above).

@@ -62,11 +62,11 @@ Stop hook
 
 ## Hook taxonomy
 
-`spec_section` values below are the literal arguments each hook passes to `hook_record` (source-of-truth, not prose — refresh by re-extracting from `hooks/*.sh` rather than hand-editing this table).
+`spec_section` values below are the literal arguments each hook passes to `hook_record`. `tests/scripts/architecture-drift.test.js` extracts them from `hooks/**/*.sh` and fails if this table omits one — before that gate existed (2026-07-26) the table declared itself source-of-truth while missing `§8-curl-sh` and mislabelling `session-start-check` as `n/a`.
 
 | Event | Hook | Purpose | spec_section |
 |---|---|---|---|
-| PreToolUse:Bash | `pre-bash-safety-check.sh` | rm -rf $VAR + unpinned npx | `§8-rm-rf-var` / `§8-npx` |
+| PreToolUse:Bash | `pre-bash-safety-check.sh` | rm -rf $VAR + unpinned npx + curl\|sh | `§8-rm-rf-var` / `§8-npx` / `§8-curl-sh` (`§8` = untagged fallback) |
 | PreToolUse:Bash | `banned-vocab-check.sh` | git commit message + ship-flow prose §10-V scan | `§10-V` |
 | PreToolUse:Bash | `ship-baseline-check.sh` | git push when base-branch CI is red | `§7-ship-baseline` |
 | PreToolUse:Bash | `memory-read-check.sh` | ship/release require matched MEMORY.md Read | `§11-memory-read` |
@@ -79,7 +79,7 @@ Stop hook
 | Stop | `mem-audit.sh` | MEMORY.md orphan/dangling advisory | `§11-EXT-mem-audit` |
 | Stop | `transcript-structure-scan.sh` | REPORT four-section structure scan | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (dynamic) |
 | Stop | `session-summary.sh` | session deny/bypass/warn aggregation | n/a (writes to state file, not jsonl) |
-| SessionStart | `session-start-check.sh` | bootstrap on mismatch + upstream banner + session-summary banner | n/a |
+| SessionStart | `session-start-check.sh` | bootstrap on mismatch + upstream banner + session-summary banner | `§11-post-compaction` (compact-reminder); n/a for the lifecycle events |
 | SessionEnd | `session-end-check.sh` | batch re-review / session-exit checks | `§11-session-exit` / `§13.2-batch-review` |
 
-Hooks that emit `null` for `spec_section` are plugin-internal lifecycle, not spec enforcement. The `session-summary` hook is the only one that does NOT call `hook_record` at all — it writes to a separate state file consumed by `session-start-check`'s banner. See `docs/RULE-HITS-SCHEMA.md` for the full event taxonomy.
+A hook may emit BOTH null-section lifecycle rows and spec-section rows — `session-start-check` does, so "emits null" is a property of the event, not of the hook. Rows whose section is null are plugin-internal lifecycle, not spec enforcement. The `session-summary` hook is the only one that does NOT call `hook_record` at all — it writes to a separate state file consumed by `session-start-check`'s banner. See `docs/RULE-HITS-SCHEMA.md` for the full event taxonomy.

@@ -151,6 +151,21 @@ export function runVersionCascadeCheck({ root }) {
     filesChecked.push(rel);
     const content = fs.readFileSync(abs, 'utf8');
     const lines = content.split('\n');
+    // Presence floor (2026-07-26 audit). The loop below only reports tokens whose
+    // minor DISAGREES, so a file that lost every `vX.Y` mention produced an empty
+    // offenders list — the same output as "all correct". The header's own incident
+    // history (v0.19.0: README carrying 7 stale mentions) is the presence case;
+    // absence had no check at all, and these files are scanned precisely because
+    // they are supposed to carry the version.
+    if (!versionToken.test(content)) {
+      offenders.push({
+        file: rel, line: 0, found: null, expected: expectedMinor,
+        context: '<no version token in file — expected at least one>',
+      });
+      versionToken.lastIndex = 0;
+      continue;
+    }
+    versionToken.lastIndex = 0;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const matches = line.match(versionToken);
@@ -382,7 +397,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.stderr.write(`version-cascade-check: ${e.message}\n`);
       process.exit(2);
     }
+    // Exit 1, not 2: 2 is documented as "argv-shape error", so reusing it for a
+    // malformed spec/hard-rules.json made a corrupt input indistinguishable from
+    // a typo'd flag (2026-07-26 audit). Only the ArgvError branch above owns 2.
     process.stderr.write(`version-cascade-check: ${e.message}\n`);
-    process.exit(2);
+    process.exit(1);
   }
 }

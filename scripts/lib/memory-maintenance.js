@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { encodeProjectCwd } from './paths.js';
+import { projectDir } from './paths.js';
 
 export const CITE_MIN = 3;
 export const PROMOTE_MIN_AGE_DAYS = 30;
@@ -60,11 +60,14 @@ function mentionedMdBasenames(logPath, sinceMs) {
   try { raw = fs.readFileSync(logPath, 'utf8'); } catch { return set; }
   for (const line of raw.split('\n')) {
     if (!line) continue;
+    // A row with no parseable `ts` is corrupt, not timeless: counting its `.md`
+    // mentions as in-window kept files in the liveness set forever, so a genuinely
+    // stale memory never surfaced (2026-07-26 audit). rule-hits-parse.js already
+    // treats a null ts as corruption rather than epoch-0; match that.
     const tsMatch = line.match(/"ts":"([^"]+)"/);
-    if (tsMatch) {
-      const t = Date.parse(tsMatch[1]);
-      if (Number.isFinite(t) && t < sinceMs) continue;
-    }
+    if (!tsMatch) continue;
+    const t = Date.parse(tsMatch[1]);
+    if (!Number.isFinite(t) || t < sinceMs) continue;
     for (const m of line.matchAll(/[A-Za-z0-9_][A-Za-z0-9_.-]*\.md\b/g)) {
       set.add(m[0]);
     }
@@ -108,7 +111,7 @@ export async function memoryMaintenance({
   memLiteDbPath,
   memLiteProjectName,
 } = {}) {
-  if (!memDir) memDir = path.join(homeDir, '.claude/projects', encodeProjectCwd(cwd), 'memory');
+  if (!memDir) memDir = path.join(projectDir({ cwd, home: homeDir }), 'memory');
   if (!logPath) logPath = path.join(homeDir, '.claude/logs/claudemd.jsonl');
   if (!memLiteDbPath) memLiteDbPath = path.join(homeDir, '.claude-mem-lite/claude-mem-lite.db');
   if (!memLiteProjectName) memLiteProjectName = memLiteProject(cwd);

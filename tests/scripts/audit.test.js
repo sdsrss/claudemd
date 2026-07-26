@@ -1,3 +1,4 @@
+import { excludeTestSessions } from '../../scripts/lib/rule-hits-parse.js';
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -421,4 +422,20 @@ test('audit CLI rejects unknown flag (was silent ignore)', () => {
   });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Unknown flag.*--bogus/);
+});
+
+test('excludeTestSessions keeps a non-string session_id instead of dropping it', () => {
+  // 2026-07-26 audit: `(12345).length` is undefined and `undefined > 7` is false,
+  // so a numeric session_id vanished from every audit view without being counted
+  // anywhere — unlike the deliberate sentinel filter, which reports
+  // testSessionsFiltered. Only the SENTINEL shapes are meant to be excluded.
+  const rows = [
+    { session_id: 'real-session-uuid-long', hook: 'h', event: 'deny' },
+    { session_id: 12345, hook: 'h', event: 'deny' },
+    { session_id: null, hook: 'h', event: 'deny' },
+    { session_id: 't', hook: 'h', event: 'deny' },       // sentinel — must drop
+    { session_id: 'short', hook: 'h', event: 'deny' },   // <= 7 chars — must drop
+  ];
+  const kept = excludeTestSessions(rows).map(r => r.session_id);
+  assert.deepEqual(kept, ['real-session-uuid-long', 12345, null]);
 });

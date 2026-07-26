@@ -358,10 +358,27 @@ fi
 
 # Reached on the mismatch fall-through and the no-manifest (fresh install)
 # path — exactly the states a prior failed background install leaves behind.
-# Banner it before retrying. Only stdout writer on these paths (stale-root,
-# match, and compact branches all exited above), so the single-JSON-object
-# contract holds without a merge.
-emit_bootstrap_failed_banner
+# Banner it before retrying.
+#
+# The session-summary banner is emitted here too (2026-07-26 audit). Its only
+# call site used to be inside the version-MATCH branch, so the session right
+# after every upgrade — and every fresh install — silently showed nothing; the
+# state file is not consumed either, so the prior session's summary surfaced one
+# session late rather than at all. Two possible writers now, so merge through
+# `jq -s` exactly as the match branch does: the hook must emit ONE JSON object.
+_bf_json=$(emit_bootstrap_failed_banner)
+_sum_json=$(emit_session_summary_banner)
+printf '%s\n%s\n' "$_bf_json" "$_sum_json" | jq -s -c '
+  map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
+  | if length == 0 then empty
+    elif length == 1 then .[0]
+    else {
+      suppressOutput: true,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n")),
+      },
+    } end' 2>/dev/null || true
 
 # node required to run install.js — silent no-op if absent.
 command -v node >/dev/null 2>&1 || exit 0

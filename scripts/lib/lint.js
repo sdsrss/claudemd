@@ -120,6 +120,13 @@ export function stripIdentifiers(text) {
     // 2. Inline backtick spans.
     .replace(/`[^`]*`/g, ' ')
     // 3. Slashed-path runs (branch names, file paths, URLs) — Path 2's rule.
+    //    A 2026-07-26 audit item claimed this blanked `12/12` / `2/3` and that
+    //    splitting the alternation would preserve them. Measured: alternative 1
+    //    matches `12/12` in full either way, so the split changed only
+    //    whitespace-on-both-sides (`and / or`) — and no shipped ratio pattern
+    //    matches an N/M shape at all (they are `N% faster` / `Nx faster` and the
+    //    中文 equivalents). The premise did not hold; reverted rather than ship a
+    //    2x cost on long class-character runs for a fix that was not one.
     .replace(/[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
     // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts) — CLI
     //    extension. The extension must start with a LOWERCASE letter, which

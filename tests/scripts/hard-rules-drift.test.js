@@ -179,11 +179,26 @@ test('hard-rules-4: a rule with hook-emitted rows declares the section they land
   // nobody emits for stays null (Agent-only enforcement, no telemetry surface).
   const m = loadManifest();
   const emitted = hookEmittedSections();
-  // Heuristic: for a rule with NO declared section there is nothing to join on,
-  // so the rule id is used as the candidate section name. That holds only while
-  // a rule's id equals the section its hook emits under — true for all five
-  // rules this caught, and the reason a future rule whose id differs would pass
-  // vacuously. The reverse assertion below has no such gap.
+  // For a rule with NO declared section there is nothing to join on, so the id is
+  // used as the candidate section name. That is only sound while ids and section
+  // names share a namespace — previously an unstated coincidence that would let a
+  // future rule pass vacuously. Assert the premise instead of relying on it: every
+  // declared section in the manifest must equal the id of the rule declaring it,
+  // or be listed here as a deliberate exception.
+  const ID_NE_SECTION = new Set([
+    '§10-specificity',        // fires under the shared §10-V vocab section
+    '§8.V4-sandbox-disposal',  // hook files under the shorter §8.V4
+  ]);
+  const namespaceBreaks = m.rules
+    .filter(r => r.rule_hits_section !== null)
+    .filter(r => r.rule_hits_section !== r.id && !ID_NE_SECTION.has(r.id))
+    .map(r => `${r.id} → ${r.rule_hits_section}`);
+  assert.deepEqual(namespaceBreaks, [],
+    `rule id and rule_hits_section diverge without an ID_NE_SECTION entry:\n` +
+    namespaceBreaks.map(x => `  ${x}`).join('\n') +
+    `\nThe null-section check below joins on the id, so an undocumented divergence ` +
+    `makes it pass vacuously.`);
+
   const undeclared = m.rules
     .filter(r => r.rule_hits_section === null)
     .filter(r => emitted.has(r.id))

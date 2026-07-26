@@ -8,6 +8,60 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.59.0] - 2026-07-26
+
+Clears the audit's deferred queue: all 17 items from `tasks/audit-2026-07-26-deferred.md` A+B, in one release. Minor bump: two instruments change what they report and one hook gains a banner on a path where it previously stayed silent. No §8 verdict moves — the differential against the pre-fix hook is still 0 changes across all 330 baseline corpus rows.
+
+Several of these are the same defect wearing different clothes: a measurement whose answer moved with an unrelated flag, a check that reported green when it had not run, a constant hand-copied next to a comment naming its source.
+
+### Also in this release — the three "claimed enforcement" items
+
+Written up separately while 0.58.2 was in flight; that version was never tagged, so it ships here.
+
+Closes the three remaining audit items that share a root with what 0.58.0 fixed — an artifact claiming enforcement or source-of-truth status that nothing backed. Everything else from that audit is triaged in `tasks/audit-2026-07-26-deferred.md` for the next §13.2 batch review. No behavior change: hooks are untouched apart from one comment.
+
+- **fix: `spec/hard-rules.json` §11-memory-read `enforcement: "hook"` → `"both"`.** `memory-read-check.sh`'s trigger regex covers the ship/release verbs only — `grep -cE "destructive|L3"` over that hook returns 0 — while the rule reads "HARD at ship/release/destructive-path/L3". §13 META directs the agent to calibrate from this field, so it was promising mechanical coverage for two triggers that are Agent-enforced. `§10-specificity` already used `both` plus a coverage note for the same shape.
+- **fix: Iron Law #3 gains a manifest entry.** It is graded by heading convention rather than a `(HARD)` token, so the manifest's coverage scan never required one and the rule was structurally invisible to §13.1/§13.2 accounting. Iron Laws #1 and #2 both had entries. Partition is now 6 hook / 16 self / 2 both / 1 external over 25 rules.
+- **fix: `docs/ARCHITECTURE.md`'s hook-taxonomy table, plus the gate it never had.** The table calls itself source-of-truth for the literal `spec_section` arguments hooks pass, and had drifted twice: `§8-curl-sh` was absent though the curl|sh gate has filed denies under it since v0.51.x, and `session-start-check` was listed `n/a` while emitting `§11-post-compaction`. README's counts had `readme-drift.test.js`; this was the one shipped doc with a source-of-truth claim and nothing behind it. New `tests/scripts/architecture-drift.test.js` extracts sections from `hooks/**/*.sh` and requires each to appear in the table, both directions on the hook list; mutation-verified by deleting `§8-curl-sh` from the table and confirming red.
+- **docs: the §8 comment claiming F24 closed option-with-arg wrapper forms now says which side.** True for the fetch side, which runs through `s8_strip_wrappers`; the sink side is matched by a regex that consumes no options, so `curl … | sudo -u root bash` remains allowed. Pre-existing and recorded as accepted residual, not a regression.
+
+### Instruments that measured the wrong thing
+
+- **`hard-rules-audit`: review cadence decoupled from the audit window.** `staleReviews` used `--days` as its freshness threshold, so "which rules are overdue for review" moved with a flag about how far back to count hits — `--days=30` returned none, `--days=7` returned all 23. New `REVIEW_CADENCE_DAYS = 90`. An unparseable `last_demote_review` also produced `NaN < cutoff` = false, reading garbage as "reviewed recently"; it now counts as stale.
+- **`memory-maintenance`: a log line with no parseable `ts` no longer counts as in-window.** Its `.md` mentions entered the liveness set unconditionally, so a genuinely stale memory could never surface. `rule-hits-parse.js` already treats a null ts as corruption rather than epoch-0.
+- **`version-cascade-check`: presence floor.** The scan only reported tokens whose minor disagreed, so a file that lost every `vX.Y` mention produced an empty offender list — identical output to "all correct". These files are scanned precisely because they must carry the version.
+- **`lesson-bypass-audit`: `EMIT_CAP` is read from `hooks/memory-prompt-hint.sh`'s `MAX=` line** instead of a hand-copied `5` sitting beside a comment naming that constant. Raising the hook's cap would have silently sliced the extra suggestions off before scoring.
+
+### Checks that reported green without running
+
+- **`doctor`: a SKIPPED `memory-maintenance:promote` now reports not-ok.** `promoteSkipped != null || length === 0` rendered "could not run" and "0 candidates" the same colour.
+- **`install-drift` is bidirectional.** It iterated source only, so a hook present in the marketplace root and absent from source — exactly what retiring a hook leaves behind, the shape v0.57.0 created — produced no diff.
+- **`excludeTestSessions` keeps a non-string `session_id`.** `(12345).length` is undefined and `undefined > 7` is false, so such a row vanished from every audit view without being counted anywhere, unlike the deliberate sentinel filter which reports `testSessionsFiltered`.
+
+### Reachability and contracts
+
+- **`session-start-check`: the session-summary banner fires on the fall-through path.** Its only call site was inside the version-MATCH branch, so the session right after every upgrade — and every fresh install — showed nothing. Merged with the bootstrap-failed banner through `jq -s`; verified across all four banner states that stdout is exactly one JSON object, or empty when neither fires.
+- **`claudemd-cli`: `--help` works in any argv position** (`lint --help` exited 2 with "unknown flag").
+- **`version-cascade-check`'s generic catch exits 1, not 2.** 2 is documented as "argv-shape error", which made a malformed `hard-rules.json` indistinguishable from a typo'd flag.
+
+### Single-sourcing and hygiene
+
+- **`paths.js` gains `projectsRoot()` and `projectDir()`.** The cwd ENCODER was single-sourced by an earlier audit; the directory it feeds was still rebuilt from a `.claude/projects` literal in five call sites.
+- **`status.js` uses `settingsPath()`** instead of a hand-rolled path whose `''` HOME fallback (cwd-relative) diverged from `paths.js`'s `os.homedir()`, silently emptying the kill-switch drift report when HOME was unset.
+- **`doctor`'s `which()` resolves once per binary** (was four `execSync` spawns for two lookups).
+
+### Two deferred items closed as "premise did not hold"
+
+Pre-tag review measured both claims and neither survived; recorded here rather than shipped as fixes.
+
+- **The slashed-path sanitizer does not blank `12/12`.** The item said a lone-`/` match was eating ratios in commit messages. Measured: the first alternative matches `12/12` in full either way, so splitting the alternation changed only whitespace-on-both-sides (`and / or`) — and no shipped ratio pattern matches an N/M shape at all (they are `N% faster` / `Nx faster` plus the 中文 equivalents). Reverted rather than carry a 2x cost on long class-character runs for a fix that was not one.
+- **`audit` deliberately does NOT honor `[allow-banned-vocab]`.** The item read the lint-honors/audit-ignores split as an asymmetry. It is not: `lint` scans text the caller hands it, so the token is explicit intent, while `audit` scans a transcript of assistant turns where the token is incidental — and in this repo, turns discussing the escape hatch are routine, so honoring it would let a turn suppress its own scan by mentioning it. The hook agrees (it reads the token from the Bash command, never from the prose it scans), `README.md` and `status.js` both scope it to "commit message", and `sampling-audit.js` does not honor it either — adding it to `audit` alone would have moved the asymmetry, not removed it. The reasoning is now a comment at the call site.
+
+### Test gates
+
+- **`rule-hits` ARCH-2 parity pins `LC_CTYPE`.** `rule-hits.sh` documents that its slicing needs a UTF-8 locale and degrades byte-wise under `LC_ALL=C`, but nothing set it — the verdict was inherited from the invoking shell, so a green run did not say which mode ran. Adds a floor asserting the documented C-locale degradation still yields a usable name.
+- **`hard-rules-4` asserts its own premise.** Its null-section arm joins on the rule id, which is sound only while ids and section names share a namespace — previously an unstated coincidence that would let a future rule pass vacuously.
+
 ## [0.58.1] - 2026-07-26
 
 Hotfix for a macOS regression shipped in 0.58.0. Live enforcement was off on macOS: `hooks/lib/hook-common.sh` failed to parse under `/bin/bash` 3.2, and every hook sources it.

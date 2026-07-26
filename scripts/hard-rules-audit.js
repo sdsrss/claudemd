@@ -33,6 +33,11 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 const DEFAULT_WINDOW_DAYS = 30;
 
+// §13.1 review cadence, per OPERATOR.md: "every ~50 L2+ tasks OR 4 weeks,
+// whichever first". Independent of the hit-counting window, which is what
+// `--days` sets. 90 was picked first and contradicted the handbook by 3x.
+const REVIEW_CADENCE_DAYS = 28;
+
 export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } = {}) {
   if (!pluginRoot) {
     pluginRoot = resolvePluginRoot(import.meta.url);
@@ -133,12 +138,21 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     wouldHaveBeen: wouldBeDemoteCandidates,
   } : null;
 
-  // Stale-review candidates: any rule whose last_demote_review is null OR
-  // older than the audit window. Surfaces §13.1 quarterly cadence drift.
+  // Stale-review candidates: any rule whose last_demote_review is null, older
+  // than the §13.1 cadence, or unparseable.
+  //
+  // The threshold is REVIEW_CADENCE_DAYS, not `days` (2026-07-26 audit). Reusing
+  // the audit window made the answer to "which rules are overdue for review" move
+  // with an unrelated flag: `--days=30` returned none, `--days=7` returned all 23.
+  // The window says how far back to count HITS; the cadence says how long a review
+  // stays fresh. An unparseable date also yielded NaN, and `NaN < cutoff` is false
+  // — garbage read as "reviewed recently", the wrong direction to fail in.
+  const cadenceCutoff = Date.now() - REVIEW_CADENCE_DAYS * 86400 * 1000;
   const staleReviews = rules.filter(r => {
     if (!r.last_demote_review) return true;
-    const cutoff = Date.now() - days * 86400 * 1000;
-    return new Date(r.last_demote_review).getTime() < cutoff;
+    const t = new Date(r.last_demote_review).getTime();
+    if (!Number.isFinite(t)) return true;
+    return t < cadenceCutoff;
   }).map(r => r.id);
 
   // §0.1 (v6.11.15) sets the demote-evaluation window at 30d. Direct script

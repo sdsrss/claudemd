@@ -28,8 +28,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
+import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
@@ -80,7 +79,7 @@ const METRIC_CONTRACT =
 const DEFAULT_WINDOW_DAYS = 30;
 
 function defaultProjectsDir() {
-  return path.join(os.homedir(), '.claude/projects', encodeProjectCwd(process.cwd()));
+  return projectDir({ cwd: process.cwd() });
 }
 
 // Load §10-V banned-vocab patterns from the shipped hook config. Delegates to
@@ -653,7 +652,7 @@ export async function samplingAudit({
 // project class (self-repo dogfood vs external — classifyProject keys on the
 // trailing cwd-encoded segment, `/(^|-)claudemd$/` = self).
 export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_DAYS, sample = null, pluginRoot } = {}) {
-  if (!projectsRoot) projectsRoot = path.join(os.homedir(), '.claude/projects');
+  if (!projectsRoot) projectsRoot = projectsRootDir();
   const result = emptyResult(days, projectsRoot);
   // Per-class rows carry `status` too. The stratified view is the one a reader
   // should be reading (pooled counts already misled once — see the A2 note in

@@ -15,7 +15,7 @@ import { sha256File } from './spec-hash.js';
 // Returns:
 //   { skipped: bool, skippedReason?: string,
 //     driftCount: number,
-//     diffs: [{path, reason: 'differs'|'missing-in-market'}] }
+//     diffs: [{path, reason: 'differs'|'missing-in-market'|'missing-in-source'}] }
 //
 // Skip cases (not a drift signal):
 //   - sourceRoot === marketRoot by realpath: /claudemd-doctor running FROM
@@ -61,11 +61,25 @@ export function compareHooks(sourceRoot, marketRoot) {
     }
   }
 
+  // Reverse direction (2026-07-26 audit): a hook present in the marketplace root
+  // but absent from source is exactly what a RETIRED hook leaves behind — the
+  // shape v0.57.0 created by deleting mid-spine-yield-scan. Iterating source only
+  // meant that residue never surfaced as drift.
+  const srcSet = new Set(srcFiles);
+  for (const abs of listShellFilesRecursive(path.join(marketRoot, 'hooks'))) {
+    const rel = path.relative(marketRoot, abs);
+    if (!srcSet.has(rel)) diffs.push({ path: rel, reason: 'missing-in-source' });
+  }
+
   return { skipped: false, driftCount: diffs.length, diffs };
 }
 
 function listShellFilesRecursive(dir) {
   const out = [];
+  // A missing dir is "no files", not an error: the reverse-direction scan calls
+  // this on the marketplace root, which legitimately has no hooks/ in a
+  // partial-install or test sandbox.
+  if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {

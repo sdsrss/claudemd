@@ -108,3 +108,61 @@ test('compareHooks skips non-.sh files (.patterns, .json) so config evolution is
   assert.equal(r.skipped, true);
   assert.equal(r.skippedReason, 'no-hooks-in-source');
 });
+
+test('reverse scan: a hook only in the marketplace root reports missing-in-source', () => {
+  // 2026-07-26 audit: compareHooks iterated SOURCE only, so a file present in the
+  // market root and gone from source — exactly what retiring a hook leaves, the
+  // shape v0.57.0 created by deleting mid-spine-yield-scan — produced no diff.
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-src-'));
+  const mkt = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-mkt-'));
+  try {
+    fs.mkdirSync(path.join(src, 'hooks/lib'), { recursive: true });
+    fs.mkdirSync(path.join(mkt, 'hooks/lib'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'hooks/a.sh'), '#!/bin/bash\n:\n');
+    fs.writeFileSync(path.join(mkt, 'hooks/a.sh'), '#!/bin/bash\n:\n');
+    // retired: present in market, absent from source — and nested, to prove the
+    // reverse walk recurses.
+    fs.writeFileSync(path.join(mkt, 'hooks/lib/retired.sh'), '#!/bin/bash\n:\n');
+    // a non-.sh market-only file must NOT fire.
+    fs.writeFileSync(path.join(mkt, 'hooks/notashell.txt'), 'x\n');
+
+    const r = compareHooks(src, mkt);
+    const reasons = r.diffs.map(d => `${d.path}:${d.reason}`).sort();
+    assert.deepEqual(reasons, ['hooks/lib/retired.sh:missing-in-source']);
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(mkt, { recursive: true, force: true });
+  }
+});
+
+test('reverse scan does not double-report a file that also differs', () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-src2-'));
+  const mkt = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-mkt2-'));
+  try {
+    fs.mkdirSync(path.join(src, 'hooks'), { recursive: true });
+    fs.mkdirSync(path.join(mkt, 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'hooks/a.sh'), '#!/bin/bash\nsource\n');
+    fs.writeFileSync(path.join(mkt, 'hooks/a.sh'), '#!/bin/bash\nmarket\n');
+
+    const r = compareHooks(src, mkt);
+    assert.equal(r.diffs.length, 1, `expected one diff, got ${JSON.stringify(r.diffs)}`);
+    assert.equal(r.diffs[0].reason, 'differs');
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(mkt, { recursive: true, force: true });
+  }
+});
+
+test('a marketplace root with no hooks/ dir is not an error', () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-src3-'));
+  const mkt = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-mkt3-'));
+  try {
+    fs.mkdirSync(path.join(src, 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'hooks/a.sh'), '#!/bin/bash\n:\n');
+    const r = compareHooks(src, mkt);
+    assert.equal(r.diffs.filter(d => d.reason === 'missing-in-market').length, 1);
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(mkt, { recursive: true, force: true });
+  }
+});

@@ -218,3 +218,35 @@ test('logSpanDays surfaced even when sufficient (operator transparency)', async 
   assert.ok(r.logSpanDays >= 100,
     `logSpanDays ${r.logSpanDays} must reflect actual log reach, not the window`);
 });
+
+test('staleReviews uses the §13.1 cadence, not the --days hit window', async () => {
+  // 2026-07-26 audit: the threshold was `days`, so "which rules are overdue for
+  // review" moved with a flag about how far back to count HITS — --days=30
+  // returned none, --days=7 returned all of them. The two windows are unrelated.
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  fs.writeFileSync(log, `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n`);
+  const a = await hardRulesAudit({ days: 7, pluginRoot: REPO_ROOT });
+  const b = await hardRulesAudit({ days: 90, pluginRoot: REPO_ROOT });
+  assert.deepEqual(a.staleReviews, b.staleReviews,
+    'staleReviews must not depend on --days');
+});
+
+test('an unparseable last_demote_review counts as stale, not as fresh', async () => {
+  // `new Date('garbage').getTime()` is NaN and `NaN < cutoff` is false, so a
+  // corrupt date read as "reviewed recently" — the wrong direction to fail in.
+  const manifestPath = path.join(tmpHome, 'spec/hard-rules.json');
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  const real = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'spec/hard-rules.json'), 'utf8'));
+  const target = real.rules.find(r => r.last_demote_review !== null);
+  assert.ok(target, 'fixture needs a rule carrying a review date');
+  const targetId = target.id;
+  target.last_demote_review = 'not-a-date';
+  fs.writeFileSync(manifestPath, JSON.stringify(real));
+  fs.mkdirSync(path.join(tmpHome, 'spec'), { recursive: true });
+  fs.copyFileSync(path.join(REPO_ROOT, 'spec/CLAUDE.md'), path.join(tmpHome, 'spec/CLAUDE.md'));
+  fs.copyFileSync(path.join(REPO_ROOT, 'spec/CLAUDE-extended.md'), path.join(tmpHome, 'spec/CLAUDE-extended.md'));
+
+  const r = await hardRulesAudit({ days: 30, pluginRoot: tmpHome });
+  assert.ok(r.staleReviews.includes(targetId),
+    `unparseable date must surface in staleReviews; got ${JSON.stringify(r.staleReviews)}`);
+});

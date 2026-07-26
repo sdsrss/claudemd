@@ -166,8 +166,12 @@ export async function doctor({ pruneBackups: prune } = {}) {
     try { execSync(`command -v ${bin}`, { stdio: 'ignore' }); return true; }
     catch { return false; }
   };
-  push('jq', which('jq'), which('jq') ? 'present' : 'missing (required at runtime)');
-  push('gh', which('gh'), which('gh') ? 'present' : 'missing (ship-baseline will fail-open silent)');
+  // Resolve once each: the previous form called which() twice per binary (four
+  // execSync spawns for two lookups).
+  const hasJq = which('jq');
+  const hasGh = which('gh');
+  push('jq', hasJq, hasJq ? 'present' : 'missing (required at runtime)');
+  push('gh', hasGh, hasGh ? 'present' : 'missing (ship-baseline will fail-open silent)');
 
   const backups = listBackups();
   push('backups', true, `${backups.length} backup dir(s)`);
@@ -611,7 +615,17 @@ export async function doctor({ pruneBackups: prune } = {}) {
       : `${mm.promoteToDurable.length} promote-to-durable candidate(s) — high-frequency recall is de-facto ` +
         `long-term knowledge; consider a MEMORY.md entry (operator's call, no auto-migration): ` +
         mm.promoteToDurable.slice(0, 5).map(c => `#${c.id} "${c.title}" (cited ${c.citedCount}×)`).join(', '));
-  push('memory-maintenance:promote', mm.promoteSkipped != null || mm.promoteToDurable.length === 0, promoteDetail);
+  // A SKIPPED check is not a PASSED check — but "optional dependency absent" is
+  // not a broken check either. claude-mem-lite is a separate plugin and Node
+  // 20–22.4 (the declared engines floor, and a CI matrix leg) has no node:sqlite,
+  // so failing on those would report a broken install to every user without the
+  // plugin and set exit 3 on a healthy machine. Only an unreadable DB is a real
+  // failure; the two absence reasons stay ok with the reason in the detail.
+  const promoteUnavailable = mm.promoteSkipped != null
+    && /DB not found|node:sqlite unavailable/.test(mm.promoteSkipped);
+  const promoteOk = promoteUnavailable
+    || (mm.promoteSkipped == null && mm.promoteToDurable.length === 0);
+  push('memory-maintenance:promote', promoteOk, promoteDetail);
   push('memory-maintenance:recall-repatriation', mm.recallRepatriation.length === 0,
     mm.recallRepatriation.length === 0
       ? `0 recall_*.md older than ${RECALL_MAX_AGE_DAYS}d in ${mm.memDir}`

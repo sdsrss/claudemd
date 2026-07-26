@@ -345,6 +345,17 @@ function auditCmd(rawArgs) {
     );
   }
   const patterns = readPatterns();
+  // NO escape hatch here, deliberately. A 2026-07-26 audit item read the
+  // lint-honors/audit-ignores split as an asymmetry to close; it is not one.
+  // `lint` scans text the caller hands it, so the token is that caller's explicit
+  // intent. `audit` scans a TRANSCRIPT of assistant turns, where the token is
+  // incidental text — and in this repo, turns discussing the escape hatch are
+  // routine, so honoring it here lets a turn suppress its own scan by mentioning
+  // it. The hook agrees: banned-vocab-check.sh:90 reads the token from the Bash
+  // command, never from the prose it scans (pinned by banned-vocab.test.sh:243),
+  // README.md:241 and status.js:24 both scope it to "commit message", and
+  // sampling-audit.js does not honor it at all — adding it here would have moved
+  // the asymmetry rather than removed it.
   const annotated = turns.map(t => ({
     ...t,
     hits: scan(t.text, { excludeRatio: !includeRatio, patterns, sanitize: true }),
@@ -363,7 +374,11 @@ function auditCmd(rawArgs) {
 
 function main() {
   const argv = process.argv.slice(2);
-  if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
+  // `--help` in ANY position (2026-07-26 audit). Recognizing it only as argv[0]
+  // meant `claudemd-cli lint --help` exited 2 with "unknown flag '--help'" — the
+  // exact discoverability bug lib/argv.js#printHelpAndExit was written to fix,
+  // which this CLI predates.
+  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {  // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
     process.stdout.write(USAGE + '\n');
     process.exit(argv.length === 0 ? 2 : 0);
   }

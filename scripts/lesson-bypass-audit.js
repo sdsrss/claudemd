@@ -32,7 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { logsDir, resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
+import { logsDir, resolvePluginRoot, encodeProjectCwd, projectDir as projectDirFor } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
@@ -125,6 +125,20 @@ export function wasApplied(transcript, suggestTs, memoryFile) {
   return false;
 }
 
+// The hint hook's own emission cap, read from its source rather than mirrored.
+// This was a bare `const EMIT_CAP = 5` beside a comment naming the hook's MAX,
+// with no test binding them (2026-07-26 audit): raising MAX would silently slice
+// off the extra suggestions before scoring, understating the bypass rate. Falls
+// back to 5 only when the hook is unreadable.
+function readHookEmitCap(pluginRoot) {
+  try {
+    const src = fs.readFileSync(path.join(pluginRoot, 'hooks/memory-prompt-hint.sh'), 'utf8');
+    const m = src.match(/^MAX=(\d+)/m);
+    if (m) return Number(m[1]);
+  } catch { /* fall through */ }
+  return 5;
+}
+
 export function lessonBypassAudit({
   days = DEFAULT_WINDOW_DAYS,
   cwd,
@@ -136,7 +150,7 @@ export function lessonBypassAudit({
   if (!pluginRoot) pluginRoot = resolvePluginRoot(import.meta.url);
   if (!logPath) logPath = path.join(logsDir(), 'claudemd.jsonl');
   if (!projectDir) {
-    projectDir = path.join(os.homedir(), '.claude/projects', encodeCcCwd(cwd));
+    projectDir = projectDirFor({ cwd });
   }
 
   const { hits } = readHits(logPath, days);
@@ -159,7 +173,7 @@ export function lessonBypassAudit({
   // agent never saw (2026-07-11 pre-ship review; live rows exist with
   // match_count 8/10). suggested is priority-ordered, so the shown set is
   // exactly the first min(EMIT_CAP, length) entries.
-  const EMIT_CAP = 5;
+  const EMIT_CAP = readHookEmitCap(pluginRoot);
 
   for (const ev of suggestEvents) {
     const sessionId = ev.session_id;
@@ -181,7 +195,7 @@ export function lessonBypassAudit({
       // the transcript lives in.
       const rowProject = typeof ev.project === 'string' ? ev.project : '';
       const candidates = [];
-      if (rowProject) candidates.push(path.join(os.homedir(), '.claude/projects', rowProject));
+      if (rowProject) candidates.push(projectDirFor({ encoded: rowProject }));
       candidates.push(projectDir);
       let rows = [];
       for (const dir of candidates) {

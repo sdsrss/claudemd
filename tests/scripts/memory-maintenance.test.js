@@ -130,3 +130,31 @@ test('E2: missing memory dir returns empty (b)/(c) without throwing', async () =
     assert.equal(r.scannedDurableFiles, 0);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
+
+test('a log row with no parseable ts does not count as an in-window mention', async () => {
+  // 2026-07-26 audit: the exclusion only fired when "ts" was PRESENT and older
+  // than the cutoff, so a ts-less row's `.md` mentions entered the liveness set
+  // unconditionally — one corrupt line could keep a stale memory alive forever.
+  // rule-hits-parse.js already treats a null ts as corruption, not epoch-0.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-tsless-'));
+  try {
+    const memDir = path.join(home, 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    const stale = path.join(memDir, 'project_stale_topic.md');
+    fs.writeFileSync(stale, '---\nname: stale\n---\nbody\n');
+    // age it well past STALE_AGE_DAYS
+    const old = Date.now() - 200 * 86400 * 1000;
+    fs.utimesSync(stale, old / 1000, old / 1000);
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- [Stale](project_stale_topic.md) — x\n');
+
+    const logPath = path.join(home, 'claudemd.jsonl');
+    // The ONLY mention of the file is on a row with no ts.
+    fs.writeFileSync(logPath, '{"hook":"h","event":"deny","extra":{"note":"project_stale_topic.md"}}\n');
+
+    const r = await memoryMaintenance({ memDir, logPath, homeDir: home });
+    assert.ok(r.staleDurable.some(x => (x.file || x) === 'project_stale_topic.md'),
+      `a ts-less mention must not keep the file alive; staleDurable=${JSON.stringify(r.staleDurable)}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
