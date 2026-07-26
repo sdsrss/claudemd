@@ -305,6 +305,12 @@ canon_cmd_words() {
           # text to the detectors, never less. NOTE: this awk body is inside a
           # single-quoted shell string — no apostrophes in these comments.
           if (word ~ /^[A-Za-z_][A-Za-z0-9_]*\+?=/) { out=out word; continue }
+          # F25: a REDIRECTION may sit at command position (`>/tmp/log rm -rf $V`).
+          # Basename-canonicalizing it destroyed the operator and left a bare word
+          # (`>/tmp/log` became `log`), which then read as the command word and hid
+          # the real one from every gate. Emit verbatim and stay at command position
+          # so the NEXT word is the one canonicalized.
+          if (word ~ /^[0-9]*[<>]/) { out=out word; continue }
           sub(/^\\/,"",word); sub(/.*\//,"",word)
           out=out word; cmdpos=0; continue
         }
@@ -505,7 +511,15 @@ SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 # Bash 3.2: indexed arrays only. Shell keywords (do/then/else/!) and path-form env
 # are handled inline at each gate — not exec-wrappers, and curl-sh (a pipe SINK,
 # never a control structure) does not share them.
-S8_WRAP_ARGLESS=(env command nohup setsid time busybox)
+#
+# F23/F24 (2026-07-25 deep audit): `exec` was absent — it replaces the shell with
+# the named command, exactly as transparent as env/command/nohup, so `exec rm -rf
+# $VAR` bypassed all three gates. And the ARGLESS/FLAGGED split was wrong about
+# what "argless" means: env/command/time DO take options (`env -i`, `env -u NAME`,
+# `command -p`, `time -p`), and the strip loop stopped at the first `-flag`, so the
+# real command word was never reached. Both lists now consume leading option tokens;
+# only the bare-numeric DURATION consumption stays FLAGGED-only (`timeout 5 rm`).
+S8_WRAP_ARGLESS=(env command exec nohup setsid time busybox)
 S8_WRAP_FLAGGED=(timeout nice stdbuf ionice chrt sudo doas)
 
 # s8_in_list WORD ELEM... → returns 0 if WORD equals any ELEM.
@@ -516,12 +530,46 @@ s8_in_list() {
   return 1
 }
 
+# s8_wrap_optarg WRAPPER FLAG → 0 when FLAG consumes the FOLLOWING token as its
+# argument for WRAPPER. Without this the argument itself lands at command position
+# and ends the strip (`env -u FOO rm …` stopped on `FOO`), which is a false NEGATIVE
+# on a real spelling. Scoped per-wrapper on purpose: `-i` takes an argument for
+# stdbuf but not for env, so a flat flag list would over-consume and swallow the
+# command word — that direction creates misses, so entries are deliberately few and
+# only cover flags whose argument is separated by a space. Glued (`-uFOO`) and
+# `--flag=value` forms carry their own argument and are consumed by the generic
+# `-*` arm. Closing `timeout -s KILL 5` / `sudo -u svc` here also retires the two
+# option-with-arg residuals the strip header documented.
+s8_wrap_optarg() {
+  case "$1" in
+    env)     [[ "$2" == '-u' || "$2" == '-S' ]] ;;
+    exec)    [[ "$2" == '-a' ]] ;;
+    time)    [[ "$2" == '-o' || "$2" == '-f' ]] ;;
+    timeout) [[ "$2" == '-s' || "$2" == '-k' ]] ;;
+    stdbuf)  [[ "$2" == '-i' || "$2" == '-o' || "$2" == '-e' ]] ;;
+    sudo)    [[ "$2" == '-u' || "$2" == '-g' || "$2" == '-U' || "$2" == '-C' ]] ;;
+    doas)    [[ "$2" == '-u' || "$2" == '-C' ]] ;;
+    *)       return 1 ;;
+  esac
+}
+
 # s8_split_segments CMD → split on command terminators, one segment per line.
 # Byte-identical to the rm/npx gates' formerly-inline split. `&&`/`||` collapse
 # first (multi-char), then single-char `; & | ( ) backtick`. NOT used by the
 # curl-sh gate (which needs a pipe-continuation join and must keep `|` joins).
 s8_split_segments() {
-  printf '%s\n' "$1" | sed -E 's/&&/\n/g; s/\|\|/\n/g' | sed -E 's/[;&|()`]/\n/g'
+  # F28: protect a `&` that belongs to a REDIRECTION operator (`3>&1`, `2>&1`,
+  # `<&-`) before the char-class split, then restore it. Without this the split
+  # cut `3>&1 rm -rf $VAR` into `3>` + `1 rm -rf $VAR`, so the segment handed to
+  # each gate began at `1` and the command word was never examined — the same
+  # blind spot F25 closed for `>/tmp/log`, reached by a different route. A real
+  # background `&` has no `<`/`>` before it and still splits.
+  local SEP=$'\001'
+  printf '%s\n' "$1" \
+    | sed -E "s/([<>])&([0-9-])/\1${SEP}\2/g" \
+    | sed -E 's/&&/\n/g; s/\|\|/\n/g' \
+    | sed -E 's/[;&|()`]/\n/g' \
+    | sed -E "s/${SEP}/\&/g"
 }
 
 # s8_strip_wrappers SEGMENT → SEGMENT minus leading env-assignments and transparent
@@ -531,33 +579,60 @@ s8_split_segments() {
 # keyword at segment head); path-form env; FLAGGED wrappers with their option/bare-
 # numeric-duration args consumed. Stripping only ever removes a prefix, so a non-rm/
 # non-runner command behind a wrapper is unaffected (the gate still no-ops on it).
-# Residual (documented, unchanged): `xargs rm` (target on stdin) and option-with-arg
-# wrapper forms (`sudo -u svc rm`, `timeout -s KILL 5 rm`). [allow-*] is the escape.
+# Residual (documented, unchanged): `xargs rm` (target on stdin). Option-with-arg
+# wrapper forms (`sudo -u svc rm`, `timeout -s KILL 5 rm`) were residuals until F24
+# added s8_wrap_optarg. [allow-*] is the escape.
 # CALL-SITE ORDER IS LOAD-BEARING: rm calls this BEFORE its `${x#[({]}` opener-strip,
 # npx calls it AFTER — that difference makes `{ env rm` a (latent) miss and `{ env npx`
 # a catch. Both behaviours predate this extraction and must be preserved; the
 # differential corpus scan proves no verdict moved.
 s8_strip_wrappers() {
-  local seg="$1" first w rest
+  local seg="$1" first w rest wrap durations
   while [[ -n "$seg" ]]; do
     first="${seg%%[[:space:]]*}"
+    # F25: a redirection may precede the command word (`>/tmp/log rm -rf $VAR`,
+    # `2>/dev/null rm …`) — bash accepts it there, and leaving it in place made
+    # the redirection itself the "command word", blinding all three gates. A token
+    # that is PURELY a redirection operator (`>`, `2>`, `>>`) also consumes the
+    # following filename token; an operator with the target glued on (`>/tmp/log`,
+    # `2>&1`) consumes only itself.
+    if [[ "$first" =~ ^[0-9]*(\<|\>)(\>|\&)?[^[:space:]]*$ ]]; then
+      rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+      if [[ "$first" =~ ^[0-9]*(\<|\>)(\>|\&)?$ ]]; then
+        w="${seg%%[[:space:]]*}"
+        rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+      fi
+      continue
+    fi
     if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
-       || s8_in_list "$first" "${S8_WRAP_ARGLESS[@]}" \
        || [[ "$first" == 'do' || "$first" == 'then' || "$first" == 'else' \
           || "$first" == '!' \
           || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
       rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+      continue
+    fi
+    if s8_in_list "$first" "${S8_WRAP_ARGLESS[@]}"; then
+      wrap="$first"; durations=0
     elif s8_in_list "$first" "${S8_WRAP_FLAGGED[@]}"; then
-      rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
-      while [[ -n "$seg" ]]; do
-        w="${seg%%[[:space:]]*}"
-        if [[ "$w" == -* || "$w" =~ ^[0-9]+[smhd]?$ ]]; then
-          rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
-        else break; fi
-      done
+      wrap="$first"; durations=1
     else
       break
     fi
+    rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+    # Consume this wrapper's own option tokens. Both classes take options (F24);
+    # only FLAGGED wrappers additionally take a bare numeric duration (`timeout 5`).
+    while [[ -n "$seg" ]]; do
+      w="${seg%%[[:space:]]*}"
+      if [[ "$w" == -* ]]; then
+        rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+        if s8_wrap_optarg "$wrap" "$w"; then
+          w="${seg%%[[:space:]]*}"
+          rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+        fi
+      elif (( durations == 1 )) && [[ "$w" =~ ^[0-9]+[smhd]?$ ]]; then
+        rest="${seg#"$w"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
+      else break; fi
+    done
   done
   printf '%s' "$seg"
 }
@@ -615,8 +690,8 @@ if (( bypass_rm == 0 )); then
     # `if …; then rm …` all reach the rm word after stripping; pre-fix each was a §8
     # SAFETY silent bypass (segment-start `rm` check skipped the whole segment). Order:
     # this runs BEFORE the `${trimmed#[({]}` opener-strip below — load-bearing, do not
-    # reorder (see s8_strip_wrappers header). Residual (unchanged): `xargs rm`,
-    # option-with-arg wrappers (`timeout -s KILL 5 rm`). [allow-rm-rf-var] escapes.
+    # reorder (see s8_strip_wrappers header). Residual (unchanged): `xargs rm`.
+    # [allow-rm-rf-var] escapes.
     trimmed=$(s8_strip_wrappers "$trimmed")
     # Segment must start with an `rm` token. Canonicalize the command word to
     # its basename and strip a leading backslash so path-prefixed (`/bin/rm`,
@@ -636,12 +711,19 @@ if (( bypass_rm == 0 )); then
     # non-flag positional arg as the target. POSIX `--` separator handled.
     args_only="${trimmed#"$rm_word"}"
     args_only="${args_only#"${args_only%%[![:space:]]*}"}"
+    # F22 (2026-07-25 deep audit) — collect EVERY positional target, not just the
+    # first. `rm_target` was bound once under a `[[ -z … ]]` guard, so a variable
+    # target in any later position was dropped: `rm -rf ./build $VAR`, `rm -rf
+    # /tmp/a "$VAR"` and `: "${SAFE:?}" && rm -rf "$SAFE" "$EVIL"` all ALLOWed.
+    # That is the plain unvalidated-$VAR class this gate exists for, in an ordinary
+    # multi-target cleanup spelling. Each target is now analyzed independently
+    # below, so a validated target no longer vouches for its neighbours.
     danger=0
-    rm_target=""
+    rm_targets=()
     after_dash_dash=0
     for tok in $args_only; do
       if (( after_dash_dash == 1 )); then
-        [[ -z "$rm_target" ]] && rm_target="$tok"
+        rm_targets+=("$tok")
         continue
       fi
       case "$tok" in
@@ -651,12 +733,16 @@ if (( bypass_rm == 0 )); then
         -*[rRfF]*)         danger=1 ;;
         -*)                ;;  # short flag without r/R/f/F (e.g. -v -i)
         *)
-          [[ -z "$rm_target" ]] && rm_target="$tok"
+          rm_targets+=("$tok")
           ;;
       esac
     done
     (( danger == 1 )) || continue
-    [[ -n "$rm_target" ]] || continue
+    (( ${#rm_targets[@]} > 0 )) || continue
+    # One verdict per target. `continue` inside this loop means "next target";
+    # every pre-F22 `continue` in the body already had exactly that meaning for
+    # the single target it analyzed.
+    for rm_target in "${rm_targets[@]}"; do
     echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' || continue
     varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
       | sed -E 's/[${}"'"'"']//g')
@@ -886,6 +972,7 @@ if (( bypass_rm == 0 )); then
         fi
         ;;
     esac
+    done  # F22 per-target loop
   done <<< "$RM_SEGMENTS"
 fi
 
@@ -906,7 +993,13 @@ fi
 # check if the segment's command word is a runner. A runner name sitting inside a
 # quoted argument (`git commit -m "add npx setup for $X"`) is NOT at a segment's
 # command position, so prose no longer false-denies; `env npx` / `$(npx …)` still do.
-NPX_CMD_REGEX='^(npx|bunx|npm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+dlx)([[:space:]]|$)'
+# F26 (2026-07-25 deep audit): the two-word runners anchored tool and subcommand as
+# adjacent, so a global flag between them (`npm --yes exec pkg`, `pnpm --silent dlx
+# pkg` — both accepted by the real package managers) fell out of the gate. Only
+# `-flag` tokens may sit in the gap: a bare word there is a different subcommand
+# (`npm run exec-tests`) and must stay out.
+NPX_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+)*'
+NPX_CMD_REGEX="^(npx|bunx|npm${NPX_GLOBAL_FLAGS}[[:space:]]+exec|pnpm${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|yarn${NPX_GLOBAL_FLAGS}[[:space:]]+dlx)([[:space:]]|$)"
 runner=""
 npx_seg=""
 NPX_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
@@ -1038,21 +1131,31 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # string from the full arrays would ADD `timeout` and flip `curl x | timeout bash`
 # allow→deny — a verdict change, not a refactor. Shell keywords (do/then/else/!) are
 # absent for the same reason a pipe sink is never a control-structure keyword.
-CURLSH_WRAP='(sudo|doas|env|command|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
+CURLSH_WRAP='(sudo|doas|env|command|exec|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
 # Optional sink prefix: one leading backslash (`\bash`, alias-defeat) OR a
 # path ending in `/` (`/bin/sh`, `/usr/local/bin/bash`). The path branch MUST
 # end with `/` so `flash` / `./mysh` can never satisfy it — the shell word
 # after the prefix still has to be exactly one of the sink names, keeping the
 # non-shell-sink FP guard intact (F19).
 CURLSH_SINKPFX='(\\|/[^[:space:]|;&]*/)?'
-CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
+# F27 (2026-07-25 deep audit): three delivery shapes the pipe form did not model.
+# `|&` is bash's pipe-stderr-too operator — a one-character variation on the
+# canonical denied form; and a group opener (`| { bash; }`, `| (bash)`) pushes the
+# sink one token right of where the regex looked. Both were live ALLOWs whose
+# payload ran (sandbox-confirmed). The sink word itself is unchanged, so a
+# non-shell group (`| { jq .; }`) still cannot match.
+CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|&?[[:space:]]*([({][[:space:]]*)?(${CURLSH_WRAP})*${CURLSH_SINKPFX}(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
 # a bare `.` before ` <(curl…)` is only ever the source builtin. Same wrapper
 # prefix as the pipe form (`env bash <(curl x)`); `source`/`.` are builtins so a
 # wrapper before them never resolves, but the group is harmless there.
-CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+<\([[:space:]]*(curl|wget)[[:space:]]"
+# F27, second half: `bash < <(curl …)` redirects stdin FROM the same process
+# substitution this pattern already covers, but the regex required `<(` to follow
+# the sink word directly. A local-file redirect (`bash < ./setup.sh`) still cannot
+# match — the `<(` and the curl/wget word are both still required.
+CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*(curl|wget)[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments
@@ -1062,9 +1165,11 @@ while IFS= read -r cseg; do
   # CURLSH_WRAP in the regex. Monotonic: stripping only ever removes a prefix,
   # exposing more text to a deny-on-match regex — no allow→deny flip is possible
   # for a segment whose stripped head is not curl/wget. Residuals (documented):
-  # option-with-arg wrapper forms (`sudo -u svc curl`) and a wrapper after a
-  # mid-segment background `&` (`foo & sudo curl x | sh` — `&` is not a split
-  # char here); [allow-curl-sh] is the escape.
+  # a wrapper after a mid-segment background `&` (`foo & sudo curl x | sh` — `&`
+  # is not a split char here), and a herestring carrying a command substitution
+  # (`sh <<< "$(curl x)"`, whose quoted body sanitize strips before any gate sees
+  # it); [allow-curl-sh] is the escape. Option-with-arg wrapper forms
+  # (`sudo -u svc curl`) closed in F24 via s8_wrap_optarg.
   cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   # Perf guard, verdict-neutral: both CURLSH regexes require the literal
   # substring curl/wget, and neither strip nor canon can CREATE it (basename

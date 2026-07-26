@@ -25,7 +25,7 @@ claudemd_reset_test_env() {
     unset "$v"
   done < <(compgen -v | grep -E '^(DISABLE_[A-Z0-9_]+|CLAUDEMD_[A-Z0-9_]+)$')
   # Non-prefixed knobs (opt-ins + thresholds) — explicit list.
-  unset TRANSCRIPT_VOCAB_SCAN TRANSCRIPT_STRUCTURE_SCAN MID_SPINE_YIELD_SCAN \
+  unset TRANSCRIPT_VOCAB_SCAN TRANSCRIPT_STRUCTURE_SCAN \
         BANNED_VOCAB_PROSE_SCAN BASH_READONLY_FAST_PATH BASH_SAFETY_INDIRECT_CALL \
         SPEC_RESIDUE_THRESHOLD 2>/dev/null || true
   return 0

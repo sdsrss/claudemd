@@ -60,7 +60,7 @@ Stop hook
 - `~/.claude/logs/claudemd-bootstrap.log` — session-start install bootstrap log (rotated at 64 KiB → tail 32 KiB)
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
 
-## Hook taxonomy (16 hooks)
+## Hook taxonomy
 
 `spec_section` values below are the literal arguments each hook passes to `hook_record` (source-of-truth, not prose — refresh by re-extracting from `hooks/*.sh` rather than hand-editing this table).
 

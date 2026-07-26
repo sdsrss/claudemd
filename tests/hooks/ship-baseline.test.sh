@@ -270,8 +270,79 @@ OUT=$(run_hook fail-red "$EVENT_INLINE_SEMI")
 [[ -z "$OUT" ]] && echo "PASS: 26 inline -m body containing '; git push' → pass" \
   || { echo "FAIL: 26 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+
+# --- 2026-07-25 deep audit: in-flight runs, uncovered red states, multi-line ---
+# Own fixture: Case 3 left a `known-red baseline:` marker in HEAD, which bypasses
+# every red verdict below. Reset to a clean HEAD or these all pass for the wrong
+# reason (they would stay green against the unfixed hook).
+cd "$TMP_HOME" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "clean commit no marker"
+
+# Case 27: newest run still executing, completed run behind it is RED → deny.
+# Pre-fix the hook read `.[0].conclusion`, which is null while a run is in
+# flight, so it recorded a §7 `pass` and allowed the push. This is the atomic-ship
+# normal timing (push main starts CI, tag push follows seconds later).
+OUT=$(run_hook in-progress "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 27 in_progress newest, red baseline → deny" \
+  || { echo "FAIL: 27 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 28: same shape but the completed baseline is GREEN → pass.
+OUT=$(run_hook queued "$EVENT_PUSH")
+[[ -z "$OUT" ]] && echo "PASS: 28 queued newest, green baseline → pass" \
+  || { echo "FAIL: 28 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 29: nothing completed yet → no baseline color exists. Must not deny, and
+# must not be counted as a green pass (own event: pending-no-baseline).
+OUT=$(run_hook no-completed "$EVENT_PUSH")
+[[ -z "$OUT" ]] && echo "PASS: 29 no completed run → allow without a pass verdict" \
+  || { echo "FAIL: 29 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Cases 30-31: the two red conclusions the arm listed but no fixture exercised —
+# deleting them from the arm left the suite fully green before this.
+OUT=$(run_hook fail-action-required "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 30 action_required → deny" \
+  || { echo "FAIL: 30 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+OUT=$(run_hook fail-startup "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 31 startup_failure → deny" \
+  || { echo "FAIL: 31 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 32: a push on its own LINE of a multi-line command. A newline is a real
+# command separator; flattening it to a space erased the trigger anchor, so the
+# gate never fired on the ordinary multi-line bash block.
+EVENT_ML=$(jq -nc '{session_id:"ml",tool_name:"Bash",tool_input:{command:"npm test\ngit push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_ML")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 32 multi-line push reaches the gate" \
+  || { echo "FAIL: 32 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 33: FP guard — a line-continuation backslash joins lines, so `git \` +
+# newline + `push` is one command and must still be seen (not split by the
+# newline-to-`;` conversion).
+EVENT_CONT=$(jq -nc '{session_id:"cont",tool_name:"Bash",tool_input:{command:"git \\\npush origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CONT")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 33 line-continuation push reaches the gate" \
+  || { echo "FAIL: 33 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 34: FP guard — a fake heredoc (`<<` as left-shift) must not blank the
+# push that follows it on the next line.
+EVENT_FAKE_HD=$(jq -nc '{session_id:"fakehd",tool_name:"Bash",tool_input:{command:"echo $((1<<n))\ngit push origin main"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_FAKE_HD")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 34 fake heredoc does not hide the push" \
+  || { echo "FAIL: 34 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 35: FP guard — a REAL heredoc body mentioning a push must stay stripped.
+EVENT_REAL_HD=$(jq -nc '{session_id:"realhd",tool_name:"Bash",tool_input:{command:"cat <<EOF\ngit push origin main\nEOF"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_REAL_HD")
+[[ -z "$OUT" ]] && echo "PASS: 35 real heredoc body still stripped" \
+  || { echo "FAIL: 35 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((28 - FAIL))/28 passed"
+  echo "Tests: $((35 - FAIL))/35 passed"
   exit 1
 fi
-echo "Tests: 28/28 passed"
+echo "Tests: 35/35 passed"

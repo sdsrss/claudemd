@@ -15,7 +15,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 OLD_TAG="v0.2.3"
 OLD_SPEC_VER="v6.10.1"
-NEW_SPEC_VER="v6.22.0"
+# Read from the shipped spec header rather than pinning a literal: this is the
+# CURRENT version by definition, and a hand-updated pin turns every spec bump
+# into a test failure that says nothing about the upgrade path (2026-07-25).
+NEW_SPEC_VER="v$(sed -n '1s/.*AI-CODING-SPEC v\([0-9.]*\).*/\1/p' "$REPO/spec/CLAUDE.md")"
 NEW_RULE_NEEDLE="Memory routing"
 
 # macOS `mktemp -d` returns `/var/folders/...` which is a symlink to

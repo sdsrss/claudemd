@@ -504,3 +504,41 @@ test('SCRIPT-1: incomplete shipped spec fails BEFORE moving user content', async
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')), 'no backup dir — nothing was moved');
 });
+
+test('hook manifest missing → install refuses instead of registering 0 hooks', async () => {
+  // 2026-07-25 audit: readPluginHookSpecs returned [] for an absent
+  // hooks/hooks.json and nothing validated it, so a truncated plugin cache
+  // installed cleanly with zero hooks — and since the manifest version still
+  // matched package.json, the SessionStart bootstrap treated it as healthy and
+  // never retried. Enforcement silently off, status reporting installed.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal global instructions\n');
+  fs.rmSync(path.join(pluginRoot, 'hooks/hooks.json'));
+
+  await assert.rejects(() => install({ pluginRoot }), /hook manifest missing/);
+
+  // Fails before the point of no return: user content still at its home path,
+  // and no manifest written.
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# My personal global instructions\n');
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
+    'no manifest written for a hook-less install');
+});
+
+test('hook manifest malformed JSON → install refuses with a named cause', async () => {
+  // Same call site previously ran an unguarded JSON.parse, and it runs AFTER the
+  // spec copy and settings.json rewrite — so a malformed manifest threw past the
+  // point of no return, leaving a new spec on disk, settings rewritten, and no
+  // manifest.
+  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), '{ "hooks": {  ');
+
+  await assert.rejects(() => install({ pluginRoot }), /not valid JSON/);
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')));
+});
+
+test('hook manifest declaring no hooks → install refuses', async () => {
+  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({ hooks: {} }));
+
+  await assert.rejects(() => install({ pluginRoot }), /declares no hooks/);
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')));
+});

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.22.0 — Extended
+# AI-CODING-SPEC v6.23.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -221,7 +221,7 @@ L3  TDD + full suite + e2e                    → inline evidence with numbers+b
     (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). L3 adds the 5-tier evidence ladder and cold-start handling. Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
+L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only — core's pointer files them under an L3 heading, so an L2 agent gets no trigger they exist; that pointer now names the level (2026-07-25). Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -397,7 +397,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 23 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 14 self / 1 both / 1 external (v6.21.0).
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 24 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 7 hook / 15 self / 1 both / 1 external (v6.23.0).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
@@ -469,13 +469,13 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.22.0 (minor, 2026-07-25)** — level/precedence seam closure (2026-07-25 audit).
+**v6.23.0 (minor, 2026-07-25)** — false-enforcement-claim + level/precedence batch (deep audit).
 
-- `[fix]` **Iron Law #1 surfaces in core at L2+**: core's only pointer filed the rule under "L3 evidence rules" while the definition here binds L2+ — and §2.2 forbids L2 loading this file, so an L2 agent had no trigger the rule existed. Core §7 now carries the one-line form; §7-EXT intro corrected. `[fix]` **§11 Tell "closed" now includes a compliant L1 single-line `Done:`** (v6.21.1 regression: four-section-only definition misread clean L1 closes as yields — rule relaxed → minor). `[fix]` **§3 Order line ranks project CLAUDE.md** (with current-turn user); §13 Drift check states the delegation boundary instead of citing a rank §3 never held. `[fix]` **§2 L0 row drops `config`** (conflicted with §0 whitelist + §5 hard-AUTH; stricter wins). Paired net-delete: C9 (§9↔§1 double-write) + C11 (footer pointer dup) + §1 `reasoning` (visible thinking follows user language). §12 Fallback gains `gs:/document-release` + `/careful` rows. Class pinned by two new spec-structure joins (level-tag ↔ heading; §3-rank citation coverage). Full entry: `~/.claude/CLAUDE-changelog.md`.
+- `[fix]` **§10 four-section order no longer claims a Stop hook enforces it** — `transcript-structure-scan` is advisory, opt-in, default-OFF, and a Stop event cannot block; `hard-rules.json` said `self` while core said otherwise. `[fix]` **§5.1 `aggressive` contradiction resolved**: core's skip-list said "§5 Hard-AUTH still bind" unqualified while §5.1-EXT downgraded cross-module refactor to soft — §3 stricter-reading makes it HARD, and the row now says so. `[fix]` **§3 Order ranks harness / MCP / skill instructions** (§2.1 grants them authority; §3 never listed the layer). `[fix]` **Evidence ladder + cold-start tagged L2+** in core's pointer and the §7-EXT intro. `[fix]` **§0.1 cap stated in bytes**; headroom pointer now names this file, where the live Sizing line is. `[add]` **§2 names the spec artifact** + its L2 trigger (§2.S had an L2 obligation with zero core refs). `hard-rules.json`: `§11-post-compaction` added; four self-enforced rules now declare the `rule_hits_section` their advisory hooks already emit — partition 7 hook / 15 self / 1 both / 1 external over 24 rules. Paired net-delete per §0.1: C7 (§5.1 skip-list → §5.1-EXT), C8, C12. Full entry: `~/.claude/CLAUDE-changelog.md`.
 
-**Older entries** (v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.22.0 level/precedence seam closure, v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.22.0, 2026-07-25, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24715 → 24714 bytes (Δ -1: level/precedence fixes offset by C9+C11 paired net-delete); extended 48293 → 48900 bytes (Δ +607: §7-EXT/§13/§12 corrections + this entry); OPERATOR.md 8314 → 8737 bytes (Δ +423: fix-rate metric caveat, 2026-07-25 audit). Size budget: core 24714/25000 (**286 bytes headroom, 98.86%**); extended 48900/50000 (**1100 bytes headroom, 97.80%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.23.0, 2026-07-25, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24714 → 24574 bytes (Δ -140: false-enforcement + level/precedence fixes offset by the C7+C8+C12 paired net-delete); extended 48900 → 49765 bytes (Δ +867: C7 intake + this entry); OPERATOR.md 8737 bytes (unchanged). Size budget: core 24574/25000 (**426 bytes headroom, 98.30%**); extended 49765/50000 (**235 bytes headroom, 99.53%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
 **Operator carry-forward**: v6.22.0 is a minor (turn-yield "closed" definition relaxed; level-tag corrections; no HARD added — `hard-rules.json` bumps spec_version only, enforcement partition unchanged). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md`: **C9 + C11 CONSUMED this version** (−192B, paired with the seam fixes); remaining C7/C8/C10/C12 ≈ −600B; core headroom 286B — next core addition of any size must still pair with a trim. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. Carried to the next §13.2 batch review (unchanged): banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite. Runbook stamp: re-stamp `@ v6.22.0` at next ship (self-healing per §2.2).
 
@@ -490,9 +490,11 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `cross-module refactor (≥3 Modules)` → soft; `Δ-contract public API` → soft when consumer is internal-only; `delete in safe-paths` → no surface-required; `deps dev-only` → none |
+| `aggressive` | `Δ-contract public API` → soft when the consumer is internal-only (see Published client below); `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` stays HARD — core §5.1's skip-list says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading; corrected 2026-07-25). |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
+
+**`aggressive` skip-list** (core §5.1 pointer): skill soft-trigger announcement optional; §1 Recommend-first single-obvious-option execute-without-preamble is the default; clear-scope bugfix goes fix → test → iterate without proposal. §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind — the reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
 
 **Published client** (binds `aggressive` Δ-contract judgment): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 

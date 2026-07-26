@@ -255,13 +255,17 @@ test('synthetic: plain-form claim drift also emits suggested edit (P6)', () => {
   }
 });
 
-test('synthetic: extended.md missing → skipped cleanly (does not block ship)', () => {
+test('synthetic: extended.md missing → FAILS the ship gate', () => {
+  // Contract reversed 2026-07-25 (audit). This previously returned ok:true with
+  // skipped:'extended-missing', so a spec file that had gone missing passed the
+  // pre-tag gate with exit 0 — while the sibling case below (file present, Sizing
+  // line absent) already failed. In this repo spec/CLAUDE-extended.md always
+  // exists; its absence means a broken checkout, which is what the gate is for.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
-    // No spec/CLAUDE-extended.md at all
     const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, true);
-    assert.equal(r.skipped, 'extended-missing');
+    assert.equal(r.ok, false);
+    assert.match(r.error, /CLAUDE-extended\.md missing/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

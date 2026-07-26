@@ -1,6 +1,6 @@
 # Adding a new hook to claudemd
 
-This guide walks adding another hook from zero (16 ship as of v0.51.x). Example: `foo-check.sh` that denies a hypothetical condition.
+This guide walks adding another hook from zero (see `HOOK_REGISTRY.length`). Example: `foo-check.sh` that denies a hypothetical condition.
 
 > Steps 3-4 are drift-GATED: `tests/scripts/hook-registry.test.js`, `tests/hooks/contract.test.sh` and `tests/scripts/hard-rules-drift.test.js` fail CI if any registration site is skipped. Following only steps 1-2 produces a red build by design.
 

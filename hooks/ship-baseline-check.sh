@@ -47,28 +47,13 @@ fi
 # v0.17.4 Cases 12-14 covered comments + bare heredoc bodies, but the
 # adjacent-separator pattern (`&& git push` inside a heredoc body) slipped
 # through because the case used `git push` standalone, not `&& git push`.
-# Strip body between `<<DELIM` (or `<<'DELIM'`, `<<"DELIM"`, `<<-DELIM`)
-# and the closing DELIM line. Bash-native state machine — no external awk
-# script needed.
-strip_heredocs() {
-  local in_hd=0 delim="" dash=0 line test_line
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if (( in_hd )); then
-      test_line="$line"
-      if (( dash )); then
-        while [[ "$test_line" == $'\t'* ]]; do test_line="${test_line#?}"; done
-      fi
-      [[ "$test_line" == "$delim" ]] && in_hd=0
-      continue
-    fi
-    if [[ "$line" =~ \<\<(-)?[[:space:]]*[\'\"]?([A-Za-z_][A-Za-z0-9_]*)[\'\"]? ]]; then
-      [[ -n "${BASH_REMATCH[1]}" ]] && dash=1 || dash=0
-      delim="${BASH_REMATCH[2]}"
-      in_hd=1
-    fi
-    printf '%s\n' "$line"
-  done
-}
+# Strip body between `<<DELIM` (or `<<'DELIM'`, `<<"DELIM"`, `<<-DELIM`) and the
+# closing DELIM line — now via the shared hook_strip_heredoc_bodies in
+# hook-common.sh. This was a bash-native state machine hand-copied from
+# pre-bash-safety-check.sh, and it never received that file's terminator
+# LOOKAHEAD guard: `echo $((1<<n))` + newline + `git push origin main` opened a
+# phantom heredoc that swallowed the push, so the §7 red-CI gate stopped seeing
+# the trigger it exists to gate (2026-07-25 audit, reproduced live).
 
 # Filter: git push, not --help.
 # Strip heredoc bodies (v0.23.1) THEN flatten THEN strip quoted bodies — the
@@ -82,8 +67,8 @@ strip_heredocs() {
 # `git commit -m "x" && git push` keeps its outside-quote `&& git push`. The
 # known-red marker check below reads the raw $CMD, so the (b) escape inside a
 # quoted -m payload still works.
-CMD_STRIPPED=$(printf '%s' "$CMD" | strip_heredocs)
-CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | tr '\n' ' ' | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g")
+CMD_STRIPPED=$(printf '%s' "$CMD" | hook_strip_heredoc_bodies)
+CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | hook_flatten_cmd | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g")
 # Segment-anchor regex: require `^` (real start-of-command, post-flatten) OR a
 # real shell separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser
 # `[[:space:];&|]` allows ANY whitespace (including space after `#` in
@@ -109,13 +94,33 @@ command -v gh >/dev/null 2>&1 || exit 0
 # green. Detached HEAD / non-git: skip the filter (old unfiltered behavior).
 BRANCH=$(git branch --show-current 2>/dev/null)
 if [[ -n "$BRANCH" ]]; then
-  RUN_JSON=$(platform_timeout 2 gh run list --branch "$BRANCH" --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 else
-  RUN_JSON=$(platform_timeout 2 gh run list --limit 1 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 fi
 [[ -n "$RUN_JSON" ]] || exit 0
 
-CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""' 2>/dev/null)
+# Baseline color = the most recent COMPLETED run, not simply the newest one.
+#
+# 2026-07-25 audit: this read `.[0].conclusion` only. A run that is still
+# executing carries `status:"in_progress"` with `conclusion:null`, so the empty
+# string fell through to the `*)` arm and was recorded as a §7 `pass` — a
+# positive baseline row for a run that had not produced a result. Under the
+# atomic-ship flow that is the NORMAL timing (pushing main starts CI; the tag
+# push follows seconds later), so the gate reported pass at exactly the moment
+# it was supposed to evaluate, and every downstream count built on those rows
+# was inflated. Selecting the newest completed run gives the question a real
+# answer; `--limit 5` provides the lookback for it.
+COMPLETED_RUN=$(printf '%s' "$RUN_JSON" | jq -c '[.[] | select(.status == "completed")][0] // empty' 2>/dev/null)
+if [[ -z "$COMPLETED_RUN" ]]; then
+  # Nothing has finished yet — there is no color to gate on. Record the state
+  # under its own event so it is never counted as a green baseline.
+  IN_FLIGHT=$(printf '%s' "$RUN_JSON" | jq -r '.[0].status // "unknown"' 2>/dev/null)
+  hook_record ship-baseline pending-no-baseline "{\"status\":\"$IN_FLIGHT\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
+  exit 0
+fi
+
+CONCLUSION=$(printf '%s' "$COMPLETED_RUN" | jq -r '.conclusion // ""' 2>/dev/null)
 # `gh` reports red as one of these terminal states; treating only "failure" as
 # red lets cancelled/timed-out runs ship silently. Spec §7 Ship-baseline says
 # "Red →" — these are red in gh parlance.
@@ -153,8 +158,10 @@ if printf '%s' "$CMD" | grep -qi 'known-red baseline:'; then
   exit 0
 fi
 
-RUN_URL=$(printf '%s' "$RUN_JSON" | jq -r '.[0].url // ""')
-RUN_TITLE=$(printf '%s' "$RUN_JSON" | jq -r '.[0].displayTitle // ""')
+# From COMPLETED_RUN, not `.[0]` — the deny message and the repeat-cooldown key
+# must name the run whose conclusion produced the verdict.
+RUN_URL=$(printf '%s' "$COMPLETED_RUN" | jq -r '.url // ""')
+RUN_TITLE=$(printf '%s' "$COMPLETED_RUN" | jq -r '.displayTitle // ""')
 
 # v0.18.1 — retry-cooldown detection. Real session evidence (daagu 5/18-5/20):
 # 3 distinct red CI run URLs each attracted 2 deny events within 71-230s of

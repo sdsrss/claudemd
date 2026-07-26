@@ -19,17 +19,33 @@ const CORE_SPEC = path.join(ROOT, 'spec/CLAUDE.md');
 const EXT_SPEC = path.join(ROOT, 'spec/CLAUDE-extended.md');
 const HOOKS_DIR = path.join(ROOT, 'hooks');
 
-// v0.7.0 spec_section taxonomy — keep in sync with docs/RULE-HITS-SCHEMA.md
-// "Spec section taxonomy" table. Updating this requires the same in both.
-const KNOWN_HOOK_SECTIONS = new Set([
-  '§10-V', '§7-ship-baseline', '§8', '§8-rm-rf-var', '§8-npx', '§8-curl-sh',
-  '§11-memory-read', '§7-user-global-state', '§8.V4',
-  // v0.9.23 (Round-6): plugin-internal observability — fail-open events from
-  // hook_record_failopen. Never targeted by spec/hard-rules.json (it's not a
-  // spec rule), but listed here per the taxonomy-sync contract with
-  // docs/RULE-HITS-SCHEMA.md.
-  '§hooks-fail-open',
-]);
+// spec_section taxonomy — PARSED from docs/RULE-HITS-SCHEMA.md's "Spec section
+// taxonomy" table, not hand-copied from it.
+//
+// This was a literal Set with a "keep in sync … requires the same in both"
+// comment, and it covered 10 of the table's ~16 sections (§11-memory-hint,
+// §13.1-extended-read, §11-post-compaction, §iron-law-2, §10-four-section-order,
+// §10-honesty were all absent). It passed anyway because the assertion only ran
+// manifest→Set: no manifest entry referenced the missing ones, so the gap was
+// unobservable in the direction the test checked (2026-07-25 audit). Parsing the
+// table removes the copy entirely. `§8` (the pre-granular fallback bucket) is
+// documented inline in the taxonomy's pre-bash-safety row rather than as its own
+// row, so it is added explicitly.
+const KNOWN_HOOK_SECTIONS = (() => {
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/RULE-HITS-SCHEMA.md'), 'utf8');
+  const out = new Set();
+  let inTable = false;
+  for (const line of doc.split('\n')) {
+    if (/^\|\s*Hook\s*\|\s*Event\s*\|\s*spec_section\s*\|/.test(line)) { inTable = true; continue; }
+    if (inTable && !line.startsWith('|')) break;
+    if (!inTable || /^\|\s*-+/.test(line)) continue;
+    const cols = line.split('|');
+    if (cols.length < 4) continue;
+    for (const m of cols[3].matchAll(/`(§[^`]+)`/g)) out.add(m[1]);
+  }
+  if (out.size === 0) throw new Error('taxonomy parse failed — table shape changed in RULE-HITS-SCHEMA.md');
+  return out;
+})();
 
 // HARD spec annotations whose containing line cannot be matched by any
 // manifest entry's `section_anchor` substring. There's exactly ONE such
@@ -94,16 +110,97 @@ test('hard-rules-3: hook-enforced manifest entries have non-null rule_hits_secti
     `\nResolution: fill rule_hits_section so /claudemd-rules can cross-ref hits.`);
 });
 
-test('hard-rules-4: self/external-enforced entries have null rule_hits_section', () => {
+// Every spec_section a hook attaches to ANY emitted row — not just blocking
+// denies. Shared by hard-rules-4 (declaration completeness) and hard-rules-8
+// (manifest coverage). Both idioms are parsed: `HIT_SECTIONS+=('§…')`, which
+// pre-bash-safety batches before a single emit, and the section argument of
+// `hook_record`, which every other hook passes directly.
+function hookEmittedSections() {
+  const out = new Set();
+  // Include hooks/lib/*.sh: `§hooks-fail-open` is emitted from hook-common.sh,
+  // and a loop over the top level alone never saw it.
+  const files = [
+    ...fs.readdirSync(HOOKS_DIR).map(f => path.join(HOOKS_DIR, f)),
+    ...(fs.existsSync(path.join(HOOKS_DIR, 'lib'))
+      ? fs.readdirSync(path.join(HOOKS_DIR, 'lib')).map(f => path.join(HOOKS_DIR, 'lib', f))
+      : []),
+  ];
+  for (const full of files) {
+    const f = path.basename(full);
+    if (!f.endsWith('.sh')) continue;
+    // Join backslash line-continuations first: a multi-line hook_record call
+    // puts the section argument on a later physical line, where a line-oriented
+    // match cannot reach it (session-end-check spells §11-session-exit that way).
+    const src = fs.readFileSync(full, 'utf8').replace(/\\\n\s*/g, ' ');
+    for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) out.add(m[1]);
+    for (const m of src.matchAll(/hook_record\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
+    // Third idiom: transcript-structure-scan tags each hit `"§section|detail"`,
+    // dedupes into SECTION_LIST, then emits with the section in a VARIABLE — so
+    // the literal-argument form above cannot see any of its sections.
+    for (const m of src.matchAll(/HITS\+=\("(§[^|"]+)\|/g)) out.add(m[1]);
+    // Fourth idiom: a thin wrapper that forwards a literal section into
+    // hook_record (`record_section_deny '§8' …`). Missing it hid `§8`, the live
+    // fallback bucket for untagged §8 hits, from a test whose whole claim is
+    // completeness.
+    for (const m of src.matchAll(/record_section_deny\s+'(§[^']+)'/g)) out.add(m[1]);
+    // And the fail-open wrapper's own literal section.
+    for (const m of src.matchAll(/rule_hits_append\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
+  }
+  return out;
+}
+
+// Sections that carry observability rows without being HARD rules in the spec:
+// the memory-prompt-hint suggestion instrument and the §11-EXT mem-audit body
+// scan. Both exist to MEASURE, not to enforce, so requiring a spec/hard-rules.json
+// entry for them would mean inventing rules to satisfy a test.
+const NON_RULE_SECTIONS = new Set([
+  '§11-memory-hint',        // memory-prompt-hint suggestion instrument
+  '§11-EXT-mem-audit',      // §11-EXT durable-memory body-structure scan
+  '§13.1-extended-read',    // observability for extended loading, not a rule
+  '§13.2-batch-review',     // operator cadence advisory (§13.2 is META, not HARD)
+  '§8',                     // fallback bucket for untagged §8 hits; its granular
+                            // children (§8-rm-rf-var / §8-npx / §8-curl-sh) each
+                            // have their own manifest entry
+  '§hooks-fail-open',       // plugin-internal observability, not a spec rule
+]);
+
+test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {
+  // INVERTED 2026-07-25 (audit). The old assertion required self/external rules
+  // to keep rule_hits_section: null, with the rationale "rule-hits.jsonl only
+  // carries hook-emitted rows … until R-N8 transcript-side scan lands". R-N8
+  // landed in v0.8.3 and transcript-structure-scan in v0.9.10, so five entries
+  // were carrying null while hooks actively emitted under their sections —
+  // §11-session-exit had 39 live rows. The consequence was not cosmetic: the
+  // §13.1 demote review counts "hits in 30d" through this field, so those rules
+  // computed 0 BY CONSTRUCTION and looked like dead weight. The test cemented
+  // the error, so the manifest could not be corrected without changing it first.
+  //
+  // The real invariant: whatever a hook files rows under must be declared. A rule
+  // nobody emits for stays null (Agent-only enforcement, no telemetry surface).
   const m = loadManifest();
-  const inverted = m.rules
-    .filter(r => r.enforcement === 'self' || r.enforcement === 'external')
+  const emitted = hookEmittedSections();
+  // Heuristic: for a rule with NO declared section there is nothing to join on,
+  // so the rule id is used as the candidate section name. That holds only while
+  // a rule's id equals the section its hook emits under — true for all five
+  // rules this caught, and the reason a future rule whose id differs would pass
+  // vacuously. The reverse assertion below has no such gap.
+  const undeclared = m.rules
+    .filter(r => r.rule_hits_section === null)
+    .filter(r => emitted.has(r.id))
+    .map(r => ({ id: r.id, enforcement: r.enforcement }));
+  assert.deepEqual(undeclared, [],
+    `Manifest entries with null rule_hits_section that hooks DO emit rows for:\n` +
+    undeclared.map(o => `  ${o.id} (${o.enforcement})`).join('\n') +
+    `\nResolution: set rule_hits_section so §13.1 demote accounting can see the hits.`);
+
+  // And the reverse: a declared section must be one a hook actually emits.
+  const phantom = m.rules
     .filter(r => r.rule_hits_section !== null)
-    .map(r => ({ id: r.id, enforcement: r.enforcement, section: r.rule_hits_section }));
-  assert.deepEqual(inverted, [],
-    `Self/external-enforced entries with non-null rule_hits_section:\n` +
-    inverted.map(o => `  ${o.id} (${o.enforcement}) → '${o.section}'`).join('\n') +
-    `\nRationale: rule-hits.jsonl only carries hook-emitted rows. Non-hook enforcement should be null until R-N8 transcript-side scan lands.`);
+    .filter(r => !emitted.has(r.rule_hits_section))
+    .map(r => ({ id: r.id, section: r.rule_hits_section }));
+  assert.deepEqual(phantom, [],
+    `Manifest entries declaring a rule_hits_section no hook emits:\n` +
+    phantom.map(o => `  ${o.id} → '${o.section}'`).join('\n'));
 });
 
 test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest entry', () => {
@@ -173,24 +270,22 @@ test('hard-rules-8: every hook DENY section is backed by a manifest entry', () =
   // via (2) would slip past the very demote-accounting blind spot this test
   // guards. Blocking verbs only: deny / deny-repeat / deny-prose — NOT
   // deny-prose-dry-run (exits 0, files no HARD hit, needs no manifest entry).
-  const denySections = new Set();
-  for (const f of fs.readdirSync(HOOKS_DIR)) {
-    if (!f.endsWith('.sh')) continue;
-    const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
-    for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) {
-      denySections.add(m[1]);
-    }
-    for (const m of src.matchAll(/hook_record\s+\S+\s+(?:deny|deny-repeat|deny-prose)\s+.*?'(§[^']+)'/g)) {
-      denySections.add(m[1]);
-    }
-  }
+  // WIDENED 2026-07-25 (audit): from deny-verbs only to every emitted section.
+  // Scoping to deny/deny-repeat/deny-prose meant an advisory-emitting section
+  // (`warn` from session-end-check under §11-session-exit, `structure-advisory`
+  // under §10-four-section-order) was out of scope, which is precisely how those
+  // rows stayed orphaned from the manifest while accumulating in the live log.
+  // Coverage now also accepts a `self` entry: a rule can be Agent-enforced and
+  // still have an observability section, which is what those five entries are.
+  const denySections = hookEmittedSections();
   const m = loadManifest();
   const covered = new Set(
-    m.rules
-      .filter(r => (r.enforcement === 'hook' || r.enforcement === 'both') && r.rule_hits_section)
-      .map(r => r.rule_hits_section)
+    m.rules.filter(r => r.rule_hits_section).map(r => r.rule_hits_section)
   );
-  const uncovered = [...denySections].filter(s => !covered.has(s)).sort();
+  const uncovered = [...denySections]
+    .filter(s => !covered.has(s))
+    .filter(s => !NON_RULE_SECTIONS.has(s))
+    .sort();
   assert.deepEqual(uncovered, [],
     `Hook deny sections with no hook/both manifest entry:\n` +
     uncovered.map(s => `  ${s} (emitted via HIT_SECTIONS+= but absent from spec/hard-rules.json)`).join('\n') +

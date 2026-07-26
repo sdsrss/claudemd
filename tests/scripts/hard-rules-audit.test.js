@@ -111,9 +111,15 @@ test('hardRulesAudit cross-refs rule_hits_section to real log', async () => {
   const shipBaseline = r.rules.find(rl => rl.id === '§7-ship-baseline');
   assert.ok(shipBaseline.hits);
   assert.equal(shipBaseline.hits.deny, 1);
-  // Self-enforced rules: hits is null (we have no signal vs zero firings).
+  // A self-enforced rule that DECLARES a rule_hits_section now reports its rows
+  // (contract changed 2026-07-25). Keying `hits` off `enforcement` made the five
+  // self-rules with advisory hooks report null — indistinguishable from "no
+  // telemetry surface" — so §13.1 demote review computed 0 for them by
+  // construction. null is now reserved for rules with no section at all.
   const ironLaw2 = r.rules.find(rl => rl.id === '§iron-law-2');
-  assert.equal(ironLaw2.hits, null, 'self-enforced rules must surface hits=null');
+  assert.ok(ironLaw2.hits, 'self-enforced rule with a declared section must report hits');
+  const noSurface = r.rules.find(rl => rl.id === '§9-parallel-path');
+  assert.equal(noSurface.hits, null, 'a rule with no rule_hits_section must surface hits=null');
 });
 
 test('hard-rules-audit CLI rejects space-form --days 30 (was silent default)', () => {

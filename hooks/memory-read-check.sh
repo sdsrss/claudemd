@@ -50,7 +50,12 @@ TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]
 # means `^` only matches actual start-of-command, while mid-string occurrences
 # still need a `[;&|]+` separator before them — which heredoc body content
 # never has.
-CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+# Heredoc bodies are stripped BEFORE flattening. Order is load-bearing: the
+# flatten turns newlines into `;`, which is exactly the separator TRIGGER_RE
+# anchors on, so an unstripped heredoc body would hand its own lines to the
+# trigger as if they were commands — reintroducing the v0.9.28 bug the comment
+# above describes. ship-baseline has always stripped first; this now matches it.
+CMD_FLAT=$(printf '%s' "$CMD" | hook_strip_heredoc_bodies | hook_flatten_cmd)
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 # vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-
@@ -68,23 +73,12 @@ echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 # doesn't carry topic information either way), so both `"foo"` and `"$VAR"`
 # strip uniformly. Empty-quote markers preserved to keep token boundaries.
 sanitize_for_tagmatch() {
-  local raw="$1" out="" line in_heredoc=0 heredoc_tag=""
-  local heredoc_re=$'<<-?[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if (( in_heredoc )); then
-      if [[ "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then
-        in_heredoc=0; heredoc_tag=""
-      fi
-      out+=$'\n'
-      continue
-    fi
-    if [[ "$line" =~ $heredoc_re ]]; then
-      heredoc_tag="${BASH_REMATCH[1]}"
-      in_heredoc=1
-      line="${line%%<<*}"
-    fi
-    out+="$line"$'\n'
-  done <<< "$raw"
+  local raw="$1" out=""
+  # Heredoc bodies via the shared hook_strip_heredoc_bodies (hook-common.sh).
+  # This was a hand-copied loop that never received pre-bash-safety's terminator
+  # LOOKAHEAD guard, so `echo $((1<<n)) && git push` opened a phantom heredoc and
+  # blanked the trigger — the §11 gate then allowed the push (2026-07-25 audit).
+  out=$(printf '%s' "$raw" | hook_strip_heredoc_bodies)
   # Strip quoted-string bodies. Flatten newlines to \r first so the (line-based)
   # sed also strips MULTI-LINE quoted args — e.g. a multi-paragraph
   # `gh release create --notes "..."`. Without the flatten, an opening quote

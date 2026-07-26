@@ -12,11 +12,19 @@ name: npm-publish
 #   Permissions: publish for the `claudemd-cli` package (granular token scope).
 #   Lifetime: rotate on a schedule consistent with org policy.
 #
-# Pre-publish gate: tests/run-all.sh must pass on the same runner image
-# CI uses (ubuntu-latest + node 20), matching the ci.yml matrix's Linux leg.
-# Rationale: don't publish a tarball that can't pass tests in the standard
-# environment. Skip the macOS leg here — it's belt-and-suspenders for plugin
-# behavior on developer laptops, not a publish gate.
+# Pre-publish gate: tests/run-all.sh must pass on BOTH Linux node legs before
+# `publish` runs. node 20 is the engines floor (node:sqlite absent — exercises
+# the degradation path); node 22 has node:sqlite, so it is the only leg that
+# runs the real cross-layer SQL query. Gating on node 20 alone (through v0.57.0)
+# left that query invisible to the publish gate while ci.yml — which does run it
+# — has no `needs:` relationship to this workflow and can still be executing, or
+# already red, when the tarball reaches npm (2026-07-25 audit).
+# The macOS leg stays out: it is belt-and-suspenders for plugin behavior on
+# developer laptops, not a publish gate.
+#
+# fetch-depth: 0 — tests/integration/upgrade-lifecycle.test.sh needs tag v0.2.3
+# reachable; under the previous shallow checkout it loud-skipped, so the publish
+# gate was silently running a smaller suite than CI.
 #
 # Idempotency: if NPM has already received this version, `npm publish` exits
 # non-zero with E_PUBLISH_ALREADY_PUBLISHED. The job fails loudly rather than
@@ -38,7 +46,30 @@ permissions:
   id-token: write  # required for npm provenance attestation (--provenance)
 
 jobs:
+  test:
+    strategy:
+      matrix:
+        node: [20, 22]
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install jq + shellcheck (test prereqs)
+        run: sudo apt-get update -y && sudo apt-get install -y jq shellcheck
+
+      - name: Run test suite (publish gate)
+        run: bash tests/run-all.sh
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -49,12 +80,6 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-
-      - name: Install jq + shellcheck (test prereqs)
-        run: sudo apt-get update -y && sudo apt-get install -y jq shellcheck
-
-      - name: Run test suite (publish gate)
-        run: bash tests/run-all.sh
 
       - name: Verify package.json version matches the tag
         # Belt-and-suspenders: refuse to publish if the tag and package.json

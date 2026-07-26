@@ -1,4 +1,6 @@
-// Single source of truth for the 16 plugin hooks. Consumers must import from
+// Single source of truth for the plugin hooks (HOOK_REGISTRY.length is the
+// count — a number spelled in prose here drifted to 16 while the registry held
+// 15). Consumers must import from
 // here rather than maintaining parallel literal arrays:
 //
 //   scripts/install.js     — re-exports HOOK_BASENAMES (legacy callers)

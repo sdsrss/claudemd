@@ -168,8 +168,27 @@ export function lessonBypassAudit({
       : null;
     if (!sessionId || !suggested || suggested.length === 0) continue;
     if (!(sessionId in transcriptCache)) {
-      const transcriptPath = path.join(projectDir, `${sessionId}.jsonl`);
-      transcriptCache[sessionId] = readTranscript(transcriptPath);
+      // Resolve the transcript in the PROJECT THE ROW CAME FROM, falling back to
+      // the --cwd project. readHits reads the whole rule-hits log (every project),
+      // but this looked every session up under one project dir, so rows from other
+      // repos missed and were counted as `missingTranscript` — 183 of 240 suggest
+      // events on the live log, of which 35 were resolvable from the row's own
+      // top-level `project` field. cite-recall, the metric this script exists to produce,
+      // was computed on the remainder while `totalSuggestEvents` counted all
+      // projects: two different denominators printed side by side (2026-07-25).
+      // The row's own top-level `project` field is the CC-encoded project dir
+      // (`classifyProject` already reads it), so it names exactly the directory
+      // the transcript lives in.
+      const rowProject = typeof ev.project === 'string' ? ev.project : '';
+      const candidates = [];
+      if (rowProject) candidates.push(path.join(os.homedir(), '.claude/projects', rowProject));
+      candidates.push(projectDir);
+      let rows = [];
+      for (const dir of candidates) {
+        rows = readTranscript(path.join(dir, `${sessionId}.jsonl`));
+        if (rows.length > 0) break;
+      }
+      transcriptCache[sessionId] = rows;
     }
     const transcript = transcriptCache[sessionId];
     const transcriptMissing = transcript.length === 0;

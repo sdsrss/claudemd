@@ -670,7 +670,82 @@ OUT=$(bash "$HOOK" <<<"$EVENT_37" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 37 real unquoted comment still ignored" \
   || { echo "FAIL: 37 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+
+# Cases 38-43: a `<<` that is NOT a heredoc opener must not blank the rest of the
+# command (2026-07-25 deep audit). This hook's heredoc strip was a hand-copy that
+# never got pre-bash-safety's terminator LOOKAHEAD guard, so a left-shift or a
+# quoted `<<` opened a phantom heredoc and swallowed the ship trigger — the §11
+# gate then allowed the push. Fixed by hook_strip_heredoc_bodies (hook-common.sh).
+#
+# Own fixture: earlier cases rewrote MEMORY.md to a single unrelated tag, and a
+# tag-less MEMORY.md makes every command below pass for the WRONG reason (no tag
+# to match), which would leave these assertions green against the unfixed hook.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$MEM_DIR/feedback_ship.md"
+i=38
+for FAKE_HD in \
+  'echo $((1<<n)) && git push origin main' \
+  'echo "a<<b" && git push origin main' \
+  'echo compare a<<b ; git push origin main'
+do
+  SESS="sess$i"
+  echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+  EVENT=$(jq -cn --arg c "$FAKE_HD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+  OUT=$(bash "$HOOK" <<<"$EVENT" 2>&1)
+  DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+  [[ "$DEC" == "deny" ]] && echo "PASS: $i fake heredoc does not bypass §11 gate" \
+    || { echo "FAIL: $i (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+  i=$((i+1))
+done
+
+# Case 41: multi-line fake heredoc (the newline form, no `&&`).
+SESS="sess41"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+ML_CMD=$(printf 'echo $((1<<n))\ngit push origin main')
+EVENT_41=$(jq -cn --arg c "$ML_CMD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_41" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 41 multi-line fake heredoc does not bypass" \
+  || { echo "FAIL: 41 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 42: FP guard — a REAL heredoc body is still stripped, so a trigger that
+# lives only inside the body must NOT fire the gate.
+SESS="sess42"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+REAL_HD=$(printf 'cat <<EOF\ngit push origin main\nEOF')
+EVENT_42=$(jq -cn --arg c "$REAL_HD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_42" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 42 real heredoc body still stripped" \
+  || { echo "FAIL: 42 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 43: a real heredoc opener must NOT swallow a trigger that follows it on
+# the SAME line — `cat <<EOF && git push` runs that push. The old copy truncated
+# the opener line at `<<`, discarding it.
+SESS="sess43"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+TRAIL_HD=$(printf 'cat <<EOF && git push origin main\nbody\nEOF')
+EVENT_43=$(jq -cn --arg c "$TRAIL_HD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_43" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 43 trigger after heredoc opener survives" \
+  || { echo "FAIL: 43 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 44: heredoc BODY carrying a trigger verb, with a tag-matching token in the
+# OUTER text. Case 42's heredoc command has no tag outside the body, so it passes
+# whether or not the body leaks — this one presses that anchor. The flatten turns
+# newlines into `;`, the separator TRIGGER_RE anchors on, so a body reaching the
+# trigger stage reads as a chain of commands and false-denies.
+SESS="sess44"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+BODY_HD=$(printf 'cat > notes-ship.md <<EOF\ndeploy the service\nEOF')
+EVENT_44=$(jq -cn --arg c "$BODY_HD" --arg s "$SESS" --arg w "$CWD" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$w}')
+OUT=$(bash "$HOOK" <<<"$EVENT_44" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 44 heredoc body does not reach the trigger stage" \
+  || { echo "FAIL: 44 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((37 - FAIL))/37 passed"; exit 1
+  echo "Tests: $((44 - FAIL))/44 passed"; exit 1
 fi
-echo "Tests: 37/37 passed"
+echo "Tests: 44/44 passed"

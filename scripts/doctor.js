@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd } from './lib/paths.js';
+import { HOOK_REGISTRY } from './lib/hook-registry.js';
 import { listBackups, pruneBackups } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
@@ -26,7 +27,7 @@ Options:
 
 Wrapped by /claudemd-doctor.
 
-Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
+Exit codes: 0 all checks passed | 1 validation error | 2 argv-shape error | 3 one or more checks failed.`;
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -358,10 +359,10 @@ export async function doctor({ pruneBackups: prune } = {}) {
   }
 
   // OBS-2 (roadmap, 2026-07-12 audit): field-liveness self-checks for the
-  // advisory hooks the deny self-tests above don't reach. The 6 Stop hooks +
+  // advisory hooks the deny self-tests above don't reach. The Stop hooks +
   // PostToolUse fire every turn but never emit a deny, so a silent breakage (an
   // introduced jq/syntax error, an unbound var under `set -u`) was invisible to
-  // doctor — it self-tested only 2 of 16 hooks. Each entry feeds a synthetic
+  // doctor — before OBS-2 it self-tested only the two deny-emitting hooks. Each entry feeds a synthetic
   // event of the hook's registered type under an ISOLATED mkdtemp HOME (so the
   // state-writing hooks — residue-audit / session-summary / mem-audit /
   // sandbox-disposal — can't touch the real ~/.claude) and asserts the hook
@@ -371,18 +372,29 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // own suites + the upgrade-lifecycle integration test cover them.
   const CRASH_RE = /: line \d+:|syntax error|unbound variable|: command not found/;
   const stopEvt = { session_id: 'doctor-selftest', hook_event_name: 'Stop', transcript_path: '/tmp/claudemd-doctor-none.jsonl' };
+  // Kill-switch names come from HOOK_REGISTRY, not a hand-written literal per
+  // row. They were spelled out here in a fourth parallel list, so a renamed
+  // envVarSuffix would leave doctor clearing a variable no hook reads while the
+  // user's real DISABLE_* survived into the spawn — the hook would exit at its
+  // guard, satisfy status===0 with clean stderr, and this check would report
+  // green on a hook it never actually ran (2026-07-25 audit).
+  const ksFor = (basename) => {
+    const entry = HOOK_REGISTRY.find(h => h.basename === basename);
+    if (!entry) throw new Error(`doctor liveness: ${basename} is not in HOOK_REGISTRY`);
+    return `DISABLE_${entry.envVarSuffix}_HOOK`;
+  };
   const livenessTests = [
-    { hook: 'memory-read-check.sh',         ks: 'DISABLE_MEMORY_READ_HOOK',              event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
-    { hook: 'ship-baseline-check.sh',       ks: 'DISABLE_SHIP_BASELINE_HOOK',            event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } } },
-    { hook: 'session-extended-read.sh',     ks: 'DISABLE_SESSION_EXTENDED_READ_HOOK',    event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
-    { hook: 'transcript-vocab-scan.sh',     ks: 'DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK',    event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' }, tool_response: {} } },
-    { hook: 'session-end-check.sh',         ks: 'DISABLE_SESSION_END_CHECK_HOOK',        event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' } },
-    { hook: 'session-summary.sh',           ks: 'DISABLE_SESSION_SUMMARY_HOOK',          event: stopEvt },
-    { hook: 'mem-audit.sh',                 ks: 'DISABLE_MEM_AUDIT_HOOK',                event: stopEvt },
-    { hook: 'residue-audit.sh',             ks: 'DISABLE_RESIDUE_AUDIT_HOOK',            event: stopEvt },
-    { hook: 'sandbox-disposal-check.sh',    ks: 'DISABLE_SANDBOX_DISPOSAL_HOOK',         event: stopEvt },
-    { hook: 'transcript-structure-scan.sh', ks: 'DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK', event: stopEvt },
-    { hook: 'memory-prompt-hint.sh',        ks: 'DISABLE_MEMORY_HINT_HOOK',              event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' } },
+    { hook: 'memory-read-check.sh',         ks: ksFor('memory-read-check.sh'),              event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
+    { hook: 'ship-baseline-check.sh',       ks: ksFor('ship-baseline-check.sh'),            event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } } },
+    { hook: 'session-extended-read.sh',     ks: ksFor('session-extended-read.sh'),    event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
+    { hook: 'transcript-vocab-scan.sh',     ks: ksFor('transcript-vocab-scan.sh'),    event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' }, tool_response: {} } },
+    { hook: 'session-end-check.sh',         ks: ksFor('session-end-check.sh'),        event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' } },
+    { hook: 'session-summary.sh',           ks: ksFor('session-summary.sh'),          event: stopEvt },
+    { hook: 'mem-audit.sh',                 ks: ksFor('mem-audit.sh'),                event: stopEvt },
+    { hook: 'residue-audit.sh',             ks: ksFor('residue-audit.sh'),            event: stopEvt },
+    { hook: 'sandbox-disposal-check.sh',    ks: ksFor('sandbox-disposal-check.sh'),         event: stopEvt },
+    { hook: 'transcript-structure-scan.sh', ks: ksFor('transcript-structure-scan.sh'), event: stopEvt },
+    { hook: 'memory-prompt-hint.sh',        ks: ksFor('memory-prompt-hint.sh'),              event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' } },
   ];
   for (const t of livenessTests) {
     const hookPath = path.join(PLUGIN_ROOT, 'hooks', t.hook);
@@ -406,10 +418,20 @@ export async function doctor({ pruneBackups: prune } = {}) {
     }
     const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
     const crash = CRASH_RE.test(r.stderr || '');
-    const ok = r.status === 0 && !crash && !timedOut;
+    // Exiting at the kill-switch guard ALSO yields status===0 with clean stderr,
+    // so "ran clean" is only meaningful if the switch we cleared is the one the
+    // hook actually reads. Assert that against the hook's own guard argument.
+    const guardArg = (fs.readFileSync(hookPath, 'utf8').match(/hook_kill_switch\s+([A-Z_]+)/) || [])[1];
+    // Fail CLOSED on an unreadable guard: `guardArg ? … : true` let a hook with
+    // no matchable `hook_kill_switch` line pass the very check that exists to
+    // catch a kill-switch mismatch.
+    const guardMatches = guardArg !== undefined && `DISABLE_${guardArg}_HOOK` === t.ks;
+    const ok = r.status === 0 && !crash && !timedOut && guardMatches;
     push(name, ok, ok
-      ? 'ran clean on synthetic event (exit 0, no shell crash)'
-      : `hook errored (status=${r.status}${timedOut ? ', TIMED OUT' : ''}, stderr="${(r.stderr || '').slice(0, 120).replace(/\s+/g, ' ').trim()}")`);
+      ? `ran clean on synthetic event (exit 0, no shell crash, kill-switch ${t.ks} verified)`
+      : !guardMatches
+        ? `kill-switch mismatch: registry says ${t.ks} but the hook guards on DISABLE_${guardArg}_HOOK — doctor cleared the wrong variable, so this hook may have no-opped`
+        : `hook errored (status=${r.status}${timedOut ? ', TIMED OUT' : ''}, stderr="${(r.stderr || '').slice(0, 120).replace(/\s+/g, ' ').trim()}")`);
   }
 
   // v0.7.1 R-N6 — bypass:deny ratio per spec section. Surfaces §0.1
@@ -657,5 +679,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     prune = val;
   }
-  doctor({ pruneBackups: prune }).then(r => console.log(JSON.stringify(r, null, 2)));
+  doctor({ pruneBackups: prune }).then(r => {
+    console.log(JSON.stringify(r, null, 2));
+    // Exit non-zero when checks failed. This always exited 0 regardless of
+    // results (4/42 failing still reported success), so any CI step or hook
+    // gating on `node scripts/doctor.js` was a no-op (2026-07-25 audit).
+    //
+    // Code 3, not 1: 1 already means "argv rejected", and reusing it would make
+    // a failing health check indistinguishable from a typo'd flag — the same
+    // exit-code overloading this pass is removing elsewhere.
+    // Advisory checks are operator judgement calls whose steady state is
+    // non-zero (generic memory tags, index size over a SOFT budget, promote
+    // candidates, a bypass ratio with no codified demote rule). Counting them
+    // would make `/claudemd-doctor` report failure on a healthy install every
+    // time, which is how an exit code stops carrying information.
+    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:)/;
+    const failed = (r.checks || [])
+      .filter(c => c && c.ok === false && !ADVISORY.test(c.name)).length;
+    if (failed > 0) process.exitCode = 3;
+  });
 }

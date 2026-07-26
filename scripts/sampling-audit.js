@@ -103,7 +103,15 @@ export function loadVocabPatterns(pluginRoot) {
 // - compaction = system line subtype 'compact_boundary' (with compactMetadata)
 //   followed by a user line with isCompactSummary:true — one event, not two.
 // - subagent traffic shares the file under isSidechain:true.
-function extractEvents(filePath) {
+// `cutoffMs` (optional) drops turns older than the window. File mtime alone was
+// the only window filter until 2026-07-25: a resumed or long-running session has
+// a recent mtime, so EVERY turn it ever held entered the sample regardless of
+// --days. Each rule's opportunity denominator is a turn count, so the published
+// rates described a different population than `windowDays` claimed — and
+// audit.js#selfCompliance republishes that number verbatim. Rows without a
+// parseable timestamp are KEPT (a transcript-shape change must not silently
+// empty the sample).
+function extractEvents(filePath, cutoffMs = null) {
   const events = [];
   let raw;
   try { raw = fs.readFileSync(filePath, 'utf8'); } catch { return events; }
@@ -111,6 +119,10 @@ function extractEvents(filePath) {
     if (!line) continue;
     let obj;
     try { obj = JSON.parse(line); } catch { continue; }
+    if (cutoffMs !== null && typeof obj.timestamp === 'string') {
+      const t = Date.parse(obj.timestamp);
+      if (Number.isFinite(t) && t < cutoffMs) continue;
+    }
     const sidechain = obj.isSidechain === true;
     if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
       events.push({ kind: 'compact', sidechain });
@@ -561,7 +573,7 @@ export async function samplingAudit({
   const R = result.byRule;
 
   for (const file of files) {
-    const events = extractEvents(file);
+    const events = extractEvents(file, cutoffMs);
     // Text-detector surface preserved from v0.14.0: every assistant turn with
     // text, sidechains included (keeps the A1 2026-07-10 baseline comparable).
     const turns = events.filter(e => e.kind === 'assistant' && e.hasText).map(e => e.text);

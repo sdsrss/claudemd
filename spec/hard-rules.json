@@ -1,6 +1,6 @@
 {
   "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md. Drives §13.1 quarterly demote (rules with 0 hits in 90d) and §13.2 budget accounting (≥3 repros + ≥20 L2+ tasks since last HARD addition). v0.8.0 R-N2. Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file. /claudemd-rules cross-references against rule-hits.jsonl bySection data.",
-  "spec_version": "v6.22.0",
+  "spec_version": "v6.23.0",
   "spec_files": {
     "core": "spec/CLAUDE.md",
     "extended": "spec/CLAUDE-extended.md"
@@ -35,7 +35,7 @@
       "scope": "core",
       "section_anchor": "### Iron Law #2: NO DONE WITHOUT FRESH EVIDENCE",
       "enforcement": "self",
-      "rule_hits_section": null,
+      "rule_hits_section": "§iron-law-2",
       "added_version": "v6.5",
       "confidence": "high",
       "last_demote_review": "2026-07-10"
@@ -124,7 +124,7 @@
       "scope": "core",
       "section_anchor": "**Four-section order (HARD)**",
       "enforcement": "self",
-      "rule_hits_section": null,
+      "rule_hits_section": "§10-four-section-order",
       "added_version": "v6.6",
       "confidence": "high",
       "last_demote_review": "2026-07-10"
@@ -135,7 +135,7 @@
       "scope": "core",
       "section_anchor": "**Honesty rules (HARD)**",
       "enforcement": "self",
-      "rule_hits_section": null,
+      "rule_hits_section": "§10-honesty",
       "added_version": "v6.6",
       "confidence": "high",
       "last_demote_review": "2026-07-10"
@@ -175,12 +175,23 @@
       "last_demote_review": "2026-07-10"
     },
     {
+      "id": "§11-post-compaction",
+      "name": "Post-compaction re-read",
+      "scope": "core",
+      "section_anchor": "**Post-compaction** (L2+: MUST)",
+      "enforcement": "self",
+      "rule_hits_section": "§11-post-compaction",
+      "added_version": "v6.11",
+      "confidence": "medium",
+      "last_demote_review": null
+    },
+    {
       "id": "§11-session-exit",
       "name": "Session-exit mid-SPINE",
       "scope": "core",
       "section_anchor": "**Session-exit mid-SPINE** (HARD, all levels)",
       "enforcement": "self",
-      "rule_hits_section": null,
+      "rule_hits_section": "§11-session-exit",
       "added_version": "v6.10",
       "confidence": "medium",
       "last_demote_review": "2026-07-10"

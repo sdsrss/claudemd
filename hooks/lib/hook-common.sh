@@ -199,3 +199,78 @@ hook_spawn_install() {
   ) </dev/null >/dev/null 2>&1 &
   disown 2>/dev/null || true
 }
+
+# hook_strip_heredoc_bodies — stdin → stdout, heredoc BODIES blanked.
+#
+# SINGLE SOURCE for the sibling hooks' pre-match strip (2026-07-25 deep audit).
+# pre-bash-safety-check.sh had gained a terminator LOOKAHEAD guard — only treat
+# `<<WORD` as a heredoc opener when a matching terminator line actually follows —
+# but the two hand-copied implementations in memory-read-check.sh and
+# ship-baseline-check.sh never got it. Consequence: any `<<` that is really a
+# left-shift or quoted text (`echo $((1<<n)) && git push`, `echo "a<<b"; git push`)
+# opened a phantom heredoc that swallowed the rest of the command, so the §11
+# MEMORY.md gate and the §7 ship-baseline gate both stopped seeing the trigger.
+# Verified live on both hooks before the fix; pre-bash denied the same shapes.
+#
+# Two behaviours the copies also disagreed on, resolved here:
+#   - the opener line keeps everything except the `<<TAG` token itself. The old
+#     memory-read copy truncated at `<<`, which discards a real trailing trigger
+#     (`cat <<EOF && git push` — bash runs that push).
+#   - body lines are blanked, not dropped, so line-anchored callers keep their
+#     line numbering; a caller that flattens sees the same thing either way.
+HOOK_HEREDOC_AWK=$(cat <<'AWKPROG'
+{ lines[NR] = $0 }
+END {
+  n = NR
+  for (i = 1; i <= n; i++) {
+    if (blank[i]) { print ""; continue }
+    line = lines[i]
+    if (match(line, /<<-?[ \t]*['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/)) {
+      tok = substr(line, RSTART, RLENGTH)
+      dash = (substr(tok, 3, 1) == "-")
+      tag = tok
+      sub(/^<<-?[ \t]*/, "", tag)
+      gsub(/['"]/, "", tag)
+      term = 0
+      for (j = i + 1; j <= n; j++) {
+        t = lines[j]
+        sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+        if (t == tag) { term = j; break }
+      }
+      # No terminator anywhere below → this `<<` is a left-shift or quoted text,
+      # NOT a heredoc opener. Leave the line untouched.
+      if (term > 0) {
+        for (j = i + 1; j <= term; j++) blank[j] = 1
+        line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
+      }
+    }
+    print line
+  }
+}
+AWKPROG
+)
+
+hook_strip_heredoc_bodies() {
+  awk "$HOOK_HEREDOC_AWK"
+}
+
+# hook_flatten_cmd — stdin → stdout, one line, with NEWLINES turned into real
+# command separators (`;`) rather than spaces.
+#
+# SINGLE SOURCE for the trigger-anchor flattening in memory-read-check.sh and
+# ship-baseline-check.sh (2026-07-25 deep audit). Both hooks anchor their trigger
+# regex on `(^|[[:space:]]*[;&|]+[[:space:]]*)` — a real separator or start of
+# command — and both flattened with `tr '\n' ' '`. A newline IS a command
+# separator in shell, so collapsing it to a space erased the anchor: in
+#     npm test
+#     git push origin main
+# the push is neither at `^` nor after `[;&|]`, and BOTH gates silently declined
+# to fire. Multi-line bash blocks are the ordinary way these commands get written,
+# so this was the common case, not an edge one. Verified live on both hooks with
+# single-line controls denying.
+#
+# A trailing backslash is a LINE CONTINUATION, not a separator — those lines are
+# joined instead, so `git \` + newline + `push` stays one command.
+hook_flatten_cmd() {
+  awk '{ if (sub(/\\$/, "")) printf "%s", $0; else printf "%s;", $0 } END { print "" }'
+}

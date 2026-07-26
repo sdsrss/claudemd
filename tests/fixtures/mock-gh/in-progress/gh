@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Newest run still executing (the ATOMIC-SHIP normal case: push main starts CI,
+# the tag push follows seconds later), with a completed RED run behind it.
+echo '[{"databaseId":9,"status":"in_progress","conclusion":null,"displayTitle":"CI main","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"failure","displayTitle":"CI main","url":"https://example/8"}]'

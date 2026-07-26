@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Every visible run still in flight — no baseline color exists yet.
+echo '[{"databaseId":9,"status":"in_progress","conclusion":null,"displayTitle":"CI main","url":"https://example/9"}]'

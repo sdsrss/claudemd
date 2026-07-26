@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Newest run queued, with a completed GREEN run behind it → baseline is green.
+echo '[{"databaseId":9,"status":"queued","conclusion":null,"displayTitle":"CI main","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"success","displayTitle":"CI main","url":"https://example/8"}]'

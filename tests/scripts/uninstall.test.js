@@ -24,6 +24,21 @@ beforeEach(async () => {
   for (const n of ['banned-vocab-check','ship-baseline-check','residue-audit','memory-read-check','sandbox-disposal-check']) {
     fs.writeFileSync(path.join(pluginRoot, 'hooks', `${n}.sh`), '#!/bin/bash\nexit 0\n');
   }
+  // Hook manifest — the real plugin ships one, and install() now refuses a
+  // plugin root without it (a hook-less install used to report success, with
+  // the version check then reading that state as healthy). Hand-built fixtures
+  // must carry it too or they stop resembling the artifact under test.
+  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
+    hooks: {
+      PreToolUse: [{ matcher: 'Bash', hooks: [
+        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 10 },
+        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 10 },
+      ] }],
+      PostToolUse: [{ matcher: 'Bash', hooks: [
+        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 10 },
+      ] }],
+    },
+  }));
   // Renderer the install-time statusLine adopt copies to ~/.claude. Without it
   // install()'s adopt hits ENOENT → {action:'error'} and the suite never
   // exercises a successful install-time statusLine set (M4).
@@ -218,9 +233,9 @@ test('D6: predicate is path-anchored — does NOT evict same-basename hook from 
 test('D6: settingsRemoved field present on normal keep path (manifest exists)', async () => {
   // Sanity check: uninstall return value carries settingsRemoved (number) on
   // the success path, not just on the manifest-missing path. The exact count
-  // depends on what install wrote — this fixture omits hooks/hooks.json so
-  // install records 0 manifest entries. Numeric coverage of the field is what
-  // matters; the eviction count itself is exercised by the two D6 cases above.
+  // depends on what install wrote from the fixture's hooks/hooks.json. Numeric
+  // coverage of the field is what matters; the eviction count itself is
+  // exercised by the two D6 cases above.
   const res = await uninstall({ specAction: 'keep' });
   assert.equal(res.specAction, 'keep');
   assert.equal(typeof res.settingsRemoved, 'number',

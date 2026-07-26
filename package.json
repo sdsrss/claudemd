@@ -1,6 +1,6 @@
 {
   "name": "claudemd-cli",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "description": "Standalone CLI for §10-V banned-vocab + transcript scanning. Companion to the claudemd Claude Code plugin (github.com/sdsrss/claudemd) for use in git pre-commit hooks, GitHub Actions, and other agents.",
   "type": "module",
   "bin": {
@@ -23,8 +23,8 @@
   ],
   "scripts": {
     "test": "bash tests/run-all.sh",
-    "test:scripts": "node --test tests/scripts/*.test.js",
-    "test:hooks": "bash tests/hooks/*.test.sh",
+    "test:scripts": "bash -c 'source tests/lib/env-hygiene.sh && claudemd_reset_test_env && node --test tests/scripts/*.test.js'",
+    "test:hooks": "for t in tests/hooks/*.test.sh; do bash \"$t\" || exit 1; done",
     "lint:argv": "node scripts/lint-argv.js",
     "version-check": "node scripts/version-cascade-check.js"
   },

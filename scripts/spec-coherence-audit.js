@@ -298,11 +298,17 @@ function checkMemoryIndex(projectCwd) {
   }
 
   const indexText = fs.readFileSync(memIndex, 'utf8');
+  // One `.md` link per index line — the LAST match, matching memory-tags.js and
+  // the memory-read-check hook. This was a second copy of the regex that added
+  // EVERY match on the line, and memory-tags.js:121 documents exactly why that is
+  // wrong: a title may itself embed a `(foo.md)` token, e.g.
+  // `- [Some feature (see also legacy.md)](file.md) — desc`, which this counted
+  // as two indexed files and then reported one of them dangling (2026-07-25).
   const indexedFiles = new Set();
-  const indexRefRe = /\(([^)]+\.md)\)/g;
-  let m;
-  while ((m = indexRefRe.exec(indexText)) !== null) {
-    indexedFiles.add(m[1]);
+  for (const line of indexText.split('\n')) {
+    const matches = [...line.matchAll(/\(([^)]+\.md)\)/g)];
+    if (matches.length === 0) continue;
+    indexedFiles.add(matches[matches.length - 1][1]);
   }
 
   const onDisk = new Set(

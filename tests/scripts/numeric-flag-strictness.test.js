@@ -50,7 +50,12 @@ for (const [rel, flag, bad, valid, errorRe] of CASES) {
 
   test(`${rel}: ${flag}=${valid} (valid) still works`, () => {
     const r = run(rel, [`${flag}=${valid}`]);
-    assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
+    // The assertion is about ARGV shape, so it must not be coupled to what the
+    // script then reports. doctor.js exits 3 when a health check fails, which is
+    // machine-dependent; only 1 and 2 mean "argv rejected".
+    assert.ok(r.status !== 1 && r.status !== 2,
+      `valid flag must not be rejected; status=${r.status} stderr=${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /requires|got '/);
   });
 
   // '30.0' parses as integer 30 under Number() — must still be accepted so
@@ -58,7 +63,9 @@ for (const [rel, flag, bad, valid, errorRe] of CASES) {
   const trailingZero = valid.split(',').map(v => `${v}.0`).join(',');
   test(`${rel}: ${flag}=${trailingZero} (trailing .0) still accepted`, () => {
     const r = run(rel, [`${flag}=${trailingZero}`]);
-    assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
+    assert.ok(r.status !== 1 && r.status !== 2,
+      `trailing-zero flag must not be rejected; status=${r.status} stderr=${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /requires|got '/);
   });
 
   // Over-coercion regression: hex / exponential must be rejected (Number()

@@ -1,5 +1,5 @@
 // Drift gate: scripts/lib/hook-registry.js is the single source of truth for
-// the 17 plugin hooks. This test asserts every consumer (hooks.json,
+// the plugin hooks. This test asserts every consumer (hooks.json,
 // commands/claudemd-toggle.md, hooks/*.sh files on disk, derived consts) stays
 // in lockstep. Adding a hook = one entry in the registry + the hooks.json
 // command + the toggle.md list; any drift fails here.

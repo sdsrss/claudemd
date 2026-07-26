@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.22.0 — Core
+# AI-CODING-SPEC v6.23.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -24,7 +24,7 @@ Everything else = natural prose, no brackets. Completion claims / level shifts /
 
 ### §0.1 Core growth discipline (HARD)
 
-**Three-tier default**: new rule lands Tier 2 = MEMORY.md anchor; tier definitions + promotion/demotion + cadence: `OPERATOR.md §13.1`. **Hard cap**: core ≤25K / extended ≤50K chars; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: `CLAUDE-changelog.md` Sizing line.
+**Three-tier default**: new rule lands Tier 2 = MEMORY.md anchor; tier definitions + promotion/demotion + cadence: `OPERATOR.md §13.1`. **Hard cap**: core ≤25K / extended ≤50K bytes; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: `CLAUDE-extended.md` Sizing line.
 
 ### §0.2 Mid-task feedback
 
@@ -80,9 +80,11 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 **Bugfix triage**: contract match → L1; contradicts → L2; unclear → L2 clarify first. **Provisional** (bugs only): start L1, re-classify in prose if scope expands.
 
-**Override modes** (§EXT §2-EXT): **HACK** (prototype) / **EMERGENCY** (incident) / **AUTONOMOUS** (scheduled). All: Iron Law #2 + §8 bind; per-task scope. Strong trigger → silent enter; weak/ambiguous → ASK once. Announce mode shift inline; load extended first.
+**Override modes** (§EXT §2-EXT): **HACK** (prototype) / **EMERGENCY** (incident) / **AUTONOMOUS** (scheduled). All: Iron Law #2 + §8 bind; per-task scope; load extended first, announce inline.
 
-**Depth triggers** (e.g. `ultrathink / deep / think harder / 全面 / 仔细 / 深入`): reasoning-budget signal for the current turn, **NOT** task-level upgrade — a deep analysis of an L1 typo stays L1. Level = what proof you owe; depth = how hard you think before writing it.
+**Spec artifact** (`tasks/specs/<slug>.md`): mandatory at L3; at L2 propose one when cross-module (≥2 Modules) OR >50 LOC OR new dep — detail → §EXT §2.S.
+
+**Depth triggers** (e.g. `ultrathink / deep / think harder / 全面 / 仔细 / 深入`): reasoning-budget signal for the current turn, **NOT** task-level upgrade.
 
 ### §2.1 ROUTE (unified)
 
@@ -124,7 +126,7 @@ Load `~/.claude/CLAUDE-extended.md` when:
 ## §3 TRUST
 
 Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
-Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > inferred context.
+Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > harness + MCP + skill instructions > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
 **Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults** — e.g. `feedback_autonomous_fixes.md` overrides "L2 bugfix → investigate"). `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
@@ -152,7 +154,7 @@ Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (de
 
 Solo-dev + `bypassPermissions` → consider `aggressive`. Team-shared / prod-touching repo → `default` or `careful`.
 
-**`aggressive` skip-list** (reduces ceremony for known-bypass users; never downgrades §5.1 Never-downgrade set): skill soft-trigger announcement optional; §1 Recommend-first single-obvious-option execute-without-preamble is the default; clear-scope bugfix goes fix → test → iterate without proposal. §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind.
+**`aggressive` skip-list** (ceremony reductions only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH + Never-downgrade set all still bind) → §EXT §5.1-EXT.
 
 ## §7 VALIDATE (L0/L1/L2)
 
@@ -188,7 +190,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers, each with its ow
 
 `mkdtempSync` leaks / orphan writes / cache bloat are invisible to exit code; "vibe-check from one manual test" is not metric-neutral evidence. Metric-coupling typical triggers: tool descriptions / adoption-memory / field compression / prompt templates. `~/.claude/tmp/` retention → §EXT §7-EXT-TMP.
 
-**Iron Law #1 (L2+): NO CHANGE WITHOUT FAILING EVIDENCE** — bugfix = prior repro; additive = RED-first (exception detail → §EXT §7-EXT). L3 evidence rules, ladder, cold-start → §EXT §7-EXT.
+**Iron Law #1 (L2+): NO CHANGE WITHOUT FAILING EVIDENCE** — bugfix = prior repro; additive = RED-first (exception detail → §EXT §7-EXT). Evidence ladder + cold-start (L2+) and L3 evidence rules → §EXT §7-EXT.
 
 ## §8 SAFETY (immutable, never exempt)
 
@@ -228,7 +230,7 @@ Simplicity / root-cause / reuse: single home = §1 Principles (C9 dedup, v6.22.0
 - **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files.
 - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
 
-**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; Stop hook enforces). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
+**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; self-enforced — the Stop scan is advisory and opt-in). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
 
 **Honesty rules (HARD)**:
 - Uncertain → "uncertain because <X>". No "may/could" hedging.

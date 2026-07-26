@@ -18,8 +18,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
-# (SCHEMA path was never read — the DOCUMENTED array at :96 is hand-synced with the doc; SC2034)
-# SCHEMA="$HERE/../../docs/RULE-HITS-SCHEMA.md"
+SCHEMA="$HERE/../../docs/RULE-HITS-SCHEMA.md"
 
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
@@ -94,46 +93,60 @@ fi
 
 # --- B: every documented (event, emitter) pair has a hook_record call -------
 
-# Extracted from docs/RULE-HITS-SCHEMA.md "Events" table. Updating this list
-# requires updating the schema in the same commit.
-DOCUMENTED=(
-  "pass:ship-baseline"
-  "deny:banned-vocab"
-  "deny:ship-baseline"
-  "deny:memory-read-check"
-  "deny:pre-bash-safety"
-  "bypass-escape-hatch:banned-vocab"
-  "bypass-escape-hatch:pre-bash-safety"
-  "bypass-escape-hatch:memory-read-check"
-  "npx-allow-local:pre-bash-safety"
-  "npx-allow-no-install:pre-bash-safety"
-  "rm-rf-allow-validated:pre-bash-safety"
-  "rm-rf-allow-provenance:pre-bash-safety"
-  "pass-known-red:ship-baseline"
-  "pass-known-red-incmd:ship-baseline"
-  "deny-repeat:ship-baseline"
-  "warn:sandbox-disposal"
-  "warn:residue-audit"
-  "advisory:transcript-vocab-scan"
-  "structure-advisory:transcript-structure-scan"
-  "bootstrap:session-start"
-  "upstream-banner:session-start"
-  "bootstrap-fail-banner:session-start"
-  "compact-reminder:session-start"
-  "stale-root:session-start"
-  "version-sync:user-prompt-submit"
-  "stale-root:user-prompt-submit"
-  "read:session-extended-read"
-  "suggest:memory-prompt-hint"
-  "suppress-source:memory-prompt-hint"
-  "batch-cadence-advisory:session-end-check"
-  "deny-prose:banned-vocab"
-  "deny-prose-dry-run:banned-vocab"
-)
+# PARSED from docs/RULE-HITS-SCHEMA.md's "Events" table — not a hand-copy of it.
+# Until 2026-07-25 this was a literal array plus a "keep in sync" comment, and the
+# SCHEMA path on the line above was commented out with the note "was never read".
+# So invariants B and C, whose failure message names RULE-HITS-SCHEMA.md, validated
+# the array against source and never opened the document at all: `mem-audit` emitted
+# `warn` into the live log for months while absent from the schema, and the gate
+# stayed green. A gate must parse the artifact it claims to gate.
+#
+# Row shape: `| \`<event>\` | \`<hook>\`[, \`<hook>\`…] | <meaning> |`. The event is the
+# first backticked token of column 1; every backticked token of column 2 is an
+# emitter, so one row yields one pair per emitter.
+DOCUMENTED=()
+while IFS= read -r _pair; do
+  [[ -n "$_pair" ]] && DOCUMENTED+=("$_pair")
+done < <(awk -F'|' '
+  /^\|[[:space:]]*Event[[:space:]]*\|[[:space:]]*Emitted by hook[[:space:]]*\|/ { intable=1; next }
+  intable && /^\|[[:space:]]*-+/ { next }
+  intable && !/^\|/ { intable=0 }
+  intable {
+    ev=$2; em=$3
+    if (!match(ev, /`[^`]+`/)) next
+    event=substr(ev, RSTART+1, RLENGTH-2)
+    s=em
+    while (match(s, /`[^`]+`/)) {
+      print event ":" substr(s, RSTART+1, RLENGTH-2)
+      s=substr(s, RSTART+RLENGTH)
+    }
+  }
+' "$SCHEMA")
+
+if (( ${#DOCUMENTED[@]} == 0 )); then
+  ng "B/C could not parse any (event, emitter) pair from $SCHEMA — parser or table shape broke"
+else
+  ok "B/C parsed ${#DOCUMENTED[@]} documented (event, emitter) pair(s) from RULE-HITS-SCHEMA.md"
+fi
 
 for entry in "${DOCUMENTED[@]}"; do
   event="${entry%%:*}"
   hook_name="${entry#*:}"
+  # `fail-open` has its own emission path: hooks call the hook_record_failopen
+  # wrapper, which forwards to rule_hits_append. A plain hook_record grep never
+  # sees it, so the doc row for it was unverifiable in either direction (it still
+  # named only `banned-vocab` while five hooks called the wrapper).
+  # The fail-open row names the WRAPPER itself in its emitter column; that
+  # backticked token is prose, not a hook.
+  if [[ "$hook_name" == "hook_record_failopen" ]]; then continue; fi
+  if [[ "$event" == "fail-open" ]]; then
+    if grep -hRE "hook_record_failopen[[:space:]]+${hook_name}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1; then
+      ok "B documented '$hook_name' emits '$event'"
+    else
+      ng "B documented '$hook_name'/'$event' has no hook_record_failopen call in source"
+    fi
+    continue
+  fi
   if grep -hRE "hook_record[[:space:]]+${hook_name}[[:space:]]+${event}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1; then
     ok "B documented '$hook_name' emits '$event'"
   else
@@ -143,7 +156,10 @@ done
 
 # --- C: every emitted event in source is documented -------------------------
 
-DOC_EVENTS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | cut -d: -f1 | sort -u)
+# Compare PAIRS, not bare event names. Matching on the event alone meant a new
+# EMITTER of an already-documented event (`mem-audit` emitting `warn`) satisfied
+# the check against the wrong row — the emitter column was never verified.
+DOC_PAIRS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | sort -u)
 # Strip comments before extracting emitted events: a prose mention of
 # `hook_record` in a docstring (e.g. "hook_record re-sources idempotently")
 # otherwise reads as a real emission and false-flags drift. Anchor on code
@@ -152,14 +168,23 @@ DOC_EVENTS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | cut -d: -f1 | sort -u)
 # are code, never comments, so extraction is unchanged for them.
 EMITTED=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' {} + \
   | grep -hE 'hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+[a-z-]+' \
-  | sed -E 's/.*hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+([a-z-]+).*/\1/' \
+  | sed -E 's/.*hook_record[[:space:]]+([a-zA-Z_-]+)[[:space:]]+([a-z-]+).*/\2:\1/' \
   | sort -u)
+# fail-open rides the wrapper, not hook_record — add its pairs so a hook that
+# starts fail-opening is held to the same documentation requirement. The generic
+# `hook_record_failopen HOOK` inside hook-common.sh is the wrapper's own
+# parameter, not an emitter.
+EMITTED_FAILOPEN=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' {} + \
+  | grep -hoE 'hook_record_failopen[[:space:]]+[a-z][a-zA-Z_-]*' \
+  | sed -E 's/hook_record_failopen[[:space:]]+/fail-open:/' \
+  | sort -u)
+EMITTED=$(printf '%s\n%s\n' "$EMITTED" "$EMITTED_FAILOPEN" | grep -v '^$' | sort -u)
 
 for e in $EMITTED; do
-  if echo "$DOC_EVENTS_UNIQ" | grep -qx "$e"; then
-    ok "C emitted '$e' is documented"
+  if echo "$DOC_PAIRS_UNIQ" | grep -qx "$e"; then
+    ok "C emitted '${e%%:*}' by '${e#*:}' is documented"
   else
-    ng "C emitted '$e' is NOT documented in RULE-HITS-SCHEMA.md (drift)"
+    ng "C emitted '${e%%:*}' by '${e#*:}' is NOT documented in RULE-HITS-SCHEMA.md (drift)"
   fi
 done
 

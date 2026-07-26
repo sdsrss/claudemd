@@ -25,6 +25,12 @@ source "$HERE/lib/run-suite.sh"
 # commits must make them in its own mktemp sandbox (§8.V3).
 GUARD_REPO="$(cd "$HERE/.." && pwd)"
 COMMITS_BEFORE=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo skip)
+# The commit count is only HALF of "wrote into the real repo" (2026-07-25 audit):
+# a suite that modifies a tracked file or drops an untracked artifact never
+# commits, so the counter above stays equal and the guard reported PASS. On the
+# atomic-ship path that artifact gets swept into the release commit in the same
+# turn. Snapshot the working tree too.
+PORCELAIN_BEFORE=$(git -C "$GUARD_REPO" status --porcelain 2>/dev/null || echo skip)
 
 echo "== Shell hook tests =="
 for t in "$HERE"/hooks/*.test.sh; do
@@ -65,6 +71,13 @@ if [[ "$COMMITS_BEFORE" != "skip" && "$COMMITS_BEFORE" != "$COMMITS_AFTER" ]]; t
   echo "FAIL: the suite committed into the real repo ($COMMITS_BEFORE -> $COMMITS_AFTER)."
   echo "      A test or script wrote commits outside its sandbox — find it with:"
   echo "      git -C \"$GUARD_REPO\" log --oneline HEAD~$((COMMITS_AFTER - COMMITS_BEFORE))..HEAD"
+  FAIL=$((FAIL + 1))
+fi
+PORCELAIN_AFTER=$(git -C "$GUARD_REPO" status --porcelain 2>/dev/null || echo skip)
+if [[ "$PORCELAIN_BEFORE" != "skip" && "$PORCELAIN_BEFORE" != "$PORCELAIN_AFTER" ]]; then
+  echo "FAIL: the suite changed the real working tree (uncommitted writes)."
+  echo "      Diff of \`git status --porcelain\` before -> after:"
+  diff <(printf '%s\n' "$PORCELAIN_BEFORE") <(printf '%s\n' "$PORCELAIN_AFTER") | sed 's/^/      /'
   FAIL=$((FAIL + 1))
 fi
 

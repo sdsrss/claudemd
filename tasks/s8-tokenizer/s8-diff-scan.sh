@@ -51,12 +51,16 @@ case "$MODE" in
     [[ -f "$FILE" ]] || { echo "usage: check <base.tsv> (missing)"; exit 2; }
     LIVE=$(mktemp); run_corpus > "$LIVE"
     DIFFS=0
-    # Join by note (line order is stable — same corpus, same skip rules).
-    paste "$FILE" "$LIVE" | while IFS=$'\t' read -r bv bn lv _ln; do
-      if [[ "$bv" != "$lv" ]]; then echo "DIFF [$bn] baseline=$bv live=$lv"; fi
-    done
-    # Recount outside the subshell-pipe (while-pipe can't export DIFFS).
-    DIFFS=$(paste "$FILE" "$LIVE" | awk -F'\t' '$1!=$3{c++} END{print c+0}')
+    # Join by NOTE, not by line position. `paste` was positional despite this
+    # comment claiming otherwise: adding RED rows for a new FN class shifts every
+    # later row, so a purely additive corpus edit reported dozens of phantom
+    # verdict changes and masked whether any real one occurred. Rows absent from
+    # the baseline (i.e. added since it was captured) are reported separately and
+    # are NOT failures — an equivalence proof only binds the shared rows.
+    awk -F'\t' 'NR==FNR{b[$2]=$1;next}
+                { if ($2 in b) { if (b[$2]!=$1) print "DIFF [" $2 "] baseline=" b[$2] " live=" $1 }
+                  else print "NEW  [" $2 "] live=" $1 }' "$FILE" "$LIVE"
+    DIFFS=$(awk -F'\t' 'NR==FNR{b[$2]=$1;next} ($2 in b) && b[$2]!=$1 {c++} END{print c+0}' "$FILE" "$LIVE")
     rm -f "$LIVE"
     if (( DIFFS > 0 )); then echo "FAIL: $DIFFS verdict change(s)"; exit 1; fi
     echo "OK: 0 verdict changes across corpus"

@@ -68,8 +68,8 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   const insufficientData = firstTs === null || logSpanDays < days;
 
   const rules = manifest.rules.map(r => {
-    // Cross-ref by rule_hits_section. Self-enforced rules have null and stay
-    // at hits=0 — that's expected, not a demotion signal for self-rules.
+    // Cross-ref by rule_hits_section. A rule with no section has no telemetry
+    // surface at all and reports null (see below).
     const sectionHits = r.rule_hits_section ? bySection[r.rule_hits_section] : null;
     const total = sectionHits?.total || 0;
     const deny = blockingDenyCount(sectionHits?.byEvent);  // deny + deny-repeat + deny-prose, not just literal `deny`
@@ -83,12 +83,14 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
       confidence: r.confidence,
       added_version: r.added_version,
       last_demote_review: r.last_demote_review,
-      // Hits only meaningful when enforcement includes "hook" or "both".
-      // For "self"/"external" rules we surface hits as null (not 0) to
-      // disambiguate "we have no signal" from "rule fired zero times".
-      hits: r.enforcement === 'hook' || r.enforcement === 'both'
-        ? { total, deny, bypass, warn }
-        : null,
+      // Hits are meaningful whenever the rule DECLARES a rule_hits_section —
+      // not only when enforcement is hook/both (2026-07-25 audit). Five
+      // self-enforced rules have advisory hooks emitting real rows under their
+      // section (§11-session-exit had 39 in the live log); keying off
+      // `enforcement` made those report null, i.e. "no signal", so §13.1 demote
+      // review could never see them. null now means exactly one thing: the rule
+      // has no telemetry surface to read.
+      hits: r.rule_hits_section ? { total, deny, bypass, warn } : null,
     };
   });
 

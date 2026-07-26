@@ -235,7 +235,15 @@ function extractSizingClaim(line, prefix) {
 export function runSpecSizingCheck({ root }) {
   const extPath = path.join(root, 'spec/CLAUDE-extended.md');
   if (!fs.existsSync(extPath)) {
-    return { ok: true, drifts: [], skipped: 'extended-missing' };
+    // ok:false, not a skip (2026-07-25 audit). This runs as the pre-tag ship
+    // gate; returning ok:true meant a missing spec file passed with exit 0,
+    // while the sibling failure two branches down (sizing-line-missing) already
+    // treated a spec it could not read as a failure.
+    return {
+      ok: false,
+      drifts: [],
+      error: `spec/CLAUDE-extended.md missing at ${extPath} — cannot verify sizing`,
+    };
   }
   const content = fs.readFileSync(extPath, 'utf8');
   const lineMatch = content.match(/^\*\*Sizing\*\*.*$/m);

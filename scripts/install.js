@@ -132,6 +132,40 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     );
   }
 
+  // Same completeness contract for the HOOK manifest (2026-07-25 audit). The
+  // spec check above existed because a truncated checkout is a real failure mode,
+  // but hooks/hooks.json had no equivalent: readPluginHookSpecs returned [] for a
+  // missing file and threw an unguarded SyntaxError for a malformed one — and it
+  // runs AFTER the spec files are copied and settings.json is rewritten, i.e.
+  // past the point of no return. A missing manifest therefore installed cleanly
+  // with ZERO hooks, and because the manifest version still matched package.json,
+  // the SessionStart bootstrap read that as healthy and never retried: enforcement
+  // silently off while /claudemd-status reported installed. Validate here, before
+  // anything the user owns is touched.
+  const hooksFile = path.join(pluginRoot, 'hooks/hooks.json');
+  if (!fs.existsSync(hooksFile)) {
+    throw new Error(
+      `install: hook manifest missing at ${hooksFile}. Plugin cache is incomplete — ` +
+      `installing would register 0 hooks and report success. Re-run ` +
+      `\`/plugin install claudemd@claudemd\` or re-clone from https://github.com/sdsrss/claudemd.`
+    );
+  }
+  let hookSpecCount = 0;
+  try {
+    hookSpecCount = readPluginHookSpecs(pluginRoot).length;
+  } catch (e) {
+    throw new Error(
+      `install: hook manifest at ${hooksFile} is not valid JSON (${e.message}). ` +
+      `Refusing to install — re-run \`/plugin install claudemd@claudemd\`.`
+    );
+  }
+  if (hookSpecCount === 0) {
+    throw new Error(
+      `install: hook manifest at ${hooksFile} declares no hooks. Refusing to install a ` +
+      `hook-less claudemd — it would report success with enforcement disabled.`
+    );
+  }
+
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';

@@ -96,9 +96,19 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
     // ~/.claude/logs is shared with other plugins (e.g. claude-mem-lite) —
-    // only drop our own jsonl, and remove the dir if it ends up empty.
-    const ownLog = path.join(logsDir(), 'claudemd.jsonl');
-    if (fs.existsSync(ownLog)) fs.unlinkSync(ownLog);
+    // only drop OUR files, and remove the dir if it ends up empty.
+    //
+    // 2026-07-25 audit: this unlinked `claudemd.jsonl` alone, while rule-hits.sh
+    // rotates to `claudemd.jsonl.1` / `.2` (up to ~10 MB) and session-start-check
+    // writes `claudemd-bootstrap.log`. Those three survived --purge, and because
+    // they did, the emptiness check below never fired either — so the documented
+    // two-step uninstall still left claudemd-owned files with no in-tree tool
+    // able to remove them.
+    for (const name of fs.existsSync(logsDir()) ? fs.readdirSync(logsDir()) : []) {
+      if (name === 'claudemd.jsonl' || name.startsWith('claudemd.jsonl.') || name === 'claudemd-bootstrap.log') {
+        try { fs.unlinkSync(path.join(logsDir(), name)); } catch { /* already gone */ }
+      }
+    }
     try {
       if (fs.readdirSync(logsDir()).length === 0) fs.rmdirSync(logsDir());
     } catch { /* dir gone or unreadable — fine */ }
