@@ -88,6 +88,15 @@ done
 # Scope is every TRACKED .sh, a superset of ci.yml's explicit list, deliberately:
 # a hand-copied mirror of that list is the drift shape this release exists to fix.
 # Superset errs toward failing locally on a file CI ignores — the safe direction.
+# bash 3.2 construct gate, same source CI calls (v0.62.2). Local bash is 5.x, so
+# a `mapfile` in a test suite runs fine here and dies on the macOS leg — which is
+# how v0.62.1 reached a tag. Static scan, no bash 3.2 required to run it.
+echo "== bash 3.2 constructs =="
+if ! bash "$HERE/lib/bash32-constructs.sh"; then
+  echo "FAIL: bash 4+ construct(s) found — these break the macOS /bin/bash 3.2 the hooks run under"
+  FAIL=$((FAIL + 1))
+fi
+
 echo "== Shellcheck =="
 if command -v shellcheck >/dev/null 2>&1; then
   SHELL_FILES=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)

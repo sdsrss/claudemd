@@ -53,30 +53,13 @@ jobs:
             tasks/s8-tokenizer/*.sh
           shellcheck hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh \
             || echo "shellcheck info-level notes above (non-blocking)"
-      - name: Reject bash 4+ constructs in hooks (macOS bash 3.2 portability gate)
-        run: |
-          # v0.23.8 — static backstop for the macOS bash-3.2 regression class.
-          # v0.23.6 shipped `declare -A`, which errors on the system /bin/bash
-          # 3.2 the CC harness runs hooks under; Linux CI was green and the
-          # macOS leg uses Homebrew bash 5 (gnubin on PATH), so neither caught
-          # it at runtime (see feedback_macos_shell_portability). Rejects
-          # bash-4+ constructs in hook sources. Patterns are whitespace- and
-          # flag-tolerant (declare/local/typeset with any -...A flag cluster,
-          # tab or multi-space) and cover array/pattern case-mod
-          # (${arr[@]^^}, ${name^a}). Comments are stripped per-line first so
-          # prose mentioning a construct (the fix-notes in mem-audit.sh /
-          # pre-bash-safety-check.sh) does not trip the gate.
-          set -u
-          pat='(declare|local|typeset)[[:space:]]+-[A-Za-z]*A|mapfile|readarray|\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?(\^\^|,,|\^|,)'
-          found=0
-          for f in hooks/*.sh hooks/lib/*.sh; do
-            m=$(sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' "$f" | grep -nE "$pat") || continue
-            echo "::error::bash 4+ construct in $f (breaks macOS /bin/bash 3.2):"
-            printf '%s\n' "$m" | sed 's|^|  |'
-            found=1
-          done
-          [ "$found" = 0 ] || exit 1
-          echo "OK: no bash 4+ constructs in hooks (macOS bash 3.2 safe)"
+      - name: Reject bash 4+ constructs (macOS bash 3.2 portability gate)
+        # Single source: tests/lib/bash32-constructs.sh, which tests/run-all.sh
+        # also calls (v0.62.2). This block used to be an inline copy scoped to
+        # hooks/ only — so v0.62.1's new test suite shipped `mapfile` and the
+        # macOS leg went red on a class this gate exists to prevent, while
+        # `npm test` had no way to see it. Rationale + scope live in the script.
+        run: bash tests/lib/bash32-constructs.sh
       - name: Reject constructs bash 3.2 cannot PARSE (real 3.2 syntax check)
         if: runner.os == 'Linux' && matrix.node == 20
         run: |

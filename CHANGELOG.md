@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.62.2] - 2026-07-27
+
+Second hotfix in the 0.62.0 chain, and the last one: the macOS leg went red on a construct the repo already had a gate for, because that gate could not see the file.
+
+- **fix: `trigger-view-parity.test.sh` used `mapfile`**, which is bash 4+. macOS ships `/bin/bash` 3.2 and the suite runs there, so the job died on `mapfile: command not found` → `CONSUMERS: unbound variable` (`feedback_macos_shell_portability`). Replaced with a `while IFS= read -r` loop, and both `"${CONSUMERS[@]}"` expansions now use the `${arr[@]+…}` form that is `set -u`-safe on bash < 4.4 — the same guard 0.62.0 applied to `rule-hits.test.sh`.
+- **fix: the bash-3.2 construct gate is one script, called from two places.** It lived inline in `ci.yml` and scanned `hooks/` only, so a test suite was outside its scope; and being CI-only, `npm test` could not surface the class — the identical gap 0.62.1 closed for shellcheck, one layer over. `tests/lib/bash32-constructs.sh` now holds the pattern and the scope (hooks + every test suite that runs under `/bin/bash`), and both `ci.yml` and `tests/run-all.sh` call it. Copying the block into the runner would have made it a hand-copied mirror — the drift shape this whole release chain is about.
+- The scanner's two bare-word alternatives are spliced from fragments so the pattern line does not match itself; a detector whose definition site is its own first finding trains everyone to ignore it (`feedback_self_referential_marker_regex`). Verified with four controls: `mapfile`, `declare -A`, `${x^^}` all flagged, a plain script clean, and the scanner reports itself clean.
+
+**What the chain cost, stated plainly:** 0.62.0 shipped with a red ci (shellcheck) and published to npm anyway, because the publish gate ran a suite that never invoked shellcheck. Both hotfixes are the same defect as the release they patch — a gate whose scope did not cover the thing it was written to catch.
+
 ## [0.62.1] - 2026-07-27
 
 Hotfix for a red CI on the 0.62.0 tag. No hook, script, or spec behavior changes beyond the lint directive.

@@ -74,7 +74,14 @@ assert_contains "5 escaped backslash does not swallow the next command" ";git pu
 # consumer set must fail loudly rather than vacuously pass (same lesson as the
 # run-all.sh empty-glob finding in the same audit).
 ANCHOR='(^|[[:space:]]*[;&|]'
-mapfile -t CONSUMERS < <(grep -l -F "$ANCHOR" "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
+# `mapfile` is bash 4+; macOS ships /bin/bash 3.2 and this suite runs there
+# (feedback_macos_shell_portability). v0.62.1 shipped the mapfile form and the
+# macOS leg went red on `mapfile: command not found` → `CONSUMERS: unbound
+# variable`. The CI construct-gate scanned hooks/ only, so tests/ was outside it.
+CONSUMERS=()
+while IFS= read -r _c; do
+  [[ -n "$_c" ]] && CONSUMERS+=("$_c")
+done < <(grep -l -F "$ANCHOR" "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
 
 if (( ${#CONSUMERS[@]} >= 3 )); then
   pass "6 consumer set floor (${#CONSUMERS[@]} segment-anchored hooks found)"
@@ -82,7 +89,7 @@ else
   fail "6 consumer set floor (expected >= 3 segment-anchored hooks, found ${#CONSUMERS[@]})"
 fi
 
-for c in "${CONSUMERS[@]}"; do
+for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
   if grep -q 'hook_trigger_view' "$c"; then
     pass "7 $base builds its trigger input via hook_trigger_view"
@@ -95,7 +102,7 @@ done
 # Comment lines are excluded before matching: the fix commit documents the old
 # spelling in prose, and a detector that matches its own subject's description
 # fires on the very files it just fixed (feedback_self_referential_marker_regex).
-for c in "${CONSUMERS[@]}"; do
+for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
   if grep -vE '^[[:space:]]*#' "$c" | grep -qE "tr '\\\\n' ' '"; then
     fail "8 $base still carries a private \`tr '\\n' ' '\` flatten"
