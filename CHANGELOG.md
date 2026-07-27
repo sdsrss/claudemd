@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.60.0] - 2026-07-27
+
+Ships spec v6.24.0. One clause, one pointer, one runbook line — and the thing they encode: a rule being loaded is not a rule being followed.
+
+- **spec: `Gated = missing` closes the third missing-capability mode in §EXT §12.** That section's detection enumerated two — a call that fails, and a skill absent from the session listing (v6.21.0). Claude Code's own session instructions carry a third shape (`Do not call the AgentTool unless the user requested it`): the capability is listed and would succeed if called, so neither detector fires. At ship this lands on `Author ≠ reviewer (HARD)`, whose fallback rows route back through a fresh subagent — with the Agent tool gated there is nothing to degrade to, and the substitute gets improvised. The clause makes it one ASK before starting; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate.
+- **spec: pointer added at `Author ≠ reviewer` → Detection.** The rule and the detection that governs it sat 45 lines apart. This release exists because the rule text was loaded, and quoted verbatim, while being violated.
+- **spec: Appendix B + §13.1 relocation notes compressed** — removal archaeology from v6.11.14 / v6.13.0, paired with the addition per §0.1. Extended lands at 49890/50000 (110 bytes headroom); core unchanged at 24574/25000. The next extended addition of any size must pair with a trim.
+
+No hook or script behavior changes: `hard-rules.json` bumps `spec_version` only, partition unchanged at 6 hook / 16 self / 2 both / 1 external.
+
 ## [0.59.1] - 2026-07-26
 
 Hotfix for a macOS CI regression shipped in 0.59.0. Tests only — no hook, script, or spec behavior changes.

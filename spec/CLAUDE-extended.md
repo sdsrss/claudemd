@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.23.1 — Extended
+# AI-CODING-SPEC v6.24.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
 
@@ -341,7 +341,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 | dispatching-parallel-agents | freeze, careful, guard, retro |
 
 ### Hard cooperation rules
-- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume.
+- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection below.
 - **L3 two-tier review**: per-task in sp:subagent-driven-development; pre-ship cross-cutting via gs:/review.
 - **Ship pipeline owned by gs**: sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist.
 
@@ -388,6 +388,7 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | gs:/document-release | release notes by hand from the CHANGELOG top entry (gh release body); name the substitution |
 
 Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing (v6.21.0)**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
+**Gated = missing (v6.24.0)**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires, and §3 puts this spec above harness instructions, so the gate never wins silently. Treat as missing → take the fallback row. Where that row itself needs the gated capability (`sp:subagent-driven-development`, `sp:*-code-review` / `gs:/review`) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate (the subagent-driven row governs). Rows carrying a written non-subagent degrade (`gs:/autoplan` self-critique, `gs:/codex` skip, `gs:/qa`) take it as written.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
 
 ## §13 META (Agent-facing)
@@ -397,11 +398,11 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 25 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 16 self / 2 both / 1 external (v6.23.1).
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 25 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 16 self / 2 both / 1 external (v6.24.0).
 
 ## §13.1 → `OPERATOR.md` (relocated v6.13.0)
 
-Operator responsibilities (self-audit cadence / drift monitoring / version discipline / size budget rationale) moved to `OPERATOR.md` — human-only handbook, not Agent-loaded. Agent context no longer carries directives it cannot execute. The `§13.1` anchor name persists in code/hook telemetry (e.g. `§13.1-extended-read`, `bySection` audit accounting) as a stable label; the section text lives in `OPERATOR.md §13.1`.
+Operator responsibilities (self-audit cadence / drift monitoring / version discipline / size budget) live in `OPERATOR.md §13.1` — human-only, not Agent-loaded. The `§13.1` anchor persists in code + hook telemetry (`§13.1-extended-read`, `bySection`) as a stable label.
 
 ## §13.2 HARD-rule budget (rolling, permanent)
 
@@ -440,7 +441,7 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d). Promoti
 
 ## Appendix B — Canonical examples
 
-Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format + B.2 evidence valid/invalid). B.3 (L3 summary formats), B.4 (EMERGENCY incident report), B.5 (auto-decision one-liners), B.6 (L3 spec example) removed — their normative content is fully covered by §10-R / §2-EXT EMERGENCY / §10-R Auto-decisions / §2.S SPEC ARTIFACT respectively; the example bodies were illustrative, not normative.
+Trimmed in v6.11.14 to B.1 + B.2. B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
 
 ### B.1 `[AUTH REQUIRED]`
 
@@ -469,15 +470,15 @@ Trimmed in v6.11.14 to the two highest-reuse examples (B.1 AUTH-REQUIRED format 
 
 Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.23.1 (patch, 2026-07-26)** — manifest enforcement-claim corrections.
+**v6.24.0 (minor, 2026-07-27)** — §EXT §12 detection: gated ≠ absent.
 
-- `[fix]` **§11-memory-read `hook` → `both`** + coverage note: `memory-read-check.sh` covers the ship/release verbs only, while the rule reads "HARD at ship/release/destructive-path/L3". §13 META tells the agent to calibrate from this field, so it was promising mechanical coverage for two triggers the Agent owns. `[add]` **§iron-law-3 entry** — graded by heading convention rather than the parenthesised HARD token the scan looks for, so the manifest's coverage scan never demanded one and the rule was invisible to §13.1/§13.2 accounting. Partition: 6 hook / 16 self / 2 both / 1 external over 25 rules. Rule text unchanged in both cases — metadata corrected to match the code, no §13.2 budget cost.
+- `[add]` **`Gated = missing`** — §12 enumerated two missing-capability modes (call fails; absent from listing, v6.21.0). A third fits neither: listed and callable, but gated by a lower-precedence layer (Claude Code's own `Do not call the AgentTool unless the user requested it`). At ship this hits `Author ≠ reviewer` — its fallback rows route back through a subagent, so there was nothing to degrade to and the substitute got improvised, reported afterward under Uncertain instead of one ASK before starting. The rule text was loaded and quoted verbatim at the time: loaded ≠ enforced. `[add]` pointer at `Author ≠ reviewer` → Detection, so the clause is reachable from the rule. `[trim]` Appendix B + §13.1 relocation notes compressed, paired per §0.1. No new HARD (extends an existing HARD's detection, same shape as v6.21.0); partition unchanged at 6/16/2/1, §13.2 budget cost none.
 
-**Older entries** (v6.23.0 false-enforcement-claim + level/precedence batch, v6.22.0 level/precedence seam closure, v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
+**Older entries** (v6.23.1 manifest enforcement-claim corrections, v6.23.0 false-enforcement-claim + level/precedence batch, v6.22.0 level/precedence seam closure, v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
 
-**Sizing** (v6.23.1, 2026-07-26, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24714 → 24574 bytes (Δ +330: C7 intake, v6.23.0 entry retired to the changelog); extended 48900 → 49261 bytes (Δ +1700: C7 intake + the v6.23.0/.1 entries); OPERATOR.md 8737 bytes (unchanged). Size budget: core 24574/25000 (**426 bytes headroom, 98.30%**); extended 49261/50000 (**739 bytes headroom, 98.52%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
+**Sizing** (v6.24.0, 2026-07-27, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24574 → 24574 bytes (Δ 0: title-line version bump only); extended 49261 → 49890 bytes (Δ: §12 gated-detection clause + rule pointer + the v6.24.0 entry, less the retired v6.23.1 entry and the Appendix B / §13.1 archaeology trims). OPERATOR.md 8737 bytes (unchanged). Size budget: core 24574/25000 (**426 bytes headroom, 98.30%**); extended 49890/50000 (**110 bytes headroom, 99.78%**). Drift envelope: ±20B accepted for this Sizing line's own corrective rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
 
-**Operator carry-forward**: v6.22.0 is a minor (turn-yield "closed" definition relaxed; level-tag corrections; no HARD added — `hard-rules.json` bumps spec_version only, enforcement partition unchanged). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); candidate pool `tasks/core-net-delete-candidates-v6.14.md`: **C9 + C11 CONSUMED this version** (−192B, paired with the seam fixes); remaining C7/C8/C10/C12 ≈ −600B; core headroom 286B — next core addition of any size must still pair with a trim. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. Carried to the next §13.2 batch review (unchanged): banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite. Runbook stamp: re-stamp `@ v6.22.0` at next ship (self-healing per §2.2).
+**Operator carry-forward**: v6.24.0 is a minor (§12 detection completeness; no HARD added — `hard-rules.json` bumps spec_version only, enforcement partition unchanged). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); the Appendix B + §13.1 archaeology trims paired with this addition. **Extended headroom is now 110B** — the next extended addition of any size MUST pair with a trim; core unchanged at 426B, pool `tasks/core-net-delete-candidates-v6.14.md` C7/C8/C10/C12 ≈ −600B. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. Carried to the next §13.2 batch review (unchanged): banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite. Runbook stamp: `@ v6.24.0`, re-stamped this ship (§2.2 self-healing).
 
 ## §1.5-EXT GLOSSARY
 

@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.24.0 (minor, 2026-07-27) — §EXT §12 detection: gated ≠ absent
+
+`§12`'s missing-capability detection enumerated two modes — a call that fails, and a skill absent from the session listing (v6.21.0). A third fits neither: the capability is listed and would succeed if called, but a lower-precedence instruction layer gates it. Claude Code's own session instructions carry exactly that shape (`Do not call the AgentTool unless the user requested it`), and `§3` already ranks harness instructions below this spec — so the precedence question was settled while the detection was not.
+
+What this closes: at ship, `Author ≠ reviewer (HARD)` demands a fresh-subagent reviewer, and its fallback rows route back through a subagent. With the Agent tool gated there was no fallback to take, so a substitute got improvised — self-review, reported afterward under Uncertain, instead of one ASK before starting. The rule text was loaded and quoted verbatim at the time. Loaded ≠ enforced.
+
+- **`[add]` `Gated = missing`** in the §12 Detection paragraph: treat a policy-gated capability as missing; where the fallback row itself needs that capability, ASK once rather than degrade; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate.
+- **`[add]` pointer at `Author ≠ reviewer`** → Detection. Placement is the point — the clause has to be reachable from the rule, not only from a paragraph 45 lines below it.
+- **`[trim]`** Appendix B and §13.1 relocation notes compressed (removal archaeology from v6.11.14 / v6.13.0), paired with the addition per §0.1.
+
+No new HARD rule — this extends an existing HARD's detection, the same shape as v6.21.0. `hard-rules.json` partition unchanged at 6 hook / 16 self / 2 both / 1 external; `spec_version` bumped only. §13.2 budget cost: none.
+
+The project-side half of this fix is not in the spec: the claudemd ship runbook listed `self-review / fresh-subagent review` as a two-way choice at pre-ship step 4, which is what actually got followed. A checklist at the decision point outranks rule text sitting in a loaded file — that line now names fresh-subagent as the requirement and self-review as a called-out degrade.
+
 ## v6.23.1 (patch, 2026-07-26) — manifest enforcement-claim corrections
 
 Two entries in `hard-rules.json` described enforcement the code does not provide. §13 META tells the agent to calibrate expectations from that field, so a wrong value is the same class of defect as v6.23.0's "Stop hook enforces" — a false promise about whether anything will catch a violation.
