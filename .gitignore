@@ -43,6 +43,7 @@ tasks/*
 !tasks/rule-candidates-2026-04.md
 !tasks/audit-2026-07-15-deferred.md
 !tasks/audit-2026-07-25-deferred.md
+!tasks/deferred-2026-07-27-doctor-runbook-review-check.md
 !tasks/audit-2026-07-26-deferred.md
 !tasks/banned-vocab-demote-evaluation-2026-07-25.md
 !tasks/banned-vocab-sanitizer-siblings.md

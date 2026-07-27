@@ -12,6 +12,7 @@ import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
 import { memoryMaintenance, CITE_MIN, PROMOTE_MIN_AGE_DAYS, RECALL_MAX_AGE_DAYS, STALE_AGE_DAYS } from './lib/memory-maintenance.js';
+import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
@@ -662,6 +663,30 @@ export async function doctor({ pruneBackups: prune } = {}) {
       `or compress descriptions/tags (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`);
   }
 
+  // v0.61.0 — ship-runbook review-step presence (advisory). Origin: the
+  // 2026-07-27 v0.60.0 incident sweep found ALL SIX projects' ship runbooks
+  // lacked a review-before-tag step (§EXT §12 Author ≠ reviewer) — and this
+  // check's first live run caught a SEVENTH the manual sweep missed (gsd,
+  // filename had neither "runbook" nor "ship"). Detection is ABSENCE of a
+  // review-step fingerprint in runbook-classified files, never a keyword hit
+  // on "self-review" (fixed runbooks legitimately contain that word as a
+  // named degrade). Listing only — rewriting a runbook is a §5-scoped write
+  // to user-authored memory (tasks/deferred-2026-07-27-doctor-runbook-review-check.md).
+  const rrs = scanRunbookReviewSteps({});
+  if (rrs.missing.length === 0) {
+    push('runbook-review-step', true,
+      `${rrs.scannedRunbooks} ship-runbook file(s) scanned, all carry a review-before-tag step`);
+  } else {
+    const sample = rrs.missing.slice(0, 4)
+      .map(m => `${m.project.replace(/^-.*-projects-/, '')}/${m.file} [${m.tier}]`)
+      .join(', ');
+    const more = rrs.missing.length > 4 ? ` +${rrs.missing.length - 4} more` : '';
+    push('runbook-review-step', false,
+      `${rrs.missing.length}/${rrs.scannedRunbooks} ship-runbook file(s) lack a review-before-tag step: ${sample}${more}. ` +
+      `Add the §EXT §12 Author ≠ reviewer line at the decision point (rule text loaded ≠ enforced — ` +
+      `the checklist wins); operator edit, no auto-rewrite.`);
+  }
+
   const pruned = prune != null ? pruneBackups(prune) : [];
 
   return { checks, pruned };
@@ -707,7 +732,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // candidates, a bypass ratio with no codified demote rule). Counting them
     // would make `/claudemd-doctor` report failure on a healthy install every
     // time, which is how an exit code stops carrying information.
-    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:)/;
+    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step)/;
     const failed = (r.checks || [])
       .filter(c => c && c.ok === false && !ADVISORY.test(c.name)).length;
     if (failed > 0) process.exitCode = 3;

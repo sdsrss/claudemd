@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.61.0] - 2026-07-27
+
+Same-day companion to 0.60.0: that release fixed the rule layer (spec §EXT §12 `Gated = missing`); this one makes the checklist layer observable. The incident's root cause was never a missing rule — it was a runbook step that contradicted a loaded rule and won. A sweep of every project's ship runbook found the review-before-tag step absent in ALL of them (claudemd's had `self-review /` as an equal option; five others had no review step at all).
+
+- **feat: doctor check `runbook-review-step` (advisory).** `scripts/lib/runbook-review-check.js` walks `~/.claude/projects/*/memory/` (two explicit levels, no recursion), classifies ship-runbook candidates by tier — `covers: §EXT §12` stamp > `runbook` filename > ship/release filename with ≥2 flow tokens — and lists candidates lacking a review-step fingerprint. Detection is ABSENCE of the step, never a keyword hit on "self-review": fixed runbooks legitimately contain that word as a named degrade, and the live corpus had zero occurrences of the two-option anti-pattern to match on. Flow-tier findings are suppressed in projects whose runbook already carries the step (§11-EXT-MEM: one ship file per project), which removes the one live false positive (a tag-ref contract note sitting beside a fingerprinted runbook). Listing only — rewriting a runbook is a §5-scoped write to user-authored memory and stays the operator's call.
+- **Calibration evidence:** first live run caught a SEVENTH release flow the manual sweep had missed (gsd's `feedback_release_process.md` — filename contains neither "runbook" nor "ship"). After patching it, the live scan reads 9 runbook files / 0 missing. Tests: 3 new (RED-first for both the module and the suppression case).
+
+No spec change — spec stays v6.24.0; `hard-rules.json` untouched (advisory doctor check, exit-code exempt via the ADVISORY list).
+
 ## [0.60.0] - 2026-07-27
 
 Ships spec v6.24.0. One clause, one pointer, one runbook line — and the thing they encode: a rule being loaded is not a rule being followed.
