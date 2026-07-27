@@ -106,6 +106,52 @@ emit_session_summary_banner() {
   mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
 }
 
+# spec_drift_check — 2026-07-27 audit (M6). The ONLY automatic install-integrity
+# check was `INSTALLED_VER == PLUGIN_VER`, a version-number comparison: a spec
+# file hand-edited in ~/.claude/ (or half-written by an interrupted copy) matched
+# on version forever and drifted silently until someone happened to run
+# /claudemd-doctor. That is precisely the drift
+# feedback_claudemd_spec_single_source_of_truth exists to prevent, and
+# scripts/lib/spec-hash.js#compareSpecs — the right check — was imported only by
+# the two MANUAL commands (doctor, status), never by a hook.
+#
+# `cmp -s` rather than a hash: byte-exact, POSIX, no node spawn and no
+# sha256sum-vs-shasum platform split, ~1ms for four files. Runs only on the
+# versions-agree branch, where the contents are supposed to be identical by
+# construction, so a difference is always a defect and never a stale-version
+# artifact. Advisory only — reporting is the hook's job, rewriting a
+# user-owned file is not. Skipped on: DISABLE_SPEC_DRIFT_BANNER=1, jq missing.
+spec_drift_check() {
+  [[ "${DISABLE_SPEC_DRIFT_BANNER:-0}" == "1" ]] && return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  [[ -d "$PLUGIN_ROOT/spec" ]] || return 0
+
+  # Explicit one-level glob, no descent (§8: no recursive traversal of ~/.claude).
+  local f base installed drifted=""
+  for f in "$PLUGIN_ROOT"/spec/*.md; do
+    [[ -f "$f" ]] || continue
+    base=$(basename "$f")
+    installed="$HOME/.claude/$base"
+    # Absent is not drift: install.js decides WHICH files ship to ~/.claude, and
+    # a spec file this version does not install must not raise a banner.
+    [[ -f "$installed" ]] || continue
+    cmp -s "$f" "$installed" || drifted="${drifted}${drifted:+, }${base}"
+  done
+  [[ -n "$drifted" ]] || return 0
+
+  hook_record session-start spec-drift \
+    "$(jq -cn --arg files "$drifted" '{drifted_files: $files}' 2>/dev/null || echo 'null')" \
+    '' "$SESSION_ID" 2>/dev/null || true
+
+  jq -cn --arg files "$drifted" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/).")
+    }
+  }' 2>/dev/null || true
+}
+
 # emit_bootstrap_failed_banner — v0.50.0. Surface a background install.js
 # failure from a PRIOR session (hook_spawn_install wrote the sentinel; the
 # failure itself was invisible in-session — bootstrap.log only). Emits one
@@ -310,7 +356,8 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
     # redundant this session (and would double-banner); skip it.
     [[ -z "$stale_json" ]] && up_json=$(upstream_check)
     sum_json=$(emit_session_summary_banner)
-    printf '%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" | jq -s -c '
+    drift_json=$(spec_drift_check)
+    printf '%s\n%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" "$drift_json" | jq -s -c '
       map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
       | if length == 0 then empty
         elif length == 1 then .[0]
@@ -376,8 +423,8 @@ printf '%s\n%s\n' "$_bf_json" "$_sum_json" | jq -s -c '
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n")),
-      },
+        additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
+      }
     } end' 2>/dev/null || true
 
 # node required to run install.js — silent no-op if absent.

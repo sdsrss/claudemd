@@ -745,7 +745,12 @@ OUT=$(bash "$HOOK" <<<"$EVENT_44" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 44 heredoc body does not reach the trigger stage" \
   || { echo "FAIL: 44 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
+# 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
+# human reads to judge whether coverage grew overstated it by three. Gating was
+# never affected (FAIL drives the exit code); the reported denominator was.
+TOTAL=$(grep -oE '"(PASS|FAIL): [0-9]+' "$0" | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
 if (( FAIL > 0 )); then
-  echo "Tests: $((44 - FAIL))/44 passed"; exit 1
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
 fi
-echo "Tests: 44/44 passed"
+echo "Tests: $TOTAL/$TOTAL passed"

@@ -6,6 +6,18 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.24.1 (patch, 2026-07-27) — audit letter-fixes: precedence, glossary reachability, budget units
+
+Five text defects from the 2026-07-27 four-dimension audit. None adds a rule; each removes a place where two parts of the spec said different things and nothing decided between them.
+
+- `[fix]` **§2.1 MCP precedence.** `MCP-injected per-tool instructions are authoritative` contradicted §3's Order line (which ranks MCP *below* this spec) and, inside §2.1's own table, the `never mcp__chrome / computer-use` row. The parallel skill-wording case was already resolved in the same section ("does NOT override §2.1 at L0–L2"); MCP was stated the opposite way and left open. Now scoped: authoritative for that tool's own usage, conflicts decided by §3 order.
+- `[fix]` **§1.5 `co-located` is core-resident.** §2's L2 row cites `per §1.5` for a term §1.5 used but never defined — the definition sat in §EXT §1.5-EXT, which L1/L2 must not load, and the term decides L1-vs-L2 classification. This was the direct counterexample to §1.5's own header claim ("Core-resident — Extended is not loaded at L1/L2").
+- `[fix]` **§0 signal list.** "no brackets" banned a token §10's own L0 template emits (`[cmd]`). Reads `no bracketed signals` — the two signals are the closed set; a citation is not a signal.
+- `[fix]` **§EXT §12 `Gated = missing`.** The premise ("§3 puts this spec above harness instructions, so the gate never wins silently") licensed *invoking* the gated capability, while the conclusion prescribed treating it as missing. The behavior was decidable; the argument for it inverted. Now: the gate ranks below this spec, so it may not win SILENTLY — name it, then take the fallback row.
+- `[fix]` **OPERATOR.md §13.1 size budget.** Core §0.1 delegates tier definitions to it by name, and it still said *soft ceilings*, in *chars*, tracked in *`CLAUDE-changelog.md`* — three disagreements with the §0.1 text v6.23.0 corrected. v6.23.0's changelog entry claimed that fix without noting the second home.
+
+---
+
 ## v6.24.0 (minor, 2026-07-27) — §EXT §12 detection: gated ≠ absent
 
 `§12`'s missing-capability detection enumerated two modes — a call that fails, and a skill absent from the session listing (v6.21.0). A third fits neither: the capability is listed and would succeed if called, but a lower-precedence instruction layer gates it. Claude Code's own session instructions carry exactly that shape (`Do not call the AgentTool unless the user requested it`), and `§3` already ranks harness instructions below this spec — so the precedence question was settled while the detection was not.

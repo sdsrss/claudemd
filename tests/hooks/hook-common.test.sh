@@ -43,6 +43,17 @@ run_case "read_event empty" "" \
 run_case "deny emits json" "deny" \
   "bash -c 'source $LIB; hook_deny test-hook \"reason text\"' | jq -r .hookSpecificOutput.permissionDecision"
 
+# hook_strip_heredoc_bodies — indented terminator (2026-07-27 audit, L1).
+# A plain `<<EOF` ends only at an EOF in column 0; the pre-fix stripper accepted
+# an indented one, stopped early, and handed the remaining BODY to the detectors
+# as commands. `<<-EOF` legitimately accepts a TAB-indented terminator, which is
+# why this case lives here rather than in the tab-separated §8 corpus.
+run_case "heredoc plain form ignores an indented terminator" "yes" \
+  "printf 'cat <<EOF\nbody\n   EOF\nrm -rf \\\$EVIL\nEOF\n' | bash -c 'source $LIB; hook_strip_heredoc_bodies' | grep -q 'rm -rf' && echo no || echo yes"
+
+run_case "heredoc dash form accepts a tab-indented terminator" "yes" \
+  "printf 'cat <<-EOF\nbody\n\tEOF\nrm -rf \\\$EVIL\n' | bash -c 'source $LIB; hook_strip_heredoc_bodies' | grep -q 'rm -rf' && echo yes || echo no"
+
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"
   exit 1

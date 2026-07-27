@@ -55,7 +55,17 @@ TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]
 # anchors on, so an unstripped heredoc body would hand its own lines to the
 # trigger as if they were commands — reintroducing the v0.9.28 bug the comment
 # above describes. ship-baseline has always stripped first; this now matches it.
-CMD_FLAT=$(printf '%s' "$CMD" | hook_strip_heredoc_bodies | hook_flatten_cmd)
+#
+# 2026-07-27 audit (M1): "matches it" was still one stage short — ship-baseline
+# also empties quoted bodies AFTER the flatten, and this hook did not. The
+# flatten turns a newline INSIDE an `-m` payload into `;`, which is exactly the
+# separator TRIGGER_RE anchors on, so `git commit -m "fix parser\ndeploy notes"`
+# put a bare `deploy` at a synthetic segment start and widened the scan to
+# quoted prose (it denied two of the audit's own probe commands). The shared
+# hook_trigger_view carries all three stages in the load-bearing order; this is
+# the same direction as the v0.9.28 anchor fix, which already declared quoted
+# `release`/`deploy` text to be data rather than an invocation.
+CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 # vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-

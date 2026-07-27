@@ -67,8 +67,14 @@ fi
 # `git commit -m "x" && git push` keeps its outside-quote `&& git push`. The
 # known-red marker check below reads the raw $CMD, so the (b) escape inside a
 # quoted -m payload still works.
-CMD_STRIPPED=$(printf '%s' "$CMD" | hook_strip_heredoc_bodies)
-CMD_FLAT=$(printf '%s' "$CMD_STRIPPED" | hook_flatten_cmd | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g")
+# 2026-07-27 audit: this three-stage pipeline WAS the correct one; it is now
+# `hook_trigger_view` in hook-common.sh, shared with the two sibling gates that
+# had each drifted off a different stage of it (H1/M1). Semantics are unchanged.
+# One byte-level difference (pre-tag review, inert): the old form assigned through
+# `CMD_STRIPPED=$(…)`, whose command substitution ate trailing newlines, so a
+# command ending in a blank line now flattens to `…;;` instead of `…;`. Both
+# satisfy the segment anchor.
+CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # Segment-anchor regex: require `^` (real start-of-command, post-flatten) OR a
 # real shell separator (`[[:space:]]*[;&|]+[[:space:]]*`). The looser
 # `[[:space:];&|]` allows ANY whitespace (including space after `#` in

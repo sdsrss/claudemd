@@ -32,6 +32,7 @@ import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from '
 import { classifyProject } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
+import { isUserTurn, userTurnText } from './lib/transcript-user-turn.js';
 
 const RULE_KEYS = [
   '§10-V', '§iron-law-2', '§10-four-section-order', '§10-honesty',
@@ -141,12 +142,18 @@ function extractEvents(filePath, cutoffMs = null) {
       continue;
     }
     if (obj.type === 'user') {
-      const c = obj.message && obj.message.content;
-      if (typeof c === 'string') {
-        events.push({ kind: 'user-typed', text: c, compactSummary: obj.isCompactSummary === true, sidechain });
-      } else if (Array.isArray(c) && c.some(x => x && x.type === 'text') && !c.some(x => x && x.type === 'tool_result')) {
-        const t = c.filter(x => x && x.type === 'text').map(x => x.text).join('\n');
-        events.push({ kind: 'user-typed', text: t, compactSummary: obj.isCompactSummary === true, sidechain });
+      // Shared with the two bash gates via transcript-user-turn.js ↔
+      // HOOK_USER_TURN_JQ (2026-07-27 audit, H2). This engine's local spelling
+      // already handled the array-with-text shape but counted isMeta rows and
+      // <system-reminder> injections as typed turns — and turn counts here are
+      // the OPPORTUNITY DENOMINATORS every §13.2 compliance rate is divided by.
+      if (isUserTurn(obj)) {
+        events.push({
+          kind: 'user-typed',
+          text: userTurnText(obj),
+          compactSummary: obj.isCompactSummary === true,
+          sidechain,
+        });
       }
       continue;
     }

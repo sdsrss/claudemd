@@ -32,9 +32,22 @@ COMMITS_BEFORE=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo 
 # turn. Snapshot the working tree too.
 PORCELAIN_BEFORE=$(git -C "$GUARD_REPO" status --porcelain 2>/dev/null || echo skip)
 
+# Suite-count floors (2026-07-27 audit, M7). Both shell loops guard with
+# `[[ -f "$t" ]] || continue`, so an unexpanded glob — a directory rename, a
+# change to the `.test.sh` suffix convention, a bad checkout — skipped the ENTIRE
+# layer while FAIL stayed 0 and the run printed "OVERALL: all suites passed".
+# The Node leg is not exposed this way (an unexpanded glob reaches `node --test`,
+# which errors). Floors are deliberately below the current counts: they catch a
+# layer vanishing, not normal suite churn.
+HOOK_SUITE_FLOOR=20
+INTEGRATION_SUITE_FLOOR=2
+HOOK_SUITES=0
+INTEGRATION_SUITES=0
+
 echo "== Shell hook tests =="
 for t in "$HERE"/hooks/*.test.sh; do
   [[ -f "$t" ]] || continue
+  HOOK_SUITES=$((HOOK_SUITES + 1))
   echo "-- $(basename "$t")"
   run_suite "$t" || FAIL=$((FAIL + 1))
 done
@@ -62,9 +75,19 @@ fi
 echo "== Integration tests =="
 for t in "$HERE"/integration/*.test.sh; do
   [[ -f "$t" ]] || continue
+  INTEGRATION_SUITES=$((INTEGRATION_SUITES + 1))
   echo "-- $(basename "$t")"
   run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
+
+if (( HOOK_SUITES < HOOK_SUITE_FLOOR )); then
+  echo "FAIL: only $HOOK_SUITES shell hook suite(s) ran (floor $HOOK_SUITE_FLOOR) — the glob matched nothing or the layer moved."
+  FAIL=$((FAIL + 1))
+fi
+if (( INTEGRATION_SUITES < INTEGRATION_SUITE_FLOOR )); then
+  echo "FAIL: only $INTEGRATION_SUITES integration suite(s) ran (floor $INTEGRATION_SUITE_FLOOR) — the glob matched nothing or the layer moved."
+  FAIL=$((FAIL + 1))
+fi
 
 COMMITS_AFTER=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo skip)
 if [[ "$COMMITS_BEFORE" != "skip" && "$COMMITS_BEFORE" != "$COMMITS_AFTER" ]]; then

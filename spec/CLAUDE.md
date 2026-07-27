@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.24.0 — Core
+# AI-CODING-SPEC v6.24.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -18,7 +18,7 @@ CLASSIFY (§2) → AUTH (§5) → ROUTE (§2.1) → EXECUTE → VALIDATE (§7) �
 - `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` — pre-exec on §5 hard; blocks until user confirms.
 - `[PARTIAL: <what-missing>]` — end-of-task when evidence covers part; name the uncovered piece.
 
-Everything else = natural prose, no brackets. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).
+Everything else = natural prose, no bracketed signals. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).
 
 **Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
 
@@ -57,13 +57,13 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 
 Core-resident (L1/L2 routing decisions reference these — Extended is not loaded at L1/L2):
 - **LOC**: additions+deletions per `git diff --stat`.
-- **Local-Δ**: ≤2 files (source + co-located test = one); no exported-symbol / import-surface / config / schema change.
+- **Local-Δ**: ≤2 files (source + co-located test = one; co-located = test path mirrors source path); no exported-symbol / import-surface / config / schema change.
 - **Module**: single-package = each `src/<subdir>/`; monorepo = each workspace/package root. Sub-folders inside a Module are NOT separate modules.
 - **Evidence**: tool-call output showing specific behavior. *Fresh* = same turn or re-run after last change.
 - **Task**: one SPINE cycle. New user request = new task unless explicit continuation.
 - **Contract / Δ-contract**: external-caller-visible interface (sig / return / status / CLI flag / config / schema / security); change to it = Δ-contract — additive (new flag/endpoint/optional/field) → L2, breaking (rename/remove/type-change/required-no-default) → L3.
 
-Extended-only (L3+ load resolves these): **Assumption** → §EXT §1.5-EXT.
+Extended-only (L3+ load resolves these; at L0–L2 a term cited with a §EXT pointer is reachable by targeted Read per §2.2 — a core citation without one is a defect): **Assumption** → §EXT §1.5-EXT.
 
 ## §2 LEVEL
 
@@ -88,7 +88,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 ROUTE (unified)
 
-SPINE step 3. MCP-injected per-tool instructions are authoritative; this table covers cross-tool routing. Full L3 / composite / specialized-clarify matrix → §EXT §4.
+SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict with this table → §3 order decides. Full L3 / composite / specialized-clarify matrix → §EXT §4.
 
 | Trigger | Primary | Note |
 |---|---|---|

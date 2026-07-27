@@ -1,0 +1,15 @@
+{"_name":"string prompt (the common typed form)","_expected":true,"type":"user","message":{"content":"fix the audit findings"}}
+{"_name":"string prompt that is a system-reminder injection","_expected":false,"type":"user","message":{"content":"<system-reminder>background context</system-reminder>"}}
+{"_name":"isMeta string row","_expected":false,"type":"user","isMeta":true,"message":{"content":"Caveat: local command output"}}
+{"_name":"array content WITH a text block (attachment-carrying prompt)","_expected":true,"type":"user","message":{"content":[{"type":"text","text":"see the attached diff"},{"type":"image","source":{}}]}}
+{"_name":"array content, tool_result only (mid-turn, not a boundary)","_expected":false,"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}
+{"_name":"array content with BOTH text and tool_result","_expected":false,"type":"user","message":{"content":[{"type":"tool_result","content":"ok"},{"type":"text","text":"trailing note"}]}}
+{"_name":"array content whose text is a system-reminder injection","_expected":false,"type":"user","message":{"content":[{"type":"text","text":"<system-reminder>hook output</system-reminder>"}]}}
+{"_name":"isMeta array-with-text row","_expected":false,"type":"user","isMeta":true,"message":{"content":[{"type":"text","text":"meta note"}]}}
+{"_name":"empty array content","_expected":false,"type":"user","message":{"content":[]}}
+{"_name":"assistant row","_expected":false,"type":"assistant","message":{"content":[{"type":"text","text":"working on it"}]}}
+{"_name":"system compact_boundary row","_expected":false,"type":"system","subtype":"compact_boundary"}
+{"_name":"user row with no message field","_expected":false,"type":"user"}
+{"_name":"message is a string, not an object","_expected":false,"type":"user","message":"hello"}
+{"_name":"message is an array, not an object","_expected":false,"type":"user","message":["x"]}
+{"_name":"message is null","_expected":false,"type":"user","message":null}

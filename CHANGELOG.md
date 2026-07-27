@@ -8,6 +8,62 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.62.0] - 2026-07-27
+
+The 2026-07-27 four-dimension audit's fix batch (report: `docs/comprehensive-audit-2026-07-27-v0.61.0.md`). Ships spec v6.24.1.
+
+Two of the four HIGH findings are the same defect the 2026-07-15 audit named and this release finally gates: **extracting a shared helper only fixes the consumers someone remembers to rewire, and nothing enforced the consumer set.** Both fixes are a single source plus a test that DERIVES its consumers from the source rather than naming them.
+
+### The flatten seam — one recipe, three gates
+
+- **fix: `banned-vocab-check.sh` was never rewired to v0.58.0's shared flattener.** It still ran `tr '\n' ' '` under a comment claiming parity with both siblings. A newline became a SPACE, so `git commit` on line 2+ of an ordinary multi-line block sat at neither `^` nor a `[;&|]` separator and the §10-V gate exited at its trigger check — the exact bug v0.58.0 fixed in the other two. Live cross-gate divergence confirmed before the fix: `npm test\ngit push origin main` fired ship-baseline and not banned-vocab.
+- **fix: `memory-read-check.sh` flattened without stripping quoted bodies.** The flatten turns a newline inside an `-m` payload into `;` — precisely the separator the trigger anchors on — so `git commit -m "fix parser\ndeploy notes"` put a bare `deploy` at a synthetic segment start. It denied two of the audit's own probe commands.
+- **fix: `hook_flatten_cmd` decides line continuation by backslash PARITY.** `\\` is an escaped literal backslash, so the newline after it still separates commands and bash runs both; the old unconditional `sub(/\\$/, "")` joined them, hiding a `git push` from the §7 and §11 gates.
+- **`hook_trigger_view`** (hook-common.sh) is now the single three-stage recipe — strip heredocs → flatten → empty quoted bodies, in that load-bearing order — and `tests/hooks/trigger-view-parity.test.sh` derives the consumer set by grepping for the segment-anchor idiom, asserts a floor on it, and requires every member to call the shared function and to carry no private flatten spelling.
+
+### The turn-boundary seam — one definition, two engines
+
+- **fix: "what counts as a real typed user turn" had three implementations with three answers**, each citing the same memory as justification. banned-vocab accepted STRING content only; session-end accepted arrays but filtered nothing; sampling-audit filtered `tool_result` but not `isMeta`. The divergent shape — a prompt carrying an attachment (array content with a text block) — had no fixture in ANY of the three, and under banned-vocab's reading it was not a boundary, so an interrupted turn's stale prose stayed inside the §10-V Path 2 scan window. That is the v0.23.19 deny-loop field report, reachable again through a different content shape.
+- **`scripts/lib/transcript-user-turn.js#isUserTurn` ↔ `HOOK_USER_TURN_JQ`** are the two engines; `tests/scripts/user-turn-parity.test.js` runs both over `tests/fixtures/user-turn-shapes.jsonl` (12 shapes, including the array-with-text one) and requires identical verdicts plus no inlined content-shape test in either hook. Same gate model as the §10-V dual-engine parity test.
+
+### §8 — separated long-form options (full FN matrix)
+
+- **fix: `s8_wrap_optarg` modeled short flags only**, so `sudo --user svc rm -rf $EVIL` — the spelling every `getopt_long` tool accepts — had `--user` eaten by the generic `-*` arm, broke the strip loop on the bare word `svc`, and never reached the command word. Same for `env --unset FOO`, `timeout --signal KILL 5`, `stdbuf --output L`. The glued `--user=svc` form was already covered.
+- **fix: the npx-runner gap group admitted flag tokens but not a flag's separated ARGUMENT**, so `npm --prefix ./pkgs exec <pkg>` and `yarn --cwd x dlx <pkg>` — ordinary monorepo spellings — failed the regex outright and the unpinned fetch-execute went unexamined. A bare word is still admitted only directly after a flag, so `npm run exec-tests` stays out.
+- Corpus data rows 378 → 405 (suite case count 469 → 500). Per `feedback_s8_false_negative_audit`: RED rows first, FP guards green before and after, and a differential keyed by note across every pre-existing row — **0 verdict changes** on all three passes (F29/F30, then F32, then F33). Pure addition.
+
+### Found by the pre-tag review, folded into this release
+
+Two independent reviewers ran against the staged diff before the tag (§EXT §12 Author ≠ reviewer). Four of their findings are fixed here rather than deferred:
+
+- **fix (§8, graded BLOCKER by the reviewer): the heredoc opener line kept only its LEFT side.** `line="${line%%<<*}"` in `sanitize_cmd` discarded everything after the introducer, but bash runs the tail of `cat <<EOF && rm -rf $VAR` — so all three gates went blind on a segment they deny without the heredoc (control verified). Pre-existing at HEAD, and the shared `hook_strip_heredoc_bodies` has excised only the `<<TAG` token since v0.58.0 with a header naming this exact defect; the state machine never got the same treatment. Now token-excision, matching the awk.
+- **fix: `session-end-check.sh` counted a validation that ran BEFORE the mutation.** The trip condition is `mutations>0 && validates==0`, and validates were order-independent, so `npm test` → `Edit` read as validated. Latent until this release's boundary change correctly stopped treating an isMeta `!command` caveat row as a user turn — which widened the slice and turned the flaw into live suppression of the §11 checkpoint on a common shape. A mutation now resets the counter, so `validates == 0` means "nothing validated the LAST mutation". Two cases pin both directions.
+- **fix: §8 `s8_wrap_optarg` closed the long forms and left their short twins open.** `sudo --prompt hi rm -rf $EVIL` denied while `sudo -p hi rm -rf $EVIL` allowed; same for `-D`/`--chdir` and `env -C`. Short and long spellings are now listed in pairs (`-p -D -r -t -h`, `env -C`).
+- **fix: the jq engine returned `empty`, not `false`, for a non-object `.message`.** `map(is_user_turn)` then produced an array SHORTER than its input and every index after it shifted — the mask arithmetic in session-end-check.sh reads a boundary off the end of that. Not a shape real transcripts carry, but it was the one place the two engines disagreed; guarded, with three fixture rows.
+
+Reviewer findings recorded rather than fixed — with measurements — in `tasks/audit-2026-07-27-deferred.md`: the runner-payload false negative that quote-emptying introduces for `bash -lc "…"` / `ssh host '…'` (the hook-common header no longer claims otherwise), comment-continuation lines hiding a command from the flattener, CRLF heredoc terminators, and `npm --silent run exec <script>` over-matching.
+
+### Integrity checks that were reporting on themselves
+
+- **feat: SessionStart detects spec CONTENT drift, not just a version match.** `spec_drift_check` compares each shipped `spec/*.md` against its `~/.claude/` copy with `cmp -s` on the versions-agree branch (~1ms, no node spawn, no `sha256sum`-vs-`shasum` split). `spec-hash.js#compareSpecs` did this correctly but was imported only by doctor and status — both manual — so a hand-edited `~/.claude/CLAUDE.md` drifted indefinitely. Advisory, kill switch `DISABLE_SPEC_DRIFT_BANNER=1`; listing only, never a rewrite.
+- **feat: `npm pack` tarball contents are gated.** `.npmignore` is a whitelist whose own header names `npm pack --dry-run` as the verification, and that step ran in no workflow and no test — every test runs against the repo checkout, where each file exists by construction. The new test walks the CLI's transitive local-import closure and requires each hop to be in the tarball. Verified discriminating: the same closure over a plugin-side entry point reports 5 files missing.
+- **fix: `tests/run-all.sh` suite-count floors.** Both shell loops guard with `[[ -f "$t" ]] || continue`, so an unexpanded glob skipped the whole layer while `FAIL` stayed 0 and the run printed "all suites passed".
+- **fix: `memory-read-check.test.sh` reported 44/44 while asserting 41 cases.** The total is now derived from the file, not hand-maintained.
+- **fix: heredoc terminators respect `<<-`.** Both stripper implementations (the shared awk one and pre-bash's char state machine) accepted an INDENTED terminator for a plain `<<EOF`, which bash reads as body text — so the strip stopped early and handed the rest of the real body to the detectors as commands. The dead `dash` variable in the awk program was the tell that the guard was intended.
+- **fix: `hook_strip_heredoc_bodies` degrades to passthrough** if its awk program is ever empty, instead of emitting nothing and having every gate match an empty command. Records `fail-open` with reason `heredoc-awk-empty`.
+- **fix: `cache-prune.js` imports `SEMVER_RE`** instead of shadowing the exported one; **fix:** trailing commas removed from the drifted copy of the banner-merge jq program; **fix:** `rule-hits.test.sh`'s empty-array expansions are `set -u`-safe on bash < 4.4, where its own loud SKIP path would otherwise hard-fail.
+
+### Spec v6.24.1 — five text defects
+
+Precedence and reachability, each a place where two parts of the spec said different things with nothing deciding between them: §2.1's `MCP … authoritative` (contradicted §3's Order line and §2.1's own `never mcp__chrome` row) is now scoped to that tool's own usage; §1.5 inlines `co-located` (§2 cited §1.5 for a term only §EXT defined, and it decides L1-vs-L2 where extended must not load) and states the general rule that a core citation without a §EXT pointer is a defect; §0 reads `no bracketed signals`; §12's `Gated = missing` no longer states a premise that licenses the call it forbids; OPERATOR.md §13.1's size budget is restated as HARD caps in BYTES pointing at §0.1 and the extended Sizing line. Full entries: `spec/CLAUDE-changelog.md`.
+
+### Retractions (verified against source, not fixed)
+
+- **The `sort -V` vs `semverCmp` divergence is not reachable.** Every bash comparison site already pre-filters both operands with the regex `SEMVER_RE` encodes. What is true is that the guard is hand-repeated at five sites, so `tests/scripts/semver-compare-parity.test.js` enumerates the `sort -V` call sites and requires the guard, plus pins both engines to the same verdicts on strict-semver pairs.
+- **`upgrade-lifecycle` does not loud-skip on CI** despite `ci.yml`'s shallow checkout — its `git fetch --tags` fallback recovers the tag, confirmed in the v0.61.0 run logs on all four legs.
+
+Deferred, with reasons, in `tasks/audit-2026-07-27-deferred.md`: the marketplace publish-before-CI window (needs a release-flow decision, rollback runbook shipped meanwhile), `doctor()`'s 632-line body, and the accepted §8 residuals.
+
 ## [0.61.0] - 2026-07-27
 
 Same-day companion to 0.60.0: that release fixed the rule layer (spec §EXT §12 `Gated = missing`); this one makes the checklist layer observable. The incident's root cause was never a missing rule — it was a runbook step that contradicted a loaded rule and won. A sweep of every project's ship runbook found the review-before-tag step absent in ALL of them (claudemd's had `self-review /` as an equal option; five others had no review step at all).

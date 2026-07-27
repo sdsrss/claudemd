@@ -45,25 +45,22 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 
 # Single jq pass over last 200 lines: find last user-input message,
 # slice forward, classify tool_use entries.
-RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s '
+# The boundary test is the shared `is_user_turn` (HOOK_USER_TURN_JQ in
+# hook-common.sh), single-sourced with scripts/lib/transcript-user-turn.js and
+# gated by tests/scripts/user-turn-parity.test.js (2026-07-27 audit, H2). The
+# local spelling this replaces counted isMeta rows, <system-reminder> injections,
+# and rows carrying BOTH a tool_result and trailing text as user input — each of
+# which moves the boundary LATER and shrinks the slice this net inspects. The
+# shared definition errs the other way, which is the safe side for an advisory
+# checkpoint. The pre-v0.23.x defect the old comment recorded is still guarded:
+# is_user_turn branches on content type before iterating, so a string never
+# reaches an array operator (jq "Cannot iterate over string" errored the whole
+# filter under 2>/dev/null and the hook exited 0 silently).
+RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
   split("\n") |
   map(select(length > 0) | try fromjson catch null) |
   map(select(. != null)) |
-  (map(.type == "user" and (
-        # A human-typed user message carries text input in EITHER shape:
-        #   - string content (the common CC form for a typed prompt), or
-        #   - array content with a {type:"text"} block.
-        # tool_result rows are array content WITHOUT a text block, not input.
-        # The bare any(.type=="text") here pre-fix iterated the content
-        # unconditionally; on a string it threw jq "Cannot iterate over
-        # string", the whole filter errored under 2>/dev/null, RESULT came
-        # back empty, and the hook silently exited 0. Because every real
-        # session has >=1 string-content prompt in the last 200 lines, the
-        # section-11 session-exit safety net never fired in production. The
-        # array-only test fixtures masked it (format drift). Guard iterate by type.
-        ((.message.content | type) == "string")
-        or ((.message.content | type) == "array" and (.message.content | any(.type == "text")))
-      ))) as $mask |
+  (map(is_user_turn)) as $mask |
   ($mask | to_entries | map(select(.value)) | (last // {key: -1}) | .key) as $lastUser |
   .[$lastUser + 1:] |
   map(select(.type == "assistant") | (.message.content // [])) |
@@ -74,6 +71,15 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s '
     {mutations: 0, validates: 0, recent: []};
     if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit") then
       .mutations += 1
+      # A validation that ran BEFORE this mutation did not validate it, so a
+      # mutation resets the counter: `validates == 0` at the end now means "no
+      # validation after the LAST mutation", which is what §11 session-exit
+      # actually asks. Pre-fix any validate anywhere in the slice suppressed the
+      # checkpoint, so `npm test` → `Edit` read as validated. Order-independence
+      # was latent until the v0.62.0 boundary change widened the slice (an isMeta
+      # `!command` caveat row stopped being a boundary, correctly), which turned
+      # the latent flaw into a live suppression on a common shape.
+      | .validates = 0
       | .recent = ((.recent + [{name: $t.name, target: ($t.input.file_path // $t.input.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
     elif $t.name == "Bash" then
       ($t.input.command // "") as $cmd |

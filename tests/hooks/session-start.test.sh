@@ -460,7 +460,59 @@ else
 fi
 rmdir "$TMP_HOME/cache/9.9.9" 2>/dev/null || true
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((24 - FAIL))/24 passed"; exit 1
+# --- 2026-07-27 audit (M6): spec content drift on the versions-agree branch ---
+# Pre-fix the healthy branch compared version NUMBERS only, so a hand-edited
+# ~/.claude/CLAUDE.md matched forever. These cases run on the real $PLUGIN_ROOT
+# spec dir with a sandbox $HOME, so the shipped files are the reference.
+rm -f "$HOME/.claude/.claudemd-state/last-session-summary.json" 2>/dev/null || true
+for f in "$PLUGIN_ROOT"/spec/*.md; do cp "$f" "$HOME/.claude/$(basename "$f")"; done
+
+# Case 25: identical copies → silent (no false banner on a healthy install).
+OUT25=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT25" ]]; then
+  echo "PASS: 25 identical installed spec emits no drift banner"
+else
+  echo "FAIL: 25 drift banner on a clean install (out: $OUT25)"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 24/24 passed"
+
+# Case 26: one byte appended to an installed spec file → banner naming that file.
+printf '\n<!-- hand edit -->\n' >> "$HOME/.claude/CLAUDE.md"
+OUT26=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if echo "$OUT26" | grep -q 'installed spec differs' && echo "$OUT26" | grep -q 'CLAUDE.md'; then
+  echo "PASS: 26 hand-edited installed spec raises the drift banner"
+else
+  echo "FAIL: 26 drift banner missing for an edited CLAUDE.md (out: $OUT26)"; FAIL=$((FAIL+1))
+fi
+
+# Case 27: the banner is one JSON object, not two concatenated ones — CC parses
+# hook stdout with a strict single-value JSON.parse
+# (feedback_hook_stdout_single_json_object).
+COUNT27=$(printf '%s' "$OUT26" | jq -s 'length' 2>/dev/null || echo "unparseable")
+if [[ "$COUNT27" == "1" ]]; then
+  echo "PASS: 27 drift banner keeps the single-JSON-object stdout contract"
+else
+  echo "FAIL: 27 stdout was not exactly one JSON object (got: $COUNT27)"; FAIL=$((FAIL+1))
+fi
+
+# Case 28: kill switch.
+OUT28=$(DISABLE_UPSTREAM_CHECK=1 DISABLE_SPEC_DRIFT_BANNER=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT28" ]]; then
+  echo "PASS: 28 DISABLE_SPEC_DRIFT_BANNER=1 suppresses the drift banner"
+else
+  echo "FAIL: 28 drift banner leaked under its kill switch (out: $OUT28)"; FAIL=$((FAIL+1))
+fi
+
+# Case 29: a spec file this version does not install is not drift.
+rm -f "$HOME/.claude/CLAUDE.md"
+OUT29=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT29" ]]; then
+  echo "PASS: 29 absent installed spec file is not reported as drift"
+else
+  echo "FAIL: 29 absent file reported as drift (out: $OUT29)"; FAIL=$((FAIL+1))
+fi
+
+TOTAL=$(grep -oE '"(PASS|FAIL): [0-9]+' "$0" | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
+if (( FAIL > 0 )); then
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
+fi
+echo "Tests: $TOTAL/$TOTAL passed"

@@ -285,7 +285,7 @@ if [[ -z "$_arch2_locale" ]]; then
 fi
 _arch2_saved_lc_all="${LC_ALL-}"; _arch2_saved_lc_ctype="${LC_CTYPE-}"
 [[ -n "$_arch2_locale" ]] && export LC_ALL="$_arch2_locale" LC_CTYPE="$_arch2_locale"
-for f in "${ARCH2_FIXTURES[@]}"; do
+for f in ${ARCH2_FIXTURES[@]+"${ARCH2_FIXTURES[@]}"}; do
   bash_enc=$(run "hook_encode_project '$f'")
   js_enc=$(js_encode "$f")
   [[ -n "$bash_enc" && "$bash_enc" == "$js_enc" ]] \
@@ -299,7 +299,7 @@ fi
 # byte-wise. That is acceptable (it matches the pre-2026-07-17 tr behavior) but
 # must never produce something a path lookup could not survive — assert it still
 # yields a non-empty, dash-and-alnum-only name for every fixture.
-for f in "${ARCH2_FIXTURES[@]}"; do
+for f in ${ARCH2_FIXTURES[@]+"${ARCH2_FIXTURES[@]}"}; do
   c_enc=$(LC_ALL=C run "hook_encode_project '$f'")
   [[ -n "$c_enc" && "$c_enc" =~ ^[A-Za-z0-9-]+$ ]] \
     || { echo "FAIL: ARCH-2 C-locale degradation on '$f' produced '$c_enc'"; exit 1; }

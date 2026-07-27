@@ -53,7 +53,15 @@ fi
 # whose `git commit` substring was treated as a real invocation. Mirrors the
 # memory-read-check.sh v0.9.28 segment-anchor fix and the v0.17.4
 # ship-baseline-check.sh sibling.
-CMD_FLAT=$(printf '%s' "$CMD" | tr '\n' ' ')
+#
+# 2026-07-27 audit (H1): that "mirrors" claim was false for two years of the
+# file's life — the siblings moved to the shared strip+flatten in v0.58.0 and
+# this line stayed on `tr '\n' ' '`. A newline became a SPACE, so `git commit`
+# on line 2+ of an ordinary multi-line block sat at neither `^` nor `[;&|]` and
+# the whole gate exited at the trigger check. Now on the shared recipe, which
+# also empties quoted bodies. Path 1 below extracts the message from the RAW
+# $CMD, so the commit-message scan is unaffected by that strip.
+CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 
 # Two orthogonal triggers:
 #   GIT_COMMIT_RE (Path 1, existing): scans the commit-message body for any
@@ -235,14 +243,20 @@ TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 # denies, claudemd.txt 2026-06-12). No real prompt in the tail window →
 # max // -1 → slice from 0 = pre-fix whole-window behavior. tail -n 200
 # caps memory.
+#
+# 2026-07-27 audit (H2): the boundary test is now the shared `is_user_turn`
+# (HOOK_USER_TURN_JQ, hook-common.sh), not a local spelling. The local one
+# accepted STRING content only, so a prompt carrying an attachment — array
+# content with a text block — was not a boundary here while its two sibling
+# engines treated it as one. Consequence was the pre-v0.23.19 shape returning
+# through a different door: the user intervenes with a screenshot attached, the
+# agent recalibrates, and this scan still reads the pre-intervention prose and
+# denies every ship attempt.
 LAST_TEXT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null \
-  | jq -R -r -n '
+  | jq -R -r -n "$HOOK_USER_TURN_JQ"'
       [inputs | try fromjson catch empty] as $e
       | ([ $e | to_entries[]
-           | select(.value.type == "user")
-           | select(.value.isMeta != true)
-           | select((.value.message.content | type) == "string")
-           | select(.value.message.content | startswith("<system-reminder") | not)
+           | select(.value | is_user_turn)
            | .key ] | max // -1) as $u
       | [ $e[($u + 1):][]
           | select(.type == "assistant")

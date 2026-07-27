@@ -239,7 +239,14 @@ END {
       term = 0
       for (j = i + 1; j <= n; j++) {
         t = lines[j]
-        sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+        # `<<-` (and only `<<-`) lets the terminator be indented, and bash strips
+        # TABS there, not spaces. The unconditional strip made a plain `<<EOF`
+        # terminate on an indented `EOF` that bash treats as body text, so the
+        # stripper stopped early and handed the REST of the real body to the
+        # detectors as commands (2026-07-27 audit, L1 — the computed-but-unread
+        # `dash` variable was the tell that this guard was intended).
+        if (dash) sub(/^\t+/, "", t)
+        sub(/[ \t]+$/, "", t)
         if (t == tag) { term = j; break }
       }
       # No terminator anywhere below → this `<<` is a left-shift or quoted text,
@@ -255,6 +262,17 @@ END {
 AWKPROG
 
 hook_strip_heredoc_bodies() {
+  # An empty program would make awk emit NOTHING, and every consuming gate would
+  # then match against an empty command and allow everything — deaf, not loud,
+  # the opposite of the hook_record_failopen posture used elsewhere here
+  # (2026-07-27 audit, L2). Defensive today: the `read -r -d ''` assignment above
+  # is unconditional. Degrade to passthrough, which costs heredoc-body FPs and
+  # never costs a bypass.
+  if [[ -z "${HOOK_HEREDOC_AWK:-}" ]]; then
+    hook_record_failopen hook-common heredoc-awk-empty 2>/dev/null || true
+    cat
+    return
+  fi
   awk "$HOOK_HEREDOC_AWK"
 }
 
@@ -275,6 +293,97 @@ hook_strip_heredoc_bodies() {
 #
 # A trailing backslash is a LINE CONTINUATION, not a separator — those lines are
 # joined instead, so `git \` + newline + `push` stays one command.
+#
+# 2026-07-27 audit: the join is decided on the PARITY of the trailing backslash
+# run, not its presence. `\\` is an escaped literal backslash, so the newline
+# after it still terminates the command and bash runs both — the old
+# unconditional `sub(/\\$/, "")` joined them anyway, and `echo a\\` + newline +
+# `git push origin main` left the push at neither `^` nor a separator, blinding
+# the §7 and §11 gates. Odd run = real continuation (last backslash escapes the
+# newline); even run = literal backslashes, newline separates.
 hook_flatten_cmd() {
-  awk '{ if (sub(/\\$/, "")) printf "%s", $0; else printf "%s;", $0 } END { print "" }'
+  awk '{
+    nb = 0
+    if (match($0, /\\+$/)) nb = RLENGTH
+    if (nb % 2 == 1) printf "%s", substr($0, 1, length($0) - 1)
+    else printf "%s;", $0
+  } END { print "" }'
 }
+
+# hook_trigger_view — stdin → stdout, the canonical TRIGGER-MATCH view of a
+# command: heredoc bodies blanked, newlines turned into real separators, quoted
+# bodies emptied.
+#
+# SINGLE SOURCE for every hook whose trigger regex anchors on
+# `(^|[[:space:]]*[;&|]+[[:space:]]*)` (2026-07-27 audit, H1/M1). v0.58.0
+# extracted the two stages above but rewired only two of the three consumers:
+# banned-vocab-check.sh kept `tr '\n' ' '` under a comment claiming parity with
+# both siblings, so a `git commit` on line 2+ never reached the §10-V scan; and
+# memory-read-check.sh flattened without the quote strip, so a newline inside an
+# `-m` payload manufactured the very `;` the trigger anchors on and the gate
+# fired on quoted prose. Naming consumers is what failed — `trigger-view-parity`
+# derives the set from the source and requires each member to call this.
+#
+# Order is load-bearing, in all three stages:
+#   strip heredocs FIRST — the flatten manufactures separators, so an unstripped
+#     body would hand its own lines to the trigger as commands;
+#   strip quotes LAST — a multi-line `-m` payload is a single line by then, so
+#     one line-based sed catches it (see feedback_sed_line_based_misses_multiline).
+# Emptying quoted bodies can only REMOVE trigger matches, never add them. It is
+# NOT free: a runner payload IS a real invocation inside quotes, so
+# `bash -lc "npm ci && git push"`, `sh -c 'npm test; npm publish'` and
+# `ssh host 'cd r && git push'` stop tripping the §10-V and §11 triggers. Measured
+# in the v0.62.0 pre-tag review (old view FIRE → new view quiet; bare `git push`
+# and `git commit -m "x" && git push` unchanged). Accepted for now because
+# ship-baseline-check.sh — the gate that guards releases — has had exactly this
+# blind spot since v0.23.11, so the three gates are now consistent rather than
+# one of them being newly blind; and because the alternative was the live
+# false-DENY this recipe fixes (a newline inside an `-m` payload manufacturing
+# the separator the anchor needs). Closing it means unwrapping `-c` / ssh payloads
+# before the strip — see tasks/audit-2026-07-27-deferred.md.
+hook_trigger_view() {
+  hook_strip_heredoc_bodies | hook_flatten_cmd | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+}
+
+# HOOK_USER_TURN_JQ — a jq `def is_user_turn:` prelude, prepended to any jq
+# program that needs the last REAL typed user turn (a turn boundary).
+#
+# SINGLE SOURCE with scripts/lib/transcript-user-turn.js#isUserTurn; the pair is
+# held together by tests/scripts/user-turn-parity.test.js over the shared corpus
+# tests/fixtures/user-turn-shapes.jsonl. Rationale for each clause lives in the
+# JS module's header — keep the two in step, the parity test will say if not.
+#
+# 2026-07-27 audit (H2): three consumers (banned-vocab Path 2, session-end
+# §11 net, sampling-audit denominators) each spelled this differently while all
+# three cited feedback_cc_user_content_string_vs_array. Divergent case: array
+# content carrying a text block — a prompt with an attachment — which
+# banned-vocab did not count, leaving an interrupted turn's stale prose inside
+# the §10-V scan window (the v0.23.19 deny loop through a new content shape).
+#
+# `read -r -d ''` rather than `$(cat <<EOF)`: bash 3.2 cannot parse a heredoc
+# nested in a command substitution (feedback_bash32_nested_heredoc_cmdsubst).
+IFS= read -r -d '' HOOK_USER_TURN_JQ <<'JQPROG' || true
+def is_user_turn:
+  (.type? == "user")
+  and (.isMeta? != true)
+  # `.message` must be an OBJECT before `.message.content` is asked for: on a
+  # non-object (`"message": "hello"`) jq's `.message.content?` yields EMPTY
+  # rather than false, so `map(is_user_turn)` returns a SHORTER array than its
+  # input and every index after it shifts — the mask/slice arithmetic in
+  # session-end-check.sh then reads the wrong boundary. Not a shape real CC
+  # transcripts write, but it is the difference between the two engines: JS
+  # returns false. Found by the v0.62.0 pre-tag review.
+  and ((.message? | type) == "object")
+  and (
+    (((.message.content?) | type) == "string"
+      and ((.message.content | startswith("<system-reminder")) | not))
+    or
+    (((.message.content?) | type) == "array"
+      and ((.message.content | map(select(type == "object" and .type == "text")) | length) > 0)
+      and ((.message.content | any(type == "object" and .type == "tool_result")) | not)
+      and ((.message.content
+            | map(select(type == "object" and .type == "text") | (.text // ""))
+            | join("\n")
+            | startswith("<system-reminder")) | not))
+  );
+JQPROG

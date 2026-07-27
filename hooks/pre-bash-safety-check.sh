@@ -102,7 +102,15 @@ sanitize_cmd() {
   local in_heredoc=0 heredoc_tag="" has_term j n
   # ['"]? = optional surround quote on tag (handles <<EOF, <<'EOF', <<"EOF").
   # \047 = single quote (octal); double quote can sit literally inside char class.
-  local heredoc_re=$'<<-?[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
+  # Group 1 captures the `-` of `<<-` (2026-07-27 audit, L1): only that form lets
+  # the terminator be indented. Treating a plain `<<EOF` as terminated by an
+  # INDENTED `EOF` — which bash reads as body text — stopped the strip early and
+  # handed the rest of the real body to the detectors as commands. Same defect
+  # and same fix as hook_strip_heredoc_bodies in hook-common.sh; the two
+  # implementations are independent (this one is a char state machine that also
+  # tracks quoting), so both had to be corrected.
+  local heredoc_re=$'<<(-?)[[:space:]]*[\047"]?([[:alpha:]_][[:alnum:]_]*)[\047"]?'
+  local heredoc_dash=""
 
   # Read into an array so the heredoc test can look ahead for a terminator.
   local -a lines=()
@@ -113,15 +121,18 @@ sanitize_cmd() {
   for (( i=0; i<n; i++ )); do
     line="${lines[i]}"
     if (( in_heredoc )); then
-      # Terminator: optional leading whitespace (for <<-TAG indented form), tag, optional trailing whitespace.
-      if [[ "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then
-        in_heredoc=0; heredoc_tag=""
+      # Terminator: leading whitespace allowed ONLY for the `<<-` form (L1);
+      # a plain `<<TAG` requires the tag at column 0, exactly as bash does.
+      if [[ -n "$heredoc_dash" && "$line" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]] \
+         || [[ -z "$heredoc_dash" && "$line" =~ ^${heredoc_tag}[[:space:]]*$ ]]; then
+        in_heredoc=0; heredoc_tag=""; heredoc_dash=""
       fi
       out+=$'\n'
       continue
     fi
     if [[ "$line" =~ $heredoc_re ]]; then
-      heredoc_tag="${BASH_REMATCH[1]}"
+      heredoc_dash="${BASH_REMATCH[1]}"
+      heredoc_tag="${BASH_REMATCH[2]}"
       # Only a REAL heredoc if a matching terminator line exists later. `heredoc_re`
       # matches any `<<word`, but `<<` is also a left-shift operator ($((a<<b)),
       # $[a<<b], `let a<<b`), sits inside quoted strings (`echo "a<<b"`), and
@@ -146,14 +157,22 @@ sanitize_cmd() {
       # clear the "ordinary mistake" bar, so it is not chased here.
       has_term=0
       for (( j=i+1; j<n; j++ )); do
-        if [[ "${lines[j]}" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]]; then has_term=1; break; fi
+        if [[ -n "$heredoc_dash" && "${lines[j]}" =~ ^[[:space:]]*${heredoc_tag}[[:space:]]*$ ]] \
+           || [[ -z "$heredoc_dash" && "${lines[j]}" =~ ^${heredoc_tag}[[:space:]]*$ ]]; then has_term=1; break; fi
       done
       if (( has_term )); then
         in_heredoc=1
-        # Keep portion of line BEFORE the `<<` introducer.
-        line="${line%%<<*}"
+        # Excise ONLY the `<<TAG` token, keeping both sides (F33, v0.62.0 pre-tag
+        # review). This used to be `line="${line%%<<*}"`, which threw away
+        # everything after the introducer — but bash runs the tail of
+        # `cat <<EOF && rm -rf $VAR`, so all three gates went blind on a segment
+        # they deny without the heredoc (control verified). hook_strip_heredoc_bodies
+        # has done it this way since v0.58.0 and its header names this exact defect
+        # as one it fixed for the memory-read copy; this state machine never got it.
+        _hd_tok="${BASH_REMATCH[0]}"
+        line="${line%%"$_hd_tok"*}${line#*"$_hd_tok"}"
       else
-        heredoc_tag=""
+        heredoc_tag=""; heredoc_dash=""
       fi
     fi
     out+="$line"$'\n'
@@ -540,14 +559,28 @@ s8_in_list() {
 # `--flag=value` forms carry their own argument and are consumed by the generic
 # `-*` arm. Closing `timeout -s KILL 5` / `sudo -u svc` here also retires the two
 # option-with-arg residuals the strip header documented.
+# F29 (2026-07-27 audit): the SEPARATED long forms are listed alongside the short
+# ones. The table had short flags only, so `sudo --user svc rm -rf $EVIL` — the
+# spelling every getopt_long tool accepts — had `--user` consumed by the generic
+# `-*` arm, then broke the strip loop on the bare word `svc`, and the command word
+# was never reached. Glued `--user=svc` needs no entry: it carries its own
+# argument and the generic arm handles it. Entries stay narrow (only flags whose
+# argument is genuinely separate) because over-consuming eats the command word.
 s8_wrap_optarg() {
   case "$1" in
-    env)     [[ "$2" == '-u' || "$2" == '-S' ]] ;;
+    env)     [[ "$2" == '-u' || "$2" == '-S' || "$2" == '-C' || "$2" == '--unset' || "$2" == '--split-string' || "$2" == '--chdir' ]] ;;
     exec)    [[ "$2" == '-a' ]] ;;
-    time)    [[ "$2" == '-o' || "$2" == '-f' ]] ;;
-    timeout) [[ "$2" == '-s' || "$2" == '-k' ]] ;;
-    stdbuf)  [[ "$2" == '-i' || "$2" == '-o' || "$2" == '-e' ]] ;;
-    sudo)    [[ "$2" == '-u' || "$2" == '-g' || "$2" == '-U' || "$2" == '-C' ]] ;;
+    time)    [[ "$2" == '-o' || "$2" == '-f' || "$2" == '--output' || "$2" == '--format' ]] ;;
+    timeout) [[ "$2" == '-s' || "$2" == '-k' || "$2" == '--signal' || "$2" == '--kill-after' ]] ;;
+    stdbuf)  [[ "$2" == '-i' || "$2" == '-o' || "$2" == '-e' || "$2" == '--input' || "$2" == '--output' || "$2" == '--error' ]] ;;
+    # Short and long spellings are listed in PAIRS. F29 added the long forms
+    # only, which closed the spelling a script generates and left the one a human
+    # types (`sudo -p` vs `sudo --prompt`) — caught by the v0.62.0 pre-tag review.
+    sudo)    [[ "$2" == '-u' || "$2" == '-g' || "$2" == '-U' || "$2" == '-C' \
+              || "$2" == '-p' || "$2" == '-D' || "$2" == '-r' || "$2" == '-t' || "$2" == '-h' \
+              || "$2" == '--user' || "$2" == '--group' || "$2" == '--other-user' \
+              || "$2" == '--close-from' || "$2" == '--prompt' || "$2" == '--chdir' \
+              || "$2" == '--role' || "$2" == '--type' || "$2" == '--host' ]] ;;
     doas)    [[ "$2" == '-u' || "$2" == '-C' ]] ;;
     *)       return 1 ;;
   esac
@@ -998,7 +1031,13 @@ fi
 # pkg` — both accepted by the real package managers) fell out of the gate. Only
 # `-flag` tokens may sit in the gap: a bare word there is a different subcommand
 # (`npm run exec-tests`) and must stay out.
-NPX_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+)*'
+# F30 (2026-07-27 audit): a flag may carry a SEPARATED argument. F26 admitted
+# `-flag` tokens only, so `npm --prefix ./pkgs exec <pkg>` / `yarn --cwd x dlx
+# <pkg>` — ordinary monorepo spellings — failed the regex outright and the
+# unpinned fetch-execute was never examined. A bare word is admitted ONLY
+# directly after a flag (its argument); one standing alone is still a different
+# subcommand and must keep `npm run exec-tests` out of the gate.
+NPX_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
 NPX_CMD_REGEX="^(npx|bunx|npm${NPX_GLOBAL_FLAGS}[[:space:]]+exec|pnpm${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|yarn${NPX_GLOBAL_FLAGS}[[:space:]]+dlx)([[:space:]]|$)"
 runner=""
 npx_seg=""

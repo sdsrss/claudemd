@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-
-const SEMVER_RE = /^\d+\.\d+\.\d+$/;
+// Single source (2026-07-27 audit, L8): this file declared its own
+// `/^\d+\.\d+\.\d+$/` shadowing the exported one in paths.js. Equivalent today,
+// tested only on the paths.js side — the shape every drifted seam starts as.
+import { SEMVER_RE } from './paths.js';
 
 // Prune sibling version dirs of `pluginRoot` down to `keep` newest (by semver),
 // always retaining `pluginRoot` itself. Scope-gated to cache layouts — the
