@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.62.1] - 2026-07-27
+
+Hotfix for a red CI on the 0.62.0 tag. No hook, script, or spec behavior changes beyond the lint directive.
+
+- **fix: `HOOK_USER_TURN_JQ` carries a `# shellcheck disable=SC2034` directive.** The constant is consumed by the two hooks that source `hook-common.sh`, which shellcheck cannot see when it lints the library in isolation; its sibling `HOOK_HEREDOC_AWK` escapes the same warning only because it also has an in-file consumer. CI gates shellcheck at warning+, so the 0.62.0 tag went red.
+- **fix: `tests/run-all.sh` runs shellcheck.** This is the reason the failure reached a tag at all. The pre-ship runbook's "npm test green locally" step could not surface a class CI blocks — and worse, `npm-publish.yml` **installs shellcheck as a test prereq and then runs `tests/run-all.sh`**, which never invoked it, so the npm channel's `needs: test` gate was weaker than ci.yml's and 0.62.0 published on a red-at-ci commit. Both channels now run the same check.
+- Scope is every TRACKED `.sh` (52 files), a deliberate superset of `ci.yml`'s explicit list rather than a hand-copied mirror of it — mirrors are the drift shape 0.62.0 exists to fix. Absent shellcheck is a loud SKIP, not a silent pass.
+
 ## [0.62.0] - 2026-07-27
 
 The 2026-07-27 four-dimension audit's fix batch (report: `docs/comprehensive-audit-2026-07-27-v0.61.0.md`). Ships spec v6.24.1.

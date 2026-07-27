@@ -362,6 +362,10 @@ hook_trigger_view() {
 #
 # `read -r -d ''` rather than `$(cat <<EOF)`: bash 3.2 cannot parse a heredoc
 # nested in a command substitution (feedback_bash32_nested_heredoc_cmdsubst).
+# shellcheck disable=SC2034  # consumed by the hooks that source this file
+# (banned-vocab-check.sh, session-end-check.sh), which shellcheck cannot see when
+# it lints the library in isolation. HOOK_HEREDOC_AWK above escapes the warning
+# only because it also has an in-file consumer.
 IFS= read -r -d '' HOOK_USER_TURN_JQ <<'JQPROG' || true
 def is_user_turn:
   (.type? == "user")

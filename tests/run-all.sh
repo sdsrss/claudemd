@@ -80,6 +80,37 @@ for t in "$HERE"/integration/*.test.sh; do
   run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
 
+# Shellcheck, locally (v0.62.1). CI has gated this at warning+ since the 2026-07-24
+# audit, but the local suite did not — so v0.62.0 shipped a tag whose CI went red on
+# SC2034 that `npm test` had no way to surface. The pre-ship runbook's "npm test
+# green locally" step can only mean something if it runs what CI runs.
+#
+# Scope is every TRACKED .sh, a superset of ci.yml's explicit list, deliberately:
+# a hand-copied mirror of that list is the drift shape this release exists to fix.
+# Superset errs toward failing locally on a file CI ignores — the safe direction.
+echo "== Shellcheck =="
+if command -v shellcheck >/dev/null 2>&1; then
+  SHELL_FILES=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)
+  if [[ -z "$SHELL_FILES" ]]; then
+    echo "SKIP: no tracked .sh files resolved (not a git checkout?)"
+    [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+  else
+    # shellcheck disable=SC2086  # word splitting is the point: one arg per file
+    if (cd "$GUARD_REPO" && shellcheck --severity=warning $SHELL_FILES); then
+      echo "-- shellcheck: $(printf '%s\n' "$SHELL_FILES" | wc -l | tr -d ' ') file(s) clean at warning+"
+    else
+      echo "FAIL: shellcheck reported warning+ findings, or could not be run over them"
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+else
+  # A skip that stays green under CI would rebuild the exact hole this section
+  # closes: npm-publish.yml installs shellcheck and then runs this suite, so if
+  # that install is ever dropped the publish gate silently stops checking.
+  echo "SKIP: shellcheck not installed — install it to see this class before pushing"
+  [[ -n "${CI:-}" ]] && { echo "FAIL: shellcheck must be installed in CI"; FAIL=$((FAIL + 1)); }
+fi
+
 if (( HOOK_SUITES < HOOK_SUITE_FLOOR )); then
   echo "FAIL: only $HOOK_SUITES shell hook suite(s) ran (floor $HOOK_SUITE_FLOOR) — the glob matched nothing or the layer moved."
   FAIL=$((FAIL + 1))
