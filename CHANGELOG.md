@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.65.1] - 2026-07-28
+
+Hotfix for a red `ci@main` leg on the v0.65.0 push. No hook, script or spec behavior changes — the failing assertion is in a test, and the released artifact is not affected.
+
+- **fix: `contract.test.sh` pins the two locale-sensitive operations in its (event, emitter) comparison.** BSD `sort -u` removes lines that *collate* equal rather than lines that are byte-equal, so under a UTF-8 locale it can silently drop a distinct pair; the membership test also used `grep -qx`, treating a literal pair as a basic regex. Both are now `LC_ALL=C`, and the lookup is `grep -Fqx`.
+- **Mechanism not established, and the comment says so.** v0.65.0's `ci@main` leg failed `C emitted 'fail-open' by 'ship-baseline' is NOT documented` on macos-latest/22 while **the same commit passed on the tag run** (all four legs), on both Linux legs, and on macos-latest/20. It did not reproduce locally across repeated runs or under `C` / `en_US.UTF-8` / `C.UTF-8`. A "the table row got too long" theory was checked and discarded — the `bypass-escape-hatch` row is 1691 chars against fail-open's 1102 and parses fine. So this hardens two real portability hazards rather than claiming a root cause. If the assertion flakes again, the extraction itself is the next suspect, not the collation.
+- Worth stating plainly: v0.65.0's tag run passed all four matrix legs and `npm-publish` succeeded, so **0.65.0 on npm is not broken** — no deprecate. The red run is the duplicate `ci@main` run that the atomic ship flow fires on the same commit.
+
 ## [0.65.0] - 2026-07-28
 
 The fail-open instrumentation could not report the failure it was built for. Fixes from the 2026-07-28 four-dimension audit (`docs/comprehensive-audit-2026-07-28-v0.64.1.md`), whose starting taxonomy was deliberately moved outside the detection-coverage family the previous five rounds sampled — lifecycle, entropy, dependency degradation, adoption.

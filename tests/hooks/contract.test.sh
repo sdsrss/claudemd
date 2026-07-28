@@ -159,7 +159,13 @@ done
 # Compare PAIRS, not bare event names. Matching on the event alone meant a new
 # EMITTER of an already-documented event (`mem-audit` emitting `warn`) satisfied
 # the check against the wrong row — the emitter column was never verified.
-DOC_PAIRS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | sort -u)
+# LC_ALL=C on every dedup below (v0.65.1): BSD `sort -u` removes lines that
+# COLLATE equal rather than lines that are byte-equal, so under a UTF-8 locale it
+# can silently drop a distinct pair. v0.65.0's ci@main leg failed this block on
+# macOS for `fail-open:ship-baseline` while the SAME commit passed on the tag run
+# and on all Linux legs; the mechanism was never reproduced, so this pins the two
+# genuinely locale-sensitive operations rather than claiming a root cause.
+DOC_PAIRS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | LC_ALL=C sort -u)
 # Strip comments before extracting emitted events: a prose mention of
 # `hook_record` in a docstring (e.g. "hook_record re-sources idempotently")
 # otherwise reads as a real emission and false-flags drift. Anchor on code
@@ -169,7 +175,7 @@ DOC_PAIRS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | sort -u)
 EMITTED=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' {} + \
   | grep -hE 'hook_record[[:space:]]+[a-zA-Z_-]+[[:space:]]+[a-z-]+' \
   | sed -E 's/.*hook_record[[:space:]]+([a-zA-Z_-]+)[[:space:]]+([a-z-]+).*/\2:\1/' \
-  | sort -u)
+  | LC_ALL=C sort -u)
 # fail-open rides the wrapper, not hook_record — add its pairs so a hook that
 # starts fail-opening is held to the same documentation requirement. The generic
 # `hook_record_failopen HOOK` inside hook-common.sh is the wrapper's own
@@ -177,11 +183,11 @@ EMITTED=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/
 EMITTED_FAILOPEN=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]#.*$//' {} + \
   | grep -hoE 'hook_record_failopen[[:space:]]+[a-z][a-zA-Z_-]*' \
   | sed -E 's/hook_record_failopen[[:space:]]+/fail-open:/' \
-  | sort -u)
-EMITTED=$(printf '%s\n%s\n' "$EMITTED" "$EMITTED_FAILOPEN" | grep -v '^$' | sort -u)
+  | LC_ALL=C sort -u)
+EMITTED=$(printf '%s\n%s\n' "$EMITTED" "$EMITTED_FAILOPEN" | grep -v '^$' | LC_ALL=C sort -u)
 
 for e in $EMITTED; do
-  if echo "$DOC_PAIRS_UNIQ" | grep -qx "$e"; then
+  if printf '%s\n' "$DOC_PAIRS_UNIQ" | LC_ALL=C grep -Fqx -- "$e"; then
     ok "C emitted '${e%%:*}' by '${e#*:}' is documented"
   else
     ng "C emitted '${e%%:*}' by '${e#*:}' is NOT documented in RULE-HITS-SCHEMA.md (drift)"
