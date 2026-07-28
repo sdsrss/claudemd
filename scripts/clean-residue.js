@@ -6,17 +6,24 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
 Clean leftover claudemd-sync-* sentinels and historical claudemd-(mockgh|work).*
-sandbox dirs from $TMPDIR, plus stale tool-exhaust from ~/.claude/tmp per spec
-§EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7). Default is dry-run.
+sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
+§EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
+per-session sentinels from ~/.claude/.claudemd-state. Default is dry-run.
 
 Options:
   --apply             Opt into deletion (without it, prints what would be deleted).
   --age-days=N        $TMPDIR stale threshold in days (non-negative, default 1).
-  --retention-days=N  ~/.claude/tmp retention in days (non-negative). Resolution:
+  --retention-days=N  ~/.claude/tmp AND ~/.claude/.claudemd-state retention in
+                      days (non-negative). Resolution:
                       this flag > TMP_RETENTION_DAYS: in ./CLAUDE.md > 7.
   --help, -h          Print this message and exit.
 
+State-dir scope: only ext-read-*, vocab-scan-*, failopen-* and mem-coverage-*
+past the retention window. Allowlist-by-pattern — live singleton state in the
+same directory is never deleted, however old.
+
 Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
+     CLAUDEMD_STATE_DIR overrides the ~/.claude/.claudemd-state root (test seam).
 
 Wrapped by /claudemd-clean-residue.
 
@@ -131,6 +138,69 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
   return { dryRun: false, targets, deleted };
 }
 
+// --- ~/.claude/.claudemd-state orphan reaping (2026-07-28 audit H3) ---
+//
+// The plugin's own state dir was outside every cleaner's scope: this script had
+// zero references to it, doctor.js had zero, and residue-audit.sh only ever
+// looked at ~/.claude/tmp. Measured on the maintainer's machine: 39 orphans,
+// oldest 79 days — 27 `ext-read-*` (reaped by session-end-check ONLY for its own
+// session, so any crash / kill / abnormal exit leaks one; one of the 27 is residue
+// from a test-hermeticity bug that was itself fixed but whose leftovers nothing
+// could reach), 11 `mem-coverage-*` (the hook that wrote them was deleted in
+// v0.23.12 and left no migration), and 1 `failopen-*` rate-limit marker.
+//
+// Deletion is ALLOWLIST-by-pattern, not "everything old". The dir also holds
+// live singleton state (tmp-baseline.txt, session-start.ref, l2-task-counter,
+// last-session-summary.json, bootstrap-failed.json, …) whose age says nothing
+// about whether it is still in use. A pattern this list does not name is never
+// touched, so a future state file is safe by default rather than by memory.
+const STATE_EPHEMERAL = [
+  // Per-session extended-read sentinel. Self-reaping is best-effort by design.
+  { kind: 'ext-read', re: /^ext-read-.+\.ts$/ },
+  // hook_record_failopen rate-limit markers — meaningful for 60s, then dead.
+  { kind: 'failopen', re: /^failopen-.+\.ts$/ },
+  // memory-coverage-scan was removed in v0.23.12; no producer exists in-tree.
+  { kind: 'mem-coverage', re: /^mem-coverage-.+\.ts$/ },
+  // Per-session transcript-vocab-scan content-hash cursor. Nothing reaps it at
+  // all — strictly worse than ext-read-*, which at least self-reaps on a clean
+  // exit. Missed by the first draft of this list because the hook builds its
+  // path from `$VS_STATE_DIR`, so the extraction keyed on `$STATE_DIR` could
+  // not see it: this list's own scope failing to cover its subject.
+  { kind: 'vocab-scan', re: /^vocab-scan-.+\.last$/ },
+];
+
+export function scanStateDir({ stateDir, now = Date.now() } = {}) {
+  if (!stateDir || !fs.existsSync(stateDir)) return { candidates: [] };
+  let entries;
+  try { entries = fs.readdirSync(stateDir, { withFileTypes: true }); } catch { return { candidates: [] }; }
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const match = STATE_EPHEMERAL.find(p => p.re.test(entry.name));
+    if (!match) continue;
+    const full = path.join(stateDir, entry.name);
+    let stat;
+    try { stat = fs.statSync(full); } catch { continue; }
+    candidates.push({
+      path: full,
+      kind: match.kind,
+      ageDays: Math.max(0, (now - stat.mtimeMs) / 86400000),
+    });
+  }
+  return { candidates };
+}
+
+export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now = Date.now() } = {}) {
+  const { candidates } = scanStateDir({ stateDir, now });
+  const targets = candidates.filter(c => c.ageDays >= retentionDays);
+  if (!apply) return { dryRun: true, targets, deleted: 0 };
+  let deleted = 0;
+  for (const t of targets) {
+    try { fs.rmSync(t.path, { force: true }); deleted++; } catch { /* best-effort */ }
+  }
+  return { dryRun: false, targets, deleted };
+}
+
 // TMP_RETENTION_DAYS: N in the invoking project's CLAUDE.md (spec §EXT §7-EXT
 // override syntax). Malformed values warn to stderr and fall back to the default —
 // a silently-ignored config knob is the flag-shape antipattern (see lib/argv.js).
@@ -183,8 +253,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const claudeTmpDir = process.env.CLAUDEMD_CLAUDE_TMP_DIR || path.join(os.homedir(), '.claude', 'tmp');
 
+  // Test seam mirrors CLAUDEMD_CLAUDE_TMP_DIR above — §8.V3 forbids driving a
+  // destructive path against the live state dir to prove it works.
+  const stateDir = process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), '.claude', '.claudemd-state');
+
   const result = clean({ apply, ageDaysMin });
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
+  const cstate = cleanStateDir({ stateDir, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
   const sandboxCount  = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
   console.log(JSON.stringify({
@@ -201,6 +276,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       candidates: ctmp.targets.length,
       deleted: ctmp.deleted,
       paths: ctmp.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
+    },
+    stateDir: {
+      dir: stateDir,
+      retentionDays,
+      candidates: cstate.targets.length,
+      deleted: cstate.deleted,
+      byKind: cstate.targets.reduce((acc, t) => { acc[t.kind] = (acc[t.kind] || 0) + 1; return acc; }, {}),
+      paths: cstate.targets.map(t => ({ path: t.path, kind: t.kind, ageDays: Math.round(t.ageDays * 10) / 10 })),
     },
   }, null, 2));
 }

@@ -38,10 +38,10 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch TRANSCRIPT_VOCAB_SCAN || exit 0
-hook_require_jq || exit 0
+hook_require_jq || { hook_record_failopen transcript-vocab-scan jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
-TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
+TRANSCRIPT_PATH=$(hook_jq_field transcript-vocab-scan "$EVENT" '.transcript_path // ""') || exit 0
 [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]] || exit 0
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)

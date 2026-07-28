@@ -20,8 +20,41 @@ hook_kill_switch() {
 }
 
 # hook_require_jq — returns 0 if jq is on PATH, 1 otherwise.
+#
+# Presence, NOT usability: a jq that is present but fails (stub earlier on PATH,
+# corrupt binary, missing shared lib, killed by a resource limit) passes this.
+# That gap is covered at the first parse by hook_jq_field rather than here,
+# because a `jq -n .` probe would add a process spawn to every PreToolUse:Bash
+# invocation — the hot path the readonly fast-path exists to keep cheap.
 hook_require_jq() {
   command -v jq >/dev/null 2>&1
+}
+
+# hook_jq_field HOOK EVENT FILTER
+#   Extracts a field from the event JSON and echoes it. On jq failure, records
+#   a correctly-attributed fail-open row and returns 1 (caller should exit 0).
+#
+#   Callers used `FIELD=$(… | jq -r '…' 2>/dev/null)` and then branched on the
+#   VALUE, so a jq that exited non-zero produced "" and fell into the ordinary
+#   "not the tool/event I handle" early exit — indistinguishable in telemetry
+#   from "rule not applicable" (2026-07-28 audit H1). Use this for the FIRST
+#   parse in a hook; once it succeeds, jq works and later parses may stay bare.
+#
+#   Reason attribution: jq failing can mean the input is not JSON (bad-event)
+#   or that jq itself is broken (jq-broken). The disambiguating `jq -n .` runs
+#   ONLY on the failure path, so the success path costs nothing extra.
+hook_jq_field() {
+  local hook="$1" event="$2" filter="$3" out
+  if out=$(printf '%s' "$event" | jq -r "$filter" 2>/dev/null); then
+    printf '%s' "$out"
+    return 0
+  fi
+  if jq -n . >/dev/null 2>&1; then
+    hook_record_failopen "$hook" bad-event
+  else
+    hook_record_failopen "$hook" jq-broken
+  fi
+  return 1
 }
 
 # hook_read_event — reads stdin JSON to stdout; empty stdout on error.
@@ -104,17 +137,23 @@ hook_record_failopen() {
   source "$lib_dir/rule-hits.sh" 2>/dev/null || return 0
   # `jq` may be the very thing missing. Inline the JSON construction so
   # fail-open accounting itself doesn't depend on jq for the `extra` payload.
+  local extra=""
   if command -v jq >/dev/null 2>&1; then
-    local extra
-    extra=$(jq -cn --arg r "$reason" '{reason:$r}' 2>/dev/null) || extra='null'
-    rule_hits_append "$hook" "fail-open" "$extra" '§hooks-fail-open'
-  else
-    # Manually-escaped reason. Reasons are caller-supplied literal tokens
-    # (jq-missing / bad-event / patterns-missing / prereq-missing) — no
-    # untrusted input. Still prefer minimal escape over interpolating wild.
-    local escaped="${reason//\"/\\\"}"
-    rule_hits_append "$hook" "fail-open" "{\"reason\":\"$escaped\"}" '§hooks-fail-open'
+    extra=$(jq -cn --arg r "$reason" '{reason:$r}' 2>/dev/null) || extra=""
   fi
+  if [[ -z "$extra" || "$extra" == "null" ]]; then
+    # Manually-escaped reason. Reasons are caller-supplied literal tokens
+    # (jq-missing / jq-broken / bad-event / patterns-missing / prereq-missing)
+    # — no untrusted input. Still prefer minimal escape over interpolating wild.
+    #
+    # This branch used to be guarded on jq being ABSENT, so a jq that was
+    # present but failing produced `extra=null` and threw away the reason —
+    # the row said "something failed open" without saying what (2026-07-28
+    # audit H1). Keying on "jq produced nothing" covers both.
+    local escaped="${reason//\"/\\\"}"
+    extra="{\"reason\":\"$escaped\"}"
+  fi
+  rule_hits_append "$hook" "fail-open" "$extra" '§hooks-fail-open'
 }
 
 # hook_is_readonly_bash CMD

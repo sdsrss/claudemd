@@ -56,9 +56,20 @@ Stop hook
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — background install.js failure sentinel (v0.50.0; written/cleared by `hook_spawn_install`, read by the SessionStart failure banner, stale copy cleared on version match)
+- `~/.claude/.claudemd-state/ext-read-<sid>.ts` — per-session §13.1-extended-read dedup sentinel (`session-extended-read.sh`). Reaped by `session-end-check.sh` for its OWN session only, so a crash / kill / abnormal exit leaks one; `/claudemd-clean-residue` reaps the rest past the retention window.
+- `~/.claude/.claudemd-state/failopen-<hook>-<reason>.ts` — `hook_record_failopen` rate-limit marker (1 row per (hook, reason) per 60s)
+- `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — **dead**: written by the `memory-coverage-scan` Stop hook removed in v0.23.12. No in-tree producer remains; existing copies are reaped by `/claudemd-clean-residue`.
+- `~/.claude/.claudemd-state/l2-task-counter` — §13.2 batch-review L2+ session counter (`session-end-check.sh`, reset on advisory trip)
+- `~/.claude/.claudemd-state/ship-baseline-recent` — ship-baseline recent-run cache
+- `~/.claude/.claudemd-state/mem-audit.lastrun` — `mem-audit.sh` cadence sentinel
+- `~/.claude/.claudemd-state/session-summary.lastrun` — `session-summary.sh` cadence sentinel
+- `~/.claude/.claudemd-state/statusline-prev.json` — prior statusLine command saved by `/claudemd-statusline` so `remove` can restore it
+- `~/.claude/.claudemd-state/vocab-scan-<sid>.last` — per-session transcript-vocab-scan content-hash cursor (`transcript-vocab-scan.sh`). Nothing reaps it on session end; `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/logs/claudemd.jsonl` — rule-hits append log (size-capped rotation at 5 MB → `.1` and `.2`)
 - `~/.claude/logs/claudemd-bootstrap.log` — session-start install bootstrap log (rotated at 64 KiB → tail 32 KiB)
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
+
+The `~/.claude/.claudemd-state/` entries above are gated by `tests/scripts/architecture-drift.test.js`, which extracts state paths from `hooks/**/*.sh` and `scripts/**/*.js` (the `logs/` and `backup-` paths are not `.claudemd-state` and are not gated). Before that gate existed (2026-07-28 audit M1) this list documented 6 of the 15 kinds actually written — the same "doc declares itself source-of-truth with nothing checking it" failure the hook-taxonomy table below had, in the same file. Its first draft then missed `vocab-scan-*` because it keyed on the variable name `$STATE_DIR` while that hook uses `$VS_STATE_DIR`; the extractor now matches any variable whose name ends in `STATE_DIR`.
 
 ## Hook taxonomy
 

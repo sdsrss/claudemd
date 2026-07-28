@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { scan, clean, scanClaudeTmp, cleanClaudeTmp } from '../../scripts/clean-residue.js';
+import { scan, clean, scanClaudeTmp, cleanClaudeTmp, scanStateDir, cleanStateDir } from '../../scripts/clean-residue.js';
 
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/clean-residue.js');
 
@@ -356,4 +356,78 @@ test('CLI reads TMP_RETENTION_DAYS from cwd CLAUDE.md; flag wins over file', () 
   } finally {
     fs.rmSync(projDir, { recursive: true, force: true });
   }
+});
+
+// --- state-dir orphan reaping (2026-07-28 audit H3) --------------------------
+// The plugin's own state dir was outside every cleaner's scope. The risk in
+// closing that gap is over-reach: the dir mixes disposable per-session
+// sentinels with live singleton state whose age says nothing about whether it
+// is still in use. These lock BOTH directions.
+
+test('scanStateDir picks up only the three ephemeral classes', () => {
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  for (const f of ['ext-read-a.ts', 'failopen-banned-vocab-bad-event.ts', 'mem-coverage-b.ts']) {
+    fs.writeFileSync(path.join(stateDir, f), '0');
+    setMtime(path.join(stateDir, f), 30);
+  }
+  for (const f of ['tmp-baseline.txt', 'session-start.ref', 'l2-task-counter']) {
+    fs.writeFileSync(path.join(stateDir, f), '0');
+    setMtime(path.join(stateDir, f), 300);
+  }
+  const { candidates } = scanStateDir({ stateDir });
+  assert.deepEqual(candidates.map(c => c.kind).sort(), ['ext-read', 'failopen', 'mem-coverage']);
+});
+
+test('scanStateDir reaps vocab-scan sentinels', () => {
+  // transcript-vocab-scan.sh writes one per session and NOTHING reaps it — a
+  // strictly worse leak than ext-read-*, which self-reaps on a clean exit. The
+  // first draft of STATE_EPHEMERAL missed it because the path is built from
+  // $VS_STATE_DIR, so the extraction keyed on $STATE_DIR could not see it.
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  const f = path.join(stateDir, 'vocab-scan-abc123.last');
+  fs.writeFileSync(f, 'deadbeef');
+  setMtime(f, 30);
+  const { candidates } = scanStateDir({ stateDir });
+  assert.deepEqual(candidates.map(c => c.kind), ['vocab-scan']);
+});
+
+test('cleanStateDir never deletes live singleton state, however old', () => {
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  // Every non-ephemeral name the state dir is known to carry, aged well past
+  // any retention window. Age must not be sufficient grounds for deletion.
+  const live = ['tmp-baseline.txt', 'session-start.ref', 'upstream-check.lastrun',
+    'last-session-summary.json', 'last-session-summary.json.last-shown',
+    'bootstrap-failed.json', 'l2-task-counter', 'ship-baseline-recent',
+    'mem-audit.lastrun', 'session-summary.lastrun', 'statusline-prev.json'];
+  for (const f of live) {
+    fs.writeFileSync(path.join(stateDir, f), '0');
+    setMtime(path.join(stateDir, f), 300);
+  }
+  const res = cleanStateDir({ stateDir, apply: true, retentionDays: 7 });
+  assert.equal(res.deleted, 0, 'live singleton state must be untouchable by age alone');
+  for (const f of live) {
+    assert.ok(fs.existsSync(path.join(stateDir, f)), `${f} was deleted`);
+  }
+});
+
+test('cleanStateDir respects retention and dry-run by default', () => {
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  const old = path.join(stateDir, 'ext-read-old.ts');
+  const fresh = path.join(stateDir, 'ext-read-fresh.ts');
+  fs.writeFileSync(old, '0'); setMtime(old, 30);
+  fs.writeFileSync(fresh, '0');
+
+  const dry = cleanStateDir({ stateDir, retentionDays: 7 });
+  assert.equal(dry.dryRun, true);
+  assert.equal(dry.deleted, 0);
+  assert.ok(fs.existsSync(old), 'dry run must not delete');
+
+  const applied = cleanStateDir({ stateDir, apply: true, retentionDays: 7 });
+  assert.equal(applied.deleted, 1);
+  assert.ok(!fs.existsSync(old));
+  assert.ok(fs.existsSync(fresh), 'a sentinel inside the retention window is still live');
 });

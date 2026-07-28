@@ -43,10 +43,10 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch MEMORY_HINT || exit 0
-hook_require_jq || exit 0
+hook_require_jq || { hook_record_failopen memory-prompt-hint jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
-PROMPT=$(printf '%s' "$EVENT" | jq -r '.prompt // ""' 2>/dev/null)
+PROMPT=$(hook_jq_field memory-prompt-hint "$EVENT" '.prompt // ""') || exit 0
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 

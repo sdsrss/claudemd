@@ -20,7 +20,7 @@ if [[ -z "$EVENT" ]]; then
   exit 0
 fi
 
-TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
+TOOL=$(hook_jq_field banned-vocab "$EVENT" '.tool_name // ""') || exit 0
 [[ "$TOOL" == "Bash" ]] || exit 0
 
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)

@@ -27,10 +27,10 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch SESSION_EXTENDED_READ || exit 0
-hook_require_jq || exit 0
+hook_require_jq || { hook_record_failopen session-extended-read jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
-TOOL=$(printf '%s' "$EVENT" | jq -r '.tool_name // ""' 2>/dev/null)
+TOOL=$(hook_jq_field session-extended-read "$EVENT" '.tool_name // ""') || exit 0
 [[ "$TOOL" == "Read" ]] || exit 0
 
 FILE_PATH=$(printf '%s' "$EVENT" | jq -r '.tool_input.file_path // ""' 2>/dev/null)

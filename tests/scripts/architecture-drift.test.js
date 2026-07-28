@@ -89,3 +89,79 @@ test('ARCHITECTURE.md hook taxonomy has one row per registered hook', () => {
     `ARCHITECTURE.md names hook file(s) that no longer exist:\n` +
     stale.map(f => `  ${f}`).join('\n'));
 });
+
+// --- State-locations drift gate (2026-07-28 audit M1) -----------------------
+// The taxonomy gate above exists because a doc section claimed source-of-truth
+// with nothing behind it. The State-locations list in the SAME file had exactly
+// that problem and was left outside the gate: it documented 6 entries while 14
+// kinds existed on disk, including a `mem-coverage-*` class whose producing hook
+// was deleted in v0.23.12. The remedy is the same one — derive from source.
+function statePathsInSource() {
+  const out = new Set();
+  const files = [];
+  const walk = (dir, exts) => {
+    if (!fs.existsSync(dir)) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full, exts);
+      else if (exts.some(x => e.name.endsWith(x))) files.push(full);
+    }
+  };
+  walk(HOOKS_DIR, ['.sh']);
+  walk(path.join(ROOT, 'scripts'), ['.js']);
+
+  // Interpolations collapse to `*`: `ext-read-${SAFE_SID}.ts` and
+  // `ext-read-<sid>.ts` are the same documented kind.
+  const norm = s => s
+    .replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, '*')
+    .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, '*')
+    .replace(/\*+/g, '*');
+
+  for (const full of files) {
+    const src = fs.readFileSync(full, 'utf8');
+    for (const m of src.matchAll(/\.claudemd-state\/([A-Za-z0-9._${}-]+)/g)) out.add(norm(m[1]));
+    // Any variable whose name ENDS in STATE_DIR, not just the two spellings
+    // someone happened to grep for. The first draft matched `$STATE_DIR` and
+    // `$state_dir` only, and transcript-vocab-scan.sh builds its sentinel path
+    // from `$VS_STATE_DIR` — so a whole per-session leak class was invisible to
+    // the gate written to catch exactly that. Scope narrower than subject, in
+    // the fix for scope narrower than subject.
+    for (const m of src.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?\/([A-Za-z0-9._${}-]+)/g)) {
+      if (/state_dir$/i.test(m[1])) out.add(norm(m[2]));
+    }
+    for (const m of src.matchAll(/stateDir\(\)\s*,\s*'([A-Za-z0-9._-]+)'/g)) out.add(norm(m[1]));
+  }
+  return out;
+}
+
+// Extraction artifacts and paths documented elsewhere in the file, each with a
+// reason — an ignore entry is a claim someone can check, not a silencer.
+const STATE_IGNORE = new Map([
+  ['*', 'bare interpolation — a variable-only path with no literal stem to document'],
+  ['*_*.sentinel', 'normalized from a fully-dynamic sentinel name built at runtime'],
+  ['ext-read-', 'prefix fragment from an `rm -f` glob, not a distinct kind'],
+  ['last-session-', 'prefix fragment from a line-wrapped path, not a distinct kind'],
+  ['l2-task-counter.', 'trailing period is prose punctuation captured by the char class'],
+  ['installed.json', 'pre-v0.1.9 legacy manifest location, documented in the manifest bullet above'],
+]);
+
+test('ARCHITECTURE.md State locations lists every state path the source writes', () => {
+  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  const found = statePathsInSource();
+
+  assert.ok(found.size >= 8,
+    `state-path extraction returned only ${found.size} — parser or source shape changed. ` +
+    `This gate must never validate an empty set.`);
+
+  const missing = [...found]
+    .filter(p => !STATE_IGNORE.has(p))
+    // `ext-read-*.ts` in source vs `ext-read-<sid>.ts` in prose: compare on the
+    // literal stem before the first wildcard, which is what a reader searches for.
+    .filter(p => !doc.includes(p.split('*')[0]))
+    .sort();
+
+  assert.deepEqual(missing, [],
+    `docs/ARCHITECTURE.md "State locations" is missing path(s) the source writes:\n` +
+    missing.map(p => `  ${p}`).join('\n') +
+    `\nDocument them, or add a STATE_IGNORE entry stating why the path is not a kind.`);
+});

@@ -13,6 +13,7 @@ import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from
 import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
 import { memoryMaintenance, CITE_MIN, PROMOTE_MIN_AGE_DAYS, RECALL_MAX_AGE_DAYS, STALE_AGE_DAYS } from './lib/memory-maintenance.js';
 import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
+import { scanStateDir } from './clean-residue.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
@@ -672,6 +673,38 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // on "self-review" (fixed runbooks legitimately contain that word as a
   // named degrade). Listing only — rewriting a runbook is a §5-scoped write
   // to user-authored memory (tasks/deferred-2026-07-27-doctor-runbook-review-check.md).
+  // v0.65.0 — state-dir orphan visibility (2026-07-28 audit H3). The plugin's
+  // own state dir accumulated 39 orphans (oldest 79 days) while sitting outside
+  // every cleaner AND every health check: this file had zero references to it,
+  // clean-residue.js had zero, and residue-audit.sh only watches ~/.claude/tmp.
+  // Growth is unbounded — one `ext-read-*` leaks per session that never reaches
+  // SessionEnd — so the point of this check is that the count is SEEN, not that
+  // some threshold is sacred. Reporting only; deletion stays behind the AUTH'd
+  // /claudemd-clean-residue path.
+  try {
+    const stateDirPath = process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), '.claude', '.claudemd-state');
+    const { candidates } = scanStateDir({ stateDir: stateDirPath });
+    const ORPHAN_ADVISORY_THRESHOLD = 50;
+    const byKind = candidates.reduce((acc, c) => { acc[c.kind] = (acc[c.kind] || 0) + 1; return acc; }, {});
+    const kindSummary = Object.entries(byKind).map(([k, n]) => `${k}=${n}`).join(', ') || 'none';
+    // The count is EVERY ephemeral file, including this session's own sentinel
+    // and 60-second-old failopen markers. Cleanup reaps only those past the
+    // retention window, so the two numbers legitimately differ — say so rather
+    // than implying `--apply` will zero this figure.
+    if (candidates.length <= ORPHAN_ADVISORY_THRESHOLD) {
+      push('state-dir-orphans', true,
+        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary})`);
+    } else {
+      push('state-dir-orphans', false,
+        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary}) ` +
+        `exceeds the ${ORPHAN_ADVISORY_THRESHOLD} advisory threshold — run ` +
+        `/claudemd-clean-residue --apply to reap the subset past the retention window. ` +
+        `Advisory: this never fails the doctor exit code.`);
+    }
+  } catch {
+    // Never let a health check take down the health checker.
+  }
+
   const rrs = scanRunbookReviewSteps({});
   if (rrs.missing.length === 0) {
     push('runbook-review-step', true,
@@ -732,7 +765,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // candidates, a bypass ratio with no codified demote rule). Counting them
     // would make `/claudemd-doctor` report failure on a healthy install every
     // time, which is how an exit code stops carrying information.
-    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step)/;
+    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans)/;
     const failed = (r.checks || [])
       .filter(c => c && c.ok === false && !ADVISORY.test(c.name)).length;
     if (failed > 0) process.exitCode = 3;

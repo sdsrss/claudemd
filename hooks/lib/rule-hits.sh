@@ -66,6 +66,66 @@ hook_encode_project() {
 #                 a byte-identical residual can still come from one command
 #                 repeating the same pattern, so confirm against the source
 #                 command before calling a pre-bash-safety `_real` a bug.
+# _rule_hits_json_escape STR — escape a string for a JSON string body.
+# bash 3.2 safe (no ${var@Q}). Backslash MUST be escaped before quote, or the
+# escapes this function itself inserts get double-escaped.
+_rule_hits_json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  # Control chars are illegal raw inside a JSON string and would also break the
+  # one-row-per-line JSONL contract. Drop rather than \u-encode: every field
+  # reaching here is a token, path, or UUID, never prose.
+  printf '%s' "$s" | tr -d '\001-\037'
+}
+
+# _rule_hits_json_or_null STR — `null` when empty, else a quoted escaped string.
+_rule_hits_json_or_null() {
+  if [[ -z "$1" ]]; then printf 'null'; else printf '"%s"' "$(_rule_hits_json_escape "$1")"; fi
+}
+
+# _rule_hits_fallback_row TS HOOK EVENT PROJECT SESSION TOOLUSE SECTION HV EXTRA
+#   jq-free row builder. Field order and null-vs-string posture mirror the jq
+#   program below exactly; tests/hooks/fail-open.test.sh T12 parses this output
+#   back with a real jq and asserts all 9 schema fields survive.
+_rule_hits_fallback_row() {
+  local extra="$9"
+  # `extra` arrives as a JSON fragment. Under a broken jq the caller's own
+  # jq-built payload may be empty, partial or multi-line, and pasting that in
+  # would emit an unparseable row — worse than no telemetry, because the OLD
+  # code's `jq -cn` simply failed and dropped the row, leaving the log valid.
+  #
+  # A newline is the load-bearing check: several callers build `extra` with
+  # `jq -s .` (uncompacted, hence multi-line), and one embedded newline turns a
+  # single row into several partial lines, breaking the one-object-per-line
+  # contract this whole fallback exists to preserve. Brace/bracket balance at
+  # the ends additionally rejects a truncated payload.
+  #
+  # This is a guard, not a validator: real JSON validation is not available on
+  # a path defined by jq being unusable. It bounds the damage to "row dropped"
+  # rather than "log corrupted".
+  if [[ "$extra" == *$'\n'* || "$extra" == *$'\r'* ]]; then
+    extra=null
+  else
+    case "$extra" in
+      null) : ;;
+      '{'*'}') : ;;
+      '['*']') : ;;
+      *) extra=null ;;
+    esac
+  fi
+  printf '{"ts":"%s","hook":"%s","event":"%s","project":"%s","session_id":%s,"tool_use_id":%s,"spec_section":%s,"hook_version":%s,"extra":%s}' \
+    "$(_rule_hits_json_escape "$1")" \
+    "$(_rule_hits_json_escape "$2")" \
+    "$(_rule_hits_json_escape "$3")" \
+    "$(_rule_hits_json_escape "$4")" \
+    "$(_rule_hits_json_or_null "$5")" \
+    "$(_rule_hits_json_or_null "$6")" \
+    "$(_rule_hits_json_or_null "$7")" \
+    "$(_rule_hits_json_or_null "$8")" \
+    "$extra"
+}
+
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 
@@ -141,11 +201,24 @@ rule_hits_append() {
   # (fail-open, matches session_id posture). Version source = plugin root
   # package.json, two levels up from this lib file.
   if [[ -z "${RULE_HITS_HOOK_VERSION+x}" ]]; then
-    RULE_HITS_HOOK_VERSION=$(jq -r '.version // empty' \
-      "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/package.json" 2>/dev/null) || RULE_HITS_HOOK_VERSION=""
+    local _pkg
+    _pkg="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/package.json"
+    RULE_HITS_HOOK_VERSION=$(jq -r '.version // empty' "$_pkg" 2>/dev/null) || RULE_HITS_HOOK_VERSION=""
+    # sed fallback: without it a jq-less/broken environment loses the version
+    # stamp on exactly the rows that diagnose that environment. The stamp is
+    # what lets consumers stratify rows written by a stale hook dir.
+    if [[ -z "$RULE_HITS_HOOK_VERSION" ]]; then
+      RULE_HITS_HOOK_VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$_pkg" 2>/dev/null | head -1)
+    fi
   fi
 
-  jq -cn \
+  # Primary builder is jq; `_rule_hits_fallback_row` covers the case jq cannot.
+  # Build into a variable first — the previous form redirected jq straight at
+  # the log, so a jq that failed mid-write could leave a torn line in a file
+  # whose whole contract is one valid JSON object per line.
+  local row=""
+  row=$(jq -cn \
     --arg ts "$ts" \
     --arg hook "$hook" \
     --arg event "$event" \
@@ -160,6 +233,13 @@ rule_hits_append() {
       tool_use_id: (if $tool_use_id == "" then null else $tool_use_id end),
       spec_section: (if $section == "" then null else $section end),
       hook_version: (if $hv == "" then null else $hv end),
-      extra: $extra}' \
-    2>/dev/null >> "$log_file" || return 0
+      extra: $extra}' 2>/dev/null) || row=""
+
+  if [[ -z "$row" ]]; then
+    row=$(_rule_hits_fallback_row "$ts" "$hook" "$event" "$project" \
+      "$session_id" "$tool_use_id" "$section" "${RULE_HITS_HOOK_VERSION:-}" "$extra")
+  fi
+
+  [[ -n "$row" ]] && printf '%s\n' "$row" >> "$log_file"
+  return 0
 }

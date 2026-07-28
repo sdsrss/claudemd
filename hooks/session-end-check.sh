@@ -36,7 +36,7 @@ hook_kill_switch SESSION_END_CHECK || exit 0
 hook_require_jq || { hook_record_failopen session-end-check jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
-TRANSCRIPT=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
+TRANSCRIPT=$(hook_jq_field session-end-check "$EVENT" '.transcript_path // ""') || exit 0
 CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null)
 
