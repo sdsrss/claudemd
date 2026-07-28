@@ -377,6 +377,35 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# --- F36 curl-sh SOURCE prefilter has no private copy (2026-07-28) ---
+# The segment loop short-circuits before running the real regex. The first draft
+# of that pre-check re-spelled the SOURCE word list as a `case` — a mirror, i.e.
+# a silent-bypass generator: a word added to CURLSH_SRC but forgotten in the copy
+# makes the gate skip the segment it was just taught to catch, with every corpus
+# row still green. It is now `[[ "$cseg" =~ $CURLSH_SRC ]]`. This asserts the
+# copy has not come back, which is stronger than policing one: a parity test can
+# only check the words someone remembered to extract.
+#
+# The mirror half is checked by looking for SOURCE words spelled as shell globs
+# ANYWHERE in the hook, not inside a line range: the first version of this check
+# bounded the range with `/continue/`, and the explanatory comment above the
+# pre-check contains the word `continue`, so the range ended before the code and
+# the counter was structurally always 0 — a dead half of a two-part condition
+# that the negative control exposed by failing for only one of its two reasons.
+prefilter_line=$(grep -n 'cseg" =~ \$CURLSH_SRC' "$HOOK" | head -1)
+SRC_WORDS=$(grep -oE "CURLSH_SRC='\(([^)]*)\)" "$HOOK" | sed -E "s/CURLSH_SRC='\(//; s/\)$//" | tr '|' ' ')
+mirror=0
+for w in $SRC_WORDS; do
+  # A case arm or glob test naming a SOURCE word, e.g. `*telnet*)` or `*curl*|`.
+  if grep -qE "\*${w}\*[|)]" "$HOOK"; then mirror=$((mirror + 1)); fi
+done
+if [[ -n "$prefilter_line" && "$mirror" == "0" ]]; then
+  echo "PASS: curl-sh prefilter matches CURLSH_SRC directly, no private word list"; PASS=$((PASS + 1))
+else
+  echo "FAIL [curl-sh-prefilter]: expected \`[[ \"\$cseg\" =~ \$CURLSH_SRC ]]\` and no hand-written glob mirror (found line='$prefilter_line' mirror_arms=$mirror)"
+  FAIL=$((FAIL + 1))
+fi
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

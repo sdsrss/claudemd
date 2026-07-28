@@ -389,16 +389,44 @@ export function byFailOpen(hits) {
 // a rule that's too strict / poorly worded — the §0.1 demotion candidate
 // indicator. Pre-v0.7.0 these events sat in the log unaggregated; only
 // raw `jq` queries against `~/.claude/logs/claudemd.jsonl` could surface them.
+// v0.64.0 — `bySubject` answers the question a token count cannot: not "how often
+// was this hatch used" but "used AGAINST WHAT". A token count says §8-npx was
+// overridden 12 times; it cannot distinguish 12 overrides of one badly-worded rule
+// from 12 different legitimate one-offs, and those imply opposite actions. Subject
+// keys are the small credential-free descriptors the hooks record (`vars` /
+// `runner` / `rule` / `shape` / `source`→`sink`); rows predating the emitters group
+// under `(no subject)` so a series spanning the change is visibly split rather than
+// silently averaged. Purely additive: `byToken` keeps its shape for existing callers.
 export function byBypass(hits) {
   const byToken = {};
   for (const h of hits) {
     if (h.event !== 'bypass-escape-hatch') continue;
     const token = h.extra?.token || '(unspecified)';
-    byToken[token] ||= { total: 0, byHook: {} };
+    byToken[token] ||= { total: 0, byHook: {}, bySubject: {} };
     byToken[token].total++;
     byToken[token].byHook[h.hook] = (byToken[token].byHook[h.hook] || 0) + 1;
+    const subject = bypassSubject(h.extra);
+    byToken[token].bySubject[subject] = (byToken[token].bySubject[subject] || 0) + 1;
   }
   return byToken;
+}
+
+// One descriptor per row, in the order the emitters set them. Kept as a function
+// rather than inlined so a new emitter field has exactly one place to be taught,
+// and so the "which key wins" decision is greppable instead of implied.
+export function bypassSubject(extra) {
+  if (!extra || typeof extra !== 'object') return '(no subject)';
+  if (extra.rule) return String(extra.rule);
+  if (extra.shape) {
+    return extra.source && extra.sink
+      ? `${extra.shape}:${extra.source}->${extra.sink}`
+      : String(extra.shape);
+  }
+  if (extra.runner) return String(extra.runner);
+  if (extra.vars) return `vars:${extra.vars}`;
+  if (Array.isArray(extra.matched) && extra.matched.length) return String(extra.matched[0]);
+  if (extra.bypass_reason) return String(extra.bypass_reason);
+  return '(no subject)';
 }
 
 // v0.8.0 — R-N3 week-over-week regression. Splits hits into two windows
