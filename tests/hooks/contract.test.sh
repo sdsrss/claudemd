@@ -165,6 +165,12 @@ done
 # macOS for `fail-open:ship-baseline` while the SAME commit passed on the tag run
 # and on all Linux legs; the mechanism was never reproduced, so this pins the two
 # genuinely locale-sensitive operations rather than claiming a root cause.
+# SUPERSEDED (2026-07-28): these two pins are still worth having, but they were
+# NOT the cause — a re-run of that identical commit, without them, passed on the
+# same runner image. Do not reason from this paragraph; the account that replaced
+# it is at the `for e in $EMITTED` loop below. Note also that the `sort -u` this
+# comment defends is exactly why the "47 pairs parsed" figure cannot on its own
+# exclude a collation drop: the count is taken before this line runs.
 DOC_PAIRS_UNIQ=$(printf '%s\n' "${DOCUMENTED[@]}" | LC_ALL=C sort -u)
 # Strip comments before extracting emitted events: a prose mention of
 # `hook_record` in a docstring (e.g. "hook_record re-sources idempotently")
@@ -189,14 +195,22 @@ EMITTED=$(printf '%s\n%s\n' "$EMITTED" "$EMITTED_FAILOPEN" | grep -v '^$' | LC_A
 for e in $EMITTED; do
   # Exit-code spectrum, not truthiness (2026-07-28): grep returns 1 for "no match"
   # and >=2 for "I failed to run" (fork/ENOMEM/signal). Collapsing both into the
-  # else branch reports a transient runner fault as a documentation drift —
-  # which is the only mechanism left consistent with the v0.65.0 ci@main red:
-  # that leg parsed the SAME 47 documented pairs and ran the SAME 46 assertions
-  # as every passing leg, no collation collision exists among those 47, the pair
-  # contains no regex metacharacter, and a re-run of the identical commit passed.
-  # Same class as [[feedback_cc_grep_is_ugrep_shim]]: exit 2 is an error, not a
-  # zero-match. A real drift must not be indistinguishable from a failed spawn.
-  printf '%s\n' "$DOC_PAIRS_UNIQ" | LC_ALL=C grep -Fqx -- "$e"
+  # else branch reports a transient runner fault as a documentation drift — the
+  # last mechanism standing among those we enumerated for the v0.65.0 ci@main red.
+  # What settles it: attempt 1 (fail) and attempt 2 (pass) of that identical
+  # commit ran the SAME runner image (macos-26-arm64 / 20260720.0258.1) and
+  # disagreed, which excludes every deterministic cause. Same class as
+  # [[feedback_cc_grep_is_ugrep_shim]]: exit 2 is an error, not a zero-match.
+  # A real drift must not be indistinguishable from a failed spawn.
+  #
+  # Herestring, not a pipe: under `set -o pipefail` $? is the rightmost NON-ZERO
+  # status, so once `grep -q` short-circuits on a match, a payload past the pipe
+  # buffer would kill `printf` with SIGPIPE and surface 141 for a pair that IS
+  # documented — the new branch would then cry "infrastructure fault" about a
+  # healthy lookup. Unreachable today (~1.4 KB against a 16 KiB macOS pipe), but
+  # a block whose subject is exit-code fidelity should not keep a second
+  # exit-code confound alive on a headroom argument.
+  LC_ALL=C grep -Fqx -- "$e" <<< "$DOC_PAIRS_UNIQ"
   _rc=$?
   if (( _rc >= 2 )); then
     ng "C lookup for '$e' FAILED TO RUN (grep exit $_rc) — infrastructure fault, not drift"
