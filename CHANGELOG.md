@@ -8,6 +8,15 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.64.1] - 2026-07-28
+
+Hotfix for a red CI on the v0.64.0 tag. No hook, script or spec behavior changes — the failure was the test harness killing a suite, not a test failing.
+
+- **fix: the shell hook suites get the same 300s wall-clock cap the integration suites have.** `pre-bash-safety.test.sh` drives one hook process per corpus row, and v0.64.0 took that corpus 500 → 598 rows: 65s on Linux, and macOS runners are roughly 4× slower at process creation, so the leg blew the 120s guard. The tag went red with **every assertion passing** — `# fail 0`, every suite printing `N/N`, shellcheck clean, both static gates clean — and one line explaining it: `TIMEOUT: pre-bash-safety.test.sh exceeded 120s (killed)`.
+- Same reasoning the node cap in the same file already documents: a real hang is *infinite*, so 300s catches it exactly as well as 120s, and the only cost is minutes spent reporting a hang someone is already debugging.
+- **The root cause is not fixed**: ~600 process spawns per run, and every corpus round moves closer to the new cap. Both candidate fixes (a batch stdin entry point, or making the hook sourceable) mean changing the hook under test for the test's convenience, so it is filed with its reopen condition rather than rushed — `tasks/audit-2026-07-27-deferred.md §F`.
+- Worth stating plainly: npm published 0.64.0 before ci went red, the same channel asymmetry recorded as H3. The published artifact is not broken — no test failed — so this is a forward fix, not a deprecate.
+
 ## [0.64.0] - 2026-07-28
 
 The fetch-execute gate stops being about `curl`. It was two word lists spelled inline — SOURCE `(curl|wget)`, SINK `(sh|bash|zsh|dash|ksh|ash)` — and a full measurement of the class found five families it could not see. They were not five defects; they were two tables that were too narrow, plus three delivery shapes that cannot be written as SOURCE-pipe-SINK at all.

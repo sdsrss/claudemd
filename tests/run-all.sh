@@ -49,7 +49,16 @@ for t in "$HERE"/hooks/*.test.sh; do
   [[ -f "$t" ]] || continue
   HOOK_SUITES=$((HOOK_SUITES + 1))
   echo "-- $(basename "$t")"
-  run_suite "$t" || FAIL=$((FAIL + 1))
+  # 300s, not the 120s default (v0.64.1). pre-bash-safety.test.sh drives one hook
+  # process per corpus row, and v0.64.0 took that corpus 500 → 598 rows: 65s on
+  # Linux here, and macOS runners are ~4x slower at process creation, so the leg
+  # blew the 120s cap and the v0.64.0 tag went red on a TIMEOUT with every
+  # assertion passing (`# fail 0`, every suite printing N/N). Same reasoning the
+  # node cap above already documents: a real hang is INFINITE, so 300s catches it
+  # exactly as well as 120s and the only cost is minutes to report a hang someone
+  # is already debugging. The per-row spawn is the actual cost driver and is filed
+  # rather than fixed here — see tasks/audit-2026-07-27-deferred.md.
+  run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
 
 echo "== Node.js script tests =="
