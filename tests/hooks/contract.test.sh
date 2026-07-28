@@ -187,7 +187,22 @@ EMITTED_FAILOPEN=$(find "$HOOKS_DIR" -name '*.sh' -exec sed -E 's/^[[:space:]]*#
 EMITTED=$(printf '%s\n%s\n' "$EMITTED" "$EMITTED_FAILOPEN" | grep -v '^$' | LC_ALL=C sort -u)
 
 for e in $EMITTED; do
-  if printf '%s\n' "$DOC_PAIRS_UNIQ" | LC_ALL=C grep -Fqx -- "$e"; then
+  # Exit-code spectrum, not truthiness (2026-07-28): grep returns 1 for "no match"
+  # and >=2 for "I failed to run" (fork/ENOMEM/signal). Collapsing both into the
+  # else branch reports a transient runner fault as a documentation drift —
+  # which is the only mechanism left consistent with the v0.65.0 ci@main red:
+  # that leg parsed the SAME 47 documented pairs and ran the SAME 46 assertions
+  # as every passing leg, no collation collision exists among those 47, the pair
+  # contains no regex metacharacter, and a re-run of the identical commit passed.
+  # Same class as [[feedback_cc_grep_is_ugrep_shim]]: exit 2 is an error, not a
+  # zero-match. A real drift must not be indistinguishable from a failed spawn.
+  printf '%s\n' "$DOC_PAIRS_UNIQ" | LC_ALL=C grep -Fqx -- "$e"
+  _rc=$?
+  if (( _rc >= 2 )); then
+    ng "C lookup for '$e' FAILED TO RUN (grep exit $_rc) — infrastructure fault, not drift"
+    continue
+  fi
+  if (( _rc == 0 )); then
     ok "C emitted '${e%%:*}' by '${e#*:}' is documented"
   else
     ng "C emitted '${e%%:*}' by '${e#*:}' is NOT documented in RULE-HITS-SCHEMA.md (drift)"
