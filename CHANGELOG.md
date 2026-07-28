@@ -8,6 +8,39 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.63.0] - 2026-07-28
+
+Three items the 2026-07-27 audit recorded as deferred, closed on their merits: one real §8 ALLOW, and two gates whose scope did not reach what they exist to watch. No spec text change (stays v6.24.1).
+
+**Upgrade note.** One default behavior changes: `curl … | <wrapper-with-options> <shell>` is now denied where it was allowed. If you intentionally pipe a fetch into a shell through `sudo -u` / `env -i` / `nice -n`, add `[allow-curl-sh]` to the command (recorded as a bypass in the rule-hits log) — the deny message prints this escape, so no action is needed in advance. Kill switch for the whole hook remains `DISABLE_PRE_BASH_SAFETY_HOOK=1`; pin the prior behavior with `npm i claudemd-cli@0.62.2`. Nothing else in this release changes existing behavior — the other fixes widen gate coverage and add an opt-in env knob.
+
+### §8: the curl-sh sink side learns the wrapper grammar the fetch side already knew
+
+- **fix (F34): `curl … | sudo -u root bash` was allowed.** The pipe-sink was matched by a bare word alternation that consumed the wrapper WORD and nothing else, so any wrapper carrying an option pushed the shell one or two tokens past where the regex looked: `| sudo -u root bash`, `| env -i bash`, `| nice -n 10 bash`, `| stdbuf -oL bash`, `|& sudo -u root bash`, `| { sudo -u root bash; }` — 8 of 9 deny probes were live ALLOWs against v0.62.2. The fetch side has understood option-with-arg wrappers since F24 because it runs the shared `s8_strip_wrappers` word loop; the sink side never got a model. One concept, two implementations, unequal power — the seam shape the audit found recurring, here on the immutable gate.
+- `CURLSH_WRAPOPT` gives the regex the same grammar the word loop has: a flag, optionally followed by ONE bare-word argument. A leading `-flag` is required before a bare word is eaten, so a non-wrapper command word can never be consumed — `curl … | sudo mysql -e …` still finds no sink and stays allowed.
+- **Evidence**: 8/9 RED against the pre-fix hook (the 9th, `sudo -u svc bash <(curl …)`, already denied — there the wrapper sits in command position where the fetch-side strip reaches it, which is the asymmetry in one line). Corpus 405 → 421 rows (+9 deny, +7 FP guards); differential old-vs-new over all 405 pre-existing rows: **0 verdict changes**. Suite 500 → 516 in that file. Remaining sink residual, unchanged and documented: the assignment-argument form (`env FOO=x bash`).
+
+### Two gates that could not see their subject
+
+- **fix: the real-bash-3.2 parse gate scanned a narrower set than the pattern gate it backs up.** `ci.yml` hand-listed `hooks/*.sh hooks/lib/*.sh tests/lib/*.sh` while `tests/lib/bash32-constructs.sh` covers those plus `tests/`, `tests/hooks/`, `tests/integration/` — so a `$(cat <<EOF …)` in a test suite, the exact construct that gate was written for after v0.58.0, was invisible to it. The scanner now exposes `--list` (49 files, with a floor so an unexpanded glob fails loudly instead of passing silently) and the parse step consumes it. Two gates for one class, one file set.
+- **fix: `SPEC_DRIFT_IGNORE` — a per-file escape for the spec-drift banner.** The watched set is every shipped `spec/*.md`, which includes `OPERATOR.md`, a human runbook a user may legitimately annotate in their own copy. One annotated line meant a banner every session, and the only escape was `DISABLE_SPEC_DRIFT_BANNER=1`, which also stops watching `CLAUDE.md` — the predictable end state of a gate that cries wolf is that it stops watching the files it exists for. The banner now names the per-file switch at the moment it is needed, and the suggested value parses verbatim including the `", "` join (tested).
+
+### Test harness
+
+- **fix: two suites wrote stderr to a hand-built `/tmp/<name>-$$` path.** Wherever `/tmp` is not writable — an agent sandbox, a hardened image — `mem-audit.test.sh` and `transcript-structure-scan.test.sh` failed 15 assertions with EMPTY stderr, which reads like a hook regression rather than a harness problem. Both now write inside the mktemp sandbox they already create for `$HOME`.
+- New `run-all.sh` section gates the class over every tracked `tests/*.sh`. Controls when added: 15 hits on the two pre-fix files, 0 on the fixed tree.
+
+### Found by the independent review (all six confirmed against source, all six fixed)
+
+- **`ci.yml`: the parse gate passed silently if `--list` failed.** `for f in $(cmd)` discards the exit status even under `set -e` (control: `bash -c 'set -eu; for f in $(exit 1); do echo body; done; echo REACHED'` prints REACHED), so a `--list` that tripped its own new floor would have parsed zero files and printed "OK". Now assigned to a variable with a count assertion — the floor added in this same change was being defeated by its only consumer.
+- **`bash32-constructs.sh`: the floor guarded `--list` only, not the default scan** — the path `run-all.sh` and the ci.yml pattern step actually call. A gate that guards one of its two entry points is the same defect as one that scans one of two directories. Floor moved into a shared `bash32_checked_scope`; controls: empty tree → both paths FAIL, real tree → both pass, explicit-file path still flags `mapfile`.
+- **`run-all.sh`: the new /tmp gate hard-failed outside a git checkout**, unlike the Shellcheck section 20 lines below it. `tests/` ships in the npm tarball, so `npm test` from an extracted package had no git index. Now SKIP, with FAIL under `CI` — the established shape.
+- **`session-start.test.sh`: the suite under-reported itself.** `TOTAL` stopped its regex at `[0-9]+`, so `11b`/`11c`/`28b`–`28e` collapsed into `11` and `28`: 35 assertions reported as "29/29". Counting `"PASS:` labels including suffixes makes it exact (35/35 verified). This repo quotes those totals as release evidence.
+- **The drift banner's suggested value was not pasteable.** It emitted `SPEC_DRIFT_IGNORE=CLAUDE.md, OPERATOR.md` unquoted; pasted into a shell that assigns the first name and then runs `OPERATOR.md`. The banner now quotes it, and test 28e was rewritten to lift the assignment out of the banner text and eval it — the previous version passed a hand-quoted value, which tested the parser rather than the hint.
+- Floor comment corrected: the scope is 49 files, not "60+".
+
+**Not fixed, deliberately** (`tasks/audit-2026-07-27-deferred.md`): the CRLF heredoc-terminator item was reopened and closed as **wrong direction** — tolerating `\r` on the terminator line would make the hook blank MORE text than bash treats as body (bash does not terminate `<<EOF` on `EOF\r` either), and the D2 invariant is that a sanitizer change must only ever reduce what it blanks. Current behavior is the safe one.
+
 ## [0.62.2] - 2026-07-27
 
 Second hotfix in the 0.62.0 chain, and the last one: the macOS leg went red on a construct the repo already had a gate for, because that gate could not see the file.

@@ -1170,7 +1170,32 @@ if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
 # string from the full arrays would ADD `timeout` and flip `curl x | timeout bash`
 # allow→deny — a verdict change, not a refactor. Shell keywords (do/then/else/!) are
 # absent for the same reason a pipe sink is never a control-structure keyword.
-CURLSH_WRAP='(sudo|doas|env|command|exec|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)[[:space:]]+'
+CURLSH_WRAP='(sudo|doas|env|command|exec|nohup|setsid|time|busybox|nice|stdbuf|ionice|chrt)'
+# F34 (2026-07-28, deferred item C closed): the alternation above consumes the
+# wrapper WORD and nothing else, so every wrapper that carries an option pushed
+# the sink one or two tokens right of where the regex looked and the gate fell
+# through to ALLOW — `curl … | sudo -u root bash`, `| env -i bash`,
+# `| nice -n 10 bash`, `| stdbuf -oL bash` were all live ALLOWs (8 of the 9 deny
+# probes RED against the pre-fix hook; the 9th — `sudo -u svc bash <(curl …)` —
+# already denied, because there the wrapper sits in COMMAND position and the
+# fetch-side s8_strip_wrappers reached it. That asymmetry is the bug in one line:
+# the same wrapper is understood before the pipe and not after it).
+# This was documented-not-chased because the FETCH side got an
+# optarg model in F24/F29 while the SINK side stayed a bare regex: one concept,
+# two implementations, unequal power — the duplicated-seam shape the 2026-07-27
+# audit found recurring. Closure keeps the sink in regex form (routing it through
+# the word loop is not a local change) but gives that regex the same optarg model
+# the word loop has: a flag, optionally followed by ONE bare-word argument.
+#
+# `-flag` is REQUIRED before a bare word is eaten, so a non-wrapper command word
+# can never be consumed: `curl … | sudo mysql -e …` still finds no sink (mysql is
+# a bare word with no preceding flag) and stays allowed. Widening a deny-on-match
+# regex only ever moves allow→deny, so FP is the only risk direction — guarded by
+# 7 F34-fp corpus rows (non-shell sinks behind the same optarg wrappers) plus a
+# 405-row differential showing zero pre-existing verdict changes.
+# Assignment-form arguments (`env FOO=x bash`) remain the documented residual.
+CURLSH_WRAPOPT='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+CURLSH_WRAPSEQ="(${CURLSH_WRAP}${CURLSH_WRAPOPT}[[:space:]]+)*"
 # Optional sink prefix: one leading backslash (`\bash`, alias-defeat) OR a
 # path ending in `/` (`/bin/sh`, `/usr/local/bin/bash`). The path branch MUST
 # end with `/` so `flash` / `./mysh` can never satisfy it — the shell word
@@ -1183,7 +1208,7 @@ CURLSH_SINKPFX='(\\|/[^[:space:]|;&]*/)?'
 # sink one token right of where the regex looked. Both were live ALLOWs whose
 # payload ran (sandbox-confirmed). The sink word itself is unchanged, so a
 # non-shell group (`| { jq .; }`) still cannot match.
-CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|&?[[:space:]]*([({][[:space:]]*)?(${CURLSH_WRAP})*${CURLSH_SINKPFX}(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
+CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|&?[[:space:]]*([({][[:space:]]*)?${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(sh|bash|zsh|dash|ksh|ash)([[:space:])}]|$)"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
@@ -1194,7 +1219,7 @@ CURLSH_PIPE="(^|[|;&({])[[:space:]]*(curl|wget)[[:space:]].*\|&?[[:space:]]*([({
 # substitution this pattern already covers, but the regex required `<(` to follow
 # the sink word directly. A local-file redirect (`bash < ./setup.sh`) still cannot
 # match — the `<(` and the curl/wget word are both still required.
-CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*(${CURLSH_WRAP})*${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*(curl|wget)[[:space:]]"
+CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*(curl|wget)[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments
@@ -1208,12 +1233,11 @@ while IFS= read -r cseg; do
   # is not a split char here), and a herestring carrying a command substitution
   # (`sh <<< "$(curl x)"`, whose quoted body sanitize strips before any gate sees
   # it); [allow-curl-sh] is the escape. Option-with-arg wrapper forms
-  # (`sudo -u svc curl`) closed in F24 on the FETCH side only — that side runs
-  # through s8_strip_wrappers. The SINK side is matched by the CURLSH_WRAP regex,
-  # which consumes no options, so `curl … | sudo -u root bash` / `| env -i bash`
-  # / `| nice -n 10 bash` remain allowed. Pre-existing, documented, not chased:
-  # closing it means giving the regex an optarg model or routing the sink through
-  # the word loop, and neither is a local change.
+  # (`sudo -u svc curl`) were closed in F24 on the FETCH side (this loop, via
+  # s8_strip_wrappers) and in F34 on the SINK side (CURLSH_WRAPOPT — the regex
+  # now carries the same flag/optarg model this loop has). Both sides understand
+  # the same wrapper grammar; the remaining sink-side residual is the
+  # assignment-argument form (`env FOO=x bash`).
   cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   # Perf guard, verdict-neutral: both CURLSH regexes require the literal
   # substring curl/wget, and neither strip nor canon can CREATE it (basename

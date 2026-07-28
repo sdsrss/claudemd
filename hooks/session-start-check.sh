@@ -121,16 +121,30 @@ emit_session_summary_banner() {
 # construction, so a difference is always a defect and never a stale-version
 # artifact. Advisory only — reporting is the hook's job, rewriting a
 # user-owned file is not. Skipped on: DISABLE_SPEC_DRIFT_BANNER=1, jq missing.
+#
+# SPEC_DRIFT_IGNORE (2026-07-28): comma-separated basenames, exact match, no
+# spaces — e.g. SPEC_DRIFT_IGNORE=OPERATOR.md. The set watched here is every
+# shipped spec/*.md, which includes OPERATOR.md, a HUMAN runbook that a user may
+# legitimately annotate in their own ~/.claude/ copy. With only the all-or-nothing
+# switch, one annotated line meant a banner every single session, and the only
+# escape blinded the check for CLAUDE.md / CLAUDE-extended.md too — i.e. the
+# predictable end state of a gate that cries wolf is that it stops watching the
+# files it exists for. A per-file skip keeps the normative files covered. The
+# banner names this switch so it is readable at the moment it is needed.
 spec_drift_check() {
   [[ "${DISABLE_SPEC_DRIFT_BANNER:-0}" == "1" ]] && return 0
   command -v jq >/dev/null 2>&1 || return 0
   [[ -d "$PLUGIN_ROOT/spec" ]] || return 0
 
   # Explicit one-level glob, no descent (§8: no recursive traversal of ~/.claude).
-  local f base installed drifted=""
+  # Spaces stripped so the banner's own suggested value works verbatim when more
+  # than one file drifted (the report joins with ", ").
+  local f base installed drifted="" ignore=",${SPEC_DRIFT_IGNORE:-},"
+  ignore="${ignore// /}"
   for f in "$PLUGIN_ROOT"/spec/*.md; do
     [[ -f "$f" ]] || continue
     base=$(basename "$f")
+    case "$ignore" in *",$base,"*) continue ;; esac
     installed="$HOME/.claude/$base"
     # Absent is not drift: install.js decides WHICH files ship to ~/.claude, and
     # a spec file this version does not install must not raise a banner.
@@ -147,7 +161,7 @@ spec_drift_check() {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/).")
+      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/). Intentional local edit? SPEC_DRIFT_IGNORE=\"" + $files + "\" skips just these; DISABLE_SPEC_DRIFT_BANNER=1 disables the whole check.")
     }
   }' 2>/dev/null || true
 }

@@ -81,8 +81,22 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           B32=/tmp/bash-3.2.57/bash
           "$B32" --version | head -1
+          # Scope comes from the pattern gate's --list (2026-07-28): this step had
+          # its own hand-written glob trio, NARROWER than the gate it backs up, so
+          # a construct 3.2 cannot parse living in tests/hooks/ was invisible to the
+          # only check that can see it. Two gates, one class, one file set.
+          #
+          # Assigned, not inlined into the for-list: `for f in $(cmd)` DISCARDS the
+          # exit status even under `set -e`, so a --list that failed its own floor
+          # would yield an empty list, parse zero files, and print OK. Capturing it
+          # lets set -e fire, and the count assertion covers a success-with-empty
+          # -output case that set -e cannot see.
+          LIST=$(bash tests/lib/bash32-constructs.sh --list)
+          N=$(printf '%s\n' "$LIST" | grep -c . || true)
+          [ "$N" -ge 40 ] || { echo "::error::--list resolved $N files, refusing to report a green parse over nothing"; exit 1; }
+          echo "parsing $N file(s) under a real bash 3.2"
           found=0
-          for f in hooks/*.sh hooks/lib/*.sh tests/lib/*.sh; do
+          for f in $LIST; do
             if ! "$B32" -n "$f" 2>/tmp/b32err; then
               echo "::error::$f does not parse under bash 3.2:"
               sed 's|^|  |' /tmp/b32err

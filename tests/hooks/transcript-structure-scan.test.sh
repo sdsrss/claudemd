@@ -10,6 +10,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/transcript-structure-scan.sh"
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
+# stderr capture inside the sandbox — see the same note in mem-audit.test.sh.
+ERRF="$TMP_HOME/stderr"
+ERRF2="$TMP_HOME/stderr2"
 mkdir -p "$HOME/.claude/logs"
 
 FAIL=0
@@ -34,12 +37,12 @@ drive() {
   jq -cn --arg p "$transcript" \
     '{session_id:"test",transcript_path:$p}' > "$fix"
   if [[ -n "$extra_env" ]]; then
-    eval "$extra_env" bash "$HOOK" < "$fix" 2>/tmp/structure-stderr-$$
+    eval "$extra_env" bash "$HOOK" < "$fix" 2>"$ERRF"
   else
-    bash "$HOOK" < "$fix" 2>/tmp/structure-stderr-$$
+    bash "$HOOK" < "$fix" 2>"$ERRF"
   fi
   local rc=$?
-  STDERR=$(cat /tmp/structure-stderr-$$); rm -f /tmp/structure-stderr-$$ "$fix" "$transcript"
+  STDERR=$(cat "$ERRF"); rm -f "$ERRF" "$fix" "$transcript"
   return $rc
 }
 
@@ -60,8 +63,8 @@ fi
 # --------------------------------------------------------------------------
 fix=$(mktemp)
 jq -cn '{session_id:"test"}' > "$fix"
-TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$fix" 2>/tmp/se-$$
-rc=$?; STDERR=$(cat /tmp/se-$$); rm -f /tmp/se-$$ "$fix"
+TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$fix" 2>"$ERRF2"
+rc=$?; STDERR=$(cat "$ERRF2"); rm -f "$ERRF2" "$fix"
 if [[ "$rc" -eq 0 && -z "$STDERR" ]]; then
   echo "PASS: 2 opt-in + missing transcript → silent"; PASS=$((PASS+1))
 else

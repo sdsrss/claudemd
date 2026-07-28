@@ -11,6 +11,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/mem-audit.sh"
 TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
+# stderr capture inside the sandbox, not a hand-built /tmp path (2026-07-28).
+# `2>/tmp/mem-audit-stderr-$$` failed every case with "Read-only file system"
+# wherever /tmp is not writable — an agent sandbox, a hardened CI image — and the
+# failure mode was 12 assertions reporting empty stderr, which reads like a hook
+# regression rather than a harness problem. Same rule the suites already follow
+# for $HOME: everything the test writes goes under its own mktemp dir.
+ERRF="$TMP_HOME/stderr"
 mkdir -p "$HOME/.claude/.claudemd-state" "$HOME/.claude/logs"
 
 FAIL=0
@@ -30,8 +37,8 @@ seed() {
 # --------------------------------------------------------------------------
 reset_sentinel
 rm -rf "$HOME/.claude/projects"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 1 no projects dir → silent"
 else
@@ -44,8 +51,8 @@ fi
 reset_sentinel
 rm -rf "$HOME/.claude/projects"
 mkdir -p "$HOME/.claude/projects/-foo-/memory"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 2 empty memory dir → silent"
 else
@@ -68,8 +75,8 @@ type: feedback
 
 **How to apply:** when Z. blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah.'
 seed "-proj-" "feedback_compliant_inside.md" "$COMPLIANT_INSIDE"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 3 **Why:** form (colon inside) accepted"
 else
@@ -93,8 +100,8 @@ type: feedback
 
 **How to apply**: when Z. blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah.'
 seed "-proj-" "feedback_compliant_outside.md" "$COMPLIANT_OUTSIDE"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 4 **Why**: form (colon outside) accepted"
 else
@@ -117,8 +124,8 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 seed "-proj-" "feedback_missing.md" "$MISSING_BODY"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q "mem-audit:"; then
   echo "PASS: 5 missing markers → stderr warn, no stdout"
 else
@@ -133,8 +140,8 @@ reset_sentinel
 # Reuse Case 5 seed.
 rm -rf "$HOME/.claude/projects"
 seed "-proj-" "feedback_missing.md" "$MISSING_BODY"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if echo "$ERR" | grep -q '//memory/'; then
   echo "FAIL: 6 (path has double-slash: $ERR)"; FAIL=$((FAIL+1))
 elif echo "$ERR" | grep -q '/memory/feedback_missing.md'; then
@@ -148,8 +155,8 @@ fi
 # regardless of missing markers.
 # --------------------------------------------------------------------------
 # Sentinel was just touched in Case 6.
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 7 24h sentinel debounce → silent"
 else
@@ -160,8 +167,8 @@ fi
 # Case 8: kill-switch `DISABLE_MEM_AUDIT_HOOK=1` → silent regardless.
 # --------------------------------------------------------------------------
 reset_sentinel
-OUT=$(DISABLE_MEM_AUDIT_HOOK=1 bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(DISABLE_MEM_AUDIT_HOOK=1 bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 8 kill-switch → silent"
 else
@@ -179,8 +186,8 @@ rm -rf "$HOME/.claude/projects"
 seed "-proj-" "MEMORY.md" "# Memory index
 - [Some entry](feedback_x.md) — text"
 # No feedback_*.md / project_*.md present at all.
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'index_orphan.*feedback_x.md'; then
   echo "PASS: 9 index_orphan (MEMORY.md links file that does not exist)"
 else
@@ -207,8 +214,8 @@ seed "-proj-" "MEMORY.md" "# Memory index
 - [Some other entry](feedback_unrelated.md) — text"
 # Note: MEMORY.md links feedback_unrelated.md (not present → index_orphan)
 # AND feedback_orphan.md is on disk but not linked → file_orphan.
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'file_orphan.*feedback_orphan.md'; then
   echo "PASS: 10 file_orphan (memory file present but MEMORY.md missing link)"
 else
@@ -225,8 +232,8 @@ rm -rf "$HOME/.claude/projects"
 seed "-proj-" "feedback_aligned.md" "$COMPLIANT_NO_LINK"
 seed "-proj-" "MEMORY.md" "# Memory index
 - [Aligned](feedback_aligned.md) — text"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 11 aligned MEMORY.md ↔ files → silent"
 else
@@ -250,8 +257,8 @@ Cause: stale row not GC-collected; mitigation: nightly sweep. xxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 seed "-proj-" "project_incident_2026_05_20.md" "$PROJECT_MISSING_BODY"
-OUT=$(bash "$HOOK" </dev/null 2>/tmp/mem-audit-stderr-$$); RC=$?
-ERR=$(cat /tmp/mem-audit-stderr-$$); rm -f /tmp/mem-audit-stderr-$$
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
 if [[ "$RC" -eq 0 && -z "$OUT" && -z "$ERR" ]]; then
   echo "PASS: 12 project_*.md missing markers → silent (exempted)"
 else

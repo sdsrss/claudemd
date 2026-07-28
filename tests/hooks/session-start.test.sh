@@ -502,6 +502,50 @@ else
   echo "FAIL: 28 drift banner leaked under its kill switch (out: $OUT28)"; FAIL=$((FAIL+1))
 fi
 
+# --- 2026-07-28: SPEC_DRIFT_IGNORE, the per-file escape ---
+# The watched set includes OPERATOR.md, a human runbook a user may annotate in
+# their own copy. With only the all-or-nothing switch, one annotated line meant a
+# banner every session and the only escape also stopped watching CLAUDE.md — a
+# gate that cries wolf ends up disabled. 28c is the control: the skip must be
+# per-file, not a second kill switch wearing a filename.
+OUT28B=$(DISABLE_UPSTREAM_CHECK=1 SPEC_DRIFT_IGNORE=CLAUDE.md bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT28B" ]]; then
+  echo "PASS: 28b SPEC_DRIFT_IGNORE skips the named file"
+else
+  echo "FAIL: 28b ignored file still raised the banner (out: $OUT28B)"; FAIL=$((FAIL+1))
+fi
+
+OUT28C=$(DISABLE_UPSTREAM_CHECK=1 SPEC_DRIFT_IGNORE=OPERATOR.md bash "$HOOK" <<<'{}' 2>/dev/null)
+if echo "$OUT28C" | grep -q 'installed spec differs' && echo "$OUT28C" | grep -q 'CLAUDE.md'; then
+  echo "PASS: 28c ignoring one file leaves the others watched"
+else
+  echo "FAIL: 28c SPEC_DRIFT_IGNORE behaved as a global kill switch (out: $OUT28C)"; FAIL=$((FAIL+1))
+fi
+
+if echo "$OUT26" | grep -q 'SPEC_DRIFT_IGNORE='; then
+  echo "PASS: 28d the banner names the per-file escape at the moment it is needed"
+else
+  echo "FAIL: 28d banner does not mention SPEC_DRIFT_IGNORE (out: $OUT26)"; FAIL=$((FAIL+1))
+fi
+
+# 28e: the banner joins filenames with ", ", so the value it suggests must
+# survive being COPIED OUT OF THE BANNER AND PASTED INTO A SHELL — unquoted,
+# `SPEC_DRIFT_IGNORE=CLAUDE.md, OPERATOR.md` assigns the first name and then tries
+# to run `OPERATOR.md`. Asserting a hand-quoted value here would test the parser,
+# not the hint (2026-07-28 review). This lifts the assignment out of the banner
+# text and evals it, so the thing under test is what the user actually sees.
+printf '\n<!-- hand edit -->\n' >> "$HOME/.claude/OPERATOR.md"
+OUT28D2=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+SUGGESTED=$(printf '%s' "$OUT28D2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null \
+            | grep -oE 'SPEC_DRIFT_IGNORE="[^"]*"')
+OUT28E=$(eval "export $SUGGESTED"; DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -n "$SUGGESTED" && -z "$OUT28E" ]]; then
+  echo "PASS: 28e the banner's own suggestion, pasted verbatim, silences it"
+else
+  echo "FAIL: 28e suggestion '$SUGGESTED' did not suppress both files (out: $OUT28E)"; FAIL=$((FAIL+1))
+fi
+cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
+
 # Case 29: a spec file this version does not install is not drift.
 rm -f "$HOME/.claude/CLAUDE.md"
 OUT29=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
@@ -511,7 +555,15 @@ else
   echo "FAIL: 29 absent file reported as drift (out: $OUT29)"; FAIL=$((FAIL+1))
 fi
 
-TOTAL=$(grep -oE '"(PASS|FAIL): [0-9]+' "$0" | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
+# Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
+# regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
+# the suite ran 35 assertions and reported "29/29", and a run where every
+# suffixed case failed would still have printed a plausible-looking number. This
+# repo quotes those totals as release evidence, so the count has to mean
+# assertions. Scanning `"PASS:` only (not FAIL) is what makes it exact here —
+# a FAIL-only guard emits nothing on a green run, so counting it would overstate.
+# Verified: 35 labels, 35 lines emitted.
+TOTAL=$(grep -oE '"PASS: [0-9]+[a-z]*' "$0" | grep -oE '[0-9]+[a-z]*$' | sort -u | wc -l | tr -d ' ')
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
 fi

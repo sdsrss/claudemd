@@ -97,6 +97,42 @@ if ! bash "$HERE/lib/bash32-constructs.sh"; then
   FAIL=$((FAIL + 1))
 fi
 
+# No hand-built /tmp paths in test suites (2026-07-28). mem-audit.test.sh and
+# transcript-structure-scan.test.sh captured stderr to `2>/tmp/<name>-$$`, which
+# dies with "Read-only file system" wherever /tmp is not writable (agent sandbox,
+# hardened CI image) — and it fails as 15 assertions reporting EMPTY stderr, i.e.
+# it looks exactly like a hook regression. Every suite already mktemp's a sandbox
+# for $HOME; writes belong there. Comment lines are stripped first so prose about
+# /tmp (and the corpus's `rm -rf /tmp/foo` FP rows, which are .tsv anyway) is not
+# a finding. Controls when this was added: 15 hits on the two pre-fix files, 0 on
+# the fixed tree.
+echo "== Test-suite /tmp writes =="
+TEST_SH=$(git -C "$GUARD_REPO" ls-files 'tests/*.sh' 2>/dev/null)
+TEST_SH_COUNT=$(printf '%s\n' "$TEST_SH" | grep -c . || true)
+if (( TEST_SH_COUNT < 20 )); then
+  # Same degrade shape as the Shellcheck section below, deliberately: `tests/`
+  # ships in the npm tarball (package.json has no `files` field), so `npm test`
+  # from an extracted package — or from a `git archive` export — has no git index
+  # and would otherwise fail the whole suite on a static check it cannot run.
+  # Loud SKIP there, hard FAIL under CI where a missing index IS the defect.
+  echo "SKIP: only $TEST_SH_COUNT tracked test .sh file(s) resolved (floor 20) — not a git checkout?"
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+else
+  TMP_WRITES=$(cd "$GUARD_REPO" && printf '%s\n' "$TEST_SH" | while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    sed -E 's/^[[:space:]]*#.*$//' "$f" \
+      | grep -nE '(>>?|2>|&>)[[:space:]]*/tmp/|(mkdir|touch|cp|mv)[[:space:]]+[^|]*[[:space:]]/tmp/' \
+      | sed "s|^|$f:|"
+  done)
+  if [[ -n "$TMP_WRITES" ]]; then
+    echo "FAIL: test suite(s) write to a hand-built /tmp path — use the suite's mktemp sandbox:"
+    printf '%s\n' "$TMP_WRITES" | sed 's/^/      /'
+    FAIL=$((FAIL + 1))
+  else
+    echo "-- $TEST_SH_COUNT test suite(s) keep their writes inside mktemp sandboxes"
+  fi
+fi
+
 echo "== Shellcheck =="
 if command -v shellcheck >/dev/null 2>&1; then
   SHELL_FILES=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)

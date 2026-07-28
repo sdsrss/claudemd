@@ -18,6 +18,15 @@
 #
 # Usage: bash tests/lib/bash32-constructs.sh [file ...]
 #        no args → the default scope below. Exit 0 clean, 1 findings.
+#        --list  → print the default scope, one existing file per line, and exit.
+#
+# `--list` exists so the OTHER bash-3.2 gate — ci.yml's real-3.2 `bash -n` parse
+# step, which builds bash 3.2.57 and cannot run locally — consumes the same file
+# set instead of hand-listing its own (2026-07-28). It had drifted to
+# `hooks/*.sh hooks/lib/*.sh tests/lib/*.sh`, i.e. narrower than the pattern gate
+# it backs up: a `$(cat <<EOF …)` in tests/hooks/ would have been invisible to the
+# gate whose entire purpose is that construct. Two gates for one class must not
+# have two scopes (feedback_gate_scope_must_cover_its_subject).
 
 set -uo pipefail
 
@@ -49,26 +58,63 @@ bash32_scan() {
 # suites that exercise them under /bin/bash. Scripts under scripts/ are node or
 # developer-invoked and are deliberately out of scope.
 bash32_default_scope() {
-  local root="${1:-.}"
-  printf '%s\n' \
+  local root="${1:-.}" f
+  for f in \
     "$root"/hooks/*.sh \
     "$root"/hooks/lib/*.sh \
     "$root"/tests/*.sh \
     "$root"/tests/lib/*.sh \
     "$root"/tests/hooks/*.sh \
     "$root"/tests/integration/*.sh
+  do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
+  return 0
+}
+
+# Floor for EVERY consumer of the default scope. An unexpanded glob or a wrong
+# root would emit an empty set, and a scan over nothing exits 0 with "OK: no
+# bash 4+ constructs" — the same "the layer vanished and the run said all green"
+# shape run-all.sh's suite floors close. Current count is 49, so the floor leaves
+# 9 files of churn headroom while still catching a whole directory going missing.
+#
+# 2026-07-28 review: this guard first landed inside the --list branch only, so the
+# DEFAULT path — the one ci.yml's pattern step and run-all.sh actually call — kept
+# the hole the floor was added to close. A gate that guards one of its two entry
+# points is the same defect as a gate that scans one of two directories.
+BASH32_SCOPE_FLOOR=40
+
+# Resolve the default scope, enforce the floor, print one file per line. Callers
+# that bypass this (explicit file args) opt out deliberately.
+bash32_checked_scope() {
+  local root list n
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  list=$(bash32_default_scope "$root")
+  n=$(printf '%s\n' "$list" | grep -c .)
+  if (( n < BASH32_SCOPE_FLOOR )); then
+    echo "FAIL: default scope resolved only $n file(s) (floor $BASH32_SCOPE_FLOOR) — glob matched nothing or the layout moved" >&2
+    return 1
+  fi
+  printf '%s\n' "$list"
 }
 
 # Executed directly (not sourced) → run the scan.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  if [[ "${1:-}" == "--list" ]]; then
+    bash32_checked_scope || exit 1
+    exit 0
+  fi
   if (( $# > 0 )); then
     bash32_scan "$@" || exit 1
   else
-    _root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     _files=()
     while IFS= read -r _f; do
       [[ -n "$_f" ]] && _files+=("$_f")
-    done < <(bash32_default_scope "$_root")
+    done < <(bash32_checked_scope) || true
+    if (( ${#_files[@]} < BASH32_SCOPE_FLOOR )); then
+      echo "FAIL: refusing to report a clean scan over ${#_files[@]} file(s) (floor $BASH32_SCOPE_FLOOR)" >&2
+      exit 1
+    fi
     bash32_scan ${_files[@]+"${_files[@]}"} || exit 1
   fi
   echo "OK: no bash 4+ constructs in hooks or test suites (macOS bash 3.2 safe)"

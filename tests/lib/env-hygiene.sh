@@ -27,6 +27,6 @@ claudemd_reset_test_env() {
   # Non-prefixed knobs (opt-ins + thresholds) — explicit list.
   unset TRANSCRIPT_VOCAB_SCAN TRANSCRIPT_STRUCTURE_SCAN \
         BANNED_VOCAB_PROSE_SCAN BASH_READONLY_FAST_PATH BASH_SAFETY_INDIRECT_CALL \
-        SPEC_RESIDUE_THRESHOLD 2>/dev/null || true
+        SPEC_RESIDUE_THRESHOLD SPEC_DRIFT_IGNORE 2>/dev/null || true
   return 0
 }
