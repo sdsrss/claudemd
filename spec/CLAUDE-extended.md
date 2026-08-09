@@ -447,7 +447,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 
 - Zero rule-semantics change; zero section renames; enforcement partition unchanged (6/16/2/1). Removed archaeology + bookkeeping prose; rationale essays → one-line citations (rules verbatim); operator-side governance (§13.2 gates, §13.3 gate tables, carry-forward block) → `OPERATOR.md`; core Iron Law #2 L2 example → Appendix B shapes. Decision record: `tasks/spec-lean-cut-candidates-2026-08-09.md` (local).
 
-**Sizing** (v6.25.0, 2026-08-09, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24793 → 23042 bytes (Δ −1751: compression pass); extended 49964 → 42999 bytes (Δ −6965: compression + OPERATOR relocation); OPERATOR.md 8811 → 10972 bytes (Δ +2161: absorbed §13.3 gates + carry-forward). Size budget: core 23042/25000 (**1958 bytes headroom, 92.17%**); extended 42999/50000 (**7001 bytes headroom, 86.00%**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
+**Sizing** (v6.25.0, 2026-08-09, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24793 → 23042 bytes (Δ −1751: compression pass); extended 49964 → 42999 bytes (Δ −6965: compression + OPERATOR relocation); OPERATOR.md 8811 → 11027 bytes (Δ +2216: absorbed §13.3 gates + carry-forward). Size budget: core 23042/25000 (**1958 bytes headroom, 92.17%**); extended 42999/50000 (**7001 bytes headroom, 86.00%**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
 
 ## §1.5-EXT GLOSSARY
 

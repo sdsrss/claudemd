@@ -25,7 +25,7 @@ These govern the human maintaining the spec. Separated from Agent rules so Agent
 The agent-executable HARD-rule budget rule (logging incidents to `tasks/rule-candidates-<YYYY-MM>.md`, promotion eligibility gates) stays in `CLAUDE-extended.md §13.2`. The operator-side review activity lives here:
 
 - **Cadence**: every 20 L2+ tasks OR 30 days (whichever first) — merge overlapping `rule-candidates-*.md` entries, promote eligible candidates per §13.2 gates, prune stale entries.
-- **Promotion gates** (cross-ref to extended §13.2): require BOTH ≥3 repros across distinct sessions AND ≥20 real L2+ tasks since the last HARD addition. Either missing → log-only, no promotion.
+- **Promotion gates** (single source here since v6.25.0; extended §13.2 keeps only the agent logging duty): require BOTH ≥3 repros across distinct sessions AND ≥20 real L2+ tasks since the last HARD addition. Either missing → log-only, no promotion.
 - **Evidence-rebuttal shortcut**: existing HARD shown (in session evidence) to produce wrong behavior → fix the existing rule (downgrade/remove), do not wrap a new rule around it.
 
 ## §13.3 promotion-criteria audit (hook-layer gates — single source since v6.25.0)
