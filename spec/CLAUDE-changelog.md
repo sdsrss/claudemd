@@ -6,6 +6,14 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.25.0 (minor, 2026-08-09) — compression + relocation: attention-budget headroom restore
+
+Both budgets were at ceiling (core 24793/25000 = 99.17%, extended 49964/50000 = 99.93%), forcing §0.1 net-delete on every future addition. This release restores headroom with **zero rule-semantics change, zero section renames, enforcement partition unchanged (6/16/2/1)**. Basis: per-clause audit against 30d telemetry (`hard-rules-audit.js` demoteCandidates=[] — no HARD rule demotable) + incident-memory cross-reference; decision record `tasks/spec-lean-cut-candidates-2026-08-09.md` (local). An externally-drafted "lean v7" proposal (core→11.4K, new caps 12K/30K, changelog restart) was evaluated and rejected — its cuts removed incident-born self-enforced clauses; 8 rejected items are enumerated in the decision record.
+
+- `[restructure]` **Core 24793 → 23042 bytes (−7.1%)**. Removed: version-archaeology phrases, §0.1 tier-detail (pointer to OPERATOR stays), Iron Law #2 L2 example (Appendix B.2 carries the canonical shapes), Beyond-green-tests table → compact bullets (both HARD anchors + all escape literal forms verbatim), duplicated §9 trigger enumeration, §5.1 solo-dev advice line, wording pass throughout. Kept verbatim: all 18 core HARD anchors, §5 AUTH lists, Never-downgrade set, §8 (incl. V1–V4), §10 quick-check tables, turn-yield incl. compressed Tell.
+- `[restructure]` **Extended 49964 → ~43K bytes (−14%)**. Removed: version-archaeology throughout, ship-baseline + ship-hardening rationale essays compressed to one-line citations (rules verbatim), §2.S drift-source examples generalized, "Older entries" version enumeration (this file is the history), §11-EXT-MEM provenance paragraphs. Relocated to `OPERATOR.md`: §13.2 promotion-gate detail (agent keeps log-candidates duty), §13.3 gate tables (agent keeps pointer), Recent-changes operator carry-forward block (now a standing OPERATOR section).
+- `[watch]` Phase B (deeper cuts: IL2 example externalization, §10 quick-check removal, Tell removal, batch re-AUTH detail) gated on ≥30d / ≥20 L2+ tasks + manual violation review — A4 detector track stays CLOSED. Runbook stamps citing `@ v6.24.x` are void → first ship under v6.25.0 does a full extended load, then re-stamps (§2.2 self-healing).
+
 ## v6.24.1 (patch, 2026-07-27) — audit letter-fixes: precedence, glossary reachability, budget units
 
 Five text defects from the 2026-07-27 four-dimension audit. None adds a rule; each removes a place where two parts of the spec said different things and nothing decided between them.

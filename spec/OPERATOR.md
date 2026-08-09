@@ -28,9 +28,30 @@ The agent-executable HARD-rule budget rule (logging incidents to `tasks/rule-can
 - **Promotion gates** (cross-ref to extended §13.2): require BOTH ≥3 repros across distinct sessions AND ≥20 real L2+ tasks since the last HARD addition. Either missing → log-only, no promotion.
 - **Evidence-rebuttal shortcut**: existing HARD shown (in session evidence) to produce wrong behavior → fix the existing rule (downgrade/remove), do not wrap a new rule around it.
 
-## §13.3 promotion-criteria audit (operator-facing slice)
+## §13.3 promotion-criteria audit (hook-layer gates — single source since v6.25.0)
 
-Hook-layer advisory→enforce promotion gates are defined in `CLAUDE-extended.md §13.3`. The operator-side activity is reviewing `/claudemd-audit` output against those gates on the §13.2 cadence above.
+Behavior-layer hooks ship default-OFF for FP signal collection (≥30d). Promotion advances through two gates, operator-judged from `/claudemd-audit` data on the §13.2 cadence above (the criteria are entry gates, not auto-execution; `CLAUDE-extended.md §13.3` holds the agent-facing pointer only):
+
+**Gate 1: default-OFF → default-ON (still advisory)**:
+- ≥30 days observed since opt-in shipped
+- Total fires ≥20 in 30d window (signal exists)
+- `bypass-escape-hatch` rate <10% of fires (rule not routinely overridden)
+- No operator `revert:` / `relax:` CHANGELOG entry against the rule
+- Cross-project coverage ≥2 distinct projects (not single-repo accident)
+
+**Gate 2: default-ON advisory → `deny` enforcement**:
+- Further ≥30d in default-ON state; same fire / bypass / operator-feedback gates
+- Cross-project coverage ≥3 distinct projects
+- ≥1 `feedback_*.md` memory citing the rule as load-bearing (durable utility evidence)
+
+## Standing carry-forward decisions (relocated from extended `Recent changes` in v6.25.0)
+
+Operator bookkeeping formerly appended to each extended release entry; agent runtime never needed it. Standing items:
+
+- **Net-zero / net-delete default posture**: impact-audit #4 demote rejected as category error — do NOT re-attempt (`project_impact_audit_followups_v0233.md`). Core net-delete candidate pool: `tasks/core-net-delete-candidates-v6.14.md` C7/C8/C10/C12 ≈ −600B (largely consumed by v6.25.0).
+- **A4 measurement track CLOSED** (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open; self-enforced-rule compliance judgments require manual review, not detector rates.
+- **Carried to next §13.2 batch review**: banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite.
+- **Phase B of the v6.25.0 compression** (deeper cuts: IL2 example externalization, §10 quick-check removal, turn-yield Tell removal, batch re-AUTH detail): gated on ≥30d / ≥20 L2+ tasks post-v6.25.0 + manual violation review; per-clause record `tasks/spec-lean-cut-candidates-2026-08-09.md`.
 
 ## §13.4 `tasks/` filename conventions (reference table)
 

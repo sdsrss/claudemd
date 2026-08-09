@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.66.0] - 2026-08-09
+
+Ships spec **v6.25.0** — a compression + relocation minor that restores attention-budget headroom. No hook, script, or command behavior change; the shipped artifact delta is the four spec files + manifests.
+
+- **spec: core 24793 → 23042 bytes (−7.1%), extended 49964 → 42999 bytes (−14%)** with zero rule-semantics change, zero section renames, and the enforcement partition unchanged (6 hook / 16 self / 2 both / 1 external). What left: version archaeology, rationale essays (rules keep one-line incident citations), duplicated enumerations, operator bookkeeping. What moved: §13.2 promotion gates, §13.3 gate tables, and the Recent-changes operator carry-forward now live in `OPERATOR.md` (which grows accordingly — it is not Agent-loaded, so the growth is free at runtime).
+- Basis: per-clause audit (`tasks/spec-lean-cut-candidates-2026-08-09.md`, local) against 30d rule-hits telemetry and incident memories; `hard-rules-audit.js` reported `demoteCandidates: []`, so every HARD rule survives verbatim at anchor level — `hard-rules.json` bumps `spec_version` only. An externally-drafted "lean v7" (core→11.4K, new caps, changelog restart) was evaluated and rejected; the decision record enumerates 8 rejected items with reasons.
+- Users upgrading: nothing to do. The spec reads ~1.1k tokens lighter per turn (core ≈6.0k → ≈4.9k estimated); every obligation, AUTH surface, and hook contract is unchanged. Revert path: pin the previous plugin version (0.65.2) or `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a 0.65.2 checkout.
+
 ## [0.65.2] - 2026-07-28
 
 The v0.65.0 red leg has an explanation, and the guidance v0.65.1 left behind was wrong. No shipped **code** changed: the tarball delta is the version field and this changelog entry (`CHANGELOG.md` is itself the largest shipped file, so "byte-identical apart from the version" — the first draft of this sentence — would have been self-falsifying). No hook, script, command or spec changed. It is released so the correction carries a version and reaches the marketplace channel, which serves the whole repository.

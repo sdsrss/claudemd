@@ -1,10 +1,10 @@
-# AI-CODING-SPEC v6.24.1 — Extended
+# AI-CODING-SPEC v6.25.0 — Extended
 
-Loaded on demand per §2.2 in `CLAUDE.md` (was: §EXT LOADING RULE pre-v6.11.4). Applies to L3 / Override / ship / pre-ship review / orchestration tasks. L2 no longer auto-loads this file (v6.5). Version history: `~/.claude/CLAUDE-changelog.md` (externalized v6.9.0). Operator handbook (human-only, not Agent-loaded): `~/.claude/OPERATOR.md` (extracted §13.1 in v6.13.0).
+Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
 ## §5-EXT Safe-paths whitelist (detail)
 
-Core §5 Safe-paths lifted the concrete prefix list here (v6.8). Strict prefix match (NOT glob):
+Strict prefix match (NOT glob):
 
 - `tmp/**`
 - `node_modules/**`
@@ -118,7 +118,7 @@ During execution, if the plan's file map / naming / schema / signatures disagree
 - **≥2 mismatches in one task**: `DONE_WITH_CONCERNS` — list each deviation (file:line before/after).
 - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
 
-Common drift sources to watch: Haiku-sourced type lists differing from schema CHECK constraints; existing table having fields the plan sketch omitted; real filesystem schema (e.g. `~/.claude/tasks/`) differing from plan's assumed shape; plan-sketched test import paths that don't match actual test-helpers filename.
+Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
 
 ## §4 FLOW
 
@@ -221,7 +221,7 @@ L3  TDD + full suite + e2e                    → inline evidence with numbers+b
     (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only — core's pointer files them under an L3 heading, so an L2 agent gets no trigger they exist; that pointer now names the level (2026-07-25). Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
+L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -258,16 +258,12 @@ Falling to tier N requires stating why N-1 unfit.
 Order: project CI > defaults. No CI → build + smoke and report `[PARTIAL]`.
 
 ### Ship-baseline rationale (core §7)
-Core §7 defines the rule: before a push that fires CI/Release, check pushed-branch pipeline color; red → fix / annotate / ASK. Rationale:
-- **Silent stacking on red** hides your change's effect inside pre-existing failure — when CI stays red, attribution gets lost and the next shipper inherits an unclear diff.
-- **Local green ≠ pipeline green**: CI toolchain version, lint-ruleset drift, env vars (`CI=true` branches), and platform differences (Linux-only signal / Windows path separator) are the usual sources. `cargo test` / `pytest` / `npm test` passing locally is necessary, not sufficient.
-- **Concrete-call requirement** prevents "I think CI is green": state the command you ran (`gh run list ...` / `circleci ...` / `buildkite-agent ...`) and cite the result.
-
-Annotation form when overriding: commit body line `known-red baseline: <one-line reason>` (e.g. `known-red baseline: flaky test_x.y quarantined in issue #N, fix landing in PR #M`). Absence of this line + red baseline = spec violation.
+Core §7 defines the rule: before a push that fires CI/Release, check pushed-branch pipeline color; red → fix / annotate / ASK. Rationale in brief: stacking on red loses attribution for the next shipper; local green ≠ pipeline green (CI toolchain / lint-ruleset / env / platform drift); "I think CI is green" is not a check — state the concrete command run (`gh run list ...`) and cite the result.
+Override form: commit body line `known-red baseline: <one-line reason>` (e.g. `known-red baseline: flaky test_x.y quarantined in issue #N, fix landing in PR #M`). Absence of this line + red baseline = spec violation.
 
 ## §10-V Banned-vocab (reference list)
 
-Core §10 keeps the quick-check (top-5 EN + 中文). The full term enumeration is externalized (v6.21.2): the mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); usage notes + fix recipes live in `reference_banned_vocab_examples.md`. 30d hit data at externalization: 15/15 denied matches were core-quick-check members — the long tail printed here earned zero incremental catches.
+Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); usage notes + fix recipes live in `reference_banned_vocab_examples.md`.
 
 **OK (absolute)**: "reduced p99 580ms → 140ms" / "12/12 tests pass" / "65 → 64 tests after consolidation".
 
@@ -348,13 +344,11 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 ### Ship-pipeline hardening (HARD)
 On `ship` / `deploy` / `create-release` / `merge-and-push`, after loading extended, invoke the `ship` skill. Manual ship allowed ONLY if stated in REPORT: `manual ship because <reason>` — absence = spec violation.
 
-Rationale: ship encapsulates mechanical checklists (manifest sync across package.json / plugin.json / marketplace.json / Cargo.toml, CHANGELOG voice, release-notes generation, GitHub Release artifact vs. bare git tag) that are silent-failure-prone when bypassed. Historical incidents grounding this rule: **v2.33.2** version-sync test-failure cycle (mismatched versions across manifests caused CI failure that looked like test bug); **v2.6.3~v2.8.0** tag-without-release auto-update stall (bare tags shipped without GitHub Release artifact broke auto-updater expecting Release assets). Both were recoverable but burned 30+ min each.
+Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voice, release notes, GitHub Release artifact vs. bare tag) that are silent-failure-prone by hand (incidents: v2.33.2 manifest-sync CI failure; v2.6.3~v2.8.0 tag-without-Release update stall). Override form: REPORT Done first line `manual ship because <reason>`, so a reviewer can audit the manual diff against the skill's checklist.
 
-Override form: in the REPORT's Done section, first line states `manual ship because <reason>` (e.g. `manual ship because CI down for unrelated infra work, manifests verified by hand at :4f2e1`). Reviewer can then audit the manual diff against the skill's checklist.
+**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
 
-**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. Rationale: without a skill's step-list pulling the agent forward, `git commit` looks like a natural pause, and the user's ship AUTH — which per §5 "per-task, per-scope" already covers push/tag/release — gets re-litigated one manual step at a time. User's single `[AUTH]` on ship is one AUTH on the full pipeline.
-
-**Runbook fast-path (ship-trigger only, v6.19.0)**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
+**Runbook fast-path (ship-trigger only)**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
 
 ### Review-finding repair
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.
@@ -387,8 +381,8 @@ Override form: in the REPORT's Done section, first line states `manual ship beca
 | gs:/freeze, /careful, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
 | gs:/document-release | release notes by hand from the CHANGELOG top entry (gh release body); name the substitution |
 
-Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing (v6.21.0)**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
-**Gated = missing (v6.24.0)**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires. §3 ranks that layer below this spec, so the gate may not win SILENTLY: name it, then treat as missing → take the fallback row. Where that row itself needs the gated capability (`sp:subagent-driven-development`, `sp:*-code-review` / `gs:/review`) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate (the subagent-driven row governs). Rows carrying a written non-subagent degrade (`gs:/autoplan` self-critique, `gs:/codex` skip, `gs:/qa`) take it as written.
+Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
+**Gated = missing**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires. §3 ranks that layer below this spec, so the gate may not win SILENTLY: name it, then treat as missing → take the fallback row. Where that row itself needs the gated capability (`sp:subagent-driven-development`, `sp:*-code-review` / `gs:/review`) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate (the subagent-driven row governs). Rows carrying a written non-subagent degrade (`gs:/autoplan` self-critique, `gs:/codex` skip, `gs:/qa`) take it as written.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
 
 ## §13 META (Agent-facing)
@@ -398,50 +392,29 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 25 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 16 self / 2 both / 1 external (v6.24.0).
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 25 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 16 self / 2 both / 1 external.
 
-## §13.1 → `OPERATOR.md` (relocated v6.13.0)
+## §13.1 → `OPERATOR.md`
 
-Operator responsibilities (self-audit cadence / drift monitoring / version discipline / size budget) live in `OPERATOR.md §13.1` — human-only, not Agent-loaded. The `§13.1` anchor persists in code + hook telemetry (`§13.1-extended-read`, `bySection`) as a stable label.
+Operator responsibilities live in `OPERATOR.md §13.1` — human-only, not Agent-loaded. The `§13.1` anchor persists in hook telemetry (`§13.1-extended-read`) as a stable label.
 
 ## §13.2 HARD-rule budget (rolling, permanent)
 
-Permanent ratchet on new HARD rules. Rationale: v6.6 → v6.7.5 (~1 month) added 9+ HARD entries, each scar-driven from one incident — §13.1 Version discipline (≥20 real L2+ tasks between minor bumps) was violated. v6.8 shipped a 30-day freeze window; v6.9 makes the ratchet permanent. Budget language (not "freeze") because the door is not closed — it's gated.
+Permanent ratchet on new HARD rules (guards scar-driven single-incident accretion). Agent duty:
 
-**Policy**:
-- NEW incident that would historically spawn a HARD rule → log to `tasks/rule-candidates-<YYYY-MM>.md` as `[candidate] <rule text> — trigger: <incident> — repro-count: 1`. Do NOT edit CLAUDE.md / CLAUDE-extended.md.
-- Repeat occurrence of same candidate → increment repro-count.
-- Promotion eligibility requires BOTH: **≥3 repros across distinct sessions** AND **≥20 real L2+ tasks since the last HARD addition**. Either missing → log-only.
-- Patch-level fixes (wording, cross-ref, typo) exempt from budget.
-- Rule *removal* and HARD→SHOULD downgrades explicitly encouraged — no budget cost; they *add* budget back (and reset the 20-task counter).
+- NEW incident that would historically spawn a HARD rule → log to `tasks/rule-candidates-<YYYY-MM>.md` as `[candidate] <rule text> — trigger: <incident> — repro-count: 1`; repeat occurrence of the same candidate → increment repro-count. Do NOT edit CLAUDE.md / CLAUDE-extended.md.
+- Patch-level fixes (wording, cross-ref, typo) exempt from budget. Rule *removal* and HARD→SHOULD downgrades explicitly encouraged — no budget cost; they *add* budget back (and reset the 20-task counter).
+- **Evidence-rebuttal shortcut**: existing HARD shown (in session evidence) to produce wrong behavior → fix the existing rule (downgrade/remove), do not wrap a new rule around it.
 
-**Evidence-rebuttal shortcut**: existing HARD shown (in session evidence) to produce wrong behavior → fix the existing rule (downgrade/remove), do not wrap a new rule around it.
+Promotion gates (≥3 repros + ≥20 L2+ tasks) and batch-review cadence are operator decisions from audit data → `OPERATOR.md §13.2`.
 
-**Batch-review cadence**: every 20 L2+ tasks OR 30 days (whichever first) — merge overlapping `rule-candidates-*.md` entries, promote eligible, prune stale.
+### §13.3 Advisory → enforce promotion (hook-layer)
 
-### §13.3 Advisory → enforce promotion (hook-layer, v6.12.0)
-
-Behavior-layer hooks ship default-OFF for FP signal collection (≥30d). Promotion uses `/claudemd-audit` data to advance through two gates. Companion to §0.1 (extended → core spec-text promotion): §0.1 promotes documentation; §13.3 promotes enforcement.
-
-**Gate 1: default-OFF → default-ON (still advisory)**:
-- ≥30 days observed since opt-in shipped
-- Total fires ≥20 in 30d window (signal exists)
-- `bypass-escape-hatch` rate <10% of fires (rule not routinely overridden)
-- No operator `revert:` / `relax:` CHANGELOG entry against the rule
-- Cross-project coverage ≥2 distinct projects (not single-repo accident)
-
-**Gate 2: default-ON advisory → `deny` enforcement**:
-- Further ≥30d in default-ON state; same fire / bypass / operator-feedback gates
-- Cross-project coverage ≥3 distinct projects
-- ≥1 `feedback_*.md` memory citing the rule as load-bearing (durable utility evidence)
-
-**Operator cadence**: paired with §13.2 batch-review (every 20 L2+ tasks OR 30 days). Promotion is operator-judged from audit data; the criteria are entry gates, not auto-execution.
-
-**Budget cost**: NEW META rule, not HARD — exempt from §13.2 ratchet. Patch-level promotion criteria adjustments (threshold tuning, gate wording) further exempt.
+Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then advance OFF → default-ON advisory → `deny` through two operator-judged gates from `/claudemd-audit` data — gates + cadence: `OPERATOR.md §13.3`. Companion to §0.1: §0.1 promotes documentation; §13.3 promotes enforcement. META rule, not HARD — exempt from §13.2 ratchet.
 
 ## Appendix B — Canonical examples
 
-Trimmed in v6.11.14 to B.1 + B.2. B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
+B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
 
 ### B.1 `[AUTH REQUIRED]`
 
@@ -468,17 +441,13 @@ Trimmed in v6.11.14 to B.1 + B.2. B.3–B.6 removed as illustrative duplicates o
 
 ## Recent changes
 
-Full version history (v6.8.1 and earlier): `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
+Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.24.1 (patch, 2026-07-27)** — audit letter-fixes: precedence, glossary reachability, budget units.
+**v6.25.0 (minor, 2026-08-09)** — compression + relocation: attention-budget headroom restore.
 
-- Five text defects, no new rule; each was a place where two parts said different things with nothing deciding. `[fix]` §2.1 `MCP … authoritative` scoped to that tool's own usage, conflicts → §3 order (it contradicted §3 and §2.1's own `never mcp__chrome` row; the sibling skill clause was already resolved). `[fix]` §1.5 Local-Δ inlines `co-located = test path mirrors source path` — §2 cited §1.5 for a term only §1.5-EXT defined, and it decides L1-vs-L2 where extended must not load. `[fix]` §0 reads `no bracketed signals` (§10's L0 `[cmd]` is a citation). `[fix]` §12 `Gated = missing` premise no longer licenses the call it forbids. `[fix]` OPERATOR.md §13.1 budget = HARD caps in BYTES → §0.1 + the Sizing line (read soft/chars/changelog). Partition unchanged 6/16/2/1. Detail: `CLAUDE-changelog.md`.
+- Zero rule-semantics change; zero section renames; enforcement partition unchanged (6/16/2/1). Removed archaeology + bookkeeping prose; rationale essays → one-line citations (rules verbatim); operator-side governance (§13.2 gates, §13.3 gate tables, carry-forward block) → `OPERATOR.md`; core Iron Law #2 L2 example → Appendix B shapes. Decision record: `tasks/spec-lean-cut-candidates-2026-08-09.md` (local).
 
-**Older entries** (v6.24.0 §EXT §12 gated-detection completeness, v6.23.1 manifest enforcement-claim corrections, v6.23.0 false-enforcement-claim + level/precedence batch, v6.22.0 level/precedence seam closure, v6.21.2 §EXT §10-V externalization, v6.21.1 §11 turn-yield precondition, v6.21.0 §EXT §12 fallback completeness, v6.20.1 audit letter-fixes, v6.20.0 §2.1 Model tiering removed, v6.19.0 §2.2 Runbook fast-path + C4 §2.1-EXT move, v6.18.0 §1 Language-contract refinement, v6.17.0 four-method spec-audit letter-fix batch, v6.16.0 ship-runbook consolidation, v6.15.x, v6.14.x, v6.13.x, v6.12.0, v6.11.x compression series + earlier): see `~/.claude/CLAUDE-changelog.md`.
-
-**Sizing** (v6.24.1, 2026-07-27, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24574 → 24793 bytes (Δ +219: MCP-scope clause, `co-located` inlined, bracketed-signals wording, §1.5 pointer-reachability rule, version bump); extended 49890 → 49964 bytes (Δ +74: v6.24.1 entry replaces v6.24.0's, §12 premise reworded; drafts over cap were compressed per §0.1, never shipped over ceiling). OPERATOR.md 8737 → 8811 bytes (§13.1 budget units). Size budget: core 24793/25000 (**207 bytes headroom, 99.17%**); extended 49964/50000 (**36 bytes headroom, 99.93%**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 6.0k tokens (core only).
-
-**Operator carry-forward**: v6.24.0 is a minor (§12 detection completeness; no HARD added — `hard-rules.json` bumps spec_version only, enforcement partition unchanged). Net-zero / net-delete remains the default posture (impact-audit #4 demote rejected as category error — do NOT re-attempt; see `project_impact_audit_followups_v0233.md`); the Appendix B + §13.1 archaeology trims paired with this addition. **Extended headroom is now 110B** — the next extended addition of any size MUST pair with a trim; core unchanged at 426B, pool `tasks/core-net-delete-candidates-v6.14.md` C7/C8/C10/C12 ≈ −600B. A4 measurement track remains CLOSED (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open. Carried to the next §13.2 batch review (unchanged): banned-vocab deny-gate bypass rate 16/31 (51.6%, 30d, 8 projects; no codified demote-by-bypass-rate rule — decide there, `tasks/banned-vocab-demote-evaluation-2026-07-25.md`); 6 §4 Routing primaries `off` in `skillOverrides` with 0 measured invocations — re-enable-vs-rewrite. Runbook stamp: `@ v6.24.0`, re-stamped this ship (§2.2 self-healing).
+**Sizing** (v6.25.0, 2026-08-09, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24793 → 23042 bytes (Δ −1751: compression pass); extended 49964 → 42999 bytes (Δ −6965: compression + OPERATOR relocation); OPERATOR.md 8811 → 10972 bytes (Δ +2161: absorbed §13.3 gates + carry-forward). Size budget: core 23042/25000 (**1958 bytes headroom, 92.17%**); extended 42999/50000 (**7001 bytes headroom, 86.00%**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
 
 ## §1.5-EXT GLOSSARY
 
@@ -491,7 +460,7 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `Δ-contract public API` → soft when the consumer is internal-only (see Published client below); `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` stays HARD — core §5.1's skip-list says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading; corrected 2026-07-25). |
+| `aggressive` | `Δ-contract public API` → soft when the consumer is internal-only (see Published client below); `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` stays HARD — the skip-list below says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
@@ -505,20 +474,20 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 ## §11-EXT Session heuristics (advisory)
 
-Demoted from core §11 in v6.11.0 + CC-borrowed in v6.11.7; consolidated in v6.11.14. SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
+SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 
 - **Redundant Re-Read**: files Read or Written this session don't need re-Read absent external-change signal (user says "pull latest" / commit appears / mtime newer / structural test failure). Unsure → re-read; a third Read on unchanged content is wasted context.
 - **Correction pressure**: user rejects ≥2 auto-decisions in one task → switch to ASK-first for remaining sub-decisions. Rejection signals inferred defaults are drifting.
 - **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before next long tool call.
-- **Read-before-propose** (CC `prompts.ts:175`): don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
-- **Diagnose-before-pivot** (`prompts.ts:178`): approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
-- **Existing-comment protection** (`prompts.ts:161`): don't remove old comments unless removing the code they describe OR verified them wrong this session. §1 "default to writing no comments" addresses *new* comments, not pruning old.
+- **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
+- **Diagnose-before-pivot**: approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
+- **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. §1 "default to writing no comments" addresses *new* comments, not pruning old.
 
 ## §11-EXT-MEM Memory operations
 
-Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11) in v6.11.14. One home per fact — double-writing creates drift.
+One home per fact — double-writing creates drift.
 
-**Terminology** (v6.13.2): `claude-mem-lite` = the recall-layer plugin only (FTS5 / timeline / `[mem]` prefix); `MEMORY.md` / **durable layer** = CC built-in 4-type memory only. Avoid bare `mem` in new spec text or hook output — it's ambiguous between the two layers. Existing identifiers carrying `mem` are scoped: plugin tool/CLI names `mem_save / mem_search / mem_recall / mem_recent` refer to the plugin; `mem-audit.sh` and `mem-audit` in hook telemetry refer to the claudemd Stop hook over durable layer.
+**Terminology**: `claude-mem-lite` = the recall-layer plugin only (FTS5 / timeline / `[mem]` prefix); `MEMORY.md` / **durable layer** = CC built-in 4-type memory only. Avoid bare `mem` in new spec text or hook output — ambiguous between the two layers.
 
 ### Layer routing
 
@@ -531,9 +500,9 @@ Consolidates routing + decision tree + tag syntax (v6.11.7 + v6.11.9 + v6.11.11)
 
 **Plugin-absent fallback**: detect via tool list (no `mem_save`/`mem_search` → plugin unloaded). Recall content then writes to `recall_<topic>_<YYYYMMDD>.md` in durable layer with `[fallback]` tag. Routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) → `feedback_memory_layer_routing.md`.
 
-**Body-structure scope** (v6.12.0): `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; enforcing structured Why/How produced 16 long-standing non-compliant files across 4 projects without a path to closure. CC `memoryTypes.ts` still recommends Why/How for the project type, but the hook no longer warns when authors omit it.
+**Body-structure scope**: `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — the incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; the hook does not warn when authors omit Why/How there.
 
-**User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that. Source: CC `memoryTypes.ts:189`.
+**User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that.
 
 ### Auto-memory decision tree (top-down, first match wins)
 
@@ -550,14 +519,14 @@ After any `memory/*.md` write: refresh `MEMORY.md` index line.
 ### MEMORY.md tag syntax
 
 - Optional `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before Read.
-- **Untagged lines** = agent-driven full content scan from title/description; hook does NOT auto-block. v6.11.3 introduced the hook/agent split after the v0.5.0 over-trigger pattern (release/deploy/ship substring-matching commit-body / file-paths).
-- **Tag specificity (SHOULD, v6.11.11)**: tags ≥4 chars AND specific to the topic. Avoid generic single-word EN tags (`hook` / `plugin` / `test` / `cli` / `audit` / `done` / `spec` / `ship` when memory not actually about ship-flow) that substring-match incidental occurrences. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter`). Hook v0.9.28+ applies word-boundary matching with 0-2 char declension tolerance (`hook` → `hooks` / `hooked`; `cli` ≠ inside `clippy`); generic exact-word tags still fire — fix at authoring time.
+- **Untagged lines** = agent-driven full content scan from title/description; hook does NOT auto-block.
+- **Tag specificity (SHOULD)**: tags ≥4 chars AND specific to the topic. Avoid generic single-word EN tags (`hook` / `plugin` / `test` / `cli` / `audit` / `done` / `spec` / `ship` when memory not actually about ship-flow) that substring-match incidental occurrences. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter`). The hook applies word-boundary matching with 0-2 char declension tolerance (`hook` → `hooks` / `hooked`; `cli` ≠ inside `clippy`); generic exact-word tags still fire — fix at authoring time.
 - Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.
-- **Ship-runbook consolidation (SHOULD, v6.16.0)**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook, holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; other ship-adjacent lessons keep their topical tags and get `[[links]]` from the runbook instead of own ship tags. Effect: §11 read-the-file at ship costs one predictable Read instead of tag fan-out.
+- **Ship-runbook consolidation (SHOULD)**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook, holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; other ship-adjacent lessons keep their topical tags and get `[[links]]` from the runbook instead of own ship tags. Effect: §11 read-the-file at ship costs one predictable Read instead of tag fan-out.
 
 ## §0.2-EXT Mid-task feedback (continued)
 
-Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains the three non-obvious cases — Refinement / Quality slider / Scope-expansion — and points here for the rest).
+Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
 
 - **Continuation** (e.g. "继续/next"): same SPINE.
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
@@ -565,4 +534,4 @@ Demoted from core §0.2 in v6.11.9 (predictable common-sense cases; core retains
 
 ## §11-EXT-MAC macOS shell portability (cross-ref)
 
-Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) captured in memory anchors — moved out of spec in v6.11.14 because the patterns are repo-implementation detail, not spec rules. See `feedback_macos_shell_portability.md` (4 patterns) + `feedback_hook_platform_lib_source.md` (silent fallthrough — must `source` `hooks/lib/platform.sh`, `command -v` guard alone falls silently false). Failures surface in CI red, not silent prod.
+Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) lives in memory anchors, not spec rules: `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` (silent fallthrough — must `source` `hooks/lib/platform.sh`; a `command -v` guard alone falls silently false).
