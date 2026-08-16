@@ -439,3 +439,20 @@ test('excludeTestSessions keeps a non-string session_id instead of dropping it',
   const kept = excludeTestSessions(rows).map(r => r.session_id);
   assert.deepEqual(kept, ['real-session-uuid-long', 12345, null]);
 });
+
+test('audit dataIntegrity surfaces window coverage (2026-08-16 audit GROWTH-1)', async () => {
+  // Rotation is SIZE-triggered (5MB, two generations) while every audit window
+  // is TIME-based and reads only the primary file. After a rotation — or on a
+  // young log — "--days=N" silently reports a truncated window. logFirstTs()
+  // exists for exactly this and hard-rules-audit + sparkline already call it;
+  // audit.js was the one consumer that did not, despite dataIntegrity's stated
+  // purpose being "0 hits because dormant" vs "0 hits because data damaged".
+  // Fixture rows all carry ts≈now, so no 30d window can be covered by them.
+  const r = await audit({ days: 30 });
+  assert.ok(r.dataIntegrity.logFirstTs,
+    'dataIntegrity.logFirstTs must surface the earliest parseable row ts');
+  assert.equal(r.dataIntegrity.windowCovered, false,
+    'a 30d window against a log whose first row is ~now must report windowCovered=false');
+  assert.equal(typeof r.dataIntegrity.logSpanDays, 'number');
+  assert.ok(r.dataIntegrity.logSpanDays < 1, 'fixture log spans well under a day');
+});

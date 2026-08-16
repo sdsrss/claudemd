@@ -274,12 +274,16 @@ LAST_TEXT=$(printf '%s' "$LAST_TEXT" | tail -c 4096)
 # docs/comprehensive-audit-2026-06-12 quoted in prose fires \bcomprehensive\b
 # (the field-report deny loop: renaming the branch could not clear the prior
 # prose, so every retry denied). Strip, in order: fenced code blocks, inline
-# backtick spans, then path-like ASCII runs containing '/' (branch names,
-# file paths, URLs). The path class is ASCII-only on purpose — 中文 prose
-# around a path stays intact, and bare-prose violations still match.
+# backtick spans, path-like ASCII runs containing '/' (branch names, file
+# paths, URLs), then bare `name.ext` files (lowercase extension only, so
+# decimals/versions like "3.5x"/"v6.14" survive). The path classes are
+# ASCII-only on purpose — 中文 prose around a path stays intact, and
+# bare-prose violations still match. Keep the clause list identical to
+# transcript-vocab-scan.sh + lib/lint.js#stripIdentifiers —
+# tests/scripts/sanitize-stage-parity.test.js extracts and runs this program.
 LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
   | awk '/^[[:space:]]*```/{f=!f; next} !f' \
-  | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g')
+  | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g')
 
 # Scan high-fire region of PATTERNS_FILE only. Stop at prophylactic marker.
 #

@@ -28,7 +28,3 @@ export function diffSpec(a, b) {
   const common = lcsLength(aLines, bLines);
   return { added: bLines.length - common, removed: aLines.length - common };
 }
-
-export function summarizeDiff(perFile) {
-  return perFile.map(f => `  ${f.file}: +${f.added} / -${f.removed}`).join('\n');
-}

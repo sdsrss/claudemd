@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass } from './lib/rule-hits-parse.js';
+import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass, logFirstTs } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
@@ -33,6 +33,7 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
   // (no row ever carried a section), in which case bySection falls back to
   // the single-bucket `(unset)` behavior.
   const cutoverTs = detectCutover(log);
+  const firstTs = logFirstTs(log);
   // v0.17.7 — strip session_id='t'/'test' sentinels (hook unit-test traffic;
   // v0.23.20 also ≤7-char ad-hoc debug sentinels like 's'/'probe')
   // from every behavior view. Initial design filtered only bySection/byTrend
@@ -60,6 +61,20 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
       // stripped from every view. Lets the operator confirm the filter ran
       // and quantify hook-test traffic without grepping the raw log.
       testSessionsFiltered: hits.length - realHits.length,
+      // 2026-08-16 audit GROWTH-1 — window-coverage guard. Rotation is
+      // size-triggered (5MB) while this report's window is time-based and
+      // reads only the primary file, so post-rotation (or on a young log)
+      // "0 hits in Nd" can mean "the log only goes back M<N days".
+      // hard-rules-audit and sparkline already call logFirstTs for this;
+      // audit.js was the one consumer that didn't.
+      logFirstTs: firstTs != null ? new Date(firstTs).toISOString() : null,
+      logSpanDays: firstTs != null
+        ? Math.round(((Date.now() - firstTs) / 86400000) * 10) / 10
+        : null,
+      // false ⇒ counts near the window's far edge are truncated, not dormant.
+      windowCovered: firstTs != null
+        ? firstTs <= Date.now() - days * 86400000
+        : null,
     },
     byHook: groupByHook(realHits),
     bySection: groupBySection(realHits, cutoverTs),

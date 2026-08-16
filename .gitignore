@@ -15,6 +15,10 @@
 #  - docs/cross-project-pilot.md (external contract: portability checklist for adopters)
 #  - docs/ARCHITECTURE.md (three-layer design + hook taxonomy reference)
 #  - docs/HOOK-PROTOCOL.md (hook stdin/stdout I/O contract)
+#  - docs/ROLLBACK.md (release rollback runbook — referenced by CONTRIBUTING)
+#  - docs/spec-optimization-plan-2026-07-10.md (cited by shipped code:
+#    sampling-audit.js emits the path in its report output; memory-maintenance.js
+#    header cites it — a clone without it dangles those references; 2026-08-16 audit D1)
 # Historical / analysis scratch stays local: claude-spec-hooks-PLAN.md,
 # spec-audit-*.md, and the *.txt review reports.
 docs/*
@@ -24,6 +28,8 @@ docs/*
 !docs/cross-project-pilot.md
 !docs/ARCHITECTURE.md
 !docs/HOOK-PROTOCOL.md
+!docs/ROLLBACK.md
+!docs/spec-optimization-plan-2026-07-10.md
 
 # tasks/ is a local-only working space by default (audit / analysis / planning
 # scratch — not project function; npm tarball already excludes it via .npmignore).

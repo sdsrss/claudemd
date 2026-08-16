@@ -13,19 +13,41 @@ source "$LIB_DIR/platform.sh" || exit 0
 hook_kill_switch SANDBOX_DISPOSAL || exit 0
 
 # v0.9.34: best-effort session_id from Stop stdin for audit attribution.
-# Stop event has no tool_use_id (not a tool call). Fail-open on any read
-# error — Stop hooks cannot block, advisory only.
+# Stop event has no tool_use_id (not a tool call). Advisory only — a jq
+# failure loses attribution, not the scan, so both failure arms record a
+# fail-open row and CONTINUE rather than exit (2026-08-16 audit F4: the
+# inline `command -v jq` guard was invisible to jq-guard-consumers.test.js).
 SESSION_ID=""
-if command -v jq >/dev/null 2>&1; then
-  EVENT=$(cat 2>/dev/null || true)
-  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+if hook_require_jq; then
+  EVENT=$(hook_read_event) || EVENT=""
+  if [[ -n "$EVENT" ]]; then
+    SESSION_ID=$(hook_jq_field sandbox-disposal "$EVENT" '.session_id // ""') || SESSION_ID=""
+  fi
+else
+  hook_record_failopen sandbox-disposal jq-missing
 fi
 
 STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
-SESSION_REF="$STATE_DIR/session-start.ref"
+
+# Per-session window (2026-08-16 audit F5/CONC-1): the ref was one GLOBAL file
+# advanced by every session's Stop, so under concurrency session B claimed
+# session A's fresh sandboxes (misattributed warn) and then disarmed A's own
+# next scan (A's artifact no longer "newer than ref"). One ref per session_id
+# fixes both arms; a session WITHOUT a session_id (jq missing/broken, bare
+# event) falls back to the legacy global name — the pre-fix blind spot, kept
+# rather than silently widened. Orphaned per-session refs are reaped by
+# scripts/clean-residue.js (session-ref pattern).
+SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
+if [[ -n "$SAFE_SID" ]]; then
+  SESSION_REF="$STATE_DIR/session-start-${SAFE_SID}.ref"
+else
+  SESSION_REF="$STATE_DIR/session-start.ref"
+fi
 
 if [[ ! -f "$SESSION_REF" ]]; then
+  # First Stop of THIS session: establish the window silently. Scanning here
+  # against any other baseline is exactly the misattribution being fixed.
   touch "$SESSION_REF"
   exit 0
 fi

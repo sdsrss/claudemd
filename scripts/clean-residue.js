@@ -167,6 +167,13 @@ const STATE_EPHEMERAL = [
   // path from `$VS_STATE_DIR`, so the extraction keyed on `$STATE_DIR` could
   // not see it: this list's own scope failing to cover its subject.
   { kind: 'vocab-scan', re: /^vocab-scan-.+\.last$/ },
+  // Per-session sandbox-disposal window ref (2026-08-16 audit F5). The
+  // sid-less legacy `session-start.ref` (no dash) stays OUT of this pattern —
+  // it is live singleton state for sessions whose event carries no session_id.
+  { kind: 'session-ref', re: /^session-start-.+\.ref$/ },
+  // Per-session residue-audit baseline (2026-08-16 audit CONC-3); legacy
+  // `tmp-baseline.txt` likewise excluded.
+  { kind: 'tmp-baseline', re: /^tmp-baseline-.+\.txt$/ },
 ];
 
 export function scanStateDir({ stateDir, now = Date.now() } = {}) {

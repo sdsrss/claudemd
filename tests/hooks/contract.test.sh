@@ -139,15 +139,28 @@ for entry in "${DOCUMENTED[@]}"; do
   # The fail-open row names the WRAPPER itself in its emitter column; that
   # backticked token is prose, not a hook.
   if [[ "$hook_name" == "hook_record_failopen" ]]; then continue; fi
+  # Exit-code spectrum on BOTH recursive walks (2026-08-16 audit T-1): these
+  # sit 60 lines above the C-loop site the 0.65.2 fix covered and are MORE
+  # exposed — a recursive grep can hit exit >=2 from an unreadable file, a
+  # missing $HOOKS_DIR, or fd exhaustion, and a missing $HOOKS_DIR would have
+  # presented EVERY documented pair as mass documentation drift.
   if [[ "$event" == "fail-open" ]]; then
-    if grep -hRE "hook_record_failopen[[:space:]]+${hook_name}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1; then
+    grep -hRE "hook_record_failopen[[:space:]]+${hook_name}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1
+    _rc=$?
+    if (( _rc >= 2 )); then
+      ng "B lookup for '$hook_name'/'$event' FAILED TO RUN (grep exit $_rc) — infrastructure fault, not drift"
+    elif (( _rc == 0 )); then
       ok "B documented '$hook_name' emits '$event'"
     else
       ng "B documented '$hook_name'/'$event' has no hook_record_failopen call in source"
     fi
     continue
   fi
-  if grep -hRE "hook_record[[:space:]]+${hook_name}[[:space:]]+${event}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1; then
+  grep -hRE "hook_record[[:space:]]+${hook_name}[[:space:]]+${event}([[:space:]]|$)" "$HOOKS_DIR" >/dev/null 2>&1
+  _rc=$?
+  if (( _rc >= 2 )); then
+    ng "B lookup for '$hook_name'/'$event' FAILED TO RUN (grep exit $_rc) — infrastructure fault, not drift"
+  elif (( _rc == 0 )); then
     ok "B documented '$hook_name' emits '$event'"
   else
     ng "B documented '$hook_name'/'$event' has no hook_record call in source"
@@ -238,7 +251,13 @@ if [[ -r "$STATUS_JS" ]]; then
   else
     while IFS= read -r tok; do
       [[ -z "$tok" ]] && continue
-      if grep -F -q -r -- "$tok" "$HOOKS_DIR"; then
+      # Same exit-code spectrum split as B/C (2026-08-16 audit T-2): recursive
+      # walk, so exit >=2 is reachable and must not read as drift.
+      grep -F -q -r -- "$tok" "$HOOKS_DIR"
+      _rc=$?
+      if (( _rc >= 2 )); then
+        ng "C2 lookup for '$tok' FAILED TO RUN (grep exit $_rc) — infrastructure fault, not drift"
+      elif (( _rc == 0 )); then
         ok "C2 ESCAPE_TOKEN '$tok' is implemented in hooks/"
       else
         ng "C2 ESCAPE_TOKEN '$tok' declared in status.js but NOT found in any hook (drift)"

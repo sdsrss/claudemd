@@ -6,6 +6,15 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.25.1 (patch, 2026-08-16) — semantic-loss restore (2026-08-16 audit S-1..S-4)
+
+The v6.25.0 compression review recovered 6 dropped clauses; the 2026-08-16 audit's line-by-line diff classification found 4 more that existed NOWHERE afterwards. All were clauses that had shipped in earlier versions — this is restore, not addition; no new rules, enforcement partition unchanged (6/16/2/1).
+
+- `[restore]` Core §5.1: AUTONOMY_LEVEL choosing guidance ("Solo-dev + bypassPermissions → consider aggressive; team-shared / prod-touching → default or careful") — the only guidance on PICKING a value; the v6.25.0 cut-list called it "solo-dev advice line" but nothing carried it. Also the skip-list parenthetical again names §8 + Iron Law #2 + §5 Hard-AUTH as still binding in core — the binding enumeration lived only in §5.1-EXT, unreachable at L0–L2 where `aggressive` operates.
+- `[restore]` Core §7: `"vibe-check from one manual test" is not metric-neutral evidence` — the qualifier naming the failure mode the metric-coupled SHOULD trigger exists to block.
+- `[restore]` Extended §11-EXT-MEM Terminology: the `mem_save / mem_search / mem_recall / mem_recent` + `mem-audit` identifier carve-out — without it "avoid bare mem" condemned shipped identifiers and the rule for reading `mem-audit` telemetry was gone.
+- `[process]` The companion plugin release (0.67.0) adds a CI gate: spec/ edits since the last tag require a version bump in the same change (the 34f73e4 post-tag edit fired the installed-vs-marketplace drift banner 713 times over 4 days).
+
 ## v6.25.0 (minor, 2026-08-09) — compression + relocation: attention-budget headroom restore
 
 Both budgets were at ceiling (core 24793/25000 = 99.17%, extended 49964/50000 = 99.93%), forcing §0.1 net-delete on every future addition. This release restores headroom with **zero rule-semantics change, zero section renames, enforcement partition unchanged (6/16/2/1)**. Basis: per-clause audit against 30d telemetry (`hard-rules-audit.js` demoteCandidates=[] — no HARD rule demotable) + incident-memory cross-reference; decision record `tasks/spec-lean-cut-candidates-2026-08-09.md` (local). An externally-drafted "lean v7" proposal (core→11.4K, new caps 12K/30K, changelog restart) was evaluated and rejected — its cuts removed incident-born self-enforced clauses; 8 rejected items are enumerated in the decision record.

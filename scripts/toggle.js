@@ -21,7 +21,7 @@ Options:
 
 Wrapped by /claudemd-toggle.
 
-Exit codes: 0 success | 1 unknown hook / no arg.`;
+Exit codes: 0 success | 1 unknown hook / no arg | 2 argv-shape error.`;
 
 export async function toggle(name) {
   const upper = NAME_MAP[name];

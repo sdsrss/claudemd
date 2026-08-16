@@ -41,7 +41,7 @@ Session-summary follows a separate path:
 ```
 Stop hook
   └─> hooks/session-summary.sh
-      └─> aggregates ~/.claude/logs/claudemd.jsonl since session-start.ref
+      └─> aggregates ~/.claude/logs/claudemd.jsonl since session-summary.lastrun
           └─> writes ~/.claude/.claudemd-state/last-session-summary.json
               └─> SessionStart hook reads + emits as additionalContext
                   └─> renames to .last-shown (consume-once)
@@ -50,8 +50,10 @@ Stop hook
 ## State locations
 
 - `~/.claude/.claudemd-manifest.json` — install manifest (command string + SHA256, hook entries) (v0.1.9+; pre-0.1.9 lived at `stateDir()/installed.json` and is migrated on first read)
-- `~/.claude/.claudemd-state/tmp-baseline.txt` — residue-audit last end-of-session count
-- `~/.claude/.claudemd-state/session-start.ref` — sandbox-disposal + session-summary session reference timestamp
+- `~/.claude/.claudemd-state/tmp-baseline-<sid>.txt` — residue-audit per-session baseline (2026-08-16 audit CONC-3); orphans reaped by clean-residue.js
+- `~/.claude/.claudemd-state/tmp-baseline.txt` — legacy residue-audit baseline, still written by sessions whose event carries no session_id
+- `~/.claude/.claudemd-state/session-start-<sid>.ref` — sandbox-disposal per-session window ref (2026-08-16 audit F5); orphans reaped by clean-residue.js
+- `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns `session-summary.lastrun`)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission

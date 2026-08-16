@@ -618,3 +618,32 @@ test('D8: plugin cache check passes when manifest.pluginRoot exists', async () =
   assert.equal(pc.ok, true);
   assert.match(pc.detail, /present at/);
 });
+
+test('spec-cache-drift flags installed vs marketplace-shipped fork (2026-08-16 audit F3)', async () => {
+  // The v0.66.0 incident shape: a post-tag edit left installed ~/.claude spec
+  // differing from the marketplace clone at the SAME version. The SessionStart
+  // banner fired 713 times over 4 days while doctor — whose axis 1 self-compares
+  // source vs installed when run from the repo — exited 0. This axis mirrors
+  // what hook-drift has done for hooks/ since v0.9.22.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'), 'installed body\n');
+  const mktSpec = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd/spec');
+  fs.mkdirSync(mktSpec, { recursive: true });
+  fs.writeFileSync(path.join(mktSpec, 'CLAUDE-extended.md'), 'cache body\n');
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'spec-cache-drift');
+  assert.ok(c, 'spec-cache-drift check must exist');
+  assert.equal(c.ok, false, 'same-version content fork must be flagged');
+  assert.match(c.detail, /CLAUDE-extended\.md/);
+  assert.match(c.detail, /version bump|claudemd-update/);
+});
+
+test('spec-cache-drift skips when no marketplace install exists (2026-08-16 audit F3)', async () => {
+  // npm-CLI-only / fresh-install users have no marketplace clone — the check
+  // must skip with a reason, mirroring hook-drift's skip contract.
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'spec-cache-drift');
+  assert.ok(c, 'spec-cache-drift check must exist');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /skipped/);
+  assert.match(c.detail, /market-root-missing/);
+});

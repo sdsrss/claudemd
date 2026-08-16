@@ -22,10 +22,19 @@ jobs:
         # exercises the real cross-layer query. With only [20] the actual SQL
         # path was CI-invisible: a query/schema regression shipped green while
         # the suite reported the test as skipped (2026-07-17 audit).
-        node: [20, 22]
+        # 24 = the maintainer's actual runtime (2026-08-16 audit PROC-7):
+        # engines declares ">=20" open-ended, and npm 12 (bundled with 24)
+        # changed `npm pack --json` from array to object — a green matrix
+        # that stops at 22 never executes the versions users actually run.
+        node: [20, 22, 24]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Tags are needed by the spec-bump gate below (git describe).
+          # npm-publish.yml sets the same pair for its tag/version guard.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
@@ -148,5 +157,34 @@ jobs:
           echo "hook stderr (expected to mention claudemd-debug-marker): '$OUT'"
           rm -rf "/tmp/claudemd-debug-marker_$$" "$MARKER" "$REF"
           exit 0
+      - name: Spec edits require a version bump (post-tag drift gate)
+        if: runner.os == 'Linux' && matrix.node == 20
+        run: |
+          # 2026-08-16 audit F2/PROC-2: commit 34f73e4 edited spec/*.md AFTER
+          # tag v0.66.0 without a bump — installed ~/.claude then forked from
+          # the marketplace clone at the SAME version, and the SessionStart
+          # drift banner fired 713 times over 4 days. version-cascade-check
+          # cannot see this class (all its checks are intra-tree; the
+          # offending commit even satisfied its Sizing check), and no
+          # pre-commit layer exists. This gate relates tree state to tag
+          # state, which only CI (with tags fetched) can do — it must NOT
+          # move into tests/: the suite stays runnable from an npm tarball
+          # with no git history.
+          set -eu
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$LAST_TAG" ]; then
+            echo "no tag reachable (fork/shallow clone) — skipping"
+            exit 0
+          fi
+          if git diff --quiet "$LAST_TAG"..HEAD -- spec/; then
+            echo "OK: spec/ unchanged since $LAST_TAG"
+            exit 0
+          fi
+          PKG_VER="v$(node -p "require('./package.json').version")"
+          if [ "$PKG_VER" = "$LAST_TAG" ]; then
+            echo "::error::spec/ changed since $LAST_TAG but package.json is still $PKG_VER — a post-tag spec edit without a bump forks installed vs marketplace content at the same version (the v0.66.0 713-banner incident). Bump the version in the same change."
+            exit 1
+          fi
+          echo "OK: spec/ changed and version bumped ($LAST_TAG -> $PKG_VER)"
       - name: Run test suite
         run: bash tests/run-all.sh

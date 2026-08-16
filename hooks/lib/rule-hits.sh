@@ -102,15 +102,50 @@ _rule_hits_fallback_row() {
   # the ends additionally rejects a truncated payload.
   #
   # This is a guard, not a validator: real JSON validation is not available on
-  # a path defined by jq being unusable. It bounds the damage to "row dropped"
-  # rather than "log corrupted".
+  # a path defined by jq being unusable. It bounds the damage to "extra
+  # degraded to null" (row survives) rather than "log corrupted".
+  #
+  # 2026-08-16 audit H-1: the first/last-char sniff alone accepted truncated
+  # payloads with intact outer braces verbatim — six call sites wrap a
+  # possibly-empty jq fragment in a literal brace pair, so a jq that works
+  # once then fails yields exactly `{"matched":}` / `{"matched":[}`, and the
+  # old guard appended an unparseable line. Two cheap structural checks close
+  # those shapes: delimiter-count balance, and no dangling ':'/',' before the
+  # closer. Both can only false-positive on delimiter-bearing STRING values
+  # (e.g. {"note":"a["}), where the payload degrades to null — conservative
+  # by design.
   if [[ "$extra" == *$'\n'* || "$extra" == *$'\r'* ]]; then
     extra=null
   else
     case "$extra" in
       null) : ;;
-      '{'*'}') : ;;
-      '['*']') : ;;
+      '{'*'}'|'['*']')
+        # Delimiter counts via length difference after deleting the target
+        # char. NOT via `${var//[^X]/}` keep-only patterns: bash parses the
+        # bracket expression `[^]]` as `[^]` + literal `]` (diverging from the
+        # POSIX "]-first-is-literal" rule), which silently miscounts and
+        # rejected every valid payload on this function's first cut.
+        local _t _n1 _n2
+        _t=${extra//\{/}; _n1=$(( ${#extra} - ${#_t} ))
+        _t=${extra//\}/}; _n2=$(( ${#extra} - ${#_t} ))
+        [[ "$_n1" -ne "$_n2" ]] && extra=null
+        if [[ "$extra" != null ]]; then
+          _t=${extra//\[/}; _n1=$(( ${#extra} - ${#_t} ))
+          _t=${extra//\]/}; _n2=$(( ${#extra} - ${#_t} ))
+          [[ "$_n1" -ne "$_n2" ]] && extra=null
+        fi
+        case "${extra: -2}" in
+          ':}'|',}'|':]'|',]') extra=null ;;
+        esac
+        # Mid-payload dangling separator (2026-08-16 pre-tag review S1): an
+        # empty jq fragment BETWEEN fields yields {"missing":,"n":2} — the
+        # closer check alone misses it (this guard's own scope-narrower-than-
+        # subject moment, caught before tag). memory-read-check.sh:260 is a
+        # live producer of exactly that shape under a jq that fails mid-hook.
+        # A string VALUE containing ':,' or ',,' degrades to null — same
+        # conservative posture as the delimiter counts above.
+        if [[ "$extra" == *':,'* || "$extra" == *',,'* ]]; then extra=null; fi
+        ;;
       *) extra=null ;;
     esac
   fi
@@ -170,11 +205,17 @@ rule_hits_append() {
   # file, so rotations beyond .1 are effectively archived (read-only).
   # `stat -c` is GNU, `-f` is BSD — try both, default to 0 if neither works
   # (fail-safe: no rotation better than wrong rotation on an unknown stat).
-  # Concurrency: two hooks firing within the same ms can both observe
-  # `size > threshold` and both race `mv -f file .1`. One rotation wins, one
-  # is a no-op on an already-moved file; at worst one log line is lost to
-  # the race. Acceptable under the fail-open contract — flock would add a
-  # dependency for a ~0.01% occurrence.
+  # Concurrency (corrected 2026-08-16 audit CONC-4; the previous "at worst
+  # one log line is lost" claim was FALSE): two processes can both pass the
+  # size check, then interleave the two mv steps — P1 rotates live→.1, and
+  # P2's `mv .1 .2` then moves that JUST-ROTATED live generation onto .2,
+  # wiping the archive P1 made. Sandbox replay: {live, .1, .2} degraded to
+  # {gone, gone, live-as-.2} — BOTH prior generations lost (up to ~2×max_mb
+  # of archive), though live rows survive under the .2 name. Accepted:
+  # archives are best-effort cold storage no consumer reads (audit reads the
+  # primary only), the window is one mv wide, and flock would add a
+  # dependency on this fail-open path. Do NOT cite this comment as "the race
+  # is bounded to a line" — it is bounded to the ARCHIVES.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
   # Numeric-guard: a non-integer env value (user typo) would make
   # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.0 — Extended
+# AI-CODING-SPEC v6.25.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -443,11 +443,11 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.25.0 (minor, 2026-08-09)** — compression + relocation: attention-budget headroom restore.
+**v6.25.1 (patch, 2026-08-16)** — semantic-loss restore from the 2026-08-16 audit (S-1..S-4): four clauses the v6.25.0 compression dropped that existed nowhere afterwards.
 
-- Zero rule-semantics change; zero section renames; enforcement partition unchanged (6/16/2/1). Removed archaeology + bookkeeping prose; rationale essays → one-line citations (rules verbatim); operator-side governance (§13.2 gates, §13.3 gate tables, carry-forward block) → `OPERATOR.md`; core Iron Law #2 L2 example → Appendix B shapes. Decision record: `tasks/spec-lean-cut-candidates-2026-08-09.md` (local).
+- Core §5.1: AUTONOMY_LEVEL choosing guidance restored (solo-dev/bypassPermissions vs team/prod) + the skip-list parenthetical again names §8 + Iron Law #2 + §5 Hard-AUTH as still binding (was extended-only, unreachable at the levels aggressive operates). Core §7: "vibe-check from one manual test is not metric-neutral evidence" qualifier restored. Extended §11-EXT-MEM: `mem_*` / `mem-audit` identifier carve-out restored (without it, "avoid bare mem" condemned shipped identifiers). No new rules; enforcement partition unchanged (6/16/2/1).
 
-**Sizing** (v6.25.0, 2026-08-09, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 24793 → 23042 bytes (Δ −1751: compression pass); extended 49964 → 42999 bytes (Δ −6965: compression + OPERATOR relocation); OPERATOR.md 8811 → 11027 bytes (Δ +2216: absorbed §13.3 gates + carry-forward). Size budget: core 23042/25000 (**1958 bytes headroom, 92.17%**); extended 42999/50000 (**7001 bytes headroom, 86.00%**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
+**Sizing** (v6.25.1, 2026-08-16, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23042 → 23280 bytes (Δ +238: S-1/S-2/S-3 restores); extended 42999 → 43381 bytes (Δ +382: S-4 restore + this entry); OPERATOR.md 11027 → 11027 bytes (Δ 0). Size budget: core 23280/25000 (**1720 bytes headroom**); extended 43381/50000 (**6619 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
 
 ## §1.5-EXT GLOSSARY
 
@@ -487,7 +487,7 @@ SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 
 One home per fact — double-writing creates drift.
 
-**Terminology**: `claude-mem-lite` = the recall-layer plugin only (FTS5 / timeline / `[mem]` prefix); `MEMORY.md` / **durable layer** = CC built-in 4-type memory only. Avoid bare `mem` in new spec text or hook output — ambiguous between the two layers.
+**Terminology**: `claude-mem-lite` = the recall-layer plugin only (FTS5 / timeline / `[mem]` prefix); `MEMORY.md` / **durable layer** = CC built-in 4-type memory only. Avoid bare `mem` in new spec text or hook output — ambiguous between the two layers. Existing identifiers carrying `mem` are scoped: plugin tool/CLI names `mem_save / mem_search / mem_recall / mem_recent` refer to the plugin; `mem-audit.sh` / `mem-audit` in hook telemetry refer to the claudemd Stop hook over the durable layer.
 
 ### Layer routing
 

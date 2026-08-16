@@ -47,8 +47,15 @@ if [[ ! -f "$MANIFEST_NEW" ]]; then
 fi
 
 # jq / readable package.json required for the version comparison. Anything
-# missing → fail-open. Sentinel still written to avoid retry-every-prompt.
-if ! command -v jq >/dev/null 2>&1 || [[ ! -r "$PLUGIN_ROOT/package.json" ]]; then
+# missing → fail-open, RECORDED (2026-08-16 audit F4: this skip was silent).
+# Sentinel still written to avoid retry-every-prompt.
+if ! command -v jq >/dev/null 2>&1; then
+  hook_record_failopen user-prompt-submit jq-missing
+  touch "$SENTINEL" 2>/dev/null || true
+  exit 0
+fi
+if [[ ! -r "$PLUGIN_ROOT/package.json" ]]; then
+  hook_record_failopen user-prompt-submit prereq-missing
   touch "$SENTINEL" 2>/dev/null || true
   exit 0
 fi

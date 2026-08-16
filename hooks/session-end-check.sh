@@ -213,6 +213,19 @@ if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
     ' 2>/dev/null) || L2_HIT_COUNT=0
     [[ "$L2_HIT_COUNT" =~ ^[0-9]+$ ]] || L2_HIT_COUNT=0
     if (( L2_HIT_COUNT > 0 )); then
+      # Atomic REPLACE via tmp+mv (2026-08-16 audit CONC-2): the truncating
+      # `printf > file` let a concurrent reader see an empty/partial file, and
+      # the numeric guard below then coerced that torn read to CUR=0 —
+      # discarding the entire accumulated count near the threshold. tmp+mv
+      # removes torn reads; it does NOT serialize read-modify-write, so
+      # concurrent Stops can still lose individual increments (advisory
+      # cadence tolerates undercount-by-races; it does not tolerate resets).
+      # Same pattern as session-summary.sh's SUMMARY_FILE write.
+      _counter_write() {
+        local _v="$1" _tmp="$COUNTER_FILE.tmp.$$"
+        printf '%d' "$_v" > "$_tmp" 2>/dev/null || return 0
+        mv -f "$_tmp" "$COUNTER_FILE" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
+      }
       CUR=0
       if [[ -r "$COUNTER_FILE" ]]; then
         CUR=$(cat "$COUNTER_FILE" 2>/dev/null || printf '0')
@@ -229,11 +242,11 @@ if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
       if (( NEXT >= THRESHOLD )); then
         echo "[claudemd] §13.2 batch-review cadence: ${THRESHOLD} L2+ sessions since last reset — recommend \`/claudemd-sampling-audit\` to feed §13.2 promotion gates + \`/claudemd-rules\` to spot demote candidates." >&2
         echo "  Disable advisory: DISABLE_BATCH_CADENCE_ADVISORY=1" >&2
-        printf '0' > "$COUNTER_FILE" 2>/dev/null || true
+        _counter_write 0
         EXTRA=$(jq -cn --argjson n "$THRESHOLD" '{l2_sessions:$n}' 2>/dev/null) || EXTRA='null'
         hook_record session-end-check batch-cadence-advisory "$EXTRA" '§13.2-batch-review' "$SESSION_ID"
       else
-        printf '%d' "$NEXT" > "$COUNTER_FILE" 2>/dev/null || true
+        _counter_write "$NEXT"
       fi
     fi
   fi

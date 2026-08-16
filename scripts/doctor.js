@@ -164,6 +164,35 @@ export async function doctor({ pruneBackups: prune } = {}) {
       `Likely cause: /plugin update is a silent no-op. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`);
   }
 
+  // 2026-08-16 audit F3: second spec axis. Axis 1 above (shipped-source vs
+  // installed) self-compares when doctor runs from the repo, so it can never
+  // see the drift the SessionStart banner fires on: marketplace-shipped (what
+  // CC actually installs) vs installed ~/.claude. The hooks side has carried
+  // this axis since v0.9.22 (compareHooks above); the spec side was blind —
+  // during the v0.66.0 post-tag-edit incident the banner fired 713 times over
+  // 4 days while doctor exited 0 and reported every spec hash green.
+  const mktRoot = marketplacePluginRoot();
+  if (!fs.existsSync(mktRoot)) {
+    push('spec-cache-drift', true, 'skipped (market-root-missing)');
+  } else if (path.resolve(mktRoot) === path.resolve(PLUGIN_ROOT)) {
+    push('spec-cache-drift', true, 'skipped (self-compare)');
+  } else if (!fs.existsSync(path.join(mktRoot, 'spec'))) {
+    push('spec-cache-drift', true, 'skipped (market-spec-missing)');
+  } else {
+    // Missing-file rows are axis-1 territory (install completeness); this
+    // axis flags only same-version content forks: both present, hashes differ.
+    const cacheDrift = compareSpecs(mktRoot).filter(s => !s.missing && !s.match);
+    if (cacheDrift.length === 0) {
+      push('spec-cache-drift', true, 'installed spec matches marketplace-shipped');
+    } else {
+      push('spec-cache-drift', false,
+        `${cacheDrift.length} spec file(s) differ between installed ~/.claude and ${mktRoot}: ` +
+        `${cacheDrift.map(s => s.name).join(', ')}. Same-version content fork — ` +
+        `post-tag spec edit or interrupted copy. Fix: ship a version bump ` +
+        `(spec edits belong in the plugin), or /claudemd-update if installed is stale.`);
+    }
+  }
+
   const which = (bin) => {
     try { execSync(`command -v ${bin}`, { stdio: 'ignore' }); return true; }
     catch { return false; }

@@ -42,12 +42,28 @@ function hookFiles() {
     .sort();
 }
 
+// 2026-08-16 audit F4: deriving the set from `hook_require_jq` alone let two
+// hooks (session-start-check, sandbox-disposal — plus residue-audit, which the
+// audit itself missed and THIS widened extraction caught) parse the event with
+// an inline `command -v jq` guard, invisible to both tests below. The subject
+// of this gate is "every hook that depends on jq", so the extraction matches
+// any jq guard shape, not one helper's name.
 function jqGuardConsumers() {
-  return hookFiles().filter(f =>
-    /\bhook_require_jq\b/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8')));
+  return hookFiles().filter(f => {
+    const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
+    return /\bhook_require_jq\b/.test(src) || /command -v jq\b/.test(src);
+  });
 }
 
-test('every hook_require_jq consumer records a fail-open, or is explicitly exempt', () => {
+// Hooks that read the stdin event at all — `hook_read_event` or a raw
+// `EVENT=$(cat …)`. These have a "first parse" that must attribute a broken jq.
+function eventReaders() {
+  return hookFiles().filter(f =>
+    /\b(?:hook_read_event\b|EVENT=\$\(\s*cat\b)/.test(
+      fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8')));
+}
+
+test('every jq-guarded hook records a fail-open, or is explicitly exempt', () => {
   const consumers = jqGuardConsumers();
 
   // Floor: catches the extraction silently returning nothing (a rename of the
@@ -73,15 +89,18 @@ test('every hook_require_jq consumer records a fail-open, or is explicitly exemp
 });
 
 test('every hook that parses its event detects a broken jq at the first parse', () => {
-  const consumers = jqGuardConsumers();
-  const unwired = [];
+  // Scope: hooks that read the stdin event AT ALL (hook_read_event or raw
+  // `EVENT=$(cat …)`) — not just the ones using the blessed helper. A hook that
+  // never reads EVENT has no first parse to guard.
+  const readers = eventReaders();
+  assert.ok(readers.length >= 9,
+    `only ${readers.length} event-reading hook(s) found — extraction broke. ` +
+    `This gate must never validate an empty set.`);
 
-  for (const f of consumers) {
+  const unwired = [];
+  for (const f of readers) {
     if (EXEMPT.has(f)) continue;
     const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
-    // Only hooks that actually parse the stdin event are in scope. A hook that
-    // never reads EVENT has no first parse to guard.
-    if (!/hook_read_event/.test(src)) continue;
     if (!/hook_jq_field\s/.test(src)) unwired.push(f);
   }
 

@@ -10,11 +10,14 @@
 //   hooks/hooks.json       — drift-tested against this registry
 //   commands/claudemd-toggle.md — display-name list drift-tested
 //
-// Order mirrors hooks/hooks.json registration order (SessionStart →
-// UserPromptSubmit → PreToolUse:Bash → Stop), which is the order CC executes
-// them. Adding a hook = one entry here + the hooks.json command + the
+// Grouped by event (SessionStart → UserPromptSubmit → PreToolUse:Bash →
+// Stop) for display enumeration. Execution order comes from hooks/hooks.json
+// alone; within an event group the two lists are NOT order-synchronized and
+// no test asserts order (2026-08-16 audit C1 — the previous "mirrors
+// registration order" claim here was false for the Stop group). Adding a
+// hook = one entry here + the hooks.json command + the
 // commands/claudemd-toggle.md list; tests/scripts/hook-registry.test.js fails
-// loudly if any of the three drift.
+// loudly if membership/event/matcher/timeout drift.
 
 export const HOOK_REGISTRY = [
   { basename: 'session-start-check.sh',  displayName: 'session-start-check',   envVarSuffix: 'SESSION_START',     hookEvent: 'SessionStart',     matcher: '*',    timeout: 5 },

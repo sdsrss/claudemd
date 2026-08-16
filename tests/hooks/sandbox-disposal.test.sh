@@ -130,7 +130,40 @@ else
   echo "PASS: 9 plain files with matching prefix NOT flagged"
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+# Cases 10-11 (2026-08-16 audit F5/CONC-1): the time window must be
+# per-session. With one global session-start.ref shared by every session,
+# concurrent sessions both misattributed each other's sandboxes (B's Stop
+# flagged A's dir under B's session_id) AND disarmed each other (B's Stop
+# advanced the ref, so A's own artifact was never "newer than ref" at A's
+# Stop). Sessions without a session_id keep the legacy global ref — same
+# blind spot as before, named in the hook comment, not silently worse.
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+ISO_SPECS="${HOME_FIXTURE}|both"
+# A's first Stop: establishes A's window silently.
+bash "$HOOK" <<<'{"session_id":"sessA"}' >/dev/null 2>&1
+sleep 1
+mkdir "$HOME/.claude/tmp/tmp.owned_by_A"
+# Case 10: B's FIRST Stop lands between A's Stops — must not claim A's dir.
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO_SPECS" bash "$HOOK" <<<'{"session_id":"sessB"}' 2>&1)
+if echo "$STDERR" | grep -q "tmp\.owned_by_A"; then
+  echo "FAIL: 10 session B attributed session A's sandbox (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS: 10 cross-session sandbox not misattributed"
 fi
-echo "Tests: 9/9 passed"
+# Case 11: A's own next Stop must still see its artifact — B must not have
+# disarmed A's window.
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO_SPECS" bash "$HOOK" <<<'{"session_id":"sessA"}' 2>&1)
+if echo "$STDERR" | grep -q "tmp\.owned_by_A"; then
+  echo "PASS: 11 owning session still flags its own sandbox"
+else
+  echo "FAIL: 11 owning session's window was disarmed by another session's Stop (stderr: $STDERR)"
+  FAIL=$((FAIL+1))
+fi
+
+TOTAL=11
+if (( FAIL > 0 )); then
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
+fi
+echo "Tests: $TOTAL/$TOTAL passed"

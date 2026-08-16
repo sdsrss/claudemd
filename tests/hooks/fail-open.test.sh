@@ -172,6 +172,39 @@ else
   ng "T13 multi-line extra produced $ML_LINES line(s) / invalid JSON (log: $(cat "$LOG" 2>/dev/null))"
 fi
 
+# T14 (2026-08-16 audit H-1): a TRUNCATED single-line extra with intact outer
+# braces must not pass the guard verbatim. Under a jq that works once then
+# fails, six call sites wrap a possibly-empty jq fragment in a literal brace
+# pair, producing exactly `{"matched":}` / `{"matched":[}` — the first/last
+# char sniff accepted both and appended an unparseable line, failing at the
+# very property the guard's comment claimed ("rejects a truncated payload").
+# Drive the pure function directly; assert via a real jq parse-back.
+t14_case() {
+  local label="$1" payload="$2" want="$3" row got
+  # Payload travels as $1 into the child shell — inlining it into the -c
+  # string mangles quotes (the first run of this test did exactly that).
+  row=$(bash -c "source '$HOOKS_DIR/lib/rule-hits.sh'; _rule_hits_fallback_row \
+    '2026-01-01T00:00:00Z' hookT14 evT14 projT14 '' '' '' '' \"\$1\"" bash "$payload")
+  if ! got=$(printf '%s' "$row" | jq -c '.extra' 2>/dev/null); then
+    ng "T14 $label: fallback row is not parseable JSON (row: $row)"
+    return
+  fi
+  if [[ "$got" == "$want" ]]; then
+    ok "T14 $label: extra -> $want"
+  else
+    ng "T14 $label: expected extra $want, got $got (row: $row)"
+  fi
+}
+t14_case 'truncated value {"matched":}'    '{"matched":}'  'null'
+t14_case 'truncated array {"matched":[}'   '{"matched":[}' 'null'
+t14_case 'dangling comma {"a":1,}'         '{"a":1,}'      'null'
+t14_case 'mid-payload dangling separator'  '{"missing":,"n":2}' 'null'
+t14_case 'valid object preserved'          '{"a":1}'       '{"a":1}'
+t14_case 'legit empty-array field preserved' '{"missing":[],"n":2}' '{"missing":[],"n":2}'
+t14_case 'empty object preserved'          '{}'            '{}'
+t14_case 'empty array preserved'           '[]'            '[]'
+t14_case 'nested empty value preserved'    '{"a":{}}'      '{"a":{}}'
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

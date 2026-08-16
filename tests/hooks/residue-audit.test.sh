@@ -84,6 +84,32 @@ echo "v2:0" > "$HOME/.claude/.claudemd-state/tmp-baseline.txt"
 SPEC_RESIDUE_THRESHOLD=notanumber bash "$HOOK" <<<'{}' >/dev/null 2>&1; EC=$?
 [[ "$EC" == "0" ]] && ok "8 non-numeric threshold fails open (exit 0)" || { echo "FAIL: 8 (exit=$EC)"; FAIL=$((FAIL+1)); }
 
+# Cases 11-12 (2026-08-16 audit CONC-3): the baseline must be per-session. One
+# global file rewritten by every Stop made the metric "growth since the last
+# Stop of ANY session" — under concurrency each session resets the others'
+# windows, the threshold becomes unreachable, and a bystander session eats the
+# warn for growth it didn't cause. Sessions without a session_id keep the
+# legacy global file (blind spot kept, not widened).
+rm -f "$HOME/.claude/.claudemd-state"/tmp-baseline*.txt
+find "$HOME/.claude/tmp" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+bash "$HOOK" <<<'{"session_id":"rsA"}' >/dev/null 2>&1
+touch "$HOME/.claude/tmp/g1" "$HOME/.claude/tmp/g2" "$HOME/.claude/tmp/g3"
+# Case 11: B's FIRST Stop lands mid-window — must not claim A's growth.
+STDERR=$(SPEC_RESIDUE_THRESHOLD=2 bash "$HOOK" <<<'{"session_id":"rsB"}' 2>&1 >/dev/null)
+if [[ -z "$STDERR" ]]; then
+  ok "11 bystander session does not claim another session's tmp growth"
+else
+  echo "FAIL: 11 (stderr: $STDERR)"; FAIL=$((FAIL+1))
+fi
+# Case 12: A's own next Stop must still see the full delta — B's Stop must not
+# have reset A's baseline.
+STDERR=$(SPEC_RESIDUE_THRESHOLD=2 bash "$HOOK" <<<'{"session_id":"rsA"}' 2>&1 >/dev/null)
+if echo "$STDERR" | grep -q "grew by 3"; then
+  ok "12 owning session still sees its full window delta"
+else
+  echo "FAIL: 12 owner window reset by another session (stderr: $STDERR)"; FAIL=$((FAIL+1))
+fi
+
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$((PASS + FAIL)) passed"; exit 1
 fi

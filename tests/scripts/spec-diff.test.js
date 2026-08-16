@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diffSpec, summarizeDiff } from '../../scripts/lib/spec-diff.js';
+import { diffSpec } from '../../scripts/lib/spec-diff.js';
 
 test('diffSpec on identical text → empty', () => {
   const a = "line1\nline2\nline3\n";
@@ -33,14 +33,4 @@ test('diffSpec handles empty inputs', () => {
   // 'x\n'.split('\n') === ['x', ''] — shares the trailing '' with ''.split('\n') === ['']
   assert.deepEqual(diffSpec('', 'x\n'), { added: 1, removed: 0 });
   assert.deepEqual(diffSpec('x\n', ''), { added: 0, removed: 1 });
-});
-
-test('summarizeDiff formats human-readable string', () => {
-  const s = summarizeDiff([
-    { file: 'CLAUDE.md', added: 21, removed: 0 },
-    { file: 'CLAUDE-extended.md', added: 50, removed: 5 },
-  ]);
-  assert.match(s, /CLAUDE\.md/);
-  assert.match(s, /\+21/);
-  assert.match(s, /-5/);
 });

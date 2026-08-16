@@ -10,14 +10,31 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 hook_kill_switch RESIDUE_AUDIT || exit 0
 
 # v0.9.34: best-effort session_id from Stop stdin for audit attribution.
+# jq failure loses attribution, not the residue count — record + continue
+# (2026-08-16 audit F4: inline guard was invisible to the consumer gate).
 SESSION_ID=""
-if command -v jq >/dev/null 2>&1; then
-  EVENT=$(cat 2>/dev/null || true)
-  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+if hook_require_jq; then
+  EVENT=$(hook_read_event) || EVENT=""
+  if [[ -n "$EVENT" ]]; then
+    SESSION_ID=$(hook_jq_field residue-audit "$EVENT" '.session_id // ""') || SESSION_ID=""
+  fi
+else
+  hook_record_failopen residue-audit jq-missing
 fi
 
 STATE_DIR="$HOME/.claude/.claudemd-state"
-BASELINE_FILE="$STATE_DIR/tmp-baseline.txt"
+# Per-session baseline (2026-08-16 audit CONC-3): one global baseline was
+# rewritten by EVERY session's Stop, so the metric silently became "growth
+# since the last Stop of ANY session" — more concurrency, more frequent
+# resets, threshold never reachable. Per-session file = growth during this
+# session's own window. No session_id → legacy global name (pre-fix blind
+# spot, kept not widened). Orphans reaped by scripts/clean-residue.js.
+SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
+if [[ -n "$SAFE_SID" ]]; then
+  BASELINE_FILE="$STATE_DIR/tmp-baseline-${SAFE_SID}.txt"
+else
+  BASELINE_FILE="$STATE_DIR/tmp-baseline.txt"
+fi
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 
 TMP_DIR="$HOME/.claude/tmp"

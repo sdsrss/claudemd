@@ -29,7 +29,11 @@ function tarballFiles() {
     stdio: ['ignore', 'pipe', 'ignore'],
   });
   const parsed = JSON.parse(raw);
-  return new Set((parsed[0].files || []).map(f => f.path.replace(/\\/g, '/')));
+  // npm <=11 emits an array of pack results; npm >=12 emits an object keyed by
+  // package name. Accept both so the suite is green on whichever npm the
+  // machine carries (CI node20/22 ships npm 10/11; a dev box may run 12+).
+  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  return new Set((entry.files || []).map(f => f.path.replace(/\\/g, '/')));
 }
 
 /** Transitive closure of relative imports starting at `entry` (repo-relative). */

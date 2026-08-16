@@ -27,12 +27,19 @@ hook_kill_switch SESSION_START || exit 0
 SESSION_ID="${CLAUDE_SESSION_ID:-}"
 EVENT=""
 SOURCE=""
-if command -v jq >/dev/null 2>&1; then
-  EVENT=$(cat 2>/dev/null || true)
+if hook_require_jq; then
+  EVENT=$(hook_read_event) || EVENT=""
   if [[ -n "$EVENT" ]]; then
-    [[ -z "$SESSION_ID" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+    # First parse routed through hook_jq_field: a broken jq here silently
+    # killed the §11-post-compaction reminder (SOURCE=="") with zero telemetry
+    # (2026-08-16 audit F4). Once the first parse succeeds jq is known-good,
+    # so the second stays bare per the hook_jq_field contract.
+    SID_PARSED=$(hook_jq_field session-start "$EVENT" '.session_id // ""') || SID_PARSED=""
+    [[ -z "$SESSION_ID" ]] && SESSION_ID="$SID_PARSED"
     SOURCE=$(printf '%s' "$EVENT" | jq -r '.source // ""' 2>/dev/null)
   fi
+else
+  hook_record_failopen session-start jq-missing
 fi
 
 # v0.27.0 — post-compaction re-read reminder (spec-optimization-plan P6/F4).

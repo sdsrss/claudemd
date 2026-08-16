@@ -32,10 +32,16 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 hook_kill_switch MEM_AUDIT || exit 0
 
 # v0.9.34: best-effort session_id from Stop stdin for audit attribution.
+# jq failure loses attribution, not the scan — record + continue (2026-08-16
+# audit F4: inline guard was invisible to the consumer gate).
 SESSION_ID=""
-if command -v jq >/dev/null 2>&1; then
-  EVENT=$(cat 2>/dev/null || true)
-  [[ -n "$EVENT" ]] && SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+if hook_require_jq; then
+  EVENT=$(hook_read_event) || EVENT=""
+  if [[ -n "$EVENT" ]]; then
+    SESSION_ID=$(hook_jq_field mem-audit "$EVENT" '.session_id // ""') || SESSION_ID=""
+  fi
+else
+  hook_record_failopen mem-audit jq-missing
 fi
 
 STATE_DIR="$HOME/.claude/.claudemd-state"

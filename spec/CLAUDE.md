@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.0 — Core
+# AI-CODING-SPEC v6.25.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -138,7 +138,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 ### §5.1 AUTONOMY_LEVEL
 
-Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). Per-level effect table + `aggressive` skip-list (ceremony reductions only) → §EXT §5.1-EXT.
+Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). Solo-dev + `bypassPermissions` → consider `aggressive`; team-shared / prod-touching repo → `default` or `careful`. Per-level effect table + `aggressive` skip-list (ceremony reductions only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind) → §EXT §5.1-EXT.
 
 **Never-downgrade** (override irrelevant): §8 SAFETY, Iron Law #2, §8 Verify-before-claim (V1–V4), Session-exit, User-global-state audit, `.env`/secrets, migration, auth/payment/crypto, `~/.claude/settings.json` / user-global hooks / MCP config, `L3 enter`.
 
@@ -169,7 +169,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 
 - **Push fires CI/Release (pre-action)** (HARD): check `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any). Green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK.
 - **Code writes to user-global / cross-project path** (HARD): `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` → post-action residue count (`find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` / equivalent), inline count cited — leaks / orphan writes / cache bloat are invisible to exit code.
-- **Edit touches metric-coupled code** (SHOULD) — bench / oracle / compile-time budget / tool descriptions / adoption-memory / field compression / prompt templates: record baseline before, re-run after, cite both numbers; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK.
+- **Edit touches metric-coupled code** (SHOULD) — bench / oracle / compile-time budget / tool descriptions / adoption-memory / field compression / prompt templates: record baseline before, re-run after, cite both numbers; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK. "Vibe-check from one manual test" is not metric-neutral evidence.
 
 `~/.claude/tmp/` retention → §EXT §7-EXT-TMP.
 
