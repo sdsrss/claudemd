@@ -15,7 +15,7 @@
       "rule_hits_section": null,
       "added_version": "v6.10",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§0.1-core-growth",
@@ -26,7 +26,7 @@
       "rule_hits_section": null,
       "added_version": "v6.7",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10",
+      "last_demote_review": "2026-08-16",
       "note": "Mechanical enforcement deferred to /claudemd-rules + R-N6 doctor signal (v0.7.x)"
     },
     {
@@ -38,7 +38,7 @@
       "rule_hits_section": "§iron-law-2",
       "added_version": "v6.5",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§7-ship-baseline",
@@ -49,7 +49,7 @@
       "rule_hits_section": "§7-ship-baseline",
       "added_version": "v6.4",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§7-user-global-state",
@@ -60,7 +60,7 @@
       "rule_hits_section": "§7-user-global-state",
       "added_version": "v6.7",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§8-verify-before-claim",
@@ -71,7 +71,7 @@
       "rule_hits_section": null,
       "added_version": "v6.8",
       "confidence": "high",
-      "last_demote_review": "2026-07-10",
+      "last_demote_review": "2026-08-16",
       "note": "V4 sandbox-artifact disposal partially hooked via sandbox-disposal-check.sh (§8.V4); V1-V3 self-enforced"
     },
     {
@@ -83,7 +83,7 @@
       "rule_hits_section": "§8.V4",
       "added_version": "v6.8",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§8-rm-rf-var",
@@ -94,7 +94,7 @@
       "rule_hits_section": "§8-rm-rf-var",
       "added_version": "v6.0",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§8-npx",
@@ -105,7 +105,7 @@
       "rule_hits_section": "§8-npx",
       "added_version": "v6.0",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§8-curl-sh",
@@ -116,7 +116,7 @@
       "rule_hits_section": "§8-curl-sh",
       "added_version": "v6.0",
       "confidence": "high",
-      "last_demote_review": "2026-07-13"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§10-four-section-order",
@@ -127,7 +127,7 @@
       "rule_hits_section": "§10-four-section-order",
       "added_version": "v6.6",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§10-honesty",
@@ -138,7 +138,7 @@
       "rule_hits_section": "§10-honesty",
       "added_version": "v6.6",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§10-specificity",
@@ -149,7 +149,7 @@
       "rule_hits_section": "§10-V",
       "added_version": "v6.7",
       "confidence": "high",
-      "last_demote_review": "2026-07-10",
+      "last_demote_review": "2026-08-16",
       "note": "Hook enforces banned-vocab subset on git commit (banned-vocab-check.sh); self-enforces on all other agent text"
     },
     {
@@ -161,8 +161,8 @@
       "rule_hits_section": "§11-memory-read",
       "added_version": "v6.10",
       "confidence": "high",
-      "last_demote_review": "2026-07-10",
-      "note": "Hook enforces the ship/release half only (memory-read-check.sh TRIGGER_RE covers git push / gh release / npm publish / cargo publish / make release / deploy / ship); the destructive-path and L3 triggers the rule also names are Agent-enforced. Corrected from enforcement=hook 2026-07-26: the field is what \u00a713 META tells the agent to calibrate from, and it claimed mechanical coverage the hook does not have."
+      "last_demote_review": "2026-08-16",
+      "note": "Hook enforces the ship/release half only (memory-read-check.sh TRIGGER_RE covers git push / gh release / npm publish / cargo publish / make release / deploy / ship); the destructive-path and L3 triggers the rule also names are Agent-enforced. Corrected from enforcement=hook 2026-07-26: the field is what §13 META tells the agent to calibrate from, and it claimed mechanical coverage the hook does not have."
     },
     {
       "id": "§11-mid-spine-yield",
@@ -173,7 +173,7 @@
       "rule_hits_section": null,
       "added_version": "v6.10",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§11-post-compaction",
@@ -184,7 +184,7 @@
       "rule_hits_section": "§11-post-compaction",
       "added_version": "v6.11",
       "confidence": "medium",
-      "last_demote_review": null
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§11-session-exit",
@@ -195,7 +195,7 @@
       "rule_hits_section": "§11-session-exit",
       "added_version": "v6.10",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§9-parallel-path",
@@ -206,7 +206,7 @@
       "rule_hits_section": null,
       "added_version": "v6.11.10",
       "confidence": "high",
-      "last_demote_review": "2026-07-10",
+      "last_demote_review": "2026-08-16",
       "note": "Self-enforced — no feasible per-language AST mechanical detection at hook layer. Promoted from SHOULD on 2026-05-10 after 4 repros + 25 L2+ tasks counter saturation; see tasks/rule-candidates-2026-04.md batch review."
     },
     {
@@ -218,8 +218,8 @@
       "rule_hits_section": null,
       "added_version": "v6.6",
       "confidence": "medium",
-      "last_demote_review": null,
-      "note": "Graded by heading convention rather than a (HARD) token, so the manifest's own coverage scan never required an entry — added 2026-07-26. Iron Laws #1 and #2 both had entries; #3 was structurally invisible to \u00a713.1/\u00a713.2 accounting."
+      "last_demote_review": "2026-08-16",
+      "note": "Graded by heading convention rather than a (HARD) token, so the manifest's own coverage scan never required an entry — added 2026-07-26. Iron Laws #1 and #2 both had entries; #3 was structurally invisible to §13.1/§13.2 accounting."
     },
     {
       "id": "§iron-law-1",
@@ -230,7 +230,7 @@
       "rule_hits_section": null,
       "added_version": "v6.5",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§7-EXT-evidence-validity",
@@ -241,7 +241,7 @@
       "rule_hits_section": null,
       "added_version": "v6.7",
       "confidence": "high",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§11-O-subagent-non-convergence",
@@ -252,7 +252,7 @@
       "rule_hits_section": null,
       "added_version": "v6.8",
       "confidence": "low",
-      "last_demote_review": "2026-07-10",
+      "last_demote_review": "2026-08-16",
       "note": "Low confidence — tied to §EXT loading (only L3/Override/ship); minimal field signal so far"
     },
     {
@@ -264,7 +264,7 @@
       "rule_hits_section": null,
       "added_version": "v6.7",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§12-ship-pipeline-hardening",
@@ -275,7 +275,7 @@
       "rule_hits_section": null,
       "added_version": "v6.7",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     },
     {
       "id": "§12-manual-ship-atomicity",
@@ -286,7 +286,7 @@
       "rule_hits_section": null,
       "added_version": "v6.10",
       "confidence": "medium",
-      "last_demote_review": "2026-07-10"
+      "last_demote_review": "2026-08-16"
     }
   ]
 }

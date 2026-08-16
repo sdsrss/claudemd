@@ -8,6 +8,13 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.67.1] - 2026-08-16
+
+Governance bookkeeping patch. No hook, script, command, or spec-rule behavior change — the artifact delta is `spec/hard-rules.json` metadata, one tasks/ spec-artifact closure, and the manifests. It carries a version because 0.67.0's own CI gate (correctly) requires any `spec/` edit past the last tag to ship with a bump — this release is that gate's first customer.
+
+- **chore: §13.1 demote-review date stamps refreshed** — all 25 HARD rules' `last_demote_review` → 2026-08-16 (22 stalled at 2026-07-10, 1 at 2026-07-13, 2 never marked; `staleReviews` listed 25/25). The review itself ran on this window's data: `hard-rules-audit.js` reports `demoteCandidates: []` (30d window over a 115.9d log), corroborated by `sampling-audit.js --global` (245 transcripts / 3,036 turns) — **zero rules demoted**; stamps are cadence bookkeeping, not headroom release (per the recorded demote-needs-data discipline).
+- **chore: `tasks/specs/spec-lean-restructure.md` closed** — status `draft` → `implemented` (r3) on maintainer confirmation of the as-measured numbers; r3 also records the 2026-08-16 audit's four additional semantic-loss finds (restored in v6.25.1) and the lite-profile open-question's disposition (demand-driven, see the deferred-tripwires task file, local).
+
 ## [0.67.0] - 2026-08-16
 
 The 2026-08-16 comprehensive audit's fix batch (report: `docs/comprehensive-audit-2026-08-16-v0.66.0.md`, local). Two defect families dominate: five more instances of "gate scope narrower than its subject", and a NEW family — per-session semantics stored in global state files, exposed when headless-session concurrency arrived (682 cwd=/tmp sessions in 3 days against a 2-5/day baseline). Ships spec **v6.25.1** (semantic-loss restore, see `spec/CLAUDE-changelog.md`). Minor, not patch: doctor/audit gain user-visible additive surfaces per the released-artifact checklist.
