@@ -363,10 +363,38 @@ else bad "half-written temp file(s) left behind ($LEAK):"; find "$HOME" \( -name
 # Hostile-environment scenarios. Each starts from a pristine HOME — these are
 # collisions and degraded machines, not steps in the journey above.
 ########################################################################
+# hook_spawn_install DETACHES install.js (`( … ) & disown`), so a shell-level
+# `wait` after a bootstrap phase returns while installs are still running. They
+# then write into whatever ~/.claude exists NEXT. Reproduced on a loaded CI
+# runner (ubuntu-20, 2026-08-16): Phase 14's four concurrent bootstraps outlived
+# their `wait`, and Phase 15 — which asserts a refused install writes NO manifest
+# — found one that Phase 14's stragglers had just created in the fresh HOME.
+# Poll for our own install.js processes (scoped by the sandbox cache path, so a
+# concurrent claudemd run elsewhere on the machine is not counted).
+settle_detached_installs() {
+  local i clean=0
+  command -v pgrep >/dev/null 2>&1 || { sleep 2; return 0; }
+  # A spawn that has forked but not yet exec'd node is invisible to pgrep, so a
+  # single clean poll is not proof. Give in-flight spawns a moment to appear,
+  # then require two consecutive clean polls.
+  sleep 0.3
+  for i in $(seq 1 60); do
+    if pgrep -f "$CACHE_PARENT.*scripts/install.js" >/dev/null 2>&1; then
+      clean=0
+    else
+      clean=$((clean + 1))
+      [[ "$clean" -ge 2 ]] && return 0
+    fi
+    sleep 0.25
+  done
+  return 0
+}
+
 # Wipe the user's ~/.claude but KEEP the plugin cache — it lives under
 # ~/.claude/plugins in the real layout, and a naive `rm -rf $HOME` deletes the
 # very plugin the next phase installs from.
 reset_home() {
+  settle_detached_installs
   local keep="$SANDBOX/keep-plugins"
   rm -rf "$keep"
   mv "$HOME/.claude/plugins" "$keep" 2>/dev/null || true
@@ -531,6 +559,11 @@ phase "Phase 15 — user hand-edited ~/.claude/settings.json into invalid JSON"
 # the single most common way it stops parsing. Neither entry point may react by
 # damaging the user's files or by getting permanently stuck.
 reset_home
+# Precondition, asserted rather than assumed: the outcome check below is
+# "the refused install wrote NO manifest", which is indistinguishable from
+# "a straggler from an earlier phase wrote one" unless the starting state is
+# pinned. When this fails, the defect is in the harness, not in install.js.
+assert_no_file "Phase 15 starts from a manifest-free HOME" "$HOME/.claude/.claudemd-manifest.json"
 printf '# My personal notes\n\nAlways use tabs.\n' > "$HOME/.claude/CLAUDE.md"
 PERSONAL_HASH=$(cksum < "$HOME/.claude/CLAUDE.md")
 printf '{\n  "model": "opus",\n}\n' > "$HOME/.claude/settings.json"
