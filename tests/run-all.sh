@@ -77,9 +77,43 @@ echo "== Node.js script tests =="
 # already means someone is debugging. This keeps the TEST-1 guard while giving macOS
 # the same ~4x margin Linux had. Fixing the cause (cutting doctor.test.js's spawn
 # count) stays open — see the deferred item.
-if ! node --test --test-timeout=180000 "$HERE"/scripts/*.test.js; then
+# The node leg runs against an ISOLATED TMPDIR so its sandbox disposal can be
+# measured (2026-08-16 user-journey E2E). Every `npm test` was leaking 4 mkdtemp
+# dirs into the user's real TMPDIR — 2 in sampling-audit.test.js (no rmSync at
+# all) and 2 in toggle.test.js (the mkdtempSync was inlined into a spawnSync env
+# literal, so the path was never bound to a name and could not be removed). They
+# accumulate forever, which is exactly the §8.V4 residue class this plugin's own
+# Stop hook exists to flag. Counting `mkdtempSync` against `rmSync` per file does
+# NOT find them (a beforeEach/afterEach pair covers many tests, so the counts
+# legitimately disagree); running the suite in a known-empty dir and inventorying
+# what survives is the only reading that means anything.
+# Two steps, not `NODE_TMP=$(cd "$(mktemp -d)" && pwd -P)`. That one-liner FAILS
+# OPEN: when mktemp fails (TMPDIR pointing at a stale path, /tmp read-only — a
+# condition this file's own /tmp-writes gate cites as observed), the substitution
+# is empty, `cd ""` is a bash no-op returning 0, and `pwd -P` prints the CURRENT
+# directory. NODE_TMP then becomes the repo root and the cleanup below `rm -rf`s
+# it. A `[[ -n "$NODE_TMP" ]]` guard does not help — the string is non-empty,
+# just wrong. Verified: `TMPDIR=/nonexistent bash -c 'X=$(cd "$(mktemp -d)" && pwd -P)'`
+# yields the cwd. Physical-path resolution is still needed (macOS /var → /private/var).
+NODE_TMP=$(mktemp -d) || { echo "FAIL: mktemp -d failed — cannot isolate the node leg"; exit 1; }
+NODE_TMP=$(cd "$NODE_TMP" && pwd -P) || { echo "FAIL: cannot resolve $NODE_TMP"; exit 1; }
+if ! TMPDIR="$NODE_TMP" node --test --test-timeout=180000 "$HERE"/scripts/*.test.js; then
   FAIL=$((FAIL + 1))
 fi
+# `node-compile-cache` is Node's own, not a suite's to clean — allowlisted by
+# EXACT name, not `node-*`: the glob form silently ignores anything a real leak
+# could be named (`node-fixture-XXXX`), which is the gate being wider than its
+# stated subject. `-printf` is GNU-only — BSD/macOS find has no such primary, and
+# the macOS CI leg would report an empty (always-passing) list. Strip with sed.
+NODE_LEAKS=$(find "$NODE_TMP" -maxdepth 1 -mindepth 1 ! -name 'node-compile-cache' 2>/dev/null | sed 's|.*/||')
+if [[ -n "$NODE_LEAKS" ]]; then
+  echo "FAIL: node test suite(s) left sandbox dirs behind (§8.V4 — dispose in a finally/afterEach):"
+  printf '%s\n' "$NODE_LEAKS" | sed 's/^/      /'
+  FAIL=$((FAIL + 1))
+else
+  echo "-- node suites left 0 sandbox dirs behind"
+fi
+[[ -n "$NODE_TMP" ]] && rm -rf "$NODE_TMP"
 
 echo "== Integration tests =="
 for t in "$HERE"/integration/*.test.sh; do
@@ -139,6 +173,35 @@ else
     FAIL=$((FAIL + 1))
   else
     echo "-- $TEST_SH_COUNT test suite(s) keep their writes inside mktemp sandboxes"
+  fi
+fi
+
+# Fail-open mktemp (2026-08-16 pre-tag review). `X=$(cd "$(mktemp -d)" && pwd -P)`
+# reads as "make a sandbox and resolve its physical path", but on mktemp failure
+# the inner substitution is empty, `cd ""` is a bash no-op returning 0, and
+# `pwd -P` prints the CURRENT directory — so X becomes the repo root and the
+# suite's own `rm -rf "$X"` / EXIT trap deletes the working tree. A `[[ -n "$X" ]]`
+# guard is inert against it (non-empty, just wrong). Five tracked files carried
+# the shape; the correct form is two statements with an explicit `|| exit`.
+# Class gate rather than five fixed call sites, because the one-liner is the
+# obvious thing to type the next time someone needs a physical-path sandbox.
+echo "== Fail-open mktemp =="
+MKTEMP_SH=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)
+if [[ -z "$MKTEMP_SH" ]]; then
+  echo "SKIP: no tracked .sh files resolved (not a git checkout?)"
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+else
+  FAILOPEN=$(cd "$GUARD_REPO" && printf '%s\n' "$MKTEMP_SH" | while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    sed -E 's/^[[:space:]]*#.*$//' "$f" | grep -nE 'cd[[:space:]]+"\$\(mktemp' | sed "s|^|$f:|"
+  done)
+  if [[ -n "$FAILOPEN" ]]; then
+    echo "FAIL: fail-open mktemp — \`cd \"\$(mktemp -d)\"\` yields the CWD when mktemp fails."
+    echo "      Use two statements: X=\$(mktemp -d) || exit 1; X=\$(cd \"\$X\" && pwd -P) || exit 1"
+    printf '%s\n' "$FAILOPEN" | sed 's/^/      /'
+    FAIL=$((FAIL + 1))
+  else
+    echo "-- $(printf '%s\n' "$MKTEMP_SH" | wc -l | tr -d ' ') shell file(s) free of fail-open mktemp"
   fi
 fi
 

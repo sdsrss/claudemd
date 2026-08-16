@@ -16,8 +16,12 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/session-end-check.sh"
 
-TMP_HOME=$(mktemp -d -t claudemd-session-end-XXXXXX)
-TMP_CWD=$(cd "$(mktemp -d -t claudemd-cwd-XXXXXX)" && pwd -P)
+TMP_HOME=$(mktemp -d -t claudemd-session-end-XXXXXX) || { echo "FAIL: mktemp -d failed"; exit 1; }
+# Two steps, not `TMP_CWD=$(cd "$(mktemp -d …)" && pwd -P)`. That one-liner fails
+# OPEN: on mktemp failure the substitution is empty, `cd ""` returns 0, and
+# `pwd -P` prints the CURRENT directory — the EXIT trap then `rm -rf`s the repo.
+TMP_CWD=$(mktemp -d -t claudemd-cwd-XXXXXX) || { echo "FAIL: mktemp -d failed"; exit 1; }
+TMP_CWD=$(cd "$TMP_CWD" && pwd -P) || { echo "FAIL: cannot resolve $TMP_CWD"; exit 1; }
 trap 'rm -rf "$TMP_HOME" "$TMP_CWD"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/logs" "$HOME/.claude/.claudemd-state"

@@ -142,6 +142,34 @@ test('downgrade guard: non-semver plugin version skips the guard (dev-mode fail-
     '9.9.9-test');
 });
 
+test('settings.json pre-flight: unparseable settings.json is refused BEFORE any user file moves', async () => {
+  // 2026-08-16 user-journey E2E. settings.json was parsed at its point of use,
+  // ~80 lines after createBackup() renameSync'd the user's personal CLAUDE.md
+  // and the spec overwrote it — so a trailing comma from a hand-edit produced:
+  // personal CLAUDE.md moved into backup-<ts>/, spec installed, manifest NEVER
+  // written. SessionStart keys on the manifest, so that state re-spawned the
+  // same doomed background install every session and never self-healed.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal notes\nAlways use tabs.\n');
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{\n  "model": "opus",\n}\n');
+  await assert.rejects(() => install({ pluginRoot }), /not valid JSON/);
+  assert.match(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), /Always use tabs/,
+    'refused install must not overwrite the user CLAUDE.md');
+  const items = fs.readdirSync(path.join(tmpHome, '.claude'));
+  assert.ok(!items.some(n => n.startsWith('backup-')), 'refused install must not create backups');
+  assert.ok(!items.includes('.claudemd-manifest.json'), 'refused install must not write a manifest');
+});
+
+test('settings.json pre-flight: repairing the JSON is enough to unstick the install', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{\n  "model": "opus",\n}\n');
+  await assert.rejects(() => install({ pluginRoot }), /not valid JSON/);
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{"model":"opus"}\n');
+  const res = await install({ pluginRoot });
+  assert.ok(res.spec, 'install proceeds once settings.json parses');
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
+    '9.9.9-test');
+});
+
 test('existing spec: backup created, new spec in place', async () => {
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'OLD\n');
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'), 'OLD-EXT\n');

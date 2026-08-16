@@ -47,14 +47,38 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // hook entries were most likely to survive. Manifest command match still
   // wins when available; the path-anchored backstop covers everything else.
   let settingsRemoved = 0;
+  let settingsWarning = null;
   if (fs.existsSync(settingsPath())) {
-    const s = readSettings();
-    const pluginCommands = new Set((m.data?.entries || []).map(e => e.command));
-    const r = unmergeHook(s, { commandPredicate: (c) =>
-      pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES)
-    });
-    settingsRemoved = r.removed;
-    writeSettings(s);
+    // An unparseable settings.json used to abort the ENTIRE uninstall
+    // (readSettings throws; nothing below ran) — so a user who had left a
+    // trailing comma in a file this plugin does not own could not remove the
+    // plugin at all: exit 1, manifest still present, state still present, and
+    // an error message that named the file but not a way forward
+    // (2026-08-16 user-journey E2E). Since v0.1.5 the hooks live in the
+    // plugin's own hooks/hooks.json and settings.json normally carries ZERO
+    // claudemd entries, so this eviction is the least load-bearing step here.
+    // Degrade it to a REPORTED skip and let the manifest / state / spec
+    // disposition below complete. Silent skip would be worse than the abort.
+    try {
+      const s = readSettings();
+      const pluginCommands = new Set((m.data?.entries || []).map(e => e.command));
+      const r = unmergeHook(s, { commandPredicate: (c) =>
+        pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES)
+      });
+      settingsRemoved = r.removed;
+      writeSettings(s);
+    } catch (e) {
+      // Name BOTH residues. settings.json is the only home for two things we
+      // own — legacy hook entries AND the statusLine — and removeStatusline()
+      // below reads the same file, so it fails on exactly this input too. A
+      // warning that mentions only hooks tells the user the statusLine is gone
+      // when claudemd still owns it (2026-08-16 pre-tag review).
+      settingsWarning =
+        `skipped settings.json eviction — ${settingsPath()} is not valid JSON (${e.message}). ` +
+        `Uninstall continued, but anything claudemd owns INSIDE that file was left as-is: ` +
+        `legacy hook entries and the statusLine. Fix the JSON and re-run /claudemd-uninstall.`;
+      process.stderr.write(`[claudemd] WARN: ${settingsWarning}\n`);
+    }
   }
 
   // StatusLine cleanup — runs unconditionally (like the settings eviction
@@ -62,6 +86,16 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // when the slot is empty or owned by another provider.
   let statusline = { action: 'not-ours', restored: null };
   try { statusline = removeStatusline(); } catch (e) { statusline = { action: 'error', error: e.message }; }
+  // The failure used to live only in the returned JSON's `statusline.action`,
+  // which nothing surfaces on the human path — so a statusLine we could not
+  // un-wire went unmentioned while the command reported success.
+  if (statusline.action === 'error') {
+    process.stderr.write(
+      `[claudemd] WARN: could not un-wire the statusLine (${statusline.error}). ` +
+      `If ~/.claude/settings.json still names claudemd-statusline.sh, fix that file and re-run, ` +
+      `or clear it with /claudemd-statusline remove.\n`
+    );
+  }
 
   // No manifest = no path forward for state/log/spec disposition (you can't
   // remove what you don't know about). settingsRemoved still surfaces the
@@ -70,7 +104,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // unconditionally without a missing-key branch — same shape as the success
   // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
-    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved, statusline };
+    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved, settingsWarning, statusline };
   }
   const activeManifestPath = m.path;
   const legacyPath = legacyManifestPath();
@@ -117,7 +151,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  return { specAction: outcome, settingsRemoved, statusline };
+  return { specAction: outcome, settingsRemoved, settingsWarning, statusline };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

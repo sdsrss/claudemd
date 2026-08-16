@@ -166,6 +166,31 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     );
   }
 
+  // Same fail-before-you-touch contract as the two checks above, applied to the
+  // one USER-side precondition this function has (2026-08-16 user-journey E2E).
+  // The pre-flight block validated only the PLUGIN side; settings.json was
+  // parsed ~80 lines later, at its point of use — which is AFTER createBackup()
+  // has renameSync'd the user's personal ~/.claude/CLAUDE.md into backup-<ts>/
+  // and the spec has overwritten it. An unparseable settings.json (a trailing
+  // comma from a hand-edit is the common shape) therefore produced: personal
+  // CLAUDE.md moved, spec installed, manifest NEVER written. That state does not
+  // self-heal — the manifest is what SessionStart keys on, so every subsequent
+  // session re-spawns the same doomed background install, and the banner it
+  // eventually shows points at /claudemd-refresh, which cannot fix JSON syntax
+  // in a file this plugin does not own. Validate here, before anything moves.
+  if (fs.existsSync(settingsPath())) {
+    try {
+      readSettings();
+    } catch (e) {
+      throw new Error(
+        `install: ${settingsPath()} is not valid JSON (${e.message}). Refusing to install — ` +
+        `the install rewrites this file and would otherwise leave a half-installed state. ` +
+        `Fix the JSON (a trailing comma is the usual cause) or move the file aside, then re-run. ` +
+        `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`
+      );
+    }
+  }
+
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';

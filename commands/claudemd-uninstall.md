@@ -20,4 +20,4 @@ After this command finishes, run `/plugin uninstall claudemd@claudemd` to remove
 
 **Note**: hooks remain registered until you also run `/plugin uninstall`. This command only clears the user-global state; the plugin's `hooks/hooks.json` is the authoritative registration site, removed when the cache is deleted.
 
-Surface the script's JSON output (specAction, optional warning) to the user.
+Surface the script's JSON output to the user: `specAction`, plus — when present — `warning` (already-uninstalled), `settingsWarning`, and a `statusline.action` of `error`. The last two mean `~/.claude/settings.json` could not be parsed, so anything claudemd owns inside that file (legacy hook entries, the statusLine) was left in place: say so and tell the user to fix the JSON and re-run. `specAction: "keep"` on its own does NOT mean the uninstall was complete.

@@ -79,16 +79,28 @@ test('toggle CLI -h exits 0 with usage on stdout', () => {
 
 test('SCRIPT-2: unknown trailing flag rejects with exit 2 (no silent drop)', () => {
   // `toggle banned-vocab --json` previously flipped the hook and dropped --json.
-  const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', '--json'], {
-    encoding: 'utf8', env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-')) },
-  });
-  assert.equal(r.status, 2, `expected exit 2 (shape error); stderr=${r.stderr}`);
-  assert.match(r.stderr, /Unknown flag|Unknown argument/);
+  // The sandbox HOME is bound to a name so it can be disposed (§8.V4): inlined
+  // into the env literal it was unreachable and every `npm test` run leaked it.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-'));
+  try {
+    const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', '--json'], {
+      encoding: 'utf8', env: { ...process.env, HOME: home },
+    });
+    assert.equal(r.status, 2, `expected exit 2 (shape error); stderr=${r.stderr}`);
+    assert.match(r.stderr, /Unknown flag|Unknown argument/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test('SCRIPT-2: extra positional rejects with exit 2', () => {
-  const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', 'pre-bash-safety'], {
-    encoding: 'utf8', env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-')) },
-  });
-  assert.equal(r.status, 2, `expected exit 2; stderr=${r.stderr}`);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-'));
+  try {
+    const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab', 'pre-bash-safety'], {
+      encoding: 'utf8', env: { ...process.env, HOME: home },
+    });
+    assert.equal(r.status, 2, `expected exit 2; stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });

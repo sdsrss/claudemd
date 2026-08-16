@@ -318,50 +318,58 @@ test('CLI: zero scanned transcripts → no tasks/ report file written (skip mess
 // indexOf('|') (truncates alternation regexes) and omitted posixClassesToJs.
 test('DRIFT-1: loadVocabPatterns delegates to lint.js readPatterns (parity)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-drift1-'));
-  const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
-  fs.mkdirSync(path.dirname(pf), { recursive: true });
-  fs.writeFileSync(pf, [
-    '# fixture patterns',
-    '\\b(foo|bar)\\b|alternation reason',          // FIRST-bar indexOf would truncate to `\b(foo`
-    'quick[[:space:]]+win|posix class reason',      // needs posixClassesToJs
-    '\\bcheapish\\b|@ratio ratio-tagged reason',    // must be excluded by excludeRatio
-  ].join('\n') + '\n');
+  try {
+    const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
+    fs.mkdirSync(path.dirname(pf), { recursive: true });
+    fs.writeFileSync(pf, [
+      '# fixture patterns',
+      '\\b(foo|bar)\\b|alternation reason',          // FIRST-bar indexOf would truncate to `\b(foo`
+      'quick[[:space:]]+win|posix class reason',      // needs posixClassesToJs
+      '\\bcheapish\\b|@ratio ratio-tagged reason',    // must be excluded by excludeRatio
+    ].join('\n') + '\n');
 
-  const pats = loadVocabPatterns(tmp);
-  // Assert the CONCRETE parse output — proves the parser produced the right
-  // structure, not merely that it equals a second call to itself. The prior
-  // `assert.deepEqual(pats, readPatterns(pf))` was tautological: loadVocabPatterns
-  // internally IS readPatterns(pf), so it compared readPatterns(pf) to itself and
-  // could not have caught a parse regression (2026-07-13 TEST-4).
-  const byReason = r => pats.find(p => p.reason.includes(r));
-  assert.equal(pats.length, 3, 'the 3 non-comment fixture lines parse to 3 patterns');
-  // alternation regex survived intact (the old indexOf('|') bug truncated to `\b(foo`)
-  assert.equal(byReason('alternation').regex, '\\b(foo|bar)\\b');
-  assert.equal(byReason('alternation').isRatio, false);
-  // POSIX class preserved verbatim in the stored source form (translated at scan time)
-  assert.equal(byReason('posix class').regex, 'quick[[:space:]]+win');
-  // @ratio-tagged line kept with its isRatio flag (excluded at scan, not at load)
-  assert.equal(byReason('ratio-tagged').regex, '\\bcheapish\\b');
-  assert.equal(byReason('ratio-tagged').isRatio, true);
+    const pats = loadVocabPatterns(tmp);
+    // Assert the CONCRETE parse output — proves the parser produced the right
+    // structure, not merely that it equals a second call to itself. The prior
+    // `assert.deepEqual(pats, readPatterns(pf))` was tautological: loadVocabPatterns
+    // internally IS readPatterns(pf), so it compared readPatterns(pf) to itself and
+    // could not have caught a parse regression (2026-07-13 TEST-4).
+    const byReason = r => pats.find(p => p.reason.includes(r));
+    assert.equal(pats.length, 3, 'the 3 non-comment fixture lines parse to 3 patterns');
+    // alternation regex survived intact (the old indexOf('|') bug truncated to `\b(foo`)
+    assert.equal(byReason('alternation').regex, '\\b(foo|bar)\\b');
+    assert.equal(byReason('alternation').isRatio, false);
+    // POSIX class preserved verbatim in the stored source form (translated at scan time)
+    assert.equal(byReason('posix class').regex, 'quick[[:space:]]+win');
+    // @ratio-tagged line kept with its isRatio flag (excluded at scan, not at load)
+    assert.equal(byReason('ratio-tagged').regex, '\\bcheapish\\b');
+    assert.equal(byReason('ratio-tagged').isRatio, true);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('DRIFT-1: scanVocab matches alternation + POSIX class, excludes @ratio', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-drift1b-'));
-  const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
-  fs.mkdirSync(path.dirname(pf), { recursive: true });
-  fs.writeFileSync(pf, [
-    '\\b(foo|bar)\\b|alternation reason',
-    'quick[[:space:]]+win|posix class reason',
-    '\\bcheapish\\b|@ratio ratio-tagged reason',
-  ].join('\n') + '\n');
-  const pats = loadVocabPatterns(tmp);
+  try {
+    const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
+    fs.mkdirSync(path.dirname(pf), { recursive: true });
+    fs.writeFileSync(pf, [
+      '\\b(foo|bar)\\b|alternation reason',
+      'quick[[:space:]]+win|posix class reason',
+      '\\bcheapish\\b|@ratio ratio-tagged reason',
+    ].join('\n') + '\n');
+    const pats = loadVocabPatterns(tmp);
 
-  // alternation: both arms match (old indexOf loader dropped this pattern entirely)
-  assert.deepEqual(scanVocab('this bar is here', pats), ['bar']);
-  // POSIX class translated → matches real whitespace (old loader mis-matched)
-  assert.deepEqual(scanVocab('a quick   win today', pats), ['quick   win']);
-  // @ratio excluded
-  assert.deepEqual(scanVocab('this is cheapish', pats), []);
+    // alternation: both arms match (old indexOf loader dropped this pattern entirely)
+    assert.deepEqual(scanVocab('this bar is here', pats), ['bar']);
+    // POSIX class translated → matches real whitespace (old loader mis-matched)
+    assert.deepEqual(scanVocab('a quick   win today', pats), ['quick   win']);
+    // @ratio excluded
+    assert.deepEqual(scanVocab('this is cheapish', pats), []);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 // DRIFT-2 (2026-07-24 labeling): the header claims the fixtures "pin both this

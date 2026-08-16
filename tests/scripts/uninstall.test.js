@@ -66,6 +66,35 @@ test('keep option: spec files remain, plugin entries removed', async () => {
   assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'node /foreign/hook.mjs');
 });
 
+test('unparseable settings.json degrades to a reported skip, not a blocked uninstall', async () => {
+  // 2026-08-16 user-journey E2E: readSettings() threw at the top of uninstall,
+  // so a trailing comma in a file this plugin does not own made the plugin
+  // un-removable — exit 1, manifest still present, state still present. Since
+  // v0.1.5 the hooks live in the plugin's own hooks.json and settings.json
+  // normally carries ZERO claudemd entries, so this eviction is the least
+  // load-bearing step here: skip it, report it, finish the rest.
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{\n  "model": "opus",\n}\n');
+  const res = await uninstall({ specAction: 'keep' });
+  assert.equal(res.specAction, 'keep');
+  assert.match(res.settingsWarning || '', /not valid JSON/);
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
+    'manifest must be removed even when settings.json cannot be parsed');
+  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')));
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'),
+    '{\n  "model": "opus",\n}\n', 'the unparseable file is left exactly as the user wrote it');
+  // removeStatusline() reads the SAME file, so it fails on the same input —
+  // claudemd still owns the statusLine after this "successful" uninstall. The
+  // warning must say so; naming only hook entries told the user the statusLine
+  // was gone when it was not (2026-08-16 pre-tag review).
+  assert.equal(res.statusline.action, 'error');
+  assert.match(res.settingsWarning, /statusLine/);
+});
+
+test('parseable settings.json leaves settingsWarning null', async () => {
+  const res = await uninstall({ specAction: 'keep' });
+  assert.equal(res.settingsWarning, null);
+});
+
 test('delete option: requires confirmHardAuth=true, then removes spec', async () => {
   const refused = await uninstall({ specAction: 'delete', confirmHardAuth: false });
   assert.equal(refused.specAction, 'abort');
