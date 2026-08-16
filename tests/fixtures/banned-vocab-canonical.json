@@ -22,7 +22,7 @@
     {"term": "it should be fine", "category": "EN-hedge", "in_spec": false, "pattern": "\\bit should be fine\\b", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern"},
 
     {"term": "70-80% faster", "category": "EN-ratio", "in_spec": false, "pattern": "\\b[0-9]+%[[:space:]]+(faster|slower|better|more efficient)\\b", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern", "note": "matched via N% (faster|slower|better|more efficient) ratio pattern"},
-    {"term": "2× better", "category": "EN-ratio", "in_spec": false, "pattern": "\\b[0-9]+x[[:space:]]+(faster|slower|better)\\b", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern", "note": "unicode multiplication sign × vs pattern's ASCII 'x' — drift acknowledged, both common in commits"},
+    {"term": "2× better", "category": "EN-ratio", "in_spec": false, "pattern": "\\b[0-9]+(x|×)[[:space:]]+(faster|slower|better)\\b", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern", "note": "covers BOTH ASCII x and unicode × (U+00D7). The pattern was ASCII-only until 2026-08-16 and this note read 'drift acknowledged' — but spec §10 spells its own quick-check term `N× faster`, so the exact shape the rule names passed the gate. Alternation, not [x×]: a multibyte char in a bracket expression is one BYTE per position under a C locale"},
 
     {"term": "显著提升", "category": "ZH-adj", "in_spec": false, "pattern": "显著提升", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern (also core §10 中文 quick-check)"},
     {"term": "大幅改善", "category": "ZH-adj", "in_spec": false, "pattern": "大幅改善", "exempt_reason": "spec enumeration externalized in v6.21.2; enforced via pattern"},

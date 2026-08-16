@@ -97,7 +97,13 @@
 相当不错|评价性形容词 — 描述具体属性
 
 # ─── Baseline-less ratios (EN) ──────────────────────────────────────────────
-\b[0-9]+x[[:space:]]+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
+# `x` OR `×` (U+00D7). Spec §10's own quick-check spells this term `N× faster`,
+# so the ASCII-only form let the exact shape the rule names through: `3x faster`
+# denied, `3× faster` passed. Written as an alternation rather than `[x×]`
+# because a multibyte char inside a bracket expression is one BYTE per position
+# under a C locale — `[0-9]+[x×]` would match `3`+`\xc3` there and then fail on
+# the space. Alternation is the idiom the 中文 rows below already use.
+\b[0-9]+(x|×)[[:space:]]+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
 
 # ─── Baseline-less ratios (中文) ────────────────────────────────────────────
 [0-9]+%(更快|更慢|更好|更高效)|@ratio 无基线的比率 — 给出 before → after 数字

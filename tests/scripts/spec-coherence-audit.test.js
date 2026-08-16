@@ -19,8 +19,16 @@ const REPO_ROOT = path.resolve(HERE, '../..');
 
 test('audit runs against the real repo and returns structured report', () => {
   const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: '/nonexistent-cwd-for-test' });
-  assert.equal(r.checks.length, 4, 'expected 4 checks');
-  assert.ok(r.summary.checksRun === 4);
+  // Named, not just counted: a bare count tells a future reader which number
+  // to bump but not which check went missing.
+  assert.deepEqual(r.checks.map(c => c.name), [
+    'ext-cross-refs', 'sizing-accuracy', 'sizing-headroom', 'memory-index',
+    'banned-vocab-spec-drift',
+  ]);
+  // (checksRun === checks.length is a tautology — summary derives it. The
+  // load-bearing assertion is the name list above; this one pins that every
+  // check reports an ok flag rather than silently omitting one.)
+  assert.equal(r.summary.checksOk, r.checks.filter(c => c.ok).length);
   assert.ok(Array.isArray(r.checks));
   for (const c of r.checks) {
     assert.ok(typeof c.name === 'string');

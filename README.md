@@ -139,17 +139,23 @@ node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
 
 | Subcommand | Purpose |
 |---|---|
-| `lint <text>` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits. |
+| `lint <text>` / `--file` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits. |
 | `audit <jsonl-path>` | Scan all assistant-text turns in a Claude Code transcript jsonl. Skips `@ratio` patterns by default (chat prose has different baseline conventions); pass `--include-ratio` to include them. |
 | `--json` | JSON output (machine-readable for CI). |
+| `--commit-msg` / `--no-commit-msg` | (`lint`) Force git commit-message cleanup on/off. Auto-ON for `COMMIT_EDITMSG` / `MERGE_MSG` / `SQUASH_MSG` / `TAG_EDITMSG` / `NOTES_EDITMSG`. |
+| `--comment-char <c>` | (`lint`) git `core.commentChar`. Default `#`. |
 | `--version` / `--help` | Standard. |
 
 **Pre-commit example (`.git/hooks/commit-msg`)**:
 
 ```bash
 #!/usr/bin/env bash
-npx claudemd-cli lint --stdin < "$1" || exit 1
+npx claudemd-cli lint "$1" || exit 1
 ```
+
+> **Pass the path, not the bytes.** A `commit-msg` hook receives the message file *before* git's cleanup pass, so when you commit through an **editor** it still contains git's `#` template/status block and — under `git commit -v` — the whole staged diff below the `>8` scissors line. git discards that before storing the commit, so `lint` does too: hand it the **path** and it recognizes the filename and scans only what git will keep. A banned word sitting in your staged diff no longer blocks a clean message. If your hook pipes instead (`… --stdin < "$1"`), add `--commit-msg` to get the same cleanup.
+>
+> This is scoped to git-authored template text, not to `#` in general. Under `git commit -m` / `-F` / `--cleanup=whitespace|verbatim` git **keeps** column-0 `#` lines in the stored message, and so does `lint` — a `#` heading in a `-F release-notes.md` body stays in scope. Indented `# …` always stays in scope (git strips at column 0 only). Non-default `core.commentChar` → pass `--comment-char <c>`; `core.commentChar=auto` is not detected, so set it explicitly there.
 
 The CLI does NOT depend on `~/.claude/` state — pure stateless input → stdout/stderr + exit code. Same enforcement, anywhere Node 20+ runs.
 

@@ -24,6 +24,8 @@ import {
   countStringContentAssistantRows,
   formatHumanReadable,
   formatJSON,
+  stripGitCommitComments,
+  looksLikeGitMessageFile,
 } from '../scripts/lib/lint.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -44,12 +46,23 @@ Flags:
   --include-ratio                     (audit only) Include @ratio patterns.
                                       Default OFF — chat prose has different
                                       baseline conventions from commit messages.
+  --commit-msg / --no-commit-msg      (lint only) Force git commit-message
+                                      cleanup on / off. Auto-ON for files named
+                                      COMMIT_EDITMSG / MERGE_MSG / SQUASH_MSG /
+                                      TAG_EDITMSG / NOTES_EDITMSG.
+  --comment-char <c>                  (lint only) git core.commentChar. Default '#'.
 
 Notes:
   A bare \`lint <arg>\` whose only positional is an existing regular file
   is auto-treated as \`--file <arg>\` so \`claudemd-cli lint .git/COMMIT_EDITMSG\`
   works as expected in pre-commit hooks. Pass --stdin or quote literal
   text to opt out.
+
+  A commit-msg hook is handed the RAW message file, which still holds git's
+  \`#\` template block and — under \`git commit -v\` — the staged diff below the
+  \`>8\` scissors line. git drops both before storing the commit, so cleanup
+  mode drops them too: only the text git will actually keep is scanned.
+  Piping instead of passing a path? Use \`--commit-msg --stdin\`.
 
 Exit codes:
   0   no hits
@@ -105,9 +118,48 @@ function validateAndExpandFlags(args, knownBools, knownValues, sub) {
 }
 
 function lintCmd(rawArgs) {
-  const args = validateAndExpandFlags(rawArgs, ['--json', '--stdin'], ['--file'], 'lint');
+  const args = validateAndExpandFlags(
+    rawArgs,
+    ['--json', '--stdin', '--commit-msg', '--no-commit-msg'],
+    ['--file', '--comment-char'],
+    'lint',
+  );
   const json = args.includes('--json');     // argv-lint:allow — validated upstream by validateAndExpandFlags
   const stdin = args.includes('--stdin');   // argv-lint:allow — validated upstream by validateAndExpandFlags
+
+  // Commit-message cleanup mode. `--commit-msg` forces it on (needed for the
+  // `cat "$1" | claudemd-cli lint --stdin` shape, where there is no filename
+  // to key off), `--no-commit-msg` forces it off, otherwise it is inferred
+  // from the input FILENAME below.
+  const forceCommitMsg = args.includes('--commit-msg');       // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const denyCommitMsg = args.includes('--no-commit-msg');     // argv-lint:allow — validated upstream by validateAndExpandFlags
+  if (forceCommitMsg && denyCommitMsg) {
+    process.stderr.write('lint: choose one of --commit-msg or --no-commit-msg, not both\n');
+    process.exit(2);
+  }
+  let commentChar = '#';
+  // ALL occurrences, not indexOf(): with only the first value slot filtered out
+  // of `positional`, `--comment-char ';' --comment-char significantly` fed the
+  // second value into the scanned text and reported a "hit" on a word the user
+  // never submitted — the same silent-value-swallow family validateAndExpandFlags
+  // exists to close, reopened one occurrence deep.
+  const ccIdxs = args.reduce((acc, a, i) => (a === '--comment-char' ? acc.concat(i) : acc), []); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  if (ccIdxs.length > 1) {
+    process.stderr.write('lint: --comment-char given more than once — pass it exactly once\n');
+    process.exit(2);
+  }
+  const ccIdx = ccIdxs.length === 1 ? ccIdxs[0] : -1;
+  if (ccIdx !== -1) {
+    const next = args[ccIdx + 1];
+    // Single ASCII char: git's core.commentChar is one byte, and `length` counts
+    // UTF-16 units so a bare length check accepted `×` (and rejected `🙂` only
+    // because it is a surrogate pair).
+    if (!next || next.length !== 1 || next.codePointAt(0) > 0x7f) {
+      process.stderr.write('lint: --comment-char requires a single ASCII character (git core.commentChar)\n');
+      process.exit(2);
+    }
+    commentChar = next;
+  }
 
   // --file <path> consumes the next non-flag arg.
   let filePath = null;
@@ -123,6 +175,12 @@ function lintCmd(rawArgs) {
   const positional = args.filter((a, i) => {
     if (a.startsWith('--')) return false;
     if (fileIdx !== -1 && i === fileIdx + 1) return false;
+    // …and the value slot of every other value-taking flag, or
+    // `lint --comment-char ';' --stdin` would treat ';' as literal text to scan
+    // (and then trip the "--stdin and positional text are mutually exclusive"
+    // guard) — the same silent-value-swallow family validateAndExpandFlags exists to
+    // prevent.
+    if (ccIdx !== -1 && i === ccIdx + 1) return false;
     return true;
   });
 
@@ -141,6 +199,10 @@ function lintCmd(rawArgs) {
   }
 
   let text;
+  // Path the text was read FROM, when there is one — the auto-detect key for
+  // commit-message cleanup. stdin leaves it null (no filename to key off), which
+  // is exactly why --commit-msg exists.
+  let sourcePath = null;
   if (stdin) {
     try {
       text = fs.readFileSync(0, 'utf8');
@@ -170,6 +232,7 @@ function lintCmd(rawArgs) {
     }
     try {
       text = fs.readFileSync(filePath, 'utf8');
+      sourcePath = filePath;
     } catch (e) {
       process.stderr.write(`lint: failed to read ${filePath}: ${e.message}\n`);
       process.exit(2);
@@ -209,6 +272,7 @@ function lintCmd(rawArgs) {
         const st = fs.statSync(arg);
         if (st.isFile()) {
           text = fs.readFileSync(arg, 'utf8');
+          sourcePath = arg;
         } else if (looksLikePath) {
           process.stderr.write(`lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`);
           process.exit(2);
@@ -228,6 +292,22 @@ function lintCmd(rawArgs) {
     process.exit(2);
   }
 
+  // Git commit-message cleanup. A `commit-msg` hook is handed the RAW
+  // COMMIT_EDITMSG, which still carries git's `#` template/status block and —
+  // under `git commit -v` — the whole staged diff below the scissors line.
+  // git discards all of it before storing the message (verified against git
+  // 2.43.0: a 26-line COMMIT_EDITMSG stored a 1-line message), so scanning it
+  // raw denied commits over words the author never wrote — in their own staged
+  // diff, or in git's status block listing a file named e.g. `comprehensive.js`.
+  // The bypass note then pointed at a message the word does not appear in.
+  //
+  // Runs BEFORE the escape-hatch check on purpose: `[allow-banned-vocab]`
+  // sitting in a `#` line git will discard is not in the commit message either.
+  const commitMsgCleanup = !denyCommitMsg && (forceCommitMsg || looksLikeGitMessageFile(sourcePath));
+  if (commitMsgCleanup) {
+    text = stripGitCommitComments(text, commentChar);
+  }
+
   // Per-commit escape hatch — mirrors hooks/banned-vocab-check.sh:36. Without
   // this, `claudemd-cli lint --file=.git/COMMIT_EDITMSG` in a git pre-commit
   // hook silently disagreed with the in-CC bash hook: the same commit message
@@ -237,7 +317,7 @@ function lintCmd(rawArgs) {
   const ESCAPE_HATCH = '[allow-banned-vocab]';
   if (text.includes(ESCAPE_HATCH)) {
     if (json) {
-      process.stdout.write(formatJSON({ scope: 'lint', text, hits: [], bypass: 'allow-banned-vocab' }) + '\n');
+      process.stdout.write(formatJSON({ scope: 'lint', text, hits: [], bypass: 'allow-banned-vocab', commitMsgCleanup }) + '\n');
     } else {
       process.stdout.write(`OK: §10-V scan bypassed via ${ESCAPE_HATCH}.\n`);
     }
@@ -255,7 +335,7 @@ function lintCmd(rawArgs) {
 
   const hits = scan(text, { excludeRatio: baselineExempt, sanitize: true });
   if (json) {
-    process.stdout.write(formatJSON({ scope: 'lint', text, hits }) + '\n');
+    process.stdout.write(formatJSON({ scope: 'lint', text, hits, commitMsgCleanup }) + '\n');
   } else {
     const out = formatHumanReadable({ scope: 'lint', hits });
     if (hits.length === 0) process.stdout.write(out + '\n');

@@ -21,7 +21,6 @@
 // Out of scope (covered elsewhere — see /claudemd-doctor + safety-coverage-audit):
 //   - HARD-rule → hook enforcement coverage (safety-coverage-audit.js Phase B)
 //   - hard-rules.json section_anchor resolution (hard-rules-drift.test.js)
-//   - Banned-vocab patterns ↔ spec list drift (deferred to v0.13.0)
 //   - MEMORY.md tag-specificity (claudemd-doctor memory-tag-specificity)
 //
 // Severity (Spec Kit borrowed):
@@ -40,6 +39,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { readPatterns, scan } from './lib/lint.js';
 
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
 
@@ -47,6 +47,7 @@ Read-only audit of claudemd spec-ecosystem coherence:
   - §EXT cross-refs resolve (core → extended)
   - Sizing line matches actual wc -c (±20B tolerance)
   - MEMORY.md index ↔ memory files bidirectional
+  - §10-V quick-check terms ↔ banned-vocab.patterns coverage
 
 Output: human-readable by default; --json for machine-readable.
 
@@ -348,6 +349,168 @@ function checkMemoryIndex(projectCwd) {
   };
 }
 
+// CHECK 5 — §10-V quick-check terms ↔ banned-vocab.patterns -------------------
+//
+// spec/CLAUDE.md §10 names a short quick-check list AND, in the same sentence,
+// declares where the complete list lives: "Full enumeration → plugin
+// `banned-vocab.patterns` (mechanical gate)". A term the spec names in its own
+// quick-check that no pattern can match therefore breaks the spec's own words —
+// the gate is narrower than the enumeration it is declared to be, and the
+// narrowing is silent (nothing denies, so nothing shows up in rule-hits).
+//
+// Found live on v0.67.1: `应该可以` was named in the 中文 quick-check and matched
+// by nothing in the patterns file, nor by any other gate in the repo. This
+// check was listed at the top of this file as "deferred to v0.13.0" and had not
+// landed 54 minor versions later — precisely the drift class that needs a gate
+// rather than a reader.
+//
+// Deliberately scoped to §10's list only. §7 Iron Law #2 carries its own
+// "Banned phrasings" list (`看上去 ok / 跑过了 / 能跑 / it runs / …`), but §7 does
+// NOT declare banned-vocab.patterns as its enumeration and several of those
+// terms are FP-hostile as literals (`能跑` matches 不能跑 / 能跑通 / 能跑多快;
+// `it runs` matches "it runs on Node 20"). Reporting them as findings would be
+// permanent noise against a contract that was never made, so they are counted
+// in stats as coverage information and never raised.
+// Terms §10 names that are DELIBERATELY not mechanized, with the reason. This
+// is the same judgement §7's list gets, applied consistently: a literal whose
+// legitimate uses are as common as its violating ones is a coin flip, and a
+// coin-flip gate blocks real work. Entries are reported in the check's `note`
+// so the decision stays visible instead of looking like coverage.
+//
+// Adding a term here silences a finding — the reason string is the control, and
+// it must name a demonstrated false positive, not a hypothetical one.
+const ACKNOWLEDGED_UNMECHANIZED = {
+  '应该可以': 'literal denies legitimate negation ("越权用户不应该可以访问后台") and ' +
+    'requirement prose ("主题应该可以自定义") as readily as the hedge sense — both measured ' +
+    'on 2026-08-16. POSIX ERE has no lookbehind and a multibyte bracket negation is ' +
+    'byte-wise under a C locale, so "not preceded by 不" is not portably expressible ' +
+    'in the bash engine. Same standard that keeps §7\'s 能跑 / it runs unmechanized',
+};
+
+// Matched with the `m` flag over the whole spec: the subject is a bullet that
+// can be REFLOWED across lines by a compression pass (this repo does that
+// routinely), and a `[^\n]*` capture silently narrowed from 8 terms to 5 when
+// the 中文 span moved to line 2 — the gate quietly shrinking rather than
+// failing. Capture runs to the end of the bullet (next bullet or blank line).
+const QUICK_CHECK_RE = /\*\*Banned-vocab quick-check\*\*[\s\S]*?(?=\n[ \t]*\n|\n[-*] |\n#|$)/g;
+const IRONLAW_PHRASINGS_RE = /\*\*Banned phrasings\*\*[\s\S]*?(?=\n[ \t]*\n|\n[-*] |\n#|$)/g;
+
+// `N× faster (no baseline)` is a SHAPE, not a literal term — probing it verbatim
+// would report drift forever. Substitute the placeholder and drop the
+// parenthetical gloss; the probe string is reported alongside the term so the
+// verdict stays auditable rather than magic.
+function probeStringFor(term) {
+  return term
+    .replace(/\([^)]*\)/g, '')      // drop parenthetical glosses
+    .replace(/\bN\b/g, '3')         // N× faster → 3× faster
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// The same line also backticks the pointer to the pattern FILE
+// (`banned-vocab.patterns`), which is not a term. Discriminate on shape rather
+// than on the ` / ` separator: a one-term list is still a term list, so
+// requiring a separator silently dropped single-term spans.
+const FILENAME_SPAN_RE = /^[A-Za-z0-9._-]+\.[a-z][a-z0-9]*$/;
+
+function termsFromBacktickSpans(line) {
+  const terms = [];
+  for (const [, span] of line.matchAll(/`([^`]+)`/g)) {
+    if (FILENAME_SPAN_RE.test(span.trim())) continue;
+    // Split on a spaced slash only — a term is allowed to contain a bare `/`.
+    for (const part of span.split(/\s+\/\s+/)) {
+      const t = part.trim();
+      if (t) terms.push(t);
+    }
+  }
+  return terms;
+}
+
+export function checkBannedVocabSpecDrift(pluginRoot) {
+  const corePath = path.join(pluginRoot, 'spec', 'CLAUDE.md');
+  const patternsPath = path.join(pluginRoot, 'hooks', 'banned-vocab.patterns');
+  const base = { name: 'banned-vocab-spec-drift', findings: [] };
+
+  const coreText = fs.existsSync(corePath) ? fs.readFileSync(corePath, 'utf8') : '';
+  // ALL occurrences, not the first: a second quick-check bullet would otherwise
+  // be invisible to the gate.
+  const qcBlocks = coreText.match(QUICK_CHECK_RE) ?? [];
+  if (qcBlocks.length === 0) {
+    return {
+      ...base, ok: true, severity: null,
+      stats: { status: 'no-quick-check-line', termCount: 0, uncoveredCount: 0, probes: [] },
+    };
+  }
+
+  const terms = [...new Set(qcBlocks.flatMap(termsFromBacktickSpans))];
+
+  if (!fs.existsSync(patternsPath)) {
+    return {
+      ...base,
+      ok: false,
+      severity: 'HIGH',
+      findings: [{
+        severity: 'HIGH',
+        detail: `§10 declares banned-vocab.patterns the full enumeration but ${patternsPath} does not exist — the mechanical gate is absent entirely`,
+      }],
+      stats: { status: 'patterns-missing', termCount: terms.length, uncoveredCount: terms.length, probes: [] },
+    };
+  }
+
+  const patterns = readPatterns(patternsPath);
+  const probes = [];
+  const findings = [];
+  const acknowledged = [];
+  for (const term of terms) {
+    const probe = probeStringFor(term);
+    // scan() without sanitize: the question is "can the gate match this term",
+    // not "would it survive identifier-stripping in prose".
+    const covered = probe.length > 0 && scan(probe, { patterns }).length > 0;
+    probes.push({ term, probe, covered });
+    if (covered) continue;
+    if (Object.prototype.hasOwnProperty.call(ACKNOWLEDGED_UNMECHANIZED, term)) {
+      acknowledged.push(term);
+      continue;
+    }
+    findings.push({
+      severity: 'MEDIUM',
+      detail: `§10 quick-check names "${term}" but no pattern in banned-vocab.patterns matches it ` +
+        `(probed as "${probe}") — §10 declares that file the full enumeration, so the mechanical gate is narrower than the rule`,
+    });
+  }
+
+  // §7's list: counted, never raised. See the note above.
+  const ironLawTerms = [...new Set((coreText.match(IRONLAW_PHRASINGS_RE) ?? []).flatMap(termsFromBacktickSpans))];
+  const ironLawUncovered = ironLawTerms.filter(t => {
+    const p = probeStringFor(t);
+    return !(p.length > 0 && scan(p, { patterns }).length > 0);
+  });
+
+  return {
+    ...base,
+    ok: findings.length === 0,
+    severity: findings.length > 0 ? 'MEDIUM' : null,
+    findings,
+    stats: {
+      termCount: terms.length,
+      uncoveredCount: findings.length,
+      acknowledgedCount: acknowledged.length,
+      probes,
+      ironLaw2TermCount: ironLawTerms.length,
+      ironLaw2Unenforced: ironLawUncovered.length,
+      note: [
+        acknowledged.length > 0
+          ? `§10 term(s) deliberately NOT mechanized: ${acknowledged.map(t => `${t} — ${ACKNOWLEDGED_UNMECHANIZED[t]}`).join('; ')}`
+          : null,
+        ironLawUncovered.length > 0
+          ? `§7 Iron Law #2 names ${ironLawUncovered.length}/${ironLawTerms.length} phrasing(s) no pattern matches ` +
+            `(${ironLawUncovered.join(', ')}) — informational: §7 does not declare banned-vocab.patterns as its enumeration`
+          : null,
+      ].filter(Boolean).join('\n    ') || undefined,
+    },
+  };
+}
+
 // Public API -----------------------------------------------------------------
 
 export function auditSpecCoherence({ pluginRoot, projectCwd } = {}) {
@@ -359,6 +522,7 @@ export function auditSpecCoherence({ pluginRoot, projectCwd } = {}) {
     checkSizingAccuracy(specDir),
     checkSizingHeadroom(specDir),
     checkMemoryIndex(projectCwd),
+    checkBannedVocabSpecDrift(pluginRoot),
   ];
 
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
@@ -388,7 +552,10 @@ function formatHuman(r) {
     const mark = c.ok ? '✓' : (c.severity === 'CRITICAL' ? '✗' : c.severity === 'HIGH' ? '✗' : '△');
     out.push(`[${mark}] ${c.name}`);
     const statsLine = Object.entries(c.stats)
-      .filter(([k]) => !['note', 'memDir'].includes(k))
+      // Skip prose/path keys AND any non-scalar: an array/object renders as
+      // `[object Object],[object Object]` here, which is noise pretending to be
+      // data. Structured detail belongs in --json (and in `note` for humans).
+      .filter(([k, v]) => !['note', 'memDir'].includes(k) && (v === null || typeof v !== 'object'))
       .map(([k, v]) => `${k}=${v}`)
       .join(', ');
     if (statsLine) out.push(`    ${statsLine}`);

@@ -44,6 +44,8 @@ const PROBES = [
   '功能基本可用',
   '效果相当不错',
   '5x faster path',
+  '3× faster path',                   // unicode × — same claim shape as 5x
+  '这个应该可以了',
   '缓存后 50%更快',
   '优化带来 3倍提升',
   // Boundary + clean (parity must agree here too):

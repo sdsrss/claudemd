@@ -104,19 +104,30 @@ export function stripIdentifiers(text) {
   //    guard: blanked text is a subset of before, so this can only EXPOSE
   //    more text to the detector, never hide a claim.
   const lines = text.split('\n');
+  const isFence = (l) => /^\s*```/.test(l);
+  // "Is there a closing fence after i?" — precomputed once. The direct
+  // `lines.slice(i + 1).some(isFence)` spelling allocates the entire tail array
+  // on every fence line even though `.some` short-circuits, which is O(lines²):
+  // measured 10k lines → 6ms but 40k → 397ms (4× the input, 63× the time).
+  // `lastFence > i` is the same predicate — the max index of a fence line is
+  // after i iff any fence line is after i — in O(1) after one O(lines) pass.
+  let lastFence = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (isFence(lines[i])) { lastFence = i; break; }
+  }
   const kept = [];
   let inFence = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/^\s*```/.test(line)) {
+    if (isFence(line)) {
       if (inFence) { inFence = false; continue; }
-      if (lines.slice(i + 1).some(l => /^\s*```/.test(l))) { inFence = true; continue; }
+      if (lastFence > i) { inFence = true; continue; }
       kept.push(line);
       continue;
     }
     if (!inFence) kept.push(line);
   }
-  return kept.join('\n')
+  const stripped = kept.join('\n')
     // 2. Inline backtick spans.
     .replace(/`[^`]*`/g, ' ')
     // 3. Slashed-path runs (branch names, file paths, URLs) — Path 2's rule.
@@ -127,7 +138,30 @@ export function stripIdentifiers(text) {
     //    matches an N/M shape at all (they are `N% faster` / `Nx faster` and the
     //    中文 equivalents). The premise did not hold; reverted rather than ship a
     //    2x cost on long class-character runs for a fix that was not one.
-    .replace(/[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
+    //
+    //    The leading lookbehind is a COMPLEXITY guard, not a semantic one.
+    //    This clause is a `<class-run><required-delimiter>` shape and `/` is
+    //    not in the leading class, so a shorter prefix of the run is always
+    //    followed by another class char and can never satisfy the delimiter:
+    //    backtracking inside the run never finds a match the maximal run
+    //    missed. An unanchored /g regex still retries from every offset INSIDE
+    //    the run and rescans it each time — O(run²). Measured pre-fix on
+    //    delimiter-free input: 4k→6ms, 8k→24ms, 16k→94ms, 32k→376ms,
+    //    64k→1495ms (a clean 4× per doubling), and `lint --file` on a 500KB
+    //    single-token blob ran past a 30s timeout. Rejecting non-run-start
+    //    offsets in O(1) makes the pass linear (200k class-run: 51474ms →
+    //    2.5ms) with byte-identical output.
+    //
+    //    Equivalence here rests on a second property that clause 4 does NOT
+    //    share: this clause's trailing class is a SUPERSET of its leading one,
+    //    so a match always ends outside a leading-class run and the next
+    //    candidate start is never mid-run. Measured, not assumed —
+    //    sanitize-anchor-equivalence.test.js diffs both spellings over a seeded
+    //    corpus (it is what caught the clause-4 case below).
+    //
+    //    The bash engines need no equivalent: POSIX sed does not backtrack and
+    //    the hook caps its input at `tail -c 4096`; the Node path caps nothing.
+    .replace(/(?<![A-Za-z0-9._@~-])[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
     // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts) — CLI
     //    extension. The extension must start with a LOWERCASE letter, which
     //    (a) excludes decimals / versions ("3.5x", "v6.14") whose ".5x"/".14"
@@ -135,7 +169,149 @@ export function stripIdentifiers(text) {
     //    and (b) excludes sentence-boundary typos ("comprehensive.Next", capital
     //    after the dot) so a real claim isn't stripped. Only true `name.ext`
     //    identifiers with a lowercase extension are removed.
-    .replace(/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/g, ' ');
+    //
+    //    Clause 4 canNOT use clause 3's lookbehind: its trailing class
+    //    `[a-z0-9]` is a strict SUBSET of the leading run class, so a match can
+    //    end in the MIDDLE of a run (`_a9Zaz.a|Z9Z_.a` — the ext stops at the
+    //    uppercase Z) and the next legitimate match then starts at a position
+    //    whose predecessor IS a run char. A lookbehind drops that match and
+    //    leaves the identifier unstripped — more text exposed to the detector,
+    //    i.e. the FP deny-loop returning. Clause 3 is immune because its
+    //    trailing class is a SUPERSET of its leading one, so a match always
+    //    ends outside a leading-class run; that equivalence is measured, not
+    //    assumed, in sanitize-anchor-equivalence.test.js.
+    //
+    //    So clause 4 runs as an explicit single-pass scan instead — same
+    //    semantics, O(n) instead of O(run²).
+    ;
+  return stripDottedFileTokens(stripped);
+}
+
+// Linear-time equivalent of /[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/g → ' '.
+//
+// Every start offset inside one run shares the same greedy run END, so the
+// regex's per-offset retry recomputes an answer that cannot differ — that is
+// the O(run²) in the global form. Walking runs once reproduces the /g contract
+// exactly, including the mid-run restart above: after a match the scan resumes
+// at the match end, which becomes the next candidate start even though its
+// predecessor is a run char.
+const isRunChar = (c) =>
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+  c === '_' || c === '-';
+const isExtChar = (c) => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+
+export function stripDottedFileTokens(text) {
+  if (!text) return text;
+  const n = text.length;
+  let out = '';
+  let copied = 0;
+  let i = 0;
+  while (i < n) {
+    if (!isRunChar(text[i])) { i++; continue; }
+    const start = i;
+    let e = i;
+    while (e < n && isRunChar(text[e])) e++;
+    // Need `.` then a LOWERCASE letter — the extension guard that keeps
+    // decimals/versions ("3.5x", "v6.14") and sentence boundaries intact.
+    if (e < n && text[e] === '.' && e + 1 < n && text[e + 1] >= 'a' && text[e + 1] <= 'z') {
+      let end = e + 2;
+      while (end < n && isExtChar(text[end])) end++;
+      out += text.slice(copied, start) + ' ';
+      copied = end;
+      i = end;
+      continue;
+    }
+    i = e;
+  }
+  return out + text.slice(copied);
+}
+
+// Git message files whose raw on-disk contents are NOT the stored commit
+// message. A `commit-msg` hook is handed the file BEFORE git's cleanup pass,
+// so it still carries the `#` template/status block and — under `git commit -v`
+// — the entire staged diff below the scissors line. Verified against git 2.43.0:
+// a 26-line COMMIT_EDITMSG stored a 1-line message.
+const GIT_MSG_FILENAMES = new Set([
+  'COMMIT_EDITMSG',
+  'MERGE_MSG',
+  'SQUASH_MSG',
+  'TAG_EDITMSG',
+  'NOTES_EDITMSG',
+]);
+
+// Filename-scoped on purpose, never content-sniffed: a heuristic that stripped
+// `#` lines from any file would silently mute markdown headings in
+// `lint --file notes.md` — trading a false positive for a false negative.
+export function looksLikeGitMessageFile(filePath) {
+  if (!filePath) return false;
+  return GIT_MSG_FILENAMES.has(path.basename(filePath));
+}
+
+// Reproduce git's own cleanup so the CLI's verdict matches the message git
+// will actually store (builtin/commit.c): truncate at the cut line when one is
+// present, then drop comment-prefixed lines (strbuf_stripspace).
+//
+// Three fidelity details, each of which a looser implementation gets wrong in
+// the false-NEGATIVE direction — i.e. it would silently mute a real violation:
+//
+//   • git matches the comment prefix at column 0 with no leading-whitespace
+//     tolerance, so `  # note` survives into the stored message and must stay
+//     scannable.
+//
+//   • The cut line is an EXACT literal in git (`wt_status_locate_end` strcmps
+//     against comment-char + space + 24 dashes + ` >8 ` + 24 dashes), and git
+//     truncates there only under `-v` / `cleanup=scissors`. A loose
+//     `-{2,}`-style pattern let a hand-typed `# -- >8 --` drop the whole rest
+//     of the message from the scan. The dash count is ranged (20+) rather than
+//     pinned at 24 to tolerate other git versions, but the ` >8 ` framing and
+//     the leading `<c> ` are required.
+//
+//   • **Comment stripping is conditional on a git-authored template being
+//     present.** git only strips `#` lines under cleanup=strip/scissors, which
+//     is the EDITOR path; under `-m` / `-F` / `--cleanup=whitespace|verbatim`
+//     the mode is `whitespace` and column-0 `#` lines are KEPT in the commit.
+//     Measured on git 2.43.0 (six shapes, per lint-commit-msg.test.js): the
+//     three user-supplied-message shapes all stored their `#` line, while both
+//     editor shapes stored none. Stripping unconditionally therefore muted a
+//     real violation in `git commit -F release-notes.md` or
+//     `-m "$(cat notes.md)"` whenever the body carried a markdown heading.
+export function stripGitCommitComments(text, commentChar = '#') {
+  if (!text) return text;
+  const c = (typeof commentChar === 'string' && commentChar.length === 1) ? commentChar : '#';
+  const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const cutLine = new RegExp(`^${esc} -{20,} >8 -{20,}\\s*$`);
+
+  // 1. Truncate at git's cut line (also a definitive template signal).
+  const all = text.split('\n');
+  const cutAt = all.findIndex(l => cutLine.test(l));
+  const lines = cutAt === -1 ? all : all.slice(0, cutAt);
+  const sawCutLine = cutAt !== -1;
+
+  // 2. Strip comment lines only when git wrote a template here.
+  if (!sawCutLine && !hasGitTemplate(lines, c)) return lines.join('\n');
+  return lines.filter(l => !l.startsWith(c)).join('\n');
+}
+
+// Locale-proof template detection. Both signals are structural — git localizes
+// the LABELS ("Changes to be committed", "Please enter the commit message…")
+// but not the `#`+TAB status prefix, and the intro paragraph is ≥3 comment
+// lines in every translation.
+//
+// Deliberately conservative: when neither signal fires we scan MORE text, so a
+// misdetection costs a false positive (visible, bypassable) rather than a
+// silent miss. `commit.status=false` editor commits emit zero comment lines
+// (measured), so the undetected case there strips nothing anyway.
+function hasGitTemplate(lines, c) {
+  // git's status file list: `#\tmodified:   path`
+  if (lines.some(l => l.startsWith(c + '\t'))) return true;
+  // The intro paragraph: ≥3 contiguous comment lines ending at EOF (trailing
+  // blanks ignored). A hand-written `-m` message carries one such line, not a
+  // run of three terminating the file.
+  let i = lines.length - 1;
+  while (i >= 0 && lines[i].trim() === '') i--;
+  let run = 0;
+  while (i >= 0 && lines[i].startsWith(c)) { run++; i--; }
+  return run >= 3;
 }
 
 export function scan(text, { excludeRatio = false, patterns, sanitize = false } = {}) {
