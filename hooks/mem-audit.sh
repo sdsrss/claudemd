@@ -92,40 +92,55 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   mem_dir="$proj_dir/memory"
   [[ -d "$mem_dir" ]] || continue
 
-  # find -maxdepth 1: avoid descending into any subdirs (e.g. logs/).
+  # Why/How marker scan, one awk pass over the whole memory dir.
+  #
+  # v0.18.0 (spec v6.12.0 §11-EXT) — narrowed to feedback_*.md only.
+  # project_*.md exempted: incident-log pattern (`project_<topic>_<date>.md`)
+  # is fact-only by nature; enforcing Why/How body structure produced 16
+  # long-standing non-compliant files across 4 projects without a path to
+  # closure. CC memoryTypes.ts still recommends Why/How for project type,
+  # but the hook no longer warns when authors omit it.
+  #
+  # 2026-08-17: this was a shell loop spending `basename` + `wc -c` + two
+  # `grep -qE` — four forks per memory file. At 150 files it took 0.93s of this
+  # hook's 3s hooks.json budget on a quiet Linux box, and macOS runners are
+  # ~4x slower at process creation. The header above already documents the
+  # consequence being worked around (the sentinel is touched BEFORE the scan
+  # precisely because the loop was outrunning the timeout); this removes the
+  # cause. Same defect class as the per-tag loop that lib/memory-tags.sh
+  # replaced. Selection, the 400-byte floor, both accepted marker punctuations
+  # and find-order sampling are unchanged — awk flushes each file's verdict
+  # when the NEXT file starts, so output order still follows find.
+  #
+  # Byte count is summed as `length($0) + 1` rather than shelling out to
+  # `wc -c`: it differs from wc only for a file with no trailing newline, and
+  # only by one byte, against a threshold whose stated purpose is "<400 bytes
+  # likely empty".
   while IFS= read -r f; do
-    base="$(basename "$f")"
-    # v0.18.0 (spec v6.12.0 §11-EXT) — narrowed to feedback_*.md only.
-    # project_*.md exempted: incident-log pattern (`project_<topic>_<date>.md`)
-    # is fact-only by nature; enforcing Why/How body structure produced 16
-    # long-standing non-compliant files across 4 projects without a path to
-    # closure. CC memoryTypes.ts still recommends Why/How for project type,
-    # but the hook no longer warns when authors omit it.
-    case "$base" in
-      feedback_*.md) ;;
-      *) continue ;;
-    esac
-
-    # Skip MEMORY.md itself + frontmatter-only stubs (<400 bytes likely empty).
-    [[ "$base" == "MEMORY.md" ]] && continue
-    size=$(wc -c < "$f" 2>/dev/null | tr -d '[:space:]') || continue
-    [[ "${size:-0}" -lt 400 ]] && continue
-
-    # Both markers must appear at line start. Match BOTH common punctuation
-    # forms (CC memoryTypes.ts uses `**Why:**`, but `**Why**:` is also widely
-    # used in the wild; accept either to avoid false-positive alarms):
-    #   **Why:** ...    OR    **Why**: ...
-    #   **How to apply:** ...    OR    **How to apply**: ...
-    if ! grep -qE '^\*\*Why(:\*\*|\*\*:)' "$f" 2>/dev/null \
-       || ! grep -qE '^\*\*How to apply(:\*\*|\*\*:)' "$f" 2>/dev/null; then
-      MISSING=$((MISSING + 1))
-      if [[ "${#SAMPLE[@]}" -lt "$SAMPLE_LIMIT" ]]; then
-        # Path relative to projects root for compactness in the banner.
-        rel="${f#"$PROJECTS_ROOT/"}"
-        SAMPLE+=("$rel")
-      fi
+    [[ -n "$f" ]] || continue
+    MISSING=$((MISSING + 1))
+    if [[ "${#SAMPLE[@]}" -lt "$SAMPLE_LIMIT" ]]; then
+      # Path relative to projects root for compactness in the banner.
+      rel="${f#"$PROJECTS_ROOT/"}"
+      SAMPLE+=("$rel")
     fi
-  done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
+  done < <(find "$mem_dir" -maxdepth 1 -type f -name 'feedback_*.md' -exec awk '
+      function flush() {
+        if (cur != "" && bytes >= 400 && (why == 0 || how == 0)) print cur
+      }
+      FNR == 1 { flush(); cur = FILENAME; bytes = 0; why = 0; how = 0 }
+      {
+        bytes += length($0) + 1
+        # Both markers must appear at line start. Match BOTH common punctuation
+        # forms (CC memoryTypes.ts uses `**Why:**`, but `**Why**:` is also
+        # widely used in the wild; accept either to avoid false-positive
+        # alarms):  **Why:** … OR **Why**: … / **How to apply:** … OR
+        # **How to apply**: …
+        if ($0 ~ /^\*\*Why(:\*\*|\*\*:)/) why = 1
+        if ($0 ~ /^\*\*How to apply(:\*\*|\*\*:)/) how = 1
+      }
+      END { flush() }
+    ' {} + 2>/dev/null)
 
   # MEMORY.md ↔ files drift. MEMORY.md is the index — its link list should
   # match the on-disk files (excluding MEMORY.md itself).
@@ -136,40 +151,58 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   # bash 3.2 which does not support `declare -A` (associative arrays added
   # in bash 4); use a string + grep -Fx instead. CI breakage at v0.9.8
   # macOS-latest confirmed -A fails with "invalid option".
+  # `${f##*/}` rather than `basename` — one fork per file, for a string
+  # operation bash does natively (2026-08-17, same pass as the awk scan above).
   on_disk_list=""
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    base="$(basename "$f")"
+    base="${f##*/}"
     [[ "$base" == "MEMORY.md" ]] && continue
     on_disk_list+="$base"$'\n'
   done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
   # Extract `(file.md)` references from MEMORY.md index lines. Markdown link
   # syntax `[Title](file.md) ...` — first matching .md token per line.
-  in_index_list=""
+  in_index_list=$(grep -oE '\([^)]+\.md\)' "$index_file" 2>/dev/null | sed -E 's/^\(|\)$//g')
+  [[ -n "$in_index_list" ]] && in_index_list="$in_index_list"$'\n'
+
+  # Set difference in awk, both directions, instead of a `printf | grep -qFx`
+  # per item (two more forks per entry — 150 entries meant ~300 processes for
+  # what is a hash lookup). Input order is preserved, so the 3-item DRIFT_SAMPLE
+  # still reports the same first three entries it reported before.
+  #
+  # The lookup table arrives through ENVIRON, NOT as a second awk input file.
+  # The idiomatic `NR == FNR { table[$0]; next }` two-file form is WRONG when the
+  # first stream is empty: awk never reads a record from it, so `NR == FNR` is
+  # still true for the FIRST record of the second stream and that record is
+  # swallowed into the table instead of being tested. A memory dir holding only
+  # MEMORY.md is exactly that shape — on_disk_list is empty, and the single
+  # index link was silently consumed rather than reported as an index_orphan
+  # (mem-audit.test.sh case 9 caught it).
   while IFS= read -r linked; do
     [[ -n "$linked" ]] || continue
-    in_index_list+="$linked"$'\n'
-    if ! printf '%s' "$on_disk_list" | grep -qFx -- "$linked"; then
-      DRIFT=$((DRIFT + 1))
-      if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
-        rel="${index_file#"$PROJECTS_ROOT/"}"
-        DRIFT_SAMPLE+=("index_orphan: $rel → $linked (link target missing)")
-      fi
+    DRIFT=$((DRIFT + 1))
+    if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
+      rel="${index_file#"$PROJECTS_ROOT/"}"
+      DRIFT_SAMPLE+=("index_orphan: $rel → $linked (link target missing)")
     fi
-  done < <(grep -oE '\([^)]+\.md\)' "$index_file" 2>/dev/null | sed -E 's/^\(|\)$//g')
+  done < <(MEM_AUDIT_SET="$on_disk_list" awk '
+      BEGIN { n = split(ENVIRON["MEM_AUDIT_SET"], a, "\n")
+              for (i = 1; i <= n; i++) if (a[i] != "") known[a[i]] = 1 }
+      $0 != "" && !($0 in known)' <<<"$in_index_list")
 
   # Reverse direction: any on-disk file with no MEMORY.md link.
   while IFS= read -r base; do
     [[ -z "$base" ]] && continue
-    if ! printf '%s' "$in_index_list" | grep -qFx -- "$base"; then
-      DRIFT=$((DRIFT + 1))
-      if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
-        rel="${index_file#"$PROJECTS_ROOT/"}"
-        DRIFT_SAMPLE+=("file_orphan: $rel → $base (no index link)")
-      fi
+    DRIFT=$((DRIFT + 1))
+    if [[ "${#DRIFT_SAMPLE[@]}" -lt "$DRIFT_SAMPLE_LIMIT" ]]; then
+      rel="${index_file#"$PROJECTS_ROOT/"}"
+      DRIFT_SAMPLE+=("file_orphan: $rel → $base (no index link)")
     fi
-  done <<< "$on_disk_list"
+  done < <(MEM_AUDIT_SET="$in_index_list" awk '
+      BEGIN { n = split(ENVIRON["MEM_AUDIT_SET"], a, "\n")
+              for (i = 1; i <= n; i++) if (a[i] != "") known[a[i]] = 1 }
+      $0 != "" && !($0 in known)' <<<"$on_disk_list")
 done
 
 if [[ "$MISSING" -eq 0 && "$DRIFT" -eq 0 ]]; then
