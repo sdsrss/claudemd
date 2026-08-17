@@ -16,7 +16,14 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 FAIL=0
 
 CALLER="$(mktemp -d)"
-cleanup() { [[ -n "${CALLER:-}" && -d "$CALLER" ]] && rm -rf "$CALLER"; }
+# Capture file lives OUTSIDE the caller repo: case 2 asserts that repo's
+# worktree stays clean, and an artifact dropped inside it fails that assertion
+# — which is the same class of finding, just self-inflicted.
+SCRATCH="$(mktemp -d)"
+cleanup() {
+  [[ -n "${CALLER:-}" && -d "$CALLER" ]] && rm -rf "$CALLER"
+  [[ -n "${SCRATCH:-}" && -d "$SCRATCH" ]] && rm -rf "$SCRATCH"
+}
 trap cleanup EXIT
 
 git -C "$CALLER" init -q
@@ -31,7 +38,8 @@ LOG="$HOME/.claude/logs/claudemd.jsonl"
 LOG_BEFORE=0
 [[ -f "$LOG" ]] && LOG_BEFORE=$(wc -l < "$LOG" | tr -d ' ')
 
-(cd "$CALLER" && bash "$ROOT/scripts/perf-baseline.sh" --runs 1 >/dev/null 2>&1)
+PB_ERR="$SCRATCH/perf-baseline.stderr"
+(cd "$CALLER" && bash "$ROOT/scripts/perf-baseline.sh" --runs 1 >/dev/null 2>"$PB_ERR")
 
 AFTER=$(git -C "$CALLER" rev-list --count HEAD)
 DIRTY=$(git -C "$CALLER" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
@@ -59,8 +67,25 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Case 4 (2026-08-17): the script's own probe self-check must pass. For two
+# months it measured hook cost in a sandbox with no MEMORY.md, so
+# memory-read-check took its fail-open exit and the tool reported 0.03s for a
+# hook that costs 1.91s against a populated index. The script now drives a
+# must-deny command before timing and warns on stderr when that probe does not
+# reach the scan; a silent stderr is the assertion that the numbers mean
+# something. Anything else on stderr is also a finding — this script is a
+# measurement instrument, and noise on its error channel is how the last
+# underread stayed invisible.
+if [[ ! -s "$PB_ERR" ]]; then
+  echo "PASS: 4 probe self-check clean (fixture reaches the data-dependent path)"
+else
+  echo "FAIL: 4 perf-baseline wrote to stderr — probes may not reach the hooks they time:"
+  sed 's/^/      /' "$PB_ERR"
+  FAIL=$((FAIL+1))
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((3 - FAIL))/3 passed"
+  echo "Tests: $((4 - FAIL))/4 passed"
   exit 1
 fi
-echo "Tests: 3/3 passed"
+echo "Tests: 4/4 passed"
