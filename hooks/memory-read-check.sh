@@ -18,6 +18,15 @@ if ! hook_require_jq; then
   hook_record_failopen memory-read-check jq-missing
   exit 0
 fi
+# memory-tags.sh provides memtags_match (shared with memory-prompt-hint.sh).
+# An unreadable matcher would make every command match nothing — this §11 gate
+# silently allowing every push is exactly the fail-open that OBS-1 exists to
+# make visible, so it is recorded, not swallowed.
+# shellcheck source=/dev/null
+if ! source "$LIB_DIR/memory-tags.sh" 2>/dev/null; then
+  hook_record_failopen memory-read-check prereq-missing
+  exit 0
+fi
 
 EVENT=$(hook_read_event)
 if [[ -z "$EVENT" ]]; then
@@ -172,58 +181,23 @@ TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 [[ -f "$MEM_INDEX" ]] || exit 0
 [[ -f "$TRANSCRIPT" ]] || exit 0
 
-# Parse index lines: `- [Title](file.md) [tag1, tag2] — desc`
+# Parse index lines: `- [Title](file.md) [tag1, tag2] — desc`, via the shared
+# single-pass matcher (lib/memory-tags.sh; see its header for the parse rules
+# that used to live here). This was an inline loop forking three processes per
+# tag: 1.9s at 336 tags, 3.7s at 750, against this hook's 3s hooks.json budget.
+# Unlike the hint hook's copy, a timeout here is not a missing suggestion — the
+# process is killed before it can emit, so the §11 DENY never reaches Claude
+# Code and the gate fails open at exactly the ship moment, with no telemetry row
+# to say so. Matching semantics are unchanged; the parity test holds them.
+#
+# Only the file column is read: this hook denies per FILE, and the old loop
+# `break`ed on the first matching tag. memtags_match reports every matched tag,
+# which is a superset — the file set is identical.
 MATCHES=()
-while IFS= read -r line; do
-  FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
-  [[ -z "$FILE" ]] && continue
-  # Accept both backtick-wrapped (`[tag, tag]`) and plain (`[tag, tag]`)
-  # tag-block syntax. Spec §11 documents the plain form; existing user data
-  # commonly uses the backtick form. Trying backtick first preserves precise
-  # matching when both forms could otherwise overlap on a single line.
-  #
-  # Both forms anchor on `.md)` so that:
-  #   1. A decorative `\`[other]\`` token in the description doesn't get
-  #      mistaken for the tag block (greedy `.*` would otherwise eat through
-  #      to the LAST `\`[...]\``).
-  #   2. A `[Title]` bracket pair in the markdown link itself isn't matched.
-  TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
-  if [[ -z "$TAG_BLOCK" ]]; then
-    # Plain form, anchored same way + ending before description separator.
-    TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*\[\([^]]*\)\][[:space:]]*[—-].*/\1/p')
-  fi
-
-  if [[ -z "$TAG_BLOCK" ]]; then
-    # Untagged entries: hook does NOT auto-block. Spec §11 "Index is a
-    # router, not a substitute" — untagged matching is the agent's
-    # responsibility (full content scan when in doubt). Pre-fix this branch
-    # added the file to MATCHES unconditionally, forcing N unrelated Reads
-    # on every push when MEMORY.md grew without tag discipline.
-    continue
-  else
-    IFS=',' read -ra TAGS <<<"$TAG_BLOCK"
-    for t in "${TAGS[@]}"; do
-      t=$(echo "$t" | tr -d ' ')
-      [[ -z "$t" ]] && continue
-      # v0.9.28: word-boundary match with 0-2 char declension tolerance.
-      # Pre-fix `grep -iF` substring-matched `cli` inside `clippy`,
-      # `dead-code` inside any literal citation, etc. — produced ~80% FP rate
-      # in v0.9.27 ship-flow self-audit. New form anchors on non-word-char
-      # boundaries and allows up to 2 trailing alpha chars so plurals/
-      # declensions still match (`hook` still matches `hooks`/`hooked`).
-      # `--` separator preserved: a tag beginning with `-` (e.g. `--file`,
-      # `-h`) would otherwise be parsed by grep as a flag and silently
-      # fail-open the whole §11 rule (regression from v0.9.14).
-      # Tag escaping: regex meta chars in tags (`.`, `*`, `+`, `[`, `]`,
-      # `(`, `)`, `?`, `{`, `}`, `|`, `^`, `$`, `\`) escaped before use.
-      ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
-      if echo "$CMD_TAGMATCH" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
-        MATCHES+=("$FILE")
-        break
-      fi
-    done
-  fi
-done < "$MEM_INDEX"
+while IFS=$'\t' read -r _file _tags; do
+  [[ -n "$_file" ]] || continue
+  MATCHES+=("$_file")
+done < <(memtags_match "$MEM_INDEX" "$CMD_TAGMATCH")
 
 (( ${#MATCHES[@]} == 0 )) && exit 0
 

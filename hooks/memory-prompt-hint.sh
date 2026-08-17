@@ -44,6 +44,14 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch MEMORY_HINT || exit 0
 hook_require_jq || { hook_record_failopen memory-prompt-hint jq-missing; exit 0; }
+# memory-tags.sh provides memtags_match (shared with memory-read-check.sh).
+# Sourced AFTER the kill switch so a disabled hook does not log, and WITHOUT
+# `|| true`: an unreadable matcher means every prompt silently matches nothing,
+# i.e. the hook is off. Fail-open is still the outcome (this hook only ever
+# suggests), but it is recorded rather than invisible.
+# shellcheck source=/dev/null
+source "$LIB_DIR/memory-tags.sh" 2>/dev/null \
+  || { hook_record_failopen memory-prompt-hint prereq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
 PROMPT=$(hook_jq_field memory-prompt-hint "$EVENT" '.prompt // ""') || exit 0
@@ -81,47 +89,18 @@ TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 # just means "everything is un-Read" which is correct.
 
 # Parse MEMORY.md → match → collect un-Read.
-# Output rows: "file\ttag1,tag2,..." for matches.
+# Rows: "file\ttag1,tag2,..." for matches, via the shared single-pass matcher
+# (lib/memory-tags.sh). This was an inline loop that forked three processes per
+# tag; at 336 tags it cost 1.8-3.9s against this hook's 3s hooks.json budget and
+# the hint started disappearing under session load. The parse/match SEMANTICS
+# are unchanged — memory-tags-parity.test.sh runs the old loop as an oracle.
 MATCHES=()
 MATCH_TAGS=()
-while IFS= read -r line; do
-  FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
-  [[ -z "$FILE" ]] && continue
-
-  # Backtick form first (precise), then plain.
-  # Both forms ANCHOR on `.md)` so a backtick-wrapped `[token]` in the
-  # description (e.g. `... — see also `[other]` inline`) does NOT get
-  # mistaken for the tag block. Pre-fix the backtick variant was unanchored
-  # and the greedy `.*` ate through to the LAST `\`[...]\`` on the line —
-  # making the description's decorative backtick block the parsed tag and
-  # the real tag invisible.
-  TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
-  if [[ -z "$TAG_BLOCK" ]]; then
-    TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*\[\([^]]*\)\][[:space:]]*[—-].*/\1/p')
-  fi
-  [[ -z "$TAG_BLOCK" ]] && continue
-
-  IFS=',' read -ra TAGS <<<"$TAG_BLOCK"
-  MATCHED_TAGS=""
-  for t in "${TAGS[@]}"; do
-    t=$(echo "$t" | tr -d ' ')
-    [[ -z "$t" ]] && continue
-    # Same word-boundary + declension regex as memory-read-check.sh:134.
-    ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
-    if echo "$PROMPT" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
-      if [[ -z "$MATCHED_TAGS" ]]; then
-        MATCHED_TAGS="$t"
-      else
-        MATCHED_TAGS="$MATCHED_TAGS,$t"
-      fi
-    fi
-  done
-
-  if [[ -n "$MATCHED_TAGS" ]]; then
-    MATCHES+=("$FILE")
-    MATCH_TAGS+=("$MATCHED_TAGS")
-  fi
-done < "$MEM_INDEX"
+while IFS=$'\t' read -r _file _tags; do
+  [[ -n "$_file" ]] || continue
+  MATCHES+=("$_file")
+  MATCH_TAGS+=("$_tags")
+done < <(memtags_match "$MEM_INDEX" "$PROMPT")
 
 (( ${#MATCHES[@]} == 0 )) && exit 0
 
