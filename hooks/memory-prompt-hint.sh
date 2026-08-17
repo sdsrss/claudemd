@@ -49,9 +49,14 @@ hook_require_jq || { hook_record_failopen memory-prompt-hint jq-missing; exit 0;
 # `|| true`: an unreadable matcher means every prompt silently matches nothing,
 # i.e. the hook is off. Fail-open is still the outcome (this hook only ever
 # suggests), but it is recorded rather than invisible.
+# `source` returning 0 is NOT enough: a truncated file sources cleanly and
+# simply never defines the function (pre-tag review). Assert the symbol.
 # shellcheck source=/dev/null
-source "$LIB_DIR/memory-tags.sh" 2>/dev/null \
-  || { hook_record_failopen memory-prompt-hint prereq-missing; exit 0; }
+source "$LIB_DIR/memory-tags.sh" 2>/dev/null
+if ! declare -f memtags_match >/dev/null 2>&1; then
+  hook_record_failopen memory-prompt-hint prereq-missing
+  exit 0
+fi
 
 EVENT=$(hook_read_event) || exit 0
 PROMPT=$(hook_jq_field memory-prompt-hint "$EVENT" '.prompt // ""') || exit 0

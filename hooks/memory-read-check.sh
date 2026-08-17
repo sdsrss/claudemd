@@ -23,7 +23,13 @@ fi
 # silently allowing every push is exactly the fail-open that OBS-1 exists to
 # make visible, so it is recorded, not swallowed.
 # shellcheck source=/dev/null
-if ! source "$LIB_DIR/memory-tags.sh" 2>/dev/null; then
+source "$LIB_DIR/memory-tags.sh" 2>/dev/null
+# `source` returning 0 is NOT enough: a file truncated mid-heredoc — the shape
+# user-journey.test.sh already exercises for the marketplace cache — sources
+# cleanly and simply never defines the function. The gate then hit
+# `memtags_match: command not found`, matched nothing, allowed the push, and
+# logged nothing (pre-tag review). Assert the symbol, not the exit code.
+if ! declare -f memtags_match >/dev/null 2>&1; then
   hook_record_failopen memory-read-check prereq-missing
   exit 0
 fi

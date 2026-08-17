@@ -53,6 +53,9 @@ cat > "$INDEX" <<'EOF'
 - [Untagged legacy](project_old.md) — no tag block at all, agent decides
 - [Decorative desc](feedback_decor.md) `[realtag]` — desc mentions `[decortag]` inline
 - [Second link in desc](feedback_first.md) `[firsttag]` — see also (feedback_other.md) for context
+- [Two links two blocks](feedback_two.md) `[realtag2]` — see also (feedback_decoy.md) `[decoytag2]` here
+- [Backtick then plain](feedback_mixed.md) `[btag]` and (feedback_mixed2.md) [ptag] — form beats position
+- [Endash sep](feedback_endash.md) [endashtag] – not an em-dash, must not tag
 - [Regex meta](feedback_meta.md) `[v6.9, printf-%b, c++build]` — metachars must be literal
 - [Leading dash](feedback_dash.md) `[--file, -h]` — tags that look like grep flags
 - [CJK tags](feedback_cjk.md) `[全面审核, 发版, 门存在但没盖住]` — chinese tags
@@ -62,6 +65,11 @@ cat > "$INDEX" <<'EOF'
 - [Upper case](feedback_case.md) `[MixedCase, UPPER]` — matching is case-insensitive
 - [Dotted file](feedback_v2.name.md) `[dotted]` — file token contains extra dots
 EOF
+# A vertical tab cannot be written in a quoted heredoc; append it with printf.
+# `[[:space:]]` (what the sed used) covers \v and \r within a line, `[ \t]`
+# does not — the narrowed class silently untagged these entries.
+printf -- '- [Vtab separated](feedback_vtab.md)\v`[vtabtag]` — vertical tab before the block\n' >> "$INDEX"
+printf -- '- [CR before dash](feedback_cr.md) [crtag]\r— carriage return before the separator\n' >> "$INDEX"
 
 # Haystacks: prompts / sanitized commands. The last one matches nothing.
 HAYSTACKS=(
@@ -82,6 +90,21 @@ HAYSTACKS=(
   "git push origin main"
   "nothing here matches any tag at all"
   "TAB	separated	prompt with literal backslash \\t and \\n"
+  # Rightmost-`.md)` anchoring and FORM-over-POSITION precedence — the two
+  # semantics the header calls load-bearing. Without these the corpus could not
+  # tell a leftmost walk, or a one-pass backtick-then-plain walk, from the
+  # oracle: the pre-tag review mutated both and the suite stayed green.
+  "realtag2 mentioned"
+  "decoytag2 mentioned"
+  "btag mentioned"
+  "ptag mentioned"
+  # Within-line whitespace beyond space/tab, and a separator that is NOT the
+  # em-dash but shares its first byte (en-dash). A byte-oriented awk reading
+  # `[—-]` as a four-element byte set accepted it; a character-oriented one
+  # did not, so the two CI legs parsed the index differently.
+  "vtabtag mentioned"
+  "crtag mentioned"
+  "endashtag mentioned"
 )
 
 # ------------------------------------------------------------------ oracle ---
@@ -131,6 +154,26 @@ for hay in "${HAYSTACKS[@]}"; do
     DIFFS=$((DIFFS + 1))
   fi
 done
+
+# Oversize haystacks (B1, pre-tag review). The matcher passes the haystack to
+# awk through the environment, and Linux caps ONE env string at MAX_ARG_STRLEN
+# = 128 KiB; past that awk is never exec'd, stderr is discarded, and the empty
+# output reads as "no matches" — a silent fail-open in a blocking gate. The
+# shell loop this replaced piped to grep's stdin and had no such bound.
+# Nothing else in this corpus is above ~1 KB, so the cliff was invisible.
+# 131072 is the exact limit; the others bracket and clear it.
+for size in 131000 131072 300000; do
+  BIGPAD=$(awk -v n="$size" 'BEGIN { s = ""; while (length(s) < n) s = s "x"; print s }')
+  BIGHAY="ship the release $BIGPAD"
+  EXPECT=$(oracle_match "$INDEX" "$BIGHAY")
+  ACTUAL=$(memtags_match "$INDEX" "$BIGHAY")
+  if [[ -n "$EXPECT" && "$EXPECT" == "$ACTUAL" ]]; then
+    pass "oversize haystack ${size}B still matches (no exec-limit fail-open)"
+  else
+    fail "oversize haystack ${size}B: oracle=[${EXPECT}] matcher=[${ACTUAL}]"
+  fi
+done
+unset BIGPAD BIGHAY
 
 # A corpus that matches nothing anywhere would make every comparison trivially
 # equal. Assert the oracle actually produced rows.
@@ -184,12 +227,23 @@ else
   fail "consumer-set floor (expected >= 2, found ${#CONSUMERS[@]}) — grep or glob broke"
 fi
 
+# What counts as "calls it" needs two exclusions, and each was established by a
+# mutation that survived without it:
+#   - COMMENTS. Both consumers name memtags_match in their rationale prose, so
+#     the plain grep passed on prose alone — the real call could be replaced by
+#     a no-op and this stayed green, the exact failure mode the header cites
+#     feedback_extraction_needs_consumer_gate for.
+#   - The `declare -f memtags_match` PREREQ GUARD. Adding that guard (itself a
+#     fix from the same review) put a second non-comment mention in both files,
+#     which re-fed the assertion and kept the same mutation green a second time.
+# So: strip comments, drop the guard line, then require a surviving mention —
+# which can only be an invocation.
 for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
-  if grep -q 'memtags_match' "$c"; then
-    pass "$base matches tags via the shared memtags_match"
+  if grep -vE '^[[:space:]]*#' "$c" | grep -v 'declare -f memtags_match' | grep -q 'memtags_match'; then
+    pass "$base invokes the shared memtags_match"
   else
-    fail "$base resolves a MEMORY.md index but does NOT call memtags_match (private tag loop)"
+    fail "$base resolves a MEMORY.md index but never INVOKES memtags_match (comments and the prereq guard do not count) — private tag loop"
   fi
 done
 
@@ -207,6 +261,47 @@ else
   printf '%s\n' "$PRIVATE" | sed 's/^/      /'
 fi
 
+# ------------------------------------------------- truncated-lib guard -------
+# A lib file truncated mid-heredoc SOURCES CLEANLY and simply never defines the
+# function. Guarding on `source`'s exit code therefore let both hooks run on to
+# `memtags_match: command not found`, match nothing, and — in the deny hook's
+# case — allow the push, with no fail-open row (pre-tag review). This is not
+# hypothetical: user-journey.test.sh already exercises a truncated marketplace
+# cache. Both consumers must record prereq-missing and exit quietly instead.
+TRUNC_HOME="$SANDBOX/trunc-home"
+TRUNC_HOOKS="$SANDBOX/trunc-hooks"
+mkdir -p "$TRUNC_HOME/.claude/logs" "$TRUNC_HOOKS/lib"
+cp "$HOOKS_DIR"/*.sh "$TRUNC_HOOKS/" 2>/dev/null
+cp "$HOOKS_DIR"/lib/*.sh "$TRUNC_HOOKS/lib/" 2>/dev/null
+# Truncate INSIDE the quoted heredoc — the shape that still sources cleanly.
+head -n 40 "$HOOKS_DIR/lib/memory-tags.sh" > "$TRUNC_HOOKS/lib/memory-tags.sh"
+if bash -c "source '$TRUNC_HOOKS/lib/memory-tags.sh'" 2>/dev/null; then
+  pass "truncated lib still sources with exit 0 (so an exit-code guard cannot see it)"
+else
+  fail "truncated lib failed to source — this fixture no longer reproduces the shape it pins"
+fi
+
+TRUNC_CWD="/work/trunc-proj"
+TRUNC_ENC=$(printf '%s' "$TRUNC_CWD" | tr -c 'a-zA-Z0-9-' '-')
+TRUNC_MEM="$TRUNC_HOME/.claude/projects/$TRUNC_ENC/memory"
+mkdir -p "$TRUNC_MEM"
+printf -- '- [Ship](feedback_ship.md) `[shiptag]` — desc\n' > "$TRUNC_MEM/MEMORY.md"
+: > "$TRUNC_MEM/feedback_ship.md"
+: > "$TRUNC_HOME/.claude/projects/$TRUNC_ENC/trunc-sess.jsonl"
+
+TRUNC_EV=$(jq -cn --arg c "$TRUNC_CWD" \
+  '{tool_name:"Bash", cwd:$c, session_id:"trunc-sess", tool_use_id:"tu",
+    tool_input:{command:"git push origin main shiptag"}}')
+TRUNC_OUT=$(printf '%s' "$TRUNC_EV" | HOME="$TRUNC_HOME" bash "$TRUNC_HOOKS/memory-read-check.sh" 2>&1)
+TRUNC_LOG="$TRUNC_HOME/.claude/logs/claudemd.jsonl"
+if [[ -z "$TRUNC_OUT" ]] \
+   && [[ -f "$TRUNC_LOG" ]] \
+   && grep -q '"event":"fail-open"' "$TRUNC_LOG" 2>/dev/null; then
+  pass "truncated lib → memory-read-check exits quiet AND records fail-open"
+else
+  fail "truncated lib → memory-read-check silently allowed with no fail-open row (out: ${TRUNC_OUT:-<empty>}; log: $(tail -n 1 "$TRUNC_LOG" 2>/dev/null))"
+fi
+
 # ------------------------------------------------- cross-language parse ------
 # scripts/lib/memory-tags.js parses the same index for the doctor's §11-EXT
 # tag-specificity check, and its own comments say it mirrors the hook. Nothing
@@ -219,8 +314,13 @@ if ! command -v node >/dev/null 2>&1; then
 elif [[ ! -f "$JS_LIB" ]]; then
   fail "cross-language: $JS_LIB is gone — the doctor's parser moved without this gate noticing"
 else
-  ALL_TAGS=$(awk -F'`' '/\.md\)[[:space:]]*`\[/ { n = split($2, a, ","); for (i = 1; i <= n; i++) { gsub(/[][ ]/, "", a[i]); if (a[i] != "") printf "%s ", a[i] } }' "$INDEX")
-  ALL_TAGS="$ALL_TAGS $(sed -nE 's/.*\.md\)[[:space:]]*\[([^]]*)\][[:space:]]*[—-].*/\1/p' "$INDEX" | tr ',' ' ')"
+  # Every bracketed token on every line, not just the first block per line: a
+  # line carrying TWO tag blocks (the rightmost-anchoring case above) put its
+  # second block out of reach of a `-F backtick` field split, so the shell
+  # matcher had nothing to match and the comparison read as a divergence.
+  # Markdown link titles come along too; harmless, since a superset haystack
+  # can only help every tagged entry match, which is the point.
+  ALL_TAGS=$(grep -oE '\[[^]]*\]' "$INDEX" | tr -d '[]' | tr ',' ' ' | tr '\n' ' ')
   SH_PARSE=$(memtags_match "$INDEX" "$ALL_TAGS" | cut -f1 | sort)
   JS_PARSE=$(node --input-type=module -e "
     import { parseMemoryIndex } from '$JS_LIB';

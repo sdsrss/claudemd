@@ -81,8 +81,17 @@ awk 'BEGIN {
   }
 }' > "$MEM_DIR/MEMORY.md"
 # The hooks stat the matched files for mtime ranking; they must exist.
+#
+# They are also ≥400 bytes and carry NO `**Why:**` marker, on purpose: mem-audit
+# touches its sentinel BEFORE scanning (deliberately — see its header), so a
+# state-dir write proves nothing about whether it scanned. With empty files it
+# found nothing, emitted nothing, and its probe passed on the sentinel alone —
+# injecting `exit 0` right after the touch kept this gate green (pre-tag
+# review). Files that produce a real finding make the stderr banner the reach
+# proof.
+BODY=$(awk 'BEGIN { s = ""; while (length(s) < 500) s = s "filler body text "; print s }')
 awk 'BEGIN { for (i = 1; i <= 150; i++) printf "%d\n", i }' | while read -r i; do
-  : > "$MEM_DIR/feedback_entry_$i.md"
+  printf 'Synthetic budget fixture entry %s.\n%s\n' "$i" "$BODY" > "$MEM_DIR/feedback_entry_$i.md"
 done
 
 # Transcript — realistic row mix (user turns, assistant text, tool_use, results)
@@ -226,7 +235,19 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   ERR_SIZE=$(wc -c < "$ERR_FILE" 2>/dev/null | tr -d ' ')
 
   # Reach proof — see header. Without this the gate measures fail-open exits.
-  if (( OUT_SIZE > 0 )) || (( ERR_SIZE > 0 )) || [[ "$LOG_AFTER" != "$LOG_BEFORE" ]] || [[ "$STATE_AFTER" != "$STATE_BEFORE" ]]; then
+  #
+  # mem-audit is excluded from the state-dir arm: it touches its sentinel
+  # BEFORE the scan by design, so a state write is evidence that the hook
+  # STARTED, not that it did any work. With that arm active, an `exit 0`
+  # injected immediately after the touch left this gate green (pre-tag review)
+  # — on the very hook this release claims went 0.93s -> 0.039s. It must show
+  # output instead.
+  REACHED=0
+  (( OUT_SIZE > 0 )) && REACHED=1
+  (( ERR_SIZE > 0 )) && REACHED=1
+  [[ "$LOG_AFTER" != "$LOG_BEFORE" ]] && REACHED=1
+  if [[ "$hook" != "mem-audit" && "$STATE_AFTER" != "$STATE_BEFORE" ]]; then REACHED=1; fi
+  if (( REACHED == 1 )); then
     pass "$hook probe reaches data-dependent code (stdout ${OUT_SIZE}B, stderr ${ERR_SIZE}B, log Δ$((LOG_AFTER - LOG_BEFORE))B, state Δ$((STATE_AFTER - STATE_BEFORE)))"
   else
     fail "$hook probe produced no stdout, no rule-hits row and no state write — it exited early, so its timing means nothing (this is the perf-baseline defect)"

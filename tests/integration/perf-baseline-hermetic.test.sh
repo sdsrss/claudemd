@@ -35,16 +35,28 @@ git -C "$CALLER" commit -qm seed
 BEFORE=$(git -C "$CALLER" rev-list --count HEAD)
 
 LOG="$HOME/.claude/logs/claudemd.jsonl"
-LOG_BEFORE=0
-[[ -f "$LOG" ]] && LOG_BEFORE=$(wc -l < "$LOG" | tr -d ' ')
+# Count only rows the SCRIPT could have written, not every row in the live log.
+# A total-row count is racy against the session running the suite: this repo is
+# developed from inside Claude Code, whose own hooks append to the same file, so
+# the count grows for reasons that have nothing to do with perf-baseline. It
+# went red exactly that way during the 0.68.2 pre-tag review (10828 -> 10829,
+# written by the reviewer's own hooks) and passed on a standalone re-run —
+# indistinguishable, from the assertion's side, from the probe pollution it
+# exists to catch. The hooks perf-baseline drives are the four PreToolUse:Bash
+# ones plus the two UserPromptSubmit ones; those names are the filter.
+PROBED_HOOKS='pre-bash-safety-check|banned-vocab-check|ship-baseline-check|memory-read-check|version-sync|memory-prompt-hint'
+count_probe_rows() {
+  [[ -f "$LOG" ]] || { echo 0; return; }
+  grep -cE "\"hook\":\"($PROBED_HOOKS)\"" "$LOG" 2>/dev/null || echo 0
+}
+LOG_BEFORE=$(count_probe_rows)
 
 PB_ERR="$SCRATCH/perf-baseline.stderr"
 (cd "$CALLER" && bash "$ROOT/scripts/perf-baseline.sh" --runs 1 >/dev/null 2>"$PB_ERR")
 
 AFTER=$(git -C "$CALLER" rev-list --count HEAD)
 DIRTY=$(git -C "$CALLER" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-LOG_AFTER=0
-[[ -f "$LOG" ]] && LOG_AFTER=$(wc -l < "$LOG" | tr -d ' ')
+LOG_AFTER=$(count_probe_rows)
 
 if [[ "$AFTER" == "$BEFORE" ]]; then
   echo "PASS: 1 no commits leaked into caller repo ($BEFORE -> $AFTER)"
@@ -61,7 +73,7 @@ else
 fi
 
 if [[ "$LOG_AFTER" -le "$LOG_BEFORE" ]]; then
-  echo "PASS: 3 no live-telemetry rows written ($LOG_BEFORE -> $LOG_AFTER)"
+  echo "PASS: 3 no live-telemetry rows written by the probed hooks ($LOG_BEFORE -> $LOG_AFTER)"
 else
   echo "FAIL: 3 telemetry rows grew $LOG_BEFORE -> $LOG_AFTER (probe pollution)"
   FAIL=$((FAIL+1))
