@@ -23,7 +23,11 @@ LOG="$HOME/.claude/logs/claudemd.jsonl"
 SUMMARY="$HOME/.claude/.claudemd-state/last-session-summary.json"
 # v0.9.13: session-summary owns its own sentinel (not session-start.ref, which
 # is shared with sandbox-disposal-check.sh in the same Stop event and races).
-REF="$HOME/.claude/.claudemd-state/session-summary.lastrun"
+# v0.68.5: and the sentinel is per-session — derived from the session_id in
+# EVENT below, not the legacy global name (audit-2026-08-22 条目 6).
+SID="summary-test"
+REF="$HOME/.claude/.claudemd-state/session-summary-${SID}.lastrun"
+LEGACY_REF="$HOME/.claude/.claudemd-state/session-summary.lastrun"
 
 FAIL=0
 ok() { echo "PASS: $1"; }
@@ -31,7 +35,7 @@ ng() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 
 # Stop hooks read stdin event JSON; session-summary.sh ignores it but should
 # still cope. session-start-check.sh reads stdin too. Provide a minimal stub.
-EVENT='{"hook_event_name":"Stop","session_id":"summary-test"}'
+EVENT="{\"hook_event_name\":\"Stop\",\"session_id\":\"$SID\"}"
 
 # --- Case 1: empty log → no summary written -----------------------------------
 rm -f "$SUMMARY"
@@ -201,8 +205,49 @@ else
   ng "Case 9: window gate broken — expected denies=1 total=1; got $(cat "$SUMMARY" 2>/dev/null)"
 fi
 
+# --- Case 10: two concurrent sessions do not share one window --------------
+# Pre-fix (audit-2026-08-22 条目 6) the sentinel was a single global file that
+# EVERY Stop advanced before its early exit, so whichever session reached Stop
+# first consumed the window and the other aggregated a window starting after
+# its own rows. The banner was then decided by scheduling. Session A stops
+# (advancing only A's ref); session B, which has never stopped, must still see
+# the row — its own window is untouched by A.
+rm -f "$SUMMARY" "$REF" "$LEGACY_REF"
+rm -f "$HOME/.claude/.claudemd-state/session-summary-sess-b.lastrun"
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}" > "$LOG"
+# The sleep goes BEFORE A's Stop, not after: rule-hits timestamps have
+# one-second granularity, so a ref touched in the same second as the row does
+# not exclude it and the pre-fix hook would pass this case for the wrong
+# reason. With the sleep here, A's touch is strictly newer than the row — the
+# state in which a shared sentinel costs B its window.
+sleep 1
+echo '{"hook_event_name":"Stop","session_id":"sess-a"}' | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+rm -f "$SUMMARY"
+echo '{"hook_event_name":"Stop","session_id":"sess-b"}' | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+B_DENIES=$(jq -r '.denies' "$SUMMARY" 2>/dev/null)
+A_REF="$HOME/.claude/.claudemd-state/session-summary-sess-a.lastrun"
+B_REF="$HOME/.claude/.claudemd-state/session-summary-sess-b.lastrun"
+if [[ "$B_DENIES" == "1" && -f "$A_REF" && -f "$B_REF" ]]; then
+  ok "Case 10: session B's window survives session A's Stop (per-session refs)"
+else
+  ng "Case 10: sessions share a window — B saw denies='$B_DENIES' (expected 1); A ref $([[ -f "$A_REF" ]] && echo present || echo missing), B ref $([[ -f "$B_REF" ]] && echo present || echo missing)"
+fi
+
+# --- Case 11: no session_id keeps the legacy global sentinel ---------------
+# The two 0.67.0 siblings made the same choice: an event without a session_id
+# is the pre-fix blind spot, kept rather than silently widened.
+rm -f "$SUMMARY" "$LEGACY_REF"
+echo -n '' > "$LOG"
+echo '{"hook_event_name":"Stop"}' | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+if [[ -f "$LEGACY_REF" ]]; then
+  ok "Case 11: sid-less Stop falls back to the legacy global sentinel"
+else
+  ng "Case 11: sid-less Stop wrote no sentinel — the fallback path is broken"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"
+  echo "Tests: $((11 - FAIL))/11 passed"
   exit 1
 fi
-echo "Tests: 9/9 passed"
+echo "Tests: 11/11 passed"

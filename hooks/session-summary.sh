@@ -32,6 +32,14 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 hook_kill_switch SESSION_SUMMARY || exit 0
 hook_require_jq || exit 0
 
+# Best-effort session_id from Stop stdin — same shape as residue-audit.sh and
+# sandbox-disposal-check.sh, which is where the window ref below comes from.
+SESSION_ID=""
+EVENT=$(hook_read_event) || EVENT=""
+if [[ -n "$EVENT" ]]; then
+  SESSION_ID=$(hook_jq_field session-summary "$EVENT" '.session_id // ""') || SESSION_ID=""
+fi
+
 STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SUMMARY_FILE="$STATE_DIR/last-session-summary.json"
@@ -44,7 +52,24 @@ SUMMARY_FILE="$STATE_DIR/last-session-summary.json"
 # harness running Stop hooks serially in declaration order (sandbox first /
 # summary last) would always see fresh mtime → empty window → banner gone.
 # Self-owned sentinel decouples both failure modes.
-SUMMARY_REF="$STATE_DIR/session-summary.lastrun"
+#
+# v0.68.5 (audit-2026-08-22 条目 6): self-owned was not enough — the sentinel
+# was still ONE file for all sessions, and every Stop advances it (line ~120,
+# before any early exit). Two sessions running at once therefore share one
+# window: whichever writes first consumes it, and the other aggregates a window
+# that starts after most of its own rows, so the banner is decided by scheduling
+# rather than by activity. Per-session ref, same drop-in the 0.67.0 batch gave
+# residue-audit and sandbox-disposal — a session with no session_id keeps the
+# legacy global name rather than silently widening the blind spot. The
+# aggregation itself stays cross-session on purpose: the banner reports recent
+# tendency, not this session's rows. Orphans are reaped by
+# scripts/clean-residue.js (session-summary pattern).
+SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
+if [[ -n "$SAFE_SID" ]]; then
+  SUMMARY_REF="$STATE_DIR/session-summary-${SAFE_SID}.lastrun"
+else
+  SUMMARY_REF="$STATE_DIR/session-summary.lastrun"
+fi
 
 LOG_FILE="$HOME/.claude/logs/claudemd.jsonl"
 [[ -f "$LOG_FILE" ]] || exit 0

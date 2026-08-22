@@ -130,6 +130,18 @@ function statePathsInSource() {
       if (/state_dir$/i.test(m[1])) out.add(norm(m[2]));
     }
     for (const m of src.matchAll(/stateDir\(\)\s*,\s*'([A-Za-z0-9._-]+)'/g)) out.add(norm(m[1]));
+    // $TMPDIR-family state (audit-2026-08-22 条目 15). The three matchers above
+    // all key on the state DIRECTORY, so a whole sentinel family living under
+    // $TMPDIR was structurally invisible to this gate: version-sync.sh has
+    // written `$TMP_BASE/claudemd-sync-$SCOPE` since v0.3.1 and
+    // hooks/lib/memory-tags.sh spills `claudemd-memtags-hay-*` there, and
+    // neither appeared in the inventory this test claims to be checking. The
+    // gate's scope was narrower than its subject — again, and this time in a
+    // gate written to close that exact class. Keyed on the `claudemd-` prefix,
+    // which is what makes a file in a shared temp dir ours.
+    for (const m of src.matchAll(/\$\{?[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}?\/(claudemd-[A-Za-z0-9.*_${}-]+)/g)) {
+      out.add(norm(m[1]).replace(/X{3,}$/, '*'));
+    }
   }
   return out;
 }
@@ -146,7 +158,26 @@ const STATE_IGNORE = new Map([
 ]);
 
 test('ARCHITECTURE.md State locations lists every state path the source writes', () => {
-  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  // Only the bullet LIST counts, not the whole file. The section's closing
+  // paragraph explains which families the extractor covers and names them, so
+  // a whole-file `includes` is satisfied by the prose ABOUT the gate — verified:
+  // deleting the `$TMPDIR/claudemd-sync-<scope>` bullet left this test green
+  // because the paragraph below still said "claudemd-sync-*". A check a
+  // document can satisfy by describing itself is not a check.
+  const full = fs.readFileSync(ARCH_DOC, 'utf8');
+  const section = full.match(/^## State locations$([\s\S]*?)^(?=[^-\n])/m);
+  assert.ok(section, 'docs/ARCHITECTURE.md has no "## State locations" bullet list — the extraction anchor moved');
+  // A path counts as documented only when it is the SUBJECT of a bullet — the
+  // first backticked token — not when it appears anywhere in the prose. Second
+  // control: deleting the `session-summary-<sid>.lastrun` bullet still left the
+  // stem inside another bullet's explanatory clause, so the whole-bullet-text
+  // form stayed green on a deleted entry too.
+  const subjects = section[1].split('\n')
+    .filter(l => l.startsWith('- '))
+    .map(l => (l.match(/`([^`]+)`/) || [])[1])
+    .filter(Boolean);
+  const doc = subjects.join('\n');
+  assert.ok(subjects.length >= 15, `State-locations list resolved ${subjects.length} bullet subject(s) — too few to be the real inventory`);
   const found = statePathsInSource();
 
   assert.ok(found.size >= 8,

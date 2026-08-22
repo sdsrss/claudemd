@@ -53,7 +53,7 @@ Stop hook
 - `~/.claude/.claudemd-state/tmp-baseline-<sid>.txt` — residue-audit per-session baseline (2026-08-16 audit CONC-3); orphans reaped by clean-residue.js
 - `~/.claude/.claudemd-state/tmp-baseline.txt` — legacy residue-audit baseline, still written by sessions whose event carries no session_id
 - `~/.claude/.claudemd-state/session-start-<sid>.ref` — sandbox-disposal per-session window ref (2026-08-16 audit F5); orphans reaped by clean-residue.js
-- `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns `session-summary.lastrun`)
+- `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns the `session-summary-*.lastrun` family)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission
@@ -64,14 +64,17 @@ Stop hook
 - `~/.claude/.claudemd-state/l2-task-counter` — §13.2 batch-review L2+ session counter (`session-end-check.sh`, reset on advisory trip)
 - `~/.claude/.claudemd-state/ship-baseline-recent` — ship-baseline recent-run cache
 - `~/.claude/.claudemd-state/mem-audit.lastrun` — `mem-audit.sh` cadence sentinel
-- `~/.claude/.claudemd-state/session-summary.lastrun` — `session-summary.sh` cadence sentinel
+- `~/.claude/.claudemd-state/session-summary-<sid>.lastrun` — `session-summary.sh` per-session window ref (audit-2026-08-22 条目 6; one global file meant concurrent sessions shared a window and the banner was decided by whichever stopped first); orphans reaped by clean-residue.js
+- `~/.claude/.claudemd-state/session-summary.lastrun` — legacy sid-less session-summary cadence sentinel, still written by sessions whose Stop event carries no session_id
 - `~/.claude/.claudemd-state/statusline-prev.json` — prior statusLine command saved by `/claudemd-statusline` so `remove` can restore it
 - `~/.claude/.claudemd-state/vocab-scan-<sid>.last` — per-session transcript-vocab-scan content-hash cursor (`transcript-vocab-scan.sh`). Nothing reaps it on session end; `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/logs/claudemd.jsonl` — rule-hits append log (size-capped rotation at 5 MB → `.1` and `.2`)
 - `~/.claude/logs/claudemd-bootstrap.log` — session-start install bootstrap log (rotated at 64 KiB → tail 32 KiB)
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
+- `$TMPDIR/claudemd-sync-<scope>` — `version-sync.sh` once-per-session sentinel (`<scope>` = `CLAUDE_SESSION_ID`, else the CC process PPID). Self-GC'd past 24h by the hook itself; `/claudemd-clean-residue` reaps the rest.
+- `$TMPDIR/claudemd-memtags-hay-<rand>` — `hooks/lib/memory-tags.sh` haystack spill past the 128 KiB env-argument cliff (audit-2026-08-22 P1-5). Removed by a trap installed before the mktemp; a SIGKILL at the hooks.json timeout still strands one, which `/claudemd-clean-residue` reaps.
 
-The `~/.claude/.claudemd-state/` entries above are gated by `tests/scripts/architecture-drift.test.js`, which extracts state paths from `hooks/**/*.sh` and `scripts/**/*.js` (the `logs/` and `backup-` paths are not `.claudemd-state` and are not gated). Before that gate existed (2026-07-28 audit M1) this list documented 6 of the 15 kinds actually written — the same "doc declares itself source-of-truth with nothing checking it" failure the hook-taxonomy table below had, in the same file. Its first draft then missed `vocab-scan-*` because it keyed on the variable name `$STATE_DIR` while that hook uses `$VS_STATE_DIR`; the extractor now matches any variable whose name ends in `STATE_DIR`.
+The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gated by `tests/scripts/architecture-drift.test.js`, which extracts state paths from `hooks/**/*.sh` and `scripts/**/*.js` (the `logs/` and `backup-` paths match neither shape and are not gated). Before that gate existed (2026-07-28 audit M1) this list documented 6 of the 15 kinds actually written — the same "doc declares itself source-of-truth with nothing checking it" failure the hook-taxonomy table below had, in the same file. Its first draft then missed `vocab-scan-*` because it keyed on the variable name `$STATE_DIR` while that hook uses `$VS_STATE_DIR`; the extractor now matches any variable whose name ends in `STATE_DIR`. All three matchers still keyed on the state DIRECTORY, so the `$TMPDIR/claudemd-*` sentinel family — `claudemd-sync-*` since v0.3.1, `claudemd-memtags-hay-*` since v0.68.2 — was structurally invisible to a gate written to catch undocumented state; audit-2026-08-22 条目 15 added the prefix-keyed matcher that finds it.
 
 ## Hook taxonomy
 

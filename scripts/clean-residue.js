@@ -20,12 +20,14 @@ Options:
   --help, -h          Print this message and exit.
 
 State-dir scope: only ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*,
-session-start-<sid>.ref and tmp-baseline-<sid>.txt past the retention window.
+session-start-<sid>.ref, tmp-baseline-<sid>.txt and session-summary-<sid>.lastrun
+past the retention window.
 Allowlist-by-pattern — live singleton state in the same directory (including
 the sid-less session-start.ref and tmp-baseline.txt) is never deleted, however
 old. This list and STATE_EPHEMERAL below are joined by
-tests/scripts/subject-set-drift.test.js: it named four of the six classes for
-two releases after v0.67.0 added the last two (audit-2026-08-22 条目 7).
+tests/scripts/subject-set-drift.test.js — before that join existed, this text
+named four classes while the array held six, for the two releases after v0.67.0
+added the last two (audit-2026-08-22 条目 7).
 
 Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
      CLAUDEMD_STATE_DIR overrides the ~/.claude/.claudemd-state root (test seam).
@@ -185,6 +187,11 @@ const STATE_EPHEMERAL = [
   // Per-session residue-audit baseline (2026-08-16 audit CONC-3); legacy
   // `tmp-baseline.txt` likewise excluded.
   { kind: 'tmp-baseline', re: /^tmp-baseline-.+\.txt$/ },
+  // Per-session session-summary window ref (audit-2026-08-22 条目 6). The
+  // sid-less `session-summary.lastrun` stays OUT for the same reason as the
+  // other two: it is live state for sessions whose Stop event carries no
+  // session_id.
+  { kind: 'session-summary', re: /^session-summary-.+\.lastrun$/ },
 ];
 
 export function scanStateDir({ stateDir, now = Date.now() } = {}) {
