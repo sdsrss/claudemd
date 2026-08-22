@@ -12,6 +12,18 @@ on:
     tags: ['v*.*.*']
   pull_request:
 
+# The atomic ship flow pushes main and then the tag, so the SAME commit enters
+# this workflow twice and the full 6-leg matrix ran twice for every release —
+# measured on c4ec550: three runs, 14 legs, for one commit. Grouping by ref
+# keeps the main-push run and the tag run distinct (they are different refs and
+# the tag run is the one that appears on the release), while a superseding push
+# to the same ref cancels the run it superseded. Cancelling here is safe: this
+# workflow only reports, it publishes nothing — npm-publish.yml gates that and
+# deliberately does NOT cancel (audit-2026-08-22 条目 19).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:

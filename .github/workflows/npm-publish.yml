@@ -19,6 +19,11 @@ name: npm-publish
 # left that query invisible to the publish gate while ci.yml — which does run it
 # — has no `needs:` relationship to this workflow and can still be executing, or
 # already red, when the tarball reaches npm (2026-07-25 audit).
+# node 24 joined for audit-2026-08-22 条目 10: it bundles npm 12, and npm 12 is
+# what surfaced the `npm pack --json` array→object change (F-npm12) — whose
+# regression test then ran only under npm 10/11 in this gate. A publish gate
+# that never executes the maintainer's own runtime is the shape that let that
+# through, and it is the runtime `engines: >=20` invites users onto.
 # The macOS leg stays out: it is belt-and-suspenders for plugin behavior on
 # developer laptops, not a publish gate.
 #
@@ -41,6 +46,14 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
+# One publish attempt per tag at a time, and never cancelled mid-flight: a
+# cancelled run between `npm publish` and its completion is the one case where
+# re-running is not free. ci.yml cancels; this does not (audit-2026-08-22
+# 条目 19).
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write  # required for npm provenance attestation (--provenance)
@@ -49,7 +62,7 @@ jobs:
   test:
     strategy:
       matrix:
-        node: [20, 22]
+        node: [20, 22, 24]
       fail-fast: true
     runs-on: ubuntu-latest
     steps:
