@@ -81,6 +81,14 @@ const ALLOW_TOKEN = 'argv-lint:allow';
 // (bin/claudemd-lint.js path). Files without a main block are ignored.
 const MAIN_BLOCK_GUARD_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
 const REQUIRED_CALL_RE = /\b(parseStrict|printHelpAndExit|validateAndExpandFlags)\s*\(/;
+// The call alone is not authentication (audit-2026-08-22 条目 14). A file that
+// declares its own function by one of those names satisfies REQUIRED_CALL_RE
+// while validating nothing — and that was not hypothetical: the gate had been
+// widened to admit `validateAndExpandFlags` precisely because
+// bin/claudemd-lint.js kept a private copy, so the widening legitimised the
+// duplicate instead of converging it. The validator now lives in
+// scripts/lib/argv.js and the name must arrive by import from there.
+const ARGV_LIB_IMPORT_RE = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*lib\/argv\.js['"]/;
 // Files that legitimately have a main block but no argv contract — must be
 // allowlisted with a one-line reason. Empty by default; entries here represent
 // considered exemptions, not "I forgot to wire parseStrict."
@@ -107,7 +115,10 @@ export function scanMainBlockMissingArgv({
       const guardMatch = text.match(MAIN_BLOCK_GUARD_RE);
       if (!guardMatch) continue;
       const body = text.slice(guardMatch.index);
-      if (REQUIRED_CALL_RE.test(body)) continue;
+      // Both: the entry point calls a validator AND the validator is the shared
+      // one, reached by import. A locally-declared same-name function no longer
+      // passes.
+      if (REQUIRED_CALL_RE.test(body) && ARGV_LIB_IMPORT_RE.test(text)) continue;
       // Find line number of the main block guard for actionable error.
       const before = text.slice(0, guardMatch.index);
       const line = before.split('\n').length;
@@ -115,7 +126,7 @@ export function scanMainBlockMissingArgv({
         file: rel,
         line,
         pattern: 'main-block-without-argv-validation',
-        why: 'Main block ignores process.argv — `--help`/`--bogus` silently run the script. Add `printHelpAndExit + parseStrict` (or validateAndExpandFlags for bin/claudemd-lint.js).',
+        why: 'Main block has no argv contract from scripts/lib/argv.js — `--help`/`--bogus` silently run the script. Import and call `printHelpAndExit + parseStrict` (or `validateAndExpandFlags` for the space-form CLI). A local function by the same name does not count.',
         text: '<main block guard>',
       });
     }

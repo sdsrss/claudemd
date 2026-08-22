@@ -15,6 +15,7 @@
 !scripts/
 !scripts/lib/
 !scripts/lib/lint.js
+!scripts/lib/argv.js
 !hooks/
 !hooks/banned-vocab.patterns
 !package.json

@@ -199,12 +199,13 @@ test('Round-6: scanMainBlockMissingArgv ignores files without main-block guard',
   }
 });
 
-test('Round-6: scanMainBlockMissingArgv accepts validateAndExpandFlags (bin path)', () => {
-  // bin/claudemd-lint.js uses validateAndExpandFlags (a sibling validator,
-  // not parseStrict). Both shapes count as "argv contract present."
+test('scanMainBlockMissingArgv accepts validateAndExpandFlags IMPORTED from lib/argv.js', () => {
+  // bin/claudemd-lint.js uses validateAndExpandFlags (a sibling validator, not
+  // parseStrict — the space form and positional paths it accepts are published
+  // contract). That counts, but only when it comes from the shared module.
   const root = makeFixture({
     'bin/cli.js':
-      "function validateAndExpandFlags() {}\n" +
+      "import { validateAndExpandFlags } from '../scripts/lib/argv.js';\n" +
       "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
       "  validateAndExpandFlags(process.argv.slice(2), [], [], 'cli');\n" +
       "}\n",
@@ -212,6 +213,28 @@ test('Round-6: scanMainBlockMissingArgv accepts validateAndExpandFlags (bin path
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
     assert.deepEqual(hits, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a LOCALLY DECLARED validateAndExpandFlags does not satisfy the gate (条目 14)', () => {
+  // The gate authenticated by function name, so this file passed while
+  // validating whatever its own local function felt like — including nothing.
+  // That is not hypothetical: the name was added to the accepted set BECAUSE
+  // bin/claudemd-lint.js kept a private copy, which legitimised the duplicate
+  // instead of converging it.
+  const root = makeFixture({
+    'bin/cli.js':
+      "function validateAndExpandFlags() { /* validates nothing */ }\n" +
+      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      "  validateAndExpandFlags(process.argv.slice(2), [], [], 'cli');\n" +
+      "}\n",
+  });
+  try {
+    const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
+    assert.equal(hits.length, 1, 'a same-named local function must not authenticate the argv contract');
+    assert.equal(hits[0].pattern, 'main-block-without-argv-validation');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
