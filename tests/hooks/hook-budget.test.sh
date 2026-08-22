@@ -132,7 +132,20 @@ CLAUDE_TMP="$FIX_HOME/.claude/tmp"
 SYNC_TMP="$SANDBOX/synctmp"
 mkdir -p "$CLAUDE_TMP" "$SYNC_TMP"
 awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' | xargs touch
+# Age the bulk entries. sandbox-disposal runs `platform_find_newer … | head -n 50`,
+# so which entries survive the cut is decided by find's OUTPUT ORDER — i.e. by
+# readdir order. With every entry newer than the reference, whether the 50
+# directories land inside the first 50 results is luck: it held on this
+# maintainer's ext4 and did not hold on ubuntu-latest, where all three CI runs
+# for v0.68.3 failed with "no stdout, no rule-hits row and no state write" on a
+# suite that was green locally. Aging the files makes the cut deterministic —
+# find still WALKS all 6,000 (the scaling cost this gate measures) and returns
+# only the 50 directories. It is also the production shape: mostly old entries,
+# a few fresh ones.
+awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' \
+  | xargs touch -t 200001010000
 # 50 mkdtemp-shaped DIRECTORIES: the shape sandbox-disposal actually reports on.
+# Created after the aging pass, so their mtime is now.
 awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/tmp.probe%d\n", d, i }' | xargs mkdir -p
 awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' | xargs touch
 
@@ -143,15 +156,33 @@ STATE_FIX="$FIX_HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_FIX"
 # residue-audit: baseline 0 against ~6,000 entries → over threshold → it emits.
 printf 'v2:0\n' > "$STATE_FIX/tmp-baseline-${SESSION_ID}.txt"
-# sandbox-disposal: a session ref OLDER than the fixture dirs, so find -newer
-# has something to report. Written last would make every dir older than it.
-touch -t 200001010000 "$STATE_FIX/session-start-${SESSION_ID}.ref"
+# sandbox-disposal: a session ref between the aged bulk files (2000) and the 50
+# directories (now), so `find -newer` returns exactly those 50 and the `head -n 50`
+# cut cannot drop them whatever order readdir yields. Written last would make
+# every entry older than it and the scan would report nothing.
+touch -t 200601010000 "$STATE_FIX/session-start-${SESSION_ID}.ref"
 # version-sync: a manifest whose version is NEWER than this repo's package.json
 # drives the stale-root branch — it logs and records a rule-hits row (the reach
 # proof) without spawning a background install.
 printf '{"version":"99.0.0"}\n' > "$FIX_HOME/.claude/.claudemd-manifest.json"
 
 echo "-- fixture: $(grep -c '^- \[' "$MEM_DIR/MEMORY.md") MEMORY.md entries, transcript $(wc -c < "$TRANSCRIPT" | tr -d ' ') bytes, rule-hits $(wc -c < "$RULE_LOG" | tr -d ' ') bytes, ~/.claude/tmp $(find "$CLAUDE_TMP" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ') entries"
+
+# Fixture self-check, run BEFORE anything that depends on it. The premise below
+# — "find -newer over the ~/.claude/tmp fixture yields the 50 dirs and nothing
+# else" — is what makes sandbox-disposal's probe reach its scan. When it silently
+# stopped holding, the probe measured an empty scan and the reach assertion went
+# red on CI while staying green here. A premise this load-bearing gets its own
+# assertion rather than being assumed (feedback_probe_harness_controls_first).
+FIX_NEWER_TOTAL=$(find "$CLAUDE_TMP" -mindepth 1 -maxdepth 1 \
+  -newer "$STATE_FIX/session-start-${SESSION_ID}.ref" 2>/dev/null | wc -l | tr -d ' ')
+FIX_NEWER_DIRS=$(find "$CLAUDE_TMP" -mindepth 1 -maxdepth 1 -type d \
+  -newer "$STATE_FIX/session-start-${SESSION_ID}.ref" 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$FIX_NEWER_TOTAL" == "50" && "$FIX_NEWER_DIRS" == "50" ]]; then
+  pass "fixture: exactly 50 entries newer than the session ref, all directories (head -n 50 cut is order-independent)"
+else
+  fail "fixture: $FIX_NEWER_TOTAL entries newer than the session ref ($FIX_NEWER_DIRS dirs) — expected 50/50. sandbox-disposal's \`| head -n 50\` would then depend on readdir order and its reach proof is luck"
+fi
 
 # ------------------------------------------------------------ subject set ----
 # Derive, do not name: a hook whose runtime scales with data it does not

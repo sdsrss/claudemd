@@ -8,6 +8,17 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.68.4] - 2026-08-22
+
+0.68.3's own CI went red on all three runs, on a suite that was green locally — and the red was the P1-2 budget gate failing to reach the hook it was extended to cover. Shipped runtime code is unaffected: the defect is in the gate's fixture, and `npm-publish` gated on the failing suite, so 0.68.3 never reached npm. This releases the fix and supersedes 0.68.3 on the marketplace channel, which has no such gate.
+
+**The fixture's premise was decided by readdir order.** `sandbox-disposal-check` runs `platform_find_newer <dir> <ref> | head -n 50`, so which entries survive the cut is find's output order. The fixture made all 6,000 entries newer than the reference — 5,950 plain files and the 50 `tmp.probe*` directories the hook actually reports on — so whether any directory landed inside the first 50 results was luck. It held on this maintainer's ext4 and did not hold on `ubuntu-latest`: the probe measured an empty scan and the reach assertion failed with "no stdout, no rule-hits row and no state write".
+
+- **fix: the bulk fixture entries are now aged** (`tests/hooks/hook-budget.test.sh`), with the session reference dated between them and the 50 directories, so `find -newer` returns exactly those 50 and the cut is order-independent. `find` still walks all 6,000 — the scaling cost the gate measures is unchanged — and the shape is closer to production: mostly old entries, a few fresh. The probe's stderr went from 165B to 526B, i.e. it now reports all 50 rather than however many happened to survive the cut.
+- **fix: the premise has its own assertion.** A fixture self-check runs before anything depending on it and fails with the diagnosis rather than letting the reach proof quietly measure an empty scan. Verified in both directions: removing the aging pass turns it red (`6000 entries newer than the session ref … expected 50/50`).
+
+This is the same lesson as the release below, one layer down — a gate whose green depended on something it never asserted. It is also why 0.68.3's CI is the first time that gate ran on CI at all: the P1 batch commit sat unpushed while the two review rounds ran against it.
+
 ## [0.68.3] - 2026-08-22
 
 The 2026-08-22 audit (ninth full round over this repo: 83/100, 0 P0 / 5 P1) is closed here — all five P1 items, each fixed RED-first, no P2/P3 folded in. One is a data-loss path that had been closed once already and was reopened through a different command. The other four are instruments that reported wider coverage than they had: a budget gate that reached 8 of the 11 hooks its own header named, a lint heuristic that switched itself off on a commit body ending in three comment lines, two spec tables giving opposite instructions on the most-travelled routing path, and a blocking gate whose spill path could fail without saying so.
