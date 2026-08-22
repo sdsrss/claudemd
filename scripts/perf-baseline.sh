@@ -53,13 +53,37 @@ set -uo pipefail
 
 RUNS=10
 JSON_OUT=0
+# Exit 2 for an argv-shape error, matching every other CLI in this repo
+# (scripts/lib/argv.js#parseStrict, bin/claudemd-lint.js). This script had its
+# own hand-rolled loop exiting 1, which the rest of the repo reserves for
+# "validation error" — a scripted caller could not tell a typo'd flag from a
+# failed baseline (audit-2026-08-22 条目 24). `--runs=N` is the canonical shape;
+# the space form stays accepted because it is what the runbook types.
+PERF_USAGE="Usage: bash scripts/perf-baseline.sh [--runs=N] [--json]
+
+Measure PreToolUse:Bash and UserPromptSubmit hook-chain overhead against a
+populated fixture. Probe hook lists are read from hooks/hooks.json.
+
+Options:
+  --runs=N     Iterations per measurement (positive integer, default 10).
+  --json       Emit JSON instead of the human-readable table.
+  --help, -h   Print this message and exit.
+
+Exit codes: 0 success | 1 probe self-check failed (numbers are an underread)
+            | 2 argv-shape error."
 while (( $# > 0 )); do
   case "$1" in
-    --runs) RUNS="$2"; shift 2 ;;
+    --help|-h) printf '%s\n' "$PERF_USAGE"; exit 0 ;;
+    --runs) RUNS="${2:-}"; shift 2 ;;
+    --runs=*) RUNS="${1#--runs=}"; shift ;;
     --json) JSON_OUT=1; shift ;;
-    *) echo "unknown arg: $1" >&2; exit 1 ;;
+    *) echo "perf-baseline: unknown argument '$1'." >&2; echo "$PERF_USAGE" >&2; exit 2 ;;
   esac
 done
+if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "perf-baseline: --runs must be a positive integer (got '$RUNS')." >&2
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -115,8 +139,31 @@ export HOME="$FIX_HOME"
 
 cd "$SANDBOX" || exit 1
 
+# The two probe hook lists come FROM hooks/hooks.json, not from a literal here.
+# The comment they replaced cited "hooks/hooks.json L20-26" — line numbers that
+# had already moved — beside a hand-copied list that would silently stop covering
+# a hook added to either event, while the probe kept reporting a number
+# (audit-2026-08-22 条目 24). The sibling gate hook-budget.test.sh derives its
+# subject set the same way. Floors below: a jq that returns nothing must fail
+# loudly rather than time an empty loop.
+hooks_for_event() {
+  jq -r --arg ev "$1" --arg m "$2" \
+    '.hooks[$ev][] | select($m == "" or .matcher == $m) | .hooks[].command' \
+    "$HOOKS_DIR/hooks.json" 2>/dev/null \
+    | sed -E 's|.*/hooks/||; s|"$||'
+}
+PRETOOLUSE_BASH_HOOKS=$(hooks_for_event PreToolUse Bash)
+USERPROMPT_HOOKS=$(hooks_for_event UserPromptSubmit "")
+PTU_COUNT=$(printf '%s\n' "$PRETOOLUSE_BASH_HOOKS" | grep -c . || true)
+UPS_COUNT=$(printf '%s\n' "$USERPROMPT_HOOKS" | grep -c . || true)
+if (( PTU_COUNT < 4 || UPS_COUNT < 2 )); then
+  echo "FAIL: derived $PTU_COUNT PreToolUse:Bash + $UPS_COUNT UserPromptSubmit hook(s) from hooks.json" >&2
+  echo "      (floors 4 / 2). Refusing to report a timing over a short list." >&2
+  exit 1
+fi
+
 # Construct a synthetic Bash event envelope and pipe it to each PreToolUse
-# Bash hook in declaration order. Mirrors hooks/hooks.json L20-26.
+# Bash hook in declaration order.
 # cwd/session_id are populated so the memory + transcript hooks resolve the
 # sandbox fixture instead of exiting at their `-f` guards.
 run_pretoolse_bash() {
@@ -125,9 +172,11 @@ run_pretoolse_bash() {
   event=$(jq -cn --arg cmd "$cmd" --arg c "$PROBE_CWD" --arg s "$PROBE_SESSION" \
     '{tool_name:"Bash", cwd:$c, session_id:$s, tool_use_id:"perf-probe",
       tool_input:{command:$cmd}}')
-  for hook in pre-bash-safety-check banned-vocab-check ship-baseline-check memory-read-check; do
-    printf '%s' "$event" | bash "$HOOKS_DIR/$hook.sh" >/dev/null 2>&1
-  done
+  local hook
+  while IFS= read -r hook; do
+    [[ -n "$hook" ]] || continue
+    printf '%s' "$event" | bash "$HOOKS_DIR/$hook" >/dev/null 2>&1
+  done <<< "$PRETOOLUSE_BASH_HOOKS"
 }
 
 # The UserPromptSubmit chain — the one that actually crossed its timeout in a
@@ -137,9 +186,11 @@ run_user_prompt_submit() {
   local event
   event=$(jq -cn --arg p "$prompt" --arg c "$PROBE_CWD" --arg s "$PROBE_SESSION" \
     '{hook_event_name:"UserPromptSubmit", prompt:$p, cwd:$c, session_id:$s}')
-  for hook in version-sync memory-prompt-hint; do
-    printf '%s' "$event" | bash "$HOOKS_DIR/$hook.sh" >/dev/null 2>&1
-  done
+  local hook
+  while IFS= read -r hook; do
+    [[ -n "$hook" ]] || continue
+    printf '%s' "$event" | bash "$HOOKS_DIR/$hook" >/dev/null 2>&1
+  done <<< "$USERPROMPT_HOOKS"
 }
 
 # Median of N runs, in milliseconds (integer).

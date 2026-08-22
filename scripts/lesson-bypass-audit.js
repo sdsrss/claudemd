@@ -132,13 +132,32 @@ export function wasApplied(transcript, suggestTs, memoryFile) {
 // with no test binding them (2026-07-26 audit): raising MAX would silently slice
 // off the extra suggestions before scoring, understating the bypass rate. Falls
 // back to 5 only when the hook is unreadable.
-function readHookEmitCap(pluginRoot) {
+export const HOOK_EMIT_CAP_FALLBACK = 5;
+
+// Returns { cap, source } rather than a bare number so the caller — and the
+// test — can tell a DERIVED cap from a defaulted one. Silently falling back
+// kept the audit dividing by a cap the hook no longer used, understating the
+// bypass rate with nothing in the output saying the join had broken
+// (audit-2026-08-22 条目 24).
+export function readHookEmitCap(pluginRoot) {
+  let src;
   try {
-    const src = fs.readFileSync(path.join(pluginRoot, 'hooks/memory-prompt-hint.sh'), 'utf8');
-    const m = src.match(/^MAX=(\d+)/m);
-    if (m) return Number(m[1]);
-  } catch { /* fall through */ }
-  return 5;
+    src = fs.readFileSync(path.join(pluginRoot, 'hooks/memory-prompt-hint.sh'), 'utf8');
+  } catch {
+    // Hook file absent (extracted package, partial checkout): nothing to read,
+    // and the fallback IS the documented default. Not worth a warning.
+    return { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-missing-file' };
+  }
+  const m = src.match(/^MAX=(\d+)/m);
+  if (m) return { cap: Number(m[1]), source: 'hook' };
+  // The file is there and the anchor did not match — an indent, a rename, a
+  // move into a case block. That is a broken join, not a missing input.
+  process.emitWarning(
+    `lesson-bypass-audit: hooks/memory-prompt-hint.sh has no line matching /^MAX=(\\d+)/ — ` +
+    `falling back to ${HOOK_EMIT_CAP_FALLBACK}. If the hook's emit cap changed, this audit's ` +
+    `bypass rate is computed against the wrong denominator.`,
+  );
+  return { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-no-anchor' };
 }
 
 export function lessonBypassAudit({
@@ -175,7 +194,7 @@ export function lessonBypassAudit({
   // agent never saw (2026-07-11 pre-ship review; live rows exist with
   // match_count 8/10). suggested is priority-ordered, so the shown set is
   // exactly the first min(EMIT_CAP, length) entries.
-  const EMIT_CAP = readHookEmitCap(pluginRoot);
+  const EMIT_CAP = readHookEmitCap(pluginRoot).cap;
 
   for (const ev of suggestEvents) {
     const sessionId = ev.session_id;

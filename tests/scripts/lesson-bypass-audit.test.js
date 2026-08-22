@@ -11,6 +11,8 @@ import {
   rowText,
   wasApplied,
   readTranscript,
+  readHookEmitCap,
+  HOOK_EMIT_CAP_FALLBACK,
 } from '../../scripts/lesson-bypass-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -345,4 +347,39 @@ test('CLI --json emits parseable JSON', () => {
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.totalSuggestEvents, 0);
   assert.equal(parsed.citeRecall, null);
+});
+
+test('the emit cap is read from the hook, and a broken join is distinguishable (条目 24)', () => {
+  // The audit divides by the hook's own `MAX=` emit cap. An indent or a rename
+  // there made the regex miss and the code fell back to 5 in silence, so the
+  // bypass rate kept being reported against a denominator that no longer
+  // matched the hook — with nothing in the output saying the join had broken.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-emitcap-'));
+  try {
+    fs.mkdirSync(path.join(root, 'hooks'), { recursive: true });
+    const hookPath = path.join(root, 'hooks/memory-prompt-hint.sh');
+
+    fs.writeFileSync(hookPath, '#!/usr/bin/env bash\nMAX=9\necho hi\n');
+    assert.deepEqual(readHookEmitCap(root), { cap: 9, source: 'hook' },
+      'a cap the hook actually declares must be derived, not defaulted');
+
+    // The exact shape that used to fall back in silence.
+    fs.writeFileSync(hookPath, '#!/usr/bin/env bash\n  MAX=9\necho hi\n');
+    assert.deepEqual(readHookEmitCap(root), { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-no-anchor' },
+      'a present-but-unparseable hook must report the fallback AS a fallback');
+
+    fs.rmSync(hookPath);
+    assert.deepEqual(readHookEmitCap(root), { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-missing-file' },
+      'a missing hook file is a different case from a broken anchor');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the live hook still carries the MAX= anchor this audit reads', () => {
+  // The join above only helps if the real hook satisfies it today; without this
+  // the suite would be green on a repo whose audit silently uses the fallback.
+  const res = readHookEmitCap(path.resolve(HERE, '../..'));
+  assert.equal(res.source, 'hook', 'hooks/memory-prompt-hint.sh no longer exposes `MAX=<n>` at line start');
+  assert.ok(res.cap >= 1 && res.cap <= 50, `implausible emit cap ${res.cap}`);
 });

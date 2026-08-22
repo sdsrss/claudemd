@@ -187,6 +187,10 @@ fi
 # the shape; the correct form is two statements with an explicit `|| exit`.
 # Class gate rather than five fixed call sites, because the one-liner is the
 # obvious thing to type the next time someone needs a physical-path sandbox.
+# Matches the unquoted `cd $(mktemp -d)` and `pushd` spellings too: the first
+# draft required the double-quoted `cd "$(mktemp` form exactly, so two of the
+# three ways to type the same fail-open walked past a gate named for the class
+# (audit-2026-08-22 条目 24).
 echo "== Fail-open mktemp =="
 MKTEMP_SH=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)
 if [[ -z "$MKTEMP_SH" ]]; then
@@ -195,7 +199,7 @@ if [[ -z "$MKTEMP_SH" ]]; then
 else
   FAILOPEN=$(cd "$GUARD_REPO" && printf '%s\n' "$MKTEMP_SH" | while IFS= read -r f; do
     [[ -f "$f" ]] || continue
-    sed -E 's/^[[:space:]]*#.*$//' "$f" | grep -nE 'cd[[:space:]]+"\$\(mktemp' | sed "s|^|$f:|"
+    sed -E 's/^[[:space:]]*#.*$//' "$f" | grep -nE '(cd|pushd)[[:space:]]+"?\$\(mktemp' | sed "s|^|$f:|"
   done)
   if [[ -n "$FAILOPEN" ]]; then
     echo "FAIL: fail-open mktemp — \`cd \"\$(mktemp -d)\"\` yields the CWD when mktemp fails."
