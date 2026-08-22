@@ -20,6 +20,24 @@ Exit codes: 0 success | 2 argv-shape error.`;
 // Per-invocation escape tokens documented in README. Single source so
 // /claudemd-status --verbose stays in sync with the hook implementations.
 // Spec sections cross-ref hard-rules.json#rules[].rule_hits_section.
+// Sub-feature toggles: the `DISABLE_*` vars that turn off PART of a hook rather
+// than the hook. `--verbose` advertised a "full kill-switch reference" while
+// emitting only the registry-derived per-hook block, so these 8 were reachable
+// from neither the command nor (for two of them) the README
+// (audit-2026-08-22 条目 11). Hand-written, but not unguarded: the completeness
+// of this list against `DISABLE_*` reads in hooks/ + scripts/ is asserted by
+// tests/scripts/subject-set-drift.test.js.
+const SUB_FEATURE_TOGGLES = [
+  { envVar: 'DISABLE_UPSTREAM_CHECK',           partOf: 'session-start-check.sh', disables: 'the upstream-tag check only; bootstrap-on-mismatch still runs' },
+  { envVar: 'DISABLE_SPEC_DRIFT_BANNER',        partOf: 'session-start-check.sh', disables: 'the installed-vs-plugin spec drift banner; doctor still reports the drift' },
+  { envVar: 'DISABLE_SESSION_SUMMARY_BANNER',   partOf: 'session-start-check.sh', disables: 'the SessionStart banner half; the Stop-side summary write continues' },
+  { envVar: 'DISABLE_COMPACT_REREAD_REMINDER',  partOf: 'session-start-check.sh', disables: 'the post-compaction §11 re-read reminder only' },
+  { envVar: 'DISABLE_BOOTSTRAP_FAIL_BANNER',    partOf: 'session-start-check.sh', disables: 'the prior-session install-failure banner; the sentinel is still written' },
+  { envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',   partOf: 'session-end-check.sh',   disables: 'the §13.2 batch-review cadence advisory only' },
+  { envVar: 'DISABLE_RULE_HITS_LOG',            partOf: 'all hooks',              disables: 'telemetry appends to ~/.claude/logs/claudemd.jsonl; enforcement is unaffected' },
+  { envVar: 'DISABLE_STATUSLINE_QUOTA',         partOf: 'statusline.sh',          disables: 'the ctx/5h/7d quota segments only' },
+];
+
 const ESCAPE_TOKENS = [
   { token: '[allow-banned-vocab]',  where: 'commit message',     bypasses: 'banned-vocab-check.sh',        section: '§10-V' },
   { token: 'known-red baseline:',   where: 'commit body',        bypasses: 'ship-baseline-check.sh',        section: '§7-ship-baseline' },
@@ -182,6 +200,11 @@ export async function status({ verbose = false } = {}) {
       killSwitches: {
         global: { envVar: 'DISABLE_CLAUDEMD_HOOKS', effective: isOn('DISABLE_CLAUDEMD_HOOKS'), persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS') },
         perHook: hookList,
+        subFeature: SUB_FEATURE_TOGGLES.map(t => ({
+          ...t,
+          effective: isOn(t.envVar),
+          persisted: persistedOn(t.envVar),
+        })),
       },
       escapeTokens: ESCAPE_TOKENS,
     };

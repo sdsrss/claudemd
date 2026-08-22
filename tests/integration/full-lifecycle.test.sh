@@ -7,6 +7,12 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=../lib/hook-names.sh
+source "$HERE/../lib/hook-names.sh"
+# Registry-derived alternation for the two eviction assertions below. Phase 7's
+# hand-written copy named 10 of the 15 hooks while asserting that NO claudemd
+# entry remained (audit-2026-08-22 条目 8).
+HOOK_ALT=$(claudemd_hook_alternation "$REPO") || { echo "FAIL: cannot derive hook names from the registry"; exit 1; }
 
 TMP_HOME=$(mktemp -d)
 trap 'rm -rf "$TMP_HOME"' EXIT
@@ -27,11 +33,12 @@ echo "$OUT" | jq -e '.spec == "fresh"' >/dev/null \
 # the plugin's hooks/hooks.json where ${CLAUDE_PLUGIN_ROOT} actually expands).
 # Manifest carries the canonical 5-entry list instead.
 if [[ -f "$HOME/.claude/settings.json" ]]; then
-  RESIDUE=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(banned-vocab-check|ship-baseline-check|memory-read-check|memory-prompt-hint|pre-bash-safety-check|residue-audit|sandbox-disposal-check|session-start-check|session-summary|session-end-check|session-extended-read|version-sync|transcript-vocab-scan|transcript-structure-scan|mem-audit)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
+  RESIDUE=$(jq --arg alt "$HOOK_ALT" '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(" + $alt + ")\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
   [[ "$RESIDUE" == "0" ]] || { echo "FAIL: settings.json carries claudemd hooks (v0.1.5 expects 0)"; exit 1; }
 fi
 MCOUNT=$(jq '.entries | length' "$HOME/.claude/.claudemd-manifest.json") || { echo "FAIL: manifest unreadable"; exit 1; }
-[[ "$MCOUNT" == "15" ]] || { echo "FAIL: manifest entry count ($MCOUNT != 15)"; exit 1; }
+HOOK_COUNT=$(claudemd_hook_basenames "$REPO" | grep -c .) || { echo "FAIL: cannot count registry hooks"; exit 1; }
+[[ "$MCOUNT" == "$HOOK_COUNT" ]] || { echo "FAIL: manifest entry count ($MCOUNT != $HOOK_COUNT registry hooks)"; exit 1; }
 
 # Phase 4: simulate banned-vocab hook firing
 EVENT='{"session_id":"integ","tool_name":"Bash","tool_input":{"command":"git commit -m '\''significantly improved'\''"},"cwd":"/tmp"}'
@@ -50,7 +57,7 @@ echo "$OUT" | jq -e '.specAction == "keep"' >/dev/null \
 
 # Phase 7: settings.json clean of our entries. Match by known hook basename
 # (works for both absolute-path and ${CLAUDE_PLUGIN_ROOT}-form commands).
-REMAIN=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(banned-vocab-check|ship-baseline-check|memory-read-check|pre-bash-safety-check|residue-audit|sandbox-disposal-check|session-start-check|session-summary|version-sync|transcript-vocab-scan)\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
+REMAIN=$(jq --arg alt "$HOOK_ALT" '[.hooks // {} | to_entries[] | .value[] | .hooks[] | select(.command | test("/hooks/(" + $alt + ")\\.sh"))] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo 0)
 [[ "$REMAIN" == "0" ]] || { echo "FAIL: claudemd entries remain"; exit 1; }
 
 echo "full-lifecycle: PASS"

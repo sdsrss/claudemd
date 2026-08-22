@@ -19,9 +19,13 @@ Options:
                       this flag > TMP_RETENTION_DAYS: in ./CLAUDE.md > 7.
   --help, -h          Print this message and exit.
 
-State-dir scope: only ext-read-*, vocab-scan-*, failopen-* and mem-coverage-*
-past the retention window. Allowlist-by-pattern — live singleton state in the
-same directory is never deleted, however old.
+State-dir scope: only ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*,
+session-start-<sid>.ref and tmp-baseline-<sid>.txt past the retention window.
+Allowlist-by-pattern — live singleton state in the same directory (including
+the sid-less session-start.ref and tmp-baseline.txt) is never deleted, however
+old. This list and STATE_EPHEMERAL below are joined by
+tests/scripts/subject-set-drift.test.js: it named four of the six classes for
+two releases after v0.67.0 added the last two (audit-2026-08-22 条目 7).
 
 Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
      CLAUDEMD_STATE_DIR overrides the ~/.claude/.claudemd-state root (test seam).

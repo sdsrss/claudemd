@@ -37,49 +37,16 @@ beforeEach(() => {
   fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), '# Operator handbook (test fixture)\n');
 
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
-  for (const name of ['banned-vocab-check', 'ship-baseline-check', 'residue-audit',
-                      'memory-read-check', 'pre-bash-safety-check',
-                      'sandbox-disposal-check', 'session-start-check',
-                      'session-summary',
-                      'transcript-vocab-scan',
-                      'transcript-structure-scan',
-                      'version-sync',
-                      'mem-audit']) {
-    fs.writeFileSync(path.join(pluginRoot, 'hooks', `${name}.sh`), '#!/bin/bash\nexit 0\n');
+  // Stubs derived from the registry, and the REAL hooks.json — not a
+  // hand-written copy of either (audit-2026-08-22 条目 8). The copy carried 12
+  // of the 15 hooks and a comment calling that "the real plugin's registration",
+  // so every manifest assertion below ran against a plugin shape that had not
+  // existed since v0.9.27. install.js reads hooks.json to populate the manifest,
+  // which is precisely the coupling a stale fixture hides.
+  for (const basename of HOOK_BASENAMES) {
+    fs.writeFileSync(path.join(pluginRoot, 'hooks', basename), '#!/bin/bash\nexit 0\n');
   }
-  // The production hooks.json is what install.js reads to populate the manifest.
-  // Tests must ship a copy that mirrors the real plugin's 12-hook registration
-  // (4 PreToolUse:Bash enforcement [pre-bash-safety + banned-vocab + ship-baseline
-  // + memory-read] + Stop [residue-audit + sandbox-disposal + mem-audit +
-  // transcript-structure-scan v0.9.10 + session-summary v0.8.0] + SessionStart
-  // self-bootstrap [v0.1.9] + UserPromptSubmit version-sync piggy-back [v0.3.1]
-  // + PostToolUse transcript-vocab-scan [v0.8.3]).
-  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
-    hooks: {
-      SessionStart: [{ matcher: '*', hooks: [
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-check.sh"', timeout: 5 },
-      ] }],
-      UserPromptSubmit: [{ matcher: '*', hooks: [
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/version-sync.sh"', timeout: 2 },
-      ] }],
-      PreToolUse: [{ matcher: 'Bash', hooks: [
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-bash-safety-check.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
-      ] }],
-      Stop: [{ matcher: '*', hooks: [
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/mem-audit.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/transcript-structure-scan.sh"', timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh"', timeout: 3 },
-      ] }],
-      PostToolUse: [{ matcher: '*', hooks: [
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/transcript-vocab-scan.sh"', timeout: 3 },
-      ] }],
-    },
-  }));
+  fs.copyFileSync(path.join(REPO_ROOT, 'hooks/hooks.json'), path.join(pluginRoot, 'hooks/hooks.json'));
 
   fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
   fs.writeFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), '#!/usr/bin/env bash\necho fixture-sl\n');
@@ -213,7 +180,7 @@ test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, 12);
+  assert.equal(manifest.entries.length, HOOK_BASENAMES.length);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
@@ -234,7 +201,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, 15);
+  assert.equal(manifest.entries.length, HOOK_BASENAMES.length);
 });
 
 test('logs directory and empty jsonl created', async () => {

@@ -215,6 +215,19 @@ export DISABLE_BOOTSTRAP_FAIL_BANNER=1     # v0.50.0+ — only the SessionStart 
                                            # sentinel + bootstrap.log trail keep being
                                            # written so the state stays diagnosable.
 
+export DISABLE_SPEC_DRIFT_BANNER=1         # only the SessionStart banner reporting
+                                           # installed-spec vs plugin-spec drift; the
+                                           # version check itself still runs, so
+                                           # /claudemd-doctor keeps reporting the drift.
+
+export DISABLE_RULE_HITS_LOG=1             # stop every hook from appending to
+                                           # ~/.claude/logs/claudemd.jsonl. Enforcement
+                                           # is unaffected (a deny still denies); what
+                                           # stops is the telemetry /claudemd-audit,
+                                           # /claudemd-rules and the §13.1 demote loop
+                                           # read. Set it while hand-probing a hook so
+                                           # the probe does not land in the real corpus.
+
 export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
                                            # cadence advisory inside session-end-check;
                                            # mid-SPINE warn-on-unvalidated-mutation

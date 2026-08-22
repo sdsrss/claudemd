@@ -4,17 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readSettings, writeSettings, mergeHook, unmergeHook, isClaudemdLegacyHookCommand } from '../../scripts/lib/settings-merge.js';
+import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
 
-const CLAUDEMD_HOOK_BASENAMES = [
-  'banned-vocab-check.sh',
-  'ship-baseline-check.sh',
-  'memory-read-check.sh',
-  'pre-bash-safety-check.sh',
-  'residue-audit.sh',
-  'sandbox-disposal-check.sh',
-  'session-start-check.sh',
-  'version-sync.sh',
-];
+// Derived, not hand-copied (audit-2026-08-22 条目 8). This list was 8 of the 15
+// hooks while the eviction assertions below reported "no claudemd entries
+// remain" — a residue in any of the other 7 would have been invisible to them.
+const CLAUDEMD_HOOK_BASENAMES = HOOK_BASENAMES;
 
 let tmpHome, savedHome;
 const FIX = new URL('../fixtures/settings-samples/', import.meta.url).pathname;

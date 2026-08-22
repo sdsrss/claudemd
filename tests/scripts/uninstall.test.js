@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { install } from '../../scripts/install.js';
 import { uninstall } from '../../scripts/uninstall.js';
+import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
 
 let tmpHome, savedHome, pluginRoot;
 
@@ -21,8 +22,11 @@ beforeEach(async () => {
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), 'plugin-cl\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), 'plugin-op\n');
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
-  for (const n of ['banned-vocab-check','ship-baseline-check','residue-audit','memory-read-check','sandbox-disposal-check']) {
-    fs.writeFileSync(path.join(pluginRoot, 'hooks', `${n}.sh`), '#!/bin/bash\nexit 0\n');
+  // Registry-derived, not a hand-picked 5 (audit-2026-08-22 条目 8): uninstall's
+  // eviction predicate is built from HOOK_BASENAMES, so a fixture holding a
+  // subset can never exercise the entries most likely to be missed.
+  for (const basename of HOOK_BASENAMES) {
+    fs.writeFileSync(path.join(pluginRoot, 'hooks', basename), '#!/bin/bash\nexit 0\n');
   }
   // Hook manifest — the real plugin ships one, and install() now refuses a
   // plugin root without it (a hook-less install used to report success, with

@@ -435,10 +435,8 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // event of the hook's registered type under an ISOLATED mkdtemp HOME (so the
   // state-writing hooks — residue-audit / session-summary / mem-audit /
   // sandbox-disposal — can't touch the real ~/.claude) and asserts the hook
-  // exits 0 with no shell-crash signature on stderr. session-start-check +
-  // version-sync are intentionally EXCLUDED: they perform bootstrap / network /
-  // background-spawn side-effects unsafe to trigger from a health command; their
-  // own suites + the upgrade-lifecycle integration test cover them.
+  // exits 0 with no shell-crash signature on stderr. Hooks left out of the table
+  // are enumerated with their reason in LIVENESS_SKIPPED below.
   const CRASH_RE = /: line \d+:|syntax error|unbound variable|: command not found/;
   const stopEvt = { session_id: 'doctor-selftest', hook_event_name: 'Stop', transcript_path: '/tmp/claudemd-doctor-none.jsonl' };
   // Kill-switch names come from HOOK_REGISTRY, not a hand-written literal per
@@ -451,6 +449,18 @@ export async function doctor({ pruneBackups: prune } = {}) {
     const entry = HOOK_REGISTRY.find(h => h.basename === basename);
     if (!entry) throw new Error(`doctor liveness: ${basename} is not in HOOK_REGISTRY`);
     return `DISABLE_${entry.envVarSuffix}_HOOK`;
+  };
+  // The complement, written out. The table below covers 11 of the 15 hooks; the
+  // comment above named 2 of the 4 it leaves out, so two hooks were outside both
+  // the check and its stated scope (audit-2026-08-22 条目 8). Keys here plus the
+  // table's `hook` fields must union to HOOK_REGISTRY — asserted by
+  // tests/scripts/subject-set-drift.test.js, so a hook added tomorrow has to
+  // land in one list or the other rather than in neither.
+  const LIVENESS_SKIPPED = {
+    'session-start-check.sh': 'bootstraps the install and makes a network call — unsafe to trigger from a health command; tests/hooks/session-start.test.sh covers it',
+    'version-sync.sh': 'spawns a background re-install — same reason; tests/integration/upgrade-lifecycle.test.sh covers it',
+    'pre-bash-safety-check.sh': 'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
+    'banned-vocab-check.sh': 'same blocking-gate shape; tests/hooks/banned-vocab.test.sh covers it',
   };
   const livenessTests = [
     { hook: 'memory-read-check.sh',         ks: ksFor('memory-read-check.sh'),              event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
