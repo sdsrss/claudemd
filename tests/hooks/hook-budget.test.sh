@@ -121,21 +121,61 @@ awk -v n=12000 -v sid="$SESSION_ID" 'BEGIN {
   }
 }' > "$RULE_LOG"
 
-echo "-- fixture: $(grep -c '^- \[' "$MEM_DIR/MEMORY.md") MEMORY.md entries, transcript $(wc -c < "$TRANSCRIPT" | tr -d ' ') bytes, rule-hits $(wc -c < "$RULE_LOG" | tr -d ' ') bytes"
+# Filesystem fixture — the second scaling family (audit-2026-08-22 P1-2).
+# residue-audit counts every depth-1 entry of ~/.claude/tmp; sandbox-disposal
+# runs find -newer over it; version-sync walks $TMPDIR. 6,000 entries is above
+# the largest real one observed (5,950) for the same reason the memory index is
+# oversized here: a gate sized at today's numbers reports the problem after it
+# lands. `xargs` rather than a shell loop — 6,000 forks would dominate the
+# suite's own runtime.
+CLAUDE_TMP="$FIX_HOME/.claude/tmp"
+SYNC_TMP="$SANDBOX/synctmp"
+mkdir -p "$CLAUDE_TMP" "$SYNC_TMP"
+awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' | xargs touch
+# 50 mkdtemp-shaped DIRECTORIES: the shape sandbox-disposal actually reports on.
+awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/tmp.probe%d\n", d, i }' | xargs mkdir -p
+awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' | xargs touch
+
+# Pre-seeded per-session state so the two Stop scanners take their FULL path
+# instead of the silent first-run branch (which establishes a baseline and
+# exits — cheap, and measuring it is the underread this gate exists to catch).
+STATE_FIX="$FIX_HOME/.claude/.claudemd-state"
+mkdir -p "$STATE_FIX"
+# residue-audit: baseline 0 against ~6,000 entries → over threshold → it emits.
+printf 'v2:0\n' > "$STATE_FIX/tmp-baseline-${SESSION_ID}.txt"
+# sandbox-disposal: a session ref OLDER than the fixture dirs, so find -newer
+# has something to report. Written last would make every dir older than it.
+touch -t 200001010000 "$STATE_FIX/session-start-${SESSION_ID}.ref"
+# version-sync: a manifest whose version is NEWER than this repo's package.json
+# drives the stale-root branch — it logs and records a rule-hits row (the reach
+# proof) without spawning a background install.
+printf '{"version":"99.0.0"}\n' > "$FIX_HOME/.claude/.claudemd-manifest.json"
+
+echo "-- fixture: $(grep -c '^- \[' "$MEM_DIR/MEMORY.md") MEMORY.md entries, transcript $(wc -c < "$TRANSCRIPT" | tr -d ' ') bytes, rule-hits $(wc -c < "$RULE_LOG" | tr -d ' ') bytes, ~/.claude/tmp $(find "$CLAUDE_TMP" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ') entries"
 
 # ------------------------------------------------------------ subject set ----
-# Derive, do not name: a hook whose runtime scales with user data is one that
-# reads the memory index, a transcript, or the rule-hits log.
-DATA_RE='MEMORY\.md|TRANSCRIPT|claudemd\.jsonl'
+# Derive, do not name: a hook whose runtime scales with data it does not
+# control. Two families, and the second was missing until audit-2026-08-22 P1-2:
+#   - CONTENT: the memory index, a transcript, the rule-hits log.
+#   - FILESYSTEM: a scan of ~/.claude/tmp or of $TMPDIR, whose cost scales with
+#     the entry count there. residue-audit, sandbox-disposal-check and
+#     version-sync all walk one of those directories on every event and none of
+#     them was in the derived set, so the gate's own subject list was narrower
+#     than the thing it claims to cover.
+# Network-blocking hooks are a DIFFERENT class — bounded by an explicit
+# platform_timeout, not by data volume — and get the static gate further down;
+# a timing probe for them would either hit the network or measure the offline
+# early-exit, which is the perf-baseline defect this file exists to avoid.
+DATA_RE='MEMORY\.md|TRANSCRIPT|claudemd\.jsonl|\.claude/tmp|platform_find_newer|\$\{TMPDIR'
 SUBJECTS=()
 while IFS= read -r _f; do
   [[ -n "$_f" ]] && SUBJECTS+=("$(basename "$_f" .sh)")
 done < <(grep -lE "$DATA_RE" "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
 
-if (( ${#SUBJECTS[@]} >= 6 )); then
+if (( ${#SUBJECTS[@]} >= 11 )); then
   pass "subject-set floor (${#SUBJECTS[@]} data-scaling hooks derived from source)"
 else
-  fail "subject-set floor (expected >= 6 data-scaling hooks, found ${#SUBJECTS[@]}) — glob or grep broke"
+  fail "subject-set floor (expected >= 11 data-scaling hooks, found ${#SUBJECTS[@]}) — glob or grep broke"
 fi
 
 # ------------------------------------------------------------- probe table ---
@@ -186,6 +226,23 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
         '{hook_event_name:"PostToolUse", session_id:$s, cwd:$c, transcript_path:$t,
           tool_use_id:"tu_probe"}' ;;
+    residue-audit)
+      # Cost is the depth-1 walk of ~/.claude/tmp; the seeded v2:0 baseline
+      # puts it over threshold so it reaches the emit path too.
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
+        '{hook_event_name:"Stop", session_id:$s, cwd:$c}' ;;
+    sandbox-disposal-check)
+      # The override points the scan at the same 6,000-entry fixture instead of
+      # the host's real /tmp — hermetic, and it is the production scan shape.
+      PROBE_ENV=("CLAUDEMD_SCAN_SPECS_OVERRIDE=$CLAUDE_TMP|both")
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
+        '{hook_event_name:"Stop", session_id:$s, cwd:$c}' ;;
+    version-sync)
+      # TMPDIR is the scaling input (the sentinel GC walks it on first prompt).
+      PROBE_ENV=("TMPDIR=$SYNC_TMP" "CLAUDE_SESSION_ID=$SESSION_ID")
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
+        '{hook_event_name:"UserPromptSubmit", session_id:$s, cwd:$c,
+          prompt:"budget probe prompt"}' ;;
     *) return 1 ;;
   esac; } > "$EVT_FILE"
 }
@@ -204,6 +261,7 @@ RATIO_DEN=2
 EVT_FILE="$SANDBOX/event.json"
 OUT_FILE="$SANDBOX/probe.out"
 ERR_FILE="$SANDBOX/probe.err"
+RC_FILE="$SANDBOX/probe.rc"
 for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   HOOK_SH="$HOOKS_DIR/$hook.sh"
   probe_event "$hook" || {
@@ -222,9 +280,12 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   # bash's `time` builtin, not /usr/bin/time: BSD time has no -f and macOS runs
   # this suite. TIMEFORMAT='%R' prints wall seconds to 3 decimals.
   TIMEFORMAT='%R'
-  SECS=$( { time env HOME="$FIX_HOME" ${PROBE_ENV[@]+"${PROBE_ENV[@]}"} \
-              bash "$HOOK_SH" < "$EVT_FILE" > "$OUT_FILE" 2> "$ERR_FILE"; } 2>&1 )
+  rm -f "$RC_FILE"
+  SECS=$( { time { env HOME="$FIX_HOME" ${PROBE_ENV[@]+"${PROBE_ENV[@]}"} \
+                     bash "$HOOK_SH" < "$EVT_FILE" > "$OUT_FILE" 2> "$ERR_FILE"
+                   printf '%s' "$?" > "$RC_FILE"; }; } 2>&1 )
   [[ "$SECS" =~ ^[0-9]+\.[0-9]+$ ]] || SECS=""
+  STATUS=$(cat "$RC_FILE" 2>/dev/null || echo "")
 
   LOG_AFTER=$(wc -c < "$RULE_LOG" 2>/dev/null | tr -d ' ')
   STATE_AFTER=$(ls -A "$FIX_HOME/.claude/.claudemd-state" 2>/dev/null | wc -l | tr -d ' ')
@@ -242,8 +303,21 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   # injected immediately after the touch left this gate green (pre-tag review)
   # — on the very hook this release claims went 0.93s -> 0.039s. It must show
   # output instead.
+  # Every shipped hook is fail-open by contract and exits 0 on every branch
+  # (hook_deny included). A non-zero exit is a crashed probe, and its timing is
+  # the crash, not the work.
+  if [[ "$STATUS" != "0" ]]; then
+    fail "$hook probe exited ${STATUS:-<unknown>} — hooks exit 0 on every branch, so this is a crash: $(head -c 200 "$ERR_FILE" 2>/dev/null)"
+    continue
+  fi
+
   REACHED=0
   (( OUT_SIZE > 0 )) && REACHED=1
+  # stderr is a PAIRED signal, not a bare one (audit-2026-08-22 P1-2). Advisory
+  # hooks report there, but so does a shell that dies on an unbound variable —
+  # and `(( ERR_SIZE > 0 )) && REACHED=1` alone accepted the second as proof of
+  # the first, weakening the reach assertion for all eight subjects at once. The
+  # exit-0 requirement above is the pairing.
   (( ERR_SIZE > 0 )) && REACHED=1
   [[ "$LOG_AFTER" != "$LOG_BEFORE" ]] && REACHED=1
   if [[ "$hook" != "mem-audit" && "$STATE_AFTER" != "$STATE_BEFORE" ]]; then REACHED=1; fi
@@ -265,6 +339,83 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     fail "$hook took ${SECS}s against a ${BUDGET}s hooks.json timeout (limit: half the budget). A hook killed at its timeout emits nothing — a blocking gate fails OPEN silently."
   fi
 done
+
+# -------------------------------------------------- network-bounded hooks ----
+# The other way a hook can outrun its budget: it blocks on the NETWORK. That
+# cost does not scale with user data, so it has no place in the probe loop
+# above — a timing probe would either hit the network (non-hermetic, and flaky
+# by the second) or measure the offline early-exit, which is exactly the
+# "measure the fail-open branch" error this file was written to stop.
+#
+# Its budget property is static and checkable without leaving the box: the call
+# must be wrapped in `platform_timeout N`, and N must be strictly under the
+# hooks.json timeout — otherwise the harness kills the hook before the wrapper
+# can return, and a killed hook emits nothing. session-start-check.sh
+# (5s budget, 3s ls-remote) is the hook the 713-banner incident's own
+# instrumentation lives on, and it had NO budget coverage from either
+# instrument before audit-2026-08-22 P1-2.
+NET_HOOKS=()
+while IFS= read -r _f; do
+  [[ -n "$_f" ]] && NET_HOOKS+=("$(basename "$_f" .sh)")
+done < <(grep -lE 'platform_timeout [0-9]+' "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
+
+if (( ${#NET_HOOKS[@]} >= 2 )); then
+  pass "network-bounded set floor (${#NET_HOOKS[@]} hooks wrap a blocking call in platform_timeout)"
+else
+  fail "network-bounded set floor (expected >= 2, found ${#NET_HOOKS[@]}) — grep broke, or a bounded call lost its wrapper"
+fi
+
+for hook in ${NET_HOOKS[@]+"${NET_HOOKS[@]}"}; do
+  BUDGET=$(budget_of "$hook")
+  if [[ -z "$BUDGET" ]]; then
+    fail "$hook has no timeout declared in hooks.json (or is not registered)"
+    continue
+  fi
+  WORST=$(grep -oE 'platform_timeout [0-9]+' "$HOOKS_DIR/$hook.sh" | awk '{ if ($2 > m) m = $2 } END { print m + 0 }')
+  if (( WORST > 0 && WORST < BUDGET )); then
+    pass "$hook bounds its blocking call at ${WORST}s, inside its ${BUDGET}s hooks.json timeout"
+  else
+    fail "$hook wraps a blocking call at ${WORST}s against a ${BUDGET}s hooks.json timeout — the harness kills it first, and a killed hook emits nothing"
+  fi
+done
+
+# Nothing may reach the network UNWRAPPED. The token list is small on purpose
+# (these are the only remote commands the plugin runs) and carries a floor, so
+# a grep that stops matching is visible rather than silently vacuous.
+REMOTE_RE='git ls-remote|gh run list'
+REMOTE_WRAPPED=0
+UNWRAPPED=""
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] || continue
+  # grep -n over a glob yields `path:lineno:content`; strip both prefixes.
+  _content="${_line#*:}"; _content="${_content#*:}"
+  # Comments: every one of these hooks names its remote command in prose, and a
+  # detector that fires on the documentation of its subject fires on the fix
+  # (feedback_self_referential_marker_regex).
+  case "$_content" in *[!\ ]*) ;; *) continue ;; esac
+  case "${_content#"${_content%%[![:space:]]*}"}" in \#*) continue ;; esac
+  # `${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}` is the DEFINITION of the command
+  # (a test seam), consumed one line down inside the wrapper. A parameter
+  # expansion is never itself a call.
+  case "$_content" in *':-'*) continue ;; esac
+  if printf '%s' "$_content" | grep -q 'platform_timeout'; then
+    REMOTE_WRAPPED=$((REMOTE_WRAPPED + 1))
+  else
+    UNWRAPPED+="$_line"$'\n'
+  fi
+done < <(grep -nE "$REMOTE_RE" "$HOOKS_DIR"/*.sh 2>/dev/null)
+
+if (( REMOTE_WRAPPED >= 2 )); then
+  pass "remote-command scan classified $REMOTE_WRAPPED wrapped call site(s) (the exclusions above did not swallow everything)"
+else
+  fail "remote-command scan found only $REMOTE_WRAPPED wrapped site(s) — the pattern or the exclusions broke, so the check below proves nothing"
+fi
+if [[ -z "$UNWRAPPED" ]]; then
+  pass "every remote command invocation is wrapped in platform_timeout"
+else
+  fail "unwrapped remote call(s) — unbounded against a hooks.json timeout:"
+  printf '%s' "$UNWRAPPED" | sed 's/^/      /'
+fi
 
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"

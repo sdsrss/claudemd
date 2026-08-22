@@ -139,6 +139,20 @@ function memtags_file(line,   best, s, rest) {
 }
 AWKPROG
 
+# memtags_failopen REASON
+#   Record a fail-open row for the spill branch below. The two shipped callers
+#   source hook-common.sh BEFORE this file (asserted by
+#   tests/hooks/memory-tags-parity.test.sh, so the order cannot drift), which is
+#   what puts hook_record_failopen in scope; a bare `source memory-tags.sh` has
+#   nothing to log to and returns quietly. The hook name comes from $0 so the
+#   row names the hook that actually failed open, not this library.
+memtags_failopen() {
+  declare -f hook_record_failopen >/dev/null 2>&1 || return 0
+  local caller
+  caller=$(basename "${0:-memory-tags}" .sh 2>/dev/null) || caller="memory-tags"
+  hook_record_failopen "$caller" "$1"
+}
+
 # memtags_match INDEX_FILE HAYSTACK
 #   Prints one TAB-separated row per matching entry: `<file>\t<tag1,tag2,…>`.
 #   Tags are in MEMORY.md authoring order; rows are in file order. Callers that
@@ -181,17 +195,43 @@ memtags_match() {
     return 0
   fi
 
-  local hayfile
-  hayfile=$(mktemp "${TMPDIR:-/tmp}/memtags-hay-XXXXXX") || return 0
-  printf '%s' "$hay" > "$hayfile"
-  # Rejoining with "\n" can add one trailing newline the original lacked. That
-  # cannot change a verdict: every tag regex ends `([^a-zA-Z0-9]|$)`, and a
-  # newline is a non-alphanumeric, so the two spellings of "end of haystack"
-  # are interchangeable there.
-  awk -v MEMTAGS_HAYFILE="$hayfile" '
-    BEGIN {
-      HAY = ""
-      while ((getline _line < MEMTAGS_HAYFILE) > 0) HAY = HAY tolower(_line) "\n"
-    } '"$MEMTAGS_AWK" "$index" 2>/dev/null
-  rm -f "$hayfile"
+  # The whole spill path runs in a SUBSHELL so its `trap` is scoped here. Both
+  # callers invoke memtags_match inside process substitution, but a shared
+  # library must not depend on that to avoid clobbering a caller's EXIT trap.
+  #
+  # Three fixes over the first cut (audit-2026-08-22 P1-5), all on the DENY path
+  # of a blocking gate:
+  #   - `mktemp … || return 0` and a bare `printf` meant an unwritable or full
+  #     $TMPDIR produced an EMPTY haystack, i.e. "no matches", i.e. the push is
+  #     allowed — with no fail-open row, so the telemetry showed a gate that had
+  #     nothing to deny. The 128 KiB branch above records one; this one did not.
+  #   - No trap: killed at the hooks.json timeout (the scenario this library was
+  #     written for) the hook leaked its spill file.
+  #   - The name now carries the `claudemd-` prefix scripts/clean-residue.js
+  #     collects, joined to that reaper by a test rather than by convention.
+  (
+    # Trap FIRST, on a variable that is still empty: `trap` after `mktemp`
+    # leaves a window in which the file exists and nothing would remove it, and
+    # a signal is exactly what lands there (observed as a flaky leak under a
+    # loaded test run, which is also when a real hook is closest to its timeout).
+    local hayfile=""
+    trap '[[ -n "$hayfile" ]] && rm -f "$hayfile"' EXIT INT TERM HUP
+    hayfile=$(mktemp "${TMPDIR:-/tmp}/claudemd-memtags-hay-XXXXXX") || {
+      memtags_failopen memtags-spill-mktemp
+      exit 0
+    }
+    printf '%s' "$hay" > "$hayfile" || {
+      memtags_failopen memtags-spill-write
+      exit 0
+    }
+    # Rejoining with "\n" can add one trailing newline the original lacked. That
+    # cannot change a verdict: every tag regex ends `([^a-zA-Z0-9]|$)`, and a
+    # newline is a non-alphanumeric, so the two spellings of "end of haystack"
+    # are interchangeable there.
+    awk -v MEMTAGS_HAYFILE="$hayfile" '
+      BEGIN {
+        HAY = ""
+        while ((getline _line < MEMTAGS_HAYFILE) > 0) HAY = HAY tolower(_line) "\n"
+      } '"$MEMTAGS_AWK" "$index" 2>/dev/null
+  )
 }

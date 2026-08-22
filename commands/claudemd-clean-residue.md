@@ -1,6 +1,6 @@
 ---
 name: claudemd-clean-residue
-description: Clean up leftover claudemd-sync-* sentinels and claudemd-(mockgh|work).* test sandbox dirs from $TMPDIR, stale tool-exhaust (session scratchpads, old fixtures) from ~/.claude/tmp per the spec §7-EXT retention window (mtime > TMP_RETENTION_DAYS, default 7), and orphaned per-session sentinels from ~/.claude/.claudemd-state (ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*). Default is dry-run; pass `--apply` to delete.
+description: Clean up leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and claudemd-(mockgh|work).* test sandbox dirs from $TMPDIR, stale tool-exhaust (session scratchpads, old fixtures) from ~/.claude/tmp per the spec §7-EXT retention window (mtime > TMP_RETENTION_DAYS, default 7), and orphaned per-session sentinels from ~/.claude/.claudemd-state (ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*). Default is dry-run; pass `--apply` to delete.
 ---
 
 Default is dry-run — the user must opt into deletion explicitly. Flags:

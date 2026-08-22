@@ -5,7 +5,8 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
-Clean leftover claudemd-sync-* sentinels and historical claudemd-(mockgh|work).*
+Clean leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and historical
+claudemd-(mockgh|work).*
 sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
 §EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
 per-session sentinels from ~/.claude/.claudemd-state. Default is dry-run.
@@ -31,7 +32,13 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 // Anchored regexes — names MUST start with the prefix. Defends against
 // future fnmatch-style globs that would falsely match `not-claudemd-sync-*`.
-const SENTINEL_PATTERN = /^claudemd-sync-/;
+// `claudemd-memtags-hay-*` joined the set for audit-2026-08-22 P1-5:
+// hooks/lib/memory-tags.sh spills an oversize haystack there and now traps to
+// remove it, but a SIGKILL at the hooks.json timeout still strands one, and
+// before this it matched no reaper at all. The join back to that template is
+// asserted in tests/scripts/clean-residue.test.js, so a rename there fails here
+// rather than silently orphaning the files again.
+const SENTINEL_PATTERN = /^claudemd-(sync-|memtags-hay-)/;
 const SANDBOX_PATTERN  = /^claudemd-(mockgh|work)\./;
 
 export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {

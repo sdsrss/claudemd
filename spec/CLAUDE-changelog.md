@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.25.2 (patch, 2026-08-22) — two cross-file text defects (2026-08-22 audit P1-4)
+
+Both are wording fixes with identical behavior: one dangling citation removed, one contradiction between two tables resolved to the reading they already shared. No rule added, relaxed or removed; enforcement partition unchanged (6/16/2/1). Both are now test-gated — the class was "a table that must stay in sync with another table, with nothing asserting the join", and the existing §4→§12 join ran one direction only.
+
+- `[fix]` Extended §11-EXT: `§1 "default to writing no comments"` cited a core clause that does not exist. It began as an EXTERNAL citation (the harness's own guidance) and the v6.25.0 compression dropped the sourcing, leaving a §-attributed quotation the reader cannot verify — the §8.V1 failure the spec forbids elsewhere, and the 5th semantic loss from that compression, missed by two review rounds. Re-attributed to its real source. New gate: every `§<n> "<phrase>"` in extended must resolve in core (`tests/scripts/spec-structure.test.js`).
+- `[fix]` Core §2.1 `feat L2 (additive)` routed at `sp:test-driven-development RED-first` while extended §4's `feat` row said `skip full sp:TDD ceremony` for the same case. L0–L2 load core ONLY, so the most-travelled routing path had two tables giving opposite instructions. Core now reads `RED-first → §7 (sp:test-driven-development optional — full ceremony not required)`, which is what §7-EXT's Additive exception always said. New reverse join test core §2.1 ↔ ext §4.
+
 ## v6.25.1 (patch, 2026-08-16) — semantic-loss restore (2026-08-16 audit S-1..S-4)
 
 The v6.25.0 compression review recovered 6 dropped clauses; the 2026-08-16 audit's line-by-line diff classification found 4 more that existed NOWHERE afterwards. All were clauses that had shipped in earlier versions — this is restore, not addition; no new rules, enforcement partition unchanged (6/16/2/1).

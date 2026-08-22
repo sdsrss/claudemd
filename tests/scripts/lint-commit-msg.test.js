@@ -82,13 +82,19 @@ test('lib: stripGitCommitComments honors a custom comment char (core.commentChar
   // on a git-authored template being present, so a lone comment line is (now
   // correctly) left in scope. The comment char under test is what decides
   // which lines COUNT as the template.
+  //
+  // The status file list carries the `<commentChar>`+TAB prefix git writes with
+  // core.commentChar=';' — the real shape, and since P1-3 the only template
+  // signal there is (the run-of-3 heuristic this fixture used to lean on was a
+  // silent-miss vector on `-F` bodies).
   const src = [
     'subject',
     '',
     '; Please enter the commit message for your changes. Lines starting',
     "; with ';' will be ignored, and an empty message aborts the commit.",
     ';',
-    `; Changes to be committed: src/${BANNED}-parser.js`,
+    '; Changes to be committed:',
+    `;\tmodified:   src/${BANNED}-parser.js`,
     ';',
     '',
   ].join('\n');
@@ -221,6 +227,63 @@ test('review-HIGH: CLI end-to-end — a banned word in a -m style # line still d
     const r = run(['lint', p]);
     assert.equal(r.status, 1, `stdout=${r.stdout} stderr=${r.stderr}`);
   });
+});
+
+// --- audit-2026-08-22 P1-3: the run-of-3 heuristic was a silent miss --------
+//
+// `hasGitTemplate` treated "≥3 contiguous comment lines ending at EOF" as a git
+// template signal. Read against the measured table above, no git shape NEEDS
+// that signal: both editor shapes carry `#\t` status lines, and the
+// `commit.status=false` shape emits no comment lines at all. What it did reach
+// was `git commit -F notes.md` — cleanup=whitespace, so git KEEPS those lines —
+// whenever the body happened to end in three of them. The violation inside was
+// then stripped before the scan and the CLI exited 0. Reproduced at 2 trailing
+// `#` lines → exit 1, at 3 → `OK: no §10-V hits`, exit 0: the failure mode gets
+// MORE likely as the commented block gets longer, which is backwards.
+
+test('P1-3: three trailing # lines in a -F body are message text, not a template', () => {
+  const msg = [
+    'docs: release notes',
+    '',
+    '# leftover notes, kept by cleanup=whitespace:',
+    `# this release is ${BANNED} faster`,
+    '# (todo: trim before tagging)',
+    '',
+  ].join('\n');
+  assert.ok(stripGitCommitComments(msg).includes(BANNED),
+    'no git-authored template here — three # lines the author typed must stay in scope');
+});
+
+test('P1-3: CLI end-to-end — a violation inside a 3-line # block still denies', () => {
+  withTmp((dir) => {
+    const p = path.join(dir, 'COMMIT_EDITMSG');
+    fs.writeFileSync(p, [
+      'docs: release notes',
+      '',
+      '# leftover notes:',
+      `# this release is ${BANNED} faster`,
+      '# (todo: trim)',
+      '',
+    ].join('\n'));
+    const r = run(['lint', p]);
+    assert.equal(r.status, 1,
+      `3-line # block must not mute the scan; stdout=${r.stdout} stderr=${r.stderr}`);
+  });
+});
+
+test('P1-3: the FP fix is unchanged — a status-listed template is still stripped', () => {
+  // Regression fence for the removal: every git shape that has comment lines to
+  // strip also carries the locale-proof `#\t` status prefix or the cut line.
+  assert.ok(!stripGitCommitComments(REAL_EDITMSG).includes(BANNED));
+  const statusOnly = [
+    'fix: subject',
+    '',
+    '# Changes to be committed:',
+    `#\tmodified:   src/${BANNED}-parser.js`,
+    '#',
+    '',
+  ].join('\n');
+  assert.ok(!stripGitCommitComments(statusOnly).includes(BANNED));
 });
 
 test('review-MEDIUM: a hand-written near-scissors line does not truncate the scan', () => {

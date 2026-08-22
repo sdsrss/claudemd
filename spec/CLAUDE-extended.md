@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.1 — Extended
+# AI-CODING-SPEC v6.25.2 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -443,11 +443,11 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.25.1 (patch, 2026-08-16)** — semantic-loss restore from the 2026-08-16 audit (S-1..S-4): four clauses the v6.25.0 compression dropped that existed nowhere afterwards.
+**v6.25.2 (patch, 2026-08-22)** — two cross-file text defects from the 2026-08-22 audit (P1-4), both wording-only, both now test-gated.
 
-- Core §5.1: AUTONOMY_LEVEL choosing guidance restored (solo-dev/bypassPermissions vs team/prod) + the skip-list parenthetical again names §8 + Iron Law #2 + §5 Hard-AUTH as still binding (was extended-only, unreachable at the levels aggressive operates). Core §7: "vibe-check from one manual test is not metric-neutral evidence" qualifier restored. Extended §11-EXT-MEM: `mem_*` / `mem-audit` identifier carve-out restored (without it, "avoid bare mem" condemned shipped identifiers). No new rules; enforcement partition unchanged (6/16/2/1).
+- Extended §11-EXT: a quotation attributed to core §1 (`default to writing no comments`) named a clause core does not carry — an external citation whose sourcing the v6.25.0 compression dropped (its 5th semantic loss), re-attributed here to its real source. Spelled without the `§n "…"` shape on purpose: the new gate below would otherwise fire on the prose describing its own fix. Core §2.1 `feat L2 (additive)` mandated `sp:test-driven-development` while §4's `feat` row told the same case to skip the full ceremony; core now marks the skill optional, matching §7-EXT's Additive exception. New gates in `tests/scripts/spec-structure.test.js`: a §-attributed quotation must resolve in core, and core §2.1 ↔ ext §4 must not contradict. No new rules; enforcement partition unchanged (6/16/2/1).
 
-**Sizing** (v6.25.1, 2026-08-16, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23042 → 23280 bytes (Δ +238: S-1/S-2/S-3 restores); extended 42999 → 43381 bytes (Δ +382: S-4 restore + this entry); OPERATOR.md 11027 → 11027 bytes (Δ 0). Size budget: core 23280/25000 (**1720 bytes headroom**); extended 43381/50000 (**6619 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
+**Sizing** (v6.25.2, 2026-08-22, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23280 → 23322 bytes (Δ +42: §2.1 optionality clause); extended 43381 → 43657 bytes (Δ +276: citation re-attribution + this entry replacing v6.25.1's); OPERATOR.md 11027 → 11027 bytes (Δ 0). Size budget: core 23322/25000 (**1678 bytes headroom**); extended 43657/50000 (**6343 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
 
 ## §1.5-EXT GLOSSARY
 
@@ -481,7 +481,7 @@ SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 - **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before next long tool call.
 - **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
 - **Diagnose-before-pivot**: approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
-- **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. §1 "default to writing no comments" addresses *new* comments, not pruning old.
+- **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. The harness's own default-to-no-new-comments guidance addresses *new* comments, not pruning old.
 
 ## §11-EXT-MEM Memory operations
 

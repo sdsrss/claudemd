@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homeSpec, resolvePluginRoot } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
-import { createBackup, pruneBackups } from './lib/backup.js';
+import { createBackup, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
@@ -51,8 +51,13 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   }
 
   const existing = targets.map(n => homeSpec(n)).filter(fs.existsSync);
-  const { dir: backupDir } = createBackup(existing, { label: 'backup' });
-  pruneBackups(5);
+  // Own namespace, not install.js's `backup-` (audit-2026-08-22 P1-1). Sharing
+  // it made every update push a spec-only backup on top of the user's personal
+  // CLAUDE.md backup: `CLAUDEMD_SPEC_ACTION=restore` reads listBackups()[0] and
+  // returned the old SPEC, and five updates pruned the personal content away.
+  // Rotation still applies — within this namespace only.
+  const { dir: backupDir } = createBackup(existing, { label: BACKUP_LABELS.spec });
+  pruneBackups(5, { label: BACKUP_LABELS.spec });
 
   for (const name of targets) {
     fs.copyFileSync(path.join(pluginRoot, 'spec', name), homeSpec(name));

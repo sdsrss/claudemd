@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.1 — Core
+# AI-CODING-SPEC v6.25.2 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -88,7 +88,7 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool
 |---|---|---|
 | code/logic bug | L1: reproduce→fix→§7; L2+: `sp:systematic-debugging` | env/staging/deploy → `gs:/investigate` |
 | feat L0/L1 | direct edit → §7 | |
-| feat L2 (additive) | `sp:test-driven-development` RED-first → §7; bundle deps one AUTH | no prior failing path |
+| feat L2 (additive) | RED-first → §7 (`sp:test-driven-development` optional — full ceremony not required); bundle deps one AUTH | no prior failing path |
 | 2+ disjoint tasks | `sp:dispatching-parallel-agents` | |
 | UI/visual verify | `gs:/browse` ONLY | never `mcp__chrome` / computer-use |
 | tech/arch clarify (no code) | `sp:brainstorming` | |

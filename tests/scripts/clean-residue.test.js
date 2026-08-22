@@ -37,6 +37,30 @@ test('scan finds claudemd-sync-* files and claudemd-(mockgh|work).* dirs', () =>
   assert.equal(r.sandboxes.length, 2);
 });
 
+// --- audit-2026-08-22 P1-5: the memtags spill file had no reaper ------------
+//
+// hooks/lib/memory-tags.sh spills an oversize haystack to a $TMPDIR file. If
+// the hook is killed at its hooks.json timeout — the exact scenario that
+// library was written for — the file survives, and its name matched NEITHER
+// pattern here nor residue-audit's ~/.claude/tmp scope. Nothing would ever
+// collect it. The template is read out of the shell source rather than
+// hand-copied, so renaming it there fails HERE instead of silently orphaning
+// the files again (feedback_extraction_needs_consumer_gate).
+test('P1-5: the memtags spill template is reaped by scan()', () => {
+  const lib = fs.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks/lib/memory-tags.sh'),
+    'utf8');
+  const m = lib.match(/mktemp\s+"\$\{TMPDIR:-\/tmp\}\/([A-Za-z0-9._-]*X{3,})"/);
+  assert.ok(m, 'could not find the mktemp template in hooks/lib/memory-tags.sh');
+  // mktemp replaces the trailing X run with random chars.
+  const sample = m[1].replace(/X+$/, 'a1b2c3');
+  fs.writeFileSync(path.join(tmpDir, sample), 'spilled haystack');
+
+  const r = scan({ tmpDir });
+  assert.ok(r.sentinels.some(s => path.basename(s.path) === sample),
+    `${sample} is left in $TMPDIR by a killed hook but no clean-residue pattern matches it`);
+});
+
 test('scan tolerates missing/empty dir', () => {
   const r = scan({ tmpDir });
   assert.deepEqual(r.sentinels, []);

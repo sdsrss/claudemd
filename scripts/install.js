@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
-import { createBackup, pruneBackups, backupSettingsFile } from './lib/backup.js';
+import { createBackup, pruneBackups, backupSettingsFile, BACKUP_LABELS } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
@@ -202,16 +202,19 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     // after a re-install OR an upgrade restored the SPEC instead of the user's
     // original personal CLAUDE.md, and enough of them permanently evicted the
     // personal backup. By only ever backing up genuine user content (the no-H1
-    // branch below), the personal backup is the SOLE backup → restore always
-    // returns it and prune can never bury it. The prior spec version is
-    // recoverable from git / the plugin cache / update.js's own backups.
+    // branch below), the personal backup is the SOLE backup in the `backup-`
+    // namespace → restore always returns it and prune can never bury it. That
+    // claim was false between v0.23.11 and v0.68.2 because update.js wrote the
+    // SAME namespace; it now uses BACKUP_LABELS.spec (audit-2026-08-22 P1-1).
+    // The prior spec version is recoverable from git / the plugin cache /
+    // update.js's own `spec-backup-` dirs.
     // (The earlier v0.23.11 "byte-identical only" guard left the upgrade path
     // broken — restore after any upgrade returned the old spec.)
     specResult = 'overwrite-spec';
   } else {
-    const bk = createBackup(existing, { label: 'backup' });
+    const bk = createBackup(existing, { label: BACKUP_LABELS.personal });
     backupDir = bk.dir;
-    pruneBackups(5);
+    pruneBackups(5, { label: BACKUP_LABELS.personal });
     specResult = 'backup-and-overwrite';
     if (userContentDetected) {
       process.stderr.write(
@@ -250,7 +253,13 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   ];
   const handExisting = handHookFiles.filter(fs.existsSync);
   if (handExisting.length > 0) {
-    const migrateDir = backupDir || createBackup([], { label: 'backup' }).dir;
+    // Reuse the personal backup dir when there is one — the hand-hook files
+    // then sit in a `hooks/` subdir NEXT TO the restorable CLAUDE.md. With no
+    // personal backup, a fresh `backup-` dir here would be the newest one and
+    // EMPTY at depth 1 (restoreBackup copies files only), so restore returned
+    // zero files while the real personal backup sat one slot down. Its own
+    // namespace keeps it out of the restore path entirely (P1-1, second arm).
+    const migrateDir = backupDir || createBackup([], { label: BACKUP_LABELS.handHook }).dir;
     const hooksSubdir = path.join(migrateDir, 'hooks');
     fs.mkdirSync(hooksSubdir, { recursive: true });
     for (const src of handExisting) {

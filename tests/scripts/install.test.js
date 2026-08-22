@@ -6,6 +6,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { install, HOOK_BASENAMES } from '../../scripts/install.js';
+import { listBackups, restoreBackup } from '../../scripts/lib/backup.js';
 
 // Shared with production code: install.js evicts settings.json entries
 // using the same predicate. Tests assert against the same source of truth
@@ -364,6 +365,37 @@ test('migrates hand-installed banned-vocab hook into backup', async () => {
     for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
   assert.equal(all.some(c => c.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))), false);
+});
+
+test('P1-1: hand-hook migration on a later install does not shadow the personal backup', async () => {
+  // audit-2026-08-22 P1-1, second arm. The migration dir was
+  // `backupDir || createBackup([], {label:'backup'})`. On an install that takes
+  // no personal backup of its own (spec-over-spec re-install), the `||` branch
+  // minted a fresh `backup-<newer-stamp>/` whose only content lives under a
+  // `hooks/` SUBDIR — and restoreBackup copies depth-1 files only. So the
+  // NEWEST backup, the one `CLAUDEMD_SPEC_ACTION=restore` picks, restored zero
+  // files while the personal content sat one slot down, untouched and unreachable.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal instructions\nReply in 中文.\n');
+  const first = await install({ pluginRoot });
+  assert.equal(first.spec, 'backup-and-overwrite');
+
+  // Later install (spec now in place → no personal backup this run) that finds
+  // pre-plugin hand-installed hook files to migrate.
+  fs.mkdirSync(path.join(tmpHome, '.claude/hooks'), { recursive: true });
+  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'), '#!/bin/bash\nexit 0\n');
+  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab.patterns'), 'foo|reason\n');
+  const second = await install({ pluginRoot });
+  assert.ok(second.backupDir, 'the migration still reports where it put the files');
+  assert.ok(fs.existsSync(path.join(second.backupDir, 'hooks/banned-vocab-check.sh')));
+
+  const restoreTarget = path.join(tmpHome, 'restored');
+  fs.mkdirSync(restoreTarget, { recursive: true });
+  const newest = listBackups()[0];
+  assert.match(fs.readFileSync(path.join(newest.dir, 'CLAUDE.md'), 'utf8'),
+    /My personal instructions/,
+    'restore reads the newest `backup-` dir — the hand-hook dir must not become it');
+  assert.equal(restoreBackup(newest.dir, restoreTarget).length, 1,
+    'restore must return exactly the personal CLAUDE.md, not zero files');
 });
 
 test('leaves non-migrated hand hooks untouched', async () => {

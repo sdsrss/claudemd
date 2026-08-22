@@ -137,6 +137,58 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
     + 'degradation path when it is disabled via skillOverrides or not installed.');
 });
 
+// --- audit-2026-08-22 P1-4: two spec-text HIGHs, both drift between files ----
+
+test('§EXT: every phrase extended quotes as a core § clause exists in core', () => {
+  // `§1 "default to writing no comments"` cited a rule core does not carry: the
+  // v6.25.0 compression dropped the sentence it was quoting, and what had been
+  // an EXTERNAL citation (the harness's own guidance) degraded into a dangling
+  // internal reference. The spec then violated its own §8.V1 — a cited clause
+  // must be verifiable — in the file that defines the rule.
+  const core = fs.readFileSync(CORE, 'utf8').toLowerCase();
+  const ext = fs.readFileSync(EXT, 'utf8');
+  // `§<n> "<phrase>"` — an attributed quotation, not prose that merely contains
+  // a quote. Case-insensitive: core sentence-cases what extended cites inline.
+  const cites = [...ext.matchAll(/§[0-9][0-9.]*[A-Za-z-]*\s+"([^"]{8,120})"/g)].map((m) => m[1]);
+  assert.ok(cites.length > 0,
+    'vacuity guard: extended must still quote at least one core clause, or this pattern has drifted');
+  const missing = cites.filter((p) => !core.includes(p.toLowerCase()));
+  assert.deepEqual(missing, [],
+    `extended attributes these phrases to a core § that does not contain them: ${missing.map((m) => JSON.stringify(m)).join(', ')}. `
+    + 'Restore the clause in core, re-attribute it to its real (external) source, or drop the quotation — '
+    + 'a §-attributed quote the reader cannot verify is the §8.V1 failure the spec forbids elsewhere.');
+});
+
+test('§2.1 ↔ §4: core must not mandate a skill extended tells L2-additive to skip', () => {
+  // core §2.1 routed L2-additive at `sp:test-driven-development RED-first` while
+  // §4's feat row said `skip full sp:TDD ceremony` for the same case. L0-L2 load
+  // core ONLY, so the highest-frequency routing path had two tables giving
+  // opposite instructions and no join asserting either way — the §12 join above
+  // runs §4→§12 only, and nothing ran core→§4.
+  const core = fs.readFileSync(CORE, 'utf8');
+  const ext = fs.readFileSync(EXT, 'utf8');
+
+  const featRow = tableRows(ext, '### Routing', '### Composite requests')
+    .find((cols) => cols[0].replace(/\*/g, '').trim() === 'feat');
+  assert.ok(featRow, '§4 Routing must carry a `feat` row');
+  const skipped = [...featRow.join(' | ').matchAll(/skip\s+(?:the\s+)?(?:full\s+)?(sp:[A-Za-z:-]+|gs:\/?[A-Za-z-]+)/gi)]
+    .flatMap((m) => skillTokens(m[1]));
+  assert.ok(skipped.length > 0,
+    'vacuity guard: §4 feat row must still name a skill it skips, or this join tests nothing');
+
+  const coreAdditiveRow = core.split('\n').find((l) => l.startsWith('|') && /feat L2 \(additive\)/.test(l));
+  assert.ok(coreAdditiveRow, 'core §2.1 must carry the `feat L2 (additive)` row');
+  const coreTokens = skillTokens(coreAdditiveRow.split('|').slice(1, -1)[1] || '');
+
+  for (const s of skipped) {
+    if (!coreTokens.includes(s)) continue;
+    assert.match(coreAdditiveRow, /optional|not required/i,
+      `§4 tells L2-additive to skip ${s} while core §2.1 routes it there as the primary, with no optionality marker. `
+      + 'L0-L2 never load extended, so core wins by default and the two tables read as opposite instructions '
+      + 'on the most-travelled path. Align the wording in whichever table is wrong.');
+  }
+});
+
 // 2026-07-25 audit (spec HIGH-1/MEDIUM-3): content consistency was test-gated
 // but LEVEL/PRECEDENCE semantics were gated by nothing — Iron Law #1 was L3 in
 // core's pointer and (L2+) in extended's definition; §13 cited a §3 TRUST rank

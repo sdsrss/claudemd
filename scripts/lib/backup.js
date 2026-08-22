@@ -10,7 +10,37 @@ import { backupRoot, settingsPath } from './paths.js';
 // already carried `(-\d+)?`; this regex had drifted out of sync. The `-N` dir
 // sorts just after its base stamp (longer string > shorter), matching creation
 // order (the collision dir is written second).
-const BACKUP_DIR_REGEX = /^backup-\d{8}T\d{6}(\d{3})?Z(-\d+)?$/;
+const STAMP_GRAMMAR = String.raw`\d{8}T\d{6}(\d{3})?Z(-\d+)?`;
+// Backups are namespaced BY LABEL, and list/prune/restore only ever see one
+// namespace at a time (audit-2026-08-22 P1-1). Pre-fix both install.js (the
+// user's personal ~/.claude/CLAUDE.md) and update.js (the spec it is about to
+// overwrite) wrote `backup-<stamp>`, so an update pushed a spec-only backup on
+// top of the personal one: `CLAUDEMD_SPEC_ACTION=restore` takes listBackups()[0]
+// and returned the OLD SPEC, while pruneBackups(5) evicted the personal content
+// after five updates — the v0.23.11 data-loss mode, reopened through update.
+// install.js's "the personal backup is the SOLE backup" comment is true again
+// only because the other writers now live in their own namespaces.
+//
+// SINGLE SOURCE for the namespaces in use. Anything that writes a backup dir
+// takes its label from here, and anything that reports on backups as a whole
+// (doctor's inventory) iterates this object rather than assuming one prefix.
+export const BACKUP_LABELS = {
+  // install.js — the user's own ~/.claude/CLAUDE.md, moved aside so the spec
+  // can take its place. This is the ONLY namespace uninstall's restore reads.
+  personal: 'backup',
+  // update.js — the installed spec about to be replaced by a newer one.
+  spec: 'spec-backup',
+  // install.js — pre-plugin hand-installed hook files (banned-vocab-check.sh
+  // and its patterns). Its own namespace because the dir it needs holds those
+  // files under a `hooks/` SUBDIR, and restoreBackup only copies depth-1
+  // files: as a `backup-` dir it was a newest-but-EMPTY restore source that
+  // shadowed the personal one (audit-2026-08-22 P1-1, second arm).
+  handHook: 'handhook-backup',
+};
+const DEFAULT_LABEL = BACKUP_LABELS.personal;
+const labelRegex = (label) => new RegExp(
+  `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-${STAMP_GRAMMAR}$`
+);
 // Matches the pre-merge settings.json backup files install.js writes before
 // any modification. Same iso-stamp grammar, plus an optional `-N` numeric
 // suffix from the sub-ms collision path in install.js.
@@ -22,7 +52,7 @@ export function isoStamp() {
   return new Date().toISOString().replace(/[-:.]/g, '');
 }
 
-export function createBackup(files, { label = 'backup' } = {}) {
+export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
   let dir = path.join(backupRoot(), `${label}-${isoStamp()}`);
   // Belt-and-braces: if the ms-precision stamp still collides (same process,
   // same ms — vanishingly rare), append a numeric suffix to avoid clobbering.
@@ -43,21 +73,23 @@ export function createBackup(files, { label = 'backup' } = {}) {
   return { dir, movedFiles };
 }
 
-export function listBackups() {
+export function listBackups({ label = DEFAULT_LABEL } = {}) {
   const root = backupRoot();
   if (!fs.existsSync(root)) return [];
+  const re = labelRegex(label);
+  const prefix = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-`);
   return fs.readdirSync(root)
-    .filter(name => BACKUP_DIR_REGEX.test(name))
+    .filter(name => re.test(name))
     .map(name => ({
       dir: path.join(root, name),
-      iso: name.replace(/^backup-/, ''),
+      iso: name.replace(prefix, ''),
       size: dirSize(path.join(root, name)),
     }))
     .sort((a, b) => b.iso.localeCompare(a.iso));
 }
 
-export function pruneBackups(retainCount = 5) {
-  const backups = listBackups();
+export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL } = {}) {
+  const backups = listBackups({ label });
   const removed = [];
   for (const b of backups.slice(retainCount)) {
     fs.rmSync(b.dir, { recursive: true, force: true });

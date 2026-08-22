@@ -5,7 +5,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd } from './lib/paths.js';
 import { HOOK_REGISTRY } from './lib/hook-registry.js';
-import { listBackups, pruneBackups } from './lib/backup.js';
+import { listBackups, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
@@ -204,8 +204,19 @@ export async function doctor({ pruneBackups: prune } = {}) {
   push('jq', hasJq, hasJq ? 'present' : 'missing (required at runtime)');
   push('gh', hasGh, hasGh ? 'present' : 'missing (ship-baseline will fail-open silent)');
 
-  const backups = listBackups();
-  push('backups', true, `${backups.length} backup dir(s)`);
+  // Inventory spans EVERY namespace (audit-2026-08-22 P1-1). Reporting only the
+  // default label would have made update.js's `spec-backup-` dirs invisible to
+  // the one command a user runs to see what claudemd left in ~/.claude — the
+  // "gate narrower than its subject" shape this release is closing elsewhere.
+  const backupsByLabel = Object.values(BACKUP_LABELS)
+    .map(label => ({ label, dirs: listBackups({ label }) }));
+  const backups = backupsByLabel.flatMap(b => b.dirs);
+  const backupBreakdown = backupsByLabel
+    .filter(b => b.dirs.length > 0)
+    .map(b => `${b.label}-* ${b.dirs.length}`)
+    .join(', ');
+  push('backups', true,
+    `${backups.length} backup dir(s)${backupBreakdown ? ` (${backupBreakdown})` : ''}`);
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');
   const logExists = fs.existsSync(logPath);
@@ -749,7 +760,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
       `the checklist wins); operator edit, no auto-rewrite.`);
   }
 
-  const pruned = prune != null ? pruneBackups(prune) : [];
+  // Retain N per namespace. Pruning only the default label would leave the
+  // maintenance flag unable to reach the dirs the inventory above now reports.
+  const pruned = prune != null
+    ? Object.values(BACKUP_LABELS).flatMap(label => pruneBackups(prune, { label }))
+    : [];
 
   return { checks, pruned };
 }

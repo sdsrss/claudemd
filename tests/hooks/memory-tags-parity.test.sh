@@ -336,6 +336,162 @@ else
   fi
 fi
 
+# ------------------------------------------------ spill-branch integrity -----
+# audit-2026-08-22 P1-5. The >30000-char branch spills the haystack to a file.
+# Three gaps, all on the DENY path of a blocking gate:
+#   1. `mktemp … || return 0` and the `printf` that follows produce an empty
+#      haystack on failure — a silent fail-open, with no fail-open row, in the
+#      same function whose 128 KiB sibling branch was fixed WITH a row. Whoever
+#      reads the telemetry sees a gate that had nothing to deny.
+#   2. No `trap`: killed at its hooks.json timeout — the scenario this library
+#      exists for — the hook leaks the spill file.
+#   3. Nothing collected the leak (covered by the join test in
+#      tests/scripts/clean-residue.test.js).
+SPILL_LIBDIR="$HOOKS_DIR/lib"
+SPILL_HOME="$SANDBOX/spill-home"
+mkdir -p "$SPILL_HOME/.claude/logs"
+# Above the 30000-char spill threshold; `ship` makes it match a real entry, so
+# an empty result can only mean the branch failed open.
+SPILL_HAY="ship the release $(awk 'BEGIN { s = ""; while (length(s) < 40000) s = s "x"; print s }')"
+
+# $0 is set to a real hook name: hook_record_failopen keys its state marker on
+# it, and the row should read like the hook that actually failed open.
+spill_probe() {  # $1=TMPDIR $2=PATH-prefix ("" for none)
+  local extra_path="$2"
+  env HOME="$SPILL_HOME" TMPDIR="$1" DISABLE_RULE_HITS_LOG=0 \
+      PATH="${extra_path:+$extra_path:}$PATH" \
+    bash -c 'source "$1/hook-common.sh" || exit 0
+             source "$1/memory-tags.sh" || exit 0
+             memtags_match "$2" "$3"' \
+    memory-read-check.sh "$SPILL_LIBDIR" "$INDEX" "$SPILL_HAY" 2>/dev/null
+}
+failopen_markers() { ls -1 "$SPILL_HOME/.claude/.claudemd-state"/failopen-*.ts 2>/dev/null | wc -l | tr -d ' '; }
+
+# Control first: the branch must MATCH on a healthy $TMPDIR, otherwise the two
+# failure probes below would "pass" on a spill path that never runs
+# (feedback_probe_harness_controls_first).
+SPILL_OK_TMP="$SANDBOX/spill-ok"; mkdir -p "$SPILL_OK_TMP"
+if [[ -n "$(spill_probe "$SPILL_OK_TMP" "")" ]]; then
+  pass "control: the spill branch matches on a healthy TMPDIR (the probes below exercise it)"
+else
+  fail "control: the spill branch produced NO match on a healthy TMPDIR — the failure probes below prove nothing"
+fi
+if [[ -z "$(ls -A "$SPILL_OK_TMP" 2>/dev/null)" ]]; then
+  pass "spill file is removed on the normal path"
+else
+  fail "spill file left behind on the normal path: $(ls -A "$SPILL_OK_TMP")"
+fi
+
+# 1a. mktemp cannot create the file.
+rm -rf "$SPILL_HOME/.claude/.claudemd-state"
+SPILL_OUT=$(spill_probe "$SANDBOX/no-such-dir-for-mktemp" "")
+if [[ -z "$SPILL_OUT" && "$(failopen_markers)" -ge 1 ]]; then
+  pass "spill mktemp failure records fail-open (blocking gate does not go quiet unlogged)"
+else
+  fail "spill mktemp failure: out=[${SPILL_OUT}] failopen-markers=$(failopen_markers) — expected empty output WITH a fail-open row"
+fi
+
+# 1b. mktemp succeeds but the write does not (full disk / unwritable target).
+# Shimmed mktemp hands back a path under a read-only dir, so the `printf >` fails.
+if [[ "$(id -u)" == "0" ]]; then
+  echo "SKIP: running as root — a read-only dir does not block the write probe"
+else
+  SPILL_SHIM="$SANDBOX/shim-mktemp"; mkdir -p "$SPILL_SHIM"
+  SPILL_RO="$SANDBOX/spill-readonly"; mkdir -p "$SPILL_RO"; chmod 500 "$SPILL_RO"
+  {
+    echo '#!/usr/bin/env bash'
+    echo "printf '%s\\n' '$SPILL_RO/claudemd-memtags-hay-shim'"
+  } > "$SPILL_SHIM/mktemp"
+  chmod +x "$SPILL_SHIM/mktemp"
+  rm -rf "$SPILL_HOME/.claude/.claudemd-state"
+  SPILL_OUT=$(spill_probe "$SANDBOX/spill-ok" "$SPILL_SHIM")
+  if [[ -z "$SPILL_OUT" && "$(failopen_markers)" -ge 1 ]]; then
+    pass "spill write failure records fail-open"
+  else
+    fail "spill write failure: out=[${SPILL_OUT}] failopen-markers=$(failopen_markers) — expected empty output WITH a fail-open row"
+  fi
+fi
+
+# 2. Timeout kill must not leak the spill file. A stub `awk` that sleeps holds
+# the branch open; job control puts the probe in its own process group so the
+# TERM reaches the shell that owns the trap as well as the stub.
+SPILL_LEAK_SHIM="$SANDBOX/shim-awk"; mkdir -p "$SPILL_LEAK_SHIM"
+printf '#!/usr/bin/env bash\nsleep 5\n' > "$SPILL_LEAK_SHIM/awk"
+chmod +x "$SPILL_LEAK_SHIM/awk"
+leak_probe() {  # $1=lib dir under test → echoes the number of files left behind
+  local libdir="$1" leaktmp
+  leaktmp=$(mktemp -d "$SANDBOX/leak-XXXXXX") || { echo "-1"; return; }
+  set -m
+  env HOME="$SPILL_HOME" TMPDIR="$leaktmp" DISABLE_RULE_HITS_LOG=1 \
+      PATH="$SPILL_LEAK_SHIM:$PATH" \
+    bash -c 'source "$1/hook-common.sh" || exit 0
+             source "$1/memory-tags.sh" || exit 0
+             memtags_match "$2" "$3"' \
+    memory-read-check.sh "$libdir" "$INDEX" "$SPILL_HAY" >/dev/null 2>&1 &
+  local pid=$!
+  set +m
+  # Signal only once the spill file EXISTS. A fixed sleep raced two ways under a
+  # loaded suite: too early and the branch had not spilled yet (reads as "no
+  # leak" — a vacuous pass), too late is only slower.
+  local waited=0
+  while [[ -z "$(ls -A "$leaktmp" 2>/dev/null)" ]] && (( waited < 50 )); do
+    sleep 0.1; waited=$((waited + 1))
+  done
+  kill -TERM -"$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+  # `wait` can return before the inner subshell's trap has finished unlinking
+  # (the TERM goes to the whole group; the shell owning the trap is a child of
+  # the one being waited on). Give cleanup a bounded window — a trap-less copy
+  # still has nothing to run, so the control keeps its teeth.
+  local settle=0
+  while [[ -n "$(ls -A "$leaktmp" 2>/dev/null)" ]] && (( settle < 30 )); do
+    sleep 0.1; settle=$((settle + 1))
+  done
+  ls -1 "$leaktmp" 2>/dev/null | wc -l | tr -d ' '
+}
+
+# Control: the same probe against a copy with the trap stripped MUST leak.
+# Without it a probe that never reached the spill branch reads as "no leak".
+SPILL_NOTRAP="$SANDBOX/notrap-lib"; mkdir -p "$SPILL_NOTRAP"
+cp "$SPILL_LIBDIR"/*.sh "$SPILL_NOTRAP/"
+# Anchored on the STATEMENT (leading whitespace, `trap`, an `rm -f` somewhere in
+# the handler), not on one exact spelling: the first cut matched `trap 'rm -f `
+# literally and reported "anchor gone" the moment the handler grew a guard.
+# That is the anchor-guard working — but the pattern it guards should survive a
+# handler rewrite, since the property under test is "there is a cleanup trap".
+grep -vE "^[[:space:]]*trap .*rm -f" "$SPILL_LIBDIR/memory-tags.sh" > "$SPILL_NOTRAP/memory-tags.sh"
+if cmp -s "$SPILL_LIBDIR/memory-tags.sh" "$SPILL_NOTRAP/memory-tags.sh"; then
+  fail "control: no trap line found to strip in memory-tags.sh — the leak probe below cannot fail"
+else
+  CTRL_LEAK=$(leak_probe "$SPILL_NOTRAP")
+  if [[ "$CTRL_LEAK" -ge 1 ]]; then
+    pass "control: trap-less copy leaks $CTRL_LEAK spill file(s) on a TERM (the probe can fail)"
+  else
+    fail "control: trap-less copy leaked nothing — the leak probe proves nothing (probe never reached the spill branch?)"
+  fi
+fi
+REAL_LEAK=$(leak_probe "$SPILL_LIBDIR")
+if [[ "$REAL_LEAK" == "0" ]]; then
+  pass "TERM at the hooks.json timeout leaves no memtags spill file behind"
+else
+  fail "TERM left $REAL_LEAK spill file(s) in TMPDIR — the leak this library's own scenario produces"
+fi
+
+# Both consumers must source hook-common.sh BEFORE memory-tags.sh: the fail-open
+# rows above are recorded through hook_record_failopen, and a consumer that
+# sources them the other way round (or not at all) gets the silent fail-open
+# back with no call-site change to notice it.
+for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
+  base=$(basename "$c")
+  HC_LINE=$(grep -n 'source .*hook-common\.sh' "$c" | head -1 | cut -d: -f1)
+  MT_LINE=$(grep -n 'source .*memory-tags\.sh' "$c" | head -1 | cut -d: -f1)
+  if [[ -n "$HC_LINE" && -n "$MT_LINE" ]] && (( HC_LINE < MT_LINE )); then
+    pass "$base sources hook-common.sh before memory-tags.sh (fail-open rows reachable)"
+  else
+    fail "$base must source hook-common.sh before memory-tags.sh (hook-common=${HC_LINE:-none}, memory-tags=${MT_LINE:-none}) — otherwise memtags fail-open goes unlogged"
+  fi
+done
+
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"
   exit 1

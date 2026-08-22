@@ -31,10 +31,23 @@
 # instrument, because it is quoted as evidence.
 #
 # Still NOT covered here, stated rather than left to be discovered: the
-# SessionStart / Stop / SessionEnd / PostToolUse chains. Their per-hook budget
-# is asserted by tests/hooks/hook-budget.test.sh, which drives every
-# data-scaling hook against a production-scale fixture and fails when one
-# crosses half its declared timeout.
+# SessionStart / Stop / SessionEnd / PostToolUse chains. What covers them, and
+# what covers nothing — enumerated rather than asserted in the aggregate, because
+# the earlier wording ("their per-hook budget is asserted by hook-budget") read
+# as blanket coverage while that gate's derived subject set reached neither the
+# SessionStart chain nor the filesystem-scaling Stop hooks (audit-2026-08-22 P1-2):
+#   - DATA-SCALING hooks (11, derived from source in
+#     tests/hooks/hook-budget.test.sh): driven against a production-scale
+#     fixture, failed at half the declared hooks.json timeout. Covers the Stop /
+#     SessionEnd / PostToolUse chains and the UserPromptSubmit pair.
+#   - NETWORK-BLOCKING hooks (session-start-check.sh, ship-baseline-check.sh):
+#     not timed at all — their cost is a remote call, not user data. The same
+#     file asserts statically that the call is wrapped in a platform_timeout
+#     strictly under the hook's hooks.json budget.
+#   - session-extended-read.sh: timed by neither. Constant work, no external
+#     data source, so neither instrument has a scaling input to drive it with.
+#   - The PreToolUse chain below is measured as a CHAIN. Per-hook numbers for
+#     its members come from hook-budget, not from here.
 
 set -uo pipefail
 
@@ -226,5 +239,8 @@ echo "       Real CC overhead = above + per-event JSON construction + timeout en
 echo "       Run on a quiet shell; wall-clock is load-sensitive."
 echo "       Fixture: $(grep -c '^- \[' "$MEM_DIR/MEMORY.md") MEMORY.md entries, $(wc -c < "$TRANSCRIPT" | tr -d ' ')-byte transcript."
 echo "       Stop / SessionStart / SessionEnd / PostToolUse chains are not probed"
-echo "       here — tests/hooks/hook-budget.test.sh asserts those against their"
-echo "       hooks.json timeouts."
+echo "       here. tests/hooks/hook-budget.test.sh TIMES the 11 data-scaling hooks"
+echo "       against their hooks.json timeouts, and asserts a static platform_timeout"
+echo "       bound for the two network-blocking ones (session-start-check,"
+echo "       ship-baseline-check) instead of timing them. session-extended-read is"
+echo "       timed by neither. Above is the PreToolUse CHAIN total, not per-hook."

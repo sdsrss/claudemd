@@ -111,11 +111,24 @@ assert_eq "update.applied == true" "true" "$APPLIED"
 POST_UPDATE_VER=$(head -1 "$HOME/.claude/CLAUDE.md" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
 assert_eq "post-update CLAUDE.md = $NEW_SPEC_VER" "$NEW_SPEC_VER" "$POST_UPDATE_VER"
 assert_contains "new-rule needle in CLAUDE.md" "$NEW_RULE_NEEDLE" "$HOME/.claude/CLAUDE.md"
-BACKUP_COUNT=$(find "$HOME/.claude" -maxdepth 1 -type d -name 'backup-*' 2>/dev/null | wc -l | tr -d '[:space:]')
-if [[ "$BACKUP_COUNT" -ge 1 ]]; then
-  printf "  ok pre-update backup created (count=%s)\n" "$BACKUP_COUNT"
+# The label is read from the lib, not spelled here: update.js and install.js
+# used to share the `backup-` namespace, which is what let an update bury the
+# user's personal CLAUDE.md backup (audit-2026-08-22 P1-1). A hand-copied glob
+# would go on passing through a future rename.
+SPEC_LABEL=$(node --input-type=module -e "import {BACKUP_LABELS} from '$REPO/scripts/lib/backup.js'; console.log(BACKUP_LABELS.spec)" 2>/dev/null)
+PERSONAL_LABEL=$(node --input-type=module -e "import {BACKUP_LABELS} from '$REPO/scripts/lib/backup.js'; console.log(BACKUP_LABELS.personal)" 2>/dev/null)
+BACKUP_COUNT=$(find "$HOME/.claude" -maxdepth 1 -type d -name "${SPEC_LABEL}-*" 2>/dev/null | wc -l | tr -d '[:space:]')
+if [[ -n "$SPEC_LABEL" && "$BACKUP_COUNT" -ge 1 ]]; then
+  printf "  ok pre-update backup created under %s-* (count=%s)\n" "$SPEC_LABEL" "$BACKUP_COUNT"
 else
-  printf "  FAIL no backup-* dir under ~/.claude/\n"
+  printf "  FAIL no %s-* dir under ~/.claude/\n" "${SPEC_LABEL:-<label-unreadable>}"
+  FAILS=$((FAILS+1))
+fi
+PERSONAL_COUNT=$(find "$HOME/.claude" -maxdepth 1 -type d -name "${PERSONAL_LABEL}-*" 2>/dev/null | wc -l | tr -d '[:space:]')
+if [[ -n "$PERSONAL_LABEL" && "$PERSONAL_COUNT" == "0" ]]; then
+  printf "  ok update did not write into the personal-backup namespace (%s-*)\n" "$PERSONAL_LABEL"
+else
+  printf "  FAIL update wrote %s dir(s) into the personal-backup namespace — restore would return the old spec\n" "$PERSONAL_COUNT"
   FAILS=$((FAILS+1))
 fi
 

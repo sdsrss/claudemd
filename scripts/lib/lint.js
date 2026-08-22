@@ -292,26 +292,30 @@ export function stripGitCommitComments(text, commentChar = '#') {
   return lines.filter(l => !l.startsWith(c)).join('\n');
 }
 
-// Locale-proof template detection. Both signals are structural — git localizes
-// the LABELS ("Changes to be committed", "Please enter the commit message…")
-// but not the `#`+TAB status prefix, and the intro paragraph is ≥3 comment
-// lines in every translation.
+// Locale-proof template detection. The signal is structural — git localizes the
+// LABELS ("Changes to be committed", "Please enter the commit message…") but
+// never the `<commentChar>`+TAB status prefix that introduces each file it
+// lists. (The cut line is the other signal, handled by the caller.)
 //
-// Deliberately conservative: when neither signal fires we scan MORE text, so a
+// Deliberately conservative: when it does not fire we scan MORE text, so a
 // misdetection costs a false positive (visible, bypassable) rather than a
-// silent miss. `commit.status=false` editor commits emit zero comment lines
-// (measured), so the undetected case there strips nothing anyway.
+// silent miss.
+//
+// A second signal used to live here — "≥3 contiguous comment lines ending at
+// EOF" — meant to catch git's intro paragraph. Removed (audit-2026-08-22 P1-3):
+// measured against git 2.43.0 across six invocation shapes (the table in
+// tests/scripts/lint-commit-msg.test.js) it was never load-bearing. Both editor
+// shapes, the only ones whose `#` lines git discards, carry `#\t` status lines;
+// the `commit.status=false` shape emits no comment lines at all, so there is
+// nothing to strip. What the run DID reach was the author's own text: a
+// `git commit -F notes.md` body (cleanup=whitespace — git KEEPS those lines)
+// ending in three `#` lines had them stripped before the scan, muting any
+// §10-V violation inside. Same violation at 2 trailing `#` lines denied, at 3
+// it exited 0 — a silent miss that grew more likely the longer the commented
+// block got, on the shipped pre-commit/CI entry point.
 function hasGitTemplate(lines, c) {
   // git's status file list: `#\tmodified:   path`
-  if (lines.some(l => l.startsWith(c + '\t'))) return true;
-  // The intro paragraph: ≥3 contiguous comment lines ending at EOF (trailing
-  // blanks ignored). A hand-written `-m` message carries one such line, not a
-  // run of three terminating the file.
-  let i = lines.length - 1;
-  while (i >= 0 && lines[i].trim() === '') i--;
-  let run = 0;
-  while (i >= 0 && lines[i].startsWith(c)) { run++; i--; }
-  return run >= 3;
+  return lines.some(l => l.startsWith(c + '\t'));
 }
 
 export function scan(text, { excludeRatio = false, patterns, sanitize = false } = {}) {
