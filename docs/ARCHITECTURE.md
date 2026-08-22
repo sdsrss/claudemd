@@ -4,7 +4,7 @@ For full design rationale, see `docs/superpowers/specs/2026-04-21-claudemd-plugi
 
 ## Four layers
 
-1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`).
+1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`, `memory-tags.sh`).
 2. **L2 Management scripts** (`scripts/*.js`) — Node.js ≥20, handle install/uninstall/update/status/audit/toggle/doctor/hard-rules-audit/clean-residue/sampling-audit/…. Share a `scripts/lib/` module set (acyclic, rooted at `paths.js`).
 3. **L3 Slash commands** (`commands/*.md`) — markdown stubs that tell the agent which L2 script to invoke.
 4. **Standalone CLI** (`bin/claudemd-lint.js`) — the npm-published `claudemd-cli` (`lint` + `audit` for §10-V banned-vocab / transcript scanning in git hooks, CI, or other agents). Imports `scripts/lib/lint.js` (downward dependency only — no duplication of the matcher).
@@ -20,7 +20,7 @@ The `pre-bash-safety-check.sh` §8 gate (rm -rf $VAR / unpinned npx / curl|sh) s
 - **Append-only on settings.json**: install/update never delete or reorder other-plugin entries.
 - **settings.json writes are lock-free, idempotent, last-writer-wins**: read-modify-write with atomic tmp+rename (no torn file possible) but no cross-process lock. Two concurrent sessions racing an install can drop one writer's mutation; that is accepted because every mutation (legacy-hook eviction, statusline adopt) is idempotent and re-applied next session, and the spec-copy path fails loudly on its post-copy SHA256 check instead of corrupting (install.js).
 - **L1 may spawn — never import — L2**: on version mismatch, `hook_spawn_install` (hooks/lib/hook-common.sh) runs `node scripts/install.js` detached, guarded by `command -v node`, a 10s timeout, and the `bootstrap-failed.json` failure sentinel; any failure is fail-open. The *import* dependency direction stays strictly downward (four-layers rule above).
-- **Spec is artifact, not code**: hooks do not Read `~/.claude/CLAUDE.md` at runtime.
+- **Spec is artifact, not code**: no hook parses `~/.claude/CLAUDE.md` to decide what to enforce — rules are compiled into the hook scripts and `hooks/banned-vocab.patterns`. (`session-start-check.sh` does `cmp` the installed spec against the shipped one to raise the drift banner; that reads the file as an artifact to hash, not as instructions.)
 - **`${CLAUDE_PLUGIN_ROOT}` is a hint**: scripts derive their own base path from `__dirname` / `${BASH_SOURCE[0]}` (cross-version safe).
 - **Spec → hook → audit data plane is closed-loop** (v0.7.0+): `spec/CLAUDE*.md` rules → `hooks/*.sh` enforcement → `~/.claude/logs/claudemd.jsonl` rule-hits with `spec_section` field → `/claudemd-audit` `bySection` aggregation. v0.8.0 closes the spec side: `spec/hard-rules.json` is the machine-readable mirror of every `(HARD)` annotation; `tests/scripts/hard-rules-drift.test.js` and `tests/scripts/spec-pattern-drift.test.js` are the CI gates that prevent silent edits to either side.
 

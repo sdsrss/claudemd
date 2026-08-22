@@ -65,13 +65,16 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/version-cascade-check.js [--json]
 
-Pre-tag guard. Verifies two invariants:
+Pre-tag guard. Verifies three invariants:
 
   1. Spec minor version (v6.X) is consistent across README.md, plugin.json,
      and marketplace.json (vs. spec/hard-rules.json#spec_version).
   2. Spec **Sizing** line in spec/CLAUDE-extended.md matches actual byte
      counts of spec/CLAUDE.md, spec/CLAUDE-extended.md, spec/OPERATOR.md
      within ±20B (the recursive-rewrite drift envelope).
+  3. Plugin semver agrees across package.json, .claude-plugin/plugin.json and
+     both .claude-plugin/marketplace.json sites — a PATCH-level check the
+     v6.X comparison in (1) structurally cannot make.
 
 Options:
   --json       Emit JSON instead of human-readable.

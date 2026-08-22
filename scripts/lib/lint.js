@@ -85,10 +85,14 @@ function posixClassesToJs(regex) {
 // not read as a value claim. `\b` treats '-', '/', '.' as word boundaries, so
 // `\bcomprehensive\b` fires INSIDE `comprehensive-parser.js` or a branch name
 // `docs/comprehensive-audit`. Mirrors hooks/banned-vocab-check.sh's v0.23.19
-// Path 2 sanitizer (fenced blocks → inline backtick spans → slashed-path runs)
-// and adds a bare dotted-file token strip, because the CLI's primary input —
-// commit messages — commonly names bare files (`refactor comprehensive-parser.js`)
-// without backticks or a leading path. Token classes are ASCII-only so 中文
+// Path 2 sanitizer stage for stage: fenced blocks → inline backtick spans →
+// slashed-path runs → bare dotted-file tokens. The last clause was JS-only when
+// it was written — commit messages, the CLI's primary input, commonly name bare
+// files (`refactor comprehensive-parser.js`) with no backticks and no leading
+// path — but the bash side gained it on 2026-08-16 and
+// tests/scripts/sanitize-stage-parity.test.js now extracts both programs and
+// requires the clause lists to match, so it is no longer an extension of
+// anything (audit-2026-08-22 条目 22). Token classes are ASCII-only so 中文
 // prose and bare-word claims (the real violations) stay intact and still match.
 export function stripIdentifiers(text) {
   if (!text) return text;
@@ -162,8 +166,10 @@ export function stripIdentifiers(text) {
     //    The bash engines need no equivalent: POSIX sed does not backtrack and
     //    the hook caps its input at `tail -c 4096`; the Node path caps nothing.
     .replace(/(?<![A-Za-z0-9._@~-])[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
-    // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts) — CLI
-    //    extension. The extension must start with a LOWERCASE letter, which
+    // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts). JS-only
+    //    when written; the bash sanitizer carries the same clause since
+    //    2026-08-16 and sanitize-stage-parity pins them together.
+    //    The extension must start with a LOWERCASE letter, which
     //    (a) excludes decimals / versions ("3.5x", "v6.14") whose ".5x"/".14"
     //    could otherwise swallow a baseline-less ratio claim → false negative,
     //    and (b) excludes sentence-boundary typos ("comprehensive.Next", capital

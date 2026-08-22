@@ -20,5 +20,9 @@
 !hooks/banned-vocab.patterns
 !package.json
 !README.md
-!CHANGELOG.md
+# CHANGELOG.md is deliberately NOT shipped (audit-2026-08-22 条目 21). At
+# 727 KB it was 89% of the tarball, and `npx claudemd-cli` re-downloads the
+# tarball on every cold run, so every user paid for 208 release sections to
+# get a 25 KB linter. It stays on GitHub, linked from the README; nothing in
+# bin/ or scripts/lib/ reads it at runtime.
 !LICENSE

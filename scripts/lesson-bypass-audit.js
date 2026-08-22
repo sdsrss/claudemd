@@ -56,7 +56,9 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 const DEFAULT_WINDOW_DAYS = 30;
 
 // CC project-dir encoding — single source in paths.js (must match the hooks'
-// `tr -c 'a-zA-Z0-9-' '-'`). Re-exported under the historical name so callers
+// `hook_encode_project`, a per-CHARACTER loop; the `tr -c` form it replaced in
+// 2026-07-17 was byte-wise and disagreed on every CJK char). Re-exported under
+// the historical name so callers
 // and the regression test keep one import; the prior local `/[/._]/g` form was
 // a silent divergence that mis-located transcripts for cwds with a space/+/@.
 export const encodeCcCwd = encodeProjectCwd;

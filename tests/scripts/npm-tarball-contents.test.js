@@ -93,3 +93,28 @@ test('the tarball stays plugin-free (whitelist did not invert)', () => {
   assert.deepEqual(leaked, [], `plugin-only artifacts leaked into the tarball: ${leaked.join(', ')}`);
   assert.ok(shipped.length < 40, `tarball grew to ${shipped.length} files — whitelist may have inverted`);
 });
+
+test('the tarball stays small — nothing large sneaks back into the whitelist', () => {
+  // audit-2026-08-22 条目 21: CHANGELOG.md was 727 KB, 89% of a 796 KB tarball
+  // whose actual runtime is bin/ + two lib files. `npx claudemd-cli` fetches
+  // that tarball on every cold run, so the cost was paid per invocation, by
+  // every user, forever. It was on the whitelist from the first publish and
+  // nothing measured it — hence a ceiling rather than a note.
+  const raw = execFileSync('npm', ['pack', '--dry-run', '--json'], {
+    cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60000,
+  });
+  const parsed = JSON.parse(raw);
+  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  const unpacked = entry.unpackedSize;
+  const CEILING = 200 * 1024;
+  assert.ok(
+    unpacked > 0 && unpacked < CEILING,
+    `npm tarball unpacked size is ${Math.round(unpacked / 1024)} KB, ceiling ${CEILING / 1024} KB. ` +
+    'Something large joined the .npmignore whitelist — check what, and whether the CLI actually needs it at runtime.',
+  );
+  const biggest = (entry.files || []).slice().sort((a, b) => b.size - a.size)[0];
+  assert.ok(
+    biggest.size < unpacked * 0.6,
+    `${biggest.path} is ${Math.round(biggest.size / unpacked * 100)}% of the tarball — one file dominating the package is the 条目 21 shape`,
+  );
+});

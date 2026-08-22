@@ -332,7 +332,9 @@ export async function doctor({ pruneBackups: prune } = {}) {
         const synthCwd = '/doctor/selftest';
         const synthSid = 'doctor-selftest-prose';
         // banned-vocab-check.sh locates the transcript via hook_encode_project
-        // (`tr -c 'a-zA-Z0-9-' '-'`); use the same single-source JS encoder.
+        // (a per-CHARACTER bash loop since 2026-07-17, not the `tr -c` it
+        // replaced — the two differ on every non-ASCII char); use the
+        // single-source JS encoder, which parity tests pin against it.
         const encoded = encodeProjectCwd(synthCwd);
         const transDir = path.join(tmpDir, '.claude/projects', encoded);
         fs.mkdirSync(transDir, { recursive: true });

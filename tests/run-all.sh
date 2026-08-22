@@ -153,10 +153,12 @@ echo "== Test-suite /tmp writes =="
 TEST_SH=$(git -C "$GUARD_REPO" ls-files 'tests/*.sh' 2>/dev/null)
 TEST_SH_COUNT=$(printf '%s\n' "$TEST_SH" | grep -c . || true)
 if (( TEST_SH_COUNT < 20 )); then
-  # Same degrade shape as the Shellcheck section below, deliberately: `tests/`
-  # ships in the npm tarball (package.json has no `files` field), so `npm test`
-  # from an extracted package — or from a `git archive` export — has no git index
-  # and would otherwise fail the whole suite on a static check it cannot run.
+  # Same degrade shape as the Shellcheck section below, deliberately. The
+  # surviving reason is `git archive` / a source export with no git index, where
+  # this static check cannot run at all; `npm test` from an extracted npm package
+  # is NOT one of them — .npmignore whitelists 7 files and tests/ is not among
+  # them, so the suite is not there to run (audit-2026-08-22 条目 22 — the
+  # comment claimed the opposite for as long as the branch existed).
   # Loud SKIP there, hard FAIL under CI where a missing index IS the defect.
   echo "SKIP: only $TEST_SH_COUNT tracked test .sh file(s) resolved (floor 20) — not a git checkout?"
   [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }

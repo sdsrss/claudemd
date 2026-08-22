@@ -387,7 +387,7 @@ const ACKNOWLEDGED_UNMECHANIZED = {
     'in the bash engine. Same standard that keeps §7\'s 能跑 / it runs unmechanized',
 };
 
-// Matched with the `m` flag over the whole spec: the subject is a bullet that
+// Matched over the whole spec with `[\s\S]*?` rather than `[^\n]*`: the subject is a bullet that
 // can be REFLOWED across lines by a compression pass (this repo does that
 // routinely), and a `[^\n]*` capture silently narrowed from 8 terms to 5 when
 // the 中文 span moved to line 2 — the gate quietly shrinking rather than

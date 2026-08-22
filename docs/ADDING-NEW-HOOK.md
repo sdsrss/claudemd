@@ -58,7 +58,24 @@ Skipping any of these is a red build, not a style nit:
 
 ## 5. Update docs
 
-Add a row to `README.md` kill-switches section (`DISABLE_FOO_HOOK`) and a row to the `docs/ARCHITECTURE.md` hook-taxonomy table. Gate: `tests/scripts/readme-drift.test.js` asserts README hook counts/lists against the file tree.
+Add a row to `README.md` kill-switches section (`DISABLE_FOO_HOOK`) and a row to the `docs/ARCHITECTURE.md` hook-taxonomy table. Gates: `tests/scripts/readme-drift.test.js` asserts README hook counts/lists against the file tree; `tests/scripts/kill-switch-doc-drift.test.js` asserts the README `DISABLE_*_HOOK` list against the `hook_kill_switch` call in each hook; `tests/scripts/architecture-drift.test.js` asserts the taxonomy table against the `hook_record` sections the hook emits, and the "State locations" bullet list against every `.claudemd-state/` or `$TMPDIR/claudemd-*` path the hook writes.
+
+## 5b. The rest of the gates a new hook trips
+
+The four sections above cover registration and docs. These fire on the hook's CONTENT, so they are easy to meet and easy to be surprised by — every one of them is a red build with a message that names the file. This list is itself gated: `tests/scripts/subject-set-drift.test.js` fails if a suite that constrains new hooks is missing from here, because a checklist that lags the gates sends people to a red build with no explanation (audit-2026-08-22 条目 18).
+
+| Gate | Fires when | What it wants |
+|---|---|---|
+| `tests/hooks/fail-open.test.sh` | always | The hook must exit 0 and emit nothing on a malformed / empty / missing-field event. It is driven cold AND warm over every shipped hook. |
+| `tests/hooks/hook-budget.test.sh` | the hook reads a data source whose size it does not control (`MEMORY.md`, the transcript, `claudemd.jsonl`, `~/.claude/tmp`, `$TMPDIR`) | The hook must stay inside its `hooks.json` timeout against a production-scale fixture, and the probe must PROVE it reached the scaling code (stdout, a rule-hits row, or a state write — paired with exit 0). Add the fixture your hook needs. |
+| `tests/hooks/trigger-view-parity.test.sh` | the hook renders a trigger view via `hook_trigger_view` | The rendered view must match the source of the trigger it names. |
+| `tests/hooks/memory-tags-parity.test.sh` | the hook matches MEMORY.md tags | It must go through `hooks/lib/memory-tags.sh`, and the bash and JS matchers must agree. |
+| `tests/scripts/jq-guard-consumers.test.js` | the hook calls `jq` | Every call must sit behind `hook_require_jq` with a `hook_record_failopen` on the missing-jq path. |
+| `tests/scripts/semver-compare-parity.test.js` | the hook compares versions | It must use the shared comparator, not a hand-rolled one. |
+| `tests/scripts/user-turn-parity.test.js` | the hook decides what a "user turn" is | One definition, shared — the three that once disagreed are the reason this exists. |
+| `tests/scripts/subject-set-drift.test.js` | always | No hand-written list of hook names anywhere: derive from `HOOK_REGISTRY`. If the new hook is left OUT of `scripts/doctor.js`'s liveness table, it must be named in `LIVENESS_SKIPPED` with a reason. |
+| `tests/lib/bash32-constructs.sh` | always | No bash 4+ syntax — macOS runs `/bin/bash` 3.2. A real 3.2 parses the file in CI. |
+| `shellcheck --severity=warning` | always | Clean at warning+. Run locally via `npm test`, which runs the same scan CI does. |
 
 ## 6. Bump plugin version
 

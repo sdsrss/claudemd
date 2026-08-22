@@ -366,7 +366,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 15 shell hooks + hooks/lib/ (hook-common, rule-hits, platform)
+├── hooks/                    # 15 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
@@ -381,9 +381,15 @@ claudemd/
 
 ## Extending
 
-- **Add a new hook** — see [`docs/ADDING-NEW-HOOK.md`](docs/ADDING-NEW-HOOK.md) for the 5-step guide (hook script + test + plugin registration + doc + version bump).
+- **Add a new hook** — see [`docs/ADDING-NEW-HOOK.md`](docs/ADDING-NEW-HOOK.md) for the full checklist (hook script + test + plugin registration + telemetry gates + docs + the content gates a new hook trips + version bump).
 - **Rule-hits log schema** — [`docs/RULE-HITS-SCHEMA.md`](docs/RULE-HITS-SCHEMA.md) for the JSONL row format used by `/claudemd-audit`.
 - **Design rationale + decisions log** — [`docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md`](docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md).
+
+---
+
+## Changelog
+
+Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 727 KB it was 89% of a package whose runtime is 34 KB, and `npx claudemd-cli` re-downloads that tarball on every cold run.
 
 ---
 

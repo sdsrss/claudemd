@@ -279,3 +279,55 @@ test('clean-residue prose names every state class it deletes', () => {
     );
   }
 });
+
+// ---------------------------------------------------- new-hook checklist ---
+// Fourth axis, same class: docs/ADDING-NEW-HOOK.md is the list someone reads AT
+// the decision point, and it named 3 of the gates a new hook must satisfy while
+// the tree carried a dozen. Following the guide end to end still produced a red
+// build, which is the failure mode of a rule that lives somewhere other than the
+// checklist people actually open (feedback_rule_text_vs_checklist_placement).
+
+// Suites that read the hook set but impose nothing on a NEW hook — they derive
+// their fixtures from the registry, so adding a hook keeps them green with no
+// author action. Each entry is a claim about that suite, not a silencer.
+const HOOK_SUITE_EXEMPT = {
+  'tests/scripts/install.test.js': 'builds its fixture plugin root from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
+  'tests/scripts/uninstall.test.js': 'same, for the eviction fixture',
+  'tests/scripts/settings-merge.test.js': 'same, for the eviction predicate',
+  'tests/scripts/status.test.js': 'asserts the kill-switch block against HOOK_REGISTRY, which already contains the new row',
+  'tests/integration/full-lifecycle.test.sh': 'manifest count and eviction alternation both derive from the registry',
+  'tests/integration/upgrade-lifecycle.test.sh': 'same',
+};
+
+function hookConstrainingSuites() {
+  const dirs = ['tests/hooks', 'tests/scripts', 'tests/integration'];
+  // Reads the hooks DIRECTORY (so a new file lands in its subject set), or
+  // enumerates the registry to assert over it.
+  const READS_HOOK_TREE = /readdirSync\([^)]*['"]?hooks['"]?|HOOKS_DIR|hooks\/\*\.sh|HOOK_REGISTRY|HOOK_BASENAMES/;
+  const out = [];
+  for (const d of dirs) {
+    let entries;
+    try { entries = fs.readdirSync(path.join(REPO_ROOT, d)); } catch { continue; }
+    for (const f of entries) {
+      if (!/\.test\.(sh|js)$/.test(f)) continue;
+      const rel = `${d}/${f}`;
+      if (HOOK_SUITE_EXEMPT[rel]) continue;
+      const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+      if (READS_HOOK_TREE.test(src)) out.push(rel);
+    }
+  }
+  return out;
+}
+
+test('ADDING-NEW-HOOK.md names every gate a new hook has to satisfy', () => {
+  const suites = hookConstrainingSuites();
+  assert.ok(suites.length >= 10, `only ${suites.length} hook-constraining suite(s) detected — the extraction broke, not the doc`);
+  const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/ADDING-NEW-HOOK.md'), 'utf8');
+  const missing = suites.filter(s => !doc.includes(path.basename(s)));
+  assert.deepEqual(
+    missing, [],
+    'docs/ADDING-NEW-HOOK.md does not mention gate(s) a new hook must satisfy — following it end to end still goes red:\n      ' +
+    missing.join('\n      ') +
+    '\n      Document them, or add the suite to HOOK_SUITE_EXEMPT with a reason.',
+  );
+});

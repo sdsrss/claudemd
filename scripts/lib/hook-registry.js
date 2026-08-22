@@ -10,11 +10,14 @@
 //   hooks/hooks.json       — drift-tested against this registry
 //   commands/claudemd-toggle.md — display-name list drift-tested
 //
-// Grouped by event (SessionStart → UserPromptSubmit → PreToolUse:Bash →
-// Stop) for display enumeration. Execution order comes from hooks/hooks.json
-// alone; within an event group the two lists are NOT order-synchronized and
-// no test asserts order (2026-08-16 audit C1 — the previous "mirrors
-// registration order" claim here was false for the Stop group). Adding a
+// Roughly event-ordered for display (SessionStart → UserPromptSubmit →
+// PreToolUse → Stop → SessionEnd), but NOT strictly: transcript-vocab-scan is a
+// PostToolUse hook sitting between two Stop rows, which is where the previous
+// wording — added by the 2026-08-16 C1 fix to replace a different false claim —
+// was false again one line below itself (audit-2026-08-22 条目 22). Nothing
+// depends on the order: execution order comes from hooks/hooks.json alone, the
+// two lists are not order-synchronized, and no test asserts order. Add a row
+// wherever it reads best. Adding a
 // hook = one entry here + the hooks.json command + the
 // commands/claudemd-toggle.md list; tests/scripts/hook-registry.test.js fails
 // loudly if membership/event/matcher/timeout drift.
