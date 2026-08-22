@@ -389,7 +389,7 @@ claudemd/
 
 ## Changelog
 
-Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 727 KB it was 89% of a package whose runtime is 34 KB, and `npx claudemd-cli` re-downloads that tarball on every cold run.
+Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 727 KB it was 89% of a package whose runtime is 95 KB unpacked (35 KB compressed), and `npx claudemd-cli` re-downloads that tarball on every cold run.
 
 ---
 

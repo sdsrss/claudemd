@@ -62,9 +62,12 @@ case "$MODE" in
                   else print "NEW  [" $2 "] live=" $1 }' "$FILE" "$LIVE"
     DIFFS=$(awk -F'\t' 'NR==FNR{b[$2]=$1;next} ($2 in b) && b[$2]!=$1 {c++} END{print c+0}' "$FILE" "$LIVE")
     # Coverage, printed every run. The baseline is a SNAPSHOT of a corpus that
-    # keeps growing: captured 2026-07-15 at 283 rows, the corpus reached 915 by
-    # 2026-08-22, and this tool went on printing "OK: 0 verdict changes across
-    # corpus" while binding 31% of it. "0 changes" over an unstated fraction is
+    # keeps growing: captured 2026-07-15 at 283 rows, and by 2026-08-22 the file
+    # held 915 lines of which 598 are evaluated (run_corpus skips blanks and
+    # `#` rows). This tool went on printing "OK: 0 verdict changes across
+    # corpus" while binding 283/598 = 47% of it — the denominator below is
+    # LIVE_ROWS, i.e. 598, so quote that one and not the raw line count.
+    # "0 changes" over an unstated fraction is
     # the claim-wider-than-subject shape (audit-2026-08-22 条目 25). Shared rows
     # remain the only ones an equivalence proof CAN bind; what changes is that
     # the fraction is visible, and a baseline under 90% is refused as stale.

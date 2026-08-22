@@ -889,5 +889,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     } catch {
       console.log(md);
     }
-  })();
+  })().catch(err => {
+    // Same handler as the .then()-shaped entry points. Without it a throw
+    // inside the audit reaches the operator as a bare unhandled-rejection
+    // stack — verified in the v0.69.0 pre-tag review by stubbing a throw into
+    // samplingAudit(). This file is also why the class gate in lint-cli.test.js
+    // now recognises the async-IIFE shape: it only looked for `.then(`, so the
+    // one entry point in the wrong shape was the one it skipped.
+    console.error(`[claudemd] sampling-audit failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exitCode = 1;
+  });
 }

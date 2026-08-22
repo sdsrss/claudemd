@@ -93,9 +93,15 @@ const PARTITIONS = [
 
 /** Pull every hand-written enumeration out of a file.
  *
- * Two syntactic shapes carry this defect in this repo:
+ * Three syntactic shapes carry this defect in this repo:
  *   - regex/jq alternation:  (a|b|c)
  *   - array literal:         ['a', 'b', 'c']
+ *   - object keys:           { 'a': …, 'b': …, 'c': … }
+ * Known out of scope, none of which exists in the tree today (v0.69.0 pre-tag
+ * review injected all three and confirmed the gate stays green): an alternation
+ * WRAPPED across lines, an array of arrays (the bracket class cannot nest), and
+ * a list assembled at run time. If one appears, extend this function rather
+ * than adding an EXEMPT entry.
  * Both are extracted structurally rather than by scanning for names anywhere in
  * the file: prose that happens to mention three hooks in three paragraphs is
  * not a list anyone will forget to update, and treating it as one would make
@@ -109,6 +115,15 @@ function enumerationsIn(src, members) {
     const hit = m[1].split('|').map(canon).filter(s => memberSet.has(s));
     const uniq = new Set(hit);
     if (uniq.size >= MIN_MEMBERS) out.push({ kind: 'alternation', hit: uniq, text: m[0] });
+  }
+  // Object literal with member names as KEYS: `{ 'a.sh': …, 'b.sh': … }`. A
+  // third shape, added after the pre-tag review injected one into status.js and
+  // the gate stayed green on all six tests.
+  for (const m of src.matchAll(/\{[^{}]*\}/g)) {
+    const hit = [...m[0].matchAll(/['"`]([^'"`]+?)['"`]\s*:/g)]
+      .map(x => canon(x[1])).filter(s2 => memberSet.has(s2));
+    const uniqK = new Set(hit);
+    if (uniqK.size >= MIN_MEMBERS) out.push({ kind: 'object-keys', hit: uniqK, text: m[0] });
   }
   for (const m of src.matchAll(/\[[^[\]]*\]/g)) {
     const hit = [...m[0].matchAll(/['"`]([^'"`]+?)['"`]/g)]
@@ -137,7 +152,12 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
     if (EXEMPT[rel]) continue;
     let src;
     try { src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'); } catch { continue; }
-    if (!src.includes('-check') && !src.includes('-audit') && !src.includes('-scan')) continue;
+    // Cheap pre-filter, derived from the registry rather than from three
+    // hardcoded substrings. The first version tested for '-check' / '-audit' /
+    // '-scan', which no file enumerating only version-sync, memory-prompt-hint,
+    // session-summary or session-extended-read would satisfy — four of the
+    // fifteen basenames, invisible to the scan (v0.69.0 pre-tag review).
+    if (!canonMembers.some(n => src.includes(n))) continue;
     scanned++;
     // No file-level "it imports the registry, so trust it" escape. The first
     // control run for this gate proved why: injecting a 3-name literal back

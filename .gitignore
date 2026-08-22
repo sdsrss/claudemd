@@ -9,7 +9,7 @@
 
 # docs/ is local-only by default. Tracked + shipped exceptions (functional
 # reference docs that adopters / contributors need):
-#  - docs/superpowers/ (design + implementation plan). 10 files, 289 KB, of
+#  - docs/superpowers/ (design + implementation plan). 10 files, 363 KiB, of
 #    which 3 are linked from shipped prose (README + ARCHITECTURE point at the
 #    plugin, memory-layer-routing and statusline-coexistence design docs) and 7
 #    are the plans those designs were executed from. Kept deliberately, not by

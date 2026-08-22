@@ -112,7 +112,9 @@ test('the tarball stays small — nothing large sneaks back into the whitelist',
     `npm tarball unpacked size is ${Math.round(unpacked / 1024)} KB, ceiling ${CEILING / 1024} KB. ` +
     'Something large joined the .npmignore whitelist — check what, and whether the CLI actually needs it at runtime.',
   );
-  const biggest = (entry.files || []).slice().sort((a, b) => b.size - a.size)[0];
+  const files = (entry.files || []).slice().sort((a, b) => b.size - a.size);
+  assert.ok(files.length > 0, 'npm pack reported no files — nothing to measure');
+  const biggest = files[0];
   assert.ok(
     biggest.size < unpacked * 0.6,
     `${biggest.path} is ${Math.round(biggest.size / unpacked * 100)}% of the tarball — one file dominating the package is the 条目 21 shape`,

@@ -7,6 +7,12 @@ import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { remove as removeStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
+// Files claudemd is known to write into its state dir. Used ONLY on the
+// non-canonical-name branch of --purge below, where recursing is refused.
+// Deliberately a shape list rather than "everything in the directory": if the
+// variable points somewhere unexpected, the contents are not ours to assume.
+const CLAUDEMD_STATE_FILE_RE = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
+
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
 Remove claudemd hooks from ~/.claude/settings.json + clear the install
@@ -126,7 +132,36 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // legacy → new in-place, but if install.js never ran on the upgraded
   // version the legacy location could still exist as a stale copy.
   if (purge) {
-    fs.rmSync(stateDir(), { recursive: true, force: true });
+    // Recursive delete only when the resolved path is OUR directory by name.
+    //
+    // stateDir() started honouring CLAUDEMD_STATE_DIR in 0.69.0 so the seam
+    // would reach writers as well as readers. That change also turned this line
+    // — a fixed `~/.claude/.claudemd-state` target since it was written — into
+    // `rm -rf $VAR` with no validation, on a variable the clean-residue USAGE
+    // advertises to anyone who runs `--help`. An operator who exports it to
+    // inspect reaper behaviour and then runs the documented two-step uninstall
+    // with --purge loses that whole directory, recursively, including what
+    // claudemd never put there. Caught in the v0.69.0 pre-tag review; §8's
+    // "rm -rf $VAR without validating VAR" arriving through a testability seam.
+    //
+    // The guard keeps the seam usable — point it at `<fixture>/.claudemd-state`
+    // and purge behaves exactly as in production — while a redirect to anything
+    // else falls back to removing only the files claudemd is known to write.
+    const sd = stateDir();
+    if (path.basename(sd) === '.claudemd-state') {
+      fs.rmSync(sd, { recursive: true, force: true });
+    } else if (fs.existsSync(sd)) {
+      // Named something else: never recurse. Drop only our own known shapes and
+      // leave the directory (and anything else in it) alone.
+      for (const name of fs.readdirSync(sd)) {
+        if (!CLAUDEMD_STATE_FILE_RE.test(name)) continue;
+        try { fs.rmSync(path.join(sd, name), { force: true }); } catch { /* best-effort */ }
+      }
+      console.error(
+        `[claudemd] CLAUDEMD_STATE_DIR points at ${sd}, which is not named .claudemd-state — ` +
+        `removed only claudemd's own state files there and left the directory in place.`,
+      );
+    }
     if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
     // ~/.claude/logs is shared with other plugins (e.g. claude-mem-lite) —

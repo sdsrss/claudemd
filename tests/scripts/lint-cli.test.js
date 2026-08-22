@@ -552,7 +552,14 @@ test('every scripts/*.js CLI entry point that awaits a promise also catches it',
     const idx = src.indexOf('import.meta.url ===');
     if (idx === -1) continue;
     const entry = src.slice(idx);
-    if (!/\.then\s*\(/.test(entry)) continue;
+    // Both async shapes, not just `.then(`. The first version of this gate
+    // tested for `.then(` alone, so the single entry point written as
+    // `(async () => { … })()` — sampling-audit.js, the command behind
+    // /claudemd-sampling-audit — was skipped BEFORE the counter, and the gate
+    // checked the nine files that were already correct. A gate narrower than
+    // its subject, inside the gate written to close that class (v0.69.0
+    // pre-tag review).
+    if (!/\.then\s*\(/.test(entry) && !/\(\s*async\s*\(\s*\)\s*=>/.test(entry)) continue;
     entriesChecked++;
     if (!/\.catch\s*\(/.test(entry)) offenders.push(f);
   }

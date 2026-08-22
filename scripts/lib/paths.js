@@ -15,11 +15,20 @@ export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/ma
 // here rather than at each call site: doctor.js and clean-residue.js each
 // inlined `process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), …)` while
 // install.js / uninstall.js / statusline-adopt.js called this function, so the
-// same directory had three authorities and the redirect reached the two
-// READERS but none of the writers — pointing it at a fixture told you what the
-// reapers would delete from a directory nothing had written to
-// (audit-2026-08-22 条目 13). `home()` rather than `os.homedir()` for the same
-// reason the rest of this file uses it: tests redirect HOME.
+// same directory had three authorities (audit-2026-08-22 条目 13). `home()`
+// rather than `os.homedir()` for the same reason the rest of this file uses it:
+// tests redirect HOME.
+//
+// SCOPE, stated because the first version of this comment overstated it
+// (v0.69.0 pre-tag review): the seam is now ONE function instead of three, and
+// it reaches every JS caller. It does NOT reach the bash hooks — they resolve
+// `STATE_DIR="$HOME/.claude/.claudemd-state"` directly, and they are what
+// writes every ephemeral class the reapers delete (ext-read-*, vocab-scan-*,
+// failopen-*, session-start-<sid>.ref, tmp-baseline-<sid>.txt,
+// session-summary-<sid>.lastrun). Redirect this variable and you still get a
+// directory no hook has written to; redirect HOME and you get both sides.
+// Anything that recursively DELETES the result must not trust it blindly —
+// see the basename guard on uninstall.js's --purge path.
 export const stateDir          = () => process.env.CLAUDEMD_STATE_DIR || path.join(home(), '.claude/.claudemd-state');
 // Manifest lives outside stateDir so that `rm -rf ~/.claude/.claudemd-state/`
 // — which a user might run to reset residue-audit / sandbox-disposal baselines

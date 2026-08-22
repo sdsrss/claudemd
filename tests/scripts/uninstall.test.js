@@ -352,3 +352,51 @@ test('uninstall unregisters a guest claudemd from a composite host, leaving the 
   assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"',
     'host keeps the slot — settings.json statusLine must be unchanged');
 });
+
+test('--purge refuses to recurse when CLAUDEMD_STATE_DIR is not our directory (v0.69.0 pre-tag review S1)', async () => {
+  // stateDir() began honouring CLAUDEMD_STATE_DIR in 0.69.0 so the seam would
+  // reach writers as well as readers. That turned uninstall's `--purge`
+  // recursive delete — a fixed path since it was written — into `rm -rf $VAR`
+  // on a variable the clean-residue USAGE advertises in `--help`. An operator
+  // who exports it and then purges would lose that whole directory.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-notours-'));
+  const saved = process.env.CLAUDEMD_STATE_DIR;
+  try {
+    // One file of ours, one that is not.
+    fs.writeFileSync(path.join(outside, 'ext-read-abc.ts'), 'ours\n');
+    fs.writeFileSync(path.join(outside, 'the-users-notes.md'), 'NOT OURS\n');
+    fs.mkdirSync(path.join(outside, 'someones-subdir'), { recursive: true });
+    fs.writeFileSync(path.join(outside, 'someones-subdir/keep.txt'), 'NOT OURS\n');
+
+    process.env.CLAUDEMD_STATE_DIR = outside;
+    await uninstall({ specAction: 'keep', purge: true });
+
+    assert.ok(fs.existsSync(outside), 'the directory itself must survive');
+    assert.ok(fs.existsSync(path.join(outside, 'the-users-notes.md')), 'a file claudemd never wrote must survive --purge');
+    assert.ok(fs.existsSync(path.join(outside, 'someones-subdir/keep.txt')), '--purge must not recurse into a directory that is not ours');
+    assert.ok(!fs.existsSync(path.join(outside, 'ext-read-abc.ts')), "claudemd's own state file should still be removed");
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_STATE_DIR;
+    else process.env.CLAUDEMD_STATE_DIR = saved;
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('--purge still clears the whole directory when it IS .claudemd-state (seam stays usable)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ours-'));
+  const sd = path.join(root, '.claudemd-state');
+  const saved = process.env.CLAUDEMD_STATE_DIR;
+  try {
+    fs.mkdirSync(sd, { recursive: true });
+    fs.writeFileSync(path.join(sd, 'ext-read-abc.ts'), 'x\n');
+    fs.mkdirSync(path.join(sd, 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(sd, 'nested/deep.txt'), 'x\n');
+    process.env.CLAUDEMD_STATE_DIR = sd;
+    await uninstall({ specAction: 'keep', purge: true });
+    assert.ok(!fs.existsSync(sd), 'a fixture named .claudemd-state must purge exactly as production does');
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_STATE_DIR;
+    else process.env.CLAUDEMD_STATE_DIR = saved;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
