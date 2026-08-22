@@ -275,7 +275,7 @@ export function looksLikeGitMessageFile(filePath) {
 //     editor shapes stored none. Stripping unconditionally therefore muted a
 //     real violation in `git commit -F release-notes.md` or
 //     `-m "$(cat notes.md)"` whenever the body carried a markdown heading.
-export function stripGitCommitComments(text, commentChar = '#') {
+export function stripGitCommitComments(text, commentChar = '#', { templateLines } = {}) {
   if (!text) return text;
   const c = (typeof commentChar === 'string' && commentChar.length === 1) ? commentChar : '#';
   const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -287,9 +287,31 @@ export function stripGitCommitComments(text, commentChar = '#') {
   const lines = cutAt === -1 ? all : all.slice(0, cutAt);
   const sawCutLine = cutAt !== -1;
 
-  // 2. Strip comment lines only when git wrote a template here.
-  if (!sawCutLine && !hasGitTemplate(lines, c)) return lines.join('\n');
-  return lines.filter(l => !l.startsWith(c)).join('\n');
+  // 2. Drop lines git copied verbatim out of `commit.template`. This is an
+  //    exact match against the template file's own comment lines, not a shape
+  //    heuristic: git knows they are template lines because it copied them, and
+  //    it discards them under the editor path's cleanup=strip. Author-typed
+  //    comment lines are absent from the template and stay in scope (P1-3).
+  const fromTemplate = templateComments(templateLines, c);
+  const body = fromTemplate.size
+    ? lines.filter(l => !(l.startsWith(c) && fromTemplate.has(l)))
+    : lines;
+
+  // 3. Strip the remaining comment lines only when git wrote a status block or
+  //    a cut line here.
+  if (!sawCutLine && !hasGitTemplate(body, c)) return body.join('\n');
+  return body.filter(l => !l.startsWith(c)).join('\n');
+}
+
+// The comment lines of a resolved `commit.template`, as an exact-match set.
+// Non-comment template lines are deliberately excluded: git KEEPS those in the
+// stored message, so they are the author's text and must stay scannable.
+function templateComments(templateLines, c) {
+  const set = new Set();
+  if (!templateLines) return set;
+  const arr = Array.isArray(templateLines) ? templateLines : String(templateLines).split('\n');
+  for (const l of arr) if (typeof l === 'string' && l.startsWith(c)) set.add(l);
+  return set;
 }
 
 // Locale-proof template detection. The signal is structural — git localizes the
@@ -302,17 +324,24 @@ export function stripGitCommitComments(text, commentChar = '#') {
 // silent miss.
 //
 // A second signal used to live here — "≥3 contiguous comment lines ending at
-// EOF" — meant to catch git's intro paragraph. Removed (audit-2026-08-22 P1-3):
-// measured against git 2.43.0 across six invocation shapes (the table in
-// tests/scripts/lint-commit-msg.test.js) it was never load-bearing. Both editor
-// shapes, the only ones whose `#` lines git discards, carry `#\t` status lines;
-// the `commit.status=false` shape emits no comment lines at all, so there is
-// nothing to strip. What the run DID reach was the author's own text: a
-// `git commit -F notes.md` body (cleanup=whitespace — git KEEPS those lines)
-// ending in three `#` lines had them stripped before the scan, muting any
-// §10-V violation inside. Same violation at 2 trailing `#` lines denied, at 3
-// it exited 0 — a silent miss that grew more likely the longer the commented
-// block got, on the shipped pre-commit/CI entry point.
+// EOF" — meant to catch git's intro paragraph. Removed (audit-2026-08-22 P1-3)
+// because of what it reached in the other direction: a `git commit -F notes.md`
+// body (cleanup=whitespace — git KEEPS those lines) ending in three `#` lines
+// had them stripped before the scan, muting any §10-V violation inside. Same
+// violation at 2 trailing `#` lines denied, at 3 it exited 0 — a silent miss
+// that grew MORE likely the longer the commented block got, on the shipped
+// pre-commit/CI entry point.
+//
+// That removal was shipped with the claim that no git shape needs the signal.
+// The 0.68.3 pre-tag review refuted it: the six-shape table measured
+// `commit.status=false` with no `commit.template` configured. Configure one and
+// git hands the hook a buffer of pure template comment lines — no `#\t`, no cut
+// line — and discards every one of them. The replacement is not a third shape
+// heuristic but the template's actual content, matched line-for-line; see
+// `templateComments` and the `templateLines` option on the caller above.
+// The `--allow-empty`-on-a-clean-tree shape (git status prose, no `#\t`,
+// no cut line) is still scanned and is NOT covered here — stating it rather
+// than implying the set is closed, which is the error this comment shipped.
 function hasGitTemplate(lines, c) {
   // git's status file list: `#\tmodified:   path`
   return lines.some(l => l.startsWith(c + '\t'));

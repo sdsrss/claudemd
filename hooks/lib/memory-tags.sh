@@ -204,16 +204,24 @@ memtags_match() {
   #   - `mktemp … || return 0` and a bare `printf` meant an unwritable or full
   #     $TMPDIR produced an EMPTY haystack, i.e. "no matches", i.e. the push is
   #     allowed — with no fail-open row, so the telemetry showed a gate that had
-  #     nothing to deny. The 128 KiB branch above records one; this one did not.
+  #     nothing to deny. (The 128 KiB branch above needs no such row: it does
+  #     not fail open, it routes here. These two calls are the only
+  #     `memtags_failopen` sites in the file.)
   #   - No trap: killed at the hooks.json timeout (the scenario this library was
   #     written for) the hook leaked its spill file.
   #   - The name now carries the `claudemd-` prefix scripts/clean-residue.js
   #     collects, joined to that reaper by a test rather than by convention.
   (
-    # Trap FIRST, on a variable that is still empty: `trap` after `mktemp`
-    # leaves a window in which the file exists and nothing would remove it, and
-    # a signal is exactly what lands there (observed as a flaky leak under a
-    # loaded test run, which is also when a real hook is closest to its timeout).
+    # Trap FIRST, on a variable that is still empty. Being precise about what
+    # this does and does not close (0.68.3 pre-tag review MEDIUM-4 corrected an
+    # overclaim here): it does NOT close the window between mktemp creating the
+    # file and `hayfile` being assigned — a signal landing there fires the
+    # handler with an empty variable and removes nothing, exactly as
+    # trap-after-mktemp would. What it closes is every window AFTER the
+    # assignment, which is where the process actually spends its time: the
+    # write, the awk run, and the wait for it. Registering the trap later leaves
+    # all of those uncovered, and a hook killed at its hooks.json timeout is
+    # killed during one of them.
     local hayfile=""
     trap '[[ -n "$hayfile" ]] && rm -f "$hayfile"' EXIT INT TERM HUP
     hayfile=$(mktemp "${TMPDIR:-/tmp}/claudemd-memtags-hay-XXXXXX") || {

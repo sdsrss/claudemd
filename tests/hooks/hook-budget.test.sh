@@ -321,8 +321,21 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   (( ERR_SIZE > 0 )) && REACHED=1
   [[ "$LOG_AFTER" != "$LOG_BEFORE" ]] && REACHED=1
   if [[ "$hook" != "mem-audit" && "$STATE_AFTER" != "$STATE_BEFORE" ]]; then REACHED=1; fi
+  # What this proves, stated exactly (0.68.3 pre-tag review MEDIUM-2): the
+  # probe ran to completion and did observable work. It does NOT prove the work
+  # was the data-scaling walk that put the hook in DATA_RE's set — REACHED is an
+  # OR over evidence from ANY downstream branch. Two mutations confirmed the
+  # gap: deleting version-sync's $TMPDIR sentinel sweep and residue-audit's
+  # ~/.claude/tmp walk both left this green, because a rule-hits row still
+  # arrived from another branch. sandbox-disposal-check's walk IS discriminated
+  # (removing platform_find_newer fails here), and a crude `exit 0` at the top
+  # of any of the three is caught.
+  #
+  # The claim is worded to that limit rather than widened past it. Closing the
+  # gap needs a differential probe (empty vs populated fixture, per hook) —
+  # tasks/hook-budget-reach-discrimination.md.
   if (( REACHED == 1 )); then
-    pass "$hook probe reaches data-dependent code (stdout ${OUT_SIZE}B, stderr ${ERR_SIZE}B, log Δ$((LOG_AFTER - LOG_BEFORE))B, state Δ$((STATE_AFTER - STATE_BEFORE)))"
+    pass "$hook probe ran to completion and did observable work (stdout ${OUT_SIZE}B, stderr ${ERR_SIZE}B, log Δ$((LOG_AFTER - LOG_BEFORE))B, state Δ$((STATE_AFTER - STATE_BEFORE)))"
   else
     fail "$hook probe produced no stdout, no rule-hits row and no state write — it exited early, so its timing means nothing (this is the perf-baseline defect)"
     continue
@@ -379,12 +392,27 @@ for hook in ${NET_HOOKS[@]+"${NET_HOOKS[@]}"}; do
   fi
 done
 
-# Nothing may reach the network UNWRAPPED. The token list is small on purpose
-# (these are the only remote commands the plugin runs) and carries a floor, so
-# a grep that stops matching is visible rather than silently vacuous.
+# Nothing may reach the network UNWRAPPED.
+#
+# Two passes, because the plugin calls its remote commands through a test seam:
+# the literal `git ls-remote` text lives on the DEFINITION line, and the actual
+# invocation one line down is spelled `"${ls_remote_args[@]}"`. A scan for the
+# command NAME therefore never sees the call it exists to bound — this gate
+# shipped in 0.68.2's successor counting 2 wrapped sites, both in
+# ship-baseline-check, while session-start-check's remote call was invisible to
+# it. The 0.68.3 pre-tag review confirmed it with two mutations that stayed
+# green: an unwrapped call in the tree's own `"${ls_remote_args[@]}"` spelling,
+# and an unwrapped literal on a line carrying any `:-` (the old blanket
+# exclusion dropped the whole line). This is the 2026-08-16 root cause — a gate
+# narrower than its subject — recurring inside the fix for that class, so the
+# repair derives the invocation spelling FROM THE SOURCE instead of restating
+# it (feedback_extraction_needs_consumer_gate).
 REMOTE_RE='git ls-remote|gh run list'
 REMOTE_WRAPPED=0
 UNWRAPPED=""
+SEAM_VARS=""
+
+# Pass 1 — lines carrying the literal command name.
 while IFS= read -r _line; do
   [[ -n "$_line" ]] || continue
   # grep -n over a glob yields `path:lineno:content`; strip both prefixes.
@@ -393,17 +421,104 @@ while IFS= read -r _line; do
   # detector that fires on the documentation of its subject fires on the fix
   # (feedback_self_referential_marker_regex).
   case "$_content" in *[!\ ]*) ;; *) continue ;; esac
-  case "${_content#"${_content%%[![:space:]]*}"}" in \#*) continue ;; esac
-  # `${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}` is the DEFINITION of the command
-  # (a test seam), consumed one line down inside the wrapper. A parameter
-  # expansion is never itself a call.
-  case "$_content" in *':-'*) continue ;; esac
+  _trimmed="${_content#"${_content%%[![:space:]]*}"}"
+  case "$_trimmed" in \#*) continue ;; esac
+  # A test seam that DEFINES the command is not a call. Recognised by its
+  # assignment SHAPE — not by "the line contains :-", which also excused any
+  # real call whose arguments happened to carry a default expansion — and the
+  # variable it feeds is captured so pass 2 can bound the invocation.
+  #
+  # A variable holding the command must be told apart from one holding its
+  # OUTPUT: `RUN_JSON=$(platform_timeout 2 gh run list …)` is a call whose
+  # result is data, and every later `"$RUN_JSON"` is a jq pipe, not a network
+  # call. Blanking command substitutions decides it — if the remote name
+  # survives that, it is the command itself; if it vanishes, the line WAS the
+  # call and falls through to the wrapped/unwrapped test below.
+  _outer=$(printf '%s' "$_trimmed" | sed 's/\$([^()]*)/\$()/g')
+  if ! printf '%s' "$_outer" | grep -qE "$REMOTE_RE"; then
+    if printf '%s' "$_content" | grep -q 'platform_timeout'; then
+      REMOTE_WRAPPED=$((REMOTE_WRAPPED + 1))
+    else
+      UNWRAPPED+="$_line"$'\n'
+    fi
+    continue
+  fi
+  # Flags are tolerated on both shapes: `read -r -a v`, `local -a v=`,
+  # `declare -ag v=`. Without that, a correctly-wrapped `local -a` seam had its
+  # DEFINITION line classified as an unwrapped call — a false RED pointing at
+  # the wrong line (0.68.3 delta review MEDIUM-2).
+  _seam=$(printf '%s\n' "$_trimmed" | awk '
+    /^read[ \t]+-/ {
+      for (i = 2; i <= NF; i++) if ($i !~ /^-/) { print $i; exit }
+      exit
+    }
+    /^(local|declare|readonly)([ \t]+-[a-zA-Z]+)*[ \t]+[A-Za-z_][A-Za-z0-9_]*=/ {
+      s = $0
+      sub(/^(local|declare|readonly)([ \t]+-[a-zA-Z]+)*[ \t]+/, "", s)
+      sub(/=.*/, "", s)
+      print s; exit
+    }
+    /^[A-Za-z_][A-Za-z0-9_]*=/ {
+      s = $0; sub(/=.*/, "", s); print s; exit
+    }
+  ')
+  if [[ -n "$_seam" ]]; then
+    SEAM_VARS+="$_seam"$'\n'
+    continue
+  fi
   if printf '%s' "$_content" | grep -q 'platform_timeout'; then
     REMOTE_WRAPPED=$((REMOTE_WRAPPED + 1))
   else
     UNWRAPPED+="$_line"$'\n'
   fi
 done < <(grep -nE "$REMOTE_RE" "$HOOKS_DIR"/*.sh 2>/dev/null)
+
+# Pass 2 — every EXPANSION of a seam variable pass 1 found IS the call.
+#
+# Matched by `$`-anchored variable reference rather than by an enumerated list
+# of spellings. Enumerating `${v[@]}` and `"$v"` missed `${v[*]}` and a bare
+# unquoted `$v`, and three mutations rode through those gaps (0.68.3 delta
+# review MEDIUM-1). The `$` anchor also does the right thing on the definition
+# line for free: `read -ra v <<< …` names `v` but never expands it, so it is not
+# counted as a call — while a line that BOTH defines and calls (`read -ra v … &&
+# "${v[@]}" …`) now IS, which the previous REMOTE_RE-based skip dropped.
+SEAM_COUNT=0
+SEAM_CALLS=0
+SEAM_DRY=""
+while IFS= read -r _var; do
+  [[ -n "$_var" ]] || continue
+  SEAM_COUNT=$((SEAM_COUNT + 1))
+  _var_calls=0
+  while IFS= read -r _line; do
+    [[ -n "$_line" ]] || continue
+    _content="${_line#*:}"; _content="${_content#*:}"
+    _trimmed="${_content#"${_content%%[![:space:]]*}"}"
+    case "$_trimmed" in \#*) continue ;; esac
+    _var_calls=$((_var_calls + 1))
+    SEAM_CALLS=$((SEAM_CALLS + 1))
+    if printf '%s' "$_content" | grep -q 'platform_timeout'; then
+      REMOTE_WRAPPED=$((REMOTE_WRAPPED + 1))
+    else
+      UNWRAPPED+="$_line"$'\n'
+    fi
+  done < <(grep -nE "\\\$\\{?${_var}([^a-zA-Z0-9_]|\$)" "$HOOKS_DIR"/*.sh 2>/dev/null)
+  (( _var_calls == 0 )) && SEAM_DRY+="$_var "
+done <<< "$SEAM_VARS"
+
+# Vacuity floors. PER VARIABLE, not a global sum: with one shared counter, a
+# seam variable resolving to zero call sites passed silently as long as some
+# OTHER variable supplied one — which is how all three MEDIUM-1 mutations stayed
+# green while an unwrapped call sat in the tree.
+if (( SEAM_COUNT >= 1 )); then
+  pass "remote-command seam derivation found $SEAM_COUNT seam variable(s), $SEAM_CALLS call site(s)"
+else
+  fail "no remote-command seam variable derived — pass 1's definition-shape match broke, so the invocation spelling is unchecked"
+fi
+if [[ -z "$SEAM_DRY" ]]; then
+  pass "every derived seam variable resolves to at least one call site"
+else
+  fail "seam variable(s) with NO call site found — the expansion spelling changed and pass 2 is vacuous for: ${SEAM_DRY% }"
+fi
 
 if (( REMOTE_WRAPPED >= 2 )); then
   pass "remote-command scan classified $REMOTE_WRAPPED wrapped call site(s) (the exclusions above did not swallow everything)"

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createBackup, listBackups, pruneBackups, pruneSettingsBackups, restoreBackup } from '../../scripts/lib/backup.js';
+import { createBackup, listBackups, pruneBackups, pruneSettingsBackups, restoreBackup, findLegacySpecBackups, looksLikeSpec } from '../../scripts/lib/backup.js';
 
 let tmpHome;
 let savedHome;
@@ -118,4 +118,111 @@ test('restoreBackup copies files back to targetRoot', () => {
   const restored = restoreBackup(bkDir, target);
   assert.equal(restored.length, 1);
   assert.equal(fs.readFileSync(path.join(target, 'CLAUDE.md'), 'utf8'), 'restored');
+});
+
+
+// --- 0.68.3 delta review HIGH-1: listBackups must survive what is in ~/.claude
+//
+// `dirSize` statSync'd every entry unguarded, and its callers are install,
+// uninstall, doctor and update. The trigger is routine, not exotic:
+// `createBackup` uses renameSync and rename(2) on a symlink moves the LINK, so
+// a user who symlinks ~/.claude/CLAUDE.md into a dotfiles repo gets that
+// symlink stored inside the backup dir — dangling the moment the source moves.
+// One stale link then threw ENOENT out of listBackups and killed
+// /claudemd-doctor with a bare stack before it printed a single check.
+
+test('HIGH-1: a dangling symlink inside a backup dir does not throw', () => {
+  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  fs.mkdirSync(bk, { recursive: true });
+  fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# My own notes\n');
+  fs.symlinkSync(path.join(tmpHome, '.claude/gone-forever'), path.join(bk, 'dangling'));
+
+  const listed = listBackups();
+  assert.equal(listed.length, 1, 'the dir is still a backup');
+  assert.equal(listed[0].size, '# My own notes\n'.length,
+    'the readable file is counted; the dangling entry contributes 0');
+});
+
+test('HIGH-1: a plain FILE matching the backup name grammar is not treated as a dir', () => {
+  // Matches labelRegex but readdir'ing it throws ENOTDIR.
+  fs.writeFileSync(path.join(tmpHome, '.claude/backup-20260101T000000000Z'), 'not a dir');
+  assert.deepEqual(listBackups(), []);
+});
+
+test('HIGH-1: a missing backup root returns [] rather than throwing', () => {
+  fs.rmSync(path.join(tmpHome, '.claude'), { recursive: true, force: true });
+  assert.deepEqual(listBackups(), []);
+});
+
+// --- 0.68.3 delta review HIGH-2: report legacy spec backups, never move them --
+//
+// A migration for these was written and WITHDRAWN. Its discriminator was
+// "install.js only backs up non-spec files, so a spec-shaped `backup-` dir came
+// from update.js" — true of today's install.js, false of the one that wrote the
+// dirs it targeted (cc36e2b backed up unconditionally; this repo's CHANGELOG
+// records the whole pre-v0.23.11 window doing the same). Moving on it would
+// carry sibling user files out of the restore path and into a namespace
+// update.js prunes every run. These tests pin the read-only contract so a
+// future change cannot quietly reintroduce a mover.
+
+test('HIGH-2: a spec-shaped dir in the personal namespace is reported', () => {
+  const bk = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  fs.mkdirSync(bk, { recursive: true });
+  fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
+
+  const found = findLegacySpecBackups();
+  assert.equal(found.length, 1);
+  assert.equal(path.basename(found[0].dir), 'backup-20260601T000000000Z');
+});
+
+test('HIGH-2: reporting does not move, rename or delete anything', () => {
+  const specDir = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  fs.mkdirSync(specDir, { recursive: true });
+  fs.writeFileSync(path.join(specDir, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
+  const before = fs.readdirSync(path.join(tmpHome, '.claude')).sort();
+
+  findLegacySpecBackups();
+
+  assert.deepEqual(fs.readdirSync(path.join(tmpHome, '.claude')).sort(), before,
+    '~/.claude must be byte-for-byte unchanged — this function only looks');
+  assert.equal(listBackups().length, 1, 'the dir stays in the personal namespace');
+});
+
+test('HIGH-2: sibling user files are surfaced, because they decide the call', () => {
+  // The pre-v0.23.11 install.js shape: spec-shaped CLAUDE.md alongside content
+  // that is unambiguously the user's. A mover would have taken these with it.
+  const bk = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  fs.mkdirSync(path.join(bk, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
+  fs.writeFileSync(path.join(bk, 'CLAUDE-extended.md'), '# my hand-written extended\n');
+  fs.writeFileSync(path.join(bk, 'hooks', 'banned-vocab-check.sh'), '#!/bin/sh\n');
+
+  const found = findLegacySpecBackups();
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0].siblings.sort(), ['CLAUDE-extended.md', 'hooks']);
+});
+
+test('HIGH-2: a user-shaped CLAUDE.md is not reported', () => {
+  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  fs.mkdirSync(bk, { recursive: true });
+  fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# My own notes\n');
+  assert.deepEqual(findLegacySpecBackups(), []);
+});
+
+test('HIGH-2: a dir with no CLAUDE.md is not reported', () => {
+  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  fs.mkdirSync(path.join(bk, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(bk, 'hooks', 'banned-vocab-check.sh'), '#!/bin/sh\n');
+  assert.deepEqual(findLegacySpecBackups(), []);
+});
+
+test('HIGH-2: looksLikeSpec reads the H1 only, and says so by example', () => {
+  // Pinned because the withdrawn migration leaned on this being decisive, and
+  // it is not: a user's own additions below the H1 are invisible to it. That is
+  // acceptable for a REPORT and was not acceptable for a move.
+  assert.equal(looksLikeSpec('# AI-CODING-SPEC v6.25.2 — Core\n'), true);
+  assert.equal(looksLikeSpec('# AI-CODING-SPEC v6.0.0 — Core\n\n## MY OWN SECTION\n'), true);
+  assert.equal(looksLikeSpec('# My own notes\n'), false);
+  assert.equal(looksLikeSpec(''), false);
+  assert.equal(looksLikeSpec(undefined), false);
 });

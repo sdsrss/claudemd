@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
-import { createBackup, pruneBackups, backupSettingsFile, BACKUP_LABELS } from './lib/backup.js';
+import { createBackup, pruneBackups, backupSettingsFile, looksLikeSpec, BACKUP_LABELS } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
@@ -105,8 +105,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   const claudeMdPath = specHome()[0]; // ~/.claude/CLAUDE.md by convention
   let userContentDetected = false;
   if (existing.includes(claudeMdPath)) {
-    const head = fs.readFileSync(claudeMdPath, 'utf8').slice(0, 256);
-    if (!/^#\s*AI-CODING-SPEC\b/m.test(head)) {
+    // Shared predicate — the legacy-backup migration below infers "install.js
+    // did not write this dir" from the fact that install.js never backs up a
+    // spec-shaped file. Two spellings of the same test would let that inference
+    // rot silently, so both callers ask backup.js.
+    if (!looksLikeSpec(fs.readFileSync(claudeMdPath, 'utf8'))) {
       userContentDetected = true;
     }
   }
@@ -191,6 +194,12 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     }
   }
 
+  // NOTE: install does NOT migrate pre-0.68.3 spec backups out of the personal
+  // namespace. A migration was written and withdrawn — the reasoning is in
+  // backup.js#findLegacySpecBackups; the short form is that its discriminator
+  // was not an invariant, and moving on it could delete user content. doctor
+  // reports the condition instead. Do not re-add a mover here without reading
+  // tasks/legacy-spec-backup-migration.md.
   let specResult, backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';

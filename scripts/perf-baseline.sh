@@ -190,7 +190,9 @@ REACH_EVENT=$(jq -cn --arg c "$PROBE_CWD" --arg s "$PROBE_SESSION" \
   '{tool_name:"Bash", cwd:$c, session_id:$s, tool_use_id:"perf-reach",
     tool_input:{command:"git push origin main perftag7"}}')
 REACH_OUT=$(printf '%s' "$REACH_EVENT" | bash "$HOOKS_DIR/memory-read-check.sh" 2>/dev/null)
+SELF_CHECK_FAILED=0
 if ! printf '%s' "$REACH_OUT" | grep -q '"permissionDecision": *"deny"'; then
+  SELF_CHECK_FAILED=1
   echo "WARNING: probe self-check failed — memory-read-check did not reach its" >&2
   echo "         MEMORY.md scan against the sandbox fixture, so the numbers below" >&2
   echo "         UNDERSTATE hook cost. Fix the fixture before quoting them." >&2
@@ -244,3 +246,18 @@ echo "       against their hooks.json timeouts, and asserts a static platform_ti
 echo "       bound for the two network-blocking ones (session-start-check,"
 echo "       ship-baseline-check) instead of timing them. session-extended-read is"
 echo "       timed by neither. Above is the PreToolUse CHAIN total, not per-hook."
+echo "       That gate proves each of the 11 ran and did observable work; for"
+echo "       version-sync and residue-audit it does NOT prove the data-scaling"
+echo "       walk itself ran (tasks/hook-budget-reach-discrimination.md)."
+
+# A failed self-check means every number printed above is an underread. Saying
+# so on stderr while exiting 0 leaves a scripted caller with numbers and a
+# success code — the same "instrument that cannot report its own blindness"
+# shape this release is about. The output is kept (it is still diagnostic); the
+# exit code is what changes.
+if (( SELF_CHECK_FAILED )); then
+  echo >&2
+  echo "FAILED: probe self-check did not reach the data-dependent path — the numbers" >&2
+  echo "        above understate hook cost and must not be quoted as a baseline." >&2
+  exit 1
+fi

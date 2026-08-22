@@ -96,8 +96,29 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Case 5 (0.68.3): a failed self-check must reach the EXIT CODE, not only
+# stderr. Case 4 asserts the happy path; without this, the unhappy path printed
+# a warning and exited 0, so a scripted caller collected the numbers alongside a
+# success code — an instrument that knows it is blind and reports fine. Forced
+# through the real kill switch rather than a doctored fixture: with hooks off,
+# the must-deny probe cannot deny, which is exactly the condition the
+# self-check exists to detect.
+PB5_ERR="$SCRATCH/perf-baseline-selfcheck-fail.stderr"
+set +e
+(cd "$CALLER" && DISABLE_CLAUDEMD_HOOKS=1 bash "$ROOT/scripts/perf-baseline.sh" --runs 1 \
+   >/dev/null 2>"$PB5_ERR")
+PB5_STATUS=$?
+set -e
+if (( PB5_STATUS != 0 )) && grep -q "probe self-check did not reach" "$PB5_ERR"; then
+  echo "PASS: 5 a failed self-check exits non-zero (status $PB5_STATUS), not just a warning"
+else
+  echo "FAIL: 5 self-check failure did not reach the exit code (status $PB5_STATUS) — a scripted caller would read the underread numbers as valid:"
+  sed 's/^/      /' "$PB5_ERR" | tail -5
+  FAIL=$((FAIL+1))
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((4 - FAIL))/4 passed"
+  echo "Tests: $((5 - FAIL))/5 passed"
   exit 1
 fi
-echo "Tests: 4/4 passed"
+echo "Tests: 5/5 passed"

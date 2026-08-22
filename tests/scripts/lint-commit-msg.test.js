@@ -318,6 +318,114 @@ test('review-LOW: --comment-char rejects a non-ASCII character', () => {
   assert.equal(r.status, 2, `stdout=${r.stdout} stderr=${r.stderr}`);
 });
 
+// --- 0.68.3 pre-tag review HIGH-1: the shape the P1-3 table did not measure ---
+//
+// The six-shape table above measured `editor commit.status=false` with NO
+// `commit.template` configured — which is why its row reads "0 comment lines,
+// none to strip". Configure a template and the same shape hands the hook a
+// buffer that is ENTIRELY git-authored comment lines with no `#\t` status
+// prefix and no cut line. git discards every one of them; since P1-3 removed
+// the run-of-3 signal, lint scans them all.
+//
+// Reproduced on git 2.43.0 through a real `git commit` with a capture editor:
+// buffer = 3 template comment lines, 0 lines matching `#\t`, stored message =
+// `fix: correct the off-by-one in the parser`. HEAD exits 1 on a checklist
+// template that asks "does it just look like it should work?"; v0.68.2 exited 0.
+// A §10-V checklist is exactly what a claudemd user puts in a commit template,
+// so the FP lands on this project's own audience.
+//
+// The fix is not a third heuristic. git knows which lines are template lines
+// because it copied them out of `commit.template` — so the CLI resolves that
+// file and passes its comment lines in, and the strip becomes an exact match
+// instead of a guess. Lines the AUTHOR typed still get scanned (P1-3 holds).
+
+const TEMPLATE_LINES = [
+  '# Checklist before you commit:',
+  `#  - is the claim verified, or does it just look ${BANNED} better?`,
+  '#  - tests green?',
+];
+
+test('HIGH-1: commit.template comment lines are git-authored — not scanned', () => {
+  const buf = TEMPLATE_LINES.join('\n') + '\n';
+  const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
+  assert.ok(!out.includes(BANNED),
+    'git discards template lines before storing — scanning them is a false positive');
+});
+
+test('HIGH-1: a real message above a template keeps its own text in scope', () => {
+  const buf = [`fix: subject that is ${BANNED} wrong`, '', ...TEMPLATE_LINES, ''].join('\n');
+  const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
+  assert.ok(out.includes(`fix: subject that is ${BANNED} wrong`),
+    'only the template lines are git-authored; the subject is the message');
+});
+
+test('HIGH-1: P1-3 holds — the author\'s own # lines survive a configured template', () => {
+  // Template is configured, but these three comment lines are NOT from it: they
+  // are a `-F` body's own text, which git keeps under cleanup=whitespace.
+  const buf = [
+    'docs: release notes',
+    '',
+    '# leftover notes, kept by cleanup=whitespace:',
+    `# this release is ${BANNED} faster`,
+    '# (todo: trim before tagging)',
+    '',
+  ].join('\n');
+  const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
+  assert.ok(out.includes(BANNED),
+    'lines absent from the template are the author\'s — P1-3 must not regress');
+});
+
+test('HIGH-1: no template configured → behavior is exactly as before', () => {
+  const buf = TEMPLATE_LINES.join('\n') + '\n';
+  assert.equal(stripGitCommitComments(buf, '#', { templateLines: [] }),
+    stripGitCommitComments(buf, '#'),
+    'the opt-in argument must not change the no-template path');
+});
+
+test('HIGH-1: CLI end-to-end — a real commit.template commit is not blocked', () => {
+  withTmp((dir) => {
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
+    const init = git('init', '-q', '.');
+    if (init.status !== 0) return; // no git in this environment — nothing to assert
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 't');
+    fs.writeFileSync(path.join(dir, 'tmpl.txt'), TEMPLATE_LINES.join('\n') + '\n');
+    git('config', 'commit.template', 'tmpl.txt');
+    git('config', 'commit.status', 'false');
+
+    // The buffer git hands a commit-msg hook for this config: template only.
+    const msgFile = path.join(dir, '.git', 'COMMIT_EDITMSG');
+    fs.writeFileSync(msgFile, TEMPLATE_LINES.join('\n') + '\n');
+
+    const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
+      cwd: dir, encoding: 'utf8', timeout: 10000,
+    });
+    assert.equal(r.status, 0,
+      `template-only buffer must not deny; stdout=${r.stdout} stderr=${r.stderr}`);
+  });
+});
+
+test('HIGH-1: CLI end-to-end — a violation the author typed still denies under a template', () => {
+  withTmp((dir) => {
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
+    if (git('init', '-q', '.').status !== 0) return;
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 't');
+    fs.writeFileSync(path.join(dir, 'tmpl.txt'), TEMPLATE_LINES.join('\n') + '\n');
+    git('config', 'commit.template', 'tmpl.txt');
+
+    const msgFile = path.join(dir, '.git', 'COMMIT_EDITMSG');
+    fs.writeFileSync(msgFile,
+      [`fix: this is ${BANNED} faster`, '', ...TEMPLATE_LINES, ''].join('\n'));
+
+    const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
+      cwd: dir, encoding: 'utf8', timeout: 10000,
+    });
+    assert.equal(r.status, 1,
+      `the author's own subject must still be scanned; stdout=${r.stdout} stderr=${r.stderr}`);
+  });
+});
+
 test('CLI: --json reports whether commit-msg cleanup was applied', () => {
   withTmp((dir) => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
@@ -326,5 +434,50 @@ test('CLI: --json reports whether commit-msg cleanup was applied', () => {
     const payload = JSON.parse(r.stdout);
     assert.equal(payload.commitMsgCleanup, true);
     assert.ok(!payload.text.includes(BANNED), 'scanned text is the post-cleanup text');
+  });
+});
+
+// --- 0.68.3 delta review MEDIUM-4 -------------------------------------------
+//
+// `templateComments` documents a load-bearing property — only the template's
+// COMMENT lines are git-authored; its non-comment lines git KEEPS in the stored
+// message, so they are the author's text and must stay scannable. The property
+// was guarded twice (in templateComments and again in the body filter), so no
+// single-guard mutation was observable and the review found that removing BOTH
+// left every test green. A claim in a comment with nothing asserting it is the
+// exact shape this release exists to correct.
+
+test('MEDIUM-4: a non-comment template line is the author\'s text and stays in scope', () => {
+  // A template whose subject line is real message text git will store.
+  const tmpl = [
+    `refactor: it is ${BANNED} tidier now`,   // no comment char — git KEEPS this
+    '# Checklist:',
+    '#  - tests green?',
+  ];
+  const out = stripGitCommitComments(tmpl.join('\n') + '\n', '#', { templateLines: tmpl });
+  assert.ok(out.includes(BANNED),
+    'git stores this line verbatim, so a §10-V violation in it must still be found');
+  assert.ok(!out.includes('Checklist'),
+    'the comment lines of the same template are still dropped');
+});
+
+test('MEDIUM-4: CLI end-to-end — a violation on a template\'s non-comment line denies', () => {
+  withTmp((dir) => {
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
+    if (git('init', '-q', '.').status !== 0) return;
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 't');
+    const tmpl = [`refactor: it is ${BANNED} tidier now`, '# Checklist:', '#  - tests green?'];
+    fs.writeFileSync(path.join(dir, 'tmpl.txt'), tmpl.join('\n') + '\n');
+    git('config', 'commit.template', 'tmpl.txt');
+
+    const msgFile = path.join(dir, '.git', 'COMMIT_EDITMSG');
+    fs.writeFileSync(msgFile, tmpl.join('\n') + '\n');
+
+    const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
+      cwd: dir, encoding: 'utf8', timeout: 10000,
+    });
+    assert.equal(r.status, 1,
+      `a template line git will STORE must be scanned; stdout=${r.stdout} stderr=${r.stderr}`);
   });
 });

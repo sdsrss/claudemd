@@ -647,3 +647,49 @@ test('spec-cache-drift skips when no marketplace install exists (2026-08-16 audi
   assert.match(c.detail, /skipped/);
   assert.match(c.detail, /market-root-missing/);
 });
+
+// --- 0.68.3: what is in ~/.claude must not stop doctor from running ---------
+//
+// Two separate defects met on this input. (1) `dirSize` statSync'd every entry
+// of every backup dir unguarded, so one dangling symlink threw ENOENT out of
+// listBackups — and rename(2) on a symlink moves the LINK, so a user who
+// symlinks ~/.claude/CLAUDE.md into a dotfiles repo gets exactly that. (2)
+// `doctor(...).then(...)` had no `.catch()`, so the throw surfaced as an
+// unhandled rejection: a stack, no check lines, and — worse — exit 0, i.e. a
+// health check reporting success while doing nothing. Both are fixed; the
+// symlink is now handled rather than caught, and the handler is the backstop.
+
+test('0.68.3: a dangling symlink in a backup dir does not stop the run', () => {
+  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  fs.mkdirSync(bk, { recursive: true });
+  fs.symlinkSync(path.join(tmpHome, '.claude/gone-forever'), path.join(bk, 'dangling'));
+
+  const r = spawnSync(process.execPath, [DOCTOR_JS], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+
+  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`);
+  assert.match(r.stdout, /"checks"/, 'checks must still be printed');
+  assert.match(r.stdout, /"backups"/, 'the backup inventory itself must still report');
+});
+
+test('0.68.3: a throw inside doctor() is named, not a bare stack, and is not exit 0', () => {
+  // A directory where the rule-hits log should be: existsSync and statSync both
+  // succeed, readFileSync throws EISDIR. Chosen because it exercises the
+  // handler through real code rather than an injected throw.
+  fs.mkdirSync(path.join(tmpHome, '.claude/logs/claudemd.jsonl'), { recursive: true });
+
+  const r = spawnSync(process.execPath, [DOCTOR_JS], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+
+  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`);
+  assert.match(r.stderr, /\[claudemd\] doctor failed:/,
+    `expected a named failure line; stderr=${r.stderr}`);
+  assert.notEqual(r.status, 0,
+    'a run that failed must not report success — pre-fix this exited 0');
+});

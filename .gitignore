@@ -66,3 +66,9 @@ tasks/*
 !tasks/spec-audit-2026-07-11.md
 !tasks/statusline-host-wrap-deferred.md
 !tasks/tmp-retention-followup.md
+# Both cited from shipped code AND the CHANGELOG (0.68.3): hook-budget.test.sh +
+# perf-baseline.sh stdout point at the first; backup.js, install.js and doctor.js
+# point at the second. An ignored file behind a shipped citation is a dangling
+# reference — the P1-4 defect class this same release fixed in the spec.
+!tasks/hook-budget-reach-discrimination.md
+!tasks/legacy-spec-backup-migration.md

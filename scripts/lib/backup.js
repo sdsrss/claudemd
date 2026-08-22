@@ -38,6 +38,18 @@ export const BACKUP_LABELS = {
   handHook: 'handhook-backup',
 };
 const DEFAULT_LABEL = BACKUP_LABELS.personal;
+
+// Human-facing glob list for every namespace, derived from BACKUP_LABELS.
+//
+// doctor's inventory and --prune-backups were widened to all three namespaces
+// by P1-1, but the text telling the user how to clear them was not: it still
+// named `~/.claude/backup-*` alone, a glob matching neither `spec-backup-*` nor
+// `handhook-backup-*`. Following the printed instruction against a reported
+// count of 7 removed 2 (0.68.3 pre-tag review MEDIUM-3). Deriving the string
+// keeps the advice and the inventory on one source.
+export function backupGlobs(root = '~/.claude') {
+  return Object.values(BACKUP_LABELS).map(l => `${root}/${l}-*`).join(' ');
+}
 const labelRegex = (label) => new RegExp(
   `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-${STAMP_GRAMMAR}$`
 );
@@ -78,8 +90,13 @@ export function listBackups({ label = DEFAULT_LABEL } = {}) {
   if (!fs.existsSync(root)) return [];
   const re = labelRegex(label);
   const prefix = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-`);
-  return fs.readdirSync(root)
+  let entries;
+  try { entries = fs.readdirSync(root); } catch { return []; }
+  return entries
     .filter(name => re.test(name))
+    // A plain FILE named `backup-<stamp>` matches the name grammar but is not a
+    // backup; dirSize would then readdir a file (ENOTDIR). Filter by type.
+    .filter(name => { try { return fs.statSync(path.join(root, name)).isDirectory(); } catch { return false; } })
     .map(name => ({
       dir: path.join(root, name),
       iso: name.replace(prefix, ''),
@@ -137,6 +154,67 @@ export function backupSettingsFile(retainCount = 5) {
   return { backup: candidate, pruned };
 }
 
+// Does this text look like a claudemd spec rather than the user's own file?
+//
+// SINGLE SOURCE for the question. install.js asks it to decide whether there is
+// anything user-owned to preserve (spec-shaped → no backup at all); the legacy
+// migration below asks it to decide who WROTE an existing `backup-` dir. The
+// two answers must agree — if install.js never backs up a spec, then a `backup-`
+// dir holding one cannot have come from install.js. Restating the predicate in
+// the second caller would let that inference rot silently
+// (feedback_extraction_needs_consumer_gate).
+export function looksLikeSpec(text) {
+  return /^#\s*AI-CODING-SPEC\b/m.test(String(text || '').slice(0, 256));
+}
+
+// REPORT — never move — pre-0.68.3 spec backups sitting in the personal
+// namespace.
+//
+// P1-1 gave update.js its own label, but it was forward-only: the dirs already
+// written under `backup-<stamp>` stay there, so on a machine that has run
+// updates, restore still returns a spec-only dir and pruneBackups(5) still
+// counts them against the personal retain window.
+//
+// A migration was written for this and then WITHDRAWN before 0.68.3 shipped,
+// because the delta review disproved the invariant it rested on. The reasoning
+// is recorded here so it is not re-derived and re-shipped:
+//
+//   The discriminator was "install.js creates a personal backup only when the
+//   file does not look like a spec, so a spec-shaped `backup-` dir cannot have
+//   come from install.js". That holds for TODAY's install.js. It is false for
+//   the one that wrote the dirs a migration would target: the first install.js
+//   (cc36e2b) backed up unconditionally, and this repo's own CHANGELOG records
+//   that the whole pre-v0.23.11 window "backed up the spec itself". So
+//   install.js-written spec-shaped dirs exist, and moving them would (a) carry
+//   any sibling user files out of the restore path, which reads the personal
+//   label only, and (b) land them in a namespace update.js prunes on every run
+//   — deleting them after five updates. That is a data-loss path introduced by
+//   a data-loss fix.
+//
+// So this function only looks. `/claudemd-doctor` surfaces what it finds and
+// the user decides; the constraints a real migration would have to satisfy are
+// in tasks/legacy-spec-backup-migration.md.
+export function findLegacySpecBackups() {
+  const found = [];
+  for (const b of listBackups({ label: BACKUP_LABELS.personal })) {
+    let head;
+    try {
+      const specFile = path.join(b.dir, 'CLAUDE.md');
+      if (!fs.statSync(specFile).isFile()) continue;
+      head = fs.readFileSync(specFile, 'utf8');
+    } catch {
+      continue; // unreadable / absent / dangling → no evidence, say nothing
+    }
+    if (!looksLikeSpec(head)) continue;
+    let siblings = [];
+    try {
+      siblings = fs.readdirSync(b.dir).filter(n => n !== 'CLAUDE.md');
+    } catch { /* listed above, unreadable now — report without siblings */ }
+    found.push({ dir: b.dir, siblings });
+  }
+  return found;
+}
+
 export function restoreBackup(backupDir, targetRoot) {
   const restored = [];
   for (const name of fs.readdirSync(backupDir)) {
@@ -150,11 +228,26 @@ export function restoreBackup(backupDir, targetRoot) {
   return restored;
 }
 
+// Best-effort byte count. Every stat is guarded because the entries here are
+// whatever is actually in ~/.claude, and an unstattable one is routine rather
+// than exceptional: `createBackup` uses renameSync, and rename(2) on a symlink
+// moves the LINK — so a user who symlinks ~/.claude/CLAUDE.md into a dotfiles
+// repo ends up with that symlink inside a backup dir, dangling as soon as the
+// dotfiles source moves. Pre-0.68.3 an unguarded statSync here threw ENOENT out
+// of listBackups, and the callers are `install`, `uninstall`, `doctor` and
+// `update` — i.e. one stale symlink took out the install path and killed
+// /claudemd-doctor with a bare stack before it printed a single check.
+// Reporting a smaller size for an unreadable entry is the right trade against
+// refusing to run at all (0.68.3 delta review HIGH-1).
 function dirSize(dir) {
   let total = 0;
-  for (const name of fs.readdirSync(dir)) {
-    const stat = fs.statSync(path.join(dir, name));
-    total += stat.isFile() ? stat.size : 0;
+  let names;
+  try { names = fs.readdirSync(dir); } catch { return 0; }
+  for (const name of names) {
+    try {
+      const stat = fs.statSync(path.join(dir, name));
+      total += stat.isFile() ? stat.size : 0;
+    } catch { /* dangling symlink / raced deletion / permission — count 0 */ }
   }
   return total;
 }

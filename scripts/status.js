@@ -203,5 +203,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
     throw e;
   }
-  status({ verbose: parsed.bools.has('--verbose') }).then(r => console.log(JSON.stringify(r, null, 2)));
+  status({ verbose: parsed.bools.has('--verbose') })
+    .then(r => console.log(JSON.stringify(r, null, 2)))
+    .catch(err => {
+      // Same reason as doctor.js's handler: a bare unhandled rejection prints a
+      // stack instead of the status it was asked for.
+      console.error(`[claudemd] status failed: ${err && err.message ? err.message : err}`);
+      if (process.env.CLAUDEMD_DEBUG) console.error(err);
+      process.exitCode = 1;
+    });
 }

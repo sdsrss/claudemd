@@ -5,7 +5,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd } from './lib/paths.js';
 import { HOOK_REGISTRY } from './lib/hook-registry.js';
-import { listBackups, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
+import { listBackups, pruneBackups, backupGlobs, findLegacySpecBackups, BACKUP_LABELS } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
@@ -22,8 +22,9 @@ Run health checks on claudemd installation. Flags missing deps, spec drift,
 settings.json issues, hook drift, backup inventory, rule-usage health.
 
 Options:
-  --prune-backups=N   Keep the N newest backup dirs (positive integer ≥1).
-                      To remove ALL backups, delete ~/.claude/backup-*
+  --prune-backups=N   Keep the N newest backup dirs per namespace (positive
+                      integer ≥1). To remove ALL backups, delete
+                      ${backupGlobs()}
                       manually — this flag cannot do that.
   --help, -h          Print this message and exit.
 
@@ -217,6 +218,28 @@ export async function doctor({ pruneBackups: prune } = {}) {
     .join(', ');
   push('backups', true,
     `${backups.length} backup dir(s)${backupBreakdown ? ` (${backupBreakdown})` : ''}`);
+
+  // Legacy spec backups sitting in the PERSONAL namespace. P1-1 stopped new
+  // ones landing there but is forward-only, so on an installation old enough to
+  // have run updates before 0.68.3, `CLAUDEMD_SPEC_ACTION=restore` still
+  // returns whichever of these is newest instead of the user's own CLAUDE.md,
+  // and they still count against pruneBackups(5).
+  //
+  // Reported, never moved. A spec-shaped dir here may have been written by
+  // update.js OR by an install.js from before v0.23.11 (which backed up
+  // unconditionally) — and in the second case it can hold user files alongside
+  // the spec. Nothing available at runtime tells the two apart, so the choice
+  // is the user's; see tasks/legacy-spec-backup-migration.md.
+  const legacySpecBackups = findLegacySpecBackups();
+  push('backup-namespace-legacy', legacySpecBackups.length === 0,
+    legacySpecBackups.length === 0
+      ? 'no spec-shaped dirs in the personal backup namespace'
+      : `${legacySpecBackups.length} dir(s) under ~/.claude/${BACKUP_LABELS.personal}-* hold a ` +
+        `spec-shaped CLAUDE.md, so restore returns a spec rather than your own file: ` +
+        legacySpecBackups.map(b => `${path.basename(b.dir)}` +
+          (b.siblings.length ? ` (+ ${b.siblings.join(', ')})` : '')).join(', ') +
+        `. Not moved automatically — a dir with sibling files may be a genuine ` +
+        `personal backup from a pre-v0.23.11 install. Inspect, then move or delete by hand.`);
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');
   const logExists = fs.existsSync(logPath);
@@ -789,7 +812,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.error(
         `--prune-backups requires a positive integer retain count (got '${raw}').\n` +
         `  Examples: --prune-backups=5 (keep 5 newest), --prune-backups=1 (keep only the newest).\n` +
-        `  To remove ALL backups, delete ~/.claude/backup-* manually — this flag cannot do that.`
+        `  To remove ALL backups, delete ${backupGlobs()} manually — this flag cannot do that.`
       );
       process.exit(1);
     }
@@ -813,5 +836,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const failed = (r.checks || [])
       .filter(c => c && c.ok === false && !ADVISORY.test(c.name)).length;
     if (failed > 0) process.exitCode = 3;
+  }).catch(err => {
+    // Without this, ANY throw inside doctor() surfaced as a bare unhandled
+    // rejection — Node prints a stack and exits before a single check line is
+    // written, so the one command a user runs to diagnose ~/.claude fails in
+    // the least diagnostic way available. The backup inventory reads whatever
+    // dirs happen to be in ~/.claude, and 0.68.3 widened that from one
+    // namespace to three, so a dangling symlink or an unreadable dir there is
+    // a live input, not a hypothetical.
+    console.error(`[claudemd] doctor failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exitCode = 1;
   });
 }

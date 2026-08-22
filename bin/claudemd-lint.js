@@ -15,7 +15,9 @@
 //   node bin/claudemd-lint.js audit transcript.jsonl
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   scan,
@@ -79,6 +81,65 @@ function readPackageVersion() {
   } catch {
     return 'unknown';
   }
+}
+
+// Resolve the repo's `commit.template` and return its lines, so cleanup can
+// drop template text by exact match instead of by shape.
+//
+// Why this exists (0.68.3 pre-tag review, HIGH-1): `commit.template` +
+// `commit.status=false` hands a commit-msg hook a buffer that is entirely
+// git-authored comment lines — no `#\t` status prefix, no cut line — and git
+// discards all of them. Both shape signals miss it, so lint scanned a checklist
+// the author never committed and denied a clean commit. A §10-V checklist in a
+// commit template is exactly what this project's own users write.
+//
+// Best-effort by construction: no git, no repo, unset config, unreadable file
+// → null, and the caller falls back to the shape signals unchanged.
+function readCommitTemplate(sourcePath) {
+  // A commit-msg hook runs with cwd at the work tree root, so that is the first
+  // place to ask. The message file's own directory is the fallback — and it is
+  // usually `.git/`, where `rev-parse --show-toplevel` refuses to answer
+  // ("this operation must be run in a work tree"), so the work tree is derived
+  // from `--absolute-git-dir` instead of assumed.
+  const starts = [process.cwd()];
+  if (sourcePath) starts.push(path.dirname(path.resolve(sourcePath)));
+
+  for (const cwd of starts) {
+    try {
+      const git = (...a) => spawnSync('git', a, {
+        cwd, encoding: 'utf8', timeout: 5000, windowsHide: true,
+      });
+
+      const cfg = git('config', '--get', 'commit.template');
+      if (cfg.status !== 0 || !cfg.stdout || !cfg.stdout.trim()) continue;
+      let tmpl = cfg.stdout.trim();
+
+      // git expands a leading `~/`; it does not expand shell variables.
+      if (tmpl === '~' || tmpl.startsWith('~/')) {
+        const home = os.homedir();
+        if (home) tmpl = path.join(home, tmpl.slice(1));
+      }
+      if (!path.isAbsolute(tmpl)) tmpl = path.resolve(workTreeOf(git, cwd), tmpl);
+
+      return fs.readFileSync(tmpl, 'utf8').split('\n');
+    } catch {
+      // fall through to the next candidate
+    }
+  }
+  return null;
+}
+
+// The work tree a relative `commit.template` resolves against.
+function workTreeOf(git, cwd) {
+  const top = git('rev-parse', '--show-toplevel');
+  if (top.status === 0 && top.stdout.trim()) return top.stdout.trim();
+  // Called from inside the git dir: the work tree is its parent. `.git` for a
+  // normal repo, `.git/worktrees/<name>` for a linked one — hence common-dir.
+  const common = git('rev-parse', '--git-common-dir');
+  if (common.status === 0 && common.stdout.trim()) {
+    return path.dirname(path.resolve(cwd, common.stdout.trim()));
+  }
+  return cwd;
 }
 
 // Strict-validate flag-shaped args + normalize `--key=value` → `--key value`
@@ -305,7 +366,9 @@ function lintCmd(rawArgs) {
   // sitting in a `#` line git will discard is not in the commit message either.
   const commitMsgCleanup = !denyCommitMsg && (forceCommitMsg || looksLikeGitMessageFile(sourcePath));
   if (commitMsgCleanup) {
-    text = stripGitCommitComments(text, commentChar);
+    text = stripGitCommitComments(text, commentChar, {
+      templateLines: readCommitTemplate(sourcePath),
+    });
   }
 
   // Per-commit escape hatch — mirrors hooks/banned-vocab-check.sh:36. Without

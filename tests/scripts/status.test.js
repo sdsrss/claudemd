@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { status } from '../../scripts/status.js';
 import { HOOK_REGISTRY } from '../../scripts/lib/hook-registry.js';
 
@@ -345,5 +346,30 @@ test('status.features.bashSafetyIndirectCall ON for any non-zero value (v0.21.8)
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
+  }
+});
+
+// --- 0.68.3 delta review LOW-2 ----------------------------------------------
+//
+// status.js carried the identical defect and identical fix as doctor.js — a
+// top-level `.then()` with no `.catch()`, so any throw inside became an
+// unhandled rejection instead of a named error — and unlike doctor's, it had
+// nothing asserting it.
+
+test('0.68.3: status does not exit via an unhandled rejection', () => {
+  const STATUS_JS = path.resolve('scripts/status.js');
+  // Same real trigger doctor's test uses: a directory where a readable file is
+  // expected. existsSync and statSync succeed; readFileSync throws EISDIR.
+  fs.mkdirSync(path.join(tmpHome, '.claude/logs/claudemd.jsonl'), { recursive: true });
+
+  const r = spawnSync(process.execPath, [STATUS_JS], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`);
+  if (r.status !== 0) {
+    assert.match(r.stderr, /\[claudemd\] status failed:/,
+      `a failing run must name itself; stderr=${r.stderr}`);
   }
 });
