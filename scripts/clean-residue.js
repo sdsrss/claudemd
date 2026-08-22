@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { stateDir } from './lib/paths.js';
 
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
@@ -279,12 +280,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const claudeTmpDir = process.env.CLAUDEMD_CLAUDE_TMP_DIR || path.join(os.homedir(), '.claude', 'tmp');
 
   // Test seam mirrors CLAUDEMD_CLAUDE_TMP_DIR above — §8.V3 forbids driving a
-  // destructive path against the live state dir to prove it works.
-  const stateDir = process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), '.claude', '.claudemd-state');
+  // destructive path against the live state dir to prove it works. The seam
+  // itself now lives in paths.js#stateDir (audit-2026-08-22 条目 13): inlined
+  // here and in doctor.js, CLAUDEMD_STATE_DIR redirected the two readers while
+  // install / uninstall / statusline kept writing to the real directory.
+  const stateDirPath = stateDir();
 
   const result = clean({ apply, ageDaysMin });
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
-  const cstate = cleanStateDir({ stateDir, apply, retentionDays });
+  const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
   const sandboxCount  = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
   console.log(JSON.stringify({

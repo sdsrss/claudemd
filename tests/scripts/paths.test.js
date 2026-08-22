@@ -13,6 +13,25 @@ test('stateDir points to ~/.claude/.claudemd-state', () => {
   assert.equal(stateDir(), path.join(os.homedir(), '.claude/.claudemd-state'));
 });
 
+test('stateDir honors CLAUDEMD_STATE_DIR — one seam, not one per caller (条目 13)', () => {
+  // The seam existed only inside doctor.js and clean-residue.js, so pointing
+  // CLAUDEMD_STATE_DIR at a fixture redirected the two things that DELETE from
+  // the state dir and none of the things that write to it: install.js,
+  // uninstall.js and statusline.js went on using the real one via this
+  // function. Asserted here, at the single authority.
+  const saved = process.env.CLAUDEMD_STATE_DIR;
+  try {
+    process.env.CLAUDEMD_STATE_DIR = '/tmp/claudemd-seam-fixture';
+    assert.equal(stateDir(), '/tmp/claudemd-seam-fixture');
+    // legacyManifestPath is derived from it, so the seam has to carry through.
+    assert.equal(legacyManifestPath(), path.join('/tmp/claudemd-seam-fixture', 'installed.json'));
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDEMD_STATE_DIR;
+    else process.env.CLAUDEMD_STATE_DIR = saved;
+  }
+  assert.equal(stateDir(), path.join(os.homedir(), '.claude/.claudemd-state'));
+});
+
 test('logsDir points to ~/.claude/logs', () => {
   assert.equal(logsDir(), path.join(os.homedir(), '.claude/logs'));
 });

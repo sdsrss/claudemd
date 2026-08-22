@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd, stateDir } from './lib/paths.js';
 import { HOOK_REGISTRY } from './lib/hook-registry.js';
 import { listBackups, pruneBackups, backupGlobs, findLegacySpecBackups, BACKUP_LABELS } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
@@ -755,7 +755,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // some threshold is sacred. Reporting only; deletion stays behind the AUTH'd
   // /claudemd-clean-residue path.
   try {
-    const stateDirPath = process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), '.claude', '.claudemd-state');
+    const stateDirPath = stateDir();
     const { candidates } = scanStateDir({ stateDir: stateDirPath });
     const ORPHAN_ADVISORY_THRESHOLD = 50;
     const byKind = candidates.reduce((acc, c) => { acc[c.kind] = (acc[c.kind] || 0) + 1; return acc; }, {});

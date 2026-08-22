@@ -124,13 +124,23 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
       rel="${f#"$PROJECTS_ROOT/"}"
       SAMPLE+=("$rel")
     fi
-  done < <(find "$mem_dir" -maxdepth 1 -type f -name 'feedback_*.md' -exec awk '
+  # `-size +399c` (find, bytes) rather than `bytes += length($0) + 1` inside awk.
+  # The comment there claimed equivalence with `wc -c`, but awk's length() is
+  # CHARACTERS on a character-oriented engine (gawk, recent macOS awk) in a
+  # UTF-8 locale and BYTES on a byte-oriented one (mawk, busybox) — the same
+  # engine split hooks/lib/memory-tags.sh documents for its bracket expression.
+  # A 400-"byte" floor therefore meant ~1,200 real bytes on the macOS leg, and it
+  # drifted hardest on exactly the files this audit serves: the CJK feedback
+  # memories. find measures bytes everywhere, so the threshold stops depending on
+  # which awk is installed (audit-2026-08-22 条目 17). Not reproducible on this
+  # machine — only mawk and busybox awk are present and both count bytes; the
+  # change removes the dependency rather than fixing an observed local failure.
+  done < <(find "$mem_dir" -maxdepth 1 -type f -name 'feedback_*.md' -size +399c -exec awk '
       function flush() {
-        if (cur != "" && bytes >= 400 && (why == 0 || how == 0)) print cur
+        if (cur != "" && (why == 0 || how == 0)) print cur
       }
-      FNR == 1 { flush(); cur = FILENAME; bytes = 0; why = 0; how = 0 }
+      FNR == 1 { flush(); cur = FILENAME; why = 0; how = 0 }
       {
-        bytes += length($0) + 1
         # Both markers must appear at line start. Match BOTH common punctuation
         # forms (CC memoryTypes.ts uses `**Why:**`, but `**Why**:` is also
         # widely used in the wild; accept either to avoid false-positive
@@ -186,10 +196,9 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
       rel="${index_file#"$PROJECTS_ROOT/"}"
       DRIFT_SAMPLE+=("index_orphan: $rel → $linked (link target missing)")
     fi
-  done < <(MEM_AUDIT_SET="$on_disk_list" awk '
-      BEGIN { n = split(ENVIRON["MEM_AUDIT_SET"], a, "\n")
-              for (i = 1; i <= n; i++) if (a[i] != "") known[a[i]] = 1 }
-      $0 != "" && !($0 in known)' <<<"$in_index_list")
+  done < <(awk '
+      NR == FNR { if ($0 != "") known[$0] = 1; next }
+      $0 != "" && !($0 in known)' <(printf '%s\n' "$on_disk_list") - <<<"$in_index_list")
 
   # Reverse direction: any on-disk file with no MEMORY.md link.
   while IFS= read -r base; do
@@ -199,10 +208,16 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
       rel="${index_file#"$PROJECTS_ROOT/"}"
       DRIFT_SAMPLE+=("file_orphan: $rel → $base (no index link)")
     fi
-  done < <(MEM_AUDIT_SET="$in_index_list" awk '
-      BEGIN { n = split(ENVIRON["MEM_AUDIT_SET"], a, "\n")
-              for (i = 1; i <= n; i++) if (a[i] != "") known[a[i]] = 1 }
-      $0 != "" && !($0 in known)' <<<"$on_disk_list")
+  # Set membership through a process substitution, not ENVIRON. A single
+  # environment entry is capped at 128 KiB on Linux: past that the exec fails
+  # with E2BIG, the child never runs, and the hook reports zero drift with no
+  # error — the silent fail-open in feedback_env_string_size_cliff_failopen.
+  # Bounded in practice today (~40 B per memory file, ~60 files), unbounded in
+  # principle; a pipe has no such limit, so the cliff is removed rather than
+  # moved further out (audit-2026-08-22 条目 17).
+  done < <(awk '
+      NR == FNR { if ($0 != "") known[$0] = 1; next }
+      $0 != "" && !($0 in known)' <(printf '%s\n' "$in_index_list") - <<<"$on_disk_list")
 done
 
 if [[ "$MISSING" -eq 0 && "$DRIFT" -eq 0 ]]; then

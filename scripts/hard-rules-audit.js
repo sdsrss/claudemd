@@ -217,5 +217,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
   const pluginRoot = resolvePluginRoot(import.meta.url);
-  hardRulesAudit({ days, pluginRoot }).then(r => console.log(JSON.stringify(r, null, 2)));
+  hardRulesAudit({ days, pluginRoot })
+    .then(r => console.log(JSON.stringify(r, null, 2)))
+    .catch(err => {
+      console.error(`[claudemd] hard-rules-audit failed: ${err && err.message ? err.message : err}`);
+      if (process.env.CLAUDEMD_DEBUG) console.error(err);
+      process.exitCode = 1;
+    });
 }

@@ -158,5 +158,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     process.exit(1);
   }
-  audit({ days }).then(r => console.log(JSON.stringify(r, null, 2)));
+  audit({ days })
+    .then(r => console.log(JSON.stringify(r, null, 2)))
+    .catch(err => {
+      // Same handler as status.js / doctor.js: a throw inside audit()
+      // otherwise prints a bare unhandled-rejection stack instead of the
+      // report (audit-2026-08-22 条目 16 — one of three entries missing it).
+      console.error(`[claudemd] audit failed: ${err && err.message ? err.message : err}`);
+      if (process.env.CLAUDEMD_DEBUG) console.error(err);
+      process.exitCode = 1;
+    });
 }

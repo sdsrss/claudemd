@@ -404,5 +404,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const pluginRoot = resolvePluginRoot(import.meta.url);
   auditSafetyCoverage({ pluginRoot, hookFilter }).then(r => {
     console.log(json ? JSON.stringify(r, null, 2) : formatHuman(r));
+  }).catch(err => {
+    console.error(`[claudemd] safety-coverage-audit failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exitCode = 1;
   });
 }

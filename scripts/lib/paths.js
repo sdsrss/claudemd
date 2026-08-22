@@ -11,7 +11,16 @@ export const pluginCacheDir    = () => path.join(home(), '.claude/plugins/cache/
 // (memory: reference_plugin_update_manual_refresh.md), so this can lag the
 // shipped plugin version. install-drift compares this against the source repo.
 export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/marketplaces/claudemd');
-export const stateDir          = () => path.join(home(), '.claude/.claudemd-state');
+// CLAUDEMD_STATE_DIR is the documented test seam for the state root. It lives
+// here rather than at each call site: doctor.js and clean-residue.js each
+// inlined `process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), …)` while
+// install.js / uninstall.js / statusline-adopt.js called this function, so the
+// same directory had three authorities and the redirect reached the two
+// READERS but none of the writers — pointing it at a fixture told you what the
+// reapers would delete from a directory nothing had written to
+// (audit-2026-08-22 条目 13). `home()` rather than `os.homedir()` for the same
+// reason the rest of this file uses it: tests redirect HOME.
+export const stateDir          = () => process.env.CLAUDEMD_STATE_DIR || path.join(home(), '.claude/.claudemd-state');
 // Manifest lives outside stateDir so that `rm -rf ~/.claude/.claudemd-state/`
 // — which a user might run to reset residue-audit / sandbox-disposal baselines
 // — does not also erase the install manifest. Pre-0.1.9 manifests lived at

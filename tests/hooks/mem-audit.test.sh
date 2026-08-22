@@ -133,6 +133,49 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 5b: the stub threshold is BYTES, and it is measured by find, not by
+# awk's length(). A short marker-less memory stays silent (a stub with nothing
+# to say yet is not the target); a CJK memory just over 400 BYTES — 150
+# three-byte characters, which a character-oriented awk would score as 150 and
+# let through — must warn. Pre-fix the threshold was awk length(), so on gawk /
+# recent macOS awk this file counted ~450 characters short of the floor and the
+# audit went quiet on exactly the memories it exists for (条目 17).
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+SHORT_BODY='---
+name: short
+type: feedback
+---
+Too short to be a stub worth flagging.'
+seed "-proj-" "feedback_short.md" "$SHORT_BODY"
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
+if [[ "$RC" -eq 0 && -z "$OUT" ]] && ! echo "$ERR" | grep -q "feedback_short"; then
+  echo "PASS: 5b sub-threshold memory stays silent"
+else
+  echo "FAIL: 5b (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+CJK_PAD=$(awk 'BEGIN { for (i = 0; i < 150; i++) printf "%s", "中" }')
+CJK_BODY="---
+name: cjk
+type: feedback
+---
+$CJK_PAD"
+seed "-proj-" "feedback_cjk.md" "$CJK_BODY"
+CJK_BYTES=$(wc -c < "$HOME/.claude/projects/-proj-/memory/feedback_cjk.md" | tr -d ' ')
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
+if (( CJK_BYTES > 399 )) && [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q "feedback_cjk"; then
+  echo "PASS: 5b CJK memory over 400 BYTES warns (file is ${CJK_BYTES}B)"
+else
+  echo "FAIL: 5b CJK (bytes=$CJK_BYTES, rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Case 6: stderr path has NO double slash (v0.9.4 bug:
 # `<encoded>//memory/foo.md`). Locks the trailing-slash strip in mem_dir.
 # --------------------------------------------------------------------------
@@ -269,6 +312,6 @@ fi
 # Result
 # --------------------------------------------------------------------------
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
+  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 14/14 passed"

@@ -530,3 +530,33 @@ test('CLI: audit emits NO skip warning on pure block-array transcripts', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// --- class gate: every async CLI entry point handles its own rejection ------
+// audit-2026-08-22 条目 16 named ONE unguarded `.then()`; three of the nine CLI
+// entries were missing the handler (audit.js, hard-rules-audit.js,
+// safety-coverage-audit.js). Without it a throw anywhere inside the command
+// reaches the user as a bare unhandled-rejection stack — and Node's default for
+// that is a non-zero exit with no report, so a slash command that wraps it
+// prints a stack trace where the operator expected a health report. The pattern
+// is one line to forget, so the check is over the class rather than the file.
+test('every scripts/*.js CLI entry point that awaits a promise also catches it', () => {
+  const dir = path.join(REPO_ROOT, 'scripts');
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
+  assert.ok(files.length >= 15, `scripts/ resolved ${files.length} .js file(s) — the scan target moved`);
+  const offenders = [];
+  let entriesChecked = 0;
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    // Only the CLI-entry block: `if (import.meta.url === ...) { ... }` at the
+    // bottom. A `.then()` inside a library function is the caller's problem.
+    const idx = src.indexOf('import.meta.url ===');
+    if (idx === -1) continue;
+    const entry = src.slice(idx);
+    if (!/\.then\s*\(/.test(entry)) continue;
+    entriesChecked++;
+    if (!/\.catch\s*\(/.test(entry)) offenders.push(f);
+  }
+  assert.ok(entriesChecked >= 6, `only ${entriesChecked} promise-returning CLI entry point(s) found — the extraction stopped matching`);
+  assert.deepEqual(offenders, [],
+    `CLI entry point(s) whose promise has no .catch — a throw becomes a bare stack instead of a report: ${offenders.join(', ')}`);
+});
