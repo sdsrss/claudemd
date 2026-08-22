@@ -201,7 +201,7 @@ const EVIDENCE_FINGERPRINT = /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]
 // ironLaw2Opps counts Done lines that were actually examined (the per-rule
 // opportunity denominator); fourSection flags a complete 4-label block (the
 // order-check denominator).
-function scanStructure(text) {
+export function scanStructure(text) {
   const out = { ironLaw2: 0, ironLaw2Opps: 0, orderViolation: 0, fourSection: 0 };
   const { d, nd, f, u, lines } = locateLabels(text);
   if (!(d > 0 && nd > 0 && f > 0 && u > 0)) return out;
@@ -236,7 +236,7 @@ function scanStructure(text) {
 // opps = substantive Uncertain lines (label matched, not a bare header /
 // placeholder); hits = the subset that is short AND reason-less. Long lines
 // (≥80 chars) and because/since/因为 lines count as compliant opportunities.
-function scanHonesty(text) {
+export function scanHonesty(text) {
   let hits = 0, opps = 0;
   for (const raw of text.split('\n')) {
     const norm = raw.replace(/^##\s+/, '');
@@ -246,7 +246,15 @@ function scanHonesty(text) {
     if (/^Uncertain\s*$/.test(norm)) continue;
     opps += 1;
     if (norm.length >= 80) continue;
-    if (/\b(because|since)\b|reason:|因为/i.test(norm)) continue;
+    // Connector list must match hooks/transcript-structure-scan.sh's — both
+    // halves of the spec's bilingual canonical form. The bash side gained
+    // `due to / owing to / 由于 / 鉴于` as a documented FP fix and this side
+    // never did, so every report writing the equally-canonical `由于 …` counted
+    // as a reasonless hedge HERE while the live hook stayed silent — two
+    // truths for one rule, and the wrong one is the one feeding the calibration
+    // numbers (audit-2026-08-22 条目 9). tests/scripts/structure-scan-parity.test.js
+    // now runs both engines over one corpus and requires identical verdicts.
+    if (/\b(because|since|due to|owing to)\b|reason:|因为|由于|鉴于/i.test(norm)) continue;
     hits += 1;
   }
   return { hits, opps };
@@ -259,7 +267,7 @@ function scanHonesty(text) {
 const FIX_CLAIM_RE = /^(?:##\s*)?Done\b[^\n]*(?:\bfix(?:ed|es)?\b|修复)/i;
 const PRIOR_FAILING_RE = /\b[A-Z][a-zA-Z]*Error\b|\b(?:error|exception|panic|traceback|failing|failed|FAILED|crash(?:ed|es)?|pre-fix|repro(?:duced|duction)?|was broken)\b|报错|复现|崩溃|之前失败|此前失败/i;
 
-function scanBugfixAnchor(text) {
+export function scanBugfixAnchor(text) {
   let hits = 0, opps = 0;
   for (const raw of text.split('\n')) {
     if (!FIX_CLAIM_RE.test(raw)) continue;
