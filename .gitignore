@@ -9,7 +9,16 @@
 
 # docs/ is local-only by default. Tracked + shipped exceptions (functional
 # reference docs that adopters / contributors need):
-#  - docs/superpowers/ (design + implementation plan)
+#  - docs/superpowers/ (design + implementation plan). 10 files, 289 KB, of
+#    which 3 are linked from shipped prose (README + ARCHITECTURE point at the
+#    plugin, memory-layer-routing and statusline-coexistence design docs) and 7
+#    are the plans those designs were executed from. Kept deliberately, not by
+#    inertia: they are the only record of WHY the three-layer split, the memory
+#    routing table and the statusline guest-provider model came out the way
+#    they did, and this repo's recurring defect is prose that outlives its
+#    subject — deleting the rationale would make that worse, not better. They
+#    are marketplace-clone content only; .npmignore keeps all of docs/ out of
+#    the npm tarball (audit-2026-08-22 条目 25).
 #  - docs/ADDING-NEW-HOOK.md (external contract: how to add a hook)
 #  - docs/RULE-HITS-SCHEMA.md (external contract: JSONL schema)
 #  - docs/cross-project-pilot.md (external contract: portability checklist for adopters)

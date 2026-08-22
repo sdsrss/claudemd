@@ -281,3 +281,318 @@ deny	F18: curl pipe-then-newline continuation
 deny	F18: env bash <(curl) procsub wrapper
 allow	F18-fp: curl | envsubst (env-prefix, not a sink)
 allow	F18-fp: env cat, no curl
+deny	F1: double-quoted command word rm
+deny	F1: intra-word empty-pair split rm
+deny	F1: single-quoted command word rm
+deny	F1: quoted flag bundle rm
+deny	F1: triple-quoted command word rm
+deny	F1: double-quoted command word npx
+deny	F1: intra-word empty-pair split npx
+deny	F1: curl pipe double-quoted bash sink
+deny	F1: curl pipe empty-pair split bash sink
+deny	F1: curl pipe single-quote split bash sink
+deny	F1: curl pipe single-quoted sh sink
+allow	F1-fp: rm word as quoted echo arg
+allow	F1-fp: npx word as quoted echo arg
+allow	F1-fp: standalone empty-pair arg
+allow	F1-fp: quoted safe literal rm target
+allow	F1-fp: commit message phrase quoting
+deny	F19: sudo + path-prefixed curl fetch
+deny	F19: sudo + backslash curl fetch
+deny	F19: nohup + path curl, bash sink
+deny	F19: env + path wget fetch
+deny	F19: bare path-prefixed sink
+deny	F19: sudo + path sink
+deny	F19: sudo + backslash sink
+deny	F19: wrapper+path both sides
+deny	F19: procsub path fetch + wrapper path sink
+deny	F19-parity: sudo + path rm analogue
+deny	F19-parity: sudo + path npx analogue
+allow	F19-fp: wrapper+path curl download only
+allow	F19-fp: path curl to path non-shell sink
+allow	F19-fp: non-shell path sink word
+allow	F20: quoted mktemp RHS provenance
+deny	F20: literal temp-root assign is NOT provenance (class reverted)
+deny	F20: second unvalidated target rides mktemp provenance
+allow	F20: multiple subpaths of the same provenance var
+deny	F21: backslash-escaped traversal in literal value
+deny	F21: dot-escaped traversal in literal value
+deny	F21: subshell-scoped assign never binds parent
+deny	F21: short-circuit assign may never run
+deny	F21: pipeline-scoped assign never binds parent
+deny	F21: background assign never binds parent
+deny	F21: case-arm assign may never run
+deny	F21: IFS split of unquoted provenance target
+deny	F21: IFS folding truncates captured RHS
+deny	F21: dotdot residue escapes mktemp provenance
+deny	F21: bare dotdot residue on provenance var
+deny	F21: append-rebind with slash suffix after mktemp
+allow	F21-fp: normal subpath under mktemp provenance still allowed
+deny	F22 rm second positional is var
+deny	F22 rm second positional quoted var
+deny	F22 rm third positional var
+deny	F22 rm var after -- separator
+deny	F22 rm guarded first target unguarded second
+allow	F22 rm multi literal targets
+allow	F22 rm guarded var plus literal target
+allow	F22 rm mktemp provenance two subpaths
+deny	F23 exec wrapper rm
+deny	F23 exec wrapper npx
+deny	F23 exec wrapper curl fetch side
+deny	F23 exec wrapper curl sink side
+allow	F23 exec fd redirection only
+allow	F23 exec plain command
+deny	F24 env -i rm
+deny	F24 env -u NAME rm
+deny	F24 command -p rm
+deny	F24 time -p rm
+deny	F24 nested nohup env -i rm
+deny	F24 env -i npx
+deny	F24 timeout signal-flag with arg rm
+deny	F24 sudo -u user curl sink
+allow	F24 command -v rm probe
+allow	F24 env -i printenv
+allow	F24 time -p ls
+deny	F25 stdout redirect before rm
+deny	F25 stderr redirect before rm
+deny	F25 spaced redirect before rm
+deny	F25 redirect before npx
+deny	F25 redirect before curl pipe sh
+allow	F25 redirect before echo
+allow	F25 redirect before literal rm
+deny	F26 npm --yes exec unpinned
+deny	F26 npm -y exec unpinned
+deny	F26 pnpm --silent dlx unpinned
+deny	F26 yarn --silent dlx unpinned
+allow	F26 npm --yes exec pinned
+allow	F26 npm run script named exec
+deny	F27 curl pipe-with-stderr into bash
+deny	F27 curl pipe into brace group
+deny	F27 curl pipe into subshell
+deny	F27 stdin redirect from process substitution
+allow	F27 curl pipe into non-shell group
+allow	F27 stdin redirect from local file
+deny	F28 fd-dup redirect before rm
+deny	F28 fd-dup redirect before npx
+allow	F28 background op still splits
+allow	F28 fd-dup redirect before literal rm
+deny	F29 sudo long-form user flag rm
+deny	F29 env long-form unset rm
+deny	F29 timeout long-form signal rm
+deny	F29 stdbuf long-form output rm
+deny	F29 sudo long-form user npx unpinned
+allow	F29 sudo long-form flag non-rm command
+allow	F29 sudo long-form user rm whitelisted var
+allow	F29 sudo long-form user rm literal path
+deny	F30 npm --prefix separated-arg exec
+deny	F30 yarn --cwd separated-arg dlx
+deny	F30 pnpm --filter separated-arg dlx
+allow	F30 npm run exec-tests (bare word is a subcommand)
+allow	F30 npm --prefix with run subcommand
+allow	F30 yarn --cwd install
+allow	F30 npm --prefix separated-arg exec pinned
+allow	F31 plain heredoc indented fake terminator
+deny	F31 real rm after a closed heredoc
+deny	F32 sudo -p prompt short flag rm
+deny	F32 sudo -D chdir short flag rm
+deny	F32 env -C chdir short flag rm
+deny	F32 sudo -r role short flag rm
+deny	F32 sudo -h host short flag npx
+allow	F32 sudo -p prompt short flag non-rm
+allow	F32 sudo -D chdir short flag rm literal
+deny	F33 heredoc opener with chained rm
+deny	F33 heredoc opener with chained npx
+allow	F33 heredoc opener with harmless tail
+deny	F34 sink sudo -u root bash
+deny	F34 sink env -i bash
+deny	F34 sink nice -n 10 bash
+deny	F34 sink sudo -u svc path-sh
+deny	F34 sink optarg wrapper chain
+deny	F34 sink stdbuf -oL bash
+deny	F34 sink pipe-stderr optarg
+deny	F34 sink brace group optarg
+deny	F34 procsub sudo -u svc bash (already denied pre-fix)
+allow	F34-fp sink optarg non-shell tee
+allow	F34-fp sink optarg non-shell jq
+allow	F34-fp sink optarg tar extract
+allow	F34-fp fetch optarg download only
+allow	F34-fp sink optarg non-shell path word
+allow	F34-fp bare word without flag not consumed
+allow	F34-fp optarg wrapper no curl at all
+deny	F35 sink bare assignment
+deny	F35 sink env assignment
+deny	F35 sink sudo assignment
+deny	F35 sink two assignments
+deny	F35 sink assignment then wrapper
+deny	F35 sink wrapper optarg then assignment
+deny	F35 sink assignment path sink
+deny	F35 sink assignment in brace group
+deny	F35 procsub assignment (already denied pre-fix)
+deny	F35 fetch-side twin bare assignment
+deny	F35 fetch-side twin env assignment
+deny	F35 fetch-side twin optarg wrapper
+allow	F35-fp assignment non-shell sink
+allow	F35-fp assignment then tee
+allow	F35-fp shell name in assignment VALUE
+allow	F35-fp assignment no curl
+allow	F35-fp bare word still not consumed
+allow	F35-fp assignment non-shell path sink
+deny	F36 aria2c pipe bash
+deny	F36 axel pipe sh
+deny	F36 httpie pipe bash
+deny	F36 fetch pipe sh
+deny	F36 nc pipe bash
+deny	F36 nc listen pipe sh
+deny	F36 ncat pipe bash
+deny	F36 netcat pipe sh
+deny	F36 socat pipe sh
+deny	F36 telnet pipe sh
+deny	F36 openssl s_client pipe sh
+deny	F36 scp pipe sh
+deny	F36 rsync pipe sh
+deny	F36 ftp pipe sh
+deny	F36 tftp pipe sh
+deny	F36 base64 decode pipe sh
+deny	F36 xxd revert pipe sh
+deny	F36 gpg decrypt pipe sh
+deny	F36 curl pipe python3
+deny	F36 curl pipe python bare
+deny	F36 wget pipe python dash
+deny	F36 curl pipe perl
+deny	F36 curl pipe ruby
+deny	F36 curl pipe node
+deny	F36 curl pipe php
+deny	F36 curl pipe lua
+deny	F36 curl pipe awk -f -
+deny	F36 nc pipe python3
+deny	F36 wrapper on new source
+deny	F36 assignment sink new interp
+deny	F36 procsub new source
+allow	F36-fp nc port check
+allow	F36-fp nc listen to file
+allow	F36-fp openssl cert dates
+allow	F36-fp telnet interactive
+allow	F36-fp socat port forward
+allow	F36-fp base64 to file
+allow	F36-fp local file into interpreter
+allow	F36-fp curl into python json.tool
+allow	F36-fp curl into perl filter
+allow	F36-fp curl into node eval flag
+allow	F36-fp curl into jq
+allow	F36-fp curl into awk program
+allow	F36-fp rsync normal
+allow	F36-fp scp normal
+allow	F36-fp download then inspect
+allow	F36-fp wget to file then tar
+deny	F37 sh -c curl cmdsubst
+deny	F37 bash -c wget cmdsubst
+deny	F37 eval curl cmdsubst
+deny	F37 bash -c backtick curl
+deny	F37 sudo bash -c cmdsubst
+deny	F37 source cmdsubst
+deny	F37 sh -lc combined flag
+deny	F38 socat exec reverse shell
+deny	F38 socat openssl system
+deny	F38 bash dev tcp reverse shell
+deny	F38 dev tcp read
+deny	F39 perl reverse shell
+deny	F39 perl IO module reverse shell
+deny	F39 perl LWP download execute
+deny	F39 python reverse shell
+deny	F39 python urlopen exec
+deny	F39 python requests exec
+deny	F39 ruby reverse shell
+deny	F39 php fsockopen exec
+deny	F39 node net child_process
+allow	F39-fp python socket hostname only
+allow	F39-fp python subprocess only
+allow	F39-fp python urlretrieve download only
+allow	F39-fp python requests print only
+allow	F39-fp perl filter
+allow	F39-fp node console log
+allow	F39-fp php arithmetic
+allow	F39-fp ruby puts
+allow	F39-fp python script file
+allow	F37-fp sh -c single quoted echo substitution
+allow	F37-fp bash -c plain
+allow	F37-fp echo command substitution
+allow	F37-fp variable from curl
+allow	F38-fp socat port forward
+allow	F38-fp nc port check
+deny	F40 bun x unpinned
+deny	F40 bun x scoped unpinned
+deny	F40 deno run url
+deny	F40 deno run flags then url
+deny	F40 deno install url
+deny	F40 deno run npm specifier
+deny	F40 deno run jsr specifier
+deny	F40 pip install git url
+deny	F40 pip3 install git url
+deny	F40 pip install sdist url
+deny	F40 pip install wheel url
+deny	F40 python -m pip install git url
+deny	F40 uv pip install git url
+deny	F40 cargo install git
+deny	F40 cargo install git with branch
+deny	F40 go run remote latest
+deny	F40 go install remote latest
+deny	F40 go run remote main
+deny	F40 nix run github flake
+deny	F40 nix shell gitlab flake
+deny	F40 nix run git+https flake
+deny	F40 wrapper before deno url
+allow	F40-fp bunx pinned still allowed
+allow	F40-fp bun x pinned
+allow	F40-fp bun build local
+allow	F40-fp deno run local file
+allow	F40-fp deno run flags local file
+allow	F40-fp deno allow-net url flag local script
+allow	F40-fp deno test local
+allow	F40-fp pip install requirements
+allow	F40-fp pip install pinned name
+allow	F40-fp pip install index url flag
+allow	F40-fp pip install extra index url
+allow	F40-fp pip install find-links
+allow	F40-fp pip install editable local
+allow	F40-fp cargo install registry
+allow	F40-fp cargo install path
+allow	F40-fp cargo build
+allow	F40-fp go run local cmd
+allow	F40-fp go install local
+allow	F40-fp go build all
+allow	F40-fp go install pinned version
+allow	F40-fp go get pinned
+allow	F40-fp nix run local flake
+allow	F40-fp nix build local
+allow	F40-fp nix develop local
+allow	F41 interpreter sink with escape marker
+allow	F41 shell sink with escape marker
+allow	F41 marker mid-command
+allow	F41 npx marker on remote runner
+deny	F41 unmarked interpreter twin
+deny	F41 unmarked remote runner twin
+deny	F41 wrong marker does not bypass curl-sh
+deny	F41 wrong marker does not bypass npx
+deny	R1 pip install quoted git url
+deny	R1 pip install single-quoted git url
+deny	R1 go run quoted remote
+deny	R1 deno run quoted url
+deny	R1 nix run quoted flakeref
+allow	R1-fp commit message naming a remote install
+allow	R1-fp commit message naming deno run url
+allow	R1-fp apostrophe inside double quotes survives
+deny	R2 bash dev-tcp reverse shell redirect form
+deny	R2 exec fd dev-tcp
+deny	R2 dev-tcp inside bash -c payload
+allow	R2-fp commit message naming dev-tcp
+allow	R2-fp ripgrep for dev-tcp literal
+allow	R2-fp wait for local port
+allow	R2-fp loopback ip probe
+allow	R3-fp commit message naming socat rule
+allow	R3-fp grep for socat literal
+allow	R4-fp two passing one-liners joined
+allow	R4-fp net word from grep exec word from ls
+allow	R4-fp requests print joined with subprocess
+deny	R4 perl reverse shell escaped inner quotes
+deny	R4 node net child_process escaped quotes
+allow	R4-fp node requires network-utils not net

@@ -61,9 +61,27 @@ case "$MODE" in
                 { if ($2 in b) { if (b[$2]!=$1) print "DIFF [" $2 "] baseline=" b[$2] " live=" $1 }
                   else print "NEW  [" $2 "] live=" $1 }' "$FILE" "$LIVE"
     DIFFS=$(awk -F'\t' 'NR==FNR{b[$2]=$1;next} ($2 in b) && b[$2]!=$1 {c++} END{print c+0}' "$FILE" "$LIVE")
+    # Coverage, printed every run. The baseline is a SNAPSHOT of a corpus that
+    # keeps growing: captured 2026-07-15 at 283 rows, the corpus reached 915 by
+    # 2026-08-22, and this tool went on printing "OK: 0 verdict changes across
+    # corpus" while binding 31% of it. "0 changes" over an unstated fraction is
+    # the claim-wider-than-subject shape (audit-2026-08-22 条目 25). Shared rows
+    # remain the only ones an equivalence proof CAN bind; what changes is that
+    # the fraction is visible, and a baseline under 90% is refused as stale.
+    LIVE_ROWS=$(grep -c . "$LIVE" || true)
+    BASE_ROWS=$(grep -c . "$FILE" || true)
+    SHARED=$(awk -F'\t' 'NR==FNR{b[$2]=1;next} ($2 in b){c++} END{print c+0}' "$FILE" "$LIVE")
     rm -f "$LIVE"
-    if (( DIFFS > 0 )); then echo "FAIL: $DIFFS verdict change(s)"; exit 1; fi
-    echo "OK: 0 verdict changes across corpus"
+    PCT=0
+    (( LIVE_ROWS > 0 )) && PCT=$(( SHARED * 100 / LIVE_ROWS ))
+    echo "coverage: $SHARED/$LIVE_ROWS corpus rows carry a baseline verdict (${PCT}%); baseline holds $BASE_ROWS"
+    if (( DIFFS > 0 )); then echo "FAIL: $DIFFS verdict change(s) among the $SHARED shared row(s)"; exit 1; fi
+    if (( PCT < 90 )); then
+      echo "STALE: the baseline binds only ${PCT}% of the corpus — re-capture before quoting this as an equivalence proof:"
+      echo "       bash tasks/s8-tokenizer/s8-diff-scan.sh capture $FILE"
+      exit 1
+    fi
+    echo "OK: 0 verdict changes across the $SHARED shared row(s)"
     ;;
   *)
     echo "usage: $0 capture <out.tsv> | check <base.tsv>"; exit 2 ;;
