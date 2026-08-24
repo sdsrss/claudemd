@@ -18,7 +18,13 @@
 
 4. **mem v2.49.0 → v2.49.1** — CJK precision bundle fixed FTS path, but the LIKE fallback (sibling code branch not in original plan) was the real CJK leak source. E2E green on FTS inputs; LIKE-path inputs still leaked. Parallel path: query execution has two dispatch branches (FTS5 sanitized query vs CJK LIKE fallback); the bundle edited only the first. Anchor: `~/.claude/projects/-mnt-data-ssd-dev-projects-mem/memory/feedback_mid_bundle_scope_auth.md` + `project_non_obvious.md` (CJK search pipeline).
 
-**Repro-bar met**: 4 ≥ 3. **Promotion status**: BLOCKED by §13.2 20-task counter — v6.10.2 added §11 Mid-SPINE turn-yield HARD on 2026-04-23, so the counter is at ~1 L2+ task of 20. Re-evaluate after 20 more L2+ tasks complete. If SHOULD-presence from v6.11.0 suppresses recurrence (no new repros in the next 20 tasks) → close candidate as "SHOULD sufficient, no HARD promotion needed." If ≥1 new repro occurs despite SHOULD → escalate regardless of counter (evidence-override path per §13.2 rebuttal shortcut).
+**Repro-bar met**: 4 ≥ 3. **Promotion status**: ✅ **PROMOTED 2026-05-10** — core §9 now carries
+`**Parallel-path completeness** (HARD, L2+)` (`spec/CLAUDE.md:207`; `spec/CLAUDE-changelog.md:553-558`,
+−89 bytes, counter reset 25 → 0). The paragraph below is the pre-promotion state, left as the record
+of what the bar looked like; it said BLOCKED for three months after the block cleared, in the same
+file whose 2026-05-10 section records the promotion. Historical text follows:
+
+~~BLOCKED by §13.2 20-task counter~~ — v6.10.2 added §11 Mid-SPINE turn-yield HARD on 2026-04-23, so the counter is at ~1 L2+ task of 20. Re-evaluate after 20 more L2+ tasks complete. If SHOULD-presence from v6.11.0 suppresses recurrence (no new repros in the next 20 tasks) → close candidate as "SHOULD sufficient, no HARD promotion needed." If ≥1 new repro occurs despite SHOULD → escalate regardless of counter (evidence-override path per §13.2 rebuttal shortcut).
 
 **Tracking cadence**: check at every ship (`/claudemd-audit` recommended monthly).
 
@@ -167,3 +173,52 @@ Reviewed against 30d rule-hits window (2078 hits, parse 5586/5586): `demoteCandi
 **Proposed mechanism (if ever justified)**: advisory-only logging (e.g. Stop-hook transcript scan for `model:`/`effort:` in Agent/Workflow calls, or a `model-tiering` rule-hits event) — observability, not enforcement.
 
 **Status**: log-only under internal freeze (`project_internal_freeze_v02312.md`); do NOT build unprompted. Activation trigger: a real incident where a downgraded agent produced wrong output that survived verification, OR external adoption asks for tiering data. Repro-count: 0 (no incident — this is an observability gap, not a scar).
+
+**2026-08-24: CLOSED — the rule it observes no longer exists.** `grep -i 'tiering\|model tier'` over
+both spec files returns nothing; §2.1 Model tiering was removed, and the lesson kept as
+`feedback_tiering_verify_downgrade_gap` (verifier ≥ generator — a Review-class subagent must not be
+downgraded). An observability gap for a deleted rule has no subject. Nothing to build.
+
+---
+
+## Batch review — 2026-08-24 (§13.2; cadence was 2026-08-09, 45 days after the 2026-07-10 round)
+
+**Trigger**: convergence review of audit-2026-08-22 surfaced this file as carrying an open checklist.
+The overdue cadence is itself the finding: `hard-rules-audit.js` reports `cadenceWarning=null` because
+it tracks `hard-rules.json`'s `last_demote_review` (all 2026-08-16, current) — the **demote** half of
+§13.2. The **promote/prune** half lives only in this file and has no instrument, which is why it ran
+45 days past its window with every tool green. Noted, not fixed: a second gate for a governance loop
+with three candidates is not obviously worth its own maintenance.
+
+**Merge overlapping entries**: none. The two §9 candidates were checked for overlap at 2026-04
+(intra-symbol branches vs inter-symbol callers) and the distinction holds.
+
+**Promote eligible (repro ≥ 3 AND counter ≥ 20)**:
+
+- §9 Parallel-path completeness — already promoted 2026-05-10, entry corrected above.
+- §9 Shared-symbol edit guard — **repro-bar now MET: 1 → 4**, and the three new ones are all from this
+  repo rather than cross-project:
+  1. `feedback_extraction_needs_consumer_gate` — extracting a shared helper without enumerating its
+     consumers; the comment naming the consumers went stale alongside the code (banned-vocab missed
+     the flatten consumer).
+  2. `feedback_code_graph_impact_aliased_imports` — `impact` under-reports callers that import under
+     an alias; grep importers before a contract change.
+  3. `feedback_fix_creates_same_class_instance` — renaming a label/prefix without grepping every
+     reader; the read-side consumers narrowed silently.
+
+  Plus the original mem `OBS_FTS_COLUMNS` desync. Four repros, distinct sessions, ≥3 bar cleared.
+  **Not promoted here — deliberately left for the operator**, on two grounds this review cannot
+  settle on its own: (a) the §13.2 20-L2+-task counter since the last HARD addition is not tracked
+  anywhere machine-readable, so "≥20" cannot be evidenced; (b) core is at 23,322 / 25,000 bytes
+  (6.7% headroom) and §0.1 requires a paired net-delete for any addition — that is a spec-budget
+  decision, and spec self-edits are §EXT §13 META, not batch-review-automatic.
+
+  Worth weighing against promotion: three of the four repros were each closed by a **gate**
+  (`subject-set-drift.test.js` covers exactly the "named three of a set, not all of it" shape). A
+  HARD rule and a mechanical gate solve the same class, and the gate does not spend §0.1 budget.
+
+**Prune stale (silent 60 days)**: §2.1 model-tiering observability closed above — not stale, obsolete.
+
+**Next batch-review**: 2026-09-23, OR after 20 L2+ tasks, whichever first. If the repo is in
+maintenance by then (see `docs/audit/audit-2026-08-22-02-convergence.md`), the 20-task trigger will
+not fire and the date governs.

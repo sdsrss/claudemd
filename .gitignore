@@ -80,4 +80,10 @@ tasks/*
 # point at the second. An ignored file behind a shipped citation is a dangling
 # reference — the P1-4 defect class this same release fixed in the spec.
 !tasks/hook-budget-reach-discrimination.md
+# Cited by the v0.69.1 CHANGELOG entry. Each is the written adjudication for a
+# decision that entry states but does not argue: why the npm download figure is
+# not adoption evidence, and why the §8 escaped-quote gap was assessed and not
+# implemented. Without these the citations dangle.
+!tasks/npm-download-attribution-2026-08-24.md
+!tasks/s8-sanitize-escaped-quote-gap.md
 !tasks/legacy-spec-backup-migration.md

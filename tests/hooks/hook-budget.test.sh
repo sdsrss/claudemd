@@ -148,6 +148,15 @@ awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-fil
 # Created after the aging pass, so their mtime is now.
 awk -v d="$CLAUDE_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/tmp.probe%d\n", d, i }' | xargs mkdir -p
 awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-%d\n", d, i }' | xargs touch
+# ...plus entries the sentinel GC actually MATCHES. version-sync's sweep is
+# `find "$TMP_BASE" -maxdepth 1 -name 'claudemd-sync-*' -mmin +1440 -delete`, and
+# the 5,950 above are named `probe-file-*` — so the walk was driven at full width
+# while the delete arm matched nothing, on every run since the fixture landed.
+# The differential probe below measures that arm by its effect on the directory,
+# so it needs entries the arm can actually remove: 50 correctly-named files, aged
+# past the 1440-minute threshold.
+awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync-aged-%d\n", d, i }' \
+  | xargs touch -t 200001010000
 
 # Pre-seeded per-session state so the two Stop scanners take their FULL path
 # instead of the silent first-run branch (which establishes a baseline and
@@ -293,6 +302,53 @@ EVT_FILE="$SANDBOX/event.json"
 OUT_FILE="$SANDBOX/probe.out"
 ERR_FILE="$SANDBOX/probe.err"
 RC_FILE="$SANDBOX/probe.rc"
+
+# --- differential-reach fixture + signature capture (see the section below) ---
+# Declared here because the loop that follows records the populated-fixture half
+# of each signature as it goes. Re-running the populated probe afterwards is NOT
+# equivalent: the loop has already run every hook under $SESSION_ID in $FIX_HOME,
+# so a second run there takes whatever per-session idempotence path the hook has.
+# The empty-fixture run below uses a SEPARATE HOME, which is what keeps the two
+# halves comparable under one session id.
+DIFF_HOME="$SANDBOX/emptyhome"
+DIFF_PROJ="$DIFF_HOME/.claude/projects/$ENCODED"
+DIFF_STATE="$DIFF_HOME/.claude/.claudemd-state"
+DIFF_TMP="$DIFF_HOME/.claude/tmp"
+DIFF_SYNC="$SANDBOX/emptysync"
+mkdir -p "$DIFF_PROJ/memory" "$DIFF_HOME/.claude/logs" "$DIFF_STATE" "$DIFF_TMP" "$DIFF_SYNC"
+# Same BASENAME as the populated transcript, under the empty HOME. Any hook that
+# echoes its transcript path then produces text that normalizes identically on
+# both sides — a differing basename would make the signatures differ for a
+# reason that has nothing to do with scanning (v0.69.1 pre-tag review N3).
+DIFF_EMPTY_TX="$DIFF_PROJ/$SESSION_ID.jsonl"
+: > "$DIFF_EMPTY_TX"
+: > "$DIFF_HOME/.claude/logs/claudemd.jsonl"
+# Identical seeds to the populated fixture — same branch, same manifest, same
+# per-session state. The ONLY thing the two runs disagree about is how much data
+# there is to scan; seeding differently would let a branch change masquerade as
+# scan evidence.
+printf 'v2:0\n' > "$DIFF_STATE/tmp-baseline-${SESSION_ID}.txt"
+touch -t 200601010000 "$DIFF_STATE/session-start-${SESSION_ID}.ref"
+printf '{"version":"99.0.0"}\n' > "$DIFF_HOME/.claude/.claudemd-manifest.json"
+SIG_FILE="$SANDBOX/signatures.tsv"
+: > "$SIG_FILE"
+
+# Hash a probe stream with the run-specific noise removed. The two runs use
+# different HOME paths and emit timestamps, so raw bytes ALWAYS differ and the
+# differential assertion would pass vacuously. DIFF_HOME is rewritten before
+# FIX_HOME because both live under $SANDBOX and the longer match must win.
+#
+# The $TMPDIR pair needs its own rule: the two directories differ in basename,
+# not just in prefix, so the HOME/SANDBOX rewrites do not collapse them. Captured
+# once here rather than read from $SYNC_TMP, which the loop below retargets.
+NORM_SYNC_FULL="$SYNC_TMP"
+norm_ck() {
+  sed -e "s|$DIFF_SYNC|<TMPD>|g" -e "s|$NORM_SYNC_FULL|<TMPD>|g" \
+      -e "s|$DIFF_HOME|<H>|g" -e "s|$FIX_HOME|<H>|g" -e "s|$SANDBOX|<SB>|g" \
+      -e 's|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]*Z|<TS>|g' \
+      "$1" 2>/dev/null | cksum | awk '{print $1}'
+}
+
 for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   HOOK_SH="$HOOKS_DIR/$hook.sh"
   probe_event "$hook" || {
@@ -307,6 +363,7 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
 
   LOG_BEFORE=$(wc -c < "$RULE_LOG" 2>/dev/null | tr -d ' ')
   STATE_BEFORE=$(ls -A "$FIX_HOME/.claude/.claudemd-state" 2>/dev/null | wc -l | tr -d ' ')
+  SYNC_BEFORE=$(ls -A "$SYNC_TMP" 2>/dev/null | wc -l | tr -d ' ')
 
   # bash's `time` builtin, not /usr/bin/time: BSD time has no -f and macOS runs
   # this suite. TIMEFORMAT='%R' prints wall seconds to 3 decimals.
@@ -365,6 +422,14 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   # The claim is worded to that limit rather than widened past it. Closing the
   # gap needs a differential probe (empty vs populated fixture, per hook) —
   # tasks/hook-budget-reach-discrimination.md.
+  SYNC_AFTER=$(ls -A "$SYNC_TMP" 2>/dev/null | wc -l | tr -d ' ')
+  # Populated half of the differential signature, recorded from THIS run — the
+  # one the reach assertion above just validated.
+  printf '%s\t%s|%s|%s|%s|%s\n' "$hook" \
+    "$(norm_ck "$OUT_FILE")" "$(norm_ck "$ERR_FILE")" \
+    "$((LOG_AFTER - LOG_BEFORE))" "$((STATE_AFTER - STATE_BEFORE))" \
+    "$((SYNC_AFTER - SYNC_BEFORE))" >> "$SIG_FILE"
+
   if (( REACHED == 1 )); then
     pass "$hook probe ran to completion and did observable work (stdout ${OUT_SIZE}B, stderr ${ERR_SIZE}B, log Δ$((LOG_AFTER - LOG_BEFORE))B, state Δ$((STATE_AFTER - STATE_BEFORE)))"
   else
@@ -383,6 +448,134 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     fail "$hook took ${SECS}s against a ${BUDGET}s hooks.json timeout (limit: half the budget). A hook killed at its timeout emits nothing — a blocking gate fails OPEN silently."
   fi
 done
+
+# ------------------------------------------- differential reach discrimination ----
+# The loop above proves "the probe ran to completion and did observable work".
+# It does NOT prove that work was the data-scaling walk that put the hook in
+# DATA_RE's set: REACHED is an OR over evidence from ANY downstream branch, so a
+# rule-hits row written by an unrelated arm satisfies it. Two mutations from the
+# 0.68.3 pre-tag review stayed green under it — version-sync's $TMPDIR sentinel
+# sweep deleted, and residue-audit's ~/.claude/tmp count replaced by a constant
+# (tasks/hook-budget-reach-discrimination.md).
+#
+# This narrows the gap the way that file specified: compare each subject's
+# populated run against an empty-fixture run and require them to differ
+# somewhere observable. Delete the scan outright and the two runs become
+# identical, because the scan is the only thing the two fixtures disagree about.
+#
+# WHAT THIS PROVES, stated to its limit rather than past it — the 0.68.3 entry
+# overstated its gate's reach and this file exists partly because of that, so
+# the same wording error is not repeated here. It proves the hook READS the
+# varied data source. It does NOT prove the read was O(n) over all of it. Two
+# mutations found by the v0.69.1 pre-tag review pass this section:
+#   - sandbox-disposal-check: `platform_find_newer` replaced by a two-element
+#     constant list. The two paths exist under the populated fixture and not
+#     under the empty one, so the EXISTENCE check discriminates while the
+#     6,000-entry walk is gone (timing drops 0.103s -> 0.036s, still green).
+#   - memory-prompt-hint: MEMORY.md scan capped at `head -n 20`. The matched tag
+#     is entry 7, so the hook still emits and the signatures still differ.
+# Closing THAT would need a third fixture size and an assertion that the
+# signature scales rather than merely changes. Not built: the two mutations it
+# would catch are both "someone replaces a full scan with a plausible partial
+# one", which the timing assertion above already makes visible in the other
+# direction. Recorded in tasks/hook-budget-reach-discrimination.md as the
+# remaining known limit rather than left for the next audit to rediscover.
+#
+# The populated half is taken from the timing loop above rather than re-run
+# here. That probe is the one the reach assertion just validated, and a second
+# run in the same HOME under the same session id takes whatever per-session
+# idempotence path the hook has — which is not the scan, and reads exactly like
+# the defect this section hunts for (six subjects "failed" that way on the first
+# attempt; feedback_qa_selftest_probe_fixture_conditions).
+#
+# Signature: normalized stdout, normalized stderr, rule-hits byte delta, state
+# entry delta, $TMPDIR entry delta. The last exists for version-sync alone,
+# whose sweep acts on the filesystem and never on stdout.
+#
+# Cost: 11 extra probes, ~0.9s against a 1.4s suite. The task file asked for
+# that number before committing to the approach rather than after.
+
+# Subjects DATA_RE admits whose signature cannot move with the data volume this
+# section varies. Exempted BY NAME with a written reason rather than by narrowing
+# DATA_RE, which would drop their timing coverage too.
+#
+# The reason has to be true of the actual file. The first draft of this arm said
+# banned-vocab-check "matches DATA_RE only because it WRITES claudemd.jsonl",
+# and both halves were wrong (v0.69.1 pre-tag review): the hook does read a
+# transcript (:242,:243,:266), and the only `claudemd.jsonl` occurrence in it is
+# a comment at :346 — it logs through hook_record, never by that filename. A
+# false exemption reason is worse than none: it tells the next maintainer this
+# hook has no transcript path at all.
+diff_exempt_reason() {
+  case "$1" in
+    banned-vocab-check)
+      printf 'reads a transcript, but bounded at `tail -n 200` so its cost does not scale with transcript size; and its probe DENIES on the commit-message path before the transcript path runs, so the signature is identical under both fixtures either way (verified: removing this exemption fails it at 3837877947|4294967295|262|0|0)' ;;
+    *) printf '' ;;
+  esac
+}
+
+D_OUT="$SANDBOX/diff.out"; D_ERR="$SANDBOX/diff.err"
+FULL_TRANSCRIPT="$TRANSCRIPT"; FULL_CLAUDE_TMP="$CLAUDE_TMP"; FULL_SYNC_TMP="$SYNC_TMP"
+DIFF_COMPARED=0
+DIFF_EXEMPTED=0
+DIFF_MISSING=0
+
+for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
+  [[ -f "$HOOKS_DIR/$hook.sh" ]] || continue
+
+  _why=$(diff_exempt_reason "$hook")
+  if [[ -n "$_why" ]]; then
+    DIFF_EXEMPTED=$((DIFF_EXEMPTED + 1))
+    pass "$hook exempt from the differential probe — $_why"
+    continue
+  fi
+
+  SIG_FULL=$(awk -F'\t' -v h="$hook" '$1 == h { print $2; exit }' "$SIG_FILE")
+  if [[ -z "$SIG_FULL" ]]; then
+    DIFF_MISSING=$((DIFF_MISSING + 1))
+    fail "$hook has no populated-fixture signature — the timing loop above skipped it, so there is nothing to compare against"
+    continue
+  fi
+
+  # Empty-fixture run. probe_event sets PROBE_ENV in the CURRENT shell, so this
+  # cannot be wrapped in a command substitution — see the probe-table header for
+  # what that broke the last time.
+  TRANSCRIPT="$DIFF_EMPTY_TX"; CLAUDE_TMP="$DIFF_TMP"; SYNC_TMP="$DIFF_SYNC"
+  if ! probe_event "$hook"; then
+    TRANSCRIPT="$FULL_TRANSCRIPT"; CLAUDE_TMP="$FULL_CLAUDE_TMP"; SYNC_TMP="$FULL_SYNC_TMP"
+    fail "$hook has no probe_event arm — cannot build its empty-fixture event"
+    continue
+  fi
+  E_RL="$DIFF_HOME/.claude/logs/claudemd.jsonl"
+  E_LB=$(wc -c < "$E_RL" 2>/dev/null | tr -d ' '); E_LB=${E_LB:-0}
+  E_SB=$(ls -A "$DIFF_STATE" 2>/dev/null | wc -l | tr -d ' ')
+  E_YB=$(ls -A "$DIFF_SYNC" 2>/dev/null | wc -l | tr -d ' ')
+  env HOME="$DIFF_HOME" ${PROBE_ENV[@]+"${PROBE_ENV[@]}"} \
+    bash "$HOOKS_DIR/$hook.sh" < "$EVT_FILE" > "$D_OUT" 2> "$D_ERR"
+  E_LA=$(wc -c < "$E_RL" 2>/dev/null | tr -d ' '); E_LA=${E_LA:-0}
+  E_SA=$(ls -A "$DIFF_STATE" 2>/dev/null | wc -l | tr -d ' ')
+  E_YA=$(ls -A "$DIFF_SYNC" 2>/dev/null | wc -l | tr -d ' ')
+  SIG_EMPTY="$(norm_ck "$D_OUT")|$(norm_ck "$D_ERR")|$((E_LA - E_LB))|$((E_SA - E_SB))|$((E_YA - E_YB))"
+  TRANSCRIPT="$FULL_TRANSCRIPT"; CLAUDE_TMP="$FULL_CLAUDE_TMP"; SYNC_TMP="$FULL_SYNC_TMP"
+
+  DIFF_COMPARED=$((DIFF_COMPARED + 1))
+  if [[ "$SIG_FULL" != "$SIG_EMPTY" ]]; then
+    pass "$hook discriminates its data source (populated $SIG_FULL != empty $SIG_EMPTY)"
+  else
+    fail "$hook produced an IDENTICAL signature on the populated fixture and an empty one ($SIG_FULL) — the timing recorded above is not the timing of a scan. Either the scan was removed, or the probe never reached the data."
+    echo "       empty-run stdout: $(head -c 160 "$D_OUT" 2>/dev/null | tr '\n' ' ')"
+    echo "       empty-run stderr: $(head -c 160 "$D_ERR" 2>/dev/null | tr '\n' ' ')"
+  fi
+done
+
+# Vacuity floor: every subject must be compared or exempted with a written
+# reason. A `continue` that silently drops arms would print no failures and read
+# as clean — the shape this whole file exists to refuse.
+if (( DIFF_COMPARED + DIFF_EXEMPTED == ${#SUBJECTS[@]} && DIFF_COMPARED >= 10 )); then
+  pass "differential floor ($DIFF_COMPARED compared + $DIFF_EXEMPTED exempted = ${#SUBJECTS[@]} subjects, none dropped silently)"
+else
+  fail "differential floor: $DIFF_COMPARED compared + $DIFF_EXEMPTED exempted (+$DIFF_MISSING with no populated signature) against ${#SUBJECTS[@]} subjects, or fewer than 10 compared — arms were skipped instead of failed or exempted"
+fi
 
 # -------------------------------------------------- network-bounded hooks ----
 # The other way a hook can outrun its budget: it blocks on the NETWORK. That

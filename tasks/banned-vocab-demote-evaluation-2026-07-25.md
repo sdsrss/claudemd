@@ -17,8 +17,26 @@
 
 ## 移交事项(下一次 §13.2 batch review)
 
-- [ ] banned-vocab bypass-escape-hatch 16/31(51.6%)跨 8 项目 —— 评估:(a) 维持 deny;(b) deny→advisory;(c) 新增 demote-by-bypass-rate 判据后再裁。数据入口:`node scripts/audit.js` byHook.banned-vocab + 本文件。
-- [ ] §8-curl-sh 零命中 demote 候选:安全类规则命中稀疏属预期(攻击面本来罕见),建议 batch review 时按 confidence 而非裸命中数裁,或在 hard-rules-audit 加 safety-class 豁免标注。**不要**只因 0-hit 就拆 §8 门(参 `project_audit_2026-07-15_seams` do-NOT 列表)。
+- [x] banned-vocab bypass-escape-hatch 16/31(51.6%)跨 8 项目 —— 评估:(a) 维持 deny;(b) deny→advisory;(c) 新增 demote-by-bypass-rate 判据后再裁。数据入口:`node scripts/audit.js` byHook.banned-vocab + 本文件。
+- [x] §8-curl-sh 零命中 demote 候选:安全类规则命中稀疏属预期(攻击面本来罕见),建议 batch review 时按 confidence 而非裸命中数裁,或在 hard-rules-audit 加 safety-class 豁免标注。**不要**只因 0-hit 就拆 §8 门(参 `project_audit_2026-07-15_seams` do-NOT 列表)。
+
+## 裁决 — 2026-08-24(收敛复核同批)
+
+两项均**按 (a) 维持现状**,依据是当轮 `hard-rules-audit.js` 输出而非直觉
+(`feedback_demote_needs_data_not_intuition`):
+
+| 规则 | 30d hits | 与上次评估相比 |
+|---|---|---|
+| `§10-specificity`(banned-vocab) | total 20 = deny 14 + bypass 6 → **bypass 率 30%** | 51.6%(16/31) → **30%**,方向改善,样本 31 → 20 |
+| `§8-curl-sh` | total 2 = deny 2 + bypass 0 | 零命中 → **有命中**,demote 候选自动消解 |
+
+全局:`demoteCandidates=0`、`staleReviews=0`、`cadenceWarning=null`、`safetyClassExempt=0`,
+logSpan 124d、`insufficientData=false`。官方口径无候选,两项的前提都不再成立。
+
+不新增 demote-by-bypass-rate 判据(原选项 c),理由不止于「无候选」:新增判据是 §13 META 规则变更,
+而 core 当前 23,322 / 25,000 字节(余量 6.7%),§0.1 要求净删配对。为一条当前无候选可裁的判据
+动 spec 预算,是把 §0.1 的稀缺额度花在零收益上。若 bypass 率回升至 >50% 且持续两个窗口,
+再按 §13.2 重开——那时它有候选,判据也就有了裁决对象。
 
 ## 同批执行的压缩(已 ship)
 

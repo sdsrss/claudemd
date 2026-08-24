@@ -28,14 +28,17 @@ TOOL=$(hook_jq_field ship-baseline "$EVENT" '.tool_name // ""') || exit 0
 [[ "$TOOL" == "Bash" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
-
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion).
 # Opt-out: BASH_READONLY_FAST_PATH=0.
 if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD"; then
   exit 0
 fi
+
+# Telemetry fields — see banned-vocab-check.sh for why these are below the
+# fast-path exit rather than above it (audit-2026-08-22 条目 12). Gate:
+# tests/hooks/preToolUse-fastpath-order.test.sh.
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
 # v0.23.1 — strip heredoc bodies before trigger match. Real-world failure
 # (claudemd downstream consumer, 5/24): commit-body heredoc containing

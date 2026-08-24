@@ -297,9 +297,12 @@ echo "       against their hooks.json timeouts, and asserts a static platform_ti
 echo "       bound for the two network-blocking ones (session-start-check,"
 echo "       ship-baseline-check) instead of timing them. session-extended-read is"
 echo "       timed by neither. Above is the PreToolUse CHAIN total, not per-hook."
-echo "       That gate proves each of the 11 ran and did observable work; for"
-echo "       version-sync and residue-audit it does NOT prove the data-scaling"
-echo "       walk itself ran (tasks/hook-budget-reach-discrimination.md)."
+echo "       That gate proves each of the 11 ran and did observable work, and"
+echo "       since v0.69.1 a differential probe (populated vs empty fixture)"
+echo "       proves each one READS the source it scales with — version-sync and"
+echo "       residue-audit included, which the reach proof alone did not cover."
+echo "       Still not proven: that the read is O(n) rather than a bounded"
+echo "       prefix of it (tasks/hook-budget-reach-discrimination.md)."
 
 # A failed self-check means every number printed above is an underread. Saying
 # so on stderr while exiting 0 leaves a scripted caller with numbers and a

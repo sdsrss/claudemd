@@ -8,6 +8,62 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.69.1] - 2026-08-24
+
+The 2026-08-22 audit's last two open technical items, and the convergence review it asked for. No user-visible behaviour changes: the hooks emit exactly what they emitted before, and the work is where they spend time getting there plus two gates that keep it that way.
+
+**条目 12 — the readonly fast-path was the fourth exit, not the first.** Three of the four `PreToolUse:Bash` hooks extracted `session_id` / `tool_use_id` / `cwd` **above** their `hook_is_readonly_bash` exit — 3 + 2 + 2 = seven `jq` spawns filling variables that a read-only command discards two lines later. `memory-read-check.sh` had the right order the whole time and was not touched; that asymmetry is what makes this drift rather than a design choice. It survived two audit rounds because every hook's own suite drives it with a command that is *not* read-only — otherwise the assertion under test never runs — so the wasted work sat on the one path no suite exercised.
+
+Measured with `scripts/perf-baseline.sh --runs 15`, same machine, same day, `delta_ms` = hooks ON minus OFF:
+
+| probe | hits the fast-path | before | after |
+|---|---|---|---|
+| `git log --oneline -1` | yes | 82 ms | **60 ms** |
+| `git status` | yes | 73 ms | **59 ms** |
+| `echo hello world` | yes | 75 ms | **61 ms** |
+| `ls /tmp >/dev/null` | no | 141 ms | 140 ms |
+| `cat README.md \| head -1` | no | 147 ms | 145 ms |
+| `git commit --allow-empty` | no | 198 ms | 205 ms |
+
+The three that take the fast-path drop 14–22 ms; the three that do not are inside run-to-run noise, which is where the saving should land and nowhere else. Worth knowing when reading that table: only three of the six probes reach the fast-path at all — `ls /tmp >/dev/null` and `cat README.md | head -1` carry shell metacharacters and `hook_is_readonly_bash` declines them by design (verified directly: `ls /tmp` qualifies, `ls /tmp >/dev/null` does not). So `perf-baseline` is half-sensitive to this class of change, and its columns have to be read per row rather than averaged.
+
+- **new gate: `tests/hooks/preToolUse-fastpath-order.test.sh`.** Only `.tool_name` and `.tool_input.command` may be extracted above the exit; anything else has to wait until after it. The subject set derives from source (`grep hook_is_readonly_bash`) with a floor of 4, both premises are asserted rather than assumed — a missing fast-path line and zero legitimate extractions above it each fail rather than silently passing — and the file carries its own control: one extraction moved back above the exit must turn it red. Against the pre-fix tree it named all seven sites and exited 1.
+
+**条目 12 的另一半 — hook-budget 的 reach proof 证明的比它宣称的少.** `REACHED` was an OR over four evidence kinds, so a rule-hits row written by any downstream branch satisfied it. The 0.68.3 pre-tag review had recorded two mutations that stayed green under it and shipped them as a known gap. `hook-budget.test.sh` now runs every subject against a populated fixture *and* an empty one and requires the two signatures to differ — normalized stdout, normalized stderr, rule-hits bytes, state entries, `$TMPDIR` entries. Both recorded mutations now fail it:
+
+- version-sync's `-mmin +1440 -delete` replaced by a no-op → **red** (this one is visible in the `$TMPDIR` dimension alone; its stdout, stderr and log deltas are identical either way)
+- residue-audit's `CURRENT=$(find …)` replaced by the constant `6000` → **red**
+
+Normalizing before hashing is load-bearing rather than cosmetic: the two runs use different `HOME` paths, so raw bytes always differ and the assertion would have passed vacuously. The populated half is recorded by the timing loop as it goes rather than re-run afterwards — a second run in the same `HOME` under the same session id takes whatever per-session idempotence path the hook has, which is not the scan, and reads exactly like the defect being hunted. Six subjects "failed" that way on the first attempt.
+
+- **fix: the fixture's `$TMPDIR` never contained anything version-sync's GC could match.** `SYNC_TMP` was filled with 5,950 `probe-file-*` entries while the sweep matches `claudemd-sync-*` — so the walk was driven at full width and the delete arm matched nothing, on every run since that fixture landed. It now also gets 50 correctly-named, suitably aged entries.
+- **`banned-vocab-check` is exempt from the differential probe, by name and with a written reason.** It does read a transcript, but bounded at `tail -n 200`, and its probe denies on the commit-message path before the transcript path runs — so its signature is identical under both fixtures either way. Exempting it beats narrowing `DATA_RE`, which would drop its timing coverage too.
+- **docs: `ADDING-NEW-HOOK.md` §5b** now states all three things `hook-budget` wants, including the differential requirement and how to exempt a hook that genuinely does not scale.
+
+Cost of the differential section: 11 extra probes, `hook-budget.test.sh` 1.4s → 2.87s. The deferral note asked for that number before committing to the approach rather than after.
+
+### Also
+
+- **The audit is converged; the repo moves to maintenance.** `docs/audit/audit-2026-08-22-02-convergence.md` (local, per the `docs/` gitignore convention) records the review its predecessor asked for: all five P1s re-verified against source, 0 new HIGH, `spec-coherence` 5/5 with C=0 H=0 M=0 L=0, `safety-coverage` 0 partial / 0 unimplemented / 0 anchor gaps, `hard-rules` 0 demote candidates and 0 stale reviews. Next full round is triggered by an incident or a change in how the tool is used, not by a calendar.
+- **The npm download figure is not adoption evidence.** 6,570/month against 2 stars and 0 issues resolves to mirror synchronisation: last week's 729 downloads are spread across **all 154 published versions**, with 146 historical ones averaging 1.36 downloads each — every `0.9.x` from April pulled once or twice in a week. Five days in the last 97 had zero downloads. Working notes and the conditions that would overturn this in `tasks/npm-download-attribution-2026-08-24.md`.
+- **§13.2 batch review, 45 days overdue, done.** `hard-rules-audit` reported `cadenceWarning=null` throughout because it tracks the *demote* half of §13.2; the promote/prune half lives in `tasks/rule-candidates-2026-04.md` and has no instrument. §9 Parallel-path's entry still read "BLOCKED" three months after it was promoted to HARD. §2.1 model-tiering observability is closed — the rule it observes no longer exists in the spec.
+- **The §8 escaped-quote gap was assessed, not implemented** (`tasks/s8-sanitize-escaped-quote-gap.md`). Its recorded framing as a false-negative-direction change is too pessimistic — `echo "a \" ; rm -rf / "` is one argument in bash, and hiding it from the detectors is correct — but the escape model itself has a real FN surface (`\\"`, `$'...'`), on the one gate that is never-downgrade. It needs the full FN matrix across all §8 gates and its own release, and it now has explicit triggers instead of sitting at "not scheduled".
+- **The two banned-vocab demote items are settled.** §10-V's bypass rate fell from 51.6% (16/31) to 30% (6/20) and §8-curl-sh went from zero hits to `deny=2`, so both candidacies lapsed on their own evidence. No `demote-by-bypass-rate` criterion was added: core sits at 23,322 of 25,000 bytes, and §0.1 would require a paired net-delete to buy a rule with nothing to rule on.
+
+### Pre-tag review
+
+An independent reviewer ran against the staged batch before the tag (§EXT §12 author ≠ reviewer): 0 blockers, 5 should-fix, 3 nits, all folded in here rather than deferred. It confirmed the parts that matter by construction rather than by reading — 90 command × hook × flag comparisons between HEAD and the staged tree found 0 behavioural differences, and a telemetry diff confirmed `session_id` / `tool_use_id` still populate every deny row after the move.
+
+The finding worth reading is the first one, because it is this release's own subject matter turned on itself:
+
+- **The new fast-path gate recognised one spelling of a jq call, and the release is about a gate being narrower than its subject.** `EXTRACT_RE` matched a pipe into `jq` or the shared helper. `SESSION_ID=$(jq -r '.session_id' <<< "$EVENT")` — a here-string — sailed past it, and the reviewer demonstrated that with a working mutation that left the gate reporting `4/4 passed`. Worse, the missed spelling is the *common* one in `hooks/`: `jq -r '.x' "$file"` is what `session-start-check`, `session-summary` and `session-end-check` all use. The gate now matches any `jq` invocation and subtracts the two presence-probe spellings, and it carries three mutation shapes as controls instead of one.
+- **The differential section's claim was wider than the section.** It proves a hook *reads* the source it scales with; it does not prove the read is O(n). The reviewer got two mutations through it — `platform_find_newer` replaced by a two-element constant list (timing 0.103s → 0.036s, still green) and a MEMORY.md scan capped at `head -n 20`. Rather than build the third fixture size that would close it, the claim is narrowed in all three places it appears and the surviving mutations are written into the task file, so the next audit finds them recorded instead of new.
+- **The exemption's stated reason was false in three places.** `banned-vocab-check` was said to match `DATA_RE` "only because it writes `claudemd.jsonl`". It does not write that file at all — the string occurs once, in a comment — and it *does* read a transcript. The conclusion survived; the reason was rewritten, because a false exemption reason tells the next maintainer this hook has no transcript path.
+- **Three tracked files carrying this release's own record were unstaged**, so the published `tasks/hook-budget-reach-discrimination.md` would still have read "未修" while the CHANGELOG and a test comment both cited it as resolved. Two more cited paths had no whitelist entry. Staged and whitelisted respectively; the audit report is annotated `(local)` per the existing convention.
+- **`perf-baseline.sh` printed a statement this release makes false** — that the budget gate does not prove version-sync's and residue-audit's walks ran. It was in shipped code, printed during this release's own measurement run, and untouched by the diff until the reviewer named it.
+
+Also from that review: the differential's path normalisation missed the transcript and `$TMPDIR` basenames, which would make the comparison vacuous for any hook that ever echoed either (none does today); and the gate's line matching applied to whole `NN:content` lines, so a comment could have produced a false red. Both fixed.
+
 ## [0.69.0] - 2026-08-22
 
 The P2/P3 remainder of the 2026-08-22 audit — 17 of its 20 open items, closed as four defect CLASSES rather than seventeen fixes. The audit's own convergence verdict was "not converged", on the grounds that two named root causes had produced six new instances inside the v0.67.0..HEAD increment: 0.67.0 had fixed the instances without fixing the habit that produces them. So the shape of this release is gates, not patches — and each gate found more than the audit had listed.

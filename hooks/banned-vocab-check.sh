@@ -26,10 +26,6 @@ TOOL=$(hook_jq_field banned-vocab "$EVENT" '.tool_name // ""') || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
-EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
-
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion from
 # v0.8.3 opt-in default-OFF). When CMD is a definitely-read-only shape
 # (ls / cat / git log / etc., no shell-meta), exit before the per-pattern
@@ -39,6 +35,21 @@ EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD"; then
   exit 0
 fi
+
+# Telemetry fields, extracted AFTER the fast-path because nothing above needs
+# them. They sat above it from v0.8.3 until audit-2026-08-22 条目 12, so every
+# read-only Bash call — the shape the fast-path exists to make cheap — paid
+# three jq spawns to fill variables it then discarded at the exit two lines
+# later. The exit is the point of the fast-path; work in front of it is work
+# the fast-path cannot skip. memory-read-check.sh has always had this order;
+# these three did not, and the asymmetry was invisible because every hook's
+# own suite drove it past the fast-path with a non-read-only command.
+#
+# Gate: tests/hooks/preToolUse-fastpath-order.test.sh derives this set from
+# source and fails any jq extraction that moves back above the exit.
+SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
+TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
+EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 
 # Filter: must be a git commit invocation. `\s` / `\S` aren't portable under
 # BSD grep (macOS); use POSIX character classes so behavior matches Linux.
