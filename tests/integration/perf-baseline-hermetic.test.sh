@@ -127,7 +127,12 @@ set +e
 (cd "$CALLER" && DISABLE_CLAUDEMD_HOOKS=1 bash "$ROOT/scripts/perf-baseline.sh" --runs 1 \
    >/dev/null 2>"$PB5_ERR")
 PB5_STATUS=$?
-set -e
+# `set +e`, not `set -e`: this file runs under `set -uo pipefail` with errexit
+# OFF, so the pair above was turning errexit ON mid-file rather than restoring
+# it. Everything after this line then ran under a mode the rest of the suite was
+# never written for — one non-zero command would abort before the summary, i.e.
+# a silent pass (2026-08-29 audit R10-19).
+set +e
 if (( PB5_STATUS != 0 )) && grep -q "probe self-check did not reach" "$PB5_ERR"; then
   echo "PASS: 5 a failed self-check exits non-zero (status $PB5_STATUS), not just a warning"
 else
