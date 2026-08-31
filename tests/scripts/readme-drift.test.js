@@ -77,3 +77,64 @@ test('README hooks table: every opt-in gated hook with a table row says Opt-in',
       `hooks/${hook}.sh is opt-in gated but its README table row does not say "Opt-in":\n${row}`);
   }
 });
+
+// --- 2026-08-29 audit R10-14: behavioural claims a reader acts on ----------
+//
+// The two classes above cover counts and opt-in labels. These cover PROSE that
+// tells a user how the software behaves — the widest problem surface this
+// audit round found, and the one with no gate at all: README said hook 3 has
+// no fast-path (it has had one since 0.68.x) and docs/HOOK-PROTOCOL.md listed
+// five readers of `tool_use_id` where six exist, in a document created to stop
+// the next hook author re-deriving this from source.
+
+const HOOKS_DIR = path.join(REPO_ROOT, 'hooks');
+const hookSources = () => fs.readdirSync(HOOKS_DIR)
+  .filter(f => f.endsWith('.sh'))
+  .map(f => ({ name: f, src: fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8') }));
+// Comment lines are excluded before matching: a fix commit that documents the
+// old spelling in prose would otherwise match its own description
+// (feedback_self_referential_marker_regex).
+const codeOf = src => src.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+
+test('R10-14: README does not claim a PreToolUse:Bash hook lacks the readonly fast-path', () => {
+  const withFastPath = hookSources()
+    .filter(h => /hook_is_readonly_bash/.test(codeOf(h.src)))
+    .map(h => h.name.replace(/\.sh$/, ''))
+    .sort();
+  assert.ok(withFastPath.length >= 4,
+    `expected >= 4 hooks with the fast-path, found ${withFastPath.length}`);
+
+  const para = README.split('\n').find(l => l.includes('**Readonly fast-path**'));
+  assert.ok(para, 'README "Readonly fast-path" paragraph not found — the anchor moved');
+  // The specific false shape: naming a numbered subset, or excusing one hook.
+  assert.doesNotMatch(para, /hooks? \d(,| and )/,
+    `the fast-path paragraph names a numbered subset while all ${withFastPath.length} Bash hooks carry it:\n${para}`);
+  assert.doesNotMatch(para, /fast-path doesn't apply|fast-path does not apply/,
+    `the fast-path paragraph excuses a hook that in fact has the fast-path:\n${para}`);
+});
+
+test('R10-14: HOOK-PROTOCOL.md field-reader lists match the hooks that read them', () => {
+  const proto = fs.readFileSync(path.join(REPO_ROOT, 'docs/HOOK-PROTOCOL.md'), 'utf8');
+  for (const field of ['tool_use_id', 'transcript_path']) {
+    const readers = hookSources()
+      .filter(h => new RegExp(`\\.${field}`).test(codeOf(h.src)))
+      .map(h => h.name)
+      .sort();
+    assert.ok(readers.length >= 3, `expected >= 3 readers of ${field}, found ${readers.length}`);
+
+    // The bullet that introduces the field, up to the next bullet.
+    const m = proto.match(new RegExp(`^- \`${field}\`[\\s\\S]*?(?=\\n- \`|\\n\\n)`, 'm'));
+    assert.ok(m, `docs/HOOK-PROTOCOL.md has no "- \`${field}\`" bullet`);
+    const missing = readers.filter(r => !m[0].includes(r));
+    assert.deepEqual(missing, [],
+      `docs/HOOK-PROTOCOL.md's ${field} reader list omits hook(s) that read it:\n` +
+      missing.map(r => `  ${r}`).join('\n'));
+
+    // Reverse: a hook named as a reader must still read it.
+    const named = [...m[0].matchAll(/`([a-z0-9-]+\.sh)`/g)].map(x => x[1]);
+    const stale = named.filter(n => !readers.includes(n)).sort();
+    assert.deepEqual(stale, [],
+      `docs/HOOK-PROTOCOL.md lists hook(s) as ${field} readers that no longer read it:\n` +
+      stale.map(r => `  ${r}`).join('\n'));
+  }
+});

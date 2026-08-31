@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/sdsrss/claudemd.git"
   },
-  "homepage": "https://github.com/sdsrss/claudemd#standalone-cli-v090-r-n7",
+  "homepage": "https://github.com/sdsrss/claudemd#standalone-cli",
   "bugs": "https://github.com/sdsrss/claudemd/issues",
   "keywords": [
     "lint",

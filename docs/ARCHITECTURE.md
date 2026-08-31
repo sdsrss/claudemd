@@ -58,6 +58,7 @@ Stop hook
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — background install.js failure sentinel (v0.50.0; written/cleared by `hook_spawn_install`, read by the SessionStart failure banner, stale copy cleared on version match)
+- `~/.claude/.claudemd-state/bootstrap-failed.json.last-shown` — consume-once rename target after the failure banner (`session-start-check.sh:206`, the same idiom as the summary banner above). **Not** matched by clean-residue's state-dir patterns — only `/claudemd-uninstall --purge` removes it, so a machine that hit one background-install failure keeps the file indefinitely (2026-08-29 audit R10-21e)
 - `~/.claude/.claudemd-state/ext-read-<sid>.ts` — per-session §13.1-extended-read dedup sentinel (`session-extended-read.sh`). Reaped by `session-end-check.sh` for its OWN session only, so a crash / kill / abnormal exit leaks one; `/claudemd-clean-residue` reaps the rest past the retention window.
 - `~/.claude/.claudemd-state/failopen-<hook>-<reason>.ts` — `hook_record_failopen` rate-limit marker (1 row per (hook, reason) per 60s)
 - `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — **dead**: written by the `memory-coverage-scan` Stop hook removed in v0.23.12. No in-tree producer remains; existing copies are reaped by `/claudemd-clean-residue`.

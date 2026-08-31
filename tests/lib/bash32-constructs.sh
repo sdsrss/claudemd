@@ -75,8 +75,11 @@ bash32_default_scope() {
 # Floor for EVERY consumer of the default scope. An unexpanded glob or a wrong
 # root would emit an empty set, and a scan over nothing exits 0 with "OK: no
 # bash 4+ constructs" — the same "the layer vanished and the run said all green"
-# shape run-all.sh's suite floors close. Current count is 49, so the floor leaves
-# 9 files of churn headroom while still catching a whole directory going missing.
+# shape run-all.sh's suite floors close. The count is 55 as of 2026-08-31 (the
+# comment said 49 and was never re-measured — 2026-08-29 audit R10-19), so a
+# floor of 40 leaves ample churn headroom while still catching a whole directory
+# going missing. Re-measure with `bash tests/lib/bash32-constructs.sh --list |
+# grep -c .` rather than trusting this number.
 #
 # 2026-07-28 review: this guard first landed inside the --list branch only, so the
 # DEFAULT path — the one ci.yml's pattern step and run-all.sh actually call — kept

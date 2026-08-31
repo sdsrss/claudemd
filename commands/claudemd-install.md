@@ -5,7 +5,9 @@ description: Bootstrap claudemd in the CURRENT Claude Code session (copy spec in
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/install.js`
 
-This wraps `scripts/install.js` exactly the same way `SessionStart` does on the next session — copies `spec/CLAUDE*.md` + `OPERATOR.md` into `~/.claude/` (backing up any pre-existing files into `~/.claude/backup-<ISO>/`), writes the hook manifest to `~/.claude/.claudemd-manifest.json`, and evicts any legacy claudemd hook entries from `~/.claude/settings.json`. Idempotent — safe to re-run.
+This wraps `scripts/install.js` exactly the same way `SessionStart` does on the next session — copies `spec/CLAUDE*.md` + `OPERATOR.md` into `~/.claude/`, writes the hook manifest to `~/.claude/.claudemd-manifest.json`, and evicts any legacy claudemd hook entries from `~/.claude/settings.json`. Idempotent — safe to re-run.
+
+Backup is conditional, not universal: only genuine USER content is moved aside, into `~/.claude/backup-<ISO>/`. An existing `~/.claude/CLAUDE.md` that is already a claudemd spec is overwritten with no backup — that is the v0.23.11 data-loss fix, so the personal backup stays the sole entry in that namespace and `CLAUDEMD_SPEC_ACTION=restore` cannot return a spec instead of the user's own file. Pre-plugin hand-installed hook files go to their own `handhook-backup-<ISO>/` namespace.
 
 Surface the JSON output as a one-line human summary:
 

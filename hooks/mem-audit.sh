@@ -112,10 +112,11 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   # and find-order sampling are unchanged — awk flushes each file's verdict
   # when the NEXT file starts, so output order still follows find.
   #
-  # Byte count is summed as `length($0) + 1` rather than shelling out to
-  # `wc -c`: it differs from wc only for a file with no trailing newline, and
-  # only by one byte, against a threshold whose stated purpose is "<400 bytes
-  # likely empty".
+  # (The paragraph that stood here described an awk `length($0) + 1` byte sum
+  # that audit-2026-08-22 条目 17 had already replaced with find's `-size +399c`
+  # — see the comment further down for why. It survived the change it described
+  # being deleted, and the note below still referred back to it. Removed rather
+  # than rewritten: the live rationale lives at the surviving site.)
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     MISSING=$((MISSING + 1))

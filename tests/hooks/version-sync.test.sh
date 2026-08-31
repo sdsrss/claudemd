@@ -158,6 +158,18 @@ fi
 # install.js and downgraded the manifest (repro 2026-07-11, tasks/manifest-
 # pluginroot-stale-cache.md). stdout stays 0 bytes (hook contract); bootstrap
 # log records the skip; stale-root rule-hits row written; manifest untouched.
+#
+# Its own HOME (2026-08-31): the earlier cases spawn install.js DETACHED with a
+# 10s cap, and `reset_state` neither waits for nor kills those children. Under
+# suite load one of them landed after this case had written 9.9.9, rewrote the
+# manifest to the real plugin version, and this case reported the stale gate as
+# broken — observed once in a full run-all, never standalone. A fresh HOME puts
+# the manifest an in-flight sibling writes out of this case's reach, which is
+# deterministic where a longer sleep would only be luckier.
+C8_HOME=$(mktemp -d) || { echo "FAIL: 8 mktemp"; exit 1; }
+SAVED_HOME="$HOME"
+export HOME="$C8_HOME"
+mkdir -p "$HOME/.claude/logs"
 reset_state
 rm -f "$HOME/.claude/logs/claudemd.jsonl"
 jq -n '{version:"9.9.9",entries:[]}' > "$HOME/.claude/.claudemd-manifest.json"
@@ -172,6 +184,9 @@ else
   echo "FAIL: 8 (stdout=$STDOUT post_ver=$POST8 log=$(head -3 "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null))"
   FAIL=$((FAIL+1))
 fi
+
+export HOME="$SAVED_HOME"
+rm -rf "$C8_HOME"
 
 # Case 9 (v0.50.0): failed piggy-back install writes the bootstrap-failed
 # sentinel (same shared wrapper as session-start bootstrap) so the next

@@ -191,14 +191,15 @@ fi
 # ~/.claude/projects/ — e.g. /mnt/data_ssd → -mnt-data-ssd, my.project → my-project,
 # ~/.claude → --claude). Earlier `tr '/.' '-'` missed `_`, silently mis-locating
 # the memory dir for any cwd with an underscore (turning the HARD §11 rule into
-# a no-op for those projects). `tr -c 'a-zA-Z0-9-' '-'` converts EVERY non-
-# `[a-zA-Z0-9-]` char (space, `+`, `@`, …) to `-`, exactly matching CC's
-# encoding — the narrower `tr '/._'` only handled the three chars seen in this
-# maintainer's own cwds and silently mis-located the dir for any project path
-# with a special char beyond those, no-op'ing the HARD §11 rule there too.
-# For `/._`-only paths the two forms are byte-identical, so this is a strict
-# superset fix. (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh,
-# lib/rule-hits.sh — all derive the same projects-dir encoding.)
+# a no-op for those projects), and the `tr -c 'a-zA-Z0-9-' '-'` that replaced it
+# was described here as "exactly matching CC's encoding" — it is not. `tr` works
+# on BYTES, so a CJK path segment gets three dashes per character where CC (a
+# Node String.replace) emits one. The 2026-07-17 audit replaced it with the
+# per-character `hook_encode_project` in lib/rule-hits.sh; this comment kept
+# asserting the old equivalence (2026-08-29 audit R10-21c). Encoding rationale,
+# the locale caveat and the non-BMP residual all live in that function's header.
+# (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh, lib/rule-hits.sh
+# — all call the same single source.)
 ENCODED=$(hook_encode_project "$CWD")
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"

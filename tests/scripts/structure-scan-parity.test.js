@@ -74,8 +74,15 @@ function bashVerdict(text, sandbox) {
     input: JSON.stringify({ session_id: 'parity', transcript_path: tx }),
     encoding: 'utf8',
     timeout: 20000,
+    // `...process.env` MINUS the claudemd knobs. README teaches users to export
+    // DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK, and inheriting it makes this
+    // parity gate report a bash verdict of "nothing" for every case — a false
+    // red on a maintainer's own shell. The bash suites scrub these at entry
+    // (tests/lib/env-hygiene.sh); the node-side spawns never followed
+    // (2026-08-29 audit R10-19).
     env: {
-      ...process.env,
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([k]) => !/^(DISABLE_|CLAUDEMD_|BASH_READONLY_FAST_PATH$|BANNED_VOCAB_)/.test(k))),
       HOME: sandbox,
       TRANSCRIPT_STRUCTURE_SCAN: '1',
       // Manual probes must not land in the real corpus

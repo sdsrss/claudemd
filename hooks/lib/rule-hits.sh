@@ -183,8 +183,13 @@ rule_hits_append() {
   [[ "$session_id" == "t" ]] && return 0
 
   # Project: encode to match Claude Code's ~/.claude/projects/<encoded>/
-  # convention — CC replaces every non-`[a-zA-Z0-9-]` char with `-`, so
-  # `tr -c 'a-zA-Z0-9-' '-'` is the exact transform. The earlier `tr '/._'`
+  # convention via hook_encode_project above — CC replaces every
+  # non-`[a-zA-Z0-9-]` char with `-`, CHARACTER-wise. (This said `tr -c` "is the
+  # exact transform"; the 2026-07-17 audit disproved that and replaced it with
+  # the per-character loop — `tr` is byte-wise and emits three dashes per CJK
+  # character. Two copies of the false claim survived that fix; this is one of
+  # them, 2026-08-29 audit R10-21c. The live rationale is in the function
+  # header.) The earlier `tr '/._'`
   # only handled the three chars seen in this maintainer's cwds and mis-encoded
   # the project field for any path with another special char (telemetry then
   # attributed those rows to the wrong / a non-existent project). For `/._`-only

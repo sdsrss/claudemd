@@ -4,6 +4,7 @@ import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir, s
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { readSettings } from './lib/settings-merge.js';
 
 const USAGE = `Usage: node scripts/status.js [--verbose]
 
@@ -35,7 +36,11 @@ const SUB_FEATURE_TOGGLES = [
   { envVar: 'DISABLE_BOOTSTRAP_FAIL_BANNER',    partOf: 'session-start-check.sh', disables: 'the prior-session install-failure banner; the sentinel is still written' },
   { envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',   partOf: 'session-end-check.sh',   disables: 'the §13.2 batch-review cadence advisory only' },
   { envVar: 'DISABLE_RULE_HITS_LOG',            partOf: 'all hooks',              disables: 'telemetry appends to ~/.claude/logs/claudemd.jsonl; enforcement is unaffected' },
-  { envVar: 'DISABLE_STATUSLINE_QUOTA',         partOf: 'statusline.sh',          disables: 'the ctx/5h/7d quota segments only' },
+  // 5h/7d only — `ctx` renders unconditionally (statusline.sh:102). This said
+  // "ctx/5h/7d" while the script's own header and README:64 both said 5h/7d
+  // (2026-08-29 audit R10-21a), and this is the string /claudemd-status prints
+  // when a user asks how to quiet the statusline.
+  { envVar: 'DISABLE_STATUSLINE_QUOTA',         partOf: 'statusline.sh',          disables: 'the 5h/7d quota segments only (ctx still renders)' },
 ];
 
 const ESCAPE_TOKENS = [
@@ -114,7 +119,13 @@ export async function status({ verbose = false } = {}) {
       // report went silently empty (2026-07-26 audit).
       const sp = settingsPath();
       if (!fs.existsSync(sp)) return {};
-      const s = JSON.parse(fs.readFileSync(sp, 'utf8'));
+      // readSettings(), not a raw JSON.parse: settings.json written by an
+      // editor that emits a UTF-8 BOM throws here, the catch returns {}, and
+      // pendingKillSwitches silently reports "no pending changes" — which is
+      // exactly the drift this block exists to surface. The shared reader
+      // already handles the shapes this file has to tolerate
+      // (2026-08-29 audit R10-20).
+      const s = readSettings();
       return (s && s.env) || {};
     } catch { return {}; }
   })();

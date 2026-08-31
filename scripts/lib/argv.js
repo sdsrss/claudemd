@@ -41,7 +41,12 @@ export function parsePositiveInt(raw) {
   if (raw == null) return null;
   const s = String(raw).trim();
   // Plain base-10 notation only — rejects hex ('0x1e'), exponential ('1e2'),
-  // signs, and interior junk that `Number()` would coerce. A trailing-zero
+  // signs, and interior junk that `Number()` would coerce. Leading zeros ARE
+  // accepted ('007' → 7): the header above cites a `/^[1-9][0-9]*$/` guard as
+  // the model, but this pattern is `[0-9]+` and never rejected them
+  // (2026-08-29 audit R10-20). Left as-is rather than tightened — '007' is
+  // unambiguous base-10 here and no caller distinguishes it — but the comment
+  // no longer claims otherwise. A trailing-zero
   // decimal ('30.0', '30.00') is allowed through the shape gate so the
   // integer-valued-float check below can accept it (existing contract: callers
   // / scripts may pass '30.0'); a true fraction ('1.5') passes the shape gate

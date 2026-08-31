@@ -21,8 +21,9 @@ author to re-derive it from another hook's source:
 
 - `tool_use_id` — PreToolUse / PostToolUse only. Stop / SessionStart /
   SessionEnd / UserPromptSubmit carry no per-tool context, and rule-hits rows
-  from those events log `null`. Read by `pre-bash-safety-check.sh`,
-  `banned-vocab-check.sh`, `memory-read-check.sh`, `session-extended-read.sh`,
+  from those events log `null`. Read by `banned-vocab-check.sh`,
+  `memory-read-check.sh`, `pre-bash-safety-check.sh`,
+  `session-extended-read.sh`, `ship-baseline-check.sh`,
   `transcript-vocab-scan.sh`.
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,

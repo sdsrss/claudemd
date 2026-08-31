@@ -18,4 +18,4 @@ If the user says apply, re-run with `choice=apply-all` via `CLAUDEMD_UPDATE_CHOI
 
 Note: `/plugin update` is not a real CC command.
 
-**Per-file select is not supported.** The spec trio (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md`) evolves lockstep — `CLAUDE.md` H1 is the canonical version, and `§EXT §X-EXT` cross-references would dangle if only some files updated. Choices are `apply-all` (full trio sync) or `cancel`.
+**Per-file select is not supported.** The 4-file spec set (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) evolves lockstep — `CLAUDE.md` H1 is the canonical version, and `§EXT §X-EXT` cross-references would dangle if only some files updated. Choices are `apply-all` (full 4-file sync) or `cancel`.
