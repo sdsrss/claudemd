@@ -303,8 +303,24 @@ LAST_TEXT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null \
       | join("\n")' 2>/dev/null)
 [[ -n "$LAST_TEXT" ]] || exit 0
 
-# Cap to the trailing 4096 chars (very long turns; most recent prose wins).
-LAST_TEXT=$(printf '%s' "$LAST_TEXT" | tail -c 4096)
+# Cap to the trailing 4096 CHARACTERS (very long turns; most recent prose wins).
+#
+# Was `tail -c 4096`, which is BYTES — the comment said chars and the code did
+# not, and a boundary landing mid-CJK-character leaves an invalid UTF-8 prefix
+# for the pattern scan below (2026-08-29 audit R10-20). GNU grep still matches
+# across such a prefix (verified), so this is not a demonstrated miss on the
+# Linux path; BSD grep's binary-input handling is the untested arm, and this
+# maintainer's prose is the CJK in question. Bash substring is character-wise in
+# a UTF-8 locale — the same mechanism hook_encode_project relies on, degrading
+# to byte-wise under LC_ALL=C, i.e. never worse than the old form — and it drops
+# a fork on a PreToolUse path.
+#
+# The length guard is load-bearing: `${var: -N}` with N greater than the length
+# yields the EMPTY STRING, not the whole value, so an unguarded form would blank
+# every turn shorter than the cap and silence the scan entirely.
+if (( ${#LAST_TEXT} > 4096 )); then
+  LAST_TEXT="${LAST_TEXT: -4096}"
+fi
 
 # v0.23.19 — identifier/path mentions are not value claims. `\b` treats '-'
 # and '/' as word boundaries, so a branch name like

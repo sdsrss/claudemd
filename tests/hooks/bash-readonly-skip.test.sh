@@ -128,8 +128,29 @@ OUT=$(echo "$EVENT_RO" | bash "$BANNED" 2>&1)
 OUT=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT_RO" | bash "$BANNED" 2>&1)
 [[ -z "$OUT" ]] && ok "33 (v0.20.0): opt-out =0 + readonly cmd → still silent (slow path)" || ng "33: opt-out introduced noise (got: $OUT)"
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((35 - FAIL))/35 passed"
+# --- Cases 34-41 (2026-08-29 audit R10-20): `remote` / `reflog` are FAMILIES --
+# The whitelist admitted the family name, so `git remote add` and `git reflog
+# expire` — both writers — took the fast path, which exits before all four
+# PreToolUse:Bash enforcement hooks. Same shape as the `env` entry the library
+# already documents. No gate denies these today; the contract violation is the
+# finding.
+for _c in 'git remote' 'git remote -v' 'git remote show origin' 'git reflog' 'git reflog show HEAD'; do
+  [[ "$(classify "$_c")" == "YES" ]] && ok "34 readonly: $_c" || ng "34 readonly: $_c (got $(classify "$_c"))"
+done
+for _c in 'git remote add up https://x' 'git remote remove up' 'git remote set-url up https://y' 'git remote prune origin' 'git reflog expire --all' 'git reflog delete HEAD@{0}'; do
+  [[ "$(classify "$_c")" == "NO" ]] && ok "35 not readonly: $_c" || ng "35 not readonly: $_c (got $(classify "$_c"))"
+done
+
+# The assertion inventory is derived rather than hand-counted — the literal
+# below had to be bumped by hand on every addition (2026-07-27 audit, L5).
+TOTAL=$(grep -oE '\b(ok|ng) "[0-9]+' "$HERE/$(basename "$0")" 2>/dev/null | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
+TOTAL=${TOTAL:-0}
+if (( TOTAL < 33 )); then
+  echo "FAILED: assertion inventory came back $TOTAL (< 33) — the count source is wrong"
   exit 1
 fi
-echo "Tests: 35/35 passed"
+if (( FAIL > 0 )); then
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"
+  exit 1
+fi
+echo "Tests: $TOTAL/$TOTAL passed"

@@ -112,7 +112,23 @@ git -C "$SANDBOX" commit -qm seed
 # empty one did.
 FIX_HOME="$SANDBOX/home"
 PROBE_CWD="$SANDBOX"
-ENCODED=$(printf '%s' "$PROBE_CWD" | tr -c 'a-zA-Z0-9-' '-')
+# Encode via the SHARED hook_encode_project rather than a private `tr -c`
+# (2026-08-29 audit R10-20). `tr` is byte-wise: under a non-ASCII TMPDIR the
+# sandbox path encoded to more dashes than the hooks themselves produce, so the
+# hooks looked for their memory index and transcript at a DIFFERENT path than
+# the one this script populated, took their fail-open exits, and the instrument
+# reported the cost of an empty directory as the cost of a populated one — the
+# same underread Case 4 of perf-baseline-hermetic exists to catch, arriving by a
+# route that self-check cannot see. The 2026-07-17 audit already replaced every
+# other copy of this transform for the same reason; this one was missed.
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../hooks/lib" && pwd)/rule-hits.sh" 2>/dev/null || true
+if declare -f hook_encode_project >/dev/null 2>&1; then
+  ENCODED=$(hook_encode_project "$PROBE_CWD")
+else
+  echo "perf-baseline: cannot source hooks/lib/rule-hits.sh — path encoding would diverge from the hooks under test" >&2
+  exit 1
+fi
 MEM_DIR="$FIX_HOME/.claude/projects/$ENCODED/memory"
 PROBE_SESSION="perf-baseline-session"
 TRANSCRIPT="$FIX_HOME/.claude/projects/$ENCODED/$PROBE_SESSION.jsonl"

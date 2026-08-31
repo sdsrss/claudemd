@@ -527,3 +527,50 @@ test('A2 stratification: per-class rows carry closure status (the stratified vie
     assert.equal(r.byClass.self.byRule['§10-V'].status, 'collecting');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('R10-20: an unreadable transcript is reported, not silently dropped', async () => {
+  // Transcripts are the only unbounded input this tool has. A read failure used
+  // to shrink the denominators with nothing to say so — "we sampled 2 of 2" and
+  // "we sampled 2 of 3, one was unreadable" published the same number.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-unread-'));
+  try {
+    const good = path.join(dir, 'good.jsonl');
+    fs.writeFileSync(good, JSON.stringify({
+      type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+    }) + '\n');
+    // Unreadable by mode, not by absence: an absent file is a different case.
+    const bad = path.join(dir, 'bad.jsonl');
+    fs.writeFileSync(bad, '{}\n');
+    fs.chmodSync(bad, 0o000);
+
+    const r = await samplingAudit({ projectsDir: dir, days: 3650 });
+    if (r.scannedTranscripts === 2) {
+      // Running as root (or a filesystem ignoring mode bits) — the premise of
+      // the case does not hold here, so say so rather than passing vacuously.
+      assert.ok(process.getuid && process.getuid() === 0,
+        'the unreadable file was read anyway — only expected as root');
+      return;
+    }
+    assert.ok(Array.isArray(r.unreadableTranscripts));
+    assert.equal(r.unreadableTranscripts.length, 1);
+    assert.equal(r.unreadableTranscripts[0].file, 'bad.jsonl');
+    assert.ok(r.unreadableTranscripts[0].reason, 'the row must carry why');
+    assert.equal(r.scannedTranscripts, 1, 'the readable one still counts');
+  } finally {
+    try { fs.chmodSync(path.join(dir, 'bad.jsonl'), 0o600); } catch { /* already gone */ }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R10-20: a clean run reports an empty unreadable list', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-clean-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'a.jsonl'), JSON.stringify({
+      type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+    }) + '\n');
+    const r = await samplingAudit({ projectsDir: dir, days: 3650 });
+    assert.deepEqual(r.unreadableTranscripts, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

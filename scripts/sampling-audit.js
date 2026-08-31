@@ -111,10 +111,22 @@ export function loadVocabPatterns(pluginRoot) {
 // audit.js#selfCompliance republishes that number verbatim. Rows without a
 // parseable timestamp are KEPT (a transcript-shape change must not silently
 // empty the sample).
-function extractEvents(filePath, cutoffMs = null) {
+// `unreadable` (out param, optional): a transcript this could not read is
+// dropped from the sample and, before 2026-08-29 (audit R10-20), left no trace
+// — the denominators just came out smaller. Transcripts are the only unbounded
+// input this tool has (a multi-GB one throws ERR_STRING_TOO_LONG on
+// readFileSync), so "we sampled 40 of 40" and "we sampled 40 of 43, three were
+// too big to read" published the same number. Recorded, not thrown: a partial
+// sample is still useful, a silently partial one is not.
+function extractEvents(filePath, cutoffMs = null, unreadable = null) {
   const events = [];
   let raw;
-  try { raw = fs.readFileSync(filePath, 'utf8'); } catch { return events; }
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch (e) {
+    if (unreadable) unreadable.push({ file: path.basename(filePath), reason: e.code || e.message });
+    return events;
+  }
   for (const line of raw.split(/\r?\n/)) {
     if (!line) continue;
     let obj;
@@ -524,6 +536,10 @@ function emptyResult(windowDays, projectsDir) {
     projectsDir,
     metricContract: METRIC_CONTRACT,
     scannedTranscripts: 0,
+    // Transcripts the reader could not open — see extractEvents. Empty is the
+    // healthy case; a non-empty list means the denominators below describe a
+    // smaller population than the file count implies.
+    unreadableTranscripts: [],
     totalTurns: 0,
     byRule: emptyByRule(),
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
@@ -587,7 +603,7 @@ export async function samplingAudit({
   const R = result.byRule;
 
   for (const file of files) {
-    const events = extractEvents(file, cutoffMs);
+    const events = extractEvents(file, cutoffMs, result.unreadableTranscripts);
     // Text-detector surface preserved from v0.14.0: every assistant turn with
     // text, sidechains included (keeps the A1 2026-07-10 baseline comparable).
     const turns = events.filter(e => e.kind === 'assistant' && e.hasText).map(e => e.text);
@@ -692,6 +708,13 @@ export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_
   for (const dir of subDirs) {
     const sub = await samplingAudit({ projectsDir: dir, days, sample, pluginRoot });
     result.scannedTranscripts += sub.scannedTranscripts;
+    // Carry the unreadable list up too — the --global caliber is the one whose
+    // rates get published, so a per-project omission that never reaches the
+    // aggregate is the same silence one level higher (2026-08-29 audit R10-20).
+    if (sub.unreadableTranscripts && sub.unreadableTranscripts.length) {
+      (result.unreadableTranscripts = result.unreadableTranscripts || [])
+        .push(...sub.unreadableTranscripts);
+    }
     result.totalTurns += sub.totalTurns;
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;

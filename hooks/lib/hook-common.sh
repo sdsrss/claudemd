@@ -196,8 +196,24 @@ hook_is_readonly_bash() {
       rest="${rest#"${rest%%[![:space:]]*}"}"
       local sub="${rest%%[[:space:]]*}"
       case "$sub" in
-        log|status|diff|show|rev-parse|rev-list|describe|blame|reflog|ls-files|ls-tree|cat-file|remote)
+        log|status|diff|show|rev-parse|rev-list|describe|blame|ls-files|ls-tree|cat-file)
           return 0 ;;
+        # `remote` and `reflog` are whole subcommand FAMILIES, and both contain
+        # writers: `git remote add|rename|remove|set-url|set-head|prune|update`
+        # and `git reflog expire|delete`. Admitting the family name meant those
+        # took the fast path, which exits before all four PreToolUse:Bash
+        # enforcement hooks — the same shape as the `env` entry documented
+        # above, and a contract violation even though no gate denies them today
+        # (2026-08-29 audit R10-20). Only the reading verbs qualify; the check
+        # is on the SECOND-level word, empty (bare `git remote`) included.
+        remote|reflog)
+          local rest2="${rest#"$sub"}"
+          rest2="${rest2#"${rest2%%[![:space:]]*}"}"
+          local sub2="${rest2%%[[:space:]]*}"
+          case "$sub2" in
+            ''|-v|--verbose|show|get-url) return 0 ;;
+          esac
+          ;;
       esac
       ;;
   esac
