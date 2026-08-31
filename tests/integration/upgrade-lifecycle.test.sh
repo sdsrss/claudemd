@@ -88,6 +88,12 @@ fi
 if ! git -C "$REPO" rev-parse --verify --quiet "refs/tags/$OLD_TAG" >/dev/null; then
   echo "upgrade-lifecycle: SKIP (tag $OLD_TAG not reachable; shallow checkout without --tags)"
   echo "upgrade-lifecycle: to exercise this test in CI, ensure workflow uses fetch-depth: 0 and fetch-tags: true"
+  # Under CI a skip is the defect, not an accommodation. npm-publish.yml's own
+  # comment records that THIS skip is what once let the publish gate run a
+  # silently smaller suite, and every other SKIP branch in this repo — run-all's
+  # four, memory-tags-parity:313 — already carries this guard. These two were
+  # the leftovers (2026-08-29 audit R10-10).
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI — the workflow must fetch tags"; exit 1; }
   exit 0
 fi
 

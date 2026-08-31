@@ -165,8 +165,15 @@ if (( TEST_SH_COUNT < 20 )); then
 else
   TMP_WRITES=$(cd "$GUARD_REPO" && printf '%s\n' "$TEST_SH" | while IFS= read -r f; do
     [[ -f "$f" ]] || continue
+    # `["']?` before every /tmp/: the pattern was written for the UNQUOTED
+    # spelling while this repo's own style gate (shellcheck) pushes authors to
+    # quote — so `2> "/tmp/probe-$$.log"`, `cp foo "/tmp/bar"` and every other
+    # quoted form walked straight through the gate meant to catch them. The
+    # gate's blind spot was its subject's preferred spelling (2026-08-29 audit
+    # R10-11). `tee` is a third arm: it writes without any redirection operator
+    # and matches neither of the two above.
     sed -E 's/^[[:space:]]*#.*$//' "$f" \
-      | grep -nE '(>>?|2>|&>)[[:space:]]*/tmp/|(mkdir|touch|cp|mv)[[:space:]]+[^|]*[[:space:]]/tmp/' \
+      | grep -nE '(>>?|2>|&>)[[:space:]]*["'"'"']?/tmp/|(mkdir|touch|cp|mv)[[:space:]]+[^|]*[[:space:]]["'"'"']?/tmp/|tee[[:space:]]+(-[^[:space:]]+[[:space:]]+)*["'"'"']?/tmp/' \
       | sed "s|^|$f:|"
   done)
   if [[ -n "$TMP_WRITES" ]]; then

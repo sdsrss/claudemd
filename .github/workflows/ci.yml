@@ -81,6 +81,19 @@ jobs:
         # macOS leg went red on a class this gate exists to prevent, while
         # `npm test` had no way to see it. Rationale + scope live in the script.
         run: bash tests/lib/bash32-constructs.sh
+      # Cache the BUILT 3.2 binary, keyed on the version this workflow pins.
+      # Without it every Linux/node20 run re-fetched a 2.5 MB tarball from
+      # ftp.gnu.org and ran configure+make: 1-2 minutes per run, and a mirror
+      # outage was a red CI on a step that has nothing to do with the change
+      # under test (2026-08-29 audit R10-16). Bumping BASH32_VERSION below
+      # changes the key, so a version bump cannot silently reuse the old binary.
+      - name: Cache bash 3.2.57 build
+        if: runner.os == 'Linux' && matrix.node == 20
+        id: bash32-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/claudemd-bash32
+          key: bash32-3.2.57-${{ runner.os }}-${{ runner.arch }}
       - name: Reject constructs bash 3.2 cannot PARSE (real 3.2 syntax check)
         if: runner.os == 'Linux' && matrix.node == 20
         run: |
@@ -94,14 +107,34 @@ jobs:
           # runtime, in the release CI. Parse every hook with a REAL 3.2 built
           # for this job — a `bash -n` under 5.x proves nothing about 3.2.
           set -eu
-          curl -sSL -o /tmp/bash32.tar.gz https://ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz
-          tar xzf /tmp/bash32.tar.gz -C /tmp
-          cd /tmp/bash-3.2.57
-          ./configure --quiet --without-bash-malloc >/dev/null 2>&1
-          make -s -j"$(nproc)" >/dev/null 2>&1
-          cd "$GITHUB_WORKSPACE"
-          B32=/tmp/bash-3.2.57/bash
+          BASH32_VERSION=3.2.57
+          # Pinned digest. Unpinned, this step ran whatever the mirror served
+          # into configure+make on a CI runner with repo write scope — a
+          # supply-chain surface for a portability check (2026-08-29 audit
+          # R10-16). Verified against ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz.
+          BASH32_SHA256=3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4
+          CACHE_DIR="$HOME/.cache/claudemd-bash32"
+          B32="$CACHE_DIR/bash-$BASH32_VERSION"
+          if [ ! -x "$B32" ]; then
+            echo "cache miss — building bash $BASH32_VERSION from source"
+            curl -sSL -o /tmp/bash32.tar.gz "https://ftp.gnu.org/gnu/bash/bash-$BASH32_VERSION.tar.gz"
+            echo "$BASH32_SHA256  /tmp/bash32.tar.gz" | sha256sum -c -
+            tar xzf /tmp/bash32.tar.gz -C /tmp
+            cd "/tmp/bash-$BASH32_VERSION"
+            ./configure --quiet --without-bash-malloc >/dev/null 2>&1
+            make -s -j"$(nproc)" >/dev/null 2>&1
+            cd "$GITHUB_WORKSPACE"
+            mkdir -p "$CACHE_DIR"
+            cp "/tmp/bash-$BASH32_VERSION/bash" "$B32"
+          else
+            echo "cache hit — reusing the built bash $BASH32_VERSION"
+          fi
+          # The cached binary must be the version this step believes it is: a
+          # restored cache from a different key, or a truncated copy, would
+          # otherwise "parse" the tree under whatever it happens to be.
           "$B32" --version | head -1
+          "$B32" --version | head -1 | grep -qF "version $BASH32_VERSION" || {
+            echo "::error::cached binary is not bash $BASH32_VERSION"; exit 1; }
           # Scope comes from the pattern gate's --list (2026-07-28): this step had
           # its own hand-written glob trio, NARROWER than the gate it backs up, so
           # a construct 3.2 cannot parse living in tests/hooks/ was invisible to the

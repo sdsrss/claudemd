@@ -42,12 +42,31 @@ LOG="$HOME/.claude/logs/claudemd.jsonl"
 # went red exactly that way during the 0.68.2 pre-tag review (10828 -> 10829,
 # written by the reviewer's own hooks) and passed on a standalone re-run —
 # indistinguishable, from the assertion's side, from the probe pollution it
-# exists to catch. The hooks perf-baseline drives are the four PreToolUse:Bash
-# ones plus the two UserPromptSubmit ones; those names are the filter.
-PROBED_HOOKS='pre-bash-safety-check|banned-vocab-check|ship-baseline-check|memory-read-check|version-sync|memory-prompt-hint'
+# exists to catch.
+#
+# Filtering by HOOK NAME narrowed that race without closing it: those same six
+# hooks fire constantly in the session running this suite, so any concurrent row
+# from one of them landing between the two counts was still counted as probe
+# pollution. This audit ran five agents in parallel against this repo, which is
+# exactly that condition (2026-08-29 audit R10-12). The probe carries a
+# synthetic session_id that nothing else can produce, so that is the filter —
+# read out of the script rather than copied, so renaming it there fails HERE
+# instead of silently reducing this to a count of zero.
+PROBE_SESSION=$(sed -nE 's/^PROBE_SESSION="([^"]+)".*/\1/p' "$ROOT/scripts/perf-baseline.sh" | head -n1)
+if [[ -z "$PROBE_SESSION" ]]; then
+  echo "FAIL: 0 could not read PROBE_SESSION out of scripts/perf-baseline.sh — the filter anchor moved"
+  FAIL=$((FAIL+1))
+  PROBE_SESSION='::unresolvable::'
+fi
 count_probe_rows() {
-  [[ -f "$LOG" ]] || { echo 0; return; }
-  grep -cE "\"hook\":\"($PROBED_HOOKS)\"" "$LOG" 2>/dev/null || echo 0
+  local log="${1:-$LOG}" n
+  [[ -f "$log" ]] || { echo 0; return; }
+  # `grep -c` prints 0 AND exits 1 on no matches, so the old `|| echo 0` tail
+  # emitted "0\n0" — two lines into an arithmetic comparison. It never showed
+  # because the previous hook-name filter always matched something in the live
+  # log. Capture into a variable and let the non-zero status set the default.
+  n=$(grep -cF "\"session_id\":\"$PROBE_SESSION\"" "$log" 2>/dev/null) || n=0
+  echo "${n:-0}"
 }
 LOG_BEFORE=$(count_probe_rows)
 
@@ -117,8 +136,31 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Case 6 (2026-08-29 audit R10-12): the filter Case 3 rests on must be immune to
+# a CONCURRENT row from one of the same hooks. Driven against a fixture log
+# rather than the live one — injecting into `$HOME/.claude/logs/claudemd.jsonl`
+# to test a telemetry assertion would be the pollution this suite exists to
+# catch (feedback_manual_hook_probe_pollutes_telemetry).
+FIXLOG="$SCRATCH/concurrent.jsonl"
+{
+  printf '{"hook":"memory-read-check","event":"deny","session_id":"some-other-session"}\n'
+  printf '{"hook":"pre-bash-safety","event":"deny","session_id":"another-live-session"}\n'
+} > "$FIXLOG"
+C6_BEFORE=$(count_probe_rows "$FIXLOG")
+printf '{"hook":"memory-read-check","event":"deny","session_id":"yet-another-session"}\n' >> "$FIXLOG"
+C6_AFTER=$(count_probe_rows "$FIXLOG")
+printf '{"hook":"memory-read-check","event":"deny","session_id":"%s"}\n' "$PROBE_SESSION" >> "$FIXLOG"
+C6_PROBE=$(count_probe_rows "$FIXLOG")
+if [[ "$C6_BEFORE" == "0" && "$C6_AFTER" == "0" && "$C6_PROBE" == "1" ]]; then
+  echo "PASS: 6 concurrent same-hook rows do not move the count; a probe row does ($C6_BEFORE/$C6_AFTER/$C6_PROBE)"
+else
+  echo "FAIL: 6 probe-row filter is not session-scoped (before=$C6_BEFORE concurrent=$C6_AFTER probe=$C6_PROBE; expected 0/0/1)"
+  FAIL=$((FAIL+1))
+fi
+
+TOTAL=$(grep -cE '^  echo "PASS: [0-9]' "$0" 2>/dev/null || echo 6)
 if (( FAIL > 0 )); then
-  echo "Tests: $((5 - FAIL))/5 passed"
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"
   exit 1
 fi
-echo "Tests: 5/5 passed"
+echo "Tests: $TOTAL/$TOTAL passed"

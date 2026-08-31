@@ -48,7 +48,16 @@ FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 
-command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not installed"; exit 0; }
+# jq missing skips the ENTIRE timing gate family, so under CI this must be red:
+# green-by-absence on the one suite that bounds hook latency is exactly the
+# failure mode the SKIP guards elsewhere in this repo already cover
+# (2026-08-29 audit R10-10). jq is a declared runtime dependency — doctor
+# reports it as such — so its absence in CI is a broken image, not a variation.
+command -v jq >/dev/null 2>&1 || {
+  echo "SKIP: jq not installed"
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI — jq is a declared runtime dependency"; exit 1; }
+  exit 0
+}
 
 # ---------------------------------------------------------------- fixture ----
 # Production scale, deliberately ABOVE today's real numbers so the gate has
