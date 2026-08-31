@@ -165,3 +165,41 @@ test('code-graph registry paths derive from HOME', () => {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });
+
+// --- 2026-08-29 audit R10-17b: SPEC_FILES had four copies and no join -------
+test('R10-17b: the spec set has exactly one definition in scripts/', async () => {
+  const fs2 = await import('node:fs');
+  const path2 = await import('node:path');
+  const url = await import('node:url');
+  const root = path2.resolve(path2.dirname(url.fileURLToPath(import.meta.url)), '../..');
+  const files = [];
+  const walk = d => {
+    for (const e of fs2.readdirSync(d, { withFileTypes: true })) {
+      const full = path2.join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.name.endsWith('.js')) files.push(full);
+    }
+  };
+  walk(path2.join(root, 'scripts'));
+
+  // A single-line array literal holding both names. `[^\]\n]` rather than
+  // `[^\]]`: without the newline exclusion the span crossed unrelated code and
+  // matched spec-coherence-audit.js, which addresses `CLAUDE.md` and
+  // `CLAUDE-extended.md` individually (they are its subject, not a copy of the
+  // set) with `m[1]`-style brackets in between.
+  const defs = files.filter(f => {
+    const src = fs2.readFileSync(f, 'utf8');
+    return /\[[^\]\n]*'CLAUDE\.md'[^\]\n]*'CLAUDE-extended\.md'[^\]\n]*\]/.test(src);
+  }).map(f => path2.relative(root, f)).sort();
+
+  assert.deepEqual(defs, ['scripts/lib/paths.js'],
+    'the shipped spec set must be defined once, in scripts/lib/paths.js — ' +
+    `found it spelled out in: ${defs.join(', ')}`);
+});
+
+test('R10-17b: specHome() is derived from SPEC_FILES, in order', async () => {
+  const { SPEC_FILES, specHome, homeSpec } = await import('../../scripts/lib/paths.js');
+  assert.ok(SPEC_FILES.length >= 4, `expected >= 4 spec files, got ${SPEC_FILES.length}`);
+  assert.equal(SPEC_FILES[0], 'CLAUDE.md', 'element 0 is treated as canonical by install/backup');
+  assert.deepEqual(specHome(), SPEC_FILES.map(n => homeSpec(n)));
+});

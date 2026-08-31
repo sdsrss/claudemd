@@ -16,35 +16,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hookEmittedSections } from '../lib/emitted-sections.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const HOOKS_DIR = path.join(ROOT, 'hooks');
 const ARCH_DOC = path.join(ROOT, 'docs/ARCHITECTURE.md');
 
-// Every idiom that attaches a spec_section to an emitted row. Kept in step with
-// hookEmittedSections() in hard-rules-drift.test.js — both answer "what sections
-// does the source actually emit", for different consumers.
-function emittedSections() {
-  const out = new Set();
-  const files = [
-    ...fs.readdirSync(HOOKS_DIR).map(f => path.join(HOOKS_DIR, f)),
-    ...(fs.existsSync(path.join(HOOKS_DIR, 'lib'))
-      ? fs.readdirSync(path.join(HOOKS_DIR, 'lib')).map(f => path.join(HOOKS_DIR, 'lib', f))
-      : []),
-  ];
-  for (const full of files) {
-    if (!path.basename(full).endsWith('.sh')) continue;
-    // Join backslash continuations: a multi-line hook_record call puts the
-    // section argument on a later physical line.
-    const src = fs.readFileSync(full, 'utf8').replace(/\\\n\s*/g, ' ');
-    for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) out.add(m[1]);
-    for (const m of src.matchAll(/hook_record\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
-    for (const m of src.matchAll(/HITS\+=\("(§[^|"]+)\|/g)) out.add(m[1]);
-    for (const m of src.matchAll(/record_section_deny\s+'(§[^']+)'/g)) out.add(m[1]);
-    for (const m of src.matchAll(/rule_hits_append\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
-  }
-  return out;
-}
+// Extractor lives in tests/lib/emitted-sections.mjs — the single source both
+// this gate and hard-rules-drift.test.js read (2026-08-29 audit R10-17a).
+const emittedSections = () => hookEmittedSections(HOOKS_DIR);
 
 // Plugin-internal observability, deliberately absent from a table about SPEC
 // enforcement. Anything else must be listed.

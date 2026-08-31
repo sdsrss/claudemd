@@ -47,12 +47,18 @@ export const settingsPath      = () => path.join(home(), '.claude/settings.json'
 export const codeGraphRegistryPath        = () => path.join(home(), '.cache/code-graph/statusline-registry.json');
 export const codeGraphProvidersBackupPath = () => path.join(home(), '.claude/statusline-providers.json');
 export const backupRoot        = () => path.join(home(), '.claude');
-export const specHome          = () => [
-  path.join(home(), '.claude/CLAUDE.md'),
-  path.join(home(), '.claude/CLAUDE-extended.md'),
-  path.join(home(), '.claude/CLAUDE-changelog.md'),
-  path.join(home(), '.claude/OPERATOR.md'),
-];
+// SINGLE SOURCE for the shipped spec set. It existed four times — install.js,
+// update.js, lib/spec-hash.js and the specHome() list right below — with no
+// join, so a fifth spec file would have been installed by one of them and
+// ignored by the others (2026-08-29 audit R10-17b). This leaf module is the
+// right home: all three consumers already import from it, so nothing gains a
+// dependency, and spec-hash.js's stated reason for its own copy ("no
+// install-side dependency") is satisfied without one.
+//
+// Order is load-bearing for specHome(): CLAUDE.md first, because install.js
+// and backup.js both treat element 0 as the canonical user-facing file.
+export const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
+export const specHome          = () => SPEC_FILES.map(n => path.join(home(), '.claude', n));
 // Address a single home-spec file by basename. Decoupled from backupRoot()
 // (which happens to share the same dir today) so that a future relocation
 // of backups does not silently break update.js's home-spec read path.

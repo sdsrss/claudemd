@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hookEmittedSections as sharedEmittedSections, EMITTED_SECTION_IDIOMS } from '../lib/emitted-sections.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const MANIFEST = path.join(ROOT, 'spec/hard-rules.json');
@@ -110,44 +111,9 @@ test('hard-rules-3: hook-enforced manifest entries have non-null rule_hits_secti
     `\nResolution: fill rule_hits_section so /claudemd-rules can cross-ref hits.`);
 });
 
-// Every spec_section a hook attaches to ANY emitted row — not just blocking
-// denies. Shared by hard-rules-4 (declaration completeness) and hard-rules-8
-// (manifest coverage). Both idioms are parsed: `HIT_SECTIONS+=('§…')`, which
-// pre-bash-safety batches before a single emit, and the section argument of
-// `hook_record`, which every other hook passes directly.
-function hookEmittedSections() {
-  const out = new Set();
-  // Include hooks/lib/*.sh: `§hooks-fail-open` is emitted from hook-common.sh,
-  // and a loop over the top level alone never saw it.
-  const files = [
-    ...fs.readdirSync(HOOKS_DIR).map(f => path.join(HOOKS_DIR, f)),
-    ...(fs.existsSync(path.join(HOOKS_DIR, 'lib'))
-      ? fs.readdirSync(path.join(HOOKS_DIR, 'lib')).map(f => path.join(HOOKS_DIR, 'lib', f))
-      : []),
-  ];
-  for (const full of files) {
-    const f = path.basename(full);
-    if (!f.endsWith('.sh')) continue;
-    // Join backslash line-continuations first: a multi-line hook_record call
-    // puts the section argument on a later physical line, where a line-oriented
-    // match cannot reach it (session-end-check spells §11-session-exit that way).
-    const src = fs.readFileSync(full, 'utf8').replace(/\\\n\s*/g, ' ');
-    for (const m of src.matchAll(/HIT_SECTIONS\+=\('([^']+)'\)/g)) out.add(m[1]);
-    for (const m of src.matchAll(/hook_record\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
-    // Third idiom: transcript-structure-scan tags each hit `"§section|detail"`,
-    // dedupes into SECTION_LIST, then emits with the section in a VARIABLE — so
-    // the literal-argument form above cannot see any of its sections.
-    for (const m of src.matchAll(/HITS\+=\("(§[^|"]+)\|/g)) out.add(m[1]);
-    // Fourth idiom: a thin wrapper that forwards a literal section into
-    // hook_record (`record_section_deny '§8' …`). Missing it hid `§8`, the live
-    // fallback bucket for untagged §8 hits, from a test whose whole claim is
-    // completeness.
-    for (const m of src.matchAll(/record_section_deny\s+'(§[^']+)'/g)) out.add(m[1]);
-    // And the fail-open wrapper's own literal section.
-    for (const m of src.matchAll(/rule_hits_append\s+\S+\s+\S+\s+.*?'(§[^']+)'/g)) out.add(m[1]);
-  }
-  return out;
-}
+// Extractor lives in tests/lib/emitted-sections.mjs — the single source both
+// this gate and architecture-drift.test.js read (2026-08-29 audit R10-17a).
+const hookEmittedSections = () => sharedEmittedSections(HOOKS_DIR);
 
 // Sections that carry observability rows without being HARD rules in the spec:
 // the memory-prompt-hint suggestion instrument and the §11-EXT mem-audit body
@@ -357,4 +323,47 @@ test('hard-rules-6: manifest schema sanity — required fields present', () => {
   }
   assert.deepEqual(violations, [],
     `Manifest schema violations:\n${violations.map(v => `  ${v}`).join('\n')}`);
+});
+
+// --- 2026-08-29 audit R10-17a: consumer gate for the shared extractor ------
+//
+// The idiom set was two verbatim copies, and the only thing holding them
+// together was a comment in one of them saying they were held together. A
+// third consumer written the same way would fork silently on the sixth idiom.
+// Enumerate the consumers from source: any test file that spells one of the
+// extractor's idioms must be the extractor itself.
+test('R10-17a: no test file re-implements the emitted-sections extractor', () => {
+  const testsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const files = [];
+  const walk = d => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(m?js|test\.sh)$/.test(e.name)) files.push(full);
+    }
+  };
+  walk(testsDir);
+
+  const SHARED = path.join(testsDir, 'lib/emitted-sections.mjs');
+  assert.ok(fs.existsSync(SHARED), 'tests/lib/emitted-sections.mjs is missing — the single source moved');
+
+  const offenders = [];
+  for (const f of files) {
+    if (f === SHARED) continue;
+    const src = fs.readFileSync(f, 'utf8');
+    for (const idiom of EMITTED_SECTION_IDIOMS) {
+      if (new RegExp(idiom).test(src)) { offenders.push(`${path.relative(testsDir, f)} (${idiom})`); break; }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'test file(s) spell an emitted-sections idiom instead of importing the shared extractor:\n' +
+    offenders.map(o => `  ${o}`).join('\n'));
+});
+
+test('R10-17a: both consumers agree, and the extractor is not empty', () => {
+  const sections = sharedEmittedSections(HOOKS_DIR);
+  assert.ok(sections.size > 5,
+    `extractor returned only ${sections.size} sections — parser or hook shape changed`);
+  // Same object, same call: the point is that there is only one to disagree with.
+  assert.deepEqual([...hookEmittedSections()].sort(), [...sections].sort());
 });

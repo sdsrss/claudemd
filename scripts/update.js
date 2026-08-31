@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { homeSpec, resolvePluginRoot } from './lib/paths.js';
+import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { createBackup, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
+
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
 

@@ -1441,7 +1441,15 @@ CURLSH_PIPE="(^|[|;&({])[[:space:]]*${CURLSH_SRC}[[:space:]].*\|&?[[:space:]]*([
 # substitution this pattern already covers, but the regex required `<(` to follow
 # the sink word directly. A local-file redirect (`bash < ./setup.sh`) still cannot
 # match — the `<(` and the curl/wget word are both still required.
-CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash)[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*${CURLSH_SRC}[[:space:]]"
+# F41 (2026-08-29 audit R10-22): the sink list was the shell family alone while
+# the PIPE form's sink expression has carried CURLSH_INTERP since it was
+# written — so `curl URL | python3` denied and its twin `python3 <(curl URL)`
+# allowed. Same fetch, same execute, one form apart. The interpreters join the
+# alternation rather than getting a parallel pattern, which is what kept the two
+# halves able to disagree. No new FP surface: `<(` immediately followed by a
+# CURLSH_SRC word is still required, so `python3 <(echo hi)` and
+# `node <(cat local.js)` are untouched.
+CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash|${CURLSH_INTERP})[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*${CURLSH_SRC}[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments

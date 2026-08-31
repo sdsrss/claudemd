@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { homeSpec } from './paths.js';
+import { homeSpec, SPEC_FILES } from './paths.js';
 
-// Spec files shipped under <pluginRoot>/spec/ and installed at
-// ~/.claude/<name>. Same list as install.js SPEC_FILES; duplicated here so
-// this lib has no install-side dependency (status/doctor import it; they
-// must not require install.js's settings-merge chain).
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
+// Spec files shipped under <pluginRoot>/spec/ and installed at ~/.claude/<name>.
+// Imported from lib/paths.js (2026-08-29 audit R10-17b) — this used to be a
+// hand-copy justified by "no install-side dependency", but paths.js is a leaf
+// this module already imports, so the single source costs nothing and a fifth
+// spec file can no longer be installed by one consumer and ignored by another.
 
 export function sha256File(filePath) {
   if (!fs.existsSync(filePath)) return null;

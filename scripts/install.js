@@ -4,12 +4,12 @@ import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, backupSettingsFile, looksLikeSpec, BACKUP_LABELS } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
-import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp, SPEC_FILES } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
+
 
 const INSTALL_USAGE = `Usage: node scripts/install.js
 
