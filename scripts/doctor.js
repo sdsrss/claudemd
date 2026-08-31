@@ -23,7 +23,11 @@ settings.json issues, hook drift, backup inventory, rule-usage health.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
-                      integer ≥1). To remove ALL backups, delete
+                      integer ≥1). Dirs reported by the
+                      backup-namespace-legacy check are skipped — never
+                      deleted, never counted toward N — and listed under
+                      pruneSkippedLegacy; sort those by hand. To remove ALL
+                      backups, delete
                       ${backupGlobs()}
                       manually — this flag cannot do that.
   --help, -h          Print this message and exit.
@@ -797,11 +801,23 @@ export async function doctor({ pruneBackups: prune } = {}) {
 
   // Retain N per namespace. Pruning only the default label would leave the
   // maintenance flag unable to reach the dirs the inventory above now reports.
+  //
+  // The legacy spec-shaped dirs the `backup-namespace-legacy` check reports are
+  // excluded — neither deleted nor counted against the retain window. They live
+  // in the personal namespace but were written by update.js (or a pre-v0.23.11
+  // install.js), and on a pre-0.68.3 layout they are the NEWEST dirs there, so
+  // an unfiltered prune retained the spec and deleted the user's real backup:
+  // the check above says "not moved automatically, the choice is the user's"
+  // while the same run destroyed the thing it was protecting (2026-08-29 audit
+  // R10-03). One caliber for both: `pruneSkippedLegacy` reports the exact set
+  // the inventory named, so the two numbers cannot drift apart silently.
+  const pruneSkippedLegacy = legacySpecBackups.map(b => b.dir);
   const pruned = prune != null
-    ? Object.values(BACKUP_LABELS).flatMap(label => pruneBackups(prune, { label }))
+    ? Object.values(BACKUP_LABELS).flatMap(label =>
+        pruneBackups(prune, { label, exclude: pruneSkippedLegacy }))
     : [];
 
-  return { checks, pruned };
+  return { checks, pruned, pruneSkippedLegacy: prune != null ? pruneSkippedLegacy : [] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

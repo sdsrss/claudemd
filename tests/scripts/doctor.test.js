@@ -693,3 +693,41 @@ test('0.68.3: a throw inside doctor() is named, not a bare stack, and is not exi
   assert.notEqual(r.status, 0,
     'a run that failed must not report success — pre-fix this exited 0');
 });
+
+test('R10-03: --prune-backups leaves the legacy dirs the same run reports', async () => {
+  // The `backup-namespace-legacy` check says these are "not moved
+  // automatically — the choice is the user's"; pre-fix the destructive flag in
+  // the SAME run deleted the genuine personal backup and kept the spec-shaped
+  // dirs, because on a pre-0.68.3 layout the legacy dirs are the newest ones.
+  const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
+  const personal = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(personal, { recursive: true });
+  fs.writeFileSync(path.join(personal, 'CLAUDE.md'), '# My personal global instructions\n');
+  const legacyDirs = ['20260201T000000Z', '20260301T000000Z'].map(s => {
+    const d = path.join(tmpHome, `.claude/backup-${s}`);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'CLAUDE.md'), SPEC);
+    return d;
+  });
+
+  const r = await doctor({ pruneBackups: 1 });
+
+  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')),
+    'genuine personal backup survives the prune');
+  for (const d of legacyDirs) assert.ok(fs.existsSync(d), 'legacy dir left for the user');
+  assert.deepEqual(r.pruned, []);
+  // One caliber: what the report named is exactly what the prune skipped.
+  const check = r.checks.find(c => c.name === 'backup-namespace-legacy');
+  assert.equal(check.ok, false);
+  assert.equal(r.pruneSkippedLegacy.length, legacyDirs.length);
+  for (const d of legacyDirs) assert.ok(r.pruneSkippedLegacy.includes(d));
+});
+
+test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async () => {
+  const d = path.join(tmpHome, '.claude/backup-20260201T000000Z');
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
+  const r = await doctor({});
+  assert.deepEqual(r.pruneSkippedLegacy, [], 'nothing was pruned, so nothing was skipped');
+  assert.ok(fs.existsSync(d));
+});

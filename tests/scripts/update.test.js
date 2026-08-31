@@ -132,3 +132,40 @@ test('CLI: unknown CLAUDEMD_UPDATE_CHOICE → clean stderr + exit 1 (no Node sta
   // No raw Node stack trace lines (the `    at update (file:.../` pattern).
   assert.doesNotMatch(r.stderr, /^\s*at update \(/m);
 });
+
+// --- audit-2026-08-29 R10-02: fail-before-touch on a truncated plugin cache -
+//
+// install.js has carried this pre-flight since the 2026-07-12 audit (SCRIPT-1);
+// update.js never got it. A missing plugin spec file reads as `pluginText ===
+// ''`, so diffSpec marks the whole file removed and it becomes a *target*:
+// createBackup renameSync-moves every home spec away, present files copy, the
+// absent one throws ENOENT — half the spec upgraded, half only in the backup
+// dir. That is the lockstep violation update.js:37-39 explicitly forbids.
+test('R10-02: incomplete plugin cache → update refuses, ~/.claude untouched', async () => {
+  const before = Object.fromEntries(
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']
+      .map(n => [n, fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8')]));
+
+  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'));  // truncated cache
+
+  await assert.rejects(() => update({ pluginRoot, choice: 'apply-all' }),
+    /shipped spec missing.*CLAUDE-changelog\.md/);
+
+  // Every home file still at its pre-update content, at its home path.
+  for (const [name, text] of Object.entries(before)) {
+    assert.equal(fs.readFileSync(path.join(tmpHome, '.claude', name), 'utf8'), text,
+      `${name} must be untouched`);
+  }
+  // And nothing was moved into a backup dir.
+  assert.equal(listBackups({ label: 'spec-backup' }).length, 0,
+    'no spec backup — nothing was moved');
+});
+
+test('R10-02: dry-run still reports diffs against a truncated cache', async () => {
+  // The pre-flight sits behind the `cancel` early-return, so a diagnostic
+  // dry-run against a broken cache keeps working (it writes nothing).
+  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'));
+  const res = await update({ pluginRoot, choice: 'cancel' });
+  assert.equal(res.applied, false);
+  assert.equal(res.diffs.length, 4);
+});

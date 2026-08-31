@@ -745,6 +745,49 @@ OUT=$(bash "$HOOK" <<<"$EVENT_44" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 44 heredoc body does not reach the trigger stage" \
   || { echo "FAIL: 44 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 45 (2026-08-29 audit R10-01): "was it Read" must anchor on a
+# tool-input `file_path` field, not on the bare path appearing anywhere in the
+# transcript. memory-prompt-hint.sh emits the SAME absolute path in its
+# additionalContext banner, which Claude Code flushes to the transcript as an
+# `attachment` row — under the old substring grep that emission alone satisfied
+# this HARD gate, so the flagship scenario (prompt hits a ship tag → hint lists
+# the runbook → agent pushes without opening it) could never deny.
+#
+# Table-driven off tests/fixtures/read-event-shapes.jsonl, whose rows are
+# captured from a live 2.1.251 transcript (only usage/diagnostics trimmed and
+# the path tokenized) — a hand-written envelope would hide exactly the shape
+# drift this anchor depends on. Reported as ONE case ID with per-row detail
+# lines, so the derived TOTAL below stays honest as rows are added.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$MEM_DIR/feedback_ship.md"
+SHAPES="$HERE/../fixtures/read-event-shapes.jsonl"
+SHAPE_ROWS=$(grep -c . "$SHAPES")
+SHAPE_FAIL=0
+for ROW_N in $(seq 1 "$SHAPE_ROWS"); do
+  RAW=$(sed -n "${ROW_N}p" "$SHAPES")
+  want=$(printf '%s' "$RAW" | jq -r '.["_expected"]|tostring')
+  name=$(printf '%s' "$RAW" | jq -r '.["_name"]')
+  SESS="shape$ROW_N"
+  printf '%s\n' "$RAW" | sed "s#__MEMFILE__#$MEM_DIR/feedback_ship.md#g" > "$PROJ_DIR/$SESS.jsonl"
+  OUT=$(mkevent "git push origin main" "$SESS" | bash "$HOOK" 2>&1)
+  DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+  if [[ "$want" == "true" ]]; then
+    [[ -z "$OUT" ]] || { echo "  shape row $ROW_N expected allow, got: $OUT [$name]"; SHAPE_FAIL=$((SHAPE_FAIL+1)); }
+  else
+    [[ "$DEC" == "deny" ]] || { echo "  shape row $ROW_N expected deny, got: ${OUT:-<silent>} [$name]"; SHAPE_FAIL=$((SHAPE_FAIL+1)); }
+  fi
+done
+# The row-count floor is part of the assertion: a vanished or renamed fixture
+# would otherwise make the loop a green no-op (`feedback_gate_green_by_readdir_luck`
+# class — the premise itself needs an assertion).
+if (( SHAPE_FAIL == 0 && SHAPE_ROWS >= 3 )); then
+  echo "PASS: 45 read-event shapes ($SHAPE_ROWS rows: Read tool_use allows, hint banner + prose deny)"
+else
+  echo "FAIL: 45 ($SHAPE_FAIL mismatches over $SHAPE_ROWS rows; need >=3 rows)"; FAIL=$((FAIL+1))
+fi
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

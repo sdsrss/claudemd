@@ -44,6 +44,31 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
     );
   }
 
+  // Same fail-before-touch contract install.js:129 has carried since the
+  // 2026-07-12 audit (SCRIPT-1) — it was never copied to this second entry
+  // point (2026-08-29 audit R10-02). Without it a truncated plugin cache reads
+  // as `pluginText === ''`, so diffSpec reports the whole file as removed and
+  // the missing file becomes a *target*: createBackup renameSync-moves every
+  // home spec away, the first copyFileSync of a present file lands, and the
+  // copy of the absent one throws ENOENT — leaving ~/.claude with a partially
+  // upgraded, partially empty spec set. Exactly the lockstep violation the
+  // comment above forbids, and the shape a sandbox probe reproduced (cache
+  // missing 2/4 → exit 1, two files new, two only in spec-backup-*).
+  //
+  // Checked over ALL SPEC_FILES, not just `targets`: a plugin file that is
+  // missing while its home twin happens to be byte-identical-to-empty would
+  // not be a target, and skipping it silently would leave that one file at the
+  // old version while its siblings advance — the same mixed-version state by a
+  // quieter route.
+  const missingSpecs = SPEC_FILES.filter(n => !fs.existsSync(path.join(pluginRoot, 'spec', n)));
+  if (missingSpecs.length > 0) {
+    throw new Error(
+      `update: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
+      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
+      `re-clone from https://github.com/sdsrss/claudemd.`
+    );
+  }
+
   const targets = SPEC_FILES.filter(n => diffs.find(d => d.file === n && (d.added > 0 || d.removed > 0)));
 
   if (targets.length === 0) {

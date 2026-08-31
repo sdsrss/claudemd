@@ -226,3 +226,77 @@ test('HIGH-2: looksLikeSpec reads the H1 only, and says so by example', () => {
   assert.equal(looksLikeSpec(''), false);
   assert.equal(looksLikeSpec(undefined), false);
 });
+
+// --- audit-2026-08-29 R10-03/R10-04 ---------------------------------------
+
+test('R10-03: prune excludes legacy spec dirs — genuine personal backup survives', () => {
+  const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
+  // Pre-0.68.3 layout: update.js wrote its spec backups into the PERSONAL
+  // namespace, and because updates are frequent they are the NEWEST dirs there.
+  const personal = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(personal);
+  fs.writeFileSync(path.join(personal, 'CLAUDE.md'), '# My personal global instructions\n');
+  for (const stamp of ['20260201T000000Z', '20260301T000000Z']) {
+    const d = path.join(tmpHome, `.claude/backup-${stamp}`);
+    fs.mkdirSync(d);
+    fs.writeFileSync(path.join(d, 'CLAUDE.md'), SPEC);
+  }
+
+  const legacy = findLegacySpecBackups().map(b => b.dir);
+  assert.equal(legacy.length, 2, 'both spec-shaped dirs identified');
+
+  // Retain 1. Unfiltered, "the 1 newest" is a spec dir and the personal backup
+  // is deleted — the v0.23.11 data-loss mode through a maintenance flag.
+  const removed = pruneBackups(1, { exclude: legacy });
+
+  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')),
+    'genuine personal backup must survive');
+  assert.deepEqual(removed, [], 'nothing to remove: 1 non-legacy dir, retain 1');
+  // Legacy dirs are skipped, not deleted — backup.js stays report-only.
+  for (const d of legacy) assert.ok(fs.existsSync(d), `${d} left for the user to decide`);
+});
+
+test('R10-03: exclusion does not disable pruning of genuine backups', () => {
+  // FP guard: the skip must not turn --prune-backups into a no-op for the
+  // dirs it is actually meant to rotate.
+  const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
+  const specDir = path.join(tmpHome, '.claude/backup-20260901T000000Z');
+  fs.mkdirSync(specDir);
+  fs.writeFileSync(path.join(specDir, 'CLAUDE.md'), SPEC);
+  const personals = ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z'].map(s => {
+    const d = path.join(tmpHome, `.claude/backup-${s}`);
+    fs.mkdirSync(d);
+    fs.writeFileSync(path.join(d, 'CLAUDE.md'), '# My personal global instructions\n');
+    return d;
+  });
+
+  const removed = pruneBackups(1, { exclude: findLegacySpecBackups().map(b => b.dir) });
+
+  assert.equal(removed.length, 2, 'two oldest personal dirs rotated out');
+  assert.ok(fs.existsSync(personals[2]), 'newest personal retained');
+  assert.ok(!fs.existsSync(personals[0]));
+  assert.ok(fs.existsSync(specDir), 'legacy dir untouched');
+});
+
+test('R10-04: restoreBackup skips a dangling symlink instead of throwing', () => {
+  // createBackup uses renameSync, and rename(2) on a symlink moves the LINK —
+  // so a ~/.claude/CLAUDE.md symlinked into a dotfiles repo lands in the backup
+  // dir and dangles once its target moves. dirSize was hardened for this input
+  // in 0.68.3; restoreBackup kept a bare statSync and threw ENOENT out of the
+  // uninstall restore path, after settings had already been evicted.
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  // Name the dangling link so readdir is likely to hit it FIRST — a partial
+  // restore is the failure this guards, not just the throw.
+  fs.symlinkSync(path.join(tmpHome, 'gone/CLAUDE.md'), path.join(bkDir, 'AAA-dangling.md'));
+  fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'core');
+  fs.writeFileSync(path.join(bkDir, 'zzz.md'), 'tail');
+  const target = path.join(tmpHome, '.claude');
+
+  const restored = restoreBackup(bkDir, target);
+
+  assert.equal(restored.length, 2, 'both real files restored');
+  assert.equal(fs.readFileSync(path.join(target, 'CLAUDE.md'), 'utf8'), 'core');
+  assert.equal(fs.readFileSync(path.join(target, 'zzz.md'), 'utf8'), 'tail');
+  assert.ok(!fs.existsSync(path.join(target, 'AAA-dangling.md')));
+});

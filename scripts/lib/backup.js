@@ -105,8 +105,25 @@ export function listBackups({ label = DEFAULT_LABEL } = {}) {
     .sort((a, b) => b.iso.localeCompare(a.iso));
 }
 
-export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL } = {}) {
-  const backups = listBackups({ label });
+// `exclude` — dirs that are neither deleted NOR counted against retainCount.
+//
+// findLegacySpecBackups()'s dirs are the caller of record (doctor's
+// --prune-backups). Those sit in the PERSONAL namespace but are pre-0.68.3
+// spec backups, and on such a layout they are the NEWEST entries — so an
+// unfiltered `pruneBackups(1)` retained a spec-shaped dir and deleted the
+// user's genuine personal backup, which is the v0.23.11 data-loss mode
+// reopened through a maintenance flag (2026-08-29 audit R10-03, reproduced in
+// a sandbox probe). The 0.68.3 namespace fix routed new WRITES; the stock of
+// dirs already there was never taken out of this retain window.
+//
+// Skipping rather than deleting keeps this function inside the report-only
+// posture findLegacySpecBackups documents at length below: a legacy dir may be
+// a genuine pre-v0.23.11 personal backup with user files beside the spec, and
+// nothing at runtime tells the two apart, so it is the user's call. doctor
+// reports the skipped set so its count and this one read the same.
+export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL, exclude = [] } = {}) {
+  const skip = exclude instanceof Set ? exclude : new Set(exclude);
+  const backups = listBackups({ label }).filter(b => !skip.has(b.dir));
   const removed = [];
   for (const b of backups.slice(retainCount)) {
     fs.rmSync(b.dir, { recursive: true, force: true });
@@ -220,7 +237,17 @@ export function restoreBackup(backupDir, targetRoot) {
   for (const name of fs.readdirSync(backupDir)) {
     const src = path.join(backupDir, name);
     const dest = path.join(targetRoot, name);
-    if (fs.statSync(src).isFile()) {
+    // Guarded for the same reason dirSize below is, and against the same input
+    // class its comment documents: createBackup uses renameSync, so a symlinked
+    // ~/.claude/CLAUDE.md is MOVED into the backup dir as a link and dangles as
+    // soon as its target does. 0.68.3 hardened dirSize and stopped at one
+    // consumer — this one kept a bare statSync, so a single dangling link threw
+    // ENOENT out of the `CLAUDEMD_SPEC_ACTION=restore` uninstall path, after
+    // settings had already been evicted and in readdir order, i.e. some files
+    // restored and some not (2026-08-29 audit R10-04).
+    let isFile;
+    try { isFile = fs.statSync(src).isFile(); } catch { continue; }
+    if (isFile) {
       fs.copyFileSync(src, dest);
       restored.push(dest);
     }
