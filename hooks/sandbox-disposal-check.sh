@@ -7,10 +7,21 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
-# shellcheck source=/dev/null
-source "$LIB_DIR/platform.sh" || exit 0
 
 hook_kill_switch SANDBOX_DISPOSAL || exit 0
+# The only hook that used to `source platform.sh || exit 0` outright: no
+# `2>/dev/null`, no fail-open row, and ABOVE the kill switch, so a missing lib
+# killed it with a stderr spray and left nothing on the record (2026-08-29 audit
+# R10-06c). Advisory hook, so the impact is a lost warning rather than a lost
+# deny — but "the scan silently stopped running" is exactly what OBS-1 exists to
+# make visible. Symbol-asserted for the reason memory-read-check.sh:27-35 gives:
+# a file truncated mid-definition sources cleanly and defines nothing.
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
+if ! declare -f platform_find_newer >/dev/null 2>&1; then
+  hook_record_failopen sandbox-disposal prereq-missing
+  exit 0
+fi
 
 # v0.9.34: best-effort session_id from Stop stdin for audit attribution.
 # Stop event has no tool_use_id (not a tool call). Advisory only — a jq

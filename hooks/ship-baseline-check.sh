@@ -11,11 +11,32 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SHIP_BASELINE || exit 0
+# The `|| true` on the platform source is deliberate (a missing lib must not
+# take the hook down at source time) but it left `platform_timeout` unasserted:
+# the two `gh run list` calls below both end in `|| exit 0`, so a missing lib
+# turned `command not found` (127) into a silent allow — the OBS-1 gap this
+# hook's own header claims to have closed (2026-08-29 audit R10-06a).
+# `source` exiting 0 is not evidence a function exists
+# (feedback_hook_platform_lib_source); assert the symbol. Placed AFTER the
+# kill switch so a deliberately disabled hook records nothing.
+if ! declare -f platform_timeout >/dev/null 2>&1; then
+  hook_record_failopen ship-baseline prereq-missing
+  exit 0
+fi
 # Record fail-open on missing prereqs (roadmap OBS-1): don't let a jq-less /
 # malformed-stdin environment silently no-op this §7 gate — the §13.1 audit
 # must see the bypass, not read it as "never fired".
 if ! hook_require_jq; then
   hook_record_failopen ship-baseline jq-missing
+  exit 0
+fi
+# Assert the shared trigger fragment, don't assume it. `source` returning 0 does
+# NOT mean a symbol got defined — a file truncated mid-heredoc sources cleanly
+# (the shape memory-read-check.sh:27-35 documents). Under `set -u` an unset
+# HOOK_GIT_GLOBAL_FLAGS would abort this hook mid-regex, i.e. fail open at
+# exactly the push moment with nothing on the record.
+if [[ -z "${HOOK_GIT_GLOBAL_FLAGS:-}" ]]; then
+  hook_record_failopen ship-baseline prereq-missing
   exit 0
 fi
 
@@ -84,7 +105,7 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # `ls # git push later`, or space inside a heredoc body) — produced FPs on
 # comments, heredoc bodies, and trailing-arg references. Mirrors the
 # memory-read-check.sh v0.9.28 segment-anchor fix.
-TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git[[:space:]]+push([[:space:]]|$)'
+TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|\$)"
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 # Help-invocation exemption (`git push --help` / `git push -h` does nothing, so
 # never gate it on CI). Pre-v0.23.11 this grep'd `--help|-h\b` across the WHOLE
@@ -92,7 +113,10 @@ echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 # message mentioning `-h` chained before the push — exempted a real red-CI push
 # (§7 bypass). Now isolate the `git push …` segment (up to the next shell
 # separator) and require `-h`/`--help` to be a standalone flag token within it.
-PUSH_SEG=$(echo "$CMD_FLAT" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -n1)
+# Same global-flag tolerance as TRIGGER_RE: without it `git -C /repo push --help`
+# matched the trigger but yielded an EMPTY segment, so the help exemption never
+# applied and a no-op invocation could be denied on red CI.
+PUSH_SEG=$(echo "$CMD_FLAT" | grep -oE "git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push[^;&|]*" | head -n1)
 echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0
 
 # Require gh CLI

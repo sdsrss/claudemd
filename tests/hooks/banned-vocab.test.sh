@@ -476,11 +476,20 @@ fi
 jq -cn '{session_id:"bv45b",tool_name:"Bash",tool_input:{command:"git commit -m \"fix: 12/12 tests pass [allow-banned-vocab]\""}}' > "$TMP_FIX"
 BV_BEFORE=$(wc -l < "$BV_LOG_HOME/.claude/logs/claudemd.jsonl")
 HOME="$BV_LOG_HOME" bash "$HOOK" < "$TMP_FIX" >/dev/null 2>&1
-BV_AFTER=$(wc -l < "$BV_LOG_HOME/.claude/logs/claudemd.jsonl")
-if [[ "$BV_BEFORE" == "$BV_AFTER" ]]; then
-  echo "PASS 45b: prophylactic token on a clean command records no row"
+# The subject is the OVERRIDE RATE, so the claim is "no bypass row" — asserted
+# directly rather than through "no row at all", which was only incidentally the
+# same thing. R10-06 gave Path 2 a recorded fail-open when the event carries no
+# cwd (this fixture omits it), and a whole-file line count read that as a
+# bypass. Both halves are still asserted: zero bypass rows, and nothing but
+# fail-open rows among whatever this invocation did add — so a future bypass
+# row, or any other event type, still fails here.
+BV_NEW=$(tail -n "+$((BV_BEFORE + 1))" "$BV_LOG_HOME/.claude/logs/claudemd.jsonl")
+BV_BYPASS=$(printf '%s' "$BV_NEW" | jq -s '[.[] | select(.event == "bypass-escape-hatch")] | length' 2>/dev/null)
+BV_NON_FAILOPEN=$(printf '%s' "$BV_NEW" | jq -s '[.[] | select(.event != "fail-open")] | length' 2>/dev/null)
+if [[ "$BV_BYPASS" == "0" && "$BV_NON_FAILOPEN" == "0" ]]; then
+  echo "PASS 45b: prophylactic token on a clean command records no bypass row (added rows: fail-open only)"
 else
-  echo "FAIL 45b: clean-command token still recorded a bypass row"; FAIL=$((FAIL + 1))
+  echo "FAIL 45b: clean-command token recorded a bypass row or a non-fail-open row (bypass=$BV_BYPASS non-failopen=$BV_NON_FAILOPEN, added: $BV_NEW)"; FAIL=$((FAIL + 1))
 fi
 rm -f "$TMP_FIX"; rm -rf "$BV_LOG_HOME"
 

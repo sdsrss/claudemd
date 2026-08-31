@@ -33,6 +33,12 @@ if ! declare -f memtags_match >/dev/null 2>&1; then
   hook_record_failopen memory-read-check prereq-missing
   exit 0
 fi
+# Same reasoning for the shared trigger fragment: unset under `set -u` aborts
+# the hook mid-regex, which is a fail-open with no row on the record.
+if [[ -z "${HOOK_GIT_GLOBAL_FLAGS:-}" ]]; then
+  hook_record_failopen memory-read-check prereq-missing
+  exit 0
+fi
 
 EVENT=$(hook_read_event)
 if [[ -z "$EVENT" ]]; then
@@ -56,7 +62,12 @@ fi
 # paths, etc. don't trigger the whole MEMORY scan. Pre-fix `git commit -m
 # "release notes"` and `glab mr create --title "fix release"` both fired
 # the filter — see tests Cases 14–15.
-TRIGGER_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|$)'
+#
+# `git${HOOK_GIT_GLOBAL_FLAGS}` (hook-common.sh): `git -C /repo push` is an
+# ordinary way for an agent to push a repo it is not cd'd into, and requiring
+# `git` and `push` to be adjacent let it walk past this gate — and past the §7
+# and §10-V gates, which shared the omission (2026-08-29 audit R10-05).
+TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|\$)"
 # v0.9.28: collapse newlines to spaces before regex check. Prior behavior fired
 # on multi-line commands where heredoc body lines started with conventional-
 # commit verbs (e.g. `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"`
@@ -163,7 +174,17 @@ if [[ "$CMD" =~ $BYPASS_RE ]]; then
   exit 0
 fi
 
-[[ -n "$CWD" && -n "$SESSION_ID" ]] || exit 0
+# Past this point the trigger has FIRED — every remaining `exit 0` is this HARD
+# §11 gate declining to run on a command it decided to gate. Those exits carry a
+# fail-open row (roadmap OBS-1) so the §13.1 audit reads them as "could not
+# evaluate", not as "never fired". The cwd-encoding drift this depends on has
+# really happened twice (feedback_cc_cwd_encoding_dots), and both times it
+# silently no-op'd this gate and left nothing behind to say so
+# (2026-08-29 audit R10-06b).
+if [[ -z "$CWD" || -z "$SESSION_ID" ]]; then
+  hook_record_failopen memory-read-check event-fields-missing
+  exit 0
+fi
 
 # Derive project-encoded dir — Claude Code converts every non-`[a-zA-Z0-9-]`
 # char to `-` (empirically: `/`, `.`, AND `_` all map to `-`; observed across
@@ -183,9 +204,17 @@ MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 
-# Fail-open if either missing (CC version drift)
-[[ -f "$MEM_INDEX" ]] || exit 0
-[[ -f "$TRANSCRIPT" ]] || exit 0
+# Fail-open if either missing (CC version drift) — recorded, not silent. A
+# mis-derived ENCODED makes BOTH paths miss, which is indistinguishable from
+# "this project has no memory index" unless the row says which one was absent.
+if [[ ! -f "$MEM_INDEX" ]]; then
+  hook_record_failopen memory-read-check mem-index-missing
+  exit 0
+fi
+if [[ ! -f "$TRANSCRIPT" ]]; then
+  hook_record_failopen memory-read-check transcript-missing
+  exit 0
+fi
 
 # Parse index lines: `- [Title](file.md) [tag1, tag2] — desc`, via the shared
 # single-pass matcher (lib/memory-tags.sh; see its header for the parse rules

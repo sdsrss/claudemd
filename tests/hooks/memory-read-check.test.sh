@@ -788,6 +788,26 @@ else
   echo "FAIL: 45 ($SHAPE_FAIL mismatches over $SHAPE_ROWS rows; need >=3 rows)"; FAIL=$((FAIL+1))
 fi
 
+# Case 46 (2026-08-29 audit R10-05): git's global flags sit between `git` and
+# the subcommand. `git -C /repo push` is how an agent pushes a repo it is not
+# cd'd into, and the trigger required the two tokens to be adjacent — so this
+# §11 gate, the §7 red-CI gate and the §10-V commit scan were all bypassable by
+# changing directory strategy, with no bypass telemetry.
+SESS="sess46"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent "git -C /repo push origin main" "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 46 git -C push reaches the §11 gate" \
+  || { echo "FAIL: 46 (expected deny, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 47: FP guard — a standalone bare word after `git` is a different
+# subcommand, so the global-flag group must not turn `git status push` into one.
+SESS="sess47"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent "git status push" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 47 git status push is not a push" \
+  || { echo "FAIL: 47 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

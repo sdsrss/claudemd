@@ -132,6 +132,76 @@ OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-che
   && pass "10 heredoc body with banned vocab still passes (FP guard held)" \
   || fail "10 heredoc body with banned vocab denied (FP regression): $OUT"
 
+# ------------------------------------------- git global flags (R10-05)
+# Second consumer set, same enumeration discipline: any hook whose trigger keys
+# on a git SUBCOMMAND must splice in HOOK_GIT_GLOBAL_FLAGS. Pre-fix all three
+# required `git` and the verb to be adjacent, so `git -C /repo push` — pushing a
+# repo the shell is not cd'd into — cleared the §7 red-CI gate, the §11
+# memory-read gate and the §10-V commit scan in one move, with no bypass row.
+# The §8 side had already solved this (NPX_GLOBAL_FLAGS) and never shared it;
+# not sharing is what this gate is here to stop repeating.
+#
+# The subject pattern deliberately matches the BROKEN spelling too (`git` …
+# `[[:space:]]+push`), so reverting a hook to a private regex keeps it in the
+# set and turns the requirement below red instead of quietly leaving the set.
+GIT_SUBJECT='git[^;]*\[\[:space:\]\]\+(push|commit)'
+#
+# `grep -E … >/dev/null`, never `grep -qE`, on the downstream half of a pipe:
+# under `set -o pipefail`, -q exits at the FIRST match and SIGPIPEs the upstream
+# grep, so the pipeline's status depends on whether the upstream had already
+# finished writing. This derivation returned 3 consumers standalone and 1 under
+# run-all.sh from the same tree before the -q came out. Reading to EOF costs
+# microseconds on a 400-line file and makes the result deterministic.
+GIT_CONSUMERS=()
+while IFS= read -r _c; do
+  [[ -n "$_c" ]] && GIT_CONSUMERS+=("$_c")
+done < <(for f in "$HOOKS_DIR"/*.sh; do
+           grep -vE '^[[:space:]]*#' "$f" | grep -E "$GIT_SUBJECT" >/dev/null && echo "$f"
+         done | sort)
+
+if (( ${#GIT_CONSUMERS[@]} >= 3 )); then
+  pass "11 git-trigger consumer set floor (${#GIT_CONSUMERS[@]} hooks key on a git subcommand)"
+else
+  fail "11 git-trigger consumer set floor (expected >= 3, found ${#GIT_CONSUMERS[@]})"
+fi
+
+for c in ${GIT_CONSUMERS[@]+"${GIT_CONSUMERS[@]}"}; do
+  base=$(basename "$c")
+  if grep -vE '^[[:space:]]*#' "$c" | grep -F 'HOOK_GIT_GLOBAL_FLAGS' >/dev/null; then
+    pass "12 $base splices in HOOK_GIT_GLOBAL_FLAGS"
+  else
+    fail "12 $base keys on a git subcommand WITHOUT the shared global-flag group"
+  fi
+done
+
+# The fragment itself: it must admit git's global options and must NOT admit a
+# standalone bare word (or `git status push` would read as a push).
+GFLAGS=$(bash -c "source '$LIB'; printf '%s' \"\$HOOK_GIT_GLOBAL_FLAGS\"")
+gmatch() { echo "$1" | grep -qE "(^|[[:space:]]*[;&|]+[[:space:]]*)git${GFLAGS}[[:space:]]+push([[:space:]]|\$)"; }
+for shape in 'git -C /repo push origin main' 'git --git-dir=/r/.git push' \
+             'git -c user.name=x push' 'git --no-pager push' \
+             'npm test && git -C /repo push'; do
+  gmatch "$shape" && pass "13 matches: $shape" || fail "13 does NOT match: $shape"
+done
+for shape in 'git status push' 'echo git push-notes' 'git-push-helper run'; do
+  gmatch "$shape" && fail "14 FP — matched: $shape" || pass "14 correctly ignores: $shape"
+done
+
+# Live cross-gate: the §10-V scan must see a `-C`-form commit.
+printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git -C /repo commit -m \"significantly faster\""},"cwd":"/tmp"}' > "$FIX"
+OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] \
+  && pass "15 git -C commit with banned vocab denies" \
+  || fail "15 git -C commit with banned vocab NOT denied (got: ${DEC:-<none>})"
+
+# FP guard for the same arm: a bare word after `git` is a different subcommand.
+printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git log --oneline --grep=\"significantly faster\" -- ."},"cwd":"/tmp"}' > "$FIX"
+OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
+[[ -z "$OUT" ]] \
+  && pass "16 git log with the same words still passes (FP guard)" \
+  || fail "16 git log denied (FP regression): $OUT"
+
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"
   exit 1

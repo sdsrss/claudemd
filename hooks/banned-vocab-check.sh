@@ -13,6 +13,13 @@ if ! hook_require_jq; then
   hook_record_failopen banned-vocab jq-missing
   exit 0
 fi
+# Assert the shared trigger fragment, don't assume it: `source` returning 0 does
+# not mean the symbol got defined, and unset under `set -u` aborts this hook
+# mid-regex — a fail-open with no row on the record.
+if [[ -z "${HOOK_GIT_GLOBAL_FLAGS:-}" ]]; then
+  hook_record_failopen banned-vocab prereq-missing
+  exit 0
+fi
 
 EVENT=$(hook_read_event)
 if [[ -z "$EVENT" ]]; then
@@ -82,8 +89,15 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 #   SHIP_VERB_RE (Path 2, v0.21.0): scans the PRIOR assistant turn's chat
 #     prose for high-fire §10-V patterns on broader ship-flow verbs. The
 #     transcript is the input, not CMD, so branch-name / path FPs don't apply.
-GIT_COMMIT_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)git([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
-SHIP_VERB_RE='(^|[[:space:]]*[;&|]+[[:space:]]*)(git[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|$)'
+#
+# The private `(-c <val>)*` group these two carried covered ONE flag of git's
+# global family, case-sensitively: `git -C /repo commit -m …` and
+# `git --git-dir=… push` both escaped, and so did the §7 and §11 gates' copies
+# of the same omission (2026-08-29 audit R10-05). HOOK_GIT_GLOBAL_FLAGS
+# (hook-common.sh) is the shared fragment; the enumeration gate in
+# tests/hooks/trigger-view-parity.test.sh keeps the three on it.
+GIT_COMMIT_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+commit([[:space:]]|\$)"
+SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|\$)"
 
 IS_GIT_COMMIT=0
 IS_SHIP_VERB=0
@@ -237,10 +251,22 @@ fi  # end IS_GIT_COMMIT block
 
 # Locate transcript via CC's cwd→encoded-dir convention (per memory
 # feedback_cc_cwd_encoding_dots.md: every non-`[a-zA-Z0-9-]` char → `-`).
-[[ -n "$EVENT_CWD" && -n "$SESSION_ID" ]] || exit 0
+# Post-trigger: a ship verb was recognised, so these exits are the §10-V prose
+# scan declining to run on a command it decided to scan. Recorded (OBS-1), not
+# silent — the cwd encoding this locates the transcript by has drifted twice
+# (feedback_cc_cwd_encoding_dots), and both times the gate simply stopped
+# firing with nothing in telemetry to distinguish that from a quiet week
+# (2026-08-29 audit R10-06b).
+if [[ -z "$EVENT_CWD" || -z "$SESSION_ID" ]]; then
+  hook_record_failopen banned-vocab event-fields-missing
+  exit 0
+fi
 ENCODED=$(hook_encode_project "$EVENT_CWD")
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
-[[ -f "$TRANSCRIPT" ]] || exit 0
+if [[ ! -f "$TRANSCRIPT" ]]; then
+  hook_record_failopen banned-vocab transcript-missing
+  exit 0
+fi
 
 # Extract the LAST assistant turn's text: assistant entries AFTER the last
 # real typed user prompt. Real prompt = type=="user" with STRING content

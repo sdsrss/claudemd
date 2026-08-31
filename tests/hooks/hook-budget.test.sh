@@ -547,6 +547,17 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     continue
   fi
   E_RL="$DIFF_HOME/.claude/logs/claudemd.jsonl"
+  # Re-empty the log before EACH subject's empty run. It is shared by every
+  # subject in this loop, and it is itself one of the varied data sources —
+  # session-summary aggregates it. Without the reset, any row an EARLIER subject
+  # wrote into it (a fail-open row, say) leaves the "empty" fixture non-empty by
+  # the time a later subject reads it, and that subject's two signatures
+  # converge for a reason that has nothing to do with its own scan. Found when
+  # the R10-06 fail-open rows landed: memory-read-check's row made
+  # session-summary find something to summarize under the empty fixture, and
+  # this arm reported the scan as missing. The seeds at the top of this section
+  # are deliberately NOT reset — they are the constants both halves share.
+  : > "$E_RL"
   E_LB=$(wc -c < "$E_RL" 2>/dev/null | tr -d ' '); E_LB=${E_LB:-0}
   E_SB=$(ls -A "$DIFF_STATE" 2>/dev/null | wc -l | tr -d ' ')
   E_YB=$(ls -A "$DIFF_SYNC" 2>/dev/null | wc -l | tr -d ' ')

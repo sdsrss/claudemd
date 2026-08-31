@@ -384,6 +384,33 @@ hook_trigger_view() {
   hook_strip_heredoc_bodies | hook_flatten_cmd | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
 }
 
+# HOOK_GIT_GLOBAL_FLAGS — ERE fragment for git's global options, to be spliced
+# between `git` and its subcommand in a trigger regex:
+#
+#     "(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|$)"
+#
+# SINGLE SOURCE for every trigger that keys on a git SUBCOMMAND. Without it the
+# gates required `git` and the verb to be adjacent, so `git -C /repo push`,
+# `git --git-dir=… push` and `git -C /repo commit -m …` — pushing a repo from
+# somewhere else, an ordinary agent shape — walked past the §7 red-CI gate, the
+# §11 memory-read gate and the §10-V commit scan at once, emitting no bypass row
+# on the way (2026-08-29 audit R10-05). banned-vocab-check.sh had a private
+# `(-c <val>)*` group covering one flag of the family, case-sensitively.
+#
+# Same recipe as pre-bash-safety-check.sh's NPX_GLOBAL_FLAGS, which solved this
+# exact problem on the §8 side (`npm --prefix ./pkgs exec <pkg>`) and was never
+# shared — that non-sharing IS the finding. Kept as a separate constant rather
+# than folding the two together: NPX_GLOBAL_FLAGS lives inside a §8 deny gate
+# whose sourcing failure mode is its own subject, and an indirection there would
+# trade a duplicated literal for a new silent-fail-open path.
+#
+# A bare word is admitted ONLY as the argument of a preceding flag; one standing
+# alone is a different subcommand, so `git status push` still does not match.
+# tests/hooks/trigger-view-parity.test.sh derives the consumer set from source
+# and requires every git-subcommand trigger to reference this.
+# shellcheck disable=SC2034  # consumed by the hooks that source this file
+HOOK_GIT_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+
 # HOOK_USER_TURN_JQ — a jq `def is_user_turn:` prelude, prepended to any jq
 # program that needs the last REAL typed user turn (a turn boundary).
 #

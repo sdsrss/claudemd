@@ -341,8 +341,49 @@ OUT=$(run_hook fail-red "$EVENT_REAL_HD")
 [[ -z "$OUT" ]] && echo "PASS: 35 real heredoc body still stripped" \
   || { echo "FAIL: 35 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((35 - FAIL))/35 passed"
+# Cases 36-38 (2026-08-29 audit R10-05): git's GLOBAL flags sit between `git`
+# and the subcommand, and the trigger required the two to be adjacent — so
+# `git -C /repo push`, the ordinary way to push a repo the shell is not cd'd
+# into, cleared this §7 gate silently. HEAD is re-pointed at a commit without a
+# `known-red baseline:` marker first: earlier cases leave one in place, and a
+# case that passes because of a stale bypass proves nothing.
+cd "$TMP_HOME" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "chore: plain commit, no bypass marker"
+
+EVENT_C_PUSH='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git -C /repo push origin main"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_C_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 36 git -C push reaches the §7 gate" \
+  || { echo "FAIL: 36 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# The help exemption must survive the global-flag form too: PUSH_SEG is grep'd
+# with the same fragment, so `git -C /repo push --help` still yields a segment
+# and still exempts. Pre-fix widening only TRIGGER_RE, the segment came back
+# empty and a no-op invocation was denied on red CI.
+EVENT_C_HELP='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git -C /repo push --help"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_C_HELP")
+[[ -z "$OUT" ]] && echo "PASS: 37 git -C push --help still exempt" \
+  || { echo "FAIL: 37 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# FP guard: a standalone bare word after `git` is a different subcommand.
+EVENT_STATUS='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git status push"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_STATUS")
+[[ -z "$OUT" ]] && echo "PASS: 38 git status push is not a push" \
+  || { echo "FAIL: 38 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Total is DERIVED from the assertions in this file rather than hand-written:
+# the literal 35 had to be bumped by hand on every addition, which is the same
+# drift class the 2026-07-27 audit found in memory-read-check.test.sh.
+# Resolved via $HERE, not $0: this suite cd's into its sandbox, so a relative
+# $0 no longer names a file by the time we get here — and `grep` on a missing
+# path yields an empty count, i.e. a green "0/0 passed".
+SELF="$HERE/$(basename "$0")"
+TOTAL=$(grep -oE '"(PASS|FAIL): [0-9]+' "$SELF" | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
+if (( TOTAL < 35 )); then
+  echo "FAILED: assertion inventory came back $TOTAL (< 35) — the count source is wrong"
   exit 1
 fi
-echo "Tests: 35/35 passed"
+if (( FAIL > 0 )); then
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"
+  exit 1
+fi
+echo "Tests: $TOTAL/$TOTAL passed"

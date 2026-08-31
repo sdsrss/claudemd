@@ -205,6 +205,112 @@ t14_case 'empty object preserved'          '{}'            '{}'
 t14_case 'empty array preserved'           '[]'            '[]'
 t14_case 'nested empty value preserved'    '{"a":{}}'      '{"a":{}}'
 
+# --- T15-T20 (2026-08-29 audit R10-06): silent bail-outs on deny paths -------
+#
+# Three deny-capable hooks reached `exit 0` past the point where they had
+# already decided the command was in scope, and recorded nothing. The §13.1
+# audit reads such a hook as "never fired" rather than "could not evaluate" —
+# the same OBS gap 0.68.2 and 0.69.0 each closed one batch of.
+
+# Fresh HOME per case: hook_record_failopen rate-limits one row per
+# (hook,reason) per 60s via a state file, so a shared HOME would swallow the
+# second assertion of the same reason and pass vacuously.
+fresh_home() {
+  TMP_CASE=$(mktemp -d)
+  export HOME="$TMP_CASE"
+  mkdir -p "$HOME/.claude/logs"
+  CASE_LOG="$HOME/.claude/logs/claudemd.jsonl"
+}
+has_failopen() {  # <hook> <reason>
+  jq -e --arg h "$1" --arg r "$2" \
+    'select(.hook==$h and .event=="fail-open" and .extra.reason==$r)' \
+    "$CASE_LOG" >/dev/null 2>&1
+}
+
+# A hooks/ copy whose platform.sh sources cleanly but defines nothing — the
+# truncated-mid-definition shape, not a deleted file. `source` returns 0 for it,
+# which is precisely why the exit code was never sufficient evidence.
+STUB_HOOKS=$(mktemp -d) || exit 1
+cp -R "$HOOKS_DIR/." "$STUB_HOOKS/"
+printf '# truncated mid-definition\nplatform_' > "$STUB_HOOKS/lib/platform.sh"
+
+# T15: ship-baseline — platform_timeout absent. Pre-fix the `|| true` source let
+# it through and `platform_timeout gh run list` exited 127, which the trailing
+# `|| exit 0` turned into a silent ALLOW on a red-CI push.
+fresh_home
+printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"/tmp"}' \
+  | bash "$STUB_HOOKS/ship-baseline-check.sh" >/dev/null 2>&1
+has_failopen ship-baseline prereq-missing \
+  && ok "T15 ship-baseline records fail-open when platform_timeout is undefined" \
+  || ng "T15 ship-baseline did not record prereq-missing (log: $(cat "$CASE_LOG" 2>/dev/null))"
+
+# T16: sandbox-disposal — the one hook that used to `source platform.sh || exit 0`
+# outright, above its own kill switch and with no row.
+fresh_home
+printf '%s\n' '{"session_id":"t","cwd":"/tmp"}' \
+  | bash "$STUB_HOOKS/sandbox-disposal-check.sh" >/dev/null 2>&1
+has_failopen sandbox-disposal prereq-missing \
+  && ok "T16 sandbox-disposal records fail-open when platform_find_newer is undefined" \
+  || ng "T16 sandbox-disposal did not record prereq-missing (log: $(cat "$CASE_LOG" 2>/dev/null))"
+
+# T17/T18: memory-read-check — post-trigger, the transcript and the index are
+# located through the cwd encoding, which has drifted twice. Both misses looked
+# identical to "this project has no memories".
+mrc_event() {
+  printf '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"%s"}\n' "$1"
+}
+fresh_home
+ENC=$(printf '%s' "/work/proj" | tr -c 'a-zA-Z0-9-' '-')
+mkdir -p "$HOME/.claude/projects/$ENC/memory"
+printf -- '- [Ship lessons](feedback_ship.md) `[ship, release, push]` — x\n' \
+  > "$HOME/.claude/projects/$ENC/memory/MEMORY.md"
+mrc_event "/work/proj" | bash "$HOOKS_DIR/memory-read-check.sh" >/dev/null 2>&1
+has_failopen memory-read-check transcript-missing \
+  && ok "T17 memory-read-check records fail-open when the transcript is absent" \
+  || ng "T17 memory-read-check did not record transcript-missing (log: $(cat "$CASE_LOG" 2>/dev/null))"
+
+fresh_home
+mkdir -p "$HOME/.claude/projects/$ENC"
+: > "$HOME/.claude/projects/$ENC/s1.jsonl"
+mrc_event "/work/proj" | bash "$HOOKS_DIR/memory-read-check.sh" >/dev/null 2>&1
+has_failopen memory-read-check mem-index-missing \
+  && ok "T18 memory-read-check records fail-open when MEMORY.md is absent" \
+  || ng "T18 memory-read-check did not record mem-index-missing (log: $(cat "$CASE_LOG" 2>/dev/null))"
+
+# T19: banned-vocab Path 2 — same transcript lookup, same silence.
+fresh_home
+printf '%s\n' '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"/work/proj"}' \
+  | bash "$HOOKS_DIR/banned-vocab-check.sh" >/dev/null 2>&1
+has_failopen banned-vocab transcript-missing \
+  && ok "T19 banned-vocab records fail-open when the transcript is absent" \
+  || ng "T19 banned-vocab did not record transcript-missing (log: $(cat "$CASE_LOG" 2>/dev/null))"
+
+rm -rf "$STUB_HOOKS"
+unset HOME; export HOME="$TMP_HOME"
+
+# T20: class gate. Derive the subject set from source — a deny-capable hook that
+# sources platform.sh must ASSERT a platform_* symbol before relying on one.
+# Naming the two hooks that had the gap would be a list written against the same
+# blind spot that produced it (the trigger-view-parity lesson).
+T20_SUBJECTS=()
+for f in "$HOOKS_DIR"/*.sh; do
+  grep -q 'hook_deny' "$f" || continue
+  grep -q 'platform\.sh' "$f" || continue
+  T20_SUBJECTS+=("$f")
+done
+if (( ${#T20_SUBJECTS[@]} >= 1 )); then
+  ok "T20 subject floor (${#T20_SUBJECTS[@]} deny-capable hook(s) source platform.sh)"
+else
+  ng "T20 subject floor: no deny-capable hook sources platform.sh — the derivation is wrong"
+fi
+for f in ${T20_SUBJECTS[@]+"${T20_SUBJECTS[@]}"}; do
+  if grep -q 'declare -f platform_' "$f"; then
+    ok "T20 $(basename "$f") asserts a platform_* symbol before use"
+  else
+    ng "T20 $(basename "$f") sources platform.sh and can deny, but never asserts the symbol"
+  fi
+done
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
