@@ -155,6 +155,34 @@ run_cwd_case pass "v0.9.30: npx vitest with yarn.lock entry"             "npx vi
 run_cwd_case deny "v0.9.30: npx vitest in empty cwd (no lockfile/local)" "npx vitest"            "$SANDBOX/empty"
 run_cwd_case deny "v0.9.30: npx vitest with cwd field empty (fallback)"  "npx vitest"            ""
 
+# === R10-07 (2026-08-29 audit): bin name != package name ===
+# `npx tsc` ships from the `typescript` package, so checks 1 and 3 — both keyed
+# on the PACKAGE name — missed it and every TS repo got a false deny on the
+# flagship type-check command. What §8 guards is fetch-execute; an executable
+# `node_modules/.bin/<name>` means the binary is already on disk.
+mkdir -p "$SANDBOX/bin-not-pkg/node_modules/typescript" "$SANDBOX/bin-not-pkg/node_modules/.bin"
+echo '{}' > "$SANDBOX/bin-not-pkg/node_modules/typescript/package.json"
+printf '#!/bin/sh\nexit 0\n' > "$SANDBOX/bin-not-pkg/node_modules/.bin/tsc"
+chmod +x "$SANDBOX/bin-not-pkg/node_modules/.bin/tsc"
+cat > "$SANDBOX/bin-not-pkg/package-lock.json" <<'EOF'
+{
+  "name": "demo", "version": "1.0.0", "lockfileVersion": 3,
+  "packages": {
+    "": {"name": "demo", "version": "1.0.0", "devDependencies": {"typescript": "^5.0.0"}},
+    "node_modules/typescript": {"version": "5.4.0", "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.4.0.tgz"}
+  }
+}
+EOF
+run_cwd_case pass "R10-07: npx tsc resolves via node_modules/.bin/tsc"  "npx tsc --noEmit"  "$SANDBOX/bin-not-pkg"
+# Controls, both directions. The allow must come from THIS project's .bin, not
+# from the check having been widened into an unconditional pass.
+run_cwd_case deny "R10-07 control: unknown pkg in the same cwd still denied" "npx totally-unknown-xyz9" "$SANDBOX/bin-not-pkg"
+run_cwd_case deny "R10-07 control: tsc with no .bin entry still denied"      "npx tsc --noEmit"         "$SANDBOX/empty"
+# A dangling .bin symlink is not an installed binary — running it fetches.
+mkdir -p "$SANDBOX/dangling-bin/node_modules/.bin"
+ln -sf "$SANDBOX/dangling-bin/node_modules/gone/bin.js" "$SANDBOX/dangling-bin/node_modules/.bin/ghost"
+run_cwd_case deny "R10-07: dangling .bin symlink does not count as installed" "npx ghost" "$SANDBOX/dangling-bin"
+
 # === §8 NPX rule covers sibling fetch-execute runners (pnpm dlx / yarn dlx / bunx) ===
 # §8 forbids "execute scripts of unknown origin"; npx's modern equivalents
 # fetch+run an unpinned unknown package identically, but the detector matched

@@ -402,9 +402,19 @@ EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 
 # npx_pkg_locally_resolved PKG CWD
 #   Returns 0 (true) if PKG can be resolved from CWD without a registry hit,
-#   per spec §8 NPX rule "lockfile → local → pinned". Two checks:
+#   per spec §8 NPX rule "lockfile → local → pinned". Three checks:
 #     1. CWD/node_modules/<pkg>/ exists (covers @scope/pkg via slash literal).
-#     2. CWD lockfile mentions pkg in its native key form.
+#     2. CWD/node_modules/.bin/<pkg> is executable.
+#     3. CWD lockfile mentions pkg in its native key form.
+#   Check 2 exists because checks 1 and 3 both resolve the token as a PACKAGE
+#   name while what the threat model cares about is whether a fetch-execute
+#   happens. The two differ whenever the bin name is not the package name —
+#   `npx tsc` (package `typescript`) being the flagship case, denied in every TS
+#   repo despite being a purely local execution (2026-08-29 audit R10-07,
+#   sandbox probe: `npx eslint .` ALLOW, `npx totally-unknown` DENY,
+#   `npx tsc --noEmit` DENY). A present, executable `.bin/<name>` means an
+#   install already put that binary there; npx runs it without touching a
+#   registry. A dangling link is not executable, so it keeps the deny.
 #   Conservative — false negatives just preserve the existing deny, false
 #   positives would allow an attacker who can plant a lockfile entry but not
 #   install (acceptable: planting a lockfile already requires write access).
@@ -412,6 +422,7 @@ npx_pkg_locally_resolved() {
   local pkg="$1" cwd="$2"
   [[ -n "$cwd" && -d "$cwd" ]] || return 1
   [[ -d "$cwd/node_modules/$pkg" ]] && return 0
+  [[ -x "$cwd/node_modules/.bin/$pkg" ]] && return 0
   local lockfile
   for lockfile in package-lock.json npm-shrinkwrap.json; do
     [[ -f "$cwd/$lockfile" ]] || continue

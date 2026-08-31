@@ -35,7 +35,12 @@ Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
 
 Wrapped by /claudemd-clean-residue.
 
-Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
+Output: JSON. \`remaining\` = targets still on disk after --apply (always 0 on a
+dry run). \`stateDir.dir\` echoes the directory actually scanned, so a run under
+CLAUDEMD_STATE_DIR can be confirmed rather than assumed.
+
+Exit codes: 0 success | 1 validation error | 2 argv-shape error |
+3 --apply left targets behind (see \`remaining\`).`;
 
 // Anchored regexes — names MUST start with the prefix. Defends against
 // future fnmatch-style globs that would falsely match `not-claudemd-sync-*`.
@@ -291,6 +296,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
   const sandboxCount  = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
+  // Exit code reflects what REMAINS, not what was attempted (2026-08-29 audit
+  // R10-09). All three cleaners swallow per-entry rmSync failures as
+  // best-effort and count only successes, so a run that deleted nothing —
+  // permissions, an immutable flag, a path that came back — printed its JSON
+  // and returned 0. A wrapper or cron step gating on this command read "clean"
+  // while the residue was still there (`cli-exit-code-must-reflect-remaining`).
+  // Only meaningful under --apply: a dry run deletes nothing by definition.
+  const attempted = result.targets.length + ctmp.targets.length + cstate.targets.length;
+  const removed = result.deleted + ctmp.deleted + cstate.deleted;
+  const remaining = apply ? attempted - removed : 0;
   console.log(JSON.stringify({
     dryRun: result.dryRun,
     tmpDir: process.env.TMPDIR || os.tmpdir(),
@@ -306,8 +321,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       deleted: ctmp.deleted,
       paths: ctmp.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
     },
+    remaining,
     stateDir: {
-      dir: stateDir,
+      // `stateDirPath`, not the imported `stateDir` FUNCTION — JSON.stringify
+      // drops a function value, so this key vanished from the output entirely.
+      // The one thing the CLAUDEMD_STATE_DIR seam exists to let a caller
+      // confirm — which directory was actually scanned — was the one thing the
+      // JSON never said (2026-08-29 audit R10-09).
+      dir: stateDirPath,
       retentionDays,
       candidates: cstate.targets.length,
       deleted: cstate.deleted,
@@ -315,4 +336,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       paths: cstate.targets.map(t => ({ path: t.path, kind: t.kind, ageDays: Math.round(t.ageDays * 10) / 10 })),
     },
   }, null, 2));
+  // 3, not 1: 1 already means "validation error" and 2 means "argv-shape
+  // error". Overloading either would make "some residue could not be removed"
+  // indistinguishable from "you typed the flag wrong" — the same exit-code
+  // conflation doctor.js resolved the same way.
+  if (remaining > 0) process.exitCode = 3;
 }

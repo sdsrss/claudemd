@@ -96,8 +96,12 @@ test('ARCHITECTURE.md hook taxonomy has one row per registered hook', () => {
 // that problem and was left outside the gate: it documented 6 entries while 14
 // kinds existed on disk, including a `mem-coverage-*` class whose producing hook
 // was deleted in v0.23.12. The remedy is the same one — derive from source.
+// Returns Map<normalized-name, family> where family is 'state' (lives in
+// ~/.claude/.claudemd-state) or 'tmp' (the $TMPDIR claudemd-* sentinel family).
+// The ARCHITECTURE.md gate below wants both; the uninstall join at the end of
+// this file wants only the state-dir half, since that is all its regex covers.
 function statePathsInSource() {
-  const out = new Set();
+  const out = new Map();
   const files = [];
   const walk = (dir, exts) => {
     if (!fs.existsSync(dir)) return;
@@ -119,7 +123,7 @@ function statePathsInSource() {
 
   for (const full of files) {
     const src = fs.readFileSync(full, 'utf8');
-    for (const m of src.matchAll(/\.claudemd-state\/([A-Za-z0-9._${}-]+)/g)) out.add(norm(m[1]));
+    for (const m of src.matchAll(/\.claudemd-state\/([A-Za-z0-9._${}-]+)/g)) out.set(norm(m[1]), 'state');
     // Any variable whose name ENDS in STATE_DIR, not just the two spellings
     // someone happened to grep for. The first draft matched `$STATE_DIR` and
     // `$state_dir` only, and transcript-vocab-scan.sh builds its sentinel path
@@ -127,9 +131,9 @@ function statePathsInSource() {
     // the gate written to catch exactly that. Scope narrower than subject, in
     // the fix for scope narrower than subject.
     for (const m of src.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?\/([A-Za-z0-9._${}-]+)/g)) {
-      if (/state_dir$/i.test(m[1])) out.add(norm(m[2]));
+      if (/state_dir$/i.test(m[1])) out.set(norm(m[2]), 'state');
     }
-    for (const m of src.matchAll(/stateDir\(\)\s*,\s*'([A-Za-z0-9._-]+)'/g)) out.add(norm(m[1]));
+    for (const m of src.matchAll(/stateDir\(\)\s*,\s*'([A-Za-z0-9._-]+)'/g)) out.set(norm(m[1]), 'state');
     // $TMPDIR-family state (audit-2026-08-22 条目 15). The three matchers above
     // all key on the state DIRECTORY, so a whole sentinel family living under
     // $TMPDIR was structurally invisible to this gate: version-sync.sh has
@@ -140,7 +144,7 @@ function statePathsInSource() {
     // gate written to close that exact class. Keyed on the `claudemd-` prefix,
     // which is what makes a file in a shared temp dir ours.
     for (const m of src.matchAll(/\$\{?[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}?\/(claudemd-[A-Za-z0-9.*_${}-]+)/g)) {
-      out.add(norm(m[1]).replace(/X{3,}$/, '*'));
+      out.set(norm(m[1]).replace(/X{3,}$/, '*'), 'tmp');
     }
   }
   return out;
@@ -178,7 +182,7 @@ test('ARCHITECTURE.md State locations lists every state path the source writes',
     .filter(Boolean);
   const doc = subjects.join('\n');
   assert.ok(subjects.length >= 15, `State-locations list resolved ${subjects.length} bullet subject(s) — too few to be the real inventory`);
-  const found = statePathsInSource();
+  const found = new Set(statePathsInSource().keys());
 
   assert.ok(found.size >= 8,
     `state-path extraction returned only ${found.size} — parser or source shape changed. ` +
@@ -195,4 +199,53 @@ test('ARCHITECTURE.md State locations lists every state path the source writes',
     `docs/ARCHITECTURE.md "State locations" is missing path(s) the source writes:\n` +
     missing.map(p => `  ${p}`).join('\n') +
     `\nDocument them, or add a STATE_IGNORE entry stating why the path is not a kind.`);
+});
+
+// --- 2026-08-29 audit R10-13: uninstall's state-file regex had no join ------
+//
+// scripts/uninstall.js carries CLAUDEMD_STATE_FILE_RE, a hand-copied list of
+// the stems claudemd writes into its state dir, used on the --purge branch that
+// refuses to recurse into a non-canonically-named CLAUDEMD_STATE_DIR. The stems
+// happened to be correct on the day they were written and nothing held them
+// there: `grep -rn CLAUDEMD_STATE_FILE_RE tests/ scripts/` found the definition
+// and nothing else, while the extractor above already derives the same set.
+// subject-set-drift covers the hook-name / DISABLE / prose axes, not this one.
+//
+// The failure is quiet by construction — an unmatched stem is skipped, i.e.
+// residue survives an explicit purge — so it would never surface as a bug
+// report. Joined here rather than in a new file because this is where the
+// single source of the set already lives.
+test('R10-13: uninstall CLAUDEMD_STATE_FILE_RE matches every state path the source writes', async () => {
+  const { CLAUDEMD_STATE_FILE_RE } = await import('../../scripts/uninstall.js');
+  const stateOnly = [...statePathsInSource()]
+    .filter(([, family]) => family === 'state')
+    .map(([name]) => name)
+    .filter(name => !STATE_IGNORE.has(name))
+    // A bare/leading interpolation carries no literal stem to match on.
+    .filter(name => !name.startsWith('*'));
+
+  assert.ok(stateOnly.length >= 8,
+    `state-family extraction returned only ${stateOnly.length} — this join must never validate an empty set`);
+
+  const unmatched = stateOnly.filter(name => !CLAUDEMD_STATE_FILE_RE.test(name)).sort();
+  assert.deepEqual(unmatched, [],
+    `scripts/uninstall.js CLAUDEMD_STATE_FILE_RE does not match state file(s) the source writes:\n` +
+    unmatched.map(n => `  ${n}`).join('\n') +
+    `\n--purge would leave these behind on a non-canonically-named state dir.`);
+});
+
+test('R10-13: the join is capable of failing (mutation control)', () => {
+  // A join whose predicate can never be false is decoration. Drop one stem from
+  // the regex and the same comparison must name it. `statusline-prev` is the
+  // dropped stem: it is genuinely in the extracted set, unlike `installed.json`
+  // (a STATE_IGNORE entry) — a mutation the filters swallow proves nothing, and
+  // the first draft of this control picked exactly that one.
+  const mutated = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|installed\.json)/;
+  const stateOnly = [...statePathsInSource()]
+    .filter(([, family]) => family === 'state')
+    .map(([name]) => name)
+    .filter(name => !STATE_IGNORE.has(name) && !name.startsWith('*'));
+  const unmatched = stateOnly.filter(name => !mutated.test(name));
+  assert.ok(unmatched.length > 0,
+    'dropping `statusline-prev` from the regex left the join green — the predicate cannot fail');
 });

@@ -11,7 +11,14 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 // non-canonical-name branch of --purge below, where recursing is refused.
 // Deliberately a shape list rather than "everything in the directory": if the
 // variable points somewhere unexpected, the contents are not ours to assume.
-const CLAUDEMD_STATE_FILE_RE = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
+//
+// Exported for tests/scripts/architecture-drift.test.js, which joins it against
+// the state paths its extractor finds in source. Until the 2026-08-29 audit
+// (R10-13) this was a hand-copied subset of that same set with no join at all —
+// a fresh instance of the class 0.69.1 shipped a gate to close. Its blast
+// direction is benign (an unmatched stem is left behind, never wrongly deleted),
+// which is exactly why nothing would have noticed it going stale.
+export const CLAUDEMD_STATE_FILE_RE = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 

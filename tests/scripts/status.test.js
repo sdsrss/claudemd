@@ -164,16 +164,30 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   assert.equal(typeof sample.persisted, 'boolean');
 });
 
-test('status({verbose:true}) emits escapeTokens table covering all 5 per-invocation bypasses', async () => {
+test('status({verbose:true}) emits an escapeTokens table covering every per-invocation bypass', async () => {
+  // The count is DERIVED, not written down. This asserted `length === 5` while
+  // pre-bash-safety-check.sh had been implementing a sixth token,
+  // `[allow-curl-sh]`, since 0.69.1 — so the one gate over this table agreed
+  // with the stale number instead of with the hooks (2026-08-29 audit R10-08).
+  // The two non-`[allow-]` tokens have no derivable spelling and stay named.
+  const HOOKS_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../hooks');
+  const allowTokens = new Set();
+  for (const f of fs.readdirSync(HOOKS_DIR).filter(n => n.endsWith('.sh'))) {
+    const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
+    for (const m of src.matchAll(/\[allow-[a-z0-9-]+\]/g)) allowTokens.add(m[0]);
+  }
+  assert.ok(allowTokens.size >= 3, `expected >= 3 [allow-*] tokens in hooks/, found ${allowTokens.size}`);
+
   const r = await status({ verbose: true });
   assert.ok(Array.isArray(r.verbose.escapeTokens), 'verbose.escapeTokens must be an array');
-  assert.equal(r.verbose.escapeTokens.length, 5, 'all 5 documented escape tokens must appear');
   const tokens = r.verbose.escapeTokens.map(t => t.token);
-  assert.ok(tokens.includes('[allow-banned-vocab]'));
+  for (const t of allowTokens) {
+    assert.ok(tokens.includes(t), `${t} is implemented in hooks/ but absent from verbose.escapeTokens`);
+  }
   assert.ok(tokens.includes('known-red baseline:'));
   assert.ok(tokens.includes('[skip-memory-check]'));
-  assert.ok(tokens.includes('[allow-rm-rf-var]'));
-  assert.ok(tokens.includes('[allow-npx-unpinned]'));
+  assert.equal(r.verbose.escapeTokens.length, allowTokens.size + 2,
+    'the table must hold every [allow-*] token plus the two non-bracket forms, and nothing else');
   // Every entry carries the cross-ref triple (where / bypasses / section)
   for (const e of r.verbose.escapeTokens) {
     assert.equal(typeof e.where, 'string', `${e.token} missing where`);

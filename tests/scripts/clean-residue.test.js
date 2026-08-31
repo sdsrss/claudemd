@@ -150,7 +150,7 @@ test('CLI dry-run by default prints sentinel/sandbox/deleted counts', () => {
   setMtime(path.join(tmpDir, 'claudemd-sync-z'), 5);
 
   const result = spawnSync(process.execPath, [SCRIPT], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
@@ -166,7 +166,7 @@ test('CLI --apply deletes; subsequent run is idempotent', () => {
   setMtime(path.join(tmpDir, 'claudemd-sync-z'), 5);
 
   const r1 = spawnSync(process.execPath, [SCRIPT, '--apply'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(r1.status, 0);
@@ -175,7 +175,7 @@ test('CLI --apply deletes; subsequent run is idempotent', () => {
   assert.ok(!fs.existsSync(path.join(tmpDir, 'claudemd-sync-z')));
 
   const r2 = spawnSync(process.execPath, [SCRIPT, '--apply'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   const o2 = JSON.parse(r2.stdout);
@@ -188,7 +188,7 @@ test('CLI --age-days=N overrides default 1-day threshold', () => {
 
   // age-days=7 should NOT match a 3-day-old file
   const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--age-days=7'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   const o = JSON.parse(r.stdout);
@@ -198,7 +198,7 @@ test('CLI --age-days=N overrides default 1-day threshold', () => {
 
 test('CLI rejects negative --age-days', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--age-days=-1'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.notEqual(r.status, 0);
@@ -208,7 +208,7 @@ test('CLI rejects negative --age-days', () => {
 test('CLI rejects space-form --age-days 0 (was silent default → exit 0 + 0 deleted)', () => {
   fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-now'), '');
   const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--age-days', '0'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(r.status, 2, `expected exit 2 (ArgvError); got ${r.status}, stderr: ${r.stderr}`);
@@ -218,7 +218,7 @@ test('CLI rejects space-form --age-days 0 (was silent default → exit 0 + 0 del
 
 test('CLI rejects unknown flag (was silent ignore)', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--bogus=x'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(r.status, 2);
@@ -241,12 +241,32 @@ const mkStale = (rel, daysAgo, { dir = true } = {}) => {
   return p;
 };
 
+// Sandboxed state dir for every CLI spawn. Without CLAUDEMD_STATE_DIR the
+// script resolves ~/.claude/.claudemd-state, so `--apply` ran the destructive
+// reaper against the maintainer's LIVE state directory — §8.V3 ("session-new
+// destructive paths MUST sandbox-test first") straight through the test suite.
+// Invisible until R10-09 added a `remaining` count and this file started
+// failing on whatever the live directory happened to hold. Every spawn goes
+// through cliEnv() so a new case cannot reintroduce the omission by writing an
+// env literal that happens to be one key short.
+let cliStateDir;
+const cliEnv = (extra = {}) => ({
+  ...process.env,
+  TMPDIR: tmpDir,
+  CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp,
+  CLAUDEMD_STATE_DIR: cliStateDir,
+  ...extra,
+});
+
 beforeEach(() => {
   claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-test-'));
+  cliStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cstate-test-'));
 });
 
 afterEach(() => {
   fs.rmSync(claudeTmp, { recursive: true, force: true });
+  fs.chmodSync(cliStateDir, 0o700);
+  fs.rmSync(cliStateDir, { recursive: true, force: true });
 });
 
 test('scanClaudeTmp lists stale depth-1 entries; descends into claude-<uid> instead of listing it', () => {
@@ -312,7 +332,7 @@ test('CLI --apply also purges CLAUDEMD_CLAUDE_TMP_DIR and reports claudeTmp sect
   setMtime(path.join(tmpDir, 'claudemd-sync-q'), 5);
 
   const r = spawnSync(process.execPath, [SCRIPT, '--apply'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(r.status, 0, `stderr: ${r.stderr}`);
@@ -327,7 +347,7 @@ test('CLI --apply also purges CLAUDEMD_CLAUDE_TMP_DIR and reports claudeTmp sect
 test('CLI dry-run default lists claudeTmp candidates without deleting', () => {
   mkStale('old-x', 10);
   const r = spawnSync(process.execPath, [SCRIPT], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   const o = JSON.parse(r.stdout);
@@ -340,14 +360,14 @@ test('CLI dry-run default lists claudeTmp candidates without deleting', () => {
 test('CLI --retention-days=N overrides default; bad shape rejected', () => {
   mkStale('old-x', 10);
   const keep = spawnSync(process.execPath, [SCRIPT, '--apply', '--retention-days=30'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.equal(JSON.parse(keep.stdout).claudeTmp.deleted, 0, '10d-old stays under 30d retention');
   assert.ok(fs.existsSync(path.join(claudeTmp, 'old-x')));
 
   const bad = spawnSync(process.execPath, [SCRIPT, '--retention-days=-3'], {
-    env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+    env: cliEnv(),
     encoding: 'utf8',
   });
   assert.notEqual(bad.status, 0);
@@ -362,7 +382,7 @@ test('CLI reads TMP_RETENTION_DAYS from cwd CLAUDE.md; flag wins over file', () 
   try {
     const viaFile = spawnSync(process.execPath, [SCRIPT, '--apply'], {
       cwd: projDir,
-      env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+      env: cliEnv(),
       encoding: 'utf8',
     });
     const o1 = JSON.parse(viaFile.stdout);
@@ -371,7 +391,7 @@ test('CLI reads TMP_RETENTION_DAYS from cwd CLAUDE.md; flag wins over file', () 
 
     const viaFlag = spawnSync(process.execPath, [SCRIPT, '--apply', '--retention-days=7'], {
       cwd: projDir,
-      env: { ...process.env, TMPDIR: tmpDir, CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp },
+      env: cliEnv(),
       encoding: 'utf8',
     });
     const o2 = JSON.parse(viaFlag.stdout);
@@ -454,4 +474,82 @@ test('cleanStateDir respects retention and dry-run by default', () => {
   assert.equal(applied.deleted, 1);
   assert.ok(!fs.existsSync(old));
   assert.ok(fs.existsSync(fresh), 'a sentinel inside the retention window is still live');
+});
+
+// --- 2026-08-29 audit R10-09 ----------------------------------------------
+
+test('R10-09: stateDir.dir echoes the directory actually scanned', () => {
+  // The key serialized the imported stateDir FUNCTION, and JSON.stringify drops
+  // function values — so the field vanished, and the one thing the
+  // CLAUDEMD_STATE_DIR seam exists to let a caller confirm was unconfirmable.
+  const stateDir = path.join(tmpDir, 'state-echo');
+  fs.mkdirSync(stateDir, { recursive: true });
+  const r = spawnSync(process.execPath, [SCRIPT], {
+    env: cliEnv({ CLAUDEMD_STATE_DIR: stateDir }),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  const o = JSON.parse(r.stdout);
+  assert.equal(typeof o.stateDir.dir, 'string');
+  assert.equal(o.stateDir.dir, stateDir);
+});
+
+test('R10-09: --apply that cannot delete exits 3 and reports what remains', () => {
+  // All three cleaners swallow per-entry rmSync failures and count only
+  // successes, so a run that removed nothing still printed its JSON and exited
+  // 0 — a wrapper gating on this command read "clean" over untouched residue.
+  const stateDir = path.join(tmpDir, 'state-locked');
+  fs.mkdirSync(stateDir, { recursive: true });
+  const stuck = path.join(stateDir, 'ext-read-stuck.ts');
+  fs.writeFileSync(stuck, '0');
+  setMtime(stuck, 30);
+  // Make the entry undeletable by removing write permission on its PARENT —
+  // unlink needs write on the directory, not on the file.
+  fs.chmodSync(stateDir, 0o500);
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, '--apply'], {
+      env: cliEnv({ CLAUDEMD_STATE_DIR: stateDir }),
+      encoding: 'utf8',
+    });
+    const o = JSON.parse(r.stdout);
+    // Premise check: if the platform let the delete through (running as root,
+    // or a filesystem that ignores mode bits) this case proves nothing, so say
+    // so rather than passing vacuously.
+    if (o.stateDir.deleted === 1) {
+      assert.ok(process.getuid && process.getuid() === 0,
+        'delete succeeded despite mode 0500 — only expected as root');
+      return;
+    }
+    assert.equal(o.stateDir.candidates, 1);
+    assert.equal(o.stateDir.deleted, 0);
+    assert.equal(o.remaining, 1, 'remaining must report the target left behind');
+    assert.equal(r.status, 3, `expected exit 3, got ${r.status} (stderr: ${r.stderr})`);
+  } finally {
+    fs.chmodSync(stateDir, 0o700);
+  }
+});
+
+test('R10-09: a clean --apply still exits 0 with remaining=0', () => {
+  // FP guard — the new exit code must not fire on the ordinary success path.
+  fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-ok'), '');
+  setMtime(path.join(tmpDir, 'claudemd-sync-ok'), 5);
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply'], {
+    env: cliEnv(),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  assert.equal(JSON.parse(r.stdout).remaining, 0);
+});
+
+test('R10-09: a dry run never reports remaining, however many candidates', () => {
+  fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-dry'), '');
+  setMtime(path.join(tmpDir, 'claudemd-sync-dry'), 5);
+  const r = spawnSync(process.execPath, [SCRIPT], {
+    env: cliEnv(),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  const o = JSON.parse(r.stdout);
+  assert.ok(o.sentinels >= 1);
+  assert.equal(o.remaining, 0, 'a dry run deletes nothing by definition');
 });

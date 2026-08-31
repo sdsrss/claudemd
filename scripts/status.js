@@ -44,6 +44,13 @@ const ESCAPE_TOKENS = [
   { token: '[skip-memory-check]',   where: 'bash command',       bypasses: 'memory-read-check.sh',          section: '§11-memory-read' },
   { token: '[allow-rm-rf-var]',     where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (rm-rf-var path)', section: '§8-rm-rf-var' },
   { token: '[allow-npx-unpinned]',  where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (npx path)',       section: '§8-npx' },
+  // Shipped as a live deny path in 0.69.1 and absent from every user-facing
+  // reference until the 2026-08-29 audit (R10-08): a user blocked by the
+  // curl|sh detector found no bypass here, none in README, and a command doc
+  // promising a "full" reference. The kill-switch drift gate covers the
+  // DISABLE_* axis only, so the `[allow-*]` axis had no join at all — that gap
+  // is now closed by tests/scripts/kill-switch-doc-drift.test.js.
+  { token: '[allow-curl-sh]',       where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (curl|sh path)',   section: '§8-curl-sh' },
 ];
 
 export async function status({ verbose = false } = {}) {

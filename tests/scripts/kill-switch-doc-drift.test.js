@@ -95,3 +95,61 @@ test('hook_kill_switch arg in each hook matches its filename family', () => {
     );
   }
 });
+
+// --- 2026-08-29 audit R10-08: the OTHER bypass axis ------------------------
+//
+// This file has kept README's DISABLE_* list honest since Round-3, and the
+// `[allow-*]` escape tokens had no equivalent join at all. `[allow-curl-sh]`
+// shipped as a live deny path in 0.69.1 and appeared in exactly zero
+// user-facing references: status.js's ESCAPE_TOKENS (whose own comment calls
+// itself the single source) listed five, README's escape table listed five,
+// and commands/claudemd-status.md promised a "full" reference and named the
+// count. A user blocked by the curl|sh detector had nowhere to look.
+//
+// Derived from the hook sources, not from a list — a hand-kept list would be
+// written against the same blind spot that produced the gap.
+function hookEscapeTokens() {
+  const hooksDir = path.join(REPO_ROOT, 'hooks');
+  const out = new Set();
+  for (const h of fs.readdirSync(hooksDir).filter(f => f.endsWith('.sh'))) {
+    const src = fs.readFileSync(path.join(hooksDir, h), 'utf8');
+    for (const m of src.matchAll(/\[allow-[a-z0-9-]+\]/g)) out.add(m[0]);
+  }
+  return out;
+}
+
+test('R10-08: every [allow-*] token a hook implements is in status.js ESCAPE_TOKENS', () => {
+  const tokens = hookEscapeTokens();
+  // Premise assertion: an empty or shrunken derivation must fail loudly rather
+  // than pass vacuously (the run-all empty-glob lesson).
+  assert.ok(tokens.size >= 3, `expected >= 3 [allow-*] tokens in hooks/, found ${tokens.size}`);
+
+  const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
+  const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
+  assert.ok(block, 'ESCAPE_TOKENS array not found in scripts/status.js');
+  for (const t of tokens) {
+    assert.ok(block[1].includes(t),
+      `${t} is implemented in hooks/ but missing from scripts/status.js ESCAPE_TOKENS`);
+  }
+});
+
+test('R10-08: every [allow-*] token a hook implements is in the README escape table', () => {
+  const tokens = hookEscapeTokens();
+  const readme = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+  for (const t of tokens) {
+    assert.ok(readme.includes(t),
+      `${t} is implemented in hooks/ but never appears in README.md`);
+  }
+});
+
+test('R10-08: no reference documents a token no hook implements', () => {
+  // The reverse direction: a token removed from a hook must not linger in the
+  // docs as advice that silently stops working.
+  const tokens = hookEscapeTokens();
+  const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
+  const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
+  for (const m of block[1].matchAll(/\[allow-[a-z0-9-]+\]/g)) {
+    assert.ok(tokens.has(m[0]),
+      `${m[0]} is documented in ESCAPE_TOKENS but no hook implements it`);
+  }
+});
