@@ -40,6 +40,14 @@ jobs:
         # that stops at 22 never executes the versions users actually run.
         node: [20, 22, 24]
     runs-on: ${{ matrix.os }}
+    env:
+      # Single source for the pinned bash-3.2 build: the cache key below and the
+      # shell variable in the parse step both read it. They were two hand-copied
+      # literals, and the comment claimed a version bump changed the key — it did
+      # not, so a bump would have rebuilt correctly but never re-cached, silently
+      # recompiling on every run forever (0.70.0 pre-tag review, MEDIUM-1).
+      BASH32_VERSION: 3.2.57
+      BASH32_SHA256: 3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4
     steps:
       - uses: actions/checkout@v6
         with:
@@ -85,15 +93,15 @@ jobs:
       # Without it every Linux/node20 run re-fetched a 2.5 MB tarball from
       # ftp.gnu.org and ran configure+make: 1-2 minutes per run, and a mirror
       # outage was a red CI on a step that has nothing to do with the change
-      # under test (2026-08-29 audit R10-16). Bumping BASH32_VERSION below
-      # changes the key, so a version bump cannot silently reuse the old binary.
-      - name: Cache bash 3.2.57 build
+      # under test (2026-08-29 audit R10-16). The key is DERIVED from the
+      # job-level BASH32_VERSION, so a bump both misses the cache and re-saves.
+      - name: Cache bash ${{ env.BASH32_VERSION }} build
         if: runner.os == 'Linux' && matrix.node == 20
         id: bash32-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/claudemd-bash32
-          key: bash32-3.2.57-${{ runner.os }}-${{ runner.arch }}
+          key: bash32-${{ env.BASH32_VERSION }}-${{ runner.os }}-${{ runner.arch }}
       - name: Reject constructs bash 3.2 cannot PARSE (real 3.2 syntax check)
         if: runner.os == 'Linux' && matrix.node == 20
         run: |
@@ -107,12 +115,15 @@ jobs:
           # runtime, in the release CI. Parse every hook with a REAL 3.2 built
           # for this job — a `bash -n` under 5.x proves nothing about 3.2.
           set -eu
-          BASH32_VERSION=3.2.57
-          # Pinned digest. Unpinned, this step ran whatever the mirror served
-          # into configure+make on a CI runner with repo write scope — a
-          # supply-chain surface for a portability check (2026-08-29 audit
-          # R10-16). Verified against ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz.
-          BASH32_SHA256=3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4
+          # BASH32_VERSION / BASH32_SHA256 come from the job-level env above, so
+          # the cache key and this block cannot drift apart.
+          #
+          # The digest is checked on the MISS path only — on a cache hit the
+          # tarball is never fetched, and the sole check is the --version assert
+          # below, which a substituted binary would pass. Stated plainly rather
+          # than left for the next reader to over-trust the pin
+          # (0.70.0 pre-tag review, MEDIUM-2); acceptable here because the cache
+          # is scoped to this repo and no fork PR can write it.
           CACHE_DIR="$HOME/.cache/claudemd-bash32"
           B32="$CACHE_DIR/bash-$BASH32_VERSION"
           if [ ! -x "$B32" ]; then

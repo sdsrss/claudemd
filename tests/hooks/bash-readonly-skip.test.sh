@@ -141,12 +141,16 @@ for _c in 'git remote add up https://x' 'git remote remove up' 'git remote set-u
   [[ "$(classify "$_c")" == "NO" ]] && ok "35 not readonly: $_c" || ng "35 not readonly: $_c (got $(classify "$_c"))"
 done
 
-# The assertion inventory is derived rather than hand-counted — the literal
-# below had to be bumped by hand on every addition (2026-07-27 audit, L5).
+# DISTINCT numeric LABELS, not assertions — cases 34/35 each cover several
+# shapes under one label, so this is an inventory of case IDs and the printed
+# ratio is over those. Said plainly because the first wording called it an
+# assertion count, which it never was (0.70.0 pre-tag review, LOW-3). Derived
+# rather than hand-counted: the literal had to be bumped by hand on every
+# addition (2026-07-27 audit, L5).
 TOTAL=$(grep -oE '\b(ok|ng) "[0-9]+' "$HERE/$(basename "$0")" 2>/dev/null | grep -oE '[0-9]+$' | sort -nu | wc -l | tr -d ' ')
 TOTAL=${TOTAL:-0}
 if (( TOTAL < 33 )); then
-  echo "FAILED: assertion inventory came back $TOTAL (< 33) — the count source is wrong"
+  echo "FAILED: case-label inventory came back $TOTAL (< 33) — the count source is wrong"
   exit 1
 fi
 if (( FAIL > 0 )); then

@@ -364,6 +364,29 @@ OUT=$(run_hook fail-red "$EVENT_C_HELP")
 [[ -z "$OUT" ]] && echo "PASS: 37 git -C push --help still exempt" \
   || { echo "FAIL: 37 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 39-40 (0.70.0 pre-tag review, HIGH-1): an ARGUMENT-LESS push. Every case
+# above this point drove `git push origin main`, and hook_trigger_view appends
+# `;` to its output — so `git push`, the most common spelling there is, sat
+# against a trigger suffix of `([[:space:]]|$)` that matches neither the `;` nor
+# end-of-line. This §7 red-CI gate has never fired on it.
+EVENT_BARE='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_BARE")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 39 bare 'git push' reaches the §7 gate" \
+  || { echo "FAIL: 39 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_BARE_C='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git -C /repo push"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_BARE_C")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 40 bare 'git -C /repo push' reaches the §7 gate" \
+  || { echo "FAIL: 40 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# FP guard: the widened suffix must not turn `git push-notes` into a push.
+EVENT_PUSHNOTES='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push-notes"},"cwd":"/tmp"}'
+OUT=$(run_hook fail-red "$EVENT_PUSHNOTES")
+[[ -z "$OUT" ]] && echo "PASS: 41 'git push-notes' is not a push" \
+  || { echo "FAIL: 41 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 # FP guard: a standalone bare word after `git` is a different subcommand.
 EVENT_STATUS='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git status push"},"cwd":"/tmp"}'
 OUT=$(run_hook fail-red "$EVENT_STATUS")

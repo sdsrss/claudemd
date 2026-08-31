@@ -108,12 +108,24 @@ test('hook_kill_switch arg in each hook matches its filename family', () => {
 //
 // Derived from the hook sources, not from a list — a hand-kept list would be
 // written against the same blind spot that produced the gap.
+// `[skip-memory-check]` is in the set too: it is the sixth token in the same
+// table and was outside the join built for the other five, purely because its
+// spelling does not start with `allow-` (0.70.0 pre-tag review, LOW-2).
+// `known-red baseline:` stays named-only — it is a commit-body marker, not a
+// bracketed command token, and has no derivable literal in the hook source.
+const ESCAPE_TOKEN_RE = /\[(?:allow-[a-z0-9-]+|skip-memory-check)\]/g;
+
 function hookEscapeTokens() {
   const hooksDir = path.join(REPO_ROOT, 'hooks');
   const out = new Set();
   for (const h of fs.readdirSync(hooksDir).filter(f => f.endsWith('.sh'))) {
-    const src = fs.readFileSync(path.join(hooksDir, h), 'utf8');
-    for (const m of src.matchAll(/\[allow-[a-z0-9-]+\]/g)) out.add(m[0]);
+    // Comment lines are stripped first: a token named only in prose is not an
+    // implementation, and a detector that counts it would be satisfied by the
+    // description of the thing it guards (feedback_self_referential_marker_regex,
+    // the same guard readme-drift.test.js's codeOf() applies).
+    const src = fs.readFileSync(path.join(hooksDir, h), 'utf8')
+      .split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    for (const m of src.matchAll(ESCAPE_TOKEN_RE)) out.add(m[0]);
   }
   return out;
 }
@@ -122,7 +134,7 @@ test('R10-08: every [allow-*] token a hook implements is in status.js ESCAPE_TOK
   const tokens = hookEscapeTokens();
   // Premise assertion: an empty or shrunken derivation must fail loudly rather
   // than pass vacuously (the run-all empty-glob lesson).
-  assert.ok(tokens.size >= 3, `expected >= 3 [allow-*] tokens in hooks/, found ${tokens.size}`);
+  assert.ok(tokens.size >= 4, `expected >= 4 bracketed escape tokens in hooks/, found ${tokens.size}`);
 
   const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
   const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
@@ -148,7 +160,7 @@ test('R10-08: no reference documents a token no hook implements', () => {
   const tokens = hookEscapeTokens();
   const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
   const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
-  for (const m of block[1].matchAll(/\[allow-[a-z0-9-]+\]/g)) {
+  for (const m of block[1].matchAll(ESCAPE_TOKEN_RE)) {
     assert.ok(tokens.has(m[0]),
       `${m[0]} is documented in ESCAPE_TOKENS but no hook implements it`);
   }

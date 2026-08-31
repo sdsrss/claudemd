@@ -24,6 +24,7 @@ The JSON / markdown contains:
 | `metricContract` | The A2 pre-registered constraint: compliance = 1 − violations/opportunities; a rate without its denominator is not evidence. |
 | `scannedTranscripts` | Transcripts within the window that contained ≥1 assistant text turn. |
 | `totalTurns` | Total assistant text turns scanned (sum across transcripts). |
+| `unreadableTranscripts` | Transcripts the reader could not open, with the reason (`[]` is the healthy case). Non-empty means every denominator below describes a SMALLER population than the file count implies — say so when reporting rates, do not quote them as if the sample were complete. |
 | `byRule[<§rule>].violations` | Per-rule violation count (for §10-V: turns with ≥1 match; `hits` keeps the raw per-pattern match count). |
 | `byRule[<§rule>].opportunities` | Denominator: detected trigger contexts for that rule (Done lines examined / substantive Uncertain lines / typed-after-tool-turn messages / compaction events / hard-class ops / …). |
 | `byRule[<§rule>].precision` / `.status` | A4 calibration state. `precision` stays null until ~50 flagged + ~50 unflagged samples are hand-labeled; `status` is `collecting` until precision ≥ 0.8, then `calibrated`. Uncalibrated ratios are collection data, NOT compliance evidence. |

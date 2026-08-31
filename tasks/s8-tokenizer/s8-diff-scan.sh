@@ -71,6 +71,16 @@ case "$MODE" in
     # the claim-wider-than-subject shape (audit-2026-08-22 条目 25). Shared rows
     # remain the only ones an equivalence proof CAN bind; what changes is that
     # the fraction is visible, and a baseline under 90% is refused as stale.
+    # The join above keys on the NOTE column, so two rows sharing a note collapse
+    # into one map entry: the baseline verdict of whichever came last silently
+    # binds both, and SHARED over-counts. Zero duplicates today (measured), which
+    # is exactly when a guard is cheap to add (2026-08-29 audit R10-19).
+    DUP_NOTES=$(cut -f2 "$LIVE" | sort | uniq -d)
+    if [[ -n "$DUP_NOTES" ]]; then
+      echo "FAIL: corpus note column is the join key and is not unique:" >&2
+      printf '%s\n' "$DUP_NOTES" | sed 's/^/      /' >&2
+      exit 1
+    fi
     LIVE_ROWS=$(grep -c . "$LIVE" || true)
     BASE_ROWS=$(grep -c . "$FILE" || true)
     SHARED=$(awk -F'\t' 'NR==FNR{b[$2]=1;next} ($2 in b){c++} END{print c+0}' "$FILE" "$LIVE")

@@ -105,7 +105,14 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # `ls # git push later`, or space inside a heredoc body) — produced FPs on
 # comments, heredoc bodies, and trailing-arg references. Mirrors the
 # memory-read-check.sh v0.9.28 segment-anchor fix.
-TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|\$)"
+# The suffix accepts a shell separator, not just whitespace-or-EOL. hook_flatten_cmd
+# terminates its output with `;` (verified: `git push` → `git push;`), so an
+# ARGUMENT-LESS push put `;` immediately after the verb and matched neither arm —
+# `git push`, the most common spelling there is, has never reached this §7 gate.
+# Every case in this suite drove `git push origin main`, so nothing said so
+# (0.70.0 pre-tag review, HIGH-1). Not `[^a-zA-Z]` (memory-read-check's spelling):
+# that would newly match `git push-notes`.
+TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|[;&|]|\$)"
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 # Help-invocation exemption (`git push --help` / `git push -h` does nothing, so
 # never gate it on CI). Pre-v0.23.11 this grep'd `--help|-h\b` across the WHOLE

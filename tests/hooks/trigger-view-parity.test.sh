@@ -177,10 +177,21 @@ done
 # The fragment itself: it must admit git's global options and must NOT admit a
 # standalone bare word (or `git status push` would read as a push).
 GFLAGS=$(bash -c "source '$LIB'; printf '%s' \"\$HOOK_GIT_GLOBAL_FLAGS\"")
-gmatch() { echo "$1" | grep -qE "(^|[[:space:]]*[;&|]+[[:space:]]*)git${GFLAGS}[[:space:]]+push([[:space:]]|\$)"; }
+# Feed the regex what PRODUCTION feeds it: hook_trigger_view output, not the raw
+# string. The first version of this helper matched on the raw command, and
+# hook_trigger_view appends `;` — so an argument-less `git push` matched here and
+# NOT in the hook, and this case certified a shape the §7 gate never saw
+# (0.70.0 pre-tag review, HIGH-1). A gate whose input shape differs from its
+# subject's proves nothing about the subject; that is the class this whole round
+# is about.
+gmatch() {
+  printf '%s' "$1" | bash -c "source '$LIB'; hook_trigger_view" \
+    | grep -E "(^|[[:space:]]*[;&|]+[[:space:]]*)git${GFLAGS}[[:space:]]+push([[:space:]]|[;&|]|\$)" >/dev/null
+}
 for shape in 'git -C /repo push origin main' 'git --git-dir=/r/.git push' \
              'git -c user.name=x push' 'git --no-pager push' \
-             'npm test && git -C /repo push'; do
+             'npm test && git -C /repo push' \
+             'git push' 'git -C /repo push' 'git push --force'; do
   gmatch "$shape" && pass "13 matches: $shape" || fail "13 does NOT match: $shape"
 done
 for shape in 'git status push' 'echo git push-notes' 'git-push-helper run'; do

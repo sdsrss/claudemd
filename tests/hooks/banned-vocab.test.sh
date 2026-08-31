@@ -458,6 +458,36 @@ EOF
 assert_deny "44: -vam combined flag block with banned message → deny" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# Cases 44b-44d (0.70.0 pre-tag review, HIGH-1): ARGUMENT-LESS ship verbs.
+# hook_trigger_view appends `;`, and SHIP_VERB_RE's suffix was
+# `([[:space:]]|$)` — matching neither — so bare `git push` and bare
+# `npm publish` never reached the Path-2 prose scan while their
+# argument-carrying twins did. Every case above carried arguments.
+BV_HOME_44=$(mktemp -d)
+BV_ENC=$(printf '%s' "/work/p" | tr -c 'a-zA-Z0-9-' '-')
+mkdir -p "$BV_HOME_44/.claude/projects/$BV_ENC" "$BV_HOME_44/.claude/logs"
+jq -cn '{type:"user",message:{content:"go"}}' > "$BV_HOME_44/.claude/projects/$BV_ENC/bv44.jsonl"
+jq -cn '{type:"assistant",message:{content:[{type:"text",text:"This is significantly faster now."}]}}' \
+  >> "$BV_HOME_44/.claude/projects/$BV_ENC/bv44.jsonl"
+bv44_run() {
+  jq -cn --arg c "$1" '{session_id:"bv44",tool_name:"Bash",cwd:"/work/p",tool_input:{command:$c}}' \
+    | HOME="$BV_HOME_44" bash "$HOOK" 2>&1
+}
+for _c in 'git push' 'npm publish' 'git -C /repo push'; do
+  _out=$(bv44_run "$_c")
+  _dec=$(echo "$_out" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+  if [[ "$_dec" == "deny" ]]; then
+    echo "PASS 44b: bare ship verb reaches the §10-V prose scan ($_c)"
+  else
+    echo "FAIL 44b: '$_c' did not reach the prose scan (got: ${_out:-<silent>})"; FAIL=$((FAIL + 1))
+  fi
+done
+# FP guard for the widened suffix.
+_out=$(bv44_run 'git push-notes')
+[[ -z "$_out" ]] && echo "PASS 44c: 'git push-notes' is not a ship verb" \
+  || { echo "FAIL 44c: 'git push-notes' fired the scan (got: $_out)"; FAIL=$((FAIL + 1)); }
+rm -rf "$BV_HOME_44"
+
 # Case 45 (v0.57.0): the bypass row carries the term it suppressed + which path.
 # Pre-0.57.0 the token short-circuited before the scan, so the row held only
 # `{token}` and the §13.2 demote review could not join overrides to terms.

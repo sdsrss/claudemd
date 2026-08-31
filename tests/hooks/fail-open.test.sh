@@ -298,10 +298,16 @@ for f in "$HOOKS_DIR"/*.sh; do
   grep -q 'platform\.sh' "$f" || continue
   T20_SUBJECTS+=("$f")
 done
-if (( ${#T20_SUBJECTS[@]} >= 1 )); then
-  ok "T20 subject floor (${#T20_SUBJECTS[@]} deny-capable hook(s) source platform.sh)"
+# Floor of 1 was weaker than the finding it encodes (two hooks carried the gap),
+# so a derivation that collapsed to one would still have passed
+# (0.70.0 pre-tag review, LOW-3). ship-baseline can deny; sandbox-disposal is
+# advisory and therefore NOT in this set — the floor counts deny-capable hooks
+# only, and today that is exactly one, so it is asserted as an equality against
+# a named expectation rather than a floor that cannot bite.
+if (( ${#T20_SUBJECTS[@]} == 1 )) && [[ "$(basename "${T20_SUBJECTS[0]}")" == "ship-baseline-check.sh" ]]; then
+  ok "T20 subject set is exactly {ship-baseline-check.sh} (deny-capable + sources platform.sh)"
 else
-  ng "T20 subject floor: no deny-capable hook sources platform.sh — the derivation is wrong"
+  ng "T20 subject set changed: expected exactly {ship-baseline-check.sh}, got [${T20_SUBJECTS[*]+${T20_SUBJECTS[*]}}] — a new deny-capable platform.sh consumer needs its own symbol assertion"
 fi
 for f in ${T20_SUBJECTS[@]+"${T20_SUBJECTS[@]}"}; do
   if grep -q 'declare -f platform_' "$f"; then

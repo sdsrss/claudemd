@@ -209,9 +209,27 @@ hook_is_readonly_bash() {
         remote|reflog)
           local rest2="${rest#"$sub"}"
           rest2="${rest2#"${rest2%%[![:space:]]*}"}"
-          local sub2="${rest2%%[[:space:]]*}"
-          case "$sub2" in
-            ''|-v|--verbose|show|get-url) return 0 ;;
+          # `-v` / `--verbose` are git's own PRE-subcommand flags here, not the
+          # subcommand — `git remote -v add evil <url>` adds the remote and exits
+          # 0 (verified against git 2.43.0). Accepting them as a terminal verb
+          # let every writer through behind one flag, so they are STRIPPED and
+          # the real verb is read after them (0.70.0 pre-tag review, HIGH-2).
+          local w2
+          while :; do
+            w2="${rest2%%[[:space:]]*}"
+            case "$w2" in
+              -v|--verbose) ;;
+              *) break ;;
+            esac
+            # `${rest2#*[[:space:]]}` is a no-op when rest2 holds no whitespace
+            # (i.e. the flag is the LAST word), which spun this loop forever —
+            # caught by a probe that hung rather than by a test. Strip the word
+            # by length instead, then the leading blanks.
+            rest2="${rest2:${#w2}}"
+            rest2="${rest2#"${rest2%%[![:space:]]*}"}"
+          done
+          case "$w2" in
+            ''|show|get-url) return 0 ;;
           esac
           ;;
       esac

@@ -96,8 +96,16 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # of the same omission (2026-08-29 audit R10-05). HOOK_GIT_GLOBAL_FLAGS
 # (hook-common.sh) is the shared fragment; the enumeration gate in
 # tests/hooks/trigger-view-parity.test.sh keeps the three on it.
-GIT_COMMIT_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+commit([[:space:]]|\$)"
-SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|\$)"
+#
+# Both suffixes accept a shell separator, not just whitespace-or-EOL.
+# hook_trigger_view terminates its output with `;`, so an ARGUMENT-LESS verb put
+# `;` immediately after it and matched neither arm: bare `git push` and bare
+# `npm publish` never reached the §10-V prose scan, while `git push origin main`
+# and `npm publish --tag next` did. Every case in this suite carried arguments,
+# so nothing said so (0.70.0 pre-tag review, HIGH-1). Not `[^a-zA-Z]`
+# (memory-read-check's spelling): that would newly match `git push-notes`.
+GIT_COMMIT_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+commit([[:space:]]|[;&|]|\$)"
+SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|[;&|]|\$)"
 
 IS_GIT_COMMIT=0
 IS_SHIP_VERB=0
