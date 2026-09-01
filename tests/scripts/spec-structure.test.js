@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Tokenizer moved to scripts/lib/spec-routing.js when doctor.js needed the same
+// §4 read against the INSTALLED spec. Two copies of this regex is the shape a
+// dozen gates in this repo exist to prevent, so it has exactly one home now; the
+// rules it encodes (bold-strip, list-boundary anchoring, target column only)
+// live in that file's header with the orphan artefacts they were written for.
+import { skillTokens, tableRows as sharedTableRows } from '../../scripts/lib/spec-routing.js';
 
 const CORE = 'spec/CLAUDE.md';
 const EXT  = 'spec/CLAUDE-extended.md';
@@ -84,38 +90,14 @@ test('§2.1 table contains sp:brainstorming row', () => {
 // skill was disabled via skillOverrides.
 // Same drift class as hard-rules-9 (§13 prose counts): a table that must stay in
 // sync with another table, with nothing asserting the join.
-const SKILL_ALIASES = {                      // shorthand used in §4 → canonical §12 entry
-  'sp/tdd': 'sp/test-driven-development',
-  'sp/finishing': 'sp/finishing-a-development-branch',
-};
-
-// Tokens are `<ns>/<name>`; a bare `/name` inherits the namespace of the last
-// prefixed token in the same cell (`gs:/freeze, /guard, /retro` → all gs). The
-// bare form only counts at a list boundary (start / space / comma) so prose like
-// `gs:/benchmark (before/after)` does not mint a `gs/after` skill.
-function skillTokens(cell) {
-  const out = [];
-  let ns = null;
-  const text = cell.replace(/\*\*/g, '');    // markdown bold is not part of the name
-  const re = /(?:\b(sp|gs):\/?|(?<=^|[\s,])\/)([a-z*][a-z0-9*-]*)/gi;
-  for (const m of text.matchAll(re)) {
-    if (m[1]) ns = m[1].toLowerCase();
-    if (!ns) continue;                       // bare `/x` before any namespace → not a skill
-    const key = `${ns}/${m[2].toLowerCase()}`;
-    out.push(SKILL_ALIASES[key] || key);
-  }
-  return out;
-}
-
-function tableRows(text, startHeading, endMarker) {
-  const start = text.indexOf(startHeading);
-  assert.ok(start !== -1, `missing heading: ${startHeading}`);
-  const end = text.indexOf(endMarker, start);
-  assert.ok(end !== -1, `missing end marker after ${startHeading}: ${endMarker}`);
-  return text.slice(start, end).split('\n')
-    .filter((l) => l.startsWith('|') && !/^\|[\s-]+\|/.test(l) && !/^\|\s*(Request type|Missing)\s*\|/.test(l))
-    .map((l) => l.split('|').slice(1, -1));
-}
+// `skillTokens` and the row reader now live in scripts/lib/spec-routing.js —
+// doctor.js asks the same question of the INSTALLED spec, and a second copy of
+// that regex is the drift this file's own §12 join exists to catch, one level up.
+// The shared reader reports a missing heading through a callback so a non-test
+// caller can degrade instead of throwing; here a missing heading must fail the
+// test loudly, which is all this wrapper restores.
+const tableRows = (text, startHeading, endMarker) =>
+  sharedTableRows(text, startHeading, endMarker, (msg) => assert.fail(msg));
 
 test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
   const text = fs.readFileSync(EXT, 'utf8');
@@ -129,6 +111,20 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
     tableRows(text, '### Routing', '### Composite requests')
       .flatMap((cols) => skillTokens(cols[1])),   // Primary column only; Notes are advisory
   );
+
+  // Floors on BOTH sides, added 2026-09-01 when the tokenizer moved to
+  // scripts/lib/spec-routing.js. The reach mutation for that extraction — make
+  // skillTokens return nothing — left this test at 15/15 green, because "no
+  // routed primary lacks a fallback row" is trivially true of an empty routed
+  // set. The join had no floor, so a tokenizer that silently stopped matching
+  // (a heading rename, a regex edit, a table reformat) would have reported a
+  // clean join over zero skills. Counts are 24 routed / 25 covered today; the
+  // floors sit well below that to catch a layer vanishing, not table churn.
+  assert.ok(routed.size >= 15,
+    `§4 Routing resolved only ${routed.size} primary skill(s) — the table moved or the tokenizer `
+    + 'stopped matching. Refusing to report a clean §12 join over a set that short.');
+  assert.ok(covered.length >= 15,
+    `§12 Fallback table resolved only ${covered.length} row token(s) — same failure, other side.`);
 
   const orphans = [...routed].filter((s) => !covered.some((re) => re.test(s)));
   assert.deepEqual(orphans, [],

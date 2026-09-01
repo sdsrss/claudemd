@@ -1,9 +1,32 @@
 ---
-status: approved
+status: implemented
 revision: 1
 ---
 
 # §8 Shared Wrapper/Segment Single-Source — Implementation Plan
+
+> **Implemented 2026-07-15, first released in v0.51.0.** All five tasks landed:
+> `f9507b1` (Task 1, differential harness), `8f39e37` (Tasks 2–4, the extraction —
+> 81 insertions against 97 deletions in `hooks/pre-bash-safety-check.sh`, i.e. net
+> negative as intended), `1e334d9` (Task 5, curl-sh parity gate + `CURLSH_WRAP`
+> annotation).
+>
+> **The status line said `approved` until 2026-09-01** — seven weeks and roughly
+> twenty releases after the work shipped — and `tasks/INDEX.md` repeated it as
+> "the oldest open commitment in `specs/`". Two readers took that as fact and both
+> planned work that was already done. `tests/scripts/spec-status-drift.test.js`
+> now fails when an `approved` spec's declared artifacts all exist in the tree;
+> it was written against this file and went red on it before this line changed.
+>
+> **Where the shipped code diverged from the plan, all in the safe direction:**
+> - Consumers grew from the planned two to **four** — `s8_strip_wrappers` is called
+>   by the rm gate, the npx gate, and two more added later; `s8_split_segments` by
+>   three. The extraction was reused rather than left as a two-caller special case.
+> - `S8_WRAP_ARGLESS` gained `exec` (not in the plan's list).
+> - Task 1's frozen baseline is `baseline-verdicts.tsv` (frozen *verdicts*) rather
+>   than the planned `baseline-hook.sh` (a frozen *hook*). Better: a frozen hook
+>   rots against its own `lib/` as the tree moves, and the memory this repo keeps
+>   about copying a hook somewhere else to run it says exactly that.
 
 > **For agentic workers:** behaviour-preserving refactor of the repo's single most
 > sensitive file. The differential corpus scan (Task 1) is the master safety net and

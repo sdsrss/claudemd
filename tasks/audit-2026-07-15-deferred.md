@@ -6,6 +6,14 @@
 **状态更新 2026-07-15**：第 1、2 项已在 v0.50.0（`git tag v0.50.0`）发版完成；
 仅第 3 项（共享 tokenizer 重构）仍延后，等单独决策。
 
+**状态更新 2026-09-01**：**三项全部完成**——第 3 项已于 2026-07-15 落地、v0.51.0 发版
+（见下方 §3 标题与其证据行）。上面那句「仅第 3 项仍延后」自那天起就是错的：§3 的标题
+和正文都改了，这条摘要没跟着改。同一形状在本文件之外还有两处
+（`tasks/specs/s8-shared-tokenizer.md` 的 `status: approved`、`tasks/INDEX.md` 里
+「specs/ 中最老的未兑现承诺」），三处都把已完成的工作报成了未完成。
+`tests/scripts/spec-status-drift.test.js` 现在盯住 spec frontmatter 那一处；
+本文件与 INDEX 未被门覆盖（INDEX 未被 git 跟踪），靠人读。
+
 ## 1. ✅ 后台 install.js 升级失败的会话内 banner（arch HIGH）— shipped v0.50.0
 
 - 现状：SessionStart 后台升级失败只留 `bootstrap.log` 痕迹，会话内无提示，用户以为已升级。

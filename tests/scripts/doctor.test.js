@@ -731,3 +731,47 @@ test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async ()
   assert.deepEqual(r.pruneSkippedLegacy, [], 'nothing was pruned, so nothing was skipped');
   assert.ok(fs.existsSync(d));
 });
+
+// --- routing:skills-enabled (2026-09-01) -----------------------------------
+// §4 routes work at named skills; skillOverrides can switch any of them off; for
+// seven weeks nothing related the two, and eight primaries sat unreachable. The
+// three cases below are the three answers the check can give, because "ok when
+// clean" and "not ok when dirty" together still permit a check that reports a
+// clean routing surface having parsed no table at all.
+const stageExtSpec = (overrides, specText) => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'),
+    specText ?? fs.readFileSync('spec/CLAUDE-extended.md', 'utf8'));
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ skillOverrides: overrides }));
+};
+const routingCheck = (r) => r.checks.find((x) => x.name === 'routing:skills-enabled');
+
+test('routing:skills-enabled passes when no §4 primary is disabled', async () => {
+  stageExtSpec({ 'some-unrelated-skill': 'off' });
+  const c = routingCheck(await doctor({}));
+  assert.ok(c, 'the check must run once an installed extended spec and settings.json exist');
+  assert.equal(c.ok, true, c.detail);
+  assert.match(c.detail, /all \d+ §4 Routing primaries are enabled/);
+});
+
+test('routing:skills-enabled names the §4 primaries that are off', async () => {
+  // `investigate` is a §4 primary in every spec version this repo has shipped
+  // (`gs:/investigate` on the env/staging/deploy row), which is what makes it a
+  // safe fixture: the assertion below fails loudly if §4 is ever rewritten
+  // around it rather than passing on a skill that quietly left the table.
+  stageExtSpec({ investigate: 'off' });
+  const c = routingCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /gs\/investigate/);
+  assert.match(c.detail, /skillOverrides/);
+});
+
+test('routing:skills-enabled refuses to pass when §4 resolved too few primaries', async () => {
+  // The floor. A spec whose §4 table moved or got truncated resolves nothing,
+  // finds nothing disabled, and would otherwise report a clean routing surface
+  // over zero skills — the empty-set pass this repo closes everywhere else.
+  stageExtSpec({}, '# AI-CODING-SPEC — Extended\n\nNo routing table here.\n');
+  const c = routingCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /resolved only 0 §4 Routing primary/);
+});

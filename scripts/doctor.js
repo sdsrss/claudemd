@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd, stateDir } from './lib/paths.js';
+import { logsDir, settingsPath, specHome, homeSpec, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd, stateDir } from './lib/paths.js';
+import { routingPrimaries } from './lib/spec-routing.js';
 import { HOOK_REGISTRY } from './lib/hook-registry.js';
 import { listBackups, pruneBackups, backupGlobs, findLegacySpecBackups, BACKUP_LABELS } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
@@ -19,7 +20,8 @@ import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './li
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
-settings.json issues, hook drift, backup inventory, rule-usage health.
+settings.json issues, hook drift, backup inventory, rule-usage health, and §4
+Routing primaries disabled via skillOverrides.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
@@ -121,6 +123,52 @@ export async function doctor({ pruneBackups: prune } = {}) {
   for (const p of specHome()) {
     push(`spec:${path.basename(p)}`, fs.existsSync(p),
       fs.existsSync(p) ? 'present' : 'missing');
+  }
+
+  // §4 Routing primaries that this machine has switched off.
+  //
+  // The spec routes work at named skills; `skillOverrides` in settings.json can
+  // turn any of them off; nothing related the two. The 2026-07-10 /doctor cleanup
+  // disabled 49 zero-use skills and deliberately kept the ones CORE §2.1 routes —
+  // but §EXT §4 is a SECOND routing table, and eight of its primaries went off
+  // with it. The gap surfaced once, by accident, during an unrelated /doctor run
+  // in July; it was carried to a governance review, appeared in no review record,
+  // and fell off the loop silently. An accident is not a detector, so this is one.
+  //
+  // Read against the INSTALLED spec, not the repo's: what the agent loads at
+  // runtime is ~/.claude/CLAUDE-extended.md, and a machine can sit on an older
+  // copy (that drift has its own check above). Advisory — a routed-but-disabled
+  // skill degrades through the §12 fallback table rather than breaking anything,
+  // which is exactly why it can stay wrong for months without a complaint.
+  const extSpec = homeSpec('CLAUDE-extended.md');
+  if (fs.existsSync(extSpec) && fs.existsSync(settingsPath())) {
+    let overrides = null;
+    try { overrides = readSettings().skillOverrides || {}; }
+    catch { /* unparseable settings.json is already its own failing check */ }
+    if (overrides) {
+      let primaries;
+      try { primaries = routingPrimaries(fs.readFileSync(extSpec, 'utf8')); }
+      catch { primaries = new Map(); }
+      const isOff = (n) => overrides[n] === 'off' || overrides[n] === false;
+      const off = [...primaries.keys()].filter((tok) => isOff(tok.split('/')[1]));
+      // A floor, for the same reason the §12 join in spec-structure.test.js has
+      // one: an installed spec whose §4 table moved would resolve zero primaries,
+      // find zero disabled ones, and report a clean routing surface having read
+      // nothing. Below the floor the honest answer is "could not evaluate".
+      if (primaries.size < 15) {
+        push('routing:skills-enabled', false,
+          `resolved only ${primaries.size} §4 Routing primary skill(s) from ${extSpec} — the table moved or the spec is truncated; cannot evaluate whether routed skills are enabled.`);
+      } else if (off.length > 0) {
+        push('routing:skills-enabled', false,
+          `${off.length} of ${primaries.size} §4 Routing primaries are "off" in skillOverrides: ${off.join(', ')}. ` +
+          'The spec routes work at skills this machine cannot invoke. Fix either side: re-enable them in ' +
+          '~/.claude/settings.json, or drop the rows from §4 Routing (and their §12 Fallback rows) so the ' +
+          'table describes what is actually reachable.');
+      } else {
+        push('routing:skills-enabled', true,
+          `all ${primaries.size} §4 Routing primaries are enabled`);
+      }
+    }
   }
 
   // v0.6.0: SHA-256 drift detection. Compares installed ~/.claude/<spec>
