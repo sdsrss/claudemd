@@ -112,12 +112,15 @@ test('the Stop hook and the sampling audit reach the same verdict on every shape
     const rows = Object.entries(CORPUS);
     assert.ok(rows.length >= 15, `corpus resolved ${rows.length} case(s) — too thin to prove agreement`);
     const disagreements = [];
+    const RULES = ['order', 'ironLaw2', 'honesty'];
     let reached = 0;
+    const firedPerRule = Object.fromEntries(RULES.map(r => [r, 0]));
     for (const [name, text] of rows) {
       const bash = bashVerdict(text, sandbox);
       const js = jsVerdict(text);
       if (bash.order + bash.ironLaw2 + bash.honesty + js.order + js.ironLaw2 + js.honesty > 0) reached++;
-      for (const rule of ['order', 'ironLaw2', 'honesty']) {
+      for (const rule of RULES) {
+        if (bash[rule] > 0 || js[rule] > 0) firedPerRule[rule]++;
         if (bash[rule] !== js[rule]) {
           disagreements.push(`${name} — ${rule}: hook=${bash[rule]} sampling-audit=${js[rule]}`);
         }
@@ -126,6 +129,16 @@ test('the Stop hook and the sampling audit reach the same verdict on every shape
     // A corpus on which NEITHER engine ever fires would agree perfectly and
     // prove nothing — the always-green harness this repo has been burned by.
     assert.ok(reached >= 5, `only ${reached} case(s) made either engine fire — this corpus cannot detect disagreement`);
+    // Per-rule, not just in aggregate (2026-08-29 audit R10-19: the corpus is
+    // hand-written, so nothing made it keep up with the engines). Eleven honesty
+    // cases and zero four-section cases would clear a total-count floor while
+    // proving parity for one rule out of three — and the two engines are
+    // separately implemented per rule, so that is exactly where they can drift.
+    const unexercised = RULES.filter(r => firedPerRule[r] === 0);
+    assert.deepEqual(unexercised, [],
+      `no corpus case makes either engine fire for: ${unexercised.join(', ')}.\n` +
+      `      Parity is being claimed for a rule that never ran. Add a firing shape ` +
+      `for it to CORPUS rather than lowering this floor.`);
     assert.deepEqual(
       disagreements, [],
       'the live hook and the retrospective scanner disagree — one rule, two truths:\n      ' +

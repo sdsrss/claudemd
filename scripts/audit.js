@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass, logFirstTs } from './lib/rule-hits-parse.js';
+import { readHits, readLogRows, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass, logFirstTs } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
@@ -22,18 +22,24 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) {
   const log = path.join(logsDir(), 'claudemd.jsonl');
-  const { hits, totalLines, parsed, skipped } = readHits(log, days);
+  // One read + one JSON.parse pass for all four consumers below. They each used
+  // to re-read and re-parse the whole log — four passes over one file per report
+  // (2026-08-29 audit R10-20). Reading once also removes a smaller hazard: the
+  // four passes could observe DIFFERENT file contents, since hooks append to
+  // this log while the audit runs.
+  const pre = readLogRows(log);
+  const { hits, totalLines, parsed, skipped } = readHits(log, days, pre);
   // v0.8.0 R-N3 — byTrend computes recent vs prior window ratios; needs 2x
   // trendDays of data. If days < 2x trendDays, byTrend will produce a
   // truncated view (still informative — `prior` half just has less data).
-  const trendHits = readHits(log, Math.max(days, 2 * trendDays)).hits;
+  const trendHits = readHits(log, Math.max(days, 2 * trendDays), pre).hits;
   // v0.9.37 — cutoverTs splits the legacy `(unset)` bucket into
   // `(unset-historical)` + `(unset-current)`. Detected from the log (earliest
   // row with non-null spec_section); null when the log is entirely pre-v0.7.0
   // (no row ever carried a section), in which case bySection falls back to
   // the single-bucket `(unset)` behavior.
-  const cutoverTs = detectCutover(log);
-  const firstTs = logFirstTs(log);
+  const cutoverTs = detectCutover(log, pre);
+  const firstTs = logFirstTs(log, pre);
   // v0.17.7 — strip session_id='t'/'test' sentinels (hook unit-test traffic;
   // v0.23.20 also ≤7-char ad-hoc debug sentinels like 's'/'probe')
   // from every behavior view. Initial design filtered only bySection/byTrend

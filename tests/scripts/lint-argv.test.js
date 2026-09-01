@@ -218,6 +218,51 @@ test('scanMainBlockMissingArgv accepts validateAndExpandFlags IMPORTED from lib/
   }
 });
 
+test('R10-20: an unrelated import from lib/argv.js does not authenticate a local validator', () => {
+  // The residue 条目 14 left behind. The gate asked two questions — "is one of
+  // the three names called?" and "does this file import anything at all from
+  // lib/argv.js?" — and never joined them. So a file importing only ArgvError
+  // (a legitimate thing to import) while calling its OWN parseStrict satisfied
+  // both halves, and the comment above the check claimed "the name must arrive
+  // by import from there", which was not what the code asked.
+  const root = makeFixture({
+    'bin/cli.js':
+      "import { ArgvError } from '../scripts/lib/argv.js';\n" +
+      "function parseStrict() { /* validates nothing */ }\n" +
+      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      "  parseStrict(process.argv.slice(2), {});\n" +
+      "  throw new ArgvError('x');\n" +
+      "}\n",
+  });
+  try {
+    const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
+    assert.equal(hits.length, 1,
+      'importing some other symbol from lib/argv.js must not authenticate a locally-declared validator');
+    assert.equal(hits[0].pattern, 'main-block-without-argv-validation');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R10-20: an aliased import of the real validator still counts', () => {
+  // The reverse control: the join is on the LOCAL BINDING, so `x as y` must be
+  // accepted when `y` is what the main block calls. Without this the fix would
+  // trade one false pass for a false failure.
+  const root = makeFixture({
+    'bin/cli.js':
+      "import { parseStrict as parseArgs } from '../scripts/lib/argv.js';\n" +
+      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      "  parseArgs(process.argv.slice(2), {});\n" +
+      "}\n",
+  });
+  try {
+    const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
+    assert.deepEqual(hits, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('a LOCALLY DECLARED validateAndExpandFlags does not satisfy the gate (条目 14)', () => {
   // The gate authenticated by function name, so this file passed while
   // validating whatever its own local function felt like — including nothing.

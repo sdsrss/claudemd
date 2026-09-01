@@ -31,7 +31,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { logsDir, resolvePluginRoot, encodeProjectCwd, projectDir as projectDirFor } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
@@ -305,7 +304,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
   const cwd = parsed.values['--cwd'] ?? process.cwd();
-  const result = lessonBypassAudit({ days, cwd });
+  // One-line failure, not a bare V8 stack (audit-2026-08-22 条目 16, extended
+  // to the sync entry points by the 2026-08-29 audit R10-20). The throwing part
+  // is this call — it reads the rule-hits log and every session transcript it
+  // names; the printing below cannot throw. Exiting rather than setting
+  // exitCode because the report has nothing to print without a result.
+  let result;
+  try {
+    result = lessonBypassAudit({ days, cwd });
+  } catch (err) {
+    console.error(`[claudemd] lesson-bypass-audit failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exit(1);
+  }
 
   if (parsed.bools.has('--json')) {
     console.log(JSON.stringify(result, null, 2));

@@ -220,9 +220,13 @@ fi
 
 echo "== Shellcheck =="
 if command -v shellcheck >/dev/null 2>&1; then
-  SHELL_FILES=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)
+  # Scope from tests/lib/shell-files.sh — the same file ci.yml's blocking step
+  # reads, so the early-failing CI step cannot be narrower than this one
+  # (2026-08-29 audit R10-18c). The floor lives there too: an empty argument list
+  # makes shellcheck read stdin and exit 0, which is a pass over nothing.
+  SHELL_FILES=$(bash "$HERE/lib/shell-files.sh" 2>/dev/null)
   if [[ -z "$SHELL_FILES" ]]; then
-    echo "SKIP: no tracked .sh files resolved (not a git checkout?)"
+    echo "SKIP: no tracked .sh files resolved (not a git checkout, or below the floor)"
     [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
   else
     # shellcheck disable=SC2086  # word splitting is the point: one arg per file

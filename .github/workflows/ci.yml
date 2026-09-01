@@ -77,10 +77,17 @@ jobs:
           # held a live semantic bug of exactly the class this gate exists for
           # (session-summary.test.sh env-prefix-on-assignment guard that never
           # exported). Tests + integration + run-all + task scripts now gated.
-          shellcheck --severity=warning hooks/*.sh hooks/lib/*.sh scripts/*.sh \
-            tests/lib/*.sh tests/hooks/*.sh tests/integration/*.sh tests/run-all.sh \
-            tasks/s8-tokenizer/*.sh
-          shellcheck hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh \
+          # 2026-08-29 audit R10-18c: this step used to carry seven hand-written
+          # globs, a proper SUBSET of run-all.sh's `git ls-files '*.sh'` — a
+          # second scope for one class, which is what
+          # feedback_gate_scope_must_cover_its_subject is about. Both callers now
+          # read tests/lib/shell-files.sh, which also enforces a floor: an empty
+          # argument list makes shellcheck read stdin and exit 0.
+          FILES=$(bash tests/lib/shell-files.sh)
+          # shellcheck disable=SC2086  # word splitting is the point: one arg per file
+          shellcheck --severity=warning $FILES
+          # shellcheck disable=SC2086
+          shellcheck $FILES \
             || echo "shellcheck info-level notes above (non-blocking)"
       - name: Reject bash 4+ constructs (macOS bash 3.2 portability gate)
         # Single source: tests/lib/bash32-constructs.sh, which tests/run-all.sh

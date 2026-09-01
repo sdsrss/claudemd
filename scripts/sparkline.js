@@ -209,6 +209,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     process.exit(1);
   }
-  const report = sparkline({ windows });
-  process.stdout.write(formatMarkdown(report));
+  // Same one-line failure shape as audit.js / status.js / doctor.js
+  // (audit-2026-08-22 条目 16, extended to the sync entry points by the
+  // 2026-08-29 audit R10-20): an unreadable or malformed log otherwise reaches
+  // the user as a bare V8 stack, which reads like a crashed tool rather than a
+  // named problem. CLAUDEMD_DEBUG still prints the stack.
+  try {
+    const report = sparkline({ windows });
+    process.stdout.write(formatMarkdown(report));
+  } catch (err) {
+    console.error(`[claudemd] sparkline failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exitCode = 1;
+  }
 }

@@ -312,12 +312,46 @@ test('clean-residue prose names every state class it deletes', () => {
 // author action. Each entry is a claim about that suite, not a silencer.
 const HOOK_SUITE_EXEMPT = {
   'tests/scripts/install.test.js': 'builds its fixture plugin root from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
-  'tests/scripts/uninstall.test.js': 'same, for the eviction fixture',
-  'tests/scripts/settings-merge.test.js': 'same, for the eviction predicate',
+  'tests/scripts/uninstall.test.js': 'builds its eviction fixture from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
+  'tests/scripts/settings-merge.test.js': 'drives the eviction predicate over HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
   'tests/scripts/status.test.js': 'asserts the kill-switch block against HOOK_REGISTRY, which already contains the new row',
   'tests/integration/full-lifecycle.test.sh': 'manifest count and eviction alternation both derive from the registry',
-  'tests/integration/upgrade-lifecycle.test.sh': 'same',
+  'tests/integration/upgrade-lifecycle.test.sh': 'manifest count and eviction alternation both derive from the registry, so an added hook changes the expected numbers without an edit here',
 };
+
+// Both exemption maps are read as `if (MAP[rel]) continue` — a truthy test, so
+// an EMPTY reason already fails closed (the entry exempts nothing and the file
+// is checked). What passes is a truthy but empty-of-content reason: ' ', 'x',
+// 'TODO'. The convergence round of 2026-08-22 filed this as "the reason field
+// has no non-empty validation" (LOW); the validation is here, and it is about
+// substance rather than presence, because presence was never the failing half.
+test('every exemption carries a reason with content in it', () => {
+  const MIN = 30;
+  const bad = [];
+  for (const [label, map] of [['EXEMPT', EXEMPT], ['HOOK_SUITE_EXEMPT', HOOK_SUITE_EXEMPT]]) {
+    for (const [key, reason] of Object.entries(map)) {
+      if (typeof reason !== 'string' || reason.trim().length < MIN) {
+        bad.push(`${label}['${key}'] = ${JSON.stringify(reason)}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [],
+    `exemption(s) whose reason is shorter than ${MIN} characters of content:\n      ` +
+    bad.join('\n      ') +
+    '\n      An exemption is a decision another maintainer has to be able to re-litigate.' +
+    '\n      Say what the entry claims about that file, not that it is exempt.');
+});
+
+// Line comments for both suite languages (`#` in .sh, `//` in .js) plus JS
+// block comments. Crude on purpose: this only feeds a presence regex over
+// identifiers and globs, so a `#` inside a string being stripped costs nothing.
+function stripComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map(l => l.replace(/(^|\s)(#|\/\/).*$/, ''))
+    .join('\n');
+}
 
 function hookConstrainingSuites() {
   const dirs = ['tests/hooks', 'tests/scripts', 'tests/integration'];
@@ -332,7 +366,13 @@ function hookConstrainingSuites() {
       if (!/\.test\.(sh|js)$/.test(f)) continue;
       const rel = `${d}/${f}`;
       if (HOOK_SUITE_EXEMPT[rel]) continue;
-      const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+      // Comments stripped first. A suite that merely QUOTES `hooks/*.sh` in a
+      // comment — e.g. shared-scope-consumers.test.js, which shows the old
+      // hand-written ci.yml shellcheck line to explain why it exists — imposes
+      // nothing on a new hook, and demanding it be documented in
+      // ADDING-NEW-HOOK.md would put a false entry in the guide. Same class as
+      // the FP this gate's own sibling had (readme-drift's codeOf).
+      const src = stripComments(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
       if (READS_HOOK_TREE.test(src)) out.push(rel);
     }
   }

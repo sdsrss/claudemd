@@ -80,15 +80,35 @@ const ALLOW_TOKEN = 'argv-lint:allow';
 // call EITHER parseStrict( OR printHelpAndExit( OR validateAndExpandFlags(
 // (bin/claudemd-lint.js path). Files without a main block are ignored.
 const MAIN_BLOCK_GUARD_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
-const REQUIRED_CALL_RE = /\b(parseStrict|printHelpAndExit|validateAndExpandFlags)\s*\(/;
+const ARGV_VALIDATORS = ['parseStrict', 'printHelpAndExit', 'validateAndExpandFlags'];
 // The call alone is not authentication (audit-2026-08-22 条目 14). A file that
-// declares its own function by one of those names satisfies REQUIRED_CALL_RE
-// while validating nothing — and that was not hypothetical: the gate had been
-// widened to admit `validateAndExpandFlags` precisely because
-// bin/claudemd-lint.js kept a private copy, so the widening legitimised the
-// duplicate instead of converging it. The validator now lives in
-// scripts/lib/argv.js and the name must arrive by import from there.
-const ARGV_LIB_IMPORT_RE = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*lib\/argv\.js['"]/;
+// declares its own function by one of those names would validate nothing — and
+// that was not hypothetical: the gate had been widened to admit
+// `validateAndExpandFlags` precisely because bin/claudemd-lint.js kept a
+// private copy, so the widening legitimised the duplicate instead of converging
+// it. The validator now lives in scripts/lib/argv.js and the name must arrive
+// by import from there.
+//
+// 2026-08-29 audit R10-20: that fix left residue. The check was
+// `REQUIRED_CALL_RE.test(body) && ARGV_LIB_IMPORT_RE.test(text)` — two
+// questions ("is a validator name called?", "does this file import ANYTHING
+// from lib/argv.js?") that were never joined. Importing only `ArgvError` while
+// calling a locally-declared `parseStrict` satisfied both, so the comment above
+// described a stronger rule than the code asked for. The join is now on the
+// LOCAL BINDING: the name the main block calls must be the name lib/argv.js
+// bound in this file, alias included.
+function importedValidatorBindings(text) {
+  const bound = new Set();
+  for (const m of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"][^'"]*lib\/argv\.js['"]/g)) {
+    for (const spec of m[1].split(',')) {
+      const t = spec.trim();
+      if (!t) continue;
+      const [orig, alias] = t.split(/\s+as\s+/).map(s => s.trim());
+      if (ARGV_VALIDATORS.includes(orig)) bound.add(alias || orig);
+    }
+  }
+  return bound;
+}
 // Files that legitimately have a main block but no argv contract — must be
 // allowlisted with a one-line reason. Empty by default; entries here represent
 // considered exemptions, not "I forgot to wire parseStrict."
@@ -115,10 +135,11 @@ export function scanMainBlockMissingArgv({
       const guardMatch = text.match(MAIN_BLOCK_GUARD_RE);
       if (!guardMatch) continue;
       const body = text.slice(guardMatch.index);
-      // Both: the entry point calls a validator AND the validator is the shared
-      // one, reached by import. A locally-declared same-name function no longer
-      // passes.
-      if (REQUIRED_CALL_RE.test(body) && ARGV_LIB_IMPORT_RE.test(text)) continue;
+      // The name the main block calls must be a binding this file imported from
+      // scripts/lib/argv.js. A locally-declared same-name function does not
+      // pass, and neither does an unrelated import from that module.
+      const bound = importedValidatorBindings(text);
+      if ([...bound].some(name => new RegExp(`\\b${name}\\s*\\(`).test(body))) continue;
       // Find line number of the main block guard for actionable error.
       const before = text.slice(0, guardMatch.index);
       const line = before.split('\n').length;

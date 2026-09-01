@@ -1,5 +1,35 @@
 import fs from 'node:fs';
 
+// readLogRows — the file read plus one JSON.parse per line, done once.
+//
+// `audit()` called readHits twice (two windows), then detectCutover, then
+// logFirstTs; each of the four re-read the whole log and re-parsed every line,
+// so one report made four passes over one file (2026-08-29 audit R10-20). The
+// three still take a path and behave identically when called on their own —
+// passing `pre` in is what skips the repeat.
+//
+// `t` is computed here rather than by each caller so the `row.ts == null` guard
+// documented under readHits has exactly one home: `new Date(null).getTime()` is
+// 0 (finite, epoch) while `new Date(undefined)` is NaN, and treating a missing
+// ts as a valid 1970 event is the corruption these counters exist to surface.
+export function readLogRows(path) {
+  if (!fs.existsSync(path)) return { rows: [], totalLines: 0, badJson: 0 };
+  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
+  const rows = [];
+  let badJson = 0;
+  for (const line of lines) {
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      badJson++;
+      continue;
+    }
+    rows.push({ row, t: (row.ts == null) ? NaN : new Date(row.ts).getTime() });
+  }
+  return { rows, totalLines: lines.length, badJson };
+}
+
 // readHits — returns parsed hits within the daysBack window, alongside
 // data-integrity counters so the operator can detect silent corruption.
 //
@@ -19,31 +49,21 @@ import fs from 'node:fs';
 // `new Date(bad).getTime()` is NaN, `NaN >= cutoff` is false, so pre-fix it
 // vanished from `hits` while still counting as `parsed` with `skipped:0` — a
 // false 0% skipRatio that hid truncated rows from §13.1 demote reviewers.
-export function readHits(path, daysBack = 30) {
-  if (!fs.existsSync(path)) return { hits: [], totalLines: 0, parsed: 0, skipped: 0 };
+export function readHits(path, daysBack = 30, pre = null) {
+  // Missing file and empty file both arrive here as zero rows and fall through
+  // the loop to the same { [], 0, 0, 0 } the explicit existsSync guard used to
+  // return, so there is no separate early exit any more.
+  const { rows, totalLines, badJson } = pre ?? readLogRows(path);
   const cutoff = Date.now() - daysBack * 86400 * 1000;
-  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
   const hits = [];
   let parsed = 0;
-  let skipped = 0;
-  for (const line of lines) {
-    let row;
-    try {
-      row = JSON.parse(line);
-    } catch {
-      skipped++;
-      continue;
-    }
-    // `row.ts == null` guard is load-bearing: `new Date(null).getTime() === 0`
-    // (epoch, finite) and `new Date(undefined)` is NaN, so a null `ts` would
-    // otherwise be silently treated as a valid 1970 event rather than the
-    // missing-field corruption it is.
-    const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
+  let skipped = badJson;
+  for (const { row, t } of rows) {
     if (!Number.isFinite(t)) { skipped++; continue; }
     parsed++;
     if (t >= cutoff) hits.push(row);
   }
-  return { hits, totalLines: lines.length, parsed, skipped };
+  return { hits, totalLines, parsed, skipped };
 }
 
 // Earliest ts in the rule-hits log, in ms since epoch. Returns null when the
@@ -52,18 +72,12 @@ export function readHits(path, daysBack = 30) {
 // "0 hits in 90d" against a 17-day-old log produces false-positive demote
 // signals (a rule that didn't exist 90 days ago looks identical to a rule
 // that's been silent for 90 days).
-export function logFirstTs(path) {
-  if (!fs.existsSync(path)) return null;
-  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
+export function logFirstTs(path, pre = null) {
+  const { rows } = pre ?? readLogRows(path);
   let firstTs = null;
-  for (const line of lines) {
-    try {
-      const row = JSON.parse(line);
-      // null/missing ts → NaN (not epoch-0); see readHits for the rationale.
-      const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
-      if (!Number.isFinite(t)) continue;
-      if (firstTs === null || t < firstTs) firstTs = t;
-    } catch { /* skip malformed */ }
+  for (const { t } of rows) {
+    if (!Number.isFinite(t)) continue;
+    if (firstTs === null || t < firstTs) firstTs = t;
   }
   return firstTs;
 }
@@ -87,22 +101,18 @@ export function logFirstTs(path) {
 // `(unset-historical)` isolates (a) and `(unset-current)` exposes (b)+(c) —
 // operator scans the byHook breakdown to tell intentional housekeeping from
 // real instrumentation bugs.
-export function detectCutover(path) {
-  if (!fs.existsSync(path)) return null;
-  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
+export function detectCutover(path, pre = null) {
+  const { rows } = pre ?? readLogRows(path);
   let cutover = null;
-  for (const line of lines) {
-    try {
-      const row = JSON.parse(line);
-      if (row.spec_section == null) continue;
-      // null/missing ts → NaN (not epoch-0). `new Date(null).getTime() === 0`
-      // is finite, so without this guard a section-bearing null-ts row would
-      // set cutover to 1970 and collapse the (unset-historical)/(unset-current)
-      // split — every null-section row then falls into (unset-current).
-      const t = (row.ts == null) ? NaN : new Date(row.ts).getTime();
-      if (!Number.isFinite(t)) continue;
-      if (cutover === null || t < cutover) cutover = t;
-    } catch { /* skip malformed */ }
+  for (const { row, t } of rows) {
+    if (row.spec_section == null) continue;
+    // The null/missing-ts → NaN guard now lives in readLogRows. It stays
+    // load-bearing here for the same reason: a section-bearing null-ts row
+    // treated as epoch-0 would set cutover to 1970 and collapse the
+    // (unset-historical)/(unset-current) split, dropping every null-section row
+    // into (unset-current).
+    if (!Number.isFinite(t)) continue;
+    if (cutover === null || t < cutover) cutover = t;
   }
   return cutover;
 }

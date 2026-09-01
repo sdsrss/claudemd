@@ -601,7 +601,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const strict = parsed.bools.has('--strict');
   const projectCwd = parsed.values['--project'] ?? process.cwd();
   const pluginRoot = resolvePluginRoot(import.meta.url);
-  const result = auditSpecCoherence({ pluginRoot, projectCwd });
+  // One-line failure, not a bare V8 stack (audit-2026-08-22 条目 16, extended
+  // to the sync entry points by the 2026-08-29 audit R10-20). This call reads
+  // four spec files plus the plugin manifest; a missing or truncated one is an
+  // ordinary operator condition, not a crash to report as a stack trace.
+  let result;
+  try {
+    result = auditSpecCoherence({ pluginRoot, projectCwd });
+  } catch (err) {
+    console.error(`[claudemd] spec-coherence-audit failed: ${err && err.message ? err.message : err}`);
+    if (process.env.CLAUDEMD_DEBUG) console.error(err);
+    process.exit(1);
+  }
   console.log(json ? JSON.stringify(result, null, 2) : formatHuman(result));
   if (strict) {
     const c = result.summary.severityCounts;
