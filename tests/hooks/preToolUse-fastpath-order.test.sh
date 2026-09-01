@@ -30,7 +30,11 @@ FAIL=0
 
 # Fields a hook legitimately needs BEFORE it can decide whether the command is
 # read-only. Everything else must wait until after the exit.
-ALLOWED_RE='\.tool_name|\.tool_input\.command'
+# `hook_read_bash_fields` is the blessed first parse (hook-common.sh): it yields
+# exactly those two fields in one spawn, so it belongs above the exit. Its
+# sibling `hook_read_telemetry_ids` yields session/tool_use/cwd and belongs
+# below — it is deliberately NOT in this allowlist.
+ALLOWED_RE='\.tool_name|\.tool_input\.command|hook_read_bash_fields'
 # ANY jq invocation, not one spelling of one. The first version of this gate
 # matched `| jq ` and `hook_jq_field` only, and a here-string extraction —
 #   SESSION_ID=$(jq -r '.session_id // ""' <<< "$EVENT")
@@ -39,7 +43,15 @@ ALLOWED_RE='\.tool_name|\.tool_input\.command'
 # than its subject, recurring INSIDE the fix for another instance of it. And the
 # missed spelling is not exotic: `jq -r '.x' "$file"` is the dominant form in
 # hooks/ (session-start-check, session-summary, session-end-check all use it).
-EXTRACT_RE='(^|[^a-zA-Z_/-])jq[[:space:]]|hook_jq_field'
+#
+# The helper names are in here for the same reason: since R10-23 the extraction
+# a hook performs is usually a hook-common function, not a visible `jq`. A gate
+# that only knows the `jq` spelling would go green on
+#   hook_read_telemetry_ids "$EVENT"
+# moved above the exit — one function call that spawns exactly the jq this gate
+# exists to keep out. The regex has to name every spelling that reaches jq, and
+# case 5 below mutates with this one to prove it does.
+EXTRACT_RE='(^|[^a-zA-Z_/-])jq[[:space:]]|hook_jq_field|hook_read_bash_fields|hook_read_telemetry_ids'
 # Presence probes are not extractions — they spawn nothing and gate everything
 # below them, so they legitimately precede the fast-path.
 NOT_EXTRACT_RE='hook_require_jq|command -v jq'
@@ -117,6 +129,12 @@ fi
 CASE=2
 control_shape() {
   local label="$1" inject="$2" dir="$TMP/hooks-$CASE"
+  # The token that must show up in the mutated file AND in the gate's complaint.
+  # Parameterised because the helper spelling (case 5) carries no `session_id`
+  # substring — asserting on a hardcoded token would have reported "mutation did
+  # not apply" for a mutation that applied fine, i.e. a control that cannot fail
+  # for the reason it claims.
+  local token="${3:-session_id}"
   rm -rf "$dir"
   cp -a "$HOOKS_DIR" "$dir" || { echo "FAIL: $CASE cannot copy hooks"; FAIL=$((FAIL + 1)); return; }
   local mut="$dir/banned-vocab-check.sh"
@@ -125,14 +143,14 @@ control_shape() {
     { print }
   ' "$mut" > "$mut.new" && mv "$mut.new" "$mut"
 
-  if ! grep -B1 "$FASTPATH_RE \"\$CMD\"" "$mut" | grep -q 'session_id'; then
+  if ! grep -B1 "$FASTPATH_RE \"\$CMD\"" "$mut" | grep -q "$token"; then
     echo "FAIL: $CASE [$label] mutation did NOT apply — awk anchor is stale, so the control proves nothing"
     FAIL=$((FAIL + 1)); CASE=$((CASE + 1)); return
   fi
   if check_dir "$dir" > "$dir.out" 2>&1; then
     echo "FAIL: $CASE [$label] control — the mutated copy PASSED; this gate cannot see this spelling"
     FAIL=$((FAIL + 1))
-  elif grep -q 'banned-vocab-check.sh.*session_id' "$dir.out"; then
+  elif grep -q "banned-vocab-check.sh.*$token" "$dir.out"; then
     echo "PASS: $CASE [$label] control fails on the mutation, naming the offending line"
   else
     echo "FAIL: $CASE [$label] control failed but did not name the mutated line (got: $(head -1 "$dir.out"))"
@@ -147,6 +165,11 @@ control_shape "here-string into jq" \
   'SESSION_ID=$(jq -r '"'"'.session_id // ""'"'"' <<< "$EVENT" 2>/dev/null)'
 control_shape "jq reading a file argument" \
   'SESSION_ID=$(jq -r '"'"'.session_id // ""'"'"' "$SOME_FILE" 2>/dev/null)'
+# The spelling that exists today: a hook-common helper that spawns jq without
+# the string `jq` appearing at the call site (2026-08-29 audit R10-23).
+control_shape "telemetry helper call" \
+  'hook_read_telemetry_ids "$EVENT"' \
+  'hook_read_telemetry_ids'
 
 # The real assertion.
 if check_dir "$HOOKS_DIR" > "$TMP/real.out" 2>&1; then

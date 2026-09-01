@@ -6,7 +6,13 @@
 # its helpers at top-level — notably hook_encode_project (ARCH-1), used by the
 # hooks OUTSIDE hook_record to encode the cwd for transcript-path lookup. Only
 # defines functions (no side effects); hook_record re-sources idempotently.
-_HC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# `${BASH_SOURCE[0]%/*}` rather than `$(dirname …)`: this runs at source time in
+# every hook, so on the PreToolUse:Bash chain it was four `dirname` execs per
+# Bash tool call on top of the four each hook spent on its own LIB_DIR
+# (0.74 ms/exec measured; 2026-08-29 audit R10-23). The `|| cd .` arm covers an
+# invocation whose path carries no slash, where the strip leaves the filename
+# itself and `cd` on it fails — the script is then in the cwd.
+_HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # shellcheck source=rule-hits.sh
 source "$_HC_LIB_DIR/rule-hits.sh" 2>/dev/null || true
 
@@ -58,11 +64,100 @@ hook_jq_field() {
 }
 
 # hook_read_event — reads stdin JSON to stdout; empty stdout on error.
+#
+# `read -r -d ''` rather than `$(cat)`: `cat` is an exec, and this runs once per
+# hook on every PreToolUse:Bash call (0.73 ms/exec measured, four hooks per call;
+# 2026-08-29 audit R10-23). No hook event contains a NUL, so the read consumes
+# stdin to EOF and returns non-zero AT that EOF with the payload already
+# assigned — the status is deliberately not checked, the emptiness test below is
+# what distinguishes "no event" from "an event".
 hook_read_event() {
-  local input
-  input=$(cat 2>/dev/null) || return 1
+  local input=""
+  IFS= read -r -d '' input 2>/dev/null
   [[ -n "$input" ]] || return 1
   printf '%s' "$input"
+}
+
+# hook_read_bash_fields HOOK EVENT
+#   Sets HOOK_TOOL_NAME + HOOK_CMD from ONE jq spawn. Failure attribution is
+#   hook_jq_field's, verbatim: a present-but-broken jq records `jq-broken`, a
+#   non-JSON event records `bad-event`, and the caller exits 0 on return 1.
+#   This is the blessed FIRST parse for the PreToolUse:Bash chain.
+#
+#   Why one call: each of the four hooks spawned two (`.tool_name`, then
+#   `.tool_input.command`) on EVERY Bash tool call — including the read-only
+#   fast-path those two fields exist to reach. Eight jq spawns per call across
+#   the chain at 1.98 ms each, to answer a question one spawn answers.
+#
+#   NUL-separated, not newline- or tab-separated: `.tool_input.command` is
+#   arbitrary user text that routinely contains both. Bash cannot hold a NUL in
+#   a variable, so the fields are read off a redirect with `read -r -d ''`; a
+#   command substitution would drop the separators silently and glue the two
+#   fields into one.
+hook_read_bash_fields() {
+  local hook="$1" event="$2" got=0
+  HOOK_TOOL_NAME=""
+  HOOK_CMD=""
+  {
+    IFS= read -r -d '' HOOK_TOOL_NAME &&
+      IFS= read -r -d '' HOOK_CMD && got=1
+  } < <(printf '%s' "$event" | jq -j '
+      ((.tool_name // "") | tostring) + "\u0000" +
+      ((.tool_input.command // "") | tostring) + "\u0000"' 2>/dev/null)
+  if (( got )); then
+    # `$(…)` strips ALL trailing newlines; `read -d ''` strips none. Callers
+    # branch on and regex-match these values, and `hook_is_readonly_bash`
+    # rejects a command carrying a newline — so a trailing "\n" surviving here
+    # would drop `ls\n` off the fast-path it took before this refactor. Restore
+    # the command-substitution semantics exactly. Each iteration removes one
+    # byte from a finite string, so both loops terminate.
+    while [[ "$HOOK_TOOL_NAME" == *$'\n' ]]; do HOOK_TOOL_NAME="${HOOK_TOOL_NAME%$'\n'}"; done
+    while [[ "$HOOK_CMD" == *$'\n' ]]; do HOOK_CMD="${HOOK_CMD%$'\n'}"; done
+    return 0
+  fi
+  if jq -n . >/dev/null 2>&1; then
+    hook_record_failopen "$hook" bad-event
+  else
+    hook_record_failopen "$hook" jq-broken
+  fi
+  return 1
+}
+
+# hook_read_telemetry_ids EVENT
+#   Sets SESSION_ID + TOOL_USE_ID + EVENT_CWD from ONE jq spawn — the three
+#   fields every PreToolUse:Bash hook passes to hook_record / hook_deny.
+#
+#   Four hooks each hand-copied two or three single-field extractions of these
+#   (2, 2, 3 and 3 spawns), which is both the duplication this repo keeps
+#   converging and, at 1.98 ms/spawn, the largest remaining cost on the
+#   post-trigger path (2026-08-29 audit R10-23).
+#
+#   No failure attribution here, unlike hook_read_bash_fields: a hook only
+#   reaches this after its first parse succeeded, so jq is known to work, and
+#   all three fields are legitimately absent in valid events. Empty is a value,
+#   not an error.
+hook_read_telemetry_ids() {
+  local event="$1" _v _s
+  SESSION_ID=""
+  TOOL_USE_ID=""
+  EVENT_CWD=""
+  # shellcheck disable=SC2034  # all three are set for the CALLER; read back below via ${!_v}
+  {
+    IFS= read -r -d '' SESSION_ID &&
+      IFS= read -r -d '' TOOL_USE_ID &&
+      IFS= read -r -d '' EVENT_CWD
+  } < <(printf '%s' "$event" | jq -j '
+      ((.session_id // "") | tostring) + "\u0000" +
+      ((.tool_use_id // "") | tostring) + "\u0000" +
+      ((.cwd // "") | tostring) + "\u0000"' 2>/dev/null)
+  # Match `$(…)` trailing-newline semantics, as hook_read_bash_fields does —
+  # these values are compared and interpolated into JSON rows by the callers.
+  for _v in SESSION_ID TOOL_USE_ID EVENT_CWD; do
+    _s="${!_v}"
+    while [[ "$_s" == *$'\n' ]]; do _s="${_s%$'\n'}"; done
+    printf -v "$_v" '%s' "$_s"
+  done
+  return 0
 }
 
 # hook_deny HOOK_NAME REASON — emits PreToolUse deny JSON, exits 0.

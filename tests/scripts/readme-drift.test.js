@@ -113,11 +113,38 @@ test('R10-14: README does not claim a PreToolUse:Bash hook lacks the readonly fa
     `the fast-path paragraph excuses a hook that in fact has the fast-path:\n${para}`);
 });
 
+// A hook reads an event field either directly or through a hook-common helper
+// that reads it on the hook's behalf. R10-23 moved session_id / tool_use_id /
+// cwd behind `hook_read_telemetry_ids` and tool_name / command behind
+// `hook_read_bash_fields`, which made four real readers invisible to a
+// source-literal derivation — caught here by this gate's own `>= 3` premise
+// floor rather than by a silently shortened list.
+//
+// The helper→field mapping is derived from hook-common.sh, not written down: a
+// hand-copied mapping is the same drift one level in.
+function helperFields() {
+  const lib = fs.readFileSync(path.join(REPO_ROOT, 'hooks/lib/hook-common.sh'), 'utf8');
+  const map = new Map();
+  for (const m of lib.matchAll(/^(hook_read_[a-z_]+)\(\)\s*\{([\s\S]*?)\n\}/gm)) {
+    map.set(m[1], m[2]);
+  }
+  return map;
+}
+
 test('R10-14: HOOK-PROTOCOL.md field-reader lists match the hooks that read them', () => {
   const proto = fs.readFileSync(path.join(REPO_ROOT, 'docs/HOOK-PROTOCOL.md'), 'utf8');
+  const helpers = helperFields();
+  assert.ok(helpers.size >= 2,
+    `expected >= 2 hook_read_* helpers in hook-common.sh, found ${helpers.size} — ` +
+    `the indirection this derivation follows was renamed or removed.`);
   for (const field of ['tool_use_id', 'transcript_path']) {
+    const fieldRe = new RegExp(`\\.${field}`);
+    const viaHelper = [...helpers].filter(([, body]) => fieldRe.test(body)).map(([name]) => name);
     const readers = hookSources()
-      .filter(h => new RegExp(`\\.${field}`).test(codeOf(h.src)))
+      .filter(h => {
+        const code = codeOf(h.src);
+        return fieldRe.test(code) || viaHelper.some(fn => new RegExp(`\\b${fn}\\b`).test(code));
+      })
       .map(h => h.name)
       .sort();
     assert.ok(readers.length >= 3, `expected >= 3 readers of ${field}, found ${readers.length}`);

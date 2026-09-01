@@ -6,7 +6,7 @@
 
 set -uo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
 
@@ -45,9 +45,9 @@ if [[ -z "$EVENT" ]]; then
   hook_record_failopen memory-read-check bad-event
   exit 0
 fi
-TOOL=$(hook_jq_field memory-read-check "$EVENT" '.tool_name // ""') || exit 0
-[[ "$TOOL" == "Bash" ]] || exit 0
-CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+hook_read_bash_fields memory-read-check "$EVENT" || exit 0
+[[ "$HOOK_TOOL_NAME" == "Bash" ]] || exit 0
+CMD="$HOOK_CMD"
 [[ -n "$CMD" ]] || exit 0
 
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion).
@@ -144,9 +144,11 @@ sanitize_for_tagmatch() {
 }
 CMD_TAGMATCH=$(sanitize_for_tagmatch "$CMD")
 
-CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
+# One jq spawn for all three (hook_read_telemetry_ids), not three — this hook
+# reaches here only past the trigger, but the three siblings hand-copied the
+# same extractions and the set had no single source (2026-08-29 audit R10-23).
+hook_read_telemetry_ids "$EVENT"
+CWD="$EVENT_CWD"
 
 # Per-invocation escape hatch — placed AFTER trigger filter so bypass
 # usage is recorded only when the hook would have actually scanned.

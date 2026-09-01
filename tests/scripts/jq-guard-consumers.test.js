@@ -101,7 +101,14 @@ test('every hook that parses its event detects a broken jq at the first parse', 
   for (const f of readers) {
     if (EXEMPT.has(f)) continue;
     const src = fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8');
-    if (!/hook_jq_field\s/.test(src)) unwired.push(f);
+    // Two blessed first-parse helpers, not one: R10-23 replaced the
+    // `hook_jq_field .tool_name` + bare `jq .tool_input.command` pair on the
+    // PreToolUse:Bash chain with `hook_read_bash_fields`, which carries
+    // hook_jq_field's bad-event / jq-broken attribution verbatim in a single
+    // spawn. Accepting only the older name would have failed four hooks that
+    // satisfy this gate's actual requirement — and, worse, would push the next
+    // author to re-add a second spawn to satisfy a name check.
+    if (!/hook_jq_field\s|hook_read_bash_fields\s/.test(src)) unwired.push(f);
   }
 
   assert.deepEqual(unwired, [],
@@ -113,6 +120,26 @@ test('every hook that parses its event detects a broken jq at the first parse', 
     `ordinary "not my tool/event" early exit — indistinguishable from "rule not\n` +
     `applicable" (2026-07-28 audit H1). Route the FIRST parse through\n` +
     `hook_jq_field so the failure is attributed and recorded.`);
+});
+
+test('the second blessed first-parse helper carries the same attribution', () => {
+  // The test above accepts `hook_read_bash_fields` by NAME. A name is not a
+  // contract: if that helper ever loses the bad-event / jq-broken branch, four
+  // hooks go back to being silently indistinguishable from "rule not
+  // applicable" while this gate still reads green. Assert the semantics where
+  // they live.
+  const src = fs.readFileSync(path.join(HOOKS_DIR, 'lib/hook-common.sh'), 'utf8');
+  const body = src.slice(src.indexOf('hook_read_bash_fields() {'));
+  assert.ok(body.startsWith('hook_read_bash_fields() {'),
+    'hook_read_bash_fields is gone from hook-common.sh, but jq-guard-consumers ' +
+    'still accepts its name as a valid first parse.');
+  const fn = body.slice(0, body.indexOf('\n}\n') + 3);
+  for (const reason of ['bad-event', 'jq-broken']) {
+    assert.match(fn, new RegExp(`hook_record_failopen\\s+"\\$hook"\\s+${reason}`),
+      `hook_read_bash_fields no longer records ${reason} — the attribution ` +
+      `hook_jq_field exists for is missing from the helper that replaced it on ` +
+      `the PreToolUse:Bash chain.`);
+  }
 });
 
 test('fail-open telemetry does not itself depend on jq', () => {

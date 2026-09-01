@@ -4,7 +4,8 @@
 
 set -uo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
+LIB_DIR="$HOOK_DIR/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
 
@@ -27,10 +28,10 @@ if [[ -z "$EVENT" ]]; then
   exit 0
 fi
 
-TOOL=$(hook_jq_field banned-vocab "$EVENT" '.tool_name // ""') || exit 0
-[[ "$TOOL" == "Bash" ]] || exit 0
+hook_read_bash_fields banned-vocab "$EVENT" || exit 0
+[[ "$HOOK_TOOL_NAME" == "Bash" ]] || exit 0
 
-CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+CMD="$HOOK_CMD"
 [[ -n "$CMD" ]] || exit 0
 
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion from
@@ -42,21 +43,6 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD"; then
   exit 0
 fi
-
-# Telemetry fields, extracted AFTER the fast-path because nothing above needs
-# them. They sat above it from v0.8.3 until audit-2026-08-22 条目 12, so every
-# read-only Bash call — the shape the fast-path exists to make cheap — paid
-# three jq spawns to fill variables it then discarded at the exit two lines
-# later. The exit is the point of the fast-path; work in front of it is work
-# the fast-path cannot skip. memory-read-check.sh has always had this order;
-# these three did not, and the asymmetry was invisible because every hook's
-# own suite drove it past the fast-path with a non-read-only command.
-#
-# Gate: tests/hooks/preToolUse-fastpath-order.test.sh derives this set from
-# source and fails any jq extraction that moves back above the exit.
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
-EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
 
 # Filter: must be a git commit invocation. `\s` / `\S` aren't portable under
 # BSD grep (macOS); use POSIX character classes so behavior matches Linux.
@@ -113,6 +99,21 @@ echo "$CMD_FLAT" | grep -qE "$GIT_COMMIT_RE" && IS_GIT_COMMIT=1
 echo "$CMD_FLAT" | grep -qE "$SHIP_VERB_RE" && IS_SHIP_VERB=1
 (( IS_GIT_COMMIT == 0 && IS_SHIP_VERB == 0 )) && exit 0
 
+# Telemetry fields, extracted below the TRIGGER exit above — not merely below
+# the fast-path exit. audit-2026-08-22 条目 12 moved them under the fast-path,
+# which fixed the read-only shape and left the other one: a command carrying
+# shell metacharacters (`ls /tmp >/dev/null`, `cat f | head`) is not read-only,
+# so it walked past the fast-path, paid three jq spawns here, and then exited at
+# the trigger check without ever using them. Measured 5 jq spawns for such a
+# command against memory-read-check's 2, which has had this order all along
+# (2026-08-29 audit R10-23). The rule the two boundaries share: extraction goes
+# below the LAST exit that can be taken without it.
+#
+# Gate: tests/hooks/preToolUse-jq-spawn-budget.test.sh counts real spawns per
+# command shape; tests/hooks/preToolUse-fastpath-order.test.sh reads the source
+# order. The first is the objective, the second names the offending line.
+hook_read_telemetry_ids "$EVENT"
+
 
 # Per-invocation escape hatch.
 #
@@ -132,7 +133,7 @@ if echo "$CMD" | grep -qF '[allow-banned-vocab]'; then
   BYPASS_VOCAB=1
 fi
 
-PATTERNS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/banned-vocab.patterns"
+PATTERNS_FILE="$HOOK_DIR/banned-vocab.patterns"
 if [[ ! -r "$PATTERNS_FILE" ]]; then
   hook_record_failopen banned-vocab patterns-missing
   exit 0

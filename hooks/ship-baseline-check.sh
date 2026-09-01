@@ -4,7 +4,7 @@
 
 set -uo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
 # shellcheck source=/dev/null
@@ -45,21 +45,15 @@ if [[ -z "$EVENT" ]]; then
   hook_record_failopen ship-baseline bad-event
   exit 0
 fi
-TOOL=$(hook_jq_field ship-baseline "$EVENT" '.tool_name // ""') || exit 0
-[[ "$TOOL" == "Bash" ]] || exit 0
-CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+hook_read_bash_fields ship-baseline "$EVENT" || exit 0
+[[ "$HOOK_TOOL_NAME" == "Bash" ]] || exit 0
+CMD="$HOOK_CMD"
 [[ -n "$CMD" ]] || exit 0
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion).
 # Opt-out: BASH_READONLY_FAST_PATH=0.
 if [[ "${BASH_READONLY_FAST_PATH:-1}" != "0" ]] && hook_is_readonly_bash "$CMD"; then
   exit 0
 fi
-
-# Telemetry fields — see banned-vocab-check.sh for why these are below the
-# fast-path exit rather than above it (audit-2026-08-22 条目 12). Gate:
-# tests/hooks/preToolUse-fastpath-order.test.sh.
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 
 # v0.23.1 — strip heredoc bodies before trigger match. Real-world failure
 # (claudemd downstream consumer, 5/24): commit-body heredoc containing
@@ -114,6 +108,15 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # that would newly match `git push-notes`.
 TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|[;&|]|\$)"
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
+
+# Telemetry fields — below the TRIGGER exit, not merely below the fast-path exit
+# (audit-2026-08-22 条目 12 fixed the fast-path layer; this is the same
+# asymmetry one layer down). Any command carrying shell metacharacters is not
+# read-only, so it cleared the fast-path and paid two jq spawns here before
+# exiting one line above on a non-push command — measured 4 spawns for
+# `ls /tmp >/dev/null` against memory-read-check's 2 (2026-08-29 audit R10-23).
+# Gate: tests/hooks/preToolUse-jq-spawn-budget.test.sh.
+hook_read_telemetry_ids "$EVENT"
 # Help-invocation exemption (`git push --help` / `git push -h` does nothing, so
 # never gate it on CI). Pre-v0.23.11 this grep'd `--help|-h\b` across the WHOLE
 # command, so any incidental `-h` — a branch named `feature-h`, or a commit

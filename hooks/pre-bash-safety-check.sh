@@ -40,7 +40,7 @@
 
 set -uo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
 
@@ -58,9 +58,9 @@ if [[ -z "$EVENT" ]]; then
   hook_record_failopen pre-bash-safety bad-event
   exit 0
 fi
-TOOL=$(hook_jq_field pre-bash-safety "$EVENT" '.tool_name // ""') || exit 0
-[[ "$TOOL" == "Bash" ]] || exit 0
-CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+hook_read_bash_fields pre-bash-safety "$EVENT" || exit 0
+[[ "$HOOK_TOOL_NAME" == "Bash" ]] || exit 0
+CMD="$HOOK_CMD"
 [[ -n "$CMD" ]] || exit 0
 # R-N5 readonly fast-path. **v0.20.0 default-ON** (§13.3 promotion from
 # v0.8.3 opt-in default-OFF). When CMD is a definitely-read-only shape
@@ -80,8 +80,13 @@ fi
 # the one the comment above calls "the highest-leverage hook for the fast-path",
 # which made two jq spawns in front of that exit the least defensible of the
 # three. Gate: tests/hooks/preToolUse-fastpath-order.test.sh.
-SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
-TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
+#
+# Unlike its three siblings this hook has no trigger exit — every non-read-only
+# command is its subject — so these cannot move further down. What they can stop
+# being is three separate spawns: hook_read_telemetry_ids sets SESSION_ID,
+# TOOL_USE_ID and EVENT_CWD (used by the NPX arm further down) in one
+# (2026-08-29 audit R10-23).
+hook_read_telemetry_ids "$EVENT"
 
 # Sanitize CMD before pattern matching: strip heredoc bodies, line comments, and
 # quoted-string contents. The original regex matched on naive prefix class
@@ -398,7 +403,9 @@ unwrap_indirect() {
 # EVENT_CWD: per spec §8 NPX rule, the lockfile/local resolution check needs
 # the directory the bash command will run in. CC's bash hook event includes
 # `.cwd`. Empty/missing → npx_pkg_locally_resolved fails closed (deny).
-EVENT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
+# Set above by hook_read_telemetry_ids, in the same spawn as the two ids —
+# it used to be a third jq here, paid by every non-read-only command whether or
+# not it mentioned npx (2026-08-29 audit R10-23).
 
 # npx_pkg_locally_resolved PKG CWD
 #   Returns 0 (true) if PKG can be resolved from CWD without a registry hit,
