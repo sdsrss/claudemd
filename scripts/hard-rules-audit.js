@@ -19,7 +19,7 @@ import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './li
 const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
 
 Audit the HARD-rules manifest. Cross-references spec/hard-rules.json with
-rule-hits.jsonl bySection over the last N days. Surfaces §13.1 quarterly
+rule-hits.jsonl bySection over the last N days. Surfaces §13.1 demote
 demote candidates and stale-review entries.
 
 Options:
@@ -66,7 +66,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // window" is uninformative — a rule fixed 5 days ago (e.g., §11-memory-read
   // in v0.9.15, which was silently no-op'd for underscore-cwd projects pre-fix)
   // would look identical to a rule that's been cold for the full window.
-  // §0.1 (v6.11.15) requires "0 hits in 30d" specifically; suppressing
+  // OPERATOR.md §13.1 requires "0 hits in 30d" specifically (the clause moved out of core §0.1 in v6.15.1); suppressing
   // demoteCandidates on insufficient data is the spec-compliant behavior.
   const firstTs = logFirstTs(log);
   const logSpanDays = firstTs === null ? 0 : (Date.now() - firstTs) / 86400000;
@@ -134,7 +134,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     .map(r => r.id);
   const demoteCandidates = insufficientData ? [] : wouldBeDemoteCandidates;
   const demoteSuppressed = insufficientData ? {
-    reason: `log spans ${logSpanDays.toFixed(1)}d; §0.1 HARD requires ${days}d of history to evaluate demotion`,
+    reason: `log spans ${logSpanDays.toFixed(1)}d; OPERATOR.md §13.1 requires ${days}d of history to evaluate demotion`,
     wouldHaveBeen: wouldBeDemoteCandidates,
   } : null;
 
@@ -155,14 +155,15 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     return t < cadenceCutoff;
   }).map(r => r.id);
 
-  // §0.1 (v6.11.15) sets the demote-evaluation window at 30d. Direct script
+  // OPERATOR.md §13.1 sets the demote-evaluation window at 30d (moved out of
+  // core §0.1 in v6.15.1). Direct script
   // invocation accepts arbitrary `--days`, but values < DEFAULT_WINDOW_DAYS
   // produce demote candidates from a window shorter than the contract — e.g.
   // `--days=1` would surface every rule with 0 hits in the last day. Surface
   // the deviation in the JSON so the operator (or `/claudemd-rules` wrapper)
   // can flag it; do not block (some debugging flows want a narrow window).
   const cadenceWarning = days < DEFAULT_WINDOW_DAYS
-    ? `--days=${days} is shorter than the §0.1 demote-evaluation window (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
+    ? `--days=${days} is shorter than the OPERATOR.md §13.1 demote-evaluation window (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
     : null;
 
   return {

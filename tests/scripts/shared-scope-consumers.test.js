@@ -64,15 +64,52 @@ test('every self-declared SINGLE SOURCE scope file is read by both callers', () 
 });
 
 test('ci.yml does not hand-write a shellcheck file list', () => {
-  // The specific regression: `shellcheck --severity=warning hooks/*.sh …`. The
-  // scope has to arrive from the shared script, so the only paths on a
-  // shellcheck line are `$FILES`-shaped.
+  // The specific regression: `shellcheck --severity=warning hooks/*.sh …`.
+  //
+  // Backslash continuations are joined into one LOGICAL line first. The first
+  // version split on '\n' and only examined lines that BEGIN with `shellcheck`,
+  // so pushing the globs onto the continuation —
+  //     shellcheck --severity=warning \
+  //       hooks/*.sh hooks/lib/*.sh scripts/*.sh
+  // — walked straight past it, green, on a ci.yml that had re-grown a scope
+  // narrower than run-all.sh's. Not a hypothetical spelling: the block this
+  // gate exists to prevent spanned continuation lines itself (pre-tag review of
+  // v0.71.0). The sibling test does not cover it either — it only asks that
+  // `lib/shell-files.sh` appear SOMEWHERE in the file, which the mutant still
+  // satisfies.
   const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
-  const handWritten = ci.split('\n')
-    .map((l, i) => [i + 1, l])
-    .filter(([, l]) => /^\s*shellcheck\b/.test(l))
-    .filter(([, l]) => /\*\.sh|\/[a-z0-9-]+\.sh/.test(l));
-  assert.deepEqual(handWritten.map(([n, l]) => `${n}: ${l.trim()}`), [],
-    'ci.yml names shell files on a shellcheck line again — that list was a ' +
-    'proper subset of run-all.sh\'s and is why tests/lib/shell-files.sh exists.');
+  const logical = [];
+  let buf = null;
+  ci.split('\n').forEach((raw, i) => {
+    const cont = /\\\s*$/.test(raw);
+    const body = raw.replace(/\\\s*$/, '');
+    if (buf === null) buf = { line: i + 1, text: body };
+    else buf.text += ` ${body.trim()}`;
+    if (!cont) { logical.push(buf); buf = null; }
+  });
+  if (buf !== null) logical.push(buf);
+
+  const offenders = logical
+    // Comments are not commands. Widening the trigger to match mid-line made
+    // a legitimate `# shellcheck source=…` directive read as an invocation —
+    // fail-closed, so an annoyance rather than a hole, but it is this release's
+    // fourth instance of a gate reading a comment as code (delta re-review).
+    .filter(({ text }) => !/^\s*#/.test(text))
+    // A boundary, not a character allowlist: `(^|\s|;|&&)` missed `(shellcheck`,
+    // `"shellcheck` and `|shellcheck`. Anything that is not part of an
+    // identifier or path counts as the start of the word.
+    .filter(({ text }) => /(?<![\w.\/-])shellcheck\s/.test(text))
+    // Everything after the tool name and its flags must be `$FILES`. Any bare
+    // filename counts, with or without a slash — `shellcheck run-all.sh` was
+    // invisible to the first version's `\/[a-z0-9-]+\.sh` alternative.
+    // `(?![\w-])` rather than `(\s|$)`: requiring whitespace-or-end after `.sh`
+    // let `(shellcheck … hooks/*.sh)` through, because the filename is followed
+    // by the closing paren. The lookbehind above admitted that subshell form
+    // correctly and this half then dropped it — a fix whose two halves did not
+    // agree, caught by running the control rather than by reading it.
+    .filter(({ text }) => /[\w*.\/-]+\.sh(?![\w-])/.test(text.replace(/\$\{?FILES\}?/g, '')));
+  assert.deepEqual(offenders.map(({ line, text }) => `${line}: ${text.trim()}`), [],
+    'ci.yml names shell files on a shellcheck command again — that list was a ' +
+    'proper subset of run-all.sh\'s and is why tests/lib/shell-files.sh exists. ' +
+    'Pass the scope as $FILES from that script.');
 });

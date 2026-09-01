@@ -2,11 +2,16 @@
 # shell-files.sh — the tracked shell-file set, single-sourced for every consumer.
 #
 # SINGLE SOURCE for the shellcheck scope used by ci.yml AND tests/run-all.sh
-# (2026-08-29 audit R10-18c). The workflow used to carry its own list:
+# (2026-08-29 audit R10-18c). The workflow used to carry its own list — the
+# tool invoked at `--severity=warning` over these seven globs:
 #
-#   shellcheck --severity=warning hooks/*.sh hooks/lib/*.sh scripts/*.sh \
-#     tests/lib/*.sh tests/hooks/*.sh tests/integration/*.sh tests/run-all.sh \
-#     tasks/s8-tokenizer/*.sh
+#     hooks/*.sh hooks/lib/*.sh scripts/*.sh tests/lib/*.sh tests/hooks/*.sh
+#     tests/integration/*.sh tests/run-all.sh tasks/s8-tokenizer/*.sh
+#
+# (spelled without the tool's own name at the start of a comment line: `# shell`
+# + `check` there is parsed as a DIRECTIVE, and quoting the old command verbatim
+# made this file fail the very gate it feeds — SC1072/SC1073, caught on the
+# first full run.)
 #
 # — seven hand-written globs that were a proper SUBSET of what run-all.sh checks
 # (`git ls-files '*.sh'`). The audit offered a choice: drop the blocking CI step
@@ -30,8 +35,10 @@ set -uo pipefail
 # Floor for every consumer. `git ls-files` prints nothing at all outside a git
 # checkout and prints nothing useful from a partial one — and shellcheck over an
 # empty argument list reads its stdin, which under CI is closed, so it exits 0
-# and the step passes having checked nothing. The count is 60 as of 2026-09-01;
-# re-measure with `bash tests/lib/shell-files.sh | grep -c .` rather than
+# and the step passes having checked nothing. The count is 61 as of 2026-09-01
+# — the first draft said 60, written before this file was itself tracked, i.e. a
+# stale figure inside the file whose job is to be the one place it is written
+# down. Re-measure with `bash tests/lib/shell-files.sh | grep -c .` rather than
 # trusting this number. 40 leaves churn headroom while still catching a whole
 # directory going missing.
 SHELL_FILES_FLOOR=40

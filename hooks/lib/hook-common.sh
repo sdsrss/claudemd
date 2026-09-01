@@ -94,6 +94,15 @@ hook_read_event() {
 #   a variable, so the fields are read off a redirect with `read -r -d ''`; a
 #   command substitution would drop the separators silently and glue the two
 #   fields into one.
+#
+#   One widened case, deliberate: an event that is valid JSON but whose
+#   `.tool_input` is a scalar or array now records `bad-event` and returns 1,
+#   where the two-call version read `.tool_name` successfully and exited at the
+#   not-my-tool check with no row. Both ALLOW; the new direction is one more row
+#   in the log, on a shape that is malformed for this hook's purposes either way
+#   (pre-tag review of v0.71.0). The reason name is imprecise for it — the event
+#   parsed — and is kept rather than widening the canonical reason list in
+#   docs/RULE-HITS-SCHEMA.md for a rate-limited edge case.
 hook_read_bash_fields() {
   local hook="$1" event="$2" got=0
   HOOK_TOOL_NAME=""

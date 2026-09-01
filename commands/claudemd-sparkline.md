@@ -10,4 +10,4 @@ Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/sparkline.js $ARGS`
 
 Surfaces "which spec rules are active vs dying" via per-window cumulative counts of signal events (deny, warn, advisory, bypass-escape-hatch) grouped by `spec_section`. Trend arrow compares per-period rates so a rule firing at steady cadence reads as `≈`, a dying rule reads as `↘`, and a freshly-active rule reads as `↗ (newly active)`.
 
-Powers §13.1 quarterly rule review and §13.2 budget accounting with public data instead of "operator eyeballed two audits."
+Powers the §13.1 demote review and §13.2 budget accounting with public data instead of "operator eyeballed two audits."

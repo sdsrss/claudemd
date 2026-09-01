@@ -63,32 +63,47 @@ classify() {
 [[ "$(classify 'git config user.email')" == "NO" ]] && ok "24: git config (-c can write)" || ng "24: git config"
 
 # --- End-to-end: 4 hooks short-circuit when flag ON + cmd is readonly -------
+#
+# The env assignment goes on the RIGHT of the pipe. Every case below used to
+# spell it `BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$HOOK"`, which binds
+# the variable to `echo` — the hook was never told anything, and the cases passed
+# because the flag has defaulted to ON since v0.20.0 and the chosen commands are
+# silent under both paths. Filed 2026-07-11 by the v0.37.1 pre-tag review, still
+# true at v0.70.0, found again by the 2026-09-01 tasks/ triage
+# (tasks/bash-readonly-skip-env-binding.md).
+#
+# That the flag now REACHES the hooks is proven behaviourally elsewhere, because
+# it cannot be seen from stdout here — the flag only controls an early exit, and
+# these commands produce no output on either path.
+# tests/hooks/preToolUse-jq-spawn-budget.test.sh CONTROL 2 flips this same
+# variable and watches the chain's real jq-process count change (4 with the
+# fast-path, 5 without).
 # Use a readonly cmd shape that would otherwise FALSELY trigger the hook's
 # filter — we want to prove the fast-path gate runs BEFORE the filter.
 
 # pre-bash-safety: `cat /tmp/foo` would never trip the rm/npx detectors,
 # but proves no spurious work runs. Run with no jq detection on stderr.
 EVENT='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"cat /tmp/x"},"cwd":"/tmp"}'
-OUT=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$PRE_SAFETY" 2>&1)
+OUT=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=1 bash "$PRE_SAFETY" 2>&1)
 [[ -z "$OUT" ]] && ok "25: pre-bash-safety silent on readonly + flag ON" || ng "25: pre-bash-safety not silent (got: $OUT)"
 
 # ship-baseline: a `git log` cmd would not match the `git push` filter even
 # without the fast-path; this just confirms no error from the fast-path branch.
 EVENT='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git log -1"},"cwd":"/tmp"}'
-OUT=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$SHIP" 2>&1)
+OUT=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=1 bash "$SHIP" 2>&1)
 [[ -z "$OUT" ]] && ok "26: ship-baseline silent on readonly + flag ON" || ng "26: ship-baseline not silent (got: $OUT)"
 
 # banned-vocab: `git status` is readonly, would already pass the git-commit
 # filter; fast-path makes the exit even cheaper (no grep on filter). Verify
 # no error.
 EVENT='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"/tmp"}'
-OUT=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$BANNED" 2>&1)
+OUT=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=1 bash "$BANNED" 2>&1)
 [[ -z "$OUT" ]] && ok "27: banned-vocab silent on readonly + flag ON" || ng "27: banned-vocab not silent (got: $OUT)"
 
 # memory-read-check: `ls` would not match the trigger regex either way, but
 # fast-path skips the regex entirely.
 EVENT='{"session_id":"t","tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":"/tmp"}'
-OUT=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$MEM" 2>&1)
+OUT=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=1 bash "$MEM" 2>&1)
 [[ -z "$OUT" ]] && ok "28: memory-read silent on readonly + flag ON" || ng "28: memory-read not silent (got: $OUT)"
 
 # --- Non-readonly cmds: deny path intact regardless of flag state -----------
@@ -105,14 +120,14 @@ DENY=$(echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissio
 [[ "$DENY" == "deny" ]] && ok "29: post-v0.20.0 default ON → non-readonly git commit still denies" || ng "29: default state deny missing (got '$DENY')"
 
 # Explicit opt-in =1 (legacy form) — same non-readonly cmd must still deny.
-DENY=$(BASH_READONLY_FAST_PATH=1 echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+DENY=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=1 bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DENY" == "deny" ]] && ok "30: flag explicit ON does not skip non-readonly cmds" || ng "30: flag ON skipped a non-readonly cmd (got '$DENY')"
 
 # --- v0.20.0 default flip: env-shape regression cases -----------------------
 
 # Case 31: explicit opt-out via =0 — non-readonly cmd must still deny (the
 # opt-out only affects the fast-path skip, never the deny path).
-DENY=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT" | bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+DENY=$(echo "$EVENT" | BASH_READONLY_FAST_PATH=0 bash "$BANNED" 2>&1 | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DENY" == "deny" ]] && ok "31 (v0.20.0): explicit opt-out =0 keeps deny path active on non-readonly cmd" || ng "31: opt-out broke deny path (got '$DENY')"
 
 # Case 32: default (no env) + readonly cmd → silent. Pre-v0.20.0 this also
@@ -125,7 +140,7 @@ OUT=$(echo "$EVENT_RO" | bash "$BANNED" 2>&1)
 
 # Case 33: explicit opt-out (=0) + readonly cmd → still silent. Verifies the
 # opt-out doesn't accidentally surface stderr noise on the slow path.
-OUT=$(BASH_READONLY_FAST_PATH=0 echo "$EVENT_RO" | bash "$BANNED" 2>&1)
+OUT=$(echo "$EVENT_RO" | BASH_READONLY_FAST_PATH=0 bash "$BANNED" 2>&1)
 [[ -z "$OUT" ]] && ok "33 (v0.20.0): opt-out =0 + readonly cmd → still silent (slow path)" || ng "33: opt-out introduced noise (got: $OUT)"
 
 # --- Cases 34-41 (2026-08-29 audit R10-20): `remote` / `reflog` are FAMILIES --

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.2 — Extended
+# AI-CODING-SPEC v6.25.3 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -146,7 +146,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 | tech/arch clarify | **sp:brainstorming** | |
 | mixed product+tech | combined ask, tag `[product]`/`[tech]` | |
 | 2+ independent tasks | **sp:dispatching-parallel-agents** | |
-| low-freq utilities | gs:/freeze, /guard, /retro; support ops | |
+| low-freq utilities | gs:/freeze, /careful, /guard, /retro; support ops | |
 
 ### Composite requests
 Primary verb: "更快"→perf; "挂了/500"→bug; "好看"→design; "也加"→expansion.
@@ -373,7 +373,6 @@ Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voi
 | gs:/ship, /land-and-deploy | manual git push + `[AUTH REQUIRED op:manual-deploy]` |
 | gs:/browse | request user screenshot/log |
 | gs:/qa, /qa-only | gs:/browse pass over the changed user-facing surface; report per §7 L2 evidence, repair via §12 Review-finding repair |
-| gs:/canary | monitoring checklist (metrics/thresholds/rollback trigger/command); user monitors |
 | gs:/benchmark | hyperfine/time/native; `tasks/perf-<n>.md` |
 | gs:/cso | manual STRIDE on auth/payment/crypto paths |
 | gs:/codex | skip; note "no second-opinion review" in §10 |
@@ -443,11 +442,11 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.25.2 (patch, 2026-08-22)** — two cross-file text defects from the 2026-08-22 audit (P1-4), both wording-only, both now test-gated.
+**v6.25.3 (patch, 2026-09-01)** — the governance-text batch from the 2026-08-29 audit (R10-15 + the carried 条目 23 list): eight places where the spec, its manifest or the tooling that reads them described a rule other than the one in force, plus one addition (OPERATOR §13.1's two written-down structural facts).
 
-- Extended §11-EXT: a quotation attributed to core §1 (`default to writing no comments`) named a clause core does not carry — an external citation whose sourcing the v6.25.0 compression dropped (its 5th semantic loss), re-attributed here to its real source. Spelled without the `§n "…"` shape on purpose: the new gate below would otherwise fire on the prose describing its own fix. Core §2.1 `feat L2 (additive)` mandated `sp:test-driven-development` while §4's `feat` row told the same case to skip the full ceremony; core now marks the skill optional, matching §7-EXT's Additive exception. New gates in `tests/scripts/spec-structure.test.js`: a §-attributed quotation must resolve in core, and core §2.1 ↔ ext §4 must not contradict. No new rules; enforcement partition unchanged (6/16/2/1).
+- Manifest `_doc` described the demote review on a four-times-a-year cadence over a 90d window; the window is 30d and the cadence is §13.2's, and three more copies of that cadence word had spread into the tooling. The §10-specificity `note` under-reported the hook's coverage by a whole path (the default-ON prose scan). §12's Fallback table carried a `gs:/canary` row for a skill nothing routes to; §4's `low-freq utilities` row was one skill short of the two tables that list the same set; §5.1-EXT's `aggressive` row downgraded `Δ-contract public API` in contradiction with its own skip-list, which §3 stricter-reading had already nullified. Core §11's preamble stated a level qualifier that the two bullets tagged HARD-at-all-levels below it override. OPERATOR.md §13.4 miscounted its own cross-reference list and denied an auto-created file three lines above the row that names its writer; the carry-forward list carried a settled item and dropped an unsettled one. New gates: the reverse §12→spec join (fallback rows must name a skill the spec mentions elsewhere) and a demote-window gate that bans the cadence word and pins 30d in both manifest and script. No rule added, relaxed or removed; enforcement partition unchanged (6/16/2/1).
 
-**Sizing** (v6.25.2, 2026-08-22, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23280 → 23322 bytes (Δ +42: §2.1 optionality clause); extended 43381 → 43657 bytes (Δ +276: citation re-attribution + this entry replacing v6.25.1's); OPERATOR.md 11027 → 11027 bytes (Δ 0). Size budget: core 23322/25000 (**1678 bytes headroom**); extended 43657/50000 (**6343 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
+**Sizing** (v6.25.3, 2026-09-01, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23322 → 23445 bytes (Δ +123: §11 preamble reconciliation); extended 43657 → 44405 bytes (Δ +748: this entry is longer than the v6.25.2 one it replaces, which outweighs the canary row and `aggressive` clause removed); OPERATOR.md 11027 → 14262 bytes (Δ +3235: demote-loop coverage + §8 inclusion criterion + §13.4 corrections + carry-forward split — operator-facing, never Agent-loaded, no runtime cost). Size budget: core 23445/25000 (**1555 bytes headroom**); extended 44405/50000 (**5595 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
 
 ## §1.5-EXT GLOSSARY
 
@@ -460,13 +459,13 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `Δ-contract public API` → soft when the consumer is internal-only (see Published client below); `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` stays HARD — the skip-list below says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
+| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — the skip-list below says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
 **`aggressive` skip-list** (core §5.1 pointer): skill soft-trigger announcement optional; §1 Recommend-first single-obvious-option execute-without-preamble is the default; clear-scope bugfix goes fix → test → iterate without proposal. §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind — the reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
 
-**Published client** (binds `aggressive` Δ-contract judgment): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
+**Published client** (defines "public API" for the §5 Hard row `Δ-contract on public API`, at every autonomy level): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 
 ## §7-EXT-TMP TMP_RETENTION policy
 

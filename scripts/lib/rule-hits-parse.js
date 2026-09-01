@@ -34,7 +34,7 @@ export function readLogRows(path) {
 // data-integrity counters so the operator can detect silent corruption.
 //
 // Pre-fix readHits returned `[]` on malformed lines, no-counter — a 33%
-// corruption was invisible in `/claudemd-audit` output. §13.1 quarterly
+// corruption was invisible in `/claudemd-audit` output. The §13.1 demote
 // review depends on hit counts; biased input → biased demote decisions.
 //
 // Returns: { hits, totalLines, parsed, skipped }
@@ -69,9 +69,10 @@ export function readHits(path, daysBack = 30, pre = null) {
 // Earliest ts in the rule-hits log, in ms since epoch. Returns null when the
 // file is missing, empty, or all rows are unparseable. Used by audit + trend
 // reports to detect "log too short for the requested window" — without this,
-// "0 hits in 90d" against a 17-day-old log produces false-positive demote
-// signals (a rule that didn't exist 90 days ago looks identical to a rule
-// that's been silent for 90 days).
+// "0 hits in 30d" against a 17-day-old log produces false-positive demote
+// signals (a rule that didn't exist 30 days ago looks identical to a rule
+// that's been silent for 30 days). The example used to say 90d, which stopped
+// being the window in v6.11.15.
 export function logFirstTs(path, pre = null) {
   const { rows } = pre ?? readLogRows(path);
   let firstTs = null;

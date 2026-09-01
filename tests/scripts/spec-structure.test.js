@@ -137,6 +137,93 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
     + 'degradation path when it is disabled via skillOverrides or not installed.');
 });
 
+// --- audit-2026-08-29 R10-15: the reverse direction, and one window ---------
+
+test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', () => {
+  // The mirror of the test above, and the direction that was missing: the
+  // fallback table carried a `gs:/canary` row for a skill no §4 row routes to
+  // and no other passage names. A fallback for something unreachable is a
+  // degradation path for a decision the agent never makes — 99 bytes of
+  // instruction that can only mislead. Removed in v6.25.3; this keeps the next
+  // one from settling in.
+  //
+  // The bar is "mentioned elsewhere in core or extended", not "is a §4 Routing
+  // primary": `sp:test-driven-development`, `context7` and `gs:/document-release`
+  // are legitimately reached from §2.1, §4.FULL steps and prose rather than from
+  // the Routing table.
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const core = fs.readFileSync(CORE, 'utf8');
+  const rows = tableRows(ext, '### Fallback table', 'Detection: first call fails');
+  assert.ok(rows.length >= 15,
+    `vacuity guard: parsed ${rows.length} fallback rows — the table anchor moved and this gate is checking nothing`);
+
+  const FALLBACK_START = ext.indexOf('### Fallback table');
+  const FALLBACK_END = ext.indexOf('Detection: first call fails');
+  // `Recent changes` is excluded along with the table itself. It is a
+  // historical record, and a release entry NAMING the row just removed
+  // ("§12's Fallback table carried a `gs:/canary` row …") counts as a mention
+  // and disarms this gate. That is not hypothetical: the v6.25.3 entry did
+  // exactly that, so the control run before the entry was written passed and
+  // the same control against the tagged tree would have gone green — caught by
+  // the pre-tag review of this release. Same line the sibling demote-window
+  // test draws when it excludes the changelog from its live-text scan.
+  // Anchored at a line start, not `indexOf`. §11-EXT-MEM's prose contains the
+  // literal `## Recent changes` inside a sentence, so a plain indexOf has a
+  // SECOND landing spot: rename the real heading and the cut silently jumps to
+  // that mention, `HISTORY_START > FALLBACK_END` still holds, the assert below
+  // still passes, and the release entry is back inside `elsewhere` — the exact
+  // HIGH this exclusion was added to close, resurrected by a rename. Deleting
+  // the heading already failed closed (indexOf → -1); renaming it did not.
+  // Found by the delta re-review of this release.
+  const historyMatch = ext.match(/^## Recent changes$/m);
+  assert.ok(historyMatch, 'the `## Recent changes` heading is gone from extended — this exclusion has nothing to cut');
+  const HISTORY_START = historyMatch.index;
+  assert.ok(HISTORY_START > FALLBACK_END,
+    'the `## Recent changes` heading moved above the Fallback table — this exclusion no longer cuts what it means to cut');
+  const elsewhere = core
+    + ext.slice(0, FALLBACK_START)
+    + ext.slice(FALLBACK_END, HISTORY_START);
+  // Compare in `skillTokens`' normalised form on BOTH sides. The first version
+  // compared a normalised `gs/canary` against raw spec prose that spells it
+  // `gs:/canary`, so every row looked orphaned — 25 false positives, which is
+  // the shape of a gate that would have been "fixed" by loosening it.
+  const mentioned = new Set(skillTokens(elsewhere));
+
+  const orphans = [...new Set(rows
+    .flatMap((cols) => skillTokens(cols[0]))
+    .filter((tok) => !tok.includes('*'))          // globs are families, checked by the sibling test
+    .filter((tok) => !mentioned.has(tok)))];
+  assert.deepEqual(orphans, [],
+    `§12 Fallback rows for skills named nowhere else in the spec: ${orphans.join(', ')} — `
+    + 'either the skill lost its routing row (restore it) or the fallback row outlived what it covered (drop it).');
+});
+
+test('§13.1 demote window: one number, and no cadence word standing in for it', () => {
+  // hard-rules.json's `_doc` said "quarterly demote (rules with 0 hits in 90d)"
+  // while OPERATOR.md §13.1 and scripts/hard-rules-audit.js both used 30d — a
+  // 3× difference between the manifest's own description and the tool that reads
+  // it, with a cadence word ("quarterly") doing duty for a window size. Three
+  // more copies of "quarterly" had spread to the audit script's USAGE, the
+  // sparkline command doc and rule-hits-parse's header.
+  const LIVE = [
+    'spec/hard-rules.json', 'spec/OPERATOR.md', 'spec/CLAUDE.md', 'spec/CLAUDE-extended.md',
+    'scripts/hard-rules-audit.js', 'scripts/doctor.js', 'scripts/lib/rule-hits-parse.js',
+    'commands/claudemd-rules.md', 'commands/claudemd-sparkline.md', 'commands/claudemd-doctor.md',
+  ];
+  // The changelog and docs/ are historical records and keep their original wording.
+  const offenders = LIVE.filter((f) => /quarterly/i.test(fs.readFileSync(f, 'utf8')));
+  assert.deepEqual(offenders, [],
+    `"quarterly" appears in live spec/tooling text: ${offenders.join(', ')}. The demote WINDOW is 30d `
+    + '(OPERATOR.md §13.1) and the review CADENCE is every 20 L2+ tasks or 30 days (§13.2). Neither is quarterly.');
+
+  const manifest = fs.readFileSync('spec/hard-rules.json', 'utf8');
+  assert.match(JSON.parse(manifest)._doc, /0 hits in 30d/,
+    'hard-rules.json `_doc` no longer states the 30d demote window it is the manifest for.');
+  const auditSrc = fs.readFileSync('scripts/hard-rules-audit.js', 'utf8');
+  assert.match(auditSrc, /DEFAULT_WINDOW_DAYS\s*=\s*30\b/,
+    'scripts/hard-rules-audit.js no longer defaults to the 30d window the spec text promises.');
+});
+
 // --- audit-2026-08-22 P1-4: two spec-text HIGHs, both drift between files ----
 
 test('§EXT: every phrase extended quotes as a core § clause exists in core', () => {

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.25.2 — Core
+# AI-CODING-SPEC v6.25.3 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -224,7 +224,7 @@ Simplicity / root-cause / reuse: single home = §1 Principles.
 
 ## §11 SESSION (universal)
 
-Binds every task; extended not reliably loaded post-compaction. SHOULD L0/L1; MUST L2+ where marked.
+Binds every task; extended not reliably loaded post-compaction. Default strength: SHOULD at L0/L1, MUST at L2+. Two bullets below carry a stronger tag — HARD at all levels — and override that default, binding at L0 too.
 
 - **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read plan + spec before proceeding. Silent unless gap surfaces. User references artifact absent from context → assume compaction.
 - **Re-Read / Correction / Context pressure** (maintenance heuristics, full detail → §EXT §11-EXT): skip files already Read/Written absent external-change signal · on repeated auto-decision rejection switch to ASK-first · at >75% window prefer fresh-subagent + consider `tasks/<slug>-paused.md`.

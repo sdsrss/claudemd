@@ -41,8 +41,8 @@ const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 // v0.7.1 R-N6 — doctor surfaces §0.1 demotion candidates from v0.7.0's
 // bypass-vs-deny audit data. A spec section whose users override its denies
 // more often than they comply with them is signalling either "rule too strict"
-// or "rule wording confuses". §0.1 Core growth discipline says core entries
-// with 0 hits in 90d are demotion candidates; this catch is the inverse —
+// or "rule wording confuses". OPERATOR.md §13.1 says core entries
+// with 0 hits in 30d are demotion candidates; this catch is the inverse —
 // hits exist, but they're routinely escape-hatched.
 const RULE_USAGE_WINDOW_DAYS = 30;
 const RULE_USAGE_DEMOTION_RATIO = 0.5;
