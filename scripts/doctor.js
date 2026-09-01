@@ -66,6 +66,27 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // §8-rm-rf-var are the only immutable sections that actually do.
 const IMMUTABLE_SECTION_RE = /^§8([.\-]|$)/;
 
+// Advisory checks are operator judgement calls whose steady state is non-zero
+// (generic memory tags, index size over a SOFT budget, promote candidates, a
+// bypass ratio with no codified demote rule). Counting them would make
+// `/claudemd-doctor` report failure on a healthy install every time, which is
+// how an exit code stops carrying information.
+//
+// `routing:skills-enabled` joined the list in 0.71.1, on the release that added
+// it. Its steady state is non-zero BY ADJUDICATION: spec v6.25.4 settles that
+// §4 keeps naming skills an operator may reasonably have switched off, and that
+// the degradation path is §12's fallback table. Without this entry the check
+// would have made `/claudemd-doctor` exit 3 forever on any machine that disabled
+// a routed skill — the exact failure the paragraph above describes, shipped in
+// the same release that describes the check as advisory. Caught by the pre-tag
+// review; the regex was the half of "advisory" that had not been written down.
+//
+// Exported (rather than inlined at the CLI exit-code site, where it lived until
+// 0.71.1) so a test can assert the real predicate instead of reading this
+// comment — a gate that reads prose is the failure this repo keeps closing.
+const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled)/;
+export const isAdvisoryCheck = (name) => ADVISORY.test(name);
+
 export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
@@ -903,14 +924,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // Code 3, not 1: 1 already means "argv rejected", and reusing it would make
     // a failing health check indistinguishable from a typo'd flag — the same
     // exit-code overloading this pass is removing elsewhere.
-    // Advisory checks are operator judgement calls whose steady state is
-    // non-zero (generic memory tags, index size over a SOFT budget, promote
-    // candidates, a bypass ratio with no codified demote rule). Counting them
-    // would make `/claudemd-doctor` report failure on a healthy install every
-    // time, which is how an exit code stops carrying information.
-    const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans)/;
     const failed = (r.checks || [])
-      .filter(c => c && c.ok === false && !ADVISORY.test(c.name)).length;
+      .filter(c => c && c.ok === false && !isAdvisoryCheck(c.name)).length;
     if (failed > 0) process.exitCode = 3;
   }).catch(err => {
     // Without this, ANY throw inside doctor() surfaced as a bare unhandled

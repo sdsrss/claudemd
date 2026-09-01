@@ -1,6 +1,6 @@
 {
   "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md. Drives the §13.1 demote review (core entries with 0 hits in 30d — the window is 30d in OPERATOR.md §13.1 and in scripts/hard-rules-audit.js; the review cadence is operator-set per §13.2 at every 20 L2+ tasks or 30 days — window and cadence are different concerns and this line conflated them until 2026-09-01) and §13.2 budget accounting (≥3 repros + ≥20 L2+ tasks since last HARD addition). Only 4 of the 25 rules can EVER appear in demoteCandidates: the pipeline takes the 8 'hook'/'both' rules and then exempts the 4 §8 safety-class ones by construction. 'self' and 'external' rules are excluded from the candidate set whether or not they emit rows — and 5 of them do emit, via rule_hits_section, so 'no hit channel' is not the reason. See OPERATOR.md §13.1 'Demote-loop coverage'. v0.8.0 R-N2. Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file. /claudemd-rules cross-references against rule-hits.jsonl bySection data.",
-  "spec_version": "v6.25.3",
+  "spec_version": "v6.25.4",
   "spec_files": {
     "core": "spec/CLAUDE.md",
     "extended": "spec/CLAUDE-extended.md"

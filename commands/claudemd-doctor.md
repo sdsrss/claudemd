@@ -1,6 +1,6 @@
 ---
 name: claudemd-doctor
-description: Run health checks on claudemd installation. Flags missing deps, spec drift, settings.json issues, hook drift, backup inventory, rule-usage health, MEMORY.md tag specificity, cross-layer memory maintenance (promote/repatriate/stale candidates). Supports --prune-backups=N.
+description: Run health checks on claudemd installation. Flags missing deps, spec drift, settings.json issues, hook drift, backup inventory, rule-usage health, §4 Routing primaries disabled via skillOverrides, MEMORY.md tag specificity, cross-layer memory maintenance (promote/repatriate/stale candidates). Supports --prune-backups=N.
 ---
 
 Usage: `/claudemd-doctor` or `/claudemd-doctor --prune-backups=5`

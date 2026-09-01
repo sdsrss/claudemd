@@ -6,6 +6,18 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.25.4 (patch, 2026-09-01) — the §4-routing-vs-`skillOverrides` adjudication, written down
+
+No agent-facing rule text changed. Core and extended are byte-identical apart from their title lines and, in extended, the `Recent changes` entry and the Sizing line. The whole content change is one bullet in OPERATOR §13.2.
+
+- `[decide]` v6.25.3 re-queued a carry-forward item — "§4 Routing primaries `off` in `skillOverrides`, re-enable-vs-rewrite" — that had fallen off the governance loop once already, adjudicated by nobody and carried by nobody. **Settled: neither. §4 and §12 are unchanged.** All eight disabled primaries already own §12 Fallback rows (machine-checked, not read off the page), and §12's Detection paragraph names `skillOverrides`-off as precisely the case it handles, so the spec's answer was complete the whole time. The stronger reason not to touch §4: `spec/` is a *shipped* artifact, and rewriting its routing table to match one machine's local disables would take the best-tool name away from every user who does have those skills installed.
+- `[fix]` The carry note said 6 primaries. Measured today: **8** — `gs:/qa`, `/qa-only`, `/design-consultation`, `/benchmark`, `/office-hours`, `/freeze`, `/careful`, `/guard`, out of 24 total. Across 81 transcripts since 2026-08-01 the Skill tool was invoked 12 times, 5 of them §4 primaries — all 5 *enabled* ones — and **none** of them one of the eight disabled. §4 routing is live; the switched-off part of it is the part nothing reaches for. (The first draft of this bullet said §4 primaries accounted for one of the 12, by matching only the `gs:` namespace by eye and missing that `superpowers:` is `sp`. Corrected by the pre-tag review before the tag.)
+- `[note]` What was actually missing was a detector, not spec text. The gap was found in July by accident, during a `/doctor` run about something else; an accident is not a detector. `doctor`'s `routing:skills-enabled` (plugin 0.71.1) now reads the *installed* extended spec against `skillOverrides` every run, with a floor so a moved §4 table reports "cannot evaluate" instead of a clean surface over zero skills.
+
+No HARD rule added, relaxed or removed; enforcement partition unchanged (6/16/2/1).
+
+---
+
 ## v6.25.3 (patch, 2026-09-01) — the governance-text batch (2026-08-29 audit R10-15 + carried 条目 23)
 
 Every item here is a place where the spec, its manifest, or the tooling that reads them described a rule that is not the rule in force. No HARD rule added, relaxed or removed; enforcement partition unchanged (6/16/2/1). The batch was held back from the 0.70.0 remediation round on purpose — editing `spec/` triggers the L3 path plus the full version cascade, so it travels alone.

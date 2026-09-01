@@ -118,8 +118,10 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
   // routed primary lacks a fallback row" is trivially true of an empty routed
   // set. The join had no floor, so a tokenizer that silently stopped matching
   // (a heading rename, a regex edit, a table reformat) would have reported a
-  // clean join over zero skills. Counts are 24 routed / 25 covered today; the
-  // floors sit well below that to catch a layer vanishing, not table churn.
+  // clean join over zero skills. Counts are 24 routed / 27 covered today
+  // (recounted at the 0.71.1 pre-tag review — the first draft of this comment
+  // said 25, in a release whose thesis is that recounts beat carried numbers);
+  // the floors sit well below that to catch a layer vanishing, not table churn.
   assert.ok(routed.size >= 15,
     `§4 Routing resolved only ${routed.size} primary skill(s) — the table moved or the tokenizer `
     + 'stopped matching. Refusing to report a clean §12 join over a set that short.');

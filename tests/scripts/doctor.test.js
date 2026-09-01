@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { doctor } from '../../scripts/doctor.js';
+import { doctor, isAdvisoryCheck } from '../../scripts/doctor.js';
 
 const DOCTOR_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/doctor.js');
 
@@ -764,6 +764,23 @@ test('routing:skills-enabled names the §4 primaries that are off', async () => 
   assert.equal(c.ok, false);
   assert.match(c.detail, /gs\/investigate/);
   assert.match(c.detail, /skillOverrides/);
+});
+
+test('routing:skills-enabled is advisory — it must not drive the exit code', () => {
+  // The check's steady state is non-zero by adjudication (spec v6.25.4: §4 keeps
+  // naming skills an operator may have switched off, and §12 is the degradation
+  // path). Shipped outside the ADVISORY set it would have made
+  // `/claudemd-doctor` exit 3 forever on any machine that disabled a routed
+  // skill, in the same release whose CHANGELOG calls the check advisory —
+  // caught by the pre-tag review of 0.71.1.
+  //
+  // Asserts the exported predicate the CLI exit-code branch actually calls, not
+  // the comment above it. The negative arm is what makes that meaningful: a
+  // predicate that returned true for everything would satisfy the first line
+  // alone and silence the exit code entirely.
+  assert.equal(isAdvisoryCheck('routing:skills-enabled'), true);
+  assert.equal(isAdvisoryCheck('hook-fail-open'), false);
+  assert.equal(isAdvisoryCheck('settings.json'), false);
 });
 
 test('routing:skills-enabled refuses to pass when §4 resolved too few primaries', async () => {

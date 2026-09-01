@@ -8,6 +8,26 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.71.1] - 2026-09-01
+
+Three things that were true about this repo and written down nowhere, plus the gates that keep each of them true. Ships spec **v6.25.4** (patch) — one operator-facing bullet; no agent-facing rule text changed.
+
+**A real bash 3.2 had been sitting in CI, used only to parse.** The workflow has built and cached a genuine bash 3.2.57 since v0.58.1 (sha256-pinned since 0.70.0, when the audit's batch C caught the unpinned tarball), and ran exactly one thing under it: `bash -n`. That step's own comment is careful about the distinction — "a bash -n under 5.x proves nothing about 3.2" — and then stops at parsing. `declare -g` (bash 4.2), `local -n` (4.3) and `${x@Q}` (4.4) all parse cleanly under 3.2 and fail on the line that runs them, so neither that step nor the pattern gate could see them. v0.71.0 had just moved `read -r -d ''`, process substitution and `printf -v` + `${!var}` onto the first-parse path of all four PreToolUse:Bash hooks — executed on every Bash tool call, under macOS `/bin/bash` 3.2 — and those constructs had only ever been *executed* under bash 5. The pre-tag review recorded that as unverified, not as passed. `tests/lib/bash32-runtime.sh` now drives all 32 fixture suites with a real 3.2 on `PATH`. They pass; before this, that sentence had no evidence behind it.
+
+**The oldest open commitment in `tasks/specs/` had shipped seven weeks earlier.** `s8-shared-tokenizer.md` said `status: approved`; the refactor landed 2026-07-15 and released in v0.51.0, and the shipped code went further than the plan. Three documents carried the stale claim and agreed with each other, so a status-to-index join would have passed. `tests/scripts/spec-status-drift.test.js` reads against the tree instead.
+
+**Eight §4 Routing primaries were switched off, and nothing related the two tables.** The 2026-07-10 cleanup disabled 49 zero-use skills and kept the ones core §2.1 routes — but §EXT §4 is a second routing table. Adjudicated in this release: §4 and §12 stay as they are (every disabled primary already owns a §12 Fallback row, and §12 names `skillOverrides`-off as the case it handles), and `doctor` gets the detector that was actually missing.
+
+### User-visible behaviour changes
+
+- `/claudemd-doctor` reports a new check, **`routing:skills-enabled`**: §4 Routing primaries that are `off` in `skillOverrides`, read against the *installed* extended spec. On this maintainer's machine that is 8 of 24. It is advisory — a routed-but-disabled skill degrades through the §12 Fallback table rather than breaking — which is exactly why it sat unnoticed for seven weeks after being found once, by accident, during an unrelated `/doctor` run. A floor makes a moved or truncated §4 table report "cannot evaluate" rather than a clean routing surface over zero skills.
+- Spec **v6.25.4**: OPERATOR §13.2 settles the carry-forward item that v6.25.3 re-queued. The measured count is 8, not the 6 the carry note recorded, out of 24 primaries; across 81 transcripts since 2026-08-01 the Skill tool was invoked 12 times, 5 of them §4 primaries — all 5 enabled ones, and none of them among the eight disabled. `spec/` is a shipped artifact, so §4 keeps naming the best tool for users who do have those skills installed.
+
+### Internal
+
+- CI runs the hook suites under the cached bash 3.2 binary on the Linux/node20 leg (`CLAUDEMD_BASH32_REQUIRED=1`), and `tests/run-all.sh` runs the same script whenever `BASH32_BIN` is set, printing the build recipe when it is not. The binary reaches the new step as a step *output* rather than through `$GITHUB_ENV`, which would have made the 32 suites run twice on that leg. Three refusals guard the result: a `BASH32_BIN` that is not 3.2, a shim that is not actually on `PATH` (the interpreter is asked for its own `$BASH_VERSION`), and a suite set below its floor.
+- The §4/§12 skill tokenizer moved to `scripts/lib/spec-routing.js` with a consumer gate in the same commit. The reach mutation for that extraction found that the §12 join had **no floor**: emptying the tokenizer left it green, because "no routed primary lacks a fallback row" is trivially true of an empty routed set. Both sides now have one.
+
 ## [0.71.0] - 2026-09-01
 
 The three items the 2026-08-29 audit could not close in its own round, and the governance-text batch that needed a spec bump to travel. Ships spec **v6.25.3** (patch).
