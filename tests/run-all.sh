@@ -140,6 +140,25 @@ if ! bash "$HERE/lib/bash32-constructs.sh"; then
   FAIL=$((FAIL + 1))
 fi
 
+# bash 3.2 RUNTIME, when a 3.2 binary is reachable. The static gate above is a
+# list of constructs someone already thought of, and ci.yml's real-3.2 step only
+# PARSES; neither executes a line. `declare -g` / `local -n` / `${x@Q}` pass both
+# and die when they run — proven by injecting `declare -g` into hook_read_event:
+# static gate green, `bash -n` under a real 3.2 green, 16 of 32 suites red.
+#
+# Opt-in rather than a hard requirement, and this is the one place in this file
+# where an unset variable is NOT treated as a defect under CI. The other SKIPs
+# here degrade on a missing git index, which under CI IS the defect; a bash 3.2
+# build is not something a runner has by default. ci.yml builds and caches one
+# and calls this same script with CLAUDEMD_BASH32_REQUIRED=1 on the Linux/node20
+# leg, so the hard gate lives there while `npm test` stays runnable anywhere. The
+# script prints the build recipe when it skips.
+echo "== bash 3.2 runtime =="
+if ! bash "$HERE/lib/bash32-runtime.sh"; then
+  echo "FAIL: hook suite(s) fail when EXECUTED under bash 3.2 — that is the macOS /bin/bash"
+  FAIL=$((FAIL + 1))
+fi
+
 # No hand-built /tmp paths in test suites (2026-07-28). mem-audit.test.sh and
 # transcript-structure-scan.test.sh captured stderr to `2>/tmp/<name>-$$`, which
 # dies with "Read-only file system" wherever /tmp is not writable (agent sandbox,

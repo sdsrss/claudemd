@@ -111,6 +111,7 @@ jobs:
           key: bash32-${{ env.BASH32_VERSION }}-${{ runner.os }}-${{ runner.arch }}
       - name: Reject constructs bash 3.2 cannot PARSE (real 3.2 syntax check)
         if: runner.os == 'Linux' && matrix.node == 20
+        id: bash32
         run: |
           # v0.58.1 — the pattern gate above catches bash-4 SYNTAX it knows to
           # look for; it cannot catch a construct 3.2 fails to PARSE. v0.58.0
@@ -177,6 +178,30 @@ jobs:
           done
           [ "$found" = 0 ] || exit 1
           echo "OK: all hook sources parse under a real bash 3.2"
+          # Handed to the runtime step below as a step OUTPUT rather than through
+          # $GITHUB_ENV: an env export would also reach "Run test suite", whose
+          # own bash-3.2 section keys off BASH32_BIN, and the 32 suites would run
+          # twice on this leg for nothing. One producer, one named consumer.
+          echo "bin=$B32" >> "$GITHUB_OUTPUT"
+      - name: Run the hooks under a real bash 3.2 (runtime, not just parse)
+        # The step above proves every hook PARSES under 3.2. It cannot prove one
+        # RUNS: `declare -g` (bash 4.2), `local -n` (4.3) and `${x@Q}` (4.4)
+        # parse cleanly there and fail on the line that executes them, and the
+        # pattern gate is a list of constructs someone already thought of.
+        # v0.71.0 moved `read -r -d ''`, process substitution and `printf -v` +
+        # `${!var}` onto the first-parse path of all four PreToolUse:Bash hooks
+        # and its pre-tag review recorded 3.2 runtime as UNVERIFIED — a real 3.2
+        # was present in this job and used only to parse. This step drives the
+        # fixture suites with that same cached binary on PATH, so the hooks, the
+        # suites and the libraries they source all execute under 3.2.
+        # Rationale, scope floor and the shim's reach assertion live in the
+        # script; CLAUDEMD_BASH32_REQUIRED turns its local-friendly SKIP into a
+        # hard failure here, where a missing binary is the defect.
+        if: runner.os == 'Linux' && matrix.node == 20
+        env:
+          BASH32_BIN: ${{ steps.bash32.outputs.bin }}
+          CLAUDEMD_BASH32_REQUIRED: '1'
+        run: bash tests/lib/bash32-runtime.sh
       - name: Spec edits require a version bump (post-tag drift gate)
         if: runner.os == 'Linux' && matrix.node == 20
         run: |
