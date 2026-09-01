@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.71.2] - 2026-09-01
+
+**No user-visible behaviour changes.** Three gates shipped in 0.71.1 asserted a *spelling* where the defect they were written against is a *behaviour*, and the pre-tag review of that release proved all three escapable in a tree copy. This release closes them. Spec unchanged at **v6.25.4**.
+
+The instance that set the shape of the fix was not in the review. `tests/scripts/spec-status-drift.test.js` shipped in 0.71.1 with a CHANGELOG entry saying a stale spec status is now caught against the tree — and on the same day, in the same directory, `tasks/specs/routing-single-source.md` was found to have been implemented in `d801dd1` (v0.17.0) **on the day it was written**, and to have carried `status: draft` for 113 days since. The gate could not see it twice over: it judged `approved` only, and the file declares no `- Produces:` lines, so a widened status filter would still have hit the silent `continue`. Its first instance made the gate; its second was already lying next to it, and was found by reading, not by the gate.
+
+That is the same failure in all three: a gate that reports "clean" and a gate that reports "I judged nothing" produced identical output.
+
+### Internal
+
+- **`spec-status-drift`** judges `draft` as well as `approved`; an open spec whose completion it *cannot* evaluate is now a failure rather than a skip; and the evaluated count prints on the green path (`7 tracked spec(s); 0 open (approved/draft); 0 evaluated against the tree, 0 not evaluable`). The `- Produces:` convention it reads is used by one of the seven tracked specs — the one it was written against — so the subset it actually judged was empty on the day it shipped, and the review escaped it by restating already-shipped work in the prose style the other six use.
+- **`spec-routing-consumers`** gained a behaviour parity test. Banning one 13-character literal cannot distinguish an equivalent rewrite (`gs|sp`, every other byte identical — harmless, and still green on purpose) from the same rewrite with a rule dropped. The new test stages the shipped §4 table as the installed spec with every primary switched off and requires both the *count* of primaries `doctor()` resolves and the names it reports back to equal what `scripts/lib/spec-routing.js` resolves from the same bytes.
+- **`shared-scope-consumers`** checked the shellcheck command while the narrowing happens in the assignment that feeds it: `FILES=$(bash tests/lib/shell-files.sh | grep '^hooks/')` reads the single source, writes no filename, and still hands CI a scope narrower than the `run-all` gate it front-runs. The new test requires the substitution to be that call and nothing else (flags allowed, with or without values), the variable to be assigned exactly once whatever the second right-hand side looks like, and every operand on a `shellcheck` command to be one of those variables — not a command substitution, and not the *other* single-source script.
+- Each fix was verified against mutants in a tree copy, chosen so the landing point is certain rather than incidental: every mutant leaves the pre-existing tests green. `npm test` 865 → 867 pass / 0 fail — the two added tests are the whole delta.
+- `tasks/specs/routing-single-source.md` is `status: implemented`, with the byte-budget premise that motivated it recorded as dead (written to rescue 396B of core headroom; core has 1555B today) and its own numbers corrected against the commit rather than against today's tree: the reclaim was 470B, not the ≥700B the plan required, and success criterion #1 was met 113 days later by unrelated edits.
+
+### What the pre-tag review changed
+
+An independent review of this release reproduced five escapes and two false claims in its own prose. Four of the escapes are closed above and in the numbers here; the review is the reason the entry reads the way it does.
+
+- **Closed**: a second assignment written `FILES="$( … )"` — two quote characters, and the "assigned exactly once" rule stopped seeing it, catching the spelling the reviewer wrote and missing the one shellcheck's own SC2086 guidance pushes you toward; narrowing at the point of use with no assignment at all; `shellcheck $LIST`, where `LIST` is the *other* single source (58 files to 62) assigned in a different job, so at runtime it is empty and shellcheck reads its closed stdin and exits 0; and a parser resolving a strict *superset*, invisible to a parity check that only compared the disabled subset.
+- **Fixed false positives**: `--severity="$SEV"` and `bash tests/lib/shell-files.sh --root="$X"` both failed the first version — the second forbidding the calling convention the guarded script documents. `KNOWN_STATUSES` gained `deprecated`, which §2.S defines and the list did not, so a spec retired with the spec's own word no longer fails CI.
+- **Deliberate cost, now stated where it is paid**: every open spec must carry two or more `- Produces:` lines. One of seven tracked specs uses that convention and §2.S does not define the field, so this makes a requirement out of one file's habit. The alternative is the silent skip that kept the gate green over an empty subset for its whole first release.
+- **Left open, recorded, not fixed**: the artifact match is all-or-nothing over an unanchored name, so two generic names (`cache`, `resolve`) condemn a draft while one artifact that landed under a different name silences the whole spec; and narrowing applied *inside* `shell-files.sh` itself passes everything, since only a floor of 40 guards the count.
+
 ## [0.71.1] - 2026-09-01
 
 Three things that were true about this repo and written down nowhere, plus the gates that keep each of them true. Ships spec **v6.25.4** (patch) — one operator-facing bullet; no agent-facing rule text changed.

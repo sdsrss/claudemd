@@ -35,7 +35,7 @@ set -uo pipefail
 # Floor for every consumer. `git ls-files` prints nothing at all outside a git
 # checkout and prints nothing useful from a partial one — and shellcheck over an
 # empty argument list reads its stdin, which under CI is closed, so it exits 0
-# and the step passes having checked nothing. The count is 61 as of 2026-09-01
+# and the step passes having checked nothing. The count is 62 as of 2026-09-01
 # — the first draft said 60, written before this file was itself tracked, i.e. a
 # stale figure inside the file whose job is to be the one place it is written
 # down. Re-measure with `bash tests/lib/shell-files.sh | grep -c .` rather than

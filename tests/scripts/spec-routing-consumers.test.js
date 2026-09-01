@@ -20,8 +20,8 @@
 //
 // The spelling assertion has a ceiling, and the pre-tag review found it: swap
 // the alternation to `gs|sp`, keep every other byte, and you have a
-// byte-different regex with identical behaviour that the ban cannot see — 864
-// tests green. That particular escape is harmless (an equivalent parser IS the
+// byte-different regex with identical behaviour that the ban cannot see — the
+// whole suite green. That particular escape is harmless (an equivalent parser IS the
 // shared parser, in every way a caller can observe), but the same move with one
 // rule dropped is not, and the ban cannot tell the two apart. So the third test
 // asks the question that actually matters, of the consumer that has its own
@@ -98,8 +98,9 @@ test('every known consumer imports the shared tokenizer', () => {
 // The fixture is the real spec on purpose. §4 carries `**gs:/investigate**`,
 // bare `/name` continuations and a Notes column full of skill mentions that are
 // not primaries; a synthetic table would have to reproduce all three to be worth
-// anything, and would then drift from the one in production. A private parser
-// that drops any one of those rules resolves a different set here and fails.
+// anything, and would then drift from the one in production. Two assertions,
+// because the disabled list alone cannot see a parser that resolves MORE than
+// the shared one: the total is compared as well.
 test('doctor resolves §4 into exactly the shared tokenizer\'s primary set', async () => {
   const expected = [...routingPrimaries(fs.readFileSync(path.join(ROOT, 'spec/CLAUDE-extended.md'), 'utf8')).keys()];
   assert.ok(expected.length >= 15,
@@ -126,6 +127,19 @@ test('doctor resolves §4 into exactly the shared tokenizer\'s primary set', asy
     assert.ok(check, 'routing:skills-enabled did not run — the staging above stopped matching what doctor reads');
     const named = (check.detail.match(/skillOverrides: ([^.]+)\./) || [])[1];
     assert.ok(named, `routing:skills-enabled did not report the disabled primaries; detail was:\n      ${check.detail}`);
+
+    // The total, not just the disabled list. `off` is filtered against the
+    // overrides staged above, so a parser resolving a strict SUPERSET — the
+    // `gs/after` that appears the moment the list-boundary lookbehind is dropped,
+    // one of the three rules spec-routing.js's header says cost the most to learn
+    // — contributes a token that is not in skillOverrides, gets filtered out of
+    // `off`, and leaves the named list identical. The v0.71.2 pre-tag review
+    // reproduced exactly that, green. The count is where a superset shows up.
+    const total = Number((check.detail.match(/of (\d+) §4 Routing primaries/) || [])[1]);
+    assert.equal(total, expected.length,
+      `doctor resolved ${total} §4 Routing primaries where scripts/lib/spec-routing.js resolves ` +
+      `${expected.length} over the same spec. A parser that finds MORE is as wrong as one that ` +
+      'finds fewer, and only the total can see it.');
 
     assert.equal(named, expected.join(', '),
       'doctor resolved a different §4 primary set than scripts/lib/spec-routing.js does over the ' +

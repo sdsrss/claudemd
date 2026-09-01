@@ -6,23 +6,39 @@ revision: 2
 # Routing single-source — §2.1 ↔ §EXT §4 reconciliation
 
 **Implemented in `d801dd1` (v0.17.0, spec v6.11.16) — the same day this file was
-written, 2026-05-11.** The `## design` block below is not a proposal: all 8 rows
-of it are, cell for cell, the §2.1 ROUTE table running in `spec/CLAUDE.md` today.
-Nobody flipped the header, so the file read as an open commitment for 113 days.
+written, 2026-05-11.** The `## design` block below is not a proposal: the table
+that shipped in that commit is this one, 8 rows, differing in three words of one
+Notes cell (`full routing table` → `full table`). Nobody flipped the header, so
+the file read as an open commitment for 113 days.
 
-Two things below are now false and are kept only because the reasoning is the
-record:
+Diffed against `spec/CLAUDE.md` **today** the gap is wider — 3 of the 8 rows have
+moved, and one of them semantically: the plan made `sp:test-driven-development`
+mandatory on the feat-L2 row, and today's table calls it optional. That is 113
+days of later spec versions editing §2.1, not a defect in the implementation, and
+it is the reason "the shipped table still matches this plan" is a claim that has
+to name a commit rather than a date.
+
+Three things below are now false, or true only by accident, and are kept because
+the reasoning is the record:
 
 - **The goal's premise is dead.** It cites "396B left in the 25K core ceiling
   (98.42% utilization)". Core is 23445B today — 1555B of headroom, four times
   what the plan was written to rescue. Anyone reopening this to reclaim bytes is
   answering a question that closed.
-- **The success criteria are met, not pending.** #1 wanted `< 23904`; actual is
-  23445. #8 wanted the v6.11.16 bump; that is the commit above.
+- **The byte target was missed by a third.** The goal asks for ~700-900B and the
+  constraint demands ≥700B. `d801dd1` took core 24604 → **24134**: 470B, with
+  §2.1 ROUTE itself going 2187 → 1717. R5 said not to ship a §2.1-only edit that
+  does not move the needle; it shipped anyway, and the needle moved two thirds of
+  the way.
+- **Success criterion #1 was not met by this work.** It wanted `< 23904`; core at
+  `d801dd1` was 24134. Today's 23445 clears it, but that number was reached over
+  113 days of unrelated edits — reading it as this plan's result is exactly the
+  kind of after-the-fact evidence this repo keeps catching itself accepting. #8
+  (the v6.11.16 bump) is the one criterion the commit does satisfy outright.
 
 Optional opts A/B/C were not all taken: the "Ambiguous trigger" line (opt A) and
 the "Tool escalation" list (opt B) are still in §2.1; the "Anti-patterns" line
-(opt C) is gone. The ≥700B target was met without A and B.
+(opt C) is gone. Skipping A and B is where most of the missing 230B went.
 
 **Why this sat stale, and what it cost the gate that should have caught it**:
 `tests/scripts/spec-status-drift.test.js` shipped hours before this correction
@@ -31,8 +47,11 @@ said `draft`), and this file declares zero `- Produces:` lines, so even a
 widened status filter would hit the silent `continue` at `artifacts.length < 2`.
 That is the pre-tag review's HIGH-3 with a live instance attached: the gate
 shipped with a CHANGELOG entry saying this class is now caught, while a second
-instance of the class lay in the same directory. See
-`tasks/spec-status-drift-gate-blind-spots.md`.
+instance of the class lay in the same directory. Recorded in
+`tasks/spec-status-drift-gate-blind-spots.md` — which is local-only and not in
+this repo's `tasks/` whitelist, so from a fresh clone that pointer dangles by
+design (`feedback_docs_tasks_local_only`); v0.71.2's CHANGELOG carries the part
+that had to survive.
 
 ## goal
 

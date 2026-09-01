@@ -137,59 +137,93 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
 // This still checks spelling — the honest fix is to compare the resulting SETS,
 // which means running the workflow's shell — but it checks the spelling of the
 // ASSIGNMENT rather than of the command, which is where the narrowing has to
-// happen. Three shapes fail here that passed before: a filter inside the
-// substitution, a second assignment to the same name, and a shellcheck fed from
-// a variable that never came from the shared script at all.
+// happen.
+//
+// The first version of this test was itself escaped three ways by the v0.71.2
+// pre-tag review, and each escape is now a case below:
+//   - `FILES="$( … )"` — the reassignment scanner required `=$(` with no quote,
+//     so two quote characters made a second assignment invisible. The gate
+//     caught the spelling the reviewer wrote and missed the one shellcheck's own
+//     SC2086 guidance pushes a maintainer toward. Names are now counted with a
+//     bare `NAME=`, whatever the right-hand side looks like.
+//   - `shellcheck … $(printf %s\n "$FILES" | grep …)` — narrowing at the point
+//     of use, with no assignment at all for the assignment rules to engage on.
+//     A command substitution on a shellcheck command is now itself the failure.
+//   - `shellcheck $LIST` — `LIST` comes from the OTHER single-source script
+//     (bash32-constructs.sh, 58 files to shell-files.sh's 62) and is assigned in
+//     a different job, so at runtime it is empty and shellcheck reads its closed
+//     stdin and exits 0. "Assigned from some single source" was never the
+//     property wanted; the scope of THIS check has one name, below.
+const SHELLCHECK_SCOPE = 'shell-files.sh';
+
 test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', () => {
   const sources = singleSourceScopeFiles();
-  assert.ok(sources.length >= 2, 'the SINGLE SOURCE set collapsed — see the first test');
+  assert.ok(sources.includes(SHELLCHECK_SCOPE),
+    `tests/lib/${SHELLCHECK_SCOPE} no longer declares itself the SINGLE SOURCE of a scope — ` +
+    'it was renamed or the header changed, and this check is now guarding nothing.');
   const lines = logicalLines(fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8'))
     .filter(({ text }) => !/^\s*#/.test(text));
 
-  // `NAME=$( … )`, body captured without nesting: a nested `$(` inside is itself
-  // a reason to fail, since it cannot be the plain call this requires.
-  const assignments = [];
+  // `NAME=$(bash tests/lib/shell-files.sh …`, optionally quoted. Everything to
+  // the end of the logical line is the body, minus the closing paren and quote:
+  // reading to a `)` instead would stop inside a nested substitution and call
+  // the rest of the pipeline someone else's problem.
+  const scopeAssigns = [];
   for (const { line, text } of lines) {
-    for (const m of text.matchAll(/(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=\$\(([^)]*)\)/g)) {
-      assignments.push({ line, name: m[1], body: m[2].trim() });
-    }
+    const m = text.match(/(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=(["']?)\$\((.*)$/);
+    if (!m) continue;
+    let body = m[3].trim();
+    if (m[2] && body.endsWith(m[2])) body = body.slice(0, -1).trim();
+    if (body.endsWith(')')) body = body.slice(0, -1).trim();
+    if (!body.startsWith(`bash tests/lib/${SHELLCHECK_SCOPE}`)) continue;
+    scopeAssigns.push({ line, name: m[1], body });
   }
 
-  // Flags are allowed (bash32-constructs.sh is called with --list); anything
-  // that could change the resulting set is not.
-  const shape = new RegExp(`^bash tests/lib/(${sources.map((s) => s.replace(/\./g, '\\.')).join('|')})((?: --[a-z-]+)*)$`);
-  const fromShared = assignments.filter(({ body }) => sources.some((s) => body.includes(`lib/${s}`)));
+  assert.ok(scopeAssigns.length >= 1,
+    `no ci.yml variable is assigned from tests/lib/${SHELLCHECK_SCOPE} in a shape this check ` +
+    'can read — either the step stopped reading the shared scope, or the assignment was ' +
+    'written some way this gate does not recognise, and both must fail closed.');
 
-  const filtered = fromShared.filter(({ body }) => !shape.test(body));
+  // Flags are allowed, with or without values: bash32-constructs.sh is called
+  // with `--list`, and shell_files_checked_scope() documents a root argument.
+  // What is not allowed is anything that can change the resulting set.
+  const shape = new RegExp(`^bash tests/lib/${SHELLCHECK_SCOPE.replace(/\./g, '\\.')}(\\s+--[a-z][a-z-]*(=\\S+)?)*$`);
+  const filtered = scopeAssigns.filter(({ body }) => !shape.test(body));
   assert.deepEqual(filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`), [],
-    'a ci.yml variable is assigned from a SINGLE SOURCE scope script with something ' +
+    'a ci.yml variable is assigned from the SINGLE SOURCE scope script with something ' +
     'appended — a pipe, a filter, a second command:\n      ' +
     filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`).join('\n      ') +
     '\n      That narrows the scope while leaving every "is the shared script read?" check ' +
     'green, which is how the hand-written list came back. Assign the call alone.');
 
-  const shared = new Set(fromShared.map(({ name }) => name));
-  assert.ok(shared.size >= 1,
-    'no ci.yml variable is assigned from a SINGLE SOURCE scope script at all — the step ' +
-    'stopped reading the shared scope, or this gate stopped finding the assignment.');
+  const scopeVars = new Set(scopeAssigns.map(({ name }) => name));
 
-  // Assigned once. A second assignment can filter what the first produced, and
-  // each one on its own satisfies the shape above.
-  const rebound = [...shared].filter((n) => assignments.filter((a) => a.name === n).length > 1);
+  // Assigned once, counted on the NAME alone: the right-hand side of the second
+  // assignment is exactly what must not be trusted, so its shape cannot be part
+  // of finding it.
+  const rebound = [...scopeVars].filter((n) => lines.filter(
+    ({ text }) => new RegExp(`(?:^|\\s)${n}=`).test(text)).length > 1);
   assert.deepEqual(rebound, [],
     `ci.yml assigns ${rebound.join(', ')} more than once — the later assignment can narrow ` +
-    'what the shared script returned, and each assignment passes the shape check alone.');
+    'what the shared script returned, and the first one still looks correct on its own.');
 
-  // And the variable shellcheck actually receives is one of those.
-  const wrongVar = [];
+  // And what shellcheck actually receives is one of those, whole. Flag values are
+  // dropped first (`--severity="$SEV"` is a legitimate variable that is not a
+  // file list); what is left are the operands.
+  const badOperand = [];
   for (const { line, text } of lines) {
     if (!/(?<![\w./-])shellcheck\s/.test(text)) continue;
-    for (const m of text.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g)) {
-      if (!shared.has(m[1])) wrongVar.push(`${line}: shellcheck … $${m[1]}`);
+    const operands = text.replace(/--[a-z][a-z-]*(=|\s+)(["']?)\$\{?[A-Za-z_][A-Za-z0-9_]*\}?\2/g, ' ');
+    if (/\$\(/.test(operands)) {
+      badOperand.push(`${line}: shellcheck … $( … ) — the scope is narrowed where it is used`);
+    }
+    for (const m of operands.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g)) {
+      if (!scopeVars.has(m[1])) badOperand.push(`${line}: shellcheck … $${m[1]}`);
     }
   }
-  assert.deepEqual(wrongVar, [],
-    'a shellcheck command in ci.yml expands a variable that was not assigned from a ' +
-    'SINGLE SOURCE scope script:\n      ' + wrongVar.join('\n      ') +
-    '\n      Deriving the list into a second variable is the same narrowing by another name.');
+  assert.deepEqual(badOperand, [],
+    `a shellcheck command in ci.yml is fed something other than the unfiltered ` +
+    `tests/lib/${SHELLCHECK_SCOPE} scope:\n      ` + badOperand.join('\n      ') +
+    '\n      Deriving the list into a second variable, filtering it inline, or passing the ' +
+    'other single source (a different, smaller set) are all the same narrowing by another name.');
 });

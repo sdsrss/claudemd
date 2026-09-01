@@ -27,7 +27,12 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected'];
+// `deprecated` is here because §2.S of the shipped spec defines it and this list
+// did not — a spec retired with the word the spec itself names would have failed
+// CI (v0.71.2 pre-tag review). `rejected` is the reverse mismatch: the tree uses
+// it (tasks/specs/s8-literal-provenance.md) and §2.S does not define it. Both
+// stay accepted; reconciling the two lists is a spec edit, not a test edit.
+const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected', 'deprecated'];
 
 // Statuses that assert the work is NOT done yet, and so can be contradicted by
 // the tree. `draft` is in the set because of the second instance, found by hand
@@ -35,9 +40,20 @@ const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected'];
 // executed in d801dd1 on the day it was written and sat at `status: draft` for
 // 113 days. The first version of this gate judged `approved` only and would
 // have walked past it — the drift does not care which of the two open words the
-// header uses. A draft that plans to CHANGE existing symbols still passes: it
-// has to declare every one of them as an artifact it produces, and a plan to
-// modify does not.
+// header uses.
+//
+// The cost, stated here because it is real and because the note that led to this
+// fix explicitly declined to pay it: every open spec must now carry two or more
+// `- Produces:` lines or the second assertion fails on it. One of the seven
+// tracked specs uses that convention today and §2.S does not define the field at
+// all, so this turns one file's habit into a requirement. It is deliberate — the
+// alternative is the silent `continue` that kept this gate green over an empty
+// subset for the whole of its first release — but it is a requirement, not a
+// free tightening: a draft written before its work exists has to say what it
+// intends to produce, and a plan only to MODIFY existing symbols has nothing to
+// declare and must either declare them anyway or not sit in an open status. If
+// that trade turns out wrong, the part worth keeping is the count in the
+// diagnostic, not this assertion.
 const OPEN_STATUSES = ['approved', 'draft'];
 
 // Floor over the whole spec set, not over the open subset. Zero open specs is
@@ -131,6 +147,12 @@ test('no open spec has already been fully implemented', (t) => {
     if (!OPEN_STATUSES.includes(status)) continue;
     const artifacts = declaredArtifacts(text);
     // Two or more, so a single generic name cannot condemn a spec by collision.
+    // Two generic names still can — a draft declaring `cache` and `resolve` is
+    // reported stale, since both appear in dozens of tracked files — and the
+    // reverse, one artifact that landed under a different name, silences the
+    // whole spec, because the match is all-or-nothing. Both are the same
+    // unanchored predicate seen from its two sides, both are reproduced in
+    // tasks/spec-status-drift-gate-blind-spots.md, and neither is fixed here.
     if (artifacts.length < 2) {
       unevaluable.push(`${s} — status: ${status}, declares ${artifacts.length} parseable \`- Produces:\` artifact(s)`);
       continue;
