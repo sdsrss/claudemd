@@ -1,9 +1,38 @@
 ---
-status: draft
-revision: 1
+status: implemented
+revision: 2
 ---
 
 # Routing single-source — §2.1 ↔ §EXT §4 reconciliation
+
+**Implemented in `d801dd1` (v0.17.0, spec v6.11.16) — the same day this file was
+written, 2026-05-11.** The `## design` block below is not a proposal: all 8 rows
+of it are, cell for cell, the §2.1 ROUTE table running in `spec/CLAUDE.md` today.
+Nobody flipped the header, so the file read as an open commitment for 113 days.
+
+Two things below are now false and are kept only because the reasoning is the
+record:
+
+- **The goal's premise is dead.** It cites "396B left in the 25K core ceiling
+  (98.42% utilization)". Core is 23445B today — 1555B of headroom, four times
+  what the plan was written to rescue. Anyone reopening this to reclaim bytes is
+  answering a question that closed.
+- **The success criteria are met, not pending.** #1 wanted `< 23904`; actual is
+  23445. #8 wanted the v6.11.16 bump; that is the commit above.
+
+Optional opts A/B/C were not all taken: the "Ambiguous trigger" line (opt A) and
+the "Tool escalation" list (opt B) are still in §2.1; the "Anti-patterns" line
+(opt C) is gone. The ≥700B target was met without A and B.
+
+**Why this sat stale, and what it cost the gate that should have caught it**:
+`tests/scripts/spec-status-drift.test.js` shipped hours before this correction
+and cannot see this file twice over — it only judges `status: approved` (this
+said `draft`), and this file declares zero `- Produces:` lines, so even a
+widened status filter would hit the silent `continue` at `artifacts.length < 2`.
+That is the pre-tag review's HIGH-3 with a live instance attached: the gate
+shipped with a CHANGELOG entry saying this class is now caught, while a second
+instance of the class lay in the same directory. See
+`tasks/spec-status-drift-gate-blind-spots.md`.
 
 ## goal
 
@@ -144,3 +173,7 @@ Core spec is hot-path; every L0/L1/L2 task reads §2.1 every turn. Cold-context 
 ## # Change log
 
 - v1 2026-05-11: initial draft after #3 sandbox-disposal diagnosis collapsed to v0.16.0 single-LOC fix; rolling into #5 routing single-source per the carry-forward sequence.
+- v2 2026-09-01: `draft` → `implemented`. Landed same-day in `d801dd1`; the
+  header was never flipped and the file was read as open work for 113 days.
+  Found by hand while auditing the reach of `spec-status-drift.test.js`, not by
+  that gate — which is the point recorded above.

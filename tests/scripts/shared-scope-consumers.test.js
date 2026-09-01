@@ -40,6 +40,25 @@ function singleSourceScopeFiles() {
 // production never sees".
 const codeOf = text => text.split('\n').map(l => l.replace(/(^|\s)#.*$/, '')).join('\n');
 
+// Backslash continuations joined into one logical line, keeping the first line's
+// number for the failure message. Shared by the two ci.yml tests below: the
+// mutant that walked past the first version of the hand-written-list test lived
+// on a continuation line, so anything reading commands out of this file has to
+// see them the way the shell does.
+function logicalLines(text) {
+  const out = [];
+  let buf = null;
+  text.split('\n').forEach((raw, i) => {
+    const cont = /\\\s*$/.test(raw);
+    const body = raw.replace(/\\\s*$/, '');
+    if (buf === null) buf = { line: i + 1, text: body };
+    else buf.text += ` ${body.trim()}`;
+    if (!cont) { out.push(buf); buf = null; }
+  });
+  if (buf !== null) out.push(buf);
+  return out;
+}
+
 test('every self-declared SINGLE SOURCE scope file is read by both callers', () => {
   const sources = singleSourceScopeFiles();
   assert.ok(sources.length >= 2,
@@ -78,18 +97,7 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
   // `lib/shell-files.sh` appear SOMEWHERE in the file, which the mutant still
   // satisfies.
   const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
-  const logical = [];
-  let buf = null;
-  ci.split('\n').forEach((raw, i) => {
-    const cont = /\\\s*$/.test(raw);
-    const body = raw.replace(/\\\s*$/, '');
-    if (buf === null) buf = { line: i + 1, text: body };
-    else buf.text += ` ${body.trim()}`;
-    if (!cont) { logical.push(buf); buf = null; }
-  });
-  if (buf !== null) logical.push(buf);
-
-  const offenders = logical
+  const offenders = logicalLines(ci)
     // Comments are not commands. Widening the trigger to match mid-line made
     // a legitimate `# shellcheck source=…` directive read as an invocation —
     // fail-closed, so an annoyance rather than a hole, but it is this release's
@@ -112,4 +120,76 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
     'ci.yml names shell files on a shellcheck command again — that list was a ' +
     'proper subset of run-all.sh\'s and is why tests/lib/shell-files.sh exists. ' +
     'Pass the scope as $FILES from that script.');
+});
+
+// The hole the two tests above share, reproduced in a tree copy during the
+// v0.71.0 delta re-review and green on both of them:
+//
+//     FILES=$(bash tests/lib/shell-files.sh | grep '^hooks/')
+//     shellcheck --severity=warning $FILES
+//
+// The single source is still read and no filename is written anywhere, yet the
+// CI step is once again narrower than the run-all gate it front-runs — which is
+// the entire defect R10-18c existed to close. A hand-written list is one way to
+// narrow the scope; a filter on the shared list is another, and reading the
+// command text only ever knew about the first.
+//
+// This still checks spelling — the honest fix is to compare the resulting SETS,
+// which means running the workflow's shell — but it checks the spelling of the
+// ASSIGNMENT rather than of the command, which is where the narrowing has to
+// happen. Three shapes fail here that passed before: a filter inside the
+// substitution, a second assignment to the same name, and a shellcheck fed from
+// a variable that never came from the shared script at all.
+test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', () => {
+  const sources = singleSourceScopeFiles();
+  assert.ok(sources.length >= 2, 'the SINGLE SOURCE set collapsed — see the first test');
+  const lines = logicalLines(fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8'))
+    .filter(({ text }) => !/^\s*#/.test(text));
+
+  // `NAME=$( … )`, body captured without nesting: a nested `$(` inside is itself
+  // a reason to fail, since it cannot be the plain call this requires.
+  const assignments = [];
+  for (const { line, text } of lines) {
+    for (const m of text.matchAll(/(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=\$\(([^)]*)\)/g)) {
+      assignments.push({ line, name: m[1], body: m[2].trim() });
+    }
+  }
+
+  // Flags are allowed (bash32-constructs.sh is called with --list); anything
+  // that could change the resulting set is not.
+  const shape = new RegExp(`^bash tests/lib/(${sources.map((s) => s.replace(/\./g, '\\.')).join('|')})((?: --[a-z-]+)*)$`);
+  const fromShared = assignments.filter(({ body }) => sources.some((s) => body.includes(`lib/${s}`)));
+
+  const filtered = fromShared.filter(({ body }) => !shape.test(body));
+  assert.deepEqual(filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`), [],
+    'a ci.yml variable is assigned from a SINGLE SOURCE scope script with something ' +
+    'appended — a pipe, a filter, a second command:\n      ' +
+    filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`).join('\n      ') +
+    '\n      That narrows the scope while leaving every "is the shared script read?" check ' +
+    'green, which is how the hand-written list came back. Assign the call alone.');
+
+  const shared = new Set(fromShared.map(({ name }) => name));
+  assert.ok(shared.size >= 1,
+    'no ci.yml variable is assigned from a SINGLE SOURCE scope script at all — the step ' +
+    'stopped reading the shared scope, or this gate stopped finding the assignment.');
+
+  // Assigned once. A second assignment can filter what the first produced, and
+  // each one on its own satisfies the shape above.
+  const rebound = [...shared].filter((n) => assignments.filter((a) => a.name === n).length > 1);
+  assert.deepEqual(rebound, [],
+    `ci.yml assigns ${rebound.join(', ')} more than once — the later assignment can narrow ` +
+    'what the shared script returned, and each assignment passes the shape check alone.');
+
+  // And the variable shellcheck actually receives is one of those.
+  const wrongVar = [];
+  for (const { line, text } of lines) {
+    if (!/(?<![\w./-])shellcheck\s/.test(text)) continue;
+    for (const m of text.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g)) {
+      if (!shared.has(m[1])) wrongVar.push(`${line}: shellcheck … $${m[1]}`);
+    }
+  }
+  assert.deepEqual(wrongVar, [],
+    'a shellcheck command in ci.yml expands a variable that was not assigned from a ' +
+    'SINGLE SOURCE scope script:\n      ' + wrongVar.join('\n      ') +
+    '\n      Deriving the list into a second variable is the same narrowing by another name.');
 });

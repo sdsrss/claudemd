@@ -29,10 +29,22 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected'];
 
-// Floor over the whole spec set, not over the `approved` subset. Zero approved
-// specs is the correct steady state — every commitment met — so an empty subset
-// must be allowed to pass, and the thing that has to be non-empty is the set the
-// machinery walked to get there.
+// Statuses that assert the work is NOT done yet, and so can be contradicted by
+// the tree. `draft` is in the set because of the second instance, found by hand
+// the same day this file shipped: tasks/specs/routing-single-source.md was
+// executed in d801dd1 on the day it was written and sat at `status: draft` for
+// 113 days. The first version of this gate judged `approved` only and would
+// have walked past it — the drift does not care which of the two open words the
+// header uses. A draft that plans to CHANGE existing symbols still passes: it
+// has to declare every one of them as an artifact it produces, and a plan to
+// modify does not.
+const OPEN_STATUSES = ['approved', 'draft'];
+
+// Floor over the whole spec set, not over the open subset. Zero open specs is
+// the correct steady state — every commitment met — so an empty subset must be
+// allowed to pass, and the thing that has to be non-empty is the set the
+// machinery walked to get there. What the floor cannot do is tell an empty
+// subset from an unevaluated one; that is the second test's job, below.
 const SPEC_FLOOR = 5;
 
 function trackedSpecs() {
@@ -95,16 +107,35 @@ test('every tracked spec carries a known status', () => {
     bad.join('\n      '));
 });
 
-test('no `approved` spec has already been fully implemented', () => {
+// The `continue` on a spec with fewer than two declared artifacts used to be
+// silent, and that made "judged them all, every commitment is open" and "judged
+// nothing at all" the same output. It was not a hypothetical: `- Produces:` is
+// used by exactly one of the seven tracked specs — the one this gate was written
+// against — so the subset actually evaluated was empty on the day it shipped,
+// and the pre-tag review escaped it by restating an already-shipped plan in the
+// prose style the other six use. A gate that cannot say how many objects it
+// judged cannot be believed when it says they were clean.
+//
+// So the unevaluated ones are now a failure of their own rather than a skip:
+// an open spec that declares no parseable artifact is a spec whose completion
+// this gate cannot check, and saying so is the only honest report available.
+test('no open spec has already been fully implemented', (t) => {
   const { code, paths } = codeHaystack();
+  const specs = trackedSpecs();
   const stale = [];
-  for (const s of trackedSpecs()) {
+  const unevaluable = [];
+  let judged = 0;
+  for (const s of specs) {
     const text = fs.readFileSync(path.join(ROOT, s), 'utf8');
-    if (statusOf(text) !== 'approved') continue;
+    const status = statusOf(text);
+    if (!OPEN_STATUSES.includes(status)) continue;
     const artifacts = declaredArtifacts(text);
     // Two or more, so a single generic name cannot condemn a spec by collision.
-    // A spec that declares nothing parseable is not judged here at all.
-    if (artifacts.length < 2) continue;
+    if (artifacts.length < 2) {
+      unevaluable.push(`${s} — status: ${status}, declares ${artifacts.length} parseable \`- Produces:\` artifact(s)`);
+      continue;
+    }
+    judged++;
     const present = artifacts.filter((a) => (
       /\.(sh|js|mjs|tsv)$/.test(a)
         ? paths.has(a)
@@ -114,9 +145,22 @@ test('no `approved` spec has already been fully implemented', () => {
       stale.push(`${s} — declares [${artifacts.join(', ')}], all present in the tree`);
     }
   }
+
+  // Printed on the green path too, which is the point: the count is the
+  // difference between a clean scan and an empty one.
+  t.diagnostic(`${specs.length} tracked spec(s); ${judged + unevaluable.length} open ` +
+    `(${OPEN_STATUSES.join('/')}); ${judged} evaluated against the tree, ${unevaluable.length} not evaluable`);
+
   assert.deepEqual(stale, [],
-    'a spec still marked `status: approved` — i.e. an open commitment — has every artifact ' +
-    'it plans already in the tree:\n      ' + stale.join('\n      ') +
+    `a spec still marked open — i.e. an unmet commitment — has every artifact it plans ` +
+    'already in the tree:\n      ' + stale.join('\n      ') +
     '\n      Flip it to `status: implemented` and record the commit that landed it. If the ' +
     'work really is outstanding, the names collided and the spec should say so.');
+
+  assert.deepEqual(unevaluable, [],
+    'an open spec declares nothing this gate can look for, so its completion was not ' +
+    'checked — and a scan that reports green over an empty subset is the failure this ' +
+    'gate exists to prevent:\n      ' + unevaluable.join('\n      ') +
+    '\n      Give it two or more `- Produces: `name`` lines naming what it creates, or set ' +
+    'its status to implemented/rejected if it is no longer an open commitment.');
 });

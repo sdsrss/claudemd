@@ -17,12 +17,25 @@
 // explain it, or naming a consumer, is prose about code; a gate that accepts it
 // is reading its own documentation back (feedback_gate_reads_prose_not_code, three
 // separate instances in this repo inside one week).
+//
+// The spelling assertion has a ceiling, and the pre-tag review found it: swap
+// the alternation to `gs|sp`, keep every other byte, and you have a
+// byte-different regex with identical behaviour that the ban cannot see — 864
+// tests green. That particular escape is harmless (an equivalent parser IS the
+// shared parser, in every way a caller can observe), but the same move with one
+// rule dropped is not, and the ban cannot tell the two apart. So the third test
+// asks the question that actually matters, of the consumer that has its own
+// runtime: parse the real §4 table through doctor and require the primary set
+// it resolves to equal, name for name, what the shared module returns.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { doctor } from '../../scripts/doctor.js';
+import { routingPrimaries } from '../../scripts/lib/spec-routing.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const MODULE = 'scripts/lib/spec-routing.js';
@@ -73,4 +86,53 @@ test('every known consumer imports the shared tokenizer', () => {
   assert.deepEqual(unwired, [],
     `consumer(s) of the §4 routing tables that do not import ${MODULE}:\n      ` + unwired.join('\n      ') +
     `\n      Either the file grew its own copy of the parser, or it stopped reading §4 and should come off this list.`);
+});
+
+// Behaviour, not text. doctor is the consumer with a runtime of its own, so it
+// can be asked the question directly: given the shipped §4 table as the
+// installed spec and every primary switched off, the skills it names back are
+// exactly the ones it parsed. Compared against the shared module over the same
+// bytes, that is a parity assertion — the shape this repo already uses for the
+// §10-V two-engine check and the cwd encoder.
+//
+// The fixture is the real spec on purpose. §4 carries `**gs:/investigate**`,
+// bare `/name` continuations and a Notes column full of skill mentions that are
+// not primaries; a synthetic table would have to reproduce all three to be worth
+// anything, and would then drift from the one in production. A private parser
+// that drops any one of those rules resolves a different set here and fails.
+test('doctor resolves §4 into exactly the shared tokenizer\'s primary set', async () => {
+  const expected = [...routingPrimaries(fs.readFileSync(path.join(ROOT, 'spec/CLAUDE-extended.md'), 'utf8')).keys()];
+  assert.ok(expected.length >= 15,
+    `the shared module resolved only ${expected.length} primaries from the shipped spec — ` +
+    'the §4 table moved, and this parity check would be comparing two empty answers.');
+
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-routing-parity-'));
+  const savedHome = process.env.HOME;
+  try {
+    process.env.HOME = home;
+    fs.mkdirSync(path.join(home, '.claude/.claudemd-state'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.claude/logs'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.claude/.claudemd-manifest.json'),
+      JSON.stringify({ version: '0.1.0', entries: [] }));
+    fs.copyFileSync(path.join(ROOT, 'spec/CLAUDE-extended.md'), path.join(home, '.claude/CLAUDE-extended.md'));
+    // Every primary off, so the check has to name all of them: the report is the
+    // only window onto what doctor parsed, and a partial override would only
+    // reveal the tokens it happened to ask about.
+    fs.writeFileSync(path.join(home, '.claude/settings.json'), JSON.stringify({
+      skillOverrides: Object.fromEntries(expected.map((t) => [t.split('/')[1], 'off'])),
+    }));
+
+    const check = (await doctor({})).checks.find((c) => c.name === 'routing:skills-enabled');
+    assert.ok(check, 'routing:skills-enabled did not run — the staging above stopped matching what doctor reads');
+    const named = (check.detail.match(/skillOverrides: ([^.]+)\./) || [])[1];
+    assert.ok(named, `routing:skills-enabled did not report the disabled primaries; detail was:\n      ${check.detail}`);
+
+    assert.equal(named, expected.join(', '),
+      'doctor resolved a different §4 primary set than scripts/lib/spec-routing.js does over the ' +
+      'same spec. A consumer parsing §4 its own way is the drift the extraction removed, and it ' +
+      'survives every spelling check because the copy need not be spelled the same.');
+  } finally {
+    process.env.HOME = savedHome;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
