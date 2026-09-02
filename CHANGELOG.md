@@ -8,6 +8,40 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.72.0] - 2026-09-02
+
+Round 3 against the 2026-09-02 audit. Spec unchanged at **v6.25.4**.
+
+Where round 1 fixed code that wrote the user's files wrong and round 2 fixed gates that were silently passing, this round fixes **checks that had no enforcement point at all** — `npm run lint` had exited 1 on a clean checkout for as long as eslint had been configured, and `format:check` was referenced by nothing. A check nobody can run is not a check.
+
+### User-visible
+
+- **`/claudemd-clean-residue` can now see `tmp.XXXXXXXXXX`.** It matched on the `claudemd-` prefix, and a bare `mktemp -d` produces the default shape — so this project's recycler was blind to the largest class of residue this project's own tests produced. Measured on the maintainer's box: **2.4 GB across 93 directories, 150-250 new ones a day**, none of it visible to the one command that exists to find it. `doctor`'s ephemeral-state check looks only at `~/.claude/.claudemd-state` and never saw it either. Every run now **counts and sizes** that class; a new `--include-unowned` flag deletes it. Deleting is opt-in because nothing can prove those entries were created by claudemd — silently widening what `--apply` destroys is not something a cleanup tool should do. The name shape is matched exactly (`tmp.` + ten alphanumerics), so a hand-made `tmp.backup` stays out of scope.
+- **`/claudemd-doctor` no longer exits 3 forever on a machine without `gh`.** `gh` is needed only by `ship-baseline-check`; counting its absence made the exit code permanently non-zero for anyone who does not push to GitHub — the exact "steady state is non-zero, so the exit code stops carrying information" failure the ADVISORY list was written to prevent, nine lines below the paragraph describing it. Still reported, with what its absence costs.
+- **`CLAUDEMD_SPEC_ACTION` refuses a value it does not understand.** `Delete` (capitalised) and `restore ` (trailing space) used to fall through to `keep`, exit 0, and report `specAction: "keep"` — the caller asked for one disposition of their spec files and silently got the opposite. Now an exact whitelist, exit 1, matching the loud validation `update.js` already applies to the same-shaped env.
+
+The last two are `fix:` under §2's exclusion for restoring documented behaviour — `doctor`'s own ADVISORY comment and `uninstall`'s own USAGE already said what should happen.
+
+### Engineering: the checks became enforceable
+
+- **eslint 30 → 0, prettier 99 files → 0, then a blocking CI job.** The order is not reversible: a gate added over a red baseline is red on arrival and gets routed around. The burn-down is five mechanical shapes; the one non-mechanical decision was `preserve-caught-error`, where all five sites re-threw with context and dropped the original, so each gained `{ cause: e }`. Regex de-escaping was verified as a set rather than by reading — 1,336 membership checks over an ASCII sweep plus real call-site strings, 0 divergences. The new `static` job is the only one that runs `npm ci`; the matrix job keeps running with no install, because "the suite works from a bare checkout" is a repo invariant and installing there would stop testing it.
+- **The formatting sweep broke two real gates, and that is the interesting part.** `prettier --write` changes layout and not semantics — proven per-file, 99/99 identical ASTs with positions stripped — so anything still red afterwards had a predicate keyed on *where text sits on a line*. Two did. `lint-argv`'s suppression token was accepted only as a trailing comment, so wrapping a long line moved it and **re-armed the gate on code nobody had touched**; the ReDoS gate's regex extractor matched only single-line declarations, so a wrapped one made it throw and the **whole timing gate stopped running**. Both are fixed in their own commit *before* the formatting commit, so the sweep lands green. The suppression token is now honoured on the preceding line too — the `eslint-disable-next-line` shape, which is what survives reflow.
+- **The real-tree JS assertions run somewhere.** `baseline-metrics.test.js` gates its import-graph and long-function assertions behind `if (acorn)`, and acorn is a devDependency, so on every CI leg that branch printed `SKIP` and asserted nothing — including the `cycles.count === 0` result `docs/ARCHITECTURE.md` cites. Keying the failure on plain `CI` would be wrong (acorn is genuinely absent there, deliberately), so the requirement rides with the job that installs it.
+
+### Single-sourcing, with the gate each extraction needed
+
+- **One parser for the spec `**Sizing**` line.** `version-cascade-check` and `spec-coherence-audit` both read it at tag time and each had its own regex, with different ideas of what shapes are legal. Not theoretical: restoring the old parser in a tree copy makes **3 of 5 legal line shapes produce opposite verdicts** from the two gates. "The release gates disagree" has no correct resolution at the moment you need one.
+- **One `--days` precedence rule** instead of five copies with five env-var names, one **§8 immutable-section predicate** instead of two byte-identical copies whose comment claimed they were the same, one **signal-event set** whose deny half now derives from `isBlockingDeny` (a new `deny-*` event used to be counted as a real block everywhere and silently dropped from the release-header trend), and the `~/.claude/projects` root through `paths.js` in the four remaining places that rebuilt it.
+- **`lintArgv.hits` reports a number.** It matched `/^\S+:\d+:/` against stdout; `lint-argv` writes to stderr in a different shape, so the field was `null` in exactly the runs where the gate had something to report.
+
+### Gates added
+
+`tests/lib/mktemp-template.sh` (any tracked `.sh` whose `mktemp` call has no template), an extractor control for `subject-set-drift` (the v0.69.0 pre-tag review ran it once by hand and it was never encoded — under a broken `canon()` every file reads as "derived" and the gate passes over nothing), consumer-enumeration gates for each extraction above, and regression tests for all five small fixes. Every commit ships RED controls run in a full-tree copy: **30 mutations, 30 RED**, each verified by checksum to have landed.
+
+### Metrics
+
+eslint 30 → 0, prettier 99 → 0, shellcheck 0, `lint-argv` 0, 0 import cycles, `npm run lint` exits 0 for the first time. Long functions 40 → 54 and jscpd 1.70% → 1.82% are **entirely** the formatter: measured at the prettier commit and again six behaviour commits later, both 54, and the bash count is unchanged at 7 because prettier does not touch `.sh`.
+
 ## [0.71.4] - 2026-09-02
 
 Two rounds of fixes against the round-11 global audit: **15 findings**, three of them P0. Spec unchanged at **v6.25.4**.
