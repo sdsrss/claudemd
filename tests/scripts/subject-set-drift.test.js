@@ -193,6 +193,32 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
     `only ${scanned} file(s) reached the enumeration scan (${derived} derived) — the pre-filter is too tight to prove anything`);
 });
 
+// The standing half of the v0.69.0 pre-tag control, which injected all three
+// shapes by hand once and was never encoded. Without it, an edit that breaks
+// enumerationsIn() — a regex that stops matching, a canon() that stops
+// stripping `.sh` — turns the scan above into 115 files of "derived", and the
+// gate reports green over an adjudicated set of zero.
+test('enumerationsIn detects all three shapes it claims to (extractor control)', () => {
+  const members = HOOK_BASENAMES;
+  const [a, b, c] = members;
+  const cases = [
+    // Parenthesised, per the extractor's own shape — a bare `case a|b|c)` arm
+    // has no opening paren and is deliberately out of scope.
+    ['alternation',  `const RE = /(${a.replace(/\.sh$/, '')}|${b.replace(/\.sh$/, '')}|${c.replace(/\.sh$/, '')})/;`],
+    ['array',        `const L = ['${a}', '${b}', '${c}'];`],
+    ['object-keys',  `const M = { '${a}': 1, '${b}': 2, '${c}': 3 };`],
+  ];
+  for (const [kind, src] of cases) {
+    const found = enumerationsIn(src, members);
+    assert.ok(found.some(e => e.kind === kind && e.hit.size === 3),
+      `enumerationsIn no longer extracts the ${kind} shape — every file would read as "derived" and this gate would pass over nothing. Source: ${src}`);
+  }
+  // Below MIN_MEMBERS must NOT register, or the gate turns into noise on any
+  // file that mentions two hooks.
+  assert.equal(enumerationsIn(`const L = ['${a}', '${b}'];`, members).length, 0,
+    `a 2-member list registered as an enumeration — MIN_MEMBERS (${MIN_MEMBERS}) is not being applied`);
+});
+
 test('deliberately partial hook lists name their complement', () => {
   for (const p of PARTITIONS) {
     const src = fs.readFileSync(path.join(REPO_ROOT, p.file), 'utf8');
