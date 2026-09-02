@@ -11,6 +11,160 @@ For full design rationale, see `docs/superpowers/specs/2026-04-21-claudemd-plugi
 
 Dependency flow is strictly downward: L1 never imports L2; `bin/` imports `scripts/lib/` but never the reverse. A broken plugin install leaves hooks functional (or fail-open). Broken hooks leave commands functional.
 
+## Module inventory
+
+Module → responsibility → external interface. "External" means what a caller outside the module relies on: a CLI shape, exported symbols, or a file/env contract. Hooks are one row here because their interface is uniform; the per-hook purpose table is [Hook taxonomy](#hook-taxonomy) below. Re-derive the import edges with `node scripts/baseline-metrics.js --json` (`cycles` block) rather than trusting this list.
+
+**L1 — hooks (bash)**
+
+| Module | Responsibility | External interface |
+|---|---|---|
+| `hooks/*.sh` (15 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
+| `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_spawn_install` |
+| `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
+| `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
+| `memory-tags.sh` | MEMORY.md `[tag]` index parsing + prompt matching in one awk pass | `memtags_match` / `memtags_failopen`; spills past the 128 KiB env cliff to `$TMPDIR/claudemd-memtags-hay-*` |
+| `hooks/banned-vocab.patterns` | §10-V pattern list — the single source for the bash hook and the JS engine | One pattern per line; read by `banned-vocab-check.sh`, `transcript-vocab-scan.sh` and `scripts/lib/lint.js` |
+
+**L2 — management scripts (Node ≥20, ESM)**
+
+| Module | Responsibility | External interface |
+|---|---|---|
+| `scripts/install.js` | Copy spec into `~/.claude/`, merge hook entries into `settings.json`, write manifest, adopt statusLine, prune plugin cache | `node scripts/install.js` (no flags; env `CLAUDEMD_NO_STATUSLINE`, …); wired by the plugin lifecycle and by `hook_spawn_install` |
+| `scripts/uninstall.js` | Reverse of install: unmerge hooks, clear manifest, optional `--purge` of state | `node scripts/uninstall.js` (env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
+| `scripts/update.js` | Diff installed `~/.claude/CLAUDE*.md` against the shipped spec; apply on request | `node scripts/update.js`; env `CLAUDEMD_UPDATE_CHOICE=apply-all` |
+| `scripts/status.js` | Plugin / spec / kill-switch / log status | `node scripts/status.js [--verbose]` → JSON |
+| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, routing primaries, memory layers | `node scripts/doctor.js [--prune-backups=N]` |
+| `scripts/toggle.js` | Flip one hook's `DISABLE_*` env in `settings.json` | `node scripts/toggle.js <hook-name>` |
+| `scripts/audit.js` | Aggregate rule-hits over a window | `node scripts/audit.js [--days=N]` → JSON |
+| `scripts/hard-rules-audit.js` | Join `spec/hard-rules.json` with rule-hits → demote candidates | `node scripts/hard-rules-audit.js [--days=N]` |
+| `scripts/sparkline.js` | Rule-usage trend across three windows | `node scripts/sparkline.js` → markdown block |
+| `scripts/sampling-audit.js` | Retrospective transcript scan for 8 self-enforced HARD rules | `node scripts/sampling-audit.js [--global] [--sample=N] …` |
+| `scripts/lesson-bypass-audit.js` | Cite-recall of memory hints vs later transcript activity | `node scripts/lesson-bypass-audit.js [--days=N]` |
+| `scripts/spec-coherence-audit.js` | Read-only core ↔ extended ↔ MEMORY.md ↔ patterns coherence audit | `node scripts/spec-coherence-audit.js` |
+| `scripts/safety-coverage-audit.js` | Static check that hooks implement every §8 clause they quote | `node scripts/safety-coverage-audit.js` |
+| `scripts/clean-residue.js` | Reap sentinels / stale tmp / orphan state past retention | `node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]` |
+| `scripts/statusline-adopt.js` | Manage the statusLine slot in `settings.json` | `node scripts/statusline-adopt.js <detect\|adopt\|remove> [--json] [--force]` |
+| `scripts/design-detect.js` | Stateless design-token detector for `/claudemd-design-adopt` | `node scripts/design-detect.js [--json] [--cwd=PATH]` |
+| `scripts/lint-argv.js` | Repo gate against argv silent-fallback shapes | `node scripts/lint-argv.js` (exit 1 on hit); `npm run lint:argv` |
+| `scripts/version-cascade-check.js` | Pre-tag version / Sizing-line consistency | `node scripts/version-cascade-check.js`; `npm run version-check` |
+| `scripts/baseline-metrics.js` | Repeatable code-health baseline (files, long functions, duplication, cycles, coverage, lint) | `node scripts/baseline-metrics.js [--json] [--skip-*]`; `npm run metrics` |
+| `scripts/statusline.sh` | PS1-style statusLine renderer | Invoked by Claude Code's `statusLine.command`; stdin = status JSON |
+| `scripts/refresh-plugin.sh` | Marketplace update → uninstall → install in one shot | `bash scripts/refresh-plugin.sh` (via `/claudemd-refresh`) |
+| `scripts/perf-baseline.sh` | Hook overhead measurement over a fixed command set | `bash scripts/perf-baseline.sh` |
+
+**L2 shared library (`scripts/lib/`, acyclic, rooted at `paths.js`)**
+
+| Module | Responsibility | Exports |
+|---|---|---|
+| `paths.js` | Every `~/.claude` location, plugin root, manifest, semver | `stateDir` `manifestPath` `settingsPath` `logsDir` `backupRoot` `specHome` `pluginCacheDir` `resolvePluginRoot` `readPluginVersion` `readManifest` `encodeProjectCwd` `projectDir` `semverCmp` `SPEC_FILES` … |
+| `argv.js` | Strict `--key=value` argv parser shared by every script | `parseStrict` `printHelpAndExit` `parsePositiveInt` `validateAndExpandFlags` `ArgvError` |
+| `settings-merge.js` | Read / atomic-write `settings.json`; merge and unmerge hook entries | `readSettings` `writeSettings` `mergeHook` `unmergeHook` `isClaudemdLegacyHookCommand` |
+| `backup.js` | Timestamped backups of spec + settings; prune; legacy detection; restore | `createBackup` `listBackups` `pruneBackups` `backupSettingsFile` `restoreBackup` `findLegacySpecBackups` `BACKUP_LABELS` … |
+| `hook-registry.js` | Single source of hook names ↔ `DISABLE_*` env suffixes | `HOOK_REGISTRY` `HOOK_BASENAMES` `HOOK_ENV_SUFFIXES` `HOOK_NAME_TO_ENV` |
+| `spec-hash.js` / `spec-diff.js` / `install-drift.js` | Installed-vs-shipped comparison: hash, unified diff, hook-entry drift | `sha256File` `compareSpecs` / `diffSpec` / `compareHooks` |
+| `lint.js` | §10-V banned-vocab engine + transcript parser (shared with `bin/`) | `readPatterns` `scan` `parseTranscript` `stripIdentifiers` `stripGitCommitComments` `formatHumanReadable` `formatJSON` `DEFAULT_PATTERNS_FILE` … |
+| `rule-hits-parse.js` | JSONL reader + every aggregation the audit scripts use | `readHits` `groupBySection` `groupByHook` `topPatterns` `byBypass` `byFailOpen` `byTrend` `blockingDenyCount` … |
+| `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget | `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `MEMORY_INDEX_BUDGET_BYTES` |
+| `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
+| `spec-routing.js` | §2.1 routing-table parser | `routingPrimaries` `tableRows` `skillTokens` `SKILL_ALIASES` |
+| `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
+| `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |
+| `cache-prune.js` | Prune older plugin-cache versions | `pruneCache` |
+| `transcript-user-turn.js` | Normalise the two user-turn content shapes (string vs array) | `userTurnText` `isUserTurn` |
+
+**L3 / CLI / spec**
+
+| Module | Responsibility | External interface |
+|---|---|---|
+| `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
+| `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
+| `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
+| `tests/` | 62 node suites, 28 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+
+## Module dependency graph
+
+Static import edges (JS `import` / `import()`, bash `source`), as extracted by `scripts/baseline-metrics.js`. Arrows point at the dependency. There are no cycles; the metrics script's real-tree test asserts that.
+
+```
+bin/claudemd-lint.js ──► scripts/lib/lint.js, scripts/lib/argv.js
+
+scripts/install.js ──► lib/{backup, cache-prune, hook-registry, paths, settings-merge, statusline, argv}
+scripts/uninstall.js ──► lib/{backup, hook-registry, paths, settings-merge, statusline, argv}
+scripts/update.js ──► lib/{backup, paths, spec-diff, argv}
+scripts/status.js ──► lib/{hook-registry, paths, settings-merge, spec-hash, argv}
+scripts/toggle.js ──► lib/{hook-registry, settings-merge, argv}
+scripts/doctor.js ──► scripts/clean-residue.js, lib/{backup, hook-registry, install-drift, memory-maintenance,
+                      memory-tags, paths, rule-hits-parse, runbook-review-check, settings-merge, spec-hash,
+                      spec-routing, argv}
+scripts/audit.js ──► scripts/sampling-audit.js, lib/{paths, rule-hits-parse, argv}
+scripts/sampling-audit.js ──► lib/{lint, paths, rule-hits-parse, transcript-user-turn, argv}
+scripts/{hard-rules-audit, lesson-bypass-audit, sparkline}.js ──► lib/{paths, rule-hits-parse, argv}
+scripts/spec-coherence-audit.js ──► lib/{lint, paths, argv}
+scripts/{safety-coverage-audit, clean-residue, version-cascade-check}.js ──► lib/{paths, argv}
+scripts/statusline-adopt.js ──► lib/{statusline, paths, argv}
+scripts/{design-detect, lint-argv}.js ──► lib/argv
+scripts/baseline-metrics.js ──► lib/argv
+
+scripts/lib/statusline.js ──► lib/{backup, settings-merge, statusline-hosts, paths}
+scripts/lib/install-drift.js ──► lib/spec-hash ──► lib/paths
+scripts/lib/{backup, cache-prune, memory-maintenance, settings-merge, statusline-hosts}.js ──► lib/paths
+scripts/lib/{argv, lint, rule-hits-parse, memory-tags, spec-routing, spec-diff, hook-registry,
+             runbook-review-check, transcript-user-turn}.js ──► (leaf: node: builtins only)
+
+hooks/<every hook>.sh ──► hooks/lib/hook-common.sh ──► hooks/lib/rule-hits.sh
+hooks/{mem-audit, memory-prompt-hint, sandbox-disposal-check, session-start-check, session-summary,
+       ship-baseline-check, version-sync}.sh ──► hooks/lib/platform.sh
+hooks/{memory-prompt-hint, memory-read-check}.sh ──► hooks/lib/memory-tags.sh
+scripts/perf-baseline.sh ──► hooks/lib/rule-hits.sh
+```
+
+Two script-to-script edges exist and are deliberate: `doctor.js` reuses `clean-residue.js`'s orphan scan, and `audit.js` reuses `sampling-audit.js`'s self-compliance section. Neither is imported back.
+
+## Main flows
+
+Each flow in at most five steps. File names are the entry points to read.
+
+**1. Bootstrap / version sync (SessionStart)**
+1. Claude Code runs `session-start-check.sh` with the session event on stdin.
+2. The hook compares the manifest version and `cmp`s the installed spec against the shipped copy.
+3. On mismatch it calls `hook_spawn_install`, which runs `scripts/install.js` detached under a 10 s timeout.
+4. `install.js` backs up the existing spec, copies the shipped files with a SHA-256 post-check, merges hook entries into `settings.json`, writes the manifest.
+5. Failure leaves `bootstrap-failed.json`; the next SessionStart banner reports it.
+
+**2. Bash command gate (PreToolUse:Bash)**
+1. Four hooks run in order: `pre-bash-safety-check.sh`, `banned-vocab-check.sh`, `ship-baseline-check.sh`, `memory-read-check.sh`.
+2. Each calls `hook_read_bash_fields` (jq parse, heredoc-body strip, line-continuation flatten) and exits early when `hook_is_readonly_bash` classifies the command as read-only.
+3. The hook matches its own command shapes (rm -rf $VAR / unpinned npx / curl|sh; git commit -m prose; git push with red base-branch CI; ship verbs without a matched MEMORY.md Read).
+4. A hit emits one deny JSON object via `hook_deny` (or is downgraded to a bypass row by an in-command `[allow-*]` token); a miss emits nothing. Exit is always 0.
+5. `hook_record` appends the verdict to `~/.claude/logs/claudemd.jsonl` with `spec_section`.
+
+**3. Spec update (`/claudemd-update`)**
+1. `scripts/update.js` resolves the plugin root and the installed `~/.claude/CLAUDE*.md`.
+2. `diffSpec` produces a per-file unified diff; the default run prints it and exits.
+3. With `CLAUDEMD_UPDATE_CHOICE=apply-all`, `createBackup` snapshots the installed files.
+4. The shipped files are copied over the installed ones.
+5. `session-start-check.sh` sees no drift on the next session and stays silent.
+
+**4. Audit loop (rule-hits → `/claudemd-audit` → `/claudemd-doctor`)**
+1. Every hook verdict lands in `claudemd.jsonl` (flow 2, step 5).
+2. `scripts/audit.js` reads the window with `readHits`, aggregates `groupBySection` / `topPatterns` / `byBypass`, and appends the sampling-audit self-compliance section.
+3. `scripts/hard-rules-audit.js` joins the same rows with `spec/hard-rules.json` to list rules with zero hits.
+4. `scripts/doctor.js` surfaces those as demote candidates alongside spec drift, hook drift and backup inventory.
+5. A spec edit that follows goes through `spec/` + version bump + ship, never `~/.claude/` directly.
+
+**5. Standalone lint (`claudemd-cli`, npm)**
+1. `bin/claudemd-lint.js` validates argv with `validateAndExpandFlags` (space-form flags, auto `--file` for an existing path).
+2. `readPatterns` loads `hooks/banned-vocab.patterns`; commit-message mode strips git's `#` template and scissors block.
+3. `scan` runs the same matcher the hook uses and reports hits with pattern + context.
+4. Output is human-readable or `--json`; exit 1 on any hit so pre-commit hooks and CI can gate on it.
+
+**6. Memory hint and read enforcement**
+1. On UserPromptSubmit, `memory-prompt-hint.sh` runs `memtags_match` over the prompt against MEMORY.md `[tag]` entries.
+2. Matches are emitted as additionalContext naming the files to Read (advisory).
+3. When a later Bash command is a ship verb, `memory-read-check.sh` checks the transcript for a Read of a matched file.
+4. No Read → deny with the file list; an in-command `[skip-memory-check: <reason>]` token records a bypass row (reason kept in `extra.bypass_reason`) instead.
+
 ## Positioning: §8 is a guardrail, not a security boundary
 
 The `pre-bash-safety-check.sh` §8 gate (rm -rf $VAR / unpinned npx / curl|sh) steers the agent away from its **own** mistakes and makes rule-adherence observable — it is NOT an anti-injection security boundary. Any `DISABLE_*` env var or in-command `[allow-*]` escape token bypasses it by design, and it matches command shapes with a heuristic (normalized then blocklisted), so a motivated adversary can evade it. Investment goes to closing false-negatives for *natural* command shapes (e.g. `/bin/rm`, `${IFS}`-split), not to becoming a sandbox. Treat it as discipline tooling with a kill-switch.

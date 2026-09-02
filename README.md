@@ -371,7 +371,7 @@ claudemd/
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 18 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
+├── scripts/                  # 19 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.25.4 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/

@@ -87,3 +87,9 @@ tasks/*
 !tasks/npm-download-attribution-2026-08-24.md
 !tasks/s8-sanitize-escaped-quote-gap.md
 !tasks/legacy-spec-backup-migration.md
+
+# dev tooling (eslint / prettier / c8 / jscpd / acorn) — devDependencies only,
+# never shipped: .npmignore whitelists the tarball and the marketplace clone
+# does not npm install.
+/node_modules/
+/coverage/

@@ -26,10 +26,27 @@
     "test:scripts": "bash -c 'source tests/lib/env-hygiene.sh && claudemd_reset_test_env && node --test tests/scripts/*.test.js'",
     "test:hooks": "for t in tests/hooks/*.test.sh; do bash \"$t\" || exit 1; done",
     "lint:argv": "node scripts/lint-argv.js",
-    "version-check": "node scripts/version-cascade-check.js"
+    "version-check": "node scripts/version-cascade-check.js",
+    "test:coverage": "c8 --all --src=bin --src=scripts --include='bin/**/*.js' --include='scripts/**/*.js' --reporter=text-summary --reporter=html --reports-dir=coverage npm run test:scripts",
+    "lint": "npm run lint:sh && npm run lint:js && npm run lint:argv && npm run version-check",
+    "lint:sh": "F=$(bash tests/lib/shell-files.sh) && shellcheck --severity=warning $F",
+    "lint:js": "eslint bin scripts tests eslint.config.js",
+    "format": "prettier --write bin scripts tests eslint.config.js",
+    "format:check": "prettier --check bin scripts tests eslint.config.js",
+    "metrics": "node scripts/baseline-metrics.js",
+    "check": "npm run lint && npm test"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "acorn": "8.18.0",
+    "c8": "12.0.0",
+    "eslint": "10.9.1",
+    "globals": "17.12.0",
+    "jscpd": "5.1.1",
+    "prettier": "3.9.6"
+  }
 }

@@ -1,0 +1,15 @@
+# prettier scope is JS only (`npm run format`); markdown / JSON / shell are
+# owned by other gates (shellcheck for .sh, version-cascade-check for the
+# spec files) and reflowing them would churn shipped artifacts for no gain.
+node_modules/
+tests/fixtures/
+coverage/
+.code-graph/
+docs/
+tasks/
+spec/
+hooks/
+commands/
+*.md
+*.json
+*.sh
