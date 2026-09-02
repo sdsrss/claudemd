@@ -95,7 +95,10 @@ echo "== Node.js script tests =="
 # it. A `[[ -n "$NODE_TMP" ]]` guard does not help — the string is non-empty,
 # just wrong. Verified: `TMPDIR=/nonexistent bash -c 'X=$(cd "$(mktemp -d)" && pwd -P)'`
 # yields the cwd. Physical-path resolution is still needed (macOS /var → /private/var).
-NODE_TMP=$(mktemp -d) || { echo "FAIL: mktemp -d failed — cannot isolate the node leg"; exit 1; }
+NODE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed — cannot isolate the node leg"; exit 1; }
+# Removed explicitly ~20 lines down; the trap covers the paths that never reach
+# that line (a failing node leg under `set -e`, a signal) — 2026-09-02 audit R11-38.
+trap '[[ -n "${NODE_TMP:-}" ]] && rm -rf "$NODE_TMP"' EXIT
 NODE_TMP=$(cd "$NODE_TMP" && pwd -P) || { echo "FAIL: cannot resolve $NODE_TMP"; exit 1; }
 if ! TMPDIR="$NODE_TMP" node --test --test-timeout=180000 "$HERE"/scripts/*.test.js; then
   FAIL=$((FAIL + 1))
@@ -114,6 +117,7 @@ else
   echo "-- node suites left 0 sandbox dirs behind"
 fi
 [[ -n "$NODE_TMP" ]] && rm -rf "$NODE_TMP"
+trap - EXIT
 
 echo "== Integration tests =="
 for t in "$HERE"/integration/*.test.sh; do
@@ -235,6 +239,16 @@ else
   else
     echo "-- $(printf '%s\n' "$MKTEMP_SH" | wc -l | tr -d ' ') shell file(s) free of fail-open mktemp"
   fi
+fi
+
+echo "== Untemplated mktemp =="
+# Scope, floor and the single self-exclusion live in the script — same shape as
+# tests/lib/shell-files.sh and tests/lib/bash32-constructs.sh, and for the same
+# reason: an inline copy here would be a second scope for one class. It also
+# cannot live inline, because the matcher quotes the syntax it looks for and so
+# matches its own pattern string (feedback_self_referential_marker_regex).
+if ! bash "$HERE/lib/mktemp-template.sh"; then
+  FAIL=$((FAIL + 1))
 fi
 
 echo "== Shellcheck =="

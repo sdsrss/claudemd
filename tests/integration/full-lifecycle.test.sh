@@ -14,7 +14,7 @@ source "$HERE/../lib/hook-names.sh"
 # entry remained (audit-2026-08-22 条目 8).
 HOOK_ALT=$(claudemd_hook_alternation "$REPO") || { echo "FAIL: cannot derive hook names from the registry"; exit 1; }
 
-TMP_HOME=$(mktemp -d)
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude"

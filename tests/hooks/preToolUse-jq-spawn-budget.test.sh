@@ -35,7 +35,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && 
 set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "$0")/../../hooks" && pwd)"
-TMP=$(mktemp -d) || exit 1
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 FAIL=0
 CASE=0

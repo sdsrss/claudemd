@@ -5,7 +5,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && 
 set -uo pipefail
 
 LIB="$(cd "$(dirname "$0")/../../hooks/lib" && pwd)/rule-hits.sh"
-TMP_HOME=$(mktemp -d)
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 trap 'rm -rf "$TMP_HOME"' EXIT
 
 export HOME="$TMP_HOME"

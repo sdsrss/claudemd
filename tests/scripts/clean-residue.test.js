@@ -581,3 +581,93 @@ test('R10-09: a dry run never reports remaining, however many candidates', () =>
   assert.ok(o.sentinels >= 1);
   assert.equal(o.remaining, 0, 'a dry run deletes nothing by definition');
 });
+
+// --- unowned mktemp-default residue (2026-09-02 audit R11-38) ------------------
+//
+// The recycler matched on the `claudemd-` prefix, so it was blind to the biggest
+// residue class this project produced: a bare `mktemp -d` yields
+// `tmp.XXXXXXXXXX`, which no prefix here covers. Measured that day: 2.4 GB and
+// 150-250 stray directories a day. These lock the two halves of the fix — the
+// shape is recognised EXACTLY, and recognising it does not by itself widen what
+// `--apply` deletes.
+
+test('scan classifies the exact default mktemp shape as unowned, and nothing else', () => {
+  fs.mkdirSync(path.join(tmpDir, 'tmp.SfxwqKagsR')); // real leaked shape, 10 alnum
+  fs.writeFileSync(path.join(tmpDir, 'tmp.a1B2c3D4e5'), ''); // `mktemp` without -d
+  // Near-misses that a `tmp.*` glob would have swallowed. Someone's own
+  // tmp.backup is not this tool's to delete.
+  fs.mkdirSync(path.join(tmpDir, 'tmp.backup'));
+  fs.mkdirSync(path.join(tmpDir, 'tmp.short'));
+  fs.mkdirSync(path.join(tmpDir, 'tmp.ELEVENCHARS'));
+  fs.mkdirSync(path.join(tmpDir, 'tmp.has-dash12'));
+  fs.mkdirSync(path.join(tmpDir, 'nottmp.SfxwqKagsR'));
+
+  const names = scan({ tmpDir })
+    .unowned.map(u => path.basename(u.path))
+    .sort();
+  assert.deepEqual(names, ['tmp.SfxwqKagsR', 'tmp.a1B2c3D4e5']);
+});
+
+test('unowned residue is counted on every run but NOT deleted without --include-unowned', () => {
+  const stale = path.join(tmpDir, 'tmp.SfxwqKagsR');
+  fs.mkdirSync(stale);
+  fs.writeFileSync(path.join(stale, 'payload'), 'x'.repeat(4096));
+  setMtime(stale, 30);
+  fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-owned'), '');
+  setMtime(path.join(tmpDir, 'claudemd-sync-owned'), 30);
+
+  const dry = clean({ tmpDir, apply: false });
+  assert.equal(dry.unowned.scanned, 1);
+  assert.equal(dry.unowned.stale, 1);
+  assert.equal(dry.unowned.included, false);
+  assert.ok(
+    dry.unowned.bytes >= 4096,
+    `bytes ${dry.unowned.bytes} — the size report is what makes the cost legible`
+  );
+  assert.deepEqual(
+    dry.targets.map(t => path.basename(t.path)),
+    ['claudemd-sync-owned'],
+    'an unowned entry must not enter the delete set just because it was counted'
+  );
+
+  // --apply alone must still not touch it: someone running the flag today
+  // expects claudemd-prefixed residue to go and nothing else.
+  clean({ tmpDir, apply: true });
+  assert.ok(fs.existsSync(stale), '--apply without --include-unowned deleted an unowned directory');
+  assert.ok(!fs.existsSync(path.join(tmpDir, 'claudemd-sync-owned')), 'the owned sentinel should have gone');
+});
+
+test('--include-unowned deletes only entries past the retention window', () => {
+  const old = path.join(tmpDir, 'tmp.OLDentry12');
+  const fresh = path.join(tmpDir, 'tmp.FRESHone12');
+  fs.mkdirSync(old);
+  fs.mkdirSync(fresh);
+  setMtime(old, 30);
+  setMtime(fresh, 2);
+
+  const r = clean({ tmpDir, apply: true, includeUnowned: true, unownedRetentionDays: 7 });
+  assert.equal(r.unowned.scanned, 2);
+  assert.equal(r.unowned.stale, 1);
+  assert.ok(!fs.existsSync(old), 'a 30-day-old unowned dir past a 7-day window should be gone');
+  assert.ok(
+    fs.existsSync(fresh),
+    'a 2-day-old unowned dir may belong to a process still running — the window is the whole safeguard'
+  );
+});
+
+test('CLI: --include-unowned is a known flag and its counts reach the JSON', () => {
+  fs.mkdirSync(path.join(tmpDir, 'tmp.CLIentry12'));
+  setMtime(path.join(tmpDir, 'tmp.CLIentry12'), 30);
+  const r = spawnSync(process.execPath, [SCRIPT, '--include-unowned'], {
+    encoding: 'utf8',
+    env: { ...process.env, TMPDIR: tmpDir },
+    timeout: 30000,
+  });
+  assert.equal(r.status, 0, r.stderr);
+  const j = JSON.parse(r.stdout);
+  assert.equal(j.unowned.included, true);
+  assert.equal(j.unowned.scanned, 1);
+  assert.equal(j.unowned.stale, 1);
+  assert.equal(j.dryRun, true, 'without --apply it must still delete nothing');
+  assert.ok(fs.existsSync(path.join(tmpDir, 'tmp.CLIentry12')));
+});

@@ -15,7 +15,22 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
 
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+# One list, one EXIT trap, for every sandbox this suite creates. It used to be a
+# single trap over TMP_HOME only, while `fresh_home()` below made a NEW directory
+# per case and removed none of them — one leak per assertion, which is where most
+# of the 150-250 stray $TMPDIR dirs a day came from (2026-09-02 audit R11-38).
+# sandbox_new assigns through a global rather than stdout on purpose: a command
+# substitution runs in a subshell, so `d=$(sandbox_new)` would append to a copy of
+# SANDBOXES that dies with it and register nothing.
+SANDBOXES=()
+cleanup_sandboxes() { [[ ${#SANDBOXES[@]} -gt 0 ]] && rm -rf "${SANDBOXES[@]}"; return 0; }
+trap cleanup_sandboxes EXIT
+sandbox_new() {
+  SANDBOX_OUT=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || return 1
+  SANDBOXES+=("$SANDBOX_OUT")
+}
+sandbox_new || { echo "FAIL: mktemp -d failed"; exit 1; }
+TMP_HOME="$SANDBOX_OUT"
 export HOME="$TMP_HOME"
 LOG="$TMP_HOME/.claude/logs/claudemd.jsonl"
 
@@ -216,7 +231,8 @@ t14_case 'nested empty value preserved'    '{"a":{}}'      '{"a":{}}'
 # (hook,reason) per 60s via a state file, so a shared HOME would swallow the
 # second assertion of the same reason and pass vacuously.
 fresh_home() {
-  TMP_CASE=$(mktemp -d)
+  sandbox_new || { echo "FAIL: mktemp -d failed"; exit 1; }
+  TMP_CASE="$SANDBOX_OUT"
   export HOME="$TMP_CASE"
   mkdir -p "$HOME/.claude/logs"
   CASE_LOG="$HOME/.claude/logs/claudemd.jsonl"
@@ -230,7 +246,8 @@ has_failopen() {  # <hook> <reason>
 # A hooks/ copy whose platform.sh sources cleanly but defines nothing — the
 # truncated-mid-definition shape, not a deleted file. `source` returns 0 for it,
 # which is precisely why the exit code was never sufficient evidence.
-STUB_HOOKS=$(mktemp -d) || exit 1
+sandbox_new || exit 1
+STUB_HOOKS="$SANDBOX_OUT"
 cp -R "$HOOKS_DIR/." "$STUB_HOOKS/"
 printf '# truncated mid-definition\nplatform_' > "$STUB_HOOKS/lib/platform.sh"
 

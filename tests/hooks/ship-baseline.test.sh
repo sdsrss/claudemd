@@ -8,7 +8,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/ship-baseline-check.sh"
 MOCKS="$HERE/../fixtures/mock-gh"
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude"
 
@@ -400,7 +400,7 @@ OUT=$(run_hook fail-red "$EVENT_STATUS")
 # is pinned separately — the false-PASS direction (case 40) is the one that
 # matters, since a silent exemption is invisible.
 R15_A="$TMP_HOME"                      # hook cwd
-R15_B=$(mktemp -d); trap 'rm -rf "$TMP_HOME" "$R15_B"' EXIT
+R15_B=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME" "$R15_B"' EXIT
 git -C "$R15_B" init -q
 git -C "$R15_B" -c user.email=t@t -c user.name=t commit --allow-empty -q -m "clean commit in B"
 

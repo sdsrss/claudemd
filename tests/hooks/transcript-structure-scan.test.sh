@@ -8,7 +8,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/transcript-structure-scan.sh"
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 # stderr capture inside the sandbox — see the same note in mem-audit.test.sh.
 ERRF="$TMP_HOME/stderr"
@@ -23,7 +23,7 @@ PASS=0
 seed_transcript() {
   local body="$1"
   local tx
-  tx=$(mktemp)
+  tx=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg t "$body" \
     '{type:"assistant",message:{content:[{type:"text",text:$t}]}}' \
     > "$tx"
@@ -33,7 +33,7 @@ seed_transcript() {
 drive() {
   local transcript="$1" extra_env="${2:-}"
   local fix
-  fix=$(mktemp)
+  fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg p "$transcript" \
     '{session_id:"test",transcript_path:$p}' > "$fix"
   if [[ -n "$extra_env" ]]; then
@@ -61,7 +61,7 @@ fi
 # --------------------------------------------------------------------------
 # Case 2: opt-in but no transcript_path → silent (fail-open).
 # --------------------------------------------------------------------------
-fix=$(mktemp)
+fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 jq -cn '{session_id:"test"}' > "$fix"
 TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$fix" 2>"$ERRF2"
 rc=$?; STDERR=$(cat "$ERRF2"); rm -f "$ERRF2" "$fix"
@@ -319,13 +319,13 @@ fi
 # wrong-order report from an EARLIER turn must NOT be re-flagged as "last turn"
 # drift when the actual last turn is clean. Pre-fix all turns were concatenated.
 # --------------------------------------------------------------------------
-TX13=$(mktemp)
+TX13=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 cat > "$TX13" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"text","text":"Done: w\nNot done: z\nFailed: y\nUncertain: x"}]}}
 {"type":"user","message":{"content":[{"type":"text","text":"thanks"}]}}
 {"type":"assistant","message":{"content":[{"type":"text","text":"Glad to help. Anything else?"}]}}
 EOF
-FIX13=$(mktemp); jq -cn --arg p "$TX13" '{session_id:"test",transcript_path:$p}' > "$FIX13"
+FIX13=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); jq -cn --arg p "$TX13" '{session_id:"test",transcript_path:$p}' > "$FIX13"
 STDERR13=$(TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$FIX13" 2>&1)
 if [[ -z "$STDERR13" ]]; then
   echo "PASS: 13 stale prior-turn report not flagged when last turn is clean"; PASS=$((PASS+1))
@@ -335,12 +335,12 @@ fi
 rm -f "$TX13" "$FIX13"
 
 # Case 14: a genuinely out-of-order report in the ACTUAL last turn still flags.
-TX14=$(mktemp)
+TX14=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 cat > "$TX14" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"text","text":"hello there"}]}}
 {"type":"assistant","message":{"content":[{"type":"text","text":"Done: a\nUncertain: b\nFailed: c\nNot done: d"}]}}
 EOF
-FIX14=$(mktemp); jq -cn --arg p "$TX14" '{session_id:"test",transcript_path:$p}' > "$FIX14"
+FIX14=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); jq -cn --arg p "$TX14" '{session_id:"test",transcript_path:$p}' > "$FIX14"
 STDERR14=$(TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HOOK" < "$FIX14" 2>&1)
 if [[ -n "$STDERR14" ]]; then
   echo "PASS: 14 out-of-order last turn still flagged"; PASS=$((PASS+1))

@@ -25,7 +25,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # Two steps, not `SANDBOX=$(cd "$(mktemp -d)" && pwd -P)`. That one-liner fails
 # OPEN: on mktemp failure the substitution is empty, `cd ""` returns 0, `pwd -P`
 # prints the CURRENT directory — and the EXIT trap below then `rm -rf`s the repo.
-SANDBOX=$(mktemp -d) || { echo "FAIL: mktemp -d failed"; exit 1; }
+SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed"; exit 1; }
 SANDBOX=$(cd "$SANDBOX" && pwd -P) || { echo "FAIL: cannot resolve $SANDBOX"; exit 1; }
 export HOME="$SANDBOX/home"
 export TMPDIR="$SANDBOX/tmp"

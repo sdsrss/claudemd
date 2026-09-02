@@ -4,7 +4,7 @@ import os from 'node:os';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 import { stateDir } from './lib/paths.js';
 
-const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
+const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--include-unowned] [--age-days=N] [--retention-days=N]
 
 Clean leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and historical
 claudemd-(mockgh|work).*
@@ -12,8 +12,19 @@ sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
 §EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
 per-session sentinels from ~/.claude/.claudemd-state. Default is dry-run.
 
+Also COUNTS (and, with --include-unowned, deletes) $TMPDIR entries left by a
+bare \`mktemp\`/\`mktemp -d\` — the tmp.XXXXXXXXXX shape. Those match no claudemd
+prefix, so this recycler could not see the largest residue class the project
+itself produced (audit R11-38); tests/lib/mktemp-template.sh keeps the repo
+from adding more.
+
 Options:
   --apply             Opt into deletion (without it, prints what would be deleted).
+  --include-unowned   Also delete $TMPDIR entries with the DEFAULT mktemp name
+                      shape (tmp.XXXXXXXXXX) older than the retention window.
+                      Nothing can prove those were created by claudemd, so they
+                      are counted and sized on every run but never removed
+                      without this flag. Needs --apply to delete.
   --age-days=N        $TMPDIR stale threshold in days (non-negative, default 1).
   --retention-days=N  ~/.claude/tmp AND ~/.claude/.claudemd-state retention in
                       days (non-negative). Resolution:
@@ -53,6 +64,22 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error |
 const SENTINEL_PATTERN = /^claudemd-(sync-|memtags-hay-)/;
 const SANDBOX_PATTERN = /^claudemd-(mockgh|work)\./;
 
+// The default `mktemp` / `mktemp -d` name shape, EXACTLY: `tmp.` plus ten
+// alphanumerics and nothing else. Not a `tmp.*` glob — that would also swallow
+// `tmp.backup`, `tmp.lock`, and anything else a person chose to name that way.
+//
+// This class is UNOWNED: nothing here can prove claudemd created it. It exists
+// because the recycler was blind to the largest residue class this project
+// produced — 2.4 GB of probe sandboxes plus 150-250 stray directories a day,
+// measured 2026-09-02 (audit R11-38). tests/lib/mktemp-template.sh stops the
+// repo making more; this reaches what is already on disk.
+//
+// Because it is unowned it is REPORTED by default and DELETED only behind
+// --include-unowned. Someone running `--apply` today expects claudemd-prefixed
+// residue to go and nothing else; silently widening what that flag destroys is
+// the shape feedback_seam_widening_widens_rm_targets warns about.
+const UNOWNED_MKTEMP_PATTERN = /^tmp\.[A-Za-z0-9]{10}$/;
+
 export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
   if (!fs.existsSync(tmpDir)) return { sentinels: [], sandboxes: [] };
   let entries;
@@ -63,6 +90,7 @@ export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
   }
   const sentinels = [];
   const sandboxes = [];
+  const unowned = [];
   for (const entry of entries) {
     const full = path.join(tmpDir, entry.name);
     let stat;
@@ -81,19 +109,44 @@ export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
       sentinels.push({ path: full, ageDays });
     } else if (SANDBOX_PATTERN.test(entry.name) && entry.isDirectory()) {
       sandboxes.push({ path: full, ageDays });
+    } else if (UNOWNED_MKTEMP_PATTERN.test(entry.name)) {
+      // Files as well as directories: `mktemp` without -d yields the same name
+      // shape, and the suites that leaked used both forms.
+      unowned.push({ path: full, ageDays, isDir: entry.isDirectory() });
     }
   }
-  return { sentinels, sandboxes };
+  return { sentinels, sandboxes, unowned };
 }
 
-export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now = Date.now() } = {}) {
-  const { sentinels, sandboxes } = scan({ tmpDir, now });
+export function clean({
+  tmpDir = os.tmpdir(),
+  apply = false,
+  ageDaysMin = 1,
+  includeUnowned = false,
+  // Deliberately NOT ageDaysMin: the owned classes are ours to reap after a day;
+  // an unowned `tmp.XXXXXXXXXX` may belong to a process still running. Same
+  // window the ~/.claude/tmp scratchpads already use.
+  unownedRetentionDays = 7,
+  now = Date.now(),
+} = {}) {
+  const { sentinels, sandboxes, unowned } = scan({ tmpDir, now });
+  const unownedStale = unowned.filter(u => u.ageDays >= unownedRetentionDays);
   const targets = [
     ...sentinels.filter(s => s.ageDays >= ageDaysMin),
     ...sandboxes.filter(s => s.ageDays >= ageDaysMin),
+    ...(includeUnowned ? unownedStale : []),
   ];
+  // Counted whether or not it is being deleted. The defect was that 2.4 GB was
+  // INVISIBLE; that is fixed by reporting it, not only by removing it.
+  const unownedReport = {
+    scanned: unowned.length,
+    stale: unownedStale.length,
+    retentionDays: unownedRetentionDays,
+    included: includeUnowned,
+    bytes: unownedStale.reduce((n, u) => n + dirBytes(u.path), 0),
+  };
   if (!apply) {
-    return { dryRun: true, targets, deleted: 0 };
+    return { dryRun: true, targets, deleted: 0, unowned: unownedReport };
   }
   let deleted = 0;
   for (const t of targets) {
@@ -104,7 +157,38 @@ export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now
       /* best-effort; partial delete is fine */
     }
   }
-  return { dryRun: false, targets, deleted };
+  return { dryRun: false, targets, deleted, unowned: unownedReport };
+}
+
+// Size of a residue entry, for the report only. Bounded and best-effort: a
+// number that makes the cost legible is worth a walk, an exception during one is
+// not worth failing the command over.
+function dirBytes(p) {
+  let total = 0;
+  const walk = (abs, depth) => {
+    if (depth > 12) return;
+    let st;
+    try {
+      st = fs.lstatSync(abs);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) return;
+    if (st.isFile()) {
+      total += st.size;
+      return;
+    }
+    if (!st.isDirectory()) return;
+    let ents;
+    try {
+      ents = fs.readdirSync(abs);
+    } catch {
+      return;
+    }
+    for (const e of ents) walk(path.join(abs, e), depth + 1);
+  };
+  walk(p, 0);
+  return total;
 }
 
 // --- ~/.claude/tmp retention (spec §EXT §7-EXT: "harness SHOULD purge mtime > 7d";
@@ -296,7 +380,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--apply'],
+      bools: ['--apply', '--include-unowned'],
       values: ['--age-days', '--retention-days'],
     });
   } catch (e) {
@@ -307,6 +391,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const apply = parsed.bools.has('--apply');
+  const includeUnowned = parsed.bools.has('--include-unowned');
   const rawAge = parsed.values['--age-days'] ?? '1';
   const ageDaysMin = Number(rawAge);
   // String-shape guard (not parsePositiveInt — this flag allows 0 and fractional
@@ -341,7 +426,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // install / uninstall / statusline kept writing to the real directory.
   const stateDirPath = stateDir();
 
-  const result = clean({ apply, ageDaysMin });
+  // One knob, not two: the unowned window rides on the same --retention-days
+  // the ~/.claude/tmp scratchpads use, so `--retention-days=1 --include-unowned
+  // --apply` reaps yesterday's probe sandboxes without inventing a second flag.
+  const result = clean({ apply, ageDaysMin, includeUnowned, unownedRetentionDays: retentionDays });
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
   const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
@@ -364,6 +452,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         ageDaysMin,
         sentinels: sentinelCount,
         sandboxes: sandboxCount,
+        // Reported on every run, deleted only with --include-unowned. This class
+        // is the answer to "the recycler could not see its own biggest input"
+        // (audit R11-38) — the count and the bytes are the fix's visible half.
+        unowned: result.unowned,
         deleted: result.deleted,
         paths: result.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
         claudeTmp: {

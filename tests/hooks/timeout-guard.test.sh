@@ -17,7 +17,7 @@ PASS=0; FAIL=0
 ok() { echo "PASS: $1"; PASS=$((PASS+1)); }
 ng() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP"' EXIT
 
 # A suite that hangs forever (reads stdin with no EOF is the real-world shape;
 # `sleep 30` is the deterministic stand-in).

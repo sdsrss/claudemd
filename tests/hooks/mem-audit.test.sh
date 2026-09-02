@@ -9,7 +9,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/mem-audit.sh"
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 # stderr capture inside the sandbox, not a hand-built /tmp path (2026-07-28).
 # `2>/tmp/mem-audit-stderr-$$` failed every case with "Read-only file system"

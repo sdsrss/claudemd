@@ -20,7 +20,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
 SCHEMA="$HERE/../../docs/RULE-HITS-SCHEMA.md"
 
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 LOG="$TMP_HOME/.claude/logs/claudemd.jsonl"
 
@@ -33,7 +33,7 @@ ng() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 drive() {
   local hook_path="$1" cmd="$2" cwd="${3:-/tmp/contract}"
   local fix
-  fix=$(mktemp)
+  fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg c "$cmd" --arg cwd "$cwd" \
     '{session_id:"contract",tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' > "$fix"
   bash "$hook_path" < "$fix" >/dev/null 2>&1 || true

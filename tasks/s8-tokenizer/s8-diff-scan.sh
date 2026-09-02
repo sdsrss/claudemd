@@ -17,13 +17,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 HOOK="$ROOT/hooks/pre-bash-safety-check.sh"
 CORPUS="$ROOT/tests/fixtures/bash-safety/corpus.tsv"
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 unset BASH_SAFETY_INDIRECT_CALL
 
 verdict() { # $1=cmd $2=env → "deny" | "allow"
   local cmd="$1" env="$2" fix out dec
-  fix=$(mktemp)
+  fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg c "$cmd" '{session_id:"t",tool_name:"Bash",tool_input:{command:$c}}' > "$fix"
   if [[ -n "$env" ]]; then out=$(env "$env" bash "$HOOK" < "$fix" 2>/dev/null)
   else out=$(bash "$HOOK" < "$fix" 2>/dev/null); fi
@@ -49,7 +49,7 @@ case "$MODE" in
     ;;
   check)
     [[ -f "$FILE" ]] || { echo "usage: check <base.tsv> (missing)"; exit 2; }
-    LIVE=$(mktemp); run_corpus > "$LIVE"
+    LIVE=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); run_corpus > "$LIVE"
     DIFFS=0
     # Join by NOTE, not by line position. `paste` was positional despite this
     # comment claiming otherwise: adding RED rows for a new FN class shifts every

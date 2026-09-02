@@ -12,7 +12,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/pre-bash-safety-check.sh"
 CORPUS="$HERE/../fixtures/bash-safety/corpus.tsv"
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 # Hermeticity (per feedback_hook_env_test_hermeticity): BASH_SAFETY_INDIRECT_CALL
 # is user-tunable via ~/.claude/settings.json env block; if set there it inherits
@@ -30,7 +30,7 @@ run_case() {
   # __NL__ marker → LF (heredoc cases). Other backslash sequences pass through.
   cmd="${cmd//__NL__/$'\n'}"
   local fix out decision
-  fix=$(mktemp)
+  fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg c "$cmd" '{session_id:"t",tool_name:"Bash",tool_input:{command:$c}}' > "$fix"
   if [[ -n "$env" ]]; then
     out=$(env "$env" bash "$HOOK" < "$fix" 2>&1)
@@ -75,7 +75,7 @@ done < "$CORPUS"
 # Inline edge case: malformed-JSON stdin must fail-open silently. Not a
 # corpus case — corpus is "given valid event, hook produces correct
 # allow/deny"; this exercises the parser robustness path.
-TMP_FIX=$(mktemp)
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 echo 'not json' > "$TMP_FIX"
 out=$(bash "$HOOK" < "$TMP_FIX" 2>&1)
 rm -f "$TMP_FIX"
@@ -93,7 +93,7 @@ fi
 
 run_cwd_case() {
   local label="$1" note="$2" cmd="$3" cwd="$4"
-  local fix; fix=$(mktemp)
+  local fix; fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   jq -cn --arg c "$cmd" --arg w "$cwd" \
     '{session_id:"t",tool_name:"Bash",cwd:$w,tool_input:{command:$c}}' > "$fix"
   local out; out=$(bash "$HOOK" < "$fix" 2>&1)
@@ -109,8 +109,8 @@ run_cwd_case() {
   esac
 }
 
-SANDBOX=$(mktemp -d)
-trap 'rm -rf "$TMP_HOME" "$SANDBOX"' EXIT
+SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+trap 'rm -rf "$TMP_HOME" "$SANDBOX" "${tel_home:-}" 2>/dev/null || true' EXIT
 
 # Fixture 1: project with vitest in node_modules (local)
 mkdir -p "$SANDBOX/with-local/node_modules/vitest"
@@ -336,7 +336,7 @@ run_case pass "s8-wrap-fp: sudo -E rm literal path"  'sudo -E rm -rf /tmp/build'
 # the denominator (pre-fix: denies under §8, bypasses under §8-npx → misleading
 # 100% bypass). Enforcement is unchanged — the corpus above asserts the deny
 # decision; this locks the RECORD section.
-tel_home=$(mktemp -d)
+tel_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 mkdir -p "$tel_home/.claude/logs"
 tel_log="$tel_home/.claude/logs/claudemd.jsonl"
 jq -cn '{session_id:"tel",tool_name:"Bash",tool_input:{command:"rm -rf $TELVAR_UNSET"}}' \

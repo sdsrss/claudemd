@@ -127,7 +127,7 @@ esac
 # (feedback_fix_creates_same_class_instance).
 SHIM=""
 trap 'if [ -n "$SHIM" ]; then rm -rf "$SHIM"; fi' EXIT
-SHIM=$(mktemp -d) || { echo "FAIL: mktemp -d failed — cannot build the interpreter shim" >&2; exit 1; }
+SHIM=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed — cannot build the interpreter shim" >&2; exit 1; }
 printf '#!/bin/sh\nexec %s "$@"\n' "$B32" > "$SHIM/bash" || exit 1
 chmod +x "$SHIM/bash" || exit 1
 export PATH="$SHIM:$PATH"

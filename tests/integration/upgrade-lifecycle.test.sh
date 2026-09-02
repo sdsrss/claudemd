@@ -36,9 +36,9 @@ NEW_RULE_NEEDLE="Memory routing"
 # Two steps, not `X=$(cd "$(mktemp -d)" && pwd -P)`. That one-liner fails OPEN:
 # on mktemp failure the substitution is empty, `cd ""` returns 0, and `pwd -P`
 # prints the CURRENT directory — the EXIT trap below then `rm -rf`s the repo.
-TMP_HOME=$(mktemp -d) || { echo "FAIL: mktemp -d failed"; exit 1; }
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed"; exit 1; }
 TMP_HOME=$(cd "$TMP_HOME" && pwd -P) || { echo "FAIL: cannot resolve $TMP_HOME"; exit 1; }
-WT_PARENT=$(mktemp -d) || { echo "FAIL: mktemp -d failed"; exit 1; }
+WT_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed"; exit 1; }
 WT_PARENT=$(cd "$WT_PARENT" && pwd -P) || { echo "FAIL: cannot resolve $WT_PARENT"; exit 1; }
 OLD_WT="$WT_PARENT/old"
 FAILS=0

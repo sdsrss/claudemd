@@ -8,7 +8,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../../hooks/version-sync.sh"
 PLUGIN_ROOT="$HERE/../.."
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME" 2>/dev/null || true' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+# C8_HOME is created ~150 lines down and removed by a straight-line `rm -rf`;
+# unset-safe here so an early exit still reaps it (2026-09-02 audit R11-38).
+trap 'rm -rf "$TMP_HOME" "${C8_HOME:-}" 2>/dev/null || true' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/logs"
 
@@ -166,7 +169,7 @@ fi
 # broken — observed once in a full run-all, never standalone. A fresh HOME puts
 # the manifest an in-flight sibling writes out of this case's reach, which is
 # deterministic where a longer sleep would only be luckier.
-C8_HOME=$(mktemp -d) || { echo "FAIL: 8 mktemp"; exit 1; }
+C8_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: 8 mktemp"; exit 1; }
 SAVED_HOME="$HOME"
 export HOME="$C8_HOME"
 mkdir -p "$HOME/.claude/logs"

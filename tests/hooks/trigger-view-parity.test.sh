@@ -114,8 +114,8 @@ done
 # ------------------------------------------------------------ live cross-gate
 # The behavioral end of H1: the same multi-line shape must reach every
 # segment-anchored gate, not just the two that were rewired.
-TMP_HOME=$(mktemp -d); trap 'rm -rf "$TMP_HOME"' EXIT
-FIX=$(mktemp); trap 'rm -rf "$TMP_HOME" "$FIX"' EXIT
+TMP_HOME=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME"' EXIT
+FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME" "$FIX"' EXIT
 
 printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"npm test\ngit commit -m \"significantly faster\""},"cwd":"/tmp"}' > "$FIX"
 OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)

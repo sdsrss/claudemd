@@ -15,11 +15,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 FAIL=0
 
-CALLER="$(mktemp -d)"
+CALLER="$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")"
 # Capture file lives OUTSIDE the caller repo: case 2 asserts that repo's
 # worktree stays clean, and an artifact dropped inside it fails that assertion
 # — which is the same class of finding, just self-inflicted.
-SCRATCH="$(mktemp -d)"
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")"
 cleanup() {
   [[ -n "${CALLER:-}" && -d "$CALLER" ]] && rm -rf "$CALLER"
   [[ -n "${SCRATCH:-}" && -d "$SCRATCH" ]] && rm -rf "$SCRATCH"

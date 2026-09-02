@@ -96,7 +96,7 @@ HOOKS_DIR="$REPO_ROOT/hooks"
 # the direct hook invocations — they are synthetic probes, not real sessions
 # (feedback_manual_hook_probe_pollutes_telemetry).
 export DISABLE_RULE_HITS_LOG=1
-SANDBOX="$(mktemp -d)"
+SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")"
 cleanup_sandbox() { [[ -n "${SANDBOX:-}" && -d "$SANDBOX" ]] && rm -rf "$SANDBOX"; }
 trap cleanup_sandbox EXIT
 git -C "$SANDBOX" init -q
