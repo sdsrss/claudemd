@@ -621,3 +621,48 @@ test('R11-10: manifest is written atomically and leaves no tmp residue', () => {
   const residue = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.includes('.tmp-'));
   assert.deepEqual(residue, []);
 });
+
+// --- 0.71.4 pre-tag review: two install-path gaps opened by this release ---
+
+test('PT-1: a fresh install CREATES settings.json even with nothing to evict', async () => {
+  const sp = path.join(tmpHome, '.claude/settings.json');
+  assert.equal(fs.existsSync(sp), false, 'precondition: no settings.json');
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  // Skipping the write outright left doctor.js:140 reporting a MISSING
+  // settings.json as a FAILING check, so /claudemd-doctor exited 3 on a clean
+  // machine and its §4 routing check (guarded on the file existing) was skipped.
+  assert.ok(fs.existsSync(sp), 'install must create settings.json on a fresh machine');
+  assert.deepEqual(JSON.parse(fs.readFileSync(sp, 'utf8')), {});
+});
+
+test('PT-2: a mid-copy spec failure restores the user\'s personal CLAUDE.md', async (t) => {
+  // The backup-and-overwrite branch renameSync's the user's OWN CLAUDE.md away.
+  // install called copySpecFiles WITHOUT backupDir, so a failure there stranded
+  // that file in the backup dir with a partial spec set in ~/.claude — the same
+  // shape R11-09 closes for update, on the path where the content at risk is
+  // the user's rather than a re-copyable shipped spec.
+  const personal = '# My own user-global notes\n\nDo the thing.\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), personal);
+
+  const realCopy = fs.copyFileSync;
+  const shippedDir = path.join(pluginRoot, 'spec');
+  t.mock.method(fs, 'copyFileSync', (src, dest, ...rest) => {
+    if (String(src).startsWith(shippedDir) && String(src).endsWith('CLAUDE-extended.md')) {
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    }
+    return realCopy(src, dest, ...rest);
+  });
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  await assert.rejects(() => install({ pluginRoot }), /ENOSPC/);
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+  t.mock.restoreAll();
+
+  const back = path.join(tmpHome, '.claude/CLAUDE.md');
+  assert.ok(fs.existsSync(back), 'personal CLAUDE.md must not be left only in the backup dir');
+  assert.equal(fs.readFileSync(back, 'utf8'), personal);
+});

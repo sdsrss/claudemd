@@ -83,7 +83,18 @@ export const homeSpec          = (name) => path.join(home(), '.claude', name);
 // chmod after write because writeFileSync's mode is still masked by umask.
 export function writeJsonAtomic(p, data, { mode } = {}) {
   let real = p;
-  try { real = fs.realpathSync(p); } catch { /* new file — write at p itself */ }
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    // realpathSync throws on a DANGLING symlink too — a dotfiles target that
+    // has not been checked out yet — and falling through to `p` would then let
+    // the rename replace the link with a regular file, which is the exact case
+    // this function exists to prevent (0.71.4 pre-tag review). Resolve the link
+    // by hand; if p is simply absent, write at p.
+    try {
+      if (fs.lstatSync(p).isSymbolicLink()) real = path.resolve(path.dirname(p), fs.readlinkSync(p));
+    } catch { /* not a symlink and not present — new file at p */ }
+  }
 
   let fileMode = mode;
   if (fileMode === undefined) {
@@ -93,7 +104,14 @@ export function writeJsonAtomic(p, data, { mode } = {}) {
   fs.mkdirSync(path.dirname(real), { recursive: true });
   const tmp = `${real}.tmp-${process.pid}`;
   try {
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
+    // `mode` on writeFileSync is passed to open(2), so the file is created no
+    // more permissive than the target (umask can only clear bits further).
+    // Without it the payload sat at 0664 between write and chmod — and for
+    // settings.json that payload is the user's `env` block (0.71.4 pre-tag
+    // review measured the window on a real 0600 file). The chmod still follows,
+    // to force the exact bits back past umask.
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n',
+      fileMode !== undefined ? { mode: fileMode } : undefined);
     if (fileMode !== undefined) fs.chmodSync(tmp, fileMode);
     fs.renameSync(tmp, real);
   } catch (e) {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, codeGraphRegistryPath, codeGraphProvidersBackupPath, SEMVER_RE, semverCmp } from '../../scripts/lib/paths.js';
+import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, writeJsonAtomic, codeGraphRegistryPath, codeGraphProvidersBackupPath, SEMVER_RE, semverCmp } from '../../scripts/lib/paths.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -268,6 +268,54 @@ test('R11-34: the happy-path migration still relocates and leaves no tmp residue
     assert.deepEqual(residue, []);
   } finally {
     process.env.HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// --- 0.71.4 pre-tag review: two gaps in writeJsonAtomic's own subject ---
+
+test('R11-01.4: a DANGLING symlink is followed, not replaced', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-dangle-'));
+  try {
+    const link = path.join(home, 'settings.json');
+    const target = path.join(home, 'not-checked-out-yet.json');
+    fs.symlinkSync(target, link);           // target does not exist → realpath throws
+    writeJsonAtomic(link, { env: { A: '1' } });
+    assert.equal(fs.lstatSync(link).isSymbolicLink(), true, 'link must survive');
+    assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { env: { A: '1' } });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('R11-01.5: the tmp file is never more permissive than the target mode', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-modewin-'));
+  try {
+    const p = path.join(home, 'settings.json');
+    fs.writeFileSync(p, '{}', { mode: 0o600 });
+    fs.chmodSync(p, 0o600);
+
+    // Observe the tmp file at its most permissive moment: chmodSync is the last
+    // step, so patching it lets us read the mode the payload was written at.
+    const realChmod = fs.chmodSync;
+    let tmpModeAtWrite = null;
+    fs.chmodSync = (target, m) => {
+      if (String(target).includes('.tmp-') && tmpModeAtWrite === null) {
+        tmpModeAtWrite = fs.statSync(target).mode & 0o777;
+      }
+      return realChmod(target, m);
+    };
+    try {
+      writeJsonAtomic(p, { env: { ANTHROPIC_API_KEY: 'sk-secret' } });
+    } finally {
+      fs.chmodSync = realChmod;
+    }
+
+    assert.notEqual(tmpModeAtWrite, null, 'the tmp file must have been chmod-ed');
+    assert.equal(tmpModeAtWrite & 0o077, 0,
+      `payload was group/other-readable at mode ${tmpModeAtWrite.toString(8)} before chmod`);
+    assert.equal(fs.statSync(p).mode & 0o777, 0o600);
+  } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });

@@ -147,8 +147,21 @@ command -v gh >/dev/null 2>&1 || exit 0
 # newly block. Quoted paths containing spaces fall through here by design.
 SB_DIR=$(printf '%s' "$PUSH_SEG" | grep -oE '(^|[[:space:]])-C[[:space:]]+[^[:space:]]+' | head -n1 | sed -E 's/.*-C[[:space:]]+//')
 if [[ -z "$SB_DIR" ]]; then
-  # `cd <dir> && git push` — last cd wins, matching what the shell would do.
-  SB_DIR=$(printf '%s' "$CMD_FLAT" | grep -oE '(^|[;&|][[:space:]]*)cd[[:space:]]+[^[:space:];&|]+' | tail -n1 | sed -E 's/.*cd[[:space:]]+//')
+  # `cd <dir> && git push` — last cd BEFORE the push wins, which is what the
+  # shell would have done by the time the push runs.
+  #
+  # Scoped to the prefix, not the whole command (pre-tag review of this
+  # release). A bare `tail -n1` over $CMD_FLAT also picks up a `cd` that
+  # FOLLOWS the push — `git push origin main && cd ../sibling && npm test`,
+  # an entirely ordinary shape — and then adjudicated the push against
+  # ../sibling's branch, CI colour and HEAD commit body. Both exemption inputs
+  # this gate reads could be sourced from an unrelated repo named after the
+  # fact, so a red-CI push was silently ALLOWED. The pre-fix hook denied every
+  # one of those cases: it was a regression introduced by the fix, in the
+  # direction the surrounding comment did not consider — this gate must never
+  # newly BLOCK, and it must never newly ALLOW either.
+  SB_PRE=${CMD_FLAT%%"$PUSH_SEG"*}
+  SB_DIR=$(printf '%s' "$SB_PRE" | grep -oE '(^|[;&|][[:space:]]*)cd[[:space:]]+[^[:space:];&|]+' | tail -n1 | sed -E 's/.*cd[[:space:]]+//')
 fi
 [[ -z "$SB_DIR" ]] && SB_DIR="$EVENT_CWD"
 # Must be a real worktree, not merely a directory. Existing suites drive

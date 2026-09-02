@@ -208,6 +208,10 @@ rule_hits_append() {
   # one headroom between rotate and next overflow, bounded growth at
   # ~3× max_mb on disk. `/claudemd-audit` currently reads only the primary
   # file, so rotations beyond .1 are effectively archived (read-only).
+  # NO LONGER TRUE as of v0.71.4: `rule-hits-parse.js#logGenerations` makes every
+  # JS hit-reader open `.2`, `.1` and the primary, so both archives are now
+  # load-bearing analysis input. See the concurrency note below, whose stated
+  # justification this invalidates.
   # `stat -c` is GNU, `-f` is BSD — try both, default to 0 if neither works
   # (fail-safe: no rotation better than wrong rotation on an unknown stat).
   # Concurrency (corrected 2026-08-16 audit CONC-4; the previous "at worst
@@ -217,6 +221,14 @@ rule_hits_append() {
   # wiping the archive P1 made. Sandbox replay: {live, .1, .2} degraded to
   # {gone, gone, live-as-.2} — BOTH prior generations lost (up to ~2×max_mb
   # of archive), though live rows survive under the .2 name. Accepted:
+  # RE-ADJUDICATE (v0.71.4 pre-tag review): the acceptance below rests on
+  # "no consumer reads the archives", and v0.71.4 made every JS hit-reader read
+  # them. The race now costs analysis data rather than nothing. It is left as-is
+  # for this release — the window is one `mv` wide and the alternative is an
+  # flock dependency on a fail-open path — but it is no longer free, and the
+  # next round should price it against `logGenerations`'s 590-day window rather
+  # than against the premise this comment used to state. The original text,
+  # kept because it is what the acceptance was reasoned from:
   # archives are best-effort cold storage no consumer reads (audit reads the
   # primary only), the window is one mv wide, and flock would add a
   # dependency on this fail-open path. Do NOT cite this comment as "the race

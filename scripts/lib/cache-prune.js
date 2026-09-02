@@ -13,8 +13,10 @@ import { SEMVER_RE, pluginCacheDir } from './paths.js';
 // the name and says nothing about WHERE the scan happens, so this function
 // would rm -rf semver-named siblings of any directory it was pointed at — a
 // `git worktree add ../0.70.0`, a version-named checkout, a CLAUDE_PLUGIN_ROOT
-// aimed at one. paths.js had exported pluginCacheDir() the whole time and no
-// caller had ever asked it.
+// aimed at one. paths.js had exported pluginCacheDir() the whole time and
+// nothing had ever consulted it AS A GUARD — `status.js` did read it, to build
+// the cache-present hint (correction from the 0.71.4 pre-tag review; the first
+// version of this comment said it had no caller at all).
 //
 // `startsWith(pluginCacheDir() + sep)`, NOT equality: the production layout is
 // `~/.claude/plugins/cache/claudemd/claudemd/<version>`, so the versions dir

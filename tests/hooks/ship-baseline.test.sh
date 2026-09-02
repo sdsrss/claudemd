@@ -434,6 +434,33 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 44 bare push with non-repo cwd falls through to the old behavior" \
   || { echo "FAIL: 44 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 45-47 (pre-tag review of 0.71.4): the `cd <dir>` branch had NO test at
+# all — 42/43/44 cover `-C <dir>` and the unresolvable fall-through only — and
+# the first cut scanned the whole command with `tail -n1`, so a `cd` AFTER the
+# push hijacked resolution and a red-CI push was silently ALLOWED. Both
+# directions are pinned here.
+cd "$R15_A" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean for 45"
+git -C "$R15_B" -c user.email=t@t -c user.name=t commit --allow-empty -q \
+  -m "feat: w" -m "known-red baseline: marker in B for 45"
+
+EVENT_CD_AFTER=$(jq -nc --arg b "$R15_B" '{session_id:"t",tool_name:"Bash",tool_input:{command:("git push origin main && cd " + $b + " && npm test")},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CD_AFTER")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 45 a cd AFTER the push does not source the exemption from another repo" \
+  || { echo "FAIL: 45 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_CD_AFTER_SEMI=$(jq -nc --arg b "$R15_B" '{session_id:"t",tool_name:"Bash",tool_input:{command:("git push origin main ; cd " + $b)},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CD_AFTER_SEMI")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 46 same via ';' rather than '&&'" \
+  || { echo "FAIL: 46 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# The legitimate direction must still work, or the fix above is just a revert.
+EVENT_CD_BEFORE=$(jq -nc --arg b "$R15_B" '{session_id:"t",tool_name:"Bash",tool_input:{command:("cd " + $b + " && git push origin main")},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CD_BEFORE")
+[[ -z "$OUT" ]] && echo "PASS: 47 a cd BEFORE the push does select the target repo" \
+  || { echo "FAIL: 47 (expected pass via B's marker, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same
 # drift class the 2026-07-27 audit found in memory-read-check.test.sh.

@@ -244,7 +244,12 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // copyFileSync were two semantics for one operation, and update's had no
   // integrity check at all. Also drops install's third hand-rolled sha256:
   // spec-hash.js#sha256File was already the single source.
-  copySpecFiles(pluginRoot, SPEC_FILES);
+  // backupDir is passed, not omitted (0.71.4 pre-tag review): the branch that
+  // sets it is the one that renameSync'd the user's PERSONAL ~/.claude/CLAUDE.md
+  // away, so this is the call site where a mid-loop failure risks user-authored
+  // content rather than a re-copyable shipped spec. It is null on the
+  // overwrite-spec branch, which is the correct no-rollback case.
+  copySpecFiles(pluginRoot, SPEC_FILES, { backupDir });
 
   // 2a. Migrate hand-installed banned-vocab hook files (pre-plugin v0 artifact).
   // settings.json entries that referenced this path are cleaned up in step 2b
@@ -294,7 +299,12 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   const evicted = unmergeHook(settings, {
     commandPredicate: (c) => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
   });
-  if (evicted.removed > 0) writeSettings(settings);
+  // …or when there is no settings.json yet. Skipping the write outright meant a
+  // fresh machine never got the file created, and `doctor.js:140` reports a
+  // MISSING settings.json as a failing check (exit 3) — `/claudemd-doctor` was
+  // red out of the box, and doctor's §4 routing check, guarded on the file
+  // existing, was skipped as well. Caught by the 0.71.4 pre-tag review.
+  if (evicted.removed > 0 || !fs.existsSync(settingsPath())) writeSettings(settings);
 
   // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall
   // keep a canonical list of the shipped hooks even though settings.json no

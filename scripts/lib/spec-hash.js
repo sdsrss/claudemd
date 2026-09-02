@@ -36,8 +36,14 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
     for (const name of names) {
       const src = path.join(pluginRoot, 'spec', name);
       const dest = homeSpec(name);
-      fs.copyFileSync(src, dest);
+      // Recorded BEFORE the copy, not after (0.71.4 pre-tag review): a
+      // copyFileSync that throws partway still leaves a truncated dest. Pushed
+      // after, such a name was in neither `written` nor the backup dir, so the
+      // rollback below neither restored nor removed it — reachable through
+      // update.js, where a spec file absent from ~/.claude is a target but has
+      // no backup entry.
       written.push(name);
+      fs.copyFileSync(src, dest);
       if (sha256File(src) !== sha256File(dest)) {
         throw new Error(
           `spec copy: post-copy integrity check failed for ${name} ` +
