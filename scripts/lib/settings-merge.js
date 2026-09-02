@@ -6,7 +6,7 @@ export function readSettings() {
   const p = settingsPath();
   if (!fs.existsSync(p)) return {};
   let raw = fs.readFileSync(p, 'utf8');
-  if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
   try {
     return JSON.parse(raw);
   } catch (e) {
@@ -72,7 +72,7 @@ export function isClaudemdLegacyHookCommand(c, hookBasenames) {
   return hookBasenames.some(b => {
     const inPluginCache = c.includes('/plugins/cache/claudemd/') && c.includes(`/hooks/${b}`);
     const inHandInstall = c.includes(`${handHooksDir}${b}`);
-    const inEnvLiteral  = c.includes(`\${CLAUDE_PLUGIN_ROOT}/hooks/${b}`);
+    const inEnvLiteral = c.includes(`\${CLAUDE_PLUGIN_ROOT}/hooks/${b}`);
     return inPluginCache || inHandInstall || inEnvLiteral;
   });
 }
@@ -98,8 +98,8 @@ export function unmergeHook(settings, { commandPredicate }) {
       const before = block.hooks.length;
       // Keep an entry unless it is a well-formed claudemd command. Malformed
       // entries (null, non-object, non-string command) are preserved as-is.
-      block.hooks = block.hooks.filter(h =>
-        !h || typeof h !== 'object' || typeof h.command !== 'string' || !commandPredicate(h.command)
+      block.hooks = block.hooks.filter(
+        h => !h || typeof h !== 'object' || typeof h.command !== 'string' || !commandPredicate(h.command)
       );
       removed += before - block.hooks.length;
     }

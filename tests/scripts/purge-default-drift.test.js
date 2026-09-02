@@ -21,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+const read = rel => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
 
 const STUB = 'commands/claudemd-uninstall.md';
 const SCRIPT = 'scripts/uninstall.js';
@@ -37,7 +37,8 @@ function purgeEnvVar() {
 
 // Every fenced/inline command in the stub that invokes uninstall.js, in order.
 function stubInvocations() {
-  const lines = read(STUB).split('\n')
+  const lines = read(STUB)
+    .split('\n')
     .filter(l => /uninstall\.js/.test(l) && /`/.test(l))
     .map(l => (l.match(/`([^`]*uninstall\.js[^`]*)`/) || [])[1])
     .filter(Boolean);
@@ -50,17 +51,21 @@ test('R11-03.1: the script gates purge behind an opt-in env var', () => {
   assert.equal(v, 'CLAUDEMD_PURGE');
 });
 
-test('R11-03.2: the stub\'s FIRST documented invocation does not set the purge var', () => {
+test("R11-03.2: the stub's FIRST documented invocation does not set the purge var", () => {
   const v = purgeEnvVar();
   const first = stubInvocations()[0];
-  assert.ok(!first.includes(`${v}=1`),
-    `the stub's default invocation must not opt into purge, got: ${first}`);
+  assert.ok(
+    !first.includes(`${v}=1`),
+    `the stub's default invocation must not opt into purge, got: ${first}`
+  );
 });
 
 test('R11-03.3: the stub still documents the purge invocation somewhere', () => {
   const v = purgeEnvVar();
-  assert.ok(stubInvocations().some(c => c.includes(`${v}=1`)),
-    `${STUB} must keep an explicit ${v}=1 example`);
+  assert.ok(
+    stubInvocations().some(c => c.includes(`${v}=1`)),
+    `${STUB} must keep an explicit ${v}=1 example`
+  );
 });
 
 // "This is something you ADD", in the three phrasings README actually uses.
@@ -70,27 +75,38 @@ const OPT_IN_FRAMING = /\b(also|add|with)\b/i;
 
 test('R11-03.4: README describes purge as an addition, not the default', () => {
   const v = purgeEnvVar();
-  const mentions = read(README).split('\n').filter(l => l.includes(v));
+  const mentions = read(README)
+    .split('\n')
+    .filter(l => l.includes(v));
   assert.ok(mentions.length > 0, `README must document ${v}`);
   for (const line of mentions) {
-    assert.ok(OPT_IN_FRAMING.test(line),
-      `README line describes ${v} without opt-in framing (reads as a default): ${line.trim()}`);
+    assert.ok(
+      OPT_IN_FRAMING.test(line),
+      `README line describes ${v} without opt-in framing (reads as a default): ${line.trim()}`
+    );
   }
 });
 
 // The predicate above is loose enough to be worth proving it can still fail:
 // this is the exact line the stub carried before this fix.
 test('R11-03.6: the opt-in predicate rejects the pre-fix default-framing line', () => {
-  const preFix = '- Default (keep spec, drop state + log):\n  `CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`';
+  const preFix =
+    '- Default (keep spec, drop state + log):\n  `CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`';
   const offending = preFix.split('\n').filter(l => l.includes('CLAUDEMD_PURGE'));
   assert.equal(offending.length, 1);
-  assert.equal(OPT_IN_FRAMING.test(offending[0]), false,
-    'predicate must reject a bare CLAUDEMD_PURGE=1 invocation line');
+  assert.equal(
+    OPT_IN_FRAMING.test(offending[0]),
+    false,
+    'predicate must reject a bare CLAUDEMD_PURGE=1 invocation line'
+  );
 });
 
 test('R11-03.5: the stub frontmatter description does not promise unconditional log deletion', () => {
   const fm = read(STUB).split('---')[1] || '';
   const claimsUnconditional = /clear the plugin manifest, state dir, and rule-hits log/.test(fm);
-  assert.equal(claimsUnconditional, false,
-    'frontmatter must not list the purge-only targets as unconditional cleanup');
+  assert.equal(
+    claimsUnconditional,
+    false,
+    'frontmatter must not list the purge-only targets as unconditional cleanup'
+  );
 });

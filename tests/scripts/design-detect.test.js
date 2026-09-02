@@ -28,7 +28,7 @@ function tmpCopy(name) {
   fs.cpSync(path.join(FIX, name), dst, { recursive: true });
   return dst;
 }
-const paths = (r) => r.tokenSources.map(t => t.path);
+const paths = r => r.tokenSources.map(t => t.path);
 
 // ── verdict matrix ──────────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ test('#13 :root-in-comment + component-scoped props is NOT a token system', () =
 test('#247 monorepo: a non-UI sibling package’s tokens are NOT attributed to the UI package', () => {
   const r = detect(path.join(FIX, 'monorepo-siblingtokens'));
   assert.equal(r.monorepoPkg, path.join('packages', 'web'));
-  assert.deepEqual(r.tokenSources, []);          // emails/_variables.scss must NOT leak in
+  assert.deepEqual(r.tokenSources, []); // emails/_variables.scss must NOT leak in
   assert.equal(r.verdict, 'ui-no-tokens');
 });
 
@@ -155,8 +155,11 @@ test('#4/#14 monorepo subproject + >64KB CLAUDE.md wiring', () => {
 
 test('#6 FIFO in the tree does not hang the walk', () => {
   const dir = tmpCopy('vue-scss');
-  try { execFileSync('mkfifo', [path.join(dir, 'src/theme.css')]); }
-  catch { return; } // non-POSIX → skip
+  try {
+    execFileSync('mkfifo', [path.join(dir, 'src/theme.css')]);
+  } catch {
+    return;
+  } // non-POSIX → skip
   assert.equal(detect(dir).verdict, 'adoptable');
 });
 
@@ -171,13 +174,28 @@ test('token set enumeration is stable (sorted) across runs', () => {
 
 test('CLI: --json verdict, --help exit 0, unknown flag exit 2, fail-open on bogus cwd', () => {
   const env = { ...process.env, HOME: TMP };
-  assert.equal(JSON.parse(execFileSync('node', [SCRIPT, '--json', `--cwd=${path.join(FIX, 'node-cli')}`], { env, encoding: 'utf8' })).verdict, 'no-ui');
+  assert.equal(
+    JSON.parse(
+      execFileSync('node', [SCRIPT, '--json', `--cwd=${path.join(FIX, 'node-cli')}`], {
+        env,
+        encoding: 'utf8',
+      })
+    ).verdict,
+    'no-ui'
+  );
   assert.ok(execFileSync('node', [SCRIPT, '--help'], { env, encoding: 'utf8' }).includes('Usage:'));
   let code = 0;
-  try { execFileSync('node', [SCRIPT, '--bogus'], { env, encoding: 'utf8', stdio: 'pipe' }); }
-  catch (e) { code = e.status; }
+  try {
+    execFileSync('node', [SCRIPT, '--bogus'], { env, encoding: 'utf8', stdio: 'pipe' });
+  } catch (e) {
+    code = e.status;
+  }
   assert.equal(code, 2);
-  assert.equal(JSON.parse(execFileSync('node', [SCRIPT, '--json', '--cwd=/nonexistent-xyz'], { env, encoding: 'utf8' })).verdict, 'no-ui');
+  assert.equal(
+    JSON.parse(execFileSync('node', [SCRIPT, '--json', '--cwd=/nonexistent-xyz'], { env, encoding: 'utf8' }))
+      .verdict,
+    'no-ui'
+  );
 });
 
 test('#3 main guard fires from a path with a space AND a symlinked path (realpath)', () => {
@@ -188,6 +206,10 @@ test('#3 main guard fires from a path with a space AND a symlinked path (realpat
   fs.mkdirSync(path.join(base, 'lib'), { recursive: true });
   fs.copyFileSync(SCRIPT, path.join(base, 'design-detect.js'));
   for (const f of ['argv.js', 'paths.js']) fs.copyFileSync(path.join(LIB, f), path.join(base, 'lib', f));
-  const out = execFileSync('node', [path.join(base, 'design-detect.js'), '--json', `--cwd=${path.join(FIX, 'node-cli')}`], { env: { ...process.env, HOME: TMP }, encoding: 'utf8' });
+  const out = execFileSync(
+    'node',
+    [path.join(base, 'design-detect.js'), '--json', `--cwd=${path.join(FIX, 'node-cli')}`],
+    { env: { ...process.env, HOME: TMP }, encoding: 'utf8' }
+  );
   assert.equal(JSON.parse(out).verdict, 'no-ui'); // pre-fix: empty stdout → JSON.parse throws
 });

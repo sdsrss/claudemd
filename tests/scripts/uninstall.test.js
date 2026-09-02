@@ -32,26 +32,50 @@ beforeEach(async () => {
   // plugin root without it (a hook-less install used to report success, with
   // the version check then reading that state as healthy). Hand-built fixtures
   // must carry it too or they stop resembling the artifact under test.
-  fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({
-    hooks: {
-      PreToolUse: [{ matcher: 'Bash', hooks: [
-        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 10 },
-        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 10 },
-      ] }],
-      PostToolUse: [{ matcher: 'Bash', hooks: [
-        { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 10 },
-      ] }],
-    },
-  }));
+  fs.writeFileSync(
+    path.join(pluginRoot, 'hooks/hooks.json'),
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [
+              {
+                type: 'command',
+                command: '"${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"',
+                timeout: 10,
+              },
+              { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 10 },
+            ],
+          },
+        ],
+        PostToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [
+              { type: 'command', command: '"${CLAUDE_PLUGIN_ROOT}/hooks/residue-audit.sh"', timeout: 10 },
+            ],
+          },
+        ],
+      },
+    })
+  );
   // Renderer the install-time statusLine adopt copies to ~/.claude. Without it
   // install()'s adopt hits ENOENT → {action:'error'} and the suite never
   // exercises a successful install-time statusLine set (M4).
   fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
   fs.writeFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), '#!/usr/bin/env bash\necho x\n');
   // Co-existing foreign hook
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
-    hooks: { PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node /foreign/hook.mjs', timeout: 5 }] }] }
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: '*', hooks: [{ type: 'command', command: 'node /foreign/hook.mjs', timeout: 5 }] },
+        ],
+      },
+    })
+  );
   await install({ pluginRoot });
 });
 
@@ -81,11 +105,16 @@ test('unparseable settings.json degrades to a reported skip, not a blocked unins
   const res = await uninstall({ specAction: 'keep' });
   assert.equal(res.specAction, 'keep');
   assert.match(res.settingsWarning || '', /not valid JSON/);
-  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
-    'manifest must be removed even when settings.json cannot be parsed');
+  assert.ok(
+    !fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
+    'manifest must be removed even when settings.json cannot be parsed'
+  );
   assert.ok(fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')));
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'),
-    '{\n  "model": "opus",\n}\n', 'the unparseable file is left exactly as the user wrote it');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'),
+    '{\n  "model": "opus",\n}\n',
+    'the unparseable file is left exactly as the user wrote it'
+  );
   // removeStatusline() reads the SAME file, so it fails on the same input —
   // claudemd still owns the statusLine after this "successful" uninstall. The
   // warning must say so; naming only hook entries told the user the statusLine
@@ -151,10 +180,16 @@ test('aborted delete (no confirm) does not mutate settings.json or manifest (F14
 
   const r = await uninstall({ specAction: 'delete', confirmHardAuth: false });
   assert.equal(r.specAction, 'abort');
-  assert.equal(fs.readFileSync(settingsPath, 'utf8'), before,
-    'settings.json must be untouched after aborted delete');
-  assert.equal(fs.readFileSync(manifestPath, 'utf8'), manifestBefore,
-    'manifest must be untouched after aborted delete');
+  assert.equal(
+    fs.readFileSync(settingsPath, 'utf8'),
+    before,
+    'settings.json must be untouched after aborted delete'
+  );
+  assert.equal(
+    fs.readFileSync(manifestPath, 'utf8'),
+    manifestBefore,
+    'manifest must be untouched after aborted delete'
+  );
 });
 
 test('aborted restore (no backups) does not mutate settings.json or manifest (F14)', async () => {
@@ -170,7 +205,7 @@ test('aborted restore (no backups) does not mutate settings.json or manifest (F1
   assert.equal(fs.readFileSync(manifestPath, 'utf8'), manifestBefore);
 });
 
-test('purge: deletes only claudemd.jsonl, preserves other tools\' logs (H1)', async () => {
+test("purge: deletes only claudemd.jsonl, preserves other tools' logs (H1)", async () => {
   // Regression: ~/.claude/logs is shared with other plugins (claude-mem-lite etc).
   // Purge used to rm -rf the whole directory and nuke neighbor logs.
   const logsDir = path.join(tmpHome, '.claude/logs');
@@ -196,8 +231,7 @@ test('purge: removes logs dir when empty after claudemd.jsonl deletion (H1)', as
   // install() in beforeEach already created logsDir + empty claudemd.jsonl.
   // Nothing else lives there, so purge should clean up the now-empty dir.
   await uninstall({ specAction: 'keep', purge: true });
-  assert.equal(fs.existsSync(logsDir), false,
-    'empty logs dir after own-log removal should be cleaned up');
+  assert.equal(fs.existsSync(logsDir), false, 'empty logs dir after own-log removal should be cleaned up');
 });
 
 test('D6: manifest missing but settings.json has legacy ${CLAUDE_PLUGIN_ROOT} entry → eviction still runs', async () => {
@@ -209,25 +243,39 @@ test('D6: manifest missing but settings.json has legacy ${CLAUDE_PLUGIN_ROOT} en
   const settingsP = path.join(tmpHome, '.claude/settings.json');
   const s = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
   s.hooks ||= {};
-  s.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [
-    { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
-  ] }];
+  s.hooks.PreToolUse = [
+    {
+      matcher: 'Bash',
+      hooks: [
+        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/banned-vocab-check.sh"', timeout: 3 },
+      ],
+    },
+  ];
   fs.writeFileSync(settingsP, JSON.stringify(s));
 
   const res = await uninstall({ specAction: 'keep' });
 
   assert.equal(res.warning, 'already-uninstalled');
-  assert.equal(res.settingsRemoved, 1, 'legacy ${CLAUDE_PLUGIN_ROOT} entry must be evicted even with manifest missing');
+  assert.equal(
+    res.settingsRemoved,
+    1,
+    'legacy ${CLAUDE_PLUGIN_ROOT} entry must be evicted even with manifest missing'
+  );
 
   const after = JSON.parse(fs.readFileSync(settingsP, 'utf8'));
   const all = [];
   for (const event of Object.keys(after.hooks || {})) {
     for (const block of after.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
-  assert.equal(all.some(c => c.includes('banned-vocab-check.sh')), false,
-    'no claudemd hook command should remain after eviction');
-  assert.ok(all.some(c => c.includes('node /foreign/hook.mjs')),
-    'foreign hook from beforeEach must survive');
+  assert.equal(
+    all.some(c => c.includes('banned-vocab-check.sh')),
+    false,
+    'no claudemd hook command should remain after eviction'
+  );
+  assert.ok(
+    all.some(c => c.includes('node /foreign/hook.mjs')),
+    'foreign hook from beforeEach must survive'
+  );
 });
 
 test('D6: predicate is path-anchored — does NOT evict same-basename hook from another plugin', async () => {
@@ -242,11 +290,18 @@ test('D6: predicate is path-anchored — does NOT evict same-basename hook from 
   // Hypothetical other-plugin shipping a same-basename hook. Note: this path
   // contains `/plugins/cache/` but NOT `/plugins/cache/claudemd/`, so the
   // path-anchored predicate must reject it.
-  s.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [
-    { type: 'command',
-      command: 'bash "/home/x/.claude/plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh"',
-      timeout: 3 },
-  ] }];
+  s.hooks.PreToolUse = [
+    {
+      matcher: 'Bash',
+      hooks: [
+        {
+          type: 'command',
+          command: 'bash "/home/x/.claude/plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh"',
+          timeout: 3,
+        },
+      ],
+    },
+  ];
   fs.writeFileSync(settingsP, JSON.stringify(s));
 
   const res = await uninstall({ specAction: 'keep' });
@@ -259,8 +314,10 @@ test('D6: predicate is path-anchored — does NOT evict same-basename hook from 
   for (const event of Object.keys(after.hooks || {})) {
     for (const block of after.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
-  assert.ok(all.some(c => c.includes('plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh')),
-    'other-plugin hook must survive uninstall');
+  assert.ok(
+    all.some(c => c.includes('plugins/cache/some-other-plugin/0.1.0/hooks/banned-vocab-check.sh')),
+    'other-plugin hook must survive uninstall'
+  );
 });
 
 test('D6: settingsRemoved field present on normal keep path (manifest exists)', async () => {
@@ -271,8 +328,7 @@ test('D6: settingsRemoved field present on normal keep path (manifest exists)', 
   // exercised by the two D6 cases above.
   const res = await uninstall({ specAction: 'keep' });
   assert.equal(res.specAction, 'keep');
-  assert.equal(typeof res.settingsRemoved, 'number',
-    'settingsRemoved must be a number on normal keep path');
+  assert.equal(typeof res.settingsRemoved, 'number', 'settingsRemoved must be a number on normal keep path');
 });
 
 test('uninstall removes a claudemd-owned statusLine + the renderer', async () => {
@@ -293,8 +349,10 @@ test('uninstall removes a claudemd-owned statusLine + the renderer', async () =>
 });
 
 test('uninstall leaves a foreign statusLine untouched', async () => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } })
+  );
   const res = await uninstall({});
   assert.equal(res.statusline.action, 'not-ours');
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
@@ -309,10 +367,14 @@ test('no-manifest uninstall still removes a claudemd-owned statusLine (M3)', asy
   // deleted, not left orphaned pointing at a live settings.json command. This
   // is the constraint-#5 no-manifest sub-case, previously unasserted.
   const sBefore = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  assert.ok(sBefore.statusLine?.command?.includes('claudemd-statusline.sh'),
-    'precondition: beforeEach install set a claudemd statusLine');
-  assert.ok(fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
-    'precondition: renderer present');
+  assert.ok(
+    sBefore.statusLine?.command?.includes('claudemd-statusline.sh'),
+    'precondition: beforeEach install set a claudemd statusLine'
+  );
+  assert.ok(
+    fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
+    'precondition: renderer present'
+  );
 
   fs.unlinkSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'));
   const res = await uninstall({ specAction: 'keep' });
@@ -321,8 +383,10 @@ test('no-manifest uninstall still removes a claudemd-owned statusLine (M3)', asy
   assert.equal(res.statusline.action, 'removed', 'statusLine un-wired despite missing manifest');
   const sAfter = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
   assert.equal(sAfter.statusLine, undefined, 'slot cleared');
-  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
-    'renderer deleted, not left dangling');
+  assert.ok(
+    !fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')),
+    'renderer deleted, not left dangling'
+  );
 });
 
 test('uninstall unregisters a guest claudemd from a composite host, leaving the host slot untouched', async () => {
@@ -332,25 +396,41 @@ test('uninstall unregisters a guest claudemd from a composite host, leaving the 
   // statusline.js:128 (Task 5), previously unexercised by this suite.
   const registryPath = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
   fs.mkdirSync(path.dirname(registryPath), { recursive: true });
-  fs.writeFileSync(registryPath, JSON.stringify([
-    { id: 'claudemd', command: `bash "${path.join(tmpHome, '.claude/claudemd-statusline.sh')}"`, needsStdin: true },
-    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
-  ]));
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
-    statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
-  }));
+  fs.writeFileSync(
+    registryPath,
+    JSON.stringify([
+      {
+        id: 'claudemd',
+        command: `bash "${path.join(tmpHome, '.claude/claudemd-statusline.sh')}"`,
+        needsStdin: true,
+      },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
   fs.writeFileSync(path.join(tmpHome, '.claude/claudemd-statusline.sh'), '#!/usr/bin/env bash\necho x\n');
 
   const res = await uninstall({});
 
   assert.equal(res.statusline.action, 'unregistered');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  assert.ok(!registry.some((p) => p.id === 'claudemd'), 'claudemd must be unregistered from the host registry');
-  assert.ok(registry.some((p) => p.id === 'code-graph'), 'host entry must survive uninstall');
+  assert.ok(!registry.some(p => p.id === 'claudemd'), 'claudemd must be unregistered from the host registry');
+  assert.ok(
+    registry.some(p => p.id === 'code-graph'),
+    'host entry must survive uninstall'
+  );
   assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/claudemd-statusline.sh')), 'renderer must be deleted');
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
-  assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"',
-    'host keeps the slot — settings.json statusLine must be unchanged');
+  assert.equal(
+    s.statusLine.command,
+    'node "/cg/scripts/statusline-composite.js"',
+    'host keeps the slot — settings.json statusLine must be unchanged'
+  );
 });
 
 test('--purge refuses to recurse when CLAUDEMD_STATE_DIR is not our directory (v0.69.0 pre-tag review S1)', async () => {
@@ -372,9 +452,18 @@ test('--purge refuses to recurse when CLAUDEMD_STATE_DIR is not our directory (v
     await uninstall({ specAction: 'keep', purge: true });
 
     assert.ok(fs.existsSync(outside), 'the directory itself must survive');
-    assert.ok(fs.existsSync(path.join(outside, 'the-users-notes.md')), 'a file claudemd never wrote must survive --purge');
-    assert.ok(fs.existsSync(path.join(outside, 'someones-subdir/keep.txt')), '--purge must not recurse into a directory that is not ours');
-    assert.ok(!fs.existsSync(path.join(outside, 'ext-read-abc.ts')), "claudemd's own state file should still be removed");
+    assert.ok(
+      fs.existsSync(path.join(outside, 'the-users-notes.md')),
+      'a file claudemd never wrote must survive --purge'
+    );
+    assert.ok(
+      fs.existsSync(path.join(outside, 'someones-subdir/keep.txt')),
+      '--purge must not recurse into a directory that is not ours'
+    );
+    assert.ok(
+      !fs.existsSync(path.join(outside, 'ext-read-abc.ts')),
+      "claudemd's own state file should still be removed"
+    );
   } finally {
     if (saved === undefined) delete process.env.CLAUDEMD_STATE_DIR;
     else process.env.CLAUDEMD_STATE_DIR = saved;

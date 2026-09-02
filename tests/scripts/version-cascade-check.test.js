@@ -9,7 +9,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { runVersionCascadeCheck, runSpecSizingCheck, runPluginSemverCheck } from '../../scripts/version-cascade-check.js';
+import {
+  runVersionCascadeCheck,
+  runSpecSizingCheck,
+  runPluginSemverCheck,
+} from '../../scripts/version-cascade-check.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -19,8 +23,7 @@ const SCRIPT = path.join(REPO_ROOT, 'scripts/version-cascade-check.js');
 
 test('real repo: README + plugin.json + marketplace.json all match spec_version minor', () => {
   const r = runVersionCascadeCheck({ root: REPO_ROOT });
-  assert.equal(r.ok, true,
-    `cascade drift: ${JSON.stringify(r.offenders, null, 2)}`);
+  assert.equal(r.ok, true, `cascade drift: ${JSON.stringify(r.offenders, null, 2)}`);
   assert.equal(r.filesChecked.length, 3);
   assert.match(r.expectedMinor, /^v\d+\.\d+$/);
 });
@@ -72,8 +75,7 @@ test('synthetic: patch-only mismatch (v6.13.0 vs v6.13.1) does NOT trip — mino
       marketplaceJson: '{"description":"v6.13 market"}',
     });
     const r = runVersionCascadeCheck({ root: tmp });
-    assert.equal(r.ok, true,
-      `unexpected offenders: ${JSON.stringify(r.offenders)}`);
+    assert.equal(r.ok, true, `unexpected offenders: ${JSON.stringify(r.offenders)}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -137,8 +139,7 @@ test('CLI: unknown flag → exit 2 + argv-shape error', () => {
 
 test('real repo: spec sizing claim matches actual fs sizes within ±20B', () => {
   const r = runSpecSizingCheck({ root: REPO_ROOT });
-  assert.equal(r.ok, true,
-    `Sizing line claims diverge from actual: ${JSON.stringify(r.drifts, null, 2)}`);
+  assert.equal(r.ok, true, `Sizing line claims diverge from actual: ${JSON.stringify(r.drifts, null, 2)}`);
 });
 
 function makeSizingFixture(tmpDir, { sizingLine, coreBytes, extPadding, opBytes }) {
@@ -148,7 +149,7 @@ function makeSizingFixture(tmpDir, { sizingLine, coreBytes, extPadding, opBytes 
   }
   if (sizingLine != null) {
     // CLAUDE-extended.md body = the **Sizing** line itself + padding to reach target bytes
-    const lineLen = sizingLine.length + 1;  // +1 for trailing newline
+    const lineLen = sizingLine.length + 1; // +1 for trailing newline
     const pad = Math.max(0, (extPadding ?? 0) - lineLen);
     fs.writeFileSync(path.join(tmpDir, 'spec/CLAUDE-extended.md'), sizingLine + '\n' + 'y'.repeat(pad));
   }
@@ -164,7 +165,8 @@ test('synthetic: sizing claims match actual → ok', () => {
     // Carefully compute extended target so claim matches actual after we
     // write line + padding. Sizing line is 200 bytes (incl. newline);
     // pad to 1500B total → claimed extended=1500.
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 500 });
     const r = runSpecSizingCheck({ root: tmp });
     assert.equal(r.ok, true, `unexpected drifts: ${JSON.stringify(r.drifts)}`);
@@ -177,7 +179,8 @@ test('synthetic: sizing claims match actual → ok', () => {
 test('synthetic: core file +100B drift → reported as over-threshold', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     // Claim core=1000 but write 1100 — drift +100B (over ±20B threshold).
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1100, extPadding: 1500, opBytes: 500 });
     const r = runSpecSizingCheck({ root: tmp });
@@ -196,7 +199,8 @@ test('synthetic: core file +100B drift → reported as over-threshold', () => {
 test('synthetic: drift exactly +20B → still ok (inclusive boundary)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1020, extPadding: 1500, opBytes: 500 });
     const r = runSpecSizingCheck({ root: tmp });
     assert.equal(r.ok, true, `±20B is inclusive; drifts=${JSON.stringify(r.drifts)}`);
@@ -208,7 +212,8 @@ test('synthetic: drift exactly +20B → still ok (inclusive boundary)', () => {
 test('synthetic: drift +21B → reported (exclusive boundary)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1021, extPadding: 1500, opBytes: 500 });
     const r = runSpecSizingCheck({ root: tmp });
     assert.equal(r.ok, false);
@@ -224,7 +229,8 @@ test('synthetic: drift +21B → reported (exclusive boundary)', () => {
 test('synthetic: over-threshold drift emits suggested edit (P6 arrowed form)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     // core: claim 1000, write 1100 → +100B drift, over threshold.
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1100, extPadding: 1500, opBytes: 500 });
     const r = runSpecSizingCheck({ root: tmp });
@@ -242,7 +248,8 @@ test('synthetic: plain-form claim drift also emits suggested edit (P6)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
   try {
     // OPERATOR.md uses plain form "N bytes" (no arrow) — common when file is unchanged.
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 bytes.';
     makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 600 });
     const r = runSpecSizingCheck({ root: tmp });
     assert.equal(r.ok, false);
@@ -310,9 +317,13 @@ test('CLI: sizing drift exits 1 with stderr Δ line + actionable Fix sizing note
     fs.writeFileSync(path.join(tmp, '.claude-plugin/plugin.json'), '{"description":"v6.13"}');
     fs.writeFileSync(path.join(tmp, '.claude-plugin/marketplace.json'), '{"d":"v6.13"}');
     // Sizing claim 1000 for core, actual 1500 — drift +500B
-    const sizingLine = '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
+    const sizingLine =
+      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
     fs.writeFileSync(path.join(tmp, 'spec/CLAUDE.md'), 'x'.repeat(1500));
-    fs.writeFileSync(path.join(tmp, 'spec/CLAUDE-extended.md'), sizingLine + '\n' + 'y'.repeat(1500 - sizingLine.length - 1));
+    fs.writeFileSync(
+      path.join(tmp, 'spec/CLAUDE-extended.md'),
+      sizingLine + '\n' + 'y'.repeat(1500 - sizingLine.length - 1)
+    );
     fs.writeFileSync(path.join(tmp, 'spec/OPERATOR.md'), 'z'.repeat(500));
     // Run CLI against this fixture root via env override (resolvePluginRoot
     // walks up from script location, so we have to invoke node + the script
@@ -343,8 +354,10 @@ function semverFixture(dir, { pkg, plugin, meta, entry }) {
   fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
   if (pkg !== undefined) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: pkg }));
   fs.writeFileSync(path.join(dir, '.claude-plugin/plugin.json'), JSON.stringify({ version: plugin }));
-  fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
-    JSON.stringify({ metadata: { version: meta }, plugins: [{ version: entry }] }));
+  fs.writeFileSync(
+    path.join(dir, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ metadata: { version: meta }, plugins: [{ version: entry }] })
+  );
   return dir;
 }
 
@@ -356,7 +369,9 @@ test('pluginSemver: all four sites agree -> ok', () => {
     assert.equal(r.ok, true);
     assert.equal(r.expected, '1.2.3');
     assert.equal(r.sites.length, 4);
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('pluginSemver: stale package.json is caught (the v0.47.1-0.47.3 shape)', () => {
@@ -366,7 +381,9 @@ test('pluginSemver: stale package.json is caught (the v0.47.1-0.47.3 shape)', ()
     const r = runPluginSemverCheck({ root: d });
     assert.equal(r.ok, false, 'stale package.json must fail — it is what install.js stamps');
     assert.equal(r.expected, '0.47.0');
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('pluginSemver: a stale marketplace entry is caught too', () => {
@@ -374,7 +391,9 @@ test('pluginSemver: a stale marketplace entry is caught too', () => {
   try {
     semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.2' });
     assert.equal(runPluginSemverCheck({ root: d }).ok, false);
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('pluginSemver: missing package.json fails loudly, does not skip', () => {
@@ -384,7 +403,9 @@ test('pluginSemver: missing package.json fails loudly, does not skip', () => {
     const r = runPluginSemverCheck({ root: d });
     assert.equal(r.ok, false, 'absent package.json must fail, not fail-open');
     assert.equal(r.sites[0].value, null);
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('pluginSemver: the real repo agrees across all four sites', () => {

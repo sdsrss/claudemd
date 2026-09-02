@@ -67,15 +67,18 @@ test('scan: invalid regex in pattern silently skipped (fail-open)', () => {
 test('parseTranscript: extracts only assistant text turns, joins blocks per turn', () => {
   const jsonl = [
     JSON.stringify({ type: 'user', message: { content: 'hi' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [
-      { type: 'text', text: 'first part' },
-      { type: 'tool_use', name: 'Bash', input: {} },
-      { type: 'text', text: 'second part' },
-    ] } }),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'first part' },
+          { type: 'tool_use', name: 'Bash', input: {} },
+          { type: 'text', text: 'second part' },
+        ],
+      },
+    }),
     JSON.stringify({ type: 'user', message: { content: 'more' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [
-      { type: 'text', text: 'last turn' },
-    ] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'last turn' }] } }),
   ].join('\n');
   const turns = parseTranscript(jsonl);
   assert.equal(turns.length, 2);
@@ -101,9 +104,7 @@ test('parseTranscript: corrupt jsonl rows silently skipped', () => {
 test('formatHumanReadable lint: clean → "OK", with hits → enumerated lines', () => {
   const ok = formatHumanReadable({ scope: 'lint', hits: [] });
   assert.match(ok, /^OK/);
-  const hits = [
-    { match: 'significantly', regex: '\\bsignificantly\\b', reason: 'vague', isRatio: false },
-  ];
+  const hits = [{ match: 'significantly', regex: '\\bsignificantly\\b', reason: 'vague', isRatio: false }];
   const out = formatHumanReadable({ scope: 'lint', hits });
   assert.match(out, /1 hit/);
   assert.match(out, /significantly/);
@@ -113,9 +114,12 @@ test('formatHumanReadable lint: clean → "OK", with hits → enumerated lines',
 test('formatHumanReadable audit: groups hits by turn line + index', () => {
   const turns = [
     { turnIndex: 0, line: 2, text: 'clean', hits: [] },
-    { turnIndex: 1, line: 4, text: 'sig', hits: [
-      { match: 'significantly', reason: 'vague magnitude', isRatio: false },
-    ] },
+    {
+      turnIndex: 1,
+      line: 4,
+      text: 'sig',
+      hits: [{ match: 'significantly', reason: 'vague magnitude', isRatio: false }],
+    },
   ];
   const out = formatHumanReadable({ scope: 'audit', turns });
   assert.match(out, /1 of 2 assistant turn/);
@@ -151,7 +155,7 @@ test('stripIdentifiers: unterminated fence is literal text, not a blank-to-EOF (
 
 test('stripIdentifiers: preserves bare prose words and decimals (no over-strip)', () => {
   assert.match(stripIdentifiers('the coverage is comprehensive'), /comprehensive/);
-  assert.match(stripIdentifiers('3.5x faster'), /3\.5x/);          // decimal survives → ratio still catchable
+  assert.match(stripIdentifiers('3.5x faster'), /3\.5x/); // decimal survives → ratio still catchable
   assert.match(stripIdentifiers('comprehensive. Next sentence'), /comprehensive/); // sentence period, not a file
 });
 
@@ -162,7 +166,11 @@ test('scan({sanitize}): identifier-quoted high-fire word does NOT hit (FP fix)',
 });
 
 test('scan({sanitize}): bare-prose violation STILL hits (no false negative)', () => {
-  assert.ok(scan('this is significantly faster', { sanitize: true }).some(h => h.match.toLowerCase() === 'significantly'));
+  assert.ok(
+    scan('this is significantly faster', { sanitize: true }).some(
+      h => h.match.toLowerCase() === 'significantly'
+    )
+  );
   assert.ok(scan('a robust design', { sanitize: true }).some(h => h.match.toLowerCase() === 'robust'));
 });
 

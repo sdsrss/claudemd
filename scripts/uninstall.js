@@ -1,8 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
+import {
+  readSettings,
+  writeSettings,
+  unmergeHook,
+  isClaudemdLegacyHookCommand,
+} from './lib/settings-merge.js';
 import { listBackups, restoreBackup } from './lib/backup.js';
-import { stateDir, logsDir, settingsPath, specHome, backupRoot, readManifest, legacyManifestPath } from './lib/paths.js';
+import {
+  stateDir,
+  logsDir,
+  settingsPath,
+  specHome,
+  backupRoot,
+  readManifest,
+  legacyManifestPath,
+} from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { remove as removeStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -18,7 +31,8 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 // a fresh instance of the class 0.69.1 shipped a gate to close. Its blast
 // direction is benign (an unmatched stem is left behind, never wrongly deleted),
 // which is exactly why nothing would have noticed it going stale.
-export const CLAUDEMD_STATE_FILE_RE = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
+export const CLAUDEMD_STATE_FILE_RE =
+  /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
@@ -75,8 +89,8 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     try {
       const s = readSettings();
       const pluginCommands = new Set((m.data?.entries || []).map(e => e.command));
-      const r = unmergeHook(s, { commandPredicate: (c) =>
-        pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES)
+      const r = unmergeHook(s, {
+        commandPredicate: c => pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
       });
       settingsRemoved = r.removed;
       writeSettings(s);
@@ -98,15 +112,19 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // above) so a manifest-less uninstall still un-wires our statusLine. No-op
   // when the slot is empty or owned by another provider.
   let statusline;
-  try { statusline = removeStatusline(); } catch (e) { statusline = { action: 'error', error: e.message }; }
+  try {
+    statusline = removeStatusline();
+  } catch (e) {
+    statusline = { action: 'error', error: e.message };
+  }
   // The failure used to live only in the returned JSON's `statusline.action`,
   // which nothing surfaces on the human path — so a statusLine we could not
   // un-wire went unmentioned while the command reported success.
   if (statusline.action === 'error') {
     process.stderr.write(
       `[claudemd] WARN: could not un-wire the statusLine (${statusline.error}). ` +
-      `If ~/.claude/settings.json still names claudemd-statusline.sh, fix that file and re-run, ` +
-      `or clear it with /claudemd-statusline remove.\n`
+        `If ~/.claude/settings.json still names claudemd-statusline.sh, fix that file and re-run, ` +
+        `or clear it with /claudemd-statusline remove.\n`
     );
   }
 
@@ -117,7 +135,13 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // unconditionally without a missing-key branch — same shape as the success
   // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
-    return { specAction: 'noop', warning: 'already-uninstalled', settingsRemoved, settingsWarning, statusline };
+    return {
+      specAction: 'noop',
+      warning: 'already-uninstalled',
+      settingsRemoved,
+      settingsWarning,
+      statusline,
+    };
   }
   const activeManifestPath = m.path;
   const legacyPath = legacyManifestPath();
@@ -162,11 +186,15 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       // leave the directory (and anything else in it) alone.
       for (const name of fs.readdirSync(sd)) {
         if (!CLAUDEMD_STATE_FILE_RE.test(name)) continue;
-        try { fs.rmSync(path.join(sd, name), { force: true }); } catch { /* best-effort */ }
+        try {
+          fs.rmSync(path.join(sd, name), { force: true });
+        } catch {
+          /* best-effort */
+        }
       }
       console.error(
         `[claudemd] CLAUDEMD_STATE_DIR points at ${sd}, which is not named .claudemd-state — ` +
-        `removed only claudemd's own state files there and left the directory in place.`,
+          `removed only claudemd's own state files there and left the directory in place.`
       );
     }
     if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
@@ -181,13 +209,23 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     // two-step uninstall still left claudemd-owned files with no in-tree tool
     // able to remove them.
     for (const name of fs.existsSync(logsDir()) ? fs.readdirSync(logsDir()) : []) {
-      if (name === 'claudemd.jsonl' || name.startsWith('claudemd.jsonl.') || name === 'claudemd-bootstrap.log') {
-        try { fs.unlinkSync(path.join(logsDir(), name)); } catch { /* already gone */ }
+      if (
+        name === 'claudemd.jsonl' ||
+        name.startsWith('claudemd.jsonl.') ||
+        name === 'claudemd-bootstrap.log'
+      ) {
+        try {
+          fs.unlinkSync(path.join(logsDir(), name));
+        } catch {
+          /* already gone */
+        }
       }
     }
     try {
       if (fs.readdirSync(logsDir()).length === 0) fs.rmdirSync(logsDir());
-    } catch { /* dir gone or unreadable — fine */ }
+    } catch {
+      /* dir gone or unreadable — fine */
+    }
   } else {
     if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
@@ -202,16 +240,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parseStrict(process.argv.slice(2), {});
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const specAction = process.env.CLAUDEMD_SPEC_ACTION || 'keep';
   const confirmHardAuth = process.env.CLAUDEMD_CONFIRM === '1';
   const purge = process.env.CLAUDEMD_PURGE === '1';
-  uninstall({ specAction, confirmHardAuth, purge }).then(r => {
-    console.log(JSON.stringify(r, null, 2));
-  }).catch(e => {
-    console.error(`uninstall failed: ${e.message}`);
-    process.exit(1);
-  });
+  uninstall({ specAction, confirmHardAuth, purge })
+    .then(r => {
+      console.log(JSON.stringify(r, null, 2));
+    })
+    .catch(e => {
+      console.error(`uninstall failed: ${e.message}`);
+      process.exit(1);
+    });
 }

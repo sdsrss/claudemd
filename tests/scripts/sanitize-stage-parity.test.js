@@ -26,8 +26,11 @@ const REPO_ROOT = path.resolve(HERE, '../..');
 function sedProgramOf(hookRel) {
   const src = fs.readFileSync(path.join(REPO_ROOT, hookRel), 'utf8');
   const lines = src.split('\n').filter(l => /\|\s*sed -E '/.test(l));
-  assert.equal(lines.length, 1,
-    `${hookRel}: expected exactly one sanitize "sed -E" line, got ${lines.length}`);
+  assert.equal(
+    lines.length,
+    1,
+    `${hookRel}: expected exactly one sanitize "sed -E" line, got ${lines.length}`
+  );
   const m = lines[0].match(/sed -E '(.+)'\)?$/);
   assert.ok(m, `${hookRel}: could not extract sed program from: ${lines[0]}`);
   return m[1].replace(/'\)$/, '');
@@ -35,10 +38,17 @@ function sedProgramOf(hookRel) {
 
 /** Run a hook's sanitize stage (fence-awk + extracted sed) over one probe. */
 function hookSanitize(sedProgram, text) {
-  return execFileSync('bash', ['-c',
-    `printf '%s\\n' "$1" | awk '/^[[:space:]]*\`\`\`/{f=!f; next} !f' | sed -E "$2"`,
-    'bash', text, sedProgram,
-  ], { encoding: 'utf8' });
+  return execFileSync(
+    'bash',
+    [
+      '-c',
+      `printf '%s\\n' "$1" | awk '/^[[:space:]]*\`\`\`/{f=!f; next} !f' | sed -E "$2"`,
+      'bash',
+      text,
+      sedProgram,
+    ],
+    { encoding: 'utf8' }
+  );
 }
 
 const ENGINES = () => ({
@@ -51,13 +61,13 @@ const ENGINES = () => ({
 // NOT be matchable after sanitize; survives=true guards against over-strip
 // (a bare-prose claim must stay detectable).
 const PROBES = [
-  ['refactor comprehensive-parser.js now', false],   // bare name.ext — the F1 gap
+  ['refactor comprehensive-parser.js now', false], // bare name.ext — the F1 gap
   ['see docs/comprehensive-audit.md for detail', false], // slashed path
-  ['the `comprehensive` flag', false],               // inline backtick span
-  ['renamed robust-check.ts in this pass', false],   // bare name.ext, second pattern word
-  ['the coverage is comprehensive', true],           // bare-word claim — MUST survive
-  ['results look robust overall', true],             // bare-word claim — MUST survive
-  ['3.5x faster on the robust path', true],          // decimals/versions must NOT be eaten by the name.ext clause
+  ['the `comprehensive` flag', false], // inline backtick span
+  ['renamed robust-check.ts in this pass', false], // bare name.ext, second pattern word
+  ['the coverage is comprehensive', true], // bare-word claim — MUST survive
+  ['results look robust overall', true], // bare-word claim — MUST survive
+  ['3.5x faster on the robust path', true], // decimals/versions must NOT be eaten by the name.ext clause
 ];
 
 const HIGH_FIRE = /\b(comprehensive|robust)\b/i;
@@ -67,10 +77,13 @@ test('sanitize stage: all three engines agree on every probe shape', () => {
   for (const [input, survives] of PROBES) {
     for (const [name, run] of Object.entries(engines)) {
       const out = run(input);
-      assert.equal(HIGH_FIRE.test(out), survives,
+      assert.equal(
+        HIGH_FIRE.test(out),
+        survives,
         `${name}: probe ${JSON.stringify(input)} — expected high-fire word ` +
-        `${survives ? 'to SURVIVE (over-strip)' : 'to be STRIPPED (divergence)'}; ` +
-        `sanitized output: ${JSON.stringify(out)}`);
+          `${survives ? 'to SURVIVE (over-strip)' : 'to be STRIPPED (divergence)'}; ` +
+          `sanitized output: ${JSON.stringify(out)}`
+      );
     }
   }
 });

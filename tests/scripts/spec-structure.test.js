@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import { skillTokens, tableRows as sharedTableRows } from '../../scripts/lib/spec-routing.js';
 
 const CORE = 'spec/CLAUDE.md';
-const EXT  = 'spec/CLAUDE-extended.md';
-const CL   = 'spec/CLAUDE-changelog.md';
+const EXT = 'spec/CLAUDE-extended.md';
+const CL = 'spec/CLAUDE-changelog.md';
 
 // Rough token estimator: 1 word ≈ 1.3 tokens (English/markdown heuristic).
 function estTokens(text) {
@@ -97,19 +97,18 @@ test('§2.1 table contains sp:brainstorming row', () => {
 // caller can degrade instead of throwing; here a missing heading must fail the
 // test loudly, which is all this wrapper restores.
 const tableRows = (text, startHeading, endMarker) =>
-  sharedTableRows(text, startHeading, endMarker, (msg) => assert.fail(msg));
+  sharedTableRows(text, startHeading, endMarker, msg => assert.fail(msg));
 
 test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
   const text = fs.readFileSync(EXT, 'utf8');
 
   const covered = tableRows(text, '### Fallback table', 'Detection: first call fails')
-    .flatMap((cols) => skillTokens(cols[0]))
+    .flatMap(cols => skillTokens(cols[0]))
     // `/design-*` and `sp:*-code-review` are globs over a skill family
-    .map((tok) => new RegExp(`^${tok.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9-]*')}$`));
+    .map(tok => new RegExp(`^${tok.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9-]*')}$`));
 
   const routed = new Set(
-    tableRows(text, '### Routing', '### Composite requests')
-      .flatMap((cols) => skillTokens(cols[1])),   // Primary column only; Notes are advisory
+    tableRows(text, '### Routing', '### Composite requests').flatMap(cols => skillTokens(cols[1])) // Primary column only; Notes are advisory
   );
 
   // Floors on BOTH sides, added 2026-09-01 when the tokenizer moved to
@@ -122,17 +121,24 @@ test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
   // (recounted at the 0.71.1 pre-tag review — the first draft of this comment
   // said 25, in a release whose thesis is that recounts beat carried numbers);
   // the floors sit well below that to catch a layer vanishing, not table churn.
-  assert.ok(routed.size >= 15,
-    `§4 Routing resolved only ${routed.size} primary skill(s) — the table moved or the tokenizer `
-    + 'stopped matching. Refusing to report a clean §12 join over a set that short.');
-  assert.ok(covered.length >= 15,
-    `§12 Fallback table resolved only ${covered.length} row token(s) — same failure, other side.`);
+  assert.ok(
+    routed.size >= 15,
+    `§4 Routing resolved only ${routed.size} primary skill(s) — the table moved or the tokenizer ` +
+      'stopped matching. Refusing to report a clean §12 join over a set that short.'
+  );
+  assert.ok(
+    covered.length >= 15,
+    `§12 Fallback table resolved only ${covered.length} row token(s) — same failure, other side.`
+  );
 
-  const orphans = [...routed].filter((s) => !covered.some((re) => re.test(s)));
-  assert.deepEqual(orphans, [],
-    `§4 Routing primaries with no §12 Fallback row: ${orphans.join(', ')} — add a row to the Fallback table `
-    + 'or drop the skill from §4 Routing. A routed-but-uncovered skill leaves the agent with no documented '
-    + 'degradation path when it is disabled via skillOverrides or not installed.');
+  const orphans = [...routed].filter(s => !covered.some(re => re.test(s)));
+  assert.deepEqual(
+    orphans,
+    [],
+    `§4 Routing primaries with no §12 Fallback row: ${orphans.join(', ')} — add a row to the Fallback table ` +
+      'or drop the skill from §4 Routing. A routed-but-uncovered skill leaves the agent with no documented ' +
+      'degradation path when it is disabled via skillOverrides or not installed.'
+  );
 });
 
 // --- audit-2026-08-29 R10-15: the reverse direction, and one window ---------
@@ -152,8 +158,10 @@ test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', 
   const ext = fs.readFileSync(EXT, 'utf8');
   const core = fs.readFileSync(CORE, 'utf8');
   const rows = tableRows(ext, '### Fallback table', 'Detection: first call fails');
-  assert.ok(rows.length >= 15,
-    `vacuity guard: parsed ${rows.length} fallback rows — the table anchor moved and this gate is checking nothing`);
+  assert.ok(
+    rows.length >= 15,
+    `vacuity guard: parsed ${rows.length} fallback rows — the table anchor moved and this gate is checking nothing`
+  );
 
   const FALLBACK_START = ext.indexOf('### Fallback table');
   const FALLBACK_END = ext.indexOf('Detection: first call fails');
@@ -174,26 +182,36 @@ test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', 
   // the heading already failed closed (indexOf → -1); renaming it did not.
   // Found by the delta re-review of this release.
   const historyMatch = ext.match(/^## Recent changes$/m);
-  assert.ok(historyMatch, 'the `## Recent changes` heading is gone from extended — this exclusion has nothing to cut');
+  assert.ok(
+    historyMatch,
+    'the `## Recent changes` heading is gone from extended — this exclusion has nothing to cut'
+  );
   const HISTORY_START = historyMatch.index;
-  assert.ok(HISTORY_START > FALLBACK_END,
-    'the `## Recent changes` heading moved above the Fallback table — this exclusion no longer cuts what it means to cut');
-  const elsewhere = core
-    + ext.slice(0, FALLBACK_START)
-    + ext.slice(FALLBACK_END, HISTORY_START);
+  assert.ok(
+    HISTORY_START > FALLBACK_END,
+    'the `## Recent changes` heading moved above the Fallback table — this exclusion no longer cuts what it means to cut'
+  );
+  const elsewhere = core + ext.slice(0, FALLBACK_START) + ext.slice(FALLBACK_END, HISTORY_START);
   // Compare in `skillTokens`' normalised form on BOTH sides. The first version
   // compared a normalised `gs/canary` against raw spec prose that spells it
   // `gs:/canary`, so every row looked orphaned — 25 false positives, which is
   // the shape of a gate that would have been "fixed" by loosening it.
   const mentioned = new Set(skillTokens(elsewhere));
 
-  const orphans = [...new Set(rows
-    .flatMap((cols) => skillTokens(cols[0]))
-    .filter((tok) => !tok.includes('*'))          // globs are families, checked by the sibling test
-    .filter((tok) => !mentioned.has(tok)))];
-  assert.deepEqual(orphans, [],
-    `§12 Fallback rows for skills named nowhere else in the spec: ${orphans.join(', ')} — `
-    + 'either the skill lost its routing row (restore it) or the fallback row outlived what it covered (drop it).');
+  const orphans = [
+    ...new Set(
+      rows
+        .flatMap(cols => skillTokens(cols[0]))
+        .filter(tok => !tok.includes('*')) // globs are families, checked by the sibling test
+        .filter(tok => !mentioned.has(tok))
+    ),
+  ];
+  assert.deepEqual(
+    orphans,
+    [],
+    `§12 Fallback rows for skills named nowhere else in the spec: ${orphans.join(', ')} — ` +
+      'either the skill lost its routing row (restore it) or the fallback row outlived what it covered (drop it).'
+  );
 });
 
 test('§13.1 demote window: one number, and no cadence word standing in for it', () => {
@@ -204,22 +222,38 @@ test('§13.1 demote window: one number, and no cadence word standing in for it',
   // more copies of "quarterly" had spread to the audit script's USAGE, the
   // sparkline command doc and rule-hits-parse's header.
   const LIVE = [
-    'spec/hard-rules.json', 'spec/OPERATOR.md', 'spec/CLAUDE.md', 'spec/CLAUDE-extended.md',
-    'scripts/hard-rules-audit.js', 'scripts/doctor.js', 'scripts/lib/rule-hits-parse.js',
-    'commands/claudemd-rules.md', 'commands/claudemd-sparkline.md', 'commands/claudemd-doctor.md',
+    'spec/hard-rules.json',
+    'spec/OPERATOR.md',
+    'spec/CLAUDE.md',
+    'spec/CLAUDE-extended.md',
+    'scripts/hard-rules-audit.js',
+    'scripts/doctor.js',
+    'scripts/lib/rule-hits-parse.js',
+    'commands/claudemd-rules.md',
+    'commands/claudemd-sparkline.md',
+    'commands/claudemd-doctor.md',
   ];
   // The changelog and docs/ are historical records and keep their original wording.
-  const offenders = LIVE.filter((f) => /quarterly/i.test(fs.readFileSync(f, 'utf8')));
-  assert.deepEqual(offenders, [],
-    `"quarterly" appears in live spec/tooling text: ${offenders.join(', ')}. The demote WINDOW is 30d `
-    + '(OPERATOR.md §13.1) and the review CADENCE is every 20 L2+ tasks or 30 days (§13.2). Neither is quarterly.');
+  const offenders = LIVE.filter(f => /quarterly/i.test(fs.readFileSync(f, 'utf8')));
+  assert.deepEqual(
+    offenders,
+    [],
+    `"quarterly" appears in live spec/tooling text: ${offenders.join(', ')}. The demote WINDOW is 30d ` +
+      '(OPERATOR.md §13.1) and the review CADENCE is every 20 L2+ tasks or 30 days (§13.2). Neither is quarterly.'
+  );
 
   const manifest = fs.readFileSync('spec/hard-rules.json', 'utf8');
-  assert.match(JSON.parse(manifest)._doc, /0 hits in 30d/,
-    'hard-rules.json `_doc` no longer states the 30d demote window it is the manifest for.');
+  assert.match(
+    JSON.parse(manifest)._doc,
+    /0 hits in 30d/,
+    'hard-rules.json `_doc` no longer states the 30d demote window it is the manifest for.'
+  );
   const auditSrc = fs.readFileSync('scripts/hard-rules-audit.js', 'utf8');
-  assert.match(auditSrc, /DEFAULT_WINDOW_DAYS\s*=\s*30\b/,
-    'scripts/hard-rules-audit.js no longer defaults to the 30d window the spec text promises.');
+  assert.match(
+    auditSrc,
+    /DEFAULT_WINDOW_DAYS\s*=\s*30\b/,
+    'scripts/hard-rules-audit.js no longer defaults to the 30d window the spec text promises.'
+  );
 });
 
 // --- audit-2026-08-22 P1-4: two spec-text HIGHs, both drift between files ----
@@ -234,14 +268,19 @@ test('§EXT: every phrase extended quotes as a core § clause exists in core', (
   const ext = fs.readFileSync(EXT, 'utf8');
   // `§<n> "<phrase>"` — an attributed quotation, not prose that merely contains
   // a quote. Case-insensitive: core sentence-cases what extended cites inline.
-  const cites = [...ext.matchAll(/§[0-9][0-9.]*[A-Za-z-]*\s+"([^"]{8,120})"/g)].map((m) => m[1]);
-  assert.ok(cites.length > 0,
-    'vacuity guard: extended must still quote at least one core clause, or this pattern has drifted');
-  const missing = cites.filter((p) => !core.includes(p.toLowerCase()));
-  assert.deepEqual(missing, [],
-    `extended attributes these phrases to a core § that does not contain them: ${missing.map((m) => JSON.stringify(m)).join(', ')}. `
-    + 'Restore the clause in core, re-attribute it to its real (external) source, or drop the quotation — '
-    + 'a §-attributed quote the reader cannot verify is the §8.V1 failure the spec forbids elsewhere.');
+  const cites = [...ext.matchAll(/§[0-9][0-9.]*[A-Za-z-]*\s+"([^"]{8,120})"/g)].map(m => m[1]);
+  assert.ok(
+    cites.length > 0,
+    'vacuity guard: extended must still quote at least one core clause, or this pattern has drifted'
+  );
+  const missing = cites.filter(p => !core.includes(p.toLowerCase()));
+  assert.deepEqual(
+    missing,
+    [],
+    `extended attributes these phrases to a core § that does not contain them: ${missing.map(m => JSON.stringify(m)).join(', ')}. ` +
+      'Restore the clause in core, re-attribute it to its real (external) source, or drop the quotation — ' +
+      'a §-attributed quote the reader cannot verify is the §8.V1 failure the spec forbids elsewhere.'
+  );
 });
 
 test('§2.1 ↔ §4: core must not mandate a skill extended tells L2-additive to skip', () => {
@@ -253,24 +292,31 @@ test('§2.1 ↔ §4: core must not mandate a skill extended tells L2-additive to
   const core = fs.readFileSync(CORE, 'utf8');
   const ext = fs.readFileSync(EXT, 'utf8');
 
-  const featRow = tableRows(ext, '### Routing', '### Composite requests')
-    .find((cols) => cols[0].replace(/\*/g, '').trim() === 'feat');
+  const featRow = tableRows(ext, '### Routing', '### Composite requests').find(
+    cols => cols[0].replace(/\*/g, '').trim() === 'feat'
+  );
   assert.ok(featRow, '§4 Routing must carry a `feat` row');
-  const skipped = [...featRow.join(' | ').matchAll(/skip\s+(?:the\s+)?(?:full\s+)?(sp:[A-Za-z:-]+|gs:\/?[A-Za-z-]+)/gi)]
-    .flatMap((m) => skillTokens(m[1]));
-  assert.ok(skipped.length > 0,
-    'vacuity guard: §4 feat row must still name a skill it skips, or this join tests nothing');
+  const skipped = [
+    ...featRow.join(' | ').matchAll(/skip\s+(?:the\s+)?(?:full\s+)?(sp:[A-Za-z:-]+|gs:\/?[A-Za-z-]+)/gi),
+  ].flatMap(m => skillTokens(m[1]));
+  assert.ok(
+    skipped.length > 0,
+    'vacuity guard: §4 feat row must still name a skill it skips, or this join tests nothing'
+  );
 
-  const coreAdditiveRow = core.split('\n').find((l) => l.startsWith('|') && /feat L2 \(additive\)/.test(l));
+  const coreAdditiveRow = core.split('\n').find(l => l.startsWith('|') && /feat L2 \(additive\)/.test(l));
   assert.ok(coreAdditiveRow, 'core §2.1 must carry the `feat L2 (additive)` row');
   const coreTokens = skillTokens(coreAdditiveRow.split('|').slice(1, -1)[1] || '');
 
   for (const s of skipped) {
     if (!coreTokens.includes(s)) continue;
-    assert.match(coreAdditiveRow, /optional|not required/i,
-      `§4 tells L2-additive to skip ${s} while core §2.1 routes it there as the primary, with no optionality marker. `
-      + 'L0-L2 never load extended, so core wins by default and the two tables read as opposite instructions '
-      + 'on the most-travelled path. Align the wording in whichever table is wrong.');
+    assert.match(
+      coreAdditiveRow,
+      /optional|not required/i,
+      `§4 tells L2-additive to skip ${s} while core §2.1 routes it there as the primary, with no optionality marker. ` +
+        'L0-L2 never load extended, so core wins by default and the two tables read as opposite instructions ' +
+        'on the most-travelled path. Align the wording in whichever table is wrong.'
+    );
   }
 });
 
@@ -285,31 +331,35 @@ test('§7: Iron Law #1 level tag agrees between core and the extended heading', 
   const extHead = ext.match(/^###\s+Iron Law #1:[^\n]*\((L\d\+?)\)/m);
   assert.ok(extHead, 'extended must carry the Iron Law #1 heading with a level tag');
   const level = extHead[1];
-  const coreLines = core.split('\n').filter((l) => l.includes('Iron Law #1'));
+  const coreLines = core.split('\n').filter(l => l.includes('Iron Law #1'));
   assert.ok(coreLines.length > 0, 'core must mention Iron Law #1 (L2 agents cannot load extended)');
   for (const l of coreLines) {
-    assert.ok(l.includes(`(${level}`),
-      `every core Iron Law #1 mention must carry its ${level} tag (an L3-grouped pointer hides an L2+ rule): ${l}`);
+    assert.ok(
+      l.includes(`(${level}`),
+      `every core Iron Law #1 mention must carry its ${level} tag (an L3-grouped pointer hides an L2+ rule): ${l}`
+    );
   }
 });
 
 test('§3: every entity extended cites as ranked "per §3" appears in the core §3 Order line', () => {
   const core = fs.readFileSync(CORE, 'utf8');
   const ext = fs.readFileSync(EXT, 'utf8');
-  const orderLine = core.split('\n').find((l) => l.startsWith('Order:'));
+  const orderLine = core.split('\n').find(l => l.startsWith('Order:'));
   assert.ok(orderLine, 'core §3 must carry the Order: enumeration line');
   // Only the RANK phrase counts ("per §3 TRUST order"), and only entities
   // BEFORE it — they are the ranked subject; text after the citation is
   // elaboration (delegation examples etc.). "per §3 stricter-reading" cites a
   // different §3 rule and is out of scope.
-  const citing = ext.split('\n').filter((l) => l.includes('per §3 TRUST order'));
+  const citing = ext.split('\n').filter(l => l.includes('per §3 TRUST order'));
   assert.ok(citing.length > 0, 'vacuity guard: extended must still cite the §3 rank somewhere');
   for (const line of citing) {
     const prefix = line.slice(0, line.indexOf('per §3 TRUST order'));
     for (const raw of prefix.match(/`[^`]+`/g) || []) {
       const ent = raw.replace(/`/g, '');
-      assert.ok(orderLine.includes(ent),
-        `extended cites \`${ent}\` as ranked per §3 TRUST order, but core §3 Order line never enumerates it: ${line.trim()}`);
+      assert.ok(
+        orderLine.includes(ent),
+        `extended cites \`${ent}\` as ranked per §3 TRUST order, but core §3 Order line never enumerates it: ${line.trim()}`
+      );
     }
   }
 });

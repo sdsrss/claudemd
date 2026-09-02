@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { diffSpec } from '../../scripts/lib/spec-diff.js';
 
 test('diffSpec on identical text → empty', () => {
-  const a = "line1\nline2\nline3\n";
+  const a = 'line1\nline2\nline3\n';
   const d = diffSpec(a, a);
   assert.equal(d.added, 0);
   assert.equal(d.removed, 0);
 });
 
 test('diffSpec counts added and removed lines', () => {
-  const a = "line1\nline2\nline3\n";
-  const b = "line1\nline2-modified\nline3\nline4\n";
+  const a = 'line1\nline2\nline3\n';
+  const b = 'line1\nline2-modified\nline3\nline4\n';
   const d = diffSpec(a, b);
   assert.equal(d.added, 2);
   assert.equal(d.removed, 1);
@@ -21,11 +21,13 @@ test('diffSpec shows nonzero delta for reordered lines (F2)', () => {
   // Regression: Set-based diff reported 0/0 for reorders since both texts had
   // the same line set. LCS-based diff surfaces the real change so
   // /claudemd-update isn't misleading about what apply-all will overwrite.
-  const a = "alpha\nbeta\ngamma\n";
-  const b = "gamma\nbeta\nalpha\n";
+  const a = 'alpha\nbeta\ngamma\n';
+  const b = 'gamma\nbeta\nalpha\n';
   const d = diffSpec(a, b);
-  assert.ok(d.added > 0 || d.removed > 0,
-    `expected nonzero delta for reordered lines, got ${JSON.stringify(d)}`);
+  assert.ok(
+    d.added > 0 || d.removed > 0,
+    `expected nonzero delta for reordered lines, got ${JSON.stringify(d)}`
+  );
 });
 
 test('diffSpec handles empty inputs', () => {

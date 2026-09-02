@@ -49,7 +49,14 @@ const DEFAULT_WINDOWS = [30, 60, 90];
 // (deny-prose) are undercounted in the release-header trend. Mirrors the
 // blockingDenyCount sweep applied to doctor.js / hard-rules-audit.js. The
 // advisory `deny-prose-dry-run` stays OUT (it's an observation, not a block).
-const SIGNAL_EVENTS = new Set(['deny', 'deny-repeat', 'deny-prose', 'warn', 'advisory', 'bypass-escape-hatch']);
+const SIGNAL_EVENTS = new Set([
+  'deny',
+  'deny-repeat',
+  'deny-prose',
+  'warn',
+  'advisory',
+  'bypass-escape-hatch',
+]);
 
 export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const log = logPath || path.join(logsDir(), 'claudemd.jsonl');
@@ -70,9 +77,7 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   // misleading annotation.
   const firstTs = logFirstTs(log);
   const now = Date.now();
-  const logSpanDays = firstTs === null
-    ? 0
-    : Math.round(((now - firstTs) / 86400000) * 10) / 10;
+  const logSpanDays = firstTs === null ? 0 : Math.round(((now - firstTs) / 86400000) * 10) / 10;
   const shortest = sortedWindows[0];
   const insufficientSpan = firstTs === null || logSpanDays < shortest;
   // Per-window coverage: each window with `days > logSpanDays` is "not
@@ -123,9 +128,9 @@ function computeTrend(counts, windows, { insufficientSpan = false } = {}) {
   if (counts.length < 2) return { arrow: '', annotation: null };
   // Per-bucket counts: bucket i contains events in (windows[i-1], windows[i]] days ago.
   // bucket 0 = (0, windows[0]] = events 0 to windows[0] days ago = counts[0].
-  const buckets = counts.map((c, i) => i === 0 ? c : c - counts[i - 1]);
-  const bucketDays = windows.map((w, i) => i === 0 ? w : w - windows[i - 1]);
-  const rates = buckets.map((b, i) => bucketDays[i] === 0 ? 0 : b / bucketDays[i]);
+  const buckets = counts.map((c, i) => (i === 0 ? c : c - counts[i - 1]));
+  const bucketDays = windows.map((w, i) => (i === 0 ? w : w - windows[i - 1]));
+  const rates = buckets.map((b, i) => (bucketDays[i] === 0 ? 0 : b / bucketDays[i]));
 
   const recent = rates[0];
   const oldestRate = rates[rates.length - 1];
@@ -194,7 +199,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
@@ -205,7 +213,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (windows.some(w => w === null) || windows.length < 2) {
     console.error(
       `--days expects ≥2 comma-separated positive integers (got '${raw}').\n` +
-      `  Examples: --days=30,60,90 (default), --days=7,14,28.`
+        `  Examples: --days=30,60,90 (default), --days=7,14,28.`
     );
     process.exit(1);
   }

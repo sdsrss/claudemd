@@ -14,7 +14,7 @@ const settingsFile = () => path.join(tmpHome, '.claude/settings.json');
 const destFile = () => path.join(tmpHome, '.claude/claudemd-statusline.sh');
 const prevFile = () => path.join(tmpHome, '.claude/.claudemd-state/statusline-prev.json');
 const readS = () => JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-const writeS = (o) => fs.writeFileSync(settingsFile(), JSON.stringify(o, null, 2));
+const writeS = o => fs.writeFileSync(settingsFile(), JSON.stringify(o, null, 2));
 const CMD = 'bash "$HOME/.claude/claudemd-statusline.sh"';
 
 beforeEach(() => {
@@ -73,7 +73,10 @@ test('foreign + force → replaced, prior saved', () => {
   writeS({ statusLine: { type: 'command', command: 'node /other/x.js' } });
   const r = adopt({ pluginRoot, force: true });
   assert.equal(r.action, 'replaced');
-  assert.ok(r.settingsBackup && fs.existsSync(r.settingsBackup), 'settings.json backed up before force-replace');
+  assert.ok(
+    r.settingsBackup && fs.existsSync(r.settingsBackup),
+    'settings.json backed up before force-replace'
+  );
   assert.equal(readS().statusLine.command, CMD);
   assert.equal(JSON.parse(fs.readFileSync(prevFile(), 'utf8')).command, 'node /other/x.js');
 });
@@ -122,12 +125,12 @@ test('present-but-unrecognised slot shapes classify foreign, never absent (I1)',
   // must read as 'foreign' (occupied), not 'absent' (free to take), and the
   // emptyOnly install path must skip it untouched.
   const foreignShapes = [
-    'x.sh',                                       // bare string (undocumented shorthand)
-    {},                                           // object, no command
-    { command: '' },                              // empty command
-    { command: 123 },                             // non-string command
-    { type: 'static', text: 'hi' },               // alternate type, no command
-    { type: 'command', command: 'node /o.js' },   // real foreign
+    'x.sh', // bare string (undocumented shorthand)
+    {}, // object, no command
+    { command: '' }, // empty command
+    { command: 123 }, // non-string command
+    { type: 'static', text: 'hi' }, // alternate type, no command
+    { type: 'command', command: 'node /o.js' }, // real foreign
   ];
   for (const shape of foreignShapes) {
     writeS({ statusLine: shape });
@@ -155,11 +158,11 @@ test('set over a stale prev file → remove clears, does not resurrect it (M1)',
   // must not make a plain empty-slot set → remove restore the stale command.
   fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
   fs.writeFileSync(prevFile(), JSON.stringify({ command: 'node /stale/foreign.js' }));
-  const r = adopt({ pluginRoot });               // empty slot → set
+  const r = adopt({ pluginRoot }); // empty slot → set
   assert.equal(r.action, 'set');
   assert.ok(!fs.existsSync(prevFile()), 'stale prev cleared on absent→set');
   const rm = remove();
-  assert.equal(rm.action, 'removed');            // cleared, not 'restored'
+  assert.equal(rm.action, 'removed'); // cleared, not 'restored'
   assert.equal(readS().statusLine, undefined);
 });
 
@@ -175,7 +178,10 @@ test('detect: host + claudemd already in registry → guestRegistered true', () 
   writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
   const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
   fs.mkdirSync(path.dirname(reg), { recursive: true });
-  fs.writeFileSync(reg, JSON.stringify([{ id: 'claudemd', command: 'bash "/x/claudemd-statusline.sh"', needsStdin: true }]));
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([{ id: 'claudemd', command: 'bash "/x/claudemd-statusline.sh"', needsStdin: true }])
+  );
   assert.equal(detect().guestRegistered, true);
 });
 
@@ -189,13 +195,20 @@ test('detect: host surfaces manualPsCandidates as psCandidates (single source of
   writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
   const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
   fs.mkdirSync(path.dirname(reg), { recursive: true });
-  fs.writeFileSync(reg, JSON.stringify([
-    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
-    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
-  ]));
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
   const d = detect();
   assert.equal(d.verdict, 'host');
-  assert.deepEqual(d.psCandidates.map((p) => p.id), ['user-ps1'], 'the tested predicate, not prose, drives the supersede offer');
+  assert.deepEqual(
+    d.psCandidates.map(p => p.id),
+    ['user-ps1'],
+    'the tested predicate, not prose, drives the supersede offer'
+  );
 });
 
 test('detect: non-host verdicts carry psCandidates: null', () => {
@@ -204,7 +217,7 @@ test('detect: non-host verdicts carry psCandidates: null', () => {
   assert.equal(detect().psCandidates, null, 'foreign → null');
 });
 
-const seedCg = (list) => {
+const seedCg = list => {
   const reg = path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
   const mir = path.join(tmpHome, '.claude/statusline-providers.json');
   fs.mkdirSync(path.dirname(reg), { recursive: true });
@@ -212,14 +225,18 @@ const seedCg = (list) => {
   fs.writeFileSync(mir, JSON.stringify(list));
   writeS({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } });
 };
-const cgReg = () => JSON.parse(fs.readFileSync(path.join(tmpHome, '.cache/code-graph/statusline-registry.json'), 'utf8'));
+const cgReg = () =>
+  JSON.parse(fs.readFileSync(path.join(tmpHome, '.cache/code-graph/statusline-registry.json'), 'utf8'));
 
 test('adopt: host + emptyOnly → host-detected, nothing written', () => {
   seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
   const r = adopt({ pluginRoot, emptyOnly: true });
   assert.equal(r.action, 'host-detected');
   assert.equal(r.host, 'code-graph');
-  assert.equal(cgReg().some((p) => p.id === 'claudemd'), false);
+  assert.equal(
+    cgReg().some(p => p.id === 'claudemd'),
+    false
+  );
   assert.ok(!fs.existsSync(destFile()));
 });
 
@@ -228,8 +245,11 @@ test('adopt: host (command) → registers claudemd at front, copies renderer', (
   const r = adopt({ pluginRoot });
   assert.equal(r.action, 'registered');
   assert.equal(r.host, 'code-graph');
-  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph']);
-  const me = cgReg().find((p) => p.id === 'claudemd');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['claudemd', 'code-graph']
+  );
+  const me = cgReg().find(p => p.id === 'claudemd');
   assert.equal(me.command, `bash "${destFile()}"`, 'guest command is absolute path');
   assert.equal(me.needsStdin, true);
   assert.ok(fs.existsSync(destFile()));
@@ -240,7 +260,7 @@ test('adopt: host re-register is idempotent → already-registered', () => {
   adopt({ pluginRoot });
   const r = adopt({ pluginRoot });
   assert.equal(r.action, 'already-registered');
-  assert.equal(cgReg().filter((p) => p.id === 'claudemd').length, 1);
+  assert.equal(cgReg().filter(p => p.id === 'claudemd').length, 1);
 });
 
 test('adopt: host + supersede → old provider saved to prev and removed', () => {
@@ -251,10 +271,17 @@ test('adopt: host + supersede → old provider saved to prev and removed', () =>
   const r = adopt({ pluginRoot, supersede: 'user-ps1' });
   assert.equal(r.action, 'registered');
   assert.equal(r.superseded, 'user-ps1');
-  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'user-ps1 gone, claudemd at front');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['claudemd', 'code-graph'],
+    'user-ps1 gone, claudemd at front'
+  );
   const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
   // Restore record is a LIST (append-safe for multi-supersede); single → one entry.
-  assert.deepEqual(prev.superseded.map((p) => p.id), ['user-ps1']);
+  assert.deepEqual(
+    prev.superseded.map(p => p.id),
+    ['user-ps1']
+  );
   assert.equal(prev.superseded[0].command, 'bash "/home/x/.claude/statusline-command.sh"');
 });
 
@@ -264,7 +291,11 @@ test('adopt: host + supersede a non-existent id → supersedeMissed, still regis
   assert.equal(r.action, 'registered');
   assert.equal(r.superseded, null, 'nothing was superseded');
   assert.equal(r.supersedeMissed, 'ghost-ps1', 'the missed target is surfaced, not silently dropped');
-  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'claudemd still registered at front');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['claudemd', 'code-graph'],
+    'claudemd still registered at front'
+  );
   assert.ok(!fs.existsSync(prevFile()), 'no prev saved when nothing was superseded');
 });
 
@@ -272,7 +303,10 @@ test('adopt: host + dry-run → no writes', () => {
   seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
   const r = adopt({ pluginRoot, dryRun: true });
   assert.equal(r.action, 'dry-run');
-  assert.equal(cgReg().some((p) => p.id === 'claudemd'), false);
+  assert.equal(
+    cgReg().some(p => p.id === 'claudemd'),
+    false
+  );
   assert.ok(!fs.existsSync(destFile()));
 });
 
@@ -282,8 +316,16 @@ test('remove: guest → unregister claudemd, code-graph slot + entry intact', ()
   const r = remove();
   assert.equal(r.action, 'unregistered');
   assert.equal(r.host, 'code-graph');
-  assert.deepEqual(cgReg().map((p) => p.id), ['code-graph'], 'code-graph provider survives');
-  assert.equal(readS().statusLine.command, 'node "/cg/scripts/statusline-composite.js"', 'host still owns the slot');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['code-graph'],
+    'code-graph provider survives'
+  );
+  assert.equal(
+    readS().statusLine.command,
+    'node "/cg/scripts/statusline-composite.js"',
+    'host still owns the slot'
+  );
   assert.ok(!fs.existsSync(destFile()), 'renderer deleted');
 });
 
@@ -296,7 +338,11 @@ test('remove: guest that superseded a PS1 → restores it', () => {
   const r = remove();
   assert.equal(r.action, 'unregistered');
   assert.equal(r.restored, 'user-ps1');
-  assert.deepEqual(cgReg().map((p) => p.id), ['user-ps1', 'code-graph'], 'user-ps1 back at front, claudemd gone');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['user-ps1', 'code-graph'],
+    'user-ps1 back at front, claudemd gone'
+  );
   assert.ok(!fs.existsSync(prevFile()));
 });
 
@@ -307,30 +353,48 @@ test('remove: guest that superseded TWO PS1s → restores BOTH (regression: mult
     { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
   ]);
   adopt({ pluginRoot, supersede: 'ps1-A' });
-  adopt({ pluginRoot, supersede: 'ps1-B' });   // second supersede must NOT clobber the first's record
+  adopt({ pluginRoot, supersede: 'ps1-B' }); // second supersede must NOT clobber the first's record
   const prev = JSON.parse(fs.readFileSync(prevFile(), 'utf8'));
-  assert.deepEqual(prev.superseded.map((p) => p.id), ['ps1-A', 'ps1-B'], 'both superseded providers recorded');
-  assert.deepEqual(cgReg().map((p) => p.id), ['claudemd', 'code-graph'], 'both PS1s removed, claudemd front');
+  assert.deepEqual(
+    prev.superseded.map(p => p.id),
+    ['ps1-A', 'ps1-B'],
+    'both superseded providers recorded'
+  );
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['claudemd', 'code-graph'],
+    'both PS1s removed, claudemd front'
+  );
   const r = remove();
   assert.equal(r.restored, 'ps1-A,ps1-B', 'both restored (pre-fix: only ps1-B; ps1-A lost)');
-  assert.deepEqual(cgReg().map((p) => p.id), ['ps1-A', 'ps1-B', 'code-graph'], 'both back in original relative order');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['ps1-A', 'ps1-B', 'code-graph'],
+    'both back in original relative order'
+  );
   assert.ok(!fs.existsSync(prevFile()));
 });
 
 test('remove: legacy singular prev.superseded shape still restores (≤v0.26.1 upgrade tolerance)', () => {
   seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
-  adopt({ pluginRoot });                       // guest-register claudemd (no supersede)
+  adopt({ pluginRoot }); // guest-register claudemd (no supersede)
   // A restore record written by ≤v0.26.1: a singular object, not a list.
   fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
-  fs.writeFileSync(prevFile(), JSON.stringify({
-    superseded: { id: 'legacy-ps1', command: 'bash "/home/x/.claude/legacy.sh"', needsStdin: true },
-  }));
+  fs.writeFileSync(
+    prevFile(),
+    JSON.stringify({
+      superseded: { id: 'legacy-ps1', command: 'bash "/home/x/.claude/legacy.sh"', needsStdin: true },
+    })
+  );
   const r = remove();
   assert.equal(r.restored, 'legacy-ps1', 'legacy singular shape restored, not dropped');
-  assert.ok(cgReg().some((p) => p.id === 'legacy-ps1'), 'legacy provider back in registry');
+  assert.ok(
+    cgReg().some(p => p.id === 'legacy-ps1'),
+    'legacy provider back in registry'
+  );
 });
 
-test('guest-exec regression: code-graph\'s execFileSync runner (no shell) can run the registered command', () => {
+test("guest-exec regression: code-graph's execFileSync runner (no shell) can run the registered command", () => {
   // code-graph renders each provider by spawning its `command` via execFileSync
   // — there is no shell, so `$HOME` in a command string is passed through
   // literally (never expanded) and ENOENTs. The guest command must therefore
@@ -342,13 +406,16 @@ test('guest-exec regression: code-graph\'s execFileSync runner (no shell) can ru
   const r = adopt({ pluginRoot: REPO_ROOT }); // real scripts/statusline.sh, so output is genuine
   assert.equal(r.action, 'registered');
 
-  const entry = cgReg().find((p) => p.id === 'claudemd');
+  const entry = cgReg().find(p => p.id === 'claudemd');
   assert.ok(entry, 'claudemd must be registered in the code-graph registry');
   const m = /^bash "(.+)"$/.exec(entry.command);
   assert.ok(m, `guest command must be of the form bash "<abspath>": got ${entry.command}`);
   const abspath = m[1];
   assert.ok(path.isAbsolute(abspath), 'guest command path must be absolute');
-  assert.ok(!abspath.includes('$HOME'), 'guest command must not carry the literal $HOME — execFileSync has no shell to expand it');
+  assert.ok(
+    !abspath.includes('$HOME'),
+    'guest command must not carry the literal $HOME — execFileSync has no shell to expand it'
+  );
   assert.equal(abspath, destFile());
 
   const payload = { cwd: '/tmp', model: { display_name: 'Opus' }, context_window: { used_percentage: 5 } };

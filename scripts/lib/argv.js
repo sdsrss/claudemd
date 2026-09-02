@@ -12,7 +12,10 @@
 // exit 1) so wrappers can tell parsing-shape errors from validation errors.
 
 export class ArgvError extends Error {
-  constructor(message) { super(message); this.name = 'ArgvError'; }
+  constructor(message) {
+    super(message);
+    this.name = 'ArgvError';
+  }
 }
 
 // Discoverability helper: when `--help` or `-h` is the first non-empty arg
@@ -62,12 +65,18 @@ export function parseStrict(argv, { bools = [], values = [] } = {}) {
   const knownBool = new Set(bools);
   const knownValue = new Set(values);
   for (const a of argv) {
-    if (knownBool.has(a)) { out.bools.add(a); continue; }
+    if (knownBool.has(a)) {
+      out.bools.add(a);
+      continue;
+    }
     if (a.startsWith('--') && a.includes('=')) {
       const eq = a.indexOf('=');
       const k = a.slice(0, eq);
       const v = a.slice(eq + 1);
-      if (knownValue.has(k)) { out.values[k] = v; continue; }
+      if (knownValue.has(k)) {
+        out.values[k] = v;
+        continue;
+      }
       if (knownBool.has(k)) {
         throw new ArgvError(`Boolean flag '${k}' does not take a value (got '${a}').`);
       }
@@ -106,13 +115,18 @@ export function validateAndExpandFlags(args, knownBools, knownValues, sub) {
   const bools = new Set(knownBools);
   const values = new Set(knownValues);
   for (const a of args) {
-    if (!a.startsWith('--')) { out.push(a); continue; }
+    if (!a.startsWith('--')) {
+      out.push(a);
+      continue;
+    }
     if (a.includes('=')) {
       const eq = a.indexOf('=');
       const k = a.slice(0, eq);
       const v = a.slice(eq + 1);
       if (bools.has(k)) {
-        process.stderr.write(`${sub}: '${k}' is a boolean flag and does not take a value (got '${a}'). Drop the '=...' suffix.\n`);
+        process.stderr.write(
+          `${sub}: '${k}' is a boolean flag and does not take a value (got '${a}'). Drop the '=...' suffix.\n`
+        );
         process.exit(2);
       }
       if (values.has(k)) {
@@ -123,7 +137,10 @@ export function validateAndExpandFlags(args, knownBools, knownValues, sub) {
       process.stderr.write(`${sub}: unknown flag '${k}' (got '${a}').\n`);
       process.exit(2);
     }
-    if (bools.has(a) || values.has(a)) { out.push(a); continue; }
+    if (bools.has(a) || values.has(a)) {
+      out.push(a);
+      continue;
+    }
     process.stderr.write(`${sub}: unknown flag '${a}'.\n`);
     process.exit(2);
   }

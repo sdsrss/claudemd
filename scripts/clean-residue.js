@@ -51,7 +51,7 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error |
 // asserted in tests/scripts/clean-residue.test.js, so a rename there fails here
 // rather than silently orphaning the files again.
 const SENTINEL_PATTERN = /^claudemd-(sync-|memtags-hay-)/;
-const SANDBOX_PATTERN  = /^claudemd-(mockgh|work)\./;
+const SANDBOX_PATTERN = /^claudemd-(mockgh|work)\./;
 
 export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
   if (!fs.existsSync(tmpDir)) return { sentinels: [], sandboxes: [] };
@@ -66,7 +66,11 @@ export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
   for (const entry of entries) {
     const full = path.join(tmpDir, entry.name);
     let stat;
-    try { stat = fs.statSync(full); } catch { continue; }
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
     // Clamp at 0: macOS APFS can return mtimeMs marginally above Date.now()
     // for files just written in the same turn (sub-ms timing skew between
     // fs.writeFileSync and the Date.now() read here). A file can't be
@@ -96,7 +100,9 @@ export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now
     try {
       fs.rmSync(t.path, { recursive: true, force: true });
       deleted++;
-    } catch { /* best-effort; partial delete is fine */ }
+    } catch {
+      /* best-effort; partial delete is fine */
+    }
   }
   return { dryRun: false, targets, deleted };
 }
@@ -120,18 +126,34 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
     candidates.push({ path: full, ageDays });
   };
   let entries;
-  try { entries = fs.readdirSync(claudeTmpDir, { withFileTypes: true }); } catch { return { candidates: [] }; }
+  try {
+    entries = fs.readdirSync(claudeTmpDir, { withFileTypes: true });
+  } catch {
+    return { candidates: [] };
+  }
   for (const entry of entries) {
     const full = path.join(claudeTmpDir, entry.name);
     let stat;
-    try { stat = fs.statSync(full); } catch { continue; }
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
     if (UID_DIR_PATTERN.test(entry.name) && stat.isDirectory()) {
       let children;
-      try { children = fs.readdirSync(full, { withFileTypes: true }); } catch { continue; }
+      try {
+        children = fs.readdirSync(full, { withFileTypes: true });
+      } catch {
+        continue;
+      }
       for (const child of children) {
         const childFull = path.join(full, child.name);
         let childStat;
-        try { childStat = fs.statSync(childFull); } catch { continue; }
+        try {
+          childStat = fs.statSync(childFull);
+        } catch {
+          continue;
+        }
         pushCandidate(childFull, childStat);
       }
     } else {
@@ -152,7 +174,9 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
     try {
       fs.rmSync(t.path, { recursive: true, force: true });
       deleted++;
-    } catch { /* best-effort; partial delete is fine */ }
+    } catch {
+      /* best-effort; partial delete is fine */
+    }
   }
   return { dryRun: false, targets, deleted };
 }
@@ -203,7 +227,11 @@ const STATE_EPHEMERAL = [
 export function scanStateDir({ stateDir, now = Date.now() } = {}) {
   if (!stateDir || !fs.existsSync(stateDir)) return { candidates: [] };
   let entries;
-  try { entries = fs.readdirSync(stateDir, { withFileTypes: true }); } catch { return { candidates: [] }; }
+  try {
+    entries = fs.readdirSync(stateDir, { withFileTypes: true });
+  } catch {
+    return { candidates: [] };
+  }
   const candidates = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
@@ -211,7 +239,11 @@ export function scanStateDir({ stateDir, now = Date.now() } = {}) {
     if (!match) continue;
     const full = path.join(stateDir, entry.name);
     let stat;
-    try { stat = fs.statSync(full); } catch { continue; }
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
     candidates.push({
       path: full,
       kind: match.kind,
@@ -227,7 +259,12 @@ export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now 
   if (!apply) return { dryRun: true, targets, deleted: 0 };
   let deleted = 0;
   for (const t of targets) {
-    try { fs.rmSync(t.path, { force: true }); deleted++; } catch { /* best-effort */ }
+    try {
+      fs.rmSync(t.path, { force: true });
+      deleted++;
+    } catch {
+      /* best-effort */
+    }
   }
   return { dryRun: false, targets, deleted };
 }
@@ -238,11 +275,17 @@ export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now 
 export function readRetentionFromClaudeMd(cwd = process.cwd()) {
   const file = path.join(cwd, 'CLAUDE.md');
   let src;
-  try { src = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  try {
+    src = fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
   const m = src.match(/^TMP_RETENTION_DAYS:[ \t]*(\S+)[ \t]*$/m);
   if (!m) return null;
   if (!/^[0-9]+(\.[0-9]+)?$/.test(m[1])) {
-    console.error(`TMP_RETENTION_DAYS in ${file} is not a non-negative number (got '${m[1]}'); using default.`);
+    console.error(
+      `TMP_RETENTION_DAYS in ${file} is not a non-negative number (got '${m[1]}'); using default.`
+    );
     return null;
   }
   return Number(m[1]);
@@ -257,7 +300,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       values: ['--age-days', '--retention-days'],
     });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const apply = parsed.bools.has('--apply');
@@ -275,7 +321,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let retentionDays;
   if (rawRetention !== undefined) {
     retentionDays = Number(rawRetention);
-    if (!/^[0-9]+(\.[0-9]+)?$/.test(String(rawRetention).trim()) || !Number.isFinite(retentionDays) || retentionDays < 0) {
+    if (
+      !/^[0-9]+(\.[0-9]+)?$/.test(String(rawRetention).trim()) ||
+      !Number.isFinite(retentionDays) ||
+      retentionDays < 0
+    ) {
       console.error(`--retention-days requires a non-negative number (got '${rawRetention}').`);
       process.exit(1);
     }
@@ -295,7 +345,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
   const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
-  const sandboxCount  = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
+  const sandboxCount = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
   // Exit code reflects what REMAINS, not what was attempted (2026-08-29 audit
   // R10-09). All three cleaners swallow per-entry rmSync failures as
   // best-effort and count only successes, so a run that deleted nothing —
@@ -306,36 +356,49 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const attempted = result.targets.length + ctmp.targets.length + cstate.targets.length;
   const removed = result.deleted + ctmp.deleted + cstate.deleted;
   const remaining = apply ? attempted - removed : 0;
-  console.log(JSON.stringify({
-    dryRun: result.dryRun,
-    tmpDir: process.env.TMPDIR || os.tmpdir(),
-    ageDaysMin,
-    sentinels: sentinelCount,
-    sandboxes: sandboxCount,
-    deleted: result.deleted,
-    paths: result.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
-    claudeTmp: {
-      dir: claudeTmpDir,
-      retentionDays,
-      candidates: ctmp.targets.length,
-      deleted: ctmp.deleted,
-      paths: ctmp.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
-    },
-    remaining,
-    stateDir: {
-      // `stateDirPath`, not the imported `stateDir` FUNCTION — JSON.stringify
-      // drops a function value, so this key vanished from the output entirely.
-      // The one thing the CLAUDEMD_STATE_DIR seam exists to let a caller
-      // confirm — which directory was actually scanned — was the one thing the
-      // JSON never said (2026-08-29 audit R10-09).
-      dir: stateDirPath,
-      retentionDays,
-      candidates: cstate.targets.length,
-      deleted: cstate.deleted,
-      byKind: cstate.targets.reduce((acc, t) => { acc[t.kind] = (acc[t.kind] || 0) + 1; return acc; }, {}),
-      paths: cstate.targets.map(t => ({ path: t.path, kind: t.kind, ageDays: Math.round(t.ageDays * 10) / 10 })),
-    },
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        dryRun: result.dryRun,
+        tmpDir: process.env.TMPDIR || os.tmpdir(),
+        ageDaysMin,
+        sentinels: sentinelCount,
+        sandboxes: sandboxCount,
+        deleted: result.deleted,
+        paths: result.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
+        claudeTmp: {
+          dir: claudeTmpDir,
+          retentionDays,
+          candidates: ctmp.targets.length,
+          deleted: ctmp.deleted,
+          paths: ctmp.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
+        },
+        remaining,
+        stateDir: {
+          // `stateDirPath`, not the imported `stateDir` FUNCTION — JSON.stringify
+          // drops a function value, so this key vanished from the output entirely.
+          // The one thing the CLAUDEMD_STATE_DIR seam exists to let a caller
+          // confirm — which directory was actually scanned — was the one thing the
+          // JSON never said (2026-08-29 audit R10-09).
+          dir: stateDirPath,
+          retentionDays,
+          candidates: cstate.targets.length,
+          deleted: cstate.deleted,
+          byKind: cstate.targets.reduce((acc, t) => {
+            acc[t.kind] = (acc[t.kind] || 0) + 1;
+            return acc;
+          }, {}),
+          paths: cstate.targets.map(t => ({
+            path: t.path,
+            kind: t.kind,
+            ageDays: Math.round(t.ageDays * 10) / 10,
+          })),
+        },
+      },
+      null,
+      2
+    )
+  );
   // 3, not 1: 1 already means "validation error" and 2 means "argv-shape
   // error". Overloading either would make "some residue could not be removed"
   // indistinguishable from "you typed the flag wrong" — the same exit-code

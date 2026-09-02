@@ -6,8 +6,6 @@ import { copySpecFiles } from './lib/spec-hash.js';
 import { createBackup, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
-
-
 const UPDATE_USAGE = `Usage: node scripts/update.js
 
 Sync ~/.claude/CLAUDE*.md with the plugin-cache shipped spec. Read-only by
@@ -41,7 +39,7 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   if (choice !== 'apply-all') {
     throw new Error(
       `unknown choice: ${choice}. Valid: 'apply-all' | 'cancel'. ` +
-      `Spec trio is lockstep; per-file select is not supported.`
+        `Spec trio is lockstep; per-file select is not supported.`
     );
   }
 
@@ -65,8 +63,8 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   if (missingSpecs.length > 0) {
     throw new Error(
       `update: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
-      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
-      `re-clone from https://github.com/sdsrss/claudemd.`
+        `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
+        `re-clone from https://github.com/sdsrss/claudemd.`
     );
   }
 
@@ -99,7 +97,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parseStrict(process.argv.slice(2), {});
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const pluginRoot = resolvePluginRoot(import.meta.url);
@@ -111,5 +112,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // users running /claudemd-update with a typo'd env var.
   update({ pluginRoot, choice })
     .then(r => console.log(JSON.stringify(r, null, 2)))
-    .catch(e => { console.error(e.message); process.exit(1); });
+    .catch(e => {
+      console.error(e.message);
+      process.exit(1);
+    });
 }

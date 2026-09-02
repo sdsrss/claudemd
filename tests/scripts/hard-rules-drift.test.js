@@ -12,7 +12,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hookEmittedSections as sharedEmittedSections, EMITTED_SECTION_IDIOMS } from '../lib/emitted-sections.mjs';
+import {
+  hookEmittedSections as sharedEmittedSections,
+  EMITTED_SECTION_IDIOMS,
+} from '../lib/emitted-sections.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const MANIFEST = path.join(ROOT, 'spec/hard-rules.json');
@@ -37,7 +40,10 @@ const KNOWN_HOOK_SECTIONS = (() => {
   const out = new Set();
   let inTable = false;
   for (const line of doc.split('\n')) {
-    if (/^\|\s*Hook\s*\|\s*Event\s*\|\s*spec_section\s*\|/.test(line)) { inTable = true; continue; }
+    if (/^\|\s*Hook\s*\|\s*Event\s*\|\s*spec_section\s*\|/.test(line)) {
+      inTable = true;
+      continue;
+    }
     if (inTable && !line.startsWith('|')) break;
     if (!inTable || /^\|\s*-+/.test(line)) continue;
     const cols = line.split('|');
@@ -81,10 +87,13 @@ test('hard-rules-1: every manifest entry section_anchor exists in named spec fil
       drift.push({ id: r.id, scope: r.scope, anchor: r.section_anchor });
     }
   }
-  assert.deepEqual(drift, [],
+  assert.deepEqual(
+    drift,
+    [],
     `Manifest entries whose section_anchor is not present in the named spec file:\n` +
-    drift.map(d => `  ${d.id} [${d.scope}]: '${d.anchor}'`).join('\n') +
-    `\nResolution: either fix the spec section header or update section_anchor in spec/hard-rules.json.`);
+      drift.map(d => `  ${d.id} [${d.scope}]: '${d.anchor}'`).join('\n') +
+      `\nResolution: either fix the spec section header or update section_anchor in spec/hard-rules.json.`
+  );
 });
 
 test('hard-rules-2: every rule_hits_section is in the v0.7.0 taxonomy', () => {
@@ -93,10 +102,13 @@ test('hard-rules-2: every rule_hits_section is in the v0.7.0 taxonomy', () => {
     .filter(r => r.rule_hits_section !== null)
     .filter(r => !KNOWN_HOOK_SECTIONS.has(r.rule_hits_section))
     .map(r => ({ id: r.id, section: r.rule_hits_section }));
-  assert.deepEqual(orphans, [],
+  assert.deepEqual(
+    orphans,
+    [],
     `Manifest entries with rule_hits_section outside the v0.7.0 taxonomy:\n` +
-    orphans.map(o => `  ${o.id}: '${o.section}'`).join('\n') +
-    `\nResolution: either update KNOWN_HOOK_SECTIONS in this test (and docs/RULE-HITS-SCHEMA.md), or fix rule_hits_section in the manifest.`);
+      orphans.map(o => `  ${o.id}: '${o.section}'`).join('\n') +
+      `\nResolution: either update KNOWN_HOOK_SECTIONS in this test (and docs/RULE-HITS-SCHEMA.md), or fix rule_hits_section in the manifest.`
+  );
 });
 
 test('hard-rules-3: hook-enforced manifest entries have non-null rule_hits_section', () => {
@@ -105,10 +117,13 @@ test('hard-rules-3: hook-enforced manifest entries have non-null rule_hits_secti
     .filter(r => r.enforcement === 'hook' || r.enforcement === 'both')
     .filter(r => r.rule_hits_section === null)
     .map(r => r.id);
-  assert.deepEqual(orphans, [],
+  assert.deepEqual(
+    orphans,
+    [],
     `Hook-enforced manifest entries missing rule_hits_section:\n` +
-    orphans.map(o => `  ${o}`).join('\n') +
-    `\nResolution: fill rule_hits_section so /claudemd-rules can cross-ref hits.`);
+      orphans.map(o => `  ${o}`).join('\n') +
+      `\nResolution: fill rule_hits_section so /claudemd-rules can cross-ref hits.`
+  );
 });
 
 // Extractor lives in tests/lib/emitted-sections.mjs — the single source both
@@ -120,14 +135,14 @@ const hookEmittedSections = () => sharedEmittedSections(HOOKS_DIR);
 // scan. Both exist to MEASURE, not to enforce, so requiring a spec/hard-rules.json
 // entry for them would mean inventing rules to satisfy a test.
 const NON_RULE_SECTIONS = new Set([
-  '§11-memory-hint',        // memory-prompt-hint suggestion instrument
-  '§11-EXT-mem-audit',      // §11-EXT durable-memory body-structure scan
-  '§13.1-extended-read',    // observability for extended loading, not a rule
-  '§13.2-batch-review',     // operator cadence advisory (§13.2 is META, not HARD)
-  '§8',                     // fallback bucket for untagged §8 hits; its granular
-                            // children (§8-rm-rf-var / §8-npx / §8-curl-sh) each
-                            // have their own manifest entry
-  '§hooks-fail-open',       // plugin-internal observability, not a spec rule
+  '§11-memory-hint', // memory-prompt-hint suggestion instrument
+  '§11-EXT-mem-audit', // §11-EXT durable-memory body-structure scan
+  '§13.1-extended-read', // observability for extended loading, not a rule
+  '§13.2-batch-review', // operator cadence advisory (§13.2 is META, not HARD)
+  '§8', // fallback bucket for untagged §8 hits; its granular
+  // children (§8-rm-rf-var / §8-npx / §8-curl-sh) each
+  // have their own manifest entry
+  '§hooks-fail-open', // plugin-internal observability, not a spec rule
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {
@@ -152,36 +167,45 @@ test('hard-rules-4: a rule with hook-emitted rows declares the section they land
   // declared section in the manifest must equal the id of the rule declaring it,
   // or be listed here as a deliberate exception.
   const ID_NE_SECTION = new Set([
-    '§10-specificity',        // fires under the shared §10-V vocab section
-    '§8.V4-sandbox-disposal',  // hook files under the shorter §8.V4
+    '§10-specificity', // fires under the shared §10-V vocab section
+    '§8.V4-sandbox-disposal', // hook files under the shorter §8.V4
   ]);
   const namespaceBreaks = m.rules
     .filter(r => r.rule_hits_section !== null)
     .filter(r => r.rule_hits_section !== r.id && !ID_NE_SECTION.has(r.id))
     .map(r => `${r.id} → ${r.rule_hits_section}`);
-  assert.deepEqual(namespaceBreaks, [],
+  assert.deepEqual(
+    namespaceBreaks,
+    [],
     `rule id and rule_hits_section diverge without an ID_NE_SECTION entry:\n` +
-    namespaceBreaks.map(x => `  ${x}`).join('\n') +
-    `\nThe null-section check below joins on the id, so an undocumented divergence ` +
-    `makes it pass vacuously.`);
+      namespaceBreaks.map(x => `  ${x}`).join('\n') +
+      `\nThe null-section check below joins on the id, so an undocumented divergence ` +
+      `makes it pass vacuously.`
+  );
 
   const undeclared = m.rules
     .filter(r => r.rule_hits_section === null)
     .filter(r => emitted.has(r.id))
     .map(r => ({ id: r.id, enforcement: r.enforcement }));
-  assert.deepEqual(undeclared, [],
+  assert.deepEqual(
+    undeclared,
+    [],
     `Manifest entries with null rule_hits_section that hooks DO emit rows for:\n` +
-    undeclared.map(o => `  ${o.id} (${o.enforcement})`).join('\n') +
-    `\nResolution: set rule_hits_section so §13.1 demote accounting can see the hits.`);
+      undeclared.map(o => `  ${o.id} (${o.enforcement})`).join('\n') +
+      `\nResolution: set rule_hits_section so §13.1 demote accounting can see the hits.`
+  );
 
   // And the reverse: a declared section must be one a hook actually emits.
   const phantom = m.rules
     .filter(r => r.rule_hits_section !== null)
     .filter(r => !emitted.has(r.rule_hits_section))
     .map(r => ({ id: r.id, section: r.rule_hits_section }));
-  assert.deepEqual(phantom, [],
+  assert.deepEqual(
+    phantom,
+    [],
     `Manifest entries declaring a rule_hits_section no hook emits:\n` +
-    phantom.map(o => `  ${o.id} → '${o.section}'`).join('\n'));
+      phantom.map(o => `  ${o.id} → '${o.section}'`).join('\n')
+  );
 });
 
 test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest entry', () => {
@@ -208,10 +232,13 @@ test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest
       violations.push({ scope, line: trimmed.slice(0, 120) });
     }
   }
-  assert.deepEqual(violations, [],
+  assert.deepEqual(
+    violations,
+    [],
     `Spec lines marked (HARD) with no manifest entry and no exemption:\n` +
-    violations.map(v => `  [${v.scope}] ${v.line}`).join('\n') +
-    `\nResolution: add a manifest entry to spec/hard-rules.json or document the exemption in SPEC_HARD_LINE_EXEMPTIONS.`);
+      violations.map(v => `  [${v.scope}] ${v.line}`).join('\n') +
+      `\nResolution: add a manifest entry to spec/hard-rules.json or document the exemption in SPEC_HARD_LINE_EXEMPTIONS.`
+  );
 });
 
 test('hard-rules-7: manifest spec_version matches spec/CLAUDE.md H1 version', () => {
@@ -228,7 +255,8 @@ test('hard-rules-7: manifest spec_version matches spec/CLAUDE.md H1 version', ()
   const h1 = coreSpec.match(/^#\s*AI-CODING-SPEC\s+(v[\d.]+)/m);
   assert.ok(h1, 'spec/CLAUDE.md H1 must match `# AI-CODING-SPEC vX.Y.Z`');
   assert.equal(
-    m.spec_version, h1[1],
+    m.spec_version,
+    h1[1],
     `manifest spec_version=${m.spec_version} drifted from spec H1=${h1[1]} — bump spec/hard-rules.json:spec_version`
   );
 });
@@ -260,17 +288,20 @@ test('hard-rules-8: every hook DENY section is backed by a manifest entry', () =
   // still have an observability section, which is what those five entries are.
   const denySections = hookEmittedSections();
   const m = loadManifest();
-  const covered = new Set(
-    m.rules.filter(r => r.rule_hits_section).map(r => r.rule_hits_section)
-  );
+  const covered = new Set(m.rules.filter(r => r.rule_hits_section).map(r => r.rule_hits_section));
   const uncovered = [...denySections]
     .filter(s => !covered.has(s))
     .filter(s => !NON_RULE_SECTIONS.has(s))
     .sort();
-  assert.deepEqual(uncovered, [],
+  assert.deepEqual(
+    uncovered,
+    [],
     `Hook deny sections with no hook/both manifest entry:\n` +
-    uncovered.map(s => `  ${s} (emitted via HIT_SECTIONS+= but absent from spec/hard-rules.json)`).join('\n') +
-    `\nResolution: add a manifest entry with rule_hits_section: <section> so /claudemd-rules can account its denies/bypasses.`);
+      uncovered
+        .map(s => `  ${s} (emitted via HIT_SECTIONS+= but absent from spec/hard-rules.json)`)
+        .join('\n') +
+      `\nResolution: add a manifest entry with rule_hits_section: <section> so /claudemd-rules can account its denies/bypasses.`
+  );
 });
 
 test('hard-rules-9: §13 META partition prose matches computed manifest partition', () => {
@@ -287,23 +318,41 @@ test('hard-rules-9: §13 META partition prose matches computed manifest partitio
   const totalM = ext.match(/partitions the (\d+) HARD rules/);
   assert.ok(totalM, 'CLAUDE-extended.md §13 META must contain "partitions the <N> HARD rules"');
   const todayM = ext.match(/Today: (\d+) hook \/ (\d+) self \/ (\d+) both \/ (\d+) external/);
-  assert.ok(todayM, 'CLAUDE-extended.md §13 META must contain "Today: N hook / N self / N both / N external"');
+  assert.ok(
+    todayM,
+    'CLAUDE-extended.md §13 META must contain "Today: N hook / N self / N both / N external"'
+  );
   const tally = { hook: 0, self: 0, both: 0, external: 0 };
   for (const r of m.rules) tally[r.enforcement] += 1;
   const prose = {
     total: Number(totalM[1]),
-    hook: Number(todayM[1]), self: Number(todayM[2]),
-    both: Number(todayM[3]), external: Number(todayM[4]),
+    hook: Number(todayM[1]),
+    self: Number(todayM[2]),
+    both: Number(todayM[3]),
+    external: Number(todayM[4]),
   };
   const actual = { total: m.rules.length, ...tally };
-  assert.deepEqual(prose, actual,
+  assert.deepEqual(
+    prose,
+    actual,
     `§13 META partition prose drifted from spec/hard-rules.json — update the "partitions the N HARD rules" / "Today: …" line in CLAUDE-extended.md to: ` +
-    `${actual.total} HARD rules, Today: ${actual.hook} hook / ${actual.self} self / ${actual.both} both / ${actual.external} external`);
+      `${actual.total} HARD rules, Today: ${actual.hook} hook / ${actual.self} self / ${actual.both} both / ${actual.external} external`
+  );
 });
 
 test('hard-rules-6: manifest schema sanity — required fields present', () => {
   const m = loadManifest();
-  const required = ['id', 'name', 'scope', 'section_anchor', 'enforcement', 'rule_hits_section', 'added_version', 'confidence', 'last_demote_review'];
+  const required = [
+    'id',
+    'name',
+    'scope',
+    'section_anchor',
+    'enforcement',
+    'rule_hits_section',
+    'added_version',
+    'confidence',
+    'last_demote_review',
+  ];
   const validEnf = new Set(['hook', 'self', 'external', 'both']);
   const validConf = new Set(['high', 'medium', 'low']);
   const violations = [];
@@ -321,8 +370,11 @@ test('hard-rules-6: manifest schema sanity — required fields present', () => {
       violations.push(`${r.id}: invalid scope '${r.scope}'`);
     }
   }
-  assert.deepEqual(violations, [],
-    `Manifest schema violations:\n${violations.map(v => `  ${v}`).join('\n')}`);
+  assert.deepEqual(
+    violations,
+    [],
+    `Manifest schema violations:\n${violations.map(v => `  ${v}`).join('\n')}`
+  );
 });
 
 // --- 2026-08-29 audit R10-17a: consumer gate for the shared extractor ------
@@ -352,18 +404,26 @@ test('R10-17a: no test file re-implements the emitted-sections extractor', () =>
     if (f === SHARED) continue;
     const src = fs.readFileSync(f, 'utf8');
     for (const idiom of EMITTED_SECTION_IDIOMS) {
-      if (new RegExp(idiom).test(src)) { offenders.push(`${path.relative(testsDir, f)} (${idiom})`); break; }
+      if (new RegExp(idiom).test(src)) {
+        offenders.push(`${path.relative(testsDir, f)} (${idiom})`);
+        break;
+      }
     }
   }
-  assert.deepEqual(offenders, [],
+  assert.deepEqual(
+    offenders,
+    [],
     'test file(s) spell an emitted-sections idiom instead of importing the shared extractor:\n' +
-    offenders.map(o => `  ${o}`).join('\n'));
+      offenders.map(o => `  ${o}`).join('\n')
+  );
 });
 
 test('R10-17a: both consumers agree, and the extractor is not empty', () => {
   const sections = sharedEmittedSections(HOOKS_DIR);
-  assert.ok(sections.size > 5,
-    `extractor returned only ${sections.size} sections — parser or hook shape changed`);
+  assert.ok(
+    sections.size > 5,
+    `extractor returned only ${sections.size} sections — parser or hook shape changed`
+  );
   // Same object, same call: the point is that there is only one to disagree with.
   assert.deepEqual([...hookEmittedSections()].sort(), [...sections].sort());
 });

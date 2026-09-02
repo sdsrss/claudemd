@@ -1,16 +1,39 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
-import { createBackup, pruneBackups, backupSettingsFile, looksLikeSpec, BACKUP_LABELS } from './lib/backup.js';
+import {
+  readSettings,
+  writeSettings,
+  unmergeHook,
+  isClaudemdLegacyHookCommand,
+} from './lib/settings-merge.js';
+import {
+  createBackup,
+  pruneBackups,
+  backupSettingsFile,
+  looksLikeSpec,
+  BACKUP_LABELS,
+} from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
-import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, writeJsonAtomic, SEMVER_RE, semverCmp, SPEC_FILES } from './lib/paths.js';
+import {
+  stateDir,
+  logsDir,
+  settingsPath,
+  specHome,
+  resolvePluginRoot,
+  readPluginVersion,
+  readManifest,
+  manifestPath,
+  legacyManifestPath,
+  writeJsonAtomic,
+  SEMVER_RE,
+  semverCmp,
+  SPEC_FILES,
+} from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { copySpecFiles } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
-
-
 
 const INSTALL_USAGE = `Usage: node scripts/install.js
 
@@ -74,18 +97,20 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // fail-open, never fail-block.
   const incomingVersion = readPluginVersion(pluginRoot);
   const priorManifest = readManifest();
-  const installedVersion = priorManifest.exists && priorManifest.data?.version
-    ? String(priorManifest.data.version)
-    : null;
-  if (installedVersion
-      && SEMVER_RE.test(incomingVersion) && SEMVER_RE.test(installedVersion)
-      && semverCmp(incomingVersion, installedVersion) < 0
-      && process.env.CLAUDEMD_ALLOW_DOWNGRADE !== '1') {
+  const installedVersion =
+    priorManifest.exists && priorManifest.data?.version ? String(priorManifest.data.version) : null;
+  if (
+    installedVersion &&
+    SEMVER_RE.test(incomingVersion) &&
+    SEMVER_RE.test(installedVersion) &&
+    semverCmp(incomingVersion, installedVersion) < 0 &&
+    process.env.CLAUDEMD_ALLOW_DOWNGRADE !== '1'
+  ) {
     throw new Error(
       `install: refusing downgrade — this plugin root is v${incomingVersion} but the installed manifest records v${installedVersion}. ` +
-      `A hook or script is likely running from a stale versioned cache dir. Refresh the plugin registration ` +
-      `(/claudemd-refresh — or manually: /plugin marketplace update claudemd, /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins), ` +
-      `or set CLAUDEMD_ALLOW_DOWNGRADE=1 to force a rollback from ${pluginRoot}.`
+        `A hook or script is likely running from a stale versioned cache dir. Refresh the plugin registration ` +
+        `(/claudemd-refresh — or manually: /plugin marketplace update claudemd, /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins), ` +
+        `or set CLAUDEMD_ALLOW_DOWNGRADE=1 to force a rollback from ${pluginRoot}.`
     );
   }
 
@@ -131,8 +156,8 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   if (missingSpecs.length > 0) {
     throw new Error(
       `install: shipped spec missing in ${pluginRoot}/spec/: ${missingSpecs.join(', ')}. ` +
-      `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
-      `re-clone from https://github.com/sdsrss/claudemd.`
+        `Plugin cache is incomplete — re-run \`/plugin install claudemd@claudemd\` or ` +
+        `re-clone from https://github.com/sdsrss/claudemd.`
     );
   }
 
@@ -150,8 +175,8 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   if (!fs.existsSync(hooksFile)) {
     throw new Error(
       `install: hook manifest missing at ${hooksFile}. Plugin cache is incomplete — ` +
-      `installing would register 0 hooks and report success. Re-run ` +
-      `\`/plugin install claudemd@claudemd\` or re-clone from https://github.com/sdsrss/claudemd.`
+        `installing would register 0 hooks and report success. Re-run ` +
+        `\`/plugin install claudemd@claudemd\` or re-clone from https://github.com/sdsrss/claudemd.`
     );
   }
   let hookSpecCount;
@@ -160,14 +185,14 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   } catch (e) {
     throw new Error(
       `install: hook manifest at ${hooksFile} is not valid JSON (${e.message}). ` +
-      `Refusing to install — re-run \`/plugin install claudemd@claudemd\`.`,
+        `Refusing to install — re-run \`/plugin install claudemd@claudemd\`.`,
       { cause: e }
     );
   }
   if (hookSpecCount === 0) {
     throw new Error(
       `install: hook manifest at ${hooksFile} declares no hooks. Refusing to install a ` +
-      `hook-less claudemd — it would report success with enforcement disabled.`
+        `hook-less claudemd — it would report success with enforcement disabled.`
     );
   }
 
@@ -189,9 +214,9 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     } catch (e) {
       throw new Error(
         `install: ${settingsPath()} is not valid JSON (${e.message}). Refusing to install — ` +
-        `the install rewrites this file and would otherwise leave a half-installed state. ` +
-        `Fix the JSON (a trailing comma is the usual cause) or move the file aside, then re-run. ` +
-        `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`,
+          `the install rewrites this file and would otherwise leave a half-installed state. ` +
+          `Fix the JSON (a trailing comma is the usual cause) or move the file aside, then re-run. ` +
+          `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`,
         { cause: e }
       );
     }
@@ -203,7 +228,8 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // was not an invariant, and moving on it could delete user content. doctor
   // reports the condition instead. Do not re-add a mover here without reading
   // tasks/legacy-spec-backup-migration.md.
-  let specResult, backupDir = null;
+  let specResult,
+    backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
   } else if (claudeMdIsSpec) {
@@ -231,10 +257,10 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     if (userContentDetected) {
       process.stderr.write(
         `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec ` +
-        `(no "# AI-CODING-SPEC" H1 in first 256 bytes). It looks like personal user-global ` +
-        `instructions and was backed up to ${backupDir}/CLAUDE.md before being overwritten ` +
-        `with the plugin spec. To bring your content back on uninstall, run ` +
-        `\`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`.\n`
+          `(no "# AI-CODING-SPEC" H1 in first 256 bytes). It looks like personal user-global ` +
+          `instructions and was backed up to ${backupDir}/CLAUDE.md before being overwritten ` +
+          `with the plugin spec. To bring your content back on uninstall, run ` +
+          `\`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`.\n`
       );
     }
   }
@@ -299,7 +325,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // user's settings.json anyway — re-ordering keys, stripping the BOM, and
   // racing Claude Code's own writes to the same file for no gain.
   const evicted = unmergeHook(settings, {
-    commandPredicate: (c) => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
+    commandPredicate: c => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
   });
   // …or when there is no settings.json yet. Skipping the write outright meant a
   // fresh machine never got the file created, and `doctor.js:140` reports a
@@ -335,7 +361,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     entries,
   });
   if (fs.existsSync(legacyManifestPath())) {
-    try { fs.unlinkSync(legacyManifestPath()); } catch { /* stale legacy ok */ }
+    try {
+      fs.unlinkSync(legacyManifestPath());
+    } catch {
+      /* stale legacy ok */
+    }
   }
 
   // Logs directory + empty jsonl (touch only)
@@ -348,8 +378,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // void that outcome, so the call is wrapped. `pruneCache` is a no-op when
   // pluginRoot basename is not semver (dev-mode via `node scripts/install.js`).
   let cachePruned = { kept: [], removed: [], skipped: 'not-attempted' };
-  try { cachePruned = pruneCache(pluginRoot, { keep: 3 }); }
-  catch { /* install succeeded — swallow prune FS errors */ }
+  try {
+    cachePruned = pruneCache(pluginRoot, { keep: 3 });
+  } catch {
+    /* install succeeded — swallow prune FS errors */
+  }
 
   // StatusLine auto-adopt — empty-slot-only (never clobbers a foreign provider),
   // opt-out via CLAUDEMD_NO_STATUSLINE. best-effort: a statusline failure must
@@ -366,16 +399,33 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     }
   }
   if (statusline.action === 'set') {
-    process.stderr.write('[claudemd] statusLine set (user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%]). Undo: /claudemd-statusline remove\n');
+    process.stderr.write(
+      '[claudemd] statusLine set (user@host:path (branch) model [ctx:N% · 5h:N% · 7d:N%]). Undo: /claudemd-statusline remove\n'
+    );
   } else if (statusline.action === 'host-detected') {
-    process.stderr.write(`[claudemd] statusLine owned by a composite host (${statusline.host}) — run /claudemd-statusline to add claudemd's segment alongside it.\n`);
+    process.stderr.write(
+      `[claudemd] statusLine owned by a composite host (${statusline.host}) — run /claudemd-statusline to add claudemd's segment alongside it.\n`
+    );
   } else if (statusline.action === 'skipped-foreign') {
-    process.stderr.write('[claudemd] statusLine already owned by another provider — left untouched. Take over: /claudemd-statusline --force\n');
+    process.stderr.write(
+      '[claudemd] statusLine already owned by another provider — left untouched. Take over: /claudemd-statusline --force\n'
+    );
   } else if (statusline.action === 'error') {
-    process.stderr.write(`[claudemd] statusLine setup skipped (${statusline.error}). The renderer may be missing from the package; run /claudemd-statusline after reinstalling.\n`);
+    process.stderr.write(
+      `[claudemd] statusLine setup skipped (${statusline.error}). The renderer may be missing from the package; run /claudemd-statusline after reinstalling.\n`
+    );
   }
 
-  return { spec: specResult, backupDir, settingsBackup, settingsBackupsPruned, entries, cachePruned, userContentDetected, statusline };
+  return {
+    spec: specResult,
+    backupDir,
+    settingsBackup,
+    settingsBackupsPruned,
+    entries,
+    cachePruned,
+    userContentDetected,
+    statusline,
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -387,14 +437,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parseStrict(process.argv.slice(2), {});
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const pluginRoot = resolvePluginRoot(import.meta.url);
-  install({ pluginRoot }).then(r => {
-    console.log(JSON.stringify(r, null, 2));
-  }).catch(e => {
-    console.error(`install failed: ${e.message}`);
-    process.exit(1);
-  });
+  install({ pluginRoot })
+    .then(r => {
+      console.log(JSON.stringify(r, null, 2));
+    })
+    .catch(e => {
+      console.error(`install failed: ${e.message}`);
+      process.exit(1);
+    });
 }

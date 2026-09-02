@@ -26,7 +26,8 @@ const CONSUMERS = ['.github/workflows/ci.yml', 'tests/run-all.sh'];
 // source of a scope. A new one inherits this gate by making the claim.
 function singleSourceScopeFiles() {
   const dir = path.join(ROOT, 'tests/lib');
-  return fs.readdirSync(dir)
+  return fs
+    .readdirSync(dir)
     .filter(f => f.endsWith('.sh'))
     .filter(f => /SINGLE SOURCE/.test(fs.readFileSync(path.join(dir, f), 'utf8')))
     .sort();
@@ -39,7 +40,11 @@ function singleSourceScopeFiles() {
 // naming the file rather than on the call — a gate reading prose instead of
 // code, which is the failure this repo files under "the gate certified a shape
 // production never sees".
-const codeOf = text => text.split('\n').map(l => l.replace(/(^|\s)#.*$/, '')).join('\n');
+const codeOf = text =>
+  text
+    .split('\n')
+    .map(l => l.replace(/(^|\s)#.*$/, ''))
+    .join('\n');
 
 // Backslash continuations joined into one logical line, keeping the first line's
 // number for the failure message. Shared by the two ci.yml tests below: the
@@ -54,7 +59,10 @@ function logicalLines(text) {
     const body = raw.replace(/\\\s*$/, '');
     if (buf === null) buf = { line: i + 1, text: body };
     else buf.text += ` ${body.trim()}`;
-    if (!cont) { out.push(buf); buf = null; }
+    if (!cont) {
+      out.push(buf);
+      buf = null;
+    }
   });
   if (buf !== null) out.push(buf);
   return out;
@@ -62,12 +70,15 @@ function logicalLines(text) {
 
 test('every self-declared SINGLE SOURCE scope file is read by both callers', () => {
   const sources = singleSourceScopeFiles();
-  assert.ok(sources.length >= 2,
+  assert.ok(
+    sources.length >= 2,
     `only ${sources.length} SINGLE SOURCE scope file(s) found in tests/lib/ — the ` +
-    `extraction broke, and this gate must never validate an empty set.`);
+      `extraction broke, and this gate must never validate an empty set.`
+  );
 
   const consumerCode = Object.fromEntries(
-    CONSUMERS.map(c => [c, codeOf(fs.readFileSync(path.join(ROOT, c), 'utf8'))]));
+    CONSUMERS.map(c => [c, codeOf(fs.readFileSync(path.join(ROOT, c), 'utf8'))])
+  );
 
   const unread = [];
   for (const src of sources) {
@@ -76,11 +87,15 @@ test('every self-declared SINGLE SOURCE scope file is read by both callers', () 
       if (!re.test(consumerCode[c])) unread.push(`${src} — not read by ${c}`);
     }
   }
-  assert.deepEqual(unread, [],
-    'a file claiming to be the SINGLE SOURCE of a check\'s scope is not read by ' +
-    'one of its callers:\n      ' + unread.join('\n      ') +
-    '\n      Either the caller kept its own copy of the scope (the drift this ' +
-    'claim exists to prevent), or the claim is stale and should come out of the header.');
+  assert.deepEqual(
+    unread,
+    [],
+    "a file claiming to be the SINGLE SOURCE of a check's scope is not read by " +
+      'one of its callers:\n      ' +
+      unread.join('\n      ') +
+      '\n      Either the caller kept its own copy of the scope (the drift this ' +
+      'claim exists to prevent), or the claim is stale and should come out of the header.'
+  );
 });
 
 test('ci.yml does not hand-write a shellcheck file list', () => {
@@ -117,10 +132,13 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
     // correctly and this half then dropped it — a fix whose two halves did not
     // agree, caught by running the control rather than by reading it.
     .filter(({ text }) => /[\w*./-]+\.sh(?![\w-])/.test(text.replace(/\$\{?FILES\}?/g, '')));
-  assert.deepEqual(offenders.map(({ line, text }) => `${line}: ${text.trim()}`), [],
+  assert.deepEqual(
+    offenders.map(({ line, text }) => `${line}: ${text.trim()}`),
+    [],
     'ci.yml names shell files on a shellcheck command again — that list was a ' +
-    'proper subset of run-all.sh\'s and is why tests/lib/shell-files.sh exists. ' +
-    'Pass the scope as $FILES from that script.');
+      "proper subset of run-all.sh's and is why tests/lib/shell-files.sh exists. " +
+      'Pass the scope as $FILES from that script.'
+  );
 });
 
 // The hole the two tests above share, reproduced in a tree copy during the
@@ -159,11 +177,14 @@ const SHELLCHECK_SCOPE = 'shell-files.sh';
 
 test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', () => {
   const sources = singleSourceScopeFiles();
-  assert.ok(sources.includes(SHELLCHECK_SCOPE),
+  assert.ok(
+    sources.includes(SHELLCHECK_SCOPE),
     `tests/lib/${SHELLCHECK_SCOPE} no longer declares itself the SINGLE SOURCE of a scope — ` +
-    'it was renamed or the header changed, and this check is now guarding nothing.');
-  const lines = logicalLines(fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8'))
-    .filter(({ text }) => !/^\s*#/.test(text));
+      'it was renamed or the header changed, and this check is now guarding nothing.'
+  );
+  const lines = logicalLines(fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8')).filter(
+    ({ text }) => !/^\s*#/.test(text)
+  );
 
   // `NAME=$(bash tests/lib/shell-files.sh …`, optionally quoted. Everything to
   // the end of the logical line is the body, minus the closing paren and quote:
@@ -180,33 +201,44 @@ test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', (
     scopeAssigns.push({ line, name: m[1], body });
   }
 
-  assert.ok(scopeAssigns.length >= 1,
+  assert.ok(
+    scopeAssigns.length >= 1,
     `no ci.yml variable is assigned from tests/lib/${SHELLCHECK_SCOPE} in a shape this check ` +
-    'can read — either the step stopped reading the shared scope, or the assignment was ' +
-    'written some way this gate does not recognise, and both must fail closed.');
+      'can read — either the step stopped reading the shared scope, or the assignment was ' +
+      'written some way this gate does not recognise, and both must fail closed.'
+  );
 
   // Flags are allowed, with or without values: bash32-constructs.sh is called
   // with `--list`, and shell_files_checked_scope() documents a root argument.
   // What is not allowed is anything that can change the resulting set.
-  const shape = new RegExp(`^bash tests/lib/${SHELLCHECK_SCOPE.replace(/\./g, '\\.')}(\\s+--[a-z][a-z-]*(=\\S+)?)*$`);
+  const shape = new RegExp(
+    `^bash tests/lib/${SHELLCHECK_SCOPE.replace(/\./g, '\\.')}(\\s+--[a-z][a-z-]*(=\\S+)?)*$`
+  );
   const filtered = scopeAssigns.filter(({ body }) => !shape.test(body));
-  assert.deepEqual(filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`), [],
+  assert.deepEqual(
+    filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`),
+    [],
     'a ci.yml variable is assigned from the SINGLE SOURCE scope script with something ' +
-    'appended — a pipe, a filter, a second command:\n      ' +
-    filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`).join('\n      ') +
-    '\n      That narrows the scope while leaving every "is the shared script read?" check ' +
-    'green, which is how the hand-written list came back. Assign the call alone.');
+      'appended — a pipe, a filter, a second command:\n      ' +
+      filtered.map(({ line, name, body }) => `${line}: ${name}=$(${body})`).join('\n      ') +
+      '\n      That narrows the scope while leaving every "is the shared script read?" check ' +
+      'green, which is how the hand-written list came back. Assign the call alone.'
+  );
 
   const scopeVars = new Set(scopeAssigns.map(({ name }) => name));
 
   // Assigned once, counted on the NAME alone: the right-hand side of the second
   // assignment is exactly what must not be trusted, so its shape cannot be part
   // of finding it.
-  const rebound = [...scopeVars].filter((n) => lines.filter(
-    ({ text }) => new RegExp(`(?:^|\\s)${n}=`).test(text)).length > 1);
-  assert.deepEqual(rebound, [],
+  const rebound = [...scopeVars].filter(
+    n => lines.filter(({ text }) => new RegExp(`(?:^|\\s)${n}=`).test(text)).length > 1
+  );
+  assert.deepEqual(
+    rebound,
+    [],
     `ci.yml assigns ${rebound.join(', ')} more than once — the later assignment can narrow ` +
-    'what the shared script returned, and the first one still looks correct on its own.');
+      'what the shared script returned, and the first one still looks correct on its own.'
+  );
 
   // And what shellcheck actually receives is one of those, whole. Flag values are
   // dropped first (`--severity="$SEV"` is a legitimate variable that is not a
@@ -222,11 +254,15 @@ test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', (
       if (!scopeVars.has(m[1])) badOperand.push(`${line}: shellcheck … $${m[1]}`);
     }
   }
-  assert.deepEqual(badOperand, [],
+  assert.deepEqual(
+    badOperand,
+    [],
     `a shellcheck command in ci.yml is fed something other than the unfiltered ` +
-    `tests/lib/${SHELLCHECK_SCOPE} scope:\n      ` + badOperand.join('\n      ') +
-    '\n      Deriving the list into a second variable, filtering it inline, or passing the ' +
-    'other single source (a different, smaller set) are all the same narrowing by another name.');
+      `tests/lib/${SHELLCHECK_SCOPE} scope:\n      ` +
+      badOperand.join('\n      ') +
+      '\n      Deriving the list into a second variable, filtering it inline, or passing the ' +
+      'other single source (a different, smaller set) are all the same narrowing by another name.'
+  );
 });
 
 // Everything above reads the CALLERS. None of it reads the callee, and that is
@@ -255,7 +291,7 @@ test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', (
 // filtered set by design (it drops what it cannot parse), so "unfiltered" is
 // the wrong invariant for it. One name, the same reason SHELLCHECK_SCOPE above
 // carries one.
-test('the shared shellcheck scope is the whole tracked .sh set, not a filtered subset', (t) => {
+test('the shared shellcheck scope is the whole tracked .sh set, not a filtered subset', t => {
   // Invoked the way ci.yml:86 and run-all.sh invoke it — a RELATIVE path from
   // the repo root — because a script can read `$0`, and a filter conditioned on
   // it (`[[ "$0" == /* ]] || list=$(… | grep -v …)`) narrows the two real
@@ -263,10 +299,17 @@ test('the shared shellcheck scope is the whole tracked .sh set, not a filtered s
   // during the pre-tag review of this release: 4/4 green, CI checking 58 of 62.
   // A gate certifying a shape production never sees is this repo's own recurring
   // finding; here it would have been introduced by the gate closing it.
-  const printed = execFileSync('bash', [path.join('tests/lib', SHELLCHECK_SCOPE)],
-    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
-  const tracked = execFileSync('git', ['ls-files', '*.sh'],
-    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
+  const printed = execFileSync('bash', [path.join('tests/lib', SHELLCHECK_SCOPE)], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean)
+    .sort();
+  const tracked = execFileSync('git', ['ls-files', '*.sh'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+    .sort();
 
   // Both empty would satisfy the comparison below, and outside a checkout both
   // are empty — the exact shape of the "shellcheck reads its closed stdin and
@@ -276,23 +319,30 @@ test('the shared shellcheck scope is the whole tracked .sh set, not a filtered s
   // class this suite exists for.
   const floorSrc = fs.readFileSync(path.join(ROOT, 'tests/lib', SHELLCHECK_SCOPE), 'utf8');
   const floor = Number((floorSrc.match(/^SHELL_FILES_FLOOR=(\d+)/m) || [])[1]);
-  assert.ok(Number.isInteger(floor) && floor > 0,
+  assert.ok(
+    Number.isInteger(floor) && floor > 0,
     `no SHELL_FILES_FLOOR= assignment found in tests/lib/${SHELLCHECK_SCOPE} — it was renamed, ` +
-    'and this check has no lower bound to enforce.');
-  assert.ok(tracked.length >= floor,
+      'and this check has no lower bound to enforce.'
+  );
+  assert.ok(
+    tracked.length >= floor,
     `git ls-files '*.sh' resolved only ${tracked.length} file(s), under the script's own floor of ` +
-    `${floor} — not a checkout, or the layout moved. Two empty sets compare equal, so this must ` +
-    'fail before the comparison.');
+      `${floor} — not a checkout, or the layout moved. Two empty sets compare equal, so this must ` +
+      'fail before the comparison.'
+  );
 
   t.diagnostic(`${printed.length} file(s) printed by ${SHELLCHECK_SCOPE}; ${tracked.length} tracked '*.sh'`);
 
-  const dropped = tracked.filter((f) => !printed.includes(f));
-  const added = printed.filter((f) => !tracked.includes(f));
-  assert.deepEqual({ dropped, added }, { dropped: [], added: [] },
+  const dropped = tracked.filter(f => !printed.includes(f));
+  const added = printed.filter(f => !tracked.includes(f));
+  assert.deepEqual(
+    { dropped, added },
+    { dropped: [], added: [] },
     `tests/lib/${SHELLCHECK_SCOPE} does not print the tracked .sh set it claims to be the ` +
-    'single source of:\n      ' +
-    `dropped: ${dropped.join(', ') || '(none)'}\n      added: ${added.join(', ') || '(none)'}\n      ` +
-    'A filter inside the shared script narrows every consumer at once while each consumer ' +
-    'still looks correct — the CI step keeps front-running run-all.sh over a smaller set than ' +
-    'run-all.sh checks, which is the drift R10-18c converged the two lists to prevent.');
+      'single source of:\n      ' +
+      `dropped: ${dropped.join(', ') || '(none)'}\n      added: ${added.join(', ') || '(none)'}\n      ` +
+      'A filter inside the shared script narrows every consumer at once while each consumer ' +
+      'still looks correct — the CI step keeps front-running run-all.sh over a smaller set than ' +
+      'run-all.sh checks, which is the drift R10-18c converged the two lists to prevent.'
+  );
 });

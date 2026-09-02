@@ -13,11 +13,12 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BIN = path.join(REPO_ROOT, 'bin/claudemd-lint.js');
 
-const run = (args, input) => spawnSync(process.execPath, [BIN, ...args], {
-  input,
-  encoding: 'utf8',
-  timeout: 10000,
-});
+const run = (args, input) =>
+  spawnSync(process.execPath, [BIN, ...args], {
+    input,
+    encoding: 'utf8',
+    timeout: 10000,
+  });
 
 test('CLI: audit <directory> rejects with friendly error (exit 2, not Node EISDIR stack)', () => {
   // Pre-fix: `audit .` crashed with raw `EISDIR: illegal operation on a
@@ -156,10 +157,13 @@ test('CLI: lint with no positional arg + no --stdin → exit 2 usage error', () 
 test('CLI: audit clean transcript → exit 0', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, JSON.stringify({
-    type: 'assistant',
-    message: { content: [{ type: 'text', text: 'added cursor; tests 30 → 35' }] },
-  }) + '\n');
+  fs.writeFileSync(
+    transcript,
+    JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'added cursor; tests 30 → 35' }] },
+    }) + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 0);
@@ -172,10 +176,16 @@ test('CLI: audit clean transcript → exit 0', () => {
 test('CLI: audit transcript with banned word → exit 1, names line + turn', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ type: 'user', message: { content: 'hi' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'this is significantly improved' }] } }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({ type: 'user', message: { content: 'hi' } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'this is significantly improved' }] },
+      }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 1);
@@ -200,10 +210,13 @@ test('CLI: audit JSON-but-not-CC-transcript → exit 2, not silent OK', () => {
   // vocab slip a CI gate. Now it must exit 2 and say it's not a CC transcript.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'wrong-shape.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ role: 'assistant', content: 'this is significantly improved' }),
-    JSON.stringify({ role: 'user', content: 'hi' }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({ role: 'assistant', content: 'this is significantly improved' }),
+      JSON.stringify({ role: 'user', content: 'hi' }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
@@ -218,10 +231,13 @@ test('CLI: audit transcript with only non-assistant rows → exit 0 (legit empty
   // `type` on every row, so the not-a-transcript gate must NOT fire here.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'only-user.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ type: 'user', message: { content: 'significantly improved?' } }),
-    JSON.stringify({ type: 'system', content: 'hook fired' }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({ type: 'user', message: { content: 'significantly improved?' } }),
+      JSON.stringify({ type: 'system', content: 'hook fired' }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 0, `expected exit 0; stdout=${r.stdout} stderr=${r.stderr}`);
@@ -358,7 +374,7 @@ test('CLI: lint <single-word-no-slash> stays text scan (no false path-error)', (
   // Anchor that the fix does NOT regress non-path-shape literals. A single
   // word with no `/` is plausibly text the caller wanted to scan; preserve
   // v0.9.14's "treat as text" fallback for that shape.
-  const r = run(['lint', 'message.txt']);  // has dot but no slash
+  const r = run(['lint', 'message.txt']); // has dot but no slash
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^OK/);
 });
@@ -416,7 +432,10 @@ test('CLI: audit on non-JSONL file (plain log / CSV) → exit 2, not silent OK',
   // or wrong-format input. Symmetric with the v0.9.21 lint silent-fall-through.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const bad = path.join(tmp, 'not-jsonl.log');
-  fs.writeFileSync(bad, '2025-01-01 INFO server started\n2025-01-01 ERROR boom\nthis is robust and significantly improved\n');
+  fs.writeFileSync(
+    bad,
+    '2025-01-01 INFO server started\n2025-01-01 ERROR boom\nthis is robust and significantly improved\n'
+  );
   try {
     const r = run(['audit', bad]);
     assert.equal(r.status, 2, 'non-JSONL file should fail loudly, not exit 0');
@@ -449,7 +468,12 @@ test('CLI: audit on JSONL with one corrupt + one valid row → exit 0 (preserves
   // still scan whatever IS parseable.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const mixed = path.join(tmp, 'mixed.jsonl');
-  fs.writeFileSync(mixed, '{"partial":\n' + JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'clean' }] } }) + '\n');
+  fs.writeFileSync(
+    mixed,
+    '{"partial":\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'clean' }] } }) +
+      '\n'
+  );
   try {
     const r = run(['audit', mixed]);
     assert.equal(r.status, 0, 'one parseable row is enough to clear the guard');
@@ -461,10 +485,13 @@ test('CLI: audit on JSONL with one corrupt + one valid row → exit 0 (preserves
 test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, JSON.stringify({
-    type: 'assistant',
-    message: { content: [{ type: 'text', text: 'clean' }] },
-  }) + '\n');
+  fs.writeFileSync(
+    transcript,
+    JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'clean' }] },
+    }) + '\n'
+  );
   try {
     const r = run(['audit', '--include-ratiox', transcript]);
     assert.equal(r.status, 2);
@@ -483,10 +510,16 @@ test('CLI: audit warns on skipped string-content assistant rows (QA ISSUE-002)',
   // unchanged, surface the skip on stderr.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'tests 30 → 35, clean' }] } }),
-    JSON.stringify({ type: 'assistant', message: { content: 'string shape: should work' } }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'tests 30 → 35, clean' }] },
+      }),
+      JSON.stringify({ type: 'assistant', message: { content: 'string shape: should work' } }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 0, `verdict must stay based on scanned turns; stderr=${r.stderr}`);
@@ -501,10 +534,13 @@ test('CLI: audit warns on skipped string-content assistant rows (QA ISSUE-002)',
 test('CLI: audit --json keeps stdout pure JSON when string-shape warning fires', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok line' }] } }),
-    JSON.stringify({ type: 'assistant', message: { content: 'string shape row' } }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok line' }] } }),
+      JSON.stringify({ type: 'assistant', message: { content: 'string shape row' } }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript, '--json']);
     assert.doesNotThrow(() => JSON.parse(r.stdout), `stdout must stay parseable; got: ${r.stdout}`);
@@ -517,15 +553,28 @@ test('CLI: audit --json keeps stdout pure JSON when string-shape warning fires',
 test('CLI: audit emits NO skip warning on pure block-array transcripts', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
-  fs.writeFileSync(transcript, [
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'all good, 5/5 pass' }] } }),
-    JSON.stringify({ type: 'user', message: { content: 'typed prompts are string-shape by design' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }] } }),
-  ].join('\n') + '\n');
+  fs.writeFileSync(
+    transcript,
+    [
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'all good, 5/5 pass' }] },
+      }),
+      JSON.stringify({ type: 'user', message: { content: 'typed prompts are string-shape by design' } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }] },
+      }),
+    ].join('\n') + '\n'
+  );
   try {
     const r = run(['audit', transcript]);
     assert.equal(r.status, 0);
-    assert.doesNotMatch(r.stderr, /skipped/i, 'no noise on normal CC transcripts (user rows + tool_use-only rows are fine)');
+    assert.doesNotMatch(
+      r.stderr,
+      /skipped/i,
+      'no noise on normal CC transcripts (user rows + tool_use-only rows are fine)'
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -563,9 +612,15 @@ test('every scripts/*.js CLI entry point that awaits a promise also catches it',
     entriesChecked++;
     if (!/\.catch\s*\(/.test(entry)) offenders.push(f);
   }
-  assert.ok(entriesChecked >= 6, `only ${entriesChecked} promise-returning CLI entry point(s) found — the extraction stopped matching`);
-  assert.deepEqual(offenders, [],
-    `CLI entry point(s) whose promise has no .catch — a throw becomes a bare stack instead of a report: ${offenders.join(', ')}`);
+  assert.ok(
+    entriesChecked >= 6,
+    `only ${entriesChecked} promise-returning CLI entry point(s) found — the extraction stopped matching`
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    `CLI entry point(s) whose promise has no .catch — a throw becomes a bare stack instead of a report: ${offenders.join(', ')}`
+  );
 });
 
 // --- R11-11 (2026-09-02 audit) ---
@@ -575,7 +630,7 @@ test('every scripts/*.js CLI entry point that awaits a promise also catches it',
 // Exit 1 is the documented "hits found" code, so a CI job gating on it read a
 // permission error as a banned-vocab hit. `lint --file` had had the try/catch
 // since v0.9.x; `audit` never got it.
-test('CLI: audit <unreadable file> exits 2, not 1 with a Node stack (R11-11)', (t) => {
+test('CLI: audit <unreadable file> exits 2, not 1 with a Node stack (R11-11)', t => {
   if (process.getuid && process.getuid() === 0) {
     t.skip('running as root — mode 000 is still readable');
     return;

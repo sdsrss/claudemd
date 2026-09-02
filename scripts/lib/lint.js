@@ -69,7 +69,7 @@ export function readPatterns(patternsFile = DEFAULT_PATTERNS_FILE) {
 const POSIX_TO_JS = [
   [/\[\[:space:\]\]/g, '\\s'],
   [/\[\[:digit:\]\]/g, '\\d'],
-  [/\[\[:alnum:\]\]/g, 'A-Za-z0-9'],   // typically already inside a [...]
+  [/\[\[:alnum:\]\]/g, 'A-Za-z0-9'], // typically already inside a [...]
   [/\[\[:alpha:\]\]/g, 'A-Za-z'],
   [/\[\[:upper:\]\]/g, 'A-Z'],
   [/\[\[:lower:\]\]/g, 'a-z'],
@@ -108,7 +108,7 @@ export function stripIdentifiers(text) {
   //    guard: blanked text is a subset of before, so this can only EXPOSE
   //    more text to the detector, never hide a claim.
   const lines = text.split('\n');
-  const isFence = (l) => /^\s*```/.test(l);
+  const isFence = l => /^\s*```/.test(l);
   // "Is there a closing fence after i?" — precomputed once. The direct
   // `lines.slice(i + 1).some(isFence)` spelling allocates the entire tail array
   // on every fence line even though `.some` short-circuits, which is O(lines²):
@@ -117,21 +117,31 @@ export function stripIdentifiers(text) {
   // after i iff any fence line is after i — in O(1) after one O(lines) pass.
   let lastFence = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (isFence(lines[i])) { lastFence = i; break; }
+    if (isFence(lines[i])) {
+      lastFence = i;
+      break;
+    }
   }
   const kept = [];
   let inFence = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (isFence(line)) {
-      if (inFence) { inFence = false; continue; }
-      if (lastFence > i) { inFence = true; continue; }
+      if (inFence) {
+        inFence = false;
+        continue;
+      }
+      if (lastFence > i) {
+        inFence = true;
+        continue;
+      }
       kept.push(line);
       continue;
     }
     if (!inFence) kept.push(line);
   }
-  const stripped = kept.join('\n')
+  const stripped = kept
+    .join('\n')
     // 2. Inline backtick spans.
     .replace(/`[^`]*`/g, ' ')
     // 3. Slashed-path runs (branch names, file paths, URLs) — Path 2's rule.
@@ -165,31 +175,30 @@ export function stripIdentifiers(text) {
     //
     //    The bash engines need no equivalent: POSIX sed does not backtrack and
     //    the hook caps its input at `tail -c 4096`; the Node path caps nothing.
-    .replace(/(?<![A-Za-z0-9._@~-])[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ')
-    // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts). JS-only
-    //    when written; the bash sanitizer carries the same clause since
-    //    2026-08-16 and sanitize-stage-parity pins them together.
-    //    The extension must start with a LOWERCASE letter, which
-    //    (a) excludes decimals / versions ("3.5x", "v6.14") whose ".5x"/".14"
-    //    could otherwise swallow a baseline-less ratio claim → false negative,
-    //    and (b) excludes sentence-boundary typos ("comprehensive.Next", capital
-    //    after the dot) so a real claim isn't stripped. Only true `name.ext`
-    //    identifiers with a lowercase extension are removed.
-    //
-    //    Clause 4 canNOT use clause 3's lookbehind: its trailing class
-    //    `[a-z0-9]` is a strict SUBSET of the leading run class, so a match can
-    //    end in the MIDDLE of a run (`_a9Zaz.a|Z9Z_.a` — the ext stops at the
-    //    uppercase Z) and the next legitimate match then starts at a position
-    //    whose predecessor IS a run char. A lookbehind drops that match and
-    //    leaves the identifier unstripped — more text exposed to the detector,
-    //    i.e. the FP deny-loop returning. Clause 3 is immune because its
-    //    trailing class is a SUPERSET of its leading one, so a match always
-    //    ends outside a leading-class run; that equivalence is measured, not
-    //    assumed, in sanitize-anchor-equivalence.test.js.
-    //
-    //    So clause 4 runs as an explicit single-pass scan instead — same
-    //    semantics, O(n) instead of O(run²).
-    ;
+    .replace(/(?<![A-Za-z0-9._@~-])[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ');
+  // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts). JS-only
+  //    when written; the bash sanitizer carries the same clause since
+  //    2026-08-16 and sanitize-stage-parity pins them together.
+  //    The extension must start with a LOWERCASE letter, which
+  //    (a) excludes decimals / versions ("3.5x", "v6.14") whose ".5x"/".14"
+  //    could otherwise swallow a baseline-less ratio claim → false negative,
+  //    and (b) excludes sentence-boundary typos ("comprehensive.Next", capital
+  //    after the dot) so a real claim isn't stripped. Only true `name.ext`
+  //    identifiers with a lowercase extension are removed.
+  //
+  //    Clause 4 canNOT use clause 3's lookbehind: its trailing class
+  //    `[a-z0-9]` is a strict SUBSET of the leading run class, so a match can
+  //    end in the MIDDLE of a run (`_a9Zaz.a|Z9Z_.a` — the ext stops at the
+  //    uppercase Z) and the next legitimate match then starts at a position
+  //    whose predecessor IS a run char. A lookbehind drops that match and
+  //    leaves the identifier unstripped — more text exposed to the detector,
+  //    i.e. the FP deny-loop returning. Clause 3 is immune because its
+  //    trailing class is a SUPERSET of its leading one, so a match always
+  //    ends outside a leading-class run; that equivalence is measured, not
+  //    assumed, in sanitize-anchor-equivalence.test.js.
+  //
+  //    So clause 4 runs as an explicit single-pass scan instead — same
+  //    semantics, O(n) instead of O(run²).
   return stripDottedFileTokens(stripped);
 }
 
@@ -201,10 +210,9 @@ export function stripIdentifiers(text) {
 // exactly, including the mid-run restart above: after a match the scan resumes
 // at the match end, which becomes the next candidate start even though its
 // predecessor is a run char.
-const isRunChar = (c) =>
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-  c === '_' || c === '-';
-const isExtChar = (c) => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+const isRunChar = c =>
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c === '_' || c === '-';
+const isExtChar = c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
 
 export function stripDottedFileTokens(text) {
   if (!text) return text;
@@ -213,7 +221,10 @@ export function stripDottedFileTokens(text) {
   let copied = 0;
   let i = 0;
   while (i < n) {
-    if (!isRunChar(text[i])) { i++; continue; }
+    if (!isRunChar(text[i])) {
+      i++;
+      continue;
+    }
     const start = i;
     let e = i;
     while (e < n && isRunChar(text[e])) e++;
@@ -283,7 +294,7 @@ export function looksLikeGitMessageFile(filePath) {
 //     `-m "$(cat notes.md)"` whenever the body carried a markdown heading.
 export function stripGitCommitComments(text, commentChar = '#', { templateLines } = {}) {
   if (!text) return text;
-  const c = (typeof commentChar === 'string' && commentChar.length === 1) ? commentChar : '#';
+  const c = typeof commentChar === 'string' && commentChar.length === 1 ? commentChar : '#';
   const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const cutLine = new RegExp(`^${esc} -{20,} >8 -{20,}\\s*$`);
 
@@ -299,9 +310,7 @@ export function stripGitCommitComments(text, commentChar = '#', { templateLines 
   //    it discards them under the editor path's cleanup=strip. Author-typed
   //    comment lines are absent from the template and stay in scope (P1-3).
   const fromTemplate = templateComments(templateLines, c);
-  const body = fromTemplate.size
-    ? lines.filter(l => !(l.startsWith(c) && fromTemplate.has(l)))
-    : lines;
+  const body = fromTemplate.size ? lines.filter(l => !(l.startsWith(c) && fromTemplate.has(l))) : lines;
 
   // 3. Strip the remaining comment lines only when git wrote a status block or
   //    a cut line here.
@@ -386,7 +395,11 @@ export function parseTranscript(jsonlText) {
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     let row;
-    try { row = JSON.parse(lines[i]); } catch { continue; }
+    try {
+      row = JSON.parse(lines[i]);
+    } catch {
+      continue;
+    }
     if (row.type !== 'assistant') continue;
     const content = row.message?.content || [];
     const texts = [];
@@ -414,7 +427,11 @@ export function countStringContentAssistantRows(jsonlText) {
   for (const line of jsonlText.split('\n')) {
     if (!line.trim()) continue;
     let row;
-    try { row = JSON.parse(line); } catch { continue; }
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (row?.type !== 'assistant') continue;
     const content = row.message?.content;
     if (typeof content === 'string' && content.trim().length > 0) count++;

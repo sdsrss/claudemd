@@ -35,15 +35,22 @@ const REPO_ROOT = path.resolve(HERE, '../..');
 const FIXTURE = path.join(REPO_ROOT, 'tests/fixtures/user-turn-shapes.jsonl');
 const LIB = path.join(REPO_ROOT, 'hooks/lib/hook-common.sh');
 
-const rows = fs.readFileSync(FIXTURE, 'utf8')
+const rows = fs
+  .readFileSync(FIXTURE, 'utf8')
   .split('\n')
   .filter(Boolean)
   .map(l => JSON.parse(l));
 
 test('fixture corpus covers both verdicts and the divergent shape', () => {
   assert.ok(rows.length >= 10, `expected >= 10 fixtures, got ${rows.length}`);
-  assert.ok(rows.some(r => r._expected === true), 'no positive fixture');
-  assert.ok(rows.some(r => r._expected === false), 'no negative fixture');
+  assert.ok(
+    rows.some(r => r._expected === true),
+    'no positive fixture'
+  );
+  assert.ok(
+    rows.some(r => r._expected === false),
+    'no negative fixture'
+  );
   const divergent = rows.find(r => r._name.includes('attachment-carrying'));
   assert.ok(divergent, 'the array-with-text shape must stay pinned');
   assert.equal(divergent._expected, true);
@@ -70,7 +77,8 @@ test('bash/jq engine matches the JS engine row for row', () => {
   assert.equal(bashVerdicts.length, rows.length, 'bash engine skipped rows');
   for (let i = 0; i < rows.length; i++) {
     assert.equal(
-      bashVerdicts[i], jsVerdicts[i],
+      bashVerdicts[i],
+      jsVerdicts[i],
       `engines disagreed on "${rows[i]._name}": bash=${bashVerdicts[i]} js=${jsVerdicts[i]}`
     );
   }
@@ -80,7 +88,8 @@ test('both bash consumers call the shared definition instead of inlining one', (
   // Derive the consumer set the same way trigger-view-parity.test.sh does:
   // a hook that resolves a last-user boundary must not carry its own spelling.
   const hooksDir = path.join(REPO_ROOT, 'hooks');
-  const consumers = fs.readdirSync(hooksDir)
+  const consumers = fs
+    .readdirSync(hooksDir)
     .filter(f => f.endsWith('.sh'))
     .map(f => path.join(hooksDir, f))
     .filter(f => {
@@ -92,9 +101,13 @@ test('both bash consumers call the shared definition instead of inlining one', (
   for (const c of consumers) {
     const src = fs.readFileSync(c, 'utf8');
     assert.match(src, /is_user_turn/, `${path.basename(c)} does not use the shared is_user_turn`);
-    const code = src.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    const code = src
+      .split('\n')
+      .filter(l => !/^\s*#/.test(l))
+      .join('\n');
     assert.doesNotMatch(
-      code, /content\s*\|\s*type\)\s*==\s*"string"/,
+      code,
+      /content\s*\|\s*type\)\s*==\s*"string"/,
       `${path.basename(c)} still inlines its own content-shape test`
     );
   }

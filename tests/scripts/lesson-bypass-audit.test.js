@@ -35,10 +35,7 @@ afterEach(() => {
 // --- Pure helpers ----------------------------------------------------------
 
 test('encodeCcCwd: replaces EVERY non-[a-zA-Z0-9-] char with -', () => {
-  assert.equal(
-    encodeCcCwd('/mnt/data_ssd/dev/projects/claudemd'),
-    '-mnt-data-ssd-dev-projects-claudemd',
-  );
+  assert.equal(encodeCcCwd('/mnt/data_ssd/dev/projects/claudemd'), '-mnt-data-ssd-dev-projects-claudemd');
   // Per feedback_cc_cwd_encoding_dots.md (v0.9.15): underscore included.
   assert.equal(encodeCcCwd('/home/user/my_project'), '-home-user-my-project');
   assert.equal(encodeCcCwd('/a.b/c'), '-a-b-c');
@@ -104,9 +101,7 @@ test('wasApplied: match BEFORE suggest ts → false (only post-suggest counts)',
 });
 
 test('wasApplied: no occurrence → false', () => {
-  const transcript = [
-    { timestamp: '2026-05-24T10:05:00Z', message: { content: 'something else' } },
-  ];
+  const transcript = [{ timestamp: '2026-05-24T10:05:00Z', message: { content: 'something else' } }];
   assert.equal(wasApplied(transcript, '2026-05-24T10:00:00Z', 'feedback_foo.md'), false);
 });
 
@@ -270,7 +265,13 @@ test('audit: events outside window not counted', () => {
 test('audit: non-suggest events ignored (only memory-prompt-hint + suggest)', () => {
   const now = new Date().toISOString();
   writeLog([
-    { ts: now, hook: 'memory-prompt-hint', event: 'suggest', session_id: 'sess-0001', extra: { suggested: ['feedback_a.md'], match_count: 1 } },
+    {
+      ts: now,
+      hook: 'memory-prompt-hint',
+      event: 'suggest',
+      session_id: 'sess-0001',
+      extra: { suggested: ['feedback_a.md'], match_count: 1 },
+    },
     { ts: now, hook: 'memory-read-check', event: 'deny', session_id: 'sess-0001', extra: null },
     { ts: now, hook: 'banned-vocab', event: 'deny', session_id: 'sess-0002', extra: null },
   ]);
@@ -297,8 +298,7 @@ test('audit on real ~/.claude/logs/claudemd.jsonl — basic shape sanity', () =>
     assert.ok(typeof r.totalBypassed === 'number');
     // citeRecall is null OR a number in [0,1].
     if (r.citeRecall !== null) {
-      assert.ok(r.citeRecall >= 0 && r.citeRecall <= 1,
-        `cite-recall must be in [0,1], got ${r.citeRecall}`);
+      assert.ok(r.citeRecall >= 0 && r.citeRecall <= 1, `cite-recall must be in [0,1], got ${r.citeRecall}`);
     }
     // perMemory keys must be plausible filenames.
     for (const k of Object.keys(r.perMemory)) {
@@ -360,17 +360,26 @@ test('the emit cap is read from the hook, and a broken join is distinguishable (
     const hookPath = path.join(root, 'hooks/memory-prompt-hint.sh');
 
     fs.writeFileSync(hookPath, '#!/usr/bin/env bash\nMAX=9\necho hi\n');
-    assert.deepEqual(readHookEmitCap(root), { cap: 9, source: 'hook' },
-      'a cap the hook actually declares must be derived, not defaulted');
+    assert.deepEqual(
+      readHookEmitCap(root),
+      { cap: 9, source: 'hook' },
+      'a cap the hook actually declares must be derived, not defaulted'
+    );
 
     // The exact shape that used to fall back in silence.
     fs.writeFileSync(hookPath, '#!/usr/bin/env bash\n  MAX=9\necho hi\n');
-    assert.deepEqual(readHookEmitCap(root), { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-no-anchor' },
-      'a present-but-unparseable hook must report the fallback AS a fallback');
+    assert.deepEqual(
+      readHookEmitCap(root),
+      { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-no-anchor' },
+      'a present-but-unparseable hook must report the fallback AS a fallback'
+    );
 
     fs.rmSync(hookPath);
-    assert.deepEqual(readHookEmitCap(root), { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-missing-file' },
-      'a missing hook file is a different case from a broken anchor');
+    assert.deepEqual(
+      readHookEmitCap(root),
+      { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-missing-file' },
+      'a missing hook file is a different case from a broken anchor'
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

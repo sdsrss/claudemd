@@ -25,15 +25,16 @@ import { stripGitCommitComments, looksLikeGitMessageFile } from '../../scripts/l
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BIN = path.join(REPO_ROOT, 'bin/claudemd-lint.js');
 
-const run = (args, input) => spawnSync(process.execPath, [BIN, ...args], {
-  input,
-  encoding: 'utf8',
-  timeout: 10000,
-});
+const run = (args, input) =>
+  spawnSync(process.execPath, [BIN, ...args], {
+    input,
+    encoding: 'utf8',
+    timeout: 10000,
+  });
 
 // Byte-shape mirror of a real `git commit -v` COMMIT_EDITMSG (captured from
 // git 2.43.0, not hand-invented — per feedback_test_fixture_format_drift).
-const BANNED = 'signi' + 'ficantly';  // split so this fixture never trips the repo's own gates
+const BANNED = 'signi' + 'ficantly'; // split so this fixture never trips the repo's own gates
 const REAL_EDITMSG = [
   'fix: null deref at parser.js:42 (7/7 tests pass)',
   '',
@@ -57,9 +58,13 @@ const REAL_EDITMSG = [
   '',
 ].join('\n');
 
-const withTmp = (fn) => {
+const withTmp = fn => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-commitmsg-'));
-  try { return fn(dir); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 };
 
 test('lib: stripGitCommitComments drops # lines and everything below the scissors line', () => {
@@ -98,11 +103,15 @@ test('lib: stripGitCommitComments honors a custom comment char (core.commentChar
     ';',
     '',
   ].join('\n');
-  assert.ok(!stripGitCommitComments(src, ';').includes(BANNED),
-    "with commentChar=';' the block is git's template and is stripped");
+  assert.ok(
+    !stripGitCommitComments(src, ';').includes(BANNED),
+    "with commentChar=';' the block is git's template and is stripped"
+  );
   // …and with the default '#' the ';' lines are ordinary message text.
-  assert.ok(stripGitCommitComments(src).includes(BANNED),
-    "with the default '#' nothing here is a comment, so it all stays in scope");
+  assert.ok(
+    stripGitCommitComments(src).includes(BANNED),
+    "with the default '#' nothing here is a comment, so it all stays in scope"
+  );
 });
 
 test('lib: looksLikeGitMessageFile recognizes git message filenames only', () => {
@@ -114,19 +123,18 @@ test('lib: looksLikeGitMessageFile recognizes git message filenames only', () =>
 });
 
 test('CLI: lint .git/COMMIT_EDITMSG ignores the -v diff and the # template block', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const gitDir = path.join(dir, '.git');
     fs.mkdirSync(gitDir);
     const p = path.join(gitDir, 'COMMIT_EDITMSG');
     fs.writeFileSync(p, REAL_EDITMSG);
     const r = run(['lint', p]);
-    assert.equal(r.status, 0,
-      `clean commit subject must pass; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `clean commit subject must pass; stdout=${r.stdout} stderr=${r.stderr}`);
   });
 });
 
 test('CLI: --file .git/COMMIT_EDITMSG gets the same cleanup as the positional form', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
     fs.writeFileSync(p, REAL_EDITMSG);
     const r = run(['lint', '--file', p]);
@@ -136,11 +144,15 @@ test('CLI: --file .git/COMMIT_EDITMSG gets the same cleanup as the positional fo
 
 test('CLI: a banned word in the REAL message still denies after cleanup', () => {
   // The fix must not become a blanket mute — only git-discarded text is dropped.
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
-    fs.writeFileSync(p, REAL_EDITMSG.replace(
-      'fix: null deref at parser.js:42 (7/7 tests pass)',
-      `perf: ${BANNED} faster parser`));
+    fs.writeFileSync(
+      p,
+      REAL_EDITMSG.replace(
+        'fix: null deref at parser.js:42 (7/7 tests pass)',
+        `perf: ${BANNED} faster parser`
+      )
+    );
     const r = run(['lint', p]);
     assert.equal(r.status, 1, `stdout=${r.stdout} stderr=${r.stderr}`);
     assert.match(r.stderr, new RegExp(BANNED));
@@ -156,7 +168,7 @@ test('CLI: --commit-msg applies cleanup to --stdin (commitlint-style piping)', (
 });
 
 test('CLI: --no-commit-msg opts out of auto-detection', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
     fs.writeFileSync(p, REAL_EDITMSG);
     const r = run(['lint', '--no-commit-msg', '--file', p]);
@@ -167,7 +179,7 @@ test('CLI: --no-commit-msg opts out of auto-detection', () => {
 test('CLI: a non-git-named file is NOT cleaned (# headings stay in scope)', () => {
   // False-negative guard: `lint --file notes.md` must keep scanning markdown
   // headings — auto-detect is filename-scoped, not content-sniffed.
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'notes.md');
     fs.writeFileSync(p, `# release notes\n\nthis release is ${BANNED} faster\n`);
     const r = run(['lint', '--file', p]);
@@ -198,8 +210,10 @@ test('review-HIGH: a user # line in a -m style message is NOT stripped', () => {
   // No git template anywhere: one comment line the author typed themselves.
   // git keeps it, so lint must scan it.
   const msg = `subject\n\n# note: this release is ${BANNED} faster\n`;
-  assert.ok(stripGitCommitComments(msg).includes(BANNED),
-    'a lone # line has no git template around it — git keeps it, so it stays in scope');
+  assert.ok(
+    stripGitCommitComments(msg).includes(BANNED),
+    'a lone # line has no git template around it — git keeps it, so it stays in scope'
+  );
 });
 
 test('review-HIGH: git-template # blocks are still stripped (the FP fix survives)', () => {
@@ -216,12 +230,14 @@ test('review-HIGH: git-template # blocks are still stripped (the FP fix survives
     '#',
     '',
   ].join('\n');
-  assert.ok(!stripGitCommitComments(editorNoVerbose).includes(BANNED),
-    'git status block must still be stripped — it is git-authored, not the message');
+  assert.ok(
+    !stripGitCommitComments(editorNoVerbose).includes(BANNED),
+    'git status block must still be stripped — it is git-authored, not the message'
+  );
 });
 
 test('review-HIGH: CLI end-to-end — a banned word in a -m style # line still denies', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
     fs.writeFileSync(p, `subject\n\n# note: ${BANNED} faster\n`);
     const r = run(['lint', p]);
@@ -250,24 +266,28 @@ test('P1-3: three trailing # lines in a -F body are message text, not a template
     '# (todo: trim before tagging)',
     '',
   ].join('\n');
-  assert.ok(stripGitCommitComments(msg).includes(BANNED),
-    'no git-authored template here — three # lines the author typed must stay in scope');
+  assert.ok(
+    stripGitCommitComments(msg).includes(BANNED),
+    'no git-authored template here — three # lines the author typed must stay in scope'
+  );
 });
 
 test('P1-3: CLI end-to-end — a violation inside a 3-line # block still denies', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
-    fs.writeFileSync(p, [
-      'docs: release notes',
-      '',
-      '# leftover notes:',
-      `# this release is ${BANNED} faster`,
-      '# (todo: trim)',
-      '',
-    ].join('\n'));
+    fs.writeFileSync(
+      p,
+      [
+        'docs: release notes',
+        '',
+        '# leftover notes:',
+        `# this release is ${BANNED} faster`,
+        '# (todo: trim)',
+        '',
+      ].join('\n')
+    );
     const r = run(['lint', p]);
-    assert.equal(r.status, 1,
-      `3-line # block must not mute the scan; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 1, `3-line # block must not mute the scan; stdout=${r.stdout} stderr=${r.stderr}`);
   });
 });
 
@@ -292,11 +312,10 @@ test('review-MEDIUM: a hand-written near-scissors line does not truncate the sca
   // A loose `-{2,}` regex let a user-authored `# -- >8 --` silently drop the
   // rest of the message from the scan.
   const msg = `subject\n# -- >8 --\nthis release is ${BANNED} faster\n`;
-  assert.ok(stripGitCommitComments(msg).includes(BANNED),
-    'only git\'s exact cut line may truncate');
+  assert.ok(stripGitCommitComments(msg).includes(BANNED), "only git's exact cut line may truncate");
 });
 
-test('review-MEDIUM: git\'s real cut line still truncates', () => {
+test("review-MEDIUM: git's real cut line still truncates", () => {
   const cut = '# ------------------------ >8 ------------------------';
   const msg = `subject\n${cut}\ndiff text with ${BANNED} in it\n`;
   assert.ok(!stripGitCommitComments(msg).includes(BANNED));
@@ -348,18 +367,22 @@ const TEMPLATE_LINES = [
 test('HIGH-1: commit.template comment lines are git-authored — not scanned', () => {
   const buf = TEMPLATE_LINES.join('\n') + '\n';
   const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
-  assert.ok(!out.includes(BANNED),
-    'git discards template lines before storing — scanning them is a false positive');
+  assert.ok(
+    !out.includes(BANNED),
+    'git discards template lines before storing — scanning them is a false positive'
+  );
 });
 
 test('HIGH-1: a real message above a template keeps its own text in scope', () => {
   const buf = [`fix: subject that is ${BANNED} wrong`, '', ...TEMPLATE_LINES, ''].join('\n');
   const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
-  assert.ok(out.includes(`fix: subject that is ${BANNED} wrong`),
-    'only the template lines are git-authored; the subject is the message');
+  assert.ok(
+    out.includes(`fix: subject that is ${BANNED} wrong`),
+    'only the template lines are git-authored; the subject is the message'
+  );
 });
 
-test('HIGH-1: P1-3 holds — the author\'s own # lines survive a configured template', () => {
+test("HIGH-1: P1-3 holds — the author's own # lines survive a configured template", () => {
   // Template is configured, but these three comment lines are NOT from it: they
   // are a `-F` body's own text, which git keeps under cleanup=whitespace.
   const buf = [
@@ -371,19 +394,20 @@ test('HIGH-1: P1-3 holds — the author\'s own # lines survive a configured temp
     '',
   ].join('\n');
   const out = stripGitCommitComments(buf, '#', { templateLines: TEMPLATE_LINES });
-  assert.ok(out.includes(BANNED),
-    'lines absent from the template are the author\'s — P1-3 must not regress');
+  assert.ok(out.includes(BANNED), "lines absent from the template are the author's — P1-3 must not regress");
 });
 
 test('HIGH-1: no template configured → behavior is exactly as before', () => {
   const buf = TEMPLATE_LINES.join('\n') + '\n';
-  assert.equal(stripGitCommitComments(buf, '#', { templateLines: [] }),
+  assert.equal(
+    stripGitCommitComments(buf, '#', { templateLines: [] }),
     stripGitCommitComments(buf, '#'),
-    'the opt-in argument must not change the no-template path');
+    'the opt-in argument must not change the no-template path'
+  );
 });
 
 test('HIGH-1: CLI end-to-end — a real commit.template commit is not blocked', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
     const init = git('init', '-q', '.');
     if (init.status !== 0) return; // no git in this environment — nothing to assert
@@ -398,15 +422,16 @@ test('HIGH-1: CLI end-to-end — a real commit.template commit is not blocked', 
     fs.writeFileSync(msgFile, TEMPLATE_LINES.join('\n') + '\n');
 
     const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
-      cwd: dir, encoding: 'utf8', timeout: 10000,
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 10000,
     });
-    assert.equal(r.status, 0,
-      `template-only buffer must not deny; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `template-only buffer must not deny; stdout=${r.stdout} stderr=${r.stderr}`);
   });
 });
 
 test('HIGH-1: CLI end-to-end — a violation the author typed still denies under a template', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
     if (git('init', '-q', '.').status !== 0) return;
     git('config', 'user.email', 't@t');
@@ -415,19 +440,23 @@ test('HIGH-1: CLI end-to-end — a violation the author typed still denies under
     git('config', 'commit.template', 'tmpl.txt');
 
     const msgFile = path.join(dir, '.git', 'COMMIT_EDITMSG');
-    fs.writeFileSync(msgFile,
-      [`fix: this is ${BANNED} faster`, '', ...TEMPLATE_LINES, ''].join('\n'));
+    fs.writeFileSync(msgFile, [`fix: this is ${BANNED} faster`, '', ...TEMPLATE_LINES, ''].join('\n'));
 
     const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
-      cwd: dir, encoding: 'utf8', timeout: 10000,
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 10000,
     });
-    assert.equal(r.status, 1,
-      `the author's own subject must still be scanned; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(
+      r.status,
+      1,
+      `the author's own subject must still be scanned; stdout=${r.stdout} stderr=${r.stderr}`
+    );
   });
 });
 
 test('CLI: --json reports whether commit-msg cleanup was applied', () => {
-  withTmp((dir) => {
+  withTmp(dir => {
     const p = path.join(dir, 'COMMIT_EDITMSG');
     fs.writeFileSync(p, REAL_EDITMSG);
     const r = run(['lint', '--json', p]);
@@ -447,22 +476,23 @@ test('CLI: --json reports whether commit-msg cleanup was applied', () => {
 // left every test green. A claim in a comment with nothing asserting it is the
 // exact shape this release exists to correct.
 
-test('MEDIUM-4: a non-comment template line is the author\'s text and stays in scope', () => {
+test("MEDIUM-4: a non-comment template line is the author's text and stays in scope", () => {
   // A template whose subject line is real message text git will store.
   const tmpl = [
-    `refactor: it is ${BANNED} tidier now`,   // no comment char — git KEEPS this
+    `refactor: it is ${BANNED} tidier now`, // no comment char — git KEEPS this
     '# Checklist:',
     '#  - tests green?',
   ];
   const out = stripGitCommitComments(tmpl.join('\n') + '\n', '#', { templateLines: tmpl });
-  assert.ok(out.includes(BANNED),
-    'git stores this line verbatim, so a §10-V violation in it must still be found');
-  assert.ok(!out.includes('Checklist'),
-    'the comment lines of the same template are still dropped');
+  assert.ok(
+    out.includes(BANNED),
+    'git stores this line verbatim, so a §10-V violation in it must still be found'
+  );
+  assert.ok(!out.includes('Checklist'), 'the comment lines of the same template are still dropped');
 });
 
-test('MEDIUM-4: CLI end-to-end — a violation on a template\'s non-comment line denies', () => {
-  withTmp((dir) => {
+test("MEDIUM-4: CLI end-to-end — a violation on a template's non-comment line denies", () => {
+  withTmp(dir => {
     const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', timeout: 10000 });
     if (git('init', '-q', '.').status !== 0) return;
     git('config', 'user.email', 't@t');
@@ -475,9 +505,14 @@ test('MEDIUM-4: CLI end-to-end — a violation on a template\'s non-comment line
     fs.writeFileSync(msgFile, tmpl.join('\n') + '\n');
 
     const r = spawnSync(process.execPath, [BIN, 'lint', msgFile], {
-      cwd: dir, encoding: 'utf8', timeout: 10000,
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 10000,
     });
-    assert.equal(r.status, 1,
-      `a template line git will STORE must be scanned; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(
+      r.status,
+      1,
+      `a template line git will STORE must be scanned; stdout=${r.stdout} stderr=${r.stderr}`
+    );
   });
 });

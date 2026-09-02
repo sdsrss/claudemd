@@ -69,7 +69,9 @@ export function readTranscript(transcriptPath) {
     if (!line.trim()) continue;
     try {
       rows.push(JSON.parse(line));
-    } catch { /* skip malformed line */ }
+    } catch {
+      /* skip malformed line */
+    }
   }
   return rows;
 }
@@ -86,13 +88,20 @@ export function rowText(row) {
   if (!Array.isArray(c)) return '';
   const parts = [];
   for (const block of c) {
-    if (typeof block === 'string') { parts.push(block); continue; }
+    if (typeof block === 'string') {
+      parts.push(block);
+      continue;
+    }
     if (!block || typeof block !== 'object') continue;
     if (block.type === 'text' && typeof block.text === 'string') {
       parts.push(block.text);
     } else if (block.type === 'tool_use') {
       parts.push(String(block.name || ''));
-      try { parts.push(JSON.stringify(block.input || {})); } catch { /* skip */ }
+      try {
+        parts.push(JSON.stringify(block.input || {}));
+      } catch {
+        /* skip */
+      }
     } else if (block.type === 'tool_result') {
       if (typeof block.content === 'string') parts.push(block.content);
       else if (Array.isArray(block.content)) {
@@ -153,19 +162,13 @@ export function readHookEmitCap(pluginRoot) {
   // move into a case block. That is a broken join, not a missing input.
   process.emitWarning(
     `lesson-bypass-audit: hooks/memory-prompt-hint.sh has no line matching /^MAX=(\\d+)/ — ` +
-    `falling back to ${HOOK_EMIT_CAP_FALLBACK}. If the hook's emit cap changed, this audit's ` +
-    `bypass rate is computed against the wrong denominator.`,
+      `falling back to ${HOOK_EMIT_CAP_FALLBACK}. If the hook's emit cap changed, this audit's ` +
+      `bypass rate is computed against the wrong denominator.`
   );
   return { cap: HOOK_EMIT_CAP_FALLBACK, source: 'fallback-no-anchor' };
 }
 
-export function lessonBypassAudit({
-  days = DEFAULT_WINDOW_DAYS,
-  cwd,
-  pluginRoot,
-  logPath,
-  projectDir,
-} = {}) {
+export function lessonBypassAudit({ days = DEFAULT_WINDOW_DAYS, cwd, pluginRoot, logPath, projectDir } = {}) {
   if (!cwd) cwd = process.cwd();
   if (!pluginRoot) pluginRoot = resolvePluginRoot(import.meta.url);
   if (!logPath) logPath = path.join(logsDir(), 'claudemd.jsonl');
@@ -174,8 +177,9 @@ export function lessonBypassAudit({
   }
 
   const { hits } = readHits(logPath, days);
-  const suggestEvents = excludeTestSessions(hits)
-    .filter(h => h.hook === 'memory-prompt-hint' && h.event === 'suggest');
+  const suggestEvents = excludeTestSessions(hits).filter(
+    h => h.hook === 'memory-prompt-hint' && h.event === 'suggest'
+  );
 
   const perSession = {};
   const perMemory = {};
@@ -197,9 +201,7 @@ export function lessonBypassAudit({
 
   for (const ev of suggestEvents) {
     const sessionId = ev.session_id;
-    const suggested = Array.isArray(ev.extra?.suggested)
-      ? ev.extra.suggested.slice(0, EMIT_CAP)
-      : null;
+    const suggested = Array.isArray(ev.extra?.suggested) ? ev.extra.suggested.slice(0, EMIT_CAP) : null;
     if (!sessionId || !suggested || suggested.length === 0) continue;
     if (!(sessionId in transcriptCache)) {
       // Resolve the transcript in the PROJECT THE ROW CAME FROM, falling back to
@@ -289,7 +291,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days', '--cwd'], bools: ['--json'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_BYPASS_DAYS || String(DEFAULT_WINDOW_DAYS));
@@ -299,7 +304,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
-      `  Examples: --days=30 (default), --days=7, --days=90.`
+        `  Examples: --days=30 (default), --days=7, --days=90.`
     );
     process.exit(1);
   }
@@ -327,7 +332,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`  applied:             ${result.totalApplied}`);
     console.log(`  bypassed:            ${result.totalBypassed}`);
     if (result.totalMissingTranscript) {
-      console.log(`  missing transcript:  ${result.totalMissingTranscript} (session file absent — synthetic dogfood / deleted / cwd mismatch)`);
+      console.log(
+        `  missing transcript:  ${result.totalMissingTranscript} (session file absent — synthetic dogfood / deleted / cwd mismatch)`
+      );
     }
     console.log(`  cite-recall:         ${formatPercent(result.citeRecall)}`);
     console.log(`  bypass-rate:         ${formatPercent(result.bypassRate)}`);

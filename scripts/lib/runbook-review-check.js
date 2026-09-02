@@ -73,22 +73,31 @@ export function scanRunbookReviewSteps({ rootDir } = {}) {
   const out = { missing: [], scannedRunbooks: 0 };
 
   let projects;
-  try { projects = fs.readdirSync(root, { withFileTypes: true }); }
-  catch { return out; }
+  try {
+    projects = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return out;
+  }
 
   for (const ent of projects) {
     if (!ent.isDirectory()) continue;
     const memDir = path.join(root, ent.name, 'memory');
     let files;
-    try { files = fs.readdirSync(memDir).filter(f => f.endsWith('.md')); }
-    catch { continue; } // no memory dir — nothing to scan
+    try {
+      files = fs.readdirSync(memDir).filter(f => f.endsWith('.md'));
+    } catch {
+      continue;
+    } // no memory dir — nothing to scan
     const projectMisses = [];
     let projectHasFingerprintedRunbook = false;
     for (const f of files) {
       if (f === 'MEMORY.md') continue;
       let content;
-      try { content = fs.readFileSync(path.join(memDir, f), 'utf8'); }
-      catch { continue; }
+      try {
+        content = fs.readFileSync(path.join(memDir, f), 'utf8');
+      } catch {
+        continue;
+      }
       const tier = classifyCandidate(f, content);
       if (!tier) continue;
       out.scannedRunbooks += 1;

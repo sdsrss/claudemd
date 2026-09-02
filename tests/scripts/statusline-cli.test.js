@@ -68,7 +68,7 @@ test('M5 review fix: adopt --supersede dry-run (human, default) names the supers
   // Seed a code-graph composite-host slot with two registered providers.
   fs.writeFileSync(
     path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
   );
   fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
   fs.writeFileSync(
@@ -76,7 +76,7 @@ test('M5 review fix: adopt --supersede dry-run (human, default) names the supers
     JSON.stringify([
       { id: 'user-ps1', command: 'bash "/h/.claude/x.sh"', needsStdin: true },
       { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
-    ]),
+    ])
   );
 
   // Default human output must name the target even though adopt()'s host
@@ -98,16 +98,20 @@ test('M5 review fix: adopt --supersede dry-run (human, default) names the supers
 test('adopt --supersede a non-existent id → human warns, --json surfaces supersedeMissed', () => {
   fs.writeFileSync(
     path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
   );
   fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
   fs.writeFileSync(
     path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
-    JSON.stringify([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]),
+    JSON.stringify([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }])
   );
   const human = run(['adopt', '--supersede=ghost']);
   assert.equal(human.status, 0);
-  assert.match(human.stdout, /supersede target 'ghost' not found/, 'human output warns the target was missed');
+  assert.match(
+    human.stdout,
+    /supersede target 'ghost' not found/,
+    'human output warns the target was missed'
+  );
   const json = run(['adopt', '--supersede=ghost', '--json']);
   assert.equal(json.status, 0);
   const obj = JSON.parse(json.stdout);

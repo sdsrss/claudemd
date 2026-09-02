@@ -28,8 +28,11 @@ import { SEMVER_RE, pluginCacheDir } from './paths.js';
 // home. realpath also subsumes the old existence check.
 export function pruneCache(pluginRoot, { keep = 3 } = {}) {
   let realRoot;
-  try { realRoot = fs.realpathSync(pluginRoot); }
-  catch { return { kept: [], removed: [], skipped: 'missing-versions-dir' }; }
+  try {
+    realRoot = fs.realpathSync(pluginRoot);
+  } catch {
+    return { kept: [], removed: [], skipped: 'missing-versions-dir' };
+  }
 
   const currentVersion = path.basename(realRoot);
   const versionsDir = path.dirname(realRoot);
@@ -39,8 +42,11 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
   }
 
   let cacheRoot;
-  try { cacheRoot = fs.realpathSync(pluginCacheDir()); }
-  catch { return { kept: [], removed: [], skipped: 'outside-plugin-cache' }; }
+  try {
+    cacheRoot = fs.realpathSync(pluginCacheDir());
+  } catch {
+    return { kept: [], removed: [], skipped: 'outside-plugin-cache' };
+  }
   if (!(versionsDir + path.sep).startsWith(cacheRoot + path.sep)) {
     return { kept: [], removed: [], skipped: 'outside-plugin-cache' };
   }
@@ -49,7 +55,8 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
     return { kept: [], removed: [], skipped: 'missing-versions-dir' };
   }
 
-  const siblings = fs.readdirSync(versionsDir)
+  const siblings = fs
+    .readdirSync(versionsDir)
     .filter(n => SEMVER_RE.test(n))
     .map(n => ({
       name: n,

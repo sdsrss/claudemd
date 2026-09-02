@@ -41,14 +41,49 @@ import os from 'node:os';
 // — `升级` / `发版` aren't English-prose words).
 const NARROW_ALLOWLIST = new Set([
   // Sub-class 1: short technical acronyms.
-  'cwd', 'npx', 'jq', 'gh', 'ci', 'ssh', 'tls', 'dns', 'pid', 'tdd', 'bdd',
-  'ast', 'css', 'html', 'json', 'sql', 'yaml', 'env', 'api', 'dom', 'url',
-  'pgo', 'gpu', 'cpu',
+  'cwd',
+  'npx',
+  'jq',
+  'gh',
+  'ci',
+  'ssh',
+  'tls',
+  'dns',
+  'pid',
+  'tdd',
+  'bdd',
+  'ast',
+  'css',
+  'html',
+  'json',
+  'sql',
+  'yaml',
+  'env',
+  'api',
+  'dom',
+  'url',
+  'pgo',
+  'gpu',
+  'cpu',
   // Sub-class 2: hook trigger verbs (memory-read-check.sh TRIGGER_RE).
   // Tags matching these are intentional triggers, not FP candidates.
-  'release', 'push', 'ship', 'deploy', 'publish', 'merge', 'commit', 'build',
+  'release',
+  'push',
+  'ship',
+  'deploy',
+  'publish',
+  'merge',
+  'commit',
+  'build',
   // Sub-class 3: OS / runtime narrow terms (claudemd-domain specific).
-  'macos', 'linux', 'ubuntu', 'darwin', 'node', 'python', 'rust', 'go',
+  'macos',
+  'linux',
+  'ubuntu',
+  'darwin',
+  'node',
+  'python',
+  'rust',
+  'go',
 ]);
 
 // Generic English single-word wordlist: tags known or strongly suspected to
@@ -64,22 +99,74 @@ const GENERIC_WORDLIST = new Set([
   //     "by design"). brainstorm co-tagged with design in the same memory
   //     entry — equally FP-prone at ship time (any prose mentioning the
   //     design-process word would trigger).
-  'cli', 'hook', 'semantic', 'impact', 'refs', 'overview', 'deps',
-  'design', 'brainstorm',
+  'cli',
+  'hook',
+  'semantic',
+  'impact',
+  'refs',
+  'overview',
+  'deps',
+  'design',
+  'brainstorm',
   // High-FP-risk claudemd-domain words (common in release notes / commits /
   // CHANGELOG entries / spec text):
-  'fix', 'bug', 'push', 'log', 'file', 'audit', 'review', 'version',
-  'commit', 'merge', 'build', 'deploy', 'release', 'config', 'flag',
-  'option', 'command', 'script', 'output', 'input', 'message', 'error',
-  'warning', 'success', 'result', 'value', 'action', 'name', 'type',
-  'item', 'list', 'field', 'state', 'event', 'signal', 'args', 'path',
-  'data', 'info', 'time', 'code', 'test', 'debug', 'feature', 'change',
+  'fix',
+  'bug',
+  'push',
+  'log',
+  'file',
+  'audit',
+  'review',
+  'version',
+  'commit',
+  'merge',
+  'build',
+  'deploy',
+  'release',
+  'config',
+  'flag',
+  'option',
+  'command',
+  'script',
+  'output',
+  'input',
+  'message',
+  'error',
+  'warning',
+  'success',
+  'result',
+  'value',
+  'action',
+  'name',
+  'type',
+  'item',
+  'list',
+  'field',
+  'state',
+  'event',
+  'signal',
+  'args',
+  'path',
+  'data',
+  'info',
+  'time',
+  'code',
+  'test',
+  'debug',
+  'feature',
+  'change',
   // Added v0.9.38 from 2026-05-11 dogfood pass — words that appeared
   // multiple times in this session's own release notes / CHANGELOG entries
   // and would FP if used as a tag. `default` is special-risk ("by default"
   // is near-universal in spec prose).
-  'architecture', 'behavior', 'schema', 'default', 'pattern', 'format',
-  'system', 'process',
+  'architecture',
+  'behavior',
+  'schema',
+  'default',
+  'pattern',
+  'format',
+  'system',
+  'process',
 ]);
 
 // classifyTag(tag) — returns array of reasons. Empty array = tag passes.
@@ -132,7 +219,10 @@ export function parseMemoryIndex(content) {
       tagBlock = line.match(/.*\.md\)\s*\[([^\]]*)\]\s*[—-]/);
     }
     if (!tagBlock) continue;
-    const tags = tagBlock[1].split(',').map(t => t.trim()).filter(Boolean);
+    const tags = tagBlock[1]
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
     entries.push({ line, file: fileMatch[1], tags });
   }
   return entries;
@@ -158,15 +248,21 @@ export function scanMemoryIndexSizes({ rootDir } = {}) {
   let scannedFiles = 0;
 
   let projects;
-  try { projects = fs.readdirSync(root, { withFileTypes: true }); }
-  catch { return { indexes, scannedFiles }; }
+  try {
+    projects = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return { indexes, scannedFiles };
+  }
 
   for (const ent of projects) {
     if (!ent.isDirectory()) continue;
     const memIdx = path.join(root, ent.name, 'memory', 'MEMORY.md');
     let content;
-    try { content = fs.readFileSync(memIdx, 'utf8'); }
-    catch { continue; }
+    try {
+      content = fs.readFileSync(memIdx, 'utf8');
+    } catch {
+      continue;
+    }
     scannedFiles++;
     const entries = content.split('\n').filter(l => /^- \[/.test(l)).length;
     indexes.push({
@@ -193,16 +289,22 @@ export function scanMemoryTags({ rootDir } = {}) {
   let scannedFiles = 0;
 
   let projects;
-  try { projects = fs.readdirSync(root, { withFileTypes: true }); }
-  catch { return { findings, scannedFiles }; }
+  try {
+    projects = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return { findings, scannedFiles };
+  }
 
   for (const ent of projects) {
     if (!ent.isDirectory()) continue;
     const memIdx = path.join(root, ent.name, 'memory', 'MEMORY.md');
     if (!fs.existsSync(memIdx)) continue;
     let content;
-    try { content = fs.readFileSync(memIdx, 'utf8'); }
-    catch { continue; }
+    try {
+      content = fs.readFileSync(memIdx, 'utf8');
+    } catch {
+      continue;
+    }
     scannedFiles++;
     const memDir = path.dirname(memIdx);
     for (const entry of parseMemoryIndex(content)) {

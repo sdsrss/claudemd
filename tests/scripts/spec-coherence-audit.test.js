@@ -21,10 +21,10 @@ test('audit runs against the real repo and returns structured report', () => {
   const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: '/nonexistent-cwd-for-test' });
   // Named, not just counted: a bare count tells a future reader which number
   // to bump but not which check went missing.
-  assert.deepEqual(r.checks.map(c => c.name), [
-    'ext-cross-refs', 'sizing-accuracy', 'sizing-headroom', 'memory-index',
-    'banned-vocab-spec-drift',
-  ]);
+  assert.deepEqual(
+    r.checks.map(c => c.name),
+    ['ext-cross-refs', 'sizing-accuracy', 'sizing-headroom', 'memory-index', 'banned-vocab-spec-drift']
+  );
   // (checksRun === checks.length is a tautology — summary derives it. The
   // load-bearing assertion is the name list above; this one pins that every
   // check reports an ok flag rather than silently omitting one.)
@@ -41,10 +41,12 @@ test('ext-cross-refs: every §EXT ref in shipped core resolves in extended', () 
   const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: '/nonexistent-cwd-for-test' });
   const check = r.checks.find(c => c.name === 'ext-cross-refs');
   assert.ok(check, 'ext-cross-refs check should exist');
-  assert.equal(check.ok, true,
-    `unresolved §EXT refs in shipped spec: ${JSON.stringify(check.findings)}`);
+  assert.equal(check.ok, true, `unresolved §EXT refs in shipped spec: ${JSON.stringify(check.findings)}`);
   assert.ok(check.stats.refsFound >= 5, `expected ≥5 refs in core, got ${check.stats.refsFound}`);
-  assert.ok(check.stats.sectionsFound >= 5, `expected ≥5 sections in extended, got ${check.stats.sectionsFound}`);
+  assert.ok(
+    check.stats.sectionsFound >= 5,
+    `expected ≥5 sections in extended, got ${check.stats.sectionsFound}`
+  );
 });
 
 test('sizing-accuracy: shipped Sizing line within ±20B of actual wc -c', () => {
@@ -53,8 +55,11 @@ test('sizing-accuracy: shipped Sizing line within ±20B of actual wc -c', () => 
   assert.ok(check, 'sizing-accuracy check should exist');
   // The shipped repo should pass this. Spec maintainers update the Sizing
   // line during ship; CI catches drift beyond tolerance.
-  assert.equal(check.ok, true,
-    `Sizing drift beyond tolerance: ${JSON.stringify(check.findings)} | stats: ${JSON.stringify(check.stats)}`);
+  assert.equal(
+    check.ok,
+    true,
+    `Sizing drift beyond tolerance: ${JSON.stringify(check.findings)} | stats: ${JSON.stringify(check.stats)}`
+  );
 });
 
 test('sizing-headroom: shipped core/extended within HARD caps (no HIGH breach)', () => {
@@ -63,12 +68,18 @@ test('sizing-headroom: shipped core/extended within HARD caps (no HIGH breach)',
   assert.ok(check, 'sizing-headroom check should exist');
   // Real invariant: shipped spec must never exceed the §0.1 HARD cap. If a
   // future edit pushes core past 25K, this fails — which is the gate's point.
-  assert.ok(check.stats.coreActual <= check.stats.coreCap,
-    `core ${check.stats.coreActual}B exceeds HARD cap ${check.stats.coreCap}B`);
-  assert.ok(check.stats.extendedActual <= check.stats.extendedCap,
-    `extended ${check.stats.extendedActual}B exceeds HARD cap ${check.stats.extendedCap}B`);
-  assert.ok(!check.findings.some(f => f.severity === 'HIGH'),
-    `within-cap spec must never emit HIGH; got ${JSON.stringify(check.findings)}`);
+  assert.ok(
+    check.stats.coreActual <= check.stats.coreCap,
+    `core ${check.stats.coreActual}B exceeds HARD cap ${check.stats.coreCap}B`
+  );
+  assert.ok(
+    check.stats.extendedActual <= check.stats.extendedCap,
+    `extended ${check.stats.extendedActual}B exceeds HARD cap ${check.stats.extendedCap}B`
+  );
+  assert.ok(
+    !check.findings.some(f => f.severity === 'HIGH'),
+    `within-cap spec must never emit HIGH; got ${JSON.stringify(check.findings)}`
+  );
 });
 
 test('sizing-headroom: HIGH when core exceeds the 25K HARD cap (--strict-blocking)', () => {
@@ -79,8 +90,10 @@ test('sizing-headroom: HIGH when core exceeds the 25K HARD cap (--strict-blockin
     const check = r.checks.find(c => c.name === 'sizing-headroom');
     assert.equal(check.ok, false);
     assert.equal(check.severity, 'HIGH');
-    assert.ok(check.findings.some(f => f.severity === 'HIGH' && /core/.test(f.detail) && /HARD cap/.test(f.detail)),
-      `expected HIGH core-over-cap finding; got ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.some(f => f.severity === 'HIGH' && /core/.test(f.detail) && /HARD cap/.test(f.detail)),
+      `expected HIGH core-over-cap finding; got ${JSON.stringify(check.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -95,8 +108,10 @@ test('sizing-headroom: LOW advisory in the 97–100% danger band (not --strict-b
     const check = r.checks.find(c => c.name === 'sizing-headroom');
     assert.equal(check.ok, false);
     assert.equal(check.severity, 'LOW', 'danger band is advisory, never HIGH');
-    assert.ok(check.findings.length >= 1 && check.findings.every(f => f.severity === 'LOW'),
-      `danger band should yield only LOW findings; got ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.length >= 1 && check.findings.every(f => f.severity === 'LOW'),
+      `danger band should yield only LOW findings; got ${JSON.stringify(check.findings)}`
+    );
     assert.ok(/core/.test(check.findings[0].detail));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -173,7 +188,11 @@ test('ext-cross-refs: multi-suffix ids (§11-EXT-MEM) resolve as one id', () => 
     });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'ext-cross-refs');
-    assert.equal(check.ok, true, `multi-suffix ref must resolve (findings: ${JSON.stringify(check.findings)})`);
+    assert.equal(
+      check.ok,
+      true,
+      `multi-suffix ref must resolve (findings: ${JSON.stringify(check.findings)})`
+    );
     assert.equal(check.stats.unresolvedCount, 0);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -184,13 +203,17 @@ test('ext-cross-refs: literal §X-EXT placeholder is NOT treated as a ref', () =
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-'));
   try {
     makeSpecFixture(tmpDir, {
-      coreContent: 'New rule defaults to extended §X-EXT. Promote later.\n' +
-                   'See §EXT §1-EXT for the real ref.\n',
+      coreContent:
+        'New rule defaults to extended §X-EXT. Promote later.\n' + 'See §EXT §1-EXT for the real ref.\n',
       extendedContent: '## §1-EXT exists\n',
     });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'ext-cross-refs');
-    assert.equal(check.ok, true, `should not flag the literal X-EXT placeholder: ${JSON.stringify(check.findings)}`);
+    assert.equal(
+      check.ok,
+      true,
+      `should not flag the literal X-EXT placeholder: ${JSON.stringify(check.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -236,16 +259,21 @@ test('sizing-accuracy: HIGH when actual exceeds claim by >20B', () => {
   try {
     // Core file: 100 bytes. Claim 50 → delta +50, beyond ±20B → HIGH.
     const coreBody = 'x'.repeat(100);
-    const extendedBody = '**Sizing** (v6.99.0, 2026-01-01): core 50 → 50 bytes (...); extended 200 → 200 bytes (...)';
+    const extendedBody =
+      '**Sizing** (v6.99.0, 2026-01-01): core 50 → 50 bytes (...); extended 200 → 200 bytes (...)';
     makeSpecFixture(tmpDir, { coreContent: coreBody, extendedContent: extendedBody });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'sizing-accuracy');
     assert.equal(check.ok, false);
-    assert.ok(check.findings.some(f => f.severity === 'HIGH' && /core/.test(f.detail)),
-      `expected HIGH finding on core delta; got: ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.some(f => f.severity === 'HIGH' && /core/.test(f.detail)),
+      `expected HIGH finding on core delta; got: ${JSON.stringify(check.findings)}`
+    );
     // The extended file is ~95 bytes; claim 200 → delta -105 also HIGH.
-    assert.ok(check.findings.some(f => f.severity === 'HIGH' && /extended/.test(f.detail)),
-      `expected HIGH finding on extended delta; got: ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.some(f => f.severity === 'HIGH' && /extended/.test(f.detail)),
+      `expected HIGH finding on extended delta; got: ${JSON.stringify(check.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -257,15 +285,20 @@ test('sizing-accuracy: ±20B drift accepted', () => {
     // Core file: 100 bytes. Claim 110 → delta -10, within ±20B → ok.
     const coreBody = 'x'.repeat(100);
     // Extended: claim 200, write ~215 bytes (delta +15, in tolerance).
-    const extendedBody = `**Sizing** (v6.99.0, 2026-01-01): core 110 → 110 bytes (...); extended 200 → 200 bytes (...).\n` +
-                          'y'.repeat(115);
+    const extendedBody =
+      `**Sizing** (v6.99.0, 2026-01-01): core 110 → 110 bytes (...); extended 200 → 200 bytes (...).\n` +
+      'y'.repeat(115);
     makeSpecFixture(tmpDir, { coreContent: coreBody, extendedContent: extendedBody });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'sizing-accuracy');
     // Whether ext drift is in tolerance depends on actual size; the strict
     // assertion here is on core (claimed 110, actual 100, delta -10, ok).
     const coreFinding = check.findings.find(f => /core/.test(f.detail));
-    assert.equal(coreFinding, undefined, `core within tolerance should have no finding; got: ${JSON.stringify(check.findings)}`);
+    assert.equal(
+      coreFinding,
+      undefined,
+      `core within tolerance should have no finding; got: ${JSON.stringify(check.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -281,15 +314,19 @@ test('memory-index: dangling ref → MEDIUM finding', () => {
     const memDir = path.join(tmpHome, '.claude/projects', encoded, 'memory');
     fs.mkdirSync(memDir, { recursive: true });
     // Index references a file that doesn't exist on disk.
-    fs.writeFileSync(path.join(memDir, 'MEMORY.md'),
+    fs.writeFileSync(
+      path.join(memDir, 'MEMORY.md'),
       '- [Real](feedback_real.md) `[tag]` — exists\n' +
-      '- [Missing](feedback_missing.md) `[tag]` — dangling\n');
+        '- [Missing](feedback_missing.md) `[tag]` — dangling\n'
+    );
     fs.writeFileSync(path.join(memDir, 'feedback_real.md'), 'x');
     const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: cwd });
     const check = r.checks.find(c => c.name === 'memory-index');
     assert.equal(check.ok, false);
-    assert.ok(check.findings.some(f => f.severity === 'MEDIUM' && /feedback_missing\.md/.test(f.detail)),
-      `expected MEDIUM dangling finding; got: ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.some(f => f.severity === 'MEDIUM' && /feedback_missing\.md/.test(f.detail)),
+      `expected MEDIUM dangling finding; got: ${JSON.stringify(check.findings)}`
+    );
   } finally {
     process.env.HOME = savedHome;
     fs.rmSync(tmpHome, { recursive: true, force: true });
@@ -305,15 +342,16 @@ test('memory-index: orphan file → LOW finding', () => {
     const encoded = cwd.replace(/[^a-zA-Z0-9-]/g, '-');
     const memDir = path.join(tmpHome, '.claude/projects', encoded, 'memory');
     fs.mkdirSync(memDir, { recursive: true });
-    fs.writeFileSync(path.join(memDir, 'MEMORY.md'),
-      '- [Real](feedback_real.md) `[tag]` — exists\n');
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- [Real](feedback_real.md) `[tag]` — exists\n');
     fs.writeFileSync(path.join(memDir, 'feedback_real.md'), 'x');
     fs.writeFileSync(path.join(memDir, 'feedback_orphan.md'), 'y'); // not in index
     const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: cwd });
     const check = r.checks.find(c => c.name === 'memory-index');
     assert.equal(check.ok, false);
-    assert.ok(check.findings.some(f => f.severity === 'LOW' && /feedback_orphan\.md/.test(f.detail)),
-      `expected LOW orphan finding; got: ${JSON.stringify(check.findings)}`);
+    assert.ok(
+      check.findings.some(f => f.severity === 'LOW' && /feedback_orphan\.md/.test(f.detail)),
+      `expected LOW orphan finding; got: ${JSON.stringify(check.findings)}`
+    );
   } finally {
     process.env.HOME = savedHome;
     fs.rmSync(tmpHome, { recursive: true, force: true });
@@ -349,8 +387,11 @@ test('CWD encoding handles /, ., _ uniformly (parity with §11 hooks)', () => {
     fs.writeFileSync(path.join(memDir, 'feedback_x.md'), 'z');
     const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: cwd });
     const check = r.checks.find(c => c.name === 'memory-index');
-    assert.equal(check.ok, true,
-      `slash/dot/underscore encoding should map to existing memory dir; check: ${JSON.stringify(check)}`);
+    assert.equal(
+      check.ok,
+      true,
+      `slash/dot/underscore encoding should map to existing memory dir; check: ${JSON.stringify(check)}`
+    );
     assert.equal(check.stats.indexedCount, 1);
     assert.equal(check.stats.onDiskCount, 1);
   } finally {
@@ -365,13 +406,18 @@ test('summary severityCounts aggregates across checks', () => {
     // Bad spec — both ext-cross-refs and sizing fail.
     makeSpecFixture(tmpDir, {
       coreContent: 'See §EXT §99-EXT (unresolved).\n' + 'x'.repeat(50),
-      extendedContent: '## §1-EXT here\n**Sizing** (v6.99.0, 2026-01-01): core 9999 → 9999 bytes (...); extended 9999 → 9999 bytes (...)',
+      extendedContent:
+        '## §1-EXT here\n**Sizing** (v6.99.0, 2026-01-01): core 9999 → 9999 bytes (...); extended 9999 → 9999 bytes (...)',
     });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
-    assert.ok(r.summary.severityCounts.CRITICAL >= 1,
-      `expected ≥1 CRITICAL; got ${JSON.stringify(r.summary.severityCounts)}`);
-    assert.ok(r.summary.severityCounts.HIGH >= 1,
-      `expected ≥1 HIGH; got ${JSON.stringify(r.summary.severityCounts)}`);
+    assert.ok(
+      r.summary.severityCounts.CRITICAL >= 1,
+      `expected ≥1 CRITICAL; got ${JSON.stringify(r.summary.severityCounts)}`
+    );
+    assert.ok(
+      r.summary.severityCounts.HIGH >= 1,
+      `expected ≥1 HIGH; got ${JSON.stringify(r.summary.severityCounts)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

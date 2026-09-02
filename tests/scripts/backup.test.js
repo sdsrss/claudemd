@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createBackup, listBackups, pruneBackups, pruneSettingsBackups, restoreBackup, findLegacySpecBackups, looksLikeSpec } from '../../scripts/lib/backup.js';
+import {
+  createBackup,
+  listBackups,
+  pruneBackups,
+  pruneSettingsBackups,
+  restoreBackup,
+  findLegacySpecBackups,
+  looksLikeSpec,
+} from '../../scripts/lib/backup.js';
 
 let tmpHome;
 let savedHome;
@@ -48,8 +56,14 @@ test('listBackups returns newest first', async () => {
 });
 
 test('pruneBackups keeps N newest and removes rest', () => {
-  for (const iso of ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z',
-                     '20260401T000000Z', '20260501T000000Z', '20260601T000000Z']) {
+  for (const iso of [
+    '20260101T000000Z',
+    '20260201T000000Z',
+    '20260301T000000Z',
+    '20260401T000000Z',
+    '20260501T000000Z',
+    '20260601T000000Z',
+  ]) {
     fs.mkdirSync(path.join(tmpHome, `.claude/backup-${iso}`));
   }
   const removed = pruneBackups(5);
@@ -62,9 +76,13 @@ test('v0.23.11: collision-suffix backup dirs (-N) are listed, sorted, and pruned
   // createBackup appends `-N` on a same-ms collision. Pre-fix BACKUP_DIR_REGEX
   // lacked `(-\d+)?`, so those dirs were invisible to listBackups/pruneBackups —
   // they leaked in ~/.claude forever and were excluded from restore.
-  for (const name of ['backup-20260101T000000000Z', 'backup-20260102T000000000Z',
-                      'backup-20260103T000000000Z', 'backup-20260103T000000000Z-1',
-                      'backup-20260103T000000000Z-2']) {
+  for (const name of [
+    'backup-20260101T000000000Z',
+    'backup-20260102T000000000Z',
+    'backup-20260103T000000000Z',
+    'backup-20260103T000000000Z-1',
+    'backup-20260103T000000000Z-2',
+  ]) {
     fs.mkdirSync(path.join(tmpHome, '.claude', name));
   }
   assert.equal(listBackups().length, 5, 'collision dirs must be listed');
@@ -76,8 +94,14 @@ test('v0.23.11: collision-suffix backup dirs (-N) are listed, sorted, and pruned
 
 test('pruneSettingsBackups: keeps N newest settings.json.claudemd-backup-* files', () => {
   const dir = path.join(tmpHome, '.claude');
-  const iso = ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z',
-               '20260401T000000Z', '20260501T000000Z', '20260601T000000Z'];
+  const iso = [
+    '20260101T000000Z',
+    '20260201T000000Z',
+    '20260301T000000Z',
+    '20260401T000000Z',
+    '20260501T000000Z',
+    '20260601T000000Z',
+  ];
   for (const s of iso) {
     fs.writeFileSync(path.join(dir, `settings.json.claudemd-backup-${s}`), 'x');
   }
@@ -120,7 +144,6 @@ test('restoreBackup copies files back to targetRoot', () => {
   assert.equal(fs.readFileSync(path.join(target, 'CLAUDE.md'), 'utf8'), 'restored');
 });
 
-
 // --- 0.68.3 delta review HIGH-1: listBackups must survive what is in ~/.claude
 //
 // `dirSize` statSync'd every entry unguarded, and its callers are install,
@@ -139,8 +162,11 @@ test('HIGH-1: a dangling symlink inside a backup dir does not throw', () => {
 
   const listed = listBackups();
   assert.equal(listed.length, 1, 'the dir is still a backup');
-  assert.equal(listed[0].size, '# My own notes\n'.length,
-    'the readable file is counted; the dangling entry contributes 0');
+  assert.equal(
+    listed[0].size,
+    '# My own notes\n'.length,
+    'the readable file is counted; the dangling entry contributes 0'
+  );
 });
 
 test('HIGH-1: a plain FILE matching the backup name grammar is not treated as a dir', () => {
@@ -183,8 +209,11 @@ test('HIGH-2: reporting does not move, rename or delete anything', () => {
 
   findLegacySpecBackups();
 
-  assert.deepEqual(fs.readdirSync(path.join(tmpHome, '.claude')).sort(), before,
-    '~/.claude must be byte-for-byte unchanged — this function only looks');
+  assert.deepEqual(
+    fs.readdirSync(path.join(tmpHome, '.claude')).sort(),
+    before,
+    '~/.claude must be byte-for-byte unchanged — this function only looks'
+  );
   assert.equal(listBackups().length, 1, 'the dir stays in the personal namespace');
 });
 
@@ -249,8 +278,7 @@ test('R10-03: prune excludes legacy spec dirs — genuine personal backup surviv
   // is deleted — the v0.23.11 data-loss mode through a maintenance flag.
   const removed = pruneBackups(1, { exclude: legacy });
 
-  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')),
-    'genuine personal backup must survive');
+  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')), 'genuine personal backup must survive');
   assert.deepEqual(removed, [], 'nothing to remove: 1 non-legacy dir, retain 1');
   // Legacy dirs are skipped, not deleted — backup.js stays report-only.
   for (const d of legacy) assert.ok(fs.existsSync(d), `${d} left for the user to decide`);

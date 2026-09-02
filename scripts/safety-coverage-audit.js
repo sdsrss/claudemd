@@ -55,10 +55,42 @@ const ARROW_CLAIM_RE = /(?:^|\s)→(?:\s|$)/;
 // Stop words: grammatical / context tokens that shouldn't drive coverage.
 // 'none' is grammatical here ("none of the above"), not a code keyword.
 const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'or', 'and', 'no', 'not', 'none', 'with', 'without',
-  'in', 'on', 'of', 'to', 'is', 'are', 'be', 'as', 'by', 'for', 'from',
-  'spec', 'rule', 'this', 'that', 'these', 'those', 'then', 'else',
-  'pkg', 'cwd', 'var', 'etc', 'fix', 'link', 'note',
+  'a',
+  'an',
+  'the',
+  'or',
+  'and',
+  'no',
+  'not',
+  'none',
+  'with',
+  'without',
+  'in',
+  'on',
+  'of',
+  'to',
+  'is',
+  'are',
+  'be',
+  'as',
+  'by',
+  'for',
+  'from',
+  'spec',
+  'rule',
+  'this',
+  'that',
+  'these',
+  'those',
+  'then',
+  'else',
+  'pkg',
+  'cwd',
+  'var',
+  'etc',
+  'fix',
+  'link',
+  'note',
 ]);
 
 // Split a claim into clauses on '→' / ';' — but NOT on separators inside a
@@ -78,8 +110,16 @@ function splitClauses(text) {
   let buf = '';
   let inCode = false;
   for (const ch of text) {
-    if (ch === '`') { inCode = !inCode; buf += ch; continue; }
-    if (!inCode && (ch === ';' || ch === '→')) { parts.push(buf); buf = ''; continue; }
+    if (ch === '`') {
+      inCode = !inCode;
+      buf += ch;
+      continue;
+    }
+    if (!inCode && (ch === ';' || ch === '→')) {
+      parts.push(buf);
+      buf = '';
+      continue;
+    }
     buf += ch;
   }
   parts.push(buf);
@@ -230,12 +270,11 @@ export async function auditSafetyCoverage({ pluginRoot, hookFilter = null } = {}
     throw new Error(`safety-coverage-audit: hooks dir not found: ${hooksDir}`);
   }
 
-  const allHookFiles = fs.readdirSync(hooksDir)
+  const allHookFiles = fs
+    .readdirSync(hooksDir)
     .filter(f => f.endsWith('.sh'))
     .sort();
-  const auditedHookFiles = hookFilter
-    ? allHookFiles.filter(f => f === hookFilter)
-    : allHookFiles;
+  const auditedHookFiles = hookFilter ? allHookFiles.filter(f => f === hookFilter) : allHookFiles;
 
   // Phase A — arrow-claim sites + per-clause coverage.
   const claimSites = [];
@@ -246,9 +285,7 @@ export async function auditSafetyCoverage({ pluginRoot, hookFilter = null } = {}
     const sites = findArrowClaimSites(src, `${HOOKS_DIR}/${f}`);
     for (const site of sites) {
       site.clauseCoverage = site.clauses.map(c => clauseCoverage(c, codeBody));
-      site.gapClauses = site.clauseCoverage
-        .filter(cc => cc.coverage === 'gap')
-        .map(cc => cc.clause);
+      site.gapClauses = site.clauseCoverage.filter(cc => cc.coverage === 'gap').map(cc => cc.clause);
     }
     claimSites.push(...sites);
   }
@@ -294,9 +331,7 @@ export async function auditSafetyCoverage({ pluginRoot, hookFilter = null } = {}
 
   // Aggregations.
   const partialCandidates = claimSites.filter(s => s.gapClauses.length > 0);
-  const unimplementedRules = ruleEnforcement
-    .filter(r => r.status === 'unimplemented')
-    .map(r => r.id);
+  const unimplementedRules = ruleEnforcement.filter(r => r.status === 'unimplemented').map(r => r.id);
   const anchorGaps = Object.entries(specAnchorChecks)
     .filter(([_, v]) => v.status === 'gap')
     .map(([k]) => k);
@@ -340,9 +375,10 @@ function formatHuman(r) {
     out.push(`    Quote: ${trimmed}`);
     for (const cc of s.clauseCoverage) {
       const mark = cc.coverage === 'covered' ? '✓' : cc.coverage === 'gap' ? '✗' : '?';
-      const hits = cc.keywordHits.length > 0
-        ? ` [hits: ${cc.keywordHits.slice(0, 4).join(', ')}]`
-        : ` [keywords: ${cc.keywords.slice(0, 4).join(', ') || '(none)'}]`;
+      const hits =
+        cc.keywordHits.length > 0
+          ? ` [hits: ${cc.keywordHits.slice(0, 4).join(', ')}]`
+          : ` [keywords: ${cc.keywords.slice(0, 4).join(', ') || '(none)'}]`;
       out.push(`      [${mark}] ${cc.clause}${hits}`);
     }
   }
@@ -351,9 +387,10 @@ function formatHuman(r) {
   out.push('## Spec hard-rules.json cross-reference (enforcement=hook|both)');
   for (const re of r.ruleEnforcement) {
     const mark = re.status === 'implemented' ? '✓' : '✗';
-    const impl = re.implementingHooks.length > 0
-      ? re.implementingHooks.join(', ')
-      : '(no hook records under this section)';
+    const impl =
+      re.implementingHooks.length > 0
+        ? re.implementingHooks.join(', ')
+        : '(no hook records under this section)';
     out.push(`  [${mark}] ${re.id} (${re.rule_hits_section || 'no rule_hits_section'}) → ${impl}`);
   }
   out.push('');
@@ -379,10 +416,14 @@ function formatHuman(r) {
       out.push(`    - ${ref.hook}:${ref.startLine} (${ref.location}) gap: [${ref.gapClauses.join(' | ')}]`);
     }
   }
-  out.push(`  Unimplemented rules: ${r.summary.unimplementedRules.length}` +
-    (r.summary.unimplementedRules.length ? ` — ${r.summary.unimplementedRules.join(', ')}` : ''));
-  out.push(`  Anchor gaps: ${r.summary.anchorGaps.length}` +
-    (r.summary.anchorGaps.length ? ` — ${r.summary.anchorGaps.join(', ')}` : ''));
+  out.push(
+    `  Unimplemented rules: ${r.summary.unimplementedRules.length}` +
+      (r.summary.unimplementedRules.length ? ` — ${r.summary.unimplementedRules.join(', ')}` : '')
+  );
+  out.push(
+    `  Anchor gaps: ${r.summary.anchorGaps.length}` +
+      (r.summary.anchorGaps.length ? ` — ${r.summary.anchorGaps.join(', ')}` : '')
+  );
 
   return out.join('\n');
 }
@@ -396,17 +437,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       values: ['--hook'],
     });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const json = parsed.bools.has('--json');
   const hookFilter = parsed.values['--hook'] ?? null;
   const pluginRoot = resolvePluginRoot(import.meta.url);
-  auditSafetyCoverage({ pluginRoot, hookFilter }).then(r => {
-    console.log(json ? JSON.stringify(r, null, 2) : formatHuman(r));
-  }).catch(err => {
-    console.error(`[claudemd] safety-coverage-audit failed: ${err && err.message ? err.message : err}`);
-    if (process.env.CLAUDEMD_DEBUG) console.error(err);
-    process.exitCode = 1;
-  });
+  auditSafetyCoverage({ pluginRoot, hookFilter })
+    .then(r => {
+      console.log(json ? JSON.stringify(r, null, 2) : formatHuman(r));
+    })
+    .catch(err => {
+      console.error(`[claudemd] safety-coverage-audit failed: ${err && err.message ? err.message : err}`);
+      if (process.env.CLAUDEMD_DEBUG) console.error(err);
+      process.exitCode = 1;
+    });
 }

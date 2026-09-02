@@ -30,8 +30,16 @@ export function compareHooks(sourceRoot, marketRoot) {
   }
 
   let srcReal, mktReal;
-  try { srcReal = fs.realpathSync(sourceRoot); } catch { srcReal = sourceRoot; }
-  try { mktReal = fs.realpathSync(marketRoot); } catch { mktReal = marketRoot; }
+  try {
+    srcReal = fs.realpathSync(sourceRoot);
+  } catch {
+    srcReal = sourceRoot;
+  }
+  try {
+    mktReal = fs.realpathSync(marketRoot);
+  } catch {
+    mktReal = marketRoot;
+  }
   if (srcReal === mktReal) {
     return { skipped: true, skippedReason: 'self-compare', driftCount: 0, diffs: [] };
   }
@@ -41,8 +49,7 @@ export function compareHooks(sourceRoot, marketRoot) {
     return { skipped: true, skippedReason: 'no-hooks-in-source', driftCount: 0, diffs: [] };
   }
 
-  const srcFiles = listShellFilesRecursive(srcHooksDir).map(p =>
-    path.relative(sourceRoot, p));
+  const srcFiles = listShellFilesRecursive(srcHooksDir).map(p => path.relative(sourceRoot, p));
   if (srcFiles.length === 0) {
     // Source has hooks/ but no .sh files (e.g., config-only sub-dir or
     // mid-development empty tree). Nothing to compare.

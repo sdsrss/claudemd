@@ -28,8 +28,11 @@ Exit codes: 0 success | 1 failure | 2 argv-shape error.`;
 // realpath BOTH sides so a symlinked invocation path still matches (mirrors
 // design-detect.js — a bare href compare silently no-ops under a symlinked dir).
 const invokedAsMain = (() => {
-  try { return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]); }
-  catch { return false; }
+  try {
+    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
 })();
 
 function renderHuman(mode, out) {
@@ -37,7 +40,9 @@ function renderHuman(mode, out) {
     const bits = [`verdict: ${out.verdict}`];
     if (out.host) bits.push(`host: ${out.host}`, `claudemd-registered: ${out.guestRegistered}`);
     if (out.current) bits.push(`current: ${out.current}`);
-    bits.push(`renderer: ${out.dest.exists ? 'present' : 'absent'}${out.dest.exists ? (out.dest.matchesShipped ? ' (matches shipped)' : ' (differs from shipped)') : ''}`);
+    bits.push(
+      `renderer: ${out.dest.exists ? 'present' : 'absent'}${out.dest.exists ? (out.dest.matchesShipped ? ' (matches shipped)' : ' (differs from shipped)') : ''}`
+    );
     return bits.join('\n');
   }
   // adopt / remove
@@ -46,8 +51,17 @@ function renderHuman(mode, out) {
   // host dry-run branch (lib/statusline.js) returns `supersede` (id echoed
   // back, unresolved since nothing was actually replaced yet).
   const sup = out.superseded || out.supersede;
-  const tail = [out.host && `host=${out.host}`, sup && `superseded=${sup}`, out.restored && `restored=${out.restored}`, out.to && `to=${out.to}`].filter(Boolean).join('  ');
-  const missed = out.supersedeMissed ? `\n⚠ supersede target '${out.supersedeMissed}' not found — nothing superseded` : '';
+  const tail = [
+    out.host && `host=${out.host}`,
+    sup && `superseded=${sup}`,
+    out.restored && `restored=${out.restored}`,
+    out.to && `to=${out.to}`,
+  ]
+    .filter(Boolean)
+    .join('  ');
+  const missed = out.supersedeMissed
+    ? `\n⚠ supersede target '${out.supersedeMissed}' not found — nothing superseded`
+    : '';
   return `action: ${out.action}${tail ? '  ' + tail : ''}${missed}`;
 }
 
@@ -61,22 +75,29 @@ if (invokedAsMain) {
   }
   let parsed;
   try {
-    parsed = parseStrict(rest, { bools: ['--force', '--empty-only', '--dry-run', '--json'], values: ['--supersede'] });
+    parsed = parseStrict(rest, {
+      bools: ['--force', '--empty-only', '--dry-run', '--json'],
+      values: ['--supersede'],
+    });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const pluginRoot = resolvePluginRoot(import.meta.url);
   try {
     let out;
     if (mode === 'detect') out = detect(pluginRoot);
-    else if (mode === 'adopt') out = adopt({
-      pluginRoot,
-      force: parsed.bools.has('--force'),
-      emptyOnly: parsed.bools.has('--empty-only'),
-      dryRun: parsed.bools.has('--dry-run'),
-      supersede: parsed.values['--supersede'] || null,
-    });
+    else if (mode === 'adopt')
+      out = adopt({
+        pluginRoot,
+        force: parsed.bools.has('--force'),
+        emptyOnly: parsed.bools.has('--empty-only'),
+        dryRun: parsed.bools.has('--dry-run'),
+        supersede: parsed.values['--supersede'] || null,
+      });
     else out = remove();
     if (parsed.bools.has('--json')) {
       process.stdout.write(JSON.stringify(out) + '\n');

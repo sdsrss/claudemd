@@ -34,26 +34,34 @@ test('control A: success shim — 3 CLI calls in order, exit 0', () => {
     makeShim(path.join(tmp, 'bin'), `echo "$*" >> "${log}"`);
     const r = runScript([path.join(tmp, 'bin'), '/usr/bin', '/bin']);
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
-    assert.equal(fs.readFileSync(log, 'utf8'), [
-      'plugin marketplace update claudemd',
-      'plugin uninstall claudemd@claudemd -y',
-      'plugin install claudemd@claudemd',
-      '',
-    ].join('\n'));
-  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    assert.equal(
+      fs.readFileSync(log, 'utf8'),
+      [
+        'plugin marketplace update claudemd',
+        'plugin uninstall claudemd@claudemd -y',
+        'plugin install claudemd@claudemd',
+        '',
+      ].join('\n')
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('control B: marketplace-update failure stops the pipeline before uninstall', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-fail-'));
   try {
     const log = path.join(tmp, 'calls.log');
-    makeShim(path.join(tmp, 'bin'),
-      `echo "$*" >> "${log}"\n[[ "$*" == plugin\\ marketplace\\ update* ]] && exit 1\nexit 0`);
+    makeShim(
+      path.join(tmp, 'bin'),
+      `echo "$*" >> "${log}"\n[[ "$*" == plugin\\ marketplace\\ update* ]] && exit 1\nexit 0`
+    );
     const r = runScript([path.join(tmp, 'bin'), '/usr/bin', '/bin']);
     assert.notEqual(r.status, 0);
-    assert.ok(!fs.readFileSync(log, 'utf8').includes('uninstall'),
-      'set -e must stop before uninstall');
-  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    assert.ok(!fs.readFileSync(log, 'utf8').includes('uninstall'), 'set -e must stop before uninstall');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('claude CLI missing from PATH: exit 1 + stderr names the problem', () => {
@@ -65,12 +73,18 @@ test('claude CLI missing from PATH: exit 1 + stderr names the problem', () => {
     fs.mkdirSync(path.join(tmp, 'empty'));
     const dirs = [path.join(tmp, 'empty'), '/usr/bin', '/bin'];
     const probe = spawnSync('bash', ['-c', 'command -v claude'], {
-      env: { ...process.env, PATH: dirs.join(':') }, encoding: 'utf8',
+      env: { ...process.env, PATH: dirs.join(':') },
+      encoding: 'utf8',
     });
-    assert.notEqual(probe.status, 0,
-      `precondition: claude resolves at ${probe.stdout.trim()} under the stripped PATH`);
+    assert.notEqual(
+      probe.status,
+      0,
+      `precondition: claude resolves at ${probe.stdout.trim()} under the stripped PATH`
+    );
     const r = runScript(dirs);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /'claude' CLI not found/);
-  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

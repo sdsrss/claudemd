@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { classifyTag, parseMemoryIndex, scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from '../../scripts/lib/memory-tags.js';
+import {
+  classifyTag,
+  parseMemoryIndex,
+  scanMemoryTags,
+  scanMemoryIndexSizes,
+  MEMORY_INDEX_BUDGET_BYTES,
+} from '../../scripts/lib/memory-tags.js';
 
 test('classifyTag: multi-word tag passes', () => {
   assert.deepEqual(classifyTag('find-references'), []);
@@ -55,7 +61,10 @@ test('classifyTag: generic wordlist hit flagged generic-wordlist', () => {
   // 8-char single-word EN — passes length but in wordlist.
   const r = classifyTag('semantic');
   assert.ok(r.includes('generic-wordlist'), `expected generic-wordlist in ${JSON.stringify(r)}`);
-  assert.ok(!r.includes('short-single-word'), `semantic is 8 chars — should NOT be short-single-word: ${JSON.stringify(r)}`);
+  assert.ok(
+    !r.includes('short-single-word'),
+    `semantic is 8 chars — should NOT be short-single-word: ${JSON.stringify(r)}`
+  );
 });
 
 test('classifyTag: short AND in wordlist → both reasons', () => {
@@ -79,28 +88,64 @@ test('v0.9.38: design / brainstorm + 8 ship-prose words flagged', () => {
   // in release notes; `brainstorm` co-tagged with `design` in the same entry.
   // Plus 8 additional ship-prose words added in v0.9.38 wordlist pass.
   for (const tag of [
-    'design', 'brainstorm',
-    'architecture', 'behavior', 'schema', 'default',
-    'pattern', 'format', 'system', 'process',
+    'design',
+    'brainstorm',
+    'architecture',
+    'behavior',
+    'schema',
+    'default',
+    'pattern',
+    'format',
+    'system',
+    'process',
   ]) {
     const r = classifyTag(tag);
-    assert.ok(r.includes('generic-wordlist'),
-      `${tag} must be flagged as generic-wordlist after v0.9.38, got: ${JSON.stringify(r)}`);
+    assert.ok(
+      r.includes('generic-wordlist'),
+      `${tag} must be flagged as generic-wordlist after v0.9.38, got: ${JSON.stringify(r)}`
+    );
   }
 });
 
 test('classifyTag: spec-compliant tags from MEMORY.md pass', () => {
   // Sample of multi-word + CJK tags currently in MEMORY.md — should all pass.
   for (const tag of [
-    'plugin-root', 'hook-expansion', 'plugin-update', 'silent-noop',
-    'test-fixture', 'fixture-drift', 'atomic-ship', 'spec-edit', '改spec',
-    'sizing-line', 'recursive-rewrite', 'wc-c-drift', 'hook-audit',
-    'spec-quote', 'partial-impl', 'sweep-prep', 'audit-tool-first',
-    '四分段', '中文叙述', 'group_by', 'top-section', 'platform-lib',
-    'command-v-guard', 'silent-fallthrough', 'cli-positional', 'flag-shape',
-    'parse-strict', 'callgraph', 'ast-search', 'dead-code',
+    'plugin-root',
+    'hook-expansion',
+    'plugin-update',
+    'silent-noop',
+    'test-fixture',
+    'fixture-drift',
+    'atomic-ship',
+    'spec-edit',
+    '改spec',
+    'sizing-line',
+    'recursive-rewrite',
+    'wc-c-drift',
+    'hook-audit',
+    'spec-quote',
+    'partial-impl',
+    'sweep-prep',
+    'audit-tool-first',
+    '四分段',
+    '中文叙述',
+    'group_by',
+    'top-section',
+    'platform-lib',
+    'command-v-guard',
+    'silent-fallthrough',
+    'cli-positional',
+    'flag-shape',
+    'parse-strict',
+    'callgraph',
+    'ast-search',
+    'dead-code',
   ]) {
-    assert.deepEqual(classifyTag(tag), [], `expected ${tag} to pass, got: ${JSON.stringify(classifyTag(tag))}`);
+    assert.deepEqual(
+      classifyTag(tag),
+      [],
+      `expected ${tag} to pass, got: ${JSON.stringify(classifyTag(tag))}`
+    );
   }
 });
 
@@ -137,7 +182,8 @@ test('v0.32.2: blockquote prose quoting `[label]` + `(…​.md)` tokens is not 
   // parsed as {file: '…\u200b.md', tags: ['label']} because the backtick tag-block
   // regex was not anchored on `.md)` (the hook's sed IS anchored — parser-parity
   // divergence, same family as the v0.23.11 first-vs-last file-match fix).
-  const md = '> One line per memory = router only. Visible `[label]` is short; real filename is in the `(…​.md)` link — match task keywords against filename/tags.\n' +
+  const md =
+    '> One line per memory = router only. Visible `[label]` is short; real filename is in the `(…​.md)` link — match task keywords against filename/tags.\n' +
     '- [Real](a.md) `[real-tag-one]` — d\n';
   const entries = parseMemoryIndex(md);
   assert.equal(entries.length, 1);
@@ -166,14 +212,16 @@ test('scanMemoryTags: integration on fixture tree', () => {
     const projB = path.join(tmp, '-fp-project', 'memory');
     fs.mkdirSync(projA, { recursive: true });
     fs.mkdirSync(projB, { recursive: true });
-    fs.writeFileSync(path.join(projA, 'MEMORY.md'),
+    fs.writeFileSync(
+      path.join(projA, 'MEMORY.md'),
       '# Memory index\n\n' +
-      '- [Clean](feedback_clean.md) `[hook-audit, atomic-ship, 中文叙述]` — all multi-word/CJK\n'
+        '- [Clean](feedback_clean.md) `[hook-audit, atomic-ship, 中文叙述]` — all multi-word/CJK\n'
     );
-    fs.writeFileSync(path.join(projB, 'MEMORY.md'),
+    fs.writeFileSync(
+      path.join(projB, 'MEMORY.md'),
       '# Memory index\n\n' +
-      '- [Bad](plugin_x.md) [callgraph, impact, refs, semantic, dead-code] — mix of good and FP-prone\n' +
-      '- [Also bad](plugin_y.md) `[cwd, foo]` — cwd OK, foo flagged\n'
+        '- [Bad](plugin_x.md) [callgraph, impact, refs, semantic, dead-code] — mix of good and FP-prone\n' +
+        '- [Also bad](plugin_y.md) `[cwd, foo]` — cwd OK, foo flagged\n'
     );
 
     const { findings, scannedFiles } = scanMemoryTags({ rootDir: tmp });
@@ -210,7 +258,8 @@ test('scanMemoryIndexSizes: reports bytes + entry count, sorted bytes-desc', () 
     const small = '# Memory index\n\n- [One](feedback_one.md) `[tag-a]` — desc\n';
     fs.writeFileSync(path.join(projSmall, 'MEMORY.md'), small);
     // 3 entries + padding to guarantee projBig sorts first.
-    const big = '# Memory index\n\n' +
+    const big =
+      '# Memory index\n\n' +
       '- [A](feedback_a.md) `[tag-b]` — desc\n' +
       '- [B](feedback_b.md) `[tag-c]` — desc\n' +
       `- [C](feedback_c.md) \`[tag-d]\` — ${'x'.repeat(200)}\n` +

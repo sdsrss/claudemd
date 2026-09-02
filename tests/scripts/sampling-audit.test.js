@@ -5,7 +5,15 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { samplingAudit, samplingAuditGlobal, PRECISION_GATE, OVER_CEREMONY_THRESHOLD, loadVocabPatterns, scanVocab, yieldTellSuppressed } from '../../scripts/sampling-audit.js';
+import {
+  samplingAudit,
+  samplingAuditGlobal,
+  PRECISION_GATE,
+  OVER_CEREMONY_THRESHOLD,
+  loadVocabPatterns,
+  scanVocab,
+  yieldTellSuppressed,
+} from '../../scripts/sampling-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -34,7 +42,9 @@ test('clean fixture: no rule hits', async () => {
     assert.equal(r.byRule['§iron-law-2'].hits, 0);
     assert.equal(r.byRule['§10-four-section-order'].hits, 0);
     assert.equal(r.byRule['§10-honesty'].hits, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('vocab-hit fixture: §10-V fires on "significantly" + "robust" + "production-ready"', async () => {
@@ -46,7 +56,9 @@ test('vocab-hit fixture: §10-V fires on "significantly" + "robust" + "productio
     // Iron-law-2 / order should NOT fire — fixture has no four-section block.
     assert.equal(r.byRule['§iron-law-2'].hits, 0);
     assert.equal(r.byRule['§10-four-section-order'].hits, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('iron-law-2-miss fixture: §iron-law-2 fires on Done without evidence', async () => {
@@ -59,7 +71,9 @@ test('iron-law-2-miss fixture: §iron-law-2 fires on Done without evidence', asy
     assert.equal(r.byRule['§10-four-section-order'].hits, 0);
     // Uncertain line has "because" → no honesty hit.
     assert.equal(r.byRule['§10-honesty'].hits, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('order-violation fixture: §10-four-section-order fires', async () => {
@@ -70,7 +84,9 @@ test('order-violation fixture: §10-four-section-order fires', async () => {
     assert.equal(r.byRule['§10-four-section-order'].transcriptsAffected, 1);
     // Done has tests evidence → no iron-law-2 hit.
     assert.equal(r.byRule['§iron-law-2'].hits, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('honesty-bare fixture: §10-honesty fires on bare Uncertain', async () => {
@@ -79,7 +95,9 @@ test('honesty-bare fixture: §10-honesty fires on bare Uncertain', async () => {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
     assert.equal(r.byRule['§10-honesty'].hits, 1);
     assert.equal(r.byRule['§10-honesty'].transcriptsAffected, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('multi-turn fixture: detects per-turn hits across one transcript', async () => {
@@ -91,7 +109,9 @@ test('multi-turn fixture: detects per-turn hits across one transcript', async ()
     assert.equal(r.byRule['§10-honesty'].hits, 1, 'expected honesty hit on turn 3');
     assert.equal(r.scannedTranscripts, 1);
     assert.equal(r.totalTurns, 3, 'expected 3 assistant text turns counted');
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('days window: mtime older than window is excluded', async () => {
@@ -100,7 +120,9 @@ test('days window: mtime older than window is excluded', async () => {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
     assert.equal(r.scannedTranscripts, 0, 'old transcript should be filtered out');
     assert.equal(r.byRule['§10-V'].hits, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('aggregate shape: byRule keys are all 4 rules with hits+transcriptsAffected', async () => {
@@ -116,7 +138,9 @@ test('aggregate shape: byRule keys are all 4 rules with hits+transcriptsAffected
     assert.equal(typeof r.scannedTranscripts, 'number');
     assert.equal(typeof r.totalTurns, 'number');
     assert.ok(Array.isArray(r.perTranscript), 'perTranscript must be array');
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // —— v0.28.0 A2/A3: denominators + 4 new sequence/claim detectors ——————————
@@ -134,7 +158,9 @@ test('A3 turn-yield fixture: §11-turn-yield counts typed-after-tool-turn opport
     // Done line cites "was: TypeError" → bugfix-anchor opportunity, no violation.
     assert.equal(r.byRule['§7-bugfix-anchor'].opportunities, 1);
     assert.equal(r.byRule['§7-bugfix-anchor'].violations, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A3 bugfix-anchor fixture: §7-bugfix-anchor fires on fix-claim without prior-failing token', async () => {
@@ -146,7 +172,9 @@ test('A3 bugfix-anchor fixture: §7-bugfix-anchor fires on fix-claim without pri
     assert.equal(r.byRule['§7-bugfix-anchor'].opportunities, 2);
     assert.equal(r.byRule['§7-bugfix-anchor'].violations, 1);
     assert.equal(r.byRule['§7-bugfix-anchor'].transcriptsAffected, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A3 post-compaction fixture: §11-post-compaction dedups boundary+summary pair, flags missing plan/spec re-read', async () => {
@@ -158,7 +186,9 @@ test('A3 post-compaction fixture: §11-post-compaction dedups boundary+summary p
     // Read of docs/…plan….md → compliant; event 2 runs npm test only → violation.
     assert.equal(r.byRule['§11-post-compaction'].opportunities, 2);
     assert.equal(r.byRule['§11-post-compaction'].violations, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A3 hard-auth fixture: §5-hard-auth covered op passes, op outside lookback window fires', async () => {
@@ -170,7 +200,9 @@ test('A3 hard-auth fixture: §5-hard-auth covered op passes, op outside lookback
     // AUTH marker outside the 10-event lookback → violation.
     assert.equal(r.byRule['§5-hard-auth'].opportunities, 2);
     assert.equal(r.byRule['§5-hard-auth'].violations, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A2 denominators: existing detectors expose opportunities alongside hits', async () => {
@@ -186,7 +218,9 @@ test('A2 denominators: existing detectors expose opportunities alongside hits', 
     assert.equal(r.byRule['§10-honesty'].opportunities, 1);
     assert.equal(r.byRule['§10-honesty'].violations, 0);
     assert.equal(r.byRule['§10-V'].opportunities, r.totalTurns);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A2 §10-V violations = turns with ≥1 match (rate stays ≤ 1), hits = raw matches', async () => {
@@ -197,7 +231,9 @@ test('A2 §10-V violations = turns with ≥1 match (rate stays ≤ 1), hits = ra
     assert.ok(r.byRule['§10-V'].hits >= 3, `expected ≥3 raw matches, got ${r.byRule['§10-V'].hits}`);
     assert.equal(r.byRule['§10-V'].violations, 1);
     assert.equal(r.byRule['§10-V'].opportunities, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A4 calibration gate: all 8 rules present, precision null, status collecting-or-closed, gate pre-registered at 0.8', async () => {
@@ -217,9 +253,14 @@ test('A4 calibration gate: all 8 rules present, precision null, status collectin
       // still binds is the one that matters — NO rate is ever presented.
       assert.ok(['collecting', 'closed'].includes(v.status), `${k} unexpected status ${v.status}`);
     }
-    assert.match(r.metricContract, /violations\s*\/\s*opportunities/,
-      'A2 metric contract must ride in the result');
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    assert.match(
+      r.metricContract,
+      /violations\s*\/\s*opportunities/,
+      'A2 metric contract must ride in the result'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('A2 stratification: samplingAuditGlobal splits byClass self vs external', async () => {
@@ -229,7 +270,8 @@ test('A2 stratification: samplingAuditGlobal splits byClass self vs external', a
     // segment: '…-claudemd' → self, anything else → external.
     const selfDir = path.join(root, '-mnt-x-dev-claudemd');
     const extDir = path.join(root, '-home-u-dev-daagu');
-    fs.mkdirSync(selfDir); fs.mkdirSync(extDir);
+    fs.mkdirSync(selfDir);
+    fs.mkdirSync(extDir);
     fs.copyFileSync(path.join(FIXTURE_DIR, 'vocab-hit.jsonl'), path.join(selfDir, 'a.jsonl'));
     fs.copyFileSync(path.join(FIXTURE_DIR, 'clean.jsonl'), path.join(extDir, 'b.jsonl'));
     const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
@@ -241,7 +283,9 @@ test('A2 stratification: samplingAuditGlobal splits byClass self vs external', a
     assert.equal(r.byClass.external.byRule['§10-V'].opportunities, 1);
     // C1 aggregates across dirs in global mode too (1 typed segment each).
     assert.equal(r.overCeremony.totalSegments, 2);
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 // —— v0.29.0 C1: over-ceremony detector (plan P3) ——————————————————————————
@@ -261,9 +305,11 @@ test('C1 over-ceremony fixture: ceremony skill on L0/L1-shaped segment counts; l
     assert.equal(oc.overCeremonySegments, 1);
     assert.deepEqual(oc.ceremonyInvocations, {
       'test-driven-development': 1,
-      'brainstorming': 1,
+      brainstorming: 1,
     });
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('C1 threshold pre-registered at 5% (plan C2) — constant must not drift', async () => {
@@ -275,7 +321,9 @@ test('C1 threshold pre-registered at 5% (plan C2) — constant must not drift', 
     assert.equal(r.overCeremony.totalSegments, 1);
     assert.equal(r.overCeremony.l0l1Segments, 0);
     assert.equal(r.overCeremony.overCeremonySegments, 0);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('missing projectsDir: returns zero result, no throw', async () => {
@@ -306,8 +354,11 @@ test('CLI: zero scanned transcripts → no tasks/ report file written (skip mess
     });
     assert.equal(r.status, 0, `stderr=${r.stderr}`);
     assert.match(r.stdout, /skipped writing|no transcripts/i);
-    assert.equal(fs.existsSync(path.join(fakeCwd, 'tasks')), false,
-      'tasks/ must not be created on a zero-transcript run');
+    assert.equal(
+      fs.existsSync(path.join(fakeCwd, 'tasks')),
+      false,
+      'tasks/ must not be created on a zero-transcript run'
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -321,12 +372,15 @@ test('DRIFT-1: loadVocabPatterns delegates to lint.js readPatterns (parity)', ()
   try {
     const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
     fs.mkdirSync(path.dirname(pf), { recursive: true });
-    fs.writeFileSync(pf, [
-      '# fixture patterns',
-      '\\b(foo|bar)\\b|alternation reason',          // FIRST-bar indexOf would truncate to `\b(foo`
-      'quick[[:space:]]+win|posix class reason',      // needs posixClassesToJs
-      '\\bcheapish\\b|@ratio ratio-tagged reason',    // must be excluded by excludeRatio
-    ].join('\n') + '\n');
+    fs.writeFileSync(
+      pf,
+      [
+        '# fixture patterns',
+        '\\b(foo|bar)\\b|alternation reason', // FIRST-bar indexOf would truncate to `\b(foo`
+        'quick[[:space:]]+win|posix class reason', // needs posixClassesToJs
+        '\\bcheapish\\b|@ratio ratio-tagged reason', // must be excluded by excludeRatio
+      ].join('\n') + '\n'
+    );
 
     const pats = loadVocabPatterns(tmp);
     // Assert the CONCRETE parse output — proves the parser produced the right
@@ -354,11 +408,14 @@ test('DRIFT-1: scanVocab matches alternation + POSIX class, excludes @ratio', ()
   try {
     const pf = path.join(tmp, 'hooks/banned-vocab.patterns');
     fs.mkdirSync(path.dirname(pf), { recursive: true });
-    fs.writeFileSync(pf, [
-      '\\b(foo|bar)\\b|alternation reason',
-      'quick[[:space:]]+win|posix class reason',
-      '\\bcheapish\\b|@ratio ratio-tagged reason',
-    ].join('\n') + '\n');
+    fs.writeFileSync(
+      pf,
+      [
+        '\\b(foo|bar)\\b|alternation reason',
+        'quick[[:space:]]+win|posix class reason',
+        '\\bcheapish\\b|@ratio ratio-tagged reason',
+      ].join('\n') + '\n'
+    );
     const pats = loadVocabPatterns(tmp);
 
     // alternation: both arms match (old indexOf loader dropped this pattern entirely)
@@ -399,7 +456,8 @@ test('parity: node scanVocab and the bash transcript-vocab hook agree (path-only
   try {
     const tp = path.join(dir, 'vocab-path-only.jsonl');
     const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
-      .message.content.map(c => c.text).join(' ');
+      .message.content.map(c => c.text)
+      .join(' ');
     const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
     const bashHit = bashVocabHit(tp, dir);
     assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on path-only text`);
@@ -421,7 +479,8 @@ test('parity: node scanVocab and the bash transcript-vocab hook agree (untermina
   try {
     const tp = path.join(dir, 'vocab-fence-unterminated.jsonl');
     const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
-      .message.content.map(c => c.text).join(' ');
+      .message.content.map(c => c.text)
+      .join(' ');
     const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
     const bashHit = bashVocabHit(tp, dir);
     assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on unterminated fence`);
@@ -445,7 +504,8 @@ test('parity: node scanVocab and the bash transcript-vocab hook agree (real clai
   try {
     const tp = path.join(dir, 'vocab-hit.jsonl');
     const text = JSON.parse(fs.readFileSync(tp, 'utf8').split('\n').filter(Boolean)[1])
-      .message.content.map(c => c.text).join(' ');
+      .message.content.map(c => c.text)
+      .join(' ');
     const nodeHit = scanVocab(text, loadVocabPatterns(REPO_ROOT)).length > 0;
     const bashHit = bashVocabHit(tp, dir);
     assert.equal(nodeHit, bashHit, `parity broken: node=${nodeHit} bash=${bashHit} on a real claim`);
@@ -470,7 +530,10 @@ test('turn-yield precondition: an asking prior turn suppresses the tell', () => 
 });
 
 test('turn-yield precondition: a closed four-section turn suppresses the tell', () => {
-  assert.equal(yieldTellSuppressed('Done: x landed.\n\nNot done: 无。\n\nFailed: 无。\n\nUncertain: 无。'), true);
+  assert.equal(
+    yieldTellSuppressed('Done: x landed.\n\nNot done: 无。\n\nFailed: 无。\n\nUncertain: 无。'),
+    true
+  );
   assert.equal(yieldTellSuppressed('## Done\nx\n## Failed\n无'), true);
 });
 
@@ -482,7 +545,10 @@ test('turn-yield precondition: an untermined/empty prior turn is not attributabl
 
 test('turn-yield precondition: a plain mid-work statement still counts as a tell', () => {
   // Control arm — without this, "suppress everything" would pass the tests above.
-  assert.equal(yieldTellSuppressed('I found the null deref; the fix is to guard the empty-input branch.'), false);
+  assert.equal(
+    yieldTellSuppressed('I found the null deref; the fix is to guard the empty-input branch.'),
+    false
+  );
   assert.equal(yieldTellSuppressed('读完了 parser，问题在空输入分支。'), false);
 });
 
@@ -491,7 +557,11 @@ test('turn-yield-asked fixture: opportunities counted, tells suppressed', async 
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
     assert.equal(r.byRule['§11-turn-yield'].opportunities, 2, 'both 继续 messages follow tool-active turns');
-    assert.equal(r.byRule['§11-turn-yield'].violations, 0, 'one prior turn asked, the other closed four-section');
+    assert.equal(
+      r.byRule['§11-turn-yield'].violations,
+      0,
+      'one prior turn asked, the other closed four-section'
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -521,11 +591,16 @@ test('A2 stratification: per-class rows carry closure status (the stratified vie
     fs.mkdirSync(proj);
     fs.copyFileSync(path.join(FIXTURE_DIR, 'clean.jsonl'), path.join(proj, 'c.jsonl'));
     const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
-    assert.equal(r.byClass.self.byRule['§5-hard-auth'].status, 'closed',
-      'a closed detector must read as closed in the stratified view too');
+    assert.equal(
+      r.byClass.self.byRule['§5-hard-auth'].status,
+      'closed',
+      'a closed detector must read as closed in the stratified view too'
+    );
     assert.ok(r.byClass.self.byRule['§5-hard-auth'].closedReason);
     assert.equal(r.byClass.self.byRule['§10-V'].status, 'collecting');
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('R10-20: an unreadable transcript is reported, not silently dropped', async () => {
@@ -535,9 +610,13 @@ test('R10-20: an unreadable transcript is reported, not silently dropped', async
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-unread-'));
   try {
     const good = path.join(dir, 'good.jsonl');
-    fs.writeFileSync(good, JSON.stringify({
-      type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
-    }) + '\n');
+    fs.writeFileSync(
+      good,
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+      }) + '\n'
+    );
     // Unreadable by mode, not by absence: an absent file is a different case.
     const bad = path.join(dir, 'bad.jsonl');
     fs.writeFileSync(bad, '{}\n');
@@ -547,8 +626,10 @@ test('R10-20: an unreadable transcript is reported, not silently dropped', async
     if (r.scannedTranscripts === 2) {
       // Running as root (or a filesystem ignoring mode bits) — the premise of
       // the case does not hold here, so say so rather than passing vacuously.
-      assert.ok(process.getuid && process.getuid() === 0,
-        'the unreadable file was read anyway — only expected as root');
+      assert.ok(
+        process.getuid && process.getuid() === 0,
+        'the unreadable file was read anyway — only expected as root'
+      );
       return;
     }
     assert.ok(Array.isArray(r.unreadableTranscripts));
@@ -557,7 +638,11 @@ test('R10-20: an unreadable transcript is reported, not silently dropped', async
     assert.ok(r.unreadableTranscripts[0].reason, 'the row must carry why');
     assert.equal(r.scannedTranscripts, 1, 'the readable one still counts');
   } finally {
-    try { fs.chmodSync(path.join(dir, 'bad.jsonl'), 0o600); } catch { /* already gone */ }
+    try {
+      fs.chmodSync(path.join(dir, 'bad.jsonl'), 0o600);
+    } catch {
+      /* already gone */
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -565,9 +650,13 @@ test('R10-20: an unreadable transcript is reported, not silently dropped', async
 test('R10-20: a clean run reports an empty unreadable list', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-clean-'));
   try {
-    fs.writeFileSync(path.join(dir, 'a.jsonl'), JSON.stringify({
-      type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
-    }) + '\n');
+    fs.writeFileSync(
+      path.join(dir, 'a.jsonl'),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+      }) + '\n'
+    );
     const r = await samplingAudit({ projectsDir: dir, days: 3650 });
     assert.deepEqual(r.unreadableTranscripts, []);
   } finally {

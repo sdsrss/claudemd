@@ -1,6 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir, settingsPath, SEMVER_RE, semverCmp } from './lib/paths.js';
+import {
+  logsDir,
+  backupRoot,
+  readManifest,
+  resolvePluginRoot,
+  pluginCacheDir,
+  settingsPath,
+  SEMVER_RE,
+  semverCmp,
+} from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -29,33 +38,95 @@ Exit codes: 0 success | 2 argv-shape error.`;
 // of this list against `DISABLE_*` reads in hooks/ + scripts/ is asserted by
 // tests/scripts/subject-set-drift.test.js.
 const SUB_FEATURE_TOGGLES = [
-  { envVar: 'DISABLE_UPSTREAM_CHECK',           partOf: 'session-start-check.sh', disables: 'the upstream-tag check only; bootstrap-on-mismatch still runs' },
-  { envVar: 'DISABLE_SPEC_DRIFT_BANNER',        partOf: 'session-start-check.sh', disables: 'the installed-vs-plugin spec drift banner; doctor still reports the drift' },
-  { envVar: 'DISABLE_SESSION_SUMMARY_BANNER',   partOf: 'session-start-check.sh', disables: 'the SessionStart banner half; the Stop-side summary write continues' },
-  { envVar: 'DISABLE_COMPACT_REREAD_REMINDER',  partOf: 'session-start-check.sh', disables: 'the post-compaction §11 re-read reminder only' },
-  { envVar: 'DISABLE_BOOTSTRAP_FAIL_BANNER',    partOf: 'session-start-check.sh', disables: 'the prior-session install-failure banner; the sentinel is still written' },
-  { envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',   partOf: 'session-end-check.sh',   disables: 'the §13.2 batch-review cadence advisory only' },
-  { envVar: 'DISABLE_RULE_HITS_LOG',            partOf: 'all hooks',              disables: 'telemetry appends to ~/.claude/logs/claudemd.jsonl; enforcement is unaffected' },
+  {
+    envVar: 'DISABLE_UPSTREAM_CHECK',
+    partOf: 'session-start-check.sh',
+    disables: 'the upstream-tag check only; bootstrap-on-mismatch still runs',
+  },
+  {
+    envVar: 'DISABLE_SPEC_DRIFT_BANNER',
+    partOf: 'session-start-check.sh',
+    disables: 'the installed-vs-plugin spec drift banner; doctor still reports the drift',
+  },
+  {
+    envVar: 'DISABLE_SESSION_SUMMARY_BANNER',
+    partOf: 'session-start-check.sh',
+    disables: 'the SessionStart banner half; the Stop-side summary write continues',
+  },
+  {
+    envVar: 'DISABLE_COMPACT_REREAD_REMINDER',
+    partOf: 'session-start-check.sh',
+    disables: 'the post-compaction §11 re-read reminder only',
+  },
+  {
+    envVar: 'DISABLE_BOOTSTRAP_FAIL_BANNER',
+    partOf: 'session-start-check.sh',
+    disables: 'the prior-session install-failure banner; the sentinel is still written',
+  },
+  {
+    envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',
+    partOf: 'session-end-check.sh',
+    disables: 'the §13.2 batch-review cadence advisory only',
+  },
+  {
+    envVar: 'DISABLE_RULE_HITS_LOG',
+    partOf: 'all hooks',
+    disables: 'telemetry appends to ~/.claude/logs/claudemd.jsonl; enforcement is unaffected',
+  },
   // 5h/7d only — `ctx` renders unconditionally (statusline.sh:102). This said
   // "ctx/5h/7d" while the script's own header and README:64 both said 5h/7d
   // (2026-08-29 audit R10-21a), and this is the string /claudemd-status prints
   // when a user asks how to quiet the statusline.
-  { envVar: 'DISABLE_STATUSLINE_QUOTA',         partOf: 'statusline.sh',          disables: 'the 5h/7d quota segments only (ctx still renders)' },
+  {
+    envVar: 'DISABLE_STATUSLINE_QUOTA',
+    partOf: 'statusline.sh',
+    disables: 'the 5h/7d quota segments only (ctx still renders)',
+  },
 ];
 
 const ESCAPE_TOKENS = [
-  { token: '[allow-banned-vocab]',  where: 'commit message',     bypasses: 'banned-vocab-check.sh',        section: '§10-V' },
-  { token: 'known-red baseline:',   where: 'commit body',        bypasses: 'ship-baseline-check.sh',        section: '§7-ship-baseline' },
-  { token: '[skip-memory-check]',   where: 'bash command',       bypasses: 'memory-read-check.sh',          section: '§11-memory-read' },
-  { token: '[allow-rm-rf-var]',     where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (rm-rf-var path)', section: '§8-rm-rf-var' },
-  { token: '[allow-npx-unpinned]',  where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (npx path)',       section: '§8-npx' },
+  {
+    token: '[allow-banned-vocab]',
+    where: 'commit message',
+    bypasses: 'banned-vocab-check.sh',
+    section: '§10-V',
+  },
+  {
+    token: 'known-red baseline:',
+    where: 'commit body',
+    bypasses: 'ship-baseline-check.sh',
+    section: '§7-ship-baseline',
+  },
+  {
+    token: '[skip-memory-check]',
+    where: 'bash command',
+    bypasses: 'memory-read-check.sh',
+    section: '§11-memory-read',
+  },
+  {
+    token: '[allow-rm-rf-var]',
+    where: 'bash command',
+    bypasses: 'pre-bash-safety-check.sh (rm-rf-var path)',
+    section: '§8-rm-rf-var',
+  },
+  {
+    token: '[allow-npx-unpinned]',
+    where: 'bash command',
+    bypasses: 'pre-bash-safety-check.sh (npx path)',
+    section: '§8-npx',
+  },
   // Shipped as a live deny path in 0.69.1 and absent from every user-facing
   // reference until the 2026-08-29 audit (R10-08): a user blocked by the
   // curl|sh detector found no bypass here, none in README, and a command doc
   // promising a "full" reference. The kill-switch drift gate covers the
   // DISABLE_* axis only, so the `[allow-*]` axis had no join at all — that gap
   // is now closed by tests/scripts/kill-switch-doc-drift.test.js.
-  { token: '[allow-curl-sh]',       where: 'bash command',       bypasses: 'pre-bash-safety-check.sh (curl|sh path)',   section: '§8-curl-sh' },
+  {
+    token: '[allow-curl-sh]',
+    where: 'bash command',
+    bypasses: 'pre-bash-safety-check.sh (curl|sh path)',
+    section: '§8-curl-sh',
+  },
 ];
 
 export async function status({ verbose = false } = {}) {
@@ -66,7 +137,11 @@ export async function status({ verbose = false } = {}) {
     // valid `version` but no `entries` array. Pre-fix this threw an unguarded
     // `TypeError: ... reading 'length'` + raw stack (exit 1), the only manifest
     // consumer that didn't `?? []`-guard (cf. uninstall.js). Treat missing as 0.
-    plugin = { installed: true, version: m.data.version, entries: Array.isArray(m.data.entries) ? m.data.entries.length : 0 };
+    plugin = {
+      installed: true,
+      version: m.data.version,
+      entries: Array.isArray(m.data.entries) ? m.data.entries.length : 0,
+    };
   } else {
     // CC's `/plugin install claudemd@claudemd` lands the version dir under
     // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire
@@ -77,7 +152,8 @@ export async function status({ verbose = false } = {}) {
     try {
       const cacheBase = path.join(pluginCacheDir(), 'claudemd');
       if (fs.existsSync(cacheBase)) {
-        const versions = fs.readdirSync(cacheBase, { withFileTypes: true })
+        const versions = fs
+          .readdirSync(cacheBase, { withFileTypes: true })
           .filter(d => d.isDirectory() && /^\d/.test(d.name))
           .map(d => d.name)
           // semverCmp, not the default lexicographic .sort() (R11-13f): that
@@ -90,7 +166,9 @@ export async function status({ verbose = false } = {}) {
           plugin.cacheVersions = versions;
         }
       }
-    } catch { /* best-effort hint; absence is non-fatal */ }
+    } catch {
+      /* best-effort hint; absence is non-fatal */
+    }
   }
 
   // Spec version source (per v0.2.1 "Versioning policy"): the `spec/CLAUDE.md`
@@ -131,15 +209,20 @@ export async function status({ verbose = false } = {}) {
       // (2026-08-29 audit R10-20).
       const s = readSettings();
       return (s && s.env) || {};
-    } catch { return {}; }
+    } catch {
+      return {};
+    }
   })();
-  const isOn = (key) => process.env[key] === '1';
-  const persistedOn = (key) => persistedEnv[key] === '1';
+  const isOn = key => process.env[key] === '1';
+  const persistedOn = key => persistedEnv[key] === '1';
 
   const killSwitches = { plugin: isOn('DISABLE_CLAUDEMD_HOOKS') };
   const pendingKillSwitches = {};
   if (isOn('DISABLE_CLAUDEMD_HOOKS') !== persistedOn('DISABLE_CLAUDEMD_HOOKS')) {
-    pendingKillSwitches.plugin = { effective: isOn('DISABLE_CLAUDEMD_HOOKS'), persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS') };
+    pendingKillSwitches.plugin = {
+      effective: isOn('DISABLE_CLAUDEMD_HOOKS'),
+      persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS'),
+    };
   }
   for (const name of HOOK_ENV_SUFFIXES) {
     const key = `DISABLE_${name}_HOOK`;
@@ -220,7 +303,11 @@ export async function status({ verbose = false } = {}) {
     });
     out.verbose = {
       killSwitches: {
-        global: { envVar: 'DISABLE_CLAUDEMD_HOOKS', effective: isOn('DISABLE_CLAUDEMD_HOOKS'), persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS') },
+        global: {
+          envVar: 'DISABLE_CLAUDEMD_HOOKS',
+          effective: isOn('DISABLE_CLAUDEMD_HOOKS'),
+          persisted: persistedOn('DISABLE_CLAUDEMD_HOOKS'),
+        },
         perHook: hookList,
         subFeature: SUB_FEATURE_TOGGLES.map(t => ({
           ...t,
@@ -245,7 +332,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { bools: ['--verbose'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   status({ verbose: parsed.bools.has('--verbose') })

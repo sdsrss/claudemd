@@ -27,18 +27,18 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 // [scriptRel, flag, badValue, validValue, errorRe]
 const CASES = [
-  ['scripts/audit.js',            '--days',           '1.5',     '30',         /requires a positive integer/],
-  ['scripts/sparkline.js',        '--days',           '1.5,2,3', '30,60,90',   /≥2 comma-separated positive integers/],
-  ['scripts/hard-rules-audit.js', '--days',           '2.7',     '90',         /requires a positive integer/],
-  ['scripts/doctor.js',           '--prune-backups',  '2.5',     '5',          /requires a positive integer/],
-  ['scripts/lesson-bypass-audit.js', '--days',        '2.7',     '30',         /requires a positive integer/],
+  ['scripts/audit.js', '--days', '1.5', '30', /requires a positive integer/],
+  ['scripts/sparkline.js', '--days', '1.5,2,3', '30,60,90', /≥2 comma-separated positive integers/],
+  ['scripts/hard-rules-audit.js', '--days', '2.7', '90', /requires a positive integer/],
+  ['scripts/doctor.js', '--prune-backups', '2.5', '5', /requires a positive integer/],
+  ['scripts/lesson-bypass-audit.js', '--days', '2.7', '30', /requires a positive integer/],
 ];
 
-const run = (relScript, args) => spawnSync(
-  process.execPath,
-  [path.join(REPO_ROOT, relScript), ...args],
-  { encoding: 'utf8', timeout: 10000 },
-);
+const run = (relScript, args) =>
+  spawnSync(process.execPath, [path.join(REPO_ROOT, relScript), ...args], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
 
 for (const [rel, flag, bad, valid, errorRe] of CASES) {
   test(`${rel}: ${flag}=${bad} (decimal) rejects with exit 1 + clear message`, () => {
@@ -53,25 +53,37 @@ for (const [rel, flag, bad, valid, errorRe] of CASES) {
     // The assertion is about ARGV shape, so it must not be coupled to what the
     // script then reports. doctor.js exits 3 when a health check fails, which is
     // machine-dependent; only 1 and 2 mean "argv rejected".
-    assert.ok(r.status !== 1 && r.status !== 2,
-      `valid flag must not be rejected; status=${r.status} stderr=${r.stderr}`);
+    assert.ok(
+      r.status !== 1 && r.status !== 2,
+      `valid flag must not be rejected; status=${r.status} stderr=${r.stderr}`
+    );
     assert.doesNotMatch(r.stderr, /requires|got '/);
   });
 
   // '30.0' parses as integer 30 under Number() — must still be accepted so
   // we don't break users / scripts that pass trailing-zero shapes.
-  const trailingZero = valid.split(',').map(v => `${v}.0`).join(',');
+  const trailingZero = valid
+    .split(',')
+    .map(v => `${v}.0`)
+    .join(',');
   test(`${rel}: ${flag}=${trailingZero} (trailing .0) still accepted`, () => {
     const r = run(rel, [`${flag}=${trailingZero}`]);
-    assert.ok(r.status !== 1 && r.status !== 2,
-      `trailing-zero flag must not be rejected; status=${r.status} stderr=${r.stderr}`);
+    assert.ok(
+      r.status !== 1 && r.status !== 2,
+      `trailing-zero flag must not be rejected; status=${r.status} stderr=${r.stderr}`
+    );
     assert.doesNotMatch(r.stderr, /requires|got '/);
   });
 
   // Over-coercion regression: hex / exponential must be rejected (Number()
   // alone would coerce '0x1e'→30, '1e2'→100 past Number.isInteger).
   for (const over of ['0x1e', '1e2']) {
-    const overVal = valid.includes(',') ? valid.split(',').map(() => over).join(',') : over;
+    const overVal = valid.includes(',')
+      ? valid
+          .split(',')
+          .map(() => over)
+          .join(',')
+      : over;
     test(`${rel}: ${flag}=${overVal} (over-coerced ${over}) rejects with exit 1`, () => {
       const r = run(rel, [`${flag}=${overVal}`]);
       assert.equal(r.status, 1, `expected exit 1; stdout=${r.stdout} stderr=${r.stderr}`);

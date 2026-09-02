@@ -11,7 +11,7 @@ import { listBackups, restoreBackup } from '../../scripts/lib/backup.js';
 // Shared with production code: install.js evicts settings.json entries
 // using the same predicate. Tests assert against the same source of truth
 // so a future hook addition (HOOK_BASENAMES grows) is automatically covered.
-const isClaudemdHookCommand = (c) => HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`));
+const isClaudemdHookCommand = c => HOOK_BASENAMES.some(b => c.includes(`/hooks/${b}`));
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -28,10 +28,16 @@ beforeEach(() => {
   // would silently disable the downgrade-guard tests below.
   delete process.env.CLAUDEMD_ALLOW_DOWNGRADE;
 
-  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '9.9.9-test' }));
+  fs.writeFileSync(
+    path.join(pluginRoot, 'package.json'),
+    JSON.stringify({ name: 'claudemd', version: '9.9.9-test' })
+  );
 
   fs.mkdirSync(path.join(pluginRoot, 'spec'), { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
+  fs.writeFileSync(
+    path.join(pluginRoot, 'spec/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n'
+  );
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), '# Extended v6.9.2\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), '# Changelog\n');
   fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), '# Operator handbook (test fixture)\n');
@@ -61,7 +67,10 @@ afterEach(() => {
 test('fresh HOME: spec copied, no backup', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.spec, 'fresh');
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n'
+  );
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')));
 });
@@ -71,22 +80,35 @@ test('downgrade guard: refuses when manifest records a newer version (v0.36.0)',
   // stale-cache.md): a hook firing from an old versioned cache dir ran that
   // dir's install.js and regressed home spec + manifest. Pre-guard this test
   // fails with the home spec downgraded to the old fixture content.
-  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '0.33.0' }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] }));
+  fs.writeFileSync(
+    path.join(pluginRoot, 'package.json'),
+    JSON.stringify({ name: 'claudemd', version: '0.33.0' })
+  );
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] })
+  );
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.16.0 — Core\n');
   await assert.rejects(() => install({ pluginRoot }), /refusing downgrade/);
   // No mutation: home spec and manifest must be untouched by the refused run.
   assert.match(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), /v6\.16\.0/);
   assert.equal(
     JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
-    '0.34.0');
+    '0.34.0'
+  );
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')), 'refused install must not create backups');
 });
 
 test('downgrade guard: CLAUDEMD_ALLOW_DOWNGRADE=1 permits a deliberate rollback (v0.36.0)', async () => {
-  fs.writeFileSync(path.join(pluginRoot, 'package.json'), JSON.stringify({ name: 'claudemd', version: '0.33.0' }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] }));
+  fs.writeFileSync(
+    path.join(pluginRoot, 'package.json'),
+    JSON.stringify({ name: 'claudemd', version: '0.33.0' })
+  );
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({ version: '0.34.0', pluginRoot: '/nonexistent/0.34.0', entries: [] })
+  );
   process.env.CLAUDEMD_ALLOW_DOWNGRADE = '1';
   try {
     await install({ pluginRoot });
@@ -95,19 +117,24 @@ test('downgrade guard: CLAUDEMD_ALLOW_DOWNGRADE=1 permits a deliberate rollback 
   }
   assert.equal(
     JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
-    '0.33.0');
+    '0.33.0'
+  );
 });
 
 test('downgrade guard: non-semver plugin version skips the guard (dev-mode fail-open, v0.36.0)', async () => {
   // Default fixture version is '9.9.9-test' (not strict semver). Even with a
   // semver manifest present, the guard must not block — dev-mode roots have
   // no reliable ordering and the guard fails open.
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({ version: '8.8.8', pluginRoot: '/nonexistent/8.8.8', entries: [] }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({ version: '8.8.8', pluginRoot: '/nonexistent/8.8.8', entries: [] })
+  );
   const res = await install({ pluginRoot });
   assert.ok(res.spec, 'install must proceed for non-semver plugin versions');
   assert.equal(
     JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
-    '9.9.9-test');
+    '9.9.9-test'
+  );
 });
 
 test('settings.json pre-flight: unparseable settings.json is refused BEFORE any user file moves', async () => {
@@ -120,8 +147,11 @@ test('settings.json pre-flight: unparseable settings.json is refused BEFORE any 
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal notes\nAlways use tabs.\n');
   fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), '{\n  "model": "opus",\n}\n');
   await assert.rejects(() => install({ pluginRoot }), /not valid JSON/);
-  assert.match(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), /Always use tabs/,
-    'refused install must not overwrite the user CLAUDE.md');
+  assert.match(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    /Always use tabs/,
+    'refused install must not overwrite the user CLAUDE.md'
+  );
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')), 'refused install must not create backups');
   assert.ok(!items.includes('.claudemd-manifest.json'), 'refused install must not write a manifest');
@@ -135,7 +165,8 @@ test('settings.json pre-flight: repairing the JSON is enough to unstick the inst
   assert.ok(res.spec, 'install proceeds once settings.json parses');
   assert.equal(
     JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8')).version,
-    '9.9.9-test');
+    '9.9.9-test'
+  );
 });
 
 test('existing spec: backup created, new spec in place', async () => {
@@ -145,7 +176,10 @@ test('existing spec: backup created, new spec in place', async () => {
   assert.equal(res.spec, 'backup-and-overwrite');
   assert.ok(res.backupDir && fs.existsSync(res.backupDir));
   assert.equal(fs.readFileSync(path.join(res.backupDir, 'CLAUDE.md'), 'utf8'), 'OLD\n');
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n'
+  );
 });
 
 test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)', async () => {
@@ -163,7 +197,11 @@ test('fresh install leaves settings.json with NO claudemd hook entries (v0.1.5)'
     }
   }
   const claudemdCmds = all.filter(isClaudemdHookCommand);
-  assert.deepEqual(claudemdCmds, [], `settings.json must not contain claudemd hook commands, got: ${JSON.stringify(claudemdCmds)}`);
+  assert.deepEqual(
+    claudemdCmds,
+    [],
+    `settings.json must not contain claudemd hook commands, got: ${JSON.stringify(claudemdCmds)}`
+  );
 });
 
 test('idempotent: running install 3x leaves settings.json unchanged', async () => {
@@ -232,7 +270,8 @@ test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved
   // the canonical `# AI-CODING-SPEC` H1, install must (a) flag the case so
   // the user is told where the content went, (b) still back it up — never
   // silent data loss.
-  const personalContent = '# My personal user-global instructions\n\nAlways respond in 中文.\nMy name is X.\n';
+  const personalContent =
+    '# My personal user-global instructions\n\nAlways respond in 中文.\nMy name is X.\n';
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), personalContent);
   const res = await install({ pluginRoot });
   assert.equal(res.userContentDetected, true, 'user content detection flag must be set');
@@ -243,7 +282,10 @@ test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved
     'personal content must be preserved verbatim in backup'
   );
   // And install proceeded — the plugin spec is now in place.
-  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n'
+  );
 });
 
 test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content (v0.23.11: spec-on-spec = no backup)', async () => {
@@ -252,7 +294,10 @@ test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content (v0.23.
   // root-cause fix: spec-over-spec must NOT create a backup (it would bury the
   // user's personal-content backup and make restore return the old spec). The
   // prior spec is recoverable from git / plugin cache / update.js backups.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.10.0 — Core\n\nold spec content\n');
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.10.0 — Core\n\nold spec content\n'
+  );
   const res = await install({ pluginRoot });
   assert.equal(res.userContentDetected, false, 'spec-headed file must not trip user-content flag');
   assert.equal(res.spec, 'overwrite-spec');
@@ -265,7 +310,10 @@ test('v0.23.11: repeated same-version re-install does NOT bury the user-content 
   // making the spec the newest backup; restore picks newest + pruneBackups(5)
   // evicts the oldest, so restore returned the spec and ≥5 re-runs lost the
   // personal content permanently. Now identical re-installs are a no-op.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal user-global instructions\nReply in 中文.\n');
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# My personal user-global instructions\nReply in 中文.\n'
+  );
   const first = await install({ pluginRoot });
   assert.equal(first.spec, 'backup-and-overwrite');
   assert.equal(first.userContentDetected, true);
@@ -296,8 +344,11 @@ test('v0.23.11: a spec UPGRADE after a personal install still restores PERSONAL 
   assert.equal(upgrade.spec, 'overwrite-spec', 'spec upgrade must not create a second backup');
   const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('backup-'));
   assert.equal(backupDirs.length, 1, 'still only the personal-content backup');
-  assert.match(fs.readFileSync(path.join(tmpHome, '.claude', backupDirs[0], 'CLAUDE.md'), 'utf8'),
-    /My personal instructions/, 'the single backup is the personal content, not the old spec');
+  assert.match(
+    fs.readFileSync(path.join(tmpHome, '.claude', backupDirs[0], 'CLAUDE.md'), 'utf8'),
+    /My personal instructions/,
+    'the single backup is the personal content, not the old spec'
+  );
 });
 
 test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag', async () => {
@@ -309,13 +360,31 @@ test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag'
 test('migrates hand-installed banned-vocab hook into backup', async () => {
   // Place hand-installed artifacts
   fs.mkdirSync(path.join(tmpHome, '.claude/hooks'), { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'), '#!/bin/bash\n# v0 hand-install\nexit 0\n');
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'),
+    '#!/bin/bash\n# v0 hand-install\nexit 0\n'
+  );
   fs.writeFileSync(path.join(tmpHome, '.claude/hooks/banned-vocab.patterns'), 'foo|reason\n');
   // settings.json pointing to hand-installed hook
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
-    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command',
-      command: `bash "${path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh')}"`, timeout: 3 }] }] }
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [
+              {
+                type: 'command',
+                command: `bash "${path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh')}"`,
+                timeout: 3,
+              },
+            ],
+          },
+        ],
+      },
+    })
+  );
 
   const res = await install({ pluginRoot });
 
@@ -331,7 +400,10 @@ test('migrates hand-installed banned-vocab hook into backup', async () => {
   for (const event of Object.keys(s.hooks || {})) {
     for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
-  assert.equal(all.some(c => c.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))), false);
+  assert.equal(
+    all.some(c => c.includes(path.join(tmpHome, '.claude/hooks/banned-vocab-check.sh'))),
+    false
+  );
 });
 
 test('P1-1: hand-hook migration on a later install does not shadow the personal backup', async () => {
@@ -358,11 +430,16 @@ test('P1-1: hand-hook migration on a later install does not shadow the personal 
   const restoreTarget = path.join(tmpHome, 'restored');
   fs.mkdirSync(restoreTarget, { recursive: true });
   const newest = listBackups()[0];
-  assert.match(fs.readFileSync(path.join(newest.dir, 'CLAUDE.md'), 'utf8'),
+  assert.match(
+    fs.readFileSync(path.join(newest.dir, 'CLAUDE.md'), 'utf8'),
     /My personal instructions/,
-    'restore reads the newest `backup-` dir — the hand-hook dir must not become it');
-  assert.equal(restoreBackup(newest.dir, restoreTarget).length, 1,
-    'restore must return exactly the personal CLAUDE.md, not zero files');
+    'restore reads the newest `backup-` dir — the hand-hook dir must not become it'
+  );
+  assert.equal(
+    restoreBackup(newest.dir, restoreTarget).length,
+    1,
+    'restore must return exactly the personal CLAUDE.md, not zero files'
+  );
 });
 
 test('leaves non-migrated hand hooks untouched', async () => {
@@ -381,7 +458,8 @@ test('back-to-back installs in same second preserve the original user backup (F1
   // Second install: spec now matches plugin, new backup dir would be made.
   await install({ pluginRoot });
 
-  const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude'))
+  const backupDirs = fs
+    .readdirSync(path.join(tmpHome, '.claude'))
     .filter(n => /^backup-/.test(n))
     .map(n => path.join(tmpHome, '.claude', n));
   const allBackedUp = backupDirs
@@ -403,10 +481,14 @@ test('manifest entries use ${CLAUDE_PLUGIN_ROOT} literal for version-stable regi
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   for (const e of manifest.entries) {
-    assert.ok(e.command.includes('${CLAUDE_PLUGIN_ROOT}'),
-      `manifest entry should reference env var, got: ${e.command}`);
-    assert.ok(!e.command.includes(pluginRoot),
-      `manifest entry must NOT bake in the version-specific absolute path, got: ${e.command}`);
+    assert.ok(
+      e.command.includes('${CLAUDE_PLUGIN_ROOT}'),
+      `manifest entry should reference env var, got: ${e.command}`
+    );
+    assert.ok(
+      !e.command.includes(pluginRoot),
+      `manifest entry must NOT bake in the version-specific absolute path, got: ${e.command}`
+    );
   }
 });
 
@@ -419,22 +501,51 @@ test('upgrade evicts ALL stale claudemd hook entries from settings.json (v0.1.5)
   // Both forms must be evicted on upgrade so the plugin's own hooks.json
   // becomes the sole registration site.
   const OLD_VERSION_DIR = '/home/fake/.claude/plugins/cache/claudemd/claudemd/0.1.3';
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({
-    hooks: {
-      PreToolUse: [{ matcher: 'Bash', hooks: [
-        // absolute-path form (≤0.1.1)
-        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/banned-vocab-check.sh"`, timeout: 3 },
-        // ${CLAUDE_PLUGIN_ROOT}-literal form (0.1.2-0.1.4)
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"', timeout: 5 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"', timeout: 3 },
-        { type: 'command', command: 'node /foreign/hook.mjs', timeout: 2 },
-      ] }],
-      Stop: [{ matcher: '*', hooks: [
-        { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/residue-audit.sh"`, timeout: 3 },
-        { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"', timeout: 3 },
-      ] }],
-    },
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [
+              // absolute-path form (≤0.1.1)
+              {
+                type: 'command',
+                command: `bash "${OLD_VERSION_DIR}/hooks/banned-vocab-check.sh"`,
+                timeout: 3,
+              },
+              // ${CLAUDE_PLUGIN_ROOT}-literal form (0.1.2-0.1.4)
+              {
+                type: 'command',
+                command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ship-baseline-check.sh"',
+                timeout: 5,
+              },
+              {
+                type: 'command',
+                command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/memory-read-check.sh"',
+                timeout: 3,
+              },
+              { type: 'command', command: 'node /foreign/hook.mjs', timeout: 2 },
+            ],
+          },
+        ],
+        Stop: [
+          {
+            matcher: '*',
+            hooks: [
+              { type: 'command', command: `bash "${OLD_VERSION_DIR}/hooks/residue-audit.sh"`, timeout: 3 },
+              {
+                type: 'command',
+                command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/sandbox-disposal-check.sh"',
+                timeout: 3,
+              },
+            ],
+          },
+        ],
+      },
+    })
+  );
 
   await install({ pluginRoot });
 
@@ -451,7 +562,11 @@ test('upgrade evicts ALL stale claudemd hook entries from settings.json (v0.1.5)
     for (const block of s.hooks[event]) for (const h of block.hooks || []) all.push(h.command);
   }
   const claudemd = all.filter(isClaudemdHookCommand);
-  assert.deepEqual(claudemd, [], `all claudemd hook commands must be evicted, residue: ${JSON.stringify(claudemd)}`);
+  assert.deepEqual(
+    claudemd,
+    [],
+    `all claudemd hook commands must be evicted, residue: ${JSON.stringify(claudemd)}`
+  );
 });
 
 test('same-stamp settings.json backup gets numeric suffix (F10)', async () => {
@@ -466,7 +581,11 @@ test('same-stamp settings.json backup gets numeric suffix (F10)', async () => {
   // (stamp is ms-precise). Instead verify that the two run-level backups are
   // distinct files with distinct content.
   const r2 = await install({ pluginRoot });
-  assert.notEqual(r1.settingsBackup, r2.settingsBackup, 'each install must produce a distinct settings backup');
+  assert.notEqual(
+    r1.settingsBackup,
+    r2.settingsBackup,
+    'each install must produce a distinct settings backup'
+  );
   assert.ok(fs.existsSync(r1.settingsBackup));
   assert.ok(fs.existsSync(r2.settingsBackup));
 });
@@ -480,8 +599,10 @@ test('fresh install sets claudemd statusLine into the empty slot', async () => {
 });
 
 test('install does NOT clobber a foreign statusLine', async () => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } })
+  );
   const res = await install({ pluginRoot });
   assert.equal(res.statusline.action, 'skipped-foreign');
   const s = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'));
@@ -503,8 +624,10 @@ test('CLAUDEMD_NO_STATUSLINE=1 skips the statusLine write', async () => {
 });
 
 test('install with a code-graph host in the slot → host-detected, no registry write', async () => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
+  );
   const res = await install({ pluginRoot });
   assert.equal(res.statusline.action, 'host-detected');
   assert.equal(res.statusline.host, 'code-graph');
@@ -519,15 +642,19 @@ test('SCRIPT-1: incomplete shipped spec fails BEFORE moving user content', async
   // A partial plugin checkout (a spec file missing) must be rejected before the
   // backup branch renameSync-moves the user's ~/.claude/CLAUDE.md. Pre-fix the
   // completeness check ran after the move → home spec ended up only in backup/.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal global instructions\nBe concise.\n');
-  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'));  // incomplete checkout
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# My personal global instructions\nBe concise.\n'
+  );
+  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md')); // incomplete checkout
 
   await assert.rejects(() => install({ pluginRoot }), /shipped spec missing/);
 
   // User content untouched at its home path — NOT moved into a backup dir.
   assert.equal(
     fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
-    '# My personal global instructions\nBe concise.\n');
+    '# My personal global instructions\nBe concise.\n'
+  );
   const items = fs.readdirSync(path.join(tmpHome, '.claude'));
   assert.ok(!items.some(n => n.startsWith('backup-')), 'no backup dir — nothing was moved');
 });
@@ -547,9 +674,12 @@ test('hook manifest missing → install refuses instead of registering 0 hooks',
   // and no manifest written.
   assert.equal(
     fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
-    '# My personal global instructions\n');
-  assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
-    'no manifest written for a hook-less install');
+    '# My personal global instructions\n'
+  );
+  assert.ok(
+    !fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')),
+    'no manifest written for a hook-less install'
+  );
 });
 
 test('hook manifest malformed JSON → install refuses with a named cause', async () => {
@@ -591,14 +721,26 @@ test('R11-08.1: steady-state install does NOT rewrite settings.json (no eviction
 
 test('R11-08.2: install DOES rewrite settings.json when there is legacy residue to evict', () => {
   const sp = path.join(tmpHome, '.claude/settings.json');
-  fs.writeFileSync(sp, JSON.stringify({
-    hooks: {
-      PreToolUse: [{
-        matcher: 'Bash',
-        hooks: [{ type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/' + HOOK_BASENAMES[0] + '"' }],
-      }],
-    },
-  }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(
+    sp,
+    JSON.stringify(
+      {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                { type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/' + HOOK_BASENAMES[0] + '"' },
+              ],
+            },
+          ],
+        },
+      },
+      null,
+      2
+    ),
+    { mode: 0o600 }
+  );
   fs.chmodSync(sp, 0o600);
 
   process.env.CLAUDEMD_NO_STATUSLINE = '1';
@@ -639,7 +781,7 @@ test('PT-1: a fresh install CREATES settings.json even with nothing to evict', a
   assert.deepEqual(JSON.parse(fs.readFileSync(sp, 'utf8')), {});
 });
 
-test('PT-2: a mid-copy spec failure restores the user\'s personal CLAUDE.md', async (t) => {
+test("PT-2: a mid-copy spec failure restores the user's personal CLAUDE.md", async t => {
   // The backup-and-overwrite branch renameSync's the user's OWN CLAUDE.md away.
   // install called copySpecFiles WITHOUT backupDir, so a failure there stranded
   // that file in the backup dir with a partial spec set in ~/.claude — the same

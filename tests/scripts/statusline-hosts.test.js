@@ -4,13 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  codeGraphAdapter, detectHost, manualPsCandidates, CLAUDEMD_PROVIDER_ID, HOST_ADAPTERS,
+  codeGraphAdapter,
+  detectHost,
+  manualPsCandidates,
+  CLAUDEMD_PROVIDER_ID,
+  HOST_ADAPTERS,
 } from '../../scripts/lib/statusline-hosts.js';
 
 let tmpHome, savedHome;
 const primary = () => path.join(tmpHome, '.cache/code-graph/statusline-registry.json');
-const mirror  = () => path.join(tmpHome, '.claude/statusline-providers.json');
-const seed = (list) => {
+const mirror = () => path.join(tmpHome, '.claude/statusline-providers.json');
+const seed = list => {
   fs.mkdirSync(path.dirname(primary()), { recursive: true });
   fs.mkdirSync(path.dirname(mirror()), { recursive: true });
   fs.writeFileSync(primary(), JSON.stringify(list));
@@ -42,21 +46,29 @@ test('register inserts our provider at the front (after _previous) in BOTH files
   ]);
   const changed = codeGraphAdapter.register(
     { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/h/.claude/claudemd-statusline.sh"', needsStdin: true },
-    { front: true },
+    { front: true }
   );
   assert.equal(changed, true);
   for (const read of [readP, readM]) {
-    const ids = read().map((p) => p.id);
-    assert.deepEqual(ids, ['_previous', 'claudemd', 'code-graph'], 'claudemd after _previous, before code-graph');
+    const ids = read().map(p => p.id);
+    assert.deepEqual(
+      ids,
+      ['_previous', 'claudemd', 'code-graph'],
+      'claudemd after _previous, before code-graph'
+    );
   }
 });
 
 test('register is idempotent when the entry is unchanged', () => {
   seed([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
-  const entry = { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/h/.claude/claudemd-statusline.sh"', needsStdin: true };
+  const entry = {
+    id: CLAUDEMD_PROVIDER_ID,
+    command: 'bash "/h/.claude/claudemd-statusline.sh"',
+    needsStdin: true,
+  };
   assert.equal(codeGraphAdapter.register(entry, { front: true }), true);
   assert.equal(codeGraphAdapter.register(entry, { front: true }), false, 're-register is a no-op');
-  assert.equal(readP().filter((p) => p.id === 'claudemd').length, 1);
+  assert.equal(readP().filter(p => p.id === 'claudemd').length, 1);
 });
 
 test('unregister removes our provider from BOTH files, leaves others', () => {
@@ -66,15 +78,25 @@ test('unregister removes our provider from BOTH files, leaves others', () => {
   ]);
   assert.equal(codeGraphAdapter.unregister('claudemd'), true);
   for (const read of [readP, readM]) {
-    assert.deepEqual(read().map((p) => p.id), ['code-graph']);
+    assert.deepEqual(
+      read().map(p => p.id),
+      ['code-graph']
+    );
   }
   assert.equal(codeGraphAdapter.unregister('claudemd'), false, 'second unregister is a no-op');
 });
 
 test('read prefers primary, falls back to durable mirror', () => {
   fs.mkdirSync(path.dirname(mirror()), { recursive: true });
-  fs.writeFileSync(mirror(), JSON.stringify([{ id: 'code-graph', command: 'node "/cg/s.js"', needsStdin: false }]));
-  assert.equal(codeGraphAdapter.isRegistered('code-graph'), true, 'self-heals from mirror when primary absent');
+  fs.writeFileSync(
+    mirror(),
+    JSON.stringify([{ id: 'code-graph', command: 'node "/cg/s.js"', needsStdin: false }])
+  );
+  assert.equal(
+    codeGraphAdapter.isRegistered('code-graph'),
+    true,
+    'self-heals from mirror when primary absent'
+  );
 });
 
 test('cgWrite writes the durable mirror first and does not swallow: a mirror failure aborts before the volatile primary diverges', () => {
@@ -87,11 +109,12 @@ test('cgWrite writes the durable mirror first and does not swallow: a mirror fai
   fs.mkdirSync(path.dirname(mirror()), { recursive: true });
   fs.mkdirSync(mirror(), { recursive: true }); // mirror path is now a dir → its atomic write fails
   assert.throws(
-    () => codeGraphAdapter.register(
-      { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/h/.claude/claudemd-statusline.sh"', needsStdin: true },
-      { front: true },
-    ),
-    'a failed durable-mirror write must surface, not be swallowed',
+    () =>
+      codeGraphAdapter.register(
+        { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/h/.claude/claudemd-statusline.sh"', needsStdin: true },
+        { front: true }
+      ),
+    'a failed durable-mirror write must surface, not be swallowed'
   );
   assert.equal(fs.existsSync(primary()), false, 'primary not written when the durable mirror write fails');
 });
@@ -102,7 +125,10 @@ test('manualPsCandidates picks a ~/.claude bash PS1, not plugins or claudemd', (
     { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
     { id: 'claudemd', command: 'bash "/home/x/.claude/claudemd-statusline.sh"', needsStdin: true },
   ];
-  assert.deepEqual(manualPsCandidates(providers).map((p) => p.id), ['user-ps1']);
+  assert.deepEqual(
+    manualPsCandidates(providers).map(p => p.id),
+    ['user-ps1']
+  );
 });
 
 test('HOST_ADAPTERS contains the code-graph adapter', () => {

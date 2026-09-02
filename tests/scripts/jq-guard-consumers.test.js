@@ -28,16 +28,19 @@ const HOOKS_DIR = path.join(ROOT, 'hooks');
 // Exemptions are a decision record, not a suppression list: each entry states
 // WHY the hook emits nothing, so the next reader can re-litigate it on facts.
 const EXEMPT = new Map([
-  ['session-summary.sh',
+  [
+    'session-summary.sh',
     'Enforces no spec rule — it aggregates rows written by other hooks into a ' +
-    'state file for the SessionStart banner. docs/ARCHITECTURE.md and ' +
-    'docs/RULE-HITS-SCHEMA.md both declare it the one hook that never writes to ' +
-    'the log; a fail-open row from it would carry no enforcement signal. ' +
-    'Contradicting two shipped invariants to satisfy this gate would be backwards.'],
+      'state file for the SessionStart banner. docs/ARCHITECTURE.md and ' +
+      'docs/RULE-HITS-SCHEMA.md both declare it the one hook that never writes to ' +
+      'the log; a fail-open row from it would carry no enforcement signal. ' +
+      'Contradicting two shipped invariants to satisfy this gate would be backwards.',
+  ],
 ]);
 
 function hookFiles() {
-  return fs.readdirSync(HOOKS_DIR)
+  return fs
+    .readdirSync(HOOKS_DIR)
     .filter(f => f.endsWith('.sh'))
     .sort();
 }
@@ -59,8 +62,8 @@ function jqGuardConsumers() {
 // `EVENT=$(cat …)`. These have a "first parse" that must attribute a broken jq.
 function eventReaders() {
   return hookFiles().filter(f =>
-    /\b(?:hook_read_event\b|EVENT=\$\(\s*cat\b)/.test(
-      fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8')));
+    /\b(?:hook_read_event\b|EVENT=\$\(\s*cat\b)/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8'))
+  );
 }
 
 test('every jq-guarded hook records a fail-open, or is explicitly exempt', () => {
@@ -69,9 +72,11 @@ test('every jq-guarded hook records a fail-open, or is explicitly exempt', () =>
   // Floor: catches the extraction silently returning nothing (a rename of the
   // helper, a hooks/ layout change) — the failure mode where a gate reports
   // green because it checked an empty set.
-  assert.ok(consumers.length >= 9,
+  assert.ok(
+    consumers.length >= 9,
     `only ${consumers.length} hook_require_jq consumer(s) found — extraction broke ` +
-    `(helper renamed? hooks/ moved?). This gate must never validate an empty set.`);
+      `(helper renamed? hooks/ moved?). This gate must never validate an empty set.`
+  );
 
   const unwired = [];
   for (const f of consumers) {
@@ -80,12 +85,15 @@ test('every jq-guarded hook records a fail-open, or is explicitly exempt', () =>
     if (!/hook_record_failopen\s+\S+\s+jq-missing/.test(src)) unwired.push(f);
   }
 
-  assert.deepEqual(unwired, [],
+  assert.deepEqual(
+    unwired,
+    [],
     `hook(s) guarding on jq with no jq-missing fail-open row:\n` +
-    unwired.map(f => `  ${f}`).join('\n') +
-    `\nA jq-less environment turns these into silent no-ops that the §13.1 audit\n` +
-    `cannot distinguish from "rule never fired". Wire hook_record_failopen, or\n` +
-    `add an EXEMPT entry in this file stating why the hook emits nothing.`);
+      unwired.map(f => `  ${f}`).join('\n') +
+      `\nA jq-less environment turns these into silent no-ops that the §13.1 audit\n` +
+      `cannot distinguish from "rule never fired". Wire hook_record_failopen, or\n` +
+      `add an EXEMPT entry in this file stating why the hook emits nothing.`
+  );
 });
 
 test('every hook that parses its event detects a broken jq at the first parse', () => {
@@ -93,9 +101,11 @@ test('every hook that parses its event detects a broken jq at the first parse', 
   // `EVENT=$(cat …)`) — not just the ones using the blessed helper. A hook that
   // never reads EVENT has no first parse to guard.
   const readers = eventReaders();
-  assert.ok(readers.length >= 9,
+  assert.ok(
+    readers.length >= 9,
     `only ${readers.length} event-reading hook(s) found — extraction broke. ` +
-    `This gate must never validate an empty set.`);
+      `This gate must never validate an empty set.`
+  );
 
   const unwired = [];
   for (const f of readers) {
@@ -111,15 +121,18 @@ test('every hook that parses its event detects a broken jq at the first parse', 
     if (!/hook_jq_field\s|hook_read_bash_fields\s/.test(src)) unwired.push(f);
   }
 
-  assert.deepEqual(unwired, [],
+  assert.deepEqual(
+    unwired,
+    [],
     `hook(s) parsing the event with no hook_jq_field call:\n` +
-    unwired.map(f => `  ${f}`).join('\n') +
-    `\n\`hook_require_jq\` tests PRESENCE, not usability: a jq that is present but\n` +
-    `fails (stub on PATH, corrupt binary, missing shared lib, resource limit)\n` +
-    `passes the guard, then \`jq -r … 2>/dev/null\` yields "" and the hook takes its\n` +
-    `ordinary "not my tool/event" early exit — indistinguishable from "rule not\n` +
-    `applicable" (2026-07-28 audit H1). Route the FIRST parse through\n` +
-    `hook_jq_field so the failure is attributed and recorded.`);
+      unwired.map(f => `  ${f}`).join('\n') +
+      `\n\`hook_require_jq\` tests PRESENCE, not usability: a jq that is present but\n` +
+      `fails (stub on PATH, corrupt binary, missing shared lib, resource limit)\n` +
+      `passes the guard, then \`jq -r … 2>/dev/null\` yields "" and the hook takes its\n` +
+      `ordinary "not my tool/event" early exit — indistinguishable from "rule not\n` +
+      `applicable" (2026-07-28 audit H1). Route the FIRST parse through\n` +
+      `hook_jq_field so the failure is attributed and recorded.`
+  );
 });
 
 test('the second blessed first-parse helper carries the same attribution', () => {
@@ -130,15 +143,20 @@ test('the second blessed first-parse helper carries the same attribution', () =>
   // they live.
   const src = fs.readFileSync(path.join(HOOKS_DIR, 'lib/hook-common.sh'), 'utf8');
   const body = src.slice(src.indexOf('hook_read_bash_fields() {'));
-  assert.ok(body.startsWith('hook_read_bash_fields() {'),
+  assert.ok(
+    body.startsWith('hook_read_bash_fields() {'),
     'hook_read_bash_fields is gone from hook-common.sh, but jq-guard-consumers ' +
-    'still accepts its name as a valid first parse.');
+      'still accepts its name as a valid first parse.'
+  );
   const fn = body.slice(0, body.indexOf('\n}\n') + 3);
   for (const reason of ['bad-event', 'jq-broken']) {
-    assert.match(fn, new RegExp(`hook_record_failopen\\s+"\\$hook"\\s+${reason}`),
+    assert.match(
+      fn,
+      new RegExp(`hook_record_failopen\\s+"\\$hook"\\s+${reason}`),
       `hook_read_bash_fields no longer records ${reason} — the attribution ` +
-      `hook_jq_field exists for is missing from the helper that replaced it on ` +
-      `the PreToolUse:Bash chain.`);
+        `hook_jq_field exists for is missing from the helper that replaced it on ` +
+        `the PreToolUse:Bash chain.`
+    );
   }
 });
 
@@ -149,9 +167,15 @@ test('fail-open telemetry does not itself depend on jq', () => {
   // Behavioural proof lives in fail-open.test.sh T8/T9/T12; this asserts the
   // structural property so a future refactor cannot quietly reintroduce it.
   const src = fs.readFileSync(path.join(HOOKS_DIR, 'lib/rule-hits.sh'), 'utf8');
-  assert.match(src, /_rule_hits_fallback_row\s*\(\)/,
+  assert.match(
+    src,
+    /_rule_hits_fallback_row\s*\(\)/,
     'rule-hits.sh lost its jq-free fallback row builder — every fail-open reason ' +
-    'implying jq is unusable becomes unrecordable again.');
-  assert.match(src, /row=\$\(_rule_hits_fallback_row/,
-    'the jq-free fallback builder exists but is no longer invoked on the jq-failure path.');
+      'implying jq is unusable becomes unrecordable again.'
+  );
+  assert.match(
+    src,
+    /row=\$\(_rule_hits_fallback_row/,
+    'the jq-free fallback builder exists but is no longer invoked on the jq-failure path.'
+  );
 });

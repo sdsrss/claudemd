@@ -46,14 +46,38 @@ const ALPHABET = [...'aazZ09__--..//@~ +=X中'];
 
 function corpus() {
   const out = [
-    '', '/', '.', 'a', 'a.b', 'a/b', 'a.b.js', 'foo.bar.js', 'v6.14', '3.5x',
-    '9x.5', 'ab+cd/ef', 'ab+/cd', '/abc', 'abc/', 'a_b-c.ts', 'A_B.9x',
-    'docs/comprehensive-audit.md', 'refactor comprehensive-parser.js now',
-    '~/.claude/CLAUDE.md', 'user@host:path', 'a//b', '..//..', '中文/路径.md',
-    'a'.repeat(64) + '.js', '_'.repeat(32), '-'.repeat(32) + '/x',
+    '',
+    '/',
+    '.',
+    'a',
+    'a.b',
+    'a/b',
+    'a.b.js',
+    'foo.bar.js',
+    'v6.14',
+    '3.5x',
+    '9x.5',
+    'ab+cd/ef',
+    'ab+/cd',
+    '/abc',
+    'abc/',
+    'a_b-c.ts',
+    'A_B.9x',
+    'docs/comprehensive-audit.md',
+    'refactor comprehensive-parser.js now',
+    '~/.claude/CLAUDE.md',
+    'user@host:path',
+    'a//b',
+    '..//..',
+    '中文/路径.md',
+    'a'.repeat(64) + '.js',
+    '_'.repeat(32),
+    '-'.repeat(32) + '/x',
     // The exact shape that rejected the clause-4 lookbehind: two /g matches in
     // one run, the first ending mid-run at the uppercase Z.
-    '_a9Zaz.aZ9Z_.a中  ', 'ab.cDe.fg', 'x1.aB2.cd',
+    '_a9Zaz.aZ9Z_.a中  ',
+    'ab.cDe.fg',
+    'x1.aB2.cd',
   ];
   const rnd = lcg(20260816);
   for (let i = 0; i < 4000; i++) {
@@ -68,8 +92,11 @@ function corpus() {
 test('clause 3 (slashed-path): anchored and unanchored spellings agree byte-for-byte', () => {
   let checked = 0;
   for (const s of corpus()) {
-    assert.equal(s.replace(NEW3(), ' '), s.replace(OLD3(), ' '),
-      `clause-3 divergence on ${JSON.stringify(s)}`);
+    assert.equal(
+      s.replace(NEW3(), ' '),
+      s.replace(OLD3(), ' '),
+      `clause-3 divergence on ${JSON.stringify(s)}`
+    );
     checked++;
   }
   assert.ok(checked > 4000, `corpus too small to be evidence (got ${checked})`);
@@ -78,8 +105,7 @@ test('clause 3 (slashed-path): anchored and unanchored spellings agree byte-for-
 test('clause 4 (bare name.ext): single-pass scan matches the /g regex byte-for-byte', () => {
   let checked = 0;
   for (const s of corpus()) {
-    assert.equal(NEW4(s), s.replace(OLD4(), ' '),
-      `clause-4 divergence on ${JSON.stringify(s)}`);
+    assert.equal(NEW4(s), s.replace(OLD4(), ' '), `clause-4 divergence on ${JSON.stringify(s)}`);
     checked++;
   }
   assert.ok(checked > 4000, `corpus too small to be evidence (got ${checked})`);
@@ -92,8 +118,11 @@ test('clause 4: the lookbehind spelling this harness rejected stays rejected', (
   // argument will reach for it again. This asserts the divergence is real.
   const LOOKBEHIND = () => /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/g;
   const probe = '_a9Zaz.aZ9Z_.a中  ';
-  assert.notEqual(probe.replace(LOOKBEHIND(), ' '), probe.replace(OLD4(), ' '),
-    'the lookbehind spelling is expected to diverge — if it no longer does, the classes changed');
+  assert.notEqual(
+    probe.replace(LOOKBEHIND(), ' '),
+    probe.replace(OLD4(), ' '),
+    'the lookbehind spelling is expected to diverge — if it no longer does, the classes changed'
+  );
   assert.equal(NEW4(probe), probe.replace(OLD4(), ' '));
 });
 
@@ -103,9 +132,14 @@ test('control: the differential harness can actually detect a divergence', () =>
   // `[a-z]` → `[a-zA-Z]` after the dot changes which inputs match.
   const BROKEN = () => /[A-Za-z0-9_-]+\.[a-zA-Z][a-z0-9]*/g;
   const diverged = corpus().some(s => s.replace(BROKEN(), ' ') !== s.replace(OLD4(), ' '));
-  assert.ok(diverged, 'harness failed to detect a known-different regex — corpus does not exercise the clause');
+  assert.ok(
+    diverged,
+    'harness failed to detect a known-different regex — corpus does not exercise the clause'
+  );
   // …and the same for clause 3.
-  const BROKEN3 = () => /[A-Za-z0-9._@~-]*\/[A-Za-z0-9._@~-]*/g;  // trailing class loses '/'
-  assert.ok(corpus().some(s => s.replace(BROKEN3(), ' ') !== s.replace(OLD3(), ' ')),
-    'harness does not exercise clause 3 either');
+  const BROKEN3 = () => /[A-Za-z0-9._@~-]*\/[A-Za-z0-9._@~-]*/g; // trailing class loses '/'
+  assert.ok(
+    corpus().some(s => s.replace(BROKEN3(), ' ') !== s.replace(OLD3(), ' ')),
+    'harness does not exercise clause 3 either'
+  );
 });

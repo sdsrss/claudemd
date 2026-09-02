@@ -35,8 +35,14 @@ import { readPatterns, scan } from './lib/lint.js';
 import { isUserTurn, userTurnText } from './lib/transcript-user-turn.js';
 
 const RULE_KEYS = [
-  '§10-V', '§iron-law-2', '§10-four-section-order', '§10-honesty',
-  '§11-turn-yield', '§7-bugfix-anchor', '§11-post-compaction', '§5-hard-auth',
+  '§10-V',
+  '§iron-law-2',
+  '§10-four-section-order',
+  '§10-honesty',
+  '§11-turn-yield',
+  '§7-bugfix-anchor',
+  '§11-post-compaction',
+  '§5-hard-auth',
 ];
 
 // A4 pre-registered admission threshold — see header. Exported so the audit
@@ -62,14 +68,47 @@ export const PRECISION_GATE = 0.8;
 // re-measured from scratch — precision stays null, status returns to
 // collecting, and the pre-2026-07-24 series is NOT comparable.
 const CALIBRATION = {
-  '§10-V': { precision: null, labeledAt: '2026-07-24', note: 'sanitize parity restored this release — re-baselined, prior counts not comparable' },
-  '§11-turn-yield': { precision: null, labeledAt: '2026-07-24', note: 'tell precondition added this release — re-baselined' },
-  '§iron-law-2': { precision: null, labeledAt: '2026-07-24', closed: 'evidence fingerprint misses markdown-bolded numbers (255→**264**) and N/N ratios; denominator 55' },
-  '§10-four-section-order': { precision: null, labeledAt: '2026-07-24', closed: 'zero positives across 14056 turns; nothing to calibrate' },
-  '§10-honesty': { precision: null, labeledAt: '2026-07-24', closed: 'placeholder skip-list misses bare 无; denominator 4' },
-  '§7-bugfix-anchor': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.25; fires on 修复 as a noun and on branch names like fix-ux-audit' },
-  '§11-post-compaction': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.41; PLAN_SPEC_RE hardcodes this repo\'s plan-file naming (tasks/*.md|plan*.md)' },
-  '§5-hard-auth': { precision: null, labeledAt: '2026-07-24', closed: 'precision ≤0.16; cannot separate an executed command from a command string passed as data' },
+  '§10-V': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    note: 'sanitize parity restored this release — re-baselined, prior counts not comparable',
+  },
+  '§11-turn-yield': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    note: 'tell precondition added this release — re-baselined',
+  },
+  '§iron-law-2': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed:
+      'evidence fingerprint misses markdown-bolded numbers (255→**264**) and N/N ratios; denominator 55',
+  },
+  '§10-four-section-order': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed: 'zero positives across 14056 turns; nothing to calibrate',
+  },
+  '§10-honesty': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed: 'placeholder skip-list misses bare 无; denominator 4',
+  },
+  '§7-bugfix-anchor': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed: 'precision ≤0.25; fires on 修复 as a noun and on branch names like fix-ux-audit',
+  },
+  '§11-post-compaction': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed: "precision ≤0.41; PLAN_SPEC_RE hardcodes this repo's plan-file naming (tasks/*.md|plan*.md)",
+  },
+  '§5-hard-auth': {
+    precision: null,
+    labeledAt: '2026-07-24',
+    closed: 'precision ≤0.16; cannot separate an executed command from a command string passed as data',
+  },
 };
 
 const METRIC_CONTRACT =
@@ -130,7 +169,11 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null) {
   for (const line of raw.split(/\r?\n/)) {
     if (!line) continue;
     let obj;
-    try { obj = JSON.parse(line); } catch { continue; }
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (cutoffMs !== null && typeof obj.timestamp === 'string') {
       const t = Date.parse(obj.timestamp);
       if (Number.isFinite(t) && t < cutoffMs) continue;
@@ -150,7 +193,13 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null) {
         .filter(c => c && c.type === 'tool_use')
         .map(c => ({ name: c.name, input: c.input }));
       if (texts.length === 0 && toolUses.length === 0) continue;
-      events.push({ kind: 'assistant', text: texts.join('\n'), hasText: texts.length > 0, toolUses, sidechain });
+      events.push({
+        kind: 'assistant',
+        text: texts.join('\n'),
+        hasText: texts.length > 0,
+        toolUses,
+        sidechain,
+      });
       continue;
     }
     if (obj.type === 'user') {
@@ -197,13 +246,16 @@ export function scanVocab(text, patterns) {
 // canonical (`^Done:`) and markdown-header (`## Done`) forms.
 function locateLabels(text) {
   const lines = text.split('\n');
-  let d = 0, nd = 0, f = 0, u = 0;
+  let d = 0,
+    nd = 0,
+    f = 0,
+    u = 0;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i].replace(/^##\s+/, '');
-    if (!d  && /^Done(\s+—|:|\s*$)/.test(l))      d = i + 1;
-    if (!nd && /^Not done(\s+—|:|\s*$)/.test(l))  nd = i + 1;
-    if (!f  && /^Failed(\s+—|:|\s*$)/.test(l))    f = i + 1;
-    if (!u  && /^Uncertain(\s+—|:|\s*$)/.test(l)) u = i + 1;
+    if (!d && /^Done(\s+—|:|\s*$)/.test(l)) d = i + 1;
+    if (!nd && /^Not done(\s+—|:|\s*$)/.test(l)) nd = i + 1;
+    if (!f && /^Failed(\s+—|:|\s*$)/.test(l)) f = i + 1;
+    if (!u && /^Uncertain(\s+—|:|\s*$)/.test(l)) u = i + 1;
   }
   return { d, nd, f, u, lines };
 }
@@ -215,7 +267,8 @@ function locateLabels(text) {
 // digits, so dropping the `+` costs nothing; the trailing `[0-9]+` is likewise
 // `[0-9]` for a .test(). The 64 cap is the only real narrowing, and it is far
 // past any anchor §10 accepts.
-const EVIDENCE_FINGERPRINT = /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9][^\s]{0,64}\s*(→|->|=>)\s*[0-9]|Checked:|baseline|known-red|证据[:：]/;
+const EVIDENCE_FINGERPRINT =
+  /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9][^\s]{0,64}\s*(→|->|=>)\s*[0-9]|Checked:|baseline|known-red|证据[:：]/;
 
 // ironLaw2Opps counts Done lines that were actually examined (the per-rule
 // opportunity denominator); fourSection flags a complete 4-label block (the
@@ -256,7 +309,8 @@ export function scanStructure(text) {
 // placeholder); hits = the subset that is short AND reason-less. Long lines
 // (≥80 chars) and because/since/因为 lines count as compliant opportunities.
 export function scanHonesty(text) {
-  let hits = 0, opps = 0;
+  let hits = 0,
+    opps = 0;
   for (const raw of text.split('\n')) {
     const norm = raw.replace(/^##\s+/, '');
     if (!/^Uncertain(\s+—|:|\s*$)/.test(norm)) continue;
@@ -284,10 +338,12 @@ export function scanHonesty(text) {
 // repro token — "fixed" without "was broken" is not evidence). Line-scoped by
 // design: the spec requires the anchor in the same sentence as the claim.
 const FIX_CLAIM_RE = /^(?:##\s*)?Done\b[^\n]*(?:\bfix(?:ed|es)?\b|修复)/i;
-const PRIOR_FAILING_RE = /\b[A-Z][a-zA-Z]*Error\b|\b(?:error|exception|panic|traceback|failing|failed|FAILED|crash(?:ed|es)?|pre-fix|repro(?:duced|duction)?|was broken)\b|报错|复现|崩溃|之前失败|此前失败/i;
+const PRIOR_FAILING_RE =
+  /\b[A-Z][a-zA-Z]*Error\b|\b(?:error|exception|panic|traceback|failing|failed|FAILED|crash(?:ed|es)?|pre-fix|repro(?:duced|duction)?|was broken)\b|报错|复现|崩溃|之前失败|此前失败/i;
 
 export function scanBugfixAnchor(text) {
-  let hits = 0, opps = 0;
+  let hits = 0,
+    opps = 0;
   for (const raw of text.split('\n')) {
     if (!FIX_CLAIM_RE.test(raw)) continue;
     opps += 1;
@@ -318,7 +374,8 @@ const YIELD_TELL_RE = /^(?:继续|next|continue|怎么停了|why did you stop|�
 // "要这么写才能过 lint" are mid-work statements, not asks — the bare-么
 // alternation flagged both; reproduced 2 FPs). Lookbehind is ES2018, in-range
 // for engines >=20.
-const YIELD_ASK_RE = /[?？]\s*$|要(不要|继续|我)?[^。\n]{0,14}(吗|(?<![什怎这那多])么)[?？]?|还是先停|(就|或)?说一声|要继续|继续的话|下一步(建议|在你|由你)|由你定|等你的(信号|指示)|你(来)?(定|拍板|决定)/;
+const YIELD_ASK_RE =
+  /[?？]\s*$|要(不要|继续|我)?[^。\n]{0,14}(吗|(?<![什怎这那多])么)[?？]?|还是先停|(就|或)?说一声|要继续|继续的话|下一步(建议|在你|由你)|由你定|等你的(信号|指示)|你(来)?(定|拍板|决定)/;
 // CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
 // the next typed message starts a new task (§1.5), it is not a nudge.
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
@@ -345,7 +402,12 @@ function isHardOp(tu) {
   const input = tu.input || {};
   if (tu.name === 'Write' || tu.name === 'Edit' || tu.name === 'NotebookEdit') {
     const p = String(input.file_path || '');
-    if (/\.claude[/\\]settings\.json$|[/\\]migrations?[/\\]|(^|[/\\])\.env(\.(?!example|sample|template)[A-Za-z0-9_.-]+)?$/.test(p)) return true;
+    if (
+      /\.claude[/\\]settings\.json$|[/\\]migrations?[/\\]|(^|[/\\])\.env(\.(?!example|sample|template)[A-Za-z0-9_.-]+)?$/.test(
+        p
+      )
+    )
+      return true;
   }
   if (tu.name === 'Bash') {
     const c = String(input.command || '');
@@ -370,7 +432,8 @@ export const OVER_CEREMONY_THRESHOLD = 0.05;
 
 // Process-ceremony skills only (Skill tool, model-initiated). User-typed
 // /commands are the user's own choice and are not counted.
-const CEREMONY_SKILL_RE = /^(?:superpowers|sp)[:/](brainstorming|test-driven-development|systematic-debugging|writing-plans|executing-plans)$/;
+const CEREMONY_SKILL_RE =
+  /^(?:superpowers|sp)[:/](brainstorming|test-driven-development|systematic-debugging|writing-plans|executing-plans)$/;
 const L0L1_MAX_FILES = 2;
 const L0L1_MAX_EST_LOC = 80;
 
@@ -418,7 +481,12 @@ function scanOverCeremony(events) {
   }
   if (cur) segments.push(cur);
 
-  const out = { totalSegments: segments.length, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} };
+  const out = {
+    totalSegments: segments.length,
+    l0l1Segments: 0,
+    overCeremonySegments: 0,
+    ceremonyInvocations: {},
+  };
   for (const seg of segments) {
     for (const c of seg.ceremony) {
       out.ceremonyInvocations[c] = (out.ceremonyInvocations[c] || 0) + 1;
@@ -523,18 +591,23 @@ function ruleStatus(k) {
 }
 
 function emptyByRule() {
-  return Object.fromEntries(RULE_KEYS.map(k => [k, {
-    hits: 0,
-    violations: 0,
-    opportunities: 0,
-    transcriptsAffected: 0,
-    precision: CALIBRATION[k].precision,
-    status: ruleStatus(k),
-    // Surfaced so a reader of the JSON sees WHY a rule is closed without
-    // having to open the labeling record.
-    ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
-    ...(CALIBRATION[k].note ? { note: CALIBRATION[k].note } : {}),
-  }]));
+  return Object.fromEntries(
+    RULE_KEYS.map(k => [
+      k,
+      {
+        hits: 0,
+        violations: 0,
+        opportunities: 0,
+        transcriptsAffected: 0,
+        precision: CALIBRATION[k].precision,
+        status: ruleStatus(k),
+        // Surfaced so a reader of the JSON sees WHY a rule is closed without
+        // having to open the labeling record.
+        ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
+        ...(CALIBRATION[k].note ? { note: CALIBRATION[k].note } : {}),
+      },
+    ])
+  );
 }
 
 function emptyResult(windowDays, projectsDir) {
@@ -577,7 +650,8 @@ export async function samplingAudit({
 
   let files;
   try {
-    files = fs.readdirSync(projectsDir)
+    files = fs
+      .readdirSync(projectsDir)
       .filter(f => f.endsWith('.jsonl'))
       .map(f => path.join(projectsDir, f));
   } catch {
@@ -586,8 +660,11 @@ export async function samplingAudit({
 
   const cutoffMs = Date.now() - days * 86400000;
   files = files.filter(f => {
-    try { return fs.statSync(f).mtimeMs >= cutoffMs; }
-    catch { return false; }
+    try {
+      return fs.statSync(f).mtimeMs >= cutoffMs;
+    } catch {
+      return false;
+    }
   });
 
   if (sample && sample > 0 && sample < files.length) {
@@ -689,7 +766,12 @@ export async function samplingAudit({
 // --global: scan every CC project dir under projectsRoot, stratified by
 // project class (self-repo dogfood vs external — classifyProject keys on the
 // trailing cwd-encoded segment, `/(^|-)claudemd$/` = self).
-export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_DAYS, sample = null, pluginRoot } = {}) {
+export async function samplingAuditGlobal({
+  projectsRoot,
+  days = DEFAULT_WINDOW_DAYS,
+  sample = null,
+  pluginRoot,
+} = {}) {
   if (!projectsRoot) projectsRoot = projectsRootDir();
   const result = emptyResult(days, projectsRoot);
   // Per-class rows carry `status` too. The stratified view is the one a reader
@@ -697,21 +779,38 @@ export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_
   // this file's header), so a detector CLOSED in the 2026-07-24 labeling pass
   // must say so here as well; otherwise `byClass.external['§5-hard-auth']`
   // reads as a live 83/86 compliance signal with nothing marking it retired.
-  const emptyClass = () => ({ scannedTranscripts: 0, totalTurns: 0,
-    byRule: Object.fromEntries(RULE_KEYS.map(k => [k, {
-      violations: 0,
-      opportunities: 0,
-      status: ruleStatus(k),
-      ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
-    }])) });
+  const emptyClass = () => ({
+    scannedTranscripts: 0,
+    totalTurns: 0,
+    byRule: Object.fromEntries(
+      RULE_KEYS.map(k => [
+        k,
+        {
+          violations: 0,
+          opportunities: 0,
+          status: ruleStatus(k),
+          ...(CALIBRATION[k].closed ? { closedReason: CALIBRATION[k].closed } : {}),
+        },
+      ])
+    ),
+  });
   result.byClass = { self: emptyClass(), external: emptyClass(), unknown: emptyClass() };
   const affected = Object.fromEntries(RULE_KEYS.map(k => [k, new Set()]));
   let subDirs = [];
   try {
-    subDirs = fs.readdirSync(projectsRoot)
+    subDirs = fs
+      .readdirSync(projectsRoot)
       .map(d => path.join(projectsRoot, d))
-      .filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
-  } catch { /* no projects dir */ }
+      .filter(p => {
+        try {
+          return fs.statSync(p).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+  } catch {
+    /* no projects dir */
+  }
   for (const dir of subDirs) {
     const sub = await samplingAudit({ projectsDir: dir, days, sample, pluginRoot });
     result.scannedTranscripts += sub.scannedTranscripts;
@@ -719,8 +818,7 @@ export async function samplingAuditGlobal({ projectsRoot, days = DEFAULT_WINDOW_
     // rates get published, so a per-project omission that never reaches the
     // aggregate is the same silence one level higher (2026-08-29 audit R10-20).
     if (sub.unreadableTranscripts && sub.unreadableTranscripts.length) {
-      (result.unreadableTranscripts = result.unreadableTranscripts || [])
-        .push(...sub.unreadableTranscripts);
+      (result.unreadableTranscripts = result.unreadableTranscripts || []).push(...sub.unreadableTranscripts);
     }
     result.totalTurns += sub.totalTurns;
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
@@ -772,7 +870,9 @@ function formatMarkdown(r) {
   for (const k of RULE_KEYS) {
     const v = r.byRule[k];
     const prec = v.precision != null ? v.precision : 'uncalibrated';
-    out.push(`| ${k} | ${v.violations} | ${v.opportunities} | ${fmtRate(v.violations, v.opportunities)} | ${v.transcriptsAffected} | ${prec} | ${v.status} |`);
+    out.push(
+      `| ${k} | ${v.violations} | ${v.opportunities} | ${fmtRate(v.violations, v.opportunities)} | ${v.transcriptsAffected} | ${prec} | ${v.status} |`
+    );
   }
   out.push('');
   if (r.byClass) {
@@ -790,10 +890,15 @@ function formatMarkdown(r) {
   if (r.overCeremony) {
     const oc = r.overCeremony;
     const rate = oc.l0l1Segments > 0 ? fmtRate(oc.overCeremonySegments, oc.l0l1Segments) : 'n/a';
-    const inv = Object.entries(oc.ceremonyInvocations).map(([k, v]) => `${k}×${v}`).join(', ') || '(none)';
+    const inv =
+      Object.entries(oc.ceremonyInvocations)
+        .map(([k, v]) => `${k}×${v}`)
+        .join(', ') || '(none)';
     out.push('## Over-ceremony (C1)');
     out.push('');
-    out.push(`Task segments: ${oc.totalSegments} · L0/L1-shaped (≤2 files, <80 est. LOC): ${oc.l0l1Segments} · with ceremony skill: ${oc.overCeremonySegments} · rate: ${rate}`);
+    out.push(
+      `Task segments: ${oc.totalSegments} · L0/L1-shaped (≤2 files, <80 est. LOC): ${oc.l0l1Segments} · with ceremony skill: ${oc.overCeremonySegments} · rate: ${rate}`
+    );
     out.push(`Ceremony invocations (all segments): ${inv}`);
     out.push('');
     out.push('> C2 pre-registered disposition (plan P3): after 30d collection, rate < 5% → keep');
@@ -808,8 +913,7 @@ function formatMarkdown(r) {
       const n = t.hits.length;
       out.push(`- \`${t.file}\` (${n} hit${n === 1 ? '' : 's'})`);
       for (const h of t.hits) {
-        const detail = h.matches ? ` — matches: ${h.matches.join(', ')}`
-                       : (h.count ? ` ×${h.count}` : '');
+        const detail = h.matches ? ` — matches: ${h.matches.join(', ')}` : h.count ? ` ×${h.count}` : '';
         const turn = h.turn != null ? `turn ${h.turn}: ` : '';
         out.push(`  - ${turn}${h.rule}${detail}`);
       }
@@ -856,10 +960,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       values: ['--days', '--sample'],
     });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
-  const rawDays = parsed.values['--days'] ?? (process.env.CLAUDEMD_SAMPLING_DAYS || String(DEFAULT_WINDOW_DAYS));
+  const rawDays =
+    parsed.values['--days'] ?? (process.env.CLAUDEMD_SAMPLING_DAYS || String(DEFAULT_WINDOW_DAYS));
   const days = parsePositiveInt(rawDays);
   if (days === null) {
     console.error(`--days requires a positive integer (got '${rawDays}').`);
@@ -891,7 +999,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // Zero scanned transcripts → an all-zeros report reads like a completed
     // audit and litters tasks/ with stubs. Say so and write nothing.
     if (result.scannedTranscripts === 0) {
-      console.log(`No transcripts in the ${days}d window — skipped writing tasks/sampling-audit-${today}.md (nothing scanned, nothing to report).`);
+      console.log(
+        `No transcripts in the ${days}d window — skipped writing tasks/sampling-audit-${today}.md (nothing scanned, nothing to report).`
+      );
       return;
     }
     const md = formatMarkdown(result);
@@ -911,10 +1021,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     try {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, md);
-      console.log(`Wrote ${outPath} — ${result.scannedTranscripts} transcripts, ${result.totalTurns} turns scanned.`);
+      console.log(
+        `Wrote ${outPath} — ${result.scannedTranscripts} transcripts, ${result.totalTurns} turns scanned.`
+      );
       for (const k of RULE_KEYS) {
         const v = result.byRule[k];
-        console.log(`  ${k}: ${v.violations}/${v.opportunities} (rate ${fmtRate(v.violations, v.opportunities)}, ${v.status})`);
+        console.log(
+          `  ${k}: ${v.violations}/${v.opportunities} (rate ${fmtRate(v.violations, v.opportunities)}, ${v.status})`
+        );
       }
     } catch {
       console.log(md);

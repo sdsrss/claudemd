@@ -1,7 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { pluginCacheDir, stateDir, logsDir, settingsPath, backupRoot, specHome, manifestPath, legacyManifestPath, readManifest, writeJsonAtomic, codeGraphRegistryPath, codeGraphProvidersBackupPath, SEMVER_RE, semverCmp } from '../../scripts/lib/paths.js';
+import {
+  pluginCacheDir,
+  stateDir,
+  logsDir,
+  settingsPath,
+  backupRoot,
+  specHome,
+  manifestPath,
+  legacyManifestPath,
+  readManifest,
+  writeJsonAtomic,
+  codeGraphRegistryPath,
+  codeGraphProvidersBackupPath,
+  SEMVER_RE,
+  semverCmp,
+} from '../../scripts/lib/paths.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -187,21 +202,30 @@ test('R10-17b: the spec set has exactly one definition in scripts/', async () =>
   // matched spec-coherence-audit.js, which addresses `CLAUDE.md` and
   // `CLAUDE-extended.md` individually (they are its subject, not a copy of the
   // set) with `m[1]`-style brackets in between.
-  const defs = files.filter(f => {
-    const src = fs2.readFileSync(f, 'utf8');
-    return /\[[^\]\n]*'CLAUDE\.md'[^\]\n]*'CLAUDE-extended\.md'[^\]\n]*\]/.test(src);
-  }).map(f => path2.relative(root, f)).sort();
+  const defs = files
+    .filter(f => {
+      const src = fs2.readFileSync(f, 'utf8');
+      return /\[[^\]\n]*'CLAUDE\.md'[^\]\n]*'CLAUDE-extended\.md'[^\]\n]*\]/.test(src);
+    })
+    .map(f => path2.relative(root, f))
+    .sort();
 
-  assert.deepEqual(defs, ['scripts/lib/paths.js'],
+  assert.deepEqual(
+    defs,
+    ['scripts/lib/paths.js'],
     'the shipped spec set must be defined once, in scripts/lib/paths.js — ' +
-    `found it spelled out in: ${defs.join(', ')}`);
+      `found it spelled out in: ${defs.join(', ')}`
+  );
 });
 
 test('R10-17b: specHome() is derived from SPEC_FILES, in order', async () => {
   const { SPEC_FILES, specHome, homeSpec } = await import('../../scripts/lib/paths.js');
   assert.ok(SPEC_FILES.length >= 4, `expected >= 4 spec files, got ${SPEC_FILES.length}`);
   assert.equal(SPEC_FILES[0], 'CLAUDE.md', 'element 0 is treated as canonical by install/backup');
-  assert.deepEqual(specHome(), SPEC_FILES.map(n => homeSpec(n)));
+  assert.deepEqual(
+    specHome(),
+    SPEC_FILES.map(n => homeSpec(n))
+  );
 });
 
 // --- R11-34 (2026-09-02 audit, found while fixing R11-10) ---
@@ -215,7 +239,7 @@ test('R10-17b: specHome() is derived from SPEC_FILES, in order', async () => {
 // The FIRST version of this test asserted only the happy path (migrated, right
 // version, no tmp residue) and passed against the unfixed code — a bare write
 // leaves no residue either. It has to inject the partial write.
-test('R11-34: a partial write during legacy migration does not shadow the legacy manifest', (t) => {
+test('R11-34: a partial write during legacy migration does not shadow the legacy manifest', t => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-mig-'));
   const saved = process.env.HOME;
   process.env.HOME = home;
@@ -236,7 +260,7 @@ test('R11-34: a partial write during legacy migration does not shadow the legacy
       return realWrite(dest, data, ...rest);
     });
 
-    readManifest();               // migration attempt, swallowed by design
+    readManifest(); // migration attempt, swallowed by design
     t.mock.restoreAll();
 
     // The legacy manifest must still be reachable: either nothing was left at
@@ -279,7 +303,7 @@ test('R11-01.4: a DANGLING symlink is followed, not replaced', () => {
   try {
     const link = path.join(home, 'settings.json');
     const target = path.join(home, 'not-checked-out-yet.json');
-    fs.symlinkSync(target, link);           // target does not exist → realpath throws
+    fs.symlinkSync(target, link); // target does not exist → realpath throws
     writeJsonAtomic(link, { env: { A: '1' } });
     assert.equal(fs.lstatSync(link).isSymbolicLink(), true, 'link must survive');
     assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { env: { A: '1' } });
@@ -312,8 +336,11 @@ test('R11-01.5: the tmp file is never more permissive than the target mode', () 
     }
 
     assert.notEqual(tmpModeAtWrite, null, 'the tmp file must have been chmod-ed');
-    assert.equal(tmpModeAtWrite & 0o077, 0,
-      `payload was group/other-readable at mode ${tmpModeAtWrite.toString(8)} before chmod`);
+    assert.equal(
+      tmpModeAtWrite & 0o077,
+      0,
+      `payload was group/other-readable at mode ${tmpModeAtWrite.toString(8)} before chmod`
+    );
     assert.equal(fs.statSync(p).mode & 0o777, 0o600);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });

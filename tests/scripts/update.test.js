@@ -64,7 +64,7 @@ test('apply-all: backup created and all files updated', async () => {
 // pruneBackups(5) evicted the personal content for good after five updates.
 // That is the v0.23.11 data-loss mode reopened through the update path.
 
-const seedPersonalBackup = (home) => {
+const seedPersonalBackup = home => {
   const personal = path.join(home, '.claude/CLAUDE.md');
   fs.writeFileSync(personal, 'personal user-global instructions\n');
   const bk = createBackup([personal], { label: 'backup' });
@@ -78,12 +78,16 @@ test('P1-1: after an update, the newest restorable backup is still the personal 
   await update({ pluginRoot, choice: 'apply-all' });
 
   const newest = listBackups()[0];
-  assert.equal(newest.dir, personalDir,
-    'uninstall restore takes listBackups()[0] — an update backup must not sit on top of it');
+  assert.equal(
+    newest.dir,
+    personalDir,
+    'uninstall restore takes listBackups()[0] — an update backup must not sit on top of it'
+  );
   assert.equal(
     fs.readFileSync(path.join(newest.dir, 'CLAUDE.md'), 'utf8'),
     'personal user-global instructions\n',
-    'restore must return the user content, not the spec it replaced');
+    'restore must return the user content, not the spec it replaced'
+  );
 });
 
 test('P1-1: five updates do not prune the personal backup out of existence', async () => {
@@ -93,8 +97,10 @@ test('P1-1: five updates do not prune the personal backup out of existence', asy
     const res = await update({ pluginRoot, choice: 'apply-all' });
     assert.equal(res.applied, true, `update ${i} must have had something to apply`);
   }
-  assert.ok(fs.existsSync(personalDir),
-    'pruneBackups(5) must not reach the personal backup — 6 updates evicted it pre-fix');
+  assert.ok(
+    fs.existsSync(personalDir),
+    'pruneBackups(5) must not reach the personal backup — 6 updates evicted it pre-fix'
+  );
   assert.equal(listBackups()[0].dir, personalDir);
 });
 
@@ -103,18 +109,16 @@ test('P1-1: update still rotates its OWN backups (no unbounded growth)', async (
     fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), `plugin-v${i}\n`);
     await update({ pluginRoot, choice: 'apply-all' });
   }
-  const specBackups = fs.readdirSync(path.join(tmpHome, '.claude'))
-    .filter(n => n.startsWith('spec-backup-'));
-  assert.ok(specBackups.length <= 5,
-    `separating the namespace must not disable rotation (found ${specBackups.length})`);
+  const specBackups = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('spec-backup-'));
+  assert.ok(
+    specBackups.length <= 5,
+    `separating the namespace must not disable rotation (found ${specBackups.length})`
+  );
   assert.ok(specBackups.length > 0, 'update must still take a backup before overwriting');
 });
 
 test('unknown choice throws', async () => {
-  await assert.rejects(
-    () => update({ pluginRoot, choice: 'select' }),
-    /unknown choice/
-  );
+  await assert.rejects(() => update({ pluginRoot, choice: 'select' }), /unknown choice/);
 });
 
 test('CLI: unknown CLAUDEMD_UPDATE_CHOICE → clean stderr + exit 1 (no Node stack trace)', () => {
@@ -143,22 +147,29 @@ test('CLI: unknown CLAUDEMD_UPDATE_CHOICE → clean stderr + exit 1 (no Node sta
 // dir. That is the lockstep violation update.js:37-39 explicitly forbids.
 test('R10-02: incomplete plugin cache → update refuses, ~/.claude untouched', async () => {
   const before = Object.fromEntries(
-    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']
-      .map(n => [n, fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8')]));
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'].map(n => [
+      n,
+      fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8'),
+    ])
+  );
 
-  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'));  // truncated cache
+  fs.rmSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md')); // truncated cache
 
-  await assert.rejects(() => update({ pluginRoot, choice: 'apply-all' }),
-    /shipped spec missing.*CLAUDE-changelog\.md/);
+  await assert.rejects(
+    () => update({ pluginRoot, choice: 'apply-all' }),
+    /shipped spec missing.*CLAUDE-changelog\.md/
+  );
 
   // Every home file still at its pre-update content, at its home path.
   for (const [name, text] of Object.entries(before)) {
-    assert.equal(fs.readFileSync(path.join(tmpHome, '.claude', name), 'utf8'), text,
-      `${name} must be untouched`);
+    assert.equal(
+      fs.readFileSync(path.join(tmpHome, '.claude', name), 'utf8'),
+      text,
+      `${name} must be untouched`
+    );
   }
   // And nothing was moved into a backup dir.
-  assert.equal(listBackups({ label: 'spec-backup' }).length, 0,
-    'no spec backup — nothing was moved');
+  assert.equal(listBackups({ label: 'spec-backup' }).length, 0, 'no spec backup — nothing was moved');
 });
 
 test('R10-02: dry-run still reports diffs against a truncated cache', async () => {
@@ -185,7 +196,7 @@ test('R10-02: dry-run still reports diffs against a truncated cache', async () =
 // is restored" assertions passed against the unfixed code: a false green. The
 // failure has to be injected at the copy itself.
 
-test('R11-09: a mid-copy failure restores every spec file from the backup', async (t) => {
+test('R11-09: a mid-copy failure restores every spec file from the backup', async t => {
   const before = {};
   for (const n of ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']) {
     before[n] = fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8');
@@ -201,7 +212,9 @@ test('R11-09: a mid-copy failure restores every spec file from the backup', asyn
   const shippedDir = path.join(pluginRoot, 'spec');
   t.mock.method(fs, 'copyFileSync', (src, dest, ...rest) => {
     if (String(src).startsWith(shippedDir) && String(src).endsWith('CLAUDE.md')) {
-      throw Object.assign(new Error("EACCES: permission denied, copyfile -> 'CLAUDE.md'"), { code: 'EACCES' });
+      throw Object.assign(new Error("EACCES: permission denied, copyfile -> 'CLAUDE.md'"), {
+        code: 'EACCES',
+      });
     }
     return realCopy(src, dest, ...rest);
   });
@@ -216,7 +229,7 @@ test('R11-09: a mid-copy failure restores every spec file from the backup', asyn
   }
 });
 
-test('R11-09: a copy that silently writes the wrong bytes is caught and rolled back', async (t) => {
+test('R11-09: a copy that silently writes the wrong bytes is caught and rolled back', async t => {
   const before = fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE-changelog.md'), 'utf8');
   const realCopy = fs.copyFileSync;
   const shippedDir = path.join(pluginRoot, 'spec');

@@ -5,7 +5,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { scan, clean, scanClaudeTmp, cleanClaudeTmp, scanStateDir, cleanStateDir } from '../../scripts/clean-residue.js';
+import {
+  scan,
+  clean,
+  scanClaudeTmp,
+  cleanClaudeTmp,
+  scanStateDir,
+  cleanStateDir,
+} from '../../scripts/clean-residue.js';
 
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/clean-residue.js');
 
@@ -49,7 +56,8 @@ test('scan finds claudemd-sync-* files and claudemd-(mockgh|work).* dirs', () =>
 test('P1-5: the memtags spill template is reaped by scan()', () => {
   const lib = fs.readFileSync(
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks/lib/memory-tags.sh'),
-    'utf8');
+    'utf8'
+  );
   const m = lib.match(/mktemp\s+"\$\{TMPDIR:-\/tmp\}\/([A-Za-z0-9._-]*X{3,})"/);
   assert.ok(m, 'could not find the mktemp template in hooks/lib/memory-tags.sh');
   // mktemp replaces the trailing X run with random chars.
@@ -57,8 +65,10 @@ test('P1-5: the memtags spill template is reaped by scan()', () => {
   fs.writeFileSync(path.join(tmpDir, sample), 'spilled haystack');
 
   const r = scan({ tmpDir });
-  assert.ok(r.sentinels.some(s => path.basename(s.path) === sample),
-    `${sample} is left in $TMPDIR by a killed hook but no clean-residue pattern matches it`);
+  assert.ok(
+    r.sentinels.some(s => path.basename(s.path) === sample),
+    `${sample} is left in $TMPDIR by a killed hook but no clean-residue pattern matches it`
+  );
 });
 
 test('scan tolerates missing/empty dir', () => {
@@ -282,7 +292,10 @@ test('scanClaudeTmp lists stale depth-1 entries; descends into claude-<uid> inst
   assert.ok(paths.includes(staleTop));
   assert.ok(paths.includes(staleFile));
   assert.ok(paths.includes(staleChild));
-  assert.ok(!paths.some(p => p === path.join(claudeTmp, 'claude-1000')), 'uid dir itself must never be a candidate');
+  assert.ok(
+    !paths.some(p => p === path.join(claudeTmp, 'claude-1000')),
+    'uid dir itself must never be a candidate'
+  );
   // fresh entries are still listed by scan (age filter is clean's job) with ageDays ~0
   const fresh = r.candidates.find(c => c.path.endsWith('fresh-dir'));
   assert.ok(fresh && fresh.ageDays < 1);
@@ -434,7 +447,10 @@ test('scanStateDir reaps vocab-scan sentinels', () => {
   fs.writeFileSync(f, 'deadbeef');
   setMtime(f, 30);
   const { candidates } = scanStateDir({ stateDir });
-  assert.deepEqual(candidates.map(c => c.kind), ['vocab-scan']);
+  assert.deepEqual(
+    candidates.map(c => c.kind),
+    ['vocab-scan']
+  );
 });
 
 test('cleanStateDir never deletes live singleton state, however old', () => {
@@ -442,10 +458,19 @@ test('cleanStateDir never deletes live singleton state, however old', () => {
   fs.mkdirSync(stateDir, { recursive: true });
   // Every non-ephemeral name the state dir is known to carry, aged well past
   // any retention window. Age must not be sufficient grounds for deletion.
-  const live = ['tmp-baseline.txt', 'session-start.ref', 'upstream-check.lastrun',
-    'last-session-summary.json', 'last-session-summary.json.last-shown',
-    'bootstrap-failed.json', 'l2-task-counter', 'ship-baseline-recent',
-    'mem-audit.lastrun', 'session-summary.lastrun', 'statusline-prev.json'];
+  const live = [
+    'tmp-baseline.txt',
+    'session-start.ref',
+    'upstream-check.lastrun',
+    'last-session-summary.json',
+    'last-session-summary.json.last-shown',
+    'bootstrap-failed.json',
+    'l2-task-counter',
+    'ship-baseline-recent',
+    'mem-audit.lastrun',
+    'session-summary.lastrun',
+    'statusline-prev.json',
+  ];
   for (const f of live) {
     fs.writeFileSync(path.join(stateDir, f), '0');
     setMtime(path.join(stateDir, f), 300);
@@ -462,7 +487,8 @@ test('cleanStateDir respects retention and dry-run by default', () => {
   fs.mkdirSync(stateDir, { recursive: true });
   const old = path.join(stateDir, 'ext-read-old.ts');
   const fresh = path.join(stateDir, 'ext-read-fresh.ts');
-  fs.writeFileSync(old, '0'); setMtime(old, 30);
+  fs.writeFileSync(old, '0');
+  setMtime(old, 30);
   fs.writeFileSync(fresh, '0');
 
   const dry = cleanStateDir({ stateDir, retentionDays: 7 });
@@ -516,8 +542,10 @@ test('R10-09: --apply that cannot delete exits 3 and reports what remains', () =
     // or a filesystem that ignores mode bits) this case proves nothing, so say
     // so rather than passing vacuously.
     if (o.stateDir.deleted === 1) {
-      assert.ok(process.getuid && process.getuid() === 0,
-        'delete succeeded despite mode 0500 — only expected as root');
+      assert.ok(
+        process.getuid && process.getuid() === 0,
+        'delete succeeded despite mode 0500 — only expected as root'
+      );
       return;
     }
     assert.equal(o.stateDir.candidates, 1);

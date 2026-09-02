@@ -25,9 +25,9 @@ afterEach(() => {
 
 test('compareHooks returns ok=true and no diffs when source == market', () => {
   writeFile(sourceRoot, 'hooks/banned-vocab-check.sh', '#!/bin/bash\necho a\n');
-  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh',     '#!/bin/bash\necho b\n');
+  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh', '#!/bin/bash\necho b\n');
   writeFile(marketRoot, 'hooks/banned-vocab-check.sh', '#!/bin/bash\necho a\n');
-  writeFile(marketRoot, 'hooks/lib/rule-hits.sh',     '#!/bin/bash\necho b\n');
+  writeFile(marketRoot, 'hooks/lib/rule-hits.sh', '#!/bin/bash\necho b\n');
 
   const r = compareHooks(sourceRoot, marketRoot);
   assert.equal(r.skipped, false);
@@ -49,8 +49,8 @@ test('compareHooks reports drift when a hook file differs', () => {
 
 test('compareHooks reports missing-in-market when source has a hook the market does not', () => {
   writeFile(sourceRoot, 'hooks/banned-vocab-check.sh', 'NEW\n');
-  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh',     'shared\n');
-  writeFile(marketRoot, 'hooks/lib/rule-hits.sh',     'shared\n');
+  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh', 'shared\n');
+  writeFile(marketRoot, 'hooks/lib/rule-hits.sh', 'shared\n');
 
   const r = compareHooks(sourceRoot, marketRoot);
   assert.equal(r.driftCount, 1);
@@ -86,9 +86,9 @@ test('compareHooks skips when sourceRoot has no hooks/ dir (claudemd-cli npm ins
 });
 
 test('compareHooks scans recursively into hooks/ subdirectories', () => {
-  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh',   'L1\n');
+  writeFile(sourceRoot, 'hooks/lib/rule-hits.sh', 'L1\n');
   writeFile(sourceRoot, 'hooks/lib/hook-common.sh', 'L2\n');
-  writeFile(marketRoot, 'hooks/lib/rule-hits.sh',   'L1\n');
+  writeFile(marketRoot, 'hooks/lib/rule-hits.sh', 'L1\n');
   writeFile(marketRoot, 'hooks/lib/hook-common.sh', 'DIFFERENT\n');
 
   const r = compareHooks(sourceRoot, marketRoot);
@@ -100,9 +100,9 @@ test('compareHooks skips non-.sh files (.patterns, .json) so config evolution is
   // banned-vocab.patterns / hooks.json are config; drift there is not the
   // hook-CODE drift this check is for. /claudemd-update covers config.
   writeFile(sourceRoot, 'hooks/banned-vocab.patterns', 'pat-v2\n');
-  writeFile(sourceRoot, 'hooks/hooks.json',            '{"v":2}\n');
+  writeFile(sourceRoot, 'hooks/hooks.json', '{"v":2}\n');
   writeFile(marketRoot, 'hooks/banned-vocab.patterns', 'pat-v1\n');
-  writeFile(marketRoot, 'hooks/hooks.json',            '{"v":1}\n');
+  writeFile(marketRoot, 'hooks/hooks.json', '{"v":1}\n');
 
   const r = compareHooks(sourceRoot, marketRoot);
   assert.equal(r.skipped, true);

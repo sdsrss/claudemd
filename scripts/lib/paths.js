@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const home = () => process.env.HOME || os.homedir();
 
-export const pluginCacheDir    = () => path.join(home(), '.claude/plugins/cache/claudemd');
+export const pluginCacheDir = () => path.join(home(), '.claude/plugins/cache/claudemd');
 // Production hook root: the path Claude Code resolves ${CLAUDE_PLUGIN_ROOT} to
 // at hook-fire time. /plugin update is a silent no-op in current CC versions
 // (memory: reference_plugin_update_manual_refresh.md), so this can lag the
@@ -29,24 +29,24 @@ export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/ma
 // directory no hook has written to; redirect HOME and you get both sides.
 // Anything that recursively DELETES the result must not trust it blindly —
 // see the basename guard on uninstall.js's --purge path.
-export const stateDir          = () => process.env.CLAUDEMD_STATE_DIR || path.join(home(), '.claude/.claudemd-state');
+export const stateDir = () => process.env.CLAUDEMD_STATE_DIR || path.join(home(), '.claude/.claudemd-state');
 // Manifest lives outside stateDir so that `rm -rf ~/.claude/.claudemd-state/`
 // — which a user might run to reset residue-audit / sandbox-disposal baselines
 // — does not also erase the install manifest. Pre-0.1.9 manifests lived at
 // `stateDir()/installed.json`; any claudemd script that reads the manifest
 // calls `readManifest()` (below), which transparently relocates legacy files
 // on first touch.
-export const manifestPath      = () => path.join(home(), '.claude/.claudemd-manifest.json');
+export const manifestPath = () => path.join(home(), '.claude/.claudemd-manifest.json');
 export const legacyManifestPath = () => path.join(stateDir(), 'installed.json');
-export const logsDir           = () => path.join(home(), '.claude/logs');
-export const settingsPath      = () => path.join(home(), '.claude/settings.json');
+export const logsDir = () => path.join(home(), '.claude/logs');
+export const settingsPath = () => path.join(home(), '.claude/settings.json');
 // code-graph's composite statusline registry — primary in ~/.cache (volatile)
 // + durable mirror in ~/.claude (code-graph self-heals the primary from it).
 // claudemd registers itself as a guest provider here rather than clobbering the
 // single statusLine slot. Both are code-graph-owned; we read/write our own entry.
-export const codeGraphRegistryPath        = () => path.join(home(), '.cache/code-graph/statusline-registry.json');
+export const codeGraphRegistryPath = () => path.join(home(), '.cache/code-graph/statusline-registry.json');
 export const codeGraphProvidersBackupPath = () => path.join(home(), '.claude/statusline-providers.json');
-export const backupRoot        = () => path.join(home(), '.claude');
+export const backupRoot = () => path.join(home(), '.claude');
 // SINGLE SOURCE for the shipped spec set. It existed four times — install.js,
 // update.js, lib/spec-hash.js and the specHome() list right below — with no
 // join, so a fifth spec file would have been installed by one of them and
@@ -58,11 +58,11 @@ export const backupRoot        = () => path.join(home(), '.claude');
 // Order is load-bearing for specHome(): CLAUDE.md first, because install.js
 // and backup.js both treat element 0 as the canonical user-facing file.
 export const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
-export const specHome          = () => SPEC_FILES.map(n => path.join(home(), '.claude', n));
+export const specHome = () => SPEC_FILES.map(n => path.join(home(), '.claude', n));
 // Address a single home-spec file by basename. Decoupled from backupRoot()
 // (which happens to share the same dir today) so that a future relocation
 // of backups does not silently break update.js's home-spec read path.
-export const homeSpec          = (name) => path.join(home(), '.claude', name);
+export const homeSpec = name => path.join(home(), '.claude', name);
 
 // SINGLE SOURCE for every JSON file this plugin writes into the user's home
 // (2026-09-02 audit R11-01/R11-10). The tmp+rename idiom had three hand-copied
@@ -93,12 +93,18 @@ export function writeJsonAtomic(p, data, { mode } = {}) {
     // by hand; if p is simply absent, write at p.
     try {
       if (fs.lstatSync(p).isSymbolicLink()) real = path.resolve(path.dirname(p), fs.readlinkSync(p));
-    } catch { /* not a symlink and not present — new file at p */ }
+    } catch {
+      /* not a symlink and not present — new file at p */
+    }
   }
 
   let fileMode = mode;
   if (fileMode === undefined) {
-    try { fileMode = fs.statSync(real).mode & 0o777; } catch { /* new file — inherit default */ }
+    try {
+      fileMode = fs.statSync(real).mode & 0o777;
+    } catch {
+      /* new file — inherit default */
+    }
   }
 
   fs.mkdirSync(path.dirname(real), { recursive: true });
@@ -110,12 +116,19 @@ export function writeJsonAtomic(p, data, { mode } = {}) {
     // settings.json that payload is the user's `env` block (0.71.4 pre-tag
     // review measured the window on a real 0600 file). The chmod still follows,
     // to force the exact bits back past umask.
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n',
-      fileMode !== undefined ? { mode: fileMode } : undefined);
+    fs.writeFileSync(
+      tmp,
+      JSON.stringify(data, null, 2) + '\n',
+      fileMode !== undefined ? { mode: fileMode } : undefined
+    );
     if (fileMode !== undefined) fs.chmodSync(tmp, fileMode);
     fs.renameSync(tmp, real);
   } catch (e) {
-    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* nothing to clean up */
+    }
     throw e;
   }
 }
@@ -128,7 +141,12 @@ export function readManifest() {
   const newPath = manifestPath();
   if (fs.existsSync(newPath)) {
     try {
-      return { exists: true, path: newPath, data: JSON.parse(fs.readFileSync(newPath, 'utf8')), migrated: false };
+      return {
+        exists: true,
+        path: newPath,
+        data: JSON.parse(fs.readFileSync(newPath, 'utf8')),
+        migrated: false,
+      };
     } catch {
       return { exists: true, path: newPath, data: null, migrated: false };
     }
@@ -136,7 +154,11 @@ export function readManifest() {
   const oldPath = legacyManifestPath();
   if (fs.existsSync(oldPath)) {
     let data = null;
-    try { data = JSON.parse(fs.readFileSync(oldPath, 'utf8')); } catch { /* fall through */ }
+    try {
+      data = JSON.parse(fs.readFileSync(oldPath, 'utf8'));
+    } catch {
+      /* fall through */
+    }
     if (data) {
       try {
         // Atomic (R11-34): a bare write followed by unlinking the source can
@@ -145,7 +167,9 @@ export function readManifest() {
         // and another install spawns.
         writeJsonAtomic(newPath, data);
         fs.unlinkSync(oldPath);
-      } catch { /* best-effort migration; leave legacy in place on FS error */ }
+      } catch {
+        /* best-effort migration; leave legacy in place on FS error */
+      }
     }
     return { exists: true, path: newPath, data, migrated: true };
   }

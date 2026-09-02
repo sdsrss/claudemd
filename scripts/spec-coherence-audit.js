@@ -120,8 +120,7 @@ function extractExtendedSections(extendedText) {
   }
   return {
     sections: new Set(counts.keys()),
-    duplicates: [...counts.entries()].filter(([, n]) => n > 1)
-      .map(([id, count]) => ({ id, count })),
+    duplicates: [...counts.entries()].filter(([, n]) => n > 1).map(([id, count]) => ({ id, count })),
   };
 }
 
@@ -133,7 +132,12 @@ function checkExtCrossRefs(specDir) {
       name: 'ext-cross-refs',
       ok: false,
       severity: 'CRITICAL',
-      findings: [{ severity: 'CRITICAL', detail: `spec files missing (core=${fs.existsSync(corePath)}, extended=${fs.existsSync(extPath)})` }],
+      findings: [
+        {
+          severity: 'CRITICAL',
+          detail: `spec files missing (core=${fs.existsSync(corePath)}, extended=${fs.existsSync(extPath)})`,
+        },
+      ],
       stats: {},
     };
   }
@@ -157,8 +161,11 @@ function checkExtCrossRefs(specDir) {
   return {
     name: 'ext-cross-refs',
     ok: findings.length === 0,
-    severity: findings.some(f => f.severity === 'CRITICAL') ? 'CRITICAL'
-      : (findings.length > 0 ? 'HIGH' : null),
+    severity: findings.some(f => f.severity === 'CRITICAL')
+      ? 'CRITICAL'
+      : findings.length > 0
+        ? 'HIGH'
+        : null,
     findings,
     stats: {
       refsFound: refs.size,
@@ -177,7 +184,8 @@ function checkExtCrossRefs(specDir) {
 function parseSizingClaim(extendedText) {
   // Capture core after-arrow and extended after-arrow. Allow both `→` and
   // ASCII `->` to future-proof if the spec drift to ASCII arrows.
-  const re = /\*\*Sizing\*\*[^:]*:\s*core\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes[^;]*;\s*extended\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes/i;
+  const re =
+    /\*\*Sizing\*\*[^:]*:\s*core\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes[^;]*;\s*extended\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes/i;
   const m = re.exec(extendedText);
   if (!m) return null;
   return { coreClaim: Number(m[1]), extendedClaim: Number(m[2]) };
@@ -193,7 +201,9 @@ function checkSizingAccuracy(specDir) {
       name: 'sizing-accuracy',
       ok: false,
       severity: 'HIGH',
-      findings: [{ severity: 'HIGH', detail: 'Sizing line not found or unparseable in spec/CLAUDE-extended.md' }],
+      findings: [
+        { severity: 'HIGH', detail: 'Sizing line not found or unparseable in spec/CLAUDE-extended.md' },
+      ],
       stats: {},
     };
   }
@@ -275,7 +285,7 @@ function checkSizingHeadroom(specDir) {
   return {
     name: 'sizing-headroom',
     ok: findings.length === 0,
-    severity: hasHigh ? 'HIGH' : (findings.length > 0 ? 'LOW' : null),
+    severity: hasHigh ? 'HIGH' : findings.length > 0 ? 'LOW' : null,
     findings,
     stats: { ...stats, dangerRatio: HEADROOM_DANGER_RATIO },
   };
@@ -312,10 +322,7 @@ function checkMemoryIndex(projectCwd) {
     indexedFiles.add(matches[matches.length - 1][1]);
   }
 
-  const onDisk = new Set(
-    fs.readdirSync(memDir)
-      .filter(f => f.endsWith('.md') && f !== 'MEMORY.md')
-  );
+  const onDisk = new Set(fs.readdirSync(memDir).filter(f => f.endsWith('.md') && f !== 'MEMORY.md'));
 
   const danglingRefs = [...indexedFiles].filter(f => !onDisk.has(f)).sort();
   const orphanFiles = [...onDisk].filter(f => !indexedFiles.has(f)).sort();
@@ -337,7 +344,7 @@ function checkMemoryIndex(projectCwd) {
   return {
     name: 'memory-index',
     ok: findings.length === 0,
-    severity: danglingRefs.length > 0 ? 'MEDIUM' : (orphanFiles.length > 0 ? 'LOW' : null),
+    severity: danglingRefs.length > 0 ? 'MEDIUM' : orphanFiles.length > 0 ? 'LOW' : null,
     findings,
     stats: {
       memDir,
@@ -380,11 +387,12 @@ function checkMemoryIndex(projectCwd) {
 // Adding a term here silences a finding — the reason string is the control, and
 // it must name a demonstrated false positive, not a hypothetical one.
 const ACKNOWLEDGED_UNMECHANIZED = {
-  '应该可以': 'literal denies legitimate negation ("越权用户不应该可以访问后台") and ' +
+  应该可以:
+    'literal denies legitimate negation ("越权用户不应该可以访问后台") and ' +
     'requirement prose ("主题应该可以自定义") as readily as the hedge sense — both measured ' +
     'on 2026-08-16. POSIX ERE has no lookbehind and a multibyte bracket negation is ' +
     'byte-wise under a C locale, so "not preceded by 不" is not portably expressible ' +
-    'in the bash engine. Same standard that keeps §7\'s 能跑 / it runs unmechanized',
+    "in the bash engine. Same standard that keeps §7's 能跑 / it runs unmechanized",
 };
 
 // Matched over the whole spec with `[\s\S]*?` rather than `[^\n]*`: the subject is a bullet that
@@ -401,8 +409,8 @@ const IRONLAW_PHRASINGS_RE = /\*\*Banned phrasings\*\*[\s\S]*?(?=\n[ \t]*\n|\n[-
 // verdict stays auditable rather than magic.
 function probeStringFor(term) {
   return term
-    .replace(/\([^)]*\)/g, '')      // drop parenthetical glosses
-    .replace(/\bN\b/g, '3')         // N× faster → 3× faster
+    .replace(/\([^)]*\)/g, '') // drop parenthetical glosses
+    .replace(/\bN\b/g, '3') // N× faster → 3× faster
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -437,7 +445,9 @@ export function checkBannedVocabSpecDrift(pluginRoot) {
   const qcBlocks = coreText.match(QUICK_CHECK_RE) ?? [];
   if (qcBlocks.length === 0) {
     return {
-      ...base, ok: true, severity: null,
+      ...base,
+      ok: true,
+      severity: null,
       stats: { status: 'no-quick-check-line', termCount: 0, uncoveredCount: 0, probes: [] },
     };
   }
@@ -449,11 +459,18 @@ export function checkBannedVocabSpecDrift(pluginRoot) {
       ...base,
       ok: false,
       severity: 'HIGH',
-      findings: [{
-        severity: 'HIGH',
-        detail: `§10 declares banned-vocab.patterns the full enumeration but ${patternsPath} does not exist — the mechanical gate is absent entirely`,
-      }],
-      stats: { status: 'patterns-missing', termCount: terms.length, uncoveredCount: terms.length, probes: [] },
+      findings: [
+        {
+          severity: 'HIGH',
+          detail: `§10 declares banned-vocab.patterns the full enumeration but ${patternsPath} does not exist — the mechanical gate is absent entirely`,
+        },
+      ],
+      stats: {
+        status: 'patterns-missing',
+        termCount: terms.length,
+        uncoveredCount: terms.length,
+        probes: [],
+      },
     };
   }
 
@@ -474,13 +491,16 @@ export function checkBannedVocabSpecDrift(pluginRoot) {
     }
     findings.push({
       severity: 'MEDIUM',
-      detail: `§10 quick-check names "${term}" but no pattern in banned-vocab.patterns matches it ` +
+      detail:
+        `§10 quick-check names "${term}" but no pattern in banned-vocab.patterns matches it ` +
         `(probed as "${probe}") — §10 declares that file the full enumeration, so the mechanical gate is narrower than the rule`,
     });
   }
 
   // §7's list: counted, never raised. See the note above.
-  const ironLawTerms = [...new Set((coreText.match(IRONLAW_PHRASINGS_RE) ?? []).flatMap(termsFromBacktickSpans))];
+  const ironLawTerms = [
+    ...new Set((coreText.match(IRONLAW_PHRASINGS_RE) ?? []).flatMap(termsFromBacktickSpans)),
+  ];
   const ironLawUncovered = ironLawTerms.filter(t => {
     const p = probeStringFor(t);
     return !(p.length > 0 && scan(p, { patterns }).length > 0);
@@ -498,15 +518,18 @@ export function checkBannedVocabSpecDrift(pluginRoot) {
       probes,
       ironLaw2TermCount: ironLawTerms.length,
       ironLaw2Unenforced: ironLawUncovered.length,
-      note: [
-        acknowledged.length > 0
-          ? `§10 term(s) deliberately NOT mechanized: ${acknowledged.map(t => `${t} — ${ACKNOWLEDGED_UNMECHANIZED[t]}`).join('; ')}`
-          : null,
-        ironLawUncovered.length > 0
-          ? `§7 Iron Law #2 names ${ironLawUncovered.length}/${ironLawTerms.length} phrasing(s) no pattern matches ` +
-            `(${ironLawUncovered.join(', ')}) — informational: §7 does not declare banned-vocab.patterns as its enumeration`
-          : null,
-      ].filter(Boolean).join('\n    ') || undefined,
+      note:
+        [
+          acknowledged.length > 0
+            ? `§10 term(s) deliberately NOT mechanized: ${acknowledged.map(t => `${t} — ${ACKNOWLEDGED_UNMECHANIZED[t]}`).join('; ')}`
+            : null,
+          ironLawUncovered.length > 0
+            ? `§7 Iron Law #2 names ${ironLawUncovered.length}/${ironLawTerms.length} phrasing(s) no pattern matches ` +
+              `(${ironLawUncovered.join(', ')}) — informational: §7 does not declare banned-vocab.patterns as its enumeration`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n    ') || undefined,
     },
   };
 }
@@ -549,7 +572,7 @@ function formatHuman(r) {
   out.push(`Project MEMORY.md scope: ${r.projectCwd}`);
   out.push('');
   for (const c of r.checks) {
-    const mark = c.ok ? '✓' : (c.severity === 'CRITICAL' ? '✗' : c.severity === 'HIGH' ? '✗' : '△');
+    const mark = c.ok ? '✓' : c.severity === 'CRITICAL' ? '✗' : c.severity === 'HIGH' ? '✗' : '△';
     out.push(`[${mark}] ${c.name}`);
     const statsLine = Object.entries(c.stats)
       // Skip prose/path keys AND any non-scalar: an array/object renders as
@@ -579,9 +602,11 @@ function formatHuman(r) {
     }
   }
   out.push('');
-  out.push(`Summary: ${r.summary.checksOk}/${r.summary.checksRun} checks clean | ` +
-    `severities: C=${r.summary.severityCounts.CRITICAL || 0} H=${r.summary.severityCounts.HIGH || 0} ` +
-    `M=${r.summary.severityCounts.MEDIUM || 0} L=${r.summary.severityCounts.LOW || 0}`);
+  out.push(
+    `Summary: ${r.summary.checksOk}/${r.summary.checksRun} checks clean | ` +
+      `severities: C=${r.summary.severityCounts.CRITICAL || 0} H=${r.summary.severityCounts.HIGH || 0} ` +
+      `M=${r.summary.severityCounts.MEDIUM || 0} L=${r.summary.severityCounts.LOW || 0}`
+  );
   return out.join('\n');
 }
 
@@ -594,7 +619,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       values: ['--project'],
     });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const json = parsed.bools.has('--json');

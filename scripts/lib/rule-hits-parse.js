@@ -47,7 +47,7 @@ export function readLogRows(path) {
         badJson++;
         continue;
       }
-      rows.push({ row, t: (row.ts == null) ? NaN : new Date(row.ts).getTime() });
+      rows.push({ row, t: row.ts == null ? NaN : new Date(row.ts).getTime() });
     }
   }
   return { rows, totalLines, badJson };
@@ -82,7 +82,10 @@ export function readHits(path, daysBack = 30, pre = null) {
   let parsed = 0;
   let skipped = badJson;
   for (const { row, t } of rows) {
-    if (!Number.isFinite(t)) { skipped++; continue; }
+    if (!Number.isFinite(t)) {
+      skipped++;
+      continue;
+    }
     parsed++;
     if (t >= cutoff) hits.push(row);
   }
@@ -388,8 +391,8 @@ export function groupBySection(hits, cutoverTs = null) {
     } else if (cutoverTs == null) {
       key = '(unset)';
     } else {
-      const t = (h.ts == null) ? NaN : new Date(h.ts).getTime();
-      key = (Number.isFinite(t) && t < cutoverTs) ? '(unset-historical)' : '(unset-current)';
+      const t = h.ts == null ? NaN : new Date(h.ts).getTime();
+      key = Number.isFinite(t) && t < cutoverTs ? '(unset-historical)' : '(unset-current)';
     }
     bySection[key] ||= { total: 0, byEvent: {}, byHook: {} };
     bySection[key].total++;
@@ -452,9 +455,7 @@ export function bypassSubject(extra) {
   if (!extra || typeof extra !== 'object') return '(no subject)';
   if (extra.rule) return String(extra.rule);
   if (extra.shape) {
-    return extra.source && extra.sink
-      ? `${extra.shape}:${extra.source}->${extra.sink}`
-      : String(extra.shape);
+    return extra.source && extra.sink ? `${extra.shape}:${extra.source}->${extra.sink}` : String(extra.shape);
   }
   if (extra.runner) return String(extra.runner);
   if (extra.vars) return `vars:${extra.vars}`;
@@ -481,14 +482,14 @@ export function byTrend(hits, windowDays = 7, cutoverTs = null) {
   const recent = {};
   const prior = {};
   for (const h of hits) {
-    const t = (h.ts == null) ? NaN : new Date(h.ts).getTime();
+    const t = h.ts == null ? NaN : new Date(h.ts).getTime();
     let key;
     if (h.spec_section) {
       key = h.spec_section;
     } else if (cutoverTs == null) {
       key = '(unset)';
     } else {
-      key = (Number.isFinite(t) && t < cutoverTs) ? '(unset-historical)' : '(unset-current)';
+      key = Number.isFinite(t) && t < cutoverTs ? '(unset-historical)' : '(unset-current)';
     }
     if (t >= recentCutoff) {
       recent[key] = (recent[key] || 0) + 1;

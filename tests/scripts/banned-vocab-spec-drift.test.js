@@ -48,40 +48,45 @@ test('check reports a spec-named term that no pattern can match', () => {
   withSpec(
     QUICK_CHECK_LINE('robust', '显著提升 / 十分给力'),
     '显著提升|值述无具体数字\nrobust|评价性形容词\n',
-    (root) => {
+    root => {
       const c = checkBannedVocabSpecDrift(root);
       assert.equal(c.ok, false);
       assert.equal(c.stats.uncoveredCount, 1);
-      assert.ok(c.findings.some(f => f.detail.includes('十分给力')),
-        `expected 十分给力 in findings, got ${JSON.stringify(c.findings)}`);
+      assert.ok(
+        c.findings.some(f => f.detail.includes('十分给力')),
+        `expected 十分给力 in findings, got ${JSON.stringify(c.findings)}`
+      );
       assert.equal(c.findings[0].severity, 'MEDIUM');
-    });
+    }
+  );
 });
 
 test('an acknowledged-unmechanized term is waived instead of raised', () => {
   withSpec(
     QUICK_CHECK_LINE('robust', '显著提升 / 应该可以'),
     '显著提升|值述无具体数字\nrobust|评价性形容词\n',
-    (root) => {
+    root => {
       const c = checkBannedVocabSpecDrift(root);
       assert.equal(c.ok, true, JSON.stringify(c.findings));
       assert.equal(c.stats.uncoveredCount, 0);
       assert.equal(c.stats.acknowledgedCount, 1);
       assert.match(c.stats.note, /应该可以/);
-      assert.match(c.stats.note, /不应该可以访问后台/, 'the waiver must cite a measured FP, not a hypothetical');
-    });
+      assert.match(
+        c.stats.note,
+        /不应该可以访问后台/,
+        'the waiver must cite a measured FP, not a hypothetical'
+      );
+    }
+  );
 });
 
 test('check is clean when every spec-named term is matched by a pattern', () => {
-  withSpec(
-    QUICK_CHECK_LINE('robust', '显著提升'),
-    '显著提升|值述无具体数字\nrobust|评价性形容词\n',
-    (root) => {
-      const c = checkBannedVocabSpecDrift(root);
-      assert.equal(c.ok, true, JSON.stringify(c.findings));
-      assert.equal(c.stats.uncoveredCount, 0);
-      assert.equal(c.stats.termCount, 2);
-    });
+  withSpec(QUICK_CHECK_LINE('robust', '显著提升'), '显著提升|值述无具体数字\nrobust|评价性形容词\n', root => {
+    const c = checkBannedVocabSpecDrift(root);
+    assert.equal(c.ok, true, JSON.stringify(c.findings));
+    assert.equal(c.stats.uncoveredCount, 0);
+    assert.equal(c.stats.termCount, 2);
+  });
 });
 
 test('placeholder terms are probed with a substituted value, and the probe is reported', () => {
@@ -91,18 +96,19 @@ test('placeholder terms are probed with a substituted value, and the probe is re
   withSpec(
     QUICK_CHECK_LINE('N× faster (no baseline)', '显著提升'),
     '[0-9]+(\\.[0-9]+)?[x×][[:space:]]*faster|@ratio 无 baseline\n显著提升|值述\n',
-    (root) => {
+    root => {
       const c = checkBannedVocabSpecDrift(root);
       assert.equal(c.stats.uncoveredCount, 0, JSON.stringify(c.findings));
       const probed = c.stats.probes.find(p => p.term.includes('faster'));
       assert.ok(probed, 'placeholder term must appear in the probe list');
       assert.notEqual(probed.probe, probed.term, 'probe string must show the substitution');
       assert.ok(!probed.probe.includes('('), 'parenthetical note must be dropped from the probe');
-    });
+    }
+  );
 });
 
 test('a spec with no quick-check line is skipped, not failed', () => {
-  withSpec('## §10 REPORT\n\nnothing to see here\n', 'robust|x\n', (root) => {
+  withSpec('## §10 REPORT\n\nnothing to see here\n', 'robust|x\n', root => {
     const c = checkBannedVocabSpecDrift(root);
     assert.equal(c.ok, true);
     assert.equal(c.stats.status, 'no-quick-check-line');
@@ -133,8 +139,11 @@ test('the check is wired into auditSpecCoherence and FAILS the suite on real dri
   const c = r.checks.find(x => x.name === 'banned-vocab-spec-drift');
   assert.ok(c, `check not wired in; got ${r.checks.map(x => x.name).join(', ')}`);
   assert.ok(c.stats.termCount > 0, 'real spec must yield at least one quick-check term');
-  assert.equal(c.stats.uncoveredCount, 0,
-    `spec §10 names a banned term the pattern file cannot match:\n${JSON.stringify(c.findings, null, 2)}`);
+  assert.equal(
+    c.stats.uncoveredCount,
+    0,
+    `spec §10 names a banned term the pattern file cannot match:\n${JSON.stringify(c.findings, null, 2)}`
+  );
 });
 
 test('a spec-named term may be waived only via the acknowledged list, and stays visible', () => {
@@ -146,8 +155,11 @@ test('a spec-named term may be waived only via the acknowledged list, and stays 
     assert.match(c.stats.note ?? '', /deliberately NOT mechanized/);
     // Every acknowledged term must carry a reason long enough to be a reason.
     for (const p of c.stats.probes.filter(x => !x.covered)) {
-      assert.match(c.stats.note, new RegExp(p.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-        `uncovered term ${p.term} is neither a finding nor named in the note`);
+      assert.match(
+        c.stats.note,
+        new RegExp(p.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `uncovered term ${p.term} is neither a finding nor named in the note`
+      );
     }
   }
 });
@@ -161,7 +173,7 @@ test('the quick-check subject survives a reflow of the spec bullet', () => {
     '  中文 quick-check: `显著提升 / 基本可用`. Full enumeration → plugin\n' +
     '  `banned-vocab.patterns` (mechanical gate).\n\n' +
     '- next bullet with an unrelated `span / of / words`\n';
-  withSpec(reflowed, '显著提升|x\n基本可用|x\nrobust|x\ncomprehensive|x\n', (root) => {
+  withSpec(reflowed, '显著提升|x\n基本可用|x\nrobust|x\ncomprehensive|x\n', root => {
     const c = checkBannedVocabSpecDrift(root);
     assert.equal(c.stats.termCount, 4, `terms lost to reflow: ${JSON.stringify(c.stats.probes)}`);
     assert.equal(c.stats.uncoveredCount, 0, JSON.stringify(c.findings));

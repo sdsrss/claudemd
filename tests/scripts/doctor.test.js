@@ -17,9 +17,13 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
   fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '0.1.0', entries: []
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '0.1.0',
+      entries: [],
+    })
+  );
 });
 
 afterEach(() => {
@@ -40,9 +44,14 @@ test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)'
   const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
   fs.mkdirSync(mkt, { recursive: true });
   fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '0.1.0', pluginRoot: staleRoot, entries: []
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '0.1.0',
+      pluginRoot: staleRoot,
+      entries: [],
+    })
+  );
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'plugin cache:staleness');
   assert.ok(c, 'staleness check must exist when pluginRoot + marketplace are comparable');
@@ -58,9 +67,14 @@ test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.3
   const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
   fs.mkdirSync(mkt, { recursive: true });
   fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '9.9.9', pluginRoot: root, entries: []
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '9.9.9',
+      pluginRoot: root,
+      entries: [],
+    })
+  );
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'plugin cache:staleness');
   assert.ok(c);
@@ -73,17 +87,28 @@ test('plugin cache staleness: absent when marketplace has no comparable version 
   const root = path.join(tmpHome, 'cache/1.2.3');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.3' }));
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '1.2.3', pluginRoot: root, entries: []
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '1.2.3',
+      pluginRoot: root,
+      entries: [],
+    })
+  );
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'plugin cache:staleness');
   assert.equal(c, undefined, 'no staleness row when versions are not comparable');
 });
 
 test('doctor --prune-backups removes old backups', async () => {
-  for (const iso of ['20260101T000000Z','20260201T000000Z','20260301T000000Z',
-                     '20260401T000000Z','20260501T000000Z','20260601T000000Z']) {
+  for (const iso of [
+    '20260101T000000Z',
+    '20260201T000000Z',
+    '20260301T000000Z',
+    '20260401T000000Z',
+    '20260501T000000Z',
+    '20260601T000000Z',
+  ]) {
     fs.mkdirSync(path.join(tmpHome, `.claude/backup-${iso}`));
   }
   const r = await doctor({ pruneBackups: 3 });
@@ -126,13 +151,12 @@ test('doctor logs check ok when small (L5)', async () => {
 
 test('doctor runs banned-vocab self-test and reports pass when hook denies synthetic trigger', async () => {
   // Requires jq + bash on PATH; CI installs both. Skip assertion if absent.
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const r = await doctor({});
   const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
   assert.ok(selftest, 'self-test check must exist');
-  assert.equal(selftest.ok, true,
-    `self-test must pass on a clean tree; detail="${selftest.detail}"`);
+  assert.equal(selftest.ok, true, `self-test must pass on a clean tree; detail="${selftest.detail}"`);
   assert.match(selftest.detail, /significantly/);
   // Clean env: no kill-switch note should appear.
   assert.doesNotMatch(selftest.detail, /kill-switch engaged/);
@@ -145,13 +169,20 @@ test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a cle
   // never emit a deny. A hook dropped from the livenessTests list → find()
   // returns undefined → this test fails (coverage lock). session-start-check
   // + version-sync are intentionally excluded (bootstrap/network side-effects).
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const EXPECTED = [
-    'memory-read-check', 'ship-baseline-check', 'session-extended-read',
-    'transcript-vocab-scan', 'session-end-check', 'session-summary',
-    'mem-audit', 'residue-audit',
-    'sandbox-disposal-check', 'transcript-structure-scan', 'memory-prompt-hint',
+    'memory-read-check',
+    'ship-baseline-check',
+    'session-extended-read',
+    'transcript-vocab-scan',
+    'session-end-check',
+    'session-summary',
+    'mem-audit',
+    'residue-audit',
+    'sandbox-disposal-check',
+    'transcript-structure-scan',
+    'memory-prompt-hint',
   ];
   const r = await doctor({});
   for (const h of EXPECTED) {
@@ -162,13 +193,15 @@ test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a cle
 });
 
 test('doctor self-test detail notes kill-switch when user has disabled the hook via settings.json', async () => {
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   // Write a settings.json with the per-hook kill-switch engaged. The self-test
   // still runs against the hook CODE (with env cleared in spawn), but its
   // detail must call out that live enforcement is OFF for this user.
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
+  );
   const r = await doctor({});
   const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
   assert.ok(selftest);
@@ -178,25 +211,23 @@ test('doctor self-test detail notes kill-switch when user has disabled the hook 
 });
 
 test('doctor pre-bash-safety self-test:rm-rf-var passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const r = await doctor({});
   const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
   assert.ok(t, 'pre-bash-safety self-test:rm-rf-var check must exist');
-  assert.equal(t.ok, true,
-    `rm-rf-var self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.equal(t.ok, true, `rm-rf-var self-test must pass on a clean tree; detail="${t.detail}"`);
   assert.match(t.detail, /§8-rm-rf-var/);
   assert.match(t.detail, /UNSAFE_VAR/);
 });
 
 test('doctor pre-bash-safety self-test:npx-unpinned passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const r = await doctor({});
   const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
   assert.ok(t, 'pre-bash-safety self-test:npx-unpinned check must exist');
-  assert.equal(t.ok, true,
-    `npx-unpinned self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.equal(t.ok, true, `npx-unpinned self-test must pass on a clean tree; detail="${t.detail}"`);
   assert.match(t.detail, /§8-npx/);
   assert.match(t.detail, /unknown-pkg-x9z2/);
 });
@@ -207,28 +238,29 @@ test('doctor runs banned-vocab self-test:prose-scan and passes when Path 2 denie
   // would have shipped green through doctor. This selfTest stages a synthetic
   // transcript at HOME/.claude/projects/<encoded>/<sid>.jsonl with a §10-V
   // high-fire token, then drives the hook with `git push`. Must deny.
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const r = await doctor({});
   const t = r.checks.find(c => c.name === 'banned-vocab self-test:prose-scan');
   assert.ok(t, 'banned-vocab self-test:prose-scan check must exist');
-  assert.equal(t.ok, true,
-    `Path 2 self-test must pass on a clean tree; detail="${t.detail}"`);
+  assert.equal(t.ok, true, `Path 2 self-test must pass on a clean tree; detail="${t.detail}"`);
   assert.match(t.detail, /Path 2/);
   assert.match(t.detail, /significantly/);
 });
 
 test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from settings.json (v0.19.1 A2)', async () => {
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   // Per-hook kill-switch (NOT global) — must still pass code-integrity check
   // while emitting the kill-switch note in detail. Verifies the matrix
   // implementation reads each hook's own ksEnvVar, not just the global one.
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ env: { DISABLE_PRE_BASH_SAFETY_HOOK: '1' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_PRE_BASH_SAFETY_HOOK: '1' } })
+  );
   const r = await doctor({});
   const rmrf = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
-  const npx  = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
+  const npx = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
   const banned = r.checks.find(c => c.name === 'banned-vocab self-test');
   assert.equal(rmrf.ok, true);
   assert.match(rmrf.detail, /kill-switch engaged/);
@@ -241,7 +273,7 @@ test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from se
 });
 
 test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in process env', async () => {
-  const have = (b) => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const saved = process.env.DISABLE_CLAUDEMD_HOOKS;
   process.env.DISABLE_CLAUDEMD_HOOKS = '1';
@@ -262,12 +294,15 @@ test('D8: orphan manifest detected when manifest.pluginRoot path is absent', asy
   // /claudemd-uninstall step. Plugin cache is gone; manifest survives with
   // a now-stale pluginRoot. doctor must flag this so the user knows what to clean up.
   const ghostPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/9.9.9-removed');
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '9.9.9-removed',
-    installedAt: new Date().toISOString(),
-    pluginRoot: ghostPluginRoot,
-    entries: [],
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '9.9.9-removed',
+      installedAt: new Date().toISOString(),
+      pluginRoot: ghostPluginRoot,
+      entries: [],
+    })
+  );
   const r = await doctor({});
   const pc = r.checks.find(c => c.name === 'plugin cache');
   assert.ok(pc, 'plugin cache check must exist');
@@ -321,8 +356,10 @@ test('hook-drift flags differing hooks when marketplace install lags source (v0.
   fs.cpSync(sourceHooks, path.join(mktRoot, 'hooks'), { recursive: true });
   // Then break ONE file (the canonical drift target) to simulate the real
   // v0.9.15 silent fix that didn't propagate to the marketplace install.
-  fs.writeFileSync(path.join(mktRoot, 'hooks/lib/rule-hits.sh'),
-    "#!/usr/bin/env bash\n# stale (pre-v0.9.15)\nrule_hits_append() { :; }\n");
+  fs.writeFileSync(
+    path.join(mktRoot, 'hooks/lib/rule-hits.sh'),
+    '#!/usr/bin/env bash\n# stale (pre-v0.9.15)\nrule_hits_append() { :; }\n'
+  );
 
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'hook-drift');
@@ -339,7 +376,9 @@ test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 5
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -361,8 +400,12 @@ test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false dem
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny-repeat","spec_section":"§11-memory-read","extra":null}\n`.repeat(2),
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(2),
+    `{"ts":"${now}","hook":"memory-read-check","event":"deny-repeat","spec_section":"§11-memory-read","extra":null}\n`.repeat(
+      2
+    ),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
+      2
+    ),
   ].join('');
   fs.writeFileSync(log, rows);
   const r = await doctor({});
@@ -378,7 +421,9 @@ test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () =
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -393,7 +438,8 @@ test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () =
 test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', async () => {
   // Single deny on §10-V — too few to draw a ratio conclusion. No check emitted.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["robust"]}}\n`
   );
   const r = await doctor({});
@@ -409,7 +455,9 @@ test('R-N6+: demotion-candidate detail names the dominant bypass token (single t
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -428,7 +476,9 @@ test('R-N6+: demotion-candidate detail sorts mixed tokens by count desc', async 
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(3),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
+      3
+    ),
     `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"force-skip"}}\n`,
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
   ].join('');
@@ -453,7 +503,9 @@ test('v0.23.6: rule-usage never flags an immutable §8 section as a demotion can
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-npx","extra":{"token":"allow-npx-unpinned"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-npx","extra":{"token":"allow-npx-unpinned"}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"pre-bash-safety","event":"deny","spec_section":"§8-npx","extra":null}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -473,7 +525,9 @@ test('v0.23.6: hook-fail-open — bad-event fail-open is advisory (ok:true)', as
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows =
-    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"bad-event"},"session_id":null}\n`.repeat(2);
+    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"bad-event"},"session_id":null}\n`.repeat(
+      2
+    );
   fs.writeFileSync(log, rows);
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'hook-fail-open');
@@ -490,8 +544,7 @@ test('v0.23.6: hook-fail-open — patterns-missing fail-open flags a live bypass
   // reason (not session_id) is what makes this branch reachable in production.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
-  const rows =
-    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"patterns-missing"},"session_id":null}\n`;
+  const rows = `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"patterns-missing"},"session_id":null}\n`;
   fs.writeFileSync(log, rows);
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'hook-fail-open');
@@ -506,7 +559,9 @@ test('R-N6+: healthy rows stay terse — no token detail attached', async () => 
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -523,7 +578,9 @@ test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () 
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
-    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","extra":{"token":"allow-banned-vocab"}}\n`.repeat(5),
+    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","extra":{"token":"allow-banned-vocab"}}\n`.repeat(
+      5
+    ),
     `{"ts":"${now}","hook":"banned-vocab","event":"deny","extra":null}\n`,
   ].join('');
   fs.writeFileSync(log, rows);
@@ -545,9 +602,13 @@ test('rule-usage excludes test-session/probe rows (parity with audit.js)', async
   const realUuid = '11111111-2222-3333-4444-555555555555'; // 36-char real session
   const rows = [
     // 3 real denies (kept)
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"${realUuid}","extra":null}\n`.repeat(3),
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"${realUuid}","extra":null}\n`.repeat(
+      3
+    ),
     // 5 sentinel denies (session_id='s' — manual probe, must be excluded)
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"s","extra":null}\n`.repeat(5),
+    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"s","extra":null}\n`.repeat(
+      5
+    ),
   ].join('');
   fs.writeFileSync(log, rows);
   const r = await doctor({});
@@ -567,10 +628,14 @@ test('rule-usage demote token breakdown also excludes sentinel bypasses', async 
   const realUuid = '11111111-2222-3333-4444-555555555555';
   const rows = [
     // Real: 3 bypass via skip-memory-check + 1 deny → 75% override (demote candidate)
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":{"token":"skip-memory-check"}}\n`.repeat(3),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":{"token":"skip-memory-check"}}\n`.repeat(
+      3
+    ),
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":null}\n`,
     // Sentinel: 4 bypass via force-skip (manual probe) — must NOT appear anywhere
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"probe","extra":{"token":"force-skip"}}\n`.repeat(4),
+    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"probe","extra":{"token":"force-skip"}}\n`.repeat(
+      4
+    ),
   ].join('');
   fs.writeFileSync(log, rows);
   const r = await doctor({});
@@ -606,12 +671,15 @@ test('doctor CLI rejects unknown flag (was silent ignore)', () => {
 test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
   const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
   fs.mkdirSync(realPluginRoot, { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '0.5.4',
-    installedAt: new Date().toISOString(),
-    pluginRoot: realPluginRoot,
-    entries: [],
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '0.5.4',
+      installedAt: new Date().toISOString(),
+      pluginRoot: realPluginRoot,
+      entries: [],
+    })
+  );
   const r = await doctor({});
   const pc = r.checks.find(c => c.name === 'plugin cache');
   assert.ok(pc);
@@ -669,8 +737,10 @@ test('0.68.3: a dangling symlink in a backup dir does not stop the run', () => {
     encoding: 'utf8',
   });
 
-  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
-    `must not exit via unhandled rejection; stderr=${r.stderr}`);
+  assert.ok(
+    !/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`
+  );
   assert.match(r.stdout, /"checks"/, 'checks must still be printed');
   assert.match(r.stdout, /"backups"/, 'the backup inventory itself must still report');
 });
@@ -686,12 +756,12 @@ test('0.68.3: a throw inside doctor() is named, not a bare stack, and is not exi
     encoding: 'utf8',
   });
 
-  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
-    `must not exit via unhandled rejection; stderr=${r.stderr}`);
-  assert.match(r.stderr, /\[claudemd\] doctor failed:/,
-    `expected a named failure line; stderr=${r.stderr}`);
-  assert.notEqual(r.status, 0,
-    'a run that failed must not report success — pre-fix this exited 0');
+  assert.ok(
+    !/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`
+  );
+  assert.match(r.stderr, /\[claudemd\] doctor failed:/, `expected a named failure line; stderr=${r.stderr}`);
+  assert.notEqual(r.status, 0, 'a run that failed must not report success — pre-fix this exited 0');
 });
 
 test('R10-03: --prune-backups leaves the legacy dirs the same run reports', async () => {
@@ -712,8 +782,7 @@ test('R10-03: --prune-backups leaves the legacy dirs the same run reports', asyn
 
   const r = await doctor({ pruneBackups: 1 });
 
-  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')),
-    'genuine personal backup survives the prune');
+  assert.ok(fs.existsSync(path.join(personal, 'CLAUDE.md')), 'genuine personal backup survives the prune');
   for (const d of legacyDirs) assert.ok(fs.existsSync(d), 'legacy dir left for the user');
   assert.deepEqual(r.pruned, []);
   // One caliber: what the report named is exactly what the prune skipped.
@@ -739,12 +808,16 @@ test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async ()
 // clean" and "not ok when dirty" together still permit a check that reports a
 // clean routing surface having parsed no table at all.
 const stageExtSpec = (overrides, specText) => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'),
-    specText ?? fs.readFileSync('spec/CLAUDE-extended.md', 'utf8'));
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ skillOverrides: overrides }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE-extended.md'),
+    specText ?? fs.readFileSync('spec/CLAUDE-extended.md', 'utf8')
+  );
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ skillOverrides: overrides })
+  );
 };
-const routingCheck = (r) => r.checks.find((x) => x.name === 'routing:skills-enabled');
+const routingCheck = r => r.checks.find(x => x.name === 'routing:skills-enabled');
 
 test('routing:skills-enabled passes when no §4 primary is disabled', async () => {
   stageExtSpec({ 'some-unrelated-skill': 'off' });

@@ -37,8 +37,7 @@ test('sha256File returns hex digest of file contents', () => {
   fs.writeFileSync(f, 'abc');
   // Locked to the published SHA-256 of "abc" — if the algorithm impl
   // ever drifts, every spec-hash check downstream silently lies. Pin it.
-  assert.equal(sha256File(f),
-    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  assert.equal(sha256File(f), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 });
 
 test('sha256File returns null for missing file', () => {
@@ -124,6 +123,8 @@ test('compareSpecs covers all four spec files in fixed order', () => {
   writeShipped('CLAUDE-changelog.md', 'c');
   writeShipped('OPERATOR.md', 'd');
   const r = compareSpecs(tmpPluginRoot);
-  assert.deepEqual(r.map(x => x.name),
-    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']);
+  assert.deepEqual(
+    r.map(x => x.name),
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']
+  );
 });

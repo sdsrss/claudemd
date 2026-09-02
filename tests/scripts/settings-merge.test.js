@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { readSettings, writeSettings, mergeHook, unmergeHook, isClaudemdLegacyHookCommand } from '../../scripts/lib/settings-merge.js';
+import {
+  readSettings,
+  writeSettings,
+  mergeHook,
+  unmergeHook,
+  isClaudemdLegacyHookCommand,
+} from '../../scripts/lib/settings-merge.js';
 import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
 
 // Derived, not hand-copied (audit-2026-08-22 条目 8). This list was 8 of the 15
@@ -27,7 +33,7 @@ afterEach(() => {
 });
 
 const settingsFile = () => path.join(tmpHome, '.claude/settings.json');
-const loadFixture = (name) => JSON.parse(fs.readFileSync(path.join(FIX, name), 'utf8'));
+const loadFixture = name => JSON.parse(fs.readFileSync(path.join(FIX, name), 'utf8'));
 
 const HOOK_SPEC = {
   event: 'PreToolUse',
@@ -72,7 +78,7 @@ test('4: identical command already present → idempotent (added=false)', () => 
 test('5: unmergeHook removes only matching entries', () => {
   const s = loadFixture('with-claude-mem-lite.json');
   mergeHook(s, HOOK_SPEC);
-  const { removed } = unmergeHook(s, { commandPredicate: (c) => c.includes('ship-baseline-check.sh') });
+  const { removed } = unmergeHook(s, { commandPredicate: c => c.includes('ship-baseline-check.sh') });
   assert.equal(removed, 1);
   const bash = s.hooks.PreToolUse.find(m => m.matcher === 'Bash');
   assert.equal(bash.hooks.length, 1);
@@ -80,7 +86,7 @@ test('5: unmergeHook removes only matching entries', () => {
 
 test('6: unmergeHook preserves other-plugin entries', () => {
   const s = loadFixture('with-claude-mem-lite.json');
-  unmergeHook(s, { commandPredicate: (c) => c.includes('claudemd') });
+  unmergeHook(s, { commandPredicate: c => c.includes('claudemd') });
   const userPrompt = s.hooks.UserPromptSubmit;
   assert.equal(userPrompt[0].hooks[0].command.includes('claude-mem-lite'), true);
 });
@@ -152,7 +158,7 @@ test('16: unmergeHook on empty settings no-op', () => {
 
 test('17: unmergeHook removes entire matcher block + event key + hooks key when all drop (v0.1.9)', () => {
   const s = { hooks: { PreToolUse: [{ matcher: 'X', hooks: [{ type: 'command', command: 'ours' }] }] } };
-  unmergeHook(s, { commandPredicate: (c) => c === 'ours' });
+  unmergeHook(s, { commandPredicate: c => c === 'ours' });
   // Empty event keys and the top-level hooks object are pruned so repeated
   // install/uninstall cycles leave settings.json without `"PreToolUse": []`
   // scaffolding residue.
@@ -166,11 +172,11 @@ test('17b (v0.23.18): unmergeHook tolerates malformed-but-valid-JSON settings wi
   // "install failed: …" during the adopter's first-touch flow. Each must now
   // no-op gracefully and leave the malformed structure untouched.
   const malformed = [
-    { hooks: { PreToolUse: 'oops' } },                                  // event value not an array
-    { hooks: { PreToolUse: [{ matcher: 'Bash' }] } },                   // block missing hooks[]
-    { hooks: { PreToolUse: [null] } },                                  // null block
-    { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [null] }] } },    // null hook entry
-    { hooks: [] },                                                      // hooks itself an array
+    { hooks: { PreToolUse: 'oops' } }, // event value not an array
+    { hooks: { PreToolUse: [{ matcher: 'Bash' }] } }, // block missing hooks[]
+    { hooks: { PreToolUse: [null] } }, // null block
+    { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [null] }] } }, // null hook entry
+    { hooks: [] }, // hooks itself an array
   ];
   for (const s of malformed) {
     const snapshot = JSON.stringify(s);
@@ -183,11 +189,20 @@ test('17b (v0.23.18): unmergeHook tolerates malformed-but-valid-JSON settings wi
 test('17c (v0.23.18): unmergeHook still evicts claudemd + preserves a user hook in a mixed block', () => {
   // Well-formed path is unchanged by the malformed-tolerance guards: evict the
   // claudemd entry, keep the user's own hook, keep the (still non-empty) block.
-  const s = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [
-    { type: 'command', command: '/home/me/mine.sh' },
-    { type: 'command', command: '/x/plugins/cache/claudemd/hooks/h.sh' },
-  ] }] } };
-  const { removed } = unmergeHook(s, { commandPredicate: (c) => c.includes('claudemd') });
+  const s = {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: 'Bash',
+          hooks: [
+            { type: 'command', command: '/home/me/mine.sh' },
+            { type: 'command', command: '/x/plugins/cache/claudemd/hooks/h.sh' },
+          ],
+        },
+      ],
+    },
+  };
+  const { removed } = unmergeHook(s, { commandPredicate: c => c.includes('claudemd') });
   assert.equal(removed, 1);
   const cmds = s.hooks.PreToolUse[0].hooks.map(h => h.command);
   assert.deepEqual(cmds, ['/home/me/mine.sh']);
@@ -286,7 +301,11 @@ test('R11-01.2: writeSettings writes THROUGH a symlink, leaving the link intact'
   writeSettings({ env: { A: '2' } });
 
   assert.equal(fs.lstatSync(settingsFile()).isSymbolicLink(), true, 'settings.json must still be a symlink');
-  assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { env: { A: '2' } }, 'symlink target must carry the new content');
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(target, 'utf8')),
+    { env: { A: '2' } },
+    'symlink target must carry the new content'
+  );
   assert.equal(fs.statSync(target).mode & 0o777, 0o600, 'target mode preserved');
 });
 

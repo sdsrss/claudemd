@@ -57,12 +57,12 @@ test('README per-hook kill-switch list matches hook_kill_switch calls', () => {
   assert.deepEqual(
     missingFromReadme,
     [],
-    `README missing kill-switch entries for hooks that DO honor them: ${missingFromReadme.join(', ')}`,
+    `README missing kill-switch entries for hooks that DO honor them: ${missingFromReadme.join(', ')}`
   );
   assert.deepEqual(
     documentedButNoHook,
     [],
-    `README documents kill-switch vars that no hook actually checks: ${documentedButNoHook.join(', ')}`,
+    `README documents kill-switch vars that no hook actually checks: ${documentedButNoHook.join(', ')}`
   );
 });
 
@@ -74,24 +74,24 @@ test('hook_kill_switch arg in each hook matches its filename family', () => {
   const expected = expectedKillSwitchVars();
   // Pinned mapping — env var → owning hook basename.
   const pinned = {
-    DISABLE_BANNED_VOCAB_HOOK:             'banned-vocab-check.sh',
-    DISABLE_MEM_AUDIT_HOOK:                'mem-audit.sh',
-    DISABLE_MEMORY_READ_HOOK:              'memory-read-check.sh',
-    DISABLE_PRE_BASH_SAFETY_HOOK:          'pre-bash-safety-check.sh',
-    DISABLE_RESIDUE_AUDIT_HOOK:            'residue-audit.sh',
-    DISABLE_SANDBOX_DISPOSAL_HOOK:         'sandbox-disposal-check.sh',
-    DISABLE_SESSION_START_HOOK:            'session-start-check.sh',
-    DISABLE_SESSION_SUMMARY_HOOK:          'session-summary.sh',
-    DISABLE_SHIP_BASELINE_HOOK:            'ship-baseline-check.sh',
-    DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK:'transcript-structure-scan.sh',
-    DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK:    'transcript-vocab-scan.sh',
-    DISABLE_USER_PROMPT_SUBMIT_HOOK:       'version-sync.sh',
+    DISABLE_BANNED_VOCAB_HOOK: 'banned-vocab-check.sh',
+    DISABLE_MEM_AUDIT_HOOK: 'mem-audit.sh',
+    DISABLE_MEMORY_READ_HOOK: 'memory-read-check.sh',
+    DISABLE_PRE_BASH_SAFETY_HOOK: 'pre-bash-safety-check.sh',
+    DISABLE_RESIDUE_AUDIT_HOOK: 'residue-audit.sh',
+    DISABLE_SANDBOX_DISPOSAL_HOOK: 'sandbox-disposal-check.sh',
+    DISABLE_SESSION_START_HOOK: 'session-start-check.sh',
+    DISABLE_SESSION_SUMMARY_HOOK: 'session-summary.sh',
+    DISABLE_SHIP_BASELINE_HOOK: 'ship-baseline-check.sh',
+    DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK: 'transcript-structure-scan.sh',
+    DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK: 'transcript-vocab-scan.sh',
+    DISABLE_USER_PROMPT_SUBMIT_HOOK: 'version-sync.sh',
   };
   for (const [envVar, hook] of Object.entries(pinned)) {
     assert.equal(
       expected.get(envVar),
       hook,
-      `${envVar} should disable ${hook} (got: ${expected.get(envVar) || 'undefined'})`,
+      `${envVar} should disable ${hook} (got: ${expected.get(envVar) || 'undefined'})`
     );
   }
 });
@@ -123,8 +123,11 @@ function hookEscapeTokens() {
     // implementation, and a detector that counts it would be satisfied by the
     // description of the thing it guards (feedback_self_referential_marker_regex,
     // the same guard readme-drift.test.js's codeOf() applies).
-    const src = fs.readFileSync(path.join(hooksDir, h), 'utf8')
-      .split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    const src = fs
+      .readFileSync(path.join(hooksDir, h), 'utf8')
+      .split('\n')
+      .filter(l => !/^\s*#/.test(l))
+      .join('\n');
     for (const m of src.matchAll(ESCAPE_TOKEN_RE)) out.add(m[0]);
   }
   return out;
@@ -140,8 +143,10 @@ test('R10-08: every [allow-*] token a hook implements is in status.js ESCAPE_TOK
   const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
   assert.ok(block, 'ESCAPE_TOKENS array not found in scripts/status.js');
   for (const t of tokens) {
-    assert.ok(block[1].includes(t),
-      `${t} is implemented in hooks/ but missing from scripts/status.js ESCAPE_TOKENS`);
+    assert.ok(
+      block[1].includes(t),
+      `${t} is implemented in hooks/ but missing from scripts/status.js ESCAPE_TOKENS`
+    );
   }
 });
 
@@ -149,8 +154,7 @@ test('R10-08: every [allow-*] token a hook implements is in the README escape ta
   const tokens = hookEscapeTokens();
   const readme = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
   for (const t of tokens) {
-    assert.ok(readme.includes(t),
-      `${t} is implemented in hooks/ but never appears in README.md`);
+    assert.ok(readme.includes(t), `${t} is implemented in hooks/ but never appears in README.md`);
   }
 });
 
@@ -161,7 +165,6 @@ test('R10-08: no reference documents a token no hook implements', () => {
   const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
   const block = statusSrc.match(/const ESCAPE_TOKENS = \[([\s\S]*?)\n\];/);
   for (const m of block[1].matchAll(ESCAPE_TOKEN_RE)) {
-    assert.ok(tokens.has(m[0]),
-      `${m[0]} is documented in ESCAPE_TOKENS but no hook implements it`);
+    assert.ok(tokens.has(m[0]), `${m[0]} is documented in ESCAPE_TOKENS but no hook implements it`);
   }
 });

@@ -50,8 +50,11 @@ test('hook .sh sources use POSIX classes, not BSD-unsafe \\s/\\d/\\w', () => {
       }
     }
   }
-  assert.deepEqual(offenders, [],
+  assert.deepEqual(
+    offenders,
+    [],
     `Hook shell sources using GNU-only regex escapes (break on BSD/macOS grep/sed):\n` +
-    offenders.join('\n') +
-    `\nResolution: \\s→[[:space:]], \\d→[[:digit:]], \\w→[[:alnum:]_]. \\b is OK.`);
+      offenders.join('\n') +
+      `\nResolution: \\s→[[:space:]], \\d→[[:digit:]], \\w→[[:alnum:]_]. \\b is OK.`
+  );
 });

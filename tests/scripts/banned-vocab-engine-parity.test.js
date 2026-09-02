@@ -44,15 +44,15 @@ const PROBES = [
   '功能基本可用',
   '效果相当不错',
   '5x faster path',
-  '3× faster path',                   // unicode × — same claim shape as 5x
+  '3× faster path', // unicode × — same claim shape as 5x
   '这个应该可以了',
   '缓存后 50%更快',
   '优化带来 3倍提升',
   // Boundary + clean (parity must agree here too):
-  'robustness testing suite',        // \brobust\b must NOT match robust-ness
+  'robustness testing suite', // \brobust\b must NOT match robust-ness
   'the fix is verified, 12/12 tests', // clean
-  'refactor the parser module',       // clean
-  'p99 580ms then 140ms after',       // clean, no banned token
+  'refactor the parser module', // clean
+  'p99 580ms then 140ms after', // clean, no banned token
 ];
 
 function grepMatches(regex, probe) {
@@ -81,11 +81,11 @@ test('§10-V: grep -iE and JS RegExp return the same verdict for every (pattern,
 
 test('§10-V: every pattern is exercised by at least one matching probe (no untested pattern)', () => {
   const unexercised = patterns
-    .filter((p) => !PROBES.some((probe) => scan(probe, { patterns: [p] }).length > 0))
-    .map((p) => p.regex);
+    .filter(p => !PROBES.some(probe => scan(probe, { patterns: [p] }).length > 0))
+    .map(p => p.regex);
   assert.deepEqual(
     unexercised,
     [],
-    `patterns with no matching probe — add one so engine parity is actually tested:\n${unexercised.join('\n')}`,
+    `patterns with no matching probe — add one so engine parity is actually tested:\n${unexercised.join('\n')}`
   );
 });

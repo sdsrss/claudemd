@@ -65,10 +65,11 @@ const SPEC_FLOOR = 5;
 
 function trackedSpecs() {
   return execFileSync('git', ['ls-files', 'tasks/specs/*.md'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\n').filter(Boolean);
+    .split('\n')
+    .filter(Boolean);
 }
 
-const statusOf = (text) => (text.match(/^status:[ \t]*(\S+)/m) || [])[1];
+const statusOf = text => (text.match(/^status:[ \t]*(\S+)/m) || [])[1];
 
 // Only a backtick token IMMEDIATELY after the marker counts as a declared
 // artifact. `- Produces: a test asserting … \`CURLSH_WRAP\` …` names a symbol it
@@ -77,8 +78,8 @@ const statusOf = (text) => (text.match(/^status:[ \t]*(\S+)/m) || [])[1];
 // `s8_split_segments <multiline-cmd>` declares `s8_split_segments`.
 function declaredArtifacts(text) {
   return [...text.matchAll(/^- Produces: `([^`]+)`/gm)]
-    .map((m) => m[1].split(/\s+/)[0])
-    .filter((n) => /^[A-Za-z_][\w.-]*$/.test(n));
+    .map(m => m[1].split(/\s+/)[0])
+    .filter(n => /^[A-Za-z_][\w.-]*$/.test(n));
 }
 
 // The haystack deliberately excludes tasks/specs/ itself: a plan naming the
@@ -100,16 +101,21 @@ function declaredArtifacts(text) {
 // a `_doc` value is a mention, and mentions no longer count.
 function codeHaystack() {
   const files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\n').filter(Boolean)
-    .filter((f) => !f.startsWith('tasks/specs/'))
-    .filter((f) => !f.startsWith('docs/'))
-    .filter((f) => f !== 'CHANGELOG.md');
-  const paths = new Set(files.map((f) => path.basename(f)));
+    .split('\n')
+    .filter(Boolean)
+    .filter(f => !f.startsWith('tasks/specs/'))
+    .filter(f => !f.startsWith('docs/'))
+    .filter(f => f !== 'CHANGELOG.md');
+  const paths = new Set(files.map(f => path.basename(f)));
   let code = '';
   for (const f of files) {
     if (!/\.(sh|js|mjs|json|tsv)$/.test(f)) continue;
     let text;
-    try { text = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch { continue; }
+    try {
+      text = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    } catch {
+      continue;
+    }
     code += stripNonCode(text, f);
     code += '\n';
   }
@@ -135,13 +141,14 @@ function codeHaystack() {
 // out of each other's way. Anchoring is what makes the shape unambiguous, and
 // it is also what a block comment written to be read looks like.
 function stripNonCode(text, file) {
-  const body = /\.(js|mjs)$/.test(file)
-    ? text.replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, ' ')
-    : text;
-  return body.split('\n').map((l) => l.replace(/(^|\s)(#|\/\/).*$/, '')).join('\n');
+  const body = /\.(js|mjs)$/.test(file) ? text.replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, ' ') : text;
+  return body
+    .split('\n')
+    .map(l => l.replace(/(^|\s)(#|\/\/).*$/, ''))
+    .join('\n');
 }
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // `- Produces:` claims the spec CREATES the thing. So presence has to be judged
 // on a definition site, not on the name turning up somewhere — the difference
@@ -168,7 +175,10 @@ function definitionShapes(name) {
     new RegExp(`^[ \\t]*(?:export[ \\t]+)?(?:async[ \\t]+)?function[ \\t]+${n}\\b`, 'm'),
     new RegExp(`^[ \\t]*(?:export[ \\t]+)?(?:const|let|var)[ \\t]+${n}\\b[ \\t]*=`, 'm'),
     // Shell assignment, including the readonly/local/declare/export prefixes.
-    new RegExp(`^[ \\t]*(?:readonly[ \\t]+|local[ \\t]+|export[ \\t]+|declare[ \\t]+-[A-Za-z]+[ \\t]+)?${n}=`, 'm'),
+    new RegExp(
+      `^[ \\t]*(?:readonly[ \\t]+|local[ \\t]+|export[ \\t]+|declare[ \\t]+-[A-Za-z]+[ \\t]+)?${n}=`,
+      'm'
+    ),
     // A JSON key is that file's definition of the name.
     new RegExp(`"${n}"[ \\t]*:`),
   ];
@@ -191,8 +201,8 @@ function artifactPresence(artifacts, { code, paths }) {
     // missing (pre-tag review of this release). A produced file is present when
     // the file is there; asking whether something defines `hard-rules.json` as
     // a symbol was never the question.
-    const hit = paths.has(a)
-      || (!/\.(sh|js|mjs|tsv)$/.test(a) && definitionShapes(a).some((re) => re.test(code)));
+    const hit =
+      paths.has(a) || (!/\.(sh|js|mjs|tsv)$/.test(a) && definitionShapes(a).some(re => re.test(code)));
     (hit ? present : missing).push(a);
   }
   return { present, missing };
@@ -200,17 +210,22 @@ function artifactPresence(artifacts, { code, paths }) {
 
 test('every tracked spec carries a known status', () => {
   const specs = trackedSpecs();
-  assert.ok(specs.length >= SPEC_FLOOR,
+  assert.ok(
+    specs.length >= SPEC_FLOOR,
     `only ${specs.length} tracked spec(s) under tasks/specs/ (floor ${SPEC_FLOOR}) — ` +
-    'the glob matched nothing or the layout moved; refusing to report a clean status scan over that few.');
+      'the glob matched nothing or the layout moved; refusing to report a clean status scan over that few.'
+  );
   const bad = [];
   for (const s of specs) {
     const st = statusOf(fs.readFileSync(path.join(ROOT, s), 'utf8'));
     if (!KNOWN_STATUSES.includes(st)) bad.push(`${s} — status: ${st ?? '<missing>'}`);
   }
-  assert.deepEqual(bad, [],
+  assert.deepEqual(
+    bad,
+    [],
     `spec(s) with a missing or unrecognised status (expected one of ${KNOWN_STATUSES.join('/')}):\n      ` +
-    bad.join('\n      '));
+      bad.join('\n      ')
+  );
 });
 
 // The `continue` on a spec with fewer than two declared artifacts used to be
@@ -225,7 +240,7 @@ test('every tracked spec carries a known status', () => {
 // So the unevaluated ones are now a failure of their own rather than a skip:
 // an open spec that declares no parseable artifact is a spec whose completion
 // this gate cannot check, and saying so is the only honest report available.
-test('no open spec has already been fully implemented', (t) => {
+test('no open spec has already been fully implemented', t => {
   const { code, paths } = codeHaystack();
   const specs = trackedSpecs();
   const stale = [];
@@ -239,7 +254,9 @@ test('no open spec has already been fully implemented', (t) => {
     const artifacts = declaredArtifacts(text);
     // Two or more, so a single generic name cannot condemn a spec by collision.
     if (artifacts.length < 2) {
-      unevaluable.push(`${s} — status: ${status}, declares ${artifacts.length} parseable \`- Produces:\` artifact(s)`);
+      unevaluable.push(
+        `${s} — status: ${status}, declares ${artifacts.length} parseable \`- Produces:\` artifact(s)`
+      );
       continue;
     }
     judged++;
@@ -266,23 +283,35 @@ test('no open spec has already been fully implemented', (t) => {
 
   // Printed on the green path too, which is the point: the count is the
   // difference between a clean scan and an empty one.
-  t.diagnostic(`${specs.length} tracked spec(s); ${judged + unevaluable.length} open ` +
-    `(${OPEN_STATUSES.join('/')}); ${judged} evaluated against the tree, ${unevaluable.length} not evaluable` +
-    (partial.length ? `\n      partially present (in progress, or an artifact was renamed):\n      ` +
-      partial.join('\n      ') : ''));
+  t.diagnostic(
+    `${specs.length} tracked spec(s); ${judged + unevaluable.length} open ` +
+      `(${OPEN_STATUSES.join('/')}); ${judged} evaluated against the tree, ${unevaluable.length} not evaluable` +
+      (partial.length
+        ? `\n      partially present (in progress, or an artifact was renamed):\n      ` +
+          partial.join('\n      ')
+        : '')
+  );
 
-  assert.deepEqual(stale, [],
+  assert.deepEqual(
+    stale,
+    [],
     `a spec still marked open — i.e. an unmet commitment — has every artifact it plans ` +
-    'already in the tree:\n      ' + stale.join('\n      ') +
-    '\n      Flip it to `status: implemented` and record the commit that landed it. If the ' +
-    'work really is outstanding, the names collided and the spec should say so.');
+      'already in the tree:\n      ' +
+      stale.join('\n      ') +
+      '\n      Flip it to `status: implemented` and record the commit that landed it. If the ' +
+      'work really is outstanding, the names collided and the spec should say so.'
+  );
 
-  assert.deepEqual(unevaluable, [],
+  assert.deepEqual(
+    unevaluable,
+    [],
     'an open spec declares nothing this gate can look for, so its completion was not ' +
-    'checked — and a scan that reports green over an empty subset is the failure this ' +
-    'gate exists to prevent:\n      ' + unevaluable.join('\n      ') +
-    '\n      Give it two or more `- Produces: `name`` lines naming what it creates, or set ' +
-    'its status to implemented/rejected if it is no longer an open commitment.');
+      'checked — and a scan that reports green over an empty subset is the failure this ' +
+      'gate exists to prevent:\n      ' +
+      unevaluable.join('\n      ') +
+      '\n      Give it two or more `- Produces: `name`` lines naming what it creates, or set ' +
+      'its status to implemented/rejected if it is no longer an open commitment.'
+  );
 });
 
 // The two tests above judge whatever the tree happens to contain, and today that
@@ -300,15 +329,18 @@ test('presence is judged on a definition, not on the name appearing somewhere', 
   // the suite still green — the pre-tag review removed the `function name(…)`
   // and JSON-key arms and all six tests passed, while the predicate's reach
   // over this tree's exported functions collapsed from 91/99 to 6/99.
-  const defined = { code: [
-    'do_the_thing() {',
-    '  echo hi',
-    '}',
-    'export async function with_args(a, b) {',
-    'const a_binding = 1',
-    'readonly THE_LIMIT=40',
-    '{ "a_json_key": 1 }',
-  ].join('\n'), paths };
+  const defined = {
+    code: [
+      'do_the_thing() {',
+      '  echo hi',
+      '}',
+      'export async function with_args(a, b) {',
+      'const a_binding = 1',
+      'readonly THE_LIMIT=40',
+      '{ "a_json_key": 1 }',
+    ].join('\n'),
+    paths,
+  };
   const declared = ['do_the_thing', 'with_args', 'a_binding', 'THE_LIMIT', 'a_json_key'];
   assert.deepEqual(artifactPresence(declared, defined), { present: declared, missing: [] });
 
@@ -317,13 +349,18 @@ test('presence is judged on a definition, not on the name appearing somewhere', 
   // review reproduced from the other side: `cache` and `resolve` appear in
   // dozens of tracked files and the unanchored predicate read that as "the
   // plan's work is done, flip it to implemented".
-  const mentioned = { code: [
-    'do_the_thing "$1"',
-    'if [[ -n "$THE_LIMIT" ]]; then run; fi',
-    '{ "_doc": "cache and resolve are described here", "rationale": "do_the_thing" }',
-  ].join('\n'), paths };
-  assert.deepEqual(artifactPresence(['do_the_thing', 'THE_LIMIT'], mentioned),
-    { present: [], missing: ['do_the_thing', 'THE_LIMIT'] });
+  const mentioned = {
+    code: [
+      'do_the_thing "$1"',
+      'if [[ -n "$THE_LIMIT" ]]; then run; fi',
+      '{ "_doc": "cache and resolve are described here", "rationale": "do_the_thing" }',
+    ].join('\n'),
+    paths,
+  };
+  assert.deepEqual(artifactPresence(['do_the_thing', 'THE_LIMIT'], mentioned), {
+    present: [],
+    missing: ['do_the_thing', 'THE_LIMIT'],
+  });
 });
 
 test('a renamed artifact leaves the rest of the spec visible, not silent', () => {
@@ -332,8 +369,10 @@ test('a renamed artifact leaves the rest of the spec visible, not silent', () =>
   // reported `false` for the spec as a whole and printed nothing, so the spec
   // could never be judged again; the split says which one is missing.
   const haystack = { code: 'alpha() {\n}\nbeta() {\n}\n', paths: new Set() };
-  assert.deepEqual(artifactPresence(['alpha', 'beta', 'gamma'], haystack),
-    { present: ['alpha', 'beta'], missing: ['gamma'] });
+  assert.deepEqual(artifactPresence(['alpha', 'beta', 'gamma'], haystack), {
+    present: ['alpha', 'beta'],
+    missing: ['gamma'],
+  });
 });
 
 // The fixtures above pin the RULES; this pins the HAYSTACK, and it is the only
@@ -346,26 +385,40 @@ test('a renamed artifact leaves the rest of the spec visible, not silent', () =>
 // Derived from the source rather than listed: an exported function is one this
 // repo really does produce, so anything the predicate cannot see here it could
 // not see in a spec that declared it either.
-test('no tracked exported function is invisible to the predicate', (t) => {
+test('no tracked exported function is invisible to the predicate', t => {
   const { code, paths } = codeHaystack();
-  const files = execFileSync('git', ['ls-files', 'scripts/*.js', 'scripts/lib/*.js', 'tests/lib/*.js'],
-    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const files = execFileSync('git', ['ls-files', 'scripts/*.js', 'scripts/lib/*.js', 'tests/lib/*.js'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
   const names = new Set();
   for (const f of files) {
-    for (const m of fs.readFileSync(path.join(ROOT, f), 'utf8')
-      .matchAll(/^export[ \t]+(?:async[ \t]+)?function[ \t]+([A-Za-z_]\w*)/gm)) names.add(m[1]);
+    for (const m of fs
+      .readFileSync(path.join(ROOT, f), 'utf8')
+      .matchAll(/^export[ \t]+(?:async[ \t]+)?function[ \t]+([A-Za-z_]\w*)/gm))
+      names.add(m[1]);
   }
-  assert.ok(names.size >= 40,
+  assert.ok(
+    names.size >= 40,
     `only ${names.size} exported function(s) found across ${files.length} tracked script file(s) — ` +
-    'the derivation broke, and a check over that few proves nothing.');
+      'the derivation broke, and a check over that few proves nothing.'
+  );
 
   const { missing } = artifactPresence([...names], { code, paths });
-  t.diagnostic(`${names.size} exported function(s) across ${files.length} file(s); ${missing.length} invisible`);
-  assert.deepEqual(missing, [],
+  t.diagnostic(
+    `${names.size} exported function(s) across ${files.length} file(s); ${missing.length} invisible`
+  );
+  assert.deepEqual(
+    missing,
+    [],
     'a function this repo exports cannot be found in the haystack the drift gate searches, so a ' +
-    'spec declaring it would read as unfinished forever:\n      ' + missing.join('\n      ') +
-    '\n      Either a definition shape is missing, or — far likelier — something in codeHaystack() ' +
-    'is removing real code on its way in.');
+      'spec declaring it would read as unfinished forever:\n      ' +
+      missing.join('\n      ') +
+      '\n      Either a definition shape is missing, or — far likelier — something in codeHaystack() ' +
+      'is removing real code on its way in.'
+  );
 });
 
 test('an artifact named as a file is looked for as a file', () => {
@@ -377,7 +430,8 @@ test('an artifact named as a file is looked for as a file', () => {
   const haystack = { code: '', paths: new Set(['s8-diff-scan.sh', 'hard-rules.json']) };
   assert.deepEqual(
     artifactPresence(['s8-diff-scan.sh', 'hard-rules.json', 'missing-tool.sh', 'absent.json'], haystack),
-    { present: ['s8-diff-scan.sh', 'hard-rules.json'], missing: ['missing-tool.sh', 'absent.json'] });
+    { present: ['s8-diff-scan.sh', 'hard-rules.json'], missing: ['missing-tool.sh', 'absent.json'] }
+  );
 });
 
 test('a definition inside a JS block comment is not a definition', () => {
@@ -393,10 +447,14 @@ test('a definition inside a JS block comment is not a definition', () => {
   // a control that does not turn the assertion's own predicate false proves the
   // mutation missed, not that the gate holds).
   const js = stripNonCode('/*\nconst planned_helper = 1\n*/\nconst real_helper = 2\n', 'x.js');
-  assert.deepEqual(artifactPresence(['planned_helper', 'real_helper'], { code: js, paths: new Set() }),
-    { present: ['real_helper'], missing: ['planned_helper'] });
+  assert.deepEqual(artifactPresence(['planned_helper', 'real_helper'], { code: js, paths: new Set() }), {
+    present: ['real_helper'],
+    missing: ['planned_helper'],
+  });
 
   const sh = stripNonCode('rm -rf /*\nkeep_me() {\n', 'x.sh');
-  assert.deepEqual(artifactPresence(['keep_me'], { code: sh, paths: new Set() }),
-    { present: ['keep_me'], missing: [] });
+  assert.deepEqual(artifactPresence(['keep_me'], { code: sh, paths: new Set() }), {
+    present: ['keep_me'],
+    missing: [],
+  });
 });

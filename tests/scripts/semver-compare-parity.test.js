@@ -43,10 +43,11 @@ test('every `sort -V` comparison in hooks/ is semver-gated', () => {
   assert.ok(sites.length >= 4, `expected >= 4 sort -V sites, found ${sites.length}`);
   const ungated = sites.filter(s => !s.guarded).map(s => `${s.file}:${s.line}`);
   assert.deepEqual(
-    ungated, [],
+    ungated,
+    [],
     `ungated version comparison(s): ${ungated.join(', ')} — filter operands with ` +
-    `^[0-9]+\\.[0-9]+\\.[0-9]+$ (SEMVER_RE's shape) before comparing, or the bash and ` +
-    `JS engines disagree on prerelease/dev strings`
+      `^[0-9]+\\.[0-9]+\\.[0-9]+$ (SEMVER_RE's shape) before comparing, or the bash and ` +
+      `JS engines disagree on prerelease/dev strings`
   );
 });
 
@@ -54,16 +55,18 @@ test('bash and JS pick the same newer version for strict-semver pairs', () => {
   const pairs = [
     ['0.61.0', '0.61.1'],
     ['0.61.0', '0.62.0'],
-    ['0.9.0', '0.10.0'],     // lexical ordering trap
+    ['0.9.0', '0.10.0'], // lexical ordering trap
     ['1.0.0', '0.99.99'],
     ['0.61.0', '0.61.0'],
-    ['2.0.0', '10.0.0'],     // multi-digit major
+    ['2.0.0', '10.0.0'], // multi-digit major
     ['0.2.10', '0.2.9'],
   ];
 
   for (const [a, b] of pairs) {
     assert.ok(SEMVER_RE.test(a) && SEMVER_RE.test(b), `fixture not strict semver: ${a} ${b}`);
-    const bashMax = execFileSync('bash', ['-c', `printf '%s\\n%s\\n' "${a}" "${b}" | sort -V | tail -1`], { encoding: 'utf8' }).trim();
+    const bashMax = execFileSync('bash', ['-c', `printf '%s\\n%s\\n' "${a}" "${b}" | sort -V | tail -1`], {
+      encoding: 'utf8',
+    }).trim();
     const jsMax = semverCmp(a, b) >= 0 ? a : b;
     assert.equal(bashMax, jsMax, `engines disagree on (${a}, ${b}): bash=${bashMax} js=${jsMax}`);
   }

@@ -21,11 +21,12 @@ function makeFreshHome() {
   return tmp;
 }
 
-const run = (rel, args, home) => spawnSync(
-  process.execPath,
-  [path.join(REPO_ROOT, rel), ...args],
-  { encoding: 'utf8', timeout: 10000, env: { ...process.env, HOME: home } },
-);
+const run = (rel, args, home) =>
+  spawnSync(process.execPath, [path.join(REPO_ROOT, rel), ...args], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: { ...process.env, HOME: home },
+  });
 
 test('install.js --help does NOT create the install manifest', () => {
   const home = makeFreshHome();
@@ -35,8 +36,11 @@ test('install.js --help does NOT create the install manifest', () => {
     assert.match(r.stdout, /Usage:.*install\.js/);
     // Critical: --help must NOT have written the manifest. Pre-fix it did.
     const manifest = path.join(home, '.claude/.claudemd-manifest.json');
-    assert.equal(fs.existsSync(manifest), false,
-      `install --help must be a no-op; manifest was written to ${manifest}`);
+    assert.equal(
+      fs.existsSync(manifest),
+      false,
+      `install --help must be a no-op; manifest was written to ${manifest}`
+    );
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -49,8 +53,7 @@ test('install.js --bogus exits 2 (not silent-success)', () => {
     assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout}`);
     assert.match(r.stderr, /Unknown flag|Unknown argument/);
     const manifest = path.join(home, '.claude/.claudemd-manifest.json');
-    assert.equal(fs.existsSync(manifest), false,
-      'install --bogus must exit before any side effect');
+    assert.equal(fs.existsSync(manifest), false, 'install --bogus must exit before any side effect');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

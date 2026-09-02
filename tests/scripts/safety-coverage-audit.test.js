@@ -65,14 +65,20 @@ test('multi-clause arrow claim in pre-bash-safety-check.sh is detected', async (
   // none → [AUTH REQUIRED]" in BOTH header (line ~8) and deny REASON_TEXT (~270).
   // The audit MUST find both — that's the v0.9.30 partial-impl signature.
   const preBash = r.claimSites.filter(s => s.hook.endsWith('pre-bash-safety-check.sh'));
-  assert.ok(preBash.length >= 1,
-    `expected ≥1 arrow-claim site in pre-bash-safety-check.sh, got ${preBash.length}`);
+  assert.ok(
+    preBash.length >= 1,
+    `expected ≥1 arrow-claim site in pre-bash-safety-check.sh, got ${preBash.length}`
+  );
   const lockfileQuote = preBash.find(s => s.text.includes('lockfile') && s.text.includes('pinned'));
-  assert.ok(lockfileQuote,
-    `expected the NPX "lockfile → local → pinned" claim quote; sites: ${JSON.stringify(preBash.map(s => s.text.slice(0, 80)))}`);
+  assert.ok(
+    lockfileQuote,
+    `expected the NPX "lockfile → local → pinned" claim quote; sites: ${JSON.stringify(preBash.map(s => s.text.slice(0, 80)))}`
+  );
   // Clause split must enumerate ≥3 distinct steps (lockfile, local, pinned).
-  assert.ok(lockfileQuote.clauses.length >= 3,
-    `expected ≥3 clauses in NPX claim, got ${lockfileQuote.clauses.length}: ${JSON.stringify(lockfileQuote.clauses)}`);
+  assert.ok(
+    lockfileQuote.clauses.length >= 3,
+    `expected ≥3 clauses in NPX claim, got ${lockfileQuote.clauses.length}: ${JSON.stringify(lockfileQuote.clauses)}`
+  );
 });
 
 test('post-v0.9.30 NPX claim has its core clauses covered in code body', async () => {
@@ -81,17 +87,18 @@ test('post-v0.9.30 NPX claim has its core clauses covered in code body', async (
   // 'lockfile' and 'node_modules' keywords would be absent from the code body.
   // After the fix, both must appear.
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT });
-  const npxClaims = r.claimSites.filter(s =>
-    s.hook.endsWith('pre-bash-safety-check.sh') && s.text.includes('lockfile')
+  const npxClaims = r.claimSites.filter(
+    s => s.hook.endsWith('pre-bash-safety-check.sh') && s.text.includes('lockfile')
   );
   assert.ok(npxClaims.length >= 1);
   for (const claim of npxClaims) {
-    const lockfileClause = claim.clauseCoverage.find(cc =>
-      cc.clause.toLowerCase().includes('lockfile')
-    );
+    const lockfileClause = claim.clauseCoverage.find(cc => cc.clause.toLowerCase().includes('lockfile'));
     assert.ok(lockfileClause, 'expected a lockfile clause in NPX claim');
-    assert.equal(lockfileClause.coverage, 'covered',
-      `lockfile clause must be covered post-v0.9.30 (keywords: ${JSON.stringify(lockfileClause.keywords)}, hits: ${JSON.stringify(lockfileClause.keywordHits)})`);
+    assert.equal(
+      lockfileClause.coverage,
+      'covered',
+      `lockfile clause must be covered post-v0.9.30 (keywords: ${JSON.stringify(lockfileClause.keywords)}, hits: ${JSON.stringify(lockfileClause.keywordHits)})`
+    );
   }
 });
 
@@ -102,28 +109,38 @@ test('rm-rf $VAR whitelist all four vars present in pre-bash-safety-check.sh', a
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT });
   const wl = r.specAnchorChecks.rmRfWhitelist;
   assert.ok(wl, 'expected specAnchorChecks.rmRfWhitelist');
-  assert.equal(wl.status, 'covered',
-    `rm-rf whitelist anchor check failed; missing: ${JSON.stringify(wl.missing)}`);
+  assert.equal(
+    wl.status,
+    'covered',
+    `rm-rf whitelist anchor check failed; missing: ${JSON.stringify(wl.missing)}`
+  );
   // Byte-exact: all four vars present in case branch.
   for (const varName of ['HOME', 'PWD', 'OLDPWD', 'TMPDIR']) {
-    assert.ok(wl.present.includes(varName),
-      `expected ${varName} in case branch; present: ${JSON.stringify(wl.present)}`);
+    assert.ok(
+      wl.present.includes(varName),
+      `expected ${varName} in case branch; present: ${JSON.stringify(wl.present)}`
+    );
   }
 });
 
 test('audit exits 0 with current hooks (no partial-impl candidates)', async () => {
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT });
-  assert.equal(r.summary.partialCandidates, 0,
-    `expected zero partial-impl candidates; got: ${JSON.stringify(r.summary.partialCandidateRefs, null, 2)}`);
-  assert.equal(r.summary.unimplementedRules.length, 0,
-    `expected all hook-enforced rules implemented; missing: ${JSON.stringify(r.summary.unimplementedRules)}`);
+  assert.equal(
+    r.summary.partialCandidates,
+    0,
+    `expected zero partial-impl candidates; got: ${JSON.stringify(r.summary.partialCandidateRefs, null, 2)}`
+  );
+  assert.equal(
+    r.summary.unimplementedRules.length,
+    0,
+    `expected all hook-enforced rules implemented; missing: ${JSON.stringify(r.summary.unimplementedRules)}`
+  );
 });
 
 test('--hook filter restricts audit to single hook', async () => {
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT, hookFilter: 'sandbox-disposal-check.sh' });
   assert.equal(r.summary.hooksAudited, 1);
   for (const site of r.claimSites) {
-    assert.ok(site.hook.endsWith('sandbox-disposal-check.sh'),
-      `claim site outside filter: ${site.hook}`);
+    assert.ok(site.hook.endsWith('sandbox-disposal-check.sh'), `claim site outside filter: ${site.hook}`);
   }
 });

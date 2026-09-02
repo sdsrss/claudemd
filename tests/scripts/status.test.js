@@ -15,17 +15,18 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
   fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), JSON.stringify({
-    version: '0.1.0', entries: [
-      { event: 'PreToolUse', command: 'bash /pkg/hooks/banned-vocab-check.sh', sha256: 'x' }
-    ],
-  }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({
+      version: '0.1.0',
+      entries: [{ event: 'PreToolUse', command: 'bash /pkg/hooks/banned-vocab-check.sh', sha256: 'x' }],
+    })
+  );
   // Real v6.10.0+ spec format: version lives in the H1 title, no standalone
   // `Version:` line (see spec-structure.test.js:55 and CHANGELOG v0.2.1
   // "Versioning policy": canonical spec version source is the `spec/CLAUDE.md`
   // top-line title). status.js must extract the version from this H1.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'),
-    '# AI-CODING-SPEC v6.10.0 — Core\n\nBody.\n');
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v6.10.0 — Core\n\nBody.\n');
 });
 
 afterEach(() => {
@@ -58,20 +59,20 @@ test('status surfaces pendingKillSwitches when settings.json toggles ahead of pr
   // toggle and restart saw `banned_vocab: false` (= effective in *this*
   // process) with NO indication that a flip is pending — confusing
   // self-verification of toggle action. Fix: dual-source.
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
+  );
   // Process env intentionally NOT set — simulates "between toggle and CC restart".
   delete process.env.DISABLE_BANNED_VOCAB_HOOK;
   const r = await status();
   assert.equal(r.killSwitches.banned_vocab, false, 'effective stays false this process');
   assert.ok(r.pendingKillSwitches, 'pendingKillSwitches block must exist');
-  assert.deepEqual(r.pendingKillSwitches.banned_vocab,
-    { effective: false, persisted: true });
+  assert.deepEqual(r.pendingKillSwitches.banned_vocab, { effective: false, persisted: true });
 });
 
 test('status pendingKillSwitches is empty when env + settings agree', async () => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ env: {} }));
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({ env: {} }));
   delete process.env.DISABLE_BANNED_VOCAB_HOOK;
   const r = await status();
   assert.deepEqual(r.pendingKillSwitches, {}, 'no diff → empty pendingKillSwitches');
@@ -92,8 +93,10 @@ test('status survives a manifest with version but no entries array (v0.23.11)', 
   // A legacy / hand-edited / truncated manifest may carry `version` without
   // `entries`. Pre-fix `m.data.entries.length` threw an unguarded TypeError
   // + raw stack (exit 1) — the lone manifest consumer that didn't guard.
-  fs.writeFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'),
-    JSON.stringify({ version: '9.9.9' }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    JSON.stringify({ version: '9.9.9' })
+  );
   const r = await status();
   assert.equal(r.plugin.installed, true);
   assert.equal(r.plugin.version, '9.9.9');
@@ -124,8 +127,10 @@ test('status.spec.hashes covers all four spec files (v0.6.0, v0.19.0 adds OPERAT
   const r = await status();
   assert.ok(Array.isArray(r.spec.hashes), 'spec.hashes must be an array');
   assert.equal(r.spec.hashes.length, 4);
-  assert.deepEqual(r.spec.hashes.map(h => h.name),
-    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']);
+  assert.deepEqual(
+    r.spec.hashes.map(h => h.name),
+    ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']
+  );
   // The fixture installed-spec content does NOT match the shipped spec
   // (test writes a synthetic 6.10.0 stub, not the real shipped spec) — so
   // CLAUDE.md must report match=false. This proves drift is detected, not
@@ -133,7 +138,7 @@ test('status.spec.hashes covers all four spec files (v0.6.0, v0.19.0 adds OPERAT
   const main = r.spec.hashes.find(h => h.name === 'CLAUDE.md');
   assert.equal(main.match, false);
   assert.equal(typeof main.installed, 'string'); // fixture installed
-  assert.equal(typeof main.shipped, 'string');   // real shipped from repo
+  assert.equal(typeof main.shipped, 'string'); // real shipped from repo
 });
 
 test('status omits verbose block by default', async () => {
@@ -150,8 +155,11 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   // Dynamic join, not a pinned count (v0.57.0): a literal here needed a hand
   // edit on every hook add/remove and asserted nothing the registry did not
   // already state. What matters is that status enumerates the WHOLE registry.
-  assert.equal(r.verbose.killSwitches.perHook.length, HOOK_REGISTRY.length,
-    'perHook must enumerate every entry in HOOK_REGISTRY');
+  assert.equal(
+    r.verbose.killSwitches.perHook.length,
+    HOOK_REGISTRY.length,
+    'perHook must enumerate every entry in HOOK_REGISTRY'
+  );
   const registryNames = new Set(HOOK_REGISTRY.map(h => h.displayName));
   for (const h of r.verbose.killSwitches.perHook) {
     assert.ok(registryNames.has(h.displayName), `perHook lists unknown hook ${h.displayName}`);
@@ -186,8 +194,11 @@ test('status({verbose:true}) emits an escapeTokens table covering every per-invo
   }
   assert.ok(tokens.includes('known-red baseline:'));
   assert.ok(tokens.includes('[skip-memory-check]'));
-  assert.equal(r.verbose.escapeTokens.length, allowTokens.size + 2,
-    'the table must hold every [allow-*] token plus the two non-bracket forms, and nothing else');
+  assert.equal(
+    r.verbose.escapeTokens.length,
+    allowTokens.size + 2,
+    'the table must hold every [allow-*] token plus the two non-bracket forms, and nothing else'
+  );
   // Every entry carries the cross-ref triple (where / bypasses / section)
   for (const e of r.verbose.escapeTokens) {
     assert.equal(typeof e.where, 'string', `${e.token} missing where`);
@@ -197,8 +208,10 @@ test('status({verbose:true}) emits an escapeTokens table covering every per-invo
 });
 
 test('status({verbose:true}) reflects persisted kill-switch from settings.json (per-hook detail)', async () => {
-  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'),
-    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } }));
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
+  );
   delete process.env.DISABLE_BANNED_VOCAB_HOOK;
   const r = await status({ verbose: true });
   const bv = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
@@ -213,8 +226,11 @@ test('status.features.bashReadonlyFastPath defaults TRUE when env var unset (v0.
   try {
     delete process.env.BASH_READONLY_FAST_PATH;
     const r = await status();
-    assert.equal(r.features.bashReadonlyFastPath, true,
-      'unset env var must mean fast-path ON per v0.20.0 default flip');
+    assert.equal(
+      r.features.bashReadonlyFastPath,
+      true,
+      'unset env var must mean fast-path ON per v0.20.0 default flip'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
     else process.env.BASH_READONLY_FAST_PATH = saved;
@@ -226,8 +242,11 @@ test('status.features.bashReadonlyFastPath honors explicit opt-out =0 (v0.20.0)'
   try {
     process.env.BASH_READONLY_FAST_PATH = '0';
     const r = await status();
-    assert.equal(r.features.bashReadonlyFastPath, false,
-      'explicit BASH_READONLY_FAST_PATH=0 must opt OUT of fast-path');
+    assert.equal(
+      r.features.bashReadonlyFastPath,
+      false,
+      'explicit BASH_READONLY_FAST_PATH=0 must opt OUT of fast-path'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
     else process.env.BASH_READONLY_FAST_PATH = saved;
@@ -241,8 +260,11 @@ test('status.features.bashReadonlyFastPath ON for any non-zero value (v0.20.0)',
     process.env.BASH_READONLY_FAST_PATH = '1';
     assert.equal((await status()).features.bashReadonlyFastPath, true);
     process.env.BASH_READONLY_FAST_PATH = 'on';
-    assert.equal((await status()).features.bashReadonlyFastPath, true,
-      'truthy strings other than the literal "0" must still mean ON');
+    assert.equal(
+      (await status()).features.bashReadonlyFastPath,
+      true,
+      'truthy strings other than the literal "0" must still mean ON'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_READONLY_FAST_PATH;
     else process.env.BASH_READONLY_FAST_PATH = saved;
@@ -258,8 +280,11 @@ test('status.features.bashSafetyIndirectCall defaults TRUE when env var unset (v
   try {
     delete process.env.BASH_SAFETY_INDIRECT_CALL;
     const r = await status();
-    assert.equal(r.features.bashSafetyIndirectCall, true,
-      'unset env var must report indirect-call ON per v0.21.8 default flip');
+    assert.equal(
+      r.features.bashSafetyIndirectCall,
+      true,
+      'unset env var must report indirect-call ON per v0.21.8 default flip'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
@@ -271,8 +296,11 @@ test('status.features.bashSafetyIndirectCall honors explicit opt-out =0 (v0.21.8
   try {
     process.env.BASH_SAFETY_INDIRECT_CALL = '0';
     const r = await status();
-    assert.equal(r.features.bashSafetyIndirectCall, false,
-      'explicit BASH_SAFETY_INDIRECT_CALL=0 must report indirect-call OFF');
+    assert.equal(
+      r.features.bashSafetyIndirectCall,
+      false,
+      'explicit BASH_SAFETY_INDIRECT_CALL=0 must report indirect-call OFF'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
@@ -336,8 +364,11 @@ test('status.features.batchCadenceThreshold falls back to 20 on invalid input (v
   try {
     for (const bad of ['0', '-5', '2.5', 'abc', '']) {
       process.env.CLAUDEMD_BATCH_THRESHOLD = bad;
-      assert.equal((await status()).features.batchCadenceThreshold, 20,
-        `bad input '${bad}' must fall back to default 20`);
+      assert.equal(
+        (await status()).features.batchCadenceThreshold,
+        20,
+        `bad input '${bad}' must fall back to default 20`
+      );
     }
   } finally {
     if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
@@ -355,8 +386,11 @@ test('status.features.bashSafetyIndirectCall ON for any non-zero value (v0.21.8)
     process.env.BASH_SAFETY_INDIRECT_CALL = '1';
     assert.equal((await status()).features.bashSafetyIndirectCall, true);
     process.env.BASH_SAFETY_INDIRECT_CALL = 'on';
-    assert.equal((await status()).features.bashSafetyIndirectCall, true,
-      'truthy strings other than the literal "0" must still mean ON');
+    assert.equal(
+      (await status()).features.bashSafetyIndirectCall,
+      true,
+      'truthy strings other than the literal "0" must still mean ON'
+    );
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
@@ -380,11 +414,16 @@ test('0.68.3: status does not exit via an unhandled rejection', () => {
     env: { ...process.env, HOME: tmpHome },
     encoding: 'utf8',
   });
-  assert.ok(!/UnhandledPromiseRejection/.test(r.stderr),
-    `must not exit via unhandled rejection; stderr=${r.stderr}`);
+  assert.ok(
+    !/UnhandledPromiseRejection/.test(r.stderr),
+    `must not exit via unhandled rejection; stderr=${r.stderr}`
+  );
   if (r.status !== 0) {
-    assert.match(r.stderr, /\[claudemd\] status failed:/,
-      `a failing run must name itself; stderr=${r.stderr}`);
+    assert.match(
+      r.stderr,
+      /\[claudemd\] status failed:/,
+      `a failing run must name itself; stderr=${r.stderr}`
+    );
   }
 });
 

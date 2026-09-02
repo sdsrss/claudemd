@@ -57,13 +57,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parseStrict(leftover);
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   if (!name) {
     console.error(USAGE);
     process.exit(1);
   }
-  toggle(name).then(r => console.log(JSON.stringify(r, null, 2)))
-    .catch(e => { console.error(e.message); process.exit(1); });
+  toggle(name)
+    .then(r => console.log(JSON.stringify(r, null, 2)))
+    .catch(e => {
+      console.error(e.message);
+      process.exit(1);
+    });
 }

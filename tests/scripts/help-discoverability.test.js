@@ -21,25 +21,25 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // Each entry: [scriptRelPath, usageMatcher].
 // usageMatcher is a regex that must match stdout when --help fires.
 const SCRIPTS = [
-  ['scripts/audit.js',            /Usage:.*audit\.js/],
-  ['scripts/sparkline.js',        /Usage:.*sparkline\.js/],
+  ['scripts/audit.js', /Usage:.*audit\.js/],
+  ['scripts/sparkline.js', /Usage:.*sparkline\.js/],
   ['scripts/hard-rules-audit.js', /Usage:.*hard-rules-audit\.js/],
-  ['scripts/clean-residue.js',    /Usage:.*clean-residue\.js/],
-  ['scripts/doctor.js',           /Usage:.*doctor\.js/],
-  ['scripts/status.js',           /Usage:.*status\.js/],
-  ['scripts/lint-argv.js',        /Usage:.*lint-argv\.js/],
+  ['scripts/clean-residue.js', /Usage:.*clean-residue\.js/],
+  ['scripts/doctor.js', /Usage:.*doctor\.js/],
+  ['scripts/status.js', /Usage:.*status\.js/],
+  ['scripts/lint-argv.js', /Usage:.*lint-argv\.js/],
   // Round-5 additions: lifecycle scripts. Pre-fix `install --help` actually
   // RAN the install destructively because argv was silently dropped.
-  ['scripts/install.js',          /Usage:.*install\.js/],
-  ['scripts/uninstall.js',        /Usage:.*uninstall\.js/],
-  ['scripts/update.js',           /Usage:.*update\.js/],
+  ['scripts/install.js', /Usage:.*install\.js/],
+  ['scripts/uninstall.js', /Usage:.*uninstall\.js/],
+  ['scripts/update.js', /Usage:.*update\.js/],
 ];
 
-const run = (relScript, args) => spawnSync(
-  process.execPath,
-  [path.join(REPO_ROOT, relScript), ...args],
-  { encoding: 'utf8', timeout: 10000 },
-);
+const run = (relScript, args) =>
+  spawnSync(process.execPath, [path.join(REPO_ROOT, relScript), ...args], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
 
 for (const [rel, usageRe] of SCRIPTS) {
   test(`${rel}: --help exits 0 and prints usage to stdout`, () => {
@@ -73,18 +73,17 @@ for (const [rel, usageRe] of SCRIPTS) {
 test('bin/claudemd-lint.js: USAGE references actual npm bin name', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
   const binName = Object.keys(pkg.bin)[0]; // "claudemd-cli"
-  const r = spawnSync(
-    process.execPath,
-    [path.join(REPO_ROOT, 'bin/claudemd-lint.js'), '--help'],
-    { encoding: 'utf8', timeout: 10000 },
-  );
+  const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'bin/claudemd-lint.js'), '--help'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
   assert.equal(r.status, 0, `expected exit 0; stderr=${r.stderr}`);
   // Every documented subcommand line must use the real bin name.
   for (const sub of ['lint', 'audit', '--version', '--help']) {
     const wrongRe = new RegExp(`(^|\\s)claudemd\\s+(${sub.replace(/[-]/g, '\\-')})\\b`, 'm');
     assert.ok(
       !wrongRe.test(r.stdout),
-      `USAGE references 'claudemd ${sub}' (without -cli suffix); should be '${binName} ${sub}'.`,
+      `USAGE references 'claudemd ${sub}' (without -cli suffix); should be '${binName} ${sub}'.`
     );
     const rightRe = new RegExp(`${binName}\\s+${sub.replace(/[-]/g, '\\-')}`, 'm');
     assert.match(r.stdout, rightRe, `USAGE should mention '${binName} ${sub}'`);

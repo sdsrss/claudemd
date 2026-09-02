@@ -38,11 +38,15 @@ function memLiteProject(cwd) {
 
 function listMdFiles(dir) {
   try {
-    return fs.readdirSync(dir)
+    return fs
+      .readdirSync(dir)
       .filter(f => f.endsWith('.md'))
       .map(f => {
-        try { return { name: f, mtimeMs: fs.statSync(path.join(dir, f)).mtimeMs }; }
-        catch { return null; }
+        try {
+          return { name: f, mtimeMs: fs.statSync(path.join(dir, f)).mtimeMs };
+        } catch {
+          return null;
+        }
       })
       .filter(Boolean);
   } catch {
@@ -64,7 +68,11 @@ function mentionedMdBasenames(logPath, sinceMs) {
   // from a genuinely quiet 90 days.
   let raw = '';
   for (const gen of logGenerations(logPath)) {
-    try { raw += fs.readFileSync(gen, 'utf8'); } catch { /* unreadable generation — skip */ }
+    try {
+      raw += fs.readFileSync(gen, 'utf8');
+    } catch {
+      /* unreadable generation — skip */
+    }
   }
   for (const line of raw.split('\n')) {
     if (!line) continue;
@@ -95,18 +103,27 @@ async function promoteCandidates(dbPath, project, now) {
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
     // created_at_epoch is MILLISECONDS (verified against live DB 2026-07-10).
-    const rows = db.prepare(
-      'SELECT id, title, cited_count FROM observations ' +
-      'WHERE project = ? AND lesson_learned IS NOT NULL AND lesson_learned != \'\' ' +
-      'AND cited_count >= ? AND created_at_epoch <= ? ' +
-      'AND superseded_at IS NULL AND demoted_at IS NULL ' +
-      'ORDER BY cited_count DESC, id DESC LIMIT 10'
-    ).all(project, CITE_MIN, now - PROMOTE_MIN_AGE_DAYS * DAY_MS);
-    return { candidates: rows.map(r => ({ id: r.id, title: r.title, citedCount: r.cited_count })), skipped: null };
+    const rows = db
+      .prepare(
+        'SELECT id, title, cited_count FROM observations ' +
+          "WHERE project = ? AND lesson_learned IS NOT NULL AND lesson_learned != '' " +
+          'AND cited_count >= ? AND created_at_epoch <= ? ' +
+          'AND superseded_at IS NULL AND demoted_at IS NULL ' +
+          'ORDER BY cited_count DESC, id DESC LIMIT 10'
+      )
+      .all(project, CITE_MIN, now - PROMOTE_MIN_AGE_DAYS * DAY_MS);
+    return {
+      candidates: rows.map(r => ({ id: r.id, title: r.title, citedCount: r.cited_count })),
+      skipped: null,
+    };
   } catch (e) {
     return { candidates: [], skipped: `mem-lite DB unreadable: ${e.message}` };
   } finally {
-    try { db && db.close(); } catch { /* already closed */ }
+    try {
+      db && db.close();
+    } catch {
+      /* already closed */
+    }
   }
 }
 

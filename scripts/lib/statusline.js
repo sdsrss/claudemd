@@ -18,7 +18,7 @@ const GUEST_COMMAND = () => `bash "${destPath()}"`;
 
 const destPath = () => homeSpec('claudemd-statusline.sh');
 const prevPath = () => path.join(stateDir(), 'statusline-prev.json');
-const shippedRenderer = (pluginRoot) => path.join(pluginRoot, 'scripts', 'statusline.sh');
+const shippedRenderer = pluginRoot => path.join(pluginRoot, 'scripts', 'statusline.sh');
 const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {});
 
 // The supersede restore-record accepts both the current list shape
@@ -28,10 +28,14 @@ const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {})
 // foreign-takeover record (no `superseded` key) normalizes to [].
 function readSupersededList() {
   let prev;
-  try { prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8')); } catch { return []; }
+  try {
+    prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8'));
+  } catch {
+    return [];
+  }
   if (!prev || prev.superseded == null) return [];
   const arr = Array.isArray(prev.superseded) ? prev.superseded : [prev.superseded];
-  return arr.filter((p) => p && p.id);
+  return arr.filter(p => p && p.id);
 }
 
 export function detect(pluginRoot = null) {
@@ -43,10 +47,15 @@ export function detect(pluginRoot = null) {
   // empty-slot install path clobber it, breaking the never-touch-a-foreign-slot
   // invariant. Only a missing / null / '' slot is genuinely 'absent'.
   const present = settings.statusLine != null && settings.statusLine !== '';
-  const cmd = settings.statusLine && typeof settings.statusLine.command === 'string'
-    ? settings.statusLine.command
-    : null;
-  let verdict, host = null, providers = null, guestRegistered = false, psCandidates = null;
+  const cmd =
+    settings.statusLine && typeof settings.statusLine.command === 'string'
+      ? settings.statusLine.command
+      : null;
+  let verdict,
+    host = null,
+    providers = null,
+    guestRegistered = false,
+    psCandidates = null;
   if (!present) {
     verdict = 'absent';
   } else if (cmd && cmd.includes(MARKER)) {
@@ -72,9 +81,19 @@ export function detect(pluginRoot = null) {
   if (pluginRoot && exists) {
     try {
       matchesShipped = fs.readFileSync(dest, 'utf8') === fs.readFileSync(shippedRenderer(pluginRoot), 'utf8');
-    } catch { matchesShipped = false; }
+    } catch {
+      matchesShipped = false;
+    }
   }
-  return { verdict, host, current: cmd, providers, guestRegistered, psCandidates, dest: { exists, matchesShipped } };
+  return {
+    verdict,
+    host,
+    current: cmd,
+    providers,
+    guestRegistered,
+    psCandidates,
+    dest: { exists, matchesShipped },
+  };
 }
 
 function copyRenderer(pluginRoot) {
@@ -90,7 +109,14 @@ function setStatusLine() {
   writeSettings(settings);
 }
 
-export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = false, supersede = null, backupSettings = true } = {}) {
+export function adopt({
+  pluginRoot,
+  force = false,
+  emptyOnly = false,
+  dryRun = false,
+  supersede = null,
+  backupSettings = true,
+} = {}) {
   if (!pluginRoot) throw new Error('adopt: pluginRoot required');
   const { verdict, current, host } = detect(pluginRoot);
 
@@ -101,14 +127,14 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
   }
 
   if (verdict === 'host') {
-    const adapter = HOST_ADAPTERS.find((a) => a.id === host);
+    const adapter = HOST_ADAPTERS.find(a => a.id === host);
     if (emptyOnly) return { action: 'host-detected', host: adapter.id, to: null };
     if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND(), supersede };
     copyRenderer(pluginRoot);
     let superseded = null;
     let supersedeMissed = null;
     if (supersede) {
-      const prov = adapter.listProviders().find((p) => p.id === supersede);
+      const prov = adapter.listProviders().find(p => p.id === supersede);
       if (prov) {
         fs.mkdirSync(stateDir(), { recursive: true });
         // Append to a list (dedup by id) rather than overwrite, so a SECOND
@@ -116,7 +142,7 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
         // restores EVERY superseded provider, not just the last. Without this,
         // `adopt --supersede=A` then `--supersede=B` left A unrecoverable.
         const list = fs.existsSync(prevPath()) ? readSupersededList() : [];
-        if (!list.some((p) => p.id === prov.id)) list.push(prov);
+        if (!list.some(p => p.id === prov.id)) list.push(prov);
         fs.writeFileSync(prevPath(), JSON.stringify({ superseded: list }, null, 2));
         adapter.unregister(supersede);
         superseded = prov.id;
@@ -129,9 +155,15 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
     }
     const changed = adapter.register(
       { id: CLAUDEMD_PROVIDER_ID, command: GUEST_COMMAND(), needsStdin: true },
-      { front: true },
+      { front: true }
     );
-    return { action: (changed || superseded) ? 'registered' : 'already-registered', host: adapter.id, to: GUEST_COMMAND(), superseded, ...(supersedeMissed ? { supersedeMissed } : {}) };
+    return {
+      action: changed || superseded ? 'registered' : 'already-registered',
+      host: adapter.id,
+      to: GUEST_COMMAND(),
+      superseded,
+      ...(supersedeMissed ? { supersedeMissed } : {}),
+    };
   }
 
   if (verdict === 'foreign') {
@@ -152,7 +184,11 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
   // Clear any stale prev left by an earlier --force that was later undone
   // out-of-band, so a subsequent remove() empties this freshly-taken empty slot
   // instead of resurrecting the old foreign command.
-  try { fs.unlinkSync(prevPath()); } catch { /* no stale prev to clear */ }
+  try {
+    fs.unlinkSync(prevPath());
+  } catch {
+    /* no stale prev to clear */
+  }
   copyRenderer(pluginRoot);
   setStatusLine();
   return { action: 'set', from: null, to: COMMAND, settingsBackup };
@@ -161,7 +197,7 @@ export function adopt({ pluginRoot, force = false, emptyOnly = false, dryRun = f
 export function remove() {
   const d = detect();
   if (d.verdict === 'host' && d.guestRegistered) {
-    const adapter = HOST_ADAPTERS.find((a) => a.id === d.host);
+    const adapter = HOST_ADAPTERS.find(a => a.id === d.host);
     adapter.unregister(CLAUDEMD_PROVIDER_ID);
     let restored = null;
     if (fs.existsSync(prevPath())) {
@@ -173,10 +209,18 @@ export function remove() {
       for (let i = list.length - 1; i >= 0; i--) {
         adapter.register(list[i], { front: true });
       }
-      if (list.length) restored = list.map((p) => p.id).join(',');
-      try { fs.unlinkSync(prevPath()); } catch { /* best-effort */ }
+      if (list.length) restored = list.map(p => p.id).join(',');
+      try {
+        fs.unlinkSync(prevPath());
+      } catch {
+        /* best-effort */
+      }
     }
-    try { fs.unlinkSync(destPath()); } catch { /* best-effort */ }
+    try {
+      fs.unlinkSync(destPath());
+    } catch {
+      /* best-effort */
+    }
     return { action: 'unregistered', host: d.host, restored };
   }
   const { verdict } = d;
@@ -197,11 +241,19 @@ export function remove() {
     } catch {
       delete settings.statusLine;
     }
-    try { fs.unlinkSync(prevPath()); } catch { /* best-effort */ }
+    try {
+      fs.unlinkSync(prevPath());
+    } catch {
+      /* best-effort */
+    }
   } else {
     delete settings.statusLine;
   }
   writeSettings(settings);
-  try { fs.unlinkSync(destPath()); } catch { /* best-effort */ }
+  try {
+    fs.unlinkSync(destPath());
+  } catch {
+    /* best-effort */
+  }
   return { action, restored };
 }

@@ -46,7 +46,11 @@ function localImportClosure(entry) {
     seen.add(rel);
     const abs = path.join(REPO_ROOT, rel);
     let src;
-    try { src = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+    try {
+      src = fs.readFileSync(abs, 'utf8');
+    } catch {
+      continue;
+    }
     // Static `from '...'` plus dynamic `import('...')`; only relative specifiers
     // are ours to ship — bare specifiers are node: builtins or real deps.
     const specs = [...src.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)].map(m => m[1]);
@@ -85,10 +89,13 @@ test('the tarball stays plugin-free (whitelist did not invert)', () => {
   // The whitelist ships the standalone CLI only. If `*` ever stops applying,
   // this catches the blast radius before publish rather than after.
   const shipped = [...files];
-  const leaked = shipped.filter(f =>
-    f.startsWith('spec/') || f.startsWith('commands/') || f.startsWith('tests/') ||
-    (f.startsWith('hooks/') && f.endsWith('.sh')) ||
-    (f.startsWith('scripts/') && !f.startsWith('scripts/lib/'))
+  const leaked = shipped.filter(
+    f =>
+      f.startsWith('spec/') ||
+      f.startsWith('commands/') ||
+      f.startsWith('tests/') ||
+      (f.startsWith('hooks/') && f.endsWith('.sh')) ||
+      (f.startsWith('scripts/') && !f.startsWith('scripts/lib/'))
   );
   assert.deepEqual(leaked, [], `plugin-only artifacts leaked into the tarball: ${leaked.join(', ')}`);
   assert.ok(shipped.length < 40, `tarball grew to ${shipped.length} files — whitelist may have inverted`);
@@ -101,7 +108,10 @@ test('the tarball stays small — nothing large sneaks back into the whitelist',
   // every user, forever. It was on the whitelist from the first publish and
   // nothing measured it — hence a ceiling rather than a note.
   const raw = execFileSync('npm', ['pack', '--dry-run', '--json'], {
-    cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60000,
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 60000,
   });
   const parsed = JSON.parse(raw);
   const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
@@ -110,13 +120,13 @@ test('the tarball stays small — nothing large sneaks back into the whitelist',
   assert.ok(
     unpacked > 0 && unpacked < CEILING,
     `npm tarball unpacked size is ${Math.round(unpacked / 1024)} KB, ceiling ${CEILING / 1024} KB. ` +
-    'Something large joined the .npmignore whitelist — check what, and whether the CLI actually needs it at runtime.',
+      'Something large joined the .npmignore whitelist — check what, and whether the CLI actually needs it at runtime.'
   );
   const files = (entry.files || []).slice().sort((a, b) => b.size - a.size);
   assert.ok(files.length > 0, 'npm pack reported no files — nothing to measure');
   const biggest = files[0];
   assert.ok(
     biggest.size < unpacked * 0.6,
-    `${biggest.path} is ${Math.round(biggest.size / unpacked * 100)}% of the tarball — one file dominating the package is the 条目 21 shape`,
+    `${biggest.path} is ${Math.round((biggest.size / unpacked) * 100)}% of the tarball — one file dominating the package is the 条目 21 shape`
   );
 });

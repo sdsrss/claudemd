@@ -38,7 +38,7 @@ export function skillTokens(cell) {
   const re = /(?:\b(sp|gs):\/?|(?<=^|[\s,])\/)([a-z*][a-z0-9*-]*)/gi;
   for (const m of text.matchAll(re)) {
     if (m[1]) ns = m[1].toLowerCase();
-    if (!ns) continue;                       // bare `/x` before any namespace → not a skill
+    if (!ns) continue; // bare `/x` before any namespace → not a skill
     const key = `${ns}/${m[2].toLowerCase()}`;
     out.push(SKILL_ALIASES[key] || key);
   }
@@ -49,12 +49,20 @@ export function skillTokens(cell) {
 // caller's assert when a heading is missing — both consumers want that loud.
 export function tableRows(text, startHeading, endMarker, onMissing) {
   const start = text.indexOf(startHeading);
-  if (start === -1) { onMissing?.(`missing heading: ${startHeading}`); return []; }
+  if (start === -1) {
+    onMissing?.(`missing heading: ${startHeading}`);
+    return [];
+  }
   const end = text.indexOf(endMarker, start);
-  if (end === -1) { onMissing?.(`missing end marker after ${startHeading}: ${endMarker}`); return []; }
-  return text.slice(start, end).split('\n')
-    .filter((l) => l.startsWith('|') && !/^\|[\s-]+\|/.test(l) && !/^\|\s*(Request type|Missing)\s*\|/.test(l))
-    .map((l) => l.split('|').slice(1, -1));
+  if (end === -1) {
+    onMissing?.(`missing end marker after ${startHeading}: ${endMarker}`);
+    return [];
+  }
+  return text
+    .slice(start, end)
+    .split('\n')
+    .filter(l => l.startsWith('|') && !/^\|[\s-]+\|/.test(l) && !/^\|\s*(Request type|Missing)\s*\|/.test(l))
+    .map(l => l.split('|').slice(1, -1));
 }
 
 export const ROUTING_HEADING = '### Routing';

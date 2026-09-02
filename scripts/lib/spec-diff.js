@@ -4,15 +4,14 @@
 // would actually overwrite).
 
 function lcsLength(a, b) {
-  const m = a.length, n = b.length;
+  const m = a.length,
+    n = b.length;
   if (m === 0 || n === 0) return 0;
   let prev = new Array(n + 1).fill(0);
   let curr = new Array(n + 1).fill(0);
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      curr[j] = a[i - 1] === b[j - 1]
-        ? prev[j - 1] + 1
-        : Math.max(prev[j], curr[j - 1]);
+      curr[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], curr[j - 1]);
     }
     const tmp = prev;
     prev = curr;

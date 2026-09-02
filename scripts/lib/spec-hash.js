@@ -47,7 +47,7 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
       if (sha256File(src) !== sha256File(dest)) {
         throw new Error(
           `spec copy: post-copy integrity check failed for ${name} ` +
-          `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run.`
+            `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run.`
         );
       }
     }
@@ -58,7 +58,9 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
         try {
           if (fs.existsSync(saved)) fs.copyFileSync(saved, homeSpec(name));
           else if (written.includes(name)) fs.unlinkSync(homeSpec(name));
-        } catch { /* best-effort rollback; the original error is the one to report */ }
+        } catch {
+          /* best-effort rollback; the original error is the one to report */
+        }
       }
     }
     throw e;

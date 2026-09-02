@@ -42,7 +42,8 @@ const MIN_MEMBERS = 3;
 function trackedFiles() {
   try {
     return execFileSync('git', ['-C', REPO_ROOT, 'ls-files'], { encoding: 'utf8' })
-      .split('\n').filter(Boolean);
+      .split('\n')
+      .filter(Boolean);
   } catch {
     return [];
   }
@@ -112,7 +113,10 @@ function enumerationsIn(src, members) {
   const memberSet = new Set(members.map(canon));
   const out = [];
   for (const m of src.matchAll(/\(([^()\n]*\|[^()\n]*)\)/g)) {
-    const hit = m[1].split('|').map(canon).filter(s => memberSet.has(s));
+    const hit = m[1]
+      .split('|')
+      .map(canon)
+      .filter(s => memberSet.has(s));
     const uniq = new Set(hit);
     if (uniq.size >= MIN_MEMBERS) out.push({ kind: 'alternation', hit: uniq, text: m[0] });
   }
@@ -121,13 +125,15 @@ function enumerationsIn(src, members) {
   // the gate stayed green on all six tests.
   for (const m of src.matchAll(/\{[^{}]*\}/g)) {
     const hit = [...m[0].matchAll(/['"`]([^'"`]+?)['"`]\s*:/g)]
-      .map(x => canon(x[1])).filter(s2 => memberSet.has(s2));
+      .map(x => canon(x[1]))
+      .filter(s2 => memberSet.has(s2));
     const uniqK = new Set(hit);
     if (uniqK.size >= MIN_MEMBERS) out.push({ kind: 'object-keys', hit: uniqK, text: m[0] });
   }
   for (const m of src.matchAll(/\[[^[\]]*\]/g)) {
     const hit = [...m[0].matchAll(/['"`]([^'"`]+?)['"`]/g)]
-      .map(x => canon(x[1])).filter(s => memberSet.has(s));
+      .map(x => canon(x[1]))
+      .filter(s => memberSet.has(s));
     // Distinct members, not occurrences: status.js's SUB_FEATURE_TOGGLES names
     // session-start-check.sh in five `partOf` fields, which is one hook
     // mentioned five times, not five members of a list.
@@ -139,7 +145,10 @@ function enumerationsIn(src, members) {
 
 test('hook-name enumerations are complete, derived, or exempted with a reason', () => {
   const files = trackedFiles();
-  assert.ok(files.length > 100, `git ls-files resolved ${files.length} file(s) — refusing to report a green scan over nothing`);
+  assert.ok(
+    files.length > 100,
+    `git ls-files resolved ${files.length} file(s) — refusing to report a green scan over nothing`
+  );
 
   const members = HOOK_BASENAMES;
   const canonMembers = members.map(b => b.replace(/\.sh$/, ''));
@@ -151,7 +160,11 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
     if (OUT_OF_SCOPE.some(re => re.test(rel))) continue;
     if (EXEMPT[rel]) continue;
     let src;
-    try { src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'); } catch { continue; }
+    try {
+      src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    } catch {
+      continue;
+    }
     // Cheap pre-filter, derived from the registry rather than from three
     // hardcoded substrings. The first version tested for '-check' / '-audit' /
     // '-scan', which no file enumerating only version-sync, memory-prompt-hint,
@@ -166,22 +179,26 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
     // of it in the same file is precisely the state this gate exists to catch.
     // A file that genuinely derives has no literal enumeration to find.
     const enums = enumerationsIn(src, members);
-    if (!enums.length) { derived++; continue; }
+    if (!enums.length) {
+      derived++;
+      continue;
+    }
     for (const e of enums) {
       const missing = canonMembers.filter(n => !e.hit.has(n));
       if (missing.length) {
         failures.push(
           `${rel}: hand-written ${e.kind} names ${e.hit.size}/${canonMembers.length} hooks, missing [${missing.join(', ')}]\n` +
-          `      ${e.text.replace(/\s+/g, ' ').slice(0, 120)}`,
+            `      ${e.text.replace(/\s+/g, ' ').slice(0, 120)}`
         );
       }
     }
   }
 
   assert.deepEqual(
-    failures, [],
+    failures,
+    [],
     'Hand-copied hook lists drift. Derive from scripts/lib/hook-registry.js, name every hook, ' +
-    `or add the file to EXEMPT with a reason:\n      ${failures.join('\n      ')}`,
+      `or add the file to EXEMPT with a reason:\n      ${failures.join('\n      ')}`
   );
   // Cardinality, on the GREEN path too. `derived` (no literal enumeration at
   // all) is the healthy majority here, so it is NOT an assertion — a clean tree
@@ -189,8 +206,10 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
   // keeps re-learning (feedback_gate_must_report_its_cardinality) is answered
   // for this gate by the extractor control below, not by demanding the tree be
   // dirty. Printed so the number is visible on a passing run.
-  assert.ok(scanned > 20,
-    `only ${scanned} file(s) reached the enumeration scan (${derived} derived) — the pre-filter is too tight to prove anything`);
+  assert.ok(
+    scanned > 20,
+    `only ${scanned} file(s) reached the enumeration scan (${derived} derived) — the pre-filter is too tight to prove anything`
+  );
 });
 
 // The standing half of the v0.69.0 pre-tag control, which injected all three
@@ -204,19 +223,27 @@ test('enumerationsIn detects all three shapes it claims to (extractor control)',
   const cases = [
     // Parenthesised, per the extractor's own shape — a bare `case a|b|c)` arm
     // has no opening paren and is deliberately out of scope.
-    ['alternation',  `const RE = /(${a.replace(/\.sh$/, '')}|${b.replace(/\.sh$/, '')}|${c.replace(/\.sh$/, '')})/;`],
-    ['array',        `const L = ['${a}', '${b}', '${c}'];`],
-    ['object-keys',  `const M = { '${a}': 1, '${b}': 2, '${c}': 3 };`],
+    [
+      'alternation',
+      `const RE = /(${a.replace(/\.sh$/, '')}|${b.replace(/\.sh$/, '')}|${c.replace(/\.sh$/, '')})/;`,
+    ],
+    ['array', `const L = ['${a}', '${b}', '${c}'];`],
+    ['object-keys', `const M = { '${a}': 1, '${b}': 2, '${c}': 3 };`],
   ];
   for (const [kind, src] of cases) {
     const found = enumerationsIn(src, members);
-    assert.ok(found.some(e => e.kind === kind && e.hit.size === 3),
-      `enumerationsIn no longer extracts the ${kind} shape — every file would read as "derived" and this gate would pass over nothing. Source: ${src}`);
+    assert.ok(
+      found.some(e => e.kind === kind && e.hit.size === 3),
+      `enumerationsIn no longer extracts the ${kind} shape — every file would read as "derived" and this gate would pass over nothing. Source: ${src}`
+    );
   }
   // Below MIN_MEMBERS must NOT register, or the gate turns into noise on any
   // file that mentions two hooks.
-  assert.equal(enumerationsIn(`const L = ['${a}', '${b}'];`, members).length, 0,
-    `a 2-member list registered as an enumeration — MIN_MEMBERS (${MIN_MEMBERS}) is not being applied`);
+  assert.equal(
+    enumerationsIn(`const L = ['${a}', '${b}'];`, members).length,
+    0,
+    `a 2-member list registered as an enumeration — MIN_MEMBERS (${MIN_MEMBERS}) is not being applied`
+  );
 });
 
 test('deliberately partial hook lists name their complement', () => {
@@ -224,13 +251,27 @@ test('deliberately partial hook lists name their complement', () => {
     const src = fs.readFileSync(path.join(REPO_ROOT, p.file), 'utf8');
     const covered = p.covered(src);
     const skipped = p.skipped(src);
-    assert.ok(skipped !== null, `${p.file}: ${p.label} has no written complement — a hook added tomorrow lands in neither list and nothing notices`);
+    assert.ok(
+      skipped !== null,
+      `${p.file}: ${p.label} has no written complement — a hook added tomorrow lands in neither list and nothing notices`
+    );
     const union = new Set([...covered, ...skipped]);
     const missing = HOOK_BASENAMES.filter(b => !union.has(b));
     const unknown = [...union].filter(b => !HOOK_BASENAMES.includes(b));
-    assert.deepEqual(missing, [], `${p.file}: ${p.label} covers neither-nor for [${missing.join(', ')}] — add it to the table or to the skip map with a reason`);
-    assert.deepEqual(unknown, [], `${p.file}: ${p.label} names [${unknown.join(', ')}], which are not in the registry`);
-    assert.ok(covered.length >= 1, `${p.file}: extraction found 0 covered entries — the regex stopped matching, so this gate is asserting nothing`);
+    assert.deepEqual(
+      missing,
+      [],
+      `${p.file}: ${p.label} covers neither-nor for [${missing.join(', ')}] — add it to the table or to the skip map with a reason`
+    );
+    assert.deepEqual(
+      unknown,
+      [],
+      `${p.file}: ${p.label} names [${unknown.join(', ')}], which are not in the registry`
+    );
+    assert.ok(
+      covered.length >= 1,
+      `${p.file}: extraction found 0 covered entries — the regex stopped matching, so this gate is asserting nothing`
+    );
   }
 });
 
@@ -248,7 +289,11 @@ function subFeatureToggles() {
   const found = new Map(); // env var → file that reads it
   for (const d of dirs) {
     let entries;
-    try { entries = fs.readdirSync(path.join(REPO_ROOT, d)); } catch { continue; }
+    try {
+      entries = fs.readdirSync(path.join(REPO_ROOT, d));
+    } catch {
+      continue;
+    }
     for (const f of entries) {
       if (!/\.(sh|js)$/.test(f)) continue;
       const rel = `${d}/${f}`;
@@ -256,8 +301,8 @@ function subFeatureToggles() {
       for (const m of src.matchAll(/\bDISABLE_([A-Z][A-Z0-9_]*)\b/g)) {
         const suffix = m[1];
         const envVar = `DISABLE_${suffix}`;
-        if (envVar === 'DISABLE_CLAUDEMD_HOOKS') continue;      // plugin-wide, its own README block
-        if (suffix === 'X_HOOK') continue;                       // USAGE placeholder in status.js
+        if (envVar === 'DISABLE_CLAUDEMD_HOOKS') continue; // plugin-wide, its own README block
+        if (suffix === 'X_HOOK') continue; // USAGE placeholder in status.js
         if (suffix.endsWith('_HOOK') && PER_HOOK_SUFFIXES.has(suffix.replace(/_HOOK$/, ''))) continue;
         if (!found.has(envVar)) found.set(envVar, rel);
       }
@@ -268,17 +313,20 @@ function subFeatureToggles() {
 
 test('sub-feature kill switches are documented in README', () => {
   const toggles = subFeatureToggles();
-  assert.ok(toggles.size >= 5, `only ${toggles.size} sub-feature toggle(s) extracted — the extraction broke, not the docs`);
+  assert.ok(
+    toggles.size >= 5,
+    `only ${toggles.size} sub-feature toggle(s) extracted — the extraction broke, not the docs`
+  );
   const readme = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
   // Word-boundary, not `includes`: the first control run renamed the README's
   // DISABLE_SPEC_DRIFT_BANNER to DISABLE_SPEC_DRIFT_BANNER_XX and the gate
   // stayed green, because a substring match is satisfied by any longer name.
   const documented = v => new RegExp(`\\b${v}\\b`).test(readme);
-  const undocumented = [...toggles].filter(([v]) => !documented(v))
-    .map(([v, f]) => `${v} (honored in ${f})`);
+  const undocumented = [...toggles].filter(([v]) => !documented(v)).map(([v, f]) => `${v} (honored in ${f})`);
   assert.deepEqual(
-    undocumented, [],
-    `sub-feature kill switches a user cannot discover:\n      ${undocumented.join('\n      ')}`,
+    undocumented,
+    [],
+    `sub-feature kill switches a user cannot discover:\n      ${undocumented.join('\n      ')}`
   );
 });
 
@@ -290,8 +338,9 @@ test('status --verbose enumerates the sub-feature toggles it promises', () => {
   if (!/full kill-switch/i.test(cmdDoc)) return; // claim withdrawn → nothing to hold it to
   const statusSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/status.js'), 'utf8');
   assert.match(
-    statusSrc, /subFeature/,
-    'commands/claudemd-status.md advertises a full kill-switch reference, but status.js --verbose has no sub-feature group',
+    statusSrc,
+    /subFeature/,
+    'commands/claudemd-status.md advertises a full kill-switch reference, but status.js --verbose has no sub-feature group'
   );
   const toggles = [...subFeatureToggles().keys()];
   const missing = toggles.filter(v => !statusSrc.includes(v.replace(/^DISABLE_/, '')));
@@ -312,14 +361,15 @@ function ephemeralKinds() {
 
 test('clean-residue prose names every state class it deletes', () => {
   const kinds = ephemeralKinds();
-  assert.ok(kinds.length >= 6, `extracted ${kinds.length} state class(es) from STATE_EPHEMERAL — expected at least 6`);
+  assert.ok(
+    kinds.length >= 6,
+    `extracted ${kinds.length} state class(es) from STATE_EPHEMERAL — expected at least 6`
+  );
   const consumers = ['scripts/clean-residue.js', 'commands/claudemd-clean-residue.md'];
   for (const rel of consumers) {
     const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
     // The USAGE string and the command doc both describe the same scope in prose.
-    const prose = rel.endsWith('.js')
-      ? src.match(/const USAGE = `([\s\S]*?)`;/)[1]
-      : src;
+    const prose = rel.endsWith('.js') ? src.match(/const USAGE = `([\s\S]*?)`;/)[1] : src;
     // `k + '-'`, not bare `k`: the prose deliberately names the sid-less
     // singletons it does NOT delete ("session-start.ref", "tmp-baseline.txt"),
     // and a bare substring test is satisfied by those — the control run for
@@ -327,8 +377,9 @@ test('clean-residue prose names every state class it deletes', () => {
     // stayed green. The trailing dash is what makes it the per-session form.
     const missing = kinds.filter(k => !prose.includes(`${k}-`));
     assert.deepEqual(
-      missing, [],
-      `${rel} describes the destructive scope without naming [${missing.join(', ')}] — what it tells the user is narrower than what it deletes`,
+      missing,
+      [],
+      `${rel} describes the destructive scope without naming [${missing.join(', ')}] — what it tells the user is narrower than what it deletes`
     );
   }
 });
@@ -344,12 +395,18 @@ test('clean-residue prose names every state class it deletes', () => {
 // their fixtures from the registry, so adding a hook keeps them green with no
 // author action. Each entry is a claim about that suite, not a silencer.
 const HOOK_SUITE_EXEMPT = {
-  'tests/scripts/install.test.js': 'builds its fixture plugin root from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
-  'tests/scripts/uninstall.test.js': 'builds its eviction fixture from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
-  'tests/scripts/settings-merge.test.js': 'drives the eviction predicate over HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
-  'tests/scripts/status.test.js': 'asserts the kill-switch block against HOOK_REGISTRY, which already contains the new row',
-  'tests/integration/full-lifecycle.test.sh': 'manifest count and eviction alternation both derive from the registry',
-  'tests/integration/upgrade-lifecycle.test.sh': 'manifest count and eviction alternation both derive from the registry, so an added hook changes the expected numbers without an edit here',
+  'tests/scripts/install.test.js':
+    'builds its fixture plugin root from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
+  'tests/scripts/uninstall.test.js':
+    'builds its eviction fixture from HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
+  'tests/scripts/settings-merge.test.js':
+    'drives the eviction predicate over HOOK_BASENAMES + the real hooks.json — a new hook is picked up with no edit',
+  'tests/scripts/status.test.js':
+    'asserts the kill-switch block against HOOK_REGISTRY, which already contains the new row',
+  'tests/integration/full-lifecycle.test.sh':
+    'manifest count and eviction alternation both derive from the registry',
+  'tests/integration/upgrade-lifecycle.test.sh':
+    'manifest count and eviction alternation both derive from the registry, so an added hook changes the expected numbers without an edit here',
 };
 
 // Both exemption maps are read as `if (MAP[rel]) continue` — a truthy test, so
@@ -361,18 +418,24 @@ const HOOK_SUITE_EXEMPT = {
 test('every exemption carries a reason with content in it', () => {
   const MIN = 30;
   const bad = [];
-  for (const [label, map] of [['EXEMPT', EXEMPT], ['HOOK_SUITE_EXEMPT', HOOK_SUITE_EXEMPT]]) {
+  for (const [label, map] of [
+    ['EXEMPT', EXEMPT],
+    ['HOOK_SUITE_EXEMPT', HOOK_SUITE_EXEMPT],
+  ]) {
     for (const [key, reason] of Object.entries(map)) {
       if (typeof reason !== 'string' || reason.trim().length < MIN) {
         bad.push(`${label}['${key}'] = ${JSON.stringify(reason)}`);
       }
     }
   }
-  assert.deepEqual(bad, [],
+  assert.deepEqual(
+    bad,
+    [],
     `exemption(s) whose reason is shorter than ${MIN} characters of content:\n      ` +
-    bad.join('\n      ') +
-    '\n      An exemption is a decision another maintainer has to be able to re-litigate.' +
-    '\n      Say what the entry claims about that file, not that it is exempt.');
+      bad.join('\n      ') +
+      '\n      An exemption is a decision another maintainer has to be able to re-litigate.' +
+      '\n      Say what the entry claims about that file, not that it is exempt.'
+  );
 });
 
 // Line comments for both suite languages (`#` in .sh, `//` in .js) plus JS
@@ -390,11 +453,16 @@ function hookConstrainingSuites() {
   const dirs = ['tests/hooks', 'tests/scripts', 'tests/integration'];
   // Reads the hooks DIRECTORY (so a new file lands in its subject set), or
   // enumerates the registry to assert over it.
-  const READS_HOOK_TREE = /readdirSync\([^)]*['"]?hooks['"]?|HOOKS_DIR|hooks\/\*\.sh|HOOK_REGISTRY|HOOK_BASENAMES/;
+  const READS_HOOK_TREE =
+    /readdirSync\([^)]*['"]?hooks['"]?|HOOKS_DIR|hooks\/\*\.sh|HOOK_REGISTRY|HOOK_BASENAMES/;
   const out = [];
   for (const d of dirs) {
     let entries;
-    try { entries = fs.readdirSync(path.join(REPO_ROOT, d)); } catch { continue; }
+    try {
+      entries = fs.readdirSync(path.join(REPO_ROOT, d));
+    } catch {
+      continue;
+    }
     for (const f of entries) {
       if (!/\.test\.(sh|js)$/.test(f)) continue;
       const rel = `${d}/${f}`;
@@ -414,13 +482,17 @@ function hookConstrainingSuites() {
 
 test('ADDING-NEW-HOOK.md names every gate a new hook has to satisfy', () => {
   const suites = hookConstrainingSuites();
-  assert.ok(suites.length >= 10, `only ${suites.length} hook-constraining suite(s) detected — the extraction broke, not the doc`);
+  assert.ok(
+    suites.length >= 10,
+    `only ${suites.length} hook-constraining suite(s) detected — the extraction broke, not the doc`
+  );
   const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/ADDING-NEW-HOOK.md'), 'utf8');
   const missing = suites.filter(s => !doc.includes(path.basename(s)));
   assert.deepEqual(
-    missing, [],
+    missing,
+    [],
     'docs/ADDING-NEW-HOOK.md does not mention gate(s) a new hook must satisfy — following it end to end still goes red:\n      ' +
-    missing.join('\n      ') +
-    '\n      Document them, or add the suite to HOOK_SUITE_EXEMPT with a reason.',
+      missing.join('\n      ') +
+      '\n      Document them, or add the suite to HOOK_SUITE_EXEMPT with a reason.'
   );
 });

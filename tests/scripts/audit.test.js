@@ -22,13 +22,14 @@ beforeEach(() => {
   // Mix: 2 v0.7.0 rows with spec_section + 1 legacy v0.6.x row missing the
   // field (audit `bySection` must surface it under the `(unset)` bucket so
   // pre-upgrade data is visible during the audit-window transition).
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["70% faster"]}}\n` +
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","extra":null}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n` +
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n` +
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n`
+      `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["70% faster"]}}\n` +
+      `{"ts":"${now}","hook":"ship-baseline","event":"deny","extra":null}\n` +
+      `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n` +
+      `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n` +
+      `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-rm-rf-var","extra":{"token":"allow-rm-rf-var"}}\n`
   );
 });
 
@@ -56,14 +57,15 @@ test('audit top patterns for banned-vocab', async () => {
 test('audit denyByProjectClass splits self-dogfood vs external (deny-family)', async () => {
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-mnt-data-ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-mnt-data_ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny-prose-dry-run","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["clearly"]}}\n` +
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","project":"-home-u-dev-daagu","extra":null}\n` +
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny-repeat","project":"-home-u-dev-gsd","extra":null}\n` +
-    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","project":"-home-u-dev-daagu","extra":{"token":"allow-banned-vocab"}}\n`
+      `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-mnt-data_ssd-dev-projects-claudemd","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
+      `{"ts":"${now}","hook":"banned-vocab","event":"deny","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["robust"]}}\n` +
+      `{"ts":"${now}","hook":"banned-vocab","event":"deny-prose-dry-run","project":"-home-u-dev-daagu","spec_section":"§10-V","extra":{"matched":["clearly"]}}\n` +
+      `{"ts":"${now}","hook":"ship-baseline","event":"deny","project":"-home-u-dev-daagu","extra":null}\n` +
+      `{"ts":"${now}","hook":"ship-baseline","event":"deny-repeat","project":"-home-u-dev-gsd","extra":null}\n` +
+      `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","project":"-home-u-dev-daagu","extra":{"token":"allow-banned-vocab"}}\n`
   );
   const r = await audit({ days: 30 });
   // banned-vocab: 2 self (both cwd encodings of the plugin's own repo) + 1
@@ -92,8 +94,15 @@ test('audit bySection surfaces null-section rows under (unset-current) post-cuto
   // ⇒ (unset-historical), post-cutover ⇒ (unset-current). Legacy `(unset)`
   // bucket no longer appears when any spec_section row exists in the log.
   const r = await audit({ days: 30 });
-  assert.equal(r.bySection['(unset)'], undefined, 'legacy (unset) must NOT appear when cutoverTs is detectable');
-  assert.ok(r.bySection['(unset-current)'], '(unset-current) bucket must exist for post-cutover null-section rows');
+  assert.equal(
+    r.bySection['(unset)'],
+    undefined,
+    'legacy (unset) must NOT appear when cutoverTs is detectable'
+  );
+  assert.ok(
+    r.bySection['(unset-current)'],
+    '(unset-current) bucket must exist for post-cutover null-section rows'
+  );
   assert.equal(r.bySection['(unset-current)'].total, 1);
   assert.equal(r.bySection['(unset-current)'].byHook['ship-baseline'], 1);
   // dataIntegrity surfaces the detected cutoverTs (ISO-8601 UTC).
@@ -117,23 +126,26 @@ test('v0.9.37: bySection cutover-split with mixed pre/post rows', async () => {
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const fakeNowIso = new Date().toISOString();
   const fakeNowMinus3dIso = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     // Pre-cutover null-section legacy rows (3d ago, simulating v0.6.x data).
     `{"ts":"${fakeNowMinus3dIso}","hook":"sandbox-disposal","event":"warn","extra":null}\n` +
-    `{"ts":"${fakeNowMinus3dIso}","hook":"ship-baseline","event":"pass","extra":null}\n` +
-    // Cutover row: first one carrying a spec_section. ts ≈ now-1d.
-    `{"ts":"${new Date(Date.now() - 86400 * 1000).toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["x"]}}\n` +
-    // Post-cutover null-section row (intentional housekeeping — session-start
-    // bootstrap is by-design null). Should land in (unset-current).
-    `{"ts":"${fakeNowIso}","hook":"session-start","event":"bootstrap","extra":null}\n`
+      `{"ts":"${fakeNowMinus3dIso}","hook":"ship-baseline","event":"pass","extra":null}\n` +
+      // Cutover row: first one carrying a spec_section. ts ≈ now-1d.
+      `{"ts":"${new Date(Date.now() - 86400 * 1000).toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["x"]}}\n` +
+      // Post-cutover null-section row (intentional housekeeping — session-start
+      // bootstrap is by-design null). Should land in (unset-current).
+      `{"ts":"${fakeNowIso}","hook":"session-start","event":"bootstrap","extra":null}\n`
   );
   const r = await audit({ days: 30 });
   // Cutover detected.
   assert.ok(r.dataIntegrity.cutoverTs, 'cutoverTs detected');
   // Split executed.
   assert.equal(r.bySection['(unset-historical)'].total, 2);
-  assert.deepEqual(Object.keys(r.bySection['(unset-historical)'].byHook).sort(),
-    ['sandbox-disposal', 'ship-baseline']);
+  assert.deepEqual(Object.keys(r.bySection['(unset-historical)'].byHook).sort(), [
+    'sandbox-disposal',
+    'ship-baseline',
+  ]);
   assert.equal(r.bySection['(unset-current)'].total, 1);
   assert.equal(r.bySection['(unset-current)'].byHook['session-start'], 1);
   assert.equal(r.bySection['§10-V'].total, 1);
@@ -147,9 +159,10 @@ test('v0.9.37: cutoverTs is null when no spec_section row exists; legacy (unset)
   // anyone analyzing a vintage log).
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${now}","hook":"sandbox-disposal","event":"warn","extra":null}\n` +
-    `{"ts":"${now}","hook":"ship-baseline","event":"pass","extra":null}\n`
+      `{"ts":"${now}","hook":"ship-baseline","event":"pass","extra":null}\n`
   );
   const r = await audit({ days: 30 });
   assert.equal(r.dataIntegrity.cutoverTs, null);
@@ -174,12 +187,13 @@ test('v0.9.34: uniqueInvocations dedups byte-identical rows; distinct tool_use_i
   const base = Date.now() - 60_000;
   const ts1 = new Date(base).toISOString();
   const ts2 = new Date(base + 1000).toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts2}","hook":"sandbox-disposal","event":"warn","session_id":"sess-0001","tool_use_id":null,"extra":{"count":1}}\n` +
-    `{"ts":"${ts2}","hook":"ship-baseline","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
+      `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"matched":["x"]}}\n` +
+      `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"matched":["x"]}}\n` +
+      `{"ts":"${ts2}","hook":"sandbox-disposal","event":"warn","session_id":"sess-0001","tool_use_id":null,"extra":{"count":1}}\n` +
+      `{"ts":"${ts2}","hook":"ship-baseline","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
   );
   const r = await audit({ days: 30 });
   // banned-vocab: 3 rows, but two share (ts, session, tool_use_id) → 1 dup;
@@ -213,13 +227,14 @@ test('v0.21.7: duplicate_rows split into real (non-null tool_use_id) vs legacy (
   const ts1 = new Date(base).toISOString();
   const ts2 = new Date(base + 1000).toISOString();
   const ts3 = new Date(base + 2000).toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
-    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
-    `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
-    `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n` +
-    `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
+      `{"ts":"${ts1}","hook":"banned-vocab","event":"deny","session_id":"sess-0001","tool_use_id":"toolu_X","extra":{"matched":["x"]}}\n` +
+      `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
+      `{"ts":"${ts2}","hook":"mem-audit","event":"warn","session_id":"sess-0002","tool_use_id":null,"extra":null}\n` +
+      `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n` +
+      `{"ts":"${ts3}","hook":"pre-bash-safety","event":"deny","session_id":null,"tool_use_id":null,"extra":null}\n`
   );
   const r = await audit({ days: 30 });
   // banned-vocab: real double-fire signal.
@@ -249,25 +264,26 @@ test('v0.23.21: multi-emit hook (distinct event/extra in one invocation) is not 
   // Relative timestamp — see the v0.9.34 test for the hardcoded-date aging trap.
   const base = Date.now() - 60_000;
   const ts1 = new Date(base).toISOString();
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     // toolu_A: one command, two rm -rf validations, DIFFERENT extra.var → legit, 0 dup
     `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"var":"TMP"}}\n` +
-    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"var":"TMP2"}}\n` +
-    // toolu_B: one compound command, mixed sections (DIFFERENT event) → legit, 0 dup
-    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"var":"D"}}\n` +
-    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"npx-allow-local","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"pkg":"eslint"}}\n` +
-    // toolu_C: BYTE-IDENTICAL rows (same event+extra) in one invocation → residual
-    //   _real=1 — indistinguishable from a double-fire by telemetry alone
-    //   (documented multi-emit limitation; needs source-command confirmation).
-    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n` +
-    `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n`
+      `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_A","extra":{"var":"TMP2"}}\n` +
+      // toolu_B: one compound command, mixed sections (DIFFERENT event) → legit, 0 dup
+      `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"var":"D"}}\n` +
+      `{"ts":"${ts1}","hook":"pre-bash-safety","event":"npx-allow-local","session_id":"sess-0001","tool_use_id":"toolu_B","extra":{"pkg":"eslint"}}\n` +
+      // toolu_C: BYTE-IDENTICAL rows (same event+extra) in one invocation → residual
+      //   _real=1 — indistinguishable from a double-fire by telemetry alone
+      //   (documented multi-emit limitation; needs source-command confirmation).
+      `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n` +
+      `{"ts":"${ts1}","hook":"pre-bash-safety","event":"rm-rf-allow-validated","session_id":"sess-0001","tool_use_id":"toolu_C","extra":{"var":"D"}}\n`
   );
   const r = await audit({ days: 30 });
   const u = r.uniqueInvocations['pre-bash-safety'];
   assert.equal(u.rows, 6);
   // A (2 distinct) + B (2 distinct) + C (1 unique) = 5 distinct invocations.
   assert.equal(u.unique_invocations, 5);
-  assert.equal(u.duplicate_rows_real, 1);   // only the byte-identical toolu_C pair
+  assert.equal(u.duplicate_rows_real, 1); // only the byte-identical toolu_C pair
   assert.equal(u.duplicate_rows_legacy, 0);
   assert.equal(u.legacy_rows, 0);
 });
@@ -275,7 +291,8 @@ test('v0.23.21: multi-emit hook (distinct event/extra in one invocation) is not 
 test('audit byBypass empty when no bypass-escape-hatch events present', async () => {
   // Replace fixture with deny-only data.
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
-  fs.writeFileSync(log,
+  fs.writeFileSync(
+    log,
     `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["robust"]}}\n`
   );
   const r = await audit({ days: 30 });
@@ -305,8 +322,11 @@ test('R-N3: byTrend flags newly_active when prior=0 recent>0', async () => {
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = Date.now();
   const recent = new Date(now - 2 * 86400 * 1000).toISOString();
-  fs.writeFileSync(log,
-    `{"ts":"${recent}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`.repeat(3)
+  fs.writeFileSync(
+    log,
+    `{"ts":"${recent}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`.repeat(
+      3
+    )
   );
   const r = await audit({ days: 30, trendDays: 7 });
   assert.equal(r.byTrend['§11-memory-read'].recent, 3);
@@ -319,8 +339,11 @@ test('R-N3: byTrend flags silenced when recent=0 prior>0', async () => {
   const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
   const now = Date.now();
   const prior = new Date(now - 10 * 86400 * 1000).toISOString();
-  fs.writeFileSync(log,
-    `{"ts":"${prior}","hook":"sandbox-disposal","event":"warn","spec_section":"§8.V4","extra":null}\n`.repeat(4)
+  fs.writeFileSync(
+    log,
+    `{"ts":"${prior}","hook":"sandbox-disposal","event":"warn","spec_section":"§8.V4","extra":null}\n`.repeat(
+      4
+    )
   );
   const r = await audit({ days: 30, trendDays: 7 });
   assert.equal(r.byTrend['§8.V4'].recent, 0);
@@ -355,8 +378,14 @@ test('A5 selfCompliance: section present, rate withheld while precision uncalibr
   // from precision alone (2026-07-25 audit, loop-F1). This list mirrors the
   // CALIBRATION table in scripts/sampling-audit.js; a drift means one of the
   // two moved without the other.
-  const CLOSED = ['§iron-law-2', '§10-four-section-order', '§10-honesty',
-    '§7-bugfix-anchor', '§11-post-compaction', '§5-hard-auth'];
+  const CLOSED = [
+    '§iron-law-2',
+    '§10-four-section-order',
+    '§10-honesty',
+    '§7-bugfix-anchor',
+    '§11-post-compaction',
+    '§5-hard-auth',
+  ];
   const r = await audit({ days: 30 });
   assert.ok(r.selfCompliance, 'selfCompliance section must exist');
   assert.equal(typeof r.selfCompliance.scannedTranscripts, 'number');
@@ -368,8 +397,10 @@ test('A5 selfCompliance: section present, rate withheld while precision uncalibr
     assert.equal(v.rate, null, `${k} rate must be withheld (null) until precision ≥ 0.8`);
     if (CLOSED.includes(k)) {
       assert.equal(v.status, 'closed', `${k} must report closed, got: ${v.status}`);
-      assert.ok(typeof v.closedReason === 'string' && v.closedReason.length > 0,
-        `${k} must carry its closedReason`);
+      assert.ok(
+        typeof v.closedReason === 'string' && v.closedReason.length > 0,
+        `${k} must carry its closedReason`
+      );
     } else {
       assert.match(v.status, /collecting/, `${k} status must say collecting`);
     }
@@ -433,8 +464,8 @@ test('excludeTestSessions keeps a non-string session_id instead of dropping it',
     { session_id: 'real-session-uuid-long', hook: 'h', event: 'deny' },
     { session_id: 12345, hook: 'h', event: 'deny' },
     { session_id: null, hook: 'h', event: 'deny' },
-    { session_id: 't', hook: 'h', event: 'deny' },       // sentinel — must drop
-    { session_id: 'short', hook: 'h', event: 'deny' },   // <= 7 chars — must drop
+    { session_id: 't', hook: 'h', event: 'deny' }, // sentinel — must drop
+    { session_id: 'short', hook: 'h', event: 'deny' }, // <= 7 chars — must drop
   ];
   const kept = excludeTestSessions(rows).map(r => r.session_id);
   assert.deepEqual(kept, ['real-session-uuid-long', 12345, null]);
@@ -449,10 +480,15 @@ test('audit dataIntegrity surfaces window coverage (2026-08-16 audit GROWTH-1)',
   // purpose being "0 hits because dormant" vs "0 hits because data damaged".
   // Fixture rows all carry ts≈now, so no 30d window can be covered by them.
   const r = await audit({ days: 30 });
-  assert.ok(r.dataIntegrity.logFirstTs,
-    'dataIntegrity.logFirstTs must surface the earliest parseable row ts');
-  assert.equal(r.dataIntegrity.windowCovered, false,
-    'a 30d window against a log whose first row is ~now must report windowCovered=false');
+  assert.ok(
+    r.dataIntegrity.logFirstTs,
+    'dataIntegrity.logFirstTs must surface the earliest parseable row ts'
+  );
+  assert.equal(
+    r.dataIntegrity.windowCovered,
+    false,
+    'a 30d window against a log whose first row is ~now must report windowCovered=false'
+  );
   assert.equal(typeof r.dataIntegrity.logSpanDays, 'number');
   assert.ok(r.dataIntegrity.logSpanDays < 1, 'fixture log spans well under a day');
 });

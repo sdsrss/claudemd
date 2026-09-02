@@ -69,8 +69,7 @@ test('non-semver sibling dirs are ignored, not deleted', () => {
   fs.mkdirSync(path.join(versionsDir, 'scratch-notes'), { recursive: true });
   fs.writeFileSync(path.join(versionsDir, 'scratch-notes/note.md'), 'x');
   const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
-  assert.ok(fs.existsSync(path.join(versionsDir, 'scratch-notes')),
-    'non-semver dirs must be left alone');
+  assert.ok(fs.existsSync(path.join(versionsDir, 'scratch-notes')), 'non-semver dirs must be left alone');
   assert.ok(!r.kept.includes('scratch-notes'));
   assert.ok(!r.removed.some(p => p.endsWith('scratch-notes')));
 });

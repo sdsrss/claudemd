@@ -111,9 +111,13 @@ function readCommitTemplate(sourcePath) {
 
   for (const cwd of starts) {
     try {
-      const git = (...a) => spawnSync('git', a, {
-        cwd, encoding: 'utf8', timeout: 5000, windowsHide: true,
-      });
+      const git = (...a) =>
+        spawnSync('git', a, {
+          cwd,
+          encoding: 'utf8',
+          timeout: 5000,
+          windowsHide: true,
+        });
 
       const cfg = git('config', '--get', 'commit.template');
       if (cfg.status !== 0 || !cfg.stdout || !cfg.stdout.trim()) continue;
@@ -152,17 +156,17 @@ function lintCmd(rawArgs) {
     rawArgs,
     ['--json', '--stdin', '--commit-msg', '--no-commit-msg'],
     ['--file', '--comment-char'],
-    'lint',
+    'lint'
   );
-  const json = args.includes('--json');     // argv-lint:allow — validated upstream by validateAndExpandFlags
-  const stdin = args.includes('--stdin');   // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const json = args.includes('--json'); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const stdin = args.includes('--stdin'); // argv-lint:allow — validated upstream by validateAndExpandFlags
 
   // Commit-message cleanup mode. `--commit-msg` forces it on (needed for the
   // `cat "$1" | claudemd-cli lint --stdin` shape, where there is no filename
   // to key off), `--no-commit-msg` forces it off, otherwise it is inferred
   // from the input FILENAME below.
-  const forceCommitMsg = args.includes('--commit-msg');       // argv-lint:allow — validated upstream by validateAndExpandFlags
-  const denyCommitMsg = args.includes('--no-commit-msg');     // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const forceCommitMsg = args.includes('--commit-msg'); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const denyCommitMsg = args.includes('--no-commit-msg'); // argv-lint:allow — validated upstream by validateAndExpandFlags
   if (forceCommitMsg && denyCommitMsg) {
     process.stderr.write('lint: choose one of --commit-msg or --no-commit-msg, not both\n');
     process.exit(2);
@@ -193,7 +197,7 @@ function lintCmd(rawArgs) {
 
   // --file <path> consumes the next non-flag arg.
   let filePath = null;
-  const fileIdx = args.indexOf('--file');   // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const fileIdx = args.indexOf('--file'); // argv-lint:allow — validated upstream by validateAndExpandFlags
   if (fileIdx !== -1) {
     const next = args[fileIdx + 1];
     if (!next || next.startsWith('--')) {
@@ -253,7 +257,9 @@ function lintCmd(rawArgs) {
     try {
       const st = fs.statSync(filePath);
       if (!st.isFile()) {
-        process.stderr.write(`lint: '${filePath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`);
+        process.stderr.write(
+          `lint: '${filePath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`
+        );
         process.exit(2);
       }
     } catch (e) {
@@ -304,7 +310,9 @@ function lintCmd(rawArgs) {
           text = fs.readFileSync(arg, 'utf8');
           sourcePath = arg;
         } else if (looksLikePath) {
-          process.stderr.write(`lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`);
+          process.stderr.write(
+            `lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`
+          );
           process.exit(2);
         }
         // Non-path-shape + non-file (e.g. a symlink loop, fifo) → fall through to text scan.
@@ -349,7 +357,9 @@ function lintCmd(rawArgs) {
   const ESCAPE_HATCH = '[allow-banned-vocab]';
   if (text.includes(ESCAPE_HATCH)) {
     if (json) {
-      process.stdout.write(formatJSON({ scope: 'lint', text, hits: [], bypass: 'allow-banned-vocab', commitMsgCleanup }) + '\n');
+      process.stdout.write(
+        formatJSON({ scope: 'lint', text, hits: [], bypass: 'allow-banned-vocab', commitMsgCleanup }) + '\n'
+      );
     } else {
       process.stdout.write(`OK: §10-V scan bypassed via ${ESCAPE_HATCH}.\n`);
     }
@@ -384,8 +394,8 @@ function lintCmd(rawArgs) {
 
 function auditCmd(rawArgs) {
   const args = validateAndExpandFlags(rawArgs, ['--json', '--include-ratio'], [], 'audit');
-  const json = args.includes('--json');                   // argv-lint:allow — validated upstream by validateAndExpandFlags
-  const includeRatio = args.includes('--include-ratio');  // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const json = args.includes('--json'); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const includeRatio = args.includes('--include-ratio'); // argv-lint:allow — validated upstream by validateAndExpandFlags
   const positional = args.filter(a => !a.startsWith('--'));
   const transcriptPath = positional[0];
 
@@ -403,7 +413,9 @@ function auditCmd(rawArgs) {
   try {
     const st = fs.statSync(transcriptPath);
     if (!st.isFile()) {
-      process.stderr.write(`audit: '${transcriptPath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`);
+      process.stderr.write(
+        `audit: '${transcriptPath}' is not a regular file (got ${st.isDirectory() ? 'directory' : 'special file'})\n`
+      );
       process.exit(2);
     }
   } catch (e) {
@@ -435,12 +447,21 @@ function auditCmd(rawArgs) {
     let sawTypeField = false;
     for (const l of nonEmptyLines) {
       let row;
-      try { row = JSON.parse(l); } catch { continue; }
+      try {
+        row = JSON.parse(l);
+      } catch {
+        continue;
+      }
       parsedAny = true;
-      if (row && typeof row === 'object' && row.type !== undefined) { sawTypeField = true; break; }
+      if (row && typeof row === 'object' && row.type !== undefined) {
+        sawTypeField = true;
+        break;
+      }
     }
     if (!parsedAny) {
-      process.stderr.write(`audit: no parseable JSON rows in ${transcriptPath} (expected JSONL transcript with one JSON object per line)\n`);
+      process.stderr.write(
+        `audit: no parseable JSON rows in ${transcriptPath} (expected JSONL transcript with one JSON object per line)\n`
+      );
       process.exit(2);
     }
     // Parseable JSON but NO row carries a `type` field → not a Claude Code
@@ -452,7 +473,9 @@ function auditCmd(rawArgs) {
     // literal-string-scan bugs. A legit transcript whose only rows are
     // non-assistant still has `type`, so it passes this gate and exits 0.
     if (!sawTypeField) {
-      process.stderr.write(`audit: ${transcriptPath} parses as JSON but no row has a 'type' field — does not look like a Claude Code transcript (expected rows like {"type":"assistant",...}). Wrong file?\n`);
+      process.stderr.write(
+        `audit: ${transcriptPath} parses as JSON but no row has a 'type' field — does not look like a Claude Code transcript (expected rows like {"type":"assistant",...}). Wrong file?\n`
+      );
       process.exit(2);
     }
   }
@@ -468,8 +491,8 @@ function auditCmd(rawArgs) {
   if (skippedStringRows > 0) {
     process.stderr.write(
       `audit: warning: skipped ${skippedStringRows} assistant row(s) with string-shape ` +
-      `message.content — not the Claude Code block-array shape, so their text was NOT scanned. ` +
-      `Non-CC transcript export?\n`
+        `message.content — not the Claude Code block-array shape, so their text was NOT scanned. ` +
+        `Non-CC transcript export?\n`
     );
   }
   const patterns = readPatterns();
@@ -517,8 +540,10 @@ function main() {
   }
   const sub = argv[0];
   switch (sub) {
-    case 'lint':  return lintCmd(argv.slice(1));
-    case 'audit': return auditCmd(argv.slice(1));
+    case 'lint':
+      return lintCmd(argv.slice(1));
+    case 'audit':
+      return auditCmd(argv.slice(1));
     default:
       process.stderr.write(`unknown subcommand: ${sub}\n${USAGE}\n`);
       process.exit(2);

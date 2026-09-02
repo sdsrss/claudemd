@@ -7,7 +7,11 @@ import { codeGraphRegistryPath, codeGraphProvidersBackupPath, writeJsonAtomic } 
 export const CLAUDEMD_PROVIDER_ID = 'claudemd';
 
 function readJson(p) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 // --- code-graph adapter ---
@@ -25,7 +29,11 @@ function cgRead() {
 function cgWrite(list) {
   if (!list || list.length === 0) {
     for (const p of [codeGraphRegistryPath(), codeGraphProvidersBackupPath()]) {
-      try { fs.unlinkSync(p); } catch { /* ok */ }
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* ok */
+      }
     }
     return;
   }
@@ -41,12 +49,12 @@ function cgWrite(list) {
 
 export const codeGraphAdapter = {
   id: 'code-graph',
-  matches: (command) => typeof command === 'string' && command.includes('statusline-composite'),
+  matches: command => typeof command === 'string' && command.includes('statusline-composite'),
   listProviders: () => cgRead(),
-  isRegistered: (id) => cgRead().some((p) => p.id === id),
+  isRegistered: id => cgRead().some(p => p.id === id),
   register(entry, { front = false } = {}) {
     const list = cgRead();
-    const idx = list.findIndex((p) => p.id === entry.id);
+    const idx = list.findIndex(p => p.id === entry.id);
     if (idx >= 0) {
       if (list[idx].command === entry.command && !!list[idx].needsStdin === !!entry.needsStdin) return false;
       list[idx] = entry;
@@ -62,7 +70,7 @@ export const codeGraphAdapter = {
   },
   unregister(id) {
     const list = cgRead();
-    const filtered = list.filter((p) => p.id !== id);
+    const filtered = list.filter(p => p.id !== id);
     if (filtered.length === list.length) return false;
     cgWrite(filtered);
     return true;
@@ -72,7 +80,7 @@ export const codeGraphAdapter = {
 export const HOST_ADAPTERS = [codeGraphAdapter];
 
 export function detectHost(command) {
-  return HOST_ADAPTERS.find((a) => a.matches(command)) || null;
+  return HOST_ADAPTERS.find(a => a.matches(command)) || null;
 }
 
 // Providers that look like a hand-made PS1 the user might want claudemd to
@@ -80,12 +88,14 @@ export function detectHost(command) {
 // nor a composite host. Used ONLY to OFFER a supersede choice — never applied
 // silently (consent-driven).
 export function manualPsCandidates(providers) {
-  return (providers || []).filter((p) =>
-    typeof p.command === 'string' &&
-    /\bbash\b/.test(p.command) &&
-    /\/\.claude\//.test(p.command) &&
-    !p.command.includes('claudemd-statusline.sh') &&
-    !p.command.includes('statusline-composite') &&
-    p.id !== 'code-graph' && p.id !== CLAUDEMD_PROVIDER_ID,
+  return (providers || []).filter(
+    p =>
+      typeof p.command === 'string' &&
+      /\bbash\b/.test(p.command) &&
+      /\/\.claude\//.test(p.command) &&
+      !p.command.includes('claudemd-statusline.sh') &&
+      !p.command.includes('statusline-composite') &&
+      p.id !== 'code-graph' &&
+      p.id !== CLAUDEMD_PROVIDER_ID
   );
 }

@@ -38,7 +38,9 @@ export function userTurnText(row) {
   if (!isUserTurn(row)) return '';
   const c = row.message.content;
   if (typeof c === 'string') return c;
-  return textBlocks(c).map(x => (typeof x.text === 'string' ? x.text : '')).join('\n');
+  return textBlocks(c)
+    .map(x => (typeof x.text === 'string' ? x.text : ''))
+    .join('\n');
 }
 
 /** True when `row` is a real typed user turn (a turn boundary). */

@@ -9,7 +9,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { logFirstTs, readHits, groupBySection, excludeTestSessions, byProjectClass, classifyProject, isBlockingDeny, blockingDenyCount, detectCutover, uniqueInvocations } from '../../scripts/lib/rule-hits-parse.js';
+import {
+  logFirstTs,
+  readHits,
+  groupBySection,
+  excludeTestSessions,
+  byProjectClass,
+  classifyProject,
+  isBlockingDeny,
+  blockingDenyCount,
+  detectCutover,
+  uniqueInvocations,
+} from '../../scripts/lib/rule-hits-parse.js';
 
 // v0.23.8 — self-dogfood vs external classification + per-hook split.
 test('classifyProject: claudemd repo (both cwd encodings) → self', () => {
@@ -27,23 +38,30 @@ test('classifyProject: downstream repo → external; missing → unknown', () =>
 
 test('classifyProject: trailing-segment anchor, not bare substring', () => {
   assert.equal(classifyProject('-work-claudemd-fork-experiments'), 'external'); // mid-path
-  assert.equal(classifyProject('-home-u-myclaudemd'), 'external');              // suffix, not a segment
-  assert.equal(classifyProject('-home-u-claudemd'), 'self');                    // true trailing segment
-  assert.equal(classifyProject('claudemd'), 'self');                            // bare
+  assert.equal(classifyProject('-home-u-myclaudemd'), 'external'); // suffix, not a segment
+  assert.equal(classifyProject('-home-u-claudemd'), 'self'); // true trailing segment
+  assert.equal(classifyProject('claudemd'), 'self'); // bare
 });
 
 test('isBlockingDeny: deny family counts; deny-prose-dry-run excluded', () => {
   assert.equal(isBlockingDeny('deny'), true);
-  assert.equal(isBlockingDeny('deny-repeat'), true);          // ship-baseline escalation, still hook_deny
-  assert.equal(isBlockingDeny('deny-prose'), true);           // banned-vocab real prose block
-  assert.equal(isBlockingDeny('deny-prose-dry-run'), false);  // exits 0, observability only — not a block
+  assert.equal(isBlockingDeny('deny-repeat'), true); // ship-baseline escalation, still hook_deny
+  assert.equal(isBlockingDeny('deny-prose'), true); // banned-vocab real prose block
+  assert.equal(isBlockingDeny('deny-prose-dry-run'), false); // exits 0, observability only — not a block
   assert.equal(isBlockingDeny('bypass-escape-hatch'), false);
   assert.equal(isBlockingDeny('pass'), false);
   assert.equal(isBlockingDeny(null), false);
 });
 
 test('v0.23.11: blockingDenyCount sums the deny family, excludes dry-run + bypass', () => {
-  const byEvent = { deny: 1, 'deny-repeat': 2, 'deny-prose': 1, 'deny-prose-dry-run': 5, 'bypass-escape-hatch': 3, pass: 9 };
+  const byEvent = {
+    deny: 1,
+    'deny-repeat': 2,
+    'deny-prose': 1,
+    'deny-prose-dry-run': 5,
+    'bypass-escape-hatch': 3,
+    pass: 9,
+  };
   assert.equal(blockingDenyCount(byEvent), 4); // 1 + 2 + 1, NOT dry-run/bypass/pass
   assert.equal(blockingDenyCount({}), 0);
   assert.equal(blockingDenyCount(null), 0);
@@ -56,9 +74,10 @@ test('v0.23.11: detectCutover treats a section-bearing null-ts row as corrupt, n
   // split. Must use the next valid ts instead.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cutover-'));
   const f = path.join(dir, 'h.jsonl');
-  fs.writeFileSync(f,
+  fs.writeFileSync(
+    f,
     '{"ts":null,"hook":"h","event":"deny","spec_section":"§A"}\n' +
-    '{"ts":"2026-06-01T00:00:00Z","hook":"h","event":"deny","spec_section":"§B"}\n'
+      '{"ts":"2026-06-01T00:00:00Z","hook":"h","event":"deny","spec_section":"§B"}\n'
   );
   assert.equal(detectCutover(f), new Date('2026-06-01T00:00:00Z').getTime());
   fs.rmSync(dir, { recursive: true, force: true });
@@ -72,8 +91,8 @@ test('byProjectClass: deny-family per-hook self/external/unknown split', () => {
     { hook: 'banned-vocab', event: 'deny-prose-dry-run', project: '-home-daagu' }, // excluded (exits 0)
     { hook: 'banned-vocab', event: 'bypass-escape-hatch', project: '-home-daagu' }, // excluded (not deny)
     { hook: 'ship-baseline', event: 'deny', project: '-home-daagu' },
-    { hook: 'ship-baseline', event: 'deny-repeat', project: '-home-gsd' },          // counts — still hook_deny
-    { hook: 'pre-bash-safety', event: 'deny' },                                     // no project → unknown
+    { hook: 'ship-baseline', event: 'deny-repeat', project: '-home-gsd' }, // counts — still hook_deny
+    { hook: 'pre-bash-safety', event: 'deny' }, // no project → unknown
   ];
   const r = byProjectClass(hits, { mode: 'deny' });
   assert.deepEqual(r['banned-vocab'], { total: 3, self: 2, external: 1, unknown: 0 });
@@ -103,62 +122,62 @@ function withFixture(fn) {
 }
 
 test('logFirstTs: missing file → null', () => {
-  withFixture((file) => {
+  withFixture(file => {
     assert.equal(logFirstTs(file), null);
   });
 });
 
 test('logFirstTs: empty file → null', () => {
-  withFixture((file) => {
+  withFixture(file => {
     fs.writeFileSync(file, '');
     assert.equal(logFirstTs(file), null);
   });
 });
 
 test('logFirstTs: returns earliest ts across rows', () => {
-  withFixture((file) => {
+  withFixture(file => {
     const oldTs = '2026-01-01T00:00:00Z';
     const newTs = '2026-05-01T00:00:00Z';
-    fs.writeFileSync(file,
+    fs.writeFileSync(
+      file,
       `{"ts":"${newTs}","hook":"x","event":"deny"}\n` +
-      `{"ts":"${oldTs}","hook":"x","event":"deny"}\n` +
-      `{"ts":"${newTs}","hook":"x","event":"deny"}\n`
+        `{"ts":"${oldTs}","hook":"x","event":"deny"}\n` +
+        `{"ts":"${newTs}","hook":"x","event":"deny"}\n`
     );
     assert.equal(logFirstTs(file), new Date(oldTs).getTime());
   });
 });
 
 test('logFirstTs: skips malformed JSON lines', () => {
-  withFixture((file) => {
+  withFixture(file => {
     const validTs = '2026-03-15T00:00:00Z';
-    fs.writeFileSync(file,
-      'this is not json\n' +
-      `{"ts":"${validTs}","hook":"x","event":"deny"}\n` +
-      'still not json\n'
+    fs.writeFileSync(
+      file,
+      'this is not json\n' + `{"ts":"${validTs}","hook":"x","event":"deny"}\n` + 'still not json\n'
     );
     assert.equal(logFirstTs(file), new Date(validTs).getTime());
   });
 });
 
 test('logFirstTs: skips rows with non-finite timestamps', () => {
-  withFixture((file) => {
+  withFixture(file => {
     const validTs = '2026-04-01T00:00:00Z';
-    fs.writeFileSync(file,
-      `{"ts":"not-a-date","hook":"x","event":"deny"}\n` +
-      `{"ts":"${validTs}","hook":"x","event":"deny"}\n`
+    fs.writeFileSync(
+      file,
+      `{"ts":"not-a-date","hook":"x","event":"deny"}\n` + `{"ts":"${validTs}","hook":"x","event":"deny"}\n`
     );
     assert.equal(logFirstTs(file), new Date(validTs).getTime());
   });
 });
 
 test('readHits: respects daysBack cutoff', () => {
-  withFixture((file) => {
+  withFixture(file => {
     const now = Date.now();
     const oldTs = new Date(now - 100 * 86400 * 1000).toISOString();
     const newTs = new Date(now - 5 * 86400 * 1000).toISOString();
-    fs.writeFileSync(file,
-      `{"ts":"${oldTs}","hook":"x","event":"deny"}\n` +
-      `{"ts":"${newTs}","hook":"x","event":"deny"}\n`
+    fs.writeFileSync(
+      file,
+      `{"ts":"${oldTs}","hook":"x","event":"deny"}\n` + `{"ts":"${newTs}","hook":"x","event":"deny"}\n`
     );
     const { hits } = readHits(file, 30);
     assert.equal(hits.length, 1, 'rows older than cutoff must be dropped');
@@ -170,18 +189,19 @@ test('readHits: surfaces skipped count for malformed rows', () => {
   // Round-6: data-integrity transparency. 5 valid + 3 corrupt → skipped=3.
   // Pre-fix the 3 corrupt rows were silently swallowed; §13.1 audit was
   // biased on 3/8 = 37% data loss with zero operator visibility.
-  withFixture((file) => {
+  withFixture(file => {
     const now = Date.now();
     const ts = new Date(now - 1 * 86400 * 1000).toISOString();
-    fs.writeFileSync(file,
+    fs.writeFileSync(
+      file,
       `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
-      `garbage line\n` +
-      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
-      `{truncated\n` +
-      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
-      `not-json\n` +
-      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
-      `{"ts":"${ts}","hook":"x","event":"deny"}\n`
+        `garbage line\n` +
+        `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+        `{truncated\n` +
+        `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+        `not-json\n` +
+        `{"ts":"${ts}","hook":"x","event":"deny"}\n` +
+        `{"ts":"${ts}","hook":"x","event":"deny"}\n`
     );
     const { hits, totalLines, parsed, skipped } = readHits(file, 30);
     assert.equal(totalLines, 8);
@@ -196,18 +216,19 @@ test('readHits: JSON-valid rows with bad/missing ts count as skipped, not silent
   // non-date `ts` yields NaN from new Date().getTime(); `NaN >= cutoff` is
   // false, so pre-fix it vanished from `hits` while still counting as `parsed`
   // with skipped:0 — a false 0% skipRatio that hid truncated rows from §13.1.
-  withFixture((file) => {
+  withFixture(file => {
     const ts = new Date(Date.now() - 1 * 86400 * 1000).toISOString();
-    fs.writeFileSync(file,
-      `{"ts":"${ts}","hook":"x","event":"deny"}\n` +    // valid
-      `{"ts":"not-a-date","hook":"x","event":"deny"}\n` + // bad ts
-      `{"hook":"x","event":"deny"}\n` +                   // missing ts
-      `{"ts":null,"hook":"x","event":"deny"}\n`           // null ts
+    fs.writeFileSync(
+      file,
+      `{"ts":"${ts}","hook":"x","event":"deny"}\n` + // valid
+        `{"ts":"not-a-date","hook":"x","event":"deny"}\n` + // bad ts
+        `{"hook":"x","event":"deny"}\n` + // missing ts
+        `{"ts":null,"hook":"x","event":"deny"}\n` // null ts
     );
     const { hits, totalLines, parsed, skipped } = readHits(file, 3650);
     assert.equal(totalLines, 4);
-    assert.equal(parsed, 1);       // only the finite-ts row is usable
-    assert.equal(skipped, 3);      // 3 corrupt-ts rows surfaced as corruption
+    assert.equal(parsed, 1); // only the finite-ts row is usable
+    assert.equal(skipped, 3); // 3 corrupt-ts rows surfaced as corruption
     assert.equal(hits.length, 1);
     assert.equal(parsed + skipped, totalLines); // invariant
   });
@@ -241,18 +262,17 @@ test('v0.9.37: groupBySection with cutoverTs splits unset into historical / curr
   const hits = [
     // Pre-cutover null-section rows → (unset-historical).
     { ts: '2026-04-22T12:00:00Z', hook: 'sandbox-disposal', event: 'warn' /* null section */ },
-    { ts: '2026-04-23T12:00:00Z', hook: 'ship-baseline',    event: 'pass' /* null section */ },
+    { ts: '2026-04-23T12:00:00Z', hook: 'ship-baseline', event: 'pass' /* null section */ },
     // Post-cutover null-section row (intentional housekeeping: session-start
     // bootstrap is by-design null) → (unset-current).
-    { ts: '2026-05-10T08:00:00Z', hook: 'session-start',    event: 'bootstrap' /* null section */ },
+    { ts: '2026-05-10T08:00:00Z', hook: 'session-start', event: 'bootstrap' /* null section */ },
     // Post-cutover with section → its own bucket.
-    { ts: '2026-05-10T09:00:00Z', hook: 'banned-vocab',     event: 'deny', spec_section: '§10-V' },
+    { ts: '2026-05-10T09:00:00Z', hook: 'banned-vocab', event: 'deny', spec_section: '§10-V' },
   ];
   const g = groupBySection(hits, cutoverMs);
   assert.ok(!('(unset)' in g), 'with cutoverTs the legacy (unset) bucket must not appear');
   assert.equal(g['(unset-historical)'].total, 2);
-  assert.deepEqual(Object.keys(g['(unset-historical)'].byHook).sort(),
-    ['sandbox-disposal', 'ship-baseline']);
+  assert.deepEqual(Object.keys(g['(unset-historical)'].byHook).sort(), ['sandbox-disposal', 'ship-baseline']);
   assert.equal(g['(unset-current)'].total, 1);
   assert.equal(g['(unset-current)'].byHook['session-start'], 1);
   assert.equal(g['§10-V'].total, 1);
@@ -268,13 +288,15 @@ test('v0.17.7: excludeTestSessions drops t/test sentinels, keeps null and UUIDs'
   ];
   const real = excludeTestSessions(hits);
   assert.equal(real.length, 3);
-  assert.deepEqual(real.map(h => h.session_id),
-    [null, 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', 'test-baseline-cv']);
+  assert.deepEqual(
+    real.map(h => h.session_id),
+    [null, 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', 'test-baseline-cv']
+  );
 });
 
 test('v0.23.20: excludeTestSessions drops short ad-hoc debug sentinels (len ≤ 7), keeps real ids', () => {
   const hits = [
-    { session_id: 's', hook: 'ship-baseline' },     // 2026-06-09 manual-debug rows
+    { session_id: 's', hook: 'ship-baseline' }, // 2026-06-09 manual-debug rows
     { session_id: 'probe', hook: 'pre-bash-safety' },
     { session_id: 'r4-test', hook: 'banned-vocab' },
     { session_id: null, hook: 'session-start' },
@@ -282,8 +304,10 @@ test('v0.23.20: excludeTestSessions drops short ad-hoc debug sentinels (len ≤ 
     { session_id: 'test-baseline-cv', hook: 'banned-vocab' }, // 16 chars — above sentinel cap, kept
   ];
   const real = excludeTestSessions(hits);
-  assert.deepEqual(real.map(h => h.session_id),
-    [null, 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', 'test-baseline-cv']);
+  assert.deepEqual(
+    real.map(h => h.session_id),
+    [null, 'b46b028b-cb04-4338-aff6-d9cdfbe055b8', 'test-baseline-cv']
+  );
 });
 
 test('v0.9.37: detectCutover finds earliest ts with non-null spec_section', async () => {
@@ -291,11 +315,12 @@ test('v0.9.37: detectCutover finds earliest ts with non-null spec_section', asyn
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cut-'));
   try {
     const log = path.join(tmpHome, 'claudemd.jsonl');
-    fs.writeFileSync(log,
+    fs.writeFileSync(
+      log,
       `{"ts":"2026-04-22T10:00:00Z","hook":"x","event":"warn","spec_section":null}\n` +
-      `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny"}\n` +
-      `{"ts":"2026-05-09T15:16:00Z","hook":"y","event":"warn","spec_section":"§8.V4"}\n` +
-      `{"ts":"2026-05-10T08:00:00Z","hook":"z","event":"deny","spec_section":"§10-V"}\n`
+        `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny"}\n` +
+        `{"ts":"2026-05-09T15:16:00Z","hook":"y","event":"warn","spec_section":"§8.V4"}\n` +
+        `{"ts":"2026-05-10T08:00:00Z","hook":"z","event":"deny","spec_section":"§10-V"}\n`
     );
     const cut = detectCutover(log);
     assert.equal(new Date(cut).toISOString(), '2026-05-09T15:16:00.000Z');
@@ -309,9 +334,10 @@ test('v0.9.37: detectCutover returns null when no spec_section row exists', asyn
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cut-'));
   try {
     const log = path.join(tmpHome, 'claudemd.jsonl');
-    fs.writeFileSync(log,
+    fs.writeFileSync(
+      log,
       `{"ts":"2026-04-22T10:00:00Z","hook":"x","event":"warn"}\n` +
-      `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny","spec_section":null}\n`
+        `{"ts":"2026-04-22T11:00:00Z","hook":"x","event":"deny","spec_section":null}\n`
     );
     assert.equal(detectCutover(log), null);
   } finally {
@@ -333,8 +359,22 @@ test('v0.9.37: detectCutover returns null when log missing', async () => {
 test('v0.23.22: uniqueInvocations canonicalizes extra key order — reordered keys still collide as one double-fire', () => {
   const ts = '2026-07-02T00:00:00Z';
   const hits = [
-    { ts, hook: 'pre-bash-safety', event: 'deny', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { a: 1, b: 2 } },
-    { ts, hook: 'pre-bash-safety', event: 'deny', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { b: 2, a: 1 } },
+    {
+      ts,
+      hook: 'pre-bash-safety',
+      event: 'deny',
+      session_id: 'sess-0001',
+      tool_use_id: 'toolu_A',
+      extra: { a: 1, b: 2 },
+    },
+    {
+      ts,
+      hook: 'pre-bash-safety',
+      event: 'deny',
+      session_id: 'sess-0001',
+      tool_use_id: 'toolu_A',
+      extra: { b: 2, a: 1 },
+    },
   ];
   const r = uniqueInvocations(hits);
   // Without canonicalization the two reordered-key rows hash to different keys
@@ -350,8 +390,22 @@ test('v0.23.22: uniqueInvocations canonicalizes extra key order — reordered ke
 test('v0.23.22: uniqueInvocations keeps distinct-extra rows of one invocation separate', () => {
   const ts = '2026-07-02T00:00:00Z';
   const hits = [
-    { ts, hook: 'pre-bash-safety', event: 'rm-rf-allow-validated', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { var: 'TMP' } },
-    { ts, hook: 'pre-bash-safety', event: 'rm-rf-allow-validated', session_id: 'sess-0001', tool_use_id: 'toolu_A', extra: { var: 'TMP2' } },
+    {
+      ts,
+      hook: 'pre-bash-safety',
+      event: 'rm-rf-allow-validated',
+      session_id: 'sess-0001',
+      tool_use_id: 'toolu_A',
+      extra: { var: 'TMP' },
+    },
+    {
+      ts,
+      hook: 'pre-bash-safety',
+      event: 'rm-rf-allow-validated',
+      session_id: 'sess-0001',
+      tool_use_id: 'toolu_A',
+      extra: { var: 'TMP2' },
+    },
   ];
   const r = uniqueInvocations(hits);
   assert.equal(r['pre-bash-safety'].unique_invocations, 2);
@@ -383,27 +437,31 @@ test('R11-06.1: readLogRows includes rotated .1 and .2 generations', () => {
   const { dir, p } = mkRotatedLog(
     [{ ts: '2026-01-01T00:00:00Z', event: 'oldest' }],
     [{ ts: '2026-03-01T00:00:00Z', event: 'middle' }],
-    [{ ts: '2026-06-01T00:00:00Z', event: 'live' }],
+    [{ ts: '2026-06-01T00:00:00Z', event: 'live' }]
   );
   try {
     const { rows, totalLines } = readLogRows(p);
     assert.equal(totalLines, 3);
-    assert.deepEqual(rows.map(r => r.row.event), ['oldest', 'middle', 'live'],
-      'oldest generation first, live last');
+    assert.deepEqual(
+      rows.map(r => r.row.event),
+      ['oldest', 'middle', 'live'],
+      'oldest generation first, live last'
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test('R11-06.2: logFirstTs reaches back into the rotated archive', () => {
-  const { dir, p } = mkRotatedLog(
-    [{ ts: '2026-01-01T00:00:00Z', event: 'oldest' }],
-    null,
-    [{ ts: '2026-06-01T00:00:00Z', event: 'live' }],
-  );
+  const { dir, p } = mkRotatedLog([{ ts: '2026-01-01T00:00:00Z', event: 'oldest' }], null, [
+    { ts: '2026-06-01T00:00:00Z', event: 'live' },
+  ]);
   try {
-    assert.equal(logFirstTs(p), Date.parse('2026-01-01T00:00:00Z'),
-      'span guard must see the archived start, not the post-rotation one');
+    assert.equal(
+      logFirstTs(p),
+      Date.parse('2026-01-01T00:00:00Z'),
+      'span guard must see the archived start, not the post-rotation one'
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

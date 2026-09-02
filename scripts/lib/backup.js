@@ -48,11 +48,11 @@ const DEFAULT_LABEL = BACKUP_LABELS.personal;
 // count of 7 removed 2 (0.68.3 pre-tag review MEDIUM-3). Deriving the string
 // keeps the advice and the inventory on one source.
 export function backupGlobs(root = '~/.claude') {
-  return Object.values(BACKUP_LABELS).map(l => `${root}/${l}-*`).join(' ');
+  return Object.values(BACKUP_LABELS)
+    .map(l => `${root}/${l}-*`)
+    .join(' ');
 }
-const labelRegex = (label) => new RegExp(
-  `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-${STAMP_GRAMMAR}$`
-);
+const labelRegex = label => new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-${STAMP_GRAMMAR}$`);
 // Matches the pre-merge settings.json backup files install.js writes before
 // any modification. Same iso-stamp grammar, plus an optional `-N` numeric
 // suffix from the sub-ms collision path in install.js.
@@ -71,7 +71,10 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
   if (fs.existsSync(dir)) {
     for (let i = 1; i < 1000; i++) {
       const candidate = `${dir}-${i}`;
-      if (!fs.existsSync(candidate)) { dir = candidate; break; }
+      if (!fs.existsSync(candidate)) {
+        dir = candidate;
+        break;
+      }
     }
   }
   fs.mkdirSync(dir, { recursive: true });
@@ -91,18 +94,30 @@ export function listBackups({ label = DEFAULT_LABEL } = {}) {
   const re = labelRegex(label);
   const prefix = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-`);
   let entries;
-  try { entries = fs.readdirSync(root); } catch { return []; }
-  return entries
-    .filter(name => re.test(name))
-    // A plain FILE named `backup-<stamp>` matches the name grammar but is not a
-    // backup; dirSize would then readdir a file (ENOTDIR). Filter by type.
-    .filter(name => { try { return fs.statSync(path.join(root, name)).isDirectory(); } catch { return false; } })
-    .map(name => ({
-      dir: path.join(root, name),
-      iso: name.replace(prefix, ''),
-      size: dirSize(path.join(root, name)),
-    }))
-    .sort((a, b) => b.iso.localeCompare(a.iso));
+  try {
+    entries = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return (
+    entries
+      .filter(name => re.test(name))
+      // A plain FILE named `backup-<stamp>` matches the name grammar but is not a
+      // backup; dirSize would then readdir a file (ENOTDIR). Filter by type.
+      .filter(name => {
+        try {
+          return fs.statSync(path.join(root, name)).isDirectory();
+        } catch {
+          return false;
+        }
+      })
+      .map(name => ({
+        dir: path.join(root, name),
+        iso: name.replace(prefix, ''),
+        size: dirSize(path.join(root, name)),
+      }))
+      .sort((a, b) => b.iso.localeCompare(a.iso))
+  );
 }
 
 // `exclude` — dirs that are neither deleted NOR counted against retainCount.
@@ -140,14 +155,19 @@ export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL, exclude =
 export function pruneSettingsBackups(retainCount = 5) {
   const dir = path.dirname(settingsPath());
   if (!fs.existsSync(dir)) return [];
-  const entries = fs.readdirSync(dir)
+  const entries = fs
+    .readdirSync(dir)
     .filter(n => SETTINGS_BK_REGEX.test(n))
     .sort((a, b) => b.localeCompare(a));
   const removed = [];
   for (const n of entries.slice(retainCount)) {
     const full = path.join(dir, n);
-    try { fs.unlinkSync(full); removed.push(full); }
-    catch { /* best-effort — missing / race is fine */ }
+    try {
+      fs.unlinkSync(full);
+      removed.push(full);
+    } catch {
+      /* best-effort — missing / race is fine */
+    }
   }
   return removed;
 }
@@ -163,7 +183,10 @@ export function backupSettingsFile(retainCount = 5) {
   if (fs.existsSync(candidate)) {
     for (let i = 1; i < 1000; i++) {
       const next = `${candidate}-${i}`;
-      if (!fs.existsSync(next)) { candidate = next; break; }
+      if (!fs.existsSync(next)) {
+        candidate = next;
+        break;
+      }
     }
   }
   fs.copyFileSync(p, candidate);
@@ -226,7 +249,9 @@ export function findLegacySpecBackups() {
     let siblings = [];
     try {
       siblings = fs.readdirSync(b.dir).filter(n => n !== 'CLAUDE.md');
-    } catch { /* listed above, unreadable now — report without siblings */ }
+    } catch {
+      /* listed above, unreadable now — report without siblings */
+    }
     found.push({ dir: b.dir, siblings });
   }
   return found;
@@ -246,7 +271,11 @@ export function restoreBackup(backupDir, targetRoot) {
     // settings had already been evicted and in readdir order, i.e. some files
     // restored and some not (2026-08-29 audit R10-04).
     let isFile;
-    try { isFile = fs.statSync(src).isFile(); } catch { continue; }
+    try {
+      isFile = fs.statSync(src).isFile();
+    } catch {
+      continue;
+    }
     if (isFile) {
       fs.copyFileSync(src, dest);
       restored.push(dest);
@@ -269,12 +298,18 @@ export function restoreBackup(backupDir, targetRoot) {
 function dirSize(dir) {
   let total = 0;
   let names;
-  try { names = fs.readdirSync(dir); } catch { return 0; }
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return 0;
+  }
   for (const name of names) {
     try {
       const stat = fs.statSync(path.join(dir, name));
       total += stat.isFile() ? stat.size : 0;
-    } catch { /* dangling symlink / raced deletion / permission — count 0 */ }
+    } catch {
+      /* dangling symlink / raced deletion / permission — count 0 */
+    }
   }
   return total;
 }

@@ -82,11 +82,7 @@ Options:
 
 Exit codes: 0 success | 1 cascade or sizing drift | 2 argv-shape error.`;
 
-const SCANNED_FILES = [
-  'README.md',
-  '.claude-plugin/plugin.json',
-  '.claude-plugin/marketplace.json',
-];
+const SCANNED_FILES = ['README.md', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];
 
 // Token regex is derived per-run from the spec major (see specMajorTokenRe),
 // NOT a fixed `/v6\./`. Scanning a fixed major means that after a `v7.0.0`
@@ -113,9 +109,12 @@ function toMinor(token) {
 // forgot. Missing file or missing key => a site with value null, which cannot
 // equal `expected`, so the check fails loudly rather than skipping.
 export function runPluginSemverCheck({ root }) {
-  const readJson = (rel) => {
-    try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); }
-    catch { return null; }
+  const readJson = rel => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
+    } catch {
+      return null;
+    }
   };
   const pkg = readJson('package.json');
   const plugin = readJson('.claude-plugin/plugin.json');
@@ -123,8 +122,16 @@ export function runPluginSemverCheck({ root }) {
   const sites = [
     { file: 'package.json', path: 'version', value: pkg?.version ?? null },
     { file: '.claude-plugin/plugin.json', path: 'version', value: plugin?.version ?? null },
-    { file: '.claude-plugin/marketplace.json', path: 'metadata.version', value: market?.metadata?.version ?? null },
-    { file: '.claude-plugin/marketplace.json', path: 'plugins[0].version', value: market?.plugins?.[0]?.version ?? null },
+    {
+      file: '.claude-plugin/marketplace.json',
+      path: 'metadata.version',
+      value: market?.metadata?.version ?? null,
+    },
+    {
+      file: '.claude-plugin/marketplace.json',
+      path: 'plugins[0].version',
+      value: market?.plugins?.[0]?.version ?? null,
+    },
   ];
   // package.json is the reference: it is what install.js stamps into the manifest.
   const expected = sites[0].value;
@@ -162,7 +169,10 @@ export function runVersionCascadeCheck({ root }) {
     // they are supposed to carry the version.
     if (!versionToken.test(content)) {
       offenders.push({
-        file: rel, line: 0, found: null, expected: expectedMinor,
+        file: rel,
+        line: 0,
+        found: null,
+        expected: expectedMinor,
         context: '<no version token in file — expected at least one>',
       });
       versionToken.lastIndex = 0;
@@ -212,9 +222,9 @@ export function runVersionCascadeCheck({ root }) {
 // the three named targets. Also tolerates the plain "core NNNNN bytes" form
 // (no arrow) in case operator opts out of the diff-arrow convention.
 const SIZING_TARGETS = [
-  { name: 'core',        file: 'spec/CLAUDE.md',          threshold: 20 },
-  { name: 'extended',    file: 'spec/CLAUDE-extended.md', threshold: 20 },
-  { name: 'OPERATOR.md', file: 'spec/OPERATOR.md',        threshold: 20 },
+  { name: 'core', file: 'spec/CLAUDE.md', threshold: 20 },
+  { name: 'extended', file: 'spec/CLAUDE-extended.md', threshold: 20 },
+  { name: 'OPERATOR.md', file: 'spec/OPERATOR.md', threshold: 20 },
 ];
 
 // v0.21.6 P6 — returns null when no claim found, else
@@ -232,8 +242,7 @@ function extractSizingClaim(line, prefix) {
     return {
       value: Number(arrowed[2]),
       matched: arrowed[0],
-      suggestReplacement: (actual) =>
-        arrowed[0].replace(/(\s+(?:→|->)\s*)\d+(\s*bytes)/, `$1${actual}$2`),
+      suggestReplacement: actual => arrowed[0].replace(/(\s+(?:→|->)\s*)\d+(\s*bytes)/, `$1${actual}$2`),
     };
   }
   // Plain form: "core 24417 bytes" (no arrow / no diff).
@@ -243,8 +252,7 @@ function extractSizingClaim(line, prefix) {
     return {
       value: Number(plain[1]),
       matched: plain[0],
-      suggestReplacement: (actual) =>
-        plain[0].replace(/\d+(\s*bytes)/, `${actual}$1`),
+      suggestReplacement: actual => plain[0].replace(/\d+(\s*bytes)/, `${actual}$1`),
     };
   }
   return null;
@@ -280,8 +288,13 @@ export function runSpecSizingCheck({ root }) {
     const claim = extractSizingClaim(sizingLine, t.name);
     if (claim == null) {
       drifts.push({
-        name: t.name, file: t.file, claimed: null, actual: null, delta: null,
-        threshold: t.threshold, reason: 'claim-parse-failed',
+        name: t.name,
+        file: t.file,
+        claimed: null,
+        actual: null,
+        delta: null,
+        threshold: t.threshold,
+        reason: 'claim-parse-failed',
       });
       continue;
     }
@@ -289,8 +302,13 @@ export function runSpecSizingCheck({ root }) {
     const abs = path.join(root, t.file);
     if (!fs.existsSync(abs)) {
       drifts.push({
-        name: t.name, file: t.file, claimed, actual: null, delta: null,
-        threshold: t.threshold, reason: 'file-missing',
+        name: t.name,
+        file: t.file,
+        claimed,
+        actual: null,
+        delta: null,
+        threshold: t.threshold,
+        reason: 'file-missing',
       });
       continue;
     }
@@ -298,8 +316,13 @@ export function runSpecSizingCheck({ root }) {
     const delta = actual - claimed;
     if (Math.abs(delta) > t.threshold) {
       drifts.push({
-        name: t.name, file: t.file, claimed, actual, delta,
-        threshold: t.threshold, reason: 'over-threshold',
+        name: t.name,
+        file: t.file,
+        claimed,
+        actual,
+        delta,
+        threshold: t.threshold,
+        reason: 'over-threshold',
         suggested: {
           old: claim.matched,
           new: claim.suggestReplacement(actual),
@@ -322,32 +345,38 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const overallOk = cascadeResult.ok && sizingResult.ok && semverResult.ok;
 
     if (argv.bools.has('--json')) {
-      process.stdout.write(JSON.stringify({
-        ok: overallOk,
-        cascade: cascadeResult,
-        sizing: sizingResult,
-        pluginSemver: semverResult,
-      }, null, 2) + '\n');
+      process.stdout.write(
+        JSON.stringify(
+          {
+            ok: overallOk,
+            cascade: cascadeResult,
+            sizing: sizingResult,
+            pluginSemver: semverResult,
+          },
+          null,
+          2
+        ) + '\n'
+      );
     } else if (overallOk) {
       process.stdout.write(
         `version-cascade-check: ok (${cascadeResult.expectedMinor} consistent across ${cascadeResult.filesChecked.length} file(s); ` +
-        `Sizing drift within ±20B for ${SIZING_TARGETS.length} target(s); ` +
-        `plugin semver ${semverResult.expected} consistent across ${semverResult.sites.length} site(s))\n`
+          `Sizing drift within ±20B for ${SIZING_TARGETS.length} target(s); ` +
+          `plugin semver ${semverResult.expected} consistent across ${semverResult.sites.length} site(s))\n`
       );
     } else {
       if (!semverResult.ok) {
-        process.stderr.write(
-          `version-cascade-check: plugin semver disagrees across manifests:\n`
-        );
+        process.stderr.write(`version-cascade-check: plugin semver disagrees across manifests:\n`);
         for (const s of semverResult.sites) {
-          process.stderr.write(`  ${s.value === semverResult.expected ? ' ' : '✗'} ${s.file}#${s.path} = ${s.value}\n`);
+          process.stderr.write(
+            `  ${s.value === semverResult.expected ? ' ' : '✗'} ${s.file}#${s.path} = ${s.value}\n`
+          );
         }
         process.stderr.write(
           `\nAll four MUST match. package.json is the one the runbook's grep list historically missed, ` +
-          `and it is the one that matters most: scripts/lib/paths.js#readPluginVersion reads package.json ` +
-          `(NOT .claude-plugin/plugin.json), so a stale value there is what install.js stamps into ` +
-          `~/.claude/.claudemd-manifest.json — making status/doctor report the wrong version and blinding ` +
-          `the v0.36.0 stale-root guard, which compares exactly this number.\n`
+            `and it is the one that matters most: scripts/lib/paths.js#readPluginVersion reads package.json ` +
+            `(NOT .claude-plugin/plugin.json), so a stale value there is what install.js stamps into ` +
+            `~/.claude/.claudemd-manifest.json — making status/doctor report the wrong version and blinding ` +
+            `the v0.36.0 stale-root guard, which compares exactly this number.\n`
         );
       }
       if (!cascadeResult.ok) {
@@ -355,7 +384,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           `version-cascade-check: ${cascadeResult.offenders.length} stale mention(s) (expected ${cascadeResult.expectedMinor}):\n`
         );
         for (const o of cascadeResult.offenders) {
-          process.stderr.write(`  ${o.file}:${o.line} — found ${o.found ?? '<missing>'} (expected ${o.expected})\n`);
+          process.stderr.write(
+            `  ${o.file}:${o.line} — found ${o.found ?? '<missing>'} (expected ${o.expected})\n`
+          );
           process.stderr.write(`    > ${o.context}\n`);
         }
         process.stderr.write(
@@ -373,12 +404,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           );
           for (const d of sizingResult.drifts) {
             if (d.reason === 'claim-parse-failed') {
-              process.stderr.write(`  ${d.file}: Sizing-line claim for "${d.name}" not parseable (regex miss)\n`);
+              process.stderr.write(
+                `  ${d.file}: Sizing-line claim for "${d.name}" not parseable (regex miss)\n`
+              );
             } else if (d.reason === 'file-missing') {
               process.stderr.write(`  ${d.file}: claimed ${d.claimed}B, actual <file missing>\n`);
             } else {
               const sign = d.delta > 0 ? '+' : '';
-              process.stderr.write(`  ${d.file}: claimed ${d.claimed}B, actual ${d.actual}B (Δ ${sign}${d.delta}B, exceeds ±${d.threshold}B)\n`);
+              process.stderr.write(
+                `  ${d.file}: claimed ${d.claimed}B, actual ${d.actual}B (Δ ${sign}${d.delta}B, exceeds ±${d.threshold}B)\n`
+              );
               if (d.suggested) {
                 process.stderr.write(`    Suggested edit in **Sizing** line:\n`);
                 process.stderr.write(`      OLD: ${d.suggested.old}\n`);
@@ -388,8 +423,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           }
           process.stderr.write(
             `\nFix sizing: apply the "Suggested edit" OLD→NEW pairs above to the **Sizing** line in spec/CLAUDE-extended.md. ` +
-            `A single corrective pass typically lands inside the ±20B envelope. ` +
-            `Re-run \`node scripts/version-cascade-check.js\` to confirm exit 0.\n`
+              `A single corrective pass typically lands inside the ±20B envelope. ` +
+              `Re-run \`node scripts/version-cascade-check.js\` to confirm exit 0.\n`
           );
         }
       }

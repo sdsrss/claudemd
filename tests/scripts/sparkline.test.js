@@ -56,8 +56,10 @@ test('single section, monotonic ↗: more events recently than long ago', () => 
   // Cumulative: 30d=5, 60d=6, 90d=7.
   // Per-period rate: recent=5/30, mid=1/30, old=1/30 → recent > old*1.2 → ↗.
   writeRows([
-    { daysAgo: 1, section: '§10-V' }, { daysAgo: 5, section: '§10-V' },
-    { daysAgo: 10, section: '§10-V' }, { daysAgo: 15, section: '§10-V' },
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 5, section: '§10-V' },
+    { daysAgo: 10, section: '§10-V' },
+    { daysAgo: 15, section: '§10-V' },
     { daysAgo: 25, section: '§10-V' },
     { daysAgo: 45, section: '§10-V' },
     { daysAgo: 75, section: '§10-V' },
@@ -74,11 +76,15 @@ test('monotonic ↘: rule dying — older periods had more events', () => {
   // Per-period rate: recent=1/30, mid=5/30, old=5/30 → recent < old*0.8 → ↘.
   writeRows([
     { daysAgo: 15, section: '§7-ship-baseline' },
-    { daysAgo: 35, section: '§7-ship-baseline' }, { daysAgo: 40, section: '§7-ship-baseline' },
-    { daysAgo: 45, section: '§7-ship-baseline' }, { daysAgo: 50, section: '§7-ship-baseline' },
+    { daysAgo: 35, section: '§7-ship-baseline' },
+    { daysAgo: 40, section: '§7-ship-baseline' },
+    { daysAgo: 45, section: '§7-ship-baseline' },
+    { daysAgo: 50, section: '§7-ship-baseline' },
     { daysAgo: 55, section: '§7-ship-baseline' },
-    { daysAgo: 65, section: '§7-ship-baseline' }, { daysAgo: 70, section: '§7-ship-baseline' },
-    { daysAgo: 75, section: '§7-ship-baseline' }, { daysAgo: 80, section: '§7-ship-baseline' },
+    { daysAgo: 65, section: '§7-ship-baseline' },
+    { daysAgo: 70, section: '§7-ship-baseline' },
+    { daysAgo: 75, section: '§7-ship-baseline' },
+    { daysAgo: 80, section: '§7-ship-baseline' },
     { daysAgo: 85, section: '§7-ship-baseline' },
   ]);
   const r = sparkline();
@@ -96,8 +102,10 @@ test('newly active: oldest bucket empty, recent has events → ↗ + annotation'
   // Adding the sentinel attests the log DID cover 30-90d, so §11-memory-read's
   // empty older buckets are a real signal.
   writeRows([
-    { daysAgo: 1, section: '§11-memory-read' }, { daysAgo: 3, section: '§11-memory-read' },
-    { daysAgo: 7, section: '§11-memory-read' }, { daysAgo: 12, section: '§11-memory-read' },
+    { daysAgo: 1, section: '§11-memory-read' },
+    { daysAgo: 3, section: '§11-memory-read' },
+    { daysAgo: 7, section: '§11-memory-read' },
+    { daysAgo: 12, section: '§11-memory-read' },
     { daysAgo: 20, section: '§11-memory-read' },
     { daysAgo: 89, section: '§7-ship-baseline' }, // span sentinel — unrelated section
   ]);
@@ -116,7 +124,8 @@ test('insufficient log span suppresses newly-active annotation (Round-6 fix)', (
   // ramping" — biased input to §0.1 promote/demote review. The fix surfaces
   // logSpanDays + suppresses misleading annotations.
   writeRows([
-    { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 2, section: '§10-V' },
   ]);
   const r = sparkline();
   assert.equal(r.insufficientSpan, true);
@@ -127,7 +136,8 @@ test('insufficient log span suppresses newly-active annotation (Round-6 fix)', (
 
 test('formatMarkdown emits insufficient-span banner', () => {
   writeRows([
-    { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 2, section: '§10-V' },
   ]);
   const md = formatMarkdown(sparkline());
   assert.match(md, /insufficient log span/);
@@ -137,8 +147,10 @@ test('formatMarkdown emits insufficient-span banner', () => {
 test('silenced: recent bucket empty but older buckets had events → ↘ + annotation', () => {
   // 0-30d: 0; 30-60d: 4; 60-90d: 0.
   writeRows([
-    { daysAgo: 35, section: '§8.V4' }, { daysAgo: 40, section: '§8.V4' },
-    { daysAgo: 50, section: '§8.V4' }, { daysAgo: 55, section: '§8.V4' },
+    { daysAgo: 35, section: '§8.V4' },
+    { daysAgo: 40, section: '§8.V4' },
+    { daysAgo: 50, section: '§8.V4' },
+    { daysAgo: 55, section: '§8.V4' },
   ]);
   const r = sparkline();
   const row = r.rows.find(x => x.section === '§8.V4');
@@ -149,11 +161,11 @@ test('silenced: recent bucket empty but older buckets had events → ↘ + annot
 
 test('only signal events counted; pass / pass-known-red / bootstrap / (unset) excluded', () => {
   writeRows([
-    { daysAgo: 5, section: '§10-V', event: 'deny' },         // counted
+    { daysAgo: 5, section: '§10-V', event: 'deny' }, // counted
     { daysAgo: 5, section: '§10-V', event: 'bypass-escape-hatch' }, // counted
-    { daysAgo: 5, section: '§7-ship-baseline', event: 'pass' },     // EXCLUDED
+    { daysAgo: 5, section: '§7-ship-baseline', event: 'pass' }, // EXCLUDED
     { daysAgo: 5, section: '§7-ship-baseline', event: 'pass-known-red' }, // EXCLUDED
-    { daysAgo: 5, section: '§8.V4', event: 'warn' },         // counted
+    { daysAgo: 5, section: '§8.V4', event: 'warn' }, // counted
     { daysAgo: 5, section: '§10-V', event: 'advisory', hook: 'transcript-vocab-scan' }, // counted
     { daysAgo: 5, section: null, event: 'bootstrap', hook: 'session-start' }, // EXCLUDED ((unset))
   ]);
@@ -184,7 +196,8 @@ test('formatMarkdown emits aligned table with header + arrows', () => {
   // partial-coverage path doesn't carry a trend arrow and would break the
   // per-row arrow assertion below).
   writeRows([
-    { daysAgo: 1, section: '§10-V' }, { daysAgo: 2, section: '§10-V' },
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 2, section: '§10-V' },
     { daysAgo: 80, section: '§7-ship-baseline' },
     { daysAgo: 95, section: '§8.V4' }, // > longest window — full coverage
   ]);
@@ -202,7 +215,8 @@ test('formatMarkdown emits aligned table with header + arrows', () => {
 
 test('custom --days windows: [7,14,28] still produces the same shape', () => {
   writeRows([
-    { daysAgo: 1, section: '§10-V' }, { daysAgo: 3, section: '§10-V' },
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 3, section: '§10-V' },
     { daysAgo: 10, section: '§10-V' },
     { daysAgo: 20, section: '§10-V' },
   ]);

@@ -3,16 +3,40 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { logsDir, settingsPath, specHome, homeSpec, readManifest, marketplacePluginRoot, readPluginVersion, SEMVER_RE, semverCmp, encodeProjectCwd, stateDir } from './lib/paths.js';
+import {
+  logsDir,
+  settingsPath,
+  specHome,
+  homeSpec,
+  readManifest,
+  marketplacePluginRoot,
+  readPluginVersion,
+  SEMVER_RE,
+  semverCmp,
+  encodeProjectCwd,
+  stateDir,
+} from './lib/paths.js';
 import { routingPrimaries } from './lib/spec-routing.js';
 import { HOOK_REGISTRY } from './lib/hook-registry.js';
-import { listBackups, pruneBackups, backupGlobs, findLegacySpecBackups, BACKUP_LABELS } from './lib/backup.js';
+import {
+  listBackups,
+  pruneBackups,
+  backupGlobs,
+  findLegacySpecBackups,
+  BACKUP_LABELS,
+} from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
 import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
-import { memoryMaintenance, CITE_MIN, PROMOTE_MIN_AGE_DAYS, RECALL_MAX_AGE_DAYS, STALE_AGE_DAYS } from './lib/memory-maintenance.js';
+import {
+  memoryMaintenance,
+  CITE_MIN,
+  PROMOTE_MIN_AGE_DAYS,
+  RECALL_MAX_AGE_DAYS,
+  STALE_AGE_DAYS,
+} from './lib/memory-maintenance.js';
 import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
 import { scanStateDir } from './clean-residue.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
@@ -84,18 +108,24 @@ const IMMUTABLE_SECTION_RE = /^§8([.-]|$)/;
 // Exported (rather than inlined at the CLI exit-code site, where it lived until
 // 0.71.1) so a test can assert the real predicate instead of reading this
 // comment — a gate that reads prose is the failure this repo keeps closing.
-const ADVISORY = /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled)/;
-export const isAdvisoryCheck = (name) => ADVISORY.test(name);
+const ADVISORY =
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled)/;
+export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
 
   const m = readManifest();
-  push('manifest', m.exists && m.data != null,
+  push(
+    'manifest',
+    m.exists && m.data != null,
     m.exists && m.data != null
-      ? (m.migrated ? `present at ${m.path} (relocated from pre-0.1.9 state dir)` : 'present')
-      : 'missing — is plugin installed?');
+      ? m.migrated
+        ? `present at ${m.path} (relocated from pre-0.1.9 state dir)`
+        : 'present'
+      : 'missing — is plugin installed?'
+  );
 
   // D8 (v0.5.4): orphan-manifest detection. CC marketplace lifecycle does not
   // fire `preUninstall`, so /plugin uninstall claudemd@claudemd leaves the
@@ -105,12 +135,15 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // uninstall.md). Advisory only: orphan manifest is benign but stale.
   if (m.exists && m.data?.pluginRoot) {
     const orphan = !fs.existsSync(m.data.pluginRoot);
-    push('plugin cache', !orphan,
+    push(
+      'plugin cache',
+      !orphan,
       orphan
         ? `manifest.pluginRoot (${m.data.pluginRoot}) no longer exists — orphan manifest. ` +
-          `Likely cause: /plugin uninstall claudemd@claudemd ran without /claudemd-uninstall first. ` +
-          `Either /plugin install claudemd@claudemd to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
-        : `present at ${m.data.pluginRoot}`);
+            `Likely cause: /plugin uninstall claudemd@claudemd ran without /claudemd-uninstall first. ` +
+            `Either /plugin install claudemd@claudemd to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
+        : `present at ${m.data.pluginRoot}`
+    );
     // v0.36.0 — stale-pluginRoot detection (tasks/manifest-pluginroot-stale-
     // cache.md): the recorded root still exists but holds an OLDER plugin than
     // the marketplace. CC may keep firing hooks from that dir until the
@@ -125,25 +158,31 @@ export async function doctor({ pruneBackups: prune } = {}) {
       const mktVer = readPluginVersion(marketplacePluginRoot());
       if (SEMVER_RE.test(rootVer) && SEMVER_RE.test(mktVer)) {
         const stale = semverCmp(rootVer, mktVer) < 0;
-        push('plugin cache:staleness', !stale,
+        push(
+          'plugin cache:staleness',
+          !stale,
           stale
             ? `manifest.pluginRoot holds v${rootVer} but the marketplace has v${mktVer} — stale registration; ` +
-              `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).`
-            : `manifest.pluginRoot v${rootVer} is current vs marketplace v${mktVer}`);
+                `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).`
+            : `manifest.pluginRoot v${rootVer} is current vs marketplace v${mktVer}`
+        );
       }
     }
   }
 
   if (fs.existsSync(settingsPath())) {
-    try { readSettings(); push('settings.json', true, 'parseable'); }
-    catch (e) { push('settings.json', false, e.message); }
+    try {
+      readSettings();
+      push('settings.json', true, 'parseable');
+    } catch (e) {
+      push('settings.json', false, e.message);
+    }
   } else {
     push('settings.json', false, 'missing');
   }
 
   for (const p of specHome()) {
-    push(`spec:${path.basename(p)}`, fs.existsSync(p),
-      fs.existsSync(p) ? 'present' : 'missing');
+    push(`spec:${path.basename(p)}`, fs.existsSync(p), fs.existsSync(p) ? 'present' : 'missing');
   }
 
   // §4 Routing primaries that this machine has switched off.
@@ -164,30 +203,41 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const extSpec = homeSpec('CLAUDE-extended.md');
   if (fs.existsSync(extSpec) && fs.existsSync(settingsPath())) {
     let overrides = null;
-    try { overrides = readSettings().skillOverrides || {}; }
-    catch { /* unparseable settings.json is already its own failing check */ }
+    try {
+      overrides = readSettings().skillOverrides || {};
+    } catch {
+      /* unparseable settings.json is already its own failing check */
+    }
     if (overrides) {
       let primaries;
-      try { primaries = routingPrimaries(fs.readFileSync(extSpec, 'utf8')); }
-      catch { primaries = new Map(); }
-      const isOff = (n) => overrides[n] === 'off' || overrides[n] === false;
-      const off = [...primaries.keys()].filter((tok) => isOff(tok.split('/')[1]));
+      try {
+        primaries = routingPrimaries(fs.readFileSync(extSpec, 'utf8'));
+      } catch {
+        primaries = new Map();
+      }
+      const isOff = n => overrides[n] === 'off' || overrides[n] === false;
+      const off = [...primaries.keys()].filter(tok => isOff(tok.split('/')[1]));
       // A floor, for the same reason the §12 join in spec-structure.test.js has
       // one: an installed spec whose §4 table moved would resolve zero primaries,
       // find zero disabled ones, and report a clean routing surface having read
       // nothing. Below the floor the honest answer is "could not evaluate".
       if (primaries.size < 15) {
-        push('routing:skills-enabled', false,
-          `resolved only ${primaries.size} §4 Routing primary skill(s) from ${extSpec} — the table moved or the spec is truncated; cannot evaluate whether routed skills are enabled.`);
+        push(
+          'routing:skills-enabled',
+          false,
+          `resolved only ${primaries.size} §4 Routing primary skill(s) from ${extSpec} — the table moved or the spec is truncated; cannot evaluate whether routed skills are enabled.`
+        );
       } else if (off.length > 0) {
-        push('routing:skills-enabled', false,
+        push(
+          'routing:skills-enabled',
+          false,
           `${off.length} of ${primaries.size} §4 Routing primaries are "off" in skillOverrides: ${off.join(', ')}. ` +
-          'The spec routes work at skills this machine cannot invoke. Fix either side: re-enable them in ' +
-          '~/.claude/settings.json, or drop the rows from §4 Routing (and their §12 Fallback rows) so the ' +
-          'table describes what is actually reachable.');
+            'The spec routes work at skills this machine cannot invoke. Fix either side: re-enable them in ' +
+            '~/.claude/settings.json, or drop the rows from §4 Routing (and their §12 Fallback rows) so the ' +
+            'table describes what is actually reachable.'
+        );
       } else {
-        push('routing:skills-enabled', true,
-          `all ${primaries.size} §4 Routing primaries are enabled`);
+        push('routing:skills-enabled', true, `all ${primaries.size} §4 Routing primaries are enabled`);
       }
     }
   }
@@ -201,16 +251,21 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const drift = compareSpecs(PLUGIN_ROOT);
   for (const s of drift) {
     if (s.shipped === null) {
-      push(`spec-hash:${s.name}`, false,
-        `shipped spec missing at ${path.join(PLUGIN_ROOT, 'spec', s.name)}`);
+      push(`spec-hash:${s.name}`, false, `shipped spec missing at ${path.join(PLUGIN_ROOT, 'spec', s.name)}`);
     } else if (s.installed === null) {
-      push(`spec-hash:${s.name}`, false,
-        `installed spec missing — /plugin install claudemd@claudemd to bootstrap`);
+      push(
+        `spec-hash:${s.name}`,
+        false,
+        `installed spec missing — /plugin install claudemd@claudemd to bootstrap`
+      );
     } else if (s.match) {
       push(`spec-hash:${s.name}`, true, `${s.shipped.slice(0, 12)}… matches`);
     } else {
-      push(`spec-hash:${s.name}`, false,
-        `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync`);
+      push(
+        `spec-hash:${s.name}`,
+        false,
+        `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync`
+      );
     }
   }
 
@@ -231,11 +286,17 @@ export async function doctor({ pruneBackups: prune } = {}) {
   } else if (drift2.driftCount === 0) {
     push('hook-drift', true, 'marketplace hooks match source');
   } else {
-    const sample = drift2.diffs.slice(0, 3).map(d => `${d.path} (${d.reason})`).join(', ');
+    const sample = drift2.diffs
+      .slice(0, 3)
+      .map(d => `${d.path} (${d.reason})`)
+      .join(', ');
     const more = drift2.diffs.length > 3 ? ` +${drift2.diffs.length - 3} more` : '';
-    push('hook-drift', false,
+    push(
+      'hook-drift',
+      false,
       `${drift2.driftCount} hook script(s) differ between source and ${marketplacePluginRoot()}: ${sample}${more}. ` +
-      `Likely cause: /plugin update is a silent no-op. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`);
+        `Likely cause: /plugin update is a silent no-op. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`
+    );
   }
 
   // 2026-08-16 audit F3: second spec axis. Axis 1 above (shipped-source vs
@@ -259,17 +320,24 @@ export async function doctor({ pruneBackups: prune } = {}) {
     if (cacheDrift.length === 0) {
       push('spec-cache-drift', true, 'installed spec matches marketplace-shipped');
     } else {
-      push('spec-cache-drift', false,
+      push(
+        'spec-cache-drift',
+        false,
         `${cacheDrift.length} spec file(s) differ between installed ~/.claude and ${mktRoot}: ` +
-        `${cacheDrift.map(s => s.name).join(', ')}. Same-version content fork — ` +
-        `post-tag spec edit or interrupted copy. Fix: ship a version bump ` +
-        `(spec edits belong in the plugin), or /claudemd-update if installed is stale.`);
+          `${cacheDrift.map(s => s.name).join(', ')}. Same-version content fork — ` +
+          `post-tag spec edit or interrupted copy. Fix: ship a version bump ` +
+          `(spec edits belong in the plugin), or /claudemd-update if installed is stale.`
+      );
     }
   }
 
-  const which = (bin) => {
-    try { execSync(`command -v ${bin}`, { stdio: 'ignore' }); return true; }
-    catch { return false; }
+  const which = bin => {
+    try {
+      execSync(`command -v ${bin}`, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
   };
   // Resolve once each: the previous form called which() twice per binary (four
   // execSync spawns for two lookups).
@@ -282,15 +350,13 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // default label would have made update.js's `spec-backup-` dirs invisible to
   // the one command a user runs to see what claudemd left in ~/.claude — the
   // "gate narrower than its subject" shape this release is closing elsewhere.
-  const backupsByLabel = Object.values(BACKUP_LABELS)
-    .map(label => ({ label, dirs: listBackups({ label }) }));
+  const backupsByLabel = Object.values(BACKUP_LABELS).map(label => ({ label, dirs: listBackups({ label }) }));
   const backups = backupsByLabel.flatMap(b => b.dirs);
   const backupBreakdown = backupsByLabel
     .filter(b => b.dirs.length > 0)
     .map(b => `${b.label}-* ${b.dirs.length}`)
     .join(', ');
-  push('backups', true,
-    `${backups.length} backup dir(s)${backupBreakdown ? ` (${backupBreakdown})` : ''}`);
+  push('backups', true, `${backups.length} backup dir(s)${backupBreakdown ? ` (${backupBreakdown})` : ''}`);
 
   // Legacy spec backups sitting in the PERSONAL namespace. P1-1 stopped new
   // ones landing there but is forward-only, so on an installation old enough to
@@ -304,32 +370,37 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // the spec. Nothing available at runtime tells the two apart, so the choice
   // is the user's; see tasks/legacy-spec-backup-migration.md.
   const legacySpecBackups = findLegacySpecBackups();
-  push('backup-namespace-legacy', legacySpecBackups.length === 0,
+  push(
+    'backup-namespace-legacy',
+    legacySpecBackups.length === 0,
     legacySpecBackups.length === 0
       ? 'no spec-shaped dirs in the personal backup namespace'
       : `${legacySpecBackups.length} dir(s) under ~/.claude/${BACKUP_LABELS.personal}-* hold a ` +
-        `spec-shaped CLAUDE.md, so restore returns a spec rather than your own file: ` +
-        legacySpecBackups.map(b => `${path.basename(b.dir)}` +
-          (b.siblings.length ? ` (+ ${b.siblings.join(', ')})` : '')).join(', ') +
-        `. Not moved automatically — a dir with sibling files may be a genuine ` +
-        `personal backup from a pre-v0.23.11 install. Inspect, then move or delete by hand.`);
+          `spec-shaped CLAUDE.md, so restore returns a spec rather than your own file: ` +
+          legacySpecBackups
+            .map(b => `${path.basename(b.dir)}` + (b.siblings.length ? ` (+ ${b.siblings.join(', ')})` : ''))
+            .join(', ') +
+          `. Not moved automatically — a dir with sibling files may be a genuine ` +
+          `personal backup from a pre-v0.23.11 install. Inspect, then move or delete by hand.`
+  );
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');
   const logExists = fs.existsSync(logPath);
   const logBytes = logExists ? fs.statSync(logPath).size : 0;
-  const logLines = logExists
-    ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length
-    : 0;
+  const logLines = logExists ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length : 0;
   const logMB = (logBytes / (1024 * 1024)).toFixed(1);
   // 5MB is well past normal daily usage — audit.js reads the whole file into
   // memory, so oversized logs slow /claudemd-audit and eat RAM. No auto-rotate;
   // just surface so the user can truncate deliberately.
   const LOG_WARN_MB = 5;
   const logOk = logBytes < LOG_WARN_MB * 1024 * 1024;
-  push('logs', logOk,
+  push(
+    'logs',
+    logOk,
     logOk
       ? `${logLines} rule-hits row(s), ${logMB} MB`
-      : `${logLines} rule-hits row(s), ${logMB} MB — exceeds ${LOG_WARN_MB} MB; truncate ~/.claude/logs/claudemd.jsonl`);
+      : `${logLines} rule-hits row(s), ${logMB} MB — exceeds ${LOG_WARN_MB} MB; truncate ~/.claude/logs/claudemd.jsonl`
+  );
 
   // Live self-tests: feed synthetic events into the shipped hooks and assert a
   // deny JSON comes back. Catches drift between hook patterns (banned-vocab.
@@ -401,7 +472,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
       name: 'banned-vocab self-test:prose-scan',
       hook: 'banned-vocab-check.sh',
       ksEnvVar: 'DISABLE_BANNED_VOCAB_HOOK',
-      setup: (tmpDir) => {
+      setup: tmpDir => {
         const synthCwd = '/doctor/selftest';
         const synthSid = 'doctor-selftest-prose';
         // banned-vocab-check.sh locates the transcript via hook_encode_project
@@ -413,7 +484,10 @@ export async function doctor({ pruneBackups: prune } = {}) {
         fs.mkdirSync(transDir, { recursive: true });
         const turn = JSON.stringify({
           type: 'assistant',
-          message: { role: 'assistant', content: [{ type: 'text', text: 'This significantly improves throughput.' }] },
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'This significantly improves throughput.' }],
+          },
         });
         fs.writeFileSync(path.join(transDir, `${synthSid}.jsonl`), turn + '\n');
         return {
@@ -448,7 +522,9 @@ export async function doctor({ pruneBackups: prune } = {}) {
       try {
         const s = readSettings();
         tKsSettings = s.env?.[t.ksEnvVar] === '1';
-      } catch { /* unparseable surfaced separately */ }
+      } catch {
+        /* unparseable surfaced separately */
+      }
     }
     const tKsEngaged = ksEnvPlugin || tKsEnv || tKsSettings;
 
@@ -488,18 +564,25 @@ export async function doctor({ pruneBackups: prune } = {}) {
     });
 
     if (cleanupDir) {
-      try { fs.rmSync(cleanupDir, { recursive: true, force: true }); } catch { /* tmp leak benign */ }
+      try {
+        fs.rmSync(cleanupDir, { recursive: true, force: true });
+      } catch {
+        /* tmp leak benign */
+      }
     }
 
     const denied = r.status === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout || '');
     const ksNote = tKsEngaged
       ? ' — note: kill-switch engaged in user env/settings; hook will NOT fire in practice'
       : '';
-    push(t.name, denied,
+    push(
+      t.name,
+      denied,
       (denied
         ? t.successDetail
-        : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`)
-      + ksNote);
+        : `hook did not deny synthetic trigger (status=${r.status}, stdout="${(r.stdout || '').slice(0, 80).replace(/\s+/g, ' ').trim()}")`) +
+        ksNote
+    );
   }
 
   // OBS-2 (roadmap, 2026-07-12 audit): field-liveness self-checks for the
@@ -513,14 +596,18 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // exits 0 with no shell-crash signature on stderr. Hooks left out of the table
   // are enumerated with their reason in LIVENESS_SKIPPED below.
   const CRASH_RE = /: line \d+:|syntax error|unbound variable|: command not found/;
-  const stopEvt = { session_id: 'doctor-selftest', hook_event_name: 'Stop', transcript_path: '/tmp/claudemd-doctor-none.jsonl' };
+  const stopEvt = {
+    session_id: 'doctor-selftest',
+    hook_event_name: 'Stop',
+    transcript_path: '/tmp/claudemd-doctor-none.jsonl',
+  };
   // Kill-switch names come from HOOK_REGISTRY, not a hand-written literal per
   // row. They were spelled out here in a fourth parallel list, so a renamed
   // envVarSuffix would leave doctor clearing a variable no hook reads while the
   // user's real DISABLE_* survived into the spawn — the hook would exit at its
   // guard, satisfy status===0 with clean stderr, and this check would report
   // green on a hook it never actually ran (2026-07-25 audit).
-  const ksFor = (basename) => {
+  const ksFor = basename => {
     const entry = HOOK_REGISTRY.find(h => h.basename === basename);
     if (!entry) throw new Error(`doctor liveness: ${basename} is not in HOOK_REGISTRY`);
     return `DISABLE_${entry.envVarSuffix}_HOOK`;
@@ -537,29 +624,67 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // nor deleted (docs/ADDING-NEW-HOOK.md sends new hooks here).
   // eslint-disable-next-line no-unused-vars
   const LIVENESS_SKIPPED = {
-    'session-start-check.sh': 'bootstraps the install and makes a network call — unsafe to trigger from a health command; tests/hooks/session-start.test.sh covers it',
-    'version-sync.sh': 'spawns a background re-install — same reason; tests/integration/upgrade-lifecycle.test.sh covers it',
-    'pre-bash-safety-check.sh': 'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
+    'session-start-check.sh':
+      'bootstraps the install and makes a network call — unsafe to trigger from a health command; tests/hooks/session-start.test.sh covers it',
+    'version-sync.sh':
+      'spawns a background re-install — same reason; tests/integration/upgrade-lifecycle.test.sh covers it',
+    'pre-bash-safety-check.sh':
+      'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
     'banned-vocab-check.sh': 'same blocking-gate shape; tests/hooks/banned-vocab.test.sh covers it',
   };
   const livenessTests = [
-    { hook: 'memory-read-check.sh',         ks: ksFor('memory-read-check.sh'),              event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
-    { hook: 'ship-baseline-check.sh',       ks: ksFor('ship-baseline-check.sh'),            event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } } },
-    { hook: 'session-extended-read.sh',     ks: ksFor('session-extended-read.sh'),    event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } } },
-    { hook: 'transcript-vocab-scan.sh',     ks: ksFor('transcript-vocab-scan.sh'),    event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' }, tool_response: {} } },
-    { hook: 'session-end-check.sh',         ks: ksFor('session-end-check.sh'),        event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' } },
-    { hook: 'session-summary.sh',           ks: ksFor('session-summary.sh'),          event: stopEvt },
-    { hook: 'mem-audit.sh',                 ks: ksFor('mem-audit.sh'),                event: stopEvt },
-    { hook: 'residue-audit.sh',             ks: ksFor('residue-audit.sh'),            event: stopEvt },
-    { hook: 'sandbox-disposal-check.sh',    ks: ksFor('sandbox-disposal-check.sh'),         event: stopEvt },
+    {
+      hook: 'memory-read-check.sh',
+      ks: ksFor('memory-read-check.sh'),
+      event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } },
+    },
+    {
+      hook: 'ship-baseline-check.sh',
+      ks: ksFor('ship-baseline-check.sh'),
+      event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } },
+    },
+    {
+      hook: 'session-extended-read.sh',
+      ks: ksFor('session-extended-read.sh'),
+      event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } },
+    },
+    {
+      hook: 'transcript-vocab-scan.sh',
+      ks: ksFor('transcript-vocab-scan.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        tool_input: { command: 'true' },
+        tool_response: {},
+      },
+    },
+    {
+      hook: 'session-end-check.sh',
+      ks: ksFor('session-end-check.sh'),
+      event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' },
+    },
+    { hook: 'session-summary.sh', ks: ksFor('session-summary.sh'), event: stopEvt },
+    { hook: 'mem-audit.sh', ks: ksFor('mem-audit.sh'), event: stopEvt },
+    { hook: 'residue-audit.sh', ks: ksFor('residue-audit.sh'), event: stopEvt },
+    { hook: 'sandbox-disposal-check.sh', ks: ksFor('sandbox-disposal-check.sh'), event: stopEvt },
     { hook: 'transcript-structure-scan.sh', ks: ksFor('transcript-structure-scan.sh'), event: stopEvt },
-    { hook: 'memory-prompt-hint.sh',        ks: ksFor('memory-prompt-hint.sh'),              event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' } },
+    {
+      hook: 'memory-prompt-hint.sh',
+      ks: ksFor('memory-prompt-hint.sh'),
+      event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
+    },
   ];
   for (const t of livenessTests) {
     const hookPath = path.join(PLUGIN_ROOT, 'hooks', t.hook);
     const name = `${t.hook.replace(/\.sh$/, '')} liveness`;
-    if (!fs.existsSync(hookPath)) { push(name, false, `hook missing at ${hookPath}`); continue; }
-    if (!which('jq') || !which('bash')) { push(name, false, 'prerequisite missing (jq + bash required)'); continue; }
+    if (!fs.existsSync(hookPath)) {
+      push(name, false, `hook missing at ${hookPath}`);
+      continue;
+    }
+    if (!which('jq') || !which('bash')) {
+      push(name, false, 'prerequisite missing (jq + bash required)');
+      continue;
+    }
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-dr-live-'));
     let r;
     try {
@@ -570,10 +695,20 @@ export async function doctor({ pruneBackups: prune } = {}) {
         timeout: 5000,
         // Isolated HOME + kill-switches cleared → tests CODE integrity, not live
         // enforcement; any state write lands in tmp and is removed below.
-        env: { ...process.env, HOME: tmp, DISABLE_RULE_HITS_LOG: '1', DISABLE_CLAUDEMD_HOOKS: '', [t.ks]: '' },
+        env: {
+          ...process.env,
+          HOME: tmp,
+          DISABLE_RULE_HITS_LOG: '1',
+          DISABLE_CLAUDEMD_HOOKS: '',
+          [t.ks]: '',
+        },
       });
     } finally {
-      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* tmp leak benign */ }
+      try {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      } catch {
+        /* tmp leak benign */
+      }
     }
     const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
     const crash = CRASH_RE.test(r.stderr || '');
@@ -586,11 +721,15 @@ export async function doctor({ pruneBackups: prune } = {}) {
     // catch a kill-switch mismatch.
     const guardMatches = guardArg !== undefined && `DISABLE_${guardArg}_HOOK` === t.ks;
     const ok = r.status === 0 && !crash && !timedOut && guardMatches;
-    push(name, ok, ok
-      ? `ran clean on synthetic event (exit 0, no shell crash, kill-switch ${t.ks} verified)`
-      : !guardMatches
-        ? `kill-switch mismatch: registry says ${t.ks} but the hook guards on DISABLE_${guardArg}_HOOK — doctor cleared the wrong variable, so this hook may have no-opped`
-        : `hook errored (status=${r.status}${timedOut ? ', TIMED OUT' : ''}, stderr="${(r.stderr || '').slice(0, 120).replace(/\s+/g, ' ').trim()}")`);
+    push(
+      name,
+      ok,
+      ok
+        ? `ran clean on synthetic event (exit 0, no shell crash, kill-switch ${t.ks} verified)`
+        : !guardMatches
+          ? `kill-switch mismatch: registry says ${t.ks} but the hook guards on DISABLE_${guardArg}_HOOK — doctor cleared the wrong variable, so this hook may have no-opped`
+          : `hook errored (status=${r.status}${timedOut ? ', TIMED OUT' : ''}, stderr="${(r.stderr || '').slice(0, 120).replace(/\s+/g, ' ').trim()}")`
+    );
   }
 
   // v0.7.1 R-N6 — bypass:deny ratio per spec section. Surfaces §0.1
@@ -606,7 +745,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // (likely cross-cutting friction). Token detail only attached to demotion
   // candidates; healthy rows stay terse.
   const ruleHitsLog = path.join(logsDir(), 'claudemd.jsonl');
-  const { hits: recentHits, totalLines: rhTotal, skipped: rhSkipped } = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
+  const {
+    hits: recentHits,
+    totalLines: rhTotal,
+    skipped: rhSkipped,
+  } = readHits(ruleHitsLog, RULE_USAGE_WINDOW_DAYS);
   // Hook fail-open advisory. A `fail-open` row means a hook hit a missing
   // prerequisite and exited 0 instead of enforcing. Classify by REASON, not by
   // session attribution: hook_record_failopen (hooks/lib/hook-common.sh) does
@@ -692,8 +835,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
       // ceremony on known-safe ops, NOT a demote signal. Surface for visibility,
       // but never the "§0.1 demotion candidate" label (an action policy forbids).
       // Low-ratio §8 falls through to the normal healthy branch below.
-      push(`rule-usage:${section}`, true,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, immutable §8 SAFETY — high bypass is known-safe-op ceremony, not a §0.1 demote signal)`);
+      push(
+        `rule-usage:${section}`,
+        true,
+        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, immutable §8 SAFETY — high bypass is known-safe-op ceremony, not a §0.1 demote signal)`
+      );
       continue;
     }
     if (ratio > RULE_USAGE_DEMOTION_RATIO) {
@@ -719,12 +865,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
       // (2026-07-25 audit; `tasks/banned-vocab-demote-evaluation-2026-07-25.md`
       // settled the same question for §10-V). Since v0.57.0 `banned-vocab`
       // bypass rows carry `extra.matched`, so the review can act per-term.
-      push(`rule-usage:${section}`, false,
+      push(
+        `rule-usage:${section}`,
+        false,
         `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, high override — take to the §13.2 batch review; ` +
-        `no demote-by-bypass-rate rule exists, so this is not a demotion candidate); bypass via ${tokenList}`);
+          `no demote-by-bypass-rate rule exists, so this is not a demotion candidate); bypass via ${tokenList}`
+      );
     } else {
-      push(`rule-usage:${section}`, true,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
+      push(`rule-usage:${section}`, true, `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
     }
   }
 
@@ -736,8 +884,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // not MUST. See scripts/lib/memory-tags.js for heuristic + wordlist.
   const { findings: tagFindings, scannedFiles } = scanMemoryTags();
   if (tagFindings.length === 0) {
-    push('memory-tag-specificity', true,
-      `scanned ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates`);
+    push(
+      'memory-tag-specificity',
+      true,
+      `scanned ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates`
+    );
   } else {
     // Group by memDir+file for readable output: one row per (memDir, file)
     // listing all flagged tags with reasons.
@@ -752,11 +903,14 @@ export async function doctor({ pruneBackups: prune } = {}) {
       return `${projectDir}/${e.file}: ${e.tags.join(', ')}`;
     });
     const more = byEntry.size > 3 ? ` +${byEntry.size - 3} more` : '';
-    push('memory-tag-specificity', false,
+    push(
+      'memory-tag-specificity',
+      false,
       `${tagFindings.length} generic-tag candidate(s) across ${byEntry.size} entry(ies) in ${scannedFiles} MEMORY.md file(s); ` +
-      `risk of §11 ship-time FP per spec §11-EXT (v6.11.11). ` +
-      `Samples: ${sample.join(' | ')}${more}. ` +
-      `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`);
+        `risk of §11 ship-time FP per spec §11-EXT (v6.11.11). ` +
+        `Samples: ${sample.join(' | ')}${more}. ` +
+        `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`
+    );
   }
 
   // v0.30.0 E2 — cross-layer memory maintenance (plan P5). Wrong-layer
@@ -765,34 +919,48 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const mm = await memoryMaintenance();
   const promoteDetail = mm.promoteSkipped
     ? `skipped: ${mm.promoteSkipped}`
-    : (mm.promoteToDurable.length === 0
+    : mm.promoteToDurable.length === 0
       ? `0 candidates (mem-lite lessons cited ≥${CITE_MIN}× alive ≥${PROMOTE_MIN_AGE_DAYS}d)`
       : `${mm.promoteToDurable.length} promote-to-durable candidate(s) — high-frequency recall is de-facto ` +
         `long-term knowledge; consider a MEMORY.md entry (operator's call, no auto-migration): ` +
-        mm.promoteToDurable.slice(0, 5).map(c => `#${c.id} "${c.title}" (cited ${c.citedCount}×)`).join(', '));
+        mm.promoteToDurable
+          .slice(0, 5)
+          .map(c => `#${c.id} "${c.title}" (cited ${c.citedCount}×)`)
+          .join(', ');
   // A SKIPPED check is not a PASSED check — but "optional dependency absent" is
   // not a broken check either. claude-mem-lite is a separate plugin and Node
   // 20–22.4 (the declared engines floor, and a CI matrix leg) has no node:sqlite,
   // so failing on those would report a broken install to every user without the
   // plugin and set exit 3 on a healthy machine. Only an unreadable DB is a real
   // failure; the two absence reasons stay ok with the reason in the detail.
-  const promoteUnavailable = mm.promoteSkipped != null
-    && /DB not found|node:sqlite unavailable/.test(mm.promoteSkipped);
-  const promoteOk = promoteUnavailable
-    || (mm.promoteSkipped == null && mm.promoteToDurable.length === 0);
+  const promoteUnavailable =
+    mm.promoteSkipped != null && /DB not found|node:sqlite unavailable/.test(mm.promoteSkipped);
+  const promoteOk = promoteUnavailable || (mm.promoteSkipped == null && mm.promoteToDurable.length === 0);
   push('memory-maintenance:promote', promoteOk, promoteDetail);
-  push('memory-maintenance:recall-repatriation', mm.recallRepatriation.length === 0,
+  push(
+    'memory-maintenance:recall-repatriation',
+    mm.recallRepatriation.length === 0,
     mm.recallRepatriation.length === 0
       ? `0 recall_*.md older than ${RECALL_MAX_AGE_DAYS}d in ${mm.memDir}`
       : `${mm.recallRepatriation.length} plugin-absent fallback file(s) linger past ${RECALL_MAX_AGE_DAYS}d — ` +
-        `migrate into claude-mem-lite or delete: ` +
-        mm.recallRepatriation.slice(0, 5).map(c => `${c.file} (${c.ageDays}d)`).join(', '));
-  push('memory-maintenance:stale', mm.staleDurable.length === 0,
+          `migrate into claude-mem-lite or delete: ` +
+          mm.recallRepatriation
+            .slice(0, 5)
+            .map(c => `${c.file} (${c.ageDays}d)`)
+            .join(', ')
+  );
+  push(
+    'memory-maintenance:stale',
+    mm.staleDurable.length === 0,
     mm.staleDurable.length === 0
       ? `0 durable files >${STALE_AGE_DAYS}d without a telemetry keyword mention (${mm.scannedDurableFiles} scanned)`
       : `${mm.staleDurable.length} durable file(s) >${STALE_AGE_DAYS}d old with zero keyword mentions in the ` +
-        `telemetry window — review tags or retire: ` +
-        mm.staleDurable.slice(0, 5).map(c => `${c.file} (${c.ageDays}d)`).join(', '));
+          `telemetry window — review tags or retire: ` +
+          mm.staleDurable
+            .slice(0, 5)
+            .map(c => `${c.file} (${c.ageDays}d)`)
+            .join(', ')
+  );
 
   // v0.35.0 R2 — Tier-2 index size budget (soft). See lib/memory-tags.js
   // MEMORY_INDEX_BUDGET_BYTES for rationale (2026-07-11 spec-audit R2: the
@@ -803,18 +971,28 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const overBudget = idx.indexes.filter(i => i.bytes > MEMORY_INDEX_BUDGET_BYTES);
   if (overBudget.length === 0) {
     const largest = idx.indexes[0]; // scan returns bytes-desc sorted
-    push('memory-index-size', true,
+    push(
+      'memory-index-size',
+      true,
       `${idx.scannedFiles} MEMORY.md file(s) within ${budgetKb}KB soft budget` +
-      (largest ? ` (largest ${(largest.bytes / 1024).toFixed(1)}KB, ${largest.entries} entries)` : ''));
+        (largest ? ` (largest ${(largest.bytes / 1024).toFixed(1)}KB, ${largest.entries} entries)` : '')
+    );
   } else {
-    const sample = overBudget.slice(0, 3)
-      .map(i => `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${(i.bytes / 1024).toFixed(1)}KB (${i.entries} entries)`)
+    const sample = overBudget
+      .slice(0, 3)
+      .map(
+        i =>
+          `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${(i.bytes / 1024).toFixed(1)}KB (${i.entries} entries)`
+      )
       .join(', ');
     const more = overBudget.length > 3 ? ` +${overBudget.length - 3} more` : '';
-    push('memory-index-size', false,
+    push(
+      'memory-index-size',
+      false,
       `${overBudget.length}/${idx.scannedFiles} MEMORY.md file(s) exceed the ${budgetKb}KB soft budget: ${sample}${more}. ` +
-      `The Tier-2 index loads into context every session of its project — prune closed-loop project_* entries ` +
-      `or compress descriptions/tags (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`);
+        `The Tier-2 index loads into context every session of its project — prune closed-loop project_* entries ` +
+        `or compress descriptions/tags (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`
+    );
   }
 
   // v0.61.0 — ship-runbook review-step presence (advisory). Origin: the
@@ -838,21 +1016,33 @@ export async function doctor({ pruneBackups: prune } = {}) {
     const stateDirPath = stateDir();
     const { candidates } = scanStateDir({ stateDir: stateDirPath });
     const ORPHAN_ADVISORY_THRESHOLD = 50;
-    const byKind = candidates.reduce((acc, c) => { acc[c.kind] = (acc[c.kind] || 0) + 1; return acc; }, {});
-    const kindSummary = Object.entries(byKind).map(([k, n]) => `${k}=${n}`).join(', ') || 'none';
+    const byKind = candidates.reduce((acc, c) => {
+      acc[c.kind] = (acc[c.kind] || 0) + 1;
+      return acc;
+    }, {});
+    const kindSummary =
+      Object.entries(byKind)
+        .map(([k, n]) => `${k}=${n}`)
+        .join(', ') || 'none';
     // The count is EVERY ephemeral file, including this session's own sentinel
     // and 60-second-old failopen markers. Cleanup reaps only those past the
     // retention window, so the two numbers legitimately differ — say so rather
     // than implying `--apply` will zero this figure.
     if (candidates.length <= ORPHAN_ADVISORY_THRESHOLD) {
-      push('state-dir-orphans', true,
-        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary})`);
+      push(
+        'state-dir-orphans',
+        true,
+        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary})`
+      );
     } else {
-      push('state-dir-orphans', false,
+      push(
+        'state-dir-orphans',
+        false,
         `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary}) ` +
-        `exceeds the ${ORPHAN_ADVISORY_THRESHOLD} advisory threshold — run ` +
-        `/claudemd-clean-residue --apply to reap the subset past the retention window. ` +
-        `Advisory: this never fails the doctor exit code.`);
+          `exceeds the ${ORPHAN_ADVISORY_THRESHOLD} advisory threshold — run ` +
+          `/claudemd-clean-residue --apply to reap the subset past the retention window. ` +
+          `Advisory: this never fails the doctor exit code.`
+      );
     }
   } catch {
     // Never let a health check take down the health checker.
@@ -860,17 +1050,24 @@ export async function doctor({ pruneBackups: prune } = {}) {
 
   const rrs = scanRunbookReviewSteps({});
   if (rrs.missing.length === 0) {
-    push('runbook-review-step', true,
-      `${rrs.scannedRunbooks} ship-runbook file(s) scanned, all carry a review-before-tag step`);
+    push(
+      'runbook-review-step',
+      true,
+      `${rrs.scannedRunbooks} ship-runbook file(s) scanned, all carry a review-before-tag step`
+    );
   } else {
-    const sample = rrs.missing.slice(0, 4)
+    const sample = rrs.missing
+      .slice(0, 4)
       .map(m => `${m.project.replace(/^-.*-projects-/, '')}/${m.file} [${m.tier}]`)
       .join(', ');
     const more = rrs.missing.length > 4 ? ` +${rrs.missing.length - 4} more` : '';
-    push('runbook-review-step', false,
+    push(
+      'runbook-review-step',
+      false,
       `${rrs.missing.length}/${rrs.scannedRunbooks} ship-runbook file(s) lack a review-before-tag step: ${sample}${more}. ` +
-      `Add the §EXT §12 Author ≠ reviewer line at the decision point (rule text loaded ≠ enforced — ` +
-      `the checklist wins); operator edit, no auto-rewrite.`);
+        `Add the §EXT §12 Author ≠ reviewer line at the decision point (rule text loaded ≠ enforced — ` +
+        `the checklist wins); operator edit, no auto-rewrite.`
+    );
   }
 
   // Retain N per namespace. Pruning only the default label would leave the
@@ -886,10 +1083,12 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // R10-03). One caliber for both: `pruneSkippedLegacy` reports the exact set
   // the inventory named, so the two numbers cannot drift apart silently.
   const pruneSkippedLegacy = legacySpecBackups.map(b => b.dir);
-  const pruned = prune != null
-    ? Object.values(BACKUP_LABELS).flatMap(label =>
-        pruneBackups(prune, { label, exclude: pruneSkippedLegacy }))
-    : [];
+  const pruned =
+    prune != null
+      ? Object.values(BACKUP_LABELS).flatMap(label =>
+          pruneBackups(prune, { label, exclude: pruneSkippedLegacy })
+        )
+      : [];
 
   return { checks, pruned, pruneSkippedLegacy: prune != null ? pruneSkippedLegacy : [] };
 }
@@ -900,7 +1099,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--prune-backups'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   let prune;
@@ -913,35 +1115,36 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (val === null) {
       console.error(
         `--prune-backups requires a positive integer retain count (got '${raw}').\n` +
-        `  Examples: --prune-backups=5 (keep 5 newest), --prune-backups=1 (keep only the newest).\n` +
-        `  To remove ALL backups, delete ${backupGlobs()} manually — this flag cannot do that.`
+          `  Examples: --prune-backups=5 (keep 5 newest), --prune-backups=1 (keep only the newest).\n` +
+          `  To remove ALL backups, delete ${backupGlobs()} manually — this flag cannot do that.`
       );
       process.exit(1);
     }
     prune = val;
   }
-  doctor({ pruneBackups: prune }).then(r => {
-    console.log(JSON.stringify(r, null, 2));
-    // Exit non-zero when checks failed. This always exited 0 regardless of
-    // results (4/42 failing still reported success), so any CI step or hook
-    // gating on `node scripts/doctor.js` was a no-op (2026-07-25 audit).
-    //
-    // Code 3, not 1: 1 already means "argv rejected", and reusing it would make
-    // a failing health check indistinguishable from a typo'd flag — the same
-    // exit-code overloading this pass is removing elsewhere.
-    const failed = (r.checks || [])
-      .filter(c => c && c.ok === false && !isAdvisoryCheck(c.name)).length;
-    if (failed > 0) process.exitCode = 3;
-  }).catch(err => {
-    // Without this, ANY throw inside doctor() surfaced as a bare unhandled
-    // rejection — Node prints a stack and exits before a single check line is
-    // written, so the one command a user runs to diagnose ~/.claude fails in
-    // the least diagnostic way available. The backup inventory reads whatever
-    // dirs happen to be in ~/.claude, and 0.68.3 widened that from one
-    // namespace to three, so a dangling symlink or an unreadable dir there is
-    // a live input, not a hypothetical.
-    console.error(`[claudemd] doctor failed: ${err && err.message ? err.message : err}`);
-    if (process.env.CLAUDEMD_DEBUG) console.error(err);
-    process.exitCode = 1;
-  });
+  doctor({ pruneBackups: prune })
+    .then(r => {
+      console.log(JSON.stringify(r, null, 2));
+      // Exit non-zero when checks failed. This always exited 0 regardless of
+      // results (4/42 failing still reported success), so any CI step or hook
+      // gating on `node scripts/doctor.js` was a no-op (2026-07-25 audit).
+      //
+      // Code 3, not 1: 1 already means "argv rejected", and reusing it would make
+      // a failing health check indistinguishable from a typo'd flag — the same
+      // exit-code overloading this pass is removing elsewhere.
+      const failed = (r.checks || []).filter(c => c && c.ok === false && !isAdvisoryCheck(c.name)).length;
+      if (failed > 0) process.exitCode = 3;
+    })
+    .catch(err => {
+      // Without this, ANY throw inside doctor() surfaced as a bare unhandled
+      // rejection — Node prints a stack and exits before a single check line is
+      // written, so the one command a user runs to diagnose ~/.claude fails in
+      // the least diagnostic way available. The backup inventory reads whatever
+      // dirs happen to be in ~/.claude, and 0.68.3 widened that from one
+      // namespace to three, so a dangling symlink or an unreadable dir there is
+      // a live input, not a hypothetical.
+      console.error(`[claudemd] doctor failed: ${err && err.message ? err.message : err}`);
+      if (process.env.CLAUDEMD_DEBUG) console.error(err);
+      process.exitCode = 1;
+    });
 }

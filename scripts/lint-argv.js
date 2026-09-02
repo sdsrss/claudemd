@@ -220,7 +220,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parseStrict(process.argv.slice(2), {});
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const patternHits = scan();
@@ -236,9 +239,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.stderr.write(`    ${h.text}\n`);
     process.stderr.write(`    why: ${h.why}\n\n`);
   }
-  process.stderr.write(`Fix: route flag parsing through scripts/lib/argv.js#parseStrict (slash-command CLIs)\n`);
-  process.stderr.write(`     or validateAndExpandFlags (bin/claudemd-lint.js, supports both --key=v and --key v).\n`);
-  process.stderr.write(`     If the line is genuinely safe (validator runs upstream), put \`// ${ALLOW_TOKEN} — <why>\`\n`);
-  process.stderr.write(`     on the line ABOVE it (preferred — survives reformatting) or at the end of the line itself.\n`);
+  process.stderr.write(
+    `Fix: route flag parsing through scripts/lib/argv.js#parseStrict (slash-command CLIs)\n`
+  );
+  process.stderr.write(
+    `     or validateAndExpandFlags (bin/claudemd-lint.js, supports both --key=v and --key v).\n`
+  );
+  process.stderr.write(
+    `     If the line is genuinely safe (validator runs upstream), put \`// ${ALLOW_TOKEN} — <why>\`\n`
+  );
+  process.stderr.write(
+    `     on the line ABOVE it (preferred — survives reformatting) or at the end of the line itself.\n`
+  );
   process.exit(1);
 }

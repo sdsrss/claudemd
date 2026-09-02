@@ -118,8 +118,7 @@ test('argv-lint: the token on a preceding CODE line does NOT suppress', () => {
   const root = makeFixture({
     // The string mentions the token; the line is not a comment. Accepting this
     // would let any file suppress the gate by naming the token in a literal.
-    'scripts/sneaky.js':
-      "const doc = 'argv-lint:allow';\n" + "const json = args.includes('--json');\n",
+    'scripts/sneaky.js': "const doc = 'argv-lint:allow';\n" + "const json = args.includes('--json');\n",
   });
   try {
     const hits = scan({ root, dirs: ['scripts'], fileAllowlist: {} });
@@ -184,9 +183,9 @@ test('Round-6: scanMainBlockMissingArgv flags main-block w/o parseStrict/printHe
   const root = makeFixture({
     'scripts/destructive.js':
       "import { rmSync } from 'node:fs';\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
       "  rmSync('/tmp/x', { recursive: true });\n" +
-      "}\n",
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} });
@@ -203,9 +202,9 @@ test('Round-6: scanMainBlockMissingArgv passes a script that calls parseStrict',
   const root = makeFixture({
     'scripts/safe.js':
       "import { parseStrict } from './lib/argv.js';\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
-      "  parseStrict(process.argv.slice(2), {});\n" +
-      "}\n",
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
+      '  parseStrict(process.argv.slice(2), {});\n' +
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} });
@@ -219,10 +218,10 @@ test('Round-6: scanMainBlockMissingArgv passes a script that calls printHelpAndE
   const root = makeFixture({
     'scripts/help-only.js':
       "import { printHelpAndExit } from './lib/argv.js';\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
       "  printHelpAndExit(process.argv.slice(2), 'usage');\n" +
-      "  doStuff();\n" +
-      "}\n",
+      '  doStuff();\n' +
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} });
@@ -235,8 +234,7 @@ test('Round-6: scanMainBlockMissingArgv passes a script that calls printHelpAndE
 test('Round-6: scanMainBlockMissingArgv ignores files without main-block guard', () => {
   // Pure library modules (no `if (import.meta.url === ...)`) must not flag.
   const root = makeFixture({
-    'scripts/pure-lib.js':
-      "export function thing() { return 42; }\n",
+    'scripts/pure-lib.js': 'export function thing() { return 42; }\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} });
@@ -253,9 +251,9 @@ test('scanMainBlockMissingArgv accepts validateAndExpandFlags IMPORTED from lib/
   const root = makeFixture({
     'bin/cli.js':
       "import { validateAndExpandFlags } from '../scripts/lib/argv.js';\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
       "  validateAndExpandFlags(process.argv.slice(2), [], [], 'cli');\n" +
-      "}\n",
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
@@ -275,16 +273,19 @@ test('R10-20: an unrelated import from lib/argv.js does not authenticate a local
   const root = makeFixture({
     'bin/cli.js':
       "import { ArgvError } from '../scripts/lib/argv.js';\n" +
-      "function parseStrict() { /* validates nothing */ }\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
-      "  parseStrict(process.argv.slice(2), {});\n" +
+      'function parseStrict() { /* validates nothing */ }\n' +
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
+      '  parseStrict(process.argv.slice(2), {});\n' +
       "  throw new ArgvError('x');\n" +
-      "}\n",
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
-    assert.equal(hits.length, 1,
-      'importing some other symbol from lib/argv.js must not authenticate a locally-declared validator');
+    assert.equal(
+      hits.length,
+      1,
+      'importing some other symbol from lib/argv.js must not authenticate a locally-declared validator'
+    );
     assert.equal(hits[0].pattern, 'main-block-without-argv-validation');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -298,9 +299,9 @@ test('R10-20: an aliased import of the real validator still counts', () => {
   const root = makeFixture({
     'bin/cli.js':
       "import { parseStrict as parseArgs } from '../scripts/lib/argv.js';\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
-      "  parseArgs(process.argv.slice(2), {});\n" +
-      "}\n",
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
+      '  parseArgs(process.argv.slice(2), {});\n' +
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
@@ -318,10 +319,10 @@ test('a LOCALLY DECLARED validateAndExpandFlags does not satisfy the gate (æ¡ç›
   // instead of converging it.
   const root = makeFixture({
     'bin/cli.js':
-      "function validateAndExpandFlags() { /* validates nothing */ }\n" +
-      "if (import.meta.url === `file://${process.argv[1]}`) {\n" +
+      'function validateAndExpandFlags() { /* validates nothing */ }\n' +
+      'if (import.meta.url === `file://${process.argv[1]}`) {\n' +
       "  validateAndExpandFlags(process.argv.slice(2), [], [], 'cli');\n" +
-      "}\n",
+      '}\n',
   });
   try {
     const hits = scanMainBlockMissingArgv({ root, dirs: ['bin'], fileAllowlist: {} });
@@ -356,7 +357,9 @@ test('R11-18a: the two ship gates run before lint:js in the lint chain', () => {
     const ji = steps.indexOf('lint:js');
     assert.ok(gi >= 0, `${gate} must stay in the lint chain (steps: ${steps.join(', ')})`);
     assert.ok(ji >= 0, `lint:js must stay in the lint chain (steps: ${steps.join(', ')})`);
-    assert.ok(gi < ji,
-      `${gate} is a ship gate and must precede the burn-down-pending lint:js; got ${steps.join(' && ')}`);
+    assert.ok(
+      gi < ji,
+      `${gate} is a ship gate and must precede the burn-down-pending lint:js; got ${steps.join(' && ')}`
+    );
   }
 });

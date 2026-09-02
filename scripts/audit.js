@@ -1,6 +1,20 @@
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, readLogRows, groupByHook, topPatterns, groupBySection, byBypass, byTrend, byFailOpen, uniqueInvocations, detectCutover, excludeTestSessions, byProjectClass, logFirstTs } from './lib/rule-hits-parse.js';
+import {
+  readHits,
+  readLogRows,
+  groupByHook,
+  topPatterns,
+  groupBySection,
+  byBypass,
+  byTrend,
+  byFailOpen,
+  uniqueInvocations,
+  detectCutover,
+  excludeTestSessions,
+  byProjectClass,
+  logFirstTs,
+} from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
@@ -74,13 +88,9 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
       // hard-rules-audit and sparkline already call logFirstTs for this;
       // audit.js was the one consumer that didn't.
       logFirstTs: firstTs != null ? new Date(firstTs).toISOString() : null,
-      logSpanDays: firstTs != null
-        ? Math.round(((Date.now() - firstTs) / 86400000) * 10) / 10
-        : null,
+      logSpanDays: firstTs != null ? Math.round(((Date.now() - firstTs) / 86400000) * 10) / 10 : null,
       // false ⇒ counts near the window's far edge are truncated, not dormant.
-      windowCovered: firstTs != null
-        ? firstTs <= Date.now() - days * 86400000
-        : null,
+      windowCovered: firstTs != null ? firstTs <= Date.now() - days * 86400000 : null,
     },
     byHook: groupByHook(realHits),
     bySection: groupBySection(realHits, cutoverTs),
@@ -122,15 +132,15 @@ async function selfCompliance(days) {
     rules[k] = {
       opportunities: v.opportunities,
       violations: v.violations,
-      rate: calibrated && v.opportunities > 0
-        ? Math.round((v.violations / v.opportunities) * 1000) / 1000
-        : null,
+      rate:
+        calibrated && v.opportunities > 0 ? Math.round((v.violations / v.opportunities) * 1000) / 1000 : null,
       precision: v.precision,
-      status: v.status === 'closed'
-        ? 'closed'
-        : calibrated
-          ? 'calibrated'
-          : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
+      status:
+        v.status === 'closed'
+          ? 'closed'
+          : calibrated
+            ? 'calibrated'
+            : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
       ...(v.closedReason ? { closedReason: v.closedReason } : {}),
     };
   }
@@ -149,7 +159,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_AUDIT_DAYS || '30');
@@ -159,8 +172,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const days = parsePositiveInt(raw);
   if (days === null) {
     console.error(
-      `--days requires a positive integer (got '${raw}').\n` +
-      `  Examples: --days=30 (default), --days=90.`
+      `--days requires a positive integer (got '${raw}').\n` + `  Examples: --days=30 (default), --days=90.`
     );
     process.exit(1);
   }

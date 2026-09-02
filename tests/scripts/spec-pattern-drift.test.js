@@ -28,7 +28,10 @@ const CANONICAL_FILE = path.join(ROOT, 'tests/fixtures/banned-vocab-canonical.js
 function readSpecSection() {
   const text = fs.readFileSync(SPEC_FILE, 'utf8');
   const start = text.indexOf('## §10-V Banned-vocab');
-  if (start < 0) throw new Error('§10-V section not found in spec/CLAUDE-extended.md — section header may have been renamed; update SPEC_FILE/anchor in this test.');
+  if (start < 0)
+    throw new Error(
+      '§10-V section not found in spec/CLAUDE-extended.md — section header may have been renamed; update SPEC_FILE/anchor in this test.'
+    );
   const end = text.indexOf('\n## ', start + 1);
   return end > 0 ? text.slice(start, end) : text.slice(start);
 }
@@ -55,7 +58,8 @@ function parseSpecBannedTerms() {
 
 function parsePatterns() {
   const text = fs.readFileSync(PATTERNS_FILE, 'utf8');
-  return text.split('\n')
+  return text
+    .split('\n')
     .map(l => l.trim())
     .filter(l => l && !l.startsWith('#'))
     .map(l => {
@@ -71,15 +75,16 @@ function loadCanonical() {
 test('drift-1: every banned-vocab pattern is mapped in canonical fixture', () => {
   const patterns = parsePatterns();
   const canonical = loadCanonical();
-  const canonicalPatterns = new Set(
-    canonical.entries.filter(e => e.pattern).map(e => e.pattern)
-  );
+  const canonicalPatterns = new Set(canonical.entries.filter(e => e.pattern).map(e => e.pattern));
   const orphans = patterns.filter(p => !canonicalPatterns.has(p));
-  assert.deepEqual(orphans, [],
+  assert.deepEqual(
+    orphans,
+    [],
     `Patterns in hooks/banned-vocab.patterns with no canonical mapping (drift):\n` +
-    orphans.map(p => `  ${p}`).join('\n') +
-    `\nResolution: add an entry to tests/fixtures/banned-vocab-canonical.json with this pattern, ` +
-    `OR remove the pattern from hooks/banned-vocab.patterns.`);
+      orphans.map(p => `  ${p}`).join('\n') +
+      `\nResolution: add an entry to tests/fixtures/banned-vocab-canonical.json with this pattern, ` +
+      `OR remove the pattern from hooks/banned-vocab.patterns.`
+  );
 });
 
 test('drift-2: every canonical pattern entry exists in banned-vocab.patterns', () => {
@@ -92,23 +97,27 @@ test('drift-2: every canonical pattern entry exists in banned-vocab.patterns', (
   // De-dup (multiple canonical entries may share a regex — e.g. "more efficient"
   // and "70-80% faster" both ride the same EN-ratio pattern).
   const uniqDangling = [...new Set(dangling)];
-  assert.deepEqual(uniqDangling, [],
+  assert.deepEqual(
+    uniqDangling,
+    [],
     `Canonical entries with .pattern not present in hooks/banned-vocab.patterns (drift):\n` +
-    uniqDangling.map(p => `  ${p}`).join('\n') +
-    `\nResolution: add the pattern to hooks/banned-vocab.patterns, OR remove from canonical.`);
+      uniqDangling.map(p => `  ${p}`).join('\n') +
+      `\nResolution: add the pattern to hooks/banned-vocab.patterns, OR remove from canonical.`
+  );
 });
 
 test('drift-3: every spec §10-V banned term is mapped in canonical', () => {
   const specTerms = parseSpecBannedTerms();
   const canonical = loadCanonical();
-  const canonicalTerms = new Set(
-    canonical.entries.filter(e => e.in_spec).map(e => e.term)
-  );
+  const canonicalTerms = new Set(canonical.entries.filter(e => e.in_spec).map(e => e.term));
   const drift = specTerms.filter(t => !canonicalTerms.has(t));
-  assert.deepEqual(drift, [],
+  assert.deepEqual(
+    drift,
+    [],
     `Spec §10-V banned terms not in canonical fixture (drift):\n` +
-    drift.map(t => `  ${t}`).join('\n') +
-    `\nResolution: add to tests/fixtures/banned-vocab-canonical.json with in_spec: true.`);
+      drift.map(t => `  ${t}`).join('\n') +
+      `\nResolution: add to tests/fixtures/banned-vocab-canonical.json with in_spec: true.`
+  );
 });
 
 test('drift-4: every canonical in_spec=true entry exists in spec §10-V text', () => {
@@ -118,33 +127,40 @@ test('drift-4: every canonical in_spec=true entry exists in spec §10-V text', (
     .filter(e => e.in_spec)
     .filter(e => !specText.includes(e.term))
     .map(e => e.term);
-  assert.deepEqual(dangling, [],
+  assert.deepEqual(
+    dangling,
+    [],
     `Canonical in_spec entries not found verbatim in spec §10-V text (drift):\n` +
-    dangling.map(t => `  ${t}`).join('\n') +
-    `\nResolution: either add the term to spec §10-V, or set in_spec: false in canonical with an exempt_reason.`);
+      dangling.map(t => `  ${t}`).join('\n') +
+      `\nResolution: either add the term to spec §10-V, or set in_spec: false in canonical with an exempt_reason.`
+  );
 });
 
 test('drift-5: canonical entries with partial coverage carry exempt_reason', () => {
   const canonical = loadCanonical();
   const violations = canonical.entries
-    .filter(e => (!e.in_spec || !e.pattern))
+    .filter(e => !e.in_spec || !e.pattern)
     .filter(e => !e.exempt_reason)
     .map(e => e.term);
-  assert.deepEqual(violations, [],
+  assert.deepEqual(
+    violations,
+    [],
     `Canonical entries with partial spec/pattern coverage but no exempt_reason:\n` +
-    violations.map(t => `  ${t}`).join('\n') +
-    `\nResolution: either fully cover (in_spec: true AND pattern: <regex>) or document why one side is intentionally absent.`);
+      violations.map(t => `  ${t}`).join('\n') +
+      `\nResolution: either fully cover (in_spec: true AND pattern: <regex>) or document why one side is intentionally absent.`
+  );
 });
 
 test('drift-6: no canonical entries cover neither spec nor pattern', () => {
   const canonical = loadCanonical();
-  const both_null = canonical.entries
-    .filter(e => !e.in_spec && !e.pattern)
-    .map(e => e.term);
-  assert.deepEqual(both_null, [],
+  const both_null = canonical.entries.filter(e => !e.in_spec && !e.pattern).map(e => e.term);
+  assert.deepEqual(
+    both_null,
+    [],
     `Canonical entries with neither in_spec nor pattern (vestigial):\n` +
-    both_null.map(t => `  ${t}`).join('\n') +
-    `\nResolution: an entry must be enforced via spec, via pattern, or both. Otherwise delete.`);
+      both_null.map(t => `  ${t}`).join('\n') +
+      `\nResolution: an entry must be enforced via spec, via pattern, or both. Otherwise delete.`
+  );
 });
 
 test('drift-7 (v0.23.11): patterns file uses POSIX classes, not BSD-unsafe \\s/\\d/\\w', () => {
@@ -160,8 +176,11 @@ test('drift-7 (v0.23.11): patterns file uses POSIX classes, not BSD-unsafe \\s/\
     const regex = line.slice(0, line.lastIndexOf('|'));
     if (/\\[sdwSDW]/.test(regex)) offenders.push(`L${i + 1}: ${line}`);
   }
-  assert.deepEqual(offenders, [],
+  assert.deepEqual(
+    offenders,
+    [],
     `banned-vocab.patterns lines using BSD-unsafe GNU escapes (\\s/\\d/\\w):\n` +
-    offenders.join('\n') +
-    `\nResolution: replace \\s→[[:space:]], \\d→[[:digit:]], \\w→[[:alnum:]_].`);
+      offenders.join('\n') +
+      `\nResolution: replace \\s→[[:space:]], \\d→[[:digit:]], \\w→[[:alnum:]_].`
+  );
 });

@@ -33,27 +33,39 @@ const NOT_IN_TABLE = new Set(['§hooks-fail-open']);
 test('ARCHITECTURE.md hook taxonomy lists every spec_section the hooks emit', () => {
   const doc = fs.readFileSync(ARCH_DOC, 'utf8');
   const emitted = emittedSections();
-  assert.ok(emitted.size > 5, `section extraction returned only ${emitted.size} — parser or hook shape changed`);
+  assert.ok(
+    emitted.size > 5,
+    `section extraction returned only ${emitted.size} — parser or hook shape changed`
+  );
 
   const missing = [...emitted]
     .filter(s => !NOT_IN_TABLE.has(s))
     .filter(s => !doc.includes(`\`${s}\``))
     .sort();
 
-  assert.deepEqual(missing, [],
+  assert.deepEqual(
+    missing,
+    [],
     `docs/ARCHITECTURE.md hook taxonomy is missing section(s) the hooks emit:\n` +
-    missing.map(s => `  ${s}`).join('\n') +
-    `\nThe table calls itself source-of-truth — re-extract it from hooks/**/*.sh.`);
+      missing.map(s => `  ${s}`).join('\n') +
+      `\nThe table calls itself source-of-truth — re-extract it from hooks/**/*.sh.`
+  );
 });
 
 test('ARCHITECTURE.md hook taxonomy has one row per registered hook', () => {
   const doc = fs.readFileSync(ARCH_DOC, 'utf8');
-  const onDisk = fs.readdirSync(HOOKS_DIR).filter(f => f.endsWith('.sh')).sort();
+  const onDisk = fs
+    .readdirSync(HOOKS_DIR)
+    .filter(f => f.endsWith('.sh'))
+    .sort();
 
   const missing = onDisk.filter(f => !doc.includes(`\`${f}\``));
-  assert.deepEqual(missing, [],
+  assert.deepEqual(
+    missing,
+    [],
     `hook(s) on disk with no row in the ARCHITECTURE.md taxonomy table:\n` +
-    missing.map(f => `  ${f}`).join('\n'));
+      missing.map(f => `  ${f}`).join('\n')
+  );
 
   // Reverse: a retired hook must not linger in the table (v0.57.0 removed
   // mid-spine-yield-scan and the table kept its heading count). Shared libs under
@@ -65,9 +77,11 @@ test('ARCHITECTURE.md hook taxonomy has one row per registered hook', () => {
   const known = new Set([...onDisk, ...libFiles]);
   const listed = [...doc.matchAll(/`([a-z0-9-]+\.sh)`/g)].map(m => m[1]);
   const stale = [...new Set(listed)].filter(f => !known.has(f)).sort();
-  assert.deepEqual(stale, [],
-    `ARCHITECTURE.md names hook file(s) that no longer exist:\n` +
-    stale.map(f => `  ${f}`).join('\n'));
+  assert.deepEqual(
+    stale,
+    [],
+    `ARCHITECTURE.md names hook file(s) that no longer exist:\n` + stale.map(f => `  ${f}`).join('\n')
+  );
 });
 
 // --- State-locations drift gate (2026-07-28 audit M1) -----------------------
@@ -96,10 +110,11 @@ function statePathsInSource() {
 
   // Interpolations collapse to `*`: `ext-read-${SAFE_SID}.ts` and
   // `ext-read-<sid>.ts` are the same documented kind.
-  const norm = s => s
-    .replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, '*')
-    .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, '*')
-    .replace(/\*+/g, '*');
+  const norm = s =>
+    s
+      .replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, '*')
+      .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, '*')
+      .replace(/\*+/g, '*');
 
   for (const full of files) {
     const src = fs.readFileSync(full, 'utf8');
@@ -123,7 +138,9 @@ function statePathsInSource() {
     // gate's scope was narrower than its subject — again, and this time in a
     // gate written to close that exact class. Keyed on the `claudemd-` prefix,
     // which is what makes a file in a shared temp dir ours.
-    for (const m of src.matchAll(/\$\{?[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}?\/(claudemd-[A-Za-z0-9.*_${}-]+)/g)) {
+    for (const m of src.matchAll(
+      /\$\{?[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}?\/(claudemd-[A-Za-z0-9.*_${}-]+)/g
+    )) {
       out.set(norm(m[1]).replace(/X{3,}$/, '*'), 'tmp');
     }
   }
@@ -150,23 +167,32 @@ test('ARCHITECTURE.md State locations lists every state path the source writes',
   // document can satisfy by describing itself is not a check.
   const full = fs.readFileSync(ARCH_DOC, 'utf8');
   const section = full.match(/^## State locations$([\s\S]*?)^(?=[^-\n])/m);
-  assert.ok(section, 'docs/ARCHITECTURE.md has no "## State locations" bullet list — the extraction anchor moved');
+  assert.ok(
+    section,
+    'docs/ARCHITECTURE.md has no "## State locations" bullet list — the extraction anchor moved'
+  );
   // A path counts as documented only when it is the SUBJECT of a bullet — the
   // first backticked token — not when it appears anywhere in the prose. Second
   // control: deleting the `session-summary-<sid>.lastrun` bullet still left the
   // stem inside another bullet's explanatory clause, so the whole-bullet-text
   // form stayed green on a deleted entry too.
-  const subjects = section[1].split('\n')
+  const subjects = section[1]
+    .split('\n')
     .filter(l => l.startsWith('- '))
     .map(l => (l.match(/`([^`]+)`/) || [])[1])
     .filter(Boolean);
   const doc = subjects.join('\n');
-  assert.ok(subjects.length >= 15, `State-locations list resolved ${subjects.length} bullet subject(s) — too few to be the real inventory`);
+  assert.ok(
+    subjects.length >= 15,
+    `State-locations list resolved ${subjects.length} bullet subject(s) — too few to be the real inventory`
+  );
   const found = new Set(statePathsInSource().keys());
 
-  assert.ok(found.size >= 8,
+  assert.ok(
+    found.size >= 8,
     `state-path extraction returned only ${found.size} — parser or source shape changed. ` +
-    `This gate must never validate an empty set.`);
+      `This gate must never validate an empty set.`
+  );
 
   const missing = [...found]
     .filter(p => !STATE_IGNORE.has(p))
@@ -175,10 +201,13 @@ test('ARCHITECTURE.md State locations lists every state path the source writes',
     .filter(p => !doc.includes(p.split('*')[0]))
     .sort();
 
-  assert.deepEqual(missing, [],
+  assert.deepEqual(
+    missing,
+    [],
     `docs/ARCHITECTURE.md "State locations" is missing path(s) the source writes:\n` +
-    missing.map(p => `  ${p}`).join('\n') +
-    `\nDocument them, or add a STATE_IGNORE entry stating why the path is not a kind.`);
+      missing.map(p => `  ${p}`).join('\n') +
+      `\nDocument them, or add a STATE_IGNORE entry stating why the path is not a kind.`
+  );
 });
 
 // --- 2026-08-29 audit R10-13: uninstall's state-file regex had no join ------
@@ -204,14 +233,19 @@ test('R10-13: uninstall CLAUDEMD_STATE_FILE_RE matches every state path the sour
     // A bare/leading interpolation carries no literal stem to match on.
     .filter(name => !name.startsWith('*'));
 
-  assert.ok(stateOnly.length >= 8,
-    `state-family extraction returned only ${stateOnly.length} — this join must never validate an empty set`);
+  assert.ok(
+    stateOnly.length >= 8,
+    `state-family extraction returned only ${stateOnly.length} — this join must never validate an empty set`
+  );
 
   const unmatched = stateOnly.filter(name => !CLAUDEMD_STATE_FILE_RE.test(name)).sort();
-  assert.deepEqual(unmatched, [],
+  assert.deepEqual(
+    unmatched,
+    [],
     `scripts/uninstall.js CLAUDEMD_STATE_FILE_RE does not match state file(s) the source writes:\n` +
-    unmatched.map(n => `  ${n}`).join('\n') +
-    `\n--purge would leave these behind on a non-canonically-named state dir.`);
+      unmatched.map(n => `  ${n}`).join('\n') +
+      `\n--purge would leave these behind on a non-canonically-named state dir.`
+  );
 });
 
 test('R10-13: the join is capable of failing (mutation control)', () => {
@@ -220,12 +254,15 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   // dropped stem: it is genuinely in the extracted set, unlike `installed.json`
   // (a STATE_IGNORE entry) — a mutation the filters swallow proves nothing, and
   // the first draft of this control picked exactly that one.
-  const mutated = /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|installed\.json)/;
+  const mutated =
+    /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|installed\.json)/;
   const stateOnly = [...statePathsInSource()]
     .filter(([, family]) => family === 'state')
     .map(([name]) => name)
     .filter(name => !STATE_IGNORE.has(name) && !name.startsWith('*'));
   const unmatched = stateOnly.filter(name => !mutated.test(name));
-  assert.ok(unmatched.length > 0,
-    'dropping `statusline-prev` from the regex left the join green — the predicate cannot fail');
+  assert.ok(
+    unmatched.length > 0,
+    'dropping `statusline-prev` from the regex left the join green — the predicate cannot fail'
+  );
 });

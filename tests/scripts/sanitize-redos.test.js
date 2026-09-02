@@ -34,7 +34,7 @@ const BIN = path.join(REPO_ROOT, 'bin/claudemd-lint.js');
 // between the two separates them; 3s leaves ~5× headroom on slow CI.
 const BUDGET_MS = 3000;
 
-const elapsed = (fn) => {
+const elapsed = fn => {
   const t0 = process.hrtime.bigint();
   fn();
   return Number(process.hrtime.bigint() - t0) / 1e6;
@@ -45,7 +45,10 @@ test('stripIdentifiers: a long delimiter-free class-run is linear, not quadratic
   // candidate start for both clauses and none of them can ever match.
   const run = 'a_'.repeat(100_000);
   const ms = elapsed(() => stripIdentifiers(run));
-  assert.ok(ms < BUDGET_MS, `stripIdentifiers took ${ms.toFixed(0)}ms on a 200k class-run (budget ${BUDGET_MS}ms)`);
+  assert.ok(
+    ms < BUDGET_MS,
+    `stripIdentifiers took ${ms.toFixed(0)}ms on a 200k class-run (budget ${BUDGET_MS}ms)`
+  );
 });
 
 test('stripIdentifiers: a run that ALMOST matches (delimiter only at the end) stays bounded', () => {
@@ -77,11 +80,17 @@ test('stripIdentifiers: fence semantics unchanged by the terminator precompute',
   // text, so everything after it stays scannable; with a closer, the body is
   // blanked. Both directions, since the precompute replaced the predicate.
   const unterminated = '```\nthis is comprehensive work\n';
-  assert.match(stripIdentifiers(unterminated), /comprehensive/,
-    'unterminated fence must stay literal text (no blank-to-EOF)');
+  assert.match(
+    stripIdentifiers(unterminated),
+    /comprehensive/,
+    'unterminated fence must stay literal text (no blank-to-EOF)'
+  );
   const terminated = '```\nthis is comprehensive work\n```\ntail\n';
-  assert.doesNotMatch(stripIdentifiers(terminated), /comprehensive/,
-    'a properly closed fence body must be stripped');
+  assert.doesNotMatch(
+    stripIdentifiers(terminated),
+    /comprehensive/,
+    'a properly closed fence body must be stripped'
+  );
   assert.match(stripIdentifiers(terminated), /tail/, 'text after the fence survives');
 });
 

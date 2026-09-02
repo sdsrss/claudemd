@@ -13,7 +13,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot } from './lib/paths.js';
-import { readHits, groupBySection, logFirstTs, excludeTestSessions, blockingDenyCount } from './lib/rule-hits-parse.js';
+import {
+  readHits,
+  groupBySection,
+  logFirstTs,
+  excludeTestSessions,
+  blockingDenyCount,
+} from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
@@ -77,7 +83,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     // surface at all and reports null (see below).
     const sectionHits = r.rule_hits_section ? bySection[r.rule_hits_section] : null;
     const total = sectionHits?.total || 0;
-    const deny = blockingDenyCount(sectionHits?.byEvent);  // deny + deny-repeat + deny-prose, not just literal `deny`
+    const deny = blockingDenyCount(sectionHits?.byEvent); // deny + deny-repeat + deny-prose, not just literal `deny`
     const bypass = sectionHits?.byEvent?.['bypass-escape-hatch'] || 0;
     const warn = sectionHits?.byEvent?.warn || 0;
     return {
@@ -133,10 +139,12 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     .filter(r => !isSafetyClass(r) && r.hits && r.hits.total === 0)
     .map(r => r.id);
   const demoteCandidates = insufficientData ? [] : wouldBeDemoteCandidates;
-  const demoteSuppressed = insufficientData ? {
-    reason: `log spans ${logSpanDays.toFixed(1)}d; OPERATOR.md §13.1 requires ${days}d of history to evaluate demotion`,
-    wouldHaveBeen: wouldBeDemoteCandidates,
-  } : null;
+  const demoteSuppressed = insufficientData
+    ? {
+        reason: `log spans ${logSpanDays.toFixed(1)}d; OPERATOR.md §13.1 requires ${days}d of history to evaluate demotion`,
+        wouldHaveBeen: wouldBeDemoteCandidates,
+      }
+    : null;
 
   // Stale-review candidates: any rule whose last_demote_review is null, older
   // than the §13.1 cadence, or unparseable.
@@ -148,12 +156,14 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // stays fresh. An unparseable date also yielded NaN, and `NaN < cutoff` is false
   // — garbage read as "reviewed recently", the wrong direction to fail in.
   const cadenceCutoff = Date.now() - REVIEW_CADENCE_DAYS * 86400 * 1000;
-  const staleReviews = rules.filter(r => {
-    if (!r.last_demote_review) return true;
-    const t = new Date(r.last_demote_review).getTime();
-    if (!Number.isFinite(t)) return true;
-    return t < cadenceCutoff;
-  }).map(r => r.id);
+  const staleReviews = rules
+    .filter(r => {
+      if (!r.last_demote_review) return true;
+      const t = new Date(r.last_demote_review).getTime();
+      if (!Number.isFinite(t)) return true;
+      return t < cadenceCutoff;
+    })
+    .map(r => r.id);
 
   // OPERATOR.md §13.1 sets the demote-evaluation window at 30d (moved out of
   // core §0.1 in v6.15.1). Direct script
@@ -162,9 +172,10 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // `--days=1` would surface every rule with 0 hits in the last day. Surface
   // the deviation in the JSON so the operator (or `/claudemd-rules` wrapper)
   // can flag it; do not block (some debugging flows want a narrow window).
-  const cadenceWarning = days < DEFAULT_WINDOW_DAYS
-    ? `--days=${days} is shorter than the OPERATOR.md §13.1 demote-evaluation window (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
-    : null;
+  const cadenceWarning =
+    days < DEFAULT_WINDOW_DAYS
+      ? `--days=${days} is shorter than the OPERATOR.md §13.1 demote-evaluation window (${DEFAULT_WINDOW_DAYS}d); demote signals may not reflect the spec contract`
+      : null;
 
   return {
     spec_version: manifest.spec_version,
@@ -203,7 +214,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
@@ -213,7 +227,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +
-      `  Examples: --days=30 (default), --days=90, --days=180.`
+        `  Examples: --days=30 (default), --days=90, --days=180.`
     );
     process.exit(1);
   }

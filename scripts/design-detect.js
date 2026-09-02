@@ -21,28 +21,74 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 // Direct frameworks first (own the display label when both present), then
 // meta-frameworks whose base framework is only a transitive dep.
 const FRAMEWORK_PRIORITY = [
-  'vue', 'react', 'svelte', '@angular/core', 'solid-js', 'preact',
-  'nuxt', 'astro', '@remix-run/react', 'gatsby', '@sveltejs/kit', 'solid-start',
+  'vue',
+  'react',
+  'svelte',
+  '@angular/core',
+  'solid-js',
+  'preact',
+  'nuxt',
+  'astro',
+  '@remix-run/react',
+  'gatsby',
+  '@sveltejs/kit',
+  'solid-start',
 ];
 const UI_LIBS = [
-  'element-plus', 'element-ui', 'ant-design-vue', 'antd', '@mui/material',
-  'vant', 'naive-ui', '@arco-design/web-react', '@arco-design/web-vue',
-  '@douyinfe/semi-ui', 'primevue', 'vuetify', '@chakra-ui/react', '@mantine/core',
+  'element-plus',
+  'element-ui',
+  'ant-design-vue',
+  'antd',
+  '@mui/material',
+  'vant',
+  'naive-ui',
+  '@arco-design/web-react',
+  '@arco-design/web-vue',
+  '@douyinfe/semi-ui',
+  'primevue',
+  'vuetify',
+  '@chakra-ui/react',
+  '@mantine/core',
 ];
 // Atomic-CSS engines are a UI signal on their own; bare preprocessors are not.
 const ATOMIC_CSS = ['tailwindcss', 'unocss', '@pandacss/dev'];
-const PREPROC = ['sass', 'node-sass', 'less', 'stylus', 'styled-components', '@emotion/react', '@emotion/styled'];
+const PREPROC = [
+  'sass',
+  'node-sass',
+  'less',
+  'stylus',
+  'styled-components',
+  '@emotion/react',
+  '@emotion/styled',
+];
 
 const CONFIG_BASENAME = /^(tailwind|uno|panda)\.config\.(js|cjs|mjs|ts)$/;
 const TOKEN_BASENAME = /^_?(variables|tokens|design-tokens|theme)\.(scss|less|styl)$/;
 const CSS_EXT = /\.(css|scss)$/;
 // Basenames that plausibly hold a :root/@theme token block — read these first
 // so the MAX_CSS_READS cap never slices off the real token file.
-const CSS_TOKEN_HINT = /(token|theme|variable|vars|global|root|design|palette|color|colours?|style|main|index|app)/i;
+const CSS_TOKEN_HINT =
+  /(token|theme|variable|vars|global|root|design|palette|color|colours?|style|main|index|app)/i;
 const SKIP_DIRS = new Set([
-  'node_modules', 'dist', 'build', 'out', '.output', '.next', '.nuxt', '.git',
-  '.svelte-kit', 'coverage', 'target', 'vendor', 'tmp', '.cache', '.turbo',
-  '__pycache__', '.venv', 'venv', 'public',
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  '.output',
+  '.next',
+  '.nuxt',
+  '.git',
+  '.svelte-kit',
+  'coverage',
+  'target',
+  'vendor',
+  'tmp',
+  '.cache',
+  '.turbo',
+  '__pycache__',
+  '.venv',
+  'venv',
+  'public',
 ]);
 // Workspace-less fullstack split: strong SPA-root subdir names only. Generic
 // names (app / ui / site) are dropped — they false-positive on an incidental
@@ -59,14 +105,20 @@ const DARK_RE = /(html\.dark|prefers-color-scheme|darkMode)/;
 // isFile-guard every read: statSync does not block on a FIFO/socket, but
 // openSync/readFileSync would hang forever waiting for a writer.
 function isRegularFile(p) {
-  try { return fs.statSync(p).isFile(); } catch { return false; }
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function readJson(p) {
   try {
     if (!isRegularFile(p)) return null;
     return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function readCapped(p, cap) {
@@ -77,12 +129,16 @@ function readCapped(p, cap) {
       const buf = Buffer.alloc(cap);
       const n = fs.readSync(fd, buf, 0, cap, 0);
       return buf.toString('utf8', 0, n);
-    } finally { fs.closeSync(fd); }
-  } catch { return ''; }
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
 }
 
-const readHead = (p) => readCapped(p, MAX_READ_BYTES);
-const readFull = (p) => readCapped(p, MAX_FULL_BYTES);
+const readHead = p => readCapped(p, MAX_READ_BYTES);
+const readFull = p => readCapped(p, MAX_FULL_BYTES);
 
 function mergedDeps(pkg) {
   return { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}), ...(pkg?.peerDependencies || {}) };
@@ -94,21 +150,31 @@ function uiSignal(deps) {
   const uiLibs = UI_LIBS.filter(l => names.includes(l));
   const atomic = ATOMIC_CSS.filter(l => names.includes(l));
   const preproc = PREPROC.filter(l => names.includes(l));
-  return { framework, uiLibs, cssTools: [...atomic, ...preproc], signal: Boolean(framework || uiLibs.length || atomic.length) };
+  return {
+    framework,
+    uiLibs,
+    cssTools: [...atomic, ...preproc],
+    signal: Boolean(framework || uiLibs.length || atomic.length),
+  };
 }
 
 // Root package.json lacks a UI signal → find the UI app in a subproject:
 //   1. declared workspaces → packages/*/package.json + apps/*/package.json
 //   2. workspace-less fullstack split → a strong SPA-root subdir (frontend/…)
 function subprojectFallback(cwd, rootPkg) {
-  const hasWs = Boolean(rootPkg?.workspaces)
-    || fs.existsSync(path.join(cwd, 'pnpm-workspace.yaml'))
-    || fs.existsSync(path.join(cwd, 'lerna.json'));
+  const hasWs =
+    Boolean(rootPkg?.workspaces) ||
+    fs.existsSync(path.join(cwd, 'pnpm-workspace.yaml')) ||
+    fs.existsSync(path.join(cwd, 'lerna.json'));
   if (hasWs) {
     for (const parent of ['packages', 'apps']) {
       const dir = path.join(cwd, parent);
       let entries;
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
       // Filter to directories BEFORE capping so files don't consume the budget.
       for (const e of entries.filter(x => x.isDirectory()).slice(0, 50)) {
         const pkg = readJson(path.join(dir, e.name, 'package.json'));
@@ -142,7 +208,11 @@ function walkTokenSources(baseCwd, startAbs) {
     const { abs, depth } = queue.shift();
     if (dirCount++ > MAX_DIRS) break;
     let entries;
-    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      continue;
+    }
     for (const e of entries) {
       const rel = path.relative(baseCwd, path.join(abs, e.name));
       if (e.isDirectory()) {
@@ -152,8 +222,14 @@ function walkTokenSources(baseCwd, startAbs) {
         if (depth + 1 <= MAX_DEPTH) queue.push({ abs: path.join(abs, e.name), depth: depth + 1 });
         continue;
       }
-      if (CONFIG_BASENAME.test(e.name)) { configFiles.push(rel); continue; }
-      if (TOKEN_BASENAME.test(e.name)) { tokenSources.push({ path: rel, kind: 'preprocessor-variables' }); continue; }
+      if (CONFIG_BASENAME.test(e.name)) {
+        configFiles.push(rel);
+        continue;
+      }
+      if (TOKEN_BASENAME.test(e.name)) {
+        tokenSources.push({ path: rel, kind: 'preprocessor-variables' });
+        continue;
+      }
       if (CSS_EXT.test(e.name)) cssCandidates.push(rel);
     }
   }
@@ -169,13 +245,18 @@ function walkTokenSources(baseCwd, startAbs) {
 //   - a huge block whose closing brace falls past the 64KB head (walk to EOF).
 // Custom-property names may legally start with a digit or underscore (--2xl).
 function tokenBlockPropCount(css) {
-  let s = css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '');   // comments incl. unterminated
+  let s = css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ''); // comments incl. unterminated
   let prev;
-  do { prev = s; s = s.replace(/[#@]\{[^{}]*\}/g, 'IX'); } while (s !== prev); // interpolation
+  do {
+    prev = s;
+    s = s.replace(/[#@]\{[^{}]*\}/g, 'IX');
+  } while (s !== prev); // interpolation
   let count = 0;
   const re = /(?::root|@theme)\b[^{]*\{/g;
-  while (re.exec(s) !== null) {   // global flag advances re.lastIndex to just past the `{`
-    let depth = 1, i = re.lastIndex;
+  while (re.exec(s) !== null) {
+    // global flag advances re.lastIndex to just past the `{`
+    let depth = 1,
+      i = re.lastIndex;
     const start = i;
     while (i < s.length && depth > 0) {
       const ch = s[i++];
@@ -183,7 +264,7 @@ function tokenBlockPropCount(css) {
       else if (ch === '}') depth--;
     }
     const body = s.slice(start, depth === 0 ? i - 1 : i);
-    const flat = body.replace(/\{[^{}]*\}/g, '');       // drop nested-selector sub-blocks
+    const flat = body.replace(/\{[^{}]*\}/g, ''); // drop nested-selector sub-blocks
     count += (flat.match(/--[\w-]+\s*:/g) || []).length;
     re.lastIndex = i;
   }
@@ -193,18 +274,31 @@ function tokenBlockPropCount(css) {
 export function detect(cwd) {
   const t0 = Date.now();
   const result = {
-    verdict: 'no-ui', framework: null, uiLibs: [], cssTools: [],
-    tokenSources: [], darkModeSignals: [], designMd: null, claudeMdRef: false,
-    monorepoPkg: null, elapsedMs: 0,
+    verdict: 'no-ui',
+    framework: null,
+    uiLibs: [],
+    cssTools: [],
+    tokenSources: [],
+    darkModeSignals: [],
+    designMd: null,
+    claudeMdRef: false,
+    monorepoPkg: null,
+    elapsedMs: 0,
   };
 
   const pkg = readJson(path.join(cwd, 'package.json'));
-  if (!pkg) { result.elapsedMs = Date.now() - t0; return result; }
+  if (!pkg) {
+    result.elapsedMs = Date.now() - t0;
+    return result;
+  }
 
   let sig = uiSignal(mergedDeps(pkg));
   if (!sig.signal) {
     const sub = subprojectFallback(cwd, pkg);
-    if (sub) { sig = sub.sig; result.monorepoPkg = sub.rel; }
+    if (sub) {
+      sig = sub.sig;
+      result.monorepoPkg = sub.rel;
+    }
   }
   result.framework = sig.framework;
   result.uiLibs = sig.uiLibs;
@@ -226,14 +320,13 @@ export function detect(cwd) {
     cssCandidates.sort((a, b) => {
       const pa = CSS_TOKEN_HINT.test(path.basename(a)) ? 0 : 1;
       const pb = CSS_TOKEN_HINT.test(path.basename(b)) ? 0 : 1;
-      return pa - pb
-        || a.split(path.sep).length - b.split(path.sep).length
-        || a.localeCompare(b);
+      return pa - pb || a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b);
     });
     for (const rel of cssCandidates.slice(0, MAX_CSS_READS)) {
       const head = readHead(path.join(cwd, rel));
       if (DARK_RE.test(head)) dark.add(rel);
-      if (tokenBlockPropCount(head) >= MIN_CUSTOM_PROPS) tokenSources.push({ path: rel, kind: 'css-custom-props' });
+      if (tokenBlockPropCount(head) >= MIN_CUSTOM_PROPS)
+        tokenSources.push({ path: rel, kind: 'css-custom-props' });
     }
 
     // Dedupe by path, then sort so the token SET has a stable enumeration.
@@ -257,7 +350,10 @@ export function detect(cwd) {
   if (result.monorepoPkg) claudeMdPaths.push(path.join(cwd, result.monorepoPkg, 'CLAUDE.md'));
   for (const p of claudeMdPaths) {
     const c = readFull(p);
-    if (c && (c.includes('DESIGN.md') || c.includes('claudemd-design:begin'))) { result.claudeMdRef = true; break; }
+    if (c && (c.includes('DESIGN.md') || c.includes('claudemd-design:begin'))) {
+      result.claudeMdRef = true;
+      break;
+    }
   }
 
   if (!sig.signal) result.verdict = 'no-ui';
@@ -287,8 +383,11 @@ Exit codes: 0 (all verdicts, fail-open) | 2 (argument error)`;
 // /private/var/folders, or a symlinked plugin dir) while argv[1] stays
 // unresolved — the CLI block never runs and stdout is silently empty.
 const invokedAsMain = (() => {
-  try { return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]); }
-  catch { return false; }
+  try {
+    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
 })();
 if (invokedAsMain) {
   printHelpAndExit(process.argv.slice(2), USAGE);
@@ -296,7 +395,10 @@ if (invokedAsMain) {
   try {
     parsed = parseStrict(process.argv.slice(2), { bools: ['--json'], values: ['--cwd'] });
   } catch (e) {
-    if (e instanceof ArgvError) { console.error(e.message); process.exit(2); }
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     throw e;
   }
   const cwd = path.resolve(parsed.values['--cwd'] || process.cwd());
@@ -305,7 +407,9 @@ if (invokedAsMain) {
     if (parsed.bools.has('--json')) {
       process.stdout.write(JSON.stringify(out) + '\n');
     } else {
-      process.stdout.write(`${out.verdict}: framework=${out.framework || '-'} tokens=${out.tokenSources.length} designMd=${out.designMd || '-'} wired=${out.claudeMdRef} (${out.elapsedMs}ms)\n`);
+      process.stdout.write(
+        `${out.verdict}: framework=${out.framework || '-'} tokens=${out.tokenSources.length} designMd=${out.designMd || '-'} wired=${out.claudeMdRef} (${out.elapsedMs}ms)\n`
+      );
     }
   } catch {
     // Fail-open: callers must never see a non-zero exit or junk.
