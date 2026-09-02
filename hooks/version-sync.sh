@@ -23,9 +23,29 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch USER_PROMPT_SUBMIT || exit 0
 
-# Session-scope sentinel. CC exposes CLAUDE_SESSION_ID when available; fall
-# back to PPID (the CC process), which is stable within a single session.
-SCOPE="${CLAUDE_SESSION_ID:-$PPID}"
+# Session-scope sentinel.
+#
+# CLAUDE_SESSION_ID is NOT exported to hooks in production (2026-09-02 audit
+# R11-04): 628 of 704 `user-prompt-submit` rows carry session_id:null and
+# $TMPDIR held 96 live `claudemd-sync-*` sentinels. So this hook was keyed on
+# $PPID, which is not the session — "once per session" was in practice "once
+# per prompt", paying a find + two jq spawns every time, logging a `stale-root`
+# row every time, and re-spawning the 10s background install every time until
+# the manifest caught up. tests/hooks/version-sync.test.sh exported
+# CLAUDE_SESSION_ID, so the suite only ever saw the shape production never has.
+#
+# The event JSON carries session_id; read it the way every sibling hook does
+# (session-start-check.sh:37, mem-audit.sh:41, residue-audit.sh:19). Reading
+# stdin has to happen BEFORE the sentinel test, since it is what names the
+# sentinel. Every fallback lands on $PPID — the old behavior, never worse.
+SESSION_ID="${CLAUDE_SESSION_ID:-}"
+if [[ -z "$SESSION_ID" ]] && hook_require_jq; then
+  EVENT=$(hook_read_event) || EVENT=""
+  if [[ -n "$EVENT" ]]; then
+    SESSION_ID=$(hook_jq_field user-prompt-submit "$EVENT" '.session_id // ""') || SESSION_ID=""
+  fi
+fi
+SCOPE="${SESSION_ID:-$PPID}"
 TMP_BASE="${TMPDIR:-/tmp}"
 SENTINEL="$TMP_BASE/claudemd-sync-$SCOPE"
 [[ -f "$SENTINEL" ]] && exit 0
@@ -88,7 +108,7 @@ if [[ "$PLUGIN_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$INSTALLED_VER" =~ ^[0-9]+\.
     mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root (piggy-back): hook v$PLUGIN_VER < installed v$INSTALLED_VER — sync skipped (would downgrade)" >> "$LOG_DIR/claudemd-bootstrap.log" 2>/dev/null || true
     STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
-    hook_record user-prompt-submit stale-root "$STALE_EXTRA" '' "${CLAUDE_SESSION_ID:-}"
+    hook_record user-prompt-submit stale-root "$STALE_EXTRA" '' "$SESSION_ID"
     exit 0
   fi
 fi
@@ -110,5 +130,5 @@ hook_spawn_install "$PLUGIN_ROOT" "$LOG" \
   "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) UserPromptSubmit piggy-back: manifest $INSTALLED_VER → plugin $PLUGIN_VER" \
   "$INSTALLED_VER" "$PLUGIN_VER"
 
-hook_record user-prompt-submit version-sync null '' "${CLAUDE_SESSION_ID:-}"
+hook_record user-prompt-submit version-sync null '' "$SESSION_ID"
 exit 0

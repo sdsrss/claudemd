@@ -213,7 +213,49 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((9 - FAIL))/9 passed"; exit 1
+# Case 10 (R11-04, 2026-09-02 audit): THE PRODUCTION SHAPE — CLAUDE_SESSION_ID
+# unset, session_id arriving on stdin. Every case above exports
+# CLAUDE_SESSION_ID (line 22), which is exactly the shape production never has:
+# 628 of 704 live user-prompt-submit rows carry session_id:null. Keyed on $PPID
+# instead, the "once per session" sentinel became once per PROMPT. Two prompts
+# in one session must produce ONE sentinel named for the session, and the
+# second must early-exit.
+reset_state
+C10_SID="sess-r11-04-$$"
+C10_SENTINEL="$TMPDIR/claudemd-sync-$C10_SID"
+rm -f "$C10_SENTINEL"
+C10_EVENT=$(jq -n --arg s "$C10_SID" '{session_id:$s, prompt:"hi"}')
+# Version match → the hook's quiet path; we are asserting the SENTINEL, not the sync.
+PLUGIN_VER=$(jq -r .version "$PLUGIN_ROOT/package.json")
+jq -n --arg v "$PLUGIN_VER" '{version:$v,entries:[]}' > "$HOME/.claude/.claudemd-manifest.json"
+
+C10_BEFORE=$(find "$TMPDIR" -maxdepth 1 -name 'claudemd-sync-*' 2>/dev/null | wc -l | tr -d ' ')
+( unset CLAUDE_SESSION_ID; bash "$HOOK" <<<"$C10_EVENT" >/dev/null 2>&1 )
+( unset CLAUDE_SESSION_ID; bash "$HOOK" <<<"$C10_EVENT" >/dev/null 2>&1 )
+C10_AFTER=$(find "$TMPDIR" -maxdepth 1 -name 'claudemd-sync-*' 2>/dev/null | wc -l | tr -d ' ')
+C10_NEW=$((C10_AFTER - C10_BEFORE))
+
+if [[ -f "$C10_SENTINEL" && "$C10_NEW" == "1" ]]; then
+  echo "PASS: 10 session_id from stdin names the sentinel; 2 prompts → 1 sentinel"
+else
+  echo "FAIL: 10 (sentinel=$([[ -f $C10_SENTINEL ]] && echo yes || echo no) new_sentinels=$C10_NEW expected 1)"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 9/9 passed"
+
+# Case 11 (R11-04): no session_id anywhere → $PPID fallback, exactly the old
+# behavior. The fix must never be worse than what it replaced.
+reset_state
+C11_BEFORE=$(find "$TMPDIR" -maxdepth 1 -name 'claudemd-sync-*' 2>/dev/null | wc -l | tr -d ' ')
+( unset CLAUDE_SESSION_ID; bash "$HOOK" <<<'{}' >/dev/null 2>&1 )
+C11_AFTER=$(find "$TMPDIR" -maxdepth 1 -name 'claudemd-sync-*' 2>/dev/null | wc -l | tr -d ' ')
+if (( C11_AFTER > C11_BEFORE )); then
+  echo "PASS: 11 no session_id → PPID-keyed sentinel still written (fail-open)"
+else
+  echo "FAIL: 11 (no sentinel written on the fallback path)"
+  FAIL=$((FAIL+1))
+fi
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+fi
+echo "Tests: 11/11 passed"
