@@ -28,7 +28,7 @@
     "lint:argv": "node scripts/lint-argv.js",
     "version-check": "node scripts/version-cascade-check.js",
     "test:coverage": "c8 --all --src=bin --src=scripts --include='bin/**/*.js' --include='scripts/**/*.js' --reporter=text-summary --reporter=html --reports-dir=coverage npm run test:scripts",
-    "lint": "npm run lint:sh && npm run lint:js && npm run lint:argv && npm run version-check",
+    "lint": "npm run lint:argv && npm run version-check && npm run lint:sh && npm run lint:js",
     "lint:sh": "F=$(bash tests/lib/shell-files.sh) && shellcheck --severity=warning $F",
     "lint:js": "eslint bin scripts tests eslint.config.js",
     "format": "prettier --write bin scripts tests eslint.config.js",

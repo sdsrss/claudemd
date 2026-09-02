@@ -284,3 +284,32 @@ test('a LOCALLY DECLARED validateAndExpandFlags does not satisfy the gate (条�
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// --- R11-18(a) (2026-09-02 audit): keep this gate REACHABLE ---
+// `npm run lint` is an && chain. It ran lint:sh && lint:js && lint:argv &&
+// version-check, and lint:js has been red at 30 errors since eslint 10 landed
+// — so lint:argv (this file's subject) and version-check never executed under
+// `npm run lint` or `npm run check` at all. Both are ship gates. They kept
+// working only because these test suites invoke them against the real tree
+// directly; the npm entry point that CONTRIBUTING.md points people at did not.
+//
+// Asserting order rather than "everything runs": && semantics mean a red step
+// necessarily masks its successors, so the only fix available without a task
+// runner is to put the gates in front of the step that is allowed to be red.
+
+test('R11-18a: the two ship gates run before lint:js in the lint chain', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+  const chain = pkg.scripts.lint;
+  assert.ok(chain, 'package.json must define a lint script');
+
+  // Step names in chain order, derived from the chain itself.
+  const steps = chain.split('&&').map(s => s.trim().replace(/^npm run /, ''));
+  for (const gate of ['lint:argv', 'version-check']) {
+    const gi = steps.indexOf(gate);
+    const ji = steps.indexOf('lint:js');
+    assert.ok(gi >= 0, `${gate} must stay in the lint chain (steps: ${steps.join(', ')})`);
+    assert.ok(ji >= 0, `lint:js must stay in the lint chain (steps: ${steps.join(', ')})`);
+    assert.ok(gi < ji,
+      `${gate} is a ship gate and must precede the burn-down-pending lint:js; got ${steps.join(' && ')}`);
+  }
+});
