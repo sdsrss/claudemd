@@ -39,6 +39,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
 
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
@@ -59,8 +60,6 @@ Options:
   --help, -h         Print this message and exit.
 
 Exit codes: 0 success | 1 strict-mode CRITICAL/HIGH | 2 argv-shape error.`;
-
-const SIZING_TOLERANCE_BYTES = 20;
 
 // v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤25K / extended
 // ≤50K. The danger ratio (0.97) is the standing-advisory band: once a file
@@ -178,17 +177,21 @@ function checkExtCrossRefs(specDir) {
 
 // CHECK 2 — Sizing line accuracy ----------------------------------------------
 
-// Parse the canonical Sizing line. Shape:
-//   **Sizing** (...): core <N1> → <N2> bytes ...; extended <M1> → <M2> bytes ...
-// We compare <N2> (current claim post-edit) against actual wc -c.
+// Reads the canonical Sizing line through scripts/lib/spec-sizing.js — the same
+// parser version-cascade-check.js uses. This function used to own a second
+// regex that required the exact framing
+//   **Sizing** (...): core N → N bytes ...; extended N → N bytes
+// so an arrowless "core 24417 bytes", or `extended` written before `core`,
+// made THIS gate report HIGH "unparseable" while the sibling ship gate read the
+// same line without complaint (2026-09-02 audit R11-13a). Agreement between the
+// two is asserted directly in tests/scripts/spec-sizing.test.js.
 function parseSizingClaim(extendedText) {
-  // Capture core after-arrow and extended after-arrow. Allow both `→` and
-  // ASCII `->` to future-proof if the spec drift to ASCII arrows.
-  const re =
-    /\*\*Sizing\*\*[^:]*:\s*core\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes[^;]*;\s*extended\s+\d+\s*(?:→|->)\s*(\d+)\s*bytes/i;
-  const m = re.exec(extendedText);
-  if (!m) return null;
-  return { coreClaim: Number(m[1]), extendedClaim: Number(m[2]) };
+  const line = findSizingLine(extendedText);
+  if (line == null) return null;
+  const core = extractSizingClaim(line, 'core');
+  const extended = extractSizingClaim(line, 'extended');
+  if (!core || !extended) return null;
+  return { coreClaim: core.value, extendedClaim: extended.value };
 }
 
 function checkSizingAccuracy(specDir) {

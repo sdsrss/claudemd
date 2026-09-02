@@ -62,6 +62,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { SIZING_TARGETS, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 
 const USAGE = `Usage: node scripts/version-cascade-check.js [--json]
 
@@ -207,56 +208,12 @@ export function runVersionCascadeCheck({ root }) {
   };
 }
 
-// v0.21.2 — spec **Sizing** line drift check. Parses the canonical Sizing
-// line in spec/CLAUDE-extended.md and asserts actual fs.statSync sizes are
-// within ±20B of the claimed counts. The ±20B envelope is from
-// feedback_spec_sizing_recursive_rewrite.md (rewriting the Sizing line
-// changes extended.md size, hence floor isn't 0).
-//
-// Expected line shape (canonical v6.13.1 form):
-//   **Sizing** (...): core NNNNN → NNNNN bytes (Δ ...); extended NNNNN →
-//   NNNNN bytes (...); OPERATOR.md NNNNN → NNNNN bytes (...). Size budget:
-//   core NNNNN/25000 (...); extended NNNNN/50000 (...). ...
-//
-// We extract the post-arrow number (current/claimed byte count) for each of
-// the three named targets. Also tolerates the plain "core NNNNN bytes" form
-// (no arrow) in case operator opts out of the diff-arrow convention.
-const SIZING_TARGETS = [
-  { name: 'core', file: 'spec/CLAUDE.md', threshold: 20 },
-  { name: 'extended', file: 'spec/CLAUDE-extended.md', threshold: 20 },
-  { name: 'OPERATOR.md', file: 'spec/OPERATOR.md', threshold: 20 },
-];
-
-// v0.21.6 P6 — returns null when no claim found, else
-//   { value, matched, suggestReplacement(actual) → string }
-// so over-threshold drift reporting can emit copy-paste-ready OLD/NEW edits
-// instead of just naming the bytes off. Saves the iterate-edit-iterate
-// cycle observed across 4 in-session repros (see
-// feedback_spec_sizing_recursive_rewrite.md).
-function extractSizingClaim(line, prefix) {
-  const esc = prefix.replace(/\./g, '\\.');
-  // Arrowed form: "core 24417 → 24417 bytes" or "core 24417 -> 24417 bytes".
-  const arrowedRe = new RegExp(`\\b${esc}\\s+(\\d+)\\s*(?:→|->)\\s*(\\d+)\\s*bytes`, 'i');
-  const arrowed = arrowedRe.exec(line);
-  if (arrowed) {
-    return {
-      value: Number(arrowed[2]),
-      matched: arrowed[0],
-      suggestReplacement: actual => arrowed[0].replace(/(\s+(?:→|->)\s*)\d+(\s*bytes)/, `$1${actual}$2`),
-    };
-  }
-  // Plain form: "core 24417 bytes" (no arrow / no diff).
-  const plainRe = new RegExp(`\\b${esc}\\s+(\\d+)\\s*bytes`, 'i');
-  const plain = plainRe.exec(line);
-  if (plain) {
-    return {
-      value: Number(plain[1]),
-      matched: plain[0],
-      suggestReplacement: actual => plain[0].replace(/\d+(\s*bytes)/, `${actual}$1`),
-    };
-  }
-  return null;
-}
+// v0.21.2 — spec **Sizing** line drift check. Asserts actual fs.statSync sizes
+// are within ±20B of what the canonical Sizing line in spec/CLAUDE-extended.md
+// claims. The parser, the targets and the tolerance moved to
+// scripts/lib/spec-sizing.js on 2026-09-02 (audit R11-13a): spec-coherence-audit
+// had its own regex for the same line, with a different idea of what shapes are
+// legal, so the two ship gates could return different verdicts about one line.
 
 export function runSpecSizingCheck({ root }) {
   const extPath = path.join(root, 'spec/CLAUDE-extended.md');
@@ -272,8 +229,8 @@ export function runSpecSizingCheck({ root }) {
     };
   }
   const content = fs.readFileSync(extPath, 'utf8');
-  const lineMatch = content.match(/^\*\*Sizing\*\*.*$/m);
-  if (!lineMatch) {
+  const sizingLine = findSizingLine(content);
+  if (sizingLine == null) {
     return {
       ok: false,
       drifts: [],
@@ -281,8 +238,6 @@ export function runSpecSizingCheck({ root }) {
       detail: 'no `**Sizing**` line found in spec/CLAUDE-extended.md — was it removed?',
     };
   }
-  const sizingLine = lineMatch[0];
-
   const drifts = [];
   for (const t of SIZING_TARGETS) {
     const claim = extractSizingClaim(sizingLine, t.name);
