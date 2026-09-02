@@ -213,6 +213,51 @@ OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-che
   && pass "16 git log with the same words still passes (FP guard)" \
   || fail "16 git log denied (FP regression): $OUT"
 
+# ------------------------------------------------- R11-05 (2026-09-02 audit)
+# Two independent line-based seds stripped quotes here —
+#   sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+# — which is exactly the pair pre-bash-safety-check.sh:194-204 replaced with a
+# single state machine in v0.47.1, and for the documented reason: single- and
+# double-quote context are MUTUALLY EXCLUSIVE in the shell, so two passes that
+# each ignore the other's context can pair the closing quote of one region with
+# the opening quote of the next and eat the command between them.
+#
+# Here the double-quote pass runs first, so two single-quoted arguments that each
+# contain one `"` have those quotes paired ACROSS the middle of the command, and
+# `git push` in between disappears from the view of all three consumers —
+# ship-baseline (HARD §7), memory-read-check (HARD §11), banned-vocab Path 2 —
+# with no bypass telemetry anywhere.
+
+V=$(view 'grep '"'"'a"b'"'"' f && git push origin main && grep '"'"'c"d'"'"' g')
+assert_contains "17 cross-quote pairing does not swallow a real 'git push'" "git push" "$V"
+
+# Neighbours of the same shape, to pin that the fix is about quote CONTEXT and
+# not about that one string.
+V=$(view 'echo "it'"'"'s fine" && git push origin main')
+assert_contains "18 apostrophe inside a double-quoted body does not open a region" "git push" "$V"
+
+V=$(view "echo 'say \"hi\"' && git push origin main")
+assert_contains "19 double quotes inside a single-quoted body do not open a region" "git push" "$V"
+
+# Non-regression: the stripping itself must still happen, or every consumer's
+# trigger would start firing on quoted payloads (the FP direction).
+V=$(view 'git commit -m "chore: git push in the message"')
+assert_not_contains "20 quoted body is still emptied" "in the message" "$V"
+
+V=$(view "git commit -m 'chore: git push in the message'")
+assert_not_contains "21 single-quoted body is still emptied" "in the message" "$V"
+
+# Marker preservation: `''` / `""` must survive so token boundaries hold.
+V=$(view 'echo ""')
+assert_contains "22 empty double-quote marker preserved" '""' "$V"
+V=$(view "echo ''")
+assert_contains "23 empty single-quote marker preserved" "''" "$V"
+
+# Unterminated quote: keep the body, exactly as the two seds did (no pair to
+# match). Dropping it would be safe for triggers but is a behavior change.
+V=$(view 'git push origin "unterminated')
+assert_contains "24 unterminated quoted body is left intact" "unterminated" "$V"
+
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"
   exit 1

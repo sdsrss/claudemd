@@ -518,8 +518,53 @@ hook_flatten_cmd() {
 # false-DENY this recipe fixes (a newline inside an `-m` payload manufacturing
 # the separator the anchor needs). Closing it means unwrapping `-c` / ssh payloads
 # before the strip — see tasks/audit-2026-07-27-deferred.md.
+#
+# QUOTE STRIPPING IS ONE PASS (2026-09-02 audit R11-05). It used to be
+#   sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+# which is the same pair pre-bash-safety-check.sh:194-204 replaced with a state
+# machine in v0.47.1, for the reason spelled out there: single- and double-quote
+# context are MUTUALLY EXCLUSIVE in the shell, so two passes that each ignore the
+# other's context pair the closing quote of one region with the opening quote of
+# the NEXT and delete the command in between. Here the double-quote pass ran
+# first, so two single-quoted arguments each containing one `"` —
+#   grep 'a"b' f && git push origin main && grep 'c"d' g
+# — collapsed to `grep '' g;`. The push was invisible to all three consumers
+# (ship-baseline §7 HARD, memory-read-check §11 HARD, banned-vocab Path 2) and
+# nothing emitted a bypass row.
+#
+# This is the STRIP half of pre-bash's machine with the unwrap rules removed:
+# every terminated body becomes its empty marker (`''` / `""`), which is what the
+# seds did and what keeps token boundaries intact. No `$`-body preservation
+# either — this view feeds trigger regexes, not a §8 verdict, and emptying can
+# only remove matches. An unterminated quote keeps its body, matching the seds
+# (no pair to match) rather than pre-bash's verdict-side handling.
+HOOK_TRIGGER_QUOTE_AWK='
+BEGIN { RS = "\004" }
+{
+  n = length($0); st = 0; final = ""; buf = ""
+  for (i = 1; i <= n; i++) {
+    ch = substr($0, i, 1)
+    if (st == 0) {
+      if (ch == "\047")      { st = 1; buf = "" }
+      else if (ch == "\"")   { st = 2; buf = "" }
+      else                     final = final ch
+    } else if (st == 1) {
+      if (ch == "\047") { final = final "\047\047"; st = 0; buf = "" }
+      else buf = buf ch
+    } else {
+      if (ch == "\"")   { final = final "\"\"";     st = 0; buf = "" }
+      else buf = buf ch
+    }
+  }
+  # Unterminated region: re-emit the opening quote and the body verbatim, which
+  # is what the seds left behind (they had no pair to match).
+  if (st == 1)      final = final "\047" buf
+  else if (st == 2) final = final "\"" buf
+  printf "%s", final
+}'
+
 hook_trigger_view() {
-  hook_strip_heredoc_bodies | hook_flatten_cmd | sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+  hook_strip_heredoc_bodies | hook_flatten_cmd | awk "$HOOK_TRIGGER_QUOTE_AWK"
 }
 
 # HOOK_GIT_GLOBAL_FLAGS — ERE fragment for git's global options, to be spliced
