@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
+import { copySpecFiles } from './lib/spec-hash.js';
 import { createBackup, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
@@ -84,9 +85,10 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   const { dir: backupDir } = createBackup(existing, { label: BACKUP_LABELS.spec });
   pruneBackups(5, { label: BACKUP_LABELS.spec });
 
-  for (const name of targets) {
-    fs.copyFileSync(path.join(pluginRoot, 'spec', name), homeSpec(name));
-  }
+  // Shared with install.js (R11-09): verifies each copy's sha256 and, because
+  // createBackup already renamed the originals away, restores all of them from
+  // the backup dir on any failure rather than leaving a half-written spec.
+  copySpecFiles(pluginRoot, targets, { backupDir });
 
   return { applied: true, backupDir, diffs, targets };
 }

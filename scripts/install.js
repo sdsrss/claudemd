@@ -6,6 +6,7 @@ import { createBackup, pruneBackups, backupSettingsFile, looksLikeSpec, BACKUP_L
 import { pruneCache } from './lib/cache-prune.js';
 import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, writeJsonAtomic, SEMVER_RE, semverCmp, SPEC_FILES } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { copySpecFiles } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
@@ -239,19 +240,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // move). Copy each file, then assert the installed bytes match the source —
   // a closing integrity check (SCRIPT-1) so a partial/failed copyFileSync that
   // does not throw surfaces HERE, not on the next `/claudemd-doctor` run.
-  for (const name of SPEC_FILES) {
-    const src = path.join(pluginRoot, 'spec', name);
-    const dest = path.join(path.dirname(settingsPath()), name);
-    fs.copyFileSync(src, dest);
-    const srcHash = crypto.createHash('sha256').update(fs.readFileSync(src)).digest('hex');
-    const destHash = crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex');
-    if (srcHash !== destHash) {
-      throw new Error(
-        `install: post-copy integrity check failed for ${name} ` +
-        `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run the install.`
-      );
-    }
-  }
+  // Shared with update.js since R11-09 — this loop and update's bare
+  // copyFileSync were two semantics for one operation, and update's had no
+  // integrity check at all. Also drops install's third hand-rolled sha256:
+  // spec-hash.js#sha256File was already the single source.
+  copySpecFiles(pluginRoot, SPEC_FILES);
 
   // 2a. Migrate hand-installed banned-vocab hook files (pre-plugin v0 artifact).
   // settings.json entries that referenced this path are cleaned up in step 2b

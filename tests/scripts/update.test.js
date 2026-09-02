@@ -169,3 +169,82 @@ test('R10-02: dry-run still reports diffs against a truncated cache', async () =
   assert.equal(res.applied, false);
   assert.equal(res.diffs.length, 4);
 });
+
+// --- R11-09 (2026-09-02 audit): a mid-copy failure must not strand the spec ---
+// createBackup RENAMES the user's ~/.claude/CLAUDE*.md into the backup dir
+// (backup.js:82), then update copied the shipped files in with a bare
+// copyFileSync loop — no post-copy hash check, no rollback. A failure on the
+// second file left ~/.claude holding one new file and three missing ones, with
+// nothing to put them back. update.js:37-39 forbids exactly this: the spec trio
+// is lockstep because §EXT cross-references dangle if only some files land.
+// install.js had the SHA post-check since SCRIPT-1; update never got it.
+//
+// INJECTION POINT MATTERS. The first version of this test chmod'd a shipped
+// file to 000, which throws in the DIFF phase (update.js:31 reads every plugin
+// file) — before createBackup runs. Nothing had been moved, so the "everything
+// is restored" assertions passed against the unfixed code: a false green. The
+// failure has to be injected at the copy itself.
+
+test('R11-09: a mid-copy failure restores every spec file from the backup', async (t) => {
+  const before = {};
+  for (const n of ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']) {
+    before[n] = fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8');
+  }
+  // Poison the FORWARD copy only — keyed on src being the shipped file, not on
+  // dest. Keyed on dest, the mock also intercepted the ROLLBACK's copy out of
+  // the backup dir and re-broke the file it had just restored, which reads as a
+  // product failure and is not one.
+  // CLAUDE.md, because `targets` holds only the files that DIFFER: the fixture
+  // gives CLAUDE-extended.md and OPERATOR.md the same content on both sides, so
+  // they are never copied and poisoning them proves nothing.
+  const realCopy = fs.copyFileSync;
+  const shippedDir = path.join(pluginRoot, 'spec');
+  t.mock.method(fs, 'copyFileSync', (src, dest, ...rest) => {
+    if (String(src).startsWith(shippedDir) && String(src).endsWith('CLAUDE.md')) {
+      throw Object.assign(new Error("EACCES: permission denied, copyfile -> 'CLAUDE.md'"), { code: 'EACCES' });
+    }
+    return realCopy(src, dest, ...rest);
+  });
+
+  await assert.rejects(() => update({ pluginRoot, choice: 'apply-all' }), /EACCES|CLAUDE\.md/);
+  t.mock.restoreAll();
+
+  for (const [n, content] of Object.entries(before)) {
+    const p = path.join(tmpHome, '.claude', n);
+    assert.ok(fs.existsSync(p), `${n} must be restored, not left missing`);
+    assert.equal(fs.readFileSync(p, 'utf8'), content, `${n} must hold its pre-update content`);
+  }
+});
+
+test('R11-09: a copy that silently writes the wrong bytes is caught and rolled back', async (t) => {
+  const before = fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE-changelog.md'), 'utf8');
+  const realCopy = fs.copyFileSync;
+  const shippedDir = path.join(pluginRoot, 'spec');
+  t.mock.method(fs, 'copyFileSync', (src, dest, ...rest) => {
+    // Truncated write that does NOT throw — the shape install.js's SCRIPT-1
+    // post-copy hash check exists to catch (disk full, concurrent writer).
+    // Guarded on src like the case above so the rollback copy runs for real.
+    if (String(src).startsWith(shippedDir) && String(src).endsWith('CLAUDE-changelog.md')) {
+      return fs.writeFileSync(dest, 'trunc');
+    }
+    return realCopy(src, dest, ...rest);
+  });
+
+  await assert.rejects(() => update({ pluginRoot, choice: 'apply-all' }), /integrity|does not match/i);
+  t.mock.restoreAll();
+
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE-changelog.md'), 'utf8'), before);
+});
+
+test('R11-09: a successful update still lands every file byte-exact', async () => {
+  const res = await update({ pluginRoot, choice: 'apply-all' });
+  assert.equal(res.applied, true);
+  for (const [n, expected] of [
+    ['CLAUDE.md', 'plugin-new\n'],
+    ['CLAUDE-extended.md', 'plugin-new-ext\n'],
+    ['CLAUDE-changelog.md', 'plugin-new-cl\n'],
+    ['OPERATOR.md', 'plugin-new-op\n'],
+  ]) {
+    assert.equal(fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8'), expected);
+  }
+});
