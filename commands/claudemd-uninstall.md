@@ -1,18 +1,21 @@
 ---
 name: claudemd-uninstall
-description: Pre-uninstall cleanup. Run BEFORE `/plugin uninstall claudemd@claudemd` to clear the plugin manifest, state dir, and rule-hits log. Spec files in ~/.claude/ are kept by default. Required because Claude Code's marketplace lifecycle does not fire `preUninstall`, so without this step `/plugin uninstall` leaves orphan state behind.
+description: Pre-uninstall cleanup. Run BEFORE `/plugin uninstall claudemd@claudemd` to clear the plugin manifest and legacy settings.json hook entries. Spec files in ~/.claude/ are kept by default, and so are the state dir + rule-hits log unless CLAUDEMD_PURGE=1 is passed. Required because Claude Code's marketplace lifecycle does not fire `preUninstall`, so without this step `/plugin uninstall` leaves orphan state behind.
 ---
 
 Usage:
 
-- Default (keep spec, drop state + log):
+- Default (keep spec, keep state + log):
+  `node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
+
+- Also drop `~/.claude/.claudemd-state/` and the rule-hits log — opt-in, and NOT recoverable (the log is the §13.1 demote-review corpus):
   `CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
 - Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the most recent backup:
-  `CLAUDEMD_SPEC_ACTION=restore CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
+  `CLAUDEMD_SPEC_ACTION=restore node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
 - Full removal (delete spec files; requires hard-AUTH confirm):
-  `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
+  `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
 After this command finishes, run `/plugin uninstall claudemd@claudemd` to remove the plugin cache itself.
 

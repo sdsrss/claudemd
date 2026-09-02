@@ -3,20 +3,46 @@ import path from 'node:path';
 // Single source (2026-07-27 audit, L8): this file declared its own
 // `/^\d+\.\d+\.\d+$/` shadowing the exported one in paths.js. Equivalent today,
 // tested only on the paths.js side — the shape every drifted seam starts as.
-import { SEMVER_RE } from './paths.js';
+import { SEMVER_RE, pluginCacheDir } from './paths.js';
 
 // Prune sibling version dirs of `pluginRoot` down to `keep` newest (by semver),
-// always retaining `pluginRoot` itself. Scope-gated to cache layouts — the
-// basename of pluginRoot must be a 3-part numeric semver, otherwise pruning
-// is a no-op. This protects dev-mode `node scripts/install.js` from scanning
-// the parent of a working tree.
+// always retaining `pluginRoot` itself.
+//
+// TWO independent gates, because the first one alone was not a location check
+// (2026-09-02 audit R11-02). `SEMVER_RE.test(basename)` constrains the SHAPE of
+// the name and says nothing about WHERE the scan happens, so this function
+// would rm -rf semver-named siblings of any directory it was pointed at — a
+// `git worktree add ../0.70.0`, a version-named checkout, a CLAUDE_PLUGIN_ROOT
+// aimed at one. paths.js had exported pluginCacheDir() the whole time and no
+// caller had ever asked it.
+//
+// `startsWith(pluginCacheDir() + sep)`, NOT equality: the production layout is
+// `~/.claude/plugins/cache/claudemd/claudemd/<version>`, so the versions dir
+// sits one level BELOW pluginCacheDir(). An equality check reads tighter and
+// would silently turn pruning off forever.
+//
+// realpath on both sides so a symlinked plugin root is judged by where it
+// actually lands, and so the comparison is not fooled by `..` or a symlinked
+// home. realpath also subsumes the old existence check.
 export function pruneCache(pluginRoot, { keep = 3 } = {}) {
-  const currentVersion = path.basename(pluginRoot);
-  const versionsDir = path.dirname(pluginRoot);
+  let realRoot;
+  try { realRoot = fs.realpathSync(pluginRoot); }
+  catch { return { kept: [], removed: [], skipped: 'missing-versions-dir' }; }
+
+  const currentVersion = path.basename(realRoot);
+  const versionsDir = path.dirname(realRoot);
 
   if (!SEMVER_RE.test(currentVersion)) {
     return { kept: [], removed: [], skipped: 'non-semver-plugin-root' };
   }
+
+  let cacheRoot;
+  try { cacheRoot = fs.realpathSync(pluginCacheDir()); }
+  catch { return { kept: [], removed: [], skipped: 'outside-plugin-cache' }; }
+  if (!(versionsDir + path.sep).startsWith(cacheRoot + path.sep)) {
+    return { kept: [], removed: [], skipped: 'outside-plugin-cache' };
+  }
+
   if (!fs.existsSync(versionsDir)) {
     return { kept: [], removed: [], skipped: 'missing-versions-dir' };
   }
