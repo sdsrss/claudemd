@@ -246,7 +246,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const specAction = process.env.CLAUDEMD_SPEC_ACTION || 'keep';
+  // Whitelist, loudly. `Delete` (capitalised) and `restore ` (trailing space)
+  // used to fall through to `keep`, exit 0, and report `specAction: "keep"` —
+  // the caller asked for one disposition of their spec files and got the
+  // opposite with no signal (audit R11-22). update.js already validates the
+  // same-shaped env this way; the argv-lint family exists for exactly this
+  // class of silent-fallback. Exit 1 = validation error, per this file's own
+  // documented exit codes (2 is reserved for argv shape).
+  const SPEC_ACTIONS = ['keep', 'delete', 'restore'];
+  const specAction = process.env.CLAUDEMD_SPEC_ACTION ?? 'keep';
+  if (!SPEC_ACTIONS.includes(specAction)) {
+    console.error(
+      `CLAUDEMD_SPEC_ACTION must be one of ${SPEC_ACTIONS.join(' | ')} (got ${JSON.stringify(specAction)}). ` +
+        `Matching is exact — no case folding, no trimming.`
+    );
+    process.exit(1);
+  }
   const confirmHardAuth = process.env.CLAUDEMD_CONFIRM === '1';
   const purge = process.env.CLAUDEMD_PURGE === '1';
   uninstall({ specAction, confirmHardAuth, purge })

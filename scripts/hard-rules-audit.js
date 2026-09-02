@@ -19,6 +19,7 @@ import {
   logFirstTs,
   excludeTestSessions,
   blockingDenyCount,
+  isImmutableSection,
 } from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
@@ -127,11 +128,13 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // DESIGN (the attack surface they guard is rare, not absent). Listing them as
   // demote candidates recommends a forbidden action and costs a re-adjudication
   // every review — `§8-curl-sh` sat in the queue with `demoteSuppressed: null`
-  // through the 2026-07-25 audit. Same anchoring as doctor's IMMUTABLE_SECTION_RE.
+  // through the 2026-07-25 audit. The predicate is doctor's — literally, since
+  // 2026-09-02 (audit R11-13c); it used to be a byte-identical copy whose comment
+  // said "same anchoring as", which is a claim, not a join.
   // They still appear in `safetyClassExempt` so a zero-hit safety rule is
   // visible (a gate that never fires may be broken — that is a correctness
   // question for the FN matrix, not a demotion question).
-  const isSafetyClass = r => /^§8([.-]|$)/.test(r.id);
+  const isSafetyClass = r => isImmutableSection(r.id);
   const safetyClassExempt = hookEnforced
     .filter(r => isSafetyClass(r) && r.hits && r.hits.total === 0)
     .map(r => r.id);

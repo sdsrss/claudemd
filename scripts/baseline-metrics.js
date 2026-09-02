@@ -602,6 +602,25 @@ function prettierCounts() {
   return { available: true, unformatted: files.length, files };
 }
 
+// stdERR, and the count line — not stdout with a `file:line:` shape.
+// lint-argv.js writes findings to stderr as `  file:line  [pattern]` (two
+// spaces, no second colon) after a `argv-lint: N antipattern hit(s):` header.
+// This read `stdout` with /^\S+:\d+:/, so it matched nothing and `hits` was
+// permanently null exactly when the gate was red — the one number this row
+// exists to report was the one it could never produce (2026-09-02 audit R11-29).
+//
+// Reading the header COUNT rather than counting matched lines also survives a
+// change to the per-hit format, which is the thing that broke it.
+//
+// Exported so the parse can be asserted against real gate output instead of
+// inferred from this comment.
+export function parseArgvLintHits({ status, stderr }) {
+  if (status === 0) return 0;
+  const m = String(stderr ?? '').match(/^argv-lint: (\d+) antipattern/m);
+  if (!m) return null;
+  return Number(m[1]);
+}
+
 function lint() {
   const argv = run(process.execPath, ['scripts/lint-argv.js']);
   const cascade = run(process.execPath, ['scripts/version-cascade-check.js']);
@@ -610,7 +629,7 @@ function lint() {
     eslint: eslintCounts(),
     lintArgv: {
       status: argv.status,
-      hits: argv.status === 0 ? 0 : (argv.stdout.match(/^\S+:\d+:/gm) || []).length || null,
+      hits: parseArgvLintHits(argv),
     },
     versionCascade: { status: cascade.status },
     prettier: prettierCounts(),

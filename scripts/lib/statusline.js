@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readSettings, writeSettings } from './settings-merge.js';
-import { settingsPath, stateDir, homeSpec } from './paths.js';
+import { claudeHome, settingsPath, stateDir } from './paths.js';
 import { backupSettingsFile } from './backup.js';
 import { detectHost, HOST_ADAPTERS, CLAUDEMD_PROVIDER_ID, manualPsCandidates } from './statusline-hosts.js';
 
@@ -16,7 +16,7 @@ const COMMAND = 'bash "$HOME/.claude/claudemd-statusline.sh"';
 // ~ expands, NOT $HOME) MUST be an absolute path, or it ENOENTs and blanks.
 const GUEST_COMMAND = () => `bash "${destPath()}"`;
 
-const destPath = () => homeSpec('claudemd-statusline.sh');
+const destPath = () => claudeHome('claudemd-statusline.sh');
 const prevPath = () => path.join(stateDir(), 'statusline-prev.json');
 const shippedRenderer = pluginRoot => path.join(pluginRoot, 'scripts', 'statusline.sh');
 const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {});

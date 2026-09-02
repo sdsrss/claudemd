@@ -293,6 +293,20 @@ export function classifyProject(project) {
 // run` is the lone exception: it EXITS 0 (observability, no block) so it is
 // NOT a real deny and must stay excluded.
 const NON_BLOCKING_DENY = new Set(['deny-prose-dry-run']);
+// The §8 SAFETY family, as a spec_section prefix: §8, §8.V1, §8-npx,
+// §8-rm-rf-var — but NOT a hypothetical §80. §5.1 Never-downgrade makes these
+// permanently exempt from §0.1 demotion, so both consumers below need the same
+// answer about the same id:
+//
+//   scripts/doctor.js            suppresses the "§0.1 demotion candidate" label
+//   scripts/hard-rules-audit.js  routes zero-hit safety rules to safetyClassExempt
+//
+// They carried byte-identical copies, and hard-rules-audit's comment said so
+// ("Same anchoring as doctor's IMMUTABLE_SECTION_RE") — a comment is not a join
+// (2026-09-02 audit R11-13c). Both import this now.
+export const IMMUTABLE_SECTION_RE = /^§8([.-]|$)/;
+export const isImmutableSection = id => IMMUTABLE_SECTION_RE.test(String(id ?? ''));
+
 export function isBlockingDeny(event) {
   return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
 }

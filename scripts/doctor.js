@@ -28,7 +28,13 @@ import {
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
-import { readHits, groupBySection, blockingDenyCount, excludeTestSessions } from './lib/rule-hits-parse.js';
+import {
+  readHits,
+  groupBySection,
+  blockingDenyCount,
+  excludeTestSessions,
+  IMMUTABLE_SECTION_RE,
+} from './lib/rule-hits-parse.js';
 import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
 import {
   memoryMaintenance,
@@ -76,19 +82,18 @@ const RULE_USAGE_DEMOTION_RATIO = 0.5;
 // 3 events over 30 days is the smallest sample where a 50%+ override rate
 // reliably distinguishes signal from a single-incident artifact.
 const RULE_USAGE_MIN_TOTAL = 3;
-// v0.23.6 — §8 SAFETY family (§8, §8.V*, §8-rm-rf-var, §8-npx) is immutable
-// per spec §5.1 Never-downgrade: it can never be demoted. A high bypass ratio
-// here is expected ceremony on inherently-risky-but-known-safe ops (npx with
-// no lockfile under user trust, rm -rf on a validated var) — NOT a "rule too
-// strict → demote" signal. Surface the ratio for visibility, but never emit
-// the "§0.1 demotion candidate" label, which would recommend an action the
-// policy forbids. Anchored so §8/§8./§8- match but a hypothetical §80 wouldn't.
-// Scope is deliberately §8-only: the other §5.1 Never-downgrade sections that
-// own a rule-hits label (§7-user-global-state, §iron-law-2) are advisory
+// v0.23.6 — why this file cares about IMMUTABLE_SECTION_RE (imported above; the
+// pattern itself lives in lib/rule-hits-parse.js since 2026-09-02, audit
+// R11-13c, because hard-rules-audit.js held a byte-identical copy):
+// the §8 SAFETY family is immutable per spec §5.1 Never-downgrade, so a high
+// bypass ratio there is expected ceremony on risky-but-known-safe ops (npx with
+// no lockfile under user trust, rm -rf on a validated var), NOT a "rule too
+// strict → demote" signal. Surface the ratio, never emit the "§0.1 demotion
+// candidate" label — it would recommend an action the policy forbids.
+// Scope is §8-only on purpose: the other §5.1 Never-downgrade sections that own
+// a rule-hits label (§7-user-global-state, §iron-law-2) are advisory
 // Stop-hook-only (warn / structure-advisory, never deny+bypass), so total=0 <
-// RULE_USAGE_MIN_TOTAL and they cannot reach this demote branch — §8-npx /
-// §8-rm-rf-var are the only immutable sections that actually do.
-const IMMUTABLE_SECTION_RE = /^§8([.-]|$)/;
+// RULE_USAGE_MIN_TOTAL and they cannot reach this demote branch at all.
 
 // Advisory checks are operator judgement calls whose steady state is non-zero
 // (generic memory tags, index size over a SOFT budget, promote candidates, a
@@ -109,7 +114,7 @@ const IMMUTABLE_SECTION_RE = /^§8([.-]|$)/;
 // 0.71.1) so a test can assert the real predicate instead of reading this
 // comment — a gate that reads prose is the failure this repo keeps closing.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -344,7 +349,17 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const hasJq = which('jq');
   const hasGh = which('gh');
   push('jq', hasJq, hasJq ? 'present' : 'missing (required at runtime)');
-  push('gh', hasGh, hasGh ? 'present' : 'missing (ship-baseline will fail-open silent)');
+  // `gh` is advisory: it is needed only by ship-baseline-check, and a machine
+  // that never pushes to GitHub is not unhealthy for lacking it. As a counted
+  // check it made `/claudemd-doctor` exit 3 forever there — the exact
+  // "steady state is non-zero, so the exit code stops carrying information"
+  // shape the ADVISORY block above exists to prevent (audit R11-23). Still
+  // reported, with what it costs.
+  push(
+    'gh',
+    hasGh,
+    hasGh ? 'present' : 'missing (advisory) — ship-baseline-check fails open silently without it'
+  );
 
   // Inventory spans EVERY namespace (audit-2026-08-22 P1-1). Reporting only the
   // default label would have made update.js's `spec-backup-` dirs invisible to

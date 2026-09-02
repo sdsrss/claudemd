@@ -64,6 +64,14 @@ export const specHome = () => SPEC_FILES.map(n => path.join(home(), '.claude', n
 // of backups does not silently break update.js's home-spec read path.
 export const homeSpec = name => path.join(home(), '.claude', name);
 
+// ~/.claude itself, for files that are neither a spec nor a backup — the
+// statusline renderer this plugin installs, for one. It used to reach for
+// homeSpec(), whose stated reason for existing is that a future relocation of
+// the BACKUP root must not silently move the spec read path; borrowing it for a
+// shell script means a later change made for spec reasons quietly moves the
+// renderer too (audit R11-30).
+export const claudeHome = (...parts) => path.join(home(), '.claude', ...parts);
+
 // SINGLE SOURCE for every JSON file this plugin writes into the user's home
 // (2026-09-02 audit R11-01/R11-10). The tmp+rename idiom had three hand-copied
 // forms — settings-merge.js, statusline-hosts.js, and a plain non-atomic

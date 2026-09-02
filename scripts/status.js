@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  SEMVER_RE,
+  homeSpec,
   logsDir,
-  backupRoot,
+  pluginCacheDir,
   readManifest,
   resolvePluginRoot,
-  pluginCacheDir,
-  settingsPath,
-  SEMVER_RE,
   semverCmp,
+  settingsPath,
 } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
@@ -175,7 +175,11 @@ export async function status({ verbose = false } = {}) {
   // H1 title — `# AI-CODING-SPEC vX.Y.Z — Core`. Pre-v6.10.0 specs used a
   // standalone `Version: X.Y.Z` line (retired in v6.10.0 restructure);
   // fallback regex preserves read compatibility with old installs.
-  const coreSpec = path.join(backupRoot(), 'CLAUDE.md');
+  // homeSpec, not backupRoot: paths.js:62-64 says homeSpec exists precisely so a
+  // relocation of the backup root cannot silently break the spec read path, and
+  // this line was the one place reading the spec THROUGH the backup accessor
+  // (audit R11-30). Same directory today; different reason to move tomorrow.
+  const coreSpec = homeSpec('CLAUDE.md');
   const specVersion = (() => {
     if (!fs.existsSync(coreSpec)) return '';
     const text = fs.readFileSync(coreSpec, 'utf8');
