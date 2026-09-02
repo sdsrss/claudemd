@@ -393,6 +393,47 @@ OUT=$(run_hook fail-red "$EVENT_STATUS")
 [[ -z "$OUT" ]] && echo "PASS: 38 git status push is not a push" \
   || { echo "FAIL: 38 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# --- R11-15 (2026-09-02 audit): judge the repo being PUSHED, not the hook's cwd ---
+# TRIGGER_RE has accepted `git -C <dir> push` since R10-05, but every git/gh call
+# below it ran bare, so the §7 gate read repo A's CI colour and commit message to
+# decide about a push to repo B. Two repos, opposite markers, so each direction
+# is pinned separately — the false-PASS direction (case 40) is the one that
+# matters, since a silent exemption is invisible.
+R15_A="$TMP_HOME"                      # hook cwd
+R15_B=$(mktemp -d); trap 'rm -rf "$TMP_HOME" "$R15_B"' EXIT
+git -C "$R15_B" init -q
+git -C "$R15_B" -c user.email=t@t -c user.name=t commit --allow-empty -q -m "clean commit in B"
+
+# Case 42: the known-red marker lives in the TARGET repo (B), not in the hook's
+# cwd (A). Pre-fix the hook read A's log, found nothing, and denied.
+cd "$R15_A" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: no marker here"
+git -C "$R15_B" -c user.email=t@t -c user.name=t commit --allow-empty -q \
+  -m "feat: y" -m "known-red baseline: quarantined in B"
+EVENT_C_B="{\"session_id\":\"t\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $R15_B push origin main\"},\"cwd\":\"/tmp\"}"
+OUT=$(run_hook fail-red "$EVENT_C_B")
+[[ -z "$OUT" ]] && echo "PASS: 42 -C <dir> reads the target repo's commit body" \
+  || { echo "FAIL: 42 (expected pass via B's known-red marker, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 43 (the false-PASS direction): the marker is in the hook's cwd (A) and the
+# target repo (B) is clean. The gate must NOT borrow A's exemption for a push to
+# B. Pre-fix it did — red CI, unrelated repo, silently allowed.
+cd "$R15_A" && git -c user.email=t@t -c user.name=t commit --allow-empty -q \
+  -m "feat: z" -m "known-red baseline: marker in A only"
+git -C "$R15_B" -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean in B"
+OUT=$(run_hook fail-red "$EVENT_C_B")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 43 target repo's clean HEAD is not exempted by the cwd repo's marker" \
+  || { echo "FAIL: 43 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# Case 44: unresolvable target → unchanged behavior. A bare `git push` with a
+# non-repo event cwd must still be judged against the hook's own cwd, exactly as
+# before; the fix must never newly deny.
+cd "$R15_A" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean for 41"
+OUT=$(run_hook fail-red "$EVENT_PUSH")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 44 bare push with non-repo cwd falls through to the old behavior" \
+  || { echo "FAIL: 44 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same
 # drift class the 2026-07-27 audit found in memory-read-check.test.sh.

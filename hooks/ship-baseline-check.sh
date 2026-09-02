@@ -132,14 +132,43 @@ echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 
 # Require gh CLI
 command -v gh >/dev/null 2>&1 || exit 0
 
+# WHICH repository is being pushed (2026-09-02 audit R11-15).
+#
+# TRIGGER_RE has accepted `git -C <dir> push` since R10-05, and
+# hook_read_telemetry_ids has been handing back EVENT_CWD since v0.9.34 — but
+# every git/gh call below ran bare, in the hook process's own cwd. So the §7
+# gate read repo A's branch, CI colour and HEAD message to decide about a push
+# to repo B: A green + B red is a false PASS (silent, which is the dangerous
+# direction), A red + B green a false deny naming a run from the wrong repo.
+# The three sibling gates all carry a cwd model; this one did not.
+#
+# Resolution order, most explicit first. Anything unresolvable keeps `.` — the
+# pre-fix behavior — because this is a deny gate and the fix must never make it
+# newly block. Quoted paths containing spaces fall through here by design.
+SB_DIR=$(printf '%s' "$PUSH_SEG" | grep -oE '(^|[[:space:]])-C[[:space:]]+[^[:space:]]+' | head -n1 | sed -E 's/.*-C[[:space:]]+//')
+if [[ -z "$SB_DIR" ]]; then
+  # `cd <dir> && git push` — last cd wins, matching what the shell would do.
+  SB_DIR=$(printf '%s' "$CMD_FLAT" | grep -oE '(^|[;&|][[:space:]]*)cd[[:space:]]+[^[:space:];&|]+' | tail -n1 | sed -E 's/.*cd[[:space:]]+//')
+fi
+[[ -z "$SB_DIR" ]] && SB_DIR="$EVENT_CWD"
+# Must be a real worktree, not merely a directory. Existing suites drive
+# `cwd:"/tmp"` while the fixture repo is elsewhere; without this check those
+# events would resolve to a non-repo and every `git` below would go quiet,
+# turning the known-red bypass off. Non-repo → fall back to the hook's cwd.
+if [[ -z "$SB_DIR" ]] || ! git -C "$SB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  SB_DIR="."
+fi
+
 # Filter by current branch when available — otherwise an unrelated scheduled
 # workflow failing on main would block a feature-branch push whose own CI is
 # green. Detached HEAD / non-git: skip the filter (old unfiltered behavior).
-BRANCH=$(git branch --show-current 2>/dev/null)
+BRANCH=$(git -C "$SB_DIR" branch --show-current 2>/dev/null)
+# gh resolves the repo from its cwd, so it has to run inside the target too —
+# `gh run list --branch B` in repo A would report A's runs for B's branch name.
 if [[ -n "$BRANCH" ]]; then
-  RUN_JSON=$(platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 else
-  RUN_JSON=$(platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
 fi
 [[ -n "$RUN_JSON" ]] || exit 0
 
@@ -191,7 +220,7 @@ esac
 # this looser check: a command like `grep 'known-red baseline:' file && git
 # push` would pass — but typing the literal marker is a strong intent
 # signal, not accidental.
-HEAD_MSG=$(git log -1 --format=%B 2>/dev/null || true)
+HEAD_MSG=$(git -C "$SB_DIR" log -1 --format=%B 2>/dev/null || true)
 if printf '%s' "$HEAD_MSG" | grep -qi 'known-red baseline:'; then
   hook_record ship-baseline pass-known-red null '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
