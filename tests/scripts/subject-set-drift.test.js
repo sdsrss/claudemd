@@ -183,7 +183,14 @@ test('hook-name enumerations are complete, derived, or exempted with a reason', 
     'Hand-copied hook lists drift. Derive from scripts/lib/hook-registry.js, name every hook, ' +
     `or add the file to EXEMPT with a reason:\n      ${failures.join('\n      ')}`,
   );
-  assert.ok(scanned > 20, `only ${scanned} file(s) reached the enumeration scan — the pre-filter is too tight to prove anything`);
+  // Cardinality, on the GREEN path too. `derived` (no literal enumeration at
+  // all) is the healthy majority here, so it is NOT an assertion — a clean tree
+  // legitimately has derived === scanned, and the empty-set worry this repo
+  // keeps re-learning (feedback_gate_must_report_its_cardinality) is answered
+  // for this gate by the extractor control below, not by demanding the tree be
+  // dirty. Printed so the number is visible on a passing run.
+  assert.ok(scanned > 20,
+    `only ${scanned} file(s) reached the enumeration scan (${derived} derived) — the pre-filter is too tight to prove anything`);
 });
 
 test('deliberately partial hook lists name their complement', () => {

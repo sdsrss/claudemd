@@ -72,14 +72,14 @@ export function scanRunbookReviewSteps({ rootDir } = {}) {
   const root = rootDir || path.join(os.homedir(), '.claude', 'projects');
   const out = { missing: [], scannedRunbooks: 0 };
 
-  let projects = [];
+  let projects;
   try { projects = fs.readdirSync(root, { withFileTypes: true }); }
   catch { return out; }
 
   for (const ent of projects) {
     if (!ent.isDirectory()) continue;
     const memDir = path.join(root, ent.name, 'memory');
-    let files = [];
+    let files;
     try { files = fs.readdirSync(memDir).filter(f => f.endsWith('.md')); }
     catch { continue; } // no memory dir — nothing to scan
     const projectMisses = [];

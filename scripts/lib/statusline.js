@@ -27,7 +27,7 @@ const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {})
 // an array of provider objects with an id (possibly empty). A {command:…}
 // foreign-takeover record (no `superseded` key) normalizes to [].
 function readSupersededList() {
-  let prev = null;
+  let prev;
   try { prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8')); } catch { return []; }
   if (!prev || prev.superseded == null) return [];
   const arr = Array.isArray(prev.superseded) ? prev.superseded : [prev.superseded];

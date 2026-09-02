@@ -10,7 +10,7 @@ export function readSettings() {
   try {
     return JSON.parse(raw);
   } catch (e) {
-    throw new Error(`Invalid JSON in settings.json: ${e.message}`);
+    throw new Error(`Invalid JSON in settings.json: ${e.message}`, { cause: e });
   }
 }
 

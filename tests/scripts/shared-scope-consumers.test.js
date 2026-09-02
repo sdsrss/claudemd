@@ -107,7 +107,7 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
     // A boundary, not a character allowlist: `(^|\s|;|&&)` missed `(shellcheck`,
     // `"shellcheck` and `|shellcheck`. Anything that is not part of an
     // identifier or path counts as the start of the word.
-    .filter(({ text }) => /(?<![\w.\/-])shellcheck\s/.test(text))
+    .filter(({ text }) => /(?<![\w./-])shellcheck\s/.test(text))
     // Everything after the tool name and its flags must be `$FILES`. Any bare
     // filename counts, with or without a slash — `shellcheck run-all.sh` was
     // invisible to the first version's `\/[a-z0-9-]+\.sh` alternative.
@@ -116,7 +116,7 @@ test('ci.yml does not hand-write a shellcheck file list', () => {
     // by the closing paren. The lookbehind above admitted that subshell form
     // correctly and this half then dropped it — a fix whose two halves did not
     // agree, caught by running the control rather than by reading it.
-    .filter(({ text }) => /[\w*.\/-]+\.sh(?![\w-])/.test(text.replace(/\$\{?FILES\}?/g, '')));
+    .filter(({ text }) => /[\w*./-]+\.sh(?![\w-])/.test(text.replace(/\$\{?FILES\}?/g, '')));
   assert.deepEqual(offenders.map(({ line, text }) => `${line}: ${text.trim()}`), [],
     'ci.yml names shell files on a shellcheck command again — that list was a ' +
     'proper subset of run-all.sh\'s and is why tests/lib/shell-files.sh exists. ' +

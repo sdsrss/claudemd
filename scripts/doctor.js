@@ -64,7 +64,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // Stop-hook-only (warn / structure-advisory, never deny+bypass), so total=0 <
 // RULE_USAGE_MIN_TOTAL and they cannot reach this demote branch — §8-npx /
 // §8-rm-rf-var are the only immutable sections that actually do.
-const IMMUTABLE_SECTION_RE = /^§8([.\-]|$)/;
+const IMMUTABLE_SECTION_RE = /^§8([.-]|$)/;
 
 // Advisory checks are operator judgement calls whose steady state is non-zero
 // (generic memory tags, index size over a SOFT budget, promote candidates, a
@@ -531,6 +531,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // table's `hook` fields must union to HOOK_REGISTRY — asserted by
   // tests/scripts/subject-set-drift.test.js, so a hook added tomorrow has to
   // land in one list or the other rather than in neither.
+  // Read as SOURCE by tests/scripts/subject-set-drift.test.js, not as a value — the
+  // name and the object-literal shape are the contract, so this cannot be
+  // renamed to `_LIVENESS_SKIPPED` (the gate's regex anchors on the identifier)
+  // nor deleted (docs/ADDING-NEW-HOOK.md sends new hooks here).
+  // eslint-disable-next-line no-unused-vars
   const LIVENESS_SKIPPED = {
     'session-start-check.sh': 'bootstraps the install and makes a network call — unsafe to trigger from a health command; tests/hooks/session-start.test.sh covers it',
     'version-sync.sh': 'spawns a background re-install — same reason; tests/integration/upgrade-lifecycle.test.sh covers it',

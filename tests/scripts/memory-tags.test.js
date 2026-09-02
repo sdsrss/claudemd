@@ -133,8 +133,8 @@ test('v0.23.11: parser-parity — title embedding a (foo.md) token resolves the 
 
 test('v0.32.2: blockquote prose quoting `[label]` + `(…​.md)` tokens is not a tagged entry', () => {
   // Live FP: code-graph-mcp's MEMORY.md header line
-  //   > … Visible `[label]` is short; real filename is in the `(…​.md)` link — …
-  // parsed as {file: '…​.md', tags: ['label']} because the backtick tag-block
+  //   > … Visible `[label]` is short; real filename is in the `(…\u200b.md)` link — …
+  // parsed as {file: '…\u200b.md', tags: ['label']} because the backtick tag-block
   // regex was not anchored on `.md)` (the hook's sed IS anchored — parser-parity
   // divergence, same family as the v0.23.11 first-vs-last file-match fix).
   const md = '> One line per memory = router only. Visible `[label]` is short; real filename is in the `(…​.md)` link — match task keywords against filename/tags.\n' +

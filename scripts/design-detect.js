@@ -107,7 +107,7 @@ function subprojectFallback(cwd, rootPkg) {
   if (hasWs) {
     for (const parent of ['packages', 'apps']) {
       const dir = path.join(cwd, parent);
-      let entries = [];
+      let entries;
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       // Filter to directories BEFORE capping so files don't consume the budget.
       for (const e of entries.filter(x => x.isDirectory()).slice(0, 50)) {
@@ -141,7 +141,7 @@ function walkTokenSources(baseCwd, startAbs) {
   while (queue.length) {
     const { abs, depth } = queue.shift();
     if (dirCount++ > MAX_DIRS) break;
-    let entries = [];
+    let entries;
     try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
     for (const e of entries) {
       const rel = path.relative(baseCwd, path.join(abs, e.name));

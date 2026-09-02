@@ -154,13 +154,14 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
       `\`/plugin install claudemd@claudemd\` or re-clone from https://github.com/sdsrss/claudemd.`
     );
   }
-  let hookSpecCount = 0;
+  let hookSpecCount;
   try {
     hookSpecCount = readPluginHookSpecs(pluginRoot).length;
   } catch (e) {
     throw new Error(
       `install: hook manifest at ${hooksFile} is not valid JSON (${e.message}). ` +
-      `Refusing to install — re-run \`/plugin install claudemd@claudemd\`.`
+      `Refusing to install — re-run \`/plugin install claudemd@claudemd\`.`,
+      { cause: e }
     );
   }
   if (hookSpecCount === 0) {
@@ -190,7 +191,8 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
         `install: ${settingsPath()} is not valid JSON (${e.message}). Refusing to install — ` +
         `the install rewrites this file and would otherwise leave a half-installed state. ` +
         `Fix the JSON (a trailing comma is the usual cause) or move the file aside, then re-run. ` +
-        `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`
+        `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`,
+        { cause: e }
       );
     }
   }

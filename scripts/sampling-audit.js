@@ -335,7 +335,7 @@ export function yieldTellSuppressed(priorText) {
 
 // §11 post-compaction: after a compaction event, a plan/spec re-read should
 // appear within the next READ_WINDOW main-line assistant events.
-const PLAN_SPEC_RE = /CLAUDE(-extended|-changelog)?\.md|OPERATOR\.md|tasks[\/\\][^"']*\.md|plan[^"']*\.md/i;
+const PLAN_SPEC_RE = /CLAUDE(-extended|-changelog)?\.md|OPERATOR\.md|tasks[/\\][^"']*\.md|plan[^"']*\.md/i;
 const READ_WINDOW = 10;
 
 // §5 hard-AUTH: narrow, low-FP hard-op triggers only (advisory-grade — the
@@ -345,7 +345,7 @@ function isHardOp(tu) {
   const input = tu.input || {};
   if (tu.name === 'Write' || tu.name === 'Edit' || tu.name === 'NotebookEdit') {
     const p = String(input.file_path || '');
-    if (/\.claude[\/\\]settings\.json$|[\/\\]migrations?[\/\\]|(^|[\/\\])\.env(\.(?!example|sample|template)[A-Za-z0-9_.-]+)?$/.test(p)) return true;
+    if (/\.claude[/\\]settings\.json$|[/\\]migrations?[/\\]|(^|[/\\])\.env(\.(?!example|sample|template)[A-Za-z0-9_.-]+)?$/.test(p)) return true;
   }
   if (tu.name === 'Bash') {
     const c = String(input.command || '');
@@ -370,7 +370,7 @@ export const OVER_CEREMONY_THRESHOLD = 0.05;
 
 // Process-ceremony skills only (Skill tool, model-initiated). User-typed
 // /commands are the user's own choice and are not counted.
-const CEREMONY_SKILL_RE = /^(?:superpowers|sp)[:\/](brainstorming|test-driven-development|systematic-debugging|writing-plans|executing-plans)$/;
+const CEREMONY_SKILL_RE = /^(?:superpowers|sp)[:/](brainstorming|test-driven-development|systematic-debugging|writing-plans|executing-plans)$/;
 const L0L1_MAX_FILES = 2;
 const L0L1_MAX_EST_LOC = 80;
 

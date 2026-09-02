@@ -97,7 +97,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // StatusLine cleanup — runs unconditionally (like the settings eviction
   // above) so a manifest-less uninstall still un-wires our statusLine. No-op
   // when the slot is empty or owned by another provider.
-  let statusline = { action: 'not-ours', restored: null };
+  let statusline;
   try { statusline = removeStatusline(); } catch (e) { statusline = { action: 'error', error: e.message }; }
   // The failure used to live only in the returned JSON's `statusline.action`,
   // which nothing surfaces on the human path — so a statusLine we could not

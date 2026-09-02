@@ -89,7 +89,7 @@ function splitClauses(text) {
 function clauseKeywords(clause) {
   return clause
     .toLowerCase()
-    .replace(/[`"'\[\]()]/g, '')
+    .replace(/[`"'[\]()]/g, '')
     .split(/[\s/,]+/)
     .map(w => w.replace(/[^a-z0-9_§.]/g, ''))
     .filter(w => w && !STOP_WORDS.has(w) && w.length >= 3);
@@ -259,7 +259,7 @@ export async function auditSafetyCoverage({ pluginRoot, hookFilter = null } = {}
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   } catch (e) {
-    throw new Error(`safety-coverage-audit: failed to load ${manifestPath}: ${e.message}`);
+    throw new Error(`safety-coverage-audit: failed to load ${manifestPath}: ${e.message}`, { cause: e });
   }
 
   const allHookSources = {};

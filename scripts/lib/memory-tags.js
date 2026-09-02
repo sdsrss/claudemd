@@ -89,7 +89,7 @@ export function classifyTag(tag) {
   if (!tag) return reasons;
 
   // CJK / non-ASCII alpha first byte → pass (narrow by authoring convention).
-  if (/[^\x00-\x7F]/.test(tag)) return reasons;
+  if (/[^\p{ASCII}]/u.test(tag)) return reasons;
 
   // Multi-word (hyphen / underscore / space) → pass.
   if (/[-_ ]/.test(tag)) return reasons;
@@ -157,7 +157,7 @@ export function scanMemoryIndexSizes({ rootDir } = {}) {
   const indexes = [];
   let scannedFiles = 0;
 
-  let projects = [];
+  let projects;
   try { projects = fs.readdirSync(root, { withFileTypes: true }); }
   catch { return { indexes, scannedFiles }; }
 
@@ -192,7 +192,7 @@ export function scanMemoryTags({ rootDir } = {}) {
   const findings = [];
   let scannedFiles = 0;
 
-  let projects = [];
+  let projects;
   try { projects = fs.readdirSync(root, { withFileTypes: true }); }
   catch { return { findings, scannedFiles }; }
 
