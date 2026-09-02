@@ -16,6 +16,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -226,4 +227,72 @@ test('ci.yml hands shellcheck a variable that is the unfiltered shared scope', (
     `tests/lib/${SHELLCHECK_SCOPE} scope:\n      ` + badOperand.join('\n      ') +
     '\n      Deriving the list into a second variable, filtering it inline, or passing the ' +
     'other single source (a different, smaller set) are all the same narrowing by another name.');
+});
+
+// Everything above reads the CALLERS. None of it reads the callee, and that is
+// the last hole the v0.71.2 pre-tag review left open: two `grep -v` lines added
+// inside shell_files_checked_scope() itself took the scope from 62 files to 55
+// with `npm test` green and `OVERALL: all suites passed`. All three tests above
+// stay green by construction — the single source is still read, no filename is
+// written in ci.yml, and the variable is still assigned from the unfiltered
+// call. They ask whether the shared script is consulted; none of them asks what
+// it answered.
+//
+// The floor inside the script does not catch it either: 55 clears 40, and the
+// headroom is deliberate. A floor bounds how far the set can shrink before the
+// whole thing is obviously broken; it cannot notice a directory quietly leaving
+// (feedback_gate_must_report_its_cardinality — the count that matters is of the
+// subject, and printing it is not the same as asserting on it).
+//
+// So this compares SETS: what the script prints against what `git ls-files`
+// says is there. It is a second computation of the same thing on purpose. Any
+// filter inside the function makes the two disagree, and a scope that should
+// legitimately exclude something has to say so here, in the open, rather than
+// in a pipeline inside the single source.
+//
+// Scoped to shell-files.sh by name rather than to every SINGLE SOURCE file in
+// tests/lib/: bash32-constructs.sh is the other one, and its default scope is a
+// filtered set by design (it drops what it cannot parse), so "unfiltered" is
+// the wrong invariant for it. One name, the same reason SHELLCHECK_SCOPE above
+// carries one.
+test('the shared shellcheck scope is the whole tracked .sh set, not a filtered subset', (t) => {
+  // Invoked the way ci.yml:86 and run-all.sh invoke it — a RELATIVE path from
+  // the repo root — because a script can read `$0`, and a filter conditioned on
+  // it (`[[ "$0" == /* ]] || list=$(… | grep -v …)`) narrows the two real
+  // callers while answering this test in full. That escape was written and run
+  // during the pre-tag review of this release: 4/4 green, CI checking 58 of 62.
+  // A gate certifying a shape production never sees is this repo's own recurring
+  // finding; here it would have been introduced by the gate closing it.
+  const printed = execFileSync('bash', [path.join('tests/lib', SHELLCHECK_SCOPE)],
+    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
+  const tracked = execFileSync('git', ['ls-files', '*.sh'],
+    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
+
+  // Both empty would satisfy the comparison below, and outside a checkout both
+  // are empty — the exact shape of the "shellcheck reads its closed stdin and
+  // exits 0" pass the script's own header was written against. The floor is
+  // read out of the script rather than written again here: a second copy of a
+  // constant, sitting in the file whose subject is single-sourcing, is the
+  // class this suite exists for.
+  const floorSrc = fs.readFileSync(path.join(ROOT, 'tests/lib', SHELLCHECK_SCOPE), 'utf8');
+  const floor = Number((floorSrc.match(/^SHELL_FILES_FLOOR=(\d+)/m) || [])[1]);
+  assert.ok(Number.isInteger(floor) && floor > 0,
+    `no SHELL_FILES_FLOOR= assignment found in tests/lib/${SHELLCHECK_SCOPE} — it was renamed, ` +
+    'and this check has no lower bound to enforce.');
+  assert.ok(tracked.length >= floor,
+    `git ls-files '*.sh' resolved only ${tracked.length} file(s), under the script's own floor of ` +
+    `${floor} — not a checkout, or the layout moved. Two empty sets compare equal, so this must ` +
+    'fail before the comparison.');
+
+  t.diagnostic(`${printed.length} file(s) printed by ${SHELLCHECK_SCOPE}; ${tracked.length} tracked '*.sh'`);
+
+  const dropped = tracked.filter((f) => !printed.includes(f));
+  const added = printed.filter((f) => !tracked.includes(f));
+  assert.deepEqual({ dropped, added }, { dropped: [], added: [] },
+    `tests/lib/${SHELLCHECK_SCOPE} does not print the tracked .sh set it claims to be the ` +
+    'single source of:\n      ' +
+    `dropped: ${dropped.join(', ') || '(none)'}\n      added: ${added.join(', ') || '(none)'}\n      ` +
+    'A filter inside the shared script narrows every consumer at once while each consumer ' +
+    'still looks correct — the CI step keeps front-running run-all.sh over a smaller set than ' +
+    'run-all.sh checks, which is the drift R10-18c converged the two lists to prevent.');
 });

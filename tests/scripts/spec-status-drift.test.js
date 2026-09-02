@@ -88,6 +88,16 @@ function declaredArtifacts(text) {
 // audit doc describing the work is prose about code, not code
 // (feedback_gate_reads_prose_not_code). Comment lines are stripped from what is
 // left, so a `# see s8_strip_wrappers` note cannot stand in for a call.
+//
+// Block comments go first, and only in .js/.mjs: the v0.71.2 review recorded
+// that this stripper handled `#` and `//` but not `/* */`, JSDoc continuation
+// lines, or JSON string values, and left the note "fix it the next time this
+// stripper is touched". This is that time. It is deliberately NOT applied to
+// .sh — `rm -rf /*` is a command there, and a stripper that ate from it to the
+// next `*/` would delete real definitions from the haystack, which fails in the
+// direction that hides work rather than the one that over-reports it. The JSON
+// half of that note is answered by the anchoring below instead: prose sitting in
+// a `_doc` value is a mention, and mentions no longer count.
 function codeHaystack() {
   const files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
     .split('\n').filter(Boolean)
@@ -100,12 +110,92 @@ function codeHaystack() {
     if (!/\.(sh|js|mjs|json|tsv)$/.test(f)) continue;
     let text;
     try { text = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch { continue; }
-    code += text.split('\n')
-      .map((l) => l.replace(/(^|\s)(#|\/\/).*$/, ''))
-      .join('\n');
+    code += stripNonCode(text, f);
     code += '\n';
   }
   return { code, paths };
+}
+
+// Named so the cases below can drive the same function the scan uses rather
+// than a second copy of the rules (feedback_extraction_needs_consumer_gate:
+// the copy is what drifts). Block comments are removed whole-text before the
+// line pass, because a line-at-a-time stripper cannot see a construct that
+// spans lines (feedback_sed_line_based_misses_multiline).
+// The opener must be a line's whole content, not a `/*` found anywhere in it.
+// The unanchored version of this shipped in a staged 0.71.3 and the pre-tag
+// review measured what it cost: `// Scans ~/.claude/projects/*/memory/…` is a
+// comment about a glob, and `projects/*` is a `/*`, so the region ran to the
+// next `*/` — another glob 175 lines later — and took `classifyTag` with it.
+// Across the tree that stripper hid 8 of 99 exported functions from the
+// haystack, which is the direction that makes shipped work read as outstanding:
+// a spec declaring `scanVocab` and `scanStructure` was caught by 0.71.2 and
+// silently passed by the version that added this. Reordering the two passes is
+// NOT the fix — a `/*` inside a string literal opens the same runaway with the
+// line pass run first — and neither is trusting that comments and globs stay
+// out of each other's way. Anchoring is what makes the shape unambiguous, and
+// it is also what a block comment written to be read looks like.
+function stripNonCode(text, file) {
+  const body = /\.(js|mjs)$/.test(file)
+    ? text.replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, ' ')
+    : text;
+  return body.split('\n').map((l) => l.replace(/(^|\s)(#|\/\/).*$/, '')).join('\n');
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// `- Produces:` claims the spec CREATES the thing. So presence has to be judged
+// on a definition site, not on the name turning up somewhere — the difference
+// between "this work landed" and "this word is in the repo".
+//
+// The unanchored `\bname\b` this replaces was reported from both sides in
+// tasks/spec-status-drift-gate-blind-spots.md, and they are one predicate seen
+// twice: a draft declaring `cache` and `resolve` was condemned as stale because
+// both words appear in dozens of tracked files, while a real artifact that
+// landed under a different name reads as absent. Measured against this tree
+// before the change: `cache`, `resolve`, `linkage` and `saturation` are all
+// mentioned and none are defined, while `s8_split_segments`, `s8_strip_wrappers`
+// and `S8_WRAP_ARGLESS` — the three symbols the gate was written for — are still
+// found. The FP pair drops out and the original defect is still caught.
+//
+// What it does not fix: a name that something really does define (`hook`,
+// `status` both define in this tree) still collides. That is a genuine ambiguity
+// in the declaration, not in the predicate, and the failure message says so.
+function definitionShapes(name) {
+  const n = escapeRe(name);
+  return [
+    // `name() {` / `function name() {` — shell and JS both.
+    new RegExp(`^[ \\t]*(?:function[ \\t]+)?${n}[ \\t]*\\([ \\t]*\\)`, 'm'),
+    new RegExp(`^[ \\t]*(?:export[ \\t]+)?(?:async[ \\t]+)?function[ \\t]+${n}\\b`, 'm'),
+    new RegExp(`^[ \\t]*(?:export[ \\t]+)?(?:const|let|var)[ \\t]+${n}\\b[ \\t]*=`, 'm'),
+    // Shell assignment, including the readonly/local/declare/export prefixes.
+    new RegExp(`^[ \\t]*(?:readonly[ \\t]+|local[ \\t]+|export[ \\t]+|declare[ \\t]+-[A-Za-z]+[ \\t]+)?${n}=`, 'm'),
+    // A JSON key is that file's definition of the name.
+    new RegExp(`"${n}"[ \\t]*:`),
+  ];
+}
+
+// Split rather than all-or-nothing. The caller needs to tell "none of this
+// landed" from "two of the three did and the third was renamed", and the old
+// boolean collapsed both into `false`, which is what made a rename silence a
+// whole spec permanently.
+function artifactPresence(artifacts, { code, paths }) {
+  const present = [];
+  const missing = [];
+  for (const a of artifacts) {
+    // The file set is consulted for EVERY artifact, not just the four
+    // extensions the symbol branch knows to step aside for. `declaredArtifacts`
+    // admits any `name.ext`, and this repo really does produce
+    // `spec/hard-rules.json`, `banned-vocab.patterns` and `ci.yml` — under the
+    // old mention-based predicate those were found by their paths appearing in
+    // code, and routing them to a symbol lookup made every one of them read as
+    // missing (pre-tag review of this release). A produced file is present when
+    // the file is there; asking whether something defines `hard-rules.json` as
+    // a symbol was never the question.
+    const hit = paths.has(a)
+      || (!/\.(sh|js|mjs|tsv)$/.test(a) && definitionShapes(a).some((re) => re.test(code)));
+    (hit ? present : missing).push(a);
+  }
+  return { present, missing };
 }
 
 test('every tracked spec carries a known status', () => {
@@ -140,6 +230,7 @@ test('no open spec has already been fully implemented', (t) => {
   const specs = trackedSpecs();
   const stale = [];
   const unevaluable = [];
+  const partial = [];
   let judged = 0;
   for (const s of specs) {
     const text = fs.readFileSync(path.join(ROOT, s), 'utf8');
@@ -147,31 +238,38 @@ test('no open spec has already been fully implemented', (t) => {
     if (!OPEN_STATUSES.includes(status)) continue;
     const artifacts = declaredArtifacts(text);
     // Two or more, so a single generic name cannot condemn a spec by collision.
-    // Two generic names still can — a draft declaring `cache` and `resolve` is
-    // reported stale, since both appear in dozens of tracked files — and the
-    // reverse, one artifact that landed under a different name, silences the
-    // whole spec, because the match is all-or-nothing. Both are the same
-    // unanchored predicate seen from its two sides, both are reproduced in
-    // tasks/spec-status-drift-gate-blind-spots.md, and neither is fixed here.
     if (artifacts.length < 2) {
       unevaluable.push(`${s} — status: ${status}, declares ${artifacts.length} parseable \`- Produces:\` artifact(s)`);
       continue;
     }
     judged++;
-    const present = artifacts.filter((a) => (
-      /\.(sh|js|mjs|tsv)$/.test(a)
-        ? paths.has(a)
-        : new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(code)
-    ));
-    if (present.length === artifacts.length) {
+    const { present, missing } = artifactPresence(artifacts, { code, paths });
+    if (missing.length === 0) {
       stale.push(`${s} — declares [${artifacts.join(', ')}], all present in the tree`);
+    } else {
+      // Not a failure: a spec with some — or none — of its artifacts in the
+      // tree is work in progress, which is exactly what an open status should
+      // mean. It is printed because the alternative is what the blind-spot note
+      // recorded: one artifact renamed between the plan and the code, and the
+      // whole spec goes quiet for good with nothing anywhere saying so.
+      //
+      // `0/2 present` is printed too, and that is not padding. The first
+      // version of this guarded on `present.length > 0`, so a spec where the
+      // predicate found NOTHING produced no line at all — and both regressions
+      // the pre-tag review of this release found were invisible for exactly
+      // that reason. A verdict of "nothing landed" is a verdict; the diagnostic
+      // saying only how many specs were scanned, and never what came of them,
+      // is the same hiding place one level down (feedback_gate_must_report_its_cardinality).
+      partial.push(`${s} — ${present.length}/${artifacts.length} present, missing [${missing.join(', ')}]`);
     }
   }
 
   // Printed on the green path too, which is the point: the count is the
   // difference between a clean scan and an empty one.
   t.diagnostic(`${specs.length} tracked spec(s); ${judged + unevaluable.length} open ` +
-    `(${OPEN_STATUSES.join('/')}); ${judged} evaluated against the tree, ${unevaluable.length} not evaluable`);
+    `(${OPEN_STATUSES.join('/')}); ${judged} evaluated against the tree, ${unevaluable.length} not evaluable` +
+    (partial.length ? `\n      partially present (in progress, or an artifact was renamed):\n      ` +
+      partial.join('\n      ') : ''));
 
   assert.deepEqual(stale, [],
     `a spec still marked open — i.e. an unmet commitment — has every artifact it plans ` +
@@ -185,4 +283,120 @@ test('no open spec has already been fully implemented', (t) => {
     'gate exists to prevent:\n      ' + unevaluable.join('\n      ') +
     '\n      Give it two or more `- Produces: `name`` lines naming what it creates, or set ' +
     'its status to implemented/rejected if it is no longer an open commitment.');
+});
+
+// The two tests above judge whatever the tree happens to contain, and today that
+// is nothing: all seven tracked specs are implemented or rejected, so the open
+// subset is empty and both assertions are vacuous. That is the correct steady
+// state and it is also why the predicate itself has to be driven by fixtures —
+// otherwise the rules below are only exercised on the day someone opens a spec,
+// which is the day they are relied on. These feed the same functions the scan
+// calls; a second copy of the rules here would be the drift this repo keeps
+// filing (feedback_extraction_needs_consumer_gate).
+
+test('presence is judged on a definition, not on the name appearing somewhere', () => {
+  const paths = new Set();
+  // One line per shape, because a shape no fixture drives can be deleted with
+  // the suite still green — the pre-tag review removed the `function name(…)`
+  // and JSON-key arms and all six tests passed, while the predicate's reach
+  // over this tree's exported functions collapsed from 91/99 to 6/99.
+  const defined = { code: [
+    'do_the_thing() {',
+    '  echo hi',
+    '}',
+    'export async function with_args(a, b) {',
+    'const a_binding = 1',
+    'readonly THE_LIMIT=40',
+    '{ "a_json_key": 1 }',
+  ].join('\n'), paths };
+  const declared = ['do_the_thing', 'with_args', 'a_binding', 'THE_LIMIT', 'a_json_key'];
+  assert.deepEqual(artifactPresence(declared, defined), { present: declared, missing: [] });
+
+  // Every line here MENTIONS both names — a call, an argument, a JSON string
+  // value — and none of them creates either. This is the escape the v0.71.2
+  // review reproduced from the other side: `cache` and `resolve` appear in
+  // dozens of tracked files and the unanchored predicate read that as "the
+  // plan's work is done, flip it to implemented".
+  const mentioned = { code: [
+    'do_the_thing "$1"',
+    'if [[ -n "$THE_LIMIT" ]]; then run; fi',
+    '{ "_doc": "cache and resolve are described here", "rationale": "do_the_thing" }',
+  ].join('\n'), paths };
+  assert.deepEqual(artifactPresence(['do_the_thing', 'THE_LIMIT'], mentioned),
+    { present: [], missing: ['do_the_thing', 'THE_LIMIT'] });
+});
+
+test('a renamed artifact leaves the rest of the spec visible, not silent', () => {
+  // The FN half of the same predicate. Two of three landed and the third was
+  // renamed between the plan and the code — the ordinary case. All-or-nothing
+  // reported `false` for the spec as a whole and printed nothing, so the spec
+  // could never be judged again; the split says which one is missing.
+  const haystack = { code: 'alpha() {\n}\nbeta() {\n}\n', paths: new Set() };
+  assert.deepEqual(artifactPresence(['alpha', 'beta', 'gamma'], haystack),
+    { present: ['alpha', 'beta'], missing: ['gamma'] });
+});
+
+// The fixtures above pin the RULES; this pins the HAYSTACK, and it is the only
+// assertion in this file that is not vacuous on today's tree. Both regressions
+// the pre-tag review of v0.71.3 found were failures to build the haystack, not
+// failures to write a regex — one comment-stripping pass removed 8 of these 99
+// functions from it and every fixture stayed green, because a fixture supplies
+// its own code string and never touches the reader.
+//
+// Derived from the source rather than listed: an exported function is one this
+// repo really does produce, so anything the predicate cannot see here it could
+// not see in a spec that declared it either.
+test('no tracked exported function is invisible to the predicate', (t) => {
+  const { code, paths } = codeHaystack();
+  const files = execFileSync('git', ['ls-files', 'scripts/*.js', 'scripts/lib/*.js', 'tests/lib/*.js'],
+    { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const names = new Set();
+  for (const f of files) {
+    for (const m of fs.readFileSync(path.join(ROOT, f), 'utf8')
+      .matchAll(/^export[ \t]+(?:async[ \t]+)?function[ \t]+([A-Za-z_]\w*)/gm)) names.add(m[1]);
+  }
+  assert.ok(names.size >= 40,
+    `only ${names.size} exported function(s) found across ${files.length} tracked script file(s) — ` +
+    'the derivation broke, and a check over that few proves nothing.');
+
+  const { missing } = artifactPresence([...names], { code, paths });
+  t.diagnostic(`${names.size} exported function(s) across ${files.length} file(s); ${missing.length} invisible`);
+  assert.deepEqual(missing, [],
+    'a function this repo exports cannot be found in the haystack the drift gate searches, so a ' +
+    'spec declaring it would read as unfinished forever:\n      ' + missing.join('\n      ') +
+    '\n      Either a definition shape is missing, or — far likelier — something in codeHaystack() ' +
+    'is removing real code on its way in.');
+});
+
+test('an artifact named as a file is looked for as a file', () => {
+  // `hard-rules.json` is here because the extension whitelist was the whole
+  // test before, and this repo ships produced files it does not cover —
+  // `spec/hard-rules.json`, `banned-vocab.patterns`, `ci.yml`. Routing those to
+  // a symbol lookup asked whether anything DEFINES `hard-rules.json`, which
+  // nothing does, so every one of them read as missing.
+  const haystack = { code: '', paths: new Set(['s8-diff-scan.sh', 'hard-rules.json']) };
+  assert.deepEqual(
+    artifactPresence(['s8-diff-scan.sh', 'hard-rules.json', 'missing-tool.sh', 'absent.json'], haystack),
+    { present: ['s8-diff-scan.sh', 'hard-rules.json'], missing: ['missing-tool.sh', 'absent.json'] });
+});
+
+test('a definition inside a JS block comment is not a definition', () => {
+  // The gap the v0.71.2 review recorded as latent and asked to be closed the
+  // next time this stripper was touched. `.sh` is deliberately left alone: the
+  // `/*` there is a glob, and eating to the next `*/` would remove real code.
+  //
+  // The commented-out definition carries no ` * ` continuation prefix, and that
+  // is the whole point of the fixture: with the prefix, the line anchor rejects
+  // it on its own and removing the block stripper changes nothing — the first
+  // version of this case was written that way and stayed green under a mutant
+  // that deleted the stripping outright (feedback_probe_harness_controls_first:
+  // a control that does not turn the assertion's own predicate false proves the
+  // mutation missed, not that the gate holds).
+  const js = stripNonCode('/*\nconst planned_helper = 1\n*/\nconst real_helper = 2\n', 'x.js');
+  assert.deepEqual(artifactPresence(['planned_helper', 'real_helper'], { code: js, paths: new Set() }),
+    { present: ['real_helper'], missing: ['planned_helper'] });
+
+  const sh = stripNonCode('rm -rf /*\nkeep_me() {\n', 'x.sh');
+  assert.deepEqual(artifactPresence(['keep_me'], { code: sh, paths: new Set() }),
+    { present: ['keep_me'], missing: [] });
 });
