@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { projectsRoot } from './paths.js';
 
 // scripts/lib/memory-tags.js — §11-EXT Tag-specificity (SHOULD) static check.
 //
@@ -243,7 +243,7 @@ export const MEMORY_INDEX_BUDGET_BYTES = 12 * 1024;
 // Returns: { indexes: [{memDir, bytes, entries}], scannedFiles: N }
 //   - entries counts `- [Title](file.md)` bullet lines (the loaded index rows).
 export function scanMemoryIndexSizes({ rootDir } = {}) {
-  const root = rootDir || path.join(os.homedir(), '.claude', 'projects');
+  const root = rootDir || projectsRoot();
   const indexes = [];
   let scannedFiles = 0;
 
@@ -284,7 +284,7 @@ export function scanMemoryIndexSizes({ rootDir } = {}) {
 //   - scannedFiles: count of MEMORY.md files actually read (for "no findings,
 //     scanned 0 files" vs "no findings, scanned 5 files" disambiguation).
 export function scanMemoryTags({ rootDir } = {}) {
-  const root = rootDir || path.join(os.homedir(), '.claude', 'projects');
+  const root = rootDir || projectsRoot();
   const findings = [];
   let scannedFiles = 0;
 

@@ -17,8 +17,8 @@
 // memory-maintenance.js.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { projectsRoot } from './paths.js';
 
 // A file counts as a ship-runbook candidate via the strongest matching tier:
 //   stamp — carries a `covers: §EXT §12` fast-path stamp (definitive: only
@@ -69,7 +69,7 @@ function classifyCandidate(name, content) {
 // deep (explicit, no recursion — §8 posture), classifies ship-runbook
 // candidates, and lists those lacking a review-step fingerprint.
 export function scanRunbookReviewSteps({ rootDir } = {}) {
-  const root = rootDir || path.join(os.homedir(), '.claude', 'projects');
+  const root = rootDir || projectsRoot();
   const out = { missing: [], scannedRunbooks: 0 };
 
   let projects;

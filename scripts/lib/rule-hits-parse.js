@@ -311,6 +311,22 @@ export function isBlockingDeny(event) {
   return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
 }
 
+// The non-deny half of the signal set: events that mean the spec spoke, without
+// blocking. Kept as an explicit set because there is no prefix that describes
+// them, unlike the deny family.
+const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch']);
+
+// isSignalEvent(event) — everything a usage trend should count.
+//
+// scripts/sparkline.js enumerated this as a literal six-name Set while the deny
+// half of it is a PREFIX rule here, so a new `deny-*` event would be counted by
+// isBlockingDeny and silently dropped from the release-header trend — one side a
+// rule, the other a list, with no join (2026-09-02 audit R11-13b). The deny half
+// is now derived; only the three non-deny names are written down.
+export function isSignalEvent(event) {
+  return isBlockingDeny(event) || SIGNAL_NON_DENY.has(event);
+}
+
 // blockingDenyCount(byEvent) — sum every blocking-deny-family event in a
 // groupBySection `byEvent` map (deny + deny-repeat + deny-prose, excluding the
 // advisory deny-prose-dry-run). Callers that hardcoded `byEvent.deny` undercount

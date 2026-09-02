@@ -25,7 +25,13 @@
 
 import path from 'node:path';
 import { logsDir } from './lib/paths.js';
-import { readHits, groupBySection, logFirstTs, excludeTestSessions } from './lib/rule-hits-parse.js';
+import {
+  readHits,
+  groupBySection,
+  logFirstTs,
+  excludeTestSessions,
+  isSignalEvent,
+} from './lib/rule-hits-parse.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
@@ -49,14 +55,7 @@ const DEFAULT_WINDOWS = [30, 60, 90];
 // (deny-prose) are undercounted in the release-header trend. Mirrors the
 // blockingDenyCount sweep applied to doctor.js / hard-rules-audit.js. The
 // advisory `deny-prose-dry-run` stays OUT (it's an observation, not a block).
-const SIGNAL_EVENTS = new Set([
-  'deny',
-  'deny-repeat',
-  'deny-prose',
-  'warn',
-  'advisory',
-  'bypass-escape-hatch',
-]);
+// The set itself lives in lib/rule-hits-parse.js as isSignalEvent — see there.
 
 export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const log = logPath || path.join(logsDir(), 'claudemd.jsonl');
@@ -66,7 +65,7 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   // excludeTestSessions: drop hook-unit-test sentinels ('t'/'test') so the
   // release-header trend block isn't polluted by test traffic (mirrors audit.js).
   const allHits = excludeTestSessions(readHits(log, longest).hits)
-    .filter(h => SIGNAL_EVENTS.has(h.event))
+    .filter(h => isSignalEvent(h.event))
     .filter(h => h.spec_section); // drop (unset)
 
   // Log-span check. When the log doesn't reach back as far as the shortest

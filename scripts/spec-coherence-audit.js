@@ -36,8 +36,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { resolvePluginRoot, encodeProjectCwd } from './lib/paths.js';
+import { encodeProjectCwd, projectDir, resolvePluginRoot } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
@@ -298,7 +297,7 @@ function checkSizingHeadroom(specDir) {
 
 function checkMemoryIndex(projectCwd) {
   const encoded = encodeProjectCwd(projectCwd);
-  const memDir = path.join(os.homedir(), '.claude', 'projects', encoded, 'memory');
+  const memDir = path.join(projectDir({ encoded }), 'memory');
   const memIndex = path.join(memDir, 'MEMORY.md');
 
   if (!fs.existsSync(memIndex)) {

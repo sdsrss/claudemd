@@ -1,19 +1,24 @@
 // audit-r11-smallfixes.test.js — regressions for five defects the 2026-09-02
 // audit found and the suite could not see. Every one of them passed `npm test`
 // before the fix, which is the point: each was a silent wrong answer, not a
-// crash. R11-13c, R11-22, R11-23, R11-29, R11-30.
+// crash. R11-13b, R11-13c, R11-13d, R11-22, R11-23, R11-29, R11-30.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { parseArgvLintHits } from '../../scripts/baseline-metrics.js';
 import { isAdvisoryCheck } from '../../scripts/doctor.js';
-import { IMMUTABLE_SECTION_RE, isImmutableSection } from '../../scripts/lib/rule-hits-parse.js';
+import {
+  IMMUTABLE_SECTION_RE,
+  isImmutableSection,
+  isSignalEvent,
+  isBlockingDeny,
+} from '../../scripts/lib/rule-hits-parse.js';
 import { claudeHome, homeSpec, backupRoot } from '../../scripts/lib/paths.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -170,4 +175,65 @@ test('R11-22: an unknown CLAUDEMD_SPEC_ACTION is refused, not silently downgrade
       'a rejected value must not reach the point where a disposition is reported'
     );
   }
+});
+
+// --- R11-13b ------------------------------------------------------------------
+// sparkline.js enumerated the trend's event set as a literal six-name Set, while
+// the deny half of that set is a PREFIX RULE in rule-hits-parse.js. One side a
+// rule, the other a list, no join: a new `deny-*` event would be counted as a
+// real block by isBlockingDeny and silently dropped from the release-header
+// trend.
+
+test('R11-13b: the trend event set derives its deny half from isBlockingDeny', () => {
+  for (const e of ['deny', 'deny-repeat', 'deny-prose', 'warn', 'advisory', 'bypass-escape-hatch']) {
+    assert.equal(isSignalEvent(e), true, e);
+  }
+  // The one deny-family event that must stay OUT: it exits 0, so it is an
+  // observation rather than a block.
+  assert.equal(isSignalEvent('deny-prose-dry-run'), false);
+  assert.equal(isBlockingDeny('deny-prose-dry-run'), false);
+  // The whole point: an event nobody has written down yet.
+  assert.equal(
+    isSignalEvent('deny-future-shape'),
+    true,
+    'a new deny-* event must reach the trend without anyone editing a second list'
+  );
+  assert.equal(isBlockingDeny('deny-future-shape'), true);
+  // And non-signal events stay out.
+  for (const e of ['fail-open', 'suggest', 'rm-rf-allow-provenance', '', null]) {
+    assert.equal(isSignalEvent(e), false, String(e));
+  }
+});
+
+test('R11-13b: sparkline holds no private copy of the event set', () => {
+  const src = codeOf('scripts/sparkline.js');
+  assert.match(src, /isSignalEvent/, 'sparkline must use the shared predicate');
+  assert.doesNotMatch(
+    src,
+    /'bypass-escape-hatch'/,
+    'sparkline has re-enumerated the signal events — that literal belongs in lib/rule-hits-parse.js only'
+  );
+});
+
+// --- R11-13d ------------------------------------------------------------------
+// paths.js#projectsRoot exists, and its own comment recorded that the
+// `.claude/projects` literal was "still rebuilt in five call sites". Four more
+// were still doing it.
+
+test('R11-13d: nothing rebuilds the ~/.claude/projects root by hand', () => {
+  const files = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', 'scripts/*.js', 'bin/*.js'], {
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+  assert.ok(files.length >= 20, `only ${files.length} file(s) resolved — this gate would pass over nothing`);
+
+  const offenders = files
+    .filter(f => f !== 'scripts/lib/paths.js') // the definition
+    .filter(f => /'\.claude',\s*'projects'/.test(codeOf(f)));
+  assert.deepEqual(
+    offenders,
+    [],
+    `these files join the projects root by hand instead of calling paths.js#projectsRoot / #projectDir: ${offenders.join(', ')}`
+  );
 });
