@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot, encodeProjectCwd, projectDir as projectDirFor } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lesson-bypass-audit.js [--days=N] [--cwd=<path>] [--json]
 
@@ -297,10 +297,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_BYPASS_DAYS || String(DEFAULT_WINDOW_DAYS));
+  const { raw, days } = resolveDaysFlag(parsed, { env: 'CLAUDEMD_BYPASS_DAYS', dflt: DEFAULT_WINDOW_DAYS });
   // parsePositiveInt rejects '2.7' (truncation footgun) AND '0x1e'/'1e2'
   // (Number() over-coercion) — this site was missed by the round-1 sweep.
-  const days = parsePositiveInt(raw);
   if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +

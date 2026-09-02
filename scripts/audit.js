@@ -15,7 +15,7 @@ import {
   byProjectClass,
   logFirstTs,
 } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
 import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -165,11 +165,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_AUDIT_DAYS || '30');
+  const { raw, days } = resolveDaysFlag(parsed, { env: 'CLAUDEMD_AUDIT_DAYS', dflt: '30' });
   // parsePositiveInt rejects '1.5' (truncation footgun), '0x1e'/'1e2'
   // (Number() over-coercion), and 0/negatives — only a plain positive integer
   // passes. Same silent-fallback family as feedback_cli_flag_shape_silent_fallback.md.
-  const days = parsePositiveInt(raw);
   if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` + `  Examples: --days=30 (default), --days=90.`

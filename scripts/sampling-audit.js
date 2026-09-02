@@ -30,7 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { ArgvError, parsePositiveInt, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
 import { isUserTurn, userTurnText } from './lib/transcript-user-turn.js';
 
@@ -966,9 +966,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const rawDays =
-    parsed.values['--days'] ?? (process.env.CLAUDEMD_SAMPLING_DAYS || String(DEFAULT_WINDOW_DAYS));
-  const days = parsePositiveInt(rawDays);
+  const { raw: rawDays, days } = resolveDaysFlag(parsed, {
+    env: 'CLAUDEMD_SAMPLING_DAYS',
+    dflt: DEFAULT_WINDOW_DAYS,
+  });
   if (days === null) {
     console.error(`--days requires a positive integer (got '${rawDays}').`);
     process.exit(1);

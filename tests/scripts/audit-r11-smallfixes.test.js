@@ -1,7 +1,7 @@
 // audit-r11-smallfixes.test.js — regressions for five defects the 2026-09-02
 // audit found and the suite could not see. Every one of them passed `npm test`
 // before the fix, which is the point: each was a silent wrong answer, not a
-// crash. R11-13b, R11-13c, R11-13d, R11-22, R11-23, R11-29, R11-30.
+// crash. R11-13b, R11-13c, R11-13d, R11-13e, R11-22, R11-23, R11-29, R11-30.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,6 +20,7 @@ import {
   isBlockingDeny,
 } from '../../scripts/lib/rule-hits-parse.js';
 import { claudeHome, homeSpec, backupRoot } from '../../scripts/lib/paths.js';
+import { resolveDaysFlag, resolveDaysListFlag } from '../../scripts/lib/argv.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = rel => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
@@ -236,4 +237,106 @@ test('R11-13d: nothing rebuilds the ~/.claude/projects root by hand', () => {
     [],
     `these files join the projects root by hand instead of calling paths.js#projectsRoot / #projectDir: ${offenders.join(', ')}`
   );
+});
+
+// --- R11-13e ------------------------------------------------------------------
+// Five scripts carried the same `--days` precedence expression with five
+// different env-var names, so the RULE (flag beats env; an EMPTY env means "no
+// preference", not "the empty string"; the result must be a plain positive
+// integer) lived nowhere and had to be re-derived by whoever added the sixth.
+
+test('R11-13e: resolveDaysFlag pins the precedence the five scripts shared', () => {
+  const P = values => ({ values });
+  const withEnv = (name, value, fn) => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, name);
+    const prev = process.env[name];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+    try {
+      return fn();
+    } finally {
+      if (had) process.env[name] = prev;
+      else delete process.env[name];
+    }
+  };
+  const E = 'CLAUDEMD_TEST_DAYS_FIXTURE';
+
+  assert.equal(
+    withEnv(E, undefined, () => resolveDaysFlag(P({}), { env: E, dflt: 30 }).days),
+    30
+  );
+  assert.equal(
+    withEnv(E, '7', () => resolveDaysFlag(P({}), { env: E, dflt: 30 }).days),
+    7
+  );
+  assert.equal(
+    withEnv(E, '7', () => resolveDaysFlag(P({ '--days': '90' }), { env: E, dflt: 30 }).days),
+    90,
+    'the flag beats the env'
+  );
+  assert.equal(
+    withEnv(E, '', () => resolveDaysFlag(P({}), { env: E, dflt: 30 }).days),
+    30,
+    'an env var set-but-empty is the shape an unset shell variable takes in a wrapper — it must mean "no preference", not ""'
+  );
+  // The shapes parsePositiveInt exists to refuse, reaching the caller as null
+  // rather than as a silently truncated number.
+  for (const bad of ['abc', '1.5', '0x1e', '1e2', '0', '-5', ' ']) {
+    const r = withEnv(E, undefined, () => resolveDaysFlag(P({ '--days': bad }), { env: E, dflt: 30 }));
+    assert.equal(r.days, null, `--days=${JSON.stringify(bad)} must not parse`);
+    assert.equal(r.raw, bad, 'the raw value comes back so the caller can quote it');
+  }
+});
+
+test('R11-13e: resolveDaysListFlag rejects the whole list, never a partial one', () => {
+  const P = values => ({ values });
+  const E = 'CLAUDEMD_TEST_DAYS_LIST_FIXTURE';
+  delete process.env[E];
+  assert.deepEqual(resolveDaysListFlag(P({}), { env: E, dflt: '30,60,90' }).windows, [30, 60, 90]);
+  assert.deepEqual(
+    resolveDaysListFlag(P({ '--days': '7,14,28' }), { env: E, dflt: '30,60,90' }).windows,
+    [7, 14, 28]
+  );
+  // The regression: '1.5,2,3' used to truncate to [1,2,3] and print a header
+  // naming windows the run never used.
+  assert.equal(resolveDaysListFlag(P({ '--days': '1.5,2,3' }), { env: E, dflt: '30,60,90' }).windows, null);
+  assert.equal(
+    resolveDaysListFlag(P({ '--days': '30' }), { env: E, dflt: '30,60,90' }).windows,
+    null,
+    'min 2'
+  );
+  assert.equal(resolveDaysListFlag(P({ '--days': '30,,60' }), { env: E, dflt: '30,60,90' }).windows, null);
+});
+
+test('R11-13e: every --days CLI resolves through the shared helper and documents its env var', () => {
+  const files = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', 'scripts/*.js', 'bin/*.js'], {
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+
+  const subjects = files.filter(f => /values:\s*\[[^\]]*'--days'/.test(codeOf(f)));
+  assert.ok(
+    subjects.length >= 5,
+    `only ${subjects.length} --days CLI(s) found — the extractor stopped matching, so this gate judges nothing`
+  );
+
+  for (const rel of subjects) {
+    const code = codeOf(rel);
+    assert.match(
+      code,
+      /resolveDays(List)?Flag\(/,
+      `${rel} accepts --days but resolves it itself — the precedence rule belongs in lib/argv.js`
+    );
+    assert.doesNotMatch(
+      code,
+      /parsed\.values\['--days'\]\s*\?\?/,
+      `${rel} has rebuilt the flag-beats-env expression by hand again`
+    );
+    // The env name is part of the CLI's contract; a script whose env var is not
+    // in its own --help is a knob nobody can find.
+    const env = (code.match(/env:\s*'(CLAUDEMD_[A-Z_]+)'/) || [])[1];
+    assert.ok(env, `${rel} passes no env name to the resolver`);
+    assert.match(read(rel), new RegExp(`${env}`), `${rel} does not mention ${env} in its USAGE text`);
+  }
 });

@@ -21,7 +21,7 @@ import {
   blockingDenyCount,
   isImmutableSection,
 } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
 
@@ -223,10 +223,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_RULES_DAYS || String(DEFAULT_WINDOW_DAYS));
+  const { raw, days } = resolveDaysFlag(parsed, { env: 'CLAUDEMD_RULES_DAYS', dflt: DEFAULT_WINDOW_DAYS });
   // parsePositiveInt rejects '2.7' (truncation footgun) + '0x1e'/'1e2'
   // (Number() over-coercion) + 0/negatives — only a plain positive integer passes.
-  const days = parsePositiveInt(raw);
   if (days === null) {
     console.error(
       `--days requires a positive integer (got '${raw}').\n` +

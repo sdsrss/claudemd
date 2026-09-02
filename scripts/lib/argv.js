@@ -40,6 +40,39 @@ export function printHelpAndExit(argv, usage) {
 // despite help text promising a "positive integer", a silent contract
 // divergence (inverse of the `parseInt` truncation footgun). Mirrors the
 // `/^[1-9][0-9]*$/` guard already used for CLAUDEMD_BATCH_THRESHOLD in status.js.
+// resolveDaysFlag / resolveDaysListFlag — the `--days` precedence, once.
+//
+// Five scripts carried the same expression with five different env-var names
+// (CLAUDEMD_{AUDIT,RULES,SPARKLINE,SAMPLING,BYPASS}_DAYS), so the RULE — flag
+// beats env, an EMPTY env falls back to the default, and the result must be a
+// plain positive integer — lived nowhere and had to be re-derived by whoever
+// added the sixth (2026-09-02 audit R11-13e). The per-script `--days` examples
+// in the error text stay with each script; only the resolution moves here.
+//
+// Returns `{ raw, days }` (or `{ raw, windows }`), with the parsed value null on
+// a bad shape, matching parsePositiveInt's contract: the CLI decides what to
+// print and which exit code to use, a library does not call process.exit.
+export function resolveDaysFlag(parsed, { env, dflt }) {
+  // `||` not `??` on the env read, deliberately: `CLAUDEMD_AUDIT_DAYS=` (set but
+  // empty, the shape an unset shell variable takes in a wrapper) means "no
+  // preference", not "the empty string is my answer".
+  const raw = parsed.values['--days'] ?? (process.env[env] || String(dflt));
+  return { raw, days: parsePositiveInt(raw) };
+}
+
+// The comma-separated variant (sparkline's three trend windows). `windows` is
+// null when any element fails to parse or fewer than `min` survive — one null in
+// the middle of a list is as useless as an unparseable scalar, and returning a
+// partial list is how '1.5,2,3' silently became [1,2,3] with a wrong header.
+export function resolveDaysListFlag(parsed, { env, dflt, min = 2 }) {
+  const raw = parsed.values['--days'] ?? (process.env[env] || String(dflt));
+  const windows = String(raw)
+    .split(',')
+    .map(x => parsePositiveInt(x));
+  const ok = windows.length >= min && !windows.some(w => w === null);
+  return { raw, windows: ok ? windows : null };
+}
+
 export function parsePositiveInt(raw) {
   if (raw == null) return null;
   const s = String(raw).trim();

@@ -32,7 +32,7 @@ import {
   excludeTestSessions,
   isSignalEvent,
 } from './lib/rule-hits-parse.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysListFlag } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
 
@@ -204,12 +204,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     throw e;
   }
-  const raw = parsed.values['--days'] ?? (process.env.CLAUDEMD_SPARKLINE_DAYS || '30,60,90');
-  // parsePositiveInt rejects per-element '1.5' (truncation footgun) +
-  // '0x1e'/'1e2' (Number() over-coercion) + 0/empty; returns null on any of
-  // them. Pre-fix '1.5,2,3' silently truncated to [1,2,3] with a wrong header.
-  const windows = raw.split(',').map(s => parsePositiveInt(s));
-  if (windows.some(w => w === null) || windows.length < 2) {
+  // Per-element rejection of '1.5' (truncation footgun), '0x1e'/'1e2'
+  // (Number() over-coercion) and 0/empty lives in resolveDaysListFlag, which
+  // returns null for the WHOLE list rather than a partial one — pre-fix
+  // '1.5,2,3' silently truncated to [1,2,3] and printed a wrong header.
+  const { raw, windows } = resolveDaysListFlag(parsed, {
+    env: 'CLAUDEMD_SPARKLINE_DAYS',
+    dflt: '30,60,90',
+  });
+  if (windows === null) {
     console.error(
       `--days expects ≥2 comma-separated positive integers (got '${raw}').\n` +
         `  Examples: --days=30,60,90 (default), --days=7,14,28.`
