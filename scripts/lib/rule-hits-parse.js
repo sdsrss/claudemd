@@ -12,22 +12,45 @@ import fs from 'node:fs';
 // documented under readHits has exactly one home: `new Date(null).getTime()` is
 // 0 (finite, epoch) while `new Date(undefined)` is NaN, and treating a missing
 // ts as a valid 1970 event is the corruption these counters exist to surface.
+// The log's rotated generations that actually exist, oldest → newest.
+//
+// hooks/lib/rule-hits.sh has rotated `claudemd.jsonl` → `.1` → `.2` at 5 MB
+// since v0.9.x, and until the 2026-09-02 audit (R11-06) not one reader on
+// either side ever opened `.1` — `grep -rn 'jsonl\.1' scripts bin` found a
+// single comment in uninstall.js. The failure was time-fused rather than
+// latent: at ~26 KB/day the first rotation was ~68 days out, and on that day
+// the primary file is near-empty. Consumers with a `logFirstTs` span guard
+// would have reported a suddenly-tiny window; the two without one
+// (memory-maintenance's 90-day liveness set, lesson-bypass-audit's
+// cite-recall) would have reported a confident wrong answer — every durable
+// memory "never mentioned" — with nothing in the output to say why.
+//
+// Fixing it here rather than at the call sites is what makes it one change:
+// readHits / logFirstTs / detectCutover and all five scripts downstream of
+// them read through this function.
+export function logGenerations(logPath) {
+  return [`${logPath}.2`, `${logPath}.1`, logPath].filter(p => fs.existsSync(p));
+}
+
 export function readLogRows(path) {
-  if (!fs.existsSync(path)) return { rows: [], totalLines: 0, badJson: 0 };
-  const lines = fs.readFileSync(path, 'utf8').split('\n').filter(Boolean);
   const rows = [];
+  let totalLines = 0;
   let badJson = 0;
-  for (const line of lines) {
-    let row;
-    try {
-      row = JSON.parse(line);
-    } catch {
-      badJson++;
-      continue;
+  for (const gen of logGenerations(path)) {
+    const lines = fs.readFileSync(gen, 'utf8').split('\n').filter(Boolean);
+    totalLines += lines.length;
+    for (const line of lines) {
+      let row;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        badJson++;
+        continue;
+      }
+      rows.push({ row, t: (row.ts == null) ? NaN : new Date(row.ts).getTime() });
     }
-    rows.push({ row, t: (row.ts == null) ? NaN : new Date(row.ts).getTime() });
   }
-  return { rows, totalLines: lines.length, badJson };
+  return { rows, totalLines, badJson };
 }
 
 // readHits — returns parsed hits within the daysBack window, alongside

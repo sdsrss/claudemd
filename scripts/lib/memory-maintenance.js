@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { projectDir } from './paths.js';
+import { logGenerations } from './rule-hits-parse.js';
 
 export const CITE_MIN = 3;
 export const PROMOTE_MIN_AGE_DAYS = 30;
@@ -56,8 +57,15 @@ function listMdFiles(dir) {
 // point is "does anything ever match this file", not "was it read".
 function mentionedMdBasenames(logPath, sinceMs) {
   const set = new Set();
-  let raw;
-  try { raw = fs.readFileSync(logPath, 'utf8'); } catch { return set; }
+  // Rotated generations too (R11-06). This is the reader the audit called out
+  // by name: its window is 90 days, longer than a single generation is
+  // guaranteed to cover, and it has no span guard — post-rotation it would
+  // have reported every durable memory as unmentioned and looked no different
+  // from a genuinely quiet 90 days.
+  let raw = '';
+  for (const gen of logGenerations(logPath)) {
+    try { raw += fs.readFileSync(gen, 'utf8'); } catch { /* unreadable generation — skip */ }
+  }
   for (const line of raw.split('\n')) {
     if (!line) continue;
     // A row with no parseable `ts` is corrupt, not timeless: counting its `.md`

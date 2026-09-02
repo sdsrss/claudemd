@@ -357,3 +357,93 @@ test('v0.23.22: uniqueInvocations keeps distinct-extra rows of one invocation se
   assert.equal(r['pre-bash-safety'].unique_invocations, 2);
   assert.equal(r['pre-bash-safety'].duplicate_rows_real, 0);
 });
+
+// --- R11-06 (2026-09-02 audit): nobody had ever opened a rotated log ---
+// hooks/lib/rule-hits.sh rotates claudemd.jsonl → .1 → .2 at 5 MB, but every
+// JS reader opened exactly one path. At ~26 KB/day the first rotation was
+// ~68 days out; on that day the primary file is near-empty and two consumers
+// with no span guard (memory-maintenance's 90-day liveness window,
+// lesson-bypass-audit's cite-recall) would have reported confidently on a
+// window they no longer owned — staleDurable calling every durable memory
+// "never mentioned", with nothing in the output saying so.
+
+import { readLogRows, logGenerations } from '../../scripts/lib/rule-hits-parse.js';
+
+function mkRotatedLog(rows2, rows1, rowsLive) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rot-'));
+  const p = path.join(dir, 'claudemd.jsonl');
+  const w = (f, rows) => fs.writeFileSync(f, rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+  if (rows2) w(`${p}.2`, rows2);
+  if (rows1) w(`${p}.1`, rows1);
+  w(p, rowsLive);
+  return { dir, p };
+}
+
+test('R11-06.1: readLogRows includes rotated .1 and .2 generations', () => {
+  const { dir, p } = mkRotatedLog(
+    [{ ts: '2026-01-01T00:00:00Z', event: 'oldest' }],
+    [{ ts: '2026-03-01T00:00:00Z', event: 'middle' }],
+    [{ ts: '2026-06-01T00:00:00Z', event: 'live' }],
+  );
+  try {
+    const { rows, totalLines } = readLogRows(p);
+    assert.equal(totalLines, 3);
+    assert.deepEqual(rows.map(r => r.row.event), ['oldest', 'middle', 'live'],
+      'oldest generation first, live last');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-06.2: logFirstTs reaches back into the rotated archive', () => {
+  const { dir, p } = mkRotatedLog(
+    [{ ts: '2026-01-01T00:00:00Z', event: 'oldest' }],
+    null,
+    [{ ts: '2026-06-01T00:00:00Z', event: 'live' }],
+  );
+  try {
+    assert.equal(logFirstTs(p), Date.parse('2026-01-01T00:00:00Z'),
+      'span guard must see the archived start, not the post-rotation one');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-06.3: badJson counts aggregate across generations', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rot-'));
+  const p = path.join(dir, 'claudemd.jsonl');
+  try {
+    fs.writeFileSync(`${p}.1`, '{"ts":"2026-01-01T00:00:00Z"}\nNOT JSON\n');
+    fs.writeFileSync(p, 'ALSO NOT JSON\n{"ts":"2026-06-01T00:00:00Z"}\n');
+    const { rows, totalLines, badJson } = readLogRows(p);
+    assert.equal(totalLines, 4);
+    assert.equal(badJson, 2);
+    assert.equal(rows.length, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-06.4: logGenerations lists only existing files, oldest → newest', () => {
+  const { dir, p } = mkRotatedLog(null, [{ ts: '2026-03-01T00:00:00Z' }], [{ ts: '2026-06-01T00:00:00Z' }]);
+  try {
+    assert.deepEqual(logGenerations(p), [`${p}.1`, p]);
+    assert.deepEqual(logGenerations(path.join(dir, 'absent.jsonl')), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-06.5: an unrotated log behaves exactly as before', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rot-'));
+  const p = path.join(dir, 'claudemd.jsonl');
+  try {
+    fs.writeFileSync(p, '{"ts":"2026-06-01T00:00:00Z","event":"a"}\n');
+    const { rows, totalLines, badJson } = readLogRows(p);
+    assert.equal(totalLines, 1);
+    assert.equal(badJson, 0);
+    assert.equal(rows[0].row.event, 'a');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
