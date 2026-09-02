@@ -387,3 +387,25 @@ test('0.68.3: status does not exit via an unhandled rejection', () => {
       `a failing run must name itself; stderr=${r.stderr}`);
   }
 });
+
+// --- R11-13(f) (2026-09-02 audit): cacheVersions was lexicographically sorted ---
+// `.sort()` on version-dir names put `0.10.0` before `0.9.0`, so the hint the
+// user reads to decide which cached version is current listed them in the wrong
+// order — a defect this project reached the moment its minor hit double digits.
+test('R11-13f: cacheVersions sorts numerically, not lexicographically', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cachever-'));
+  const saved = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const cacheBase = path.join(home, '.claude/plugins/cache/claudemd/claudemd');
+    for (const v of ['0.9.0', '0.10.0', '0.9.5', '0.71.3', '0.2.0']) {
+      fs.mkdirSync(path.join(cacheBase, v), { recursive: true });
+    }
+    // No manifest → status takes the cache-present-bootstrap-pending branch.
+    const res = await status();
+    assert.deepEqual(res.plugin.cacheVersions, ['0.2.0', '0.9.0', '0.9.5', '0.10.0', '0.71.3']);
+  } finally {
+    process.env.HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

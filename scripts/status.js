@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir, settingsPath } from './lib/paths.js';
+import { logsDir, backupRoot, readManifest, resolvePluginRoot, pluginCacheDir, settingsPath, SEMVER_RE, semverCmp } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -80,7 +80,11 @@ export async function status({ verbose = false } = {}) {
         const versions = fs.readdirSync(cacheBase, { withFileTypes: true })
           .filter(d => d.isDirectory() && /^\d/.test(d.name))
           .map(d => d.name)
-          .sort();
+          // semverCmp, not the default lexicographic .sort() (R11-13f): that
+          // ordered `0.10.0` before `0.9.0`, so cacheVersions was reported in
+          // the wrong order the moment a minor reached double digits — which
+          // this project passed at 0.10.0.
+          .sort((a, b) => (SEMVER_RE.test(a) && SEMVER_RE.test(b) ? semverCmp(a, b) : a.localeCompare(b)));
         if (versions.length > 0) {
           plugin.hint = 'cache-present-bootstrap-pending';
           plugin.cacheVersions = versions;

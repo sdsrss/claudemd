@@ -203,3 +203,71 @@ test('R10-17b: specHome() is derived from SPEC_FILES, in order', async () => {
   assert.equal(SPEC_FILES[0], 'CLAUDE.md', 'element 0 is treated as canonical by install/backup');
   assert.deepEqual(specHome(), SPEC_FILES.map(n => homeSpec(n)));
 });
+
+// --- R11-34 (2026-09-02 audit, found while fixing R11-10) ---
+// The legacy-manifest migration wrote with a bare writeFileSync, then unlinked
+// the source. A write that fails PARTWAY leaves a truncated manifest at the new
+// path while the legacy file is still there — and readManifest prefers the new
+// path, hits its own JSON.parse catch, and hands the caller data:null. Callers
+// read that as "not installed" and spawn another install, forever, because the
+// legacy file it would migrate from is now shadowed by the corrupt one.
+//
+// The FIRST version of this test asserted only the happy path (migrated, right
+// version, no tmp residue) and passed against the unfixed code — a bare write
+// leaves no residue either. It has to inject the partial write.
+test('R11-34: a partial write during legacy migration does not shadow the legacy manifest', (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-mig-'));
+  const saved = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const legacy = path.join(home, '.claude/.claudemd-state/installed.json');
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.writeFileSync(legacy, JSON.stringify({ version: '0.1.8', entries: [] }));
+
+    // Truncated write that then throws — ENOSPC shape. Keyed on the manifest
+    // basename so it catches BOTH the bare write (dest = the manifest) and the
+    // atomic one (dest = manifest + .tmp-<pid>).
+    const realWrite = fs.writeFileSync;
+    t.mock.method(fs, 'writeFileSync', (dest, data, ...rest) => {
+      if (String(dest).includes('.claudemd-manifest.json')) {
+        realWrite(dest, '{"vers');
+        throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+      }
+      return realWrite(dest, data, ...rest);
+    });
+
+    readManifest();               // migration attempt, swallowed by design
+    t.mock.restoreAll();
+
+    // The legacy manifest must still be reachable: either nothing was left at
+    // the new path, or what is there parses. Pre-fix a truncated `{"vers` sat
+    // there and readManifest returned data:null from then on.
+    const again = readManifest();
+    assert.notEqual(again.data, null, 'manifest must still be readable after a failed migration');
+    assert.equal(again.data.version, '0.1.8');
+  } finally {
+    process.env.HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('R11-34: the happy-path migration still relocates and leaves no tmp residue', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-mig2-'));
+  const saved = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const legacy = path.join(home, '.claude/.claudemd-state/installed.json');
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.writeFileSync(legacy, JSON.stringify({ version: '0.1.8', entries: [] }));
+
+    const r = readManifest();
+    assert.equal(r.migrated, true);
+    assert.equal(r.data.version, '0.1.8');
+    assert.equal(fs.existsSync(legacy), false, 'legacy file removed');
+    const residue = fs.readdirSync(path.join(home, '.claude')).filter(n => n.includes('.tmp-'));
+    assert.deepEqual(residue, []);
+  } finally {
+    process.env.HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

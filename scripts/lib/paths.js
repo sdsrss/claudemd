@@ -121,8 +121,11 @@ export function readManifest() {
     try { data = JSON.parse(fs.readFileSync(oldPath, 'utf8')); } catch { /* fall through */ }
     if (data) {
       try {
-        fs.mkdirSync(path.dirname(newPath), { recursive: true });
-        fs.writeFileSync(newPath, JSON.stringify(data, null, 2));
+        // Atomic (R11-34): a bare write followed by unlinking the source can
+        // leave a half-written manifest AND no legacy file — readManifest's own
+        // catch then returns data:null, callers read that as "not installed",
+        // and another install spawns.
+        writeJsonAtomic(newPath, data);
         fs.unlinkSync(oldPath);
       } catch { /* best-effort migration; leave legacy in place on FS error */ }
     }
