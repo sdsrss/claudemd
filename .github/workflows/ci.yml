@@ -25,6 +25,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The only job that installs devDependencies. It exists because eslint and
+  # prettier had no enforcement point at all: `npm run lint` exited 1 on a clean
+  # checkout (30 eslint errors) and `format:check` (99 unformatted files) was
+  # referenced by nothing, while CONTRIBUTING.md sent contributors at both
+  # (2026-09-02 audit R11-18). Both baselines were burned down first — a gate
+  # added over a red baseline is red on arrival and gets ignored.
+  #
+  # Deliberately NOT folded into the matrix job below. That job must keep
+  # running with no `npm install`, because "the suite works from a bare
+  # checkout" is a repo invariant and installing here would stop testing it.
+  # One leg only: eslint and prettier read the same files on every OS and Node
+  # version, so a matrix would buy six identical answers.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          # 24 = the maintainer's runtime and the npm that wrote the lockfile;
+          # `npm ci` is stricter about lockfile shape than `npm install`.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: eslint (blocking)
+        run: npm run lint:js
+      - name: prettier (blocking)
+        run: npm run format:check
+      - name: Real-tree metrics assertions (the half CI could never reach)
+        # tests/scripts/baseline-metrics.test.js gates its JS import-graph and
+        # long-function assertions behind `if (acorn)`. acorn is a
+        # devDependency, so on the no-install matrix legs that branch printed
+        # SKIP and asserted nothing — including `cycles.count === 0`, which
+        # docs/ARCHITECTURE.md cites. This is the one job where acorn IS
+        # present, so here the SKIP is a failure rather than a degradation.
+        env:
+          CLAUDEMD_DEVDEPS_REQUIRED: '1'
+        run: node --test tests/scripts/baseline-metrics.test.js
+
   test:
     strategy:
       matrix:

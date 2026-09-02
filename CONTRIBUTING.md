@@ -7,8 +7,9 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
   suites, integration, shellcheck, bash-3.2 construct gate). Node >= 20 and `jq` required;
   `shellcheck` recommended. No `npm install` needed for that.
 - **Lint / format / metrics** (these DO need `npm install` — devDependencies only, nothing
-  ships): `npm run lint` (= `lint:sh` shellcheck warning+ · `lint:js` eslint · `lint:argv` ·
-  `version-check`), `npm run format:check` / `npm run format` (prettier, JS only),
+  ships): `npm run lint` (= `lint:argv` · `version-check` · `lint:sh` shellcheck warning+ ·
+  `lint:js` eslint — in that order, so the two ship gates run before the slow one and are
+  not stranded behind a failure), `npm run format:check` / `npm run format` (prettier, JS only),
   `npm run test:coverage` (c8 around the node leg), `npm run metrics`
   (`scripts/baseline-metrics.js` — the numbers behind `docs/audit/00-baseline.md`).
 - **Dev docs**: `docs/ARCHITECTURE.md` (component map + state locations),

@@ -196,9 +196,23 @@ test('measure() on the real tree: inventory, long functions and the import graph
     assert.equal(targets.size, 0);
     assert.ok(m.cycles.jsFiles >= 30, `js graph nodes ${m.cycles.jsFiles}`);
   } else {
-    console.log(
-      'SKIP: acorn not installed — JS long-function / import-graph assertions not run (npm install)'
+    // This whole branch is the JS half of the check, and CI never runs
+    // `npm install` — so on every matrix leg it printed one line and asserted
+    // nothing, while docs/ARCHITECTURE.md vouched for it (2026-09-02 audit
+    // R11-19). A plain `if (CI) fail` is wrong here: acorn is GENUINELY absent
+    // on those legs and that is the deliberate no-install invariant.
+    //
+    // So the requirement is carried by the environment that actually installs
+    // devDependencies — the `static` job in ci.yml sets this. There, acorn
+    // reporting as unavailable is a real defect (a broken dynamic import in
+    // baseline-metrics.js looks exactly like "not installed" from here), and
+    // the same silent-degradation shape run-all.sh already refuses under CI.
+    const detail = 'acorn reported unavailable — JS long-function / import-graph assertions did not run';
+    assert.ok(
+      process.env.CLAUDEMD_DEVDEPS_REQUIRED !== '1',
+      `${detail}. CLAUDEMD_DEVDEPS_REQUIRED=1 says devDependencies are installed in this environment, so this is a failure, not a skip.`
     );
+    console.log(`SKIP: ${detail} (npm install)`);
   }
   assert.equal(m.coverage, null);
   assert.equal(m.lint, null);
