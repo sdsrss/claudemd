@@ -83,6 +83,53 @@ test('argv-lint: inline `// argv-lint:allow` suppresses the hit', () => {
   }
 });
 
+// The trailing-comment form is layout-coupled: a formatter that wraps the line
+// past printWidth moves the comment onto the NEXT line and re-arms the gate on
+// code nobody edited. `prettier --write` did exactly that to
+// bin/claudemd-lint.js's `--help`-in-any-position check. The preceding-line form
+// is what survives reflow, so it has to keep working — and has to stay narrow
+// enough that it cannot suppress a hit it was never meant to.
+test('argv-lint: `// argv-lint:allow` on the PRECEDING line suppresses the hit', () => {
+  const root = makeFixture({
+    'scripts/vetted.js':
+      '// argv-lint:allow — validated upstream\n' + "const json = args.includes('--json');\n",
+  });
+  try {
+    assert.deepEqual(scan({ root, dirs: ['scripts'], fileAllowlist: {} }), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('argv-lint: a blank line between the token and the code does NOT suppress', () => {
+  const root = makeFixture({
+    'scripts/gap.js': '// argv-lint:allow — stale\n\n' + "const json = args.includes('--json');\n",
+  });
+  try {
+    const hits = scan({ root, dirs: ['scripts'], fileAllowlist: {} });
+    assert.equal(hits.length, 1, 'a detached token must not travel down the file');
+    assert.equal(hits[0].line, 3);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('argv-lint: the token on a preceding CODE line does NOT suppress', () => {
+  const root = makeFixture({
+    // The string mentions the token; the line is not a comment. Accepting this
+    // would let any file suppress the gate by naming the token in a literal.
+    'scripts/sneaky.js':
+      "const doc = 'argv-lint:allow';\n" + "const json = args.includes('--json');\n",
+  });
+  try {
+    const hits = scan({ root, dirs: ['scripts'], fileAllowlist: {} });
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].line, 2);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('argv-lint: file-level allowlist suppresses the file', () => {
   const root = makeFixture({
     'scripts/vetted.js': "const json = args.includes('--json');\n",

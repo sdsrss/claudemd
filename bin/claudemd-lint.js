@@ -506,7 +506,8 @@ function main() {
   // meant `claudemd-cli lint --help` exited 2 with "unknown flag '--help'" — the
   // exact discoverability bug lib/argv.js#printHelpAndExit was written to fix,
   // which this CLI predates.
-  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {  // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
+  // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
+  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     process.stdout.write(USAGE + '\n');
     process.exit(argv.length === 0 ? 2 : 0);
   }

@@ -182,7 +182,18 @@ export function scan({
       if (fileAllowlist[rel]) continue;
       const lines = fs.readFileSync(file, 'utf8').split('\n');
       lines.forEach((line, i) => {
+        // Same line, or the line immediately above. Trailing-comment-only was a
+        // layout-coupled suppression: a formatter that wraps the line past
+        // printWidth moves the comment onto its own line and SILENTLY RE-ARMS
+        // the gate on code nobody touched. That is not hypothetical — running
+        // `prettier --write` over this tree re-armed exactly one site
+        // (bin/claudemd-lint.js's `--help`-in-any-position check, whose comment
+        // pushed it past 110 columns). The preceding-line form is what every
+        // other suppression convention uses (`eslint-disable-next-line`) and it
+        // survives reflow. A blank line between the two does not count.
         if (line.includes(ALLOW_TOKEN)) return;
+        const above = i > 0 ? lines[i - 1].trimStart() : '';
+        if (above.startsWith('//') && above.includes(ALLOW_TOKEN)) return;
         // Skip pure `//` comment lines (documentation that mentions the
         // antipattern as a literal — the validator's own docstring quotes
         // `args.includes('--json')` etc. as the bug it prevents). End-of-line
@@ -227,6 +238,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   process.stderr.write(`Fix: route flag parsing through scripts/lib/argv.js#parseStrict (slash-command CLIs)\n`);
   process.stderr.write(`     or validateAndExpandFlags (bin/claudemd-lint.js, supports both --key=v and --key v).\n`);
-  process.stderr.write(`     If the line is genuinely safe (validator runs upstream), append \`// ${ALLOW_TOKEN}\` to it.\n`);
+  process.stderr.write(`     If the line is genuinely safe (validator runs upstream), put \`// ${ALLOW_TOKEN} — <why>\`\n`);
+  process.stderr.write(`     on the line ABOVE it (preferred — survives reformatting) or at the end of the line itself.\n`);
   process.exit(1);
 }
