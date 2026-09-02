@@ -361,7 +361,13 @@ function lintCmd(rawArgs) {
   // ... digit) OR the literal word `baseline`, ratio-class patterns (tagged
   // `@ratio` in their reason column) are suppressed. Non-ratio hedges /
   // adjectives still match.
-  const HAS_NUMERIC_ARROW = /\d\S*\s*(?:→|->|=>)\s*\d/;
+  // `\S{0,64}`, not `\S*` (2026-09-02 audit R11-12): with an unbounded run and
+  // no arrow present, the unanchored scan retries from every offset and
+  // rescans the tail — quadratic, 710ms on a 20k digit run, and this runs on
+  // the RAW file before scan(), so lint.js:150-157's sanitizer fix for the same
+  // family never covered it. A digit-dense lockfile or hash dump hung the
+  // pre-commit hook. 64 is far past any real anchor (`p99 580ms→140ms` is 15).
+  const HAS_NUMERIC_ARROW = /\d\S{0,64}\s*(?:→|->|=>)\s*\d/;
   const HAS_BASELINE = /baseline/i;
   const baselineExempt = HAS_NUMERIC_ARROW.test(text) || HAS_BASELINE.test(text);
 
@@ -405,7 +411,17 @@ function auditCmd(rawArgs) {
     process.exit(2);
   }
 
-  const jsonl = fs.readFileSync(transcriptPath, 'utf8');
+  // Mirrors the `lint --file` read path above (R11-11). The existsSync/statSync
+  // guards a few lines up both PASS on a mode-000 file, so an unreadable
+  // transcript reached this line and exited 1 with a V8 stack — colliding with
+  // the documented `1 = hits found`, which is what CI and pre-commit gate on.
+  let jsonl;
+  try {
+    jsonl = fs.readFileSync(transcriptPath, 'utf8');
+  } catch (e) {
+    process.stderr.write(`audit: failed to read ${transcriptPath}: ${e.message}\n`);
+    process.exit(2);
+  }
 
   // Silent-success guard: parseTranscript intentionally skips unparseable rows
   // (matches transcript-vocab-scan.sh). But if the WHOLE file fails to parse

@@ -208,7 +208,14 @@ function locateLabels(text) {
   return { d, nd, f, u, lines };
 }
 
-const EVIDENCE_FINGERPRINT = /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]+[^\s]*\s*(→|->|=>)\s*[0-9]+|Checked:|baseline|known-red|证据[:：]/;
+// The arrow clause is `[0-9][^\s]{0,64}`, not `[0-9]+[^\s]*` (2026-09-02 audit
+// R11-12): two nested unbounded runs over overlapping classes made it CUBIC on
+// a plain digit run — 2648ms at 2k digits, 40s at 5k, and 20k never returned.
+// `[0-9]+[^\s]*` was already equivalent to `[0-9][^\s]*` since `[^\s]` includes
+// digits, so dropping the `+` costs nothing; the trailing `[0-9]+` is likewise
+// `[0-9]` for a .test(). The 64 cap is the only real narrowing, and it is far
+// past any anchor §10 accepts.
+const EVIDENCE_FINGERPRINT = /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9][^\s]{0,64}\s*(→|->|=>)\s*[0-9]|Checked:|baseline|known-red|证据[:：]/;
 
 // ironLaw2Opps counts Done lines that were actually examined (the per-rule
 // opportunity denominator); fourSection flags a complete 4-label block (the

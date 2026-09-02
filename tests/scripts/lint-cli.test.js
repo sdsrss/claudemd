@@ -567,3 +567,30 @@ test('every scripts/*.js CLI entry point that awaits a promise also catches it',
   assert.deepEqual(offenders, [],
     `CLI entry point(s) whose promise has no .catch — a throw becomes a bare stack instead of a report: ${offenders.join(', ')}`);
 });
+
+// --- R11-11 (2026-09-02 audit) ---
+// Sibling to the EISDIR case above, found by the same reasoning and missed by
+// the same guards: existsSync() and statSync() BOTH succeed on a mode-000
+// file, so `audit` reached its bare readFileSync and exited 1 with a V8 stack.
+// Exit 1 is the documented "hits found" code, so a CI job gating on it read a
+// permission error as a banned-vocab hit. `lint --file` had had the try/catch
+// since v0.9.x; `audit` never got it.
+test('CLI: audit <unreadable file> exits 2, not 1 with a Node stack (R11-11)', (t) => {
+  if (process.getuid && process.getuid() === 0) {
+    t.skip('running as root — mode 000 is still readable');
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
+  const f = path.join(dir, 'transcript.jsonl');
+  try {
+    fs.writeFileSync(f, '{"type":"assistant"}\n');
+    fs.chmodSync(f, 0o000);
+    const r = run(['audit', f]);
+    assert.equal(r.status, 2, `expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /audit: failed to read/);
+    assert.doesNotMatch(r.stderr, /at Object\.readFileSync/, 'must not leak a Node stack');
+  } finally {
+    fs.chmodSync(f, 0o600);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
