@@ -384,7 +384,129 @@ test('CLI --retention-days=N overrides default; bad shape rejected', () => {
     encoding: 'utf8',
   });
   assert.notEqual(bad.status, 0);
-  assert.match(bad.stderr, /non-negative/i);
+  assert.match(bad.stderr, /at least 1/i);
+});
+
+// --- the retention floor (2026-09-02 pre-tag incident) -------------------------
+//
+// `~/.claude/tmp/claude-<uid>` holds every live session's scratchpad, and under
+// the sandbox its bridge socket too; their mtimes are "now". A reviewer ran
+// `--retention-days=0 --apply` with only $TMPDIR redirected, and the
+// un-overridden ~/.claude/tmp scope removed every session's scratchpad on the
+// box. `0` was accepted since v0.71.3 (`< 0` was the only check). These lock
+// the floor at every entry: the flag, the project CLAUDE.md, and the library.
+
+test('CLI --retention-days below 1 is rejected and deletes nothing', () => {
+  const fresh = mkStale('live-session', 0.2);
+  const old = mkStale('old-x', 10);
+  for (const v of ['0', '0.5']) {
+    const r = spawnSync(process.execPath, [SCRIPT, '--apply', `--retention-days=${v}`], {
+      env: cliEnv(),
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1, `--retention-days=${v} must be a validation error, got ${r.status}`);
+    assert.match(r.stderr, /at least 1/);
+    assert.equal(r.stdout, '', 'a rejected window must not print a report as if it ran');
+  }
+  assert.ok(fs.existsSync(fresh), 'a live session dir survived');
+  assert.ok(fs.existsSync(old), 'nothing at all was deleted on a rejected window');
+});
+
+test('CLI: TMP_RETENTION_DAYS below 1 in CLAUDE.md warns and falls back to the default', () => {
+  const fresh = mkStale('live-session', 0.2);
+  const projDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-proj-test-'));
+  fs.writeFileSync(path.join(projDir, 'CLAUDE.md'), 'TMP_RETENTION_DAYS: 0\n');
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, '--apply'], {
+      cwd: projDir,
+      env: cliEnv(),
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /below the 1-day floor/, 'a cloned repo cannot silently set a zero window');
+    assert.equal(JSON.parse(r.stdout).claudeTmp.retentionDays, 7);
+    assert.ok(fs.existsSync(fresh));
+  } finally {
+    fs.rmSync(projDir, { recursive: true, force: true });
+  }
+});
+
+test('library: cleanClaudeTmp / cleanStateDir clamp a sub-day window to the floor', () => {
+  const fresh = mkStale('live-session', 0.2);
+  const r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 0 });
+  assert.equal(r.retentionDays, 1, 'the effective window is reported, not the requested one');
+  assert.ok(fs.existsSync(fresh), 'retentionDays: 0 through the library must not delete a fresh entry');
+
+  const sd = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cstate-floor-'));
+  try {
+    fs.writeFileSync(path.join(sd, 'session-start-live.ref'), '');
+    const s = cleanStateDir({ stateDir: sd, apply: true, retentionDays: 0 });
+    assert.equal(s.retentionDays, 1);
+    assert.ok(fs.existsSync(path.join(sd, 'session-start-live.ref')), "a live session's ref survived");
+  } finally {
+    fs.rmSync(sd, { recursive: true, force: true });
+  }
+});
+
+// --- the self-path guard --------------------------------------------------------
+//
+// Env seams cannot stop a deleter from removing the tree its own $TMPDIR or cwd
+// sits in — that scope is the one the caller did not override. The sandbox
+// hands out `~/.claude/tmp/claude-<uid>` AS $TMPDIR, so a fixture made there is
+// a child of the retention scope's target. The guard recognises the branch the
+// process is sitting on, whatever the window says.
+
+test('CLI --apply never deletes a stale entry that contains its own $TMPDIR or cwd', () => {
+  // Stale project dirs under the uid dir; one of them holds this run's $TMPDIR,
+  // another its cwd. Both are 30 days old by mtime, well past the window.
+  const holdsTmp = mkStale('claude-1000/proj-tmp', 30);
+  const fixtureTmp = path.join(holdsTmp, 'fixture');
+  fs.mkdirSync(fixtureTmp);
+  setMtime(holdsTmp, 30);
+  const holdsCwd = mkStale('claude-1000/proj-cwd', 30);
+  const cwd = path.join(holdsCwd, 'session');
+  fs.mkdirSync(cwd);
+  setMtime(holdsCwd, 30);
+  const plain = mkStale('claude-1000/proj-plain', 30);
+
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply', '--retention-days=7'], {
+    cwd,
+    env: cliEnv({ TMPDIR: fixtureTmp }),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `protected entries are not "remaining": ${r.stderr}`);
+  const o = JSON.parse(r.stdout);
+  assert.ok(fs.existsSync(holdsTmp), 'the tree holding $TMPDIR survived');
+  assert.ok(fs.existsSync(holdsCwd), 'the tree holding cwd survived');
+  assert.ok(!fs.existsSync(plain), 'an equally stale sibling was still reaped');
+  assert.deepEqual(
+    o.protected.map(p => path.basename(p.path)).sort(),
+    ['proj-cwd', 'proj-tmp'],
+    'the JSON names what was protected'
+  );
+  assert.equal(o.claudeTmp.deleted, 1);
+  assert.equal(o.remaining, 0);
+  assert.match(r.stderr, /2 stale entries skipped/);
+});
+
+test('library: clean() protects a stale sandbox that contains the process cwd', () => {
+  const box = path.join(tmpDir, 'claudemd-work.self');
+  fs.mkdirSync(path.join(box, 'inner'), { recursive: true });
+  setMtime(box, 30);
+  const other = path.join(tmpDir, 'claudemd-work.other');
+  fs.mkdirSync(other);
+  setMtime(other, 30);
+  const prev = process.cwd();
+  process.chdir(path.join(box, 'inner'));
+  try {
+    const r = clean({ tmpDir, apply: true });
+    assert.ok(fs.existsSync(box), 'the sandbox holding cwd survived');
+    assert.ok(!fs.existsSync(other), 'the other stale sandbox was reaped');
+    assert.equal(r.protected.length, 1);
+    assert.equal(r.deleted, 1);
+  } finally {
+    process.chdir(prev);
+  }
 });
 
 test('CLI reads TMP_RETENTION_DAYS from cwd CLAUDE.md; flag wins over file', () => {
@@ -584,12 +706,13 @@ test('R10-09: a dry run never reports remaining, however many candidates', () =>
 
 // --- unowned mktemp-default residue (2026-09-02 audit R11-38) ------------------
 //
-// The recycler matched on the `claudemd-` prefix, so it was blind to the biggest
-// residue class this project produced: a bare `mktemp -d` yields
-// `tmp.XXXXXXXXXX`, which no prefix here covers. Measured that day: 2.4 GB and
-// 150-250 stray directories a day. These lock the two halves of the fix — the
-// shape is recognised EXACTLY, and recognising it does not by itself widen what
-// `--apply` deletes.
+// The recycler's $TMPDIR pass matched on the `claudemd-` prefix, so the biggest
+// residue class this project produced never appeared in its report: a bare
+// `mktemp -d` yields `tmp.XXXXXXXXXX`, which no prefix here covers. Measured
+// that day: 2.6 GB across 524 directories, 150-250 new ones a day. The class is
+// COUNTED AND SIZED, never deleted — the 0.72.0 pre-tag review withdrew the
+// delete flag (see UNOWNED_MKTEMP_PATTERN). These lock both halves: the shape
+// is recognised EXACTLY, and no option reaches a deletion of it.
 
 test('scan classifies the exact default mktemp shape as unowned, and nothing else', () => {
   fs.mkdirSync(path.join(tmpDir, 'tmp.SfxwqKagsR')); // real leaked shape, 10 alnum
@@ -608,7 +731,7 @@ test('scan classifies the exact default mktemp shape as unowned, and nothing els
   assert.deepEqual(names, ['tmp.SfxwqKagsR', 'tmp.a1B2c3D4e5']);
 });
 
-test('unowned residue is counted on every run but NOT deleted without --include-unowned', () => {
+test('unowned residue is counted and sized on every run and never deleted', () => {
   const stale = path.join(tmpDir, 'tmp.SfxwqKagsR');
   fs.mkdirSync(stale);
   fs.writeFileSync(path.join(stale, 'payload'), 'x'.repeat(4096));
@@ -618,8 +741,6 @@ test('unowned residue is counted on every run but NOT deleted without --include-
 
   const dry = clean({ tmpDir, apply: false });
   assert.equal(dry.unowned.scanned, 1);
-  assert.equal(dry.unowned.stale, 1);
-  assert.equal(dry.unowned.included, false);
   assert.ok(
     dry.unowned.bytes >= 4096,
     `bytes ${dry.unowned.bytes} — the size report is what makes the cost legible`
@@ -630,44 +751,62 @@ test('unowned residue is counted on every run but NOT deleted without --include-
     'an unowned entry must not enter the delete set just because it was counted'
   );
 
-  // --apply alone must still not touch it: someone running the flag today
-  // expects claudemd-prefixed residue to go and nothing else.
-  clean({ tmpDir, apply: true });
-  assert.ok(fs.existsSync(stale), '--apply without --include-unowned deleted an unowned directory');
+  // No option reaches it. The withdrawn flag's spellings are passed on purpose:
+  // if either ever comes back as a live parameter, this is the test that goes red.
+  clean({ tmpDir, apply: true, ageDaysMin: 0, includeUnowned: true, unownedRetentionDays: 0 });
+  assert.ok(fs.existsSync(stale), 'an unowned directory was deleted');
   assert.ok(!fs.existsSync(path.join(tmpDir, 'claudemd-sync-owned')), 'the owned sentinel should have gone');
 });
 
-test('--include-unowned deletes only entries past the retention window', () => {
-  const old = path.join(tmpDir, 'tmp.OLDentry12');
-  const fresh = path.join(tmpDir, 'tmp.FRESHone12');
-  fs.mkdirSync(old);
-  fs.mkdirSync(fresh);
-  setMtime(old, 30);
-  setMtime(fresh, 2);
-
-  const r = clean({ tmpDir, apply: true, includeUnowned: true, unownedRetentionDays: 7 });
-  assert.equal(r.unowned.scanned, 2);
-  assert.equal(r.unowned.stale, 1);
-  assert.ok(!fs.existsSync(old), 'a 30-day-old unowned dir past a 7-day window should be gone');
-  assert.ok(
-    fs.existsSync(fresh),
-    'a 2-day-old unowned dir may belong to a process still running — the window is the whole safeguard'
-  );
-});
-
-test('CLI: --include-unowned is a known flag and its counts reach the JSON', () => {
+test('CLI: --include-unowned is no longer a flag; the counts reach the JSON without it', () => {
   fs.mkdirSync(path.join(tmpDir, 'tmp.CLIentry12'));
   setMtime(path.join(tmpDir, 'tmp.CLIentry12'), 30);
-  const r = spawnSync(process.execPath, [SCRIPT, '--include-unowned'], {
+  const gone = spawnSync(process.execPath, [SCRIPT, '--include-unowned', '--apply'], {
     encoding: 'utf8',
-    env: { ...process.env, TMPDIR: tmpDir },
+    env: cliEnv(),
+    timeout: 30000,
+  });
+  assert.equal(gone.status, 2, 'a withdrawn flag is an argv-shape error, not a silent no-op');
+  assert.ok(fs.existsSync(path.join(tmpDir, 'tmp.CLIentry12')));
+
+  const r = spawnSync(process.execPath, [SCRIPT], {
+    encoding: 'utf8',
+    env: cliEnv(),
     timeout: 30000,
   });
   assert.equal(r.status, 0, r.stderr);
   const j = JSON.parse(r.stdout);
-  assert.equal(j.unowned.included, true);
+  assert.deepEqual(Object.keys(j.unowned).sort(), ['bytes', 'scanned']);
   assert.equal(j.unowned.scanned, 1);
-  assert.equal(j.unowned.stale, 1);
-  assert.equal(j.dryRun, true, 'without --apply it must still delete nothing');
   assert.ok(fs.existsSync(path.join(tmpDir, 'tmp.CLIentry12')));
+});
+
+// HIGH-1 of the 0.72.0 pre-tag review: scan()'s two early returns still
+// returned two keys after `unowned` joined the destructure in clean(), so a
+// missing or unreadable $TMPDIR was a TypeError and exit 1 instead of an empty
+// report. Both early-return paths are driven here.
+test('scan()/clean() on a missing or unreadable $TMPDIR return an empty report, not a TypeError', () => {
+  const missing = path.join(tmpDir, 'does-not-exist');
+  assert.deepEqual(scan({ tmpDir: missing }), { sentinels: [], sandboxes: [], unowned: [] });
+  const r = clean({ tmpDir: missing, apply: true });
+  assert.deepEqual(r.unowned, { scanned: 0, bytes: 0 });
+  assert.deepEqual(r.targets, []);
+
+  const cli = spawnSync(process.execPath, [SCRIPT], {
+    encoding: 'utf8',
+    env: cliEnv({ TMPDIR: missing }),
+    timeout: 30000,
+  });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(JSON.parse(cli.stdout).unowned.scanned, 0);
+
+  if (process.getuid && process.getuid() !== 0) {
+    const unreadable = path.join(tmpDir, 'no-read');
+    fs.mkdirSync(unreadable, { mode: 0o000 });
+    try {
+      assert.deepEqual(scan({ tmpDir: unreadable }), { sentinels: [], sandboxes: [], unowned: [] });
+    } finally {
+      fs.chmodSync(unreadable, 0o700);
+    }
+  }
 });

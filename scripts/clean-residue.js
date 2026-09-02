@@ -4,7 +4,7 @@ import os from 'node:os';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 import { stateDir } from './lib/paths.js';
 
-const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--include-unowned] [--age-days=N] [--retention-days=N]
+const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
 Clean leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and historical
 claudemd-(mockgh|work).*
@@ -12,24 +12,23 @@ sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
 §EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
 per-session sentinels from ~/.claude/.claudemd-state. Default is dry-run.
 
-Also COUNTS (and, with --include-unowned, deletes) $TMPDIR entries left by a
-bare \`mktemp\`/\`mktemp -d\` — the tmp.XXXXXXXXXX shape. Those match no claudemd
-prefix, so this recycler could not see the largest residue class the project
-itself produced (audit R11-38); tests/lib/mktemp-template.sh keeps the repo
-from adding more.
+Also COUNTS and sizes — never deletes — $TMPDIR entries left by a bare
+\`mktemp\`/\`mktemp -d\` (the tmp.XXXXXXXXXX shape). Nothing can prove those were
+created by claudemd, so they are reported for a human to judge;
+tests/lib/mktemp-template.sh keeps the repo from adding more.
 
 Options:
   --apply             Opt into deletion (without it, prints what would be deleted).
-  --include-unowned   Also delete $TMPDIR entries with the DEFAULT mktemp name
-                      shape (tmp.XXXXXXXXXX) older than the retention window.
-                      Nothing can prove those were created by claudemd, so they
-                      are counted and sized on every run but never removed
-                      without this flag. Needs --apply to delete.
   --age-days=N        $TMPDIR stale threshold in days (non-negative, default 1).
   --retention-days=N  ~/.claude/tmp AND ~/.claude/.claudemd-state retention in
-                      days (non-negative). Resolution:
+                      days (at least 1). Resolution:
                       this flag > TMP_RETENTION_DAYS: in ./CLAUDE.md > 7.
   --help, -h          Print this message and exit.
+
+Never deleted, whatever the window: any entry that contains this process's own
+working directory or its $TMPDIR (reported under \`protected\`). Under the Claude
+Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
+placed there sits inside the retention scope's target tree.
 
 State-dir scope: only ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*,
 session-start-<sid>.ref, tmp-baseline-<sid>.txt and session-summary-<sid>.lastrun
@@ -68,25 +67,34 @@ const SANDBOX_PATTERN = /^claudemd-(mockgh|work)\./;
 // alphanumerics and nothing else. Not a `tmp.*` glob — that would also swallow
 // `tmp.backup`, `tmp.lock`, and anything else a person chose to name that way.
 //
-// This class is UNOWNED: nothing here can prove claudemd created it. It exists
-// because the recycler was blind to the largest residue class this project
-// produced — 2.4 GB of probe sandboxes plus 150-250 stray directories a day,
-// measured 2026-09-02 (audit R11-38). tests/lib/mktemp-template.sh stops the
-// repo making more; this reaches what is already on disk.
+// This class is UNOWNED: nothing here can prove claudemd created it. It is
+// COUNTED AND SIZED on every run and NEVER deleted. It exists because the
+// recycler's `$TMPDIR` pass matched only claudemd- prefixes, so the largest
+// residue class this project's own tests produced (2.6 GB across 524
+// directories, 150-250 new ones a day, measured 2026-09-02, audit R11-38) never
+// appeared in its report. tests/lib/mktemp-template.sh stops the repo making
+// more; this makes what is already on disk visible.
 //
-// Because it is unowned it is REPORTED by default and DELETED only behind
-// --include-unowned. Someone running `--apply` today expects claudemd-prefixed
-// residue to go and nothing else; silently widening what that flag destroys is
-// the shape feedback_seam_widening_widens_rm_targets warns about.
+// Why not a delete flag: the 0.72.0 pre-tag review showed that where those
+// entries actually lived — `~/.claude/tmp/claude-<uid>`, which the sandbox
+// hands out as $TMPDIR — cleanClaudeTmp() already reaps every depth-1 child by
+// age, so a delete flag added no reach there, and in a shared /tmp it would
+// delete other programs' live work (feedback_seam_widening_widens_rm_targets).
 const UNOWNED_MKTEMP_PATTERN = /^tmp\.[A-Za-z0-9]{10}$/;
 
+// Every early return carries the same three keys as the full path. The 0.72.0
+// pre-tag review found the two below returning only two after `unowned` was
+// added: a missing or unreadable $TMPDIR became a TypeError in clean() instead
+// of an empty report (HIGH-1).
+const EMPTY_SCAN = () => ({ sentinels: [], sandboxes: [], unowned: [] });
+
 export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
-  if (!fs.existsSync(tmpDir)) return { sentinels: [], sandboxes: [] };
+  if (!fs.existsSync(tmpDir)) return EMPTY_SCAN();
   let entries;
   try {
     entries = fs.readdirSync(tmpDir, { withFileTypes: true });
   } catch {
-    return { sentinels: [], sandboxes: [] };
+    return EMPTY_SCAN();
   }
   const sentinels = [];
   const sandboxes = [];
@@ -118,46 +126,79 @@ export function scan({ tmpDir = os.tmpdir(), now = Date.now() } = {}) {
   return { sentinels, sandboxes, unowned };
 }
 
-export function clean({
-  tmpDir = os.tmpdir(),
-  apply = false,
-  ageDaysMin = 1,
-  includeUnowned = false,
-  // Deliberately NOT ageDaysMin: the owned classes are ours to reap after a day;
-  // an unowned `tmp.XXXXXXXXXX` may belong to a process still running. Same
-  // window the ~/.claude/tmp scratchpads already use.
-  unownedRetentionDays = 7,
-  now = Date.now(),
-} = {}) {
-  const { sentinels, sandboxes, unowned } = scan({ tmpDir, now });
-  const unownedStale = unowned.filter(u => u.ageDays >= unownedRetentionDays);
-  const targets = [
-    ...sentinels.filter(s => s.ageDays >= ageDaysMin),
-    ...sandboxes.filter(s => s.ageDays >= ageDaysMin),
-    ...(includeUnowned ? unownedStale : []),
-  ];
-  // Counted whether or not it is being deleted. The defect was that 2.4 GB was
-  // INVISIBLE; that is fixed by reporting it, not only by removing it.
-  const unownedReport = {
-    scanned: unowned.length,
-    stale: unownedStale.length,
-    retentionDays: unownedRetentionDays,
-    included: includeUnowned,
-    bytes: unownedStale.reduce((n, u) => n + dirBytes(u.path), 0),
-  };
-  if (!apply) {
-    return { dryRun: true, targets, deleted: 0, unowned: unownedReport };
+// Paths this process must never delete out from under itself: its working
+// directory and its $TMPDIR, resolved through symlinks. A target that CONTAINS
+// either is skipped and reported, not deleted. This is the shape of the
+// 2026-09-02 incident: the reviewer's fixture and cwd were both under
+// `~/.claude/tmp/claude-1000` (the sandbox's $TMPDIR), and a zero-day
+// `--apply` removed the tree they lived in along with every other session's
+// scratchpad — and the sandbox bridge sockets inside them. Env seams cannot
+// prevent that (the un-overridden scope still points at the real root); the
+// deleter has to recognise the branch it is sitting on.
+function selfPaths() {
+  const out = [];
+  for (const get of [() => process.cwd(), () => os.tmpdir()]) {
+    try {
+      out.push(fs.realpathSync(get()));
+    } catch {
+      /* a vanished cwd protects nothing; the deleter has already lost it */
+    }
   }
+  return out;
+}
+
+function containsSelf(target, self = selfPaths()) {
+  let real;
+  try {
+    real = fs.realpathSync(target);
+  } catch {
+    return false;
+  }
+  return self.some(s => s === real || s.startsWith(real + path.sep));
+}
+
+// Split a target list into what may be deleted and what must not. Shared by
+// every directory-deleting pass so the guard cannot be present in one and
+// absent in another.
+function partitionProtected(targets) {
+  const self = selfPaths();
+  const allowed = [];
+  const protectedTargets = [];
+  for (const t of targets) (containsSelf(t.path, self) ? protectedTargets : allowed).push(t);
+  return { allowed, protected: protectedTargets };
+}
+
+function rmEach(targets, opts) {
   let deleted = 0;
   for (const t of targets) {
     try {
-      fs.rmSync(t.path, { recursive: true, force: true });
+      fs.rmSync(t.path, opts);
       deleted++;
     } catch {
       /* best-effort; partial delete is fine */
     }
   }
-  return { dryRun: false, targets, deleted, unowned: unownedReport };
+  return deleted;
+}
+
+export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now = Date.now() } = {}) {
+  const { sentinels, sandboxes, unowned } = scan({ tmpDir, now });
+  const { allowed: targets, protected: protectedTargets } = partitionProtected([
+    ...sentinels.filter(s => s.ageDays >= ageDaysMin),
+    ...sandboxes.filter(s => s.ageDays >= ageDaysMin),
+  ]);
+  // Counted, never deleted. The defect was that 2.6 GB was INVISIBLE; that is
+  // fixed by reporting it. Sized over the whole class, so the number is the
+  // cost of leaving it there, not the cost of a window nobody applies.
+  const unownedReport = {
+    scanned: unowned.length,
+    bytes: unowned.reduce((n, u) => n + dirBytes(u.path), 0),
+  };
+  if (!apply) {
+    return { dryRun: true, targets, protected: protectedTargets, deleted: 0, unowned: unownedReport };
+  }
+  const deleted = rmEach(targets, { recursive: true, force: true });
+  return { dryRun: false, targets, protected: protectedTargets, deleted, unowned: unownedReport };
 }
 
 // Size of a residue entry, for the report only. Bounded and best-effort: a
@@ -247,22 +288,27 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
   return { candidates };
 }
 
+// Hard floor on the retention window, applied where the deletion happens and
+// not only at the CLI. `~/.claude/tmp/claude-<uid>` holds the scratchpad of
+// every LIVE session (and, under the sandbox, its bridge socket); its entries'
+// mtimes are "now". A zero-day window is therefore not "clean everything", it
+// is "kill every running session" — which is what happened on 2026-09-02
+// (retention-days=0 --apply through an un-overridden scope). The CLI rejects
+// values below this; the library clamps so that a caller passing 0 directly
+// gets a one-day window rather than that outcome.
+export const MIN_RETENTION_DAYS = 1;
+
 export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7, now = Date.now() } = {}) {
+  const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
   const { candidates } = scanClaudeTmp({ claudeTmpDir, now });
-  const targets = candidates.filter(c => c.ageDays >= retentionDays);
+  const { allowed: targets, protected: protectedTargets } = partitionProtected(
+    candidates.filter(c => c.ageDays >= window)
+  );
   if (!apply) {
-    return { dryRun: true, targets, deleted: 0 };
+    return { dryRun: true, targets, protected: protectedTargets, deleted: 0, retentionDays: window };
   }
-  let deleted = 0;
-  for (const t of targets) {
-    try {
-      fs.rmSync(t.path, { recursive: true, force: true });
-      deleted++;
-    } catch {
-      /* best-effort; partial delete is fine */
-    }
-  }
-  return { dryRun: false, targets, deleted };
+  const deleted = rmEach(targets, { recursive: true, force: true });
+  return { dryRun: false, targets, protected: protectedTargets, deleted, retentionDays: window };
 }
 
 // --- ~/.claude/.claudemd-state orphan reaping (2026-07-28 audit H3) ---
@@ -338,19 +384,15 @@ export function scanStateDir({ stateDir, now = Date.now() } = {}) {
 }
 
 export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now = Date.now() } = {}) {
+  // Same floor as cleanClaudeTmp: a session-start-<sid>.ref written today is a
+  // live session's window ref, not an orphan. Files only, so the self-path
+  // guard has nothing to protect here.
+  const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
   const { candidates } = scanStateDir({ stateDir, now });
-  const targets = candidates.filter(c => c.ageDays >= retentionDays);
-  if (!apply) return { dryRun: true, targets, deleted: 0 };
-  let deleted = 0;
-  for (const t of targets) {
-    try {
-      fs.rmSync(t.path, { force: true });
-      deleted++;
-    } catch {
-      /* best-effort */
-    }
-  }
-  return { dryRun: false, targets, deleted };
+  const targets = candidates.filter(c => c.ageDays >= window);
+  if (!apply) return { dryRun: true, targets, deleted: 0, retentionDays: window };
+  const deleted = rmEach(targets, { force: true });
+  return { dryRun: false, targets, deleted, retentionDays: window };
 }
 
 // TMP_RETENTION_DAYS: N in the invoking project's CLAUDE.md (spec §EXT §7-EXT
@@ -372,7 +414,17 @@ export function readRetentionFromClaudeMd(cwd = process.cwd()) {
     );
     return null;
   }
-  return Number(m[1]);
+  const days = Number(m[1]);
+  // A cloned repository's CLAUDE.md must not be able to set a window that
+  // deletes live sessions (MIN_RETENTION_DAYS above). Loud fallback, same as
+  // the malformed case: a silently-clamped knob is still a silently-ignored one.
+  if (days < MIN_RETENTION_DAYS) {
+    console.error(
+      `TMP_RETENTION_DAYS in ${file} is below the ${MIN_RETENTION_DAYS}-day floor (got '${m[1]}'); using default.`
+    );
+    return null;
+  }
+  return days;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -380,7 +432,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let parsed;
   try {
     parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--apply', '--include-unowned'],
+      bools: ['--apply'],
       values: ['--age-days', '--retention-days'],
     });
   } catch (e) {
@@ -391,7 +443,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw e;
   }
   const apply = parsed.bools.has('--apply');
-  const includeUnowned = parsed.bools.has('--include-unowned');
   const rawAge = parsed.values['--age-days'] ?? '1';
   const ageDaysMin = Number(rawAge);
   // String-shape guard (not parsePositiveInt — this flag allows 0 and fractional
@@ -406,12 +457,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let retentionDays;
   if (rawRetention !== undefined) {
     retentionDays = Number(rawRetention);
+    // Floor at MIN_RETENTION_DAYS, not 0: the window covers every live session's
+    // scratchpad, and 0 is "delete them all" — rejected loudly rather than
+    // clamped, so the caller learns the knob does not go there.
     if (
       !/^[0-9]+(\.[0-9]+)?$/.test(String(rawRetention).trim()) ||
       !Number.isFinite(retentionDays) ||
-      retentionDays < 0
+      retentionDays < MIN_RETENTION_DAYS
     ) {
-      console.error(`--retention-days requires a non-negative number (got '${rawRetention}').`);
+      console.error(
+        `--retention-days requires a number of at least ${MIN_RETENTION_DAYS} (got '${rawRetention}'): ` +
+          `~/.claude/tmp holds live sessions' scratchpads and a shorter window deletes them.`
+      );
       process.exit(1);
     }
   } else {
@@ -426,10 +483,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // install / uninstall / statusline kept writing to the real directory.
   const stateDirPath = stateDir();
 
-  // One knob, not two: the unowned window rides on the same --retention-days
-  // the ~/.claude/tmp scratchpads use, so `--retention-days=1 --include-unowned
-  // --apply` reaps yesterday's probe sandboxes without inventing a second flag.
-  const result = clean({ apply, ageDaysMin, includeUnowned, unownedRetentionDays: retentionDays });
+  const result = clean({ apply, ageDaysMin });
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
   const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
@@ -441,9 +495,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // and returned 0. A wrapper or cron step gating on this command read "clean"
   // while the residue was still there (`cli-exit-code-must-reflect-remaining`).
   // Only meaningful under --apply: a dry run deletes nothing by definition.
+  // Protected entries are not "remaining": they were never targets.
   const attempted = result.targets.length + ctmp.targets.length + cstate.targets.length;
   const removed = result.deleted + ctmp.deleted + cstate.deleted;
   const remaining = apply ? attempted - removed : 0;
+  const agePath = t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 });
+  const protectedPaths = [...result.protected, ...ctmp.protected].map(agePath);
+  if (protectedPaths.length > 0) {
+    console.error(
+      `${protectedPaths.length} stale entr${protectedPaths.length === 1 ? 'y' : 'ies'} skipped: ` +
+        `contain${protectedPaths.length === 1 ? 's' : ''} this process's cwd or $TMPDIR (see \`protected\`).`
+    );
+  }
   console.log(
     JSON.stringify(
       {
@@ -452,18 +515,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         ageDaysMin,
         sentinels: sentinelCount,
         sandboxes: sandboxCount,
-        // Reported on every run, deleted only with --include-unowned. This class
-        // is the answer to "the recycler could not see its own biggest input"
-        // (audit R11-38) — the count and the bytes are the fix's visible half.
+        // Counted and sized on every run, never deleted (see
+        // UNOWNED_MKTEMP_PATTERN). This class is the answer to "the recycler
+        // could not see its own biggest input" (audit R11-38).
         unowned: result.unowned,
         deleted: result.deleted,
-        paths: result.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
+        paths: result.targets.map(agePath),
+        protected: protectedPaths,
         claudeTmp: {
           dir: claudeTmpDir,
           retentionDays,
           candidates: ctmp.targets.length,
           deleted: ctmp.deleted,
-          paths: ctmp.targets.map(t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 })),
+          paths: ctmp.targets.map(agePath),
         },
         remaining,
         stateDir: {

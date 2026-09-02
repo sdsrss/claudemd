@@ -350,9 +350,18 @@ test('CLI: sizing drift exits 1 with stderr Δ line + actionable Fix sizing note
 // stale version into the manifest and /claudemd-status reported 0.47.0 for a live
 // 0.47.3 install. These lock the class.
 
-function semverFixture(dir, { pkg, plugin, meta, entry }) {
+// Both lockfile sites default to `pkg`: the common fixture wants agreement.
+// Pass `lock` (top-level) or `lockRoot` (`packages[""]`) to drift ONE of them,
+// or `lock: null` to omit the lockfile (undefined would take the default).
+function semverFixture(dir, { pkg, plugin, meta, entry, lock = pkg, lockRoot = pkg }) {
   fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
   if (pkg !== undefined) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: pkg }));
+  if (lock !== null) {
+    fs.writeFileSync(
+      path.join(dir, 'package-lock.json'),
+      JSON.stringify({ version: lock, packages: { '': { version: lockRoot } } })
+    );
+  }
   fs.writeFileSync(path.join(dir, '.claude-plugin/plugin.json'), JSON.stringify({ version: plugin }));
   fs.writeFileSync(
     path.join(dir, '.claude-plugin/marketplace.json'),
@@ -361,14 +370,44 @@ function semverFixture(dir, { pkg, plugin, meta, entry }) {
   return dir;
 }
 
-test('pluginSemver: all four sites agree -> ok', () => {
+test('pluginSemver: all six sites agree -> ok', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
   try {
     semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
     const r = runPluginSemverCheck({ root: d });
     assert.equal(r.ok, true);
     assert.equal(r.expected, '1.2.3');
-    assert.equal(r.sites.length, 4);
+    assert.equal(r.sites.length, 6);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// 0.72.0 reached its pre-tag review with package-lock.json still at 0.71.3 and
+// this check green: the lockfile was not a site. `npm version` rewrites both
+// lockfile copies; a hand-edited package.json leaves them behind.
+test('pluginSemver: a stale package-lock.json is caught (either copy)', () => {
+  for (const drift of [{ lock: '0.71.3' }, { lockRoot: '0.71.3' }]) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+    try {
+      semverFixture(d, { pkg: '0.72.0', plugin: '0.72.0', meta: '0.72.0', entry: '0.72.0', ...drift });
+      const r = runPluginSemverCheck({ root: d });
+      assert.equal(r.ok, false, `lockfile drift ${JSON.stringify(drift)} must fail`);
+      const stale = r.sites.filter(s => s.file === 'package-lock.json' && s.value === '0.71.3');
+      assert.equal(stale.length, 1, 'the drifted lockfile site is named');
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  }
+});
+
+test('pluginSemver: missing package-lock.json fails loudly, does not skip', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3', lock: null });
+    const r = runPluginSemverCheck({ root: d });
+    assert.equal(r.ok, false);
+    assert.equal(r.sites.filter(s => s.file === 'package-lock.json' && s.value === null).length, 2);
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -408,7 +447,7 @@ test('pluginSemver: missing package.json fails loudly, does not skip', () => {
   }
 });
 
-test('pluginSemver: the real repo agrees across all four sites', () => {
+test('pluginSemver: the real repo agrees across all six sites', () => {
   const root = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
   const r = runPluginSemverCheck({ root });
   assert.equal(r.ok, true, `real repo semver drift: ${JSON.stringify(r.sites)}`);

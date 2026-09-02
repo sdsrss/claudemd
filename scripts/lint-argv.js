@@ -67,6 +67,9 @@ export const PATTERNS = [
 ];
 
 const ALLOW_TOKEN = 'argv-lint:allow';
+// Preceding-line form: the comment must OPEN with the token. Derived from
+// ALLOW_TOKEN so the two spellings cannot drift.
+const ALLOW_LINE_RE = new RegExp(`^//\\s*${ALLOW_TOKEN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
 
 // Round-6: structural blind-spot closure. The three regex PATTERNS above
 // detect *wrong-shape* argv reads. They cannot detect "main block exists
@@ -192,8 +195,15 @@ export function scan({
         // other suppression convention uses (`eslint-disable-next-line`) and it
         // survives reflow. A blank line between the two does not count.
         if (line.includes(ALLOW_TOKEN)) return;
+        // The preceding line must BE the suppression, not merely mention it:
+        // `// argv-lint:allow …` at the start of the comment. `includes()` here
+        // let a sentence explaining the convention ("append argv-lint:allow to
+        // a vetted line") silence whatever code happened to follow it — the
+        // 0.72.0 pre-tag review demonstrated that with a working example
+        // (MEDIUM-2). A gate that reads prose as its own directive is the
+        // feedback_gate_reads_prose_not_code shape.
         const above = i > 0 ? lines[i - 1].trimStart() : '';
-        if (above.startsWith('//') && above.includes(ALLOW_TOKEN)) return;
+        if (ALLOW_LINE_RE.test(above)) return;
         // Skip pure `//` comment lines (documentation that mentions the
         // antipattern as a literal — the validator's own docstring quotes
         // `args.includes('--json')` etc. as the bug it prevents). End-of-line

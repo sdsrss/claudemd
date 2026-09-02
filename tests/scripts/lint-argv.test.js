@@ -101,6 +101,25 @@ test('argv-lint: `// argv-lint:allow` on the PRECEDING line suppresses the hit',
   }
 });
 
+// The preceding line has to BE the suppression. A comment that merely mentions
+// the token mid-sentence — the way a docstring explaining the convention does —
+// must not silence the code under it. The 0.72.0 pre-tag review showed
+// `includes()` did exactly that (MEDIUM-2); this is the control.
+test('argv-lint: a preceding comment that only MENTIONS the token does NOT suppress', () => {
+  const root = makeFixture({
+    'scripts/prose.js':
+      '// To silence this gate on a vetted line, append argv-lint:allow to it.\n' +
+      "const json = args.includes('--json');\n",
+  });
+  try {
+    const hits = scan({ root, dirs: ['scripts'], fileAllowlist: {} });
+    assert.equal(hits.length, 1, 'prose that mentions the token is not a directive');
+    assert.equal(hits[0].line, 2);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('argv-lint: a blank line between the token and the code does NOT suppress', () => {
   const root = makeFixture({
     'scripts/gap.js': '// argv-lint:allow — stale\n\n' + "const json = args.includes('--json');\n",
