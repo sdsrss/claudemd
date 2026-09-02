@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { settingsPath } from './paths.js';
+import { settingsPath, writeJsonAtomic } from './paths.js';
 
 export function readSettings() {
   const p = settingsPath();
@@ -14,13 +14,12 @@ export function readSettings() {
   }
 }
 
+// Mode + symlink preservation live in writeJsonAtomic (paths.js) — this file
+// used to own a second copy of the tmp+rename idiom that did neither.
+// The old `JSON.parse(JSON.stringify(obj))` self-check was dropped with it:
+// it is true by construction for anything JSON.stringify accepts.
 export function writeSettings(obj) {
-  const p = settingsPath();
-  const tmp = `${p}.tmp-${process.pid}`;
-  const json = JSON.stringify(obj, null, 2);
-  JSON.parse(json); // validate before write
-  fs.writeFileSync(tmp, json, 'utf8');
-  fs.renameSync(tmp, p);
+  writeJsonAtomic(settingsPath(), obj);
 }
 
 // NOT live production wiring (2026-07-24 audit P2-10): hooks register via the

@@ -262,3 +262,36 @@ test('D6.6: does NOT match foreign hook in /.claude/hooks/ with non-claudemd bas
   const cmd = 'bash "/home/user/.claude/hooks/my-personal-hook.sh"';
   assert.equal(isClaudemdLegacyHookCommand(cmd, CLAUDEMD_HOOK_BASENAMES), false);
 });
+
+// --- R11-01 (2026-09-02 audit): writeSettings must preserve the file's shape ---
+// settings.json `env` is where users put ANTHROPIC_API_KEY, and the file may be
+// a symlink into a dotfiles repo. Pre-fix `writeFileSync(tmp) + rename(tmp, p)`
+// created the tmp with the process umask (0600 → 0664 here) and replaced the
+// symlink with a regular file, stranding the dotfiles target on old content.
+
+test('R11-01.1: writeSettings preserves a restrictive file mode (0600 stays 0600)', () => {
+  fs.writeFileSync(settingsFile(), JSON.stringify({ env: { A: '1' } }, null, 2), { mode: 0o600 });
+  fs.chmodSync(settingsFile(), 0o600);
+  writeSettings({ env: { A: '2' } });
+  assert.equal(fs.statSync(settingsFile()).mode & 0o777, 0o600);
+  assert.deepEqual(readSettings(), { env: { A: '2' } });
+});
+
+test('R11-01.2: writeSettings writes THROUGH a symlink, leaving the link intact', () => {
+  const target = path.join(tmpHome, 'dotfiles-settings.json');
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify({ env: { A: '1' } }, null, 2), { mode: 0o600 });
+  fs.symlinkSync(target, settingsFile());
+
+  writeSettings({ env: { A: '2' } });
+
+  assert.equal(fs.lstatSync(settingsFile()).isSymbolicLink(), true, 'settings.json must still be a symlink');
+  assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { env: { A: '2' } }, 'symlink target must carry the new content');
+  assert.equal(fs.statSync(target).mode & 0o777, 0o600, 'target mode preserved');
+});
+
+test('R11-01.3: writeSettings leaves no .tmp residue beside the file', () => {
+  writeSettings({ env: { A: '1' } });
+  const residue = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.includes('.tmp'));
+  assert.deepEqual(residue, []);
+});

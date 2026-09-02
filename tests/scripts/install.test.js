@@ -569,3 +569,55 @@ test('hook manifest declaring no hooks → install refuses', async () => {
   await assert.rejects(() => install({ pluginRoot }), /declares no hooks/);
   assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')));
 });
+
+// --- R11-08 / R11-01 / R11-10 (2026-09-02 audit): install must not disturb
+// a settings.json it has nothing to evict from. Steady state has been
+// removed=0 since v0.1.5, but the rewrite ran unconditionally on every
+// background SessionStart install.
+
+test('R11-08.1: steady-state install does NOT rewrite settings.json (no eviction candidates)', () => {
+  const sp = path.join(tmpHome, '.claude/settings.json');
+  const original = JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-x' }, hooks: {} }, null, 2);
+  fs.writeFileSync(sp, original, { mode: 0o600 });
+  fs.chmodSync(sp, 0o600);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(fs.readFileSync(sp, 'utf8'), original, 'byte-identical — no reserialization');
+  assert.equal(fs.statSync(sp).mode & 0o777, 0o600, 'mode untouched');
+});
+
+test('R11-08.2: install DOES rewrite settings.json when there is legacy residue to evict', () => {
+  const sp = path.join(tmpHome, '.claude/settings.json');
+  fs.writeFileSync(sp, JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: 'Bash',
+        hooks: [{ type: 'command', command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/' + HOOK_BASENAMES[0] + '"' }],
+      }],
+    },
+  }, null, 2), { mode: 0o600 });
+  fs.chmodSync(sp, 0o600);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  const after = JSON.parse(fs.readFileSync(sp, 'utf8'));
+  const cmds = JSON.stringify(after.hooks || {});
+  assert.equal(isClaudemdHookCommand(cmds), false, 'legacy claudemd entry evicted');
+  assert.equal(fs.statSync(sp).mode & 0o777, 0o600, 'mode preserved through the eviction write');
+});
+
+test('R11-10: manifest is written atomically and leaves no tmp residue', () => {
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  const mp = path.join(tmpHome, '.claude/.claudemd-manifest.json');
+  assert.equal(JSON.parse(fs.readFileSync(mp, 'utf8')).version, '9.9.9-test');
+  const residue = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.includes('.tmp-'));
+  assert.deepEqual(residue, []);
+});

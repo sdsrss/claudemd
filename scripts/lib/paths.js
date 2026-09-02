@@ -64,6 +64,44 @@ export const specHome          = () => SPEC_FILES.map(n => path.join(home(), '.c
 // of backups does not silently break update.js's home-spec read path.
 export const homeSpec          = (name) => path.join(home(), '.claude', name);
 
+// SINGLE SOURCE for every JSON file this plugin writes into the user's home
+// (2026-09-02 audit R11-01/R11-10). The tmp+rename idiom had three hand-copied
+// forms — settings-merge.js, statusline-hosts.js, and a plain non-atomic
+// writeFileSync for the manifest — and the settings.json one dropped two
+// properties of the file it replaced:
+//
+//   MODE:    `writeFileSync(tmp)` creates with 0666 & ~umask, so a 0600
+//            settings.json came back 0664 on a umask-002 box. That file's `env`
+//            block is where users keep ANTHROPIC_API_KEY.
+//   SYMLINK: `rename(tmp, p)` replaces a symlink with a regular file, so a
+//            `~/.claude/settings.json -> dotfiles/settings.json` setup silently
+//            detached and the dotfiles copy froze on old content.
+//
+// So: resolve through the link FIRST (write beside the real target, since
+// rename() cannot cross filesystems), then carry the existing mode forward.
+// An explicit `mode` wins; a file that does not exist yet gets the default.
+// chmod after write because writeFileSync's mode is still masked by umask.
+export function writeJsonAtomic(p, data, { mode } = {}) {
+  let real = p;
+  try { real = fs.realpathSync(p); } catch { /* new file — write at p itself */ }
+
+  let fileMode = mode;
+  if (fileMode === undefined) {
+    try { fileMode = fs.statSync(real).mode & 0o777; } catch { /* new file — inherit default */ }
+  }
+
+  fs.mkdirSync(path.dirname(real), { recursive: true });
+  const tmp = `${real}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
+    if (fileMode !== undefined) fs.chmodSync(tmp, fileMode);
+    fs.renameSync(tmp, real);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    throw e;
+  }
+}
+
 // Reads the manifest from its canonical location, falling back to (and
 // relocating) the pre-0.1.9 location. Any consumer (install / uninstall /
 // status / doctor) gets the migration as a side effect on first access.

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { readSettings, writeSettings, unmergeHook, isClaudemdLegacyHookCommand } from './lib/settings-merge.js';
 import { createBackup, pruneBackups, backupSettingsFile, looksLikeSpec, BACKUP_LABELS } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
-import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, SEMVER_RE, semverCmp, SPEC_FILES } from './lib/paths.js';
+import { stateDir, logsDir, settingsPath, specHome, resolvePluginRoot, readPluginVersion, readManifest, manifestPath, legacyManifestPath, writeJsonAtomic, SEMVER_RE, semverCmp, SPEC_FILES } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
@@ -293,10 +293,15 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // D6 (v0.5.4): path-anchored predicate (lib/settings-merge.js) replaces
   // the old substring match — narrows eviction to claudemd's three legacy
   // residue forms and never touches a same-basename hook from another plugin.
-  unmergeHook(settings, {
+  // Write ONLY when eviction actually removed something (2026-09-02 audit
+  // R11-08). Steady state has been removed=0 since v0.1.5, yet every
+  // version-mismatch SessionStart fired a background install that rewrote the
+  // user's settings.json anyway — re-ordering keys, stripping the BOM, and
+  // racing Claude Code's own writes to the same file for no gain.
+  const evicted = unmergeHook(settings, {
     commandPredicate: (c) => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
   });
-  writeSettings(settings);
+  if (evicted.removed > 0) writeSettings(settings);
 
   // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall
   // keep a canonical list of the shipped hooks even though settings.json no
@@ -315,13 +320,15 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // stateDir()/installed.json; that legacy file is removed here to keep the
   // filesystem tidy when upgrading.
   fs.mkdirSync(stateDir(), { recursive: true });
-  fs.mkdirSync(path.dirname(manifestPath()), { recursive: true });
-  fs.writeFileSync(manifestPath(), JSON.stringify({
+  // Atomic (R11-10): the manifest is the key SessionStart and version-sync read
+  // to decide "installed?" — a torn write reads back as absent and spawns
+  // another install.
+  writeJsonAtomic(manifestPath(), {
     version: incomingVersion,
     installedAt: new Date().toISOString(),
     pluginRoot,
     entries,
-  }, null, 2));
+  });
   if (fs.existsSync(legacyManifestPath())) {
     try { fs.unlinkSync(legacyManifestPath()); } catch { /* stale legacy ok */ }
   }

@@ -1,6 +1,5 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { codeGraphRegistryPath, codeGraphProvidersBackupPath } from './paths.js';
+import { codeGraphRegistryPath, codeGraphProvidersBackupPath, writeJsonAtomic } from './paths.js';
 
 // A composite host owns the single statusLine slot but renders MANY providers
 // from a registry, so claudemd registers as a guest instead of clobbering the
@@ -9,12 +8,6 @@ export const CLAUDEMD_PROVIDER_ID = 'claudemd';
 
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
-}
-function writeJsonAtomic(p, data) {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  const tmp = `${p}.tmp.${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
-  fs.renameSync(tmp, p);
 }
 
 // --- code-graph adapter ---
