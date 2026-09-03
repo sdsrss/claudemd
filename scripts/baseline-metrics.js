@@ -544,10 +544,27 @@ export function summarizeShellcheckFindings(findings) {
   return { blocking: byLevel.error + byLevel.warning, byLevel };
 }
 
+// The eslint/prettier scope is whatever `npm run lint:js` passes, read from
+// package.json instead of repeated here. These numbers are only comparable to
+// the CI gate's if both judge the same tree, and the 2026-09-02 audit (R11-20)
+// found the list written out five times: three scripts in package.json plus the
+// two call sites below. package.json stays the source by construction — npm can
+// only read a literal — and the three copies inside it are joined by
+// tests/scripts/shared-scope-consumers.test.js.
+export function jsLintScope(pkgPath = path.join(REPO_ROOT, 'package.json')) {
+  const script = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).scripts?.['lint:js'] || '';
+  const scope = script
+    .split(/\s+/)
+    .slice(1)
+    .filter(a => a && !a.startsWith('-'));
+  if (!scope.length) throw new Error(`package.json lint:js has no path arguments: "${script}"`);
+  return scope;
+}
+
 function eslintCounts() {
   const bin = localBin('eslint');
   if (!bin) return { available: false };
-  const r = run(bin, ['-f', 'json', 'bin', 'scripts', 'tests', 'eslint.config.js']);
+  const r = run(bin, ['-f', 'json', ...jsLintScope()]);
   let results;
   try {
     results = JSON.parse(r.stdout);
@@ -596,7 +613,7 @@ function prettierCounts() {
   if (!bin) return { available: false };
   // --list-different prints one path per unformatted file and nothing else;
   // exit 1 when the list is non-empty, so status is not an error signal here.
-  const r = run(bin, ['--list-different', 'bin', 'scripts', 'tests', 'eslint.config.js']);
+  const r = run(bin, ['--list-different', ...jsLintScope()]);
   if (r.error) return { available: true, error: String(r.error) };
   const files = r.stdout.split('\n').filter(Boolean);
   return { available: true, unformatted: files.length, files };

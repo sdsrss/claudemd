@@ -346,3 +346,95 @@ test('the shared shellcheck scope is the whole tracked .sh set, not a filtered s
       'run-all.sh checks, which is the drift R10-18c converged the two lists to prevent.'
   );
 });
+
+// --- 2026-09-02 audit R11-20: the JS lint/format scope ----------------------
+//
+// The shell half above got a single source in R10-18c. The JS half did not: the
+// argument list `bin scripts tests eslint.config.js` was written out five times
+// — three package.json scripts plus two call sites in scripts/baseline-metrics.js
+// — and nothing joined them. A directory added to `lint:js` alone would leave
+// `format:check` (a CI gate) and the metrics report each judging a different
+// tree while all three still looked right.
+//
+// package.json is the single source by construction: npm cannot read a scope
+// from anywhere else. So the two checks are: its own three copies agree, and no
+// other file keeps a sixth.
+const PKG_SCRIPTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts;
+
+// Path arguments only — the tool name and any -flags are not scope.
+const scopeOf = script =>
+  (script || '')
+    .split(/\s+/)
+    .slice(1)
+    .filter(a => a && !a.startsWith('-'));
+
+const JS_SCOPE_SCRIPTS = ['lint:js', 'format', 'format:check'];
+
+test('R11-20: the three package.json JS scopes are one list', () => {
+  const scopes = Object.fromEntries(JS_SCOPE_SCRIPTS.map(s => [s, scopeOf(PKG_SCRIPTS[s])]));
+  for (const [name, scope] of Object.entries(scopes)) {
+    assert.ok(
+      scope.length >= 2,
+      `package.json ${name} resolved ${scope.length} path argument(s) — the script shape changed ` +
+        'and this comparison would pass on an empty set'
+    );
+  }
+  const reference = scopes['lint:js'];
+  const diverged = JS_SCOPE_SCRIPTS.filter(s => scopes[s].join(' ') !== reference.join(' ')).filter(
+    s => s !== 'lint:js'
+  );
+  assert.deepEqual(
+    diverged,
+    [],
+    'package.json script(s) lint a different tree than `lint:js`:\n      ' +
+      diverged.map(s => `${s}: ${scopes[s].join(' ')} (lint:js: ${reference.join(' ')})`).join('\n      ') +
+      '\n      CI runs lint:js and format:check as separate gates; a scope only one of them ' +
+      'covers is a directory nothing checks.'
+  );
+});
+
+test('R11-20: baseline-metrics derives the JS scope instead of keeping a copy', async () => {
+  const { jsLintScope } = await import('../../scripts/baseline-metrics.js');
+  assert.deepEqual(
+    jsLintScope(),
+    scopeOf(PKG_SCRIPTS['lint:js']),
+    'scripts/baseline-metrics.js resolves a different JS scope than `npm run lint:js` — ' +
+      'its eslint/prettier numbers would not describe the tree CI gates.'
+  );
+
+  // Comments stripped first: the paragraph above this test names the very list
+  // it forbids, and so does the header comment in baseline-metrics.js. A gate
+  // that greps the whole file passes on prose and fails on an explanation —
+  // this repo has filed that one twice (feedback_gate_reads_prose_not_code).
+  const src = fs.readFileSync(path.join(ROOT, 'scripts/baseline-metrics.js'), 'utf8');
+  const code = src
+    .split('\n')
+    .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  const literal = scopeOf(PKG_SCRIPTS['lint:js'])
+    .map(a => `'${a}'`)
+    .join(', ');
+  assert.ok(
+    !code.includes(literal),
+    `scripts/baseline-metrics.js still spells out [${literal}] in code — that is the sixth copy ` +
+      'R11-20 removed. Call jsLintScope().'
+  );
+});
+
+test('R11-20: the JS-scope joins are capable of failing (mutation control)', () => {
+  // Both predicates, against the shapes drift actually takes: one script gains a
+  // directory the others do not, and a call site re-inlines the list.
+  const mutated = { ...PKG_SCRIPTS, format: `${PKG_SCRIPTS.format} docs` };
+  assert.notDeepEqual(
+    scopeOf(mutated.format),
+    scopeOf(PKG_SCRIPTS['lint:js']),
+    'a script with an extra scope directory still compared equal — the join cannot fail'
+  );
+  const literal = scopeOf(PKG_SCRIPTS['lint:js'])
+    .map(a => `'${a}'`)
+    .join(', ');
+  assert.ok(
+    `  const r = run(bin, ['-f', 'json', ${literal}]);`.includes(literal),
+    'the pre-fix call site does not contain the literal this gate looks for — control vacuous'
+  );
+});
