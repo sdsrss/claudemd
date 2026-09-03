@@ -21,7 +21,7 @@ import { remove as removeStatusline } from './lib/statusline.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 // Files claudemd is known to write into its state dir. Used ONLY on the
-// non-canonical-name branch of --purge below, where recursing is refused.
+// non-canonical-name branch of the purge below, where recursing is refused.
 // Deliberately a shape list rather than "everything in the directory": if the
 // variable points somewhere unexpected, the contents are not ours to assume.
 //
@@ -171,7 +171,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     // `rm -rf $VAR` with no validation, on a variable the clean-residue USAGE
     // advertises to anyone who runs `--help`. An operator who exports it to
     // inspect reaper behaviour and then runs the documented two-step uninstall
-    // with --purge loses that whole directory, recursively, including what
+    // with CLAUDEMD_PURGE=1 loses that whole directory, recursively, including what
     // claudemd never put there. Caught in the v0.69.0 pre-tag review; §8's
     // "rm -rf $VAR without validating VAR" arriving through a testability seam.
     //
@@ -204,7 +204,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     //
     // 2026-07-25 audit: this unlinked `claudemd.jsonl` alone, while rule-hits.sh
     // rotates to `claudemd.jsonl.1` / `.2` (up to ~10 MB) and session-start-check
-    // writes `claudemd-bootstrap.log`. Those three survived --purge, and because
+    // writes `claudemd-bootstrap.log`. Those three survived the purge, and because
     // they did, the emptiness check below never fired either — so the documented
     // two-step uninstall still left claudemd-owned files with no in-tree tool
     // able to remove them.

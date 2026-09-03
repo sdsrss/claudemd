@@ -36,9 +36,12 @@ name: npm-publish
 # silently re-publishing — operator's signal that the tag was bumped without
 # a corresponding package.json bump.
 #
-# Manual trigger: `gh workflow run npm-publish.yml` works as a fallback.
-# The workflow_dispatch input lets operators publish out-of-band when a tag
-# already exists (e.g. recovering from a transient registry outage).
+# Manual trigger, for recovering from a transient registry outage when the tag
+# already exists: `gh workflow run npm-publish.yml --ref v<X.Y.Z>`. The `--ref`
+# is not optional — the guard below compares `GITHUB_REF_NAME` against
+# package.json, so a dispatch from `main` computes tag `main`, fails that
+# comparison and publishes nothing. There are no workflow_dispatch inputs; the
+# ref IS the version selector.
 
 on:
   push:

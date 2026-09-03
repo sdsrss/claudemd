@@ -48,6 +48,53 @@ Other tools have different `tool_input` shapes:
 }
 ```
 
+## Context output (stdout)
+
+A hook can also return text for the model to read instead of a decision. Same
+`hookSpecificOutput` wrapper, different fields:
+
+```json
+{
+  "suppressOutput": true,
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "<text the model sees>"
+  }
+}
+```
+
+- `hookEventName` must match the event the hook is registered for —
+  `PreToolUse`, `UserPromptSubmit` or `SessionStart`. This envelope is how a
+  hook speaks to the model; `stderr` is how it speaks to the human.
+- `suppressOutput: true` keeps the text out of the transcript UI while the
+  model still receives it. Every emitter here sets it.
+- **A hook must emit exactly one JSON object per run.** Two objects on stdout
+  are not valid JSON and the whole payload is dropped silently — no error, no
+  context. `session-start-check.sh` can have up to four banners ready in one
+  run (stale-root, upstream, session summary, spec drift) and merges them
+  through `jq -s` for this reason (`session-start-check.sh:381,439`); a fifth
+  banner added with its own `jq -cn` would disarm all of them.
+
+Emitters, derived from source and gated by
+`tests/scripts/architecture-drift.test.js` (R11-21(c)):
+
+- `memory-prompt-hint.sh` — UserPromptSubmit; lists MEMORY.md files matching
+  the prompt that have not been Read this session.
+- `session-start-check.sh` — SessionStart; the merged banner described above.
+
+**Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
+context schema, so `mem-audit.sh`, `residue-audit.sh` and
+`sandbox-disposal-check.sh` write advisory text to `stderr`, and
+`session-summary.sh` writes
+`~/.claude/.claudemd-state/last-session-summary.json` for
+`session-start-check.sh` to turn into a banner at the START of the next
+session. That indirection is the schema's doing, not a design preference.
+
+Injected text lands next to user messages, so it has to carry its own origin
+framing (`[claudemd] …`, plus an explicit "system-injected" marker on anything
+that reads like an instruction) — an XML wrapper alone does not stop a model
+from treating injected prose as something the user said.
+
 ## Exit codes
 
 - `0` with no stdout → pass silent

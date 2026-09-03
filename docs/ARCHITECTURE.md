@@ -30,8 +30,8 @@ Module → responsibility → external interface. "External" means what a caller
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `scripts/install.js` | Copy spec into `~/.claude/`, merge hook entries into `settings.json`, write manifest, adopt statusLine, prune plugin cache | `node scripts/install.js` (no flags; env `CLAUDEMD_NO_STATUSLINE`, …); wired by the plugin lifecycle and by `hook_spawn_install` |
-| `scripts/uninstall.js` | Reverse of install: unmerge hooks, clear manifest, optional `--purge` of state | `node scripts/uninstall.js` (env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
+| `scripts/install.js` | Copy spec into `~/.claude/`, evict legacy hook entries from `settings.json`, write manifest, adopt statusLine, prune plugin cache | `node scripts/install.js` (no flags; env `CLAUDEMD_NO_STATUSLINE`, …); wired by the plugin lifecycle and by `hook_spawn_install` |
+| `scripts/uninstall.js` | Reverse of install: evict hook entries, clear manifest, optional purge of state (`CLAUDEMD_PURGE=1`) | `node scripts/uninstall.js` (no flags — env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
 | `scripts/update.js` | Diff installed `~/.claude/CLAUDE*.md` against the shipped spec; apply on request | `node scripts/update.js`; env `CLAUDEMD_UPDATE_CHOICE=apply-all` |
 | `scripts/status.js` | Plugin / spec / kill-switch / log status | `node scripts/status.js [--verbose]` → JSON |
 | `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, routing primaries, memory layers | `node scripts/doctor.js [--prune-backups=N]` |
@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 62 node suites, 28 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 68 node suites, 28 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -129,7 +129,7 @@ Each flow in at most five steps. File names are the entry points to read.
 1. Claude Code runs `session-start-check.sh` with the session event on stdin.
 2. The hook compares the manifest version and `cmp`s the installed spec against the shipped copy.
 3. On mismatch it calls `hook_spawn_install`, which runs `scripts/install.js` detached under a 10 s timeout.
-4. `install.js` backs up the existing spec, copies the shipped files with a SHA-256 post-check, merges hook entries into `settings.json`, writes the manifest.
+4. `install.js` backs up the existing spec, copies the shipped files with a SHA-256 post-check, evicts legacy hook entries from `settings.json` (writing it only when eviction removed something), writes the manifest.
 5. Failure leaves `bootstrap-failed.json`; the next SessionStart banner reports it.
 
 **2. Bash command gate (PreToolUse:Bash)**
@@ -218,7 +218,7 @@ Stop hook
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — background install.js failure sentinel (v0.50.0; written/cleared by `hook_spawn_install`, read by the SessionStart failure banner, stale copy cleared on version match)
-- `~/.claude/.claudemd-state/bootstrap-failed.json.last-shown` — consume-once rename target after the failure banner (`session-start-check.sh:206`, the same idiom as the summary banner above). **Not** matched by clean-residue's state-dir patterns — only `/claudemd-uninstall --purge` removes it, so a machine that hit one background-install failure keeps the file indefinitely (2026-08-29 audit R10-21e)
+- `~/.claude/.claudemd-state/bootstrap-failed.json.last-shown` — consume-once rename target after the failure banner (`session-start-check.sh:206`, the same idiom as the summary banner above). **Not** matched by clean-residue's state-dir patterns — only an uninstall run with `CLAUDEMD_PURGE=1` removes it, so a machine that hit one background-install failure keeps the file indefinitely (2026-08-29 audit R10-21e)
 - `~/.claude/.claudemd-state/ext-read-<sid>.ts` — per-session §13.1-extended-read dedup sentinel (`session-extended-read.sh`). Reaped by `session-end-check.sh` for its OWN session only, so a crash / kill / abnormal exit leaks one; `/claudemd-clean-residue` reaps the rest past the retention window.
 - `~/.claude/.claudemd-state/failopen-<hook>-<reason>.ts` — `hook_record_failopen` rate-limit marker (1 row per (hook, reason) per 60s)
 - `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — **dead**: written by the `memory-coverage-scan` Stop hook removed in v0.23.12. No in-tree producer remains; existing copies are reaped by `/claudemd-clean-residue`.

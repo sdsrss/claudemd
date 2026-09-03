@@ -248,6 +248,233 @@ test('R10-13: uninstall CLAUDEMD_STATE_FILE_RE matches every state path the sour
   );
 });
 
+// --- 2026-09-02 audit R11-21: the doc-truth batch ---------------------------
+//
+// Three claims in this file were false when the audit read them, each false in a
+// way no gate could see: a verb the code does not perform (install "merges" hook
+// entries — it only evicts), a flag that does not exist (`uninstall --purge` —
+// the disposition is an env var), and a count that drifts every time a suite
+// file is added. Same shape as everything above: a sentence about code with
+// nothing joining it to the code.
+
+const TESTS_DIR = path.join(ROOT, 'tests');
+
+// The three globs tests/run-all.sh actually iterates (`hooks/*.test.sh`,
+// `scripts/*.test.js`, `integration/*.test.sh`), so the documented counts mean
+// the same thing the runner means.
+function suiteCounts() {
+  const count = (dir, suffix) =>
+    fs.readdirSync(path.join(TESTS_DIR, dir)).filter(f => f.endsWith(suffix)).length;
+  return {
+    node: count('scripts', '.test.js'),
+    hook: count('hooks', '.test.sh'),
+    integration: count('integration', '.test.sh'),
+  };
+}
+
+function documentedSuiteCounts(doc) {
+  const row = doc.split('\n').find(l => l.startsWith('| `tests/`'));
+  if (!row) return null;
+  const pick = label => {
+    const m = row.match(new RegExp(`(\\d+)\\s+${label} suites`));
+    return m ? Number(m[1]) : null;
+  };
+  return { node: pick('node'), hook: pick('hook'), integration: pick('integration') };
+}
+
+test('R11-21(e): ARCHITECTURE.md tests/ row states the real suite counts', () => {
+  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  const documented = documentedSuiteCounts(doc);
+  assert.ok(documented, 'no `| `tests/`` row in docs/ARCHITECTURE.md — the extraction anchor moved');
+  const onDisk = suiteCounts();
+  assert.ok(
+    onDisk.node >= 40 && onDisk.hook >= 20 && onDisk.integration >= 2,
+    `suite discovery returned ${JSON.stringify(onDisk)} — too few to be the real tree`
+  );
+  assert.deepEqual(
+    documented,
+    onDisk,
+    'docs/ARCHITECTURE.md tests/ row disagrees with the suite files on disk. ' +
+      'The counts are prose; the globs in tests/run-all.sh are the truth.'
+  );
+});
+
+test('R11-21(e): the suite-count join is capable of failing (mutation control)', () => {
+  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  const onDisk = suiteCounts();
+  // Mutate the DOC the way drift actually arrives: one more suite lands and the
+  // sentence keeps the old number. Asserting on a hand-built string instead
+  // would prove the regex parses that string, not that it parses this file.
+  const mutated = doc.replace(`${onDisk.node} node suites`, `${onDisk.node + 1} node suites`);
+  assert.notEqual(mutated, doc, 'mutation did not apply — the row wording changed');
+  assert.notDeepEqual(
+    documentedSuiteCounts(mutated),
+    onDisk,
+    'a wrong node-suite count still compared equal — the predicate cannot fail'
+  );
+});
+
+// `uninstall.js` contains `install.js` as a substring, so every line-level join
+// below has to separate them before matching. Getting this wrong is how a gate
+// silently judges the wrong subject (2026-09-02 audit R11-15, same release).
+const linesAbout = (doc, who) =>
+  doc.split('\n').filter(l => (who === 'install' ? /(?<![a-z])install\.js/.test(l) : /uninstall/i.test(l)));
+
+function importsFrom(scriptRel, libRel) {
+  const src = fs.readFileSync(path.join(ROOT, scriptRel), 'utf8');
+  const m = src.match(new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*'${libRel}'`));
+  return new Set(
+    m
+      ? m[1]
+          .split(',')
+          .map(s => s.trim().split(/\s+/)[0])
+          .filter(Boolean)
+      : []
+  );
+}
+
+test('R11-21(a): ARCHITECTURE.md only credits install.js with settings.json writes it performs', () => {
+  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  const imported = importsFrom('scripts/install.js', './lib/settings-merge.js');
+  assert.ok(
+    imported.size > 0,
+    'no settings-merge import found in scripts/install.js — the extraction anchor moved'
+  );
+  const subject = linesAbout(doc, 'install');
+  assert.ok(subject.length >= 2, `only ${subject.length} line(s) mention install.js — subject set too small`);
+
+  const claims = subject.filter(l => /merges?\s+hook entries/i.test(l));
+  assert.deepEqual(
+    imported.has('mergeHook') ? [] : claims,
+    [],
+    `docs/ARCHITECTURE.md says install.js merges hook entries into settings.json, but ` +
+      `scripts/install.js imports only [${[...imported].join(', ')}] from lib/settings-merge.js. ` +
+      `Install evicts legacy entries; the plugin manifest registers the current ones.\n` +
+      claims.map(l => `  ${l.trim()}`).join('\n')
+  );
+});
+
+test('R11-21(a): the merge-claim join is capable of failing (mutation control)', () => {
+  const imported = importsFrom('scripts/install.js', './lib/settings-merge.js');
+  const mutatedDoc = '| `scripts/install.js` | Copy spec, merge hook entries into `settings.json` | x |';
+  const claims = linesAbout(mutatedDoc, 'install').filter(l => /merges?\s+hook entries/i.test(l));
+  assert.ok(
+    !imported.has('mergeHook') && claims.length === 1,
+    'restoring the pre-fix sentence did not trip the predicate — the join cannot fail'
+  );
+});
+
+// Accepted flags are read from the parseStrict spec, which is what actually
+// decides at runtime — not from USAGE prose, which is itself a doc claim.
+function acceptedFlags(scriptRel) {
+  const src = fs.readFileSync(path.join(ROOT, scriptRel), 'utf8');
+  const m = src.match(/parseStrict\(\s*process\.argv\.slice\(2\)\s*,\s*\{([\s\S]*?)\}\s*\)/);
+  assert.ok(m, `no parseStrict call found in ${scriptRel} — the extraction anchor moved`);
+  const flags = [...m[1].matchAll(/'(--[a-z][a-z0-9-]*)'/g)].map(x => x[1]);
+  // printHelpAndExit handles these before parseStrict sees them.
+  return new Set([...flags, '--help', '-h']);
+}
+
+test('R11-21(b): no doc or comment offers an uninstall flag the CLI would reject', () => {
+  const accepted = acceptedFlags('scripts/uninstall.js');
+  const doc = fs.readFileSync(ARCH_DOC, 'utf8');
+  const script = fs.readFileSync(path.join(ROOT, 'scripts/uninstall.js'), 'utf8');
+
+  const subject = [
+    ...linesAbout(doc, 'uninstall').map(l => ['docs/ARCHITECTURE.md', l]),
+    ...script.split('\n').map(l => ['scripts/uninstall.js', l]),
+  ];
+  const offered = [];
+  for (const [where, line] of subject) {
+    for (const m of line.matchAll(/--[a-z][a-z0-9-]*/g)) offered.push([where, m[0], line.trim()]);
+  }
+  // Cardinality: a subject set this join never looked at would pass silently.
+  assert.ok(
+    subject.length >= 20,
+    `judged only ${subject.length} line(s) — the uninstall subject set collapsed`
+  );
+
+  const ghosts = offered.filter(([, flag]) => !accepted.has(flag));
+  assert.deepEqual(
+    ghosts.map(([where, flag, line]) => `${where}: ${flag} — ${line}`),
+    [],
+    `flag(s) named in prose that scripts/uninstall.js does not accept ` +
+      `(parseStrict spec: [${[...accepted].join(', ')}]). ` +
+      `Purge is env-driven — write CLAUDEMD_PURGE=1, not a flag.`
+  );
+});
+
+test('R11-21(b): the ghost-flag join is capable of failing (mutation control)', () => {
+  const accepted = acceptedFlags('scripts/uninstall.js');
+  const mutated = '- `/claudemd-uninstall --purge` removes it';
+  const offered = [...mutated.matchAll(/--[a-z][a-z0-9-]*/g)].map(m => m[0]);
+  assert.ok(
+    offered.length === 1 && !accepted.has(offered[0]),
+    'the pre-fix `--purge` sentence did not register as a ghost — the join cannot fail'
+  );
+});
+
+// R11-21(c): the shipped hook I/O reference documented the deny envelope and
+// nothing else, while two hooks return context through a different envelope on
+// three different events. The audit that found this counted five emitters by
+// `grep -l additionalContext hooks/` — three of those five only MENTION the
+// field in a header comment, and two of them say the opposite ("stderr only —
+// Stop has no additionalContext schema"). Hence the comment stripping here:
+// counting prose as code is what produced the wrong number in the first place.
+const HOOK_DOC = path.join(ROOT, 'docs/HOOK-PROTOCOL.md');
+
+function additionalContextEmitters() {
+  const out = [];
+  for (const f of fs.readdirSync(HOOKS_DIR).filter(n => n.endsWith('.sh'))) {
+    const code = fs
+      .readFileSync(path.join(HOOKS_DIR, f), 'utf8')
+      .split('\n')
+      .filter(l => !/^\s*#/.test(l))
+      .join('\n');
+    if (code.includes('additionalContext')) out.push(f);
+  }
+  return out.sort();
+}
+
+test('R11-21(c): HOOK-PROTOCOL.md documents the context envelope every emitter uses', () => {
+  const doc = fs.readFileSync(HOOK_DOC, 'utf8');
+  const emitters = additionalContextEmitters();
+  assert.ok(
+    emitters.length >= 2,
+    `emitter extraction returned ${emitters.length} — a reference gate must never validate an empty set`
+  );
+  assert.ok(
+    doc.includes('additionalContext'),
+    'docs/HOOK-PROTOCOL.md never mentions additionalContext, but hooks return it: ' + emitters.join(', ')
+  );
+  const undocumented = emitters.filter(f => !doc.includes(`\`${f}\``));
+  assert.deepEqual(
+    undocumented,
+    [],
+    `hook(s) emitting additionalContext with no mention in docs/HOOK-PROTOCOL.md:\n` +
+      undocumented.map(f => `  ${f}`).join('\n')
+  );
+  // The one-object rule is the part a new emitter gets wrong (two objects on
+  // stdout is invalid JSON and the whole payload is dropped); the reference has
+  // to carry it, not just the shape.
+  assert.match(
+    doc,
+    /exactly one JSON object/i,
+    'docs/HOOK-PROTOCOL.md does not state the one-object-per-run rule that session-start-check.sh merges through `jq -s` to satisfy'
+  );
+});
+
+test('R11-21(c): the emitter-documentation join is capable of failing (mutation control)', () => {
+  const doc = fs.readFileSync(HOOK_DOC, 'utf8');
+  const emitters = additionalContextEmitters();
+  const mutated = doc.split(`\`${emitters[0]}\``).join('(removed)');
+  assert.notEqual(mutated, doc, `${emitters[0]} was not actually named in the doc — mutation vacuous`);
+  assert.ok(
+    emitters.filter(f => !mutated.includes(`\`${f}\``)).length > 0,
+    'dropping an emitter from the doc left the join green — the predicate cannot fail'
+  );
+});
+
 test('R10-13: the join is capable of failing (mutation control)', () => {
   // A join whose predicate can never be false is decoration. Drop one stem from
   // the regex and the same comparison must name it. `statusline-prev` is the

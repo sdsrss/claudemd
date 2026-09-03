@@ -266,9 +266,11 @@ hook_record_failopen() {
 #   in all uncertain cases. Conservative by design: false negatives are free
 #   (just do more work), false positives could skip a real safety check.
 #
-#   Used by R-N5 fast-path (v0.8.3, opt-in BASH_READONLY_FAST_PATH=1) in the
-#   four PreToolUse:Bash hooks. When the flag is OFF, callers do not invoke
-#   this function and behavior is byte-identical to v0.8.2.
+#   Used by R-N5 fast-path in the four PreToolUse:Bash hooks. Shipped opt-IN in
+#   v0.8.3; the four callers now gate on ${BASH_READONLY_FAST_PATH:-1} != 0, so
+#   the fast path is ON by default and BASH_READONLY_FAST_PATH=0 is the opt-OUT.
+#   With it set to 0 the callers do not invoke this function at all and behavior
+#   is byte-identical to v0.8.2.
 #
 #   Reject criteria — any of these → return 1:
 #     * Shell metacharacters introducing a second command, redirect, or
