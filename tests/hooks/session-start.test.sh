@@ -273,7 +273,7 @@ OUT14=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
 OBJCOUNT14=$(printf '%s' "$OUT14" | jq -s 'length' 2>/dev/null)
 if [[ "$OBJCOUNT14" == "1" ]] \
    && echo "$OUT14" | grep -q 'v9.9.9' \
-   && echo "$OUT14" | grep -q 'last session'; then
+   && echo "$OUT14" | grep -q 'since last turn'; then
   echo "PASS: 14 upstream + summary merge into one valid JSON object"
 else
   echo "FAIL: 14 double-emit not merged (objects=$OBJCOUNT14, out: $OUT14)"; FAIL=$((FAIL+1))

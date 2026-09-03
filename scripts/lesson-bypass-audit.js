@@ -45,6 +45,9 @@ Options:
   --days=N       Window in days (positive integer, default 30).
   --cwd=PATH     CC project cwd to audit (default: current process.cwd()).
                  Mapped to ~/.claude/projects/<encoded>/ for transcript lookup.
+  --project=PATH Alias for --cwd. spec-coherence-audit spells this same concept
+                 --project; accepting both means neither spelling is a silent
+                 argv-shape error depending on which tool you reached for.
   --json         Emit JSON (default: prose summary).
   --help, -h     Print this message and exit.
 
@@ -62,7 +65,16 @@ const DEFAULT_WINDOW_DAYS = 30;
 // a silent divergence that mis-located transcripts for cwds with a space/+/@.
 export const encodeCcCwd = encodeProjectCwd;
 
-export function readTranscript(transcriptPath) {
+// `integrity` (out param, optional): `{ badLines }` written back for the rows
+// this drops. A malformed line here does not just shrink the sample — it flips
+// a verdict: wasApplied() scans the rows it was handed, so a corrupt row that
+// held the Read of a suggested memory file scores that lesson as BYPASSED, and
+// cite-recall (the one number this script exists to produce) moves in the
+// alarming direction with nothing saying why. A fully-corrupt transcript is
+// worse: rows.length === 0 is indistinguishable here from "file absent", so it
+// lands in `missingTranscript` under a label that names the wrong cause
+// (audit R11-24).
+export function readTranscript(transcriptPath, integrity = null) {
   if (!fs.existsSync(transcriptPath)) return [];
   const rows = [];
   for (const line of fs.readFileSync(transcriptPath, 'utf8').split('\n')) {
@@ -70,7 +82,7 @@ export function readTranscript(transcriptPath) {
     try {
       rows.push(JSON.parse(line));
     } catch {
-      /* skip malformed line */
+      if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
     }
   }
   return rows;
@@ -187,6 +199,10 @@ export function lessonBypassAudit({ days = DEFAULT_WINDOW_DAYS, cwd, pluginRoot,
   let totalApplied = 0;
   let totalBypassed = 0;
   let totalMissingTranscript = 0;
+  // Transcript lines that did not parse, summed once per distinct session (the
+  // cache means a multi-suggest session is read once; counting per event would
+  // multiply the same corruption by its suggestion count).
+  let totalMalformedLines = 0;
 
   // Cache transcripts so multi-event sessions don't re-read the file.
   const transcriptCache = {};
@@ -220,21 +236,34 @@ export function lessonBypassAudit({ days = DEFAULT_WINDOW_DAYS, cwd, pluginRoot,
       if (rowProject) candidates.push(projectDirFor({ encoded: rowProject }));
       candidates.push(projectDir);
       let rows = [];
+      // MAX across candidates, not last-wins. Last-wins loses the count in the
+      // one case that matters most: a FULLY corrupt transcript yields
+      // `rows.length === 0`, so the loop does not break, and the next (usually
+      // absent) candidate overwrites badLines with 0 — the file then lands in
+      // `missingTranscript` reporting `malformedLines: 0`, which is precisely
+      // the "names the wrong cause" failure the readTranscript docstring
+      // describes. Only one candidate can ever be non-zero here (the others do
+      // not exist), so max is exact rather than a heuristic.
+      let badLines = 0;
       for (const dir of candidates) {
-        rows = readTranscript(path.join(dir, `${sessionId}.jsonl`));
+        const integrity = { badLines: 0 };
+        rows = readTranscript(path.join(dir, `${sessionId}.jsonl`), integrity);
+        badLines = Math.max(badLines, integrity.badLines);
         if (rows.length > 0) break;
       }
-      transcriptCache[sessionId] = rows;
+      transcriptCache[sessionId] = { rows, badLines };
     }
-    const transcript = transcriptCache[sessionId];
+    const { rows: transcript, badLines: sessionBadLines } = transcriptCache[sessionId];
     const transcriptMissing = transcript.length === 0;
 
+    if (!(sessionId in perSession)) totalMalformedLines += sessionBadLines;
     perSession[sessionId] ||= {
       applied: 0,
       bypassed: 0,
       missingTranscript: 0,
       suggestions: 0,
       transcriptMissing,
+      malformedLines: sessionBadLines,
     };
 
     for (const memFile of suggested) {
@@ -273,6 +302,7 @@ export function lessonBypassAudit({ days = DEFAULT_WINDOW_DAYS, cwd, pluginRoot,
     totalApplied,
     totalBypassed,
     totalMissingTranscript,
+    totalMalformedLines,
     citeRecall,
     bypassRate,
     perMemory,
@@ -289,7 +319,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
-    parsed = parseStrict(process.argv.slice(2), { values: ['--days', '--cwd'], bools: ['--json'] });
+    parsed = parseStrict(process.argv.slice(2), { values: ['--days', '--cwd', '--project'], bools: ['--json'] });
   } catch (e) {
     if (e instanceof ArgvError) {
       console.error(e.message);
@@ -307,7 +337,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     process.exit(1);
   }
-  const cwd = parsed.values['--cwd'] ?? process.cwd();
+  // Both spellings given with DIFFERENT values is a mistake, not a preference:
+  // silently picking one would audit a project the operator did not name.
+  const aliasCwd = parsed.values['--cwd'];
+  const aliasProject = parsed.values['--project'];
+  if (aliasCwd != null && aliasProject != null && aliasCwd !== aliasProject) {
+    console.error(
+      `--cwd and --project are aliases but were given different values ` +
+        `('${aliasCwd}' vs '${aliasProject}'). Pass one.`
+    );
+    process.exit(1);
+  }
+  const cwd = aliasCwd ?? aliasProject ?? process.cwd();
   // One-line failure, not a bare V8 stack (audit-2026-08-22 条目 16, extended
   // to the sync entry points by the 2026-08-29 audit R10-20). The throwing part
   // is this call — it reads the rule-hits log and every session transcript it
@@ -333,6 +374,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (result.totalMissingTranscript) {
       console.log(
         `  missing transcript:  ${result.totalMissingTranscript} (session file absent — synthetic dogfood / deleted / cwd mismatch)`
+      );
+    }
+    if (result.totalMalformedLines) {
+      console.log(
+        `  malformed lines:     ${result.totalMalformedLines} (transcript rows that did not parse — a dropped row holding a Read scores that lesson as bypassed)`
       );
     }
     console.log(`  cite-recall:         ${formatPercent(result.citeRecall)}`);

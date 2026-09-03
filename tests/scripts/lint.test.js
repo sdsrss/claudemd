@@ -101,6 +101,23 @@ test('parseTranscript: corrupt jsonl rows silently skipped', () => {
   assert.equal(turns[1].text, 'still ok');
 });
 
+test('R11-24: parseTranscript reports what it skipped through the integrity out-param', () => {
+  const jsonl = [
+    'not json at all',
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } }),
+    '{"partial":',
+    '', // blank lines are not lines — they must not inflate either counter
+    JSON.stringify({ type: 'user', message: { content: 'a prompt' } }),
+  ].join('\n');
+  const integrity = { totalLines: 0, badLines: 0 };
+  const turns = parseTranscript(jsonl, integrity);
+  assert.equal(turns.length, 1, 'one assistant text turn');
+  assert.equal(integrity.totalLines, 4, 'non-empty lines only');
+  assert.equal(integrity.badLines, 2);
+  // The out-param is optional; the historical one-arg call must be unchanged.
+  assert.equal(parseTranscript(jsonl).length, 1);
+});
+
 test('formatHumanReadable lint: clean → "OK", with hits → enumerated lines', () => {
   const ok = formatHumanReadable({ scope: 'lint', hits: [] });
   assert.match(ok, /^OK/);

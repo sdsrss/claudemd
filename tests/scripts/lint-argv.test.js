@@ -382,3 +382,65 @@ test('R11-18a: the two ship gates run before lint:js in the lint chain', () => {
     );
   }
 });
+
+// R11-33 (2026-09-03 audit): the gate recognised only the href-compare main
+// guard. design-detect.js and statusline-adopt.js use a realpath compare — the
+// shape that survives a symlinked invocation, and therefore the shape a new CLI
+// copies. Both happened to validate argv, so this was an escape route rather
+// than a live miss; the fixture below is the miss it would have become.
+const REALPATH_GUARD =
+  "const invokedAsMain = (() => {\n" +
+  '  try {\n' +
+  '    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);\n' +
+  '  } catch {\n' +
+  '    return false;\n' +
+  '  }\n' +
+  '})();\n';
+
+test('R11-33: a realpath-form main block without argv validation is flagged', () => {
+  const root = makeFixture({
+    'scripts/realpath-destructive.js':
+      "import fs from 'node:fs';\nimport { fileURLToPath } from 'node:url';\n" +
+      REALPATH_GUARD +
+      'if (invokedAsMain) {\n  fs.rmSync(process.argv[2], { recursive: true });\n}\n',
+  });
+  try {
+    const hits = scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} });
+    assert.equal(hits.length, 1, 'the realpath shape must be judged, not skipped');
+    assert.equal(hits[0].file, 'scripts/realpath-destructive.js');
+    assert.equal(hits[0].pattern, 'main-block-without-argv-validation');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R11-33: a realpath-form main block that DOES validate argv still passes', () => {
+  // Without this the test above would also pass on a gate that flags every
+  // realpath-form file unconditionally.
+  const root = makeFixture({
+    'scripts/realpath-safe.js':
+      "import fs from 'node:fs';\nimport { fileURLToPath } from 'node:url';\n" +
+      "import { parseStrict } from './lib/argv.js';\n" +
+      REALPATH_GUARD +
+      'if (invokedAsMain) {\n  parseStrict(process.argv.slice(2), {});\n}\n',
+  });
+  try {
+    assert.deepEqual(scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} }), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R11-33: the guard keys on the IIFE, not on the name `invokedAsMain`', () => {
+  const root = makeFixture({
+    'scripts/renamed.js':
+      "import fs from 'node:fs';\nimport { fileURLToPath } from 'node:url';\n" +
+      REALPATH_GUARD.replace(/invokedAsMain/g, 'isEntryPoint') +
+      'if (isEntryPoint) {\n  fs.rmSync(process.argv[2], { recursive: true });\n}\n',
+  });
+  try {
+    assert.equal(scanMainBlockMissingArgv({ root, dirs: ['scripts'], fileAllowlist: {} }).length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

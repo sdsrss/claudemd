@@ -65,8 +65,8 @@ export function tableRows(text, startHeading, endMarker, onMissing) {
     .map(l => l.split('|').slice(1, -1));
 }
 
-export const ROUTING_HEADING = '### Routing';
-export const ROUTING_END = '### Composite requests';
+const ROUTING_HEADING = '### Routing';
+const ROUTING_END = '### Composite requests';
 
 // §4 Routing primaries as a Map of token → the trigger cells that route to it.
 // Column 1 only (the Primary column); column 0 is the trigger, column 2 Notes.

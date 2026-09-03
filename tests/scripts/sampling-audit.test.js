@@ -14,6 +14,7 @@ import {
   scanVocab,
   yieldTellSuppressed,
 } from '../../scripts/sampling-audit.js';
+import { encodeProjectCwd } from '../../scripts/lib/paths.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -662,4 +663,193 @@ test('R10-20: a clean run reports an empty unreadable list', async () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// R11-24 (2026-09-03 audit): an unreadable transcript was reported; a
+// transcript with unreadable LINES was not. Both shrink the §13.2 opportunity
+// denominators, and the second one does it while still counting the file as
+// fully sampled.
+test('R11-24: unparseable lines are counted per transcript, not silently dropped', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-bad-'));
+  try {
+    const row = t =>
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
+    // 2 good rows, 3 corrupt: a half-corrupt file, which is the shape the
+    // whole-file pre-flight elsewhere cannot see.
+    fs.writeFileSync(
+      path.join(dir, 'half.jsonl'),
+      [row('Done: fixed it.'), '{not json', row('Done: fixed it again.'), 'plain log line', '{"unterminated": '].join(
+        '\n'
+      ) + '\n'
+    );
+    const r = await samplingAudit({ projectsDir: dir, days: 3650 });
+    assert.equal(r.scannedTranscripts, 1, 'the file still counts as scanned — that is the trap');
+    assert.equal(r.totalTurns, 2, 'only the rows that parsed became turns');
+    assert.ok(Array.isArray(r.malformedTranscripts));
+    assert.equal(r.malformedTranscripts.length, 1);
+    assert.equal(r.malformedTranscripts[0].file, 'half.jsonl');
+    assert.equal(r.malformedTranscripts[0].lines, 3);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-24: a clean run reports an empty malformed list', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-nobad-'));
+  try {
+    fs.writeFileSync(
+      path.join(dir, 'a.jsonl'),
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] } }) + '\n'
+    );
+    const r = await samplingAudit({ projectsDir: dir, days: 3650 });
+    assert.deepEqual(r.malformedTranscripts, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-24: --global labels malformed transcripts with their project dir', async () => {
+  // At --global scope a bare basename is ambiguous across projects, and the
+  // aggregate is the caliber whose rates get published.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-gbad-'));
+  try {
+    const proj = path.join(root, '-mnt-data-ssd-dev-projects-claudemd');
+    fs.mkdirSync(proj, { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, 's.jsonl'),
+      [
+        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] } }),
+        '{oops',
+      ].join('\n') + '\n'
+    );
+    const r = await samplingAuditGlobal({ projectsRoot: root, days: 3650, pluginRoot: REPO_ROOT });
+    assert.equal(r.malformedTranscripts.length, 1);
+    assert.equal(r.malformedTranscripts[0].file, '-mnt-data-ssd-dev-projects-claudemd/s.jsonl');
+    assert.equal(r.malformedTranscripts[0].lines, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// R11-26 (2026-09-03 audit): --global and --sample= had zero occurrences in
+// tests/. samplingAuditGlobal() was covered as a library call, but the CLI
+// flag that selects it — and therefore the whole byClass section of the
+// published report — could have regressed green.
+test('R11-26 CLI: --global --json emits the byClass stratification', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-cli-global-'));
+  const fakeHome = path.join(tmp, 'home');
+  const fakeCwd = path.join(tmp, 'cwd');
+  const projects = path.join(fakeHome, '.claude', 'projects');
+  const selfProj = path.join(projects, '-mnt-data-ssd-dev-projects-claudemd');
+  const extProj = path.join(projects, '-home-someone-other-repo');
+  fs.mkdirSync(selfProj, { recursive: true });
+  fs.mkdirSync(extProj, { recursive: true });
+  fs.mkdirSync(fakeCwd, { recursive: true });
+  const row = t =>
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } }) + '\n';
+  fs.writeFileSync(path.join(selfProj, 'a.jsonl'), row('Done: fixed it (Checked: repro then test).'));
+  fs.writeFileSync(path.join(extProj, 'b.jsonl'), row('Done: fixed it (Checked: repro then test).'));
+  try {
+    const r = spawnSync(
+      process.execPath,
+      [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), '--global', '--json', '--days=3650'],
+      { cwd: fakeCwd, env: { ...process.env, HOME: fakeHome }, encoding: 'utf8', timeout: 20000 }
+    );
+    assert.equal(r.status, 0, `stderr=${r.stderr}`);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.byClass, '--global must produce byClass; the non-global path does not');
+    assert.equal(out.byClass.self.scannedTranscripts, 1);
+    assert.equal(out.byClass.external.scannedTranscripts, 1);
+    assert.equal(out.scannedTranscripts, 2);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('R11-26: --sample=N caps the transcripts scanned per project dir', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-sample-'));
+  try {
+    const row = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+    }) + '\n';
+    for (const n of ['a', 'b', 'c', 'd', 'e']) fs.writeFileSync(path.join(dir, `${n}.jsonl`), row);
+    const r = await samplingAudit({ projectsDir: dir, days: 3650, sample: 2 });
+    assert.equal(r.scannedTranscripts, 2, 'sample=2 over 5 files must scan exactly 2');
+    // sample larger than the population is a no-op, not a truncation.
+    const all = await samplingAudit({ projectsDir: dir, days: 3650, sample: 99 });
+    assert.equal(all.scannedTranscripts, 5);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('R11-26 CLI: --sample rejects a non-positive-integer with exit 1', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-cli-sample-'));
+  const fakeHome = path.join(tmp, 'home');
+  fs.mkdirSync(path.join(fakeHome, '.claude', 'projects'), { recursive: true });
+  try {
+    for (const bad of ['--sample=0', '--sample=2.7', '--sample=abc']) {
+      const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), bad], {
+        cwd: tmp,
+        env: { ...process.env, HOME: fakeHome },
+        encoding: 'utf8',
+        timeout: 15000,
+      });
+      assert.equal(r.status, 1, `${bad} must exit 1 (validation), got ${r.status}: ${r.stderr}`);
+      assert.match(r.stderr, /--sample requires a positive integer/);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// The counters reached the --json result only. The markdown file is the read
+// path a human opens, and it printed the denominators with nothing beside them
+// saying whether they were complete. The line prints in BOTH states on purpose:
+// one that speaks up only on trouble cannot be told from one that stopped
+// printing (memory: a gate must report its cardinality).
+function runCliReport(transcriptLines) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-cli-md-'));
+  const fakeHome = path.join(tmp, 'home');
+  const fakeCwd = path.join(tmp, 'cwd');
+  fs.mkdirSync(fakeCwd, { recursive: true });
+  const proj = path.join(fakeHome, '.claude', 'projects', encodeProjectCwd(fakeCwd));
+  fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, 'a.jsonl'), transcriptLines.join('\n') + '\n');
+  const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), '--days=3650'], {
+    cwd: fakeCwd,
+    env: { ...process.env, HOME: fakeHome },
+    encoding: 'utf8',
+    timeout: 20000,
+  });
+  // Local calendar day — must match sampling-audit.js#todayLocal (R11-33).
+  // Computing it as UTC here made the assertion pass or fail by wall-clock hour
+  // on any zone east of Greenwich.
+  const today = new Date().toLocaleDateString('en-CA');
+  const reportPath = path.join(fakeCwd, 'tasks', `sampling-audit-${today}.md`);
+  const md = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : null;
+  fs.rmSync(tmp, { recursive: true, force: true });
+  return { r, md };
+}
+
+test('R11-24: the markdown report states reader integrity in both states', () => {
+  const good = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+  });
+
+  const clean = runCliReport([good]);
+  assert.equal(clean.r.status, 0, `stderr=${clean.r.stderr}`);
+  assert.ok(clean.md, 'the CLI must have written the report');
+  assert.match(clean.md, /Reader integrity: every transcript read in full \(0 unreadable, 0 malformed lines\)/);
+
+  const dirty = runCliReport([good, '{corrupt', 'not json at all']);
+  assert.equal(dirty.r.status, 0, `stderr=${dirty.r.stderr}`);
+  assert.ok(dirty.md, 'the CLI must have written the report');
+  assert.match(dirty.md, /the denominators below are short/);
+  assert.match(dirty.md, /2 unparseable line\(s\) across 1 transcript\(s\).*a\.jsonl.*×2/);
+  assert.doesNotMatch(dirty.md, /every transcript read in full/);
+  // …and stdout says so too, so an operator who never opens the file still sees it.
+  assert.match(dirty.r.stdout, /Reader integrity:.*denominators below are short/);
 });

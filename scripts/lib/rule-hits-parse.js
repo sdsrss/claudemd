@@ -481,7 +481,7 @@ export function byBypass(hits) {
 // One descriptor per row, in the order the emitters set them. Kept as a function
 // rather than inlined so a new emitter field has exactly one place to be taught,
 // and so the "which key wins" decision is greppable instead of implied.
-export function bypassSubject(extra) {
+function bypassSubject(extra) {
   if (!extra || typeof extra !== 'object') return '(no subject)';
   if (extra.rule) return String(extra.rule);
   if (extra.shape) {

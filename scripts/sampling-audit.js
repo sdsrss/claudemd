@@ -122,6 +122,15 @@ function defaultProjectsDir() {
   return projectDir({ cwd: process.cwd() });
 }
 
+// LOCAL calendar day, not UTC (audit R11-33). This names the report file and
+// feeds the same-day overwrite guard, so on UTC+8 every run before 08:00 wrote
+// (and guarded) YESTERDAY's file — a morning run silently appended to the prior
+// day's record, and the guard that exists to protect a hand-annotated report
+// was pointed at the wrong one. `en-CA` is the ISO-shaped locale.
+function todayLocal() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
 // Load §10-V banned-vocab patterns from the shipped hook config. Delegates to
 // lint.js readPatterns — the SANCTIONED single parser shared with the CLI
 // (bin/claudemd-lint.js) and the source of the bash hook's matching semantics.
@@ -157,7 +166,12 @@ export function loadVocabPatterns(pluginRoot) {
 // readFileSync), so "we sampled 40 of 40" and "we sampled 40 of 43, three were
 // too big to read" published the same number. Recorded, not thrown: a partial
 // sample is still useful, a silently partial one is not.
-function extractEvents(filePath, cutoffMs = null, unreadable = null) {
+// `malformed` (out param, optional): the same argument one level finer. An
+// unreadable transcript drops out whole and is now named; a transcript with
+// unparseable LINES drops those turns and still counts as fully sampled, so
+// every §13.2 opportunity denominator quietly shrinks by an amount no output
+// reports (audit R11-24). Recorded per transcript, same as `unreadable`.
+function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed = null) {
   const events = [];
   let raw;
   try {
@@ -166,12 +180,14 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null) {
     if (unreadable) unreadable.push({ file: path.basename(filePath), reason: e.code || e.message });
     return events;
   }
+  let badLines = 0;
   for (const line of raw.split(/\r?\n/)) {
     if (!line) continue;
     let obj;
     try {
       obj = JSON.parse(line);
     } catch {
+      badLines++;
       continue;
     }
     if (cutoffMs !== null && typeof obj.timestamp === 'string') {
@@ -218,6 +234,9 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null) {
       }
       continue;
     }
+  }
+  if (malformed && badLines > 0) {
+    malformed.push({ file: path.basename(filePath), lines: badLines });
   }
   return events;
 }
@@ -341,7 +360,7 @@ const FIX_CLAIM_RE = /^(?:##\s*)?Done\b[^\n]*(?:\bfix(?:ed|es)?\b|修复)/i;
 const PRIOR_FAILING_RE =
   /\b[A-Z][a-zA-Z]*Error\b|\b(?:error|exception|panic|traceback|failing|failed|FAILED|crash(?:ed|es)?|pre-fix|repro(?:duced|duction)?|was broken)\b|报错|复现|崩溃|之前失败|此前失败/i;
 
-export function scanBugfixAnchor(text) {
+function scanBugfixAnchor(text) {
   let hits = 0,
     opps = 0;
   for (const raw of text.split('\n')) {
@@ -620,6 +639,11 @@ function emptyResult(windowDays, projectsDir) {
     // healthy case; a non-empty list means the denominators below describe a
     // smaller population than the file count implies.
     unreadableTranscripts: [],
+    // Transcripts the reader opened but could not fully parse: `{file, lines}`
+    // per transcript with at least one unparseable line. Empty is the healthy
+    // case; non-empty means the turn counts below are short by an unknown
+    // number of turns, all of them inside those files.
+    malformedTranscripts: [],
     totalTurns: 0,
     byRule: emptyByRule(),
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
@@ -687,7 +711,7 @@ export async function samplingAudit({
   const R = result.byRule;
 
   for (const file of files) {
-    const events = extractEvents(file, cutoffMs, result.unreadableTranscripts);
+    const events = extractEvents(file, cutoffMs, result.unreadableTranscripts, result.malformedTranscripts);
     // Text-detector surface preserved from v0.14.0: every assistant turn with
     // text, sidechains included (keeps the A1 2026-07-10 baseline comparable).
     const turns = events.filter(e => e.kind === 'assistant' && e.hasText).map(e => e.text);
@@ -820,6 +844,14 @@ export async function samplingAuditGlobal({
     if (sub.unreadableTranscripts && sub.unreadableTranscripts.length) {
       (result.unreadableTranscripts = result.unreadableTranscripts || []).push(...sub.unreadableTranscripts);
     }
+    if (sub.malformedTranscripts && sub.malformedTranscripts.length) {
+      // Labelled with the project dir: at --global scope a bare basename is
+      // ambiguous across projects, and "which project's transcripts are
+      // corrupt" is the actionable half of the answer.
+      for (const m of sub.malformedTranscripts) {
+        result.malformedTranscripts.push({ file: `${path.basename(dir)}/${m.file}`, lines: m.lines });
+      }
+    }
     result.totalTurns += sub.totalTurns;
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
@@ -849,13 +881,36 @@ function fmtRate(violations, opportunities) {
   return (Math.round((violations / opportunities) * 1000) / 1000).toString();
 }
 
+// Reader integrity — one line, printed even when clean. Both counters existed
+// only in the --json result before 2026-09-03 (audit R11-24), so the markdown
+// report every reader actually opens showed the denominators with nothing
+// beside them saying whether they were complete. A gate that only speaks up
+// when it has something to say is a gate you cannot tell from a broken one.
+function integrityLine(r) {
+  const unread = r.unreadableTranscripts || [];
+  const malformed = r.malformedTranscripts || [];
+  if (unread.length === 0 && malformed.length === 0) {
+    return 'Reader integrity: every transcript read in full (0 unreadable, 0 malformed lines).';
+  }
+  const badLines = malformed.reduce((n, m) => n + m.lines, 0);
+  const parts = [];
+  if (unread.length) parts.push(`${unread.length} transcript(s) unreadable: ${unread.map(u => `\`${u.file}\` (${u.reason})`).join(', ')}`);
+  if (malformed.length) {
+    parts.push(
+      `${badLines} unparseable line(s) across ${malformed.length} transcript(s): ${malformed.map(m => `\`${m.file}\` ×${m.lines}`).join(', ')}`
+    );
+  }
+  return `Reader integrity: **the denominators below are short** — ${parts.join('; ')}.`;
+}
+
 function formatMarkdown(r) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const out = [
     `# Sampling audit — ${today}`,
     '',
     `Window: ${r.windowDays}d · Transcripts scanned: ${r.scannedTranscripts} · Total assistant turns: ${r.totalTurns}`,
     `Source: \`${r.projectsDir}\``,
+    integrityLine(r),
     '',
     '> Metric contract (pre-registered): compliance = 1 − violations/opportunities.',
     '> A rate without its denominator is not evidence. Detector rates stay',
@@ -941,6 +996,9 @@ Options:
   --global       Scan all CC project dirs (~/.claude/projects/*), stratified
                  self-repo vs external — not just cwd.
   --json         Emit machine-readable JSON to stdout instead of markdown report.
+  --force        Overwrite an existing tasks/sampling-audit-<date>.md. Without
+                 it a same-day re-run refuses, because that file is where
+                 hand-annotated calibration records live.
   --help, -h     Print this message and exit.
 
 Env: CLAUDEMD_SAMPLING_DAYS=N (overridden by --days=N when both set).
@@ -996,7 +1054,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     // Zero scanned transcripts → an all-zeros report reads like a completed
     // audit and litters tasks/ with stubs. Say so and write nothing.
     if (result.scannedTranscripts === 0) {
@@ -1025,6 +1083,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(
         `Wrote ${outPath} — ${result.scannedTranscripts} transcripts, ${result.totalTurns} turns scanned.`
       );
+      const badLines = (result.malformedTranscripts || []).reduce((n, m) => n + m.lines, 0);
+      if (badLines > 0 || (result.unreadableTranscripts || []).length > 0) {
+        console.log(`  ${integrityLine(result).replace(/\*\*/g, '')}`);
+      }
       for (const k of RULE_KEYS) {
         const v = result.byRule[k];
         console.log(

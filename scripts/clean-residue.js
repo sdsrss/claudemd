@@ -398,7 +398,7 @@ export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now 
 // TMP_RETENTION_DAYS: N in the invoking project's CLAUDE.md (spec §EXT §7-EXT
 // override syntax). Malformed values warn to stderr and fall back to the default —
 // a silently-ignored config knob is the flag-shape antipattern (see lib/argv.js).
-export function readRetentionFromClaudeMd(cwd = process.cwd()) {
+function readRetentionFromClaudeMd(cwd = process.cwd()) {
   const file = path.join(cwd, 'CLAUDE.md');
   let src;
   try {

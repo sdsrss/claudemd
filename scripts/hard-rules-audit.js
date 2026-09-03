@@ -27,7 +27,7 @@ const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
 
 Audit the HARD-rules manifest. Cross-references spec/hard-rules.json with
 rule-hits.jsonl bySection over the last N days. Surfaces §13.1 demote
-demote candidates and stale-review entries.
+candidates and stale-review entries.
 
 Options:
   --days=N       Window in days (positive integer, default 30).

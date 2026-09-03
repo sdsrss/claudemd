@@ -56,9 +56,14 @@ Options:
   --strict           Exit non-zero (1) when CRITICAL or HIGH findings present.
                      Default: always exit 0 (advisory).
   --project=<cwd>    MEMORY.md scan target cwd (default: process.cwd()).
+  --cwd=<cwd>        Alias for --project. lesson-bypass-audit spells this same
+                     concept --cwd; both tools accept both names.
   --help, -h         Print this message and exit.
 
-Exit codes: 0 success | 1 strict-mode CRITICAL/HIGH | 2 argv-shape error.`;
+Exit codes: 0 success | 1 runtime error, or --strict with CRITICAL/HIGH | 2 argv-shape error.
+  Note: 1 is overloaded — a failed run and a --strict finding share it. Read
+  stderr (a runtime failure prints '[claudemd] spec-coherence-audit failed: …'
+  and emits no report) rather than branching on the code alone.`;
 
 // v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤25K / extended
 // ≤50K. The danger ratio (0.97) is the standing-advisory band: once a file
@@ -618,7 +623,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     parsed = parseStrict(process.argv.slice(2), {
       bools: ['--json', '--strict'],
-      values: ['--project'],
+      // `--cwd` is the same concept under lesson-bypass-audit's spelling
+      // (R11-25). Accepting only one of the two names made whichever you typed
+      // second an argv-shape error; the alias is deliberately two-directional,
+      // because a one-directional one just moves which tool rejects you.
+      values: ['--project', '--cwd'],
     });
   } catch (e) {
     if (e instanceof ArgvError) {
@@ -629,7 +638,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const json = parsed.bools.has('--json');
   const strict = parsed.bools.has('--strict');
-  const projectCwd = parsed.values['--project'] ?? process.cwd();
+  // Same conflict rule as lesson-bypass-audit: two spellings of one flag given
+  // DIFFERENT values is a mistake, and silently picking one audits a project
+  // the operator did not name.
+  const aliasProject = parsed.values['--project'];
+  const aliasCwd = parsed.values['--cwd'];
+  if (aliasProject != null && aliasCwd != null && aliasProject !== aliasCwd) {
+    console.error(
+      `--project and --cwd are aliases but were given different values ` +
+        `('${aliasProject}' vs '${aliasCwd}'). Pass one.`
+    );
+    process.exit(1);
+  }
+  const projectCwd = aliasProject ?? aliasCwd ?? process.cwd();
   const pluginRoot = resolvePluginRoot(import.meta.url);
   // One-line failure, not a bare V8 stack (audit-2026-08-22 条目 16, extended
   // to the sync entry points by the 2026-08-29 audit R10-20). This call reads

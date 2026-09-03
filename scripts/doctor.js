@@ -377,7 +377,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // ones landing there but is forward-only, so on an installation old enough to
   // have run updates before 0.68.3, `CLAUDEMD_SPEC_ACTION=restore` still
   // returns whichever of these is newest instead of the user's own CLAUDE.md,
-  // and they still count against pruneBackups(5).
+  // and they still count against pruneBackups(BACKUP_RETAIN_COUNT).
   //
   // Reported, never moved. A spec-shaped dir here may have been written by
   // update.js OR by an install.js from before v0.23.11 (which backed up

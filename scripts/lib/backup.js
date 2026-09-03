@@ -39,6 +39,13 @@ export const BACKUP_LABELS = {
 };
 const DEFAULT_LABEL = BACKUP_LABELS.personal;
 
+// How many backup generations survive a prune. The literal `5` was written six
+// times — three defaults here plus three call sites in install.js / update.js /
+// doctor.js prose (audit R11-31). Six copies of a retention policy is five
+// chances to change it in one place and leave the others; and this one governs
+// how far back a user can restore, so a partial change is silent data loss.
+export const BACKUP_RETAIN_COUNT = 5;
+
 // Human-facing glob list for every namespace, derived from BACKUP_LABELS.
 //
 // doctor's inventory and --prune-backups were widened to all three namespaces
@@ -136,7 +143,7 @@ export function listBackups({ label = DEFAULT_LABEL } = {}) {
 // a genuine pre-v0.23.11 personal backup with user files beside the spec, and
 // nothing at runtime tells the two apart, so it is the user's call. doctor
 // reports the skipped set so its count and this one read the same.
-export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL, exclude = [] } = {}) {
+export function pruneBackups(retainCount = BACKUP_RETAIN_COUNT, { label = DEFAULT_LABEL, exclude = [] } = {}) {
   const skip = exclude instanceof Set ? exclude : new Set(exclude);
   const backups = listBackups({ label }).filter(b => !skip.has(b.dir));
   const removed = [];
@@ -152,7 +159,7 @@ export function pruneBackups(retainCount = 5, { label = DEFAULT_LABEL, exclude =
 // backup files indefinitely. Mirror pruneBackups (keep 5 newest, drop rest)
 // so `/claudemd-doctor` is not needed to surface the growth. Lexicographic
 // sort on the iso stamp is chronological by construction.
-export function pruneSettingsBackups(retainCount = 5) {
+export function pruneSettingsBackups(retainCount = BACKUP_RETAIN_COUNT) {
   const dir = path.dirname(settingsPath());
   if (!fs.existsSync(dir)) return [];
   const entries = fs
@@ -176,7 +183,7 @@ export function pruneSettingsBackups(retainCount = 5) {
 // statusline adopt path. Mirrors the inline block install.js used pre-extraction:
 // `.claudemd-backup-<isoStamp>` sibling, numeric-suffixed on the (vanishingly
 // rare) same-ms collision, then rotate to `retainCount` newest.
-export function backupSettingsFile(retainCount = 5) {
+export function backupSettingsFile(retainCount = BACKUP_RETAIN_COUNT) {
   const p = settingsPath();
   if (!fs.existsSync(p)) return { backup: null, pruned: [] };
   let candidate = `${p}.claudemd-backup-${isoStamp()}`;

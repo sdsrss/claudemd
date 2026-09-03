@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -421,4 +422,79 @@ test('summary severityCounts aggregates across checks', () => {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+// R11-26 (2026-09-03 audit): `--project=` had zero occurrences in tests/. The
+// memory-index check above is exercised only through the library's `projectCwd`
+// argument; the CLI flag that supplies it was untested, so the flag could have
+// stopped reaching auditSpecCoherence and every run would have silently audited
+// the CURRENT cwd's memory dir instead of the one the operator named — reporting
+// a clean memory index for the wrong project.
+test('R11-26 CLI: --project= selects the memory dir the audit scans', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-cli-'));
+  try {
+    const target = '/work/r11-26-target';
+    const encoded = target.replace(/[^a-zA-Z0-9-]/g, '-');
+    const memDir = path.join(tmpHome, '.claude/projects', encoded, 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- [Missing](feedback_r1126_dangling.md) `[tag]` — dangling\n');
+
+    const run = args =>
+      spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args], {
+        cwd: REPO_ROOT,
+        env: { ...process.env, HOME: tmpHome },
+        encoding: 'utf8',
+        timeout: 20000,
+      });
+
+    const named = run([`--project=${target}`]);
+    assert.equal(named.status, 0, `stderr=${named.stderr}`);
+    const withFlag = JSON.parse(named.stdout);
+    assert.equal(withFlag.projectCwd, target, 'the flag must reach the report header');
+    const check = withFlag.checks.find(c => c.name === 'memory-index');
+    assert.equal(check.ok, false);
+    assert.ok(
+      check.findings.some(f => /feedback_r1126_dangling\.md/.test(f.detail)),
+      `expected the named project's dangling ref; got ${JSON.stringify(check.findings)}`
+    );
+
+    // Control: without the flag the same invocation audits process.cwd(), whose
+    // memory dir does not exist under this sandbox HOME — so the finding above
+    // is attributable to the flag, not to something the audit always reports.
+    const bare = run([]);
+    assert.equal(bare.status, 0, `stderr=${bare.stderr}`);
+    const withoutFlag = JSON.parse(bare.stdout);
+    assert.equal(withoutFlag.projectCwd, REPO_ROOT);
+    assert.equal(
+      withoutFlag.checks.find(c => c.name === 'memory-index').findings.some(f => /r1126_dangling/.test(f.detail)),
+      false
+    );
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('R11-25: --cwd is accepted as an alias of --project, and a conflicting pair is refused', () => {
+  // The alias shipped one-directional in the first cut of this release:
+  // lesson-bypass-audit learned --project, but this tool still exited 2 on
+  // --cwd, so "whichever you typed second is an error" was only half fixed.
+  const run = args =>
+    spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+
+  const viaCwd = run(['--cwd=/work/alias-target']);
+  assert.equal(viaCwd.status, 0, `stderr=${viaCwd.stderr}`);
+  assert.equal(JSON.parse(viaCwd.stdout).projectCwd, '/work/alias-target');
+
+  const viaProject = run(['--project=/work/alias-target']);
+  assert.equal(viaProject.status, 0, `stderr=${viaProject.stderr}`);
+  assert.equal(JSON.parse(viaProject.stdout).projectCwd, '/work/alias-target');
+
+  assert.equal(run(['--project=/a', '--cwd=/a']).status, 0);
+  const conflict = run(['--project=/a', '--cwd=/b']);
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.stderr, /--project and --cwd are aliases but were given different values/);
 });

@@ -43,7 +43,7 @@ export const SCAN_EXT = ['.js'];
 // antipattern strings as part of detector code or documentation, NOT runtime
 // parsing. The lint-argv gate is per-line by design; whole-file exemption
 // only when the file is itself the gate or the parser library.
-export const FILE_ALLOWLIST = {
+const FILE_ALLOWLIST = {
   'scripts/lib/argv.js': 'parseStrict implementation; pattern shapes appear in comments + error messages',
   'scripts/lint-argv.js': 'this gate (the detector itself)',
 };
@@ -82,7 +82,37 @@ const ALLOW_LINE_RE = new RegExp(`^//\\s*${ALLOW_TOKEN.replace(/[.*+?^${}()|[\]\
 // `if (import.meta.url === \`file://${process.argv[1]}\`) {`, the body must
 // call EITHER parseStrict( OR printHelpAndExit( OR validateAndExpandFlags(
 // (bin/claudemd-lint.js path). Files without a main block are ignored.
-const MAIN_BLOCK_GUARD_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
+// Two main-guard shapes exist in this tree. The href compare is the common one.
+// The realpath compare (design-detect.js, statusline-adopt.js) exists because a
+// bare href compare silently no-ops when the script is reached through a
+// symlinked directory — so it is the shape a NEW CLI is most likely to copy.
+// This gate saw only the first until 2026-09-03 (audit R11-33). Both files that
+// use the second happen to validate argv, so the hole was an escape route
+// rather than a live miss: the next realpath-form CLI would have shipped with
+// `--bogus` silently accepted and this gate green.
+const MAIN_BLOCK_HREF_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
+// The realpath form is two statements: an IIFE comparing realpaths bound to a
+// name, then `if (<name>)`. Keyed on the IIFE (which is what makes it a main
+// guard) rather than on the identifier spelling, so renaming `invokedAsMain`
+// does not reopen the hole.
+const MAIN_BLOCK_REALPATH_DECL_RE =
+  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?realpathSync\s*\([\s\S]{0,200}?process\.argv\[1\]/;
+
+// → {index} like a RegExp match, or null. Exported so the gate's own test can
+// pin BOTH shapes against fixtures rather than against the two real files that
+// happen to be compliant today.
+export function findMainBlockGuard(text) {
+  const href = text.match(MAIN_BLOCK_HREF_RE);
+  const decl = text.match(MAIN_BLOCK_REALPATH_DECL_RE);
+  let realpathIdx = -1;
+  if (decl) {
+    const use = new RegExp(`if\\s*\\(\\s*${decl[1]}\\s*\\)`).exec(text.slice(decl.index));
+    if (use) realpathIdx = decl.index + use.index;
+  }
+  const candidates = [href ? href.index : -1, realpathIdx].filter(i => i >= 0);
+  if (candidates.length === 0) return null;
+  return { index: Math.min(...candidates) };
+}
 const ARGV_VALIDATORS = ['parseStrict', 'printHelpAndExit', 'validateAndExpandFlags'];
 // The call alone is not authentication (audit-2026-08-22 条目 14). A file that
 // declares its own function by one of those names would validate nothing — and
@@ -115,7 +145,7 @@ function importedValidatorBindings(text) {
 // Files that legitimately have a main block but no argv contract — must be
 // allowlisted with a one-line reason. Empty by default; entries here represent
 // considered exemptions, not "I forgot to wire parseStrict."
-export const MAIN_BLOCK_ALLOWLIST = {};
+const MAIN_BLOCK_ALLOWLIST = {};
 
 export function scanMainBlockMissingArgv({
   root = REPO_ROOT,
@@ -135,7 +165,7 @@ export function scanMainBlockMissingArgv({
       if (fileAllowlist[rel]) continue;
       if (mainBlockAllowlist[rel]) continue;
       const text = fs.readFileSync(file, 'utf8');
-      const guardMatch = text.match(MAIN_BLOCK_GUARD_RE);
+      const guardMatch = findMainBlockGuard(text);
       if (!guardMatch) continue;
       const body = text.slice(guardMatch.index);
       // The name the main block calls must be a binding this file imported from

@@ -480,7 +480,20 @@ function auditCmd(rawArgs) {
     }
   }
 
-  const turns = parseTranscript(jsonl);
+  // `integrity` counts the rows parseTranscript drops. The pre-flight above
+  // only catches an ENTIRELY unparseable file; a transcript that is 30%
+  // corrupt passed it and then printed "no §10-V hits across N turn(s)" with N
+  // silently short (audit R11-24). Same warning shape as the string-row skip
+  // below — the verdict still comes from the rows that parsed, but the reader
+  // is told how many did not.
+  const integrity = { totalLines: 0, badLines: 0 };
+  const turns = parseTranscript(jsonl, integrity);
+  if (integrity.badLines > 0) {
+    process.stderr.write(
+      `audit: warning: skipped ${integrity.badLines} of ${integrity.totalLines} non-empty line(s) ` +
+        `that did not parse as JSON — the turn count below covers only the rows that parsed.\n`
+    );
+  }
   // QA ISSUE-002 (option c): string-shape assistant rows are outside the
   // block-array input domain and never reach the scanner. Keep the verdict
   // based on scanned turns, but say so on stderr — a silent skip here is the
@@ -514,7 +527,9 @@ function auditCmd(rawArgs) {
   const flaggedCount = annotated.reduce((n, t) => n + (t.hits.length > 0 ? 1 : 0), 0);
 
   if (json) {
-    process.stdout.write(formatJSON({ scope: 'audit', transcript: transcriptPath, turns: annotated }) + '\n');
+    process.stdout.write(
+      formatJSON({ scope: 'audit', transcript: transcriptPath, turns: annotated, integrity }) + '\n'
+    );
   } else {
     const out = formatHumanReadable({ scope: 'audit', turns: annotated });
     if (flaggedCount === 0) process.stdout.write(out + '\n');

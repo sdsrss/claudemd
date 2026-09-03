@@ -244,3 +244,38 @@ test('sparkline CLI rejects unknown flag (was silent ignore)', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Unknown flag.*--bogus/);
 });
+
+// R11-26 (2026-09-03 audit): CLAUDEMD_SPARKLINE_DAYS had zero occurrences in
+// tests/. The env→arg path has its own validation branch (resolveDaysListFlag
+// reads the env only when --days is absent), so a regression there would have
+// shipped green — and this env var is what /claudemd-sparkline and the release
+// header use to widen the windows.
+test('R11-26: CLAUDEMD_SPARKLINE_DAYS sets the windows, and --days overrides it', () => {
+  writeRows([{ daysAgo: 1, section: '§10-V' }]);
+  const env = { ...process.env, HOME: tmpHome, CLAUDEMD_SPARKLINE_DAYS: '7,14,28' };
+
+  const fromEnv = spawnSync(process.execPath, [SPARKLINE_JS], { env, encoding: 'utf8' });
+  assert.equal(fromEnv.status, 0, `stderr=${fromEnv.stderr}`);
+  assert.match(fromEnv.stdout, /7d/);
+  assert.match(fromEnv.stdout, /28d/);
+  assert.doesNotMatch(fromEnv.stdout, /\b90d\b/, 'the default 30,60,90 must not win over the env');
+
+  // USAGE promises "overridden by --days when both set" — assert the promise.
+  const overridden = spawnSync(process.execPath, [SPARKLINE_JS, '--days=5,50'], { env, encoding: 'utf8' });
+  assert.equal(overridden.status, 0, `stderr=${overridden.stderr}`);
+  assert.match(overridden.stdout, /50d/);
+  assert.doesNotMatch(overridden.stdout, /\b28d\b/);
+});
+
+test('R11-26: a malformed CLAUDEMD_SPARKLINE_DAYS fails loudly, not to the default', () => {
+  // The list validator rejects the WHOLE list rather than truncating; via the
+  // env that has to surface as exit 1, not as a silent fall back to 30,60,90.
+  for (const bad of ['1.5,2,3', '30', 'abc,def', '0,10']) {
+    const r = spawnSync(process.execPath, [SPARKLINE_JS], {
+      env: { ...process.env, HOME: tmpHome, CLAUDEMD_SPARKLINE_DAYS: bad },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1, `CLAUDEMD_SPARKLINE_DAYS=${bad} must exit 1, got ${r.status}`);
+    assert.match(r.stderr, /--days expects ≥2 comma-separated positive integers/);
+  }
+});

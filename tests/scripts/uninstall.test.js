@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { install } from '../../scripts/install.js';
 import { uninstall } from '../../scripts/uninstall.js';
 import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 let tmpHome, savedHome, pluginRoot;
 
@@ -488,4 +492,48 @@ test('--purge still clears the whole directory when it IS .claudemd-state (seam 
     else process.env.CLAUDEMD_STATE_DIR = saved;
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// R11-26 (2026-09-03 audit): every test above calls uninstall() as a library
+// function, so `confirmHardAuth` was covered but the env→arg mapping that
+// produces it (`CLAUDEMD_CONFIRM === '1'`, uninstall.js:265) was not — and
+// that mapping is the entire hard-AUTH gate on deleting the user's spec files.
+// A loosened comparison (`process.env.CLAUDEMD_CONFIRM` truthiness) would have
+// passed every existing test while turning `CLAUDEMD_CONFIRM=0` into a confirm.
+test('R11-26: the CLAUDEMD_CONFIRM env→arg mapping gates the spec delete on exactly "1"', () => {
+  const script = path.join(REPO_ROOT, 'scripts', 'uninstall.js');
+  const specFile = path.join(tmpHome, '.claude/CLAUDE.md');
+  const run = confirm =>
+    spawnSync(process.execPath, [script], {
+      encoding: 'utf8',
+      timeout: 30000,
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        CLAUDEMD_SPEC_ACTION: 'delete',
+        ...(confirm === undefined ? {} : { CLAUDEMD_CONFIRM: confirm }),
+      },
+    });
+
+  assert.ok(fs.existsSync(specFile), 'premise: install() seeded the spec into the sandbox HOME');
+
+  // Every non-"1" spelling must abort — including the ones a shell user would
+  // reasonably reach for.
+  for (const notOne of [undefined, '', '0', 'true', 'yes', 'TRUE', ' 1', '1 ', '01']) {
+    const r = run(notOne);
+    assert.equal(r.status, 0, `CLAUDEMD_CONFIRM=${JSON.stringify(notOne)}: stderr=${r.stderr}`);
+    assert.equal(
+      JSON.parse(r.stdout).specAction,
+      'abort',
+      `CLAUDEMD_CONFIRM=${JSON.stringify(notOne)} must not confirm a spec delete`
+    );
+    assert.ok(fs.existsSync(specFile), `CLAUDEMD_CONFIRM=${JSON.stringify(notOne)} left the spec deleted`);
+  }
+
+  // …and "1" must actually confirm, or the abort assertions above would pass
+  // on a gate that is simply always closed.
+  const ok = run('1');
+  assert.equal(ok.status, 0, `stderr=${ok.stderr}`);
+  assert.equal(JSON.parse(ok.stdout).specAction, 'delete');
+  assert.equal(fs.existsSync(specFile), false, 'CLAUDEMD_CONFIRM=1 must carry the delete through');
 });

@@ -19,21 +19,15 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
 LIB="$HOOKS_DIR/lib/hook-common.sh"
-FAIL=0
 
-pass() { echo "PASS: $1"; }
-fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
+# Shared assertion vocabulary (R11-27). This suite's private copies counted
+# failures but not passes, so its tally could not be summed with a suite that
+# counted both — the migration exists to make one "Tests: N/M passed" line mean
+# one thing repo-wide.
+# shellcheck source=../lib/assert.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/assert.sh"
 
 view() { printf '%s' "$1" | bash -c "source '$LIB'; hook_trigger_view"; }
-
-assert_contains() {
-  local name="$1" needle="$2" hay="$3"
-  [[ "$hay" == *"$needle"* ]] && pass "$name" || fail "$name (expected to contain '$needle', got: $hay)"
-}
-assert_not_contains() {
-  local name="$1" needle="$2" hay="$3"
-  [[ "$hay" != *"$needle"* ]] && pass "$name" || fail "$name (expected NOT to contain '$needle', got: $hay)"
-}
 
 # ---------------------------------------------------------------- library view
 # 1. A newline is a real command separator, not a space (the H1 defect).
@@ -84,17 +78,17 @@ while IFS= read -r _c; do
 done < <(grep -l -F "$ANCHOR" "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
 
 if (( ${#CONSUMERS[@]} >= 3 )); then
-  pass "6 consumer set floor (${#CONSUMERS[@]} segment-anchored hooks found)"
+  ok "6 consumer set floor (${#CONSUMERS[@]} segment-anchored hooks found)"
 else
-  fail "6 consumer set floor (expected >= 3 segment-anchored hooks, found ${#CONSUMERS[@]})"
+  ng "6 consumer set floor (expected >= 3 segment-anchored hooks, found ${#CONSUMERS[@]})"
 fi
 
 for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
   if grep -q 'hook_trigger_view' "$c"; then
-    pass "7 $base builds its trigger input via hook_trigger_view"
+    ok "7 $base builds its trigger input via hook_trigger_view"
   else
-    fail "7 $base does NOT use hook_trigger_view (segment-anchored hook off the shared recipe)"
+    ng "7 $base does NOT use hook_trigger_view (segment-anchored hook off the shared recipe)"
   fi
 done
 
@@ -105,9 +99,9 @@ done
 for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
   if grep -vE '^[[:space:]]*#' "$c" | grep -qE "tr '\\\\n' ' '"; then
-    fail "8 $base still carries a private \`tr '\\n' ' '\` flatten"
+    ng "8 $base still carries a private \`tr '\\n' ' '\` flatten"
   else
-    pass "8 $base carries no private flatten spelling"
+    ok "8 $base carries no private flatten spelling"
   fi
 done
 
@@ -121,16 +115,16 @@ printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"npm
 OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
 DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] \
-  && pass "9 multi-line git commit with banned vocab denies (§10-V gate sees line 2)" \
-  || fail "9 multi-line git commit with banned vocab NOT denied (got: ${DEC:-<none>})"
+  && ok "9 multi-line git commit with banned vocab denies (§10-V gate sees line 2)" \
+  || ng "9 multi-line git commit with banned vocab NOT denied (got: ${DEC:-<none>})"
 
 # FP guard, unchanged from banned-vocab.test.sh case 23: the same text inside a
 # heredoc body is data, not an invocation. A flatten-only fix would deny this.
 printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"cat <<EOF\ngit commit -m \"significantly\"\nEOF"},"cwd":"/tmp"}' > "$FIX"
 OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
 [[ -z "$OUT" ]] \
-  && pass "10 heredoc body with banned vocab still passes (FP guard held)" \
-  || fail "10 heredoc body with banned vocab denied (FP regression): $OUT"
+  && ok "10 heredoc body with banned vocab still passes (FP guard held)" \
+  || ng "10 heredoc body with banned vocab denied (FP regression): $OUT"
 
 # ------------------------------------------- git global flags (R10-05)
 # Second consumer set, same enumeration discipline: any hook whose trigger keys
@@ -160,17 +154,17 @@ done < <(for f in "$HOOKS_DIR"/*.sh; do
          done | sort)
 
 if (( ${#GIT_CONSUMERS[@]} >= 3 )); then
-  pass "11 git-trigger consumer set floor (${#GIT_CONSUMERS[@]} hooks key on a git subcommand)"
+  ok "11 git-trigger consumer set floor (${#GIT_CONSUMERS[@]} hooks key on a git subcommand)"
 else
-  fail "11 git-trigger consumer set floor (expected >= 3, found ${#GIT_CONSUMERS[@]})"
+  ng "11 git-trigger consumer set floor (expected >= 3, found ${#GIT_CONSUMERS[@]})"
 fi
 
 for c in ${GIT_CONSUMERS[@]+"${GIT_CONSUMERS[@]}"}; do
   base=$(basename "$c")
   if grep -vE '^[[:space:]]*#' "$c" | grep -F 'HOOK_GIT_GLOBAL_FLAGS' >/dev/null; then
-    pass "12 $base splices in HOOK_GIT_GLOBAL_FLAGS"
+    ok "12 $base splices in HOOK_GIT_GLOBAL_FLAGS"
   else
-    fail "12 $base keys on a git subcommand WITHOUT the shared global-flag group"
+    ng "12 $base keys on a git subcommand WITHOUT the shared global-flag group"
   fi
 done
 
@@ -192,10 +186,10 @@ for shape in 'git -C /repo push origin main' 'git --git-dir=/r/.git push' \
              'git -c user.name=x push' 'git --no-pager push' \
              'npm test && git -C /repo push' \
              'git push' 'git -C /repo push' 'git push --force'; do
-  gmatch "$shape" && pass "13 matches: $shape" || fail "13 does NOT match: $shape"
+  gmatch "$shape" && ok "13 matches: $shape" || ng "13 does NOT match: $shape"
 done
 for shape in 'git status push' 'echo git push-notes' 'git-push-helper run'; do
-  gmatch "$shape" && fail "14 FP — matched: $shape" || pass "14 correctly ignores: $shape"
+  gmatch "$shape" && ng "14 FP — matched: $shape" || ok "14 correctly ignores: $shape"
 done
 
 # Live cross-gate: the §10-V scan must see a `-C`-form commit.
@@ -203,15 +197,15 @@ printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git
 OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
 DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] \
-  && pass "15 git -C commit with banned vocab denies" \
-  || fail "15 git -C commit with banned vocab NOT denied (got: ${DEC:-<none>})"
+  && ok "15 git -C commit with banned vocab denies" \
+  || ng "15 git -C commit with banned vocab NOT denied (got: ${DEC:-<none>})"
 
 # FP guard for the same arm: a bare word after `git` is a different subcommand.
 printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git log --oneline --grep=\"significantly faster\" -- ."},"cwd":"/tmp"}' > "$FIX"
 OUT=$(HOME="$TMP_HOME" DISABLE_RULE_HITS_LOG=1 bash "$HOOKS_DIR/banned-vocab-check.sh" < "$FIX" 2>&1)
 [[ -z "$OUT" ]] \
-  && pass "16 git log with the same words still passes (FP guard)" \
-  || fail "16 git log denied (FP regression): $OUT"
+  && ok "16 git log with the same words still passes (FP guard)" \
+  || ng "16 git log denied (FP regression): $OUT"
 
 # ------------------------------------------------- R11-05 (2026-09-02 audit)
 # Two independent line-based seds stripped quotes here —
@@ -258,8 +252,4 @@ assert_contains "23 empty single-quote marker preserved" "''" "$V"
 V=$(view 'git push origin "unterminated')
 assert_contains "24 unterminated quoted body is left intact" "unterminated" "$V"
 
-if (( FAIL > 0 )); then
-  echo "FAILED: $FAIL case(s)"
-  exit 1
-fi
-echo "All cases passed"
+claudemd_assert_summary

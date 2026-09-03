@@ -118,3 +118,33 @@ test('adopt --supersede a non-existent id → human warns, --json surfaces super
   assert.equal(obj.supersedeMissed, 'ghost');
   assert.equal(obj.superseded, null);
 });
+
+// R11-26 (2026-09-03 audit): `--empty-only` had zero occurrences in tests/.
+// The lib parameter reaches adopt() from install.js:351 and is covered there
+// only as a library argument — the CLI flag that sets it was untested, so a
+// parseStrict rename would have silently turned the install-time guard off and
+// let a fresh install clobber a foreign statusLine.
+test('R11-26: adopt --empty-only writes into an empty slot but never over a foreign one', () => {
+  // Empty slot: the guard permits the write (that IS the install-time case).
+  const empty = run(['adopt', '--empty-only', '--json']);
+  assert.equal(empty.status, 0, `stderr=${empty.stderr}`);
+  assert.equal(JSON.parse(empty.stdout).action, 'set');
+
+  // Foreign slot: the guard must refuse, WITHOUT --force being involved.
+  const settings = path.join(tmpHome, '.claude/settings.json');
+  fs.writeFileSync(settings, JSON.stringify({ statusLine: { type: 'command', command: '/opt/other/line.sh' } }));
+  const foreign = run(['adopt', '--empty-only', '--json']);
+  assert.equal(foreign.status, 0, `stderr=${foreign.stderr}`);
+  assert.equal(JSON.parse(foreign.stdout).action, 'skipped-foreign');
+  assert.equal(
+    JSON.parse(fs.readFileSync(settings, 'utf8')).statusLine.command,
+    '/opt/other/line.sh',
+    'the foreign slot must survive byte-for-byte'
+  );
+
+  // Control: without --empty-only the same foreign slot is still refused
+  // (that is --force's job), so the assertion above is not just re-testing the
+  // foreign guard.
+  const noFlag = run(['adopt', '--json']);
+  assert.notEqual(JSON.parse(noFlag.stdout).action, 'set');
+});

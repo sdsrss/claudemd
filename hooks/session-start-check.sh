@@ -97,7 +97,12 @@ emit_session_summary_banner() {
   local total=$((denies + bypasses + warns))
   (( total > 0 )) || return 0
 
-  local msg="[claudemd] last session: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
+  # "since last turn", not "last session" (audit R11-33). The window this counts
+  # runs from the previous Stop-hook touch to the Stop that wrote the file, and
+  # Stop fires at every turn boundary — so what a fresh session sees here is the
+  # PREVIOUS SESSION'S LAST TURN, not its whole run. The old label invited the
+  # reader to treat one turn's denies as a session total.
+  local msg="[claudemd] since last turn: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
   [[ -n "$top_section" && "$top_section" != "null" ]] && msg+=", top: ${top_section}"
   msg+=". Disable: DISABLE_SESSION_SUMMARY_BANNER=1"
 

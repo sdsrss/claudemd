@@ -30,6 +30,12 @@ source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 hook_kill_switch SESSION_SUMMARY || exit 0
+# Deliberately bare, NOT an F4-sweep leftover. Audit R11-33 read this as the
+# last un-instrumented jq exit; docs/RULE-HITS-SCHEMA.md's `fail-open` row
+# already records the opposite as a decision: session-summary enforces no spec
+# rule, so a fail-open row from it carries no enforcement signal and only
+# dilutes the rate the §13.1 demote review divides by. Re-checked 2026-09-03 —
+# if this ever starts enforcing something, that is when it starts emitting.
 hook_require_jq || exit 0
 
 # Best-effort session_id from Stop stdin — same shape as residue-audit.sh and

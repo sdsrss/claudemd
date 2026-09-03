@@ -482,6 +482,38 @@ test('CLI: audit on JSONL with one corrupt + one valid row → exit 0 (preserves
   }
 });
 
+test('R11-24: audit says how many lines it skipped, and keeps stdout pure under --json', () => {
+  // The silent skip above is correct behavior with a hole in it: "no §10-V hits
+  // across 1 assistant turn(s)" and "…across 1 of 4 rows, 3 unparseable" read
+  // the same. The pre-flight only catches a WHOLLY unparseable file.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-r1124-'));
+  const mixed = path.join(tmp, 'mixed.jsonl');
+  const good = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'clean' }] } });
+  fs.writeFileSync(mixed, ['{"partial":', good, 'not json at all', '{"x":'].join('\n') + '\n');
+  const clean = path.join(tmp, 'clean.jsonl');
+  fs.writeFileSync(clean, good + '\n');
+  try {
+    const r = run(['audit', mixed]);
+    assert.equal(r.status, 0);
+    assert.match(r.stderr, /skipped 3 of 4 non-empty line\(s\) that did not parse as JSON/);
+
+    // No warning when nothing was skipped — the message must track the data.
+    const c = run(['audit', clean]);
+    assert.equal(c.status, 0);
+    assert.doesNotMatch(c.stderr, /did not parse as JSON/);
+
+    // --json: the counter belongs in the payload, and the warning must not
+    // contaminate stdout (same contract as the string-shape warning below).
+    const j = run(['audit', '--json', mixed]);
+    assert.equal(j.status, 0);
+    const payload = JSON.parse(j.stdout);
+    assert.equal(payload.integrity.badLines, 3);
+    assert.equal(payload.integrity.totalLines, 4);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');

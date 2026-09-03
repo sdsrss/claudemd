@@ -43,7 +43,7 @@ Options:
   --hook=<basename>   Audit only the named hook (e.g. 'pre-bash-safety-check.sh').
   --help, -h          Print this message and exit.
 
-Exit codes: 0 success | 2 argv-shape error.`;
+Exit codes: 0 success | 1 validation or runtime error | 2 argv-shape error.`;
 
 const HOOKS_DIR = 'hooks';
 

@@ -8,6 +8,42 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.73.0] - 2026-09-03
+
+Round 5 against the 2026-09-02 audit, closing the last seven open IDs (R11-24/25/26/27/31/32/33 — all P2/P3). Spec unchanged at **v6.25.4**.
+
+The theme is **observability of the tools' own reading**: three of these had the shape "the number is right about the rows it saw, and nothing says which rows it did not see."
+
+### User-visible
+
+- **Every transcript reader now counts the lines it could not parse.** `claudemd-cli audit`, `/claudemd-sampling-audit` and `/claudemd-bypass-audit` all skipped unparseable JSONL rows silently. Skipping is correct — a half-corrupt transcript is still worth scanning — but "no §10-V hits across 40 turns" and "…across the 40 turns that happened to parse" printed identically, and every §13.2 compliance rate divides by one of those turn counts. `rule-hits-parse.js` had carried this counter since a 33% corruption went unnoticed there; the transcript side now has it too. In `lesson-bypass-audit` the stake is a flipped verdict rather than a smaller sample: a dropped row that held the `Read` of a suggested memory file scores that lesson as **bypassed**, so cite-recall moved in the alarming direction with nothing saying why. The sampling-audit markdown report gains a `Reader integrity:` line that prints **in both states** — one that speaks up only on trouble cannot be told from one that stopped printing.
+- **`/claudemd-sampling-audit` writes its report under the local calendar day.** The filename and the same-day overwrite guard both came from `toISOString()`, so at UTC+8 every run before 08:00 named — and guarded — *yesterday's* file. The guard exists to protect a hand-annotated calibration record; it was pointed at the wrong one.
+- **The SessionStart banner says "since last turn", not "last session".** The window it counts runs from the previous Stop-hook touch to the Stop that wrote the file, and Stop fires at every turn boundary — so a fresh session was reading one turn's denies under a label that invited treating them as a session total.
+- **`--project=` and `--cwd=` are accepted by both tools.** `lesson-bypass-audit` and `spec-coherence-audit` name the same thing — which CC project's `~/.claude/projects/<encoded>` to read — with different flags, so whichever you typed second was an argv-shape error. The alias is two-directional; a one-directional one would only move which tool rejects you. Passing both with different values is refused rather than silently resolved.
+
+### Exit codes: the documentation was wrong, not the code
+
+`safety-coverage-audit`, `status` and `update` each documented `0 success | 2 argv-shape error` while also exiting 1; `spec-coherence-audit` used 1 for two different things without saying so. **No exit code changed** — a released artifact's behaviour is not adjusted to match its own docs. The USAGE lines now state what the code does, `CONTRIBUTING.md` carries the 0/1/2/3 table, and `tests/scripts/exit-code-doc-drift.test.js` derives each CLI's `process.exit(N)` from source (comments stripped) and fails when its own `Exit codes:` line omits one. It judges **20 CLI entry points** — every file with a main guard, plus everything named in `package.json#bin`, which is how `bin/claudemd-lint.js` (the binary published to npm, and the one whose exit codes an external caller actually branches on) got into the set — and prints that count; reverting the three USAGE strings in a tree copy names exactly those three files.
+
+### Test infrastructure
+
+- **One assertion vocabulary for bash suites** (`tests/lib/assert.sh`). Fourteen of 28 suites each wrote their own `ok`/`pass`/`fail`, and they disagreed: some counted passes, some counted only failures, and every one of them printed `Tests: N/M passed` — so the run-wide tally summed numbers that did not mean the same thing. `claudemd_assert_summary` also **fails a suite that ran zero assertions**. Adoption is deliberately partial (rewriting fourteen working suites at once buys drift risk, not coverage), so `assert-helper-consumers.test.js` holds the un-migrated set as a list that may only shrink. It classifies by mechanism, not by helper name: the rule is “source the shared vocabulary or be on the list”, so a new suite cannot escape by calling its helper `check()`. An earlier name-matching version of that gate saw 13 suites where the real class is 27 — the pre-tag review caught it. The first migration, `trigger-view-parity.test.sh`, is the argument for the whole thing: swapping the definitions without the call sites left bash writing `command not found` to stderr while the suite exited 0 reporting `Tests: 14/14 passed` — **26 of its 40 assertions had not run**, and the tally was honest about the 14 that did.
+- **`npm run test:hooks` runs what `npm test` runs.** It bypassed both `env-hygiene` (so an inherited `DISABLE_*` knob flipped suites red with no hint) and `run_suite` (so a hung suite had no wall-clock cap).
+- **Six untested CLI modes gained a case each**: `--global` and `--sample=` (sampling-audit), `--empty-only` (statusline-adopt), `--project=` (spec-coherence), and the two env→arg mappings `CLAUDEMD_SPARKLINE_DAYS` and `CLAUDEMD_CONFIRM`. The last is the hard-AUTH gate on deleting the user's spec files: it compares against exactly `"1"`, and nine non-`1` spellings are now pinned to abort with the spec intact. These are characterization tests — green before and after — which is the point.
+
+### Hygiene
+
+- **`pre-bash-safety-check.sh` no longer globs its own token lists.** Both `for tok in $args_only` (the `rm` target scan) and `for tok in $npx_tail` (the package-name scan) word-split *and* pathname-expanded, so the tokens a security gate analysed depended on which files happened to sit in the hook's cwd. `set -f` around each loop rather than `read -r -a`: bash 3.2 under `set -u` errors on `"${arr[@]}"` for an empty array, which is exactly the `rm` with no positional args case.
+- **`lint-argv` recognises the second main-guard shape.** It matched only the `import.meta.url === \`file://${process.argv[1]}\`` form; `design-detect.js` and `statusline-adopt.js` use a realpath compare — the shape that survives a symlinked invocation, and therefore the one a new CLI copies. Both happen to validate argv, so this was an escape route rather than a live miss. The detector keys on the IIFE, not on the identifier `invokedAsMain`.
+- **Nine surplus `export`s removed** and `install.js`'s back-compat `HOOK_BASENAMES` re-export deleted (its last reader was one test line, which now imports the registry directly). Measured individually first: all nine are called inside their own file, so this narrows a public surface rather than deleting code. Three of the audit's candidates were **kept** — `SKILL_ALIASES` is named in `ARCHITECTURE.md`, and `SCAN_DIRS`/`SCAN_EXT` acquired a consumer in this release.
+- **Backup retention is one constant.** The literal `5` appeared six times across three defaults and three call sites; it governs how far back a user can restore, so a partial change is silent data loss.
+
+- **Smaller truths**: `hard-rules-audit`'s USAGE said "demote demote candidates"; `hook-registry.js`'s consumer list still described the `install.js` re-export deleted above; `commands/claudemd-sampling-audit.md` still warned that a same-day re-run overwrites the report, which the v0.57.0 guard has refused since.
+
+### One audit finding rejected
+
+R11-33 read `session-summary.sh`'s bare `hook_require_jq || exit 0` as the last un-instrumented fail-open exit. The source agrees — and the fix was written before `docs/RULE-HITS-SCHEMA.md`'s own `fail-open` row turned up recording the opposite as a decision: session-summary enforces no spec rule, so a row from it carries no enforcement signal and only dilutes the denominator the §13.1 demote review divides by. Reverted, with the reason now in the hook so it is not re-fixed. Source answers "what is it"; it cannot answer "was that on purpose".
+
 ## [0.72.0] - 2026-09-02
 
 Round 3 against the 2026-09-02 audit. Spec unchanged at **v6.25.4**.

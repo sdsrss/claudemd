@@ -118,6 +118,17 @@ test('readTranscript: malformed lines skipped, valid kept', () => {
   assert.equal(rows[1].a, 2);
 });
 
+test('R11-24: readTranscript counts the lines it skipped', () => {
+  const tmp = path.join(tmpHome, 'bad.jsonl');
+  fs.writeFileSync(tmp, '{"a":1}\n{not json}\nplain log line\n{"a":2}\n');
+  const integrity = { badLines: 0 };
+  const rows = readTranscript(tmp, integrity);
+  assert.equal(rows.length, 2);
+  assert.equal(integrity.badLines, 2);
+  // Absent out-param is the historical call shape — must still work.
+  assert.equal(readTranscript(tmp).length, 2);
+});
+
 // --- Integration: full audit pipeline ---------------------------------------
 
 function writeLog(rows) {
@@ -160,6 +171,62 @@ test('audit: 1 applied + 1 bypassed → cite-recall 50%', () => {
   assert.equal(r.bypassRate, 0.5);
   assert.equal(r.perMemory['feedback_applied.md'].applied, 1);
   assert.equal(r.perMemory['feedback_bypassed.md'].bypassed, 1);
+});
+
+test('R11-24: a corrupt row that held the Read scores bypassed — and the audit says how many rows it dropped', () => {
+  // This is the damage the counter exists to make visible: cite-recall moves in
+  // the alarming direction because a LINE failed to parse, not because a lesson
+  // was ignored. The verdict below is still 0% — dropping the row is the right
+  // behavior — but the run now carries the number that explains it.
+  const now = new Date().toISOString();
+  writeLog([
+    {
+      ts: now,
+      hook: 'memory-prompt-hint',
+      event: 'suggest',
+      session_id: 'sess-CORRUPT',
+      spec_section: '§11-memory-hint',
+      extra: { suggested: ['feedback_applied.md'], match_count: 1 },
+    },
+  ]);
+  const projectDir = path.join(tmpHome, '.claude/projects/-test-cwd');
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectDir, 'sess-CORRUPT.jsonl'),
+    [
+      JSON.stringify({ timestamp: now, message: { content: [{ type: 'text', text: 'hello' }] } }),
+      // The row that read the memory file — truncated mid-write, as a killed
+      // session leaves it.
+      '{"timestamp":"' + now + '","message":{"content":[{"type":"text","text":"reading feedback_appli',
+    ].join('\n') + '\n'
+  );
+
+  const r = lessonBypassAudit({ days: 30, cwd: '/test/cwd', projectDir });
+  assert.equal(r.totalBypassed, 1, 'the dropped row makes it look bypassed');
+  assert.equal(r.citeRecall, 0);
+  assert.equal(r.totalMalformedLines, 1, 'and the run reports why the verdict is unreliable');
+  assert.equal(r.perSession['sess-CORRUPT'].malformedLines, 1);
+});
+
+test('R11-24: a clean run reports zero malformed lines', () => {
+  const now = new Date().toISOString();
+  writeLog([
+    {
+      ts: now,
+      hook: 'memory-prompt-hint',
+      event: 'suggest',
+      session_id: 'sess-CLEAN',
+      spec_section: '§11-memory-hint',
+      extra: { suggested: ['feedback_applied.md'], match_count: 1 },
+    },
+  ]);
+  const projectDir = path.join(tmpHome, '.claude/projects/-test-cwd');
+  writeTranscript(projectDir, 'sess-CLEAN', [
+    { timestamp: now, message: { content: [{ type: 'text', text: 'reading feedback_applied.md' }] } },
+  ]);
+  const r = lessonBypassAudit({ days: 30, cwd: '/test/cwd', projectDir });
+  assert.equal(r.totalApplied, 1);
+  assert.equal(r.totalMalformedLines, 0);
 });
 
 test('audit: missing transcript → counted separately, not in applied/bypassed', () => {
@@ -391,4 +458,62 @@ test('the live hook still carries the MAX= anchor this audit reads', () => {
   const res = readHookEmitCap(path.resolve(HERE, '../..'));
   assert.equal(res.source, 'hook', 'hooks/memory-prompt-hint.sh no longer exposes `MAX=<n>` at line start');
   assert.ok(res.cap >= 1 && res.cap <= 50, `implausible emit cap ${res.cap}`);
+});
+
+// R11-25 (2026-09-03 audit): --cwd here and --project in spec-coherence-audit
+// name the same thing — the CC project whose ~/.claude/projects/<encoded> dir
+// to read — so whichever one you typed second was an argv-shape error.
+test('R11-25: --project is an alias for --cwd, and a conflicting pair is refused', () => {
+  const run = args =>
+    spawnSync(process.execPath, [SCRIPT, ...args, '--json'], {
+      env: { ...process.env, HOME: tmpHome },
+      encoding: 'utf8',
+    });
+
+  const viaProject = run(['--project=/work/aliased']);
+  assert.equal(viaProject.status, 0, `stderr=${viaProject.stderr}`);
+  assert.equal(JSON.parse(viaProject.stdout).cwd, '/work/aliased');
+
+  const viaCwd = run(['--cwd=/work/aliased']);
+  assert.equal(viaCwd.status, 0, `stderr=${viaCwd.stderr}`);
+  assert.deepEqual(JSON.parse(viaCwd.stdout), JSON.parse(viaProject.stdout), 'the two spellings must agree');
+
+  // Same value twice is fine; two different values is a mistake worth naming.
+  assert.equal(run(['--cwd=/a', '--project=/a']).status, 0);
+  const conflict = run(['--cwd=/a', '--project=/b']);
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.stderr, /--cwd and --project are aliases but were given different values/);
+});
+
+test('R11-24: a FULLY corrupt transcript keeps its malformed count across the candidate loop', () => {
+  // Pre-tag review N1: the candidate loop was last-wins, and a fully-corrupt
+  // file yields rows.length === 0 so it does NOT break — the next (absent)
+  // candidate then overwrote badLines with 0. The row landed in
+  // missingTranscript reporting malformedLines: 0, i.e. naming the wrong cause,
+  // which is the exact failure the counter was added to prevent. Needs TWO
+  // candidates, so the log row must carry a top-level `project`.
+  const now = new Date().toISOString();
+  const projectDir = path.join(tmpHome, '.claude/projects/-row-project');
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'sess-ALLBAD.jsonl'), '{broken\nalso broken\n{"x":\n');
+  writeLog([
+    {
+      ts: now,
+      hook: 'memory-prompt-hint',
+      event: 'suggest',
+      session_id: 'sess-ALLBAD',
+      project: '-row-project',
+      spec_section: '§11-memory-hint',
+      extra: { suggested: ['feedback_applied.md'], match_count: 1 },
+    },
+  ]);
+
+  const r = lessonBypassAudit({
+    days: 30,
+    cwd: '/test/cwd',
+    projectDir: path.join(tmpHome, '.claude/projects/-test-cwd'),
+  });
+  assert.equal(r.totalMissingTranscript, 1, 'zero parseable rows still reads as "missing" to the scorer');
+  assert.equal(r.totalMalformedLines, 3, 'but the run must say the file was corrupt, not absent');
+  assert.equal(r.perSession['sess-ALLBAD'].malformedLines, 3);
 });

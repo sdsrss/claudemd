@@ -13,6 +13,7 @@ import {
   backupSettingsFile,
   looksLikeSpec,
   BACKUP_LABELS,
+  BACKUP_RETAIN_COUNT,
 } from './lib/backup.js';
 import { pruneCache } from './lib/cache-prune.js';
 import {
@@ -51,11 +52,11 @@ Options:
 
 Exit codes: 0 success | 1 install failure | 2 argv-shape error.`;
 
-// Re-export for back-compat: tests/scripts/install.test.js + scripts/uninstall.js
-// previously imported HOOK_BASENAMES from this module. Source of truth now lives
-// in scripts/lib/hook-registry.js; drift between registry, hooks/hooks.json, and
-// commands/claudemd-toggle.md is gated by tests/scripts/hook-registry.test.js.
-export { HOOK_BASENAMES };
+// (The back-compat `export { HOOK_BASENAMES }` that used to sit here is gone as
+// of 2026-09-03, audit R11-32. uninstall.js had already moved to the registry;
+// the last consumer was one test line, and a re-export whose only reader is a
+// test is a second address for a single source — the shape the registry exists
+// to prevent. Import from scripts/lib/hook-registry.js.)
 
 // Flatten the plugin's hooks/hooks.json into the same {event,matcher,command,timeout}
 // shape previously held in HOOK_SPECS. Used to populate the manifest so status/
@@ -236,7 +237,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     // DATA-LOSS ROOT-CAUSE FIX (v0.23.11): never back up spec-on-spec — neither
     // a byte-identical re-install NOR a version upgrade. Pre-fix BOTH created a
     // backup of the spec itself; restore picks the NEWEST backup (uninstall.js)
-    // and pruneBackups(5) evicts the oldest, so `CLAUDEMD_SPEC_ACTION=restore`
+    // and pruneBackups(BACKUP_RETAIN_COUNT) evicts the oldest, so `CLAUDEMD_SPEC_ACTION=restore`
     // after a re-install OR an upgrade restored the SPEC instead of the user's
     // original personal CLAUDE.md, and enough of them permanently evicted the
     // personal backup. By only ever backing up genuine user content (the no-H1
@@ -252,7 +253,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   } else {
     const bk = createBackup(existing, { label: BACKUP_LABELS.personal });
     backupDir = bk.dir;
-    pruneBackups(5, { label: BACKUP_LABELS.personal });
+    pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.personal });
     specResult = 'backup-and-overwrite';
     if (userContentDetected) {
       process.stderr.write(

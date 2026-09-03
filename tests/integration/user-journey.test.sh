@@ -265,7 +265,7 @@ printf '{"denies":3,"bypasses":1,"warns":2,"top_section":"§10-V"}' > "$HOME/.cl
 OUT3=$(DISABLE_UPSTREAM_CHECK=0 CLAUDEMD_LS_REMOTE_CMD="bash $STUB" CLAUDEMD_CACHE_PARENT="$CACHE_PARENT" fire_session_start "$NEXT_ROOT")
 assert_single_json "upstream + summary merge into ONE object" "$OUT3"
 assert_contains "merged banner keeps the upgrade notice" "v199.0.0 available" "$OUT3"
-assert_contains "merged banner keeps the session summary" "last session: 3 denies" "$OUT3"
+assert_contains "merged banner keeps the session summary" "since last turn: 3 denies" "$OUT3"
 
 ########################################################################
 phase "Phase 7 — self-heal"

@@ -168,7 +168,7 @@ function jsFunctionName(node, parent) {
 // Every function node whose span exceeds `threshold` lines. Generic walk over
 // the ESTree object graph — no walker dependency, and any node kind acorn adds
 // later is still visited.
-export function longFunctionsInJs(acorn, source, threshold, file = '<js>') {
+function longFunctionsInJs(acorn, source, threshold, file = '<js>') {
   const ast = acorn.parse(source, {
     ecmaVersion: 'latest',
     sourceType: 'module',
@@ -320,7 +320,7 @@ function jsImportSpecifiers(acorn, source) {
 
 const SH_SOURCE_RE = /^\s*(?:source|\.)\s+"?[^"\s]*\/([A-Za-z0-9._-]+\.sh)"?/;
 
-export async function importGraph(root, rows) {
+async function importGraph(root, rows) {
   const acorn = await loadAcorn();
   const edges = new Map();
   const add = (a, b) => {

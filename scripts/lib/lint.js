@@ -383,21 +383,31 @@ export function scan(text, { excludeRatio = false, patterns, sanitize = false } 
   return hits;
 }
 
-// parseTranscript(jsonlText) → [{turnIndex, line, text}, ...]
+// parseTranscript(jsonlText, integrity) → [{turnIndex, line, text}, ...]
 //   Iterates jsonl, returns one entry per assistant text-content turn. Each
 //   entry concatenates all .message.content[*].text blocks for that turn.
-//   Corrupt rows (unparseable JSON, missing fields) silently skipped — matches
+//   Corrupt rows (unparseable JSON, missing fields) are skipped — matches
 //   transcript-vocab-scan.sh's `try fromjson catch empty` design.
-export function parseTranscript(jsonlText) {
+//
+//   `integrity` (out param, optional): `{ totalLines, badLines }` written back
+//   so the skip is countable rather than invisible. Skipping is still the right
+//   behavior — a half-corrupt transcript is worth scanning — but until 2026-09-03
+//   (audit R11-24) nothing downstream could tell "0 hits across 40 turns" from
+//   "0 hits across the 40 turns that happened to parse". readLogRows in
+//   rule-hits-parse.js has carried the same counter since a 33% corruption went
+//   unnoticed there; this is the same counter on the transcript side.
+export function parseTranscript(jsonlText, integrity = null) {
   const lines = jsonlText.split('\n');
   const turns = [];
   let turnIndex = 0;
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
+    if (integrity) integrity.totalLines = (integrity.totalLines || 0) + 1;
     let row;
     try {
       row = JSON.parse(lines[i]);
     } catch {
+      if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
       continue;
     }
     if (row.type !== 'assistant') continue;

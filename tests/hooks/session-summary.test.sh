@@ -111,7 +111,7 @@ cp "$HERE/../../hooks/lib/platform.sh" "$PLUGIN_ROOT_FAKE/hooks/lib/" 2>/dev/nul
 cp "$SS_HOOK" "$PLUGIN_ROOT_FAKE/hooks/"
 echo "{\"version\":\"0.0.0\"}" > "$HOME/.claude/.claudemd-manifest.json"
 OUT=$(echo '{"hook_event_name":"SessionStart"}' | DISABLE_UPSTREAM_CHECK=1 bash "$PLUGIN_ROOT_FAKE/hooks/session-start-check.sh" 2>/dev/null || true)
-if echo "$OUT" | grep -q 'last session: 2 denies' \
+if echo "$OUT" | grep -q 'since last turn: 2 denies' \
    && echo "$OUT" | grep -q '§10-V' \
    && [[ ! -f "$SUMMARY" ]] \
    && [[ -f "$SUMMARY.last-shown" ]]; then
@@ -127,7 +127,7 @@ cat > "$SUMMARY" <<EOF
 EOF
 OUT=$(DISABLE_UPSTREAM_CHECK=1 DISABLE_SESSION_SUMMARY_BANNER=1 \
   bash -c "echo '{\"hook_event_name\":\"SessionStart\"}' | bash '$PLUGIN_ROOT_FAKE/hooks/session-start-check.sh' 2>/dev/null" || true)
-if ! echo "$OUT" | grep -q 'last session'; then
+if ! echo "$OUT" | grep -q 'since last turn'; then
   ok "Case 6: DISABLE_SESSION_SUMMARY_BANNER=1 suppresses banner"
 else
   ng "Case 6: banner emitted despite suppression flag (out: $OUT)"

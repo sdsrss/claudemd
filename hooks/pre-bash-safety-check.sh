@@ -835,6 +835,15 @@ if (( bypass_rm == 0 )); then
     danger=0
     rm_targets=()
     after_dash_dash=0
+    # R11-33 (2026-09-02 audit): unquoted `$args_only` word-splits AND globs.
+    # A target carrying `*`, `?` or `[…]` was expanded against the HOOK's cwd, so
+    # the token list this gate analyzed depended on which files happened to sit
+    # beside it — one target could become many. Splitting is wanted here; pathname
+    # expansion never was. `set -f` rather than `read -r -a` because bash 3.2
+    # (macOS) errors on `"${arr[@]}"` for an EMPTY array under `set -u`, which is
+    # exactly the `rm` with no positional args case. No `exit`/`return` inside the
+    # loop, so the restore below always runs.
+    set -f
     for tok in $args_only; do
       if (( after_dash_dash == 1 )); then
         rm_targets+=("$tok")
@@ -851,6 +860,7 @@ if (( bypass_rm == 0 )); then
           ;;
       esac
     done
+    set +f
     (( danger == 1 )) || continue
     (( ${#rm_targets[@]} > 0 )) || continue
     # One verdict per target. `continue` inside this loop means "next target";
@@ -1175,6 +1185,10 @@ if [[ -n "$runner" ]]; then
     pkg_token=""
     skip_next=0
     no_install=0
+    # Splitting wanted, globbing not — see the `set -f` note on the rm loop
+    # (R11-33). Here the stake is higher: an expanded token becomes `pkg_token`,
+    # which is what the pinned/lockfile/local verdict is computed from.
+    set -f
     for tok in $npx_tail; do
       if (( skip_next == 1 )); then
         pkg_token="$tok"
@@ -1192,6 +1206,7 @@ if [[ -n "$runner" ]]; then
         *) pkg_token="$tok"; break ;;
       esac
     done
+    set +f
     if [[ -n "$pkg_token" && $no_install -eq 1 ]]; then
       hook_record pre-bash-safety npx-allow-no-install "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
       pkg_token=""

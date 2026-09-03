@@ -3,7 +3,7 @@
 // 15). Consumers must import from
 // here rather than maintaining parallel literal arrays:
 //
-//   scripts/install.js     — re-exports HOOK_BASENAMES (legacy callers)
+//   scripts/install.js     — settings.json legacy-entry eviction predicate
 //   scripts/uninstall.js   — settings.json eviction predicate
 //   scripts/status.js      — kill-switch enumeration
 //   scripts/toggle.js      — display-name → env-var-suffix map

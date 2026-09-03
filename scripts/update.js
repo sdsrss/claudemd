@@ -3,7 +3,7 @@ import path from 'node:path';
 import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { copySpecFiles } from './lib/spec-hash.js';
-import { createBackup, pruneBackups, BACKUP_LABELS } from './lib/backup.js';
+import { createBackup, pruneBackups, BACKUP_LABELS, BACKUP_RETAIN_COUNT } from './lib/backup.js';
 import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
@@ -17,7 +17,7 @@ No flags. Behavior is read from the following env vars:
 Options:
   --help, -h     Print this message and exit.
 
-Exit codes: 0 success | 2 argv-shape error.`;
+Exit codes: 0 success | 1 validation or runtime error | 2 argv-shape error.`;
 
 export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   if (!pluginRoot) throw new Error('update: pluginRoot missing');
@@ -81,7 +81,7 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   // returned the old SPEC, and five updates pruned the personal content away.
   // Rotation still applies — within this namespace only.
   const { dir: backupDir } = createBackup(existing, { label: BACKUP_LABELS.spec });
-  pruneBackups(5, { label: BACKUP_LABELS.spec });
+  pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.spec });
 
   // Shared with install.js (R11-09): verifies each copy's sha256 and, because
   // createBackup already renamed the originals away, restores all of them from

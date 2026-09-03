@@ -5,7 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { install, HOOK_BASENAMES } from '../../scripts/install.js';
+import { install } from '../../scripts/install.js';
+import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
 import { listBackups, restoreBackup } from '../../scripts/lib/backup.js';
 
 // Shared with production code: install.js evicts settings.json entries

@@ -25,7 +25,7 @@ Options:
                  to audit "which hook am I bypassing" without grepping README.
   --help, -h     Print this message and exit.
 
-Exit codes: 0 success | 2 argv-shape error.`;
+Exit codes: 0 success | 1 validation or runtime error | 2 argv-shape error.`;
 
 // Per-invocation escape tokens documented in README. Single source so
 // /claudemd-status --verbose stays in sync with the hook implementations.
