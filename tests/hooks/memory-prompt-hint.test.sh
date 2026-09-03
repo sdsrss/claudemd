@@ -384,8 +384,37 @@ else
   ng "23 (out1: $OUT1; out2: $OUT2; last: $LAST23)"
 fi
 
+# Case 24 (2026-09-02 audit R11-28): this hook's OWN banner is not a Read.
+# The un-Read filter used a bare path substring while the deny gate in
+# memory-read-check.sh had already moved to the `file_path` field anchor
+# (R10-01). The banner embeds the absolute memory path and lands in the
+# transcript, so the loose form suppressed hints for files nobody had opened —
+# and, before the rule-hits dedupe existed, that self-satisfying match WAS the
+# dedupe. All 23 cases above passed on both semantics; nothing covered this.
+SESS="sess24"
+printf '%s\n' '{"hookSpecificOutput":{"additionalContext":"[claudemd] read the file: '"$MEM_DIR"'/feedback_macos.md"}}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent "asking about macos again" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if echo "$CTX" | grep -qF "feedback_macos.md"; then
+  ok "24 a banner quoting the path is not a Read — hint still emitted"
+else
+  ng "24 (out: $OUT)"
+fi
+
+# Case 25: the other direction, so 24 cannot pass by the predicate always
+# answering "not read". A real tool-input file_path field still suppresses.
+SESS="sess25"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"'"$MEM_DIR"'/feedback_macos.md"}}]}}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent "asking about macos once more" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if ! echo "$CTX" | grep -qF "feedback_macos.md"; then
+  ok "25 an actual Read event still suppresses the hint"
+else
+  ng "25 (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((23 - FAIL))/23 passed"
+  echo "Tests: $((25 - FAIL))/25 passed"
   exit 1
 fi
-echo "Tests: 23/23 passed"
+echo "Tests: 25/25 passed"

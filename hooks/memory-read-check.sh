@@ -241,27 +241,18 @@ done < <(memtags_match "$MEM_INDEX" "$CMD_TAGMATCH")
 
 # Check each matched file against transcript Read events.
 #
-# The "was it Read" test anchors on a tool-input `file_path` FIELD, not a bare
-# path substring. memory-prompt-hint.sh:242 embeds this exact absolute path in
-# its additionalContext banner, and that banner is flushed to the transcript
-# (its own :146-149 comment relies on that) — so `grep -qF -- "$MEMFILE"` was
-# satisfied by the HINT's emission and this HARD gate could not fire in its
-# flagship scenario: prompt matches a ship tag → hint lists the runbook file →
-# agent pushes without ever opening it, with no bypass row to show for it
-# (2026-08-29 audit R10-01; sandbox probe: hint-banner-only transcript → ALLOW).
-# Assistant prose that merely quotes the path disarmed it the same way.
-# Matching the field keeps the producer set to actual file-open events
-# (Read/Edit/Write all carry `file_path`).
-#
-# Two spellings accepted: Claude Code writes compact JSON
-# (`"name":"Read","input":{"file_path":"…"}`), the spaced form guards a
-# pretty-printer drift. -F (not -E) so the path's `.`/`-` need no escaping.
+# The "was it Read" test is hook_memfile_was_read (hooks/lib/hook-common.sh):
+# it anchors on a tool-input `file_path` FIELD, not a bare path substring, which
+# keeps the producer set to actual file-open events (Read/Edit/Write all carry
+# `file_path`). The rationale and the two accepted spellings live with the
+# function; it is shared with memory-prompt-hint.sh so the deny gate and the
+# hint cannot drift back to two answers (2026-08-29 audit R10-01, 2026-09-02
+# audit R11-28).
 # Fixtures: tests Cases 45-47 (real transcript line, hint banner, bare prose).
 MISSING=()
 for file in "${MATCHES[@]}"; do
   MEMFILE="$MEM_DIR/$file"
-  if ! grep -qF -e "\"file_path\":\"$MEMFILE\"" -e "\"file_path\": \"$MEMFILE\"" \
-       -- "$TRANSCRIPT" 2>/dev/null; then
+  if ! hook_memfile_was_read "$TRANSCRIPT" "$MEMFILE"; then
     MISSING+=("$file")
   fi
 done

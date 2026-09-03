@@ -169,6 +169,33 @@ hook_read_telemetry_ids() {
   return 0
 }
 
+# hook_memfile_was_read TRANSCRIPT MEMFILE
+#   0 = MEMFILE was opened this session, 1 = it was not (or cannot be known:
+#   no transcript, unreadable, missing arg — fail toward "not read", which costs
+#   a redundant hint or a deny the agent can answer by opening the file).
+#
+#   The test anchors on a tool-input `file_path` FIELD, never a bare path
+#   substring, and this is why the predicate has one home. Both spellings are
+#   accepted: Claude Code writes compact JSON (`"file_path":"…"`), the spaced
+#   form guards a pretty-printer drift. -F, so `.` and `-` in the path need no
+#   escaping.
+#
+#   memory-read-check.sh's deny gate was fixed to the field anchor in the
+#   2026-08-29 audit (R10-01): the hint's additionalContext banner embeds the
+#   same absolute path and is flushed to the transcript, so `grep -qF -- "$PATH"`
+#   was satisfied by the HINT's own output and the HARD gate could not fire in
+#   its flagship scenario — prompt matches a ship tag, hint lists the runbook,
+#   agent pushes without ever opening it. memory-prompt-hint.sh kept the bare
+#   substring for another round (R11-28): the same self-satisfying match, this
+#   time suppressing a hint for a file nobody read. Assistant prose that merely
+#   quotes a path disarms the substring form the same way.
+hook_memfile_was_read() {
+  local _transcript="${1:-}" _memfile="${2:-}"
+  [[ -n "$_transcript" && -n "$_memfile" && -f "$_transcript" ]] || return 1
+  grep -qF -e "\"file_path\":\"$_memfile\"" -e "\"file_path\": \"$_memfile\"" \
+    -- "$_transcript" 2>/dev/null
+}
+
 # hook_deny HOOK_NAME REASON — emits PreToolUse deny JSON, exits 0.
 hook_deny() {
   local _hook="$1" reason="$2"

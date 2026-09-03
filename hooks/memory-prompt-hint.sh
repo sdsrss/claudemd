@@ -109,13 +109,21 @@ done < <(memtags_match "$MEM_INDEX" "$PROMPT")
 
 (( ${#MATCHES[@]} == 0 )) && exit 0
 
-# Filter to un-Read subset (mirrors memory-read-check.sh:146-151 logic).
+# Filter to the un-Read subset, through the SAME predicate the deny gate uses
+# (hook_memfile_was_read). Until v0.72.x this was a bare `grep -qF -- "$MEMFILE"`
+# while memory-read-check.sh had already moved to the `file_path` field anchor —
+# two answers to one question, and the loose one belonged to the hook whose own
+# banner (:242) embeds the absolute path. So a file this hint had merely
+# SUGGESTED counted as read, and the suggestion was suppressed for a file nobody
+# opened; assistant prose quoting the path did it too (2026-09-02 audit R11-28).
+# Re-suggest suppression is now solely the rule-hits dedupe below, which is the
+# lag-free record of what was actually shown.
 UNREAD_FILES=()
 UNREAD_TAGS=()
 for i in "${!MATCHES[@]}"; do
   file="${MATCHES[$i]}"
   MEMFILE="$MEM_DIR/$file"
-  if [[ -f "$TRANSCRIPT" ]] && grep -qF -- "$MEMFILE" "$TRANSCRIPT" 2>/dev/null; then
+  if hook_memfile_was_read "$TRANSCRIPT" "$MEMFILE"; then
     continue
   fi
   UNREAD_FILES+=("$file")
