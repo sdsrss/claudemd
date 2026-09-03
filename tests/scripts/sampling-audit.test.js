@@ -672,15 +672,18 @@ test('R10-20: a clean run reports an empty unreadable list', async () => {
 test('R11-24: unparseable lines are counted per transcript, not silently dropped', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-bad-'));
   try {
-    const row = t =>
-      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
+    const row = t => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
     // 2 good rows, 3 corrupt: a half-corrupt file, which is the shape the
     // whole-file pre-flight elsewhere cannot see.
     fs.writeFileSync(
       path.join(dir, 'half.jsonl'),
-      [row('Done: fixed it.'), '{not json', row('Done: fixed it again.'), 'plain log line', '{"unterminated": '].join(
-        '\n'
-      ) + '\n'
+      [
+        row('Done: fixed it.'),
+        '{not json',
+        row('Done: fixed it again.'),
+        'plain log line',
+        '{"unterminated": ',
+      ].join('\n') + '\n'
     );
     const r = await samplingAudit({ projectsDir: dir, days: 3650 });
     assert.equal(r.scannedTranscripts, 1, 'the file still counts as scanned — that is the trap');
@@ -699,7 +702,10 @@ test('R11-24: a clean run reports an empty malformed list', async () => {
   try {
     fs.writeFileSync(
       path.join(dir, 'a.jsonl'),
-      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] } }) + '\n'
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+      }) + '\n'
     );
     const r = await samplingAudit({ projectsDir: dir, days: 3650 });
     assert.deepEqual(r.malformedTranscripts, []);
@@ -718,7 +724,10 @@ test('R11-24: --global labels malformed transcripts with their project dir', asy
     fs.writeFileSync(
       path.join(proj, 's.jsonl'),
       [
-        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done: fixed it.' }] } }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+        }),
         '{oops',
       ].join('\n') + '\n'
     );
@@ -769,10 +778,11 @@ test('R11-26 CLI: --global --json emits the byClass stratification', () => {
 test('R11-26: --sample=N caps the transcripts scanned per project dir', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-sample-'));
   try {
-    const row = JSON.stringify({
-      type: 'assistant',
-      message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
-    }) + '\n';
+    const row =
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+      }) + '\n';
     for (const n of ['a', 'b', 'c', 'd', 'e']) fs.writeFileSync(path.join(dir, `${n}.jsonl`), row);
     const r = await samplingAudit({ projectsDir: dir, days: 3650, sample: 2 });
     assert.equal(r.scannedTranscripts, 2, 'sample=2 over 5 files must scan exactly 2');
@@ -842,7 +852,10 @@ test('R11-24: the markdown report states reader integrity in both states', () =>
   const clean = runCliReport([good]);
   assert.equal(clean.r.status, 0, `stderr=${clean.r.stderr}`);
   assert.ok(clean.md, 'the CLI must have written the report');
-  assert.match(clean.md, /Reader integrity: every transcript read in full \(0 unreadable, 0 malformed lines\)/);
+  assert.match(
+    clean.md,
+    /Reader integrity: every transcript read in full \(0 unreadable, 0 malformed lines\)/
+  );
 
   const dirty = runCliReport([good, '{corrupt', 'not json at all']);
   assert.equal(dirty.r.status, 0, `stderr=${dirty.r.stderr}`);

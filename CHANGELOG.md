@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.73.1] - 2026-09-03
+
+Hotfix: `v0.73.0`'s CI went red on `npm run format:check` — nine files the release touched were not prettier-formatted. Code and tests were unaffected (`npm test` was green on both sides of the sweep); the tag's own CI record was not.
+
+**Root cause is the interesting half.** `npm run lint` chained `lint:argv`, `version-check`, `lint:sh` and `lint:js` — but *not* `format:check`, which CI's `static` job runs as a blocking step. So the local command a contributor runs before pushing could not reach the gate that blocks the push, and 0.73.0 was verified green against a chain that was missing one link. `format:check` is now the fifth link, so local and CI ask the same question.
+
+Formatting-only changes, verified as such: `npm test` reports the same 1013/1013 before and after `prettier --write`, which is also the cheapest probe this repo has for gates that key on where text sits on a line — the same sweep in 0.72.0 re-armed `lint-argv`'s suppression token and silently disabled the ReDoS timing gate. Nothing broke this time.
+
 ## [0.73.0] - 2026-09-03
 
 Round 5 against the 2026-09-02 audit, closing the last seven open IDs (R11-24/25/26/27/31/32/33 — all P2/P3). Spec unchanged at **v6.25.4**.

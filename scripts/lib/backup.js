@@ -143,7 +143,10 @@ export function listBackups({ label = DEFAULT_LABEL } = {}) {
 // a genuine pre-v0.23.11 personal backup with user files beside the spec, and
 // nothing at runtime tells the two apart, so it is the user's call. doctor
 // reports the skipped set so its count and this one read the same.
-export function pruneBackups(retainCount = BACKUP_RETAIN_COUNT, { label = DEFAULT_LABEL, exclude = [] } = {}) {
+export function pruneBackups(
+  retainCount = BACKUP_RETAIN_COUNT,
+  { label = DEFAULT_LABEL, exclude = [] } = {}
+) {
   const skip = exclude instanceof Set ? exclude : new Set(exclude);
   const backups = listBackups({ label }).filter(b => !skip.has(b.dir));
   const removed = [];

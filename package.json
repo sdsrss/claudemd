@@ -1,6 +1,6 @@
 {
   "name": "claudemd-cli",
-  "version": "0.73.0",
+  "version": "0.73.1",
   "description": "Standalone CLI for §10-V banned-vocab + transcript scanning. Companion to the claudemd Claude Code plugin (github.com/sdsrss/claudemd) for use in git pre-commit hooks, GitHub Actions, and other agents.",
   "type": "module",
   "bin": {
@@ -28,7 +28,7 @@
     "lint:argv": "node scripts/lint-argv.js",
     "version-check": "node scripts/version-cascade-check.js",
     "test:coverage": "c8 --all --src=bin --src=scripts --include='bin/**/*.js' --include='scripts/**/*.js' --reporter=text-summary --reporter=html --reports-dir=coverage npm run test:scripts",
-    "lint": "npm run lint:argv && npm run version-check && npm run lint:sh && npm run lint:js",
+    "lint": "npm run lint:argv && npm run version-check && npm run lint:sh && npm run lint:js && npm run format:check",
     "lint:sh": "F=$(bash tests/lib/shell-files.sh) && shellcheck --severity=warning $F",
     "lint:js": "eslint bin scripts tests eslint.config.js",
     "format": "prettier --write bin scripts tests eslint.config.js",

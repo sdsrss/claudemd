@@ -437,15 +437,22 @@ test('R11-26 CLI: --project= selects the memory dir the audit scans', () => {
     const encoded = target.replace(/[^a-zA-Z0-9-]/g, '-');
     const memDir = path.join(tmpHome, '.claude/projects', encoded, 'memory');
     fs.mkdirSync(memDir, { recursive: true });
-    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- [Missing](feedback_r1126_dangling.md) `[tag]` — dangling\n');
+    fs.writeFileSync(
+      path.join(memDir, 'MEMORY.md'),
+      '- [Missing](feedback_r1126_dangling.md) `[tag]` — dangling\n'
+    );
 
     const run = args =>
-      spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args], {
-        cwd: REPO_ROOT,
-        env: { ...process.env, HOME: tmpHome },
-        encoding: 'utf8',
-        timeout: 20000,
-      });
+      spawnSync(
+        process.execPath,
+        [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args],
+        {
+          cwd: REPO_ROOT,
+          env: { ...process.env, HOME: tmpHome },
+          encoding: 'utf8',
+          timeout: 20000,
+        }
+      );
 
     const named = run([`--project=${target}`]);
     assert.equal(named.status, 0, `stderr=${named.stderr}`);
@@ -466,7 +473,9 @@ test('R11-26 CLI: --project= selects the memory dir the audit scans', () => {
     const withoutFlag = JSON.parse(bare.stdout);
     assert.equal(withoutFlag.projectCwd, REPO_ROOT);
     assert.equal(
-      withoutFlag.checks.find(c => c.name === 'memory-index').findings.some(f => /r1126_dangling/.test(f.detail)),
+      withoutFlag.checks
+        .find(c => c.name === 'memory-index')
+        .findings.some(f => /r1126_dangling/.test(f.detail)),
       false
     );
   } finally {
@@ -479,11 +488,15 @@ test('R11-25: --cwd is accepted as an alias of --project, and a conflicting pair
   // lesson-bypass-audit learned --project, but this tool still exited 2 on
   // --cwd, so "whichever you typed second is an error" was only half fixed.
   const run = args =>
-    spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      timeout: 20000,
-    });
+    spawnSync(
+      process.execPath,
+      [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args],
+      {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 20000,
+      }
+    );
 
   const viaCwd = run(['--cwd=/work/alias-target']);
   assert.equal(viaCwd.status, 0, `stderr=${viaCwd.stderr}`);

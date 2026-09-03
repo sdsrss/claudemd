@@ -389,7 +389,7 @@ test('R11-18a: the two ship gates run before lint:js in the lint chain', () => {
 // copies. Both happened to validate argv, so this was an escape route rather
 // than a live miss; the fixture below is the miss it would have become.
 const REALPATH_GUARD =
-  "const invokedAsMain = (() => {\n" +
+  'const invokedAsMain = (() => {\n' +
   '  try {\n' +
   '    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);\n' +
   '  } catch {\n' +

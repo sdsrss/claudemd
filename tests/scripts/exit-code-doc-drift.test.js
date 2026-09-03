@@ -101,7 +101,7 @@ function documentedExitCodes(raw) {
   const rest = text.slice(at);
   const end = rest.indexOf('`;');
   const region = end === -1 ? rest.split('\n').slice(0, 6).join('\n') : rest.slice(0, end);
-  return { region, codes: new Set((region.match(/(?<![\w.])\d(?![\w.])/g) || [])) };
+  return { region, codes: new Set(region.match(/(?<![\w.])\d(?![\w.])/g) || []) };
 }
 
 // A main guard is one way to be a CLI; being `package.json#bin` is the other,
@@ -149,7 +149,11 @@ test('R11-25: every CLI is judged, and the count is stated', () => {
     `expected ≥${MIN_CLIS} CLI entry points, found ${clis.length}: ${clis.map(c => c.rel).join(', ')}`
   );
   const undocumented = clis.filter(c => documentedExitCodes(c.text) === null).map(c => c.rel);
-  assert.deepEqual(undocumented, [], 'every CLI with a main guard must carry an `Exit codes:` line in its USAGE');
+  assert.deepEqual(
+    undocumented,
+    [],
+    'every CLI with a main guard must carry an `Exit codes:` line in its USAGE'
+  );
 });
 
 test('R11-25: no CLI uses an exit code its own USAGE does not document', () => {
@@ -159,7 +163,10 @@ test('R11-25: no CLI uses an exit code its own USAGE does not document', () => {
     if (!doc) continue; // reported by the test above
     const used = usedExitCodes(stripComments(text));
     const missing = [...used].filter(c => !doc.codes.has(c)).sort();
-    if (missing.length) drift.push(`${rel}: exits ${missing.join(', ')} but documents only ${[...doc.codes].sort().join(', ')}`);
+    if (missing.length)
+      drift.push(
+        `${rel}: exits ${missing.join(', ')} but documents only ${[...doc.codes].sort().join(', ')}`
+      );
   }
   assert.deepEqual(drift, [], `USAGE disagrees with process.exit:\n  ${drift.join('\n  ')}`);
 });
@@ -182,7 +189,11 @@ test('R11-25: the comment stripper does not eat code (instrument self-check)', (
     if (!stripComments(text).includes('Exit codes:')) docLost.push(rel);
   }
   assert.deepEqual(eaten, [], `stripComments removed the main guard from: ${eaten.join(', ')}`);
-  assert.deepEqual(docLost, [], `stripComments removed the USAGE Exit-codes line from: ${docLost.join(', ')}`);
+  assert.deepEqual(
+    docLost,
+    [],
+    `stripComments removed the USAGE Exit-codes line from: ${docLost.join(', ')}`
+  );
 
   // Prose containing a glob must not open a block comment (the reported bug).
   const prose = [
@@ -224,9 +235,13 @@ test('R11-25: the detector fires on a doc/code mismatch (control)', () => {
   const bad = 'const USAGE = `Usage: x\n\nExit codes: 0 success | 2 argv-shape error.`;\nprocess.exit(1);\n';
   const doc = documentedExitCodes(bad);
   const used = usedExitCodes(stripComments(bad));
-  assert.deepEqual([...used].filter(c => !doc.codes.has(c)), ['1']);
+  assert.deepEqual(
+    [...used].filter(c => !doc.codes.has(c)),
+    ['1']
+  );
 
   // …and a comment mentioning an exit code does not count as using it.
-  const commented = 'const USAGE = `Exit codes: 0 success | 2 argv-shape error.`;\n// process.exit(7) once lived here\n';
+  const commented =
+    'const USAGE = `Exit codes: 0 success | 2 argv-shape error.`;\n// process.exit(7) once lived here\n';
   assert.deepEqual([...usedExitCodes(stripComments(commented))], []);
 });

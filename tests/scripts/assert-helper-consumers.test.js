@@ -120,8 +120,16 @@ test('R11-27: the shared vocabulary exists and every helper counts', () => {
   for (const fn of ['ok', 'ng', 'assert_eq', 'assert_contains', 'assert_not_contains', 'assert_status']) {
     assert.match(text, new RegExp(`^${fn}\\(\\)`, 'm'), `${SHARED} must define ${fn}`);
   }
-  assert.match(text, /^ok\(\)[\s\S]*?CLAUDEMD_ASSERT_PASS=\$\(\(CLAUDEMD_ASSERT_PASS \+ 1\)\)/m, 'ok() must count');
-  assert.match(text, /^ng\(\)[\s\S]*?CLAUDEMD_ASSERT_FAIL=\$\(\(CLAUDEMD_ASSERT_FAIL \+ 1\)\)/m, 'ng() must count');
+  assert.match(
+    text,
+    /^ok\(\)[\s\S]*?CLAUDEMD_ASSERT_PASS=\$\(\(CLAUDEMD_ASSERT_PASS \+ 1\)\)/m,
+    'ok() must count'
+  );
+  assert.match(
+    text,
+    /^ng\(\)[\s\S]*?CLAUDEMD_ASSERT_FAIL=\$\(\(CLAUDEMD_ASSERT_FAIL \+ 1\)\)/m,
+    'ng() must count'
+  );
   // Zero assertions must be a failure, not a silent pass.
   assert.match(text, /total == 0[\s\S]{0,200}return 1/, 'claudemd_assert_summary must fail on an empty run');
 });
@@ -137,5 +145,9 @@ test('R11-27: a new suite under any helper name is caught (control)', () => {
   const flagged = synthetic
     .filter(s => !sourcesShared(s.text) && !LEGACY_OWN_ASSERTIONS.includes(s.name))
     .map(s => s.name);
-  assert.deepEqual(flagged, ['zz-new.test.sh'], 'a privately-named helper must be caught, a migrated suite must not');
+  assert.deepEqual(
+    flagged,
+    ['zz-new.test.sh'],
+    'a privately-named helper must be caught, a migrated suite must not'
+  );
 });

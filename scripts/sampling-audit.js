@@ -894,7 +894,10 @@ function integrityLine(r) {
   }
   const badLines = malformed.reduce((n, m) => n + m.lines, 0);
   const parts = [];
-  if (unread.length) parts.push(`${unread.length} transcript(s) unreadable: ${unread.map(u => `\`${u.file}\` (${u.reason})`).join(', ')}`);
+  if (unread.length)
+    parts.push(
+      `${unread.length} transcript(s) unreadable: ${unread.map(u => `\`${u.file}\` (${u.reason})`).join(', ')}`
+    );
   if (malformed.length) {
     parts.push(
       `${badLines} unparseable line(s) across ${malformed.length} transcript(s): ${malformed.map(m => `\`${m.file}\` ×${m.lines}`).join(', ')}`

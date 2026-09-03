@@ -132,7 +132,10 @@ test('R11-26: adopt --empty-only writes into an empty slot but never over a fore
 
   // Foreign slot: the guard must refuse, WITHOUT --force being involved.
   const settings = path.join(tmpHome, '.claude/settings.json');
-  fs.writeFileSync(settings, JSON.stringify({ statusLine: { type: 'command', command: '/opt/other/line.sh' } }));
+  fs.writeFileSync(
+    settings,
+    JSON.stringify({ statusLine: { type: 'command', command: '/opt/other/line.sh' } })
+  );
   const foreign = run(['adopt', '--empty-only', '--json']);
   assert.equal(foreign.status, 0, `stderr=${foreign.stderr}`);
   assert.equal(JSON.parse(foreign.stdout).action, 'skipped-foreign');

@@ -319,7 +319,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
-    parsed = parseStrict(process.argv.slice(2), { values: ['--days', '--cwd', '--project'], bools: ['--json'] });
+    parsed = parseStrict(process.argv.slice(2), {
+      values: ['--days', '--cwd', '--project'],
+      bools: ['--json'],
+    });
   } catch (e) {
     if (e instanceof ArgvError) {
       console.error(e.message);
