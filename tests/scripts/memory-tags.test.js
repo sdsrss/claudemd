@@ -8,7 +8,9 @@ import {
   parseMemoryIndex,
   scanMemoryTags,
   scanMemoryIndexSizes,
+  readIndexBudget,
   MEMORY_INDEX_BUDGET_BYTES,
+  INDEX_BUDGET_MAX_MULTIPLE,
 } from '../../scripts/lib/memory-tags.js';
 
 test('classifyTag: multi-word tag passes', () => {
@@ -302,4 +304,159 @@ test('scanMemoryIndexSizes: missing root dir → empty, no throw', () => {
   const { indexes, scannedFiles } = scanMemoryIndexSizes({ rootDir: '/nonexistent/path/xyz' });
   assert.equal(indexes.length, 0);
   assert.equal(scannedFiles, 0);
+});
+
+// --- v0.74.2: the index may declare the budget it is judged against ---------
+//
+// One default across every project keeps this check red wherever the operator
+// has already judged the overage acceptable, and an advisory whose remedy has
+// been declined is one people learn to skip. The declaration lives in the
+// MEMORY.md file because a project is addressed here only by its lossy encoded
+// cwd — there is no path back to a project CLAUDE.md to read a knob from.
+
+test('readIndexBudget: no declaration → the default, marked undeclared', () => {
+  const r = readIndexBudget('# Memory index\n\n- [A](feedback_a.md) `[t]` — d\n');
+  assert.equal(r.bytes, MEMORY_INDEX_BUDGET_BYTES);
+  assert.equal(r.declared, false);
+  assert.equal(r.error, undefined);
+});
+
+test('readIndexBudget: a declaration raises the budget and says so', () => {
+  const r = readIndexBudget('# Memory index\n<!-- index-budget: 28KB -->\n\n- [A](a.md) `[t]` — d\n');
+  assert.equal(r.bytes, 28 * 1024);
+  assert.equal(r.declared, true);
+});
+
+test('readIndexBudget: lowering below the default is allowed (that way is stricter)', () => {
+  assert.equal(readIndexBudget('<!-- index-budget: 4KB -->\n').bytes, 4 * 1024);
+});
+
+test('readIndexBudget: a malformed declaration is an error, never a silent default', () => {
+  // The unit `KB` is required: a bare `28` is ambiguous between bytes and
+  // kilobytes and guessing would apply a budget 1024x off. Each of these keeps
+  // the default AND reports why, so the knob can never be quietly ignored.
+  for (const bad of ['28', '28kb!', '0KB', '28MB', 'lots']) {
+    const r = readIndexBudget(`<!-- index-budget: ${bad} -->\n`);
+    assert.equal(r.bytes, MEMORY_INDEX_BUDGET_BYTES, `${bad} must fall back`);
+    assert.equal(r.declared, false, `${bad} must not count as declared`);
+    assert.match(r.error, /malformed index-budget/, `${bad} must report why`);
+  }
+  // Control: the same shape with a valid value must NOT produce an error, or
+  // the four assertions above would pass against a function that always errors.
+  assert.equal(readIndexBudget('<!-- index-budget: 28KB -->\n').error, undefined);
+});
+
+test('readIndexBudget: only a whole comment line declares — prose mentioning it does not', () => {
+  // The marker is quoted in this repo's own docs and in doctor's remedy text.
+  // A loose match would let any file that merely NAMES the syntax change its
+  // own budget.
+  const prose = 'Set `<!-- index-budget: 99KB -->` at the top of the file to raise it.\n';
+  assert.equal(readIndexBudget(prose).declared, false);
+  assert.equal(readIndexBudget(prose).bytes, MEMORY_INDEX_BUDGET_BYTES);
+});
+
+test('scanMemoryIndexSizes: a declared budget travels with the index row', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-idxdecl-'));
+  try {
+    const declared = path.join(tmp, '-proj-declared', 'memory');
+    const plain = path.join(tmp, '-proj-plain', 'memory');
+    fs.mkdirSync(declared, { recursive: true });
+    fs.mkdirSync(plain, { recursive: true });
+    const fat = `- [Fat](project_fat.md) \`[fat-tag]\` — ${'y'.repeat(MEMORY_INDEX_BUDGET_BYTES)}\n`;
+    fs.writeFileSync(path.join(declared, 'MEMORY.md'), `<!-- index-budget: 64KB -->\n${fat}`);
+    fs.writeFileSync(path.join(plain, 'MEMORY.md'), fat);
+
+    const { indexes } = scanMemoryIndexSizes({ rootDir: tmp });
+    const byName = Object.fromEntries(indexes.map(i => [path.basename(path.dirname(i.memDir)), i]));
+    assert.equal(byName['-proj-declared'].budgetBytes, 64 * 1024);
+    assert.equal(byName['-proj-declared'].budgetDeclared, true);
+    assert.equal(byName['-proj-plain'].budgetBytes, MEMORY_INDEX_BUDGET_BYTES);
+    assert.equal(byName['-proj-plain'].budgetDeclared, false);
+    // Both are over the DEFAULT budget; only the per-index budget separates
+    // them. That is the property doctor filters on, asserted here rather than
+    // only there. (Their byte counts are not equal — the declared one carries
+    // the declaration line, which is 28 bytes of the file it governs.)
+    assert.ok(byName['-proj-declared'].bytes > MEMORY_INDEX_BUDGET_BYTES);
+    assert.ok(byName['-proj-plain'].bytes > MEMORY_INDEX_BUDGET_BYTES);
+    const over = indexes.filter(i => i.bytes > i.budgetBytes).map(i => path.basename(path.dirname(i.memDir)));
+    assert.deepEqual(over, ['-proj-plain']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('readIndexBudget: near-misses reach the error branch instead of reverting in silence', () => {
+  // The first draft matched the whole line with one regex, so every one of
+  // these was treated as ABSENT and fell back to the default without a word —
+  // and `28 KB`, a space before the unit, is the likeliest typo in the entire
+  // grammar. Found by the pre-tag review of v0.74.2; the line match is now
+  // loose and only the VALUE is strict.
+  const nearMisses = [
+    '<!-- index-budget: 28 KB -->',
+    '<!-- index-budget: 28KB --> raise it',
+    '<!-- index-budget: 28KB',
+    '<!--index-budget:28 KB-->',
+  ];
+  for (const line of nearMisses) {
+    const r = readIndexBudget(`${line}\n`);
+    assert.equal(r.declared, false, `${line} must not be honoured`);
+    assert.equal(r.bytes, MEMORY_INDEX_BUDGET_BYTES, `${line} must keep the default`);
+    assert.match(r.error || '', /malformed index-budget/, `${line} must be reported, not ignored`);
+  }
+  // Control: a line with nothing budget-shaped on it stays silent — the loose
+  // match must not turn ordinary index prose into an error.
+  const plain = readIndexBudget('- [A](feedback_a.md) `[t]` — d\n');
+  assert.equal(plain.error, undefined);
+  assert.equal(plain.declared, false);
+
+  // Second control, and a deliberate design choice rather than an oversight:
+  // an uppercase KEY is HONOURED, not reported. The failure mode this guards
+  // against is a silent fallback, not a forgiving spelling — refusing a
+  // declaration whose intent is unmistakable would be the check being pedantic
+  // at the operator's expense. Only the VALUE is strict, because there a wrong
+  // guess is off by 1024x.
+  const shouty = readIndexBudget('<!-- INDEX-BUDGET: 28KB -->\n');
+  assert.equal(shouty.declared, true);
+  assert.equal(shouty.bytes, 28 * 1024);
+});
+
+test('readIndexBudget: a declaration inside a code block does not set the budget', () => {
+  // doctor's own remedy line teaches this syntax, so a MEMORY.md documenting
+  // it is the expected case — and in a fenced block the marker sits alone on
+  // its line, which is exactly what the matcher wants. Markdown's own rules do
+  // the separating: a fence, or >=4 leading spaces, is code.
+  const fenced = 'To raise it, add:\n\n```\n<!-- index-budget: 999KB -->\n```\n\n- [A](a.md) `[t]` — d\n';
+  assert.equal(readIndexBudget(fenced).declared, false);
+  assert.equal(readIndexBudget(fenced).bytes, MEMORY_INDEX_BUDGET_BYTES);
+  assert.equal(readIndexBudget(fenced).error, undefined, 'documented syntax is not a typo');
+
+  const indented = 'Example:\n\n    <!-- index-budget: 999KB -->\n\n- [A](a.md) `[t]` — d\n';
+  assert.equal(readIndexBudget(indented).declared, false);
+
+  const tilde = '~~~\n<!-- index-budget: 999KB -->\n~~~\n';
+  assert.equal(readIndexBudget(tilde).declared, false);
+
+  // Control: the SAME line outside a fence is honoured, so the stripper cannot
+  // be silently eating every declaration.
+  assert.equal(readIndexBudget('<!-- index-budget: 999KB -->\n').declared, false, 'over the cap');
+  assert.equal(readIndexBudget('<!-- index-budget: 64KB -->\n').declared, true);
+  // Up to 3 leading spaces is still a comment, not code.
+  assert.equal(readIndexBudget('   <!-- index-budget: 64KB -->\n').declared, true);
+});
+
+test('readIndexBudget: a budget above the cap is refused, not honoured', () => {
+  // Visibility alone (doctor prints the declared number) is not prevention:
+  // `999999KB` would switch the check off for that index forever. The cap turns
+  // the knob into a bounded one, and the refusal reads like every other
+  // malformed value.
+  const max = MEMORY_INDEX_BUDGET_BYTES * INDEX_BUDGET_MAX_MULTIPLE;
+  const over = readIndexBudget(`<!-- index-budget: ${max / 1024 + 1}KB -->\n`);
+  assert.equal(over.declared, false);
+  assert.equal(over.bytes, MEMORY_INDEX_BUDGET_BYTES);
+  assert.match(over.error, /above the .*KB cap/);
+  // Exactly at the cap is allowed — the boundary control, without which the
+  // cap could be off by any amount and this test would not notice.
+  const atCap = readIndexBudget(`<!-- index-budget: ${max / 1024}KB -->\n`);
+  assert.equal(atCap.declared, true);
+  assert.equal(atCap.bytes, max);
 });

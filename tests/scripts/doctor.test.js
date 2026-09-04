@@ -1,34 +1,34 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { doctor, isAdvisoryCheck } from '../../scripts/doctor.js';
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
+import {
+  cleanStateDir,
+  readRetentionFromClaudeMd,
+  DEFAULT_RETENTION_DAYS,
+} from '../../scripts/clean-residue.js';
 
 const DOCTOR_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/doctor.js');
 
-let tmpHome, savedHome;
+// R11-27: HOME *and* every CLAUDEMD_*_DIR seam, from the one definition. This
+// suite's own literal set HOME alone, so `stateDir()` landed in the sandbox only
+// while the ambient environment happened not to export CLAUDEMD_STATE_DIR — and
+// the state-dir tests below read that directory.
+const box = useHomeSandbox('dr');
 
 beforeEach(() => {
-  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-dr-'));
-  savedHome = process.env.HOME;
-  process.env.HOME = tmpHome;
-  fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
-  fs.mkdirSync(path.join(tmpHome, '.claude/logs'), { recursive: true });
+  fs.mkdirSync(box.claude('logs'), { recursive: true });
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    box.claude('.claudemd-manifest.json'),
     JSON.stringify({
       version: '0.1.0',
       entries: [],
     })
   );
-});
-
-afterEach(() => {
-  process.env.HOME = savedHome;
-  fs.rmSync(tmpHome, { recursive: true, force: true });
 });
 
 test('doctor returns checks array with at least 5 entries', async () => {
@@ -38,14 +38,14 @@ test('doctor returns checks array with at least 5 entries', async () => {
 });
 
 test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)', async () => {
-  const staleRoot = path.join(tmpHome, 'cache/0.1.0');
+  const staleRoot = path.join(box.home, 'cache/0.1.0');
   fs.mkdirSync(staleRoot, { recursive: true });
   fs.writeFileSync(path.join(staleRoot, 'package.json'), JSON.stringify({ version: '0.1.0' }));
-  const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  const mkt = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
   fs.mkdirSync(mkt, { recursive: true });
   fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
       version: '0.1.0',
       pluginRoot: staleRoot,
@@ -61,14 +61,14 @@ test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)'
 });
 
 test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.36.0)', async () => {
-  const root = path.join(tmpHome, 'cache/9.9.9');
+  const root = path.join(box.home, 'cache/9.9.9');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '9.9.9' }));
-  const mkt = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  const mkt = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
   fs.mkdirSync(mkt, { recursive: true });
   fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
       version: '9.9.9',
       pluginRoot: root,
@@ -84,11 +84,11 @@ test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.3
 
 test('plugin cache staleness: absent when marketplace has no comparable version (v0.36.0)', async () => {
   // beforeEach manifest has no pluginRoot; give it one but no marketplace dir.
-  const root = path.join(tmpHome, 'cache/1.2.3');
+  const root = path.join(box.home, 'cache/1.2.3');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.3' }));
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
       version: '1.2.3',
       pluginRoot: root,
@@ -109,7 +109,7 @@ test('doctor --prune-backups removes old backups', async () => {
     '20260501T000000Z',
     '20260601T000000Z',
   ]) {
-    fs.mkdirSync(path.join(tmpHome, `.claude/backup-${iso}`));
+    fs.mkdirSync(path.join(box.home, `.claude/backup-${iso}`));
   }
   const r = await doctor({ pruneBackups: 3 });
   assert.equal(r.pruned.length, 3);
@@ -119,7 +119,7 @@ test('doctor CLI rejects --prune-backups=0 (F9)', () => {
   // Regression: --prune-backups=0 meant "retain zero", which deleted ALL
   // backups silently. Users reasonably read "0" as "prune zero of them".
   const result = spawnSync(process.execPath, [DOCTOR_JS, '--prune-backups=0'], {
-    env: { ...process.env, HOME: tmpHome },
+    env: box.env(),
     encoding: 'utf8',
   });
   assert.notEqual(result.status, 0, 'must exit non-zero on prune=0');
@@ -127,7 +127,7 @@ test('doctor CLI rejects --prune-backups=0 (F9)', () => {
 });
 
 test('doctor logs check reports size and warns above threshold (L5)', async () => {
-  const logPath = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const logPath = path.join(box.home, '.claude/logs/claudemd.jsonl');
   // 6 MB of pseudo-entries — beyond the 5 MB warn threshold.
   const row = `{"ts":"2026-04-22T00:00:00Z","hook":"banned-vocab","event":"deny","extra":null}\n`;
   const rowsNeeded = Math.ceil((6 * 1024 * 1024) / row.length);
@@ -141,7 +141,7 @@ test('doctor logs check reports size and warns above threshold (L5)', async () =
 });
 
 test('doctor logs check ok when small (L5)', async () => {
-  const logPath = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const logPath = path.join(box.home, '.claude/logs/claudemd.jsonl');
   fs.writeFileSync(logPath, `{"ts":"2026-04-22T00:00:00Z","hook":"x","event":"pass","extra":null}\n`);
   const r = await doctor({});
   const logs = r.checks.find(c => c.name === 'logs');
@@ -199,7 +199,7 @@ test('doctor self-test detail notes kill-switch when user has disabled the hook 
   // still runs against the hook CODE (with env cleared in spawn), but its
   // detail must call out that live enforcement is OFF for this user.
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/settings.json'),
+    path.join(box.home, '.claude/settings.json'),
     JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
   );
   const r = await doctor({});
@@ -255,7 +255,7 @@ test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from se
   // while emitting the kill-switch note in detail. Verifies the matrix
   // implementation reads each hook's own ksEnvVar, not just the global one.
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/settings.json'),
+    path.join(box.home, '.claude/settings.json'),
     JSON.stringify({ env: { DISABLE_PRE_BASH_SAFETY_HOOK: '1' } })
   );
   const r = await doctor({});
@@ -293,9 +293,9 @@ test('D8: orphan manifest detected when manifest.pluginRoot path is absent', asy
   // User scenario: ran /plugin uninstall claudemd@claudemd without the
   // /claudemd-uninstall step. Plugin cache is gone; manifest survives with
   // a now-stale pluginRoot. doctor must flag this so the user knows what to clean up.
-  const ghostPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/9.9.9-removed');
+  const ghostPluginRoot = path.join(box.home, 'plugins/cache/claudemd/claudemd/9.9.9-removed');
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
       version: '9.9.9-removed',
       installedAt: new Date().toISOString(),
@@ -314,7 +314,7 @@ test('D8: orphan manifest detected when manifest.pluginRoot path is absent', asy
 test('doctor surfaces spec-hash drift when installed differs from shipped (v0.6.0)', async () => {
   // Write installed spec content that cannot match the real shipped spec —
   // proves drift is detected, not silently green.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'fake spec body\n');
+  fs.writeFileSync(path.join(box.home, '.claude/CLAUDE.md'), 'fake spec body\n');
   const r = await doctor({});
   const main = r.checks.find(c => c.name === 'spec-hash:CLAUDE.md');
   assert.ok(main, 'spec-hash:CLAUDE.md check must exist');
@@ -351,7 +351,7 @@ test('hook-drift flags differing hooks when marketplace install lags source (v0.
   // tr '/._' '-' but marketplaces/claudemd/hooks/lib/rule-hits.sh still
   // has the pre-fix tr '/.' '-'. doctor must surface it, not green-rubberstamp.
   const sourceHooks = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks');
-  const mktRoot = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd');
+  const mktRoot = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
   // Mirror source hooks/ into market so missing-in-market doesn't dominate.
   fs.cpSync(sourceHooks, path.join(mktRoot, 'hooks'), { recursive: true });
   // Then break ONE file (the canonical drift target) to simulate the real
@@ -373,7 +373,7 @@ test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 5
   // 6 events on §11-memory-read: 5 bypasses + 1 deny = 83% override rate.
   // Doctor must flag this as a demotion candidate (rule too strict / wording
   // confuses, users routinely escape-hatch).
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
@@ -396,7 +396,7 @@ test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false dem
   // §11-memory-read emits `deny-repeat` for re-denies. 1 deny + 2 deny-repeat
   // = 3 real blocks vs 2 bypasses → true ratio 40% (healthy). Pre-fix doctor
   // counted only literal `deny` (=1) → ratio 67% → FALSE demote candidate.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
@@ -418,7 +418,7 @@ test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false dem
 
 test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () => {
   // 5 denies + 1 bypass = 17% override rate — below threshold, healthy.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
@@ -437,7 +437,7 @@ test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () =
 
 test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', async () => {
   // Single deny on §10-V — too few to draw a ratio conclusion. No check emitted.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   fs.writeFileSync(
     log,
     `{"ts":"${new Date().toISOString()}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["robust"]}}\n`
@@ -452,7 +452,7 @@ test('R-N6+: demotion-candidate detail names the dominant bypass token (single t
   // 80% override means the rule is being defeated through one specific
   // escape hatch. Operator should see the token name in the detail line,
   // not have to cross-reference /claudemd-audit byBypass.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
@@ -473,7 +473,7 @@ test('R-N6+: demotion-candidate detail sorts mixed tokens by count desc', async 
   // + 1× force-skip + 1 deny. ratio 80%, two tokens, output must list them
   // sorted by count desc: [skip-memory-check]×3, [force-skip]×1.
   // (§8 sections are immutable-exempt — see the dedicated test below.)
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
@@ -500,7 +500,7 @@ test('v0.23.6: rule-usage never flags an immutable §8 section as a demotion can
   // above the 50% demote threshold) must surface for visibility but NOT carry
   // the "§0.1 demotion candidate"
   // label — that would recommend an action the policy forbids.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-npx","extra":{"token":"allow-npx-unpinned"}}\n`.repeat(
@@ -522,7 +522,7 @@ test('v0.23.6: hook-fail-open — bad-event fail-open is advisory (ok:true)', as
   // session_id, so the row is session_id:null. reason=bad-event = empty stdin
   // (`echo "" | hook`, fail-open.test.sh leak) — impossible on a live
   // PreToolUse pipe → advisory, must NOT false-flag a healthy install.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows =
     `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"bad-event"},"session_id":null}\n`.repeat(
@@ -542,7 +542,7 @@ test('v0.23.6: hook-fail-open — patterns-missing fail-open flags a live bypass
   // unreadable patterns file). reason=patterns-missing / jq-missing is a
   // genuine live-env failure that disables enforcement → ok:false. Gating on
   // reason (not session_id) is what makes this branch reachable in production.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"patterns-missing"},"session_id":null}\n`;
   fs.writeFileSync(log, rows);
@@ -556,7 +556,7 @@ test('v0.23.6: hook-fail-open — patterns-missing fail-open flags a live bypass
 test('R-N6+: healthy rows stay terse — no token detail attached', async () => {
   // Healthy section: detail must NOT include token breakdown. Per-token
   // forensics are only useful when the rule is being defeated.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
@@ -575,7 +575,7 @@ test('R-N6+: healthy rows stay terse — no token detail attached', async () => 
 test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () => {
   // Legacy rows (no spec_section) accumulate under (unset). Demoting on
   // these would misattribute pre-upgrade behavior to current rule design.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const rows = [
     `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","extra":{"token":"allow-banned-vocab"}}\n`.repeat(
@@ -597,7 +597,7 @@ test('rule-usage excludes test-session/probe rows (parity with audit.js)', async
   // doctor did not → same 30d window showed doctor ship-baseline deny=17 vs
   // audit deny=9. §0.1 demote verdicts are downstream of this count, so they
   // must count REAL sessions only.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const realUuid = '11111111-2222-3333-4444-555555555555'; // 36-char real session
   const rows = [
@@ -623,7 +623,7 @@ test('rule-usage demote token breakdown also excludes sentinel bypasses', async 
   // The demote-candidate token breakdown iterates the hit list a SECOND time
   // (parallel consumer of the same data). It must filter sentinels identically
   // to the count, else "bypass=N" and the [token]×k breakdown disagree.
-  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
   const now = new Date().toISOString();
   const realUuid = '11111111-2222-3333-4444-555555555555';
   const rows = [
@@ -652,7 +652,7 @@ test('doctor CLI rejects space-form --prune-backups 5 (was silent default)', () 
   // doctor ran without prune, exited 0 — same family as audit.js / sparkline.js
   // / clean-residue.js fixes shipped in v0.9.16.
   const result = spawnSync(process.execPath, [DOCTOR_JS, '--prune-backups', '5'], {
-    env: { ...process.env, HOME: tmpHome },
+    env: box.env(),
     encoding: 'utf8',
   });
   assert.equal(result.status, 2, `expected exit 2, stderr: ${result.stderr}`);
@@ -661,7 +661,7 @@ test('doctor CLI rejects space-form --prune-backups 5 (was silent default)', () 
 
 test('doctor CLI rejects unknown flag (was silent ignore)', () => {
   const result = spawnSync(process.execPath, [DOCTOR_JS, '--bogus=1'], {
-    env: { ...process.env, HOME: tmpHome },
+    env: box.env(),
     encoding: 'utf8',
   });
   assert.equal(result.status, 2);
@@ -669,10 +669,10 @@ test('doctor CLI rejects unknown flag (was silent ignore)', () => {
 });
 
 test('D8: plugin cache check passes when manifest.pluginRoot exists', async () => {
-  const realPluginRoot = path.join(tmpHome, 'plugins/cache/claudemd/claudemd/0.5.4');
+  const realPluginRoot = path.join(box.home, 'plugins/cache/claudemd/claudemd/0.5.4');
   fs.mkdirSync(realPluginRoot, { recursive: true });
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/.claudemd-manifest.json'),
+    path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
       version: '0.5.4',
       installedAt: new Date().toISOString(),
@@ -693,8 +693,8 @@ test('spec-cache-drift flags installed vs marketplace-shipped fork (2026-08-16 a
   // banner fired 713 times over 4 days while doctor — whose axis 1 self-compares
   // source vs installed when run from the repo — exited 0. This axis mirrors
   // what hook-drift has done for hooks/ since v0.9.22.
-  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE-extended.md'), 'installed body\n');
-  const mktSpec = path.join(tmpHome, '.claude/plugins/marketplaces/claudemd/spec');
+  fs.writeFileSync(path.join(box.home, '.claude/CLAUDE-extended.md'), 'installed body\n');
+  const mktSpec = path.join(box.home, '.claude/plugins/marketplaces/claudemd/spec');
   fs.mkdirSync(mktSpec, { recursive: true });
   fs.writeFileSync(path.join(mktSpec, 'CLAUDE-extended.md'), 'cache body\n');
   const r = await doctor({});
@@ -728,12 +728,12 @@ test('spec-cache-drift skips when no marketplace install exists (2026-08-16 audi
 // symlink is now handled rather than caught, and the handler is the backstop.
 
 test('0.68.3: a dangling symlink in a backup dir does not stop the run', () => {
-  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260101T000000000Z');
   fs.mkdirSync(bk, { recursive: true });
-  fs.symlinkSync(path.join(tmpHome, '.claude/gone-forever'), path.join(bk, 'dangling'));
+  fs.symlinkSync(path.join(box.home, '.claude/gone-forever'), path.join(bk, 'dangling'));
 
   const r = spawnSync(process.execPath, [DOCTOR_JS], {
-    env: { ...process.env, HOME: tmpHome },
+    env: box.env(),
     encoding: 'utf8',
   });
 
@@ -749,10 +749,10 @@ test('0.68.3: a throw inside doctor() is named, not a bare stack, and is not exi
   // A directory where the rule-hits log should be: existsSync and statSync both
   // succeed, readFileSync throws EISDIR. Chosen because it exercises the
   // handler through real code rather than an injected throw.
-  fs.mkdirSync(path.join(tmpHome, '.claude/logs/claudemd.jsonl'), { recursive: true });
+  fs.mkdirSync(path.join(box.home, '.claude/logs/claudemd.jsonl'), { recursive: true });
 
   const r = spawnSync(process.execPath, [DOCTOR_JS], {
-    env: { ...process.env, HOME: tmpHome },
+    env: box.env(),
     encoding: 'utf8',
   });
 
@@ -770,11 +770,11 @@ test('R10-03: --prune-backups leaves the legacy dirs the same run reports', asyn
   // the SAME run deleted the genuine personal backup and kept the spec-shaped
   // dirs, because on a pre-0.68.3 layout the legacy dirs are the newest ones.
   const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
-  const personal = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  const personal = path.join(box.home, '.claude/backup-20260101T000000Z');
   fs.mkdirSync(personal, { recursive: true });
   fs.writeFileSync(path.join(personal, 'CLAUDE.md'), '# My personal global instructions\n');
   const legacyDirs = ['20260201T000000Z', '20260301T000000Z'].map(s => {
-    const d = path.join(tmpHome, `.claude/backup-${s}`);
+    const d = path.join(box.home, `.claude/backup-${s}`);
     fs.mkdirSync(d, { recursive: true });
     fs.writeFileSync(path.join(d, 'CLAUDE.md'), SPEC);
     return d;
@@ -793,7 +793,7 @@ test('R10-03: --prune-backups leaves the legacy dirs the same run reports', asyn
 });
 
 test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async () => {
-  const d = path.join(tmpHome, '.claude/backup-20260201T000000Z');
+  const d = path.join(box.home, '.claude/backup-20260201T000000Z');
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
   const r = await doctor({});
@@ -809,11 +809,11 @@ test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async ()
 // clean routing surface having parsed no table at all.
 const stageExtSpec = (overrides, specText) => {
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/CLAUDE-extended.md'),
+    path.join(box.home, '.claude/CLAUDE-extended.md'),
     specText ?? fs.readFileSync('spec/CLAUDE-extended.md', 'utf8')
   );
   fs.writeFileSync(
-    path.join(tmpHome, '.claude/settings.json'),
+    path.join(box.home, '.claude/settings.json'),
     JSON.stringify({ skillOverrides: overrides })
   );
 };
@@ -864,4 +864,169 @@ test('routing:skills-enabled refuses to pass when §4 resolved too few primaries
   const c = routingCheck(await doctor({}));
   assert.equal(c.ok, false);
   assert.match(c.detail, /resolved only 0 §4 Routing primary/);
+});
+
+// --- state-dir-orphans: the threshold judges the REAPABLE subset -------------
+//
+// v0.74.2. Measured on the maintainer's machine 2026-09-04: 189 ephemeral state
+// files, 0 of them past the retention window. The check was red and told the
+// operator to run `/claudemd-clean-residue --apply`, which would have deleted
+// nothing — a permanently-red advisory whose own remedy is a no-op, which is
+// how a health checker teaches people to ignore it. Three of the eight
+// ephemeral kinds are written once per session and are SUPPOSED to sit there
+// for the whole window, so the total is session-rate x window and crossing a
+// fixed line says nothing about hygiene.
+const stateCheck = r => r.checks.find(c => c.name === 'state-dir-orphans');
+
+function seedState(n, { kind = 'session-ref', ageDays = 0 } = {}) {
+  const spell = {
+    'session-ref': i => `session-start-s${i}.ref`,
+    'session-summary': i => `session-summary-s${i}.lastrun`,
+    'ext-read': i => `ext-read-s${i}.ts`,
+  }[kind];
+  const when = new Date(Date.now() - ageDays * 86400000);
+  for (let i = 0; i < n; i++) {
+    const f = path.join(box.stateDir, spell(i));
+    fs.writeFileSync(f, 'x');
+    fs.utimesSync(f, when, when);
+  }
+}
+
+test('state-dir-orphans stays green on a large population that is entirely inside the window', async () => {
+  // The regression, in the shape that produced it: well past the 50-file line,
+  // nothing reapable. Pre-fix this was ok:false.
+  seedState(40, { kind: 'session-ref', ageDays: 0 });
+  seedState(40, { kind: 'session-summary', ageDays: 3 });
+  const c = stateCheck(await doctor({}));
+  assert.equal(c.ok, true, `80 in-window files must not fire the advisory: ${c.detail}`);
+  // Cardinality on the GREEN path too: "clean" and "nothing was decidable" must
+  // not print the same sentence.
+  assert.match(c.detail, /0 reapable of 80 ephemeral state file/);
+  assert.match(c.detail, /session-ref=40/);
+});
+
+test('state-dir-orphans fires when the reapable subset itself exceeds the threshold', async () => {
+  // The control the fix has to keep alive: past-window files still turn it red,
+  // and the count it names is the count --apply would delete.
+  seedState(51, { kind: 'ext-read', ageDays: 30 });
+  seedState(10, { kind: 'session-ref', ageDays: 0 });
+  const c = stateCheck(await doctor({}));
+  assert.equal(c.ok, false, `51 files past the window must fire: ${c.detail}`);
+  assert.match(c.detail, /51 reapable of 61 ephemeral state file/);
+  assert.match(c.detail, /delete exactly those 51/);
+  assert.match(c.detail, /ext-read=51/);
+});
+
+test('state-dir-orphans reports the same subset clean-residue would delete', async () => {
+  // Not "a number that looks right" — the same population, from the same
+  // function, so the advisory and its remedy cannot drift apart again.
+  seedState(4, { kind: 'ext-read', ageDays: 30 });
+  seedState(9, { kind: 'session-ref', ageDays: 1 });
+  const c = stateCheck(await doctor({}));
+  // The oracle resolves the window the way doctor does. It used to take
+  // cleanStateDir's hardcoded default while doctor read the REPO's CLAUDE.md —
+  // a config file outside everything this sandbox redirects — so adding
+  // `TMP_RETENTION_DAYS: 30` to the repo made this case fail with a message
+  // about reapable counts and no hint of the cause (pre-tag review, NOTE 5).
+  const dry = cleanStateDir({
+    stateDir: box.stateDir,
+    retentionDays: readRetentionFromClaudeMd() ?? DEFAULT_RETENTION_DAYS,
+  });
+  assert.equal(dry.targets.length, 4);
+  assert.equal(dry.scanned.length, 13);
+  assert.match(c.detail, new RegExp(`${dry.targets.length} reapable of ${dry.scanned.length} `));
+  assert.match(c.detail, new RegExp(`past the ${dry.retentionDays}-day window`));
+});
+
+test('state-dir-orphans still fails on an unbounded total, with a remedy that is not --apply', async () => {
+  // The regression the pre-tag review caught: moving the threshold onto the
+  // reapable subset left NO value of the total that could fail, and a runaway
+  // writer (a session_id that changes per invocation) produces exactly that —
+  // every file fresh, nothing ever reapable, the directory growing forever
+  // behind a green check. Verified there at 5,000 files reporting ok=true.
+  seedState(1001, { kind: 'session-ref', ageDays: 0 });
+  const c = stateCheck(await doctor({}));
+  assert.equal(c.ok, false, `1001 fresh files must fail the ceiling: ${c.detail}`);
+  assert.match(c.detail, /0 reapable of 1001 /);
+  assert.match(c.detail, /1000-file ceiling/);
+  // The remedy must differ from the reapable branch's. Printing a red line
+  // whose fix does nothing is the defect this whole release removes; it must
+  // not come back one branch over.
+  assert.match(c.detail, /--apply will NOT help/);
+  assert.match(c.detail, /per INVOCATION/);
+});
+
+test('state-dir-orphans: the ceiling does not fire just below it', async () => {
+  // Boundary control. Without it the ceiling could be off by any amount, or
+  // firing on every population, and the test above would not notice.
+  seedState(999, { kind: 'session-ref', ageDays: 0 });
+  const c = stateCheck(await doctor({}));
+  assert.equal(c.ok, true, `999 files are under the ceiling: ${c.detail}`);
+  assert.match(c.detail, /0 reapable of 999 /);
+});
+
+// --- memory-index-size: judged against the budget the index declares --------
+//
+// v0.74.2. The 12KB default is one number applied to every project on the
+// machine. Where the operator has judged an overage acceptable — this repo's
+// own index is the spec's accumulated rule set — the check was red forever with
+// a remedy that had already been declined, which is the same "permanently red,
+// nothing to do" shape as state-dir-orphans above.
+const indexCheck = r => r.checks.find(c => c.name === 'memory-index-size');
+
+function seedIndex(slug, body) {
+  const dir = box.claude('projects', slug, 'memory');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'MEMORY.md'), body);
+}
+// Comfortably past the 12KB default.
+const FAT_INDEX = `- [Fat](project_fat.md) \`[fat-tag]\` — ${'y'.repeat(20 * 1024)}\n`;
+
+test('memory-index-size: an over-default index with no declaration still fails', async () => {
+  // The control for the two below: without it, a check that passed everything
+  // would satisfy them both.
+  seedIndex('-proj-plain', FAT_INDEX);
+  const c = indexCheck(await doctor({}));
+  assert.equal(c.ok, false, c.detail);
+  assert.match(c.detail, /1\/1 MEMORY\.md file\(s\) exceed their budget/);
+  assert.match(c.detail, /index-budget: NNKB/, 'the remedy must name the declaration syntax');
+});
+
+test('memory-index-size: a declared budget passes and is named in the line it greens', async () => {
+  seedIndex('-proj-declared', `<!-- index-budget: 64KB -->\n${FAT_INDEX}`);
+  const c = indexCheck(await doctor({}));
+  assert.equal(c.ok, true, c.detail);
+  // Visible, not silent: the raised number appears in the green line, so the
+  // decision cannot hide behind a passing check.
+  assert.match(c.detail, /declared budget 64KB/);
+  assert.match(c.detail, /1 declare their own budget/);
+});
+
+test('memory-index-size: a malformed declaration fails instead of reverting silently', async () => {
+  // A knob that is quietly ignored is worse than one that refuses
+  // (lib/argv.js's flag-shape rule). `28` without a unit is the shape that
+  // would otherwise be read as 28 bytes or 28KB depending on who guesses.
+  seedIndex('-proj-broken', `<!-- index-budget: 28 -->\n${FAT_INDEX}`);
+  const c = indexCheck(await doctor({}));
+  assert.equal(c.ok, false, c.detail);
+  assert.match(c.detail, /unusable index-budget declaration/);
+  assert.match(c.detail, /malformed index-budget declaration '28'/);
+});
+
+test('memory-index-size: a malformed declaration does not hide a genuine overage', async () => {
+  // These are two independent faults and both must be reported. An earlier
+  // draft branched malformed-else-overBudget, so one typo anywhere on the
+  // machine suppressed every real over-budget index in the same run — an
+  // advisory withholding the finding the operator needed (pre-tag review).
+  seedIndex('-proj-typo', `<!-- index-budget: 28 -->\n${FAT_INDEX}`);
+  seedIndex('-proj-genuine', FAT_INDEX);
+  const c = indexCheck(await doctor({}));
+  assert.equal(c.ok, false, c.detail);
+  assert.match(c.detail, /unusable index-budget declaration/);
+  assert.match(c.detail, /-proj-typo/);
+  // The half that used to vanish. 2/2, not 1/2: the typo'd file falls back to
+  // the 12KB default and is over that too, which is the point of saying the
+  // default "is in force for those files".
+  assert.match(c.detail, /2\/2 MEMORY\.md file\(s\) exceed their budget/);
+  assert.match(c.detail, /-proj-genuine/);
 });

@@ -316,6 +316,12 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
 // gets a one-day window rather than that outcome.
 export const MIN_RETENTION_DAYS = 1;
 
+// The window used when neither --retention-days nor the project's CLAUDE.md
+// says otherwise. Exported because doctor.js has to judge its state-dir
+// advisory against the SAME window this script would delete with; a second
+// literal `7` over there is how the advisory and its own remedy drift apart.
+export const DEFAULT_RETENTION_DAYS = 7;
+
 export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7, now = Date.now() } = {}) {
   const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
   const { candidates } = scanClaudeTmp({ claudeTmpDir, now });
@@ -415,15 +421,27 @@ export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now 
   const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
   const { candidates } = scanStateDir({ stateDir, now });
   const targets = candidates.filter(c => c.ageDays >= window);
-  if (!apply) return { dryRun: true, targets, deleted: 0, failures: [], retentionDays: window };
+  // `scanned` rides along with `targets` so a caller that needs BOTH numbers
+  // (doctor.js does) gets them from one scan and one filter, instead of
+  // re-deriving the window on its own — the re-derivation is what let doctor
+  // report a population this function would never touch.
+  //
+  // NOT named `candidates`, though that is what scanStateDir calls it: this
+  // command's shipped JSON already spells `stateDir.candidates` and means the
+  // REAPABLE count by it. Two opposite meanings for one word, a few lines
+  // apart, is bait for the next maintainer — the pre-tag review of this release
+  // showed the "obvious cleanup" (`candidates: cstate.candidates.length`)
+  // passing 43/43, because nothing pinned that shipped key's semantics.
+  if (!apply)
+    return { dryRun: true, scanned: candidates, targets, deleted: 0, failures: [], retentionDays: window };
   const { deleted, failures } = rmEach(targets, { force: true });
-  return { dryRun: false, targets, deleted, failures, retentionDays: window };
+  return { dryRun: false, scanned: candidates, targets, deleted, failures, retentionDays: window };
 }
 
 // TMP_RETENTION_DAYS: N in the invoking project's CLAUDE.md (spec §EXT §7-EXT
 // override syntax). Malformed values warn to stderr and fall back to the default —
 // a silently-ignored config knob is the flag-shape antipattern (see lib/argv.js).
-function readRetentionFromClaudeMd(cwd = process.cwd()) {
+export function readRetentionFromClaudeMd(cwd = process.cwd()) {
   const file = path.join(cwd, 'CLAUDE.md');
   let src;
   try {
@@ -497,7 +515,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.exit(1);
     }
   } else {
-    retentionDays = readRetentionFromClaudeMd() ?? 7;
+    retentionDays = readRetentionFromClaudeMd() ?? DEFAULT_RETENTION_DAYS;
   }
   const claudeTmpDir = process.env.CLAUDEMD_CLAUDE_TMP_DIR || path.join(os.homedir(), '.claude', 'tmp');
 

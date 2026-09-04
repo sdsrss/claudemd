@@ -679,6 +679,32 @@ test('R10-09: --apply that cannot delete exits 3 and reports what remains', () =
   }
 });
 
+test('shipped JSON: stateDir.candidates is the REAPABLE count, not everything scanned', () => {
+  // The two numbers must be told apart by the fixture, or the assertion passes
+  // under either reading. The R10-09 case above seeds a single 30-day file, so
+  // there targets.length === scanned.length === 1 and it cannot discriminate —
+  // the pre-tag review of v0.74.2 demonstrated that by rewriting this key to
+  // the scanned set and watching the whole suite stay green (43/43).
+  //
+  // `cleanStateDir()` returns the full scan as `scanned` precisely so the word
+  // `candidates` keeps exactly one meaning in the shipped output.
+  const old = path.join(cliStateDir, 'ext-read-old.ts');
+  const fresh = path.join(cliStateDir, 'ext-read-fresh.ts');
+  fs.writeFileSync(old, '');
+  fs.writeFileSync(fresh, '');
+  setMtime(old, 30);
+  setMtime(fresh, 0);
+
+  const r = spawnSync(process.execPath, [SCRIPT], { env: cliEnv(), encoding: 'utf8' });
+  const o = JSON.parse(r.stdout);
+  assert.equal(o.stateDir.candidates, 1, 'only the 30-day file is past the 7-day window');
+  assert.equal(o.stateDir.paths.length, 1);
+  assert.match(o.stateDir.paths[0].path, /ext-read-old\.ts$/);
+  // The premise: two files really are on disk, so a `1` cannot come from an
+  // empty or single-entry directory.
+  assert.equal(fs.readdirSync(cliStateDir).length, 2);
+});
+
 test('R10-09: a clean --apply still exits 0 with remaining=0', () => {
   // FP guard — the new exit code must not fire on the ordinary success path.
   fs.writeFileSync(path.join(tmpDir, 'claudemd-sync-ok'), '');

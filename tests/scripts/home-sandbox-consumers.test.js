@@ -41,7 +41,6 @@ const LEGACY_OWN_HOME = [
   'audit.test.js',
   'cache-prune.test.js',
   'design-detect.test.js',
-  'doctor.test.js',
   'hard-rules-audit.test.js',
   'install.test.js',
   'lesson-bypass-audit.test.js',

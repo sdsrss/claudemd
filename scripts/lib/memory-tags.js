@@ -237,6 +237,100 @@ export function parseMemoryIndex(content) {
 // (closed-loop project_* entries first — index edits are §5-scoped writes).
 export const MEMORY_INDEX_BUDGET_BYTES = 12 * 1024;
 
+// v0.74.2 — a per-index budget the index itself declares:
+//
+//     <!-- index-budget: 28KB -->
+//
+// One default across every project makes this check permanently red wherever
+// the operator has JUDGED the overage acceptable, and a permanently-red
+// advisory whose remedy the operator has already declined is the shape that
+// teaches people to ignore the health checker (the same reasoning that moved
+// state-dir-orphans onto its reapable subset in this release).
+//
+// The declaration lives in the MEMORY.md file rather than the project's
+// CLAUDE.md because a project is addressed here only by its ENCODED cwd
+// (every non-alphanumeric collapses to `-`), and that encoding is lossy — the
+// real project directory cannot be recovered from it to read a knob there.
+//
+// Three properties keep this from being a mute button:
+//   - the resolved budget and whether it was declared are returned, and doctor
+//     prints both, so raising it is visible in the same line that goes green;
+//   - a malformed declaration is an ERROR, never a silent fall back to the
+//     default (lib/argv.js's flag-shape rule: a knob that is quietly ignored
+//     is worse than one that refuses);
+//   - the value is capped at INDEX_BUDGET_MAX_MULTIPLE x the default, so the
+//     knob cannot be set to a number that switches the check off entirely.
+// Lowering below the default is allowed — that direction is stricter.
+//
+// The LINE match is loose and the VALUE check is strict, deliberately. The
+// first draft required the whole line to match one regex, which meant every
+// near-miss — `28 KB` with a space before the unit, an uppercase key, trailing
+// prose after the `-->` — was treated as ABSENT rather than malformed and fell
+// back to the default in silence. `28 KB` is the likeliest typo in this entire
+// grammar, and it landed in the one class the design promised did not exist
+// (found by the pre-tag review of this release). Anything that looks like an
+// attempt now reaches the error branch.
+const INDEX_BUDGET_LINE = /^ {0,3}<!--[ \t]*index-budget:[ \t]*(.*?)[ \t]*-->[ \t]*$/im;
+// A near-miss that does not even close its comment still has to be reported:
+// `<!-- index-budget: 28KB` alone on a line is an attempt, not prose.
+const INDEX_BUDGET_ATTEMPT = /^ {0,3}<!--[ \t]*index-budget:[ \t]*(.*)$/im;
+export const INDEX_BUDGET_MAX_MULTIPLE = 16;
+
+// Fenced and indented code blocks are stripped before matching. A MEMORY.md
+// that DOCUMENTS this syntax — doctor's own remedy line teaches it, so this is
+// the expected way for it to appear — puts the marker alone on its own line
+// inside a fence, which is exactly the shape the line regex wants. Markdown's
+// own rule does the separating: >=4 leading spaces is code (hence ` {0,3}`
+// above), and ``` / ~~~ open a fenced region.
+function stripCodeBlocks(md) {
+  const out = [];
+  let fence = null;
+  for (const line of md.split('\n')) {
+    const open = line.match(/^ {0,3}(```+|~~~+)/);
+    if (fence) {
+      if (open && open[1][0] === fence[0] && open[1].length >= fence.length) fence = null;
+      out.push('');
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      out.push('');
+      continue;
+    }
+    out.push(/^(\t| {4,})/.test(line) ? '' : line);
+  }
+  return out.join('\n');
+}
+
+export function readIndexBudget(content) {
+  const body = stripCodeBlocks(content);
+  const m = body.match(INDEX_BUDGET_LINE);
+  const bad = (token, why) => ({
+    bytes: MEMORY_INDEX_BUDGET_BYTES,
+    declared: false,
+    error: `malformed index-budget declaration '${token}' (${why})`,
+  });
+  if (!m) {
+    // A line that opens the comment and names the key but does not close it is
+    // an ATTEMPT, and an attempt must never be honoured — the fallback branch
+    // is error-only. An earlier draft ran the value check on it, which would
+    // have accepted `<!-- index-budget: 28KB` (no `-->`) as a valid 28KB.
+    const attempt = body.match(INDEX_BUDGET_ATTEMPT);
+    if (attempt) return bad(attempt[1].trim(), "the comment is not closed with '-->'");
+    return { bytes: MEMORY_INDEX_BUDGET_BYTES, declared: false };
+  }
+  // `KB` is required, not assumed: a bare `28` is ambiguous between bytes and
+  // kilobytes, and guessing would silently apply a budget 1024x off.
+  const v = m[1].match(/^([0-9]+)KB$/i);
+  if (!v || Number(v[1]) <= 0) return bad(m[1], "expected e.g. '28KB'");
+  const bytes = Number(v[1]) * 1024;
+  const max = MEMORY_INDEX_BUDGET_BYTES * INDEX_BUDGET_MAX_MULTIPLE;
+  if (bytes > max) {
+    return bad(m[1], `above the ${(max / 1024).toFixed(0)}KB cap — a budget that large disables the check`);
+  }
+  return { bytes, declared: true };
+}
+
 // scanMemoryIndexSizes({rootDir}) — walks the same MEMORY.md set as
 // scanMemoryTags and returns per-index byte size + entry count.
 //
@@ -265,10 +359,14 @@ export function scanMemoryIndexSizes({ rootDir } = {}) {
     }
     scannedFiles++;
     const entries = content.split('\n').filter(l => /^- \[/.test(l)).length;
+    const budget = readIndexBudget(content);
     indexes.push({
       memDir: path.dirname(memIdx),
       bytes: Buffer.byteLength(content, 'utf8'),
       entries,
+      budgetBytes: budget.bytes,
+      budgetDeclared: budget.declared,
+      budgetError: budget.error,
     });
   }
   indexes.sort((a, b) => b.bytes - a.bytes);

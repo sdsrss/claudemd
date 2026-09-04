@@ -8,6 +8,30 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.74.2] - 2026-09-04
+
+Two advisories that were red with nothing to do about it. Spec unchanged at **v6.25.4**.
+
+**`state-dir-orphans` counted a population its own remedy could not touch.** The threshold judged every ephemeral file in `~/.claude/.claudemd-state`; `/claudemd-clean-residue --apply` — the command the failure text printed — deletes only the ones past the retention window. Measured on the maintainer's machine: **189 files, 0 of them reapable**. Three of the eight ephemeral kinds (`session-ref`, `session-summary`, `tmp-baseline`) are written once per session and are supposed to sit there for the whole window, so the total is session-rate × window and crossed a fixed 50-file line permanently once v0.68/v0.69 added them to the pattern list. The check was red, and the fix it recommended was a no-op — the shape that teaches an operator to skip the health checker.
+
+The threshold now judges the reapable subset, resolved by calling `cleanStateDir()` in dry-run with the window `readRetentionFromClaudeMd()` gives the CLI, so the two can no longer drift through independently re-deriving the default. (They are not welded: `/claudemd-clean-residue --retention-days=14` sits above both in the resolution order and doctor has no such flag to see.) Both numbers print on both paths (`0 reapable of 189 …`): "clean" and "nothing was decidable" must not read the same. `DEFAULT_RETENTION_DAYS` is now exported rather than spelled `7` a second time in `doctor.js`.
+
+Moving the threshold onto a subset would have left **no** total that could fail, so a second, higher ceiling (1000 files) guards the population the check was originally built for — a per-session sentinel written per *invocation* leaves everything permanently fresh, nothing ever reapable, and the directory growing behind a green line. Its remedy text deliberately differs: `--apply` does not help there either, and this release is about not printing a fix that does nothing. The pre-tag review found that gap by measuring the first version staying green at 5,000 files.
+
+**`memory-index-size` applied one 12KB default to every project on the machine.** Where the operator has already judged an overage acceptable, that is another permanently-red advisory whose remedy has been declined. An index may now declare the budget it is judged against:
+
+```
+<!-- index-budget: 32KB -->
+```
+
+Three properties keep it from being a mute button. The declared number is printed in the line it turns green (`… declared budget 32KB`, plus `N declare their own budget`). It is capped at 16× the default, so the knob cannot be set to a value that switches the check off. And a malformed declaration **fails the check** instead of silently reverting — the line match is loose and only the value is strict, so `28` without a unit, `28 KB` with a space before it, trailing prose after the `-->` and an unclosed comment all land in the error branch. That last group is a pre-tag review finding: the first draft matched the whole line with one regex, which made every near-miss — including the likeliest typo in the grammar — indistinguishable from no declaration at all. A declaration inside a fenced or indented code block is *not* a declaration, since documenting the syntax inside a `MEMORY.md` is the expected way for it to appear. An uppercase key is honoured rather than refused: the failure mode being guarded is a silent fallback, not a forgiving spelling.
+
+Lowering below the default is allowed; that direction is stricter. The declaration lives in the `MEMORY.md` file rather than a project's `CLAUDE.md` because a project is addressed here only by its lossy encoded cwd, from which the real directory cannot be recovered. Malformed declarations and genuine overages are now reported **together** rather than as alternative branches — one typo used to suppress every real over-budget index in the same run.
+
+**Tests.** `doctor.test.js` moves onto `tests/lib/home-sandbox.mjs` (R11-27 legacy list 23 → 22) — it is the suite that reads the state directory, and it pinned `HOME` alone, not `CLAUDEMD_STATE_DIR`. Nineteen new cases across three suites (doctor 47 → 56, memory-tags 22 → 31, clean-residue 43 → 44). Every mutation run against them — pre-fix predicate, disabled threshold, declaration ignored, malformed silently accepted, budget judged against the global constant, `scanned` withheld, and the shipped `stateDir.candidates` key repointed at the scanned set — kills exactly the cases it should and no others.
+
+`cleanStateDir()` returns the full scan as `scanned`, not `candidates`: the shipped JSON already spells `stateDir.candidates` and means the reapable count by it, and the pre-tag review showed the "obvious cleanup" of pointing that key at the other set passing 43/43 because no fixture distinguished them. One now does.
+
 ## [0.74.1] - 2026-09-04
 
 Hotfix: `v0.74.0`'s CI went red on the macOS leg. Three of the tests added in that release asserted `code: 'EACCES'` on a delete that could not proceed — which is a fact about Linux, not about the fix.

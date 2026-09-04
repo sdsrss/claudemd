@@ -44,7 +44,7 @@ import {
   STALE_AGE_DAYS,
 } from './lib/memory-maintenance.js';
 import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
-import { scanStateDir } from './clean-residue.js';
+import { cleanStateDir, readRetentionFromClaudeMd, DEFAULT_RETENTION_DAYS } from './clean-residue.js';
 import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
@@ -981,32 +981,56 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // MEMORY_INDEX_BUDGET_BYTES for rationale (2026-07-11 spec-audit R2: the
   // index loads every session and had no size governance; §0.1 only caps
   // core/extended). Advisory: doctor reports, operator prunes.
+  // v0.74.2 — each index is judged against ITS OWN budget: the default, or the
+  // one it declares (`<!-- index-budget: 28KB -->`). A declared budget is named
+  // in the line it makes green, so raising it is a visible decision rather than
+  // a silent one, and a malformed declaration fails the check instead of
+  // quietly reverting to the default.
   const idx = scanMemoryIndexSizes();
   const budgetKb = (MEMORY_INDEX_BUDGET_BYTES / 1024).toFixed(0);
-  const overBudget = idx.indexes.filter(i => i.bytes > MEMORY_INDEX_BUDGET_BYTES);
-  if (overBudget.length === 0) {
+  const kb = b => (b / 1024).toFixed(1);
+  const label = i =>
+    `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${kb(i.bytes)}KB (${i.entries} entries` +
+    (i.budgetDeclared ? `, declared budget ${(i.budgetBytes / 1024).toFixed(0)}KB` : '') +
+    ')';
+  const malformed = idx.indexes.filter(i => i.budgetError);
+  const overBudget = idx.indexes.filter(i => i.bytes > i.budgetBytes);
+  const declaredCount = idx.indexes.filter(i => i.budgetDeclared).length;
+  const declaredNote = declaredCount > 0 ? `; ${declaredCount} declare their own budget` : '';
+  // The two faults are reported TOGETHER, never as alternatives. An earlier
+  // draft branched malformed-else-overBudget, so one typo anywhere on the
+  // machine suppressed every genuine over-budget index in the same run — an
+  // advisory withholding the finding the operator needed, which is the exact
+  // failure this release is about. Caught in the pre-tag review.
+  const malformedNote =
+    malformed.length > 0
+      ? `${malformed.length}/${idx.scannedFiles} MEMORY.md file(s) carry an unusable index-budget declaration: ` +
+        malformed
+          .map(i => `${path.basename(path.dirname(i.memDir))}/MEMORY.md — ${i.budgetError}`)
+          .join(', ') +
+        `. The declaration is ignored until it parses, so the ${budgetKb}KB default is in force for those files. `
+      : '';
+  if (malformed.length === 0 && overBudget.length === 0) {
     const largest = idx.indexes[0]; // scan returns bytes-desc sorted
     push(
       'memory-index-size',
       true,
-      `${idx.scannedFiles} MEMORY.md file(s) within ${budgetKb}KB soft budget` +
-        (largest ? ` (largest ${(largest.bytes / 1024).toFixed(1)}KB, ${largest.entries} entries)` : '')
+      `${idx.scannedFiles} MEMORY.md file(s) within budget (default ${budgetKb}KB${declaredNote})` +
+        (largest ? ` (largest ${label(largest)})` : '')
     );
+  } else if (overBudget.length === 0) {
+    push('memory-index-size', false, malformedNote.trimEnd());
   } else {
-    const sample = overBudget
-      .slice(0, 3)
-      .map(
-        i =>
-          `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${(i.bytes / 1024).toFixed(1)}KB (${i.entries} entries)`
-      )
-      .join(', ');
+    const sample = overBudget.slice(0, 3).map(label).join(', ');
     const more = overBudget.length > 3 ? ` +${overBudget.length - 3} more` : '';
     push(
       'memory-index-size',
       false,
-      `${overBudget.length}/${idx.scannedFiles} MEMORY.md file(s) exceed the ${budgetKb}KB soft budget: ${sample}${more}. ` +
-        `The Tier-2 index loads into context every session of its project — prune closed-loop project_* entries ` +
-        `or compress descriptions/tags (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`
+      malformedNote +
+        `${overBudget.length}/${idx.scannedFiles} MEMORY.md file(s) exceed their budget (default ${budgetKb}KB${declaredNote}): ${sample}${more}. ` +
+        `The Tier-2 index loads into context every session of its project — prune closed-loop project_* entries, ` +
+        `compress descriptions, or declare a budget you have judged acceptable with an ` +
+        `\`<!-- index-budget: NNKB -->\` line in the index (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`
     );
   }
 
@@ -1027,36 +1051,91 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // SessionEnd — so the point of this check is that the count is SEEN, not that
   // some threshold is sacred. Reporting only; deletion stays behind the AUTH'd
   // /claudemd-clean-residue path.
+  // v0.74.2 — the threshold judges the REAPABLE subset, not the whole
+  // population. Those are different sets, and only one of them is actionable:
+  // three of the eight ephemeral kinds (session-ref / session-summary /
+  // tmp-baseline) are written once per session and are supposed to sit here for
+  // the whole retention window, so the total is session-rate x window and
+  // crossed a fixed 50-file line permanently once v0.68/v0.69 added them to the
+  // pattern list. Measured 2026-09-04 on the maintainer's machine: 189
+  // ephemeral files, 0 past the window — the advisory was red and the remedy it
+  // printed was a no-op, which is the shape that teaches an operator to ignore
+  // the health checker. Same class as R11-27's floor: a threshold on the scan
+  // total is not a threshold on the decidable subset.
   try {
     const stateDirPath = stateDir();
-    const { candidates } = scanStateDir({ stateDir: stateDirPath });
     const ORPHAN_ADVISORY_THRESHOLD = 50;
-    const byKind = candidates.reduce((acc, c) => {
-      acc[c.kind] = (acc[c.kind] || 0) + 1;
-      return acc;
-    }, {});
-    const kindSummary =
-      Object.entries(byKind)
-        .map(([k, n]) => `${k}=${n}`)
-        .join(', ') || 'none';
-    // The count is EVERY ephemeral file, including this session's own sentinel
-    // and 60-second-old failopen markers. Cleanup reaps only those past the
-    // retention window, so the two numbers legitimately differ — say so rather
-    // than implying `--apply` will zero this figure.
-    if (candidates.length <= ORPHAN_ADVISORY_THRESHOLD) {
+    // Derived from the growth model, not picked: the population is
+    // session-rate x retention window x 3 per-session sentinel kinds. Measured
+    // 2026-09-04 at 189 files = 63 sessions in a 7-day window (~9/day). 1000 is
+    // that same arithmetic at ~48 sessions/day — over five times the observed
+    // rate, so ordinary heavy use cannot reach it and a per-invocation writer
+    // reaches it in hours.
+    const POPULATION_CEILING = 1000;
+    // Window resolved the way clean-residue resolves it, from the same helper —
+    // a project that sets TMP_RETENTION_DAYS moves BOTH numbers together. Dry
+    // run: `apply` defaults to false, so this never deletes.
+    const {
+      scanned: candidates,
+      targets,
+      retentionDays: window,
+    } = cleanStateDir({
+      stateDir: stateDirPath,
+      retentionDays: readRetentionFromClaudeMd() ?? DEFAULT_RETENTION_DAYS,
+    });
+    const summarize = list => {
+      const byKind = list.reduce((acc, c) => {
+        acc[c.kind] = (acc[c.kind] || 0) + 1;
+        return acc;
+      }, {});
+      return (
+        Object.entries(byKind)
+          .map(([k, n]) => `${k}=${n}`)
+          .join(', ') || 'none'
+      );
+    };
+    // Both numbers on BOTH paths: "clean" and "nothing was reapable" must not
+    // print the same thing, and the total is the figure that shows unbounded
+    // growth even while the reapable subset is zero.
+    const scale = `${targets.length} reapable of ${candidates.length} ephemeral state file(s) in ${stateDirPath}`;
+    const breakdown = `(past the ${window}-day window: ${summarize(targets)}; all: ${summarize(candidates)})`;
+    const advisory = 'Advisory: this never fails the doctor exit code.';
+    if (targets.length > ORPHAN_ADVISORY_THRESHOLD) {
       push(
         'state-dir-orphans',
-        true,
-        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary})`
+        false,
+        `${scale} exceed the ${ORPHAN_ADVISORY_THRESHOLD} advisory threshold — ` +
+          `run /claudemd-clean-residue --apply to delete exactly those ${targets.length} ` +
+          `${breakdown}. ${advisory}`
+      );
+    } else if (candidates.length > POPULATION_CEILING) {
+      // The second failure mode, and the one this check was BORN for (v0.65.0:
+      // "growth is unbounded — one ext-read-* leaks per session that never
+      // reaches SessionEnd"). Moving the primary threshold onto the reapable
+      // subset would otherwise have left no value of the total that can fail:
+      // if a hook regression makes session_id vary per INVOCATION rather than
+      // per session, every write lands in a fresh filename, nothing ever ages
+      // past the window, `targets` stays 0 forever, and the directory grows
+      // without bound behind a green check. Caught in the pre-tag review of
+      // this very release, which measured it staying green at 5,000 files.
+      //
+      // Deliberately a different remedy: `--apply` is a no-op here too, and
+      // shipping a red line whose fix does nothing is the defect this release
+      // exists to remove — it must not be reintroduced one branch over.
+      push(
+        'state-dir-orphans',
+        false,
+        `${scale} — the total exceeds the ${POPULATION_CEILING}-file ceiling while only ` +
+          `${targets.length} are reapable ${breakdown}. /claudemd-clean-residue --apply will NOT ` +
+          `help: the writers are outrunning the ${window}-day window. Look for a per-session ` +
+          `sentinel being written per INVOCATION (a session_id that changes within one session). ` +
+          `${advisory}`
       );
     } else {
       push(
         'state-dir-orphans',
-        false,
-        `${candidates.length} ephemeral state file(s) in ${stateDirPath} (${kindSummary}) ` +
-          `exceeds the ${ORPHAN_ADVISORY_THRESHOLD} advisory threshold — run ` +
-          `/claudemd-clean-residue --apply to reap the subset past the retention window. ` +
-          `Advisory: this never fails the doctor exit code.`
+        true,
+        `${scale} — past the ${window}-day window: ${summarize(targets)}; all: ${summarize(candidates)}`
       );
     }
   } catch {
