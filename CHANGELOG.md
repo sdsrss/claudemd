@@ -8,6 +8,32 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.74.0] - 2026-09-04
+
+Supply-chain hardening plus the two leftovers 0.73.0 named as deliberately-not-done. Spec unchanged at **v6.25.4**.
+
+### The release pipeline no longer trusts a moving tag
+
+`npm-publish.yml` runs with `id-token: write` and `secrets.NPM_TOKEN` in scope, and every step in it referenced an action by major tag — `actions/checkout@v6`. That tag is a pointer its owner can repoint at any commit at any time, which makes it a publish credential held by someone else. The marketplace channel carries the same exposure with less signal: it serves the git tag directly and `ci.yml` only reports, so a compromised run would not turn anything red.
+
+All nine references across both workflows are now pinned to full commit SHAs — `actions/checkout` d23441a4 (v6.1.0), `actions/setup-node` 24997072 (v6.5.0), `actions/cache` 0057852b (v4.3.0) — each resolved from two independent sources and checked for annotated-tag indirection. Each of the three pinned tags is lightweight, so its `refs/tags/…` SHA *is* the commit SHA; sibling tags are not, and `actions/checkout` mixes both styles (`v6.0.3`, the immediate neighbour of the version pinned here, is annotated). The cross-check is therefore not optional — a tag-object SHA in a `uses:` is rejected by GitHub. The pre-tag review of this release caught the first draft of this paragraph claiming the opposite, generalised from a single repo. The cost of a SHA pin is manual updates, so every pin carries a trailing `# vX.Y.Z` and `ci.yml`'s header documents the update procedure. `tests/scripts/actions-sha-pin.test.js` enforces both halves separately, because the comment is documentation and the SHA is what runs: its control asserts that `@v6 # v6.1.0` — a tag ref wearing a version comment — still fails, which is the shape a gate reading prose would pass.
+
+This was audit item R11-33, open since 2026-09-02 not for want of a fix but because changing CI config needs authorisation.
+
+### User-visible: a deletion that fails now says why
+
+`/claudemd-clean-residue --apply` reported `remaining: 3` and exit 3 with no cause. The count was honest — it exists so a run that deleted nothing cannot exit 0 — but `rmEach` discarded the errno in a bare `catch`, so working out *why* took a hand-written `fs.rmSync` probe against the live directory. Two of the three were another plugin's stale sandbox home whose child directory is mode 0500 (`rm` cannot unlink through a directory with no write bit) and one was root-owned. None of those conditions ages out, so the entries return as targets on every future run: a number with no next action, forever.
+
+The JSON gains `unreapable: [{ path, code }]` and the same list goes to stderr. The errno is the part that matters — EACCES on a child directory is a `chmod`, EPERM on another user's entry is `sudo` or nothing. Exit codes, the target set and the deletion semantics are unchanged. This is the deleting side of 0.73.0's R11-24: a pass that drops rows has to say which.
+
+### Test infrastructure: the node half of the sandbox single-source
+
+`tests/lib/assert.sh` gave the bash suites one assertion vocabulary in 0.73.0; the node half was recorded as leftover. Twenty-four of 71 node suites redirect `HOME` by hand, each with its own spelling, and the failure that shape produces is already written into this repo's history: three CLI cases in `clean-residue.test.js` once spawned the script with an env literal that set `TMPDIR` and not `CLAUDEMD_STATE_DIR`, so a destructive `--apply` ran against the maintainer's live `~/.claude/.claudemd-state`. The literal was not wrong. It was one key short, and nothing could tell the difference.
+
+`tests/lib/home-sandbox.mjs` is now the single source: a fresh home per test, every path seam set both in-process and for spawned children, restored key by key (including "was not set at all" — assigning the old value back unconditionally turns an unset variable into an empty string), and torn down through a chmod pass so a deliberately-0500 fixture still comes back. `tests/scripts/home-sandbox-consumers.test.js` holds two properties: membership, classified by mechanism rather than by variable name, with a 23-entry legacy list that may only shrink and that a new suite may not join; and coverage, where `PATH_SEAMS` is compared against the `CLAUDEMD_*_DIR` seams **derived from `scripts/` and `bin/`**, so a new redirect seam fails there instead of silently leaving every sandbox writing to the real home for that one directory. The gate excludes itself from the scanned set — it imports `PATH_SEAMS`, and without that exclusion its "at least one real consumer" assertion would be satisfied by the gate alone.
+
+`backup.test.js` is the first consumer, 21/21 before and after. The bash migration exposed a suite running 14 of its 40 assertions; this one surfaced nothing, recorded here because "the migration finds a bug" is not a property the next one can be promised.
+
 ## [0.73.1] - 2026-09-03
 
 Hotfix: `v0.73.0`'s CI went red on `npm run format:check` — nine files the release touched were not prettier-formatted. Code and tests were unaffected (`npm test` was green on both sides of the sweep); the tag's own CI record was not.

@@ -123,6 +123,37 @@ test('R11-27: the legacy list only shrinks', () => {
   );
 });
 
+// Three access shapes, not one. The first version of this scan matched only
+// `process.env.X`, and the pre-tag review of v0.74.0 showed both other spellings
+// sailing through green:
+//     const { CLAUDEMD_DESTRUCTURED_DIR } = process.env;
+//     const q = process.env['CLAUDEMD_BRACKET_DIR'];
+// A seam this scan cannot see is a redirect every sandbox silently fails to
+// set — precisely the failure this gate exists to prevent — so being blind to
+// two of its three spellings was the one direction that mattered.
+//
+// Comment handling is deliberately one-directional and worth stating, because
+// the obvious "improvement" is the dangerous one. Full-line `//` comments are
+// dropped; a TRAILING comment and the middle of a block comment are still read
+// as code, so prose naming a seam produces a false RED — a visible, fixable
+// demand. Making this smarter risks the silent direction (a real seam inside a
+// block comment going unseen), which is how this repo has repeatedly shipped a
+// gate that greens on the case it exists for.
+function seamsIn(text) {
+  const code = text
+    .split('\n')
+    .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  const found = new Set();
+  for (const m of code.matchAll(/process\.env(?:\.|\[\s*['"])(CLAUDEMD_[A-Z0-9_]*_DIR)/g)) found.add(m[1]);
+  // Destructuring: `const { A, B } = process.env` — the names sit before the
+  // `process.env`, so this reads the braces and then filters.
+  for (const m of code.matchAll(/\{([^{}]*)\}\s*=\s*process\.env/g)) {
+    for (const n of m[1].matchAll(/\b(CLAUDEMD_[A-Z0-9_]*_DIR)\b/g)) found.add(n[1]);
+  }
+  return found;
+}
+
 test('R11-27: PATH_SEAMS covers every path seam the shipped code actually reads', () => {
   // Derived from source, not asserted against a second hand-written list. A new
   // `CLAUDEMD_*_DIR` in scripts/ redirects writes; every sandbox that does not
@@ -134,12 +165,7 @@ test('R11-27: PATH_SEAMS covers every path seam the shipped code actually reads'
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
       else if (e.name.endsWith('.js') || e.name.endsWith('.mjs')) {
-        const code = fs
-          .readFileSync(abs, 'utf8')
-          .split('\n')
-          .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
-          .join('\n');
-        for (const m of code.matchAll(/process\.env\.(CLAUDEMD_[A-Z0-9_]*_DIR)/g)) found.add(m[1]);
+        for (const s of seamsIn(fs.readFileSync(abs, 'utf8'))) found.add(s);
       }
     }
   };
@@ -186,4 +212,20 @@ test('R11-27: both predicates can return false (mutation control)', () => {
     ['CLAUDEMD_ZZ_FAKE_DIR'],
     'an unlisted seam did not survive the filter — the coverage check cannot fail'
   );
+
+  // And the SCAN must see all three access shapes — asserted through the same
+  // `seamsIn` the real test calls, not a second copy of its regexes, because a
+  // control that reimplements the predicate only ever tests the copy.
+  const sample = [
+    'const a = process.env.CLAUDEMD_DOT_DIR;',
+    "const b = process.env['CLAUDEMD_BRACKET_DIR'];",
+    'const { CLAUDEMD_DESTRUCTURED_DIR, OTHER } = process.env;',
+  ].join('\n');
+  assert.deepEqual(
+    [...seamsIn(sample)].sort(),
+    ['CLAUDEMD_BRACKET_DIR', 'CLAUDEMD_DESTRUCTURED_DIR', 'CLAUDEMD_DOT_DIR'],
+    'the seam scan misses an access shape — a seam written that way would never reach PATH_SEAMS'
+  );
+  // A full-line comment naming a seam is not a seam.
+  assert.deepEqual([...seamsIn('// process.env.CLAUDEMD_PROSE_DIR\n')], []);
 });

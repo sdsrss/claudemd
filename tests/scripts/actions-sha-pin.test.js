@@ -32,28 +32,75 @@ const WORKFLOW_DIR = path.join(ROOT, '.github/workflows');
 const WORKFLOW_FLOOR = 2;
 const USES_FLOOR = 5;
 
-// `uses:` as a YAML key at the start of a line, optionally after a `- `. Not a
-// substring search: the workflows explain themselves at length, and a comment
-// or an `echo "uses: …"` inside a `run: |` block is prose, not a step. Comment
-// lines are dropped first for the same reason the repo files under
-// feedback_gate_reads_prose_not_code — twice, including once in a gate written
-// to close that very class.
+// Workflows that legitimately run no actions at all (`run:`-only). Empty today.
+// It exists because the "read no steps" failure below used to tell the reader to
+// "drop them from this floor deliberately" while offering nowhere to drop them:
+// adding a plain `run:`-only workflow turned the gate red and the only way out
+// was editing the test. A promised affordance that does not exist is worse than
+// no affordance — the next person edits the predicate instead of the list.
+const NO_ACTION_WORKFLOWS = [];
+
+// `uses:` as a YAML key. Not a substring search: the workflows explain
+// themselves at length, and a comment or an `echo "uses: …"` inside a `run: |`
+// block is prose, not a step. Comment lines are dropped first for the same
+// reason the repo files under feedback_gate_reads_prose_not_code — twice,
+// including once in a gate written to close that very class.
+//
+// Two spellings, because block form is not the only legal one. The pre-tag
+// review of this release drove 14 shapes through the first version and found
+// `- {uses: actions/checkout@v6}` and `steps: [{uses: …}]` — both valid GitHub
+// Actions YAML — parsing to ZERO steps: a `{` between the `- ` and the `uses:`
+// made the line invisible, and the per-file "read no steps" assertion cannot
+// see it because such a step lives in a file whose other steps parse fine.
+//
+// Surrounding quotes are stripped: `uses: 'actions/checkout@<sha>'` is a
+// correct pin, and leaving the quote on made the 40-hex test read 41 characters
+// and fail it — a gate that reddens on a properly pinned step is as broken as
+// one that greens on an unpinned one, just louder.
+const stripQuotes = s => s.replace(/^['"]/, '').replace(/['"]$/, '');
+
 function stepUses(text) {
   const out = [];
   text.split('\n').forEach((raw, i) => {
     if (/^\s*#/.test(raw)) return;
-    const m = raw.match(/^\s*-?\s*uses:\s*(\S+)\s*(.*)$/);
-    if (!m) return;
-    out.push({ line: i + 1, ref: m[1], rest: m[2].trim() });
+    // The trailing comment is taken from the LINE, not from what follows the
+    // ref, so the version comment is found in either spelling.
+    const c = raw.match(/#.*$/);
+    const rest = c ? c[0].trim() : '';
+    const anchored = raw.match(/^\s*-?\s*uses:\s*(\S+)/);
+    if (anchored) {
+      out.push({ line: i + 1, ref: stripQuotes(anchored[1]), rest });
+      return;
+    }
+    for (const m of raw.matchAll(/[[{,]\s*uses:\s*(["']?)([^\s,}\]"']+)/g)) {
+      out.push({ line: i + 1, ref: m[2], rest });
+    }
   });
   return out;
 }
 
-// Local composite actions (`./.github/actions/x`) and container refs have no
-// upstream tag to move, so there is nothing for a SHA to pin. Neither shape
-// exists in this repo today; the rule is written down so that adding one does
-// not read as an exemption someone invented at the time.
-const isThirdParty = ref => !ref.startsWith('./') && !ref.startsWith('docker://');
+// Local composite actions (`./.github/actions/x`) have no upstream ref to move,
+// so there is nothing for a SHA to pin. This shape does not exist in the repo
+// today; the rule is written down so that adding one does not read as an
+// exemption someone invented at the time.
+//
+// `docker://` is NOT exempt, and the first version of this file said it was on
+// the grounds that "container refs have no upstream tag to move". That reason
+// is false — `docker://alpine:3.14` is exactly as repointable as
+// `actions/checkout@v6`, by the same mechanism. What differs is only the
+// spelling of a pin, so the predicate differs and the exemption does not.
+const isLocal = ref => ref.startsWith('./');
+const isContainer = ref => ref.startsWith('docker://');
+
+// A container ref is pinned by digest (`image@sha256:<64 hex>`); an action ref
+// is pinned by commit SHA (40 hex). Full-length only, in both cases: git
+// resolves an abbreviated prefix and GitHub rejects it, so accepting one would
+// certify a workflow that cannot run.
+function isPinned(ref) {
+  if (isContainer(ref)) return /@sha256:[0-9a-f]{64}$/.test(ref);
+  const at = ref.lastIndexOf('@');
+  return at !== -1 && /^[0-9a-f]{40}$/.test(ref.slice(at + 1));
+}
 
 function workflowFiles() {
   return fs
@@ -74,14 +121,17 @@ test('the workflow scan resolves the set it claims to judge', t => {
   // workflow is how a whole file stops being judged while the aggregate count
   // still clears its floor.
   const silent = files.filter(
-    f => stepUses(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8')).length === 0
+    f =>
+      !NO_ACTION_WORKFLOWS.includes(f) &&
+      stepUses(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8')).length === 0
   );
   assert.deepEqual(
     silent,
     [],
     `workflow file(s) from which no \`uses:\` step could be read: ${silent.join(', ')}. ` +
-      'Either they run no actions (then drop them from this floor deliberately) or the parser ' +
-      'no longer recognises the step shape and is certifying a file it cannot see.'
+      'Either the parser no longer recognises the step shape and is certifying a file it cannot ' +
+      'see, or this workflow genuinely runs no actions — in which case add it to ' +
+      'NO_ACTION_WORKFLOWS above, deliberately and in the open. There is no implicit exemption.'
   );
 
   const total = files.reduce(
@@ -95,19 +145,14 @@ test('the workflow scan resolves the set it claims to judge', t => {
   t.diagnostic(`${total} uses: step(s) across ${files.length} workflow(s): ${files.join(', ')}`);
 });
 
-test('R11-33: every third-party action is pinned to a full commit SHA', t => {
+test('R11-33: every third-party action is pinned to an immutable digest', t => {
   const unpinned = [];
   let judged = 0;
   for (const f of workflowFiles()) {
     for (const { line, ref } of stepUses(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
-      if (!isThirdParty(ref)) continue;
+      if (isLocal(ref)) continue;
       judged++;
-      const at = ref.lastIndexOf('@');
-      const rev = at === -1 ? '' : ref.slice(at + 1);
-      // Full 40-hex only. An abbreviated SHA is not a pin: git resolves a
-      // prefix, and GitHub rejects it outright, so accepting one here would
-      // certify a workflow that cannot run.
-      if (!/^[0-9a-f]{40}$/.test(rev)) unpinned.push(`${f}:${line}: ${ref}`);
+      if (!isPinned(ref)) unpinned.push(`${f}:${line}: ${ref}`);
     }
   }
   t.diagnostic(`${judged} third-party action reference(s) judged`);
@@ -118,7 +163,8 @@ test('R11-33: every third-party action is pinned to a full commit SHA', t => {
     'GitHub Action(s) referenced by a mutable tag or branch:\n      ' +
       unpinned.join('\n      ') +
       '\n      A tag is a pointer its owner can repoint; npm-publish.yml runs with id-token: write ' +
-      'and NPM_TOKEN in scope. Pin to the full commit SHA and keep a trailing `# vX.Y.Z` comment.'
+      'and NPM_TOKEN in scope. Pin an action to its full commit SHA (and a container to its ' +
+      '@sha256: digest), and keep a trailing `# vX.Y.Z` comment.'
   );
 });
 
@@ -126,9 +172,8 @@ test('R11-33: every pinned SHA carries the version it was pinned at', () => {
   const undocumented = [];
   for (const f of workflowFiles()) {
     for (const { line, ref, rest } of stepUses(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
-      if (!isThirdParty(ref)) continue;
-      if (!/^[0-9a-f]{40}$/.test(ref.slice(ref.lastIndexOf('@') + 1))) continue;
-      if (!/^#\s*v\d+\.\d+\.\d+/.test(rest)) undocumented.push(`${f}:${line}: ${ref} ${rest}`.trim());
+      if (isLocal(ref) || !isPinned(ref)) continue;
+      if (!/^#\s*v?\d+\.\d+\.\d+/.test(rest)) undocumented.push(`${f}:${line}: ${ref} ${rest}`.trim());
     }
   }
   assert.deepEqual(
@@ -146,29 +191,50 @@ test('R11-33: both pin predicates can return false (mutation control)', () => {
   // parser + predicate pair rather than on a hand-read string, because the
   // failure this repo keeps filing is a control that never made the predicate
   // false (feedback_probe_harness_controls_first).
-  const tagged = stepUses('jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v6\n');
-  assert.equal(tagged.length, 1, 'the parser did not read a tagged step — control vacuous');
-  assert.ok(
-    !/^[0-9a-f]{40}$/.test(tagged[0].ref.slice(tagged[0].ref.lastIndexOf('@') + 1)),
-    'a `@v6` reference satisfied the SHA predicate — the pin check cannot fail'
-  );
+  const SHA = '0'.repeat(40);
+  const one = line => {
+    const s = stepUses(line);
+    assert.equal(
+      s.length,
+      1,
+      `the parser read ${s.length} step(s) from \`${line.trim()}\` — control vacuous`
+    );
+    return s[0];
+  };
 
-  const bare = stepUses(`jobs:\n  a:\n    steps:\n      - uses: actions/checkout@${'0'.repeat(40)}\n`);
-  assert.equal(bare.length, 1, 'the parser did not read an uncommented pinned step — control vacuous');
-  assert.ok(
-    !/^#\s*v\d+\.\d+\.\d+/.test(bare[0].rest),
-    'a SHA with no trailing comment satisfied the version-comment predicate'
-  );
+  // Must be judged UNPINNED. Every entry is a shape the pre-tag review of this
+  // release drove through by hand; encoding them is the difference between a
+  // reviewer having checked once and the gate checking on every run.
+  for (const line of [
+    '      - uses: actions/checkout@v6',
+    '      - uses: actions/checkout@main',
+    `      - uses: actions/checkout@${SHA.slice(0, 7)}`, // abbreviated is not a pin
+    `      - uses: actions/checkout@${'A'.repeat(40)}`, // uppercase hex is not what git prints
+    '      - uses: actions/checkout@v6 # v6.1.0', // the comment must not stand in for the ref
+    "      - uses: 'actions/checkout@v6'",
+    '      - {uses: actions/checkout@v6}', // flow mapping — invisible to the first version
+    '    steps: [{uses: actions/checkout@v6}]',
+    '      - uses: docker://alpine:3.14', // a registry tag moves like any other
+    '      - uses: some-org/reusable/.github/workflows/x.yml@main',
+  ]) {
+    assert.ok(!isPinned(one(line).ref), `this shape satisfied isPinned and must not: ${line.trim()}`);
+  }
 
-  // And the comment must not be able to stand in for the pin: a tag ref with a
-  // `# v6.1.0` comment after it is exactly the shape that would pass a gate
-  // reading the prose instead of the ref.
-  const decorated = stepUses('      - uses: actions/checkout@v6 # v6.1.0\n');
-  assert.equal(decorated.length, 1, 'the parser did not read the decorated step — control vacuous');
-  assert.ok(
-    !/^[0-9a-f]{40}$/.test(decorated[0].ref.slice(decorated[0].ref.lastIndexOf('@') + 1)),
-    'a tag ref with a version comment passed the SHA predicate — the gate is reading the comment'
-  );
+  // Must be judged PINNED — a gate that reddens on a correct pin is as broken as
+  // one that greens on a bad one, and the quoted form cost exactly that.
+  for (const line of [
+    `      - uses: actions/checkout@${SHA}`,
+    `      - uses: "actions/checkout@${SHA}"`,
+    `      - {uses: actions/checkout@${SHA}}`,
+    `      - uses: docker://alpine@sha256:${'a'.repeat(64)}`,
+  ]) {
+    assert.ok(isPinned(one(line).ref), `this shape is a correct pin and was rejected: ${line.trim()}`);
+  }
+
+  // The version comment is read from the line in either spelling, and its
+  // absence is what the second predicate keys on.
+  assert.ok(!/^#\s*v?\d+\.\d+\.\d+/.test(one(`      - uses: actions/checkout@${SHA}`).rest));
+  assert.ok(/^#\s*v?\d+\.\d+\.\d+/.test(one(`      - {uses: actions/checkout@${SHA}} # v6.1.0`).rest));
 
   // Comments are not steps: the header of this very file writes `uses:` inside
   // prose, and both workflows explain their own steps at length.
@@ -177,4 +243,8 @@ test('R11-33: both pin predicates can return false (mutation control)', () => {
     0,
     'a commented-out step was read as a real one'
   );
+
+  // Local composite actions are the only exemption, and it must stay narrow.
+  assert.ok(isLocal('./.github/actions/build'));
+  assert.ok(!isLocal('actions/checkout@v6') && !isLocal('docker://alpine:3.14'));
 });

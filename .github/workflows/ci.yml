@@ -7,10 +7,15 @@ name: ci
 # credential. tests/scripts/actions-sha-pin.test.js enforces both halves.
 #
 # To update one: `git ls-remote --tags https://github.com/<owner>/<repo> 'vN*'`,
-# take the SHA of the release you want (cross-check it against
-# `https://api.github.com/repos/<owner>/<repo>/commits/<tag>` — a `refs/tags/x`
-# line is the TAG object's SHA when the tag is annotated, which is not what
-# `uses:` wants), then edit both the SHA and its comment.
+# take the SHA of the release you want, then edit both the SHA and its comment.
+#
+# The cross-check against `https://api.github.com/repos/<owner>/<repo>/commits/<tag>`
+# is NOT optional: when a tag is annotated, its `refs/tags/x` line carries the
+# TAG OBJECT's SHA (the commit is on the `x^{}` line), and a tag-object SHA in a
+# `uses:` is rejected. These repos mix both styles — actions/checkout has five
+# annotated tags including v6.0.3, one patch below the version pinned here — so
+# "this repo uses lightweight tags" is not a fact you can carry from one tag to
+# the next. Two sources, every time.
 #
 # Tag pushes run the full matrix too (v0.50.0). The marketplace channel
 # serves the git tag/release directly, but only the npm channel had a

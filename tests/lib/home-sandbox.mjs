@@ -76,11 +76,32 @@ function forceRemove(dir) {
     }
   };
   walk(dir);
-  fs.rmSync(dir, { recursive: true, force: true });
+  // Second attempt, and the last. If the chmod pass did not rescue the tree —
+  // a root-owned entry is the case that survives it, and that was one of the
+  // two real causes found on 2026-09-04 — throw something that NAMES the
+  // sandbox. The bare rmSync error here says only ENOTEMPTY and a path deep
+  // inside, which is the least useful moment for a test helper to be terse.
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    throw new Error(
+      `home sandbox ${dir} could not be removed (${e.code || e.name}); it is leaking into ` +
+        `${BASE_TMP} and /claudemd-clean-residue will report it as unreapable`,
+      { cause: e }
+    );
+  }
 }
 
+// Resolved ONCE, at import, before any sandbox has patched TMPDIR. `os.tmpdir()`
+// reads $TMPDIR, and this helper sets $TMPDIR — so a second useHomeSandbox() in
+// the same file used to mkdtemp INSIDE the first sandbox: tearing the first down
+// deleted the second, and the next beforeEach mkdtemp-ed into a deleted tree
+// (ENOENT). Found by the pre-tag review of v0.74.0. Every sandbox now comes from
+// the real system temp directory regardless of what is currently patched.
+const BASE_TMP = os.tmpdir();
+
 function makeSandbox(label) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), `claudemd-${label}-`));
+  const home = fs.mkdtempSync(path.join(BASE_TMP, `claudemd-${label}-`));
   // The three directories a claudemd process expects to find or create. Made
   // eagerly so a spawned child writes into the sandbox rather than failing and
   // falling back to a default that is outside it.
@@ -131,8 +152,13 @@ export function useHomeSandbox(label, { patchProcessEnv = true } = {}) {
       }
       saved = null;
     }
-    if (current) forceRemove(current.home);
+    // Cleared FIRST: forceRemove can now throw (a sandbox it cannot rescue),
+    // and leaving `current` set would carry a deleted-or-half-deleted directory
+    // into the next test, where every path built from it is wrong for a second,
+    // unrelated reason.
+    const doomed = current;
     current = null;
+    if (doomed) forceRemove(doomed.home);
   });
 
   const live = () => {
