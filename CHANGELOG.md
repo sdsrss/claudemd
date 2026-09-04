@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.74.1] - 2026-09-04
+
+Hotfix: `v0.74.0`'s CI went red on the macOS leg. Three of the tests added in that release asserted `code: 'EACCES'` on a delete that could not proceed — which is a fact about Linux, not about the fix.
+
+Removing a file inside a mode-0500 directory is refused on both platforms, but they surface it at different levels: Linux reports **EACCES** from the unlink, macOS reports **ENOTEMPTY** from the parent's rmdir, because the child survived. The code under test behaved correctly on both — it reports whichever errno it was handed, which is the entire point of the field — so the defect was only ever in the assertions.
+
+They now assert the property (one failure, naming the right path, carrying a real refusal errno) instead of one platform's spelling, and the stderr check compares against the code that run actually produced rather than a second literal. The errno union itself is asserted to contain EACCES, ENOTEMPTY and EPERM and to exclude ENOENT — the macOS half of that claim is otherwise untestable on a Linux developer machine, which is how it shipped wrong in the first place.
+
+`npm-publish` was green on 0.74.0, so `claudemd-cli@0.74.0` exists on npm and is functionally identical to this release; the marketplace channel serves the tag.
+
 ## [0.74.0] - 2026-09-04
 
 Supply-chain hardening plus the two leftovers 0.73.0 named as deliberately-not-done. Spec unchanged at **v6.25.4**.

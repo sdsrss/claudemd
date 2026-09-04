@@ -841,6 +841,18 @@ const unlock = dir => {
   }
 };
 
+// The errno is platform-dependent and the property under test is not. Linux
+// reports EACCES (the unlink inside the unwritable directory is refused);
+// macOS surfaces the same refusal one level up as ENOTEMPTY (the rmdir of the
+// parent fails because a child survives). The first version of these tests
+// pinned 'EACCES', which is a fact about Linux, not about the fix — CI's macOS
+// leg reddened on it at v0.74.0 while the code under test behaved correctly on
+// both, reporting whichever errno it was actually given. EPERM is included
+// because it is what the other real cause on 2026-09-04 (a root-owned entry)
+// produces, and a test that names the platform's spelling instead of the
+// property is the same defect twice.
+const REFUSED = /^(EACCES|EPERM|ENOTEMPTY)$/;
+
 test('cleanClaudeTmp reports the errno of a target it could not delete', t => {
   if (process.getuid && process.getuid() === 0) {
     t.diagnostic('SKIP: running as root — a 0500 directory does not stop root, so the fixture cannot fail');
@@ -854,10 +866,12 @@ test('cleanClaudeTmp reports the errno of a target it could not delete', t => {
     const r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
     assert.equal(r.targets.length, 2, 'both stale entries must be targets — otherwise this proves nothing');
     assert.equal(r.deleted, 1, 'the reapable one is still deleted; one stuck entry does not abort the pass');
-    assert.deepEqual(
-      r.failures.map(f => ({ path: f.path, code: f.code })),
-      [{ path: locked, code: 'EACCES' }],
-      'the failed delete must carry its path and errno, not vanish into a catch'
+    assert.equal(r.failures.length, 1, 'exactly one delete must have failed');
+    assert.equal(r.failures[0].path, locked, 'the failure must name the entry that could not be removed');
+    assert.match(
+      r.failures[0].code,
+      REFUSED,
+      'the failed delete must carry a real errno, not vanish into a catch'
     );
     assert.ok(fs.existsSync(locked) && !fs.existsSync(plain));
   } finally {
@@ -876,15 +890,19 @@ test('CLI --apply prints unreapable entries with their errno and still exits 3',
     assert.equal(r.status, 3, `expected the remaining-residue exit code; stderr: ${r.stderr}`);
     const o = JSON.parse(r.stdout);
     assert.equal(o.remaining, 1);
-    assert.deepEqual(
-      o.unreapable,
-      [{ path: locked, code: 'EACCES' }],
-      'the JSON must name what could not be removed and why — `remaining: 1` alone sent the ' +
-        'maintainer to a hand-written rmSync probe to find out'
+    assert.equal(
+      o.unreapable.length,
+      1,
+      'the JSON must name what could not be removed — `remaining: 1` alone sent the maintainer ' +
+        'to a hand-written rmSync probe to find out'
     );
+    assert.equal(o.unreapable[0].path, locked);
+    assert.match(o.unreapable[0].code, REFUSED, 'and why: the errno, whatever this platform calls it');
     // stderr too: the exit code and the JSON both need reading, and the one
-    // thing an operator sees on a terminal is the message.
-    assert.match(r.stderr, /EACCES/);
+    // thing an operator sees on a terminal is the message. Asserted against the
+    // code the run actually produced rather than a literal, so this stays a
+    // check that the two channels agree instead of a second platform pin.
+    assert.match(r.stderr, new RegExp(o.unreapable[0].code));
     assert.match(r.stderr, /stuck-c/);
   } finally {
     unlock(locked);
@@ -905,6 +923,18 @@ test('the unreapable report can be empty and can be non-empty (mutation control)
   assert.equal(ok.deleted, 1);
   assert.deepEqual(ok.failures, [], 'a pass that deleted everything must report no failures');
 
+  // The errno union must actually contain the spellings the supported platforms
+  // produce. This machine only ever yields one of them, so without this the
+  // macOS half of the claim is an assumption — and it was wrong once already,
+  // in the release that added these tests.
+  for (const code of ['EACCES', 'ENOTEMPTY', 'EPERM']) {
+    assert.match(code, REFUSED, `${code} is a real refusal errno and must be accepted`);
+  }
+  assert.ok(
+    !REFUSED.test('ENOENT'),
+    'the union must not swallow "it was already gone", which is not a failure'
+  );
+
   // And the fixture itself has to be capable of failing a delete — a chmod that
   // silently did nothing (a filesystem without permission bits, an overlay
   // mount) would make the two tests above vacuous rather than red.
@@ -912,7 +942,7 @@ test('the unreapable report can be empty and can be non-empty (mutation control)
   try {
     assert.throws(
       () => fs.rmSync(locked, { recursive: true, force: true }),
-      /EACCES/,
+      e => REFUSED.test(e.code),
       'the 0500 fixture did not stop a delete on this filesystem — the tests above prove nothing here'
     );
   } finally {
