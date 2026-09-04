@@ -810,3 +810,112 @@ test('scan()/clean() on a missing or unreadable $TMPDIR return an empty report, 
     }
   }
 });
+
+// --- 2026-09-04: a target that cannot be deleted must say WHY -----------------
+//
+// Found by running `--apply` against the real machine: three entries under
+// ~/.claude/tmp came back as targets on every run, `deleted: 0`, `remaining: 3`,
+// exit 3 — honest about the outcome and silent about the cause. Two were
+// another plugin's stale HOME whose `.claude/plugins` child is mode 0500 (rm
+// cannot unlink through a directory with no write bit) and one was root-owned.
+// Working that out took a hand-written `fs.rmSync` probe, because rmEach's
+// `catch {}` discarded the errno.
+//
+// This is the deleter half of R11-24 (readers must count the rows they drop):
+// a best-effort remover that reports only successes leaves the operator with a
+// number and no next action. The window never closes on its own — a permission
+// bit does not age out — so the entry is reported forever.
+const mkUnreapable = name => {
+  const dir = path.join(claudeTmp, name);
+  fs.mkdirSync(path.join(dir, 'locked'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'locked', 'f'), 'x');
+  fs.chmodSync(path.join(dir, 'locked'), 0o500);
+  setMtime(dir, 30);
+  return dir;
+};
+const unlock = dir => {
+  try {
+    fs.chmodSync(path.join(dir, 'locked'), 0o700);
+  } catch {
+    /* already gone */
+  }
+};
+
+test('cleanClaudeTmp reports the errno of a target it could not delete', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.diagnostic('SKIP: running as root — a 0500 directory does not stop root, so the fixture cannot fail');
+    return;
+  }
+  const locked = mkUnreapable('stuck-a');
+  const plain = path.join(claudeTmp, 'plain-b');
+  fs.mkdirSync(plain);
+  setMtime(plain, 30);
+  try {
+    const r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    assert.equal(r.targets.length, 2, 'both stale entries must be targets — otherwise this proves nothing');
+    assert.equal(r.deleted, 1, 'the reapable one is still deleted; one stuck entry does not abort the pass');
+    assert.deepEqual(
+      r.failures.map(f => ({ path: f.path, code: f.code })),
+      [{ path: locked, code: 'EACCES' }],
+      'the failed delete must carry its path and errno, not vanish into a catch'
+    );
+    assert.ok(fs.existsSync(locked) && !fs.existsSync(plain));
+  } finally {
+    unlock(locked);
+  }
+});
+
+test('CLI --apply prints unreapable entries with their errno and still exits 3', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.diagnostic('SKIP: running as root — a 0500 directory does not stop root, so the fixture cannot fail');
+    return;
+  }
+  const locked = mkUnreapable('stuck-c');
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, '--apply'], { env: cliEnv(), encoding: 'utf8' });
+    assert.equal(r.status, 3, `expected the remaining-residue exit code; stderr: ${r.stderr}`);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.remaining, 1);
+    assert.deepEqual(
+      o.unreapable,
+      [{ path: locked, code: 'EACCES' }],
+      'the JSON must name what could not be removed and why — `remaining: 1` alone sent the ' +
+        'maintainer to a hand-written rmSync probe to find out'
+    );
+    // stderr too: the exit code and the JSON both need reading, and the one
+    // thing an operator sees on a terminal is the message.
+    assert.match(r.stderr, /EACCES/);
+    assert.match(r.stderr, /stuck-c/);
+  } finally {
+    unlock(locked);
+  }
+});
+
+test('the unreapable report can be empty and can be non-empty (mutation control)', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.diagnostic('SKIP: running as root — a 0500 directory does not stop root');
+    return;
+  }
+  // A clean pass must not manufacture failures: without this half, `failures`
+  // could be hard-coded non-empty and both assertions above would still pass.
+  const plain = path.join(claudeTmp, 'plain-d');
+  fs.mkdirSync(plain);
+  setMtime(plain, 30);
+  const ok = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+  assert.equal(ok.deleted, 1);
+  assert.deepEqual(ok.failures, [], 'a pass that deleted everything must report no failures');
+
+  // And the fixture itself has to be capable of failing a delete — a chmod that
+  // silently did nothing (a filesystem without permission bits, an overlay
+  // mount) would make the two tests above vacuous rather than red.
+  const locked = mkUnreapable('stuck-e');
+  try {
+    assert.throws(
+      () => fs.rmSync(locked, { recursive: true, force: true }),
+      /EACCES/,
+      'the 0500 fixture did not stop a delete on this filesystem — the tests above prove nothing here'
+    );
+  } finally {
+    unlock(locked);
+  }
+});

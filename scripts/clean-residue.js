@@ -46,11 +46,13 @@ Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
 Wrapped by /claudemd-clean-residue.
 
 Output: JSON. \`remaining\` = targets still on disk after --apply (always 0 on a
-dry run). \`stateDir.dir\` echoes the directory actually scanned, so a run under
-CLAUDEMD_STATE_DIR can be confirmed rather than assumed.
+dry run); \`unreapable\` names each one with the errno that stopped it (EACCES on
+a child directory with no write bit, EPERM on an entry owned by another user),
+and the same list goes to stderr. \`stateDir.dir\` echoes the directory actually
+scanned, so a run under CLAUDEMD_STATE_DIR can be confirmed rather than assumed.
 
 Exit codes: 0 success | 1 validation error | 2 argv-shape error |
-3 --apply left targets behind (see \`remaining\`).`;
+3 --apply left targets behind (see \`remaining\` and \`unreapable\`).`;
 
 // Anchored regexes — names MUST start with the prefix. Defends against
 // future fnmatch-style globs that would falsely match `not-claudemd-sync-*`.
@@ -168,17 +170,26 @@ function partitionProtected(targets) {
   return { allowed, protected: protectedTargets };
 }
 
+// Best-effort per entry, but the reason a delete failed is KEPT. The errno was
+// swallowed here until 2026-09-04, when a real `--apply` run reported
+// `remaining: 3` with no cause and finding it took a hand-written `fs.rmSync`
+// probe: two entries were another plugin's stale HOME with a mode-0500 child
+// (rm cannot unlink through a directory with no write bit) and one was
+// root-owned. A permission bit does not age out, so those entries come back as
+// targets on every future run — a number with no next action, forever. Same
+// shape as R11-24 on the reading side: a pass that drops rows has to say which.
 function rmEach(targets, opts) {
   let deleted = 0;
+  const failures = [];
   for (const t of targets) {
     try {
       fs.rmSync(t.path, opts);
       deleted++;
-    } catch {
-      /* best-effort; partial delete is fine */
+    } catch (e) {
+      failures.push({ path: t.path, code: e.code || e.name || 'UNKNOWN' });
     }
   }
-  return deleted;
+  return { deleted, failures };
 }
 
 export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now = Date.now() } = {}) {
@@ -195,10 +206,17 @@ export function clean({ tmpDir = os.tmpdir(), apply = false, ageDaysMin = 1, now
     bytes: unowned.reduce((n, u) => n + dirBytes(u.path), 0),
   };
   if (!apply) {
-    return { dryRun: true, targets, protected: protectedTargets, deleted: 0, unowned: unownedReport };
+    return {
+      dryRun: true,
+      targets,
+      protected: protectedTargets,
+      deleted: 0,
+      failures: [],
+      unowned: unownedReport,
+    };
   }
-  const deleted = rmEach(targets, { recursive: true, force: true });
-  return { dryRun: false, targets, protected: protectedTargets, deleted, unowned: unownedReport };
+  const { deleted, failures } = rmEach(targets, { recursive: true, force: true });
+  return { dryRun: false, targets, protected: protectedTargets, deleted, failures, unowned: unownedReport };
 }
 
 // Size of a residue entry, for the report only. Bounded and best-effort: a
@@ -305,10 +323,17 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
     candidates.filter(c => c.ageDays >= window)
   );
   if (!apply) {
-    return { dryRun: true, targets, protected: protectedTargets, deleted: 0, retentionDays: window };
+    return {
+      dryRun: true,
+      targets,
+      protected: protectedTargets,
+      deleted: 0,
+      failures: [],
+      retentionDays: window,
+    };
   }
-  const deleted = rmEach(targets, { recursive: true, force: true });
-  return { dryRun: false, targets, protected: protectedTargets, deleted, retentionDays: window };
+  const { deleted, failures } = rmEach(targets, { recursive: true, force: true });
+  return { dryRun: false, targets, protected: protectedTargets, deleted, failures, retentionDays: window };
 }
 
 // --- ~/.claude/.claudemd-state orphan reaping (2026-07-28 audit H3) ---
@@ -390,9 +415,9 @@ export function cleanStateDir({ stateDir, apply = false, retentionDays = 7, now 
   const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
   const { candidates } = scanStateDir({ stateDir, now });
   const targets = candidates.filter(c => c.ageDays >= window);
-  if (!apply) return { dryRun: true, targets, deleted: 0, retentionDays: window };
-  const deleted = rmEach(targets, { force: true });
-  return { dryRun: false, targets, deleted, retentionDays: window };
+  if (!apply) return { dryRun: true, targets, deleted: 0, failures: [], retentionDays: window };
+  const { deleted, failures } = rmEach(targets, { force: true });
+  return { dryRun: false, targets, deleted, failures, retentionDays: window };
 }
 
 // TMP_RETENTION_DAYS: N in the invoking project's CLAUDE.md (spec §EXT §7-EXT
@@ -499,12 +524,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const attempted = result.targets.length + ctmp.targets.length + cstate.targets.length;
   const removed = result.deleted + ctmp.deleted + cstate.deleted;
   const remaining = apply ? attempted - removed : 0;
+  // `remaining` says HOW MANY are still there; this says WHICH and WHY. Without
+  // it the operator's only route to the cause is a hand-written rmSync probe —
+  // the route the maintainer actually had to take on 2026-09-04. Errno matters
+  // because the three causes need different actions: EACCES on a child dir is a
+  // chmod, EPERM on a root-owned entry needs sudo or nothing, and ENOTEMPTY
+  // means something is still writing into it.
+  const unreapable = [...result.failures, ...ctmp.failures, ...cstate.failures];
   const agePath = t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 });
   const protectedPaths = [...result.protected, ...ctmp.protected].map(agePath);
   if (protectedPaths.length > 0) {
     console.error(
       `${protectedPaths.length} stale entr${protectedPaths.length === 1 ? 'y' : 'ies'} skipped: ` +
         `contain${protectedPaths.length === 1 ? 's' : ''} this process's cwd or $TMPDIR (see \`protected\`).`
+    );
+  }
+  if (unreapable.length > 0) {
+    console.error(
+      `${unreapable.length} target(s) could not be removed:\n` +
+        unreapable.map(f => `  ${f.code}: ${f.path}`).join('\n') +
+        '\n  These stay on disk and will be reported again on every run — a permission bit ' +
+        'does not age out. EACCES is usually a child directory with no write bit.'
     );
   }
   console.log(
@@ -530,6 +570,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           paths: ctmp.targets.map(agePath),
         },
         remaining,
+        unreapable,
         stateDir: {
           // `stateDirPath`, not the imported `stateDir` FUNCTION — JSON.stringify
           // drops a function value, so this key vanished from the output entirely.
