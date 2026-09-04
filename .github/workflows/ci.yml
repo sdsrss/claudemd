@@ -1,5 +1,17 @@
 name: ci
 
+# Third-party actions are pinned to a full commit SHA, with the release they
+# were pinned at in a trailing comment (2026-09-02 audit R11-33). `@v6` is a
+# pointer the upstream owner can repoint at any commit; npm-publish.yml runs
+# with `id-token: write` and NPM_TOKEN in scope, so that pointer is a publish
+# credential. tests/scripts/actions-sha-pin.test.js enforces both halves.
+#
+# To update one: `git ls-remote --tags https://github.com/<owner>/<repo> 'vN*'`,
+# take the SHA of the release you want (cross-check it against
+# `https://api.github.com/repos/<owner>/<repo>/commits/<tag>` — a `refs/tags/x`
+# line is the TAG object's SHA when the tag is annotated, which is not what
+# `uses:` wants), then edit both the SHA and its comment.
+#
 # Tag pushes run the full matrix too (v0.50.0). The marketplace channel
 # serves the git tag/release directly, but only the npm channel had a
 # tag-time test gate (npm-publish.yml, Linux-only). Without this trigger a
@@ -40,8 +52,8 @@ jobs:
   static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           # 24 = the maintainer's runtime and the npm that wrote the lockfile;
           # `npm ci` is stricter about lockfile shape than `npm install`.
@@ -87,13 +99,13 @@ jobs:
       BASH32_VERSION: 3.2.57
       BASH32_SHA256: 3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Tags are needed by the spec-bump gate below (git describe).
           # npm-publish.yml sets the same pair for its tag/version guard.
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ matrix.node }}
       - name: Install tools
@@ -143,7 +155,7 @@ jobs:
       - name: Cache bash ${{ env.BASH32_VERSION }} build
         if: runner.os == 'Linux' && matrix.node == 20
         id: bash32-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/claudemd-bash32
           key: bash32-${{ env.BASH32_VERSION }}-${{ runner.os }}-${{ runner.arch }}
