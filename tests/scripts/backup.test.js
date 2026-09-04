@@ -1,8 +1,8 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
   createBackup,
   listBackups,
@@ -13,23 +13,15 @@ import {
   looksLikeSpec,
 } from '../../scripts/lib/backup.js';
 
-let tmpHome;
-let savedHome;
-
-beforeEach(() => {
-  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-bk-'));
-  savedHome = process.env.HOME;
-  process.env.HOME = tmpHome;
-  fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
-});
-
-afterEach(() => {
-  process.env.HOME = savedHome;
-  fs.rmSync(tmpHome, { recursive: true, force: true });
-});
+// First node consumer of tests/lib/home-sandbox.mjs (R11-27). The hand-written
+// setup this replaces mkdtemp-ed a home, saved and restored process.env.HOME,
+// and created `.claude` — correct for backup.js, which only reads `~/.claude`,
+// and one seam short for anything it comes to call. The helper sets every path
+// seam, so that gap cannot reopen here silently.
+const box = useHomeSandbox('bk');
 
 test('createBackup moves files into timestamped dir', () => {
-  const src1 = path.join(tmpHome, '.claude/CLAUDE.md');
+  const src1 = path.join(box.home, '.claude/CLAUDE.md');
   fs.writeFileSync(src1, 'core');
   const { dir, movedFiles } = createBackup([src1]);
   // isoStamp now includes milliseconds to prevent sub-second collisions (F10).
@@ -40,15 +32,15 @@ test('createBackup moves files into timestamped dir', () => {
 });
 
 test('createBackup skips non-existent files silently', () => {
-  const missing = path.join(tmpHome, '.claude/NOPE.md');
+  const missing = path.join(box.home, '.claude/NOPE.md');
   const { movedFiles } = createBackup([missing]);
   assert.equal(movedFiles.length, 0);
 });
 
 test('listBackups returns newest first', async () => {
-  fs.mkdirSync(path.join(tmpHome, '.claude/backup-20260101T000000Z'));
-  fs.mkdirSync(path.join(tmpHome, '.claude/backup-20260301T000000Z'));
-  fs.mkdirSync(path.join(tmpHome, '.claude/backup-20260201T000000Z'));
+  fs.mkdirSync(path.join(box.home, '.claude/backup-20260101T000000Z'));
+  fs.mkdirSync(path.join(box.home, '.claude/backup-20260301T000000Z'));
+  fs.mkdirSync(path.join(box.home, '.claude/backup-20260201T000000Z'));
   const backups = listBackups();
   assert.equal(backups.length, 3);
   assert.equal(backups[0].iso, '20260301T000000Z');
@@ -64,7 +56,7 @@ test('pruneBackups keeps N newest and removes rest', () => {
     '20260501T000000Z',
     '20260601T000000Z',
   ]) {
-    fs.mkdirSync(path.join(tmpHome, `.claude/backup-${iso}`));
+    fs.mkdirSync(path.join(box.home, `.claude/backup-${iso}`));
   }
   const removed = pruneBackups(5);
   assert.equal(removed.length, 1);
@@ -83,7 +75,7 @@ test('v0.23.11: collision-suffix backup dirs (-N) are listed, sorted, and pruned
     'backup-20260103T000000000Z-1',
     'backup-20260103T000000000Z-2',
   ]) {
-    fs.mkdirSync(path.join(tmpHome, '.claude', name));
+    fs.mkdirSync(path.join(box.home, '.claude', name));
   }
   assert.equal(listBackups().length, 5, 'collision dirs must be listed');
   // -2 sorts newest (longest string > base), then -1, then the 3 plain stamps.
@@ -93,7 +85,7 @@ test('v0.23.11: collision-suffix backup dirs (-N) are listed, sorted, and pruned
 });
 
 test('pruneSettingsBackups: keeps N newest settings.json.claudemd-backup-* files', () => {
-  const dir = path.join(tmpHome, '.claude');
+  const dir = path.join(box.home, '.claude');
   const iso = [
     '20260101T000000Z',
     '20260201T000000Z',
@@ -120,7 +112,7 @@ test('pruneSettingsBackups: keeps N newest settings.json.claudemd-backup-* files
 });
 
 test('pruneSettingsBackups: accepts ms-precision and -N collision suffix', () => {
-  const dir = path.join(tmpHome, '.claude');
+  const dir = path.join(box.home, '.claude');
   fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260601T000000000Z'), 'x');
   fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260601T000000000Z-1'), 'x');
   fs.writeFileSync(path.join(dir, 'settings.json.claudemd-backup-20260101T000000Z'), 'x');
@@ -130,15 +122,15 @@ test('pruneSettingsBackups: accepts ms-precision and -N collision suffix', () =>
 });
 
 test('pruneSettingsBackups: missing .claude dir returns [] without throw', () => {
-  fs.rmSync(path.join(tmpHome, '.claude'), { recursive: true, force: true });
+  fs.rmSync(path.join(box.home, '.claude'), { recursive: true, force: true });
   assert.deepEqual(pruneSettingsBackups(5), []);
 });
 
 test('restoreBackup copies files back to targetRoot', () => {
-  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  const bkDir = path.join(box.home, '.claude/backup-20260101T000000Z');
   fs.mkdirSync(bkDir);
   fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'restored');
-  const target = path.join(tmpHome, '.claude');
+  const target = path.join(box.home, '.claude');
   const restored = restoreBackup(bkDir, target);
   assert.equal(restored.length, 1);
   assert.equal(fs.readFileSync(path.join(target, 'CLAUDE.md'), 'utf8'), 'restored');
@@ -155,10 +147,10 @@ test('restoreBackup copies files back to targetRoot', () => {
 // /claudemd-doctor with a bare stack before it printed a single check.
 
 test('HIGH-1: a dangling symlink inside a backup dir does not throw', () => {
-  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260101T000000000Z');
   fs.mkdirSync(bk, { recursive: true });
   fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# My own notes\n');
-  fs.symlinkSync(path.join(tmpHome, '.claude/gone-forever'), path.join(bk, 'dangling'));
+  fs.symlinkSync(path.join(box.home, '.claude/gone-forever'), path.join(bk, 'dangling'));
 
   const listed = listBackups();
   assert.equal(listed.length, 1, 'the dir is still a backup');
@@ -171,12 +163,12 @@ test('HIGH-1: a dangling symlink inside a backup dir does not throw', () => {
 
 test('HIGH-1: a plain FILE matching the backup name grammar is not treated as a dir', () => {
   // Matches labelRegex but readdir'ing it throws ENOTDIR.
-  fs.writeFileSync(path.join(tmpHome, '.claude/backup-20260101T000000000Z'), 'not a dir');
+  fs.writeFileSync(path.join(box.home, '.claude/backup-20260101T000000000Z'), 'not a dir');
   assert.deepEqual(listBackups(), []);
 });
 
 test('HIGH-1: a missing backup root returns [] rather than throwing', () => {
-  fs.rmSync(path.join(tmpHome, '.claude'), { recursive: true, force: true });
+  fs.rmSync(path.join(box.home, '.claude'), { recursive: true, force: true });
   assert.deepEqual(listBackups(), []);
 });
 
@@ -192,7 +184,7 @@ test('HIGH-1: a missing backup root returns [] rather than throwing', () => {
 // future change cannot quietly reintroduce a mover.
 
 test('HIGH-2: a spec-shaped dir in the personal namespace is reported', () => {
-  const bk = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260601T000000000Z');
   fs.mkdirSync(bk, { recursive: true });
   fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
 
@@ -202,15 +194,15 @@ test('HIGH-2: a spec-shaped dir in the personal namespace is reported', () => {
 });
 
 test('HIGH-2: reporting does not move, rename or delete anything', () => {
-  const specDir = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  const specDir = path.join(box.home, '.claude/backup-20260601T000000000Z');
   fs.mkdirSync(specDir, { recursive: true });
   fs.writeFileSync(path.join(specDir, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
-  const before = fs.readdirSync(path.join(tmpHome, '.claude')).sort();
+  const before = fs.readdirSync(path.join(box.home, '.claude')).sort();
 
   findLegacySpecBackups();
 
   assert.deepEqual(
-    fs.readdirSync(path.join(tmpHome, '.claude')).sort(),
+    fs.readdirSync(path.join(box.home, '.claude')).sort(),
     before,
     '~/.claude must be byte-for-byte unchanged — this function only looks'
   );
@@ -220,7 +212,7 @@ test('HIGH-2: reporting does not move, rename or delete anything', () => {
 test('HIGH-2: sibling user files are surfaced, because they decide the call', () => {
   // The pre-v0.23.11 install.js shape: spec-shaped CLAUDE.md alongside content
   // that is unambiguously the user's. A mover would have taken these with it.
-  const bk = path.join(tmpHome, '.claude/backup-20260601T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260601T000000000Z');
   fs.mkdirSync(path.join(bk, 'hooks'), { recursive: true });
   fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# AI-CODING-SPEC v6.25.2 — Core\n');
   fs.writeFileSync(path.join(bk, 'CLAUDE-extended.md'), '# my hand-written extended\n');
@@ -232,14 +224,14 @@ test('HIGH-2: sibling user files are surfaced, because they decide the call', ()
 });
 
 test('HIGH-2: a user-shaped CLAUDE.md is not reported', () => {
-  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260101T000000000Z');
   fs.mkdirSync(bk, { recursive: true });
   fs.writeFileSync(path.join(bk, 'CLAUDE.md'), '# My own notes\n');
   assert.deepEqual(findLegacySpecBackups(), []);
 });
 
 test('HIGH-2: a dir with no CLAUDE.md is not reported', () => {
-  const bk = path.join(tmpHome, '.claude/backup-20260101T000000000Z');
+  const bk = path.join(box.home, '.claude/backup-20260101T000000000Z');
   fs.mkdirSync(path.join(bk, 'hooks'), { recursive: true });
   fs.writeFileSync(path.join(bk, 'hooks', 'banned-vocab-check.sh'), '#!/bin/sh\n');
   assert.deepEqual(findLegacySpecBackups(), []);
@@ -262,11 +254,11 @@ test('R10-03: prune excludes legacy spec dirs — genuine personal backup surviv
   const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
   // Pre-0.68.3 layout: update.js wrote its spec backups into the PERSONAL
   // namespace, and because updates are frequent they are the NEWEST dirs there.
-  const personal = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  const personal = path.join(box.home, '.claude/backup-20260101T000000Z');
   fs.mkdirSync(personal);
   fs.writeFileSync(path.join(personal, 'CLAUDE.md'), '# My personal global instructions\n');
   for (const stamp of ['20260201T000000Z', '20260301T000000Z']) {
-    const d = path.join(tmpHome, `.claude/backup-${stamp}`);
+    const d = path.join(box.home, `.claude/backup-${stamp}`);
     fs.mkdirSync(d);
     fs.writeFileSync(path.join(d, 'CLAUDE.md'), SPEC);
   }
@@ -288,11 +280,11 @@ test('R10-03: exclusion does not disable pruning of genuine backups', () => {
   // FP guard: the skip must not turn --prune-backups into a no-op for the
   // dirs it is actually meant to rotate.
   const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
-  const specDir = path.join(tmpHome, '.claude/backup-20260901T000000Z');
+  const specDir = path.join(box.home, '.claude/backup-20260901T000000Z');
   fs.mkdirSync(specDir);
   fs.writeFileSync(path.join(specDir, 'CLAUDE.md'), SPEC);
   const personals = ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z'].map(s => {
-    const d = path.join(tmpHome, `.claude/backup-${s}`);
+    const d = path.join(box.home, `.claude/backup-${s}`);
     fs.mkdirSync(d);
     fs.writeFileSync(path.join(d, 'CLAUDE.md'), '# My personal global instructions\n');
     return d;
@@ -312,14 +304,14 @@ test('R10-04: restoreBackup skips a dangling symlink instead of throwing', () =>
   // dir and dangles once its target moves. dirSize was hardened for this input
   // in 0.68.3; restoreBackup kept a bare statSync and threw ENOENT out of the
   // uninstall restore path, after settings had already been evicted.
-  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  const bkDir = path.join(box.home, '.claude/backup-20260101T000000Z');
   fs.mkdirSync(bkDir);
   // Name the dangling link so readdir is likely to hit it FIRST — a partial
   // restore is the failure this guards, not just the throw.
-  fs.symlinkSync(path.join(tmpHome, 'gone/CLAUDE.md'), path.join(bkDir, 'AAA-dangling.md'));
+  fs.symlinkSync(path.join(box.home, 'gone/CLAUDE.md'), path.join(bkDir, 'AAA-dangling.md'));
   fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'core');
   fs.writeFileSync(path.join(bkDir, 'zzz.md'), 'tail');
-  const target = path.join(tmpHome, '.claude');
+  const target = path.join(box.home, '.claude');
 
   const restored = restoreBackup(bkDir, target);
 
