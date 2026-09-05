@@ -654,12 +654,25 @@ uc_reset_fresh() {
 uc_reset_fresh
 OUT33=$(bash "$HOOK" <<<'{}' 2>/dev/null)
 CTX33=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT33" 2>/dev/null || echo "")
+# The backup path is matched by SHAPE, and separately confirmed to exist on
+# disk — never by interpolating $HOME into an ERE. That spelling failed on
+# macOS CI only: BSD mktemp leaves the `//` that `"${TMPDIR:-/tmp}/…"` creates
+# when $TMPDIR ends in a slash (GNU mktemp folds it), so $HOME carried a double
+# slash while the path Node wrote into the banner was normalized to one. A
+# filesystem path is not a regex — any `+` or `.` in a temp dir breaks it the
+# same way on any platform. Checking the directory is really there is also the
+# stronger claim: the message is only useful if it names a file that exists.
+# Pulled OUT of the message rather than guessed from the directory: earlier
+# cases leave their own backup dirs behind, so any `ls | head -1` picks a
+# stale one and tests something other than what the user was just told.
+UC_BK=$(grep -oE '/[^ ]*/\.claude/backup-[0-9]{8}T[0-9]{6}[0-9]*Z/CLAUDE\.md' <<<"$CTX33" | head -1)
 if [[ "$(jq -s 'length' <<<"$OUT33" 2>/dev/null)" == "1" ]] \
    && grep -qF 'CLAUDEMD_SPEC_ACTION=restore' <<<"$CTX33" \
-   && grep -qE "$HOME/\.claude/backup-[0-9]" <<<"$CTX33"; then
+   && [[ -n "$UC_BK" && -f "$UC_BK" ]] \
+   && grep -qF 'My personal instructions' "$UC_BK"; then
   echo "PASS: 33 user-content overwrite is bannered in-session with the backup path"
 else
-  echo "FAIL: 33 no in-session user-content banner (out=$OUT33)"; FAIL=$((FAIL+1))
+  echo "FAIL: 33 no in-session user-content banner (out=$OUT33 backup=$UC_BK)"; FAIL=$((FAIL+1))
 fi
 
 # Case 34: consume-once. The sentinel is removed, so the next session is silent —
