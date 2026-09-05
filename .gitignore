@@ -39,6 +39,15 @@ docs/*
 !docs/HOOK-PROTOCOL.md
 !docs/ROLLBACK.md
 !docs/spec-optimization-plan-2026-07-10.md
+#  - docs/audit/*.md (round reports + the metric baseline they compare against).
+#    Same provenance rule as the tasks/ audit-deferred files below: CHANGELOG
+#    entries from 0.68.0 on cite docs/audit/… by name, and the round that ran on
+#    2026-09-05 found none of them on disk — the reports are what "mark each
+#    prior issue as solved / open / regressed" reads, so a machine without them
+#    reconstructs the prior round from release prose (2026-09-05 audit P2-3).
+#    The generated metrics JSON stays local: `npm run metrics` reproduces it.
+!docs/audit/
+docs/audit/*.json
 
 # tasks/ is a local-only working space by default (audit / analysis / planning
 # scratch — not project function; npm tarball already excludes it via .npmignore).
