@@ -327,4 +327,45 @@ LAST=$(tail -n 1 "$LOG")
 echo "$LAST" | jq -e --arg v "$PKG_VER" '.hook_version == $v' >/dev/null \
   || { echo "FAIL: ARCH-3 hook_version missing or wrong (want $PKG_VER, got: $LAST)"; exit 1; }
 
+
+# Case ROT-1 (2026-09-05 audit P1-1): the two-step rotation is under a mkdir
+# mutex, so a second process arriving mid-rotation leaves both archives alone.
+# Pre-fix, P2's `mv .1 .2` moved P1's just-rotated live generation onto .2 and
+# both prior generations were lost. Deterministic stand-in for the interleave:
+# hold the lock, then call append over an oversized log and assert it did not
+# rotate. (An interleaving test would have to win a microsecond-wide race to
+# fail, which is how the race survived two audits.)
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'ARCHIVE-1\n' > "$LOG.1"
+printf 'ARCHIVE-2\n' > "$LOG.2"
+mkdir "$LOG.rotating" || { echo "FAIL: ROT-1 could not take the lock"; exit 1; }
+CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1")" == "ARCHIVE-1" ]] \
+  || { echo "FAIL: ROT-1 .1 was rotated while the lock was held: $(cat "$LOG.1")"; exit 1; }
+[[ "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
+  || { echo "FAIL: ROT-1 .2 was overwritten while the lock was held: $(cat "$LOG.2")"; exit 1; }
+[[ -d "$LOG.rotating" ]] || { echo "FAIL: ROT-1 a fresh lock was reaped by the loser"; exit 1; }
+echo "PASS: ROT-1 rotation skipped while another process holds the lock"
+
+# Case ROT-2: a lock left behind by a killed holder does not stop rotation
+# forever. Older than a minute → the next append reaps it (and the one after
+# that rotates). Nothing else reaps it, which is why the age branch exists.
+touch -t 200001010000 "$LOG.rotating"
+CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-2 stale lock survived"; exit 1; }
+CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.2")" == "ARCHIVE-1" ]] \
+  || { echo "FAIL: ROT-2 rotation did not resume after the stale lock was reaped: $(cat "$LOG.2")"; exit 1; }
+echo "PASS: ROT-2 stale lock reaped, rotation resumes"
+
+# Case ROT-3: the lock releases on the happy path — a rotation that completes
+# leaves nothing behind for the age branch to reap.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+[[ -f "$LOG.1" ]] || { echo "FAIL: ROT-3 no rotation happened"; exit 1; }
+[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-3 lock left behind after a completed rotation"; exit 1; }
+echo "PASS: ROT-3 lock released after a completed rotation"
+
 echo "rule-hits: all cases passed"

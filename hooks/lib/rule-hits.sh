@@ -214,25 +214,24 @@ rule_hits_append() {
   # justification this invalidates.
   # `stat -c` is GNU, `-f` is BSD — try both, default to 0 if neither works
   # (fail-safe: no rotation better than wrong rotation on an unknown stat).
-  # Concurrency (corrected 2026-08-16 audit CONC-4; the previous "at worst
-  # one log line is lost" claim was FALSE): two processes can both pass the
-  # size check, then interleave the two mv steps — P1 rotates live→.1, and
-  # P2's `mv .1 .2` then moves that JUST-ROTATED live generation onto .2,
-  # wiping the archive P1 made. Sandbox replay: {live, .1, .2} degraded to
-  # {gone, gone, live-as-.2} — BOTH prior generations lost (up to ~2×max_mb
-  # of archive), though live rows survive under the .2 name. Accepted:
-  # RE-ADJUDICATE (v0.71.4 pre-tag review): the acceptance below rests on
-  # "no consumer reads the archives", and v0.71.4 made every JS hit-reader read
-  # them. The race now costs analysis data rather than nothing. It is left as-is
-  # for this release — the window is one `mv` wide and the alternative is an
-  # flock dependency on a fail-open path — but it is no longer free, and the
-  # next round should price it against `logGenerations`'s 590-day window rather
-  # than against the premise this comment used to state. The original text,
-  # kept because it is what the acceptance was reasoned from:
-  # archives are best-effort cold storage no consumer reads (audit reads the
-  # primary only), the window is one mv wide, and flock would add a
-  # dependency on this fail-open path. Do NOT cite this comment as "the race
-  # is bounded to a line" — it is bounded to the ARCHIVES.
+  # Concurrency (2026-08-16 audit CONC-4, adjudicated 2026-09-05 audit P1-1):
+  # two processes can both pass the size check, then interleave the two mv
+  # steps — P1 rotates live→.1, and P2's `mv .1 .2` then moves that
+  # JUST-ROTATED live generation onto .2, wiping the archive P1 made. Sandbox
+  # replay: {live, .1, .2} degraded to {gone, gone, live-as-.2} — BOTH prior
+  # generations lost, though live rows survive under the .2 name.
+  #
+  # This was accepted while "no consumer reads the archives" was true. v0.71.4
+  # made it false: rule-hits-parse.js#logGenerations opens .2, .1 and the
+  # primary, so all three are analysis input and the race costs roughly 380
+  # days of hit data at the log's measured ~26 KB/day.
+  #
+  # The exclusion is a `mkdir` — atomic on every filesystem this runs on, no
+  # flock dependency on a fail-open path, and nothing to reap: the loser skips
+  # rotation (the winner is already doing it) and the next append re-checks the
+  # size, while a lock left behind by a killed holder is removed by the first
+  # append that finds it older than a minute. Both branches stay silent; a
+  # rotation that does not happen this call is not an error.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
   # Numeric-guard: a non-integer env value (user typo) would make
   # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because
@@ -243,8 +242,16 @@ rule_hits_append() {
     local size
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     if (( size > max_bytes )); then
-      [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-      mv -f "$log_file" "$log_file.1" 2>/dev/null
+      local lock="$log_file.rotating"
+      if mkdir "$lock" 2>/dev/null; then
+        [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+        mv -f "$log_file" "$log_file.1" 2>/dev/null
+        rmdir "$lock" 2>/dev/null
+      elif [[ -z "$(find "$lock" -maxdepth 0 -mmin -1 2>/dev/null)" ]]; then
+        # Held for over a minute by a process that is not coming back (the two
+        # renames take microseconds). Reap it; the next append rotates.
+        rmdir "$lock" 2>/dev/null
+      fi
     fi
   fi
 
