@@ -15,7 +15,7 @@ import {
   byProjectClass,
   logFirstTs,
 } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, resolveDaysFlag, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
 const DEFAULT_TREND_DAYS = 7;
@@ -155,16 +155,7 @@ async function selfCompliance(days) {
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), { values: ['--days'] });
   const { raw, days } = resolveDaysFlag(parsed, { env: 'CLAUDEMD_AUDIT_DAYS', dflt: '30' });
   // parsePositiveInt rejects '1.5' (truncation footgun), '0x1e'/'1e2'
   // (Number() over-coercion), and 0/negatives — only a plain positive integer

@@ -12,7 +12,7 @@ import {
 } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { readSettings } from './lib/settings-merge.js';
 
 const USAGE = `Usage: node scripts/status.js [--verbose]
@@ -347,16 +347,7 @@ if (invokedAsMain(import.meta.url)) {
   // slash-command CLIs. Pre-fix it silently ignored ALL arguments (including
   // typos) and exited 0 — the same silent-fallback antipattern documented in
   // feedback_cli_flag_shape_silent_fallback.md.
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), { bools: ['--verbose'] });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), { bools: ['--verbose'] });
   status({ verbose: parsed.bools.has('--verbose') })
     .then(r => console.log(JSON.stringify(r, null, 2)))
     .catch(err => {

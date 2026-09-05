@@ -34,7 +34,7 @@ import {
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { copySpecFiles } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const INSTALL_USAGE = `Usage: node scripts/install.js
 
@@ -461,15 +461,7 @@ if (invokedAsMain(import.meta.url)) {
   // unknown flags so a typo (e.g. `--help` pre-fix) doesn't silently RUN
   // the install destructively. Same silent-fallback family as Round-1
   // status.js / lint-argv.js.
-  try {
-    parseStrict(process.argv.slice(2), {});
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  parseStrictOrExit(process.argv.slice(2), {});
   const pluginRoot = resolvePluginRoot(import.meta.url);
   install({ pluginRoot })
     .then(r => {

@@ -37,7 +37,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { encodeProjectCwd, projectDir, resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
 
@@ -619,23 +619,14 @@ function formatHuman(r) {
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--json', '--strict'],
-      // `--cwd` is the same concept under lesson-bypass-audit's spelling
-      // (R11-25). Accepting only one of the two names made whichever you typed
-      // second an argv-shape error; the alias is deliberately two-directional,
-      // because a one-directional one just moves which tool rejects you.
-      values: ['--project', '--cwd'],
-    });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), {
+    bools: ['--json', '--strict'],
+    // `--cwd` is the same concept under lesson-bypass-audit's spelling
+    // (R11-25). Accepting only one of the two names made whichever you typed
+    // second an argv-shape error; the alias is deliberately two-directional,
+    // because a one-directional one just moves which tool rejects you.
+    values: ['--project', '--cwd'],
+  });
   const json = parsed.bools.has('--json');
   const strict = parsed.bools.has('--strict');
   // Same conflict rule as lesson-bypass-audit: two spellings of one flag given

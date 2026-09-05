@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/safety-coverage-audit.js [--json] [--hook=<basename>]
 
@@ -430,19 +430,10 @@ function formatHuman(r) {
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--json'],
-      values: ['--hook'],
-    });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), {
+    bools: ['--json'],
+    values: ['--hook'],
+  });
   const json = parsed.bools.has('--json');
   const hookFilter = parsed.values['--hook'] ?? null;
   const pluginRoot = resolvePluginRoot(import.meta.url);

@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot, encodeProjectCwd, projectDir as projectDirFor } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, resolveDaysFlag, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lesson-bypass-audit.js [--days=N] [--cwd=<path>] [--json]
 
@@ -317,19 +317,10 @@ function formatPercent(v) {
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), {
-      values: ['--days', '--cwd', '--project'],
-      bools: ['--json'],
-    });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), {
+    values: ['--days', '--cwd', '--project'],
+    bools: ['--json'],
+  });
   const { raw, days } = resolveDaysFlag(parsed, { env: 'CLAUDEMD_BYPASS_DAYS', dflt: DEFAULT_WINDOW_DAYS });
   // parsePositiveInt rejects '2.7' (truncation footgun) AND '0x1e'/'1e2'
   // (Number() over-coercion) — this site was missed by the round-1 sweep.

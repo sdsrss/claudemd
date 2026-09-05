@@ -18,7 +18,7 @@ import {
 } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { remove as removeStatusline } from './lib/statusline.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 // Files claudemd is known to write into its state dir. Used ONLY on the
 // non-canonical-name branch of the purge below, where recursing is refused.
@@ -237,15 +237,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), UNINSTALL_USAGE);
   // No argv contract — uninstall reads from env. Loud-fail on unknown flags.
-  try {
-    parseStrict(process.argv.slice(2), {});
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  parseStrictOrExit(process.argv.slice(2), {});
   // Whitelist, loudly. `Delete` (capitalised) and `restore ` (trailing space)
   // used to fall through to `keep`, exit 0, and report `specAction: "keep"` —
   // the caller asked for one disposition of their spec files and got the

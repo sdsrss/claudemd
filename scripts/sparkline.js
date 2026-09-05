@@ -32,7 +32,7 @@ import {
   excludeTestSessions,
   isSignalEvent,
 } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysListFlag, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, resolveDaysListFlag, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
 
@@ -194,16 +194,7 @@ export function formatMarkdown(report) {
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), { values: ['--days'] });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), { values: ['--days'] });
   // Per-element rejection of '1.5' (truncation footgun), '0x1e'/'1e2'
   // (Number() over-coercion) and 0/empty lives in resolveDaysListFlag, which
   // returns null for the WHOLE list rather than a partial one — pre-fix

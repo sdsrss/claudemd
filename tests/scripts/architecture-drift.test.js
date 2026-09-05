@@ -368,8 +368,12 @@ test('R11-21(a): the merge-claim join is capable of failing (mutation control)',
 // decides at runtime — not from USAGE prose, which is itself a doc claim.
 function acceptedFlags(scriptRel) {
   const src = fs.readFileSync(path.join(ROOT, scriptRel), 'utf8');
-  const m = src.match(/parseStrict\(\s*process\.argv\.slice\(2\)\s*,\s*\{([\s\S]*?)\}\s*\)/);
-  assert.ok(m, `no parseStrict call found in ${scriptRel} — the extraction anchor moved`);
+  // Either spelling of the same call: the wrapper `parseStrictOrExit` carries the
+  // exit-2 contract that seventeen main blocks used to repeat by hand. Matching
+  // only the bare name made this extraction return nothing the day they moved,
+  // and the assertion below is the only reason that was not a silent pass.
+  const m = src.match(/parseStrict(?:OrExit)?\(\s*process\.argv\.slice\(2\)\s*,\s*\{([\s\S]*?)\}\s*\)/);
+  assert.ok(m, `no parseStrict/parseStrictOrExit call found in ${scriptRel} — the extraction anchor moved`);
   const flags = [...m[1].matchAll(/'(--[a-z][a-z0-9-]*)'/g)].map(x => x[1]);
   // printHelpAndExit handles these before parseStrict sees them.
   return new Set([...flags, '--help', '-h']);

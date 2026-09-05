@@ -15,7 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 // Direct frameworks first (own the display label when both present), then
 // meta-frameworks whose base framework is only a transitive dep.
@@ -379,16 +379,7 @@ is not an existing directory — "no here" is not the verdict "no UI here")`;
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), { bools: ['--json'], values: ['--cwd'] });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), { bools: ['--json'], values: ['--cwd'] });
   // Only the EXPLICIT flag is validated; process.cwd() exists by construction.
   // detect() is fail-open on a missing tree and returns `no-ui` — correct for a
   // library, wrong as an answer to a person: commands/claudemd-design-adopt.md

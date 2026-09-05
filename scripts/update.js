@@ -4,7 +4,7 @@ import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { copySpecFiles } from './lib/spec-hash.js';
 import { createBackup, pruneBackups, BACKUP_LABELS, BACKUP_RETAIN_COUNT } from './lib/backup.js';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
 
@@ -94,15 +94,7 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), UPDATE_USAGE);
   // No argv contract — update reads from env. Loud-fail on unknown flags.
-  try {
-    parseStrict(process.argv.slice(2), {});
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  parseStrictOrExit(process.argv.slice(2), {});
   const pluginRoot = resolvePluginRoot(import.meta.url);
   const choice = process.env.CLAUDEMD_UPDATE_CHOICE || 'cancel';
   // `.catch` translates env-shape errors (unknown CLAUDEMD_UPDATE_CHOICE) into

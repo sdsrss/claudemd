@@ -1,6 +1,6 @@
 import { readSettings, writeSettings } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
-import { printHelpAndExit, parseStrict, ArgvError, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 // Display name → env-var suffix. Source of truth: scripts/lib/hook-registry.js.
 // `version-sync` maps to `USER_PROMPT_SUBMIT` (event name, not file name) —
@@ -54,15 +54,7 @@ if (invokedAsMain(import.meta.url)) {
   const positionals = raw.filter(a => !a.startsWith('-'));
   const name = positionals[0];
   const leftover = raw.filter(a => a.startsWith('-')).concat(positionals.slice(1));
-  try {
-    parseStrict(leftover);
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  parseStrictOrExit(leftover);
   if (!name) {
     console.error(USAGE);
     process.exit(1);

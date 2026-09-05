@@ -150,6 +150,23 @@ export function parseStrict(argv, { bools = [], values = [] } = {}) {
   }
   return out;
 }
+// parseStrictOrExit — parseStrict with the exit contract every CLI in this repo
+// repeated verbatim: an ArgvError is a usage error, so print the one-line reason
+// and exit 2; anything else is a bug and keeps its stack. Seventeen main blocks
+// spelled this out by hand (jscpd's nine largest non-test clones were all this
+// block), which is seventeen chances for one of them to swallow the rethrow or
+// exit with a different code than its own USAGE documents.
+export function parseStrictOrExit(argv, spec = {}) {
+  try {
+    return parseStrict(argv, spec);
+  } catch (e) {
+    if (e instanceof ArgvError) {
+      console.error(e.message);
+      process.exit(2);
+    }
+    throw e;
+  }
+}
 
 // Space-form argv validator for the published `claudemd-cli` binary.
 //

@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lint-argv.js
 
@@ -136,7 +136,7 @@ export function findMainBlockGuard(text) {
   if (candidates.length === 0) return null;
   return { index: Math.min(...candidates) };
 }
-const ARGV_VALIDATORS = ['parseStrict', 'printHelpAndExit', 'validateAndExpandFlags'];
+const ARGV_VALIDATORS = ['parseStrict', 'parseStrictOrExit', 'printHelpAndExit', 'validateAndExpandFlags'];
 // The call alone is not authentication (audit-2026-08-22 条目 14). A file that
 // declares its own function by one of those names would validate nothing — and
 // that was not hypothetical: the gate had been widened to admit
@@ -280,15 +280,7 @@ if (invokedAsMain(import.meta.url)) {
   // (including `--help` after the helper above returns false on absence) is
   // unknown. Pre-fix it silently ignored ALL arguments and exited 0 — the
   // exact silent-fallback class this gate is supposed to detect.
-  try {
-    parseStrict(process.argv.slice(2), {});
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  parseStrictOrExit(process.argv.slice(2), {});
   const patternHits = scan();
   const structuralHits = scanMainBlockMissingArgv();
   const hits = [...patternHits, ...structuralHits];

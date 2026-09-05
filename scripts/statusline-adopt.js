@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
+import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { resolvePluginRoot } from './lib/paths.js';
 import { detect, adopt, remove } from './lib/statusline.js';
 
@@ -61,19 +61,10 @@ if (invokedAsMain(import.meta.url)) {
     console.error(`Unknown mode: '${mode || ''}'. Expected detect|adopt|remove.`);
     process.exit(2);
   }
-  let parsed;
-  try {
-    parsed = parseStrict(rest, {
-      bools: ['--force', '--empty-only', '--dry-run', '--json'],
-      values: ['--supersede'],
-    });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(rest, {
+    bools: ['--force', '--empty-only', '--dry-run', '--json'],
+    values: ['--supersede'],
+  });
   const pluginRoot = resolvePluginRoot(import.meta.url);
   try {
     let out;

@@ -31,12 +31,11 @@ import path from 'node:path';
 import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
 import {
-  ArgvError,
   parsePositiveInt,
-  parseStrict,
   printHelpAndExit,
   resolveDaysFlag,
   invokedAsMain,
+  parseStrictOrExit,
 } from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
 import { isUserTurn, userTurnText } from './lib/transcript-user-turn.js';
@@ -1021,19 +1020,10 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  let parsed;
-  try {
-    parsed = parseStrict(process.argv.slice(2), {
-      bools: ['--global', '--json', '--force'],
-      values: ['--days', '--sample'],
-    });
-  } catch (e) {
-    if (e instanceof ArgvError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    throw e;
-  }
+  const parsed = parseStrictOrExit(process.argv.slice(2), {
+    bools: ['--global', '--json', '--force'],
+    values: ['--days', '--sample'],
+  });
   const { raw: rawDays, days } = resolveDaysFlag(parsed, {
     env: 'CLAUDEMD_SAMPLING_DAYS',
     dflt: DEFAULT_WINDOW_DAYS,
