@@ -146,7 +146,7 @@ emit_session_summary_banner() {
   }' 2>/dev/null
 
   # Rename → consumed. Next Stop will write a fresh summary; this one is done.
-  mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
+  rm -f "$f" 2>/dev/null
 }
 
 # spec_drift_check — 2026-07-27 audit (M6). The ONLY automatic install-integrity
@@ -239,7 +239,7 @@ emit_bootstrap_failed_banner() {
     }
   }' 2>/dev/null
 
-  mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
+  rm -f "$f" 2>/dev/null
   hook_record session-start bootstrap-fail-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
@@ -253,7 +253,7 @@ emit_bootstrap_failed_banner() {
 # project silently stop applying and nothing says why. The backup was always
 # there; what was missing was any way to learn it exists.
 #
-# Consumed with rm, not the `.last-shown` rename the failure banner uses: this
+# Consumed with rm, as every consume-once sentinel here now is: this
 # is a one-shot notice with no diagnostic afterlife — the backup dir named in
 # the message IS the durable artifact — and the rename idiom is already the
 # source of a state file nothing ever reaps (ARCHITECTURE.md, R10-21e).

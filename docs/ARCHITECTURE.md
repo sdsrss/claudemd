@@ -204,7 +204,7 @@ Stop hook
       └─> aggregates ~/.claude/logs/claudemd.jsonl since session-summary.lastrun
           └─> writes ~/.claude/.claudemd-state/last-session-summary.json
               └─> SessionStart hook reads + emits as additionalContext
-                  └─> renames to .last-shown (consume-once)
+                  └─> rm (consume-once)
 ```
 
 ## State locations
@@ -216,10 +216,9 @@ Stop hook
 - `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns the `session-summary-*.lastrun` family)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
-- `~/.claude/.claudemd-state/last-session-summary.json.last-shown` — consume-once rename target after banner emission
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — install.js failure sentinel (v0.50.0; written/cleared by `hook_install_sentinel_write` / `hook_install_sentinel_clear` — the shared bookkeeping behind both `hook_spawn_install` and the v0.75.0 inline fresh-install path — read by the SessionStart failure banner, stale copy cleared on version match)
-- `~/.claude/.claudemd-state/bootstrap-failed.json.last-shown` — consume-once rename target after the failure banner (`session-start-check.sh:206`, the same idiom as the summary banner above). **Not** matched by clean-residue's state-dir patterns — only an uninstall run with `CLAUDEMD_PURGE=1` removes it, so a machine that hit one background-install failure keeps the file indefinitely (2026-08-29 audit R10-21e)
-- `~/.claude/.claudemd-state/user-content-backup.json` — v0.75.0; written by `install.js` when it moved a hand-written (non-spec) `~/.claude/CLAUDE.md` into a `backup-<stamp>/` dir, carrying that dir's path. Read by `emit_user_content_banner` in `session-start-check.sh` and **consumed with `rm`**, not the `.last-shown` rename the two banners above use: the durable artifact is the backup dir named in the message, so a diagnostic copy would only add another state file nothing reaps (see R10-21e on the line above). Exists because install.js's stderr WARN about the overwrite lands in `claudemd-bootstrap.log` on every bootstrap path — the notice was unreachable on the default install route.
+- `~/.claude/.claudemd-state/*.last-shown` — **legacy, no longer written**. Both SessionStart banners (session summary, bootstrap failure) consumed their sentinel by renaming it to this name, and clean-residue's state-dir patterns did not match the result, so only an uninstall with `CLAUDEMD_PURGE=1` removed it (2026-08-29 audit R10-21e). Both now consume with `rm`, and `clean-residue`'s `last-shown` pattern reaps whatever an upgraded machine still carries (2026-09-05 audit P3-1)
+- `~/.claude/.claudemd-state/user-content-backup.json` — v0.75.0; written by `install.js` when it moved a hand-written (non-spec) `~/.claude/CLAUDE.md` into a `backup-<stamp>/` dir, carrying that dir's path. Read by `emit_user_content_banner` in `session-start-check.sh` and **consumed with `rm`** — the idiom the two banners above have since adopted: the durable artifact is the backup dir named in the message, so a diagnostic copy would only add another state file nothing reaps (see R10-21e on the line above). Exists because install.js's stderr WARN about the overwrite lands in `claudemd-bootstrap.log` on every bootstrap path — the notice was unreachable on the default install route.
 - `~/.claude/.claudemd-state/ext-read-<sid>.ts` — per-session §13.1-extended-read dedup sentinel (`session-extended-read.sh`). Reaped by `session-end-check.sh` for its OWN session only, so a crash / kill / abnormal exit leaks one; `/claudemd-clean-residue` reaps the rest past the retention window.
 - `~/.claude/.claudemd-state/failopen-<hook>-<reason>.ts` — `hook_record_failopen` rate-limit marker (1 row per (hook, reason) per 60s)
 - `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — **dead**: written by the `memory-coverage-scan` Stop hook removed in v0.23.12. No in-tree producer remains; existing copies are reaped by `/claudemd-clean-residue`.

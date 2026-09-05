@@ -114,8 +114,8 @@ OUT=$(echo '{"hook_event_name":"SessionStart"}' | DISABLE_UPSTREAM_CHECK=1 bash 
 if echo "$OUT" | grep -q 'since last turn: 2 denies' \
    && echo "$OUT" | grep -q '§10-V' \
    && [[ ! -f "$SUMMARY" ]] \
-   && [[ -f "$SUMMARY.last-shown" ]]; then
-  ok "Case 5: session-start banner consumed + renamed"
+   && [[ ! -f "$SUMMARY.last-shown" ]]; then
+  ok "Case 5: session-start banner consumed, sentinel removed (no .last-shown residue)"
 else
   ng "Case 5: banner emission/consumption wrong (out: $OUT; summary exists: $([[ -f "$SUMMARY" ]] && echo yes || echo no); last-shown: $([[ -f "$SUMMARY.last-shown" ]] && echo yes || echo no))"
 fi

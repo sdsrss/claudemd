@@ -575,6 +575,25 @@ test('scanStateDir reaps vocab-scan sentinels', () => {
   );
 });
 
+test('scanStateDir reaps the legacy .last-shown banner sentinels', () => {
+  // Both SessionStart banners renamed their sentinel to `.last-shown` instead of
+  // deleting it, and no pattern here matched the result — the R10-21e leak. The
+  // banners consume with rm as of 2026-09-05 (audit P3-1), so what remains on an
+  // upgraded machine is a leftover, not live state, and this is what removes it.
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  for (const f of ['last-session-summary.json.last-shown', 'bootstrap-failed.json.last-shown']) {
+    const p = path.join(stateDir, f);
+    fs.writeFileSync(p, '0');
+    setMtime(p, 300);
+  }
+  const { candidates } = scanStateDir({ stateDir });
+  assert.deepEqual(
+    candidates.map(c => c.kind),
+    ['last-shown', 'last-shown']
+  );
+});
+
 test('cleanStateDir never deletes live singleton state, however old', () => {
   const stateDir = path.join(tmpDir, 'state');
   fs.mkdirSync(stateDir, { recursive: true });
@@ -585,7 +604,6 @@ test('cleanStateDir never deletes live singleton state, however old', () => {
     'session-start.ref',
     'upstream-check.lastrun',
     'last-session-summary.json',
-    'last-session-summary.json.last-shown',
     'bootstrap-failed.json',
     'l2-task-counter',
     'ship-baseline-recent',

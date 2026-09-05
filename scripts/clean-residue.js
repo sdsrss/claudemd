@@ -383,6 +383,13 @@ const STATE_EPHEMERAL = [
   // other two: it is live state for sessions whose Stop event carries no
   // session_id.
   { kind: 'session-summary', re: /^session-summary-.+\.lastrun$/ },
+  // Consume-once banner sentinels renamed rather than deleted, up to and
+  // including v0.75.0. Two names could reach this shape (last-session-summary
+  // .json, bootstrap-failed.json) and nothing ever reaped either — only an
+  // uninstall with CLAUDEMD_PURGE=1 (2026-08-29 audit R10-21e). Both banners now
+  // consume with rm, so a file matching this is a leftover from an older
+  // version by construction, never live state (2026-09-05 audit P3-1).
+  { kind: 'last-shown', re: /\.last-shown$/ },
 ];
 
 export function scanStateDir({ stateDir, now = Date.now() } = {}) {
