@@ -70,10 +70,17 @@ A hook can also return text for the model to read instead of a decision. Same
   model still receives it. Every emitter here sets it.
 - **A hook must emit exactly one JSON object per run.** Two objects on stdout
   are not valid JSON and the whole payload is dropped silently — no error, no
-  context. `session-start-check.sh` can have up to four banners ready in one
-  run (stale-root, upstream, session summary, spec drift) and merges them
-  through `jq -s` for this reason (`session-start-check.sh:381,439`); a fifth
-  banner added with its own `jq -cn` would disarm all of them.
+  context. `session-start-check.sh` has TWO merge sites, and which one runs
+  depends on whether a manifest exists. The version-MATCH branch can have five
+  banners ready in one run (stale-cache, upstream, session summary, spec drift,
+  user-content) and the fresh/mismatch tail can have three (bootstrap-failed,
+  session summary, user-content); both merge through `jq -s` for this reason.
+  A banner added with its own `jq -cn` alongside either merge would disarm every
+  banner in that run, not just itself. v0.75.0 added the fifth (user-content)
+  through the merge, and moved the tail's emit into `emit_tail_banners` so every
+  `exit` after the banner set is computed prints it exactly once — the guards on
+  the `command -v node` and `mkdir -p "$LOG_DIR"` bailouts exist for that reason,
+  and `tests/hooks/session-start.test.sh` Case 37 pins the node-absent one.
 
 Emitters, derived from source and gated by
 `tests/scripts/architecture-drift.test.js` (R11-21(c)):

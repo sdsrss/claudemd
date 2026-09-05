@@ -67,6 +67,14 @@ MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# FRESH install = neither manifest shape present. Captured HERE, before the
+# block below can act on it, because that block funnels TWO different states —
+# fresh install and version mismatch — into one shared bootstrap tail, and
+# only the fresh one is allowed to block session start (see the sync branch at
+# the tail for why the distinction is load-bearing rather than cosmetic).
+FRESH_INSTALL=0
+[[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]] || FRESH_INSTALL=1
+
 # v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
 # session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
 # Sentinel: rename file after read so banner only fires once. Skipped on:
@@ -210,6 +218,62 @@ emit_bootstrap_failed_banner() {
 
   mv -f "$f" "$f.last-shown" 2>/dev/null || rm -f "$f" 2>/dev/null
   hook_record session-start bootstrap-fail-banner null '' "$SESSION_ID" 2>/dev/null || true
+}
+
+# emit_user_content_banner — v0.75.0. Tell the user, IN SESSION, that install.js
+# moved their hand-written ~/.claude/CLAUDE.md aside — and where it went.
+#
+# install.js has warned about this on stderr since v0.5.3, but stderr from the
+# bootstrap goes to claudemd-bootstrap.log on both the sync and the detached
+# path, so on the default install route (no /claudemd-install) the warning has
+# never been visible. The user-global instructions Claude Code reads in every
+# project silently stop applying and nothing says why. The backup was always
+# there; what was missing was any way to learn it exists.
+#
+# Consumed with rm, not the `.last-shown` rename the failure banner uses: this
+# is a one-shot notice with no diagnostic afterlife — the backup dir named in
+# the message IS the durable artifact — and the rename idiom is already the
+# source of a state file nothing ever reaps (ARCHITECTURE.md, R10-21e).
+# Skipped on: DISABLE_USER_CONTENT_BANNER=1, jq missing, sentinel absent.
+emit_user_content_banner() {
+  local f="$HOME/.claude/.claudemd-state/user-content-backup.json"
+  [[ -f "$f" ]] || return 0
+  # Opt-out CONSUMES the sentinel rather than returning past it (pre-tag review,
+  # found independently by both reviewers). Returning early left a fixed-name
+  # singleton that nothing reaps — clean-residue's STATE_EPHEMERAL is an
+  # allowlist of per-session shapes and does not name it, so only a
+  # CLAUDEMD_PURGE=1 uninstall would — which is exactly the R10-21e residue
+  # class the `rm`-over-rename choice below cites as its reason for existing.
+  # Worse than the leak: unsetting the knob later would then fire a banner
+  # naming a backup dir pruneBackups may since have evicted. Opting out of the
+  # notice opts out of its bookkeeping too.
+  if [[ "${DISABLE_USER_CONTENT_BANNER:-0}" == "1" ]]; then
+    rm -f "$f" 2>/dev/null || true
+    return 0
+  fi
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local backup_dir
+  backup_dir=$(jq -r '.backupDir // ""' "$f" 2>/dev/null) || backup_dir=""
+
+  local msg="[claudemd] your existing ~/.claude/CLAUDE.md did not look like a claudemd spec (no \"# AI-CODING-SPEC\" H1), so it was treated as your own user-global instructions"
+  if [[ -n "$backup_dir" ]]; then
+    msg+=" and moved to $backup_dir/CLAUDE.md"
+  else
+    msg+=" and moved to a ~/.claude/backup-<timestamp>/ directory"
+  fi
+  msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back, run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand. Disable this notice: DISABLE_USER_CONTENT_BANNER=1"
+
+  jq -cn --arg ctx "$msg" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $ctx
+    }
+  }' 2>/dev/null
+
+  rm -f "$f" 2>/dev/null || true
+  hook_record session-start user-content-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
 # semver_cache_max <parent-dir> — print the highest semver-named subdir of
@@ -383,7 +447,12 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
     [[ -z "$stale_json" ]] && up_json=$(upstream_check)
     sum_json=$(emit_session_summary_banner)
     drift_json=$(spec_drift_check)
-    printf '%s\n%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" "$drift_json" | jq -s -c '
+    # Reached here when a PRIOR session's install left the sentinel behind and
+    # could not surface it in-session — the detached bootstrap, i.e. the
+    # CLAUDEMD_FORCE_ASYNC_BOOTSTRAP path. The fresh path emits it at the tail,
+    # in the same session as the overwrite.
+    uc_json=$(emit_user_content_banner)
+    printf '%s\n%s\n%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json" | jq -s -c '
       map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
       | if length == 0 then empty
         elif length == 1 then .[0]
@@ -439,27 +508,42 @@ fi
 # state file is not consumed either, so the prior session's summary surfaced one
 # session late rather than at all. Two possible writers now, so merge through
 # `jq -s` exactly as the match branch does: the hook must emit ONE JSON object.
+#
+# v0.75.0 — the emit MOVED to the end of the hook (emit_tail_banners below).
+# The banner set is computed here, before the bootstrap, because two of these
+# helpers CONSUME state the bootstrap is about to rewrite; but on the fresh
+# path the bootstrap itself produces a third banner (install.js moved the
+# user's own ~/.claude/CLAUDE.md aside), and CC parses hook stdout with a
+# strict single-value JSON.parse — printing a second object here and another
+# after the install is invalid JSON and silently drops BOTH. So collect, then
+# emit exactly once, on every exit path below.
 _bf_json=$(emit_bootstrap_failed_banner)
 _sum_json=$(emit_session_summary_banner)
-printf '%s\n%s\n' "$_bf_json" "$_sum_json" | jq -s -c '
-  map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
-  | if length == 0 then empty
-    elif length == 1 then .[0]
-    else {
-      suppressOutput: true,
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
-      }
-    } end' 2>/dev/null || true
+_uc_json=""
 
-# node required to run install.js — silent no-op if absent.
-command -v node >/dev/null 2>&1 || exit 0
+emit_tail_banners() {
+  printf '%s\n%s\n%s\n' "$_bf_json" "$_sum_json" "$_uc_json" | jq -s -c '
+    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
+    | if length == 0 then empty
+      elif length == 1 then .[0]
+      else {
+        suppressOutput: true,
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
+        }
+      } end' 2>/dev/null || true
+}
+
+# node required to run install.js — silent no-op if absent. The banners still
+# owe the user their emit: they describe state a PRIOR session left behind and
+# are consume-once, so skipping the print here drops them permanently.
+command -v node >/dev/null 2>&1 || { emit_tail_banners; exit 0; }
 
 # Background self-install with a 10s ceiling. Detach so a hanging filesystem
 # cannot delay session start. Stdout/stderr captured for post-hoc debug.
 LOG_DIR="$HOME/.claude/logs"
-mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
+mkdir -p "$LOG_DIR" 2>/dev/null || { emit_tail_banners; exit 0; }
 LOG="$LOG_DIR/claudemd-bootstrap.log"
 
 # Rotate when log exceeds 64 KiB — keep last 32 KiB. Without this the file
@@ -477,11 +561,74 @@ if [[ -f "$LOG" ]]; then
   fi
 fi
 
+# v0.75.0 — the FRESH-INSTALL bootstrap runs SYNCHRONOUSLY; every other path
+# keeps the detached spawn below.
+#
+# Detaching exists so a hanging filesystem cannot delay session start, and on
+# the UPGRADE path that trade is right: the spec is already on disk at the old
+# version, so landing new bytes a few seconds late costs a few seconds of stale
+# spec. On the FRESH path there is no old version to fall back on, and the file
+# install.js writes — ~/.claude/CLAUDE.md — is user-global context Claude Code
+# assembles at session start. A detached job racing that assembly loses by
+# construction, so the spec's first appearance in context was pushed to the
+# session AFTER this one: the THIRD session counting from `/plugin install`,
+# since session 1 has no SessionStart for a plugin that was not loaded when it
+# began. Hook ENFORCEMENT was never affected (hooks.json is read straight from
+# the plugin, and the rule data lives in the plugin root), but the half of the
+# spec that only works by being read was silently two sessions late for anyone
+# who did not know to run /claudemd-install.
+#
+# Affordable because it happens once per machine: install.js measures ~65ms
+# (four spec copies + one atomic manifest write). The 4s ceiling is ~60x that
+# and strictly under the 5s SessionStart budget in hooks.json — the literal is
+# what tests/hooks/hook-budget.test.sh greps, so shrinking that budget without
+# shrinking this fails the suite instead of silently getting the hook killed
+# mid-copy.
+#
+# Hitting the ceiling is not a dead end. install.js writes its manifest LAST
+# and atomically, so a killed run leaves no manifest and the next SessionStart
+# simply re-enters this same fresh path; and we fall through to the detached
+# spawn in THIS run, which makes the branch never worse than what it replaces.
+# CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 opts out entirely.
+if [[ "$FRESH_INSTALL" == "1" && "${CLAUDEMD_FORCE_ASYNC_BOOTSTRAP:-0}" != "1" ]]; then
+  # `2>/dev/null` BEFORE `>> "$LOG"`, not after (pre-tag review NOTE 4).
+  # Redirections apply left to right, so with the log redirect first, a failing
+  # `>>` (log file present but unwritable — root-owned, bad mode) reports
+  # "Permission denied" on the hook's REAL stderr, which the harness surfaces to
+  # the user. Pre-0.75.0 every write on this path lived inside
+  # hook_spawn_install's detached `( … ) >/dev/null 2>&1 &` and was swallowed;
+  # this branch runs in the foreground, so it has to swallow it itself. The
+  # inner `2>&1` still binds install.js's stderr to fd1 = the log.
+  if {
+    echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart fresh-install bootstrap (sync) → $PLUGIN_ROOT/scripts/install.js"
+    platform_timeout 4 node "$PLUGIN_ROOT/scripts/install.js" 2>&1
+  } 2>/dev/null >> "$LOG"; then
+    hook_install_sentinel_clear
+    # The install just finished, so its user-content sentinel — if it wrote one
+    # — is on disk NOW. Reading it here is the whole reason this branch is
+    # synchronous: the session that loses the user's hand-written CLAUDE.md is
+    # the session that gets told about it, rather than the next one.
+    _uc_json=$(emit_user_content_banner)
+    emit_tail_banners
+    hook_record session-start bootstrap-sync null '' "$SESSION_ID"
+    exit 0
+  fi
+  # Same left-to-right ordering as above, for the same reason.
+  echo "[claudemd] sync bootstrap exited non-zero or timed out — retrying detached" 2>/dev/null >> "$LOG" || true
+fi
+
 # Shared spawn (hook-common.sh): background install with a 10s ceiling,
 # detached; writes/clears the bootstrap-failed sentinel on failure/success.
 hook_spawn_install "$PLUGIN_ROOT" "$LOG" \
   "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart bootstrap → $PLUGIN_ROOT/scripts/install.js" \
   "${INSTALLED_VER:-}" "${PLUGIN_VER:-}"
 
+# Detached: the install has not run yet, so any user-content sentinel it writes
+# is surfaced by the version-MATCH branch on the next session instead. The same
+# deferral covers a sentinel ALREADY on disk when the sync branch above failed
+# after install.js had done the backup (pre-tag review NOTE 3): re-reading it
+# here would race the atomic write of the detached run just spawned, and the
+# banner is consume-once, so the conservative read is next session's.
+emit_tail_banners
 hook_record session-start bootstrap null '' "$SESSION_ID"
 exit 0

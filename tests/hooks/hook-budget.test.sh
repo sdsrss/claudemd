@@ -608,7 +608,11 @@ fi
 # must be wrapped in `platform_timeout N`, and N must be strictly under the
 # hooks.json timeout — otherwise the harness kills the hook before the wrapper
 # can return, and a killed hook emits nothing. session-start-check.sh
-# (5s budget, 3s ls-remote) is the hook the 713-banner incident's own
+# (5s budget; worst single wrapper is now the v0.75.0 4s sync bootstrap, ahead
+# of the 3s ls-remote — the gate below takes the MAX, and the two sit on
+# mutually exclusive branches since upstream_check runs only inside the
+# version-MATCH branch, so there is no additive 7s path) is the hook the
+# 713-banner incident's own
 # instrumentation lives on, and it had NO budget coverage from either
 # instrument before audit-2026-08-22 P1-2.
 NET_HOOKS=()

@@ -263,6 +263,32 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
           `with the plugin spec. To bring your content back on uninstall, run ` +
           `\`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`.\n`
       );
+      // v0.75.0 — the stderr line above reaches a HUMAN only when install.js is
+      // run in the foreground (`/claudemd-install`, or the manual `node
+      // scripts/install.js` fallback). On the path almost everyone actually
+      // takes — Claude Code does not fire postInstall, so the SessionStart hook
+      // bootstraps instead — the hook redirects both streams into
+      // ~/.claude/logs/claudemd-bootstrap.log. So the single most consequential
+      // thing this script ever does to a file it does not own, replacing
+      // hand-written user-global instructions that Claude Code reads on EVERY
+      // project, was announced only in a log nobody has a reason to open: the
+      // user's instructions just stop working, with no notice and no pointer to
+      // the backup holding them. Leave a sentinel; session-start-check.sh turns
+      // it into a SessionStart banner and consumes it (fire-once).
+      //
+      // Best-effort by construction. This runs AFTER the backup + copy already
+      // succeeded, so a failure here must not fail an otherwise-good install —
+      // the cost of losing it is the pre-0.75.0 behavior, not a broken install.
+      try {
+        const sd = stateDir();
+        fs.mkdirSync(sd, { recursive: true });
+        writeJsonAtomic(path.join(sd, 'user-content-backup.json'), {
+          ts: new Date().toISOString(),
+          backupDir,
+        });
+      } catch {
+        /* best-effort: the stderr WARN + the backup dir itself still stand */
+      }
     }
   }
   // Completeness of the shipped spec was validated above (before any backup

@@ -172,7 +172,7 @@ test('token set enumeration is stable (sorted) across runs', () => {
 
 // ── CLI contract ────────────────────────────────────────────────────────────
 
-test('CLI: --json verdict, --help exit 0, unknown flag exit 2, fail-open on bogus cwd', () => {
+test('CLI: --json verdict, --help exit 0, unknown flag exit 2, absent --cwd exit 2', () => {
   const env = { ...process.env, HOME: TMP };
   assert.equal(
     JSON.parse(
@@ -191,11 +191,35 @@ test('CLI: --json verdict, --help exit 0, unknown flag exit 2, fail-open on bogu
     code = e.status;
   }
   assert.equal(code, 2);
-  assert.equal(
-    JSON.parse(execFileSync('node', [SCRIPT, '--json', '--cwd=/nonexistent-xyz'], { env, encoding: 'utf8' }))
-      .verdict,
-    'no-ui'
-  );
+  // An absent --cwd is an ARGUMENT error, not a verdict. This assertion used to
+  // pin `no-ui` — the fail-open detect() result — which is right for the library
+  // and wrong as an answer to a person: commands/claudemd-design-adopt.md tells
+  // the caller to report the verdict, so a typo'd or since-moved path was
+  // relayed as the confident claim "this project is not a UI project". The
+  // stderr line has to name the path, since that is the whole difference between
+  // the two readings.
+  let cwdCode = 0;
+  let cwdErr = '';
+  try {
+    execFileSync('node', [SCRIPT, '--json', '--cwd=/nonexistent-xyz'], {
+      env,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch (e) {
+    cwdCode = e.status;
+    cwdErr = e.stderr || '';
+  }
+  assert.equal(cwdCode, 2, '--cwd pointing at nothing must not exit 0 with a verdict');
+  assert.match(cwdErr, /not a directory: .*nonexistent-xyz/);
+  // A FILE is the same class of mistake and must not read as a verdict either.
+  let fileCode = 0;
+  try {
+    execFileSync('node', [SCRIPT, '--json', `--cwd=${SCRIPT}`], { env, encoding: 'utf8', stdio: 'pipe' });
+  } catch (e) {
+    fileCode = e.status;
+  }
+  assert.equal(fileCode, 2, '--cwd pointing at a file must not be analyzed as a project root');
 });
 
 test('#3 main guard fires from a path with a space AND a symlinked path (realpath)', () => {

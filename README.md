@@ -35,7 +35,7 @@ Then bootstrap the **current** session (skip the wait-for-next-session restart) 
 
 Fallback (no slash command — e.g. scripting outside CC): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js`. Find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`.
 
-> ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** Claude Code reads this file as your user-global instructions across every project. If you've hand-written personal instructions there (`Always reply in 中文`, `My name is X`, etc.), install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the spec. Since v0.5.3, install prints a `[claudemd] WARN: …` line to stderr when the existing file does not look like a claudemd spec. To bring your personal instructions back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
+> ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** Claude Code reads this file as your user-global instructions across every project. If you've hand-written personal instructions there (`Always reply in 中文`, `My name is X`, etc.), install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the spec. Since v0.5.3, install prints a `[claudemd] WARN: …` line to stderr when the existing file does not look like a claudemd spec — visible when you run `/claudemd-install` (or `install.js`) yourself. Since v0.75.0 the **SessionStart** bootstrap, where that stderr goes to `claudemd-bootstrap.log` instead, raises the same notice as an in-session banner naming the backup path (silence it with `DISABLE_USER_CONTENT_BANNER=1`). To bring your personal instructions back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
 
 ---
 
@@ -208,6 +208,29 @@ export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compacti
                                            # re-read reminder banner (SessionStart with
                                            # source=="compact"); compact events still
                                            # skip bootstrap/upgrade-banner either way.
+
+export CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1    # v0.75.0+ — restores the pre-0.75.0 detached
+                                           # bootstrap on the FRESH-install path (no
+                                           # manifest yet), which otherwise runs install.js
+                                           # synchronously inside the 5s SessionStart
+                                           # budget so ~/.claude/CLAUDE.md is on disk
+                                           # before Claude Code assembles context. Set it
+                                           # if a slow/networked $HOME makes that wait
+                                           # unacceptable; the cost is that the spec first
+                                           # reaches the model one session later. Upgrades
+                                           # are detached either way.
+
+export DISABLE_USER_CONTENT_BANNER=1       # v0.75.0+ — only the SessionStart notice
+                                           # that install.js moved a hand-written
+                                           # ~/.claude/CLAUDE.md into a backup dir.
+                                           # The backup and the install-time stderr
+                                           # WARN still happen; what stops is the
+                                           # in-session banner naming the backup
+                                           # path and the restore command. The hook
+                                           # still consumes its sentinel on this
+                                           # path, so opting out leaves no residue
+                                           # and cannot fire a late banner naming a
+                                           # since-pruned backup dir.
 
 export DISABLE_BOOTSTRAP_FAIL_BANNER=1     # v0.50.0+ — only the SessionStart banner
                                            # reporting that a PRIOR session's background

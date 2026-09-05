@@ -17,6 +17,8 @@ Surface the JSON output as a one-line human summary:
 - `entries.length`: number of registered hooks.
 - `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless).
 
-**When to use**: right after `/plugin install claudemd@claudemd` so hooks fire in THIS session. Claude Code does not honor `postInstall`, so without this command (or restarting the session) `install.js` runs on the next `SessionStart` and the current session sees `/claudemd-status` reporting `plugin.hint == "cache-present-bootstrap-pending"`.
+**When to use**: right after `/plugin install claudemd@claudemd`, to get the SPEC into `~/.claude/` without waiting for a restart. Claude Code does not honor `postInstall`, so without this command `install.js` first runs on the next `SessionStart`, and until then `/claudemd-status` reports `plugin.hint == "cache-present-bootstrap-pending"`.
+
+What this does **not** gate is hook enforcement. The hooks are registered by the plugin's own `hooks/hooks.json`, which Claude Code loads directly, and every pattern file they match against lives in the plugin root — so all of them are live from the moment the plugin activates, whether or not `install.js` has ever run. (`settings.json` carries no claudemd hook entries at all; the `entries` array this command prints is the manifest's record, not the registration.) What bootstrap delivers is the spec text itself at `~/.claude/CLAUDE.md` — the half of claudemd that works by being read rather than by blocking a tool call. Since v0.75.0 the fresh-install SessionStart runs the bootstrap inline so that file lands before Claude Code assembles context; this command is the way to skip the intervening restart entirely.
 
 **Not for routine upgrades** — `/claudemd-update` is the right command for refreshing the spec into `~/.claude/` after a `/plugin marketplace update` + reinstall cycle; that command also diffs first and asks before overwriting.

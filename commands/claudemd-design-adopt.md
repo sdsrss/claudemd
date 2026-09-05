@@ -9,6 +9,8 @@ Usage: `/claudemd-design-adopt` | `/claudemd-design-adopt check` | `/claudemd-de
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/design-detect.js --json` (add `--cwd=PATH` to target another dir). The detector is stateless — it reads the filesystem and prints a verdict, writing nothing.
 
+If `--cwd` is passed and names something that is not an existing directory (or is empty), the detector **exits 2 with a stderr line** instead of printing a verdict. That is not a finding about the project — report the bad path and stop; do not relay it as `no-ui`.
+
 - `no-ui` / `ui-no-tokens` → report one line (`nothing to adopt: <verdict>`) and STOP. Never create DESIGN.md for a token-less project — generation would require inventing values, which this command forbids.
 - `configured` → report "already wired" + the DESIGN.md path. Offer `check` instead; regenerate only if the user explicitly asks.
 - `adoptable` / `unwired` → continue.

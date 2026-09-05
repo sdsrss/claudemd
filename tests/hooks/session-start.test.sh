@@ -23,21 +23,24 @@ unset DISABLE_COMPACT_REREAD_REMINDER
 
 FAIL=0
 
-# Case 1: no manifest at either location → hook spawns install.js in background.
-# We don't wait for the background install here — the test only asserts the
-# hook exits 0 and records a `bootstrap` event in the rule-hits log.
+# Case 1: no manifest at either location → hook bootstraps install.js.
+# Since v0.75.0 the FRESH path runs it synchronously (Case 2); this case only
+# asserts the hook stays silent on both streams, which the sync branch must
+# preserve — install.js prints its JSON report to stdout, and letting that
+# reach Claude Code would make the hook's output unparseable.
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 [[ -z "$STDERR" ]] && echo "PASS: 1 first-run silent stdout/stderr" \
   || { echo "FAIL: 1 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
 
-# Wait for the background install to finish, then assert manifest appeared.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [[ -f "$HOME/.claude/.claudemd-manifest.json" ]] && break
-  sleep 0.5
-done
+# Case 2 (v0.75.0): the manifest exists the instant the hook RETURNS — no poll,
+# no sleep. That immediacy IS the fresh-path contract: install.js writes
+# ~/.claude/CLAUDE.md, and a detached run racing Claude Code's session-start
+# context assembly is what delayed the spec's first appearance by a session.
+# A poll loop here would pass just as happily against the old async spawn, so
+# the absence of one is the assertion.
 [[ -f "$HOME/.claude/.claudemd-manifest.json" ]] \
-  && echo "PASS: 2 background install wrote manifest" \
-  || { echo "FAIL: 2 manifest never appeared"; FAIL=$((FAIL+1)); }
+  && echo "PASS: 2 fresh install wrote manifest synchronously (no wait)" \
+  || { echo "FAIL: 2 manifest absent when hook returned"; FAIL=$((FAIL+1)); }
 
 # Bootstrap log exists (diagnostic trail).
 [[ -f "$HOME/.claude/logs/claudemd-bootstrap.log" ]] \
@@ -554,6 +557,168 @@ if [[ -z "$OUT29" ]]; then
 else
   echo "FAIL: 29 absent file reported as drift (out: $OUT29)"; FAIL=$((FAIL+1))
 fi
+
+# --- v0.75.0 sync fresh-install bootstrap ---
+# The three cases below pin WHICH path each state takes, read off the bootstrap
+# log's own header line. Case 2 already proved the fresh path lands the manifest
+# before the hook returns; these prove that is a deliberate branch and not an
+# accident of a fast machine — an async spawn that happened to win the race
+# would satisfy Case 2 on this box and fail it on a loaded CI runner.
+SYNC_MARK='fresh-install bootstrap (sync)'
+
+# Case 30: fresh state → sync header in the log, and the manifest is already
+# there. Distinct from Case 2 in that it names the branch, not just the effect.
+rm -f "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+LOG_TXT=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
+if [[ -z "$STDERR" ]] && grep -qF "$SYNC_MARK" <<<"$LOG_TXT" \
+   && [[ -f "$HOME/.claude/.claudemd-manifest.json" ]]; then
+  echo "PASS: 30 fresh install takes the sync branch"
+else
+  echo "FAIL: 30 fresh install did not take the sync branch (stderr=$STDERR log=$LOG_TXT)"
+  FAIL=$((FAIL+1))
+fi
+
+# Case 31: CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 restores the pre-0.75.0 behavior on
+# the same fresh state — the escape hatch has to actually reach the old path,
+# or it is a knob that only looks like one.
+rm -f "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+STDERR=$(CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 bash "$HOOK" <<<'{}' 2>&1)
+# The detached header is written by hook_spawn_install's BACKGROUND subshell, so
+# reading the log the instant the hook returns races it (pre-tag review NOTE 3).
+# The parent only spawns jq + hook_record before exiting, so the child normally
+# wins on an idle box — which is exactly why an unordered read passes here and
+# flakes red on a loaded CI runner. Poll for the header, the same idiom this
+# case already uses below for the manifest. The NEGATIVE half (no sync marker)
+# is race-free: a marker that is never written cannot appear late.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  grep -qF 'SessionStart bootstrap' "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null && break
+  sleep 0.5
+done
+LOG_TXT=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
+if [[ -z "$STDERR" ]] && ! grep -qF "$SYNC_MARK" <<<"$LOG_TXT" \
+   && grep -qF 'SessionStart bootstrap' <<<"$LOG_TXT"; then
+  echo "PASS: 31 CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 restores the detached path"
+else
+  echo "FAIL: 31 force-async knob did not reach the detached path (stderr=$STDERR log=$LOG_TXT)"
+  FAIL=$((FAIL+1))
+fi
+# Let the detached install settle before the next case rewrites the manifest —
+# and before the EXIT trap removes the dir out from under it.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$HOME/.claude/.claudemd-manifest.json" ]] && break
+  sleep 0.5
+done
+
+# Case 32: the UPGRADE path stays detached. Blocking session start is justified
+# only where there is no spec on disk at all; with an older one already there,
+# a few seconds of stale spec is the cheaper failure.
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+LOG_TXT=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
+if [[ -z "$STDERR" ]] && ! grep -qF "$SYNC_MARK" <<<"$LOG_TXT" \
+   && grep -qF 'auto-upgrade' <<<"$LOG_TXT"; then
+  echo "PASS: 32 version-mismatch upgrade stays on the detached path"
+else
+  echo "FAIL: 32 upgrade path took the sync branch (stderr=$STDERR log=$LOG_TXT)"
+  FAIL=$((FAIL+1))
+fi
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  NEW_VER=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
+  [[ -n "$NEW_VER" && "$NEW_VER" != "0.0.1" ]] && break
+  sleep 0.5
+done
+
+# --- v0.75.0 user-content overwrite banner ---
+# install.js has warned on stderr since v0.5.3 that it moved a hand-written
+# ~/.claude/CLAUDE.md aside, but every bootstrap path redirects stderr into
+# claudemd-bootstrap.log — so on the default install route (no /claudemd-install)
+# the notice was unreachable and the user's user-global instructions silently
+# stopped applying. These cases pin that it now reaches stdout as a banner, once.
+UC_SENTINEL="$HOME/.claude/.claudemd-state/user-content-backup.json"
+uc_reset_fresh() {
+  rm -f "$HOME/.claude/.claudemd-manifest.json" "$UC_SENTINEL"
+  rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+  printf '# My personal instructions\nAlways reply in 中文.\n' > "$HOME/.claude/CLAUDE.md"
+}
+
+# Case 33: the banner lands in the SAME session as the overwrite, and stdout is
+# still ONE JSON object — CC parses it with a strict single-value JSON.parse, so
+# a second object here would silently drop every banner, not just this one.
+uc_reset_fresh
+OUT33=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+CTX33=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT33" 2>/dev/null || echo "")
+if [[ "$(jq -s 'length' <<<"$OUT33" 2>/dev/null)" == "1" ]] \
+   && grep -qF 'CLAUDEMD_SPEC_ACTION=restore' <<<"$CTX33" \
+   && grep -qE "$HOME/\.claude/backup-[0-9]" <<<"$CTX33"; then
+  echo "PASS: 33 user-content overwrite is bannered in-session with the backup path"
+else
+  echo "FAIL: 33 no in-session user-content banner (out=$OUT33)"; FAIL=$((FAIL+1))
+fi
+
+# Case 34: consume-once. The sentinel is removed, so the next session is silent —
+# a banner that repeats every session is one users learn to ignore.
+if [[ ! -f "$UC_SENTINEL" ]] && [[ -z "$(bash "$HOOK" <<<'{}' 2>/dev/null)" ]]; then
+  echo "PASS: 34 user-content banner fires once and consumes its sentinel"
+else
+  echo "FAIL: 34 sentinel survived or banner repeated"; FAIL=$((FAIL+1))
+fi
+
+# Case 35: no false positive. A fresh install with no pre-existing CLAUDE.md
+# overwrites nothing of the user's, so nothing is claimed.
+rm -f "$HOME/.claude/.claudemd-manifest.json" "$UC_SENTINEL"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" "$HOME/.claude/CLAUDE.md" 2>/dev/null || true
+OUT35=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT35" ]]; then
+  echo "PASS: 35 no user-content banner when nothing of the user's was overwritten"
+else
+  echo "FAIL: 35 banner emitted on a clean fresh install (out=$OUT35)"; FAIL=$((FAIL+1))
+fi
+
+# Case 36: DISABLE_USER_CONTENT_BANNER=1 suppresses the banner AND consumes the
+# sentinel. Both halves are the assertion: an opt-out that returned past the
+# sentinel would leave a fixed-name singleton no reaper names (clean-residue's
+# STATE_EPHEMERAL is a per-session allowlist), and unsetting the knob later
+# would fire a banner naming a backup dir prune may have evicted.
+uc_reset_fresh
+OUT36=$(DISABLE_USER_CONTENT_BANNER=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+if [[ -z "$OUT36" ]] && [[ ! -f "$UC_SENTINEL" ]]; then
+  echo "PASS: 36 DISABLE_USER_CONTENT_BANNER=1 suppresses the notice and leaves no residue"
+else
+  echo "FAIL: 36 kill-switch did not suppress, or leaked the sentinel (out=$OUT36)"; FAIL=$((FAIL+1))
+fi
+rm -f "$UC_SENTINEL"
+
+# Case 37: the two guards this release added to the pre-bootstrap exits. They
+# are the paths that FIX the banner-loss bug (a pending consume-once banner used
+# to be dropped when the hook bailed before the install), so leaving them
+# uncovered would let the fix regress silently (pre-tag review NOTE 6).
+# Driven with a pending bootstrap-failed sentinel (same shape Cases 20/22 use)
+# and a PATH that carries jq but not node.
+rm -f "$HOME/.claude/.claudemd-manifest.json" "$UC_SENTINEL"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+mkdir -p "$HOME/.claude/.claudemd-state"
+printf '{"ts":"2026-09-05T00:00:00Z","from":"0.74.2","to":"0.75.0"}\n' \
+  > "$HOME/.claude/.claudemd-state/bootstrap-failed.json"
+NODELESS_PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin"
+if PATH="$NODELESS_PATH" command -v node >/dev/null 2>&1; then
+  echo "PASS: 37 node-absent guard (skipped — node reachable from a stripped PATH here)"
+else
+  OUT37=$(PATH="$NODELESS_PATH" bash "$HOOK" <<<'{}' 2>/dev/null)
+  if [[ "$(jq -s 'length' <<<"$OUT37" 2>/dev/null)" == "1" ]] \
+     && grep -qF 'background upgrade failed' <<<"$OUT37"; then
+    echo "PASS: 37 node-absent still emits its pending banner, as one object"
+  else
+    echo "FAIL: 37 pending banner dropped when node is absent (out=$OUT37)"; FAIL=$((FAIL+1))
+  fi
+fi
+rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json"* 2>/dev/null || true
 
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:

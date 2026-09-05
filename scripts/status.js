@@ -64,6 +64,21 @@ const SUB_FEATURE_TOGGLES = [
     disables: 'the prior-session install-failure banner; the sentinel is still written',
   },
   {
+    envVar: 'DISABLE_USER_CONTENT_BANNER',
+    partOf: 'session-start-check.sh',
+    disables:
+      'the notice that install.js moved a hand-written ~/.claude/CLAUDE.md into a backup dir; the backup and the install-time stderr WARN still happen, and the hook consumes its sentinel silently rather than leaving residue',
+  },
+  {
+    // Not a DISABLE_* name, so outside the drift gate's extraction — listed by
+    // hand for the same reason the gate exists: it is a knob that changes when
+    // the spec reaches the user, and one nobody could find otherwise.
+    envVar: 'CLAUDEMD_FORCE_ASYNC_BOOTSTRAP',
+    partOf: 'session-start-check.sh',
+    disables:
+      'the v0.75.0 synchronous fresh-install bootstrap; restores the detached spawn, at the cost of the spec landing in context a session later',
+  },
+  {
     envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',
     partOf: 'session-end-check.sh',
     disables: 'the §13.2 batch-review cadence advisory only',

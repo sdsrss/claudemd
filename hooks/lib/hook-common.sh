@@ -371,6 +371,37 @@ hook_is_readonly_bash() {
   return 1
 }
 
+# hook_install_sentinel_clear / hook_install_sentinel_write FROM_VER TO_VER
+#
+# The bootstrap-failed sentinel's read/write contract, extracted from
+# hook_spawn_install in v0.75.0 when session-start-check.sh gained a SECOND
+# install.js call site (the synchronous fresh-install path). The invocation
+# differs between the two — one is detached with a 10s ceiling, the other
+# blocks inside the SessionStart budget — but the bookkeeping around it must
+# not: emit_bootstrap_failed_banner reads this file's exact shape, and a
+# hand-copied second writer is precisely the drift the 2026-07-15 seam audit
+# caught the first time. The ceiling stays at each CALL SITE on purpose: only
+# a literal `platform_timeout N` in a registered hook file is visible to
+# tests/hooks/hook-budget.test.sh, which is what keeps a blocking call inside
+# its hooks.json budget.
+hook_install_sentinel_clear() {
+  rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" 2>/dev/null || true
+}
+
+hook_install_sentinel_write() {
+  local from="${1:-}" to="${2:-}"
+  local state_dir="$HOME/.claude/.claudemd-state"
+  # Versions land in hand-built JSON — constrain to the semver-ish charset
+  # (dev-mode roots can carry arbitrary package.json version strings).
+  from=$(printf '%s' "$from" | tr -cd '0-9A-Za-z._-')
+  to=$(printf '%s' "$to" | tr -cd '0-9A-Za-z._-')
+  mkdir -p "$state_dir" 2>/dev/null \
+    && printf '{"ts":"%s","from":"%s","to":"%s"}\n' \
+         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$from" "$to" \
+         > "$state_dir/bootstrap-failed.json" 2>/dev/null \
+    || true
+}
+
 # hook_spawn_install PLUGIN_ROOT LOG_FILE HEADER [FROM_VER] [TO_VER]
 # Shared background install.js runner — single source for the session-start
 # bootstrap and the version-sync piggy-back (2026-07-15 seam audit: the two
@@ -383,23 +414,14 @@ hook_is_readonly_bash() {
 # desired visible-failure behavior, not a silent skip.
 hook_spawn_install() {
   local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
-  local state_dir="$HOME/.claude/.claudemd-state"
-  local sentinel="$state_dir/bootstrap-failed.json"
-  # Versions land in hand-built JSON — constrain to the semver-ish charset
-  # (dev-mode roots can carry arbitrary package.json version strings).
-  from=$(printf '%s' "$from" | tr -cd '0-9A-Za-z._-')
-  to=$(printf '%s' "$to" | tr -cd '0-9A-Za-z._-')
   (
     {
       echo "$header"
       if platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1; then
-        rm -f "$sentinel" 2>/dev/null || true
+        hook_install_sentinel_clear
       else
         echo "[claudemd] bootstrap exited non-zero or timed out"
-        mkdir -p "$state_dir" 2>/dev/null \
-          && printf '{"ts":"%s","from":"%s","to":"%s"}\n' \
-               "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$from" "$to" > "$sentinel" 2>/dev/null \
-          || true
+        hook_install_sentinel_write "$from" "$to"
       fi
     } >> "$log"
   ) </dev/null >/dev/null 2>&1 &

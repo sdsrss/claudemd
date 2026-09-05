@@ -375,7 +375,8 @@ Deterministic, stateless design-token detector (the /claudemd-design-adopt comma
   --help, -h  Print this message and exit
 
 Verdicts: no-ui | ui-no-tokens | adoptable | unwired | configured | error
-Exit codes: 0 (all verdicts, fail-open) | 2 (argument error)`;
+Exit codes: 0 (all verdicts, fail-open) | 2 (argument error, incl. a --cwd that
+is not an existing directory — "no here" is not the verdict "no UI here")`;
 
 // "Run as main" check: realpath BOTH sides so a symlinked invocation path still
 // matches. A bare `import.meta.url === pathToFileURL(argv[1]).href` fails when
@@ -401,7 +402,42 @@ if (invokedAsMain) {
     }
     throw e;
   }
-  const cwd = path.resolve(parsed.values['--cwd'] || process.cwd());
+  // Only the EXPLICIT flag is validated; process.cwd() exists by construction.
+  // detect() is fail-open on a missing tree and returns `no-ui` — correct for a
+  // library, wrong as an answer to a person: commands/claudemd-design-adopt.md
+  // tells the caller to report the verdict, so a typo'd or since-moved --cwd
+  // came back as the confident claim "this project is not a UI project". A path
+  // that is not there is not a finding about the project.
+  //
+  // PRESENCE, not truthiness (pre-tag review). `--cwd=` parses to '', which is
+  // falsy, so a truthiness test let the empty value skip this guard AND fall
+  // through the `|| process.cwd()` below — silently re-targeting the current
+  // directory and answering confidently about a tree nobody asked about. That
+  // is the same defect this guard exists to close, reachable from the likeliest
+  // way to hit it: a caller interpolating `--cwd=$VAR` from an unset variable.
+  const cwdFlag = parsed.values['--cwd'];
+  if (cwdFlag !== undefined && cwdFlag === '') {
+    console.error(
+      `--cwd: empty value. Pass a directory path, or omit the flag to use the current directory.`
+    );
+    process.exit(2);
+  }
+  const cwd = path.resolve(cwdFlag || process.cwd());
+  if (cwdFlag !== undefined) {
+    let isDir;
+    try {
+      isDir = fs.statSync(cwd).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) {
+      console.error(
+        `--cwd: not a directory: ${cwd}\n` +
+          `  The detector reports on a tree that exists; it cannot tell "no UI here" from "no here".`
+      );
+      process.exit(2);
+    }
+  }
   try {
     const out = detect(cwd);
     if (parsed.bools.has('--json')) {

@@ -32,7 +32,7 @@ import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
 // direction is benign (an unmatched stem is left behind, never wrongly deleted),
 // which is exactly why nothing would have noticed it going stale.
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
+  /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|user-content-backup|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 

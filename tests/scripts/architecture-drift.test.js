@@ -481,8 +481,16 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   // dropped stem: it is genuinely in the extracted set, unlike `installed.json`
   // (a STATE_IGNORE entry) — a mutation the filters swallow proves nothing, and
   // the first draft of this control picked exactly that one.
+  //
+  // This copy must drop exactly ONE stem. It is hand-maintained, so a stem added
+  // to the real regex and not mirrored here becomes a SECOND hole, and then the
+  // control passes on the spare even if `statusline-prev` stops being extracted
+  // — it would still be green while proving nothing (pre-tag review NOTE 5;
+  // `user-content-backup` was the incidental second hole). The assertion below
+  // now pins WHICH stem is unmatched, so a future omission fails here loudly
+  // instead of quietly widening the control.
   const mutated =
-    /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|installed\.json)/;
+    /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|user-content-backup|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|installed\.json)/;
   const stateOnly = [...statePathsInSource()]
     .filter(([, family]) => family === 'state')
     .map(([name]) => name)
@@ -491,5 +499,14 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   assert.ok(
     unmatched.length > 0,
     'dropping `statusline-prev` from the regex left the join green — the predicate cannot fail'
+  );
+  // Exactly one hole, and it is the intended one. Without this, a stem missing
+  // from the copy above is a spare hole that keeps the control green for the
+  // wrong reason — the failure mode the control itself is supposed to model.
+  assert.deepEqual(
+    unmatched.filter(n => !n.startsWith('statusline-prev')),
+    [],
+    `the mutation control has holes beyond \`statusline-prev\` (${unmatched.join(', ')}) — ` +
+      `mirror every stem of CLAUDEMD_STATE_FILE_RE into the \`mutated\` copy except that one`
   );
 });
