@@ -75,6 +75,29 @@ PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRESH_INSTALL=0
 [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]] || FRESH_INSTALL=1
 
+# merge_banners CANDIDATE... — print at most ONE SessionStart object.
+#
+# CC parses hook stdout with a strict single-value JSON.parse, so two objects on
+# stdout are invalid JSON and BOTH are dropped silently (docs/HOOK-PROTOCOL.md).
+# Empty candidates are skipped, one survivor is emitted as-is, several are
+# joined into one additionalContext. Both emit points call this: the
+# version-match branch with five candidates, the tail with three. They were two
+# byte-identical jq programs, which is one place to add a sixth banner and one
+# place to forget (2026-09-05 audit P2-2).
+merge_banners() {
+  printf '%s\n' "$@" | jq -s -c '
+    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
+    | if length == 0 then empty
+      elif length == 1 then .[0]
+      else {
+        suppressOutput: true,
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
+        }
+      } end' 2>/dev/null || true
+}
+
 # v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
 # session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
 # Sentinel: rename file after read so banner only fires once. Skipped on:
@@ -452,18 +475,7 @@ if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
     # CLAUDEMD_FORCE_ASYNC_BOOTSTRAP path. The fresh path emits it at the tail,
     # in the same session as the overwrite.
     uc_json=$(emit_user_content_banner)
-    printf '%s\n%s\n%s\n%s\n%s\n' "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json" | jq -s -c '
-      map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
-      | if length == 0 then empty
-        elif length == 1 then .[0]
-        else {
-          suppressOutput: true,
-          hookSpecificOutput: {
-            hookEventName: "SessionStart",
-            additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
-          }
-        } end
-    ' 2>/dev/null
+    merge_banners "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json"
     exit 0
   fi
   # v0.36.0 — direction gate. INSTALLED_VER newer than this hook's own
@@ -522,17 +534,7 @@ _sum_json=$(emit_session_summary_banner)
 _uc_json=""
 
 emit_tail_banners() {
-  printf '%s\n%s\n%s\n' "$_bf_json" "$_sum_json" "$_uc_json" | jq -s -c '
-    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
-    | if length == 0 then empty
-      elif length == 1 then .[0]
-      else {
-        suppressOutput: true,
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
-        }
-      } end' 2>/dev/null || true
+  merge_banners "$_bf_json" "$_sum_json" "$_uc_json"
 }
 
 # node required to run install.js — silent no-op if absent. The banners still
