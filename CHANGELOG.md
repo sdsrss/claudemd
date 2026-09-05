@@ -8,6 +8,52 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.76.0] - 2026-09-05
+
+Round 12 against the 2026-09-05 audit: 1 P0, 2 P1, 3 lower, all six closed. Spec unchanged at **v6.25.4**.
+
+The P0 is one this project has been carrying in plain sight. Seventeen CLIs decided whether to run by comparing `import.meta.url` against a `file://` string built from `process.argv[1]`. Node resolves the first through symlinks and percent-encodes it as a URL; the second is the path as typed. Reach the plugin through a linked directory — a dotfiles `~/.claude`, a `git worktree`, macOS `/var` → `/private/var` — or through a path containing a space, and the comparison is false. The main block does not run, the CLI exits 0 having printed nothing, and every caller reads that as success. Reproduced with `HOME` pointed at a sandbox and the repo reached through a link: `install.js` exited 0 and wrote **no manifest**, so `SessionStart` re-entered its fresh-install branch every session and the spec never landed; `status.js` printed **0 bytes**. Two scripts — `design-detect.js` and `statusline-adopt.js` — already compared realpaths, each with a comment explaining exactly this failure. The fix was to share what they knew: `scripts/lib/argv.js#invokedAsMain`, called by all 19 main blocks.
+
+### Upgrade note
+
+Two behaviours change for a user who is not reading the diff:
+
+- **A CLI reached through a symlinked plugin directory now runs.** Nothing to do. If you worked around the silence by invoking through the resolved path, that keeps working.
+- **`/claudemd-clean-residue` now removes `*.last-shown` files** from `~/.claude/.claudemd-state`, past the retention window. Both SessionStart banners used to consume their sentinel by renaming it to that suffix, and no pattern matched the result, so the files sat there until an uninstall with `CLAUDEMD_PURGE=1`. The banners now delete instead, which makes any remaining `.last-shown` a leftover from an older version by construction. **Opt-out**: the command is dry-run by default and deletes only under `--apply`, so run it bare to see the list first; to keep the files, do not pass `--apply`, or pin the previous version (`/plugin install claudemd@claudemd` after a marketplace pin to v0.75.0). Rollback runbook: `docs/ROLLBACK.md`.
+
+### User-visible
+
+- **`invokedAsMain` replaces the href comparison in 19 main blocks** (the 17 above plus the two hand-rolled realpath IIFEs it subsumes). `lint-argv` now rejects the old shape as a pattern hit, so the next CLI cannot copy it.
+- **The rule-hits log stops losing its archives to a race.** Two hooks passing the size check together interleaved the two renames: P1 moved live to `.1`, then P2's `mv .1 .2` moved that just-rotated generation onto `.2` and both prior archives were gone. The 2026-08-16 audit measured this and accepted it because no consumer read the archives; v0.71.4 made every JS hit-reader open `.2`, `.1` and the primary, and left a `RE-ADJUDICATE` note in the comment instead of a fix. At the log's measured ~26 KB/day the two archives are roughly 380 days of hit data feeding `memory-maintenance`'s liveness window, `hard-rules-audit`'s demote candidates and `sparkline`'s trends. Rotation is now serialised by a `claudemd.jsonl.rotating` lock directory: `mkdir` is atomic everywhere this runs, the loser skips rotation rather than waiting, and a lock left by a killed holder is reaped by the first append that finds it older than a minute. No flock dependency on a fail-open path, and no new residue class.
+- **Both SessionStart banners consume their sentinel with `rm`**, the idiom the v0.75.0 user-content banner already used. Nothing reads a `.last-shown` file — the durable artifact is the rule-hits log for the summary and `claudemd-bootstrap.log` for the failure detail.
+
+### Engineering
+
+- **One exit-2 contract instead of seventeen.** Every main block spelled out the same seven lines: call `parseStrict`, catch, `instanceof ArgvError` → print and exit 2, rethrow the rest. jscpd's nine largest non-test clones were all this block. `parseStrictOrExit` holds it once; per-site behaviour is unchanged, verified by smoke-running all 17 (`--help` still prints USAGE, `--bogus` still exits 2). Two sites keep their own copy on purpose because their stderr text differs: `baseline-metrics.js` appends USAGE, `version-cascade-check.js` prefixes the script name and reserves exit 1 for a malformed spec file.
+- **One banner merge in `session-start-check.sh`.** The version-match branch and the fresh/mismatch tail carried byte-identical jq programs — one place to add the sixth banner and one place to forget, on a hook where getting it wrong drops every banner in the run.
+- **Three gates were widened because they said they had stopped looking**, which is the part worth recording. `lint-cli` failed with `only 0 promise-returning CLI entry point(s) found — the extraction stopped matching`; `architecture-drift`'s `acceptedFlags` failed with `no parseStrict call found — the extraction anchor moved`; and `lint-argv`'s own `findMainBlockGuard` had to learn the new shape or it would have stopped seeing all 19 main blocks and passed over an empty set. Each of those is a floor assertion added by an earlier round, doing the job it was added for.
+- **Audit reports are tracked** (`docs/audit/*.md`). CHANGELOG entries from 0.68.0 on cite `docs/audit/…` as provenance and none of those files existed on this machine, so this round reconstructed "which prior issue is solved, open or regressed" from release prose. The `.gitignore` comment block already said the tracked exceptions are the working docs a distributed artifact cites; this applies that rule to the files it was written for. Generated metrics JSON stays local — `npm run metrics` reproduces it — and `docs/` still never reaches the npm tarball.
+
+### Verification
+
+Every item shipped with a control run against the pre-fix source, not against a description of it. Reverting `invokedAsMain` to the href comparison turns 3 of its 4 new cases red (the fourth is about imports, not this bug); reverting the rotation to its unlocked form turns `ROT-1` red with `.1 was rotated while the lock was held` and the live row inside it. Both files were restored by checksum afterwards. `argv.test.js`'s probes report the pre-fix expression alongside the helper (`{helper: true, naive: false}`), so a case that stops exercising the bug stops asserting.
+
+Each of the six items ran `npm run check` before the next started.
+
+| | 0.75.0 | 0.76.0 |
+|---|---:|---:|
+| node tests | 1044 pass / 0 fail | **1049 pass / 0 fail** |
+| bash tests | 725 PASS / 0 FAIL | **728 PASS / 0 FAIL** |
+| duplication (clones / non-test) | 1.65% (104 / 19) | **1.36% (91 / 6)** |
+| line coverage / branch | 92.55% / 86.05% | **93.06% / 86.41%** |
+| import cycles | 0 | 0 |
+| functions over 50 lines | 59 | 59 |
+| shellcheck / eslint / prettier / lint-argv | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+
+Tracked files 341 → 343 and total lines +358 are the two audit documents this release adds, not code; code files stay at 178 (52,441 → 52,484 lines).
+
+Deferred to the next round, recorded in `docs/audit/2026-09-05-audit.md`: `doctor()` at 1,235 lines wants splitting into per-check functions (mechanical, wide, worth its own round); three `--days` error strings still duplicated across `audit.js` / `hard-rules-audit.js` / `sparkline.js`, where merging would change text a caller reads; and three coverage lows whose uncovered regions are failure-branch prose rather than logic.
+
 ## [0.75.0] - 2026-09-05
 
 The spec reached the model two sessions after `/plugin install`. Spec unchanged at **v6.25.4**.
