@@ -9,6 +9,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { findMainBlockGuard } from '../../scripts/lint-argv.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BIN = path.join(REPO_ROOT, 'bin/claudemd-lint.js');
@@ -628,11 +629,17 @@ test('every scripts/*.js CLI entry point that awaits a promise also catches it',
   let entriesChecked = 0;
   for (const f of files) {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    // Only the CLI-entry block: `if (import.meta.url === ...) { ... }` at the
-    // bottom. A `.then()` inside a library function is the caller's problem.
-    const idx = src.indexOf('import.meta.url ===');
-    if (idx === -1) continue;
-    const entry = src.slice(idx);
+    // Only the CLI-entry block at the bottom of the file. A `.then()` inside a
+    // library function is the caller's problem. The guard is located by
+    // lint-argv's own finder rather than by a private substring: this gate used
+    // to look for the literal `import.meta.url ===`, so when the 19 entry points
+    // moved to `invokedAsMain(import.meta.url)` (2026-09-05 audit P0-1) it
+    // matched nothing and would have passed over an empty set. The floor
+    // assertion below is what caught that, and sharing the finder is what stops
+    // the next spelling from doing it again.
+    const guard = findMainBlockGuard(src);
+    if (!guard) continue;
+    const entry = src.slice(guard.index);
     // Both async shapes, not just `.then(`. The first version of this gate
     // tested for `.then(` alone, so the single entry point written as
     // `(async () => { … })()` — sampling-audit.js, the command behind

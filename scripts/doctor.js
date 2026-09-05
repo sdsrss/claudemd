@@ -45,7 +45,7 @@ import {
 } from './lib/memory-maintenance.js';
 import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
 import { cleanStateDir, readRetentionFromClaudeMd, DEFAULT_RETENTION_DAYS } from './clean-residue.js';
-import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, parsePositiveInt, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
@@ -1187,7 +1187,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   return { checks, pruned, pruneSkippedLegacy: prune != null ? pruneSkippedLegacy : [] };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

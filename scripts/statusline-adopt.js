@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 import { resolvePluginRoot } from './lib/paths.js';
 import { detect, adopt, remove } from './lib/statusline.js';
 
@@ -24,16 +22,6 @@ Flags:
   --help, -h        Print this message and exit.
 
 Exit codes: 0 success | 1 failure | 2 argv-shape error.`;
-
-// realpath BOTH sides so a symlinked invocation path still matches (mirrors
-// design-detect.js — a bare href compare silently no-ops under a symlinked dir).
-const invokedAsMain = (() => {
-  try {
-    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
-  } catch {
-    return false;
-  }
-})();
 
 function renderHuman(mode, out) {
   if (mode === 'detect') {
@@ -65,7 +53,7 @@ function renderHuman(mode, out) {
   return `action: ${out.action}${tail ? '  ' + tail : ''}${missed}`;
 }
 
-if (invokedAsMain) {
+if (invokedAsMain(import.meta.url)) {
   const argv = process.argv.slice(2);
   printHelpAndExit(argv, USAGE);
   const [mode, ...rest] = argv;

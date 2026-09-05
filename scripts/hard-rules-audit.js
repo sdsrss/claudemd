@@ -21,7 +21,7 @@ import {
   blockingDenyCount,
   isImmutableSection,
 } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/hard-rules-audit.js [--days=N]
 
@@ -211,7 +211,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

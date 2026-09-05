@@ -18,7 +18,7 @@ import {
 } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { remove as removeStatusline } from './lib/statusline.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 // Files claudemd is known to write into its state dir. Used ONLY on the
 // non-canonical-name branch of the purge below, where recursing is refused.
@@ -234,7 +234,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   return { specAction: outcome, settingsRemoved, settingsWarning, statusline };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), UNINSTALL_USAGE);
   // No argv contract — uninstall reads from env. Loud-fail on unknown flags.
   try {

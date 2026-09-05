@@ -30,7 +30,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
-import { ArgvError, parsePositiveInt, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
+import {
+  ArgvError,
+  parsePositiveInt,
+  parseStrict,
+  printHelpAndExit,
+  resolveDaysFlag,
+  invokedAsMain,
+} from './lib/argv.js';
 import { readPatterns, scan } from './lib/lint.js';
 import { isUserTurn, userTurnText } from './lib/transcript-user-turn.js';
 
@@ -1012,7 +1019,7 @@ prints a per-rule summary to stdout.
 
 Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

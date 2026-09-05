@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 import { stateDir } from './lib/paths.js';
 
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
@@ -470,7 +470,7 @@ export function readRetentionFromClaudeMd(cwd = process.cwd()) {
   return days;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

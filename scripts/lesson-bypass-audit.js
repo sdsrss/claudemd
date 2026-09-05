@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logsDir, resolvePluginRoot, encodeProjectCwd, projectDir as projectDirFor } from './lib/paths.js';
 import { readHits, excludeTestSessions } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysFlag, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lesson-bypass-audit.js [--days=N] [--cwd=<path>] [--json]
 
@@ -315,7 +315,7 @@ function formatPercent(v) {
   return `${(v * 100).toFixed(1)}%`;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

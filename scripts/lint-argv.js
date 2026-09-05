@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/lint-argv.js
 
@@ -64,6 +64,17 @@ export const PATTERNS = [
     regex: /\b\w+\.indexOf\s*\(\s*['"]--/,
     why: 'Silent-miss on --key=value form. Use parseStrict values or run validateAndExpandFlags upstream and add argv-lint:allow.',
   },
+  {
+    // Same silent-fallback family, one layer up: not "the flag was misread" but
+    // "the CLI never ran". node resolves import.meta.url through symlinks and
+    // percent-encodes the URL, argv[1] does neither, so this comparison is
+    // false whenever the script is reached through a linked dir or a path with
+    // a space — exit 0, empty stdout, indistinguishable from success
+    // (2026-09-05 audit P0-1; install.js returned "ok" and wrote no manifest).
+    name: 'import.meta.url === file:// + argv[1] (main guard)',
+    regex: /import\.meta\.url\s*===\s*`file:/,
+    why: 'Main guard silently false under a symlinked dir or a space in the path. Use invokedAsMain(import.meta.url) from scripts/lib/argv.js.',
+  },
 ];
 
 const ALLOW_TOKEN = 'argv-lint:allow';
@@ -78,18 +89,19 @@ const ALLOW_LINE_RE = new RegExp(`^//\\s*${ALLOW_TOKEN.replace(/[.*+?^${}()|[\]\
 // `--help` and `--bogus` were silently swallowed because no validation ran.
 //
 // scanMainBlockMissingArgv: for each .js under bin/ + scripts/ (excluding
-// scripts/lib/), if the file has a main-block guard
-// `if (import.meta.url === \`file://${process.argv[1]}\`) {`, the body must
-// call EITHER parseStrict( OR printHelpAndExit( OR validateAndExpandFlags(
+// scripts/lib/), if the file has a main-block guard, the body must call EITHER
+// parseStrict( OR printHelpAndExit( OR validateAndExpandFlags(
 // (bin/claudemd-lint.js path). Files without a main block are ignored.
-// Two main-guard shapes exist in this tree. The href compare is the common one.
-// The realpath compare (design-detect.js, statusline-adopt.js) exists because a
-// bare href compare silently no-ops when the script is reached through a
-// symlinked directory — so it is the shape a NEW CLI is most likely to copy.
-// This gate saw only the first until 2026-09-03 (audit R11-33). Both files that
-// use the second happen to validate argv, so the hole was an escape route
-// rather than a live miss: the next realpath-form CLI would have shipped with
-// `--bogus` silently accepted and this gate green.
+//
+// THREE guard shapes are recognised, and recognising all of them is the point:
+// a guard this function cannot see makes the file "not a CLI", so the gate
+// skips it silently — the failure mode it was written to prevent. The canonical
+// shape is `invokedAsMain(import.meta.url)` (scripts/lib/argv.js). The other
+// two are the hand-rolled ancestors: the href compare, which PATTERNS above now
+// rejects outright because it is false under a symlink or a space in the path
+// (2026-09-05 audit P0-1), and the realpath IIFE that two scripts carried
+// before the helper existed (R11-33). Both are still DETECTED here so that a
+// file re-introducing one is judged for argv validation rather than skipped.
 const MAIN_BLOCK_HREF_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{process\.argv\[1\]\}`/;
 // The realpath form is two statements: an IIFE comparing realpaths bound to a
 // name, then `if (<name>)`. Keyed on the IIFE (which is what makes it a main
@@ -97,6 +109,12 @@ const MAIN_BLOCK_HREF_RE = /if\s*\(\s*import\.meta\.url\s*===\s*`file:\/\/\$\{pr
 // does not reopen the hole.
 const MAIN_BLOCK_REALPATH_DECL_RE =
   /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?realpathSync\s*\([\s\S]{0,200}?process\.argv\[1\]/;
+// Canonical shape: `if (<binding>(import.meta.url))`, where <binding> is what
+// this file imported invokedAsMain AS. Keyed on the import binding rather than
+// on the literal name for the same reason the validator join is (R10-20): a
+// local function called invokedAsMain would satisfy a name match while doing
+// something else, and an aliased import would evade one.
+const MAIN_GUARD_HELPER = 'invokedAsMain';
 
 // → {index} like a RegExp match, or null. Exported so the gate's own test can
 // pin BOTH shapes against fixtures rather than against the two real files that
@@ -109,7 +127,12 @@ export function findMainBlockGuard(text) {
     const use = new RegExp(`if\\s*\\(\\s*${decl[1]}\\s*\\)`).exec(text.slice(decl.index));
     if (use) realpathIdx = decl.index + use.index;
   }
-  const candidates = [href ? href.index : -1, realpathIdx].filter(i => i >= 0);
+  let helperIdx = -1;
+  for (const name of importedBindings(text, [MAIN_GUARD_HELPER])) {
+    const use = new RegExp(`if\\s*\\(\\s*${name}\\s*\\(`).exec(text);
+    if (use && (helperIdx < 0 || use.index < helperIdx)) helperIdx = use.index;
+  }
+  const candidates = [href ? href.index : -1, realpathIdx, helperIdx].filter(i => i >= 0);
   if (candidates.length === 0) return null;
   return { index: Math.min(...candidates) };
 }
@@ -130,14 +153,14 @@ const ARGV_VALIDATORS = ['parseStrict', 'printHelpAndExit', 'validateAndExpandFl
 // described a stronger rule than the code asked for. The join is now on the
 // LOCAL BINDING: the name the main block calls must be the name lib/argv.js
 // bound in this file, alias included.
-function importedValidatorBindings(text) {
+function importedBindings(text, names) {
   const bound = new Set();
   for (const m of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"][^'"]*lib\/argv\.js['"]/g)) {
     for (const spec of m[1].split(',')) {
       const t = spec.trim();
       if (!t) continue;
       const [orig, alias] = t.split(/\s+as\s+/).map(s => s.trim());
-      if (ARGV_VALIDATORS.includes(orig)) bound.add(alias || orig);
+      if (names.includes(orig)) bound.add(alias || orig);
     }
   }
   return bound;
@@ -171,7 +194,7 @@ export function scanMainBlockMissingArgv({
       // The name the main block calls must be a binding this file imported from
       // scripts/lib/argv.js. A locally-declared same-name function does not
       // pass, and neither does an unrelated import from that module.
-      const bound = importedValidatorBindings(text);
+      const bound = importedBindings(text, ARGV_VALIDATORS);
       if ([...bound].some(name => new RegExp(`\\b${name}\\s*\\(`).test(body))) continue;
       // Find line number of the main block guard for actionable error.
       const before = text.slice(0, guardMatch.index);
@@ -251,7 +274,7 @@ export function scan({
   return hits;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   // The validator validating itself: lint-argv takes no flags, so any arg
   // (including `--help` after the helper above returns false on absence) is

@@ -1,6 +1,6 @@
 import { readSettings, writeSettings } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
-import { printHelpAndExit, parseStrict, ArgvError } from './lib/argv.js';
+import { printHelpAndExit, parseStrict, ArgvError, invokedAsMain } from './lib/argv.js';
 
 // Display name → env-var suffix. Source of truth: scripts/lib/hook-registry.js.
 // `version-sync` maps to `USER_PROMPT_SUBMIT` (event name, not file name) —
@@ -41,7 +41,7 @@ export async function toggle(name) {
   return { hook: name, newState };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   const raw = process.argv.slice(2);
   printHelpAndExit(raw, USAGE);
   // SCRIPT-2 (2026-07-12 audit): toggle took a positional hook name but read

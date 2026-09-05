@@ -37,7 +37,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseStrict, parsePositiveInt, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, parsePositiveInt, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/baseline-metrics.js [--json] [--fn-threshold=N] [--top=N]
                                         [--skip-coverage] [--skip-dup] [--skip-lint]
@@ -859,7 +859,7 @@ export async function measure(opts = {}) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   const argv = process.argv.slice(2);
   printHelpAndExit(argv, USAGE);
   let parsed;

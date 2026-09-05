@@ -11,10 +11,38 @@
 // Caller catches `ArgvError` and exits 2 (distinct from numeric-validation
 // exit 1) so wrappers can tell parsing-shape errors from validation errors.
 
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 export class ArgvError extends Error {
   constructor(message) {
     super(message);
     this.name = 'ArgvError';
+  }
+}
+
+// invokedAsMain(import.meta.url) — "did node start the program at THIS file?"
+//
+// The obvious spelling compares `import.meta.url` against a `file://` string
+// built from process.argv[1]. Both halves of that comparison lie:
+//   - node resolves import.meta.url through symlinks, argv[1] stays as typed,
+//     so a plugin dir reached through a link (a dotfiles ~/.claude, a
+//     `git worktree`, macOS /var -> /private/var) compares unequal;
+//   - a URL percent-encodes what a path spells literally, so one space in the
+//     path is `%20` on one side and ` ` on the other.
+// Either way the main block does not run: the CLI exits 0 having printed
+// nothing, which every caller reads as success. install.js failing this way
+// returns "ok" while writing no manifest, so SessionStart re-enters the
+// fresh-install branch forever (2026-09-05 audit P0-1).
+//
+// realpath BOTH sides and the two failure modes collapse into one comparison.
+// Throwing inputs (argv[1] undefined under `node -e`, a path that no longer
+// exists) mean "not the program" — false, never a crash.
+export function invokedAsMain(importMetaUrl) {
+  try {
+    return fs.realpathSync(fileURLToPath(importMetaUrl)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
   }
 }
 

@@ -32,7 +32,7 @@ import {
   excludeTestSessions,
   isSignalEvent,
 } from './lib/rule-hits-parse.js';
-import { ArgvError, parseStrict, printHelpAndExit, resolveDaysListFlag } from './lib/argv.js';
+import { ArgvError, parseStrict, printHelpAndExit, resolveDaysListFlag, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
 
@@ -192,7 +192,7 @@ export function formatMarkdown(report) {
   return `${header}${banner}\n${lines.join('\n')}\n`;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

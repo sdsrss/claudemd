@@ -34,7 +34,7 @@ import {
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
 import { copySpecFiles } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 const INSTALL_USAGE = `Usage: node scripts/install.js
 
@@ -455,7 +455,7 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), INSTALL_USAGE);
   // No argv contract — install reads from plugin cache + env. Loud-fail on
   // unknown flags so a typo (e.g. `--help` pre-fix) doesn't silently RUN

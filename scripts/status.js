@@ -12,7 +12,7 @@ import {
 } from './lib/paths.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 import { readSettings } from './lib/settings-merge.js';
 
 const USAGE = `Usage: node scripts/status.js [--verbose]
@@ -341,7 +341,7 @@ export async function status({ verbose = false } = {}) {
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   // Reject unknown args with the same loud-fail contract as the rest of the
   // slash-command CLIs. Pre-fix it silently ignored ALL arguments (including

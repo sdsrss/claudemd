@@ -62,7 +62,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 import { SIZING_TARGETS, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 
 const USAGE = `Usage: node scripts/version-cascade-check.js [--json]
@@ -302,7 +302,7 @@ export function runSpecSizingCheck({ root }) {
 }
 
 // CLI wrapper — only fires when invoked directly, not on import.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   try {
     printHelpAndExit(process.argv.slice(2), USAGE);
     const argv = parseStrict(process.argv.slice(2), { bools: ['--json'] });

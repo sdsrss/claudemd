@@ -1,6 +1,62 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStrict, ArgvError, parsePositiveInt } from '../../scripts/lib/argv.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
+import { parseStrict, ArgvError, parsePositiveInt, invokedAsMain } from '../../scripts/lib/argv.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const ARGV_LIB = path.join(REPO_ROOT, 'scripts/lib/argv.js');
+const sandbox = useHomeSandbox('argv-main');
+
+// The probe reports BOTH verdicts: the helper's, and the pre-fix expression it
+// replaces. `naive: false` next to `helper: true` is what makes each case below
+// a control rather than an assertion that something still works — if the two
+// ever agree, the case has stopped exercising the bug (2026-09-05 audit P0-1).
+const PROBE = `import { invokedAsMain } from ${JSON.stringify(ARGV_LIB)};
+const naive = import.meta.url === \`file://\${process.argv[1]}\`;
+console.log(JSON.stringify({ helper: invokedAsMain(import.meta.url), naive }));
+`;
+
+function runProbe(dirWithProbe, invokeDir = dirWithProbe) {
+  fs.mkdirSync(dirWithProbe, { recursive: true });
+  fs.writeFileSync(path.join(dirWithProbe, 'probe.mjs'), PROBE);
+  const r = spawnSync(process.execPath, [path.join(invokeDir, 'probe.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('invokedAsMain: true through a symlinked directory, where the href compare is false', () => {
+  const real = sandbox.dir('real');
+  const link = path.join(sandbox.home, 'link');
+  fs.symlinkSync(real, link, 'dir');
+  assert.deepEqual(runProbe(real, link), { helper: true, naive: false });
+});
+
+test('invokedAsMain: true under a path containing a space (URL percent-encoding)', () => {
+  assert.deepEqual(runProbe(sandbox.dir('sp ace')), { helper: true, naive: false });
+});
+
+test('invokedAsMain: false when the module is imported rather than run', () => {
+  // This suite imported argv.js; argv.js is not the program node was started on.
+  assert.equal(invokedAsMain(new URL('../../scripts/lib/argv.js', import.meta.url).href), false);
+});
+
+test('a real CLI reached through a symlinked repo root still runs its main block', () => {
+  // The end of P0-1: `node <symlink>/scripts/status.js` used to print 0 bytes and
+  // exit 0. install.js failed the same way while reporting success.
+  const link = path.join(sandbox.home, 'repo-link');
+  fs.symlinkSync(REPO_ROOT, link, 'dir');
+  const r = spawnSync(process.execPath, [path.join(link, 'scripts/status.js')], {
+    encoding: 'utf8',
+    env: sandbox.env(),
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.trim().length > 0, 'main block produced no output through the symlink');
+  assert.ok(JSON.parse(r.stdout).plugin, 'status output is not the documented JSON shape');
+});
 
 test('parsePositiveInt: accepts plain + integer-valued-float, rejects fraction/hex/exp/zero/junk', () => {
   // Accepted

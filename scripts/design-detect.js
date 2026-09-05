@@ -15,8 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 // Direct frameworks first (own the display label when both present), then
 // meta-frameworks whose base framework is only a transitive dep.
@@ -378,19 +377,7 @@ Verdicts: no-ui | ui-no-tokens | adoptable | unwired | configured | error
 Exit codes: 0 (all verdicts, fail-open) | 2 (argument error, incl. a --cwd that
 is not an existing directory — "no here" is not the verdict "no UI here")`;
 
-// "Run as main" check: realpath BOTH sides so a symlinked invocation path still
-// matches. A bare `import.meta.url === pathToFileURL(argv[1]).href` fails when
-// node resolves import.meta.url through a symlink (macOS /var/folders →
-// /private/var/folders, or a symlinked plugin dir) while argv[1] stays
-// unresolved — the CLI block never runs and stdout is silently empty.
-const invokedAsMain = (() => {
-  try {
-    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
-  } catch {
-    return false;
-  }
-})();
-if (invokedAsMain) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

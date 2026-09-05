@@ -4,7 +4,7 @@ import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { copySpecFiles } from './lib/spec-hash.js';
 import { createBackup, pruneBackups, BACKUP_LABELS, BACKUP_RETAIN_COUNT } from './lib/backup.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
 
@@ -91,7 +91,7 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   return { applied: true, backupDir, diffs, targets };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), UPDATE_USAGE);
   // No argv contract — update reads from env. Loud-fail on unknown flags.
   try {

@@ -37,7 +37,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { encodeProjectCwd, projectDir, resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
 
@@ -617,7 +617,7 @@ function formatHuman(r) {
   return out.join('\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {

@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot } from './lib/paths.js';
-import { parseStrict, ArgvError, printHelpAndExit } from './lib/argv.js';
+import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/safety-coverage-audit.js [--json] [--hook=<basename>]
 
@@ -428,7 +428,7 @@ function formatHuman(r) {
   return out.join('\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   let parsed;
   try {
