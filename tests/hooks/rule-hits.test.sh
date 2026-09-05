@@ -349,15 +349,15 @@ CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 echo "PASS: ROT-1 rotation skipped while another process holds the lock"
 
 # Case ROT-2: a lock left behind by a killed holder does not stop rotation
-# forever. Older than a minute → the next append reaps it (and the one after
-# that rotates). Nothing else reaps it, which is why the age branch exists.
+# forever. Older than a minute → the next append reaps it AND goes on to rotate
+# in the same call, because the reap runs before the size check. Nothing else
+# reaps it, which is why the age branch exists.
 touch -t 200001010000 "$LOG.rotating"
 CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-2 stale lock survived"; exit 1; }
-CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ "$(cat "$LOG.2")" == "ARCHIVE-1" ]] \
-  || { echo "FAIL: ROT-2 rotation did not resume after the stale lock was reaped: $(cat "$LOG.2")"; exit 1; }
-echo "PASS: ROT-2 stale lock reaped, rotation resumes"
+  || { echo "FAIL: ROT-2 same call did not rotate after reaping the stale lock: $(cat "$LOG.2")"; exit 1; }
+echo "PASS: ROT-2 stale lock reaped and the same call rotates"
 
 # Case ROT-3: the lock releases on the happy path — a rotation that completes
 # leaves nothing behind for the age branch to reap.
@@ -367,5 +367,44 @@ CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ -f "$LOG.1" ]] || { echo "FAIL: ROT-3 no rotation happened"; exit 1; }
 [[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-3 lock left behind after a completed rotation"; exit 1; }
 echo "PASS: ROT-3 lock released after a completed rotation"
+
+
+# Case ROT-4 (2026-09-05 post-ship review, finding 1): the age check must not be
+# `find -mmin`. BSD find — macOS, i.e. half the CI matrix — rounds the age UP to
+# the next full minute, so a lock two seconds old reads as "1 minute" and
+# `-mmin -1` prints nothing; the loser of mkdir then reaped a lock the winner
+# was still holding, reopening the race the lock exists to close. The shim below
+# stands in for that: a `find` on PATH that prints nothing, whatever it is asked.
+# A fresh lock must survive it.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'ARCHIVE-1\n' > "$LOG.1"
+mkdir "$LOG.rotating"
+SHIMDIR="$TMP_HOME/shim"
+mkdir -p "$SHIMDIR"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SHIMDIR/find"
+chmod +x "$SHIMDIR/find"
+sleep 2
+PATH="$SHIMDIR:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+[[ -d "$LOG.rotating" ]] \
+  || { echo "FAIL: ROT-4 a 2s-old live lock was reaped (age check still depends on find's rounding)"; exit 1; }
+[[ "$(cat "$LOG.1")" == "ARCHIVE-1" ]] \
+  || { echo "FAIL: ROT-4 archive clobbered by a rotation that should not have run"; exit 1; }
+rmdir "$LOG.rotating"
+echo "PASS: ROT-4 a fresh lock survives a find that reports nothing"
+
+# Case ROT-5 (same review, finding 3): the reap must not sit inside the size
+# check. A holder killed after its last mv leaves the log already rotated and so
+# UNDER the cap — with the branch nested inside `size > max_bytes` it was
+# unreachable and the lock was permanent (measured: survived 10 appends with the
+# live log at 1,960 bytes against the 5 MB default cap).
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+mkdir "$LOG.rotating"
+touch -t 200001010000 "$LOG.rotating"
+run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
+[[ ! -d "$LOG.rotating" ]] \
+  || { echo "FAIL: ROT-5 orphan lock survived an append under the size cap"; exit 1; }
+echo "PASS: ROT-5 orphan lock reaped even when the log is under the cap"
 
 echo "rule-hits: all cases passed"

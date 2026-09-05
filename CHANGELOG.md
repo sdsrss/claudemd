@@ -8,6 +8,30 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.76.1] - 2026-09-05
+
+The independent review v0.76.0 owed and did not get, run an hour after the tag. Four findings, all reproduced before being fixed, three of them in code that release added. Spec unchanged at **v6.25.4**.
+
+The review should have run before the tag — §EXT §12 puts a fresh reviewer between the branch and the release, and this repo's own `/claudemd-doctor` is what noticed it had been skipped, by way of a ship-runbook check for a review step. Two independent reviewers then converged on the same weak point.
+
+**The rotation lock reaped locks that were still held, on macOS.** v0.76.0 dated the lock with `find "$lock" -maxdepth 0 -mmin -1`. BSD `find` — macOS, half the CI matrix, and the platform this plugin is most often installed on — rounds an age **up to the next full minute**, so a lock two seconds old already reads as one minute and `-mmin -1`, strictly less than one, prints nothing. The loser of `mkdir` then read that as "older than a minute, holder is gone" and removed a lock the winner was still holding, letting a third append enter the critical section beside it and re-run the exact archive-clobbering interleave the lock was added to close. Reproduced against the unmodified hook with a BSD-semantics `find` on PATH: a two-second-old live lock is removed. The age is now whole-second arithmetic over the two `stat` flavors already used in that function; nothing about it can round.
+
+**An orphaned lock was permanent.** The reap sat inside `if (( size > max_bytes ))`, and a holder killed after its last `mv` leaves the log already rotated and therefore under the cap — so the branch was unreachable and the lock stayed forever. Measured: a decade-old lock survived ten appends with the live log at 1,960 bytes against the 5 MB cap. `CLAUDEMD_PURGE=1` could not remove it either: `uninstall.js` called `unlinkSync` on the name, `EISDIR` was swallowed by the catch, and the emptiness check then failed, so `~/.claude/logs` survived a purge too. The reap now runs before the size check, which also lets the same call go on to acquire and rotate; the purge loop `rmdir`s a directory instead of throwing on it, and does not recurse.
+
+**`/claudemd-clean-residue` deleted an eighth class of file its own `--help` did not name.** The USAGE paragraph and the slash-command doc both enumerated seven. The gate built to prevent exactly this — `subject-set-drift`, added after the prose named four classes while the array held six — stayed green, because its extractor read the class name **out of the pattern** (`/^([a-z-]+)-/`) and the new pattern opens with an alternation. It now reads `kind:` and derives the prose token from the pattern separately, which immediately surfaced a second class the old shape had also been blind to (`session-ref`, whose files are named `session-start-<sid>.ref`). Both docs now enumerate all eight.
+
+**The same pattern was the only unanchored one in a list documented as allowlist-by-name.** `/\.last-shown$/` matched any file with that suffix; with `CLAUDEMD_STATE_DIR` — a documented seam — pointed at a directory another tool writes to, `--apply` would have deleted that tool's files. It now names the two files that could have been produced.
+
+### Cleared by the same review
+
+The 17 `parseStrictOrExit` conversions are equivalent to the catch blocks they replaced, and the two left alone differ for real reasons. `invokedAsMain` is correct at all 19 guards, including imported-not-run, `node -e` with no `argv[1]`, relative invocation and both former IIFE users; the two dropped imports are genuinely unused. `merge_banners` is stream-equivalent to both copies it replaced for empty strings and embedded newlines, and its exit status is unused at both call sites. The new lint pattern cannot match its own source, and `findMainBlockGuard` returns the true guard index in all 19 files. The `.last-shown` pattern cannot match live state: every current writer into the state directory uses a different suffix.
+
+### Verification
+
+Both new cases are controls, not confirmations: run against the v0.76.0 source, `ROT-4` reports the live lock reaped and `ROT-5` reports the orphan lock surviving; against this release both pass. The drift gate was checked the same way — remove the `last-shown` sentence from the USAGE and it fails; the pre-fix extractor saw 7 of 8 classes and could not.
+
+node 1049 → **1050 pass / 0 fail**, bash 728 → **730 PASS / 0 FAIL**, shellcheck 64 clean, eslint 0, prettier 0, `npm run check` exit 0.
+
 ## [0.76.0] - 2026-09-05
 
 Round 12 against the 2026-09-05 audit: 1 P0, 2 P1, 3 lower, all six closed. Spec unchanged at **v6.25.4**.

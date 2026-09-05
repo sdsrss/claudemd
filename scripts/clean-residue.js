@@ -31,7 +31,9 @@ Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
 placed there sits inside the retention scope's target tree.
 
 State-dir scope: only ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*,
-session-start-<sid>.ref, tmp-baseline-<sid>.txt and session-summary-<sid>.lastrun
+session-start-<sid>.ref, tmp-baseline-<sid>.txt, session-summary-<sid>.lastrun
+and the two legacy last-shown-* banner sentinels
+(last-session-summary.json.last-shown, bootstrap-failed.json.last-shown)
 past the retention window.
 Allowlist-by-pattern — live singleton state in the same directory (including
 the sid-less session-start.ref and tmp-baseline.txt) is never deleted, however
@@ -389,7 +391,12 @@ const STATE_EPHEMERAL = [
   // uninstall with CLAUDEMD_PURGE=1 (2026-08-29 audit R10-21e). Both banners now
   // consume with rm, so a file matching this is a leftover from an older
   // version by construction, never live state (2026-09-05 audit P3-1).
-  { kind: 'last-shown', re: /\.last-shown$/ },
+  // Named, not suffixed: the first cut matched any `*.last-shown`, the only
+  // unanchored pattern in a list whose own comment promises allowlist-by-name.
+  // With CLAUDEMD_STATE_DIR — a documented seam — pointed at a directory some
+  // other tool writes to, `--apply` would have deleted that tool's files
+  // (2026-09-05 post-ship review, finding 4).
+  { kind: 'last-shown', re: /^(?:last-session-summary\.json|bootstrap-failed\.json)\.last-shown$/ },
 ];
 
 export function scanStateDir({ stateDir, now = Date.now() } = {}) {

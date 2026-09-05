@@ -215,9 +215,19 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
         name === 'claudemd-bootstrap.log'
       ) {
         try {
-          fs.unlinkSync(path.join(logsDir(), name));
+          // A directory can carry one of these names: `claudemd.jsonl.rotating`
+          // is the rotation lock (hooks/lib/rule-hits.sh). `unlinkSync` throws
+          // EISDIR on it, the catch swallowed that, and the emptiness check
+          // below then failed — so purge left both the lock and ~/.claude/logs
+          // standing, the residue class this loop exists to close (2026-09-05
+          // post-ship review, finding 3). `rmdirSync` and not a recursive
+          // remove: the lock is always empty, and a directory here that is not
+          // deserves to be left alone rather than walked.
+          const target = path.join(logsDir(), name);
+          if (fs.lstatSync(target).isDirectory()) fs.rmdirSync(target);
+          else fs.unlinkSync(target);
         } catch {
-          /* already gone */
+          /* already gone, or a non-empty directory this loop will not recurse into */
         }
       }
     }

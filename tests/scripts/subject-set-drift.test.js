@@ -352,36 +352,71 @@ test('status --verbose enumerates the sub-feature toggles it promises', () => {
 // while its USAGE and slash-command doc named 4. The array is the source; the
 // prose has to be able to name every kind in it.
 
-function ephemeralKinds() {
+function ephemeralClasses() {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/clean-residue.js'), 'utf8');
   const block = src.match(/const STATE_EPHEMERAL = \[([\s\S]*?)\n\];/);
   assert.ok(block, 'STATE_EPHEMERAL array not found in clean-residue.js — extraction broke');
-  return [...block[1].matchAll(/re:\s*\/\^([a-z-]+)-/g)].map(m => m[1]);
+  // Every entry, taken from `kind:` — the class's own label — paired with its
+  // pattern. The first version of this extractor read the label OUT of the
+  // pattern (`/re:\s*\/\^([a-z-]+)-/`), so a pattern had to open with `^` and a
+  // dashed prefix to be seen at all: the v0.76.0 `last-shown` class, whose
+  // regex opens with an alternation, was invisible and this gate stayed green
+  // while `--apply` grew an eighth deletion class its own USAGE did not name
+  // (2026-09-05 post-ship review, finding 2).
+  const entries = [...block[1].matchAll(/kind:\s*'([a-z-]+)'\s*,\s*re:\s*\/([^/]+)\//g)];
+  return entries.map(m => ({ kind: m[1], re: m[2] }));
+}
+
+// What the prose has to contain for a class to count as named. The pattern is
+// the authority, not the label: `session-ref` is a label whose files are called
+// `session-start-<sid>.ref`, so requiring the label would have demanded prose
+// that would be wrong. Leading literal prefix when the pattern has one, the
+// label otherwise (that is the `last-shown` case, whose files are named in
+// full). The trailing dash on the prefix form is deliberate: the prose also
+// names the sid-less singletons it does NOT delete (`session-start.ref`,
+// `tmp-baseline.txt`), and a bare substring test is satisfied by those — the
+// control run for this gate deleted `session-start-<sid>.ref` from the USAGE
+// and the gate stayed green.
+function proseToken({ kind, re }) {
+  const prefix = re.match(/^\^([a-z][a-z-]*)-/);
+  return prefix ? `${prefix[1]}-` : kind;
 }
 
 test('clean-residue prose names every state class it deletes', () => {
-  const kinds = ephemeralKinds();
+  const classes = ephemeralClasses();
   assert.ok(
-    kinds.length >= 6,
-    `extracted ${kinds.length} state class(es) from STATE_EPHEMERAL — expected at least 6`
+    classes.length >= 8,
+    `extracted ${classes.length} state class(es) from STATE_EPHEMERAL — expected at least 8`
   );
   const consumers = ['scripts/clean-residue.js', 'commands/claudemd-clean-residue.md'];
   for (const rel of consumers) {
     const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
     // The USAGE string and the command doc both describe the same scope in prose.
     const prose = rel.endsWith('.js') ? src.match(/const USAGE = `([\s\S]*?)`;/)[1] : src;
-    // `k + '-'`, not bare `k`: the prose deliberately names the sid-less
-    // singletons it does NOT delete ("session-start.ref", "tmp-baseline.txt"),
-    // and a bare substring test is satisfied by those — the control run for
-    // this gate deleted `session-start-<sid>.ref` from the USAGE and the gate
-    // stayed green. The trailing dash is what makes it the per-session form.
-    const missing = kinds.filter(k => !prose.includes(`${k}-`));
+    const missing = classes.filter(c => !prose.includes(proseToken(c))).map(c => c.kind);
     assert.deepEqual(
       missing,
       [],
       `${rel} describes the destructive scope without naming [${missing.join(', ')}] — what it tells the user is narrower than what it deletes`
     );
   }
+});
+
+test('the ephemeral-class extractor sees every entry in the array (extractor control)', () => {
+  // A gate that extracts nothing passes over nothing. Both halves are checked:
+  // the count matches a plain `kind:` tally, and the token derivation covers
+  // both shapes present today — a dashed prefix and a fully-named pair.
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/clean-residue.js'), 'utf8');
+  const block = src.match(/const STATE_EPHEMERAL = \[([\s\S]*?)\n\];/)[1];
+  const labels = [...block.matchAll(/kind:\s*'([a-z-]+)'/g)].map(m => m[1]);
+  const classes = ephemeralClasses();
+  assert.deepEqual(
+    classes.map(c => c.kind),
+    labels,
+    'the paired kind+re extraction lost an entry the label tally sees'
+  );
+  assert.equal(proseToken({ kind: 'session-ref', re: '^session-start-.+\\.ref$' }), 'session-start-');
+  assert.equal(proseToken({ kind: 'last-shown', re: '^(?:a\\.json|b\\.json)\\.last-shown$' }), 'last-shown');
 });
 
 // ---------------------------------------------------- new-hook checklist ---

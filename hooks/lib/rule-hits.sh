@@ -161,6 +161,33 @@ _rule_hits_fallback_row() {
     "$extra"
 }
 
+# _rule_hits_lock_age_seconds DIR → age in whole seconds on stdout.
+#
+# `find -mmin` is NOT usable here: BSD find (macOS) rounds the age UP to the
+# next full minute, so a lock two seconds old already reads as "1 minute" and
+# `-mmin -1` — strictly less than one — reports nothing. The v0.76.0 stale
+# branch read that as "older than a minute" and reaped a lock a live rotation
+# was still holding, on the platform half of CI runs on (2026-09-05 post-ship
+# review, finding 1; reproduced 4 times in 100 trials). Whole-second arithmetic
+# over the two `stat` flavors has no rounding to disagree about.
+#
+# Anything unreadable — no stat, no date, a clock behind the file's mtime —
+# yields 0, i.e. "fresh". Never reap a lock whose age cannot be established.
+_rule_hits_lock_age_seconds() {
+  local mtime now
+  mtime=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
+  now=$(date +%s 2>/dev/null || echo 0)
+  if [[ ! "$mtime" =~ ^[0-9]+$ ]] || [[ ! "$now" =~ ^[0-9]+$ ]]; then
+    echo 0
+    return 0
+  fi
+  if (( mtime > 0 && now > mtime )); then
+    echo $(( now - mtime ))
+  else
+    echo 0
+  fi
+}
+
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 
@@ -238,20 +265,31 @@ rule_hits_append() {
   # this runs before the JSONL write, the telemetry row would be silently lost.
   [[ "$max_mb" =~ ^[0-9]+$ ]] || max_mb=5
   local max_bytes=$((max_mb * 1024 * 1024))
+  local lock="$log_file.rotating"
+
+  # Stale-lock reap runs BEFORE the size check, and that ordering is the whole
+  # point: a holder killed after its last `mv` leaves the log already rotated
+  # and therefore UNDER the cap, so a reap branch nested inside the size check
+  # can never run and the lock is permanent (2026-09-05 post-ship review,
+  # finding 3 — a decade-old lock survived 10 appends with the live log at
+  # 1,960 bytes against a 5 MB cap). `[[ -d ]]` is a shell builtin, so the path
+  # where no lock exists — every append but a handful — costs no process.
+  # Reaping here also lets the same call go on to acquire and rotate.
+  if [[ -d "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
+    rmdir "$lock" 2>/dev/null
+  fi
+
   if [[ -f "$log_file" ]]; then
     local size
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     if (( size > max_bytes )); then
-      local lock="$log_file.rotating"
       if mkdir "$lock" 2>/dev/null; then
         [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
         mv -f "$log_file" "$log_file.1" 2>/dev/null
         rmdir "$lock" 2>/dev/null
-      elif [[ -z "$(find "$lock" -maxdepth 0 -mmin -1 2>/dev/null)" ]]; then
-        # Held for over a minute by a process that is not coming back (the two
-        # renames take microseconds). Reap it; the next append rotates.
-        rmdir "$lock" 2>/dev/null
       fi
+      # No else. A lock we did not get is a rotation another process is running;
+      # skipping is the correct answer and the next append re-checks the size.
     fi
   fi
 
