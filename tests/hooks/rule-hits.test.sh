@@ -349,8 +349,11 @@ MVSHIM="$TMP_HOME/mvshim"
 mkdir -p "$MVSHIM"
 cat > "$MVSHIM/mv" <<'SHIM'
 #!/usr/bin/env bash
+# `mv` lives in /bin on macOS and /usr/bin on GNU hosts; a hard-coded path makes
+# the shim fail for EVERY call, not just the one it means to intercept.
+REAL_MV=$(command -v -p mv 2>/dev/null || echo /bin/mv)
 for a in "$@"; do case "$a" in *.rotating.*) exit 1;; esac; done
-exec /usr/bin/mv "$@"
+exec "$REAL_MV" "$@"
 SHIM
 chmod +x "$MVSHIM/mv"
 PATH="$MVSHIM:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
@@ -545,8 +548,13 @@ MVSHIM2="$TMP_HOME/mvshim2"
 mkdir -p "$MVSHIM2"
 cat > "$MVSHIM2/mv" <<'SHIM'
 #!/usr/bin/env bash
+# See the ROT-1 shim: /usr/bin/mv does not exist on macOS. Hard-coding it made
+# the CLAIMING rename fail too, so no claim was ever left in flight and ROT-11a
+# reported "the shim did not bite" on both macOS legs (caught by CI before the
+# 0.77.0 tag).
+REAL_MV=$(command -v -p mv 2>/dev/null || echo /bin/mv)
 for a in "$@"; do case "$a" in *.jsonl.1) exit 1;; esac; done
-exec /usr/bin/mv "$@"
+exec "$REAL_MV" "$@"
 SHIM
 chmod +x "$MVSHIM2/mv"
 PATH="$MVSHIM2:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
