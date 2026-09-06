@@ -452,4 +452,50 @@ SHIM_COUNT="$TMP_HOME/statshim.count" PATH="$STATSHIM:$PATH" \
   || { echo "FAIL: ROT-6 lock left behind by the no-op branch"; exit 1; }
 echo "PASS: ROT-6 a stale over-cap size reading does not rotate an already-rotated log"
 
+# Case ROT-7 (0.76.2 pre-tag review, CRITICAL-1): a size read must never put
+# non-numeric text into the arithmetic.
+#
+# `stat -c %s F || stat -f %z F || echo 0` looks like a GNU/BSD dual and is not
+# one. On GNU coreutils `-f` is --file-system and `%z` parses as an OPERAND, so
+# on an existing file the fallback prints the filesystem block to STDOUT and
+# exits 1 — the `||` chain then continues and appends `0` to that blob. Under
+# `set -u`, `(( size > max_bytes ))` dereferences the word `File` and the shell
+# EXITS 127. hook_record calls rule_hits_append inline and every deny path
+# records BEFORE it denies, so the abort turns a §8 deny into an allow with no
+# row and no fail-open marker. Reachable because the in-mutex read (ROT-6) runs
+# with no `[[ -f ]]` guard above it: the log can be absent for the first stat
+# and re-created by another process before the second.
+#
+# The shim reproduces exactly that pair: first call fails, second prints the GNU
+# --file-system blob and exits 1.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+BEFORE_LINES=$(wc -l < "$LOG" | tr -d ' ')
+STATSHIM2="$TMP_HOME/statshim2"
+mkdir -p "$STATSHIM2"
+cat > "$STATSHIM2/stat" <<'SHIM'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-c" && "${2:-}" == "%s" ]]; then exit 1; fi
+if [[ "${1:-}" == "-f" && "${2:-}" == "%z" ]]; then
+  printf '  File: "%s"\n    ID: 96ff6e103d5991fd Namelen: 255     Type: tmpfs\n' "${3:-}"
+  exit 1
+fi
+exec /usr/bin/stat "$@"
+SHIM
+chmod +x "$STATSHIM2/stat"
+# `set -uo pipefail` is what makes this fatal, and it is what every hook sets
+# before sourcing this lib — the suite's own `run` helper does not, so calling
+# through it would exercise a shell production never uses.
+OUT=$(PATH="$STATSHIM2:$PATH" CLAUDEMD_LOG_MAX_MB=1 \
+  bash -c "set -uo pipefail; source $LIB; rule_hits_append banned-vocab deny null" 2>&1)
+RC=$?
+[[ "$RC" == "0" ]] \
+  || { echo "FAIL: ROT-7 append aborted (rc=$RC) — a caller's deny would be lost: $OUT"; exit 1; }
+[[ "$OUT" != *"unbound variable"* ]] \
+  || { echo "FAIL: ROT-7 non-numeric size reached the arithmetic: $OUT"; exit 1; }
+AFTER_LINES=$(wc -l < "$LOG" | tr -d ' ')
+[[ "$AFTER_LINES" == "$((BEFORE_LINES + 1))" ]] \
+  || { echo "FAIL: ROT-7 row not written ($BEFORE_LINES -> $AFTER_LINES)"; exit 1; }
+echo "PASS: ROT-7 a non-numeric stat fallback cannot abort the append"
+
 echo "rule-hits: all cases passed"

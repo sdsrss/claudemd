@@ -595,6 +595,39 @@ test('ENG-03: a real prerequisite failure still flags red, and still names the a
   assert.match(c.detail, /could not evaluate .*mem-index-missing=1/);
 });
 
+test('ENG-03: transcript-missing is the encoding-drift alarm, not an advisory', async () => {
+  // R10-06b added transcript-missing and event-fields-missing BECAUSE a
+  // mis-derived project encoding silently no-ops this gate; memory-read-check.sh
+  // says a bad ENCODED "makes BOTH paths miss, which is indistinguishable from
+  // 'this project has no memory index' unless the row says which one was
+  // absent". transcript-missing is emitted only after the index was FOUND, so
+  // it means the project has memory and the session file is unlocatable — the
+  // drift signature. An earlier version of the bucketing called it advisory and
+  // answered "enforcement itself is intact" to 200 rows of exactly that
+  // (0.76.2 pre-tag review, H-1: two reviewers converged on it independently).
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(
+    log,
+    `{"ts":"${now}","hook":"memory-read-check","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"transcript-missing"},"session_id":null}\n`.repeat(
+      100
+    ) +
+      `{"ts":"${now}","hook":"memory-read-check","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"event-fields-missing"},"session_id":null}\n`.repeat(
+        100
+      )
+  );
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.equal(c.ok, false, 'the drift signature must stay red');
+  assert.doesNotMatch(
+    c.detail,
+    /enforcement itself is intact/,
+    'must not tell the operator a total bypass is healthy'
+  );
+  assert.match(c.detail, /transcript-missing=100/);
+  assert.match(c.detail, /event-fields-missing=100/);
+});
+
 test('ENG-03: an UNKNOWN fail-open reason defaults to red, not to advisory', async () => {
   // The unevaluable set is the closed one on purpose: a reason added by a future
   // emitter must land in the ok:false bucket until someone classifies it, or the

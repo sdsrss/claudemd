@@ -87,8 +87,17 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const movedFiles = [];
   for (const src of files) {
-    // existsSync FOLLOWS the link, so an already-dangling source is skipped
-    // here and never reaches the branch below — unchanged behavior.
+    // existsSync FOLLOWS the link, so an ALREADY-DANGLING source is skipped
+    // here and never reaches the symlink branch below. That is unchanged from
+    // before this fix, and it is not harmless: the link then survives in
+    // ~/.claude with no backup taken, and copySpecFiles' copyFileSync follows
+    // it — `open(O_CREAT)` resolves the link — so install writes the 25 KB spec
+    // INTO the user's dotfiles repo, where they may commit it. Reproduced end
+    // to end through install() in the 0.76.2 pre-tag review (MEDIUM-2).
+    // Deliberately NOT fixed in the same batch as the review's Critical: the
+    // fix is to branch on lstatSync regardless of existsSync so a dangling link
+    // is moved aside too, and that changes what install does on a path this
+    // release does not otherwise touch. Tracked in the round-13 audit report.
     if (!fs.existsSync(src)) continue;
     const dest = path.join(dir, path.basename(src));
     // A SYMLINKED source is re-pointed, not moved.
@@ -116,7 +125,22 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
       /* raced between existsSync and lstat — fall through to the rename */
     }
     if (linkTarget !== null) {
-      fs.symlinkSync(path.resolve(path.dirname(src), linkTarget), dest);
+      // Resolve against the REAL parent, not the lexical one. path.resolve
+      // collapses `..` as text; the kernel walks it from the directory the path
+      // actually lands in. Those disagree the moment an ancestor is itself a
+      // symlink — `~/.claude -> ~/config/claude`, which is the same synced-
+      // dotfiles setup this branch exists for — and the entry then points at
+      // whatever sits at the lexical path: a different file, or nothing, which
+      // reproduces the very symptom this fix removes (0.76.2 pre-tag review,
+      // HIGH-1). Falls back to the lexical parent if realpath cannot run, which
+      // is no worse than what it replaces.
+      let base = path.dirname(src);
+      try {
+        base = fs.realpathSync(base);
+      } catch {
+        /* unreadable ancestor — keep the lexical parent */
+      }
+      fs.symlinkSync(path.resolve(base, linkTarget), dest);
       fs.unlinkSync(src);
     } else {
       fs.renameSync(src, dest);

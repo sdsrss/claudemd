@@ -276,36 +276,59 @@ rule_hits_append() {
   # where no lock exists — every append but a handful — costs no process.
   # Reaping here also lets the same call go on to acquire and rotate.
   #
-  # NON-ATOMIC, EVALUATED AND ACCEPTED — do not re-raise without new evidence
-  # (2026-09-05 audit Q-01, qualified in a sandbox). Age-check and `rmdir` are
-  # two steps: a reaper that decided "stale" can delete a lock a DIFFERENT
-  # process acquired in between, letting two holders into the critical section.
-  # Confirmed by injecting a 0.2 s window (the fresh lock's inode was removed by
-  # the earlier reaper), and end-to-end at 8/400 trials with 4 concurrent
-  # appends over a stale lock — down from 33/200 before the in-mutex size
-  # re-read below, which was carrying most of it. With no stale lock present:
-  # 0/200.
+  # NON-ATOMIC BY CONSTRUCTION, accepted for now (2026-09-05 audit Q-01).
+  # Age-check and `rmdir` are two steps, so a reaper that decided "stale" can
+  # delete a lock a DIFFERENT process acquired in between, letting two holders
+  # into the critical section. Demonstrated directly: with a 0.2 s window
+  # injected between the two steps, the reaper removed the fresh lock's inode.
   #
-  # The recipe the audit proposed — `mv "$lock" "$lock.reap.$$" && rmdir` — does
-  # NOT close it, and was measured rather than assumed: 6/400 on the same
-  # harness, statistically indistinguishable from the 8/400 here. rename(2) is
-  # atomic about the MOVE, not about the IDENTITY of what it moved, so a late
+  # ITS RATE IS NOT ESTABLISHED, and an earlier version of this comment gave
+  # one (0.76.2 pre-tag review, H-2). Every end-to-end number here was measured
+  # on a host whose `mkdir` is uutils coreutils 0.8.0, which is not reliably
+  # atomic: 200 trials of 4 processes racing one path gave 206 wins where 200
+  # were expected, 6 trials with more than one winner. So those runs were
+  # measuring two failures at once — this reap race AND a mutex that sometimes
+  # admits everyone — and cannot separate them. A reviewer re-ran the same
+  # shapes with an atomic `mkdir` shim and saw the in-mutex size re-read below
+  # take both arms to zero, which suggests most of what was attributed here
+  # belonged to the mutex. Anyone quoting a number for this race should measure
+  # it on a host with GNU coreutils first.
+  #
+  # The recipe the audit proposed — `mv "$lock" "$lock.reap.$$" && rmdir` — is
+  # still rejected, but on the structure rather than on those numbers: rename(2)
+  # is atomic about the MOVE, not about the IDENTITY of what it moved, so a late
   # reaper carries off a fresh lock exactly as `rmdir` deletes one.
   #
   # What would actually close it: claim the live generation with a single
   # rename (`mv "$log_file" "$log_file.rotating.$$"`) and archive from there, so
-  # only one process can ever own the generation being rotated. Deferred, not
-  # rejected — it introduces a new orphan class (`*.rotating.<pid>` after a kill
-  # mid-rotation) that needs its own reaper, and this path has been changed
-  # three times in two days. The residual costs archived telemetry, never a
-  # gate decision or user data.
+  # only one process can ever own the generation being rotated — and, unlike
+  # everything above, that does not depend on `mkdir` being atomic, which makes
+  # it the fix for the uutils exposure too. Deferred, not rejected: it
+  # introduces a new orphan class (`*.rotating.<pid>` after a kill mid-rotation)
+  # needing its own reaper. The residual costs archived telemetry, never a gate
+  # decision or user data.
   if [[ -d "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
     rmdir "$lock" 2>/dev/null
   fi
 
   if [[ -f "$log_file" ]]; then
     local size
+    # NUMERIC-GUARD both size reads. `stat -c %s F || stat -f %z F || echo 0`
+    # reads as a GNU/BSD dual and is not one: on GNU coreutils `-f` is
+    # --file-system and `%z` parses as an OPERAND, so against an existing file
+    # the fallback prints the filesystem block to STDOUT and exits 1 — the `||`
+    # chain continues and appends `0` to that blob. Every hook sets
+    # `set -uo pipefail` before sourcing this lib, so `(( size > max_bytes ))`
+    # then dereferences the word `File` and the shell EXITS 127.
+    #
+    # hook_record calls rule_hits_append INLINE (hook-common.sh:214) and every
+    # deny path records before it denies, so that abort turns an immutable §8
+    # deny into an allow — a PreToolUse hook exiting non-zero is non-blocking,
+    # the command proceeds — with no row and no fail-open marker to show for it
+    # (0.76.2 pre-tag review, CRITICAL-1; ROT-7 pins it). Same guard the
+    # `max_mb` env read above already uses, for the same reason.
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
+    [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max_bytes )); then
       if mkdir "$lock" 2>/dev/null; then
         # RE-READ the size INSIDE the mutex. The check above only decides
@@ -330,7 +353,13 @@ rule_hits_append() {
         # stale-reap race below (Q-01) from a data-loss path to a wasted stat:
         # to lose an archive, two holders would both have to pass THIS check
         # before either completes its first `mv`.
+        # Guarded for the reason spelled out at the outer read — and this is the
+        # site that made that hazard REACHABLE: there is no `[[ -f ]]` above it,
+        # so the log can be absent when `-c %s` runs and re-created by another
+        # process before `-f %z` does, which is the exact pair that produces the
+        # blob.
         size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
+        [[ "$size" =~ ^[0-9]+$ ]] || size=0
         if (( size > max_bytes )); then
           [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
           mv -f "$log_file" "$log_file.1" 2>/dev/null

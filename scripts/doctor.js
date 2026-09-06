@@ -782,20 +782,35 @@ export async function doctor({ pruneBackups: prune } = {}) {
   //
   // Third class, 2026-09-05 audit ENG-03: the gate ran and had NOTHING TO
   // EVALUATE. `mem-index-missing` means the project has no MEMORY.md, which is
-  // the normal state of most projects; `transcript-missing` and
-  // `event-fields-missing` are the same shape one level up. memory-read-check.sh
-  // says so in the comment beside its own emitters. Lumping these with the
-  // prerequisite failures printed "enforcement silently bypassed (jq /
-  // patterns-file prerequisite missing). Investigate and restore." — a repair
-  // instruction that repairs nothing — and held doctor at exit 3 for the full
-  // 30-day window after one ship command in one index-less project. That is the
+  // the normal state of most projects. Lumping it with the prerequisite
+  // failures printed "enforcement silently bypassed (jq / patterns-file
+  // prerequisite missing). Investigate and restore." — a repair instruction
+  // that repairs nothing — and held doctor at exit 3 for the full 30-day window
+  // after one ship command in one index-less project. That is the
   // steady-state-nonzero shape 0.72.0 and 0.74.2 already fixed twice elsewhere:
   // an exit code that is always red carries no information.
+  //
+  // EXACTLY ONE reason is advisory, and the two that were nearly added beside it
+  // are why this comment is long (0.76.2 pre-tag review, H-1 / MEDIUM-1 — two
+  // independent reviewers converged on it). `transcript-missing` and
+  // `event-fields-missing` are not "no memory here", they are the cwd-encoding
+  // DRIFT ALARM that audit R10-06b added. memory-read-check.sh says it outright
+  // beside those very emitters — "A mis-derived ENCODED makes BOTH paths miss,
+  // which is indistinguishable from 'this project has no memory index' unless
+  // the row says which one was absent" — and records that the encoding has
+  // really drifted twice, each time silently no-opping the gate with nothing
+  // left behind to say so. `transcript-missing` is emitted only AFTER the index
+  // was found, so it means the project HAS memory and the session file is
+  // unlocatable, which is the drift signature itself. An earlier draft of this
+  // block put both in the advisory set and cited memory-read-check.sh as the
+  // authority for doing so; that file says the opposite. Fed 200 rows of the
+  // drift signature, that draft answered ok:true, "enforcement itself is
+  // intact" — the wrong sentence for a total bypass.
   //
   // The UNEVALUABLE set is the closed one, so a reason nobody has classified yet
   // (a new emitter, a renamed constant) lands in the ok:false bucket by default
   // rather than being quietly downgraded to advisory.
-  const UNEVALUABLE_REASONS = new Set(['mem-index-missing', 'transcript-missing', 'event-fields-missing']);
+  const UNEVALUABLE_REASONS = new Set(['mem-index-missing']);
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
   if (failOpenEvents.length > 0) {
     const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');

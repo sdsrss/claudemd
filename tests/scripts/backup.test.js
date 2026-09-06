@@ -348,6 +348,44 @@ test('ENG-01: createBackup absolutises a relative symlink instead of moving it i
   assert.equal(fs.lstatSync(src).isSymbolicLink(), false, 'restored as a regular file');
 });
 
+test('ENG-01: a symlinked ~/.claude resolves the target against the REAL parent', () => {
+  // path.resolve collapses `..` LEXICALLY; the kernel resolves it against the
+  // real parent directory. When ~/.claude is itself a symlink — the same synced-
+  // dotfiles population this whole fix targets — the two disagree, and the
+  // backup entry ends up pointing at whatever happens to sit at the lexical
+  // path. Restore then writes THAT file into ~/.claude, or finds nothing there
+  // and restores zero, which is the exact ENG-01 symptom being fixed
+  // (0.76.2 pre-tag review, HIGH-1).
+  fs.rmSync(path.join(box.home, '.claude'), { recursive: true, force: true });
+  const realClaude = path.join(box.home, 'real/claude');
+  fs.mkdirSync(realClaude, { recursive: true });
+  fs.symlinkSync('real/claude', path.join(box.home, '.claude'));
+  // What `..` means to the kernel: the real parent.
+  fs.mkdirSync(path.join(box.home, 'real/dotfiles'), { recursive: true });
+  fs.writeFileSync(path.join(box.home, 'real/dotfiles/CLAUDE.md'), 'USER CONTENT REAL\n');
+  // What `..` means lexically: a decoy, so a wrong resolution is visible as
+  // wrong content rather than as a missing file.
+  fs.mkdirSync(path.join(box.home, 'dotfiles'), { recursive: true });
+  fs.writeFileSync(path.join(box.home, 'dotfiles/CLAUDE.md'), 'DECOY WRONG FILE\n');
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  fs.symlinkSync('../dotfiles/CLAUDE.md', src);
+  assert.equal(
+    fs.readFileSync(src, 'utf8'),
+    'USER CONTENT REAL\n',
+    'precondition: the link reads the real file'
+  );
+
+  const { dir } = createBackup([src]);
+
+  assert.equal(
+    fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'),
+    'USER CONTENT REAL\n',
+    'the backup entry must reach the file the link actually pointed at'
+  );
+  restoreBackup(dir, path.join(box.home, '.claude'));
+  assert.equal(fs.readFileSync(src, 'utf8'), 'USER CONTENT REAL\n', 'and restore puts that back');
+});
+
 test('ENG-01: an ALREADY-absolute symlink keeps its target verbatim', () => {
   // FP guard for the branch above: absolute links worked before the fix and
   // must not be rewritten by path.resolve into something else.

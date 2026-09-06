@@ -65,13 +65,17 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // Pre-flight abort checks — MUST run before any side effects so that an
   // aborted uninstall leaves settings.json / spec files / manifest untouched.
   if (specAction === 'delete' && !confirmHardAuth) {
-    return { specAction: 'abort', reason: 'hard-AUTH confirmation required for delete' };
+    // `restored: null` on the aborts too — the comment on the final return
+    // promises consumers can read `.restored` unconditionally, and :74 below is
+    // itself a restore that put nothing back, which is what the field is for
+    // (0.76.2 pre-tag review, L-1).
+    return { specAction: 'abort', restored: null, reason: 'hard-AUTH confirmation required for delete' };
   }
   let restoreSource = null;
   if (specAction === 'restore') {
     const backups = listBackups();
     if (backups.length === 0) {
-      return { specAction: 'abort', reason: 'no backups available to restore' };
+      return { specAction: 'abort', restored: null, reason: 'no backups available to restore' };
     }
     restoreSource = backups[0].dir;
   }
