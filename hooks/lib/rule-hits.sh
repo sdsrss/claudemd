@@ -286,7 +286,12 @@ rule_hits_append() {
   # Numeric-guard: a non-integer env value (user typo) would make
   # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because
   # this runs before the JSONL write, the telemetry row would be silently lost.
-  [[ "$max_mb" =~ ^[0-9]+$ ]] || max_mb=5
+  # The digit test alone is not enough: `17592186044416 * 1024 * 1024` wraps int64
+  # to 0 and larger values go negative, so a cap asked for in the
+  # digit-repetition direction became the SMALLEST possible one — rotation on
+  # every single append, three rows of history retained (0.77.0 pre-tag review,
+  # LOW 1). 1 TB is past any real log and leaves the product inside int64.
+  [[ "$max_mb" =~ ^[0-9]+$ ]] && (( max_mb <= 1048576 )) || max_mb=5
   local max_bytes=$((max_mb * 1024 * 1024))
 
   # Orphan-claim reap runs BEFORE the size check, and that ordering is the whole
@@ -298,13 +303,21 @@ rule_hits_append() {
   # glob costs no process, so the path every append but a handful takes is one
   # builtin test.
   #
-  # An orphan holds ROWS, so it is completed rather than deleted. Order is
-  # chronological: the orphan predates any `.1` written after the crash, so it
-  # goes to `.1` only when that slot is free and to `.2` otherwise — placing it
-  # at `.1` unconditionally would leave `.1` older than `.2` and mislead
-  # `rule-hits-parse.js#logGenerations`, which reads the three files as one
-  # sequence. Two newer archives already retained means the orphan is the oldest
-  # of three, and bounded retention drops it.
+  # An orphan holds ROWS, so it is completed rather than deleted — and which
+  # generation it is has to be MEASURED, not assumed. The first version of this
+  # branch placed by slot occupancy alone, on the reasoning that an orphan
+  # predates any `.1` written after the crash. That is true only when the crash
+  # is FOLLOWED by two rotations. In the ordinary sequence — two rotations, then
+  # a kill — the orphan is the NEWEST generation and both slots hold older ones,
+  # so the branch deleted the newest and kept two older ones, with no concurrency
+  # required (0.77.0 pre-tag review, HIGH 2; v0.76.2 had no orphan class at all
+  # and self-healed at the same kill point, which made it a regression).
+  #
+  # The rule is now "keep the two newest of the three", by mtime. The retired
+  # rationale also claimed out-of-order archives would mislead
+  # `rule-hits-parse.js#logGenerations`; they would not — that function returns a
+  # FIXED path list and every consumer goes through `readHits`, which filters on
+  # each row's own `ts`. Nothing reads file order, so ordering is worth no rows.
   #
   # The reaper CLAIMS before it places, by the same rename the rotator uses. The
   # `mv "$lock" "$lock.reap.$$" && rmdir` recipe was rejected for the LOCK
@@ -313,20 +326,57 @@ rule_hits_append() {
   # `rmdir` deleted one. That objection does not transfer: a lock's identity
   # matters because a live holder may own it, while an orphan is a file whose
   # BYTES are the whole point, and whoever wins the rename owns those bytes.
-  local _orphan _claimed
+  #
+  # The two placements below ARE check-then-act, and an earlier draft of this
+  # comment claimed nothing here was. Two reapers holding different orphans can
+  # both see a free slot and the second `mv -f` clobbers the first. The window is
+  # one builtin test wide; the reviewer measured 0 losses in 600 trials at 8- and
+  # 32-way concurrency. Stated rather than papered over.
+  #
+  # `failglob` in the caller's shell would abort the `for` on an unmatched glob,
+  # and with it the JSONL write below — every row lost, silently, for a shell
+  # option (same review, LOW 3). Suspend it across the loop and restore it.
+  local _orphan _claimed _o_age _a1_age _a2_age _stamp _now _fg=0
+  shopt -q failglob && _fg=1
+  (( _fg == 1 )) && shopt -u failglob
+  _now=$(date +%s 2>/dev/null || echo 0)
   for _orphan in "$log_file".rotating.*; do
     [[ -f "$_orphan" ]] || continue
-    (( $(_rule_hits_path_age_seconds "$_orphan") >= 60 )) || continue
+    # Age from the NAME the rotator wrote, not from a timestamp — see the claim
+    # site below for why. A name without a numeric stamp (a hand-made fixture, a
+    # file a user dropped here) falls back to mtime, which is the older, weaker
+    # answer but never reaps something whose age cannot be established: the
+    # helper answers 0 — "fresh" — for anything it cannot read.
+    _stamp=${_orphan##*.rotating.}
+    _stamp=${_stamp%%.*}
+    if [[ "$_stamp" =~ ^[0-9]+$ ]] && (( _now > 0 )); then
+      (( _now - _stamp >= 60 )) || continue
+    else
+      (( $(_rule_hits_path_age_seconds "$_orphan") >= 60 )) || continue
+    fi
     _claimed="$_orphan.reap.$$.${RANDOM:-0}"
     mv "$_orphan" "$_claimed" 2>/dev/null || continue
-    if [[ ! -f "$log_file.1" ]]; then
+    if [[ ! -e "$log_file.1" ]]; then
       mv -f "$_claimed" "$log_file.1" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
-    elif [[ ! -f "$log_file.2" ]]; then
+    elif [[ ! -e "$log_file.2" ]]; then
       mv -f "$_claimed" "$log_file.2" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
     else
-      rm -f "$_claimed" 2>/dev/null
+      # Both slots taken: keep the two newest of the three. Age, not position —
+      # smaller age is newer.
+      _o_age=$(_rule_hits_path_age_seconds "$_claimed")
+      _a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
+      _a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
+      if (( _o_age < _a1_age )); then
+        mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+        mv -f "$_claimed" "$log_file.1" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
+      elif (( _o_age < _a2_age )); then
+        mv -f "$_claimed" "$log_file.2" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
+      else
+        rm -f "$_claimed" 2>/dev/null
+      fi
     fi
   done
+  (( _fg == 1 )) && shopt -s failglob
 
   # A `<log>.rotating` DIRECTORY is the v0.76.0-v0.76.2 mutex, left behind on a
   # machine upgraded while one was held. Nothing creates one any more, so
@@ -352,7 +402,28 @@ rule_hits_append() {
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max_bytes )); then
-      local claim="$log_file.rotating.$$.${RANDOM:-0}"
+      # THE CLAIM CARRIES ITS OWN BIRTH TIME, IN ITS NAME.
+      #
+      # A file timestamp cannot answer "when was this claimed". `rename(2)`
+      # preserves mtime and updates only ctime, so a claim aged by mtime carries
+      # the age of its ROWS: whenever the previous append was over a minute ago —
+      # the ordinary case for a log that crosses the cap at the end of a session
+      # — the claim is born already past the reaper's threshold, a concurrent
+      # append steals it, finds both archive slots full, and deletes a whole
+      # generation. Measured at 31/200 on 32-way concurrency (0.77.0 pre-tag
+      # review, HIGH 1). The release's own harness rebuilt the log immediately
+      # before each trial, so its mtime was always fresh and the branch never
+      # fired: it measured the one condition under which the defect is
+      # unreachable.
+      #
+      # Stamping the file after the rename does not close it either — measured
+      # 41/200 on the same arm. `mv` then `touch` is two steps, and a reaper
+      # landing between them sees the inherited timestamp. The name is written by
+      # the rename ITSELF, so there is no window and no dependency on whether a
+      # filesystem or a `stat` flavour reports mtime, ctime or birth time.
+      local claim claim_born
+      claim_born=$(date +%s 2>/dev/null || echo 0)
+      claim="$log_file.rotating.$claim_born.$$.${RANDOM:-0}"
       if mv "$log_file" "$claim" 2>/dev/null; then
         # RE-READ the size, now on the CLAIMED file. The check above only
         # decides whether to reach for the claim; this one decides whether to
@@ -389,7 +460,19 @@ rule_hits_append() {
         csize=$(stat -c %s "$claim" 2>/dev/null || stat -f %z "$claim" 2>/dev/null || echo 0)
         [[ "$csize" =~ ^[0-9]+$ ]] || csize=0
         if (( csize > max_bytes )); then
-          [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+          # `-e`, not `-f`: a DIRECTORY at an archive path fails `-f`, and
+          # `mv -f file dir/` then succeeds by moving the file INSIDE it — the
+          # slot never becomes a file, so every later generation lands in there
+          # too and none is visible to `logGenerations` (0.77.0 pre-tag review,
+          # LOW 2). Give the claim back instead; a rotation that does not happen
+          # is not an error, and the same posture the stat guards take.
+          if [[ -d "$log_file.1" || -d "$log_file.2" ]]; then
+            cat "$claim" >> "$log_file" 2>/dev/null && rm -f "$claim" 2>/dev/null
+            csize=0
+          fi
+        fi
+        if (( csize > max_bytes )); then
+          [[ -e "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
           mv -f "$claim" "$log_file.1" 2>/dev/null
         else
           cat "$claim" >> "$log_file" 2>/dev/null && rm -f "$claim" 2>/dev/null

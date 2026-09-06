@@ -617,9 +617,18 @@ hook_flatten_cmd() {
 # gate that denies. Today the mismatch fails VISIBLE — the region is closed early,
 # the remainder re-emitted verbatim, and the trigger still sees it — which is the
 # safe direction. A test pins that property so the next edit cannot quietly flip
-# it. tasks/s8-sanitize-escaped-quote-gap.md carries the analysis; the §8 verdict
-# machine in pre-bash-safety-check.sh is a SEPARATE state machine and this change
-# does not touch it.
+# it. tasks/s8-sanitize-escaped-quote-gap.md carries the analysis.
+#
+# THIS VIEW REACHES THE §8 GATE. An earlier version of this comment said the §8
+# verdict machine is separate and untouched. Half true and wrongly stated:
+# `sanitize_cmd` is separate, and the rm / npx / curl-sh arms read SANITIZED_CMD
+# — but `pre-bash-safety-check.sh:552` builds REVSH_VIEW from `hook_trigger_view`,
+# so the reverse-shell arm consumes THIS function. Two of its verdicts moved,
+# both toward bash: a transport inside an escaped-quote body is one argument to
+# `echo` and never runs, and the gate now agrees; after `\\` the quote really
+# closes and the transport after it still denies. Measured before and after and
+# pinned as corpus rows (0.77.0 pre-tag review, MEDIUM-2 — the release originally
+# measured only the three families that CANNOT be affected).
 HOOK_TRIGGER_QUOTE_AWK='
 BEGIN { RS = "\004" }
 {

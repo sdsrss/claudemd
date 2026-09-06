@@ -943,3 +943,44 @@ test('M-2: a LIVE symlinked spec is still written through, not replaced', async 
   assert.equal(fs.lstatSync(extPath).isSymbolicLink(), true, 'the live link survives');
   assert.equal(fs.readFileSync(target, 'utf8'), '# Extended v6.9.2\n', 'and it is what got updated');
 });
+
+test('M-2: a live link whose target is UNREADABLE is not mistaken for a dead one', async () => {
+  // 0.77.0 pre-tag review, MEDIUM-1. `existsSync` answers false for ANY stat
+  // failure, not just ENOENT — an unmounted network dotfiles dir, a
+  // TCC-protected path on macOS, a mode-0700 parent. Classifying that as
+  // dangling made the no-backup upgrade branch DELETE a live link, write a
+  // regular file over it, and print a warning saying the target "does not
+  // exist" when it does and still holds the user's bytes. v0.76.2 failed loudly
+  // and kept the link, so this was a regression introduced by the dead-link
+  // guard. Absent and unreadable are different answers; only absent is dead.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n'
+  );
+  const locked = path.join(tmpHome, 'locked');
+  fs.mkdirSync(locked, { recursive: true });
+  const target = path.join(locked, 'CLAUDE-extended.md');
+  fs.writeFileSync(target, '# user content that exists\n');
+  const extPath = path.join(tmpHome, '.claude/CLAUDE-extended.md');
+  fs.symlinkSync(target, extPath);
+  fs.chmodSync(locked, 0o000);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  let threw = null;
+  try {
+    await install({ pluginRoot });
+  } catch (e) {
+    threw = e;
+  } finally {
+    delete process.env.CLAUDEMD_NO_STATUSLINE;
+    fs.chmodSync(locked, 0o700);
+  }
+
+  assert.equal(
+    fs.lstatSync(extPath, { throwIfNoEntry: false })?.isSymbolicLink(),
+    true,
+    'the link must survive — its target is unreadable, not absent'
+  );
+  assert.equal(fs.readFileSync(target, 'utf8'), '# user content that exists\n');
+  assert.ok(threw, 'and the copy through an unreadable target fails loudly rather than silently');
+});

@@ -386,26 +386,35 @@ CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
   || { echo "FAIL: ROT-3 claim left behind after a completed rotation"; exit 1; }
 echo "PASS: ROT-3 a completed rotation leaves no claim behind"
 
-# Case ROT-4 (2026-09-05 post-ship review, finding 1): the age check must not be
-# `find -mmin`. BSD find — macOS, i.e. half the CI matrix — rounds the age UP to
-# the next full minute, so an entry two seconds old reads as "1 minute" and
-# `-mmin -1` prints nothing. The lesson outlives the lock: a FRESH orphan is a
-# rotation still in flight, and reaping it would hand its generation to a second
-# process. The shim stands in for that find: it prints nothing, whatever it is
-# asked.
+# Case ROT-4 (2026-09-05 post-ship review, finding 1): the mtime FALLBACK must
+# not be `find -mmin`. BSD find — macOS, i.e. half the CI matrix — rounds the age
+# UP to the next full minute, so an entry two seconds old reads as "1 minute" and
+# `-mmin -1` prints nothing.
+#
+# Claims written by the rotator carry their birth epoch in the NAME and never
+# reach this path (ROT-11). The fallback is for an entry whose name carries no
+# numeric stamp — a hand-made fixture, or a file a user dropped in the log dir —
+# and reaping one of those early is still a generation destroyed. The shim stands
+# in for the rounding find: it prints nothing, whatever it is asked.
+#
+# The original fixture here was `printf … > "$LOG.rotating.998.1"`, which the
+# 0.77.0 pre-tag review named as the right lesson with the wrong fixture: `998`
+# is an epoch in 1970, so once aging read the name that entry was correctly
+# ancient and the case asserted nothing about freshness.
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
-printf 'IN-FLIGHT\n' > "$LOG.rotating.998.1"
+printf 'ARCHIVE-1\n' > "$LOG.1"
+printf 'IN-FLIGHT\n' > "$LOG.rotating.notanepoch.1"
 SHIMDIR="$TMP_HOME/shim"
 mkdir -p "$SHIMDIR"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$SHIMDIR/find"
 chmod +x "$SHIMDIR/find"
 sleep 2
 PATH="$SHIMDIR:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
-[[ "$(cat "$LOG.rotating.998.1" 2>/dev/null)" == "IN-FLIGHT" ]] \
-  || { echo "FAIL: ROT-4 a 2s-old in-flight claim was reaped (age check depends on find rounding)"; exit 1; }
-rm -f "$LOG.rotating.998.1"
-echo "PASS: ROT-4 a fresh claim survives a find that reports nothing"
+[[ "$(cat "$LOG.rotating.notanepoch.1" 2>/dev/null)" == "IN-FLIGHT" ]] \
+  || { echo "FAIL: ROT-4 a 2s-old unstamped claim was reaped (fallback depends on find rounding)"; exit 1; }
+rm -f "$LOG.rotating.notanepoch.1"
+echo "PASS: ROT-4 the mtime fallback keeps a fresh unstamped claim"
 
 # Case ROT-5 (same review, finding 3): the reap must not sit inside the size
 # check. A rotator killed mid-rotation leaves the log already claimed and so
@@ -514,6 +523,89 @@ run 'rule_hits_append banned-vocab deny null'
 [[ ! -d "$LOG.rotating" ]] \
   || { echo "FAIL: ROT-10 the legacy mutex directory survived the upgrade"; exit 1; }
 echo "PASS: ROT-10 the legacy mutex directory is removed on the next append"
+
+# Case ROT-11 (0.77.0 pre-tag review, HIGH 1): a claim's age is the age of the
+# CLAIM, and it comes from the name the rotator wrote — not from a file
+# timestamp. `rename(2)` preserves mtime, so a claim aged by mtime carries the
+# age of its ROWS: whenever the previous append was over a minute ago, the claim
+# is born past the reap threshold, a concurrent append steals it, finds both
+# archive slots full, and deletes a whole generation. Stamping the file after the
+# rename does not close it either — `mv` then `touch` is two steps and a reaper
+# lands between them (measured 41/200 on 32-way concurrency; the name-based form
+# measures 0/200 on the same arm).
+#
+# Two assertions, because the mechanism has two halves.
+# (a) production writes a claim whose name carries a CURRENT epoch. An `mv` shim
+#     that fails only the placement leaves one in flight to inspect.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'OLD-GENERATION\n' > "$LOG"
+touch -d '2 hours ago' "$LOG" 2>/dev/null || touch -t 200001010000 "$LOG"
+MVSHIM2="$TMP_HOME/mvshim2"
+mkdir -p "$MVSHIM2"
+cat > "$MVSHIM2/mv" <<'SHIM'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in *.jsonl.1) exit 1;; esac; done
+exec /usr/bin/mv "$@"
+SHIM
+chmod +x "$MVSHIM2/mv"
+PATH="$MVSHIM2:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+STRANDED=$(ls "$LOG".rotating.* 2>/dev/null | head -1)
+[[ -n "$STRANDED" ]] || { echo "FAIL: ROT-11a no claim left in flight — the shim did not bite"; exit 1; }
+STAMP=${STRANDED##*.rotating.}; STAMP=${STAMP%%.*}
+NOW=$(date +%s)
+if [[ ! "$STAMP" =~ ^[0-9]+$ ]] || (( NOW - STAMP >= 60 )); then
+  echo "FAIL: ROT-11a in-flight claim names no current epoch (stamp=$STAMP, now=$NOW) — a concurrent append will reap it"
+  exit 1
+fi
+# (b) the reaper reads that name. A claim whose ROWS are ancient but whose stamp
+#     is current is in flight and must survive; one whose stamp is old is an
+#     orphan and must be collected.
+touch -d '2 hours ago' "$STRANDED" 2>/dev/null || touch -t 200001010000 "$STRANDED"
+run 'rule_hits_append banned-vocab deny null'
+[[ -f "$STRANDED" ]] \
+  || { echo "FAIL: ROT-11b a live claim with old ROWS was reaped — aging read the timestamp, not the name"; exit 1; }
+mv "$STRANDED" "$LOG.rotating.100.999.1"
+run 'rule_hits_append banned-vocab deny null'
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-11c a claim stamped long ago was not reaped"; exit 1; }
+echo "PASS: ROT-11 claim age comes from the name, so an in-flight claim is never reaped"
+
+# Case ROT-12 (same review, HIGH 2): an orphan is not automatically the OLDEST
+# generation. In the ordinary sequence — two rotations, then a kill — it is the
+# NEWEST, and both archive slots hold older ones. Placing by slot occupancy alone
+# therefore deleted the newest generation and kept two older ones, with no
+# concurrency needed. v0.76.2 had no orphan class at all and self-healed at this
+# kill point, so this was a regression against it.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'GEN-A-OLDEST\n' > "$LOG.2"; touch -d '3 hours ago' "$LOG.2" 2>/dev/null || touch -t 200001010000 "$LOG.2"
+printf 'GEN-B-MIDDLE\n' > "$LOG.1"; touch -d '2 hours ago' "$LOG.1" 2>/dev/null || touch -t 200001020000 "$LOG.1"
+printf 'GEN-C-NEWEST\n' > "$LOG.rotating.12345.7"
+touch -d '1 hour ago' "$LOG.rotating.12345.7" 2>/dev/null || touch -t 200001030000 "$LOG.rotating.12345.7"
+run 'rule_hits_append banned-vocab deny null'
+if ! grep -qh 'GEN-C-NEWEST' "$LOG.1" "$LOG.2" 2>/dev/null; then
+  echo "FAIL: ROT-12 the NEWEST generation was dropped while older ones were kept (.1=$(cat "$LOG.1" 2>&1 | head -1), .2=$(cat "$LOG.2" 2>&1 | head -1))"
+  exit 1
+fi
+if grep -qh 'GEN-A-OLDEST' "$LOG.1" "$LOG.2" 2>/dev/null; then
+  echo "FAIL: ROT-12 the oldest of three generations was retained over a newer one"; exit 1
+fi
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-12 orphan left behind"; exit 1; }
+echo "PASS: ROT-12 the two newest of three generations survive, whichever was the orphan"
+
+# Case ROT-13 (same review, LOW 3): an unmatched glob under `failglob` aborted
+# the `for` command, so `rule_hits_append` returned 1 and everything after it —
+# including the JSONL write — was skipped. No gate decision depends on the row,
+# but losing every row silently is not an acceptable answer to a shell option.
+rm -rf "$TMP_HOME/.claude/logs"
+OUT=$(env HOME="$TMP_HOME" BASHOPTS=failglob bash -c "set -uo pipefail; source $LIB; rule_hits_append banned-vocab deny null '' 'sess-fg'; echo rc=\$?" 2>&1)
+if [[ "$OUT" != *"rc=0"* ]] || [[ ! -f "$LOG" ]]; then
+  echo "FAIL: ROT-13 failglob dropped the telemetry row (out: $OUT, log present: $([[ -f "$LOG" ]] && echo yes || echo no))"
+  exit 1
+fi
+echo "PASS: ROT-13 an unmatched orphan glob under failglob still writes the row"
 
 # Case ROT-7 (0.76.2 pre-tag review, CRITICAL-1): a size read must never put
 # non-numeric text into the arithmetic.

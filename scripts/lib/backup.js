@@ -67,7 +67,7 @@ const SETTINGS_BK_REGEX = /^settings\.json\.claudemd-backup-\d{8}T\d{6}(\d{3})?Z
 
 // Is there a directory entry at `p` — INCLUDING a symlink whose target is gone?
 //
-// SINGLE SOURCE for the question, because three callers were spelling it
+// SINGLE SOURCE for the question, because three sites were spelling it
 // `existsSync` and existsSync FOLLOWS the link: a stow/chezmoi user whose
 // dotfiles checkout has moved has a DANGLING ~/.claude/CLAUDE.md, and all three
 // filters dropped it from the file list. Nothing was backed up, the link stayed
@@ -75,8 +75,14 @@ const SETTINGS_BK_REGEX = /^settings\.json\.claudemd-backup-\d{8}T\d{6}(\d{3})?Z
 // walks the link — so the shipped spec was written INTO the user's dotfiles repo,
 // where they may commit it (0.76.2 pre-tag review MEDIUM-2, reproduced end to end
 // through install()). The three were install.js's `specHome().filter`, update.js's
-// `targets.map(homeSpec).filter`, and createBackup's own loop below; one predicate
-// so they cannot drift back apart.
+// `targets.map(homeSpec).filter`, and createBackup's own loop below.
+//
+// TWO of them call this; the loop keeps an inline `lstatSync` because it needs the
+// stat itself, not a boolean — it has to know whether the entry is a symlink in
+// order to re-point rather than rename it. So this is the shared spelling of the
+// question, not a predicate every site funnels through, and the loop is the one
+// that does the destructive work (0.77.0 pre-tag review, LOW-2, correcting an
+// earlier claim of three callers here).
 //
 // Errors answer `false`, matching what existsSync did for an unreadable parent —
 // the change here is confined to the dangling-link case.

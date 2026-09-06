@@ -30,12 +30,27 @@ export function sha256File(filePath) {
 // error is rethrown, so the caller either gets the whole new spec or the whole
 // old one. Callers that took no backup pass nothing and get install's original
 // behavior: verify, throw, leave the FS as it is.
-// A symlink at `p` whose target does not resolve → the target it names; null for
-// anything else (regular file, live link, absent path, unreadable parent).
+// A symlink at `p` whose target is ABSENT → the target it names; null for
+// anything else (regular file, live link, absent path, a target we cannot see).
+//
+// Absent and unreadable are different answers, and only the first one licenses
+// deleting the entry. `existsSync` conflates them — it is false for ANY stat
+// failure — so an unmounted network dotfiles directory, a TCC-protected path on
+// macOS or a mode-0700 parent made a LIVE link read as dead: the no-backup
+// upgrade branch removed it, wrote a regular file in its place, and printed a
+// warning saying the target does not exist when it does and still holds the
+// user's bytes. v0.76.2 failed loudly and kept the link, so that was a
+// regression this guard introduced (0.77.0 pre-tag review, MEDIUM-1).
+//
+// `statSync` with `throwIfNoEntry` FOLLOWS the link and returns undefined only
+// for ENOENT; every other error throws and is caught below as "cannot tell",
+// which leaves the entry alone. A circular link (ELOOP) therefore survives too
+// and the copy fails loudly, which is the right end for a state nothing here
+// can safely resolve.
 function danglingLinkTarget(p) {
   try {
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
-    if (fs.existsSync(p)) return null; // resolves — the user's own sync, leave it
+    if (fs.statSync(p, { throwIfNoEntry: false }) !== undefined) return null;
     return fs.readlinkSync(p);
   } catch {
     return null;
@@ -66,10 +81,18 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
       // spec-on-spec branch takes no backup at all by design (the v0.23.11
       // data-loss fix), and update.js reaches this code with no branch of its own.
       //
-      // A LIVE link is deliberately left alone: a user who symlinks the spec into
-      // their dotfiles to sync it across machines wants the new bytes to land
+      // A LIVE link is deliberately left alone HERE: a user who symlinks the spec
+      // into their dotfiles to sync it across machines wants the new bytes to land
       // there. Only the dead entry is replaced, and the target it named is printed
       // so the link can be rebuilt.
+      //
+      // "Here" is load-bearing and an earlier version of this comment omitted it.
+      // On install's BACKUP branch and on every update, `createBackup` has already
+      // moved a live link aside before this runs, so the bytes land in a fresh
+      // regular file and the user's sync stops — pre-existing behaviour, reached
+      // by two of the three paths (0.77.0 pre-tag review, LOW-4). The pass-through
+      // described above is real only on install's spec-on-spec branch, which takes
+      // no backup.
       const deadLink = danglingLinkTarget(dest);
       if (deadLink !== null) {
         fs.unlinkSync(dest);

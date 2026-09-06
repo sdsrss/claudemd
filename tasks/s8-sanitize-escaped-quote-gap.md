@@ -13,14 +13,23 @@ item with no trigger never gets picked up). Assessed 2026-08-24, not implemented
 > `hooks/pre-bash-safety-check.sh`, the §8 VERDICT machine, which was not
 > touched: 10 escape-bearing shapes across rm / npx / curl-sh were driven
 > through the live gate before and after that change and every verdict was
-> identical. Six are now rows in `tests/fixtures/bash-safety/corpus.tsv`, FN
-> direction only — this gate's own false-deny on
-> `echo "a \" ; rm -rf $HOME"` is deliberately NOT codified there, because
-> closing it is the work described below and codifying it would make that fix
-> read as a regression. The trigger fix does not satisfy the "any other
-> scheduled edit to `sanitize_cmd`'s quote machine" pickup trigger — a different
-> machine was edited — but it does mean the FN matrix below now has a worked
-> precedent to copy.
+> identical, and six of them are rows in `tests/fixtures/bash-safety/corpus.tsv`.
+>
+> **That measurement was the wrong one, and the pre-tag review said so.** Those
+> three families read `SANITIZED_CMD` and therefore could not have moved, while
+> `pre-bash-safety-check.sh:552` builds `REVSH_VIEW` from `hook_trigger_view` —
+> so the reverse-shell arm of this gate DID consume the changed machine. Two of
+> its verdicts moved, both toward bash (a transport inside an escaped-quote body
+> is one argument to `echo` and never runs). Four rows at the end of the corpus
+> now cover it, and the two `pass` rows fail against the pre-change machine,
+> which is what the first six did not do.
+>
+> Rows are FN-direction only: this gate's own false-deny on
+> `echo "a \" ; rm -rf $HOME"` is deliberately NOT codified, because closing it is
+> the work described below and codifying it would make that fix read as a
+> regression. The trigger fix does not satisfy the "any other scheduled edit to
+> `sanitize_cmd`'s quote machine" pickup trigger — a different machine was edited
+> — but the FN matrix below now has a worked precedent to copy.
 
 ## Assessment 2026-08-24 — the FN framing below is too pessimistic, but the work is still a batch of its own
 
