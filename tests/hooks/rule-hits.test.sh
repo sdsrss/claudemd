@@ -407,4 +407,49 @@ run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
   || { echo "FAIL: ROT-5 orphan lock survived an append under the size cap"; exit 1; }
 echo "PASS: ROT-5 orphan lock reaped even when the log is under the cap"
 
+# Case ROT-6 (2026-09-05 audit, Q-01 qualification): the size check that
+# AUTHORIZES a rotation must be re-read inside the mutex.
+#
+# ROT-1 above covers the arm where `mkdir` fails. The arm that actually loses
+# data is the one where it SUCCEEDS a moment too late: P2 reads the size while
+# the log is still over the cap, P1 rotates and releases, and P2's `mkdir` then
+# wins an uncontested lock and re-runs the two-step move on a log that is
+# already rotated — `mv .1 .2` carrying P1's fresh archive onto .2 and `mv log
+# .1` failing silently. Both prior generations gone, under the mutex added to
+# prevent exactly that (measured pre-fix on 4 concurrent appends: 6/200 trials
+# with no lock involved, 33/200 with a stale lock also present; post-fix 0/200
+# and 8/400).
+#
+# Deterministic stand-in for the interleave, same trick as ROT-4's `find` shim:
+# a counting `stat` shim answers the FIRST size query with an over-cap number
+# and every later one truthfully. That is precisely the state P2 is in — an
+# outer check that passed against a log which is no longer over the cap.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'ARCHIVE-1\n' > "$LOG.1"
+printf 'ARCHIVE-2\n' > "$LOG.2"
+STATSHIM="$TMP_HOME/statshim"
+mkdir -p "$STATSHIM"
+cat > "$STATSHIM/stat" <<'SHIM'
+#!/usr/bin/env bash
+# Size queries only (-c %s / -f %z); everything else goes to the real stat.
+if [[ "${1:-}" == "-c" && "${2:-}" == "%s" ]] || [[ "${1:-}" == "-f" && "${2:-}" == "%z" ]]; then
+  N=0
+  [[ -f "$SHIM_COUNT" ]] && N=$(cat "$SHIM_COUNT")
+  echo $((N + 1)) > "$SHIM_COUNT"
+  if (( N == 0 )); then echo 999999999; exit 0; fi
+fi
+exec /usr/bin/env -u PATH /usr/bin/stat "$@" 2>/dev/null || exec /bin/stat "$@"
+SHIM
+chmod +x "$STATSHIM/stat"
+SHIM_COUNT="$TMP_HOME/statshim.count" PATH="$STATSHIM:$PATH" \
+  CLAUDEMD_LOG_MAX_MB=1 run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1")" == "ARCHIVE-1" ]] \
+  || { echo "FAIL: ROT-6 .1 rotated on a stale size reading: $(cat "$LOG.1" 2>&1)"; exit 1; }
+[[ "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
+  || { echo "FAIL: ROT-6 .2 clobbered on a stale size reading: $(cat "$LOG.2" 2>&1)"; exit 1; }
+[[ ! -d "$LOG.rotating" ]] \
+  || { echo "FAIL: ROT-6 lock left behind by the no-op branch"; exit 1; }
+echo "PASS: ROT-6 a stale over-cap size reading does not rotate an already-rotated log"
+
 echo "rule-hits: all cases passed"

@@ -275,6 +275,30 @@ rule_hits_append() {
   # 1,960 bytes against a 5 MB cap). `[[ -d ]]` is a shell builtin, so the path
   # where no lock exists — every append but a handful — costs no process.
   # Reaping here also lets the same call go on to acquire and rotate.
+  #
+  # NON-ATOMIC, EVALUATED AND ACCEPTED — do not re-raise without new evidence
+  # (2026-09-05 audit Q-01, qualified in a sandbox). Age-check and `rmdir` are
+  # two steps: a reaper that decided "stale" can delete a lock a DIFFERENT
+  # process acquired in between, letting two holders into the critical section.
+  # Confirmed by injecting a 0.2 s window (the fresh lock's inode was removed by
+  # the earlier reaper), and end-to-end at 8/400 trials with 4 concurrent
+  # appends over a stale lock — down from 33/200 before the in-mutex size
+  # re-read below, which was carrying most of it. With no stale lock present:
+  # 0/200.
+  #
+  # The recipe the audit proposed — `mv "$lock" "$lock.reap.$$" && rmdir` — does
+  # NOT close it, and was measured rather than assumed: 6/400 on the same
+  # harness, statistically indistinguishable from the 8/400 here. rename(2) is
+  # atomic about the MOVE, not about the IDENTITY of what it moved, so a late
+  # reaper carries off a fresh lock exactly as `rmdir` deletes one.
+  #
+  # What would actually close it: claim the live generation with a single
+  # rename (`mv "$log_file" "$log_file.rotating.$$"`) and archive from there, so
+  # only one process can ever own the generation being rotated. Deferred, not
+  # rejected — it introduces a new orphan class (`*.rotating.<pid>` after a kill
+  # mid-rotation) that needs its own reaper, and this path has been changed
+  # three times in two days. The residual costs archived telemetry, never a
+  # gate decision or user data.
   if [[ -d "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
     rmdir "$lock" 2>/dev/null
   fi
@@ -284,8 +308,33 @@ rule_hits_append() {
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     if (( size > max_bytes )); then
       if mkdir "$lock" 2>/dev/null; then
-        [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-        mv -f "$log_file" "$log_file.1" 2>/dev/null
+        # RE-READ the size INSIDE the mutex. The check above only decides
+        # whether to try for the lock; this one decides whether to rotate, and
+        # it has to be this one (2026-09-05 audit Q-01 qualification).
+        #
+        # P1-1 put the two `mv`s under a mkdir mutex and was adjudicated closed
+        # on a test that holds the lock across the second append — which only
+        # ever exercises the arm where `mkdir` FAILS. The arm that loses the race
+        # by a hair is the live one: P2 reads the size while the log is still
+        # over the cap, P1 rotates and releases, and P2's `mkdir` then SUCCEEDS.
+        # P2 re-runs the two-step move on a log that is already rotated: `mv .1
+        # .2` carries P1's just-archived live generation onto .2 and `mv log .1`
+        # silently fails because there is no log left. End state {gone, gone,
+        # live-as-.2} — both prior generations lost, the exact P1-1 signature,
+        # under the mutex meant to prevent it. Measured on this tree with 4
+        # concurrent appends over an over-cap log: 6/200 trials with no lock
+        # involved at all, 33/200 with a stale lock also present.
+        #
+        # A second holder now re-reads a log that is either gone (stat → 0) or
+        # already under the cap, and does nothing. That also demotes the
+        # stale-reap race below (Q-01) from a data-loss path to a wasted stat:
+        # to lose an archive, two holders would both have to pass THIS check
+        # before either completes its first `mv`.
+        size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
+        if (( size > max_bytes )); then
+          [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+          mv -f "$log_file" "$log_file.1" 2>/dev/null
+        fi
         rmdir "$lock" 2>/dev/null
       fi
       # No else. A lock we did not get is a rotation another process is running;
