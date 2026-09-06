@@ -4,6 +4,24 @@
 item with no trigger never gets picked up). Assessed 2026-08-24, not implemented.
 **Recorded**: 2026-07-15, during the v0.47.1 F10/F11/F13 fixes.
 
+> **2026-09-06 — the TRIGGER-view twin is fixed; this file is still open.**
+> There are two state machines with this same gap. `HOOK_TRIGGER_QUOTE_AWK` in
+> `hooks/lib/hook-common.sh` — the trigger view shared by the §7 / §10-V / §11
+> gates — now models backslash escapes (commit `525a6fe`, round-13 item M-1),
+> with the FN guard on `\\` and `$'…'` deliberately left unmodelled and pinned
+> as fail-visible. THIS file is about `sanitize_cmd` in
+> `hooks/pre-bash-safety-check.sh`, the §8 VERDICT machine, which was not
+> touched: 10 escape-bearing shapes across rm / npx / curl-sh were driven
+> through the live gate before and after that change and every verdict was
+> identical. Six are now rows in `tests/fixtures/bash-safety/corpus.tsv`, FN
+> direction only — this gate's own false-deny on
+> `echo "a \" ; rm -rf $HOME"` is deliberately NOT codified there, because
+> closing it is the work described below and codifying it would make that fix
+> read as a regression. The trigger fix does not satisfy the "any other
+> scheduled edit to `sanitize_cmd`'s quote machine" pickup trigger — a different
+> machine was edited — but it does mean the FN matrix below now has a worked
+> precedent to copy.
+
 ## Assessment 2026-08-24 — the FN framing below is too pessimistic, but the work is still a batch of its own
 
 The "Deny-direction risk" paragraph below reads the fix as an FN-direction change
