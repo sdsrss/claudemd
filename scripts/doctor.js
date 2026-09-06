@@ -779,24 +779,56 @@ export async function doctor({ pruneBackups: prune } = {}) {
   //     disable enforcement → ok:false, investigate and restore.
   // Pre-fix this was unconditional ok:false, so 2 stray bad-event rows
   // mis-reported a healthy install.
+  //
+  // Third class, 2026-09-05 audit ENG-03: the gate ran and had NOTHING TO
+  // EVALUATE. `mem-index-missing` means the project has no MEMORY.md, which is
+  // the normal state of most projects; `transcript-missing` and
+  // `event-fields-missing` are the same shape one level up. memory-read-check.sh
+  // says so in the comment beside its own emitters. Lumping these with the
+  // prerequisite failures printed "enforcement silently bypassed (jq /
+  // patterns-file prerequisite missing). Investigate and restore." — a repair
+  // instruction that repairs nothing — and held doctor at exit 3 for the full
+  // 30-day window after one ship command in one index-less project. That is the
+  // steady-state-nonzero shape 0.72.0 and 0.74.2 already fixed twice elsewhere:
+  // an exit code that is always red carries no information.
+  //
+  // The UNEVALUABLE set is the closed one, so a reason nobody has classified yet
+  // (a new emitter, a renamed constant) lands in the ok:false bucket by default
+  // rather than being quietly downgraded to advisory.
+  const UNEVALUABLE_REASONS = new Set(['mem-index-missing', 'transcript-missing', 'event-fields-missing']);
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
   if (failOpenEvents.length > 0) {
     const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');
     const noiseCount = failOpenEvents.length - liveFailOpen.length;
-    const byReason = {};
-    for (const h of liveFailOpen) {
-      const key = `${h.hook}:${h.extra?.reason || '(unspecified)'}`;
-      byReason[key] = (byReason[key] || 0) + 1;
-    }
-    const summary = Object.entries(byReason)
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, n]) => `${k}=${n}`)
-      .join(', ');
-    if (liveFailOpen.length > 0) {
+    const unevaluable = liveFailOpen.filter(h => UNEVALUABLE_REASONS.has(h.extra?.reason || ''));
+    const prereqFailOpen = liveFailOpen.filter(h => !UNEVALUABLE_REASONS.has(h.extra?.reason || ''));
+    const summarize = rows => {
+      const byReason = {};
+      for (const h of rows) {
+        const key = `${h.hook}:${h.extra?.reason || '(unspecified)'}`;
+        byReason[key] = (byReason[key] || 0) + 1;
+      }
+      return Object.entries(byReason)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `${k}=${n}`)
+        .join(', ');
+    };
+    // Both counts print on either branch: a red row must not hide the advisory
+    // rows behind it, and an advisory row must not read as "nothing happened".
+    const unevaluableClause = unevaluable.length
+      ? ` Separately, ${unevaluable.length} gate invocation(s) could not evaluate (${summarize(unevaluable)}) — the project had no MEMORY.md / transcript, which is not a bypass.`
+      : '';
+    if (prereqFailOpen.length > 0) {
       checks.push({
         name: 'hook-fail-open',
         ok: false,
-        detail: `${liveFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summary}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore.`,
+        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore.${unevaluableClause}`,
+      });
+    } else if (unevaluable.length > 0) {
+      checks.push({
+        name: 'hook-fail-open',
+        ok: true,
+        detail: `${unevaluable.length} gate invocation(s) in ${RULE_USAGE_WINDOW_DAYS}d could not evaluate (${summarize(unevaluable)}): the project directory had no MEMORY.md index or no session transcript, so the rule had nothing to check — enforcement itself is intact. Add a memory index to those projects if they should have one; otherwise this is expected.`,
       });
     } else {
       checks.push({

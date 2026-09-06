@@ -151,6 +151,41 @@ test('restore option: finds newest backup and copies back', async () => {
   const res = await uninstall({ specAction: 'restore' });
   assert.equal(res.specAction, 'restore');
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'prior-version\n');
+  // The result must SAY what it put back. restoreBackup has always returned the
+  // list and uninstall has always discarded it, so "restored nothing" and
+  // "restored everything" printed the same JSON (2026-09-05 audit ENG-01).
+  assert.deepEqual(res.restored, [path.join(tmpHome, '.claude/CLAUDE.md')]);
+  assert.equal(res.warning, undefined, 'a restore that put files back carries no warning');
+});
+
+test('ENG-01: a restore that puts nothing back says so instead of reporting success', async () => {
+  // The live shape: install moved a stow-style relative symlink into the backup
+  // dir, where it dangles. restoreBackup skips unstattable entries (R10-04), so
+  // the loop completes having copied zero files and the exit code, the
+  // `specAction: "restore"` field and the stderr were all indistinguishable from
+  // a real restore. The user is told to run this command by install's own WARN.
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  fs.symlinkSync(path.join(tmpHome, 'gone/CLAUDE.md'), path.join(bkDir, 'CLAUDE.md'));
+  const specBefore = fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8');
+
+  const res = await uninstall({ specAction: 'restore' });
+
+  assert.equal(res.specAction, 'restore', 'the requested disposition still ran');
+  assert.deepEqual(res.restored, [], 'zero files, stated as zero');
+  assert.equal(res.warning, 'restore-empty');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    specBefore,
+    'nothing was restored, so the spec is still in place — the warning is the only signal'
+  );
+});
+
+test('ENG-01: keep/delete report restored:null, not a bare missing key', async () => {
+  // Same reasoning as specAction:'noop' below — consumers read `.restored`
+  // unconditionally; null means "not a restore", [] means "restored nothing".
+  const res = await uninstall({ specAction: 'keep' });
+  assert.equal(res.restored, null);
 });
 
 test('manifest consumed for precise removal', async () => {

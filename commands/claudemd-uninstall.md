@@ -13,6 +13,7 @@ Usage:
 
 - Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the most recent backup:
   `CLAUDEMD_SPEC_ACTION=restore node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
+  This restores; it does not remove. `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` — spec files claudemd added that you never had — are left in place, because removing spec files is `CLAUDEMD_SPEC_ACTION=delete` and that path is gated behind `CLAUDEMD_CONFIRM=1`. Claude Code does not auto-load those three, so they are inert; delete them by hand if you want them gone.
 
 - Full removal (delete spec files; requires hard-AUTH confirm):
   `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
@@ -23,4 +24,4 @@ After this command finishes, run `/plugin uninstall claudemd@claudemd` to remove
 
 **Note**: hooks remain registered until you also run `/plugin uninstall`. This command only clears the user-global state; the plugin's `hooks/hooks.json` is the authoritative registration site, removed when the cache is deleted.
 
-Surface the script's JSON output to the user: `specAction`, plus — when present — `warning` (already-uninstalled), `settingsWarning`, and a `statusline.action` of `error`. The last two mean `~/.claude/settings.json` could not be parsed, so anything claudemd owns inside that file (legacy hook entries, the statusLine) was left in place: say so and tell the user to fix the JSON and re-run. `specAction: "keep"` on its own does NOT mean the uninstall was complete.
+Surface the script's JSON output to the user: `specAction`, plus — when present — `warning` (`already-uninstalled` or `restore-empty`), `settingsWarning`, and a `statusline.action` of `error`. On a restore, `restored` lists the files actually copied back; `warning: "restore-empty"` means that list is empty and the spec files are still in place — report that as a FAILED restore and point at `ls -l` on the backup dir, because `specAction: "restore"` is printed either way. The last two mean `~/.claude/settings.json` could not be parsed, so anything claudemd owns inside that file (legacy hook entries, the statusLine) was left in place: say so and tell the user to fix the JSON and re-run. `specAction: "keep"` on its own does NOT mean the uninstall was complete.

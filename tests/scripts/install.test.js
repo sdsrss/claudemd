@@ -289,6 +289,48 @@ test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved
   );
 });
 
+test('ENG-01: a stow-style RELATIVE symlink is backed up as a readable entry, not a dangling link', async () => {
+  // GNU stow (and chezmoi) link ~/.claude/CLAUDE.md at a dotfiles checkout with
+  // a RELATIVE target, and rename(2) moves the LINK — so the entry landing in
+  // backup-<stamp>/ re-resolves `../dotfiles/CLAUDE.md` against its new parent
+  // and dangles the instant it is written. The WARN below then hands the user a
+  // backup path that cannot be read, and `CLAUDEMD_SPEC_ACTION=restore` puts
+  // nothing back while reporting success (2026-09-05 audit ENG-01). Absolute
+  // links already worked, which is why this hid: the failure is relative-only.
+  const personalContent = '# My personal instructions\n\nAlways respond in 中文.\n';
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  fs.writeFileSync(path.join(dotfiles, 'CLAUDE.md'), personalContent);
+  fs.symlinkSync('../dotfiles/CLAUDE.md', path.join(tmpHome, '.claude/CLAUDE.md'));
+
+  const res = await install({ pluginRoot });
+
+  assert.equal(res.userContentDetected, true, 'content read THROUGH the link is not spec-shaped');
+  assert.ok(res.backupDir && fs.existsSync(res.backupDir));
+  const entry = path.join(res.backupDir, 'CLAUDE.md');
+  assert.equal(
+    fs.readFileSync(entry, 'utf8'),
+    personalContent,
+    'the path named in the WARN must be readable'
+  );
+  // The user's own file is not claudemd's to move: only the link was taken.
+  assert.equal(
+    fs.readFileSync(path.join(dotfiles, 'CLAUDE.md'), 'utf8'),
+    personalContent,
+    'the dotfiles source itself is untouched'
+  );
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n',
+    'install proceeded — writing a regular file, not through the old link'
+  );
+
+  // The end the user actually cares about: restore brings the content back.
+  const restored = restoreBackup(res.backupDir, path.join(tmpHome, '.claude'));
+  assert.equal(restored.length, 1, 'restore must report the file it put back');
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), personalContent);
+});
+
 test('D7: existing CLAUDE.md with spec H1 is NOT flagged as user content (v0.23.11: spec-on-spec = no backup)', async () => {
   // Anything matching `# AI-CODING-SPEC vX.Y.Z` in the first 256 bytes is a
   // prior claudemd install — a routine spec upgrade, NOT user content. v0.23.11

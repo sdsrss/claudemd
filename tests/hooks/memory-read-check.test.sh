@@ -808,6 +808,49 @@ OUT=$(mkevent "git status push" "$SESS" | bash "$HOOK" 2>&1)
 [[ -z "$OUT" ]] && echo "PASS: 47 git status push is not a push" \
   || { echo "FAIL: 47 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 48 (2026-09-05 audit ENG-02): the TAG-match stage stripped quotes with
+# two independent line-based seds —
+#   sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+# — the exact pair R11-05 replaced in hook_trigger_view (and v0.47.1 replaced in
+# pre-bash-safety-check.sh) for the documented reason: single- and double-quote
+# context are MUTUALLY EXCLUSIVE in the shell, so two passes that each ignore the
+# other's context pair the closing quote of one region with the opening quote of
+# the NEXT and delete the command in between. The TRIGGER stage was already on
+# the shared state machine, so the hook still decided to gate this command — and
+# then matched tags against a string the topic word had been eaten out of, found
+# nothing, and exited 0. A HARD §11 gate declining on exactly the command it
+# exists to hold, with no fail-open row to show for it.
+#
+# jq builds the event so the embedded quotes survive the round trip; the
+# hand-rolled heredoc above cannot carry a `"` inside the command.
+mkevent_json() {
+  jq -nc --arg c "$1" --arg s "$2" --arg w "$CWD" \
+    '{session_id:$s, tool_name:"Bash", tool_input:{command:$c}, cwd:$w}'
+}
+#
+# The tag is deliberately NOT one of the trigger verbs: with `ship` tagged, both
+# cases below match on the verb itself and neither can see what the sanitize
+# stage did to the rest of the command.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Ship runbook](feedback_ship.md) `[runbook]` — the six version sites
+EOF
+touch "$MEM_DIR/feedback_ship.md"
+SESS="sess48"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent_json 'grep '"'"'a"b'"'"' f && ship runbook && grep '"'"'c"d'"'"' g' "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 48 cross-quote pairing does not swallow the topic word" \
+  || { echo "FAIL: 48 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 49: FP guard for the same change — the strip must still HAPPEN. A topic
+# word inside a quoted body is prose, not a topic declaration (the reason
+# sanitize_for_tagmatch exists at all), and mixed quotes must not change that.
+SESS="sess49"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent_json 'ship '"'"'runbook'"'"' && echo "done"' "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 49 quoted topic word still does not match a tag" \
+  || { echo "FAIL: 49 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

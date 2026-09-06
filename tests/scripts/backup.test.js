@@ -320,3 +320,62 @@ test('R10-04: restoreBackup skips a dangling symlink instead of throwing', () =>
   assert.equal(fs.readFileSync(path.join(target, 'zzz.md'), 'utf8'), 'tail');
   assert.ok(!fs.existsSync(path.join(target, 'AAA-dangling.md')));
 });
+
+test('ENG-01: createBackup absolutises a relative symlink instead of moving it into a dangle', () => {
+  // R10-04 above hardened the READ side against a dangling entry. This is the
+  // WRITE side that manufactures them: rename(2) moves the link itself, and a
+  // relative target re-resolves against backup-<stamp>/ — one directory deeper
+  // and one branch over from where it was written. `../dotfiles/CLAUDE.md` is
+  // the GNU stow default, so the whole stow/chezmoi population got a backup
+  // entry that was dangling before install finished (2026-09-05 audit ENG-01).
+  const dotfiles = path.join(box.home, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  fs.writeFileSync(path.join(dotfiles, 'CLAUDE.md'), 'personal\n');
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  fs.symlinkSync('../dotfiles/CLAUDE.md', src);
+
+  const { dir, movedFiles } = createBackup([src]);
+
+  assert.equal(movedFiles.length, 1);
+  assert.equal(fs.existsSync(src), false, 'source moved aside so the spec can take its place');
+  const entry = path.join(dir, 'CLAUDE.md');
+  assert.equal(fs.lstatSync(entry).isSymbolicLink(), true, 'still a link — the bytes are not ours');
+  assert.equal(path.isAbsolute(fs.readlinkSync(entry)), true, 'absolute, so the target survives the move');
+  assert.equal(fs.readFileSync(entry, 'utf8'), 'personal\n');
+  // The whole point of the entry: restore can read through it.
+  assert.deepEqual(restoreBackup(dir, path.join(box.home, '.claude')), [src]);
+  assert.equal(fs.readFileSync(src, 'utf8'), 'personal\n');
+  assert.equal(fs.lstatSync(src).isSymbolicLink(), false, 'restored as a regular file');
+});
+
+test('ENG-01: an ALREADY-absolute symlink keeps its target verbatim', () => {
+  // FP guard for the branch above: absolute links worked before the fix and
+  // must not be rewritten by path.resolve into something else.
+  const dotfiles = path.join(box.home, 'abs-dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const target = path.join(dotfiles, 'CLAUDE.md');
+  fs.writeFileSync(target, 'abs-personal\n');
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  fs.symlinkSync(target, src);
+
+  const { dir } = createBackup([src]);
+
+  assert.equal(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), target);
+  assert.equal(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'abs-personal\n');
+});
+
+test('ENG-01: a plain file is still MOVED, byte-for-byte, by the same call', () => {
+  // Non-regression on the majority path: the symlink branch must not turn an
+  // ordinary backup into a copy-and-leave (install would then overwrite a file
+  // that is still the user's).
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  fs.writeFileSync(src, 'plain personal\n');
+
+  const { dir, movedFiles } = createBackup([src]);
+
+  assert.equal(movedFiles.length, 1);
+  assert.equal(fs.existsSync(src), false);
+  const entry = path.join(dir, 'CLAUDE.md');
+  assert.equal(fs.lstatSync(entry).isSymbolicLink(), false);
+  assert.equal(fs.readFileSync(entry, 'utf8'), 'plain personal\n');
+});

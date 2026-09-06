@@ -45,6 +45,15 @@ No flags. Behavior is read from the following env vars:
   CLAUDEMD_CONFIRM      1 to confirm hard-AUTH for spec delete
   CLAUDEMD_PURGE        1 to also wipe ~/.claude/.claudemd-state and logs
 
+restore copies the newest backup-<stamp>/ back over ~/.claude and REPORTS what
+it copied (\`restored\`; \`warning: "restore-empty"\` when that list is empty).
+It restores; it does not remove. The spec files claudemd added and you never
+had — CLAUDE-extended.md, CLAUDE-changelog.md, OPERATOR.md — are left in place,
+because removing spec files is what CLAUDEMD_SPEC_ACTION=delete does and that
+path is gated behind CLAUDEMD_CONFIRM=1. Claude Code does not auto-load those
+three, so they are inert residue; delete them by hand if you want them gone
+(2026-09-05 audit Q-02, maintainer decision: document, do not widen restore).
+
 Options:
   --help, -h     Print this message and exit.
 
@@ -137,6 +146,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   if (!m.exists || !m.data) {
     return {
       specAction: 'noop',
+      restored: null,
       warning: 'already-uninstalled',
       settingsRemoved,
       settingsWarning,
@@ -148,12 +158,29 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
 
   // 2. Spec file disposition
   let outcome = specAction;
+  // What the restore actually put back. `null` = this run was not a restore;
+  // `[]` = a restore that copied nothing. The two were indistinguishable in the
+  // output until 2026-09-05 (audit ENG-01): restoreBackup has always returned
+  // the list and this line has always dropped it, so a backup dir holding only
+  // a dangling entry — which install itself produced for every stow-style
+  // relative symlink — printed `specAction: "restore"`, exited 0, and left the
+  // spec in place. The user reaches this command from install's own WARN, so a
+  // false success here is the last thing standing between them and their
+  // personal instructions.
+  let restored = null;
   if (specAction === 'delete') {
     for (const p of specHome()) {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }
   } else if (specAction === 'restore') {
-    restoreBackup(restoreSource, backupRoot());
+    restored = restoreBackup(restoreSource, backupRoot());
+    if (restored.length === 0) {
+      process.stderr.write(
+        `[claudemd] WARN: restore read no files from ${restoreSource} — your ~/.claude spec ` +
+          `files are UNCHANGED. Entries that cannot be opened (a backed-up symlink whose ` +
+          `target has moved) are skipped. Check \`ls -l ${restoreSource}\`.\n`
+      );
+    }
   } else {
     outcome = 'keep';
   }
@@ -241,7 +268,12 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  return { specAction: outcome, settingsRemoved, settingsWarning, statusline };
+  const result = { specAction: outcome, restored, settingsRemoved, settingsWarning, statusline };
+  // Same reasoning as the `warning: 'already-uninstalled'` return above: the
+  // exit code and specAction say the requested disposition ran, and only this
+  // field distinguishes "put your files back" from "found nothing to put back".
+  if (restored && restored.length === 0) result.warning = 'restore-empty';
+  return result;
 }
 
 if (invokedAsMain(import.meta.url)) {

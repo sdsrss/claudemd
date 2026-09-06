@@ -87,9 +87,40 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const movedFiles = [];
   for (const src of files) {
+    // existsSync FOLLOWS the link, so an already-dangling source is skipped
+    // here and never reaches the branch below — unchanged behavior.
     if (!fs.existsSync(src)) continue;
     const dest = path.join(dir, path.basename(src));
-    fs.renameSync(src, dest);
+    // A SYMLINKED source is re-pointed, not moved.
+    //
+    // rename(2) moves the LINK, and a RELATIVE link resolves against its new
+    // parent — so `~/.claude/CLAUDE.md -> ../dotfiles/CLAUDE.md`, the GNU stow
+    // default and chezmoi's usual shape, lands in `backup-<stamp>/` resolving
+    // one directory deeper and dangles before install has finished. Everything
+    // downstream then reads as success on an entry that cannot be opened:
+    // install's WARN names it as the place the user's instructions went,
+    // restoreBackup's statSync guard (R10-04) skips it, and uninstall reports
+    // `specAction: "restore"` having copied nothing back (2026-09-05 audit
+    // ENG-01, sandbox-reproduced). Absolute links already survived the move,
+    // which is why this sat behind the guard added FOR dangling entries.
+    //
+    // Absolutising one level is enough: a chain's next hop still resolves
+    // against ITS own unmoved directory. The link — not a copy of the bytes —
+    // is what belongs here, because the bytes were never claudemd's to move;
+    // the dotfiles source stays exactly where the user put it, and restore
+    // copies THROUGH the entry.
+    let linkTarget = null;
+    try {
+      if (fs.lstatSync(src).isSymbolicLink()) linkTarget = fs.readlinkSync(src);
+    } catch {
+      /* raced between existsSync and lstat — fall through to the rename */
+    }
+    if (linkTarget !== null) {
+      fs.symlinkSync(path.resolve(path.dirname(src), linkTarget), dest);
+      fs.unlinkSync(src);
+    } else {
+      fs.renameSync(src, dest);
+    }
     movedFiles.push(dest);
   }
   return { dir, movedFiles };

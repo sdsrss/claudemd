@@ -34,8 +34,12 @@ if ! declare -f memtags_match >/dev/null 2>&1; then
   exit 0
 fi
 # Same reasoning for the shared trigger fragment: unset under `set -u` aborts
-# the hook mid-regex, which is a fail-open with no row on the record.
-if [[ -z "${HOOK_GIT_GLOBAL_FLAGS:-}" ]]; then
+# the hook mid-regex, which is a fail-open with no row on the record. Both
+# constants are asserted, not just the one in the regex: an empty
+# HOOK_TRIGGER_QUOTE_AWK would make `awk ""` a cat, leaking every quoted body
+# into tag matching — a silent FP storm rather than an abort, so it needs the
+# assertion more, not less.
+if [[ -z "${HOOK_GIT_GLOBAL_FLAGS:-}" || -z "${HOOK_TRIGGER_QUOTE_AWK:-}" ]]; then
   hook_record_failopen memory-read-check prereq-missing
   exit 0
 fi
@@ -115,17 +119,30 @@ sanitize_for_tagmatch() {
   # LOOKAHEAD guard, so `echo $((1<<n)) && git push` opened a phantom heredoc and
   # blanked the trigger — the §11 gate then allowed the push (2026-07-25 audit).
   out=$(printf '%s' "$raw" | hook_strip_heredoc_bodies)
-  # Strip quoted-string bodies. Flatten newlines to \r first so the (line-based)
-  # sed also strips MULTI-LINE quoted args — e.g. a multi-paragraph
-  # `gh release create --notes "..."`. Without the flatten, an opening quote
-  # left unclosed on its own line leaks the whole body into tag matching — the
-  # exact FP this strip exists to prevent (v0.23.10: a multi-line release-notes
-  # body's "self-dogfood" matched a `dogfood` tag and forced a spurious deny).
-  # \r is the placeholder — bash command strings carry no literal CR.
-  out=$(printf '%s' "$out" | tr '\n' '\r' \
-    | sed -E 's/"[^"]*"/""/g' \
-    | sed -E "s/'[^']*'/''/g" \
-    | tr '\r' '\n')
+  # Strip quoted-string bodies, via the SAME single-pass state machine the
+  # trigger stage above uses (hook-common.sh HOOK_TRIGGER_QUOTE_AWK).
+  #
+  # This was two independent line-based seds —
+  #   sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"
+  # — with a `tr '\n' '\r'` / `tr '\r' '\n'` flatten around them so the
+  # line-based seds could also reach a MULTI-LINE quoted arg (a multi-paragraph
+  # `gh release create --notes "…"`; v0.23.10). R11-05 replaced exactly that pair
+  # in hook_trigger_view, and v0.47.1 replaced it in pre-bash-safety-check.sh,
+  # for the reason spelled out at the constant: single- and double-quote context
+  # are MUTUALLY EXCLUSIVE in the shell, so two passes that each ignore the
+  # other's context pair the closing quote of one region with the opening quote
+  # of the NEXT and delete everything between them. `grep 'a"b' f && ship runbook
+  # && grep 'c"d' g` came out of the pair as `grep '' g` — the topic word gone,
+  # so memtags_match found nothing and this HARD §11 gate exited 0 on a command
+  # its own trigger had just decided to hold, with no fail-open row (2026-09-05
+  # audit ENG-02). The trigger stage was fixed in R11-05 and this copy was
+  # missed, which is why the hook still fires and still fails to match.
+  #
+  # The awk reads the whole input as one record (RS="\004"), so multi-line quoted
+  # bodies are covered by construction and the \r round trip is gone with it.
+  # Output still uses `''` / `""` markers, so token boundaries are unchanged from
+  # the seds on every input where the seds were right.
+  out=$(printf '%s' "$out" | awk "$HOOK_TRIGGER_QUOTE_AWK")
   # Strip line comments LAST — AFTER the quote strips. Pre-v0.23.11 this ran
   # first, so a `#` inside a quoted commit message (`git commit -m "closes #42"`)
   # was mistaken for a real comment and everything after it — including chained

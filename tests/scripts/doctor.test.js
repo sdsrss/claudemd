@@ -553,6 +553,64 @@ test('v0.23.6: hook-fail-open — patterns-missing fail-open flags a live bypass
   assert.match(c.detail, /patterns-missing/);
 });
 
+test('ENG-03: hook-fail-open — "no MEMORY.md in that project" is advisory, not a bypass', async () => {
+  // mem-index-missing means the §11 gate RAN and had nothing to evaluate: the
+  // project has no memory index, which is the normal state of most projects.
+  // Classed with jq/patterns it printed "enforcement silently bypassed (jq /
+  // patterns-file prerequisite missing). Investigate and restore." and held
+  // doctor at exit 3 for the whole 30-day window after a single ship command in
+  // a single index-less project — a permanent red with an unactionable repair
+  // instruction (2026-09-05 audit ENG-03; this repo's own doctor was red on it).
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  const rows =
+    `{"ts":"${now}","hook":"memory-read-check","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"mem-index-missing"},"session_id":null}\n`.repeat(
+      10
+    );
+  fs.writeFileSync(log, rows);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.ok(c, 'hook-fail-open check must exist');
+  assert.equal(c.ok, true, 'could-not-evaluate must not read as a live bypass');
+  assert.match(c.detail, /10 gate invocation\(s\)/, 'the count is still reported, not hidden');
+  assert.match(c.detail, /memory-read-check:mem-index-missing=10/);
+  assert.doesNotMatch(c.detail, /silently bypassed/, 'no unactionable repair instruction');
+});
+
+test('ENG-03: a real prerequisite failure still flags red, and still names the advisory rows', async () => {
+  // The direction that must NOT loosen: one jq-missing row among any number of
+  // could-not-evaluate rows is a genuine disabled gate. The advisory count rides
+  // along in the same detail so the red row does not hide it.
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(
+    log,
+    `{"ts":"${now}","hook":"memory-read-check","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"mem-index-missing"},"session_id":null}\n` +
+      `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"jq-missing"},"session_id":null}\n`
+  );
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.equal(c.ok, false, 'jq-missing disables enforcement — still red');
+  assert.match(c.detail, /banned-vocab:jq-missing=1/);
+  assert.match(c.detail, /could not evaluate .*mem-index-missing=1/);
+});
+
+test('ENG-03: an UNKNOWN fail-open reason defaults to red, not to advisory', async () => {
+  // The unevaluable set is the closed one on purpose: a reason added by a future
+  // emitter must land in the ok:false bucket until someone classifies it, or the
+  // next silent bypass ships as an advisory line nobody reads.
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(
+    log,
+    `{"ts":"${now}","hook":"some-new-hook","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"future-reason"},"session_id":null}\n`
+  );
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /some-new-hook:future-reason=1/);
+});
+
 test('R-N6+: healthy rows stay terse — no token detail attached', async () => {
   // Healthy section: detail must NOT include token breakdown. Per-token
   // forensics are only useful when the rule is being defeated.
