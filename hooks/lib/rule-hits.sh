@@ -161,10 +161,10 @@ _rule_hits_fallback_row() {
     "$extra"
 }
 
-# _rule_hits_path_age_seconds PATH → age in whole seconds on stdout.
+# _rule_hits_lock_age_seconds DIR → age in whole seconds on stdout.
 #
 # `find -mmin` is NOT usable here: BSD find (macOS) rounds the age UP to the
-# next full minute, so an entry two seconds old already reads as "1 minute" and
+# next full minute, so a lock two seconds old already reads as "1 minute" and
 # `-mmin -1` — strictly less than one — reports nothing. The v0.76.0 stale
 # branch read that as "older than a minute" and reaped a lock a live rotation
 # was still holding, on the platform half of CI runs on (2026-09-05 post-ship
@@ -172,10 +172,8 @@ _rule_hits_fallback_row() {
 # over the two `stat` flavors has no rounding to disagree about.
 #
 # Anything unreadable — no stat, no date, a clock behind the file's mtime —
-# yields 0, i.e. "fresh". Never reap an entry whose age cannot be established.
-# (Named for a lock until the mkdir mutex was replaced by the claim rotation
-# below; it now ages orphan claim FILES, and the rounding lesson is the same.)
-_rule_hits_path_age_seconds() {
+# yields 0, i.e. "fresh". Never reap a lock whose age cannot be established.
+_rule_hits_lock_age_seconds() {
   local mtime now
   mtime=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
   now=$(date +%s 2>/dev/null || echo 0)
@@ -187,89 +185,6 @@ _rule_hits_path_age_seconds() {
     echo $(( now - mtime ))
   else
     echo 0
-  fi
-}
-
-# _rule_hits_place_generation CLAIMED LOG — file a recovered generation among the
-# two archive slots so that `.1` is the NEWEST of what survives, then drop the
-# oldest. Consumes CLAIMED either way.
-#
-# A PLACEMENT THAT FAILS LEAVES THE FILE. The earlier form was
-# `mv … || rm -f`, which answered a failed rename by deleting the rows it was
-# trying to file. The claim keeps its name, so the next reaper retries it once it
-# is past the threshold; only the explicit retention branch removes anything.
-#
-# TIES GO TO THE GENERATION BEING PLACED. mtime is whole seconds, so a rotation
-# that follows its predecessor inside one second reads as the same age — and with
-# a strict `<` the just-rotated live generation lost the tie and was filed at
-# `.2`, behind an older one, inverting the very order this function exists to
-# keep. The claim is by construction the newest thing on disk; an orphan is at
-# least as new as what it ties with.
-#
-# AGE DECIDES, NOT SLOT POSITION. The first version of this placed into whichever
-# slot was empty, which inverted the archives whenever the orphan was newer than
-# `.1` and `.2` was free — and nothing else in this file ever compares the two,
-# so the rotator's next cascade (`mv .1 .2`) carried the older generation over
-# the newer one and destroyed it. Two ordinary appends, no concurrency
-# (0.77.0 pre-tag review round 2, HIGH 3; the earlier round's HIGH 2 was the same
-# defect reached through the both-slots-full arm).
-#
-# The archives are normalised on the way in, so an inversion left by any earlier
-# code path heals rather than propagating. `.1` newer than `.2` is the invariant
-# the rotator's cascade depends on and the only one this function guarantees.
-_rule_hits_place_generation() {
-  local claimed="$1" log_file="$2" o_age a1_age a2_age swap
-  # A directory at an archive path would swallow the file: `mv -f file dir/`
-  # succeeds by moving it INSIDE. Leave the generation where it is — visible and
-  # recoverable by hand — rather than hiding it in there.
-  if [[ -d "$log_file.1" || -d "$log_file.2" ]]; then
-    return 0
-  fi
-  if [[ -e "$log_file.1" && -e "$log_file.2" ]]; then
-    a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
-    a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
-    if (( a2_age < a1_age )); then
-      swap="$log_file.2.swap.$$.${RANDOM:-0}"
-      if mv -f "$log_file.2" "$swap" 2>/dev/null; then
-        mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-        mv -f "$swap" "$log_file.1" 2>/dev/null
-      fi
-    fi
-  fi
-  o_age=$(_rule_hits_path_age_seconds "$claimed")
-  if [[ ! -e "$log_file.1" && ! -e "$log_file.2" ]]; then
-    mv -f "$claimed" "$log_file.1" 2>/dev/null
-    return 0
-  fi
-  if [[ ! -e "$log_file.1" ]]; then
-    # Only `.2` occupied. Newer than it → take `.1`; older → `.2` is the newer of
-    # the two and belongs in `.1`, so it moves up and the claim takes `.2`.
-    a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
-    if (( o_age <= a2_age )); then
-      mv -f "$claimed" "$log_file.1" 2>/dev/null
-    else
-      mv -f "$log_file.2" "$log_file.1" 2>/dev/null
-      mv -f "$claimed" "$log_file.2" 2>/dev/null
-    fi
-    return 0
-  fi
-  a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
-  if (( o_age <= a1_age )); then
-    # Newest of what is present: cascade `.1` down, dropping whatever was in `.2`.
-    mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-    mv -f "$claimed" "$log_file.1" 2>/dev/null
-    return 0
-  fi
-  if [[ ! -e "$log_file.2" ]]; then
-    mv -f "$claimed" "$log_file.2" 2>/dev/null
-    return 0
-  fi
-  a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
-  if (( o_age <= a2_age )); then
-    mv -f "$claimed" "$log_file.2" 2>/dev/null
-  else
-    # Oldest of three, and only two are retained.
-    rm -f "$claimed" 2>/dev/null
   fi
 }
 
@@ -338,116 +253,64 @@ rule_hits_append() {
   # primary, so all three are analysis input and the race costs roughly 380
   # days of hit data at the log's measured ~26 KB/day.
   #
-  # THE EXCLUSION IS A CLAIM, NOT A LOCK (v0.76.3, round-13 next-batch item 2).
-  # A rotator renames the live log to a private `<log>.rotating.<pid>.<n>` and
-  # archives from there, so ownership of a generation is established by the
-  # rename itself: rename(2) unlinks the source, and a second process finds
-  # nothing to claim. Both branches stay silent; a rotation that does not happen
-  # this call is not an error.
-  #
-  # It replaces a `mkdir` mutex, and the reason is measured rather than
-  # aesthetic. `mkdir` was chosen as "atomic on every filesystem this runs on";
-  # the 0.76.2 pre-tag review found that is not true of the DEVELOPMENT host —
-  # 200 trials of four processes racing one path gave 206 wins where 200 were
-  # expected, because /usr/bin/mkdir there is uutils coreutils 0.8.0 (the
-  # Ubuntu 25.10 default). On the same host /usr/bin/mv is GNU coreutils 9.7 and
-  # 200 trials of four processes racing one rename gave exactly one winner every
-  # time, 0 with more than one and 0 with none. So this does not merely move the
-  # race — it moves the exclusion onto a primitive measured to hold here, and
-  # onto the one POSIX guarantees for the operation being performed.
-  #
-  # The cost is a new orphan class: a process killed between the claim and the
-  # placement leaves a `.rotating.<pid>.<n>` file holding a full generation of
-  # rows. That file is data, not a lock, so the reaper below completes the
-  # interrupted rotation instead of deleting it, and a reaper claims the orphan
-  # by the same rename before touching it — which is why two reapers cannot both
-  # place the same generation. The old stale-LOCK reap was check-then-`rmdir`,
-  # two steps that could remove a lock another process had just acquired
-  # (2026-09-05 audit Q-01); nothing here checks a condition and then acts on a
-  # path another process may have replaced in between.
+  # The exclusion is a `mkdir` — atomic on every filesystem this runs on, no
+  # flock dependency on a fail-open path, and nothing to reap: the loser skips
+  # rotation (the winner is already doing it) and the next append re-checks the
+  # size, while a lock left behind by a killed holder is removed by the first
+  # append that finds it older than a minute. Both branches stay silent; a
+  # rotation that does not happen this call is not an error.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
   # Numeric-guard: a non-integer env value (user typo) would make
   # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because
   # this runs before the JSONL write, the telemetry row would be silently lost.
-  # The digit test alone is not enough: `17592186044416 * 1024 * 1024` wraps int64
-  # to 0 and larger values go negative, so a cap asked for in the
-  # digit-repetition direction became the SMALLEST possible one — rotation on
-  # every single append, three rows of history retained (0.77.0 pre-tag review,
-  # LOW 1). 1 TB is past any real log and leaves the product inside int64.
-  [[ "$max_mb" =~ ^[0-9]+$ ]] && (( max_mb <= 1048576 )) || max_mb=5
+  [[ "$max_mb" =~ ^[0-9]+$ ]] || max_mb=5
   local max_bytes=$((max_mb * 1024 * 1024))
+  local lock="$log_file.rotating"
 
-  # Orphan-claim reap runs BEFORE the size check, and that ordering is the whole
-  # point, inherited from the lock this replaces: a holder killed mid-rotation
-  # leaves the log already claimed and therefore UNDER the cap, so a reap branch
-  # nested inside the size check can never run and the orphan is permanent
-  # (2026-09-05 post-ship review, finding 3 — a decade-old lock survived 10
-  # appends with the live log at 1,960 bytes against a 5 MB cap). An unmatched
-  # glob costs no process, so the path every append but a handful takes is one
-  # builtin test.
+  # Stale-lock reap runs BEFORE the size check, and that ordering is the whole
+  # point: a holder killed after its last `mv` leaves the log already rotated
+  # and therefore UNDER the cap, so a reap branch nested inside the size check
+  # can never run and the lock is permanent (2026-09-05 post-ship review,
+  # finding 3 — a decade-old lock survived 10 appends with the live log at
+  # 1,960 bytes against a 5 MB cap). `[[ -d ]]` is a shell builtin, so the path
+  # where no lock exists — every append but a handful — costs no process.
+  # Reaping here also lets the same call go on to acquire and rotate.
   #
-  # An orphan holds ROWS, so it is completed rather than deleted — and which
-  # generation it is has to be MEASURED, not assumed. The first version of this
-  # branch placed by slot occupancy alone, on the reasoning that an orphan
-  # predates any `.1` written after the crash. That is true only when the crash
-  # is FOLLOWED by two rotations. In the ordinary sequence — two rotations, then
-  # a kill — the orphan is the NEWEST generation and both slots hold older ones,
-  # so the branch deleted the newest and kept two older ones, with no concurrency
-  # required (0.77.0 pre-tag review, HIGH 2; v0.76.2 had no orphan class at all
-  # and self-healed at the same kill point, which made it a regression).
+  # NON-ATOMIC BY CONSTRUCTION, accepted for now (2026-09-05 audit Q-01).
+  # Age-check and `rmdir` are two steps, so a reaper that decided "stale" can
+  # delete a lock a DIFFERENT process acquired in between, letting two holders
+  # into the critical section. Demonstrated directly: with a 0.2 s window
+  # injected between the two steps, the reaper removed the fresh lock's inode.
   #
-  # The rule is now "keep the two newest of the three", by mtime. The retired
-  # rationale also claimed out-of-order archives would mislead
-  # `rule-hits-parse.js#logGenerations`; they would not — that function returns a
-  # FIXED path list and every consumer goes through `readHits`, which filters on
-  # each row's own `ts`. Nothing reads file order, so ordering is worth no rows.
+  # ITS RATE IS NOT ESTABLISHED, and an earlier version of this comment gave
+  # one (0.76.2 pre-tag review, H-2). Every end-to-end number here was measured
+  # on a host whose `mkdir` is uutils coreutils 0.8.0, which is not reliably
+  # atomic: 200 trials of 4 processes racing one path gave 206 wins where 200
+  # were expected, 6 trials with more than one winner. So those runs were
+  # measuring two failures at once — this reap race AND a mutex that sometimes
+  # admits everyone — and cannot separate them. A reviewer re-ran the same
+  # shapes with an atomic `mkdir` shim and saw the in-mutex size re-read below
+  # take both arms to zero, which suggests most of what was attributed here
+  # belonged to the mutex. Anyone quoting a number for this race should measure
+  # it on a host with GNU coreutils first.
   #
-  # The reaper CLAIMS before it places, by the same rename the rotator uses. The
-  # `mv "$lock" "$lock.reap.$$" && rmdir` recipe was rejected for the LOCK
-  # because rename(2) is atomic about the move and not about the IDENTITY of
-  # what it moved — a late reaper would carry off a fresh lock exactly as
-  # `rmdir` deleted one. That objection does not transfer: a lock's identity
-  # matters because a live holder may own it, while an orphan is a file whose
-  # BYTES are the whole point, and whoever wins the rename owns those bytes.
+  # The recipe the audit proposed — `mv "$lock" "$lock.reap.$$" && rmdir` — is
+  # still rejected, but on the structure rather than on those numbers: rename(2)
+  # is atomic about the MOVE, not about the IDENTITY of what it moved, so a late
+  # reaper carries off a fresh lock exactly as `rmdir` deletes one.
   #
-  # The two placements below ARE check-then-act, and an earlier draft of this
-  # comment claimed nothing here was. Two reapers holding different orphans can
-  # both see a free slot and the second `mv -f` clobbers the first. The window is
-  # one builtin test wide; the reviewer measured 0 losses in 600 trials at 8- and
-  # 32-way concurrency. Stated rather than papered over.
-  #
-  # `failglob` in the caller's shell would abort the `for` on an unmatched glob,
-  # and with it the JSONL write below — every row lost, silently, for a shell
-  # option (same review, LOW 3). Suspend it across the loop and restore it.
-  local _orphan _claimed _o_age _a1_age _a2_age _stamp _now _fg=0
-  shopt -q failglob && _fg=1
-  (( _fg == 1 )) && shopt -u failglob
-  _now=$(date +%s 2>/dev/null || echo 0)
-  for _orphan in "$log_file".rotating.*; do
-    [[ -f "$_orphan" ]] || continue
-    # Age from the NAME the rotator wrote, not from a timestamp — see the claim
-    # site below for why. A name without a numeric stamp (a hand-made fixture, a
-    # file a user dropped here) falls back to mtime, which is the older, weaker
-    # answer but never reaps something whose age cannot be established: the
-    # helper answers 0 — "fresh" — for anything it cannot read.
-    _stamp=${_orphan##*.rotating.}
-    _stamp=${_stamp%%.*}
-    if [[ "$_stamp" =~ ^[0-9]+$ ]] && (( _now > 0 )); then
-      (( _now - _stamp >= 60 )) || continue
-    else
-      (( $(_rule_hits_path_age_seconds "$_orphan") >= 60 )) || continue
-    fi
-    _claimed="$_orphan.reap.$$.${RANDOM:-0}"
-    mv "$_orphan" "$_claimed" 2>/dev/null || continue
-    _rule_hits_place_generation "$_claimed" "$log_file"
-  done
-  (( _fg == 1 )) && shopt -s failglob
+  # What would actually close it: claim the live generation with a single
+  # rename (`mv "$log_file" "$log_file.rotating.$$"`) and archive from there, so
+  # only one process can ever own the generation being rotated — and, unlike
+  # everything above, that does not depend on `mkdir` being atomic, which makes
+  # it the fix for the uutils exposure too. Deferred, not rejected: it
+  # introduces a new orphan class (`*.rotating.<pid>` after a kill mid-rotation)
+  # needing its own reaper. The residual costs archived telemetry, never a gate
+  # decision or user data.
+  if [[ -d "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
+    rmdir "$lock" 2>/dev/null
+  fi
 
-  # A `<log>.rotating` DIRECTORY is the v0.76.0-v0.76.2 mutex, left behind on a
-  # machine upgraded while one was held. Nothing creates one any more, so
-  # without this it would sit in ~/.claude/logs forever as residue.
-  [[ -d "$log_file.rotating" ]] && rmdir "$log_file.rotating" 2>/dev/null
-  #
   if [[ -f "$log_file" ]]; then
     local size
     # NUMERIC-GUARD both size reads. `stat -c %s F || stat -f %z F || echo 0`
@@ -467,108 +330,44 @@ rule_hits_append() {
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max_bytes )); then
-      # THE CLAIM CARRIES ITS OWN BIRTH TIME, IN ITS NAME.
-      #
-      # A file timestamp cannot answer "when was this claimed". `rename(2)`
-      # preserves mtime and updates only ctime, so a claim aged by mtime carries
-      # the age of its ROWS: whenever the previous append was over a minute ago —
-      # the ordinary case for a log that crosses the cap at the end of a session
-      # — the claim is born already past the reaper's threshold, a concurrent
-      # append steals it, finds both archive slots full, and deletes a whole
-      # generation. Measured at 31/200 on 32-way concurrency (0.77.0 pre-tag
-      # review, HIGH 1). The release's own harness rebuilt the log immediately
-      # before each trial, so its mtime was always fresh and the branch never
-      # fired: it measured the one condition under which the defect is
-      # unreachable.
-      #
-      # Stamping the file after the rename does not close it either — measured
-      # 41/200 on the same arm. `mv` then `touch` is two steps, and a reaper
-      # landing between them sees the inherited timestamp. The name is written by
-      # the rename ITSELF, so there is no window and no dependency on whether a
-      # filesystem or a `stat` flavour reports mtime, ctime or birth time.
-      # A CLOCK WE CANNOT READ MEANS NO ROTATION. `0` is not a neutral sentinel —
-      # it is an epoch in 1970, so a claim stamped with it is born past the reap
-      # threshold and the next append deletes the generation it holds. The
-      # failure is one-sided: only the ROTATING process's `date` has to fail,
-      # which a transient fork failure under memory pressure gives, while every
-      # other process reads the clock fine and reaps normally (0.77.0 pre-tag
-      # review round 2, MEDIUM 1). Declining to rotate is the same posture the
-      # size reads take with an unreadable `stat`, and it keeps this file's
-      # stated rule — never act on an age that cannot be established — pointing
-      # in one direction.
-      local claim claim_born
-      claim_born=$(date +%s 2>/dev/null || echo "")
-      if [[ ! "$claim_born" =~ ^[0-9]+$ ]] || (( claim_born == 0 )); then
-        claim_born=""
-      fi
-      claim="$log_file.rotating.$claim_born.$$.${RANDOM:-0}"
-      if [[ -n "$claim_born" ]] && mv "$log_file" "$claim" 2>/dev/null; then
-        # RE-READ the size, now on the CLAIMED file. The check above only
-        # decides whether to reach for the claim; this one decides whether to
-        # archive, and it has to be this one — the lesson survives the mechanism
-        # that produced it (2026-09-05 audit Q-01 qualification, ROT-6).
+      if mkdir "$lock" 2>/dev/null; then
+        # RE-READ the size INSIDE the mutex. The check above only decides
+        # whether to try for the lock; this one decides whether to rotate, and
+        # it has to be this one (2026-09-05 audit Q-01 qualification).
         #
-        # Under the old mutex the losing shape was: P2 reads the size while the
-        # log is over the cap, P1 rotates and releases, P2's `mkdir` then wins an
-        # uncontested lock and re-runs the two-step move on a log that is already
-        # rotated, carrying P1's fresh archive onto `.2`. The claim closes that
-        # arm outright — after P1's rename there is nothing for P2 to claim.
+        # P1-1 put the two `mv`s under a mkdir mutex and was adjudicated closed
+        # on a test that holds the lock across the second append — which only
+        # ever exercises the arm where `mkdir` FAILS. The arm that loses the race
+        # by a hair is the live one: P2 reads the size while the log is still
+        # over the cap, P1 rotates and releases, and P2's `mkdir` then SUCCEEDS.
+        # P2 re-runs the two-step move on a log that is already rotated: `mv .1
+        # .2` carries P1's just-archived live generation onto .2 and `mv log .1`
+        # silently fails because there is no log left. End state {gone, gone,
+        # live-as-.2} — both prior generations lost, the exact P1-1 signature,
+        # under the mutex meant to prevent it. Measured on this tree with 4
+        # concurrent appends over an over-cap log: 6/200 trials with no lock
+        # involved at all, 33/200 with a stale lock also present.
         #
-        # What it does NOT close is the same interleaving one step further out:
-        # P2 reads the size, P1 claims and archives, a THIRD process appends and
-        # so re-creates the log, and P2's rename now succeeds against a
-        # BRAND-NEW generation of a few hundred bytes. Archiving that would push
-        # P1's just-placed `.1` to `.2` and drop the generation that was in `.2`
-        # — the P1-1 signature reached by a different route. Re-reading the size
-        # of what we actually hold is what stops it, and 200 trials of four
-        # concurrent appends over an over-cap log confirm the pair: 0 archive
-        # losses, where the mutex measured 12/200 on the same harness with a
-        # stale lock present.
-        #
-        # A claim that turns out to be under the cap is given back rather than
-        # dropped: those rows are real telemetry, and `>>` puts them at the end
-        # of the live log where every row carries its own `ts` anyway.
-        #
-        # Guarded for the reason spelled out at the outer read (0.76.2 pre-tag
-        # review, CRITICAL-1). The claimed path cannot be raced away by another
-        # process — that is the point of claiming it — but the guard is what
-        # keeps a `stat` pair that prints a filesystem block to stdout from
-        # aborting the hook and turning a §8 deny into an allow.
-        local csize
-        csize=$(stat -c %s "$claim" 2>/dev/null || stat -f %z "$claim" 2>/dev/null || echo 0)
-        [[ "$csize" =~ ^[0-9]+$ ]] || csize=0
-        if (( csize > max_bytes )); then
-          # `-e`, not `-f`: a DIRECTORY at an archive path fails `-f`, and
-          # `mv -f file dir/` then succeeds by moving the file INSIDE it — the
-          # slot never becomes a file, so every later generation lands in there
-          # too and none is visible to `logGenerations` (0.77.0 pre-tag review,
-          # LOW 2). Give the claim back instead; a rotation that does not happen
-          # is not an error, and the same posture the stat guards take.
-          if [[ -d "$log_file.1" || -d "$log_file.2" ]]; then
-            cat "$claim" >> "$log_file" 2>/dev/null && rm -f "$claim" 2>/dev/null
-            csize=0
-          fi
+        # A second holder now re-reads a log that is either gone (stat → 0) or
+        # already under the cap, and does nothing. That also demotes the
+        # stale-reap race below (Q-01) from a data-loss path to a wasted stat:
+        # to lose an archive, two holders would both have to pass THIS check
+        # before either completes its first `mv`.
+        # Guarded for the reason spelled out at the outer read — and this is the
+        # site that made that hazard REACHABLE: there is no `[[ -f ]]` above it,
+        # so the log can be absent when `-c %s` runs and re-created by another
+        # process before `-f %z` does, which is the exact pair that produces the
+        # blob.
+        size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
+        [[ "$size" =~ ^[0-9]+$ ]] || size=0
+        if (( size > max_bytes )); then
+          [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+          mv -f "$log_file" "$log_file.1" 2>/dev/null
         fi
-        if (( csize > max_bytes )); then
-          # UNCONDITIONAL CASCADE HERE, and no age comparison. The claim is the
-          # LIVE generation, so it is the newest by construction — a structural
-          # fact, not something to measure. An attempt to share the reaper's
-          # age-aware placement measured 200/200 generations destroyed: `rename(2)`
-          # preserves mtime, so the claim carries the time of its last ROW, and
-          # against archives written more recently it read as the oldest of the
-          # three and was dropped by the retention branch. That is HIGH 1's error
-          # in a second place, and the reason the two paths stay separate: the
-          # reaper compares two ARCHIVED generations, where both mtimes mean the
-          # same thing, while nothing here needs a comparison at all.
-          [[ -e "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-          mv -f "$claim" "$log_file.1" 2>/dev/null
-        else
-          cat "$claim" >> "$log_file" 2>/dev/null && rm -f "$claim" 2>/dev/null
-        fi
+        rmdir "$lock" 2>/dev/null
       fi
-      # No else. A claim we did not win is a rotation another process is
-      # running; skipping is the correct answer and the next append re-checks
-      # the size.
+      # No else. A lock we did not get is a rotation another process is running;
+      # skipping is the correct answer and the next append re-checks the size.
     fi
   fi
 
