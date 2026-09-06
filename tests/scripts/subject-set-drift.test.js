@@ -70,8 +70,8 @@ const EXEMPT = {
     'Fixture rows for specific hooks (rule-hits log lines with a `hook` field). No completeness claim: the assertions are per-row, and doctor.js own liveness coverage is gated by PARTITIONS below.',
   'tests/scripts/hook-registry.test.js':
     'The registry gate itself — it pins expected membership by hand ON PURPOSE, so that a bad edit to the registry has something to disagree with.',
-  'scripts/doctor.js':
-    'The liveness table is partial by design; its completeness is enforced by the PARTITIONS check below, which is stricter than this one (it requires the complement to be written out with a reason).',
+  'scripts/lib/doctor-hook-tests.js':
+    'The liveness table is partial by design; its completeness is enforced by the PARTITIONS check below, which is stricter than this one (it requires the complement to be written out with a reason). Extracted from scripts/doctor.js in v0.76.3 — both tables moved together so the union below is still computed over one file.',
 };
 
 // Deliberately partial lists that must name their complement. The union of the
@@ -79,7 +79,7 @@ const EXEMPT = {
 // decision (cover it, or say why not) instead of silently landing outside both.
 const PARTITIONS = [
   {
-    file: 'scripts/doctor.js',
+    file: 'scripts/lib/doctor-hook-tests.js',
     label: 'doctor liveness self-test',
     // The table entries: `{ hook: 'name.sh', ks: ksFor(...)`
     covered: src => [...src.matchAll(/\{\s*hook:\s*'([^']+\.sh)'/g)].map(m => m[1]),
