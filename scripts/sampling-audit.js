@@ -81,8 +81,8 @@ const CALIBRATION = {
   },
   '§11-turn-yield': {
     precision: null,
-    labeledAt: '2026-07-24',
-    note: 'tell precondition added this release — re-baselined',
+    labeledAt: '2026-09-06',
+    note: 'subagent-await arm added with spec v6.26.0 — re-baselined, prior counts not comparable',
   },
   '§iron-law-2': {
     precision: null,
@@ -404,6 +404,17 @@ const YIELD_ASK_RE =
 // CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
 // the next typed message starts a new task (§1.5), it is not a nudge.
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
+// AWAIT: spec v6.26.0 gave §11 a fourth yield trigger — awaiting a spawned
+// subagent. That stop is legal, it is resumed by the subagent's completion
+// rather than by the user, and it neither asks nor closes four-section, so
+// without this arm every one of them scored a violation the moment the user
+// typed anything (0.78.0 pre-tag review, M2). Deliberately narrow: an await
+// verb AND a subagent-shaped noun within one clause of it. "waiting for CI"
+// does NOT suppress — nothing re-invokes the agent when a pipeline goes green,
+// so the tell still applies there, and a passing mention of a reviewer carries
+// no await verb.
+const YIELD_AWAIT_RE =
+  /\b(?:await(?:ing)?|waiting|wait)\b[^.\n]{0,40}\b(?:sub-?agents?|agents?|teammates?|reviewers?)\b|(?:等待?|让出)[^。\n]{0,20}(?:子代理|评审|sub-?agent|agent|teammate|reviewer)/i;
 const YIELD_ASK_WINDOW = 260;
 
 // Returns true when the prior assistant turn makes the tell inapplicable.
@@ -412,6 +423,10 @@ export function yieldTellSuppressed(priorText) {
   // or an API error) — the stop is not attributable to the agent.
   if (!priorText || !priorText.trim()) return true;
   if (YIELD_CLOSED_RE.test(priorText)) return true;
+  // Whole-text, not the ASK tail window: a yield names what it awaits wherever
+  // the sentence lands, and the construction is specific enough not to need the
+  // positional guard the bare-么 alternation does.
+  if (YIELD_AWAIT_RE.test(priorText)) return true;
   return YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
 }
 

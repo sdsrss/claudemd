@@ -553,6 +553,30 @@ test('turn-yield precondition: a plain mid-work statement still counts as a tell
   assert.equal(yieldTellSuppressed('读完了 parser，问题在空输入分支。'), false);
 });
 
+// Spec v6.26.0 gave §11 a fourth yield trigger: awaiting a spawned subagent. A
+// turn that ends naming what it waits for is a LEGAL stop and the subagent's
+// completion is what resumes it — but it neither asks nor closes four-section,
+// so before this arm every such yield scored a violation the moment the user
+// typed anything. That injects a known false-positive class into a series whose
+// precision is still null (0.78.0 pre-tag review, M2).
+test('turn-yield precondition: a named subagent wait suppresses the tell', () => {
+  assert.equal(yieldTellSuppressed('等 reviewer-spec 和 reviewer-claims 的报告，不 sleep 不催。'), true);
+  assert.equal(
+    yieldTellSuppressed('Yielding here: waiting on the reviewer subagent to deliver its findings.'),
+    true
+  );
+  assert.equal(yieldTellSuppressed('让出这一轮，等待两个子代理返回。'), true);
+});
+
+test('turn-yield precondition: the subagent arm does not swallow other waits', () => {
+  // Control arm. CI is not a subagent — nothing re-invokes the agent when a
+  // pipeline goes green, so the old tell still applies to a turn that stops for
+  // one. And a passing mention of a reviewer is not an announced wait.
+  assert.equal(yieldTellSuppressed('CI 还要跑 9 分钟，我先等着。'), false);
+  assert.equal(yieldTellSuppressed('Waiting for the CI run to finish before tagging.'), false);
+  assert.equal(yieldTellSuppressed('The reviewer found a null deref in the parser; I patched it.'), false);
+});
+
 test('turn-yield-asked fixture: opportunities counted, tells suppressed', async () => {
   const dir = stageFixture('turn-yield-asked');
   try {
