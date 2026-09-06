@@ -226,7 +226,31 @@ def m6b(t):  # §11-O fallback inverted
     return sub_once(t, r"name an absolute output path", "Never name an output path")
 
 
+def z1(t):
+    """Rule text left VERBATIM; a sentence taking it back is appended to the same
+    line. This is the hole a substring pin leaves open and the reason the pins
+    assert whole-line equality (found by the author before round 3, not by a
+    reviewer)."""
+    return sub_once(
+        t,
+        r"(as a context-pressure yield does\.)",
+        r"\1 In a ship window this trigger does not apply; hold the turn open.",
+    )
+
+
+def z2(t):
+    """Same shape on the EXT side: §12's exception kept verbatim, cancelled after."""
+    return sub_once(
+        t,
+        r"(which resumes at the tag\.)",
+        r"\1 This exception is held in abeyance pending review.",
+    )
+
+
 MUTATIONS = [
+    ("Z1  core: clause kept VERBATIM, negation appended to the line", CORE, z1, "RED"),
+    ("Z2  ext: §12 exception kept VERBATIM, cancelled after it", EXT, z2, "RED"),
+
     ("M1  core: §11 trigger removed (pre-change text)", CORE, m1, "RED"),
     ("M2  ext: §12 second exception removed", EXT, m2, "RED"),
     ("M3  ext: §11-O delivery bullet removed", EXT, m3, "RED"),

@@ -399,7 +399,12 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // here BY DESIGN, including a meaning-preserving reorder; that failure is the
 // prompt to re-read the rule, not a bug to loosen away.
 //
-// Anchor uniqueness is half the gate. Both spec files also carry prose
+// The pin is the WHOLE LINE, not a clause inside it. A substring pin leaves the
+// rule's own text intact and appends a sentence that takes it back — the clause
+// still matches verbatim and the gate stays green. Whole-line equality has no
+// such gap: anything added, removed or reworded anywhere in the bullet fails.
+//
+// Anchor uniqueness is the other half. Both spec files also carry prose
 // RESTATEMENTS of these rules in their Recent-changes entries, and a decoy line
 // carrying the same heading above a gutted real one was one of the mutations
 // that survived. Requiring exactly one occurrence closes it by construction and
@@ -409,30 +414,19 @@ const PINS = [
     what: 'core §11 Mid-SPINE turn-yield — the fourth trigger and its terms',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    clause:
-      '**Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure ' +
-      '(§11 Context pressure → `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — ' +
-      'its report enters context only at turn end (measured 2026-09-06), so yield naming what is ' +
-      'awaited; completion re-invokes you, no user input needed, and a yield still unresumed when ' +
-      'the user next types owes `tasks/<slug>-paused.md` as a context-pressure yield does.',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn recall, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (§11 Context pressure → `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end (measured 2026-09-06), so yield naming what is awaited; completion re-invokes you, no user input needed, and a yield still unresumed when the user next types owes `tasks/<slug>-paused.md` as a context-pressure yield does. Neither substitute reaches it: sleep-polling postpones the turn end that IS the delivery, and a message to an idle teammate only re-invokes it into an empty completion. "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named a subagent it awaits = confirmed prior yield; if the prior turn asked, `继续` answers it — NOT a tell.',
   },
   {
     what: '§EXT §12 manual-ship atomicity — the second exception for the review wait',
     file: EXT,
     anchor: '**Manual-ship atomicity (HARD, clarification)**',
-    clause:
-      '**Second exception**: awaiting the pre-tag review subagent (Author ≠ reviewer above) — ' +
-      'yield per core §11 naming the reviewers; their completion re-invokes the cycle, which ' +
-      'resumes at the tag.',
+    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting the pre-tag review subagent (Author ≠ reviewer above) — yield per core §11 naming the reviewers; their completion re-invokes the cycle, which resumes at the tag. Without it the two HARDs deadlock — the review is owed inside the atomic window and its findings arrive only when that window opens. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
     what: '§EXT §11-O subagent rules — the delivery fact and the file fallback',
     file: EXT,
     anchor: '- **Output reaches main only at turn end**',
-    clause:
-      'Inside a cycle you are blind to it, so the default is to yield per core §11. Where the ' +
-      'cycle genuinely cannot yield, name an absolute output path in the spawn prompt and poll ' +
-      'that file',
+    line: '- **Output reaches main only at turn end** (measured 2026-09-06: one 3h02m / 126-tool-call turn produced zero completion notifications; the queue flushed 230 ms after the turn closed). Inside a cycle you are blind to it, so the default is to yield per core §11. Where the cycle genuinely cannot yield, name an absolute output path in the spawn prompt and poll that file — the notification channel is not pollable and `TaskOutput` is deprecated for local agents.',
   },
 ];
 
@@ -447,15 +441,14 @@ for (const pin of PINS) {
         `found ${carrying.length}. Two means a decoy or a duplicated restatement — the pin below ` +
         'would then be checked against whichever came first.'
     );
-    assert.ok(
-      carrying[0].includes(pin.clause),
-      `the pinned clause is no longer present verbatim in ${pin.file}.\n\n` +
-        `EXPECTED to find:\n${pin.clause}\n\n` +
-        `ON THE LINE:\n${carrying[0]}\n\n` +
-        'This pin does not judge meaning — it reports that rule text changed. Re-read the rule ' +
-        'and the v6.26.0 entry in spec/CLAUDE-changelog.md, decide whether the new wording still ' +
-        'lets an orchestrating cycle yield to read what it spawned, and only then update the ' +
-        'clause here in the same commit.'
+    assert.equal(
+      carrying[0],
+      pin.line,
+      `the pinned rule line changed in ${pin.file}.\n\nEXPECTED:\n${pin.line}\n\nFOUND:\n${carrying[0]}\n\n` +
+        'This pin does not judge meaning — it reports that rule text moved. Re-read the rule and ' +
+        'the v6.26.0 entry in spec/CLAUDE-changelog.md, decide whether the new wording still lets ' +
+        'an orchestrating cycle yield to read what it spawned and still excepts that wait from the ' +
+        'atomic ship window, and only then update this pin in the same commit.'
     );
   });
 }
