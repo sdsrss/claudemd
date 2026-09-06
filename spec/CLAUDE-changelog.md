@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.26.0 (minor, 2026-09-06) — the turn-yield rule was blocking its own subagent deliveries
+
+§11 Mid-SPINE turn-yield forbids stopping before VALIDATE. Subagent reports enter context only when a turn stops. Held together, an orchestrating cycle can never read what it spawned — and §12 makes exactly that cycle spawn a reviewer before every tag.
+
+- `[fix]` Measured during the v0.77.0 ship on 2026-09-06, from the session transcript rather than recollection. The `推送发版` turn ran **3h02m across 126 tool calls with no yield**; two review subagents finished inside it; **zero** completion notifications reached context in 1917 transcript records; the queue flushed **230 ms** after the closing text block. `ListAgents` reported `reviewer-rotation · idle` at 16:57:45 and its report was in hand at 17:09:40 — 12 minutes later, and only through a file side-channel improvised mid-turn. Sixteen `sleep` calls totalling 6870 s (64% of the window) each returned nothing: sleeping does not hasten a turn-end delivery, it postpones it.
+- `[relax]` **§11 Mid-SPINE turn-yield** takes a fourth yield trigger — *awaiting a spawned subagent* — alongside `[AUTH REQUIRED]`, genuine ambiguity and context pressure. The yield must name what is awaited, so the anti-silence clause that motivates the rule is untouched, and completion re-invokes the agent without user input, so the trigger costs neither wall-clock nor user attention. Sleep-polling and re-messaging an idle teammate are written in as banned: the first cannot deliver, and the second only re-invokes the teammate into an empty completion — six such pings produced six of the eight `finished` events the user saw arrive at once.
+- `[relax]` **§EXT §12 Manual-ship atomicity** takes a second exception for the step-7 pre-tag review wait. Author ≠ reviewer is HARD and step 7 sits between the push and the tag, i.e. inside the atomic window that forbade turn-ending; the two HARDs deadlocked by construction, and only one of them can hold.
+- `[add]` **§EXT §11-O Subagent rules** records the delivery fact and the fallback for a cycle that genuinely cannot yield: name an absolute output path in the spawn prompt and poll that file. There is no third option — `TaskOutput` is deprecated for local agents, warns that the local-agent output file is a symlink to the full JSONL transcript, and the notification channel is not pollable.
+
+No new HARD rule: §13.2's evidence-rebuttal shortcut applies, so the failing rule was amended rather than wrapped in a new one. Enforcement partition unchanged (6/16/2/1); `§11-mid-spine-yield` keeps its `section_anchor` and `enforcement: self`.
+
+---
+
 ## v6.25.4 (patch, 2026-09-01) — the §4-routing-vs-`skillOverrides` adjudication, written down
 
 No agent-facing rule text changed. Core and extended are byte-identical apart from their title lines and, in extended, the `Recent changes` entry and the Sizing line. The whole content change is one bullet in OPERATOR §13.2.

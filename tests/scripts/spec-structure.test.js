@@ -364,3 +364,55 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
     }
   }
 });
+
+// v6.26.0: §11 turn-yield and §EXT §12 manual-ship atomicity jointly decide
+// whether an orchestrating cycle can ever READ what it spawned. A subagent's
+// report enters context only at turn end, so a rule forbidding turn-ending is a
+// rule forbidding delivery — measured 2026-09-06 on the v0.77.0 ship as a
+// 3h02m / 126-tool-call turn with zero completion notifications and a 230ms
+// post-turn flush. Both halves are asserted together because removing EITHER
+// restores the deadlock: §12's atomic window overrides the §11 trigger inside a
+// ship, and §11 without the trigger leaves §12's exception with nothing to
+// permit. §12 step 7 (Author ≠ reviewer) is HARD and lives inside that window.
+test('§11 turn-yield and §EXT §12 ship atomicity both allow the subagent wait', () => {
+  const core = fs.readFileSync(CORE, 'utf8');
+  const yieldLine = core.split('\n').find(l => l.includes('Mid-SPINE turn-yield'));
+  assert.ok(yieldLine, 'core §11 must still carry the Mid-SPINE turn-yield rule');
+  const idx = yieldLine.indexOf('Yield only on');
+  assert.ok(idx !== -1, '§11 turn-yield must still enumerate its yield triggers');
+  assert.match(
+    yieldLine.slice(idx),
+    /subagent/i,
+    'the yield-trigger list must name the subagent wait — otherwise a cycle can never read what it spawned'
+  );
+
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const atomicity = ext.split('\n').find(l => l.includes('Manual-ship atomicity'));
+  assert.ok(atomicity, '§EXT §12 must still carry the manual-ship atomicity rule');
+  assert.match(
+    atomicity,
+    /core §11/,
+    'the atomic ship window must defer to the core §11 yield trigger for the step-7 review wait'
+  );
+});
+
+// The banned workarounds are load-bearing, not decoration: both were tried on
+// 2026-09-06 and neither delivered. Sleeping postpones the turn end that IS the
+// delivery, and messaging an idle teammate re-invokes it into an empty
+// completion (6 pings → 6 of the 8 `finished` events that arrived at once).
+// §11-O carries the only fallback for a cycle that genuinely cannot yield.
+test('§11 names the two non-working waits, §EXT §11-O names the file fallback', () => {
+  const core = fs.readFileSync(CORE, 'utf8');
+  const yieldLine = core.split('\n').find(l => l.includes('Mid-SPINE turn-yield'));
+  assert.match(yieldLine, /[Ss]leep-polling/, '§11 must name sleep-polling as banned');
+  assert.match(yieldLine, /idle teammate/, '§11 must name re-messaging an idle teammate as banned');
+
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const bullet = ext.split('\n').find(l => l.startsWith('- ') && /reaches main only at turn end/i.test(l));
+  assert.ok(bullet, '§EXT §11-O must record that subagent output reaches main only at turn end');
+  assert.match(
+    bullet,
+    /output path/i,
+    '§11-O must give the file-path fallback for a cycle that cannot yield'
+  );
+});
