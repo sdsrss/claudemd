@@ -30,6 +30,18 @@ export function sha256File(filePath) {
 // error is rethrown, so the caller either gets the whole new spec or the whole
 // old one. Callers that took no backup pass nothing and get install's original
 // behavior: verify, throw, leave the FS as it is.
+// A symlink at `p` whose target does not resolve → the target it names; null for
+// anything else (regular file, live link, absent path, unreadable parent).
+function danglingLinkTarget(p) {
+  try {
+    if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
+    if (fs.existsSync(p)) return null; // resolves — the user's own sync, leave it
+    return fs.readlinkSync(p);
+  } catch {
+    return null;
+  }
+}
+
 export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null } = {}) {
   const written = [];
   try {
@@ -43,6 +55,31 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
       // update.js, where a spec file absent from ~/.claude is a target but has
       // no backup entry.
       written.push(name);
+      // NEVER write through a DANGLING destination link. copyFileSync opens dest
+      // with O_CREAT and the kernel resolves that along the link — so a
+      // ~/.claude/CLAUDE-extended.md still pointing into a dotfiles checkout that
+      // has moved makes install CREATE the file inside the user's repo: 25 KB of
+      // spec they never put there and may commit (0.76.2 pre-tag review MEDIUM-2).
+      //
+      // This is the ONLY place that covers the upgrade population. install's
+      // backup branch moves such a link aside before this runs, but the
+      // spec-on-spec branch takes no backup at all by design (the v0.23.11
+      // data-loss fix), and update.js reaches this code with no branch of its own.
+      //
+      // A LIVE link is deliberately left alone: a user who symlinks the spec into
+      // their dotfiles to sync it across machines wants the new bytes to land
+      // there. Only the dead entry is replaced, and the target it named is printed
+      // so the link can be rebuilt.
+      const deadLink = danglingLinkTarget(dest);
+      if (deadLink !== null) {
+        fs.unlinkSync(dest);
+        process.stderr.write(
+          `[claudemd] WARN: ${dest} was a symlink to ${deadLink}, which does not exist. ` +
+            `Writing the spec through it would have created that file in its directory, so ` +
+            `the dead link was removed and ${name} written in its place. Re-create the link ` +
+            `if its target comes back.\n`
+        );
+      }
       fs.copyFileSync(src, dest);
       if (sha256File(src) !== sha256File(dest)) {
         throw new Error(
@@ -57,7 +94,22 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
         const saved = path.join(backupDir, name);
         try {
           if (fs.existsSync(saved)) fs.copyFileSync(saved, homeSpec(name));
-          else if (written.includes(name)) fs.unlinkSync(homeSpec(name));
+          // A DANGLING link in the backup dir is a state createBackup can only
+          // produce since it stopped skipping such entries (backup.js
+          // entryPresent). Without this arm the rollback fell through to the
+          // `written` branch and DELETED the home path, leaving the user's link
+          // only inside backup-<stamp>/ — a worse end state than the failure it
+          // is rolling back. Restore the entry in the shape it had.
+          //
+          // A link whose target still resolves keeps the older behavior above:
+          // its content is copied back. That asymmetry is deliberate — copying
+          // through a live entry is what restoreBackup does too, and widening it
+          // here would change a path this fix has no evidence about.
+          else if (fs.lstatSync(saved, { throwIfNoEntry: false })?.isSymbolicLink()) {
+            const target = fs.readlinkSync(saved);
+            fs.rmSync(homeSpec(name), { force: true });
+            fs.symlinkSync(target, homeSpec(name));
+          } else if (written.includes(name)) fs.unlinkSync(homeSpec(name));
         } catch {
           /* best-effort rollback; the original error is the one to report */
         }

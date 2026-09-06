@@ -851,3 +851,95 @@ test("PT-2: a mid-copy spec failure restores the user's personal CLAUDE.md", asy
   assert.ok(fs.existsSync(back), 'personal CLAUDE.md must not be left only in the backup dir');
   assert.equal(fs.readFileSync(back, 'utf8'), personal);
 });
+
+test('M-2: a DANGLING ~/.claude/CLAUDE.md link is backed up, not written through', async () => {
+  // The 0.76.2 pre-tag review's MEDIUM-2, end to end. A stow/chezmoi user has
+  // ~/.claude/CLAUDE.md -> ~/dotfiles/CLAUDE.md; the dotfiles checkout is moved
+  // or not yet cloned, so the link dangles. Three gates filter the file list
+  // with existsSync, which FOLLOWS the link — install.js:131, backup.js's loop,
+  // update.js's — so the link is dropped before any backup is taken, survives
+  // in ~/.claude, and copySpecFiles' copyFileSync then RESOLVES it: open(O_CREAT)
+  // writes the 25 KB spec into the user's dotfiles repo, where they may commit
+  // it. Pre-fix this test fails on the first assertion.
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const linkPath = path.join(tmpHome, '.claude/CLAUDE.md');
+  fs.symlinkSync(path.join(dotfiles, 'CLAUDE.md'), linkPath);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const res = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(
+    fs.existsSync(path.join(dotfiles, 'CLAUDE.md')),
+    false,
+    'the spec must NOT be written through the link into the dotfiles repo'
+  );
+  assert.equal(res.spec, 'backup-and-overwrite');
+  assert.equal(res.userContentDetected, true, 'an unreadable link is not a claudemd spec');
+
+  // The link itself is what belongs in the backup — the bytes were never ours.
+  const bk = listBackups();
+  assert.equal(bk.length, 1, 'the dangling link must produce a backup dir');
+  const saved = path.join(bk[0].dir, 'CLAUDE.md');
+  assert.equal(fs.lstatSync(saved).isSymbolicLink(), true, 'saved as a link, not a copy');
+  assert.equal(fs.readlinkSync(saved), path.join(dotfiles, 'CLAUDE.md'));
+
+  // And the home path is a REGULAR file holding the shipped spec.
+  assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), false);
+  assert.match(fs.readFileSync(linkPath, 'utf8'), /^# AI-CODING-SPEC v6\.9\.2 — Core/);
+});
+
+test('M-2: an UPGRADE writes no spec through a dangling sibling link', async () => {
+  // The branch the backup fix cannot reach, and the one most users are on. When
+  // ~/.claude/CLAUDE.md is already a claudemd spec, install takes NO backup at
+  // all (the v0.23.11 spec-on-spec data-loss fix) — so a dangling
+  // CLAUDE-extended.md beside it never passes through createBackup, and
+  // copySpecFiles resolved it: the spec landed in the dotfiles repo. Reachable
+  // before the entryPresent change too; the guard in copySpecFiles is what
+  // covers it.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n'
+  );
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const extPath = path.join(tmpHome, '.claude/CLAUDE-extended.md');
+  fs.symlinkSync(path.join(dotfiles, 'CLAUDE-extended.md'), extPath);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const res = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(res.spec, 'overwrite-spec', 'precondition: the no-backup branch');
+  assert.equal(
+    fs.existsSync(path.join(dotfiles, 'CLAUDE-extended.md')),
+    false,
+    'the spec must NOT be created inside the dotfiles repo'
+  );
+  assert.equal(fs.lstatSync(extPath).isSymbolicLink(), false, 'dead link replaced by a real file');
+  assert.equal(fs.readFileSync(extPath, 'utf8'), '# Extended v6.9.2\n');
+});
+
+test('M-2: a LIVE symlinked spec is still written through, not replaced', async () => {
+  // The deliberate counterpart: a user who keeps ~/.claude/CLAUDE-extended.md
+  // symlinked into a dotfiles repo that is actually there wants the upgrade to
+  // land in that repo. Only the DEAD link is replaced.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n'
+  );
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const target = path.join(dotfiles, 'CLAUDE-extended.md');
+  fs.writeFileSync(target, '# Extended v6.9.1\n');
+  const extPath = path.join(tmpHome, '.claude/CLAUDE-extended.md');
+  fs.symlinkSync(target, extPath);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(fs.lstatSync(extPath).isSymbolicLink(), true, 'the live link survives');
+  assert.equal(fs.readFileSync(target, 'utf8'), '# Extended v6.9.2\n', 'and it is what got updated');
+});

@@ -261,3 +261,66 @@ test('R11-09: a successful update still lands every file byte-exact', async () =
     assert.equal(fs.readFileSync(path.join(tmpHome, '.claude', n), 'utf8'), expected);
   }
 });
+
+test('M-2: update backs up a DANGLING home spec instead of writing through it', async () => {
+  // The install-path fix's twin. update reads an unopenable home entry as `''`,
+  // which makes the whole file "added" and therefore a target — so without the
+  // backup, copySpecFiles resolved the link and wrote the new spec into the
+  // user's dotfiles repo. Pre-fix the first assertion fails.
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const linkPath = path.join(tmpHome, '.claude/CLAUDE.md');
+  fs.rmSync(linkPath);
+  fs.symlinkSync(path.join(dotfiles, 'CLAUDE.md'), linkPath);
+
+  const res = await update({ pluginRoot, choice: 'apply-all' });
+
+  assert.equal(
+    fs.existsSync(path.join(dotfiles, 'CLAUDE.md')),
+    false,
+    'the spec must NOT be written through the link into the dotfiles repo'
+  );
+  assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), false, 'home path is a regular file now');
+  assert.equal(fs.readFileSync(linkPath, 'utf8'), 'plugin-new\n');
+
+  const saved = path.join(res.backupDir, 'CLAUDE.md');
+  assert.equal(fs.lstatSync(saved).isSymbolicLink(), true, 'the link is preserved in the backup');
+  assert.equal(fs.readlinkSync(saved), path.join(dotfiles, 'CLAUDE.md'));
+});
+
+test('M-2: a mid-copy failure puts a dangling link back, not a hole', async t => {
+  // The rollback arm the fix above makes reachable: createBackup can now put a
+  // dangling link in the backup dir, and the rollback's copyFileSync cannot
+  // restore one. Pre-arm, the `written` branch unlinked the home path and left
+  // the user's link inside backup-<stamp>/ — worse than the failure it rolls back.
+  const dotfiles = path.join(tmpHome, 'dotfiles');
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const linkPath = path.join(tmpHome, '.claude/CLAUDE.md');
+  fs.rmSync(linkPath);
+  fs.symlinkSync(path.join(dotfiles, 'CLAUDE.md'), linkPath);
+
+  // Poison the copy of a LATER target so CLAUDE.md is already written when the
+  // rollback runs. CLAUDE-changelog.md differs in the fixture, so it is a target.
+  const realCopy = fs.copyFileSync;
+  const shippedDir = path.join(pluginRoot, 'spec');
+  t.mock.method(fs, 'copyFileSync', (src, dest, ...rest) => {
+    if (String(src).startsWith(shippedDir) && String(src).endsWith('CLAUDE-changelog.md')) {
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    }
+    return realCopy(src, dest, ...rest);
+  });
+  await assert.rejects(() => update({ pluginRoot, choice: 'apply-all' }), /ENOSPC/);
+  t.mock.restoreAll();
+
+  assert.equal(
+    fs.lstatSync(linkPath, { throwIfNoEntry: false })?.isSymbolicLink(),
+    true,
+    'the dangling link must be back at ~/.claude/CLAUDE.md'
+  );
+  assert.equal(fs.readlinkSync(linkPath), path.join(dotfiles, 'CLAUDE.md'));
+  assert.equal(
+    fs.existsSync(path.join(dotfiles, 'CLAUDE.md')),
+    false,
+    'and the rollback must not have written through it either'
+  );
+});

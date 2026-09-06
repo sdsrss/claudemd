@@ -65,6 +65,29 @@ const labelRegex = label => new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, 
 // suffix from the sub-ms collision path in install.js.
 const SETTINGS_BK_REGEX = /^settings\.json\.claudemd-backup-\d{8}T\d{6}(\d{3})?Z(-\d+)?$/;
 
+// Is there a directory entry at `p` — INCLUDING a symlink whose target is gone?
+//
+// SINGLE SOURCE for the question, because three callers were spelling it
+// `existsSync` and existsSync FOLLOWS the link: a stow/chezmoi user whose
+// dotfiles checkout has moved has a DANGLING ~/.claude/CLAUDE.md, and all three
+// filters dropped it from the file list. Nothing was backed up, the link stayed
+// where it was, and copySpecFiles' copyFileSync then resolved it — `open(O_CREAT)`
+// walks the link — so the shipped spec was written INTO the user's dotfiles repo,
+// where they may commit it (0.76.2 pre-tag review MEDIUM-2, reproduced end to end
+// through install()). The three were install.js's `specHome().filter`, update.js's
+// `targets.map(homeSpec).filter`, and createBackup's own loop below; one predicate
+// so they cannot drift back apart.
+//
+// Errors answer `false`, matching what existsSync did for an unreadable parent —
+// the change here is confined to the dangling-link case.
+export function entryPresent(p) {
+  try {
+    return fs.lstatSync(p, { throwIfNoEntry: false }) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 export function isoStamp() {
   // YYYYMMDDTHHMMSSmmmZ — ms suffix prevents sub-second collisions when install
   // or update runs twice in the same second (would overwrite prior backup).
@@ -87,18 +110,16 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const movedFiles = [];
   for (const src of files) {
-    // existsSync FOLLOWS the link, so an ALREADY-DANGLING source is skipped
-    // here and never reaches the symlink branch below. That is unchanged from
-    // before this fix, and it is not harmless: the link then survives in
-    // ~/.claude with no backup taken, and copySpecFiles' copyFileSync follows
-    // it — `open(O_CREAT)` resolves the link — so install writes the 25 KB spec
-    // INTO the user's dotfiles repo, where they may commit it. Reproduced end
-    // to end through install() in the 0.76.2 pre-tag review (MEDIUM-2).
-    // Deliberately NOT fixed in the same batch as the review's Critical: the
-    // fix is to branch on lstatSync regardless of existsSync so a dangling link
-    // is moved aside too, and that changes what install does on a path this
-    // release does not otherwise touch. Tracked in the round-13 audit report.
-    if (!fs.existsSync(src)) continue;
+    // lstat, NOT existsSync — see entryPresent above for why the difference is
+    // a data path and not a style choice. A dangling link is still ours to move
+    // aside; what it points at is the user's business, and leaving it in place
+    // is what let install write through it.
+    let st;
+    try {
+      st = fs.lstatSync(src);
+    } catch {
+      continue; // genuinely absent, or an unreadable parent — nothing to move
+    }
     const dest = path.join(dir, path.basename(src));
     // A SYMLINKED source is re-pointed, not moved.
     //
@@ -119,10 +140,12 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
     // the dotfiles source stays exactly where the user put it, and restore
     // copies THROUGH the entry.
     let linkTarget = null;
-    try {
-      if (fs.lstatSync(src).isSymbolicLink()) linkTarget = fs.readlinkSync(src);
-    } catch {
-      /* raced between existsSync and lstat — fall through to the rename */
+    if (st.isSymbolicLink()) {
+      try {
+        linkTarget = fs.readlinkSync(src);
+      } catch {
+        /* raced between lstat and readlink — fall through to the rename */
+      }
     }
     if (linkTarget !== null) {
       // Resolve against the REAL parent, not the lexical one. path.resolve

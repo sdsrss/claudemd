@@ -417,3 +417,40 @@ test('ENG-01: a plain file is still MOVED, byte-for-byte, by the same call', () 
   assert.equal(fs.lstatSync(entry).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(entry, 'utf8'), 'plain personal\n');
 });
+
+test('M-2: createBackup moves an ALREADY-DANGLING symlink aside', () => {
+  // ENG-01 above covers a link whose target still exists. This is the same
+  // entry after the dotfiles checkout moved: `existsSync` follows the link and
+  // reports false, so the loop's guard skipped it and the link stayed in
+  // ~/.claude with no backup taken — the state install then writes THROUGH
+  // (0.76.2 pre-tag review MEDIUM-2). lstat sees the link regardless of what
+  // it points at.
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  const target = path.join(box.home, 'dotfiles/CLAUDE.md');
+  fs.symlinkSync(target, src);
+  assert.equal(fs.existsSync(src), false, 'precondition: the link dangles');
+
+  const { dir, movedFiles } = createBackup([src]);
+
+  assert.equal(movedFiles.length, 1, 'a dangling link is still ours to move aside');
+  const entry = path.join(dir, 'CLAUDE.md');
+  assert.equal(fs.lstatSync(entry).isSymbolicLink(), true, 'still a link — the bytes are not ours');
+  assert.equal(fs.readlinkSync(entry), target, 'target kept verbatim');
+  assert.equal(fs.lstatSync(src, { throwIfNoEntry: false }), undefined, 'home path is now free');
+});
+
+test('M-2: a dangling RELATIVE link is absolutised like a live one', () => {
+  // The ENG-01 absolutising branch must not be skipped just because the target
+  // is absent: a relative link moved into backup-<stamp>/ resolves against its
+  // new parent, so restore would copy through an entry pointing one directory
+  // deeper than the user's.
+  const src = path.join(box.home, '.claude/CLAUDE.md');
+  fs.symlinkSync('../dotfiles/CLAUDE.md', src);
+
+  const { dir } = createBackup([src]);
+
+  assert.equal(
+    fs.readlinkSync(path.join(dir, 'CLAUDE.md')),
+    path.join(fs.realpathSync(path.join(box.home, '.claude')), '../dotfiles/CLAUDE.md')
+  );
+});

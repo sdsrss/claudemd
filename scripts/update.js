@@ -3,7 +3,13 @@ import path from 'node:path';
 import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
 import { copySpecFiles } from './lib/spec-hash.js';
-import { createBackup, pruneBackups, BACKUP_LABELS, BACKUP_RETAIN_COUNT } from './lib/backup.js';
+import {
+  createBackup,
+  pruneBackups,
+  entryPresent,
+  BACKUP_LABELS,
+  BACKUP_RETAIN_COUNT,
+} from './lib/backup.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 const UPDATE_USAGE = `Usage: node scripts/update.js
@@ -74,7 +80,12 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
     return { applied: false, diffs, reason: 'no changes to apply' };
   }
 
-  const existing = targets.map(n => homeSpec(n)).filter(fs.existsSync);
+  // entryPresent, not existsSync — the third of the three gates that dropped a
+  // DANGLING home spec from the file list (backup.js entryPresent). Reachable
+  // from here because the diff loop above reads such an entry as `''`, which
+  // makes the whole file "added" and therefore a target: without the backup,
+  // copySpecFiles wrote the new spec through the link into the dotfiles repo.
+  const existing = targets.map(n => homeSpec(n)).filter(entryPresent);
   // Own namespace, not install.js's `backup-` (audit-2026-08-22 P1-1). Sharing
   // it made every update push a spec-only backup on top of the user's personal
   // CLAUDE.md backup: `CLAUDEMD_SPEC_ACTION=restore` reads listBackups()[0] and

@@ -12,6 +12,7 @@ import {
   pruneBackups,
   backupSettingsFile,
   looksLikeSpec,
+  entryPresent,
   BACKUP_LABELS,
   BACKUP_RETAIN_COUNT,
 } from './lib/backup.js';
@@ -128,7 +129,11 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // flag it loudly via stderr so the user knows where their content went and
   // how to restore it. No silent data loss vector either way — backup-<ISO>/
   // always carries the original.
-  const existing = specHome().filter(p => fs.existsSync(p));
+  // entryPresent, not existsSync: a DANGLING ~/.claude/CLAUDE.md — the shape a
+  // stow/chezmoi user has whenever their dotfiles checkout has moved — was
+  // filtered out here, so no backup was taken and copySpecFiles wrote the spec
+  // straight through the link into their dotfiles repo (backup.js entryPresent).
+  const existing = specHome().filter(entryPresent);
   const claudeMdPath = specHome()[0]; // ~/.claude/CLAUDE.md by convention
   let userContentDetected = false;
   if (existing.includes(claudeMdPath)) {
@@ -136,7 +141,19 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     // did not write this dir" from the fact that install.js never backs up a
     // spec-shaped file. Two spellings of the same test would let that inference
     // rot silently, so both callers ask backup.js.
-    if (!looksLikeSpec(fs.readFileSync(claudeMdPath, 'utf8'))) {
+    //
+    // The read is guarded because `existing` now admits entries that cannot be
+    // opened: an unguarded readFileSync on a dangling link throws ENOENT out of
+    // install BEFORE anything is written, turning a recoverable dotfiles state
+    // into a hard install failure. Unreadable is not spec-shaped, and answering
+    // "user content" is the safe direction — it backs the entry up and warns.
+    let head = null;
+    try {
+      head = fs.readFileSync(claudeMdPath, 'utf8');
+    } catch {
+      /* dangling link / permissions — treated as user content below */
+    }
+    if (head === null || !looksLikeSpec(head)) {
       userContentDetected = true;
     }
   }
