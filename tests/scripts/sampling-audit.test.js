@@ -591,18 +591,25 @@ test('turn-yield precondition: await-shaped prose alone never suppresses', () =>
   }
 });
 
-test('turn-yield: a turn that spawned an Agent suppresses the tell; one that did not still counts', async () => {
+test('turn-yield: only a same-turn main-line Agent spawn suppresses the tell', async () => {
   const dir = stageFixture('turn-yield-subagent');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    // Two typed nudges, both after tool-active turns → 2 opportunities. The
-    // first follows a turn containing an `Agent` tool_use (a legal §11 yield);
-    // the second follows an ordinary Edit turn and is still a violation.
-    assert.equal(r.byRule['§11-turn-yield'].opportunities, 2);
+    // Four typed nudges, each after a tool-active turn. Only the first follows a
+    // turn that spawned a subagent on the main line, and only that one is the
+    // legal §11 yield. The other three are premature stops:
+    //   2. an ordinary Edit turn;
+    //   3. an Agent call that lives in a SIDECHAIN — the scanner drops
+    //      sidechains, so it must not reach the main-line spawn flag (0.78.0
+    //      round-3 review LOW-2: this arm had no fixture behind it);
+    //   4. a spawn turn separated from the stop by a COMPACTION boundary. That
+    //      record is `user-typed` with compactSummary set, so it took neither
+    //      branch of the reset and the flag leaked forward (round-3 MEDIUM-1).
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 4);
     assert.equal(
       r.byRule['§11-turn-yield'].violations,
-      1,
-      'the nudge after the Agent-spawning turn must not count — that stop is what §11 permits'
+      3,
+      'only the same-turn main-line spawn may suppress — sidechain spawns and pre-compaction spawns must not'
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

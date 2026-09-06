@@ -102,3 +102,9 @@ tasks/*
 # does not npm install.
 /node_modules/
 /coverage/
+
+# tests/tools/ holds python harnesses. Running one as __main__ writes no
+# bytecode, but IMPORTING it does, and the suite has a hard gate that fails when
+# the working tree changed — reported as "the suite changed the real working
+# tree" with no hint of the cause (0.78.0 round-3 review, LOW-4).
+__pycache__/

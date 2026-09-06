@@ -393,11 +393,21 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // paraphrase, an inversion, a withdrawal, a synonym or a decoy — every one of
 // the twelve mutations above changes the pinned text.
 //
-// The pin's honest limit: a maintainer can update it to match a bad edit. The
-// property it buys is that they cannot do so SILENTLY — the rule text and the
-// pin change in the same diff, in front of a human. Legitimate rewording fails
-// here BY DESIGN, including a meaning-preserving reorder; that failure is the
-// prompt to re-read the rule, not a bug to loosen away.
+// The pin's honest limits, both of them. A maintainer can update the pin to
+// match a bad edit — but not SILENTLY: the rule text and the pin change in the
+// same diff, in front of a human. Legitimate rewording fails here BY DESIGN,
+// including a meaning-preserving reorder; that failure is the prompt to re-read
+// the rule, not a bug to loosen away.
+//
+// The second limit is the one that matters and it is NOT closed: the pin covers
+// THE LINE, not its neighbours. A bullet placed beside this one can revoke it,
+// a preamble above it can weaken it, a `### Superseded` header can be inserted
+// over it, and the rule dies with every gate here green — all four were
+// demonstrated against a full clone at exit 0 (0.78.0 round-3 review, HIGH-1).
+// Do not read a passing pin as "the rule still holds". It means the pinned line
+// is byte-identical to what shipped, and nothing more. Closing the neighbour
+// case would need a fourth mechanism asserting the semantics of surrounding
+// prose, which is the approach two review rounds already falsified.
 //
 // The pin is the WHOLE LINE, not a clause inside it. A substring pin leaves the
 // rule's own text intact and appends a sentence that takes it back — the clause
@@ -438,8 +448,12 @@ for (const pin of PINS) {
       carrying.length,
       1,
       `${pin.file} must carry the heading ${JSON.stringify(pin.anchor)} on exactly one line, ` +
-        `found ${carrying.length}. Two means a decoy or a duplicated restatement — the pin below ` +
-        'would then be checked against whichever came first.'
+        `found ${carrying.length}. ` +
+        (carrying.length === 0
+          ? 'Zero means the heading was renamed or the rule was deleted; the pin cannot be ' +
+            'checked at all, which is why this assertion runs first.'
+          : 'More than one means a decoy or a duplicated restatement — the pin below would then ' +
+            'be checked against whichever came first.')
     );
     assert.equal(
       carrying[0],

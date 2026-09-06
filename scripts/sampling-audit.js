@@ -422,10 +422,22 @@ const YIELD_ASK_WINDOW = 260;
 // `yieldTellSuppressed` stays prose-only and stays narrow; the tests pin that no
 // await-shaped sentence suppresses on its own.
 //
-// Residue, stated: a turn that spawned a subagent, consumed it, and then stopped
-// prematurely is suppressed too. That requires a real spawn in the same turn —
-// far narrower than a prose match, and the direction is a known under-count
-// rather than an unbounded one.
+// Three residues, all measured in the 0.78.0 round-3 review, stated because a
+// gate that over-claims is what this release is about:
+//   FN — a turn that spawned a subagent, consumed it, and then stopped
+//        prematurely is suppressed too. Requires a real spawn in the same turn,
+//        so it is a bounded under-count rather than an unbounded one.
+//   FN — exposure is not small. On the release's own transcript 4 of 13
+//        turn-yield opportunities (31%) were in Agent-bearing turns and so were
+//        available to be silenced. One transcript, an orchestration-heavy repo:
+//        an exposure figure, not a population estimate. Nothing downstream
+//        measures it while CALIBRATION precision is still null.
+//   FP — the canonical multi-reviewer shape is still counted: spawn N reviewers
+//        in one turn, then yield once per returning reviewer, and the N-1 later
+//        yields carry no Agent call of their own. Those are legal §11 fourth-
+//        trigger yields scored as violations. Carrying the flag forward would
+//        need completion events the scanner does not track, so this is
+//        disclosed rather than fixed.
 const SPAWN_TOOL_RE = /^Agent$/;
 
 // Returns true when the prior assistant turn makes the tell inapplicable.
@@ -578,6 +590,19 @@ function scanSequence(events) {
           out.turnYield.violations += 1;
         }
       }
+      toolUseInTurn = false;
+      spawnInTurn = false;
+      priorText = '';
+    } else if (e.compactSummary) {
+      // A compact-summary record is `user-typed` with the flag set, so it took
+      // NEITHER branch above and every flag survived into the turns after the
+      // compaction — a spawn before the boundary silenced the detector for the
+      // rest of the transcript (0.78.0 round-3 review, MEDIUM-1). A compaction
+      // is a turn boundary: nothing before it is the prior turn any more.
+      // `toolUseInTurn` leaking here predates this release and biased toward
+      // counting; it is reset with the others because one boundary cannot be a
+      // boundary for one flag and not the rest, and the §11 series is being
+      // re-baselined this release anyway.
       toolUseInTurn = false;
       spawnInTurn = false;
       priorText = '';

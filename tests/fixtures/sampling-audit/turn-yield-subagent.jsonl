@@ -1,9 +1,21 @@
-{"type": "user", "message": {"role": "user", "content": "review the release before I tag it"}}
-{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Spawning two reviewers on the pushed range."}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "general-purpose", "name": "reviewer-spec", "description": "review spec"}}]}}
-{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "Spawned successfully."}]}}
-{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Yielding this turn. Their completion re-invokes the cycle, which resumes at the tag."}]}}
-{"type": "user", "message": {"role": "user", "content": "继续"}}
-{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "a.js"}}]}}
-{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
-{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Patched the empty-input branch."}]}}
-{"type": "user", "message": {"role": "user", "content": "继续"}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "review the release before I tag it"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Spawning two reviewers on the pushed range."}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "general-purpose", "name": "reviewer-a"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Yielding this turn. Their completion re-invokes the cycle, which resumes at the tag."}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "继续"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "a.js"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Patched the empty-input branch."}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "继续"}}
+{"type": "assistant", "isSidechain": true, "message": {"role": "assistant", "content": [{"type": "text", "text": "sub-task"}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "general-purpose", "name": "nested"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "b.js"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Renamed the helper."}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "继续"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Spawning a reviewer."}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "general-purpose", "name": "reviewer-b"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "user", "isSidechain": false, "isCompactSummary": true, "message": {"role": "user", "content": "This session is being continued from a previous conversation..."}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "c.js"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Adjusted the guard."}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "继续"}}
