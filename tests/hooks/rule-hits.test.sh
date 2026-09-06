@@ -49,7 +49,14 @@ ROTATED_LINES=$(wc -l < "$LOG.1" | tr -d ' ')
 [[ "$ROTATED_LINES" == "2" ]] || { echo "FAIL: .1 expected 2 lines, got $ROTATED_LINES"; exit 1; }
 
 # Case 5: second rotation pushes .1 to .2, drops any prior .2.
+#
+# The stale `.2` is BACKDATED. Placement orders by age since 0.77.0, and a `.2`
+# stamped "now" is by that measure the newest generation on disk, which is a
+# state no real rotation can produce (`.2` was archived before `.1`, so its rows
+# are older). Left at the current time the fixture asserted the opposite of the
+# invariant the code now maintains.
 echo '{"stale":true}' > "$LOG.2"
+touch -d '3 hours ago' "$LOG.2" 2>/dev/null || touch -t 200001010000 "$LOG.2"
 CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 # .2 now holds what .1 held before; prior .2 is gone.
 [[ -f "$LOG.2" ]] || { echo "FAIL: .2 missing after second rotation"; exit 1; }
@@ -349,11 +356,14 @@ MVSHIM="$TMP_HOME/mvshim"
 mkdir -p "$MVSHIM"
 cat > "$MVSHIM/mv" <<'SHIM'
 #!/usr/bin/env bash
-# `mv` lives in /bin on macOS and /usr/bin on GNU hosts; a hard-coded path makes
-# the shim fail for EVERY call, not just the one it means to intercept.
-REAL_MV=$(command -v -p mv 2>/dev/null || echo /bin/mv)
+# `mv` lives in /bin on macOS and /usr/bin on GNU hosts, and a hard-coded path
+# makes the shim fail for EVERY call rather than the one it means to intercept.
+# Two `exec`s, not `command -v -p`: `exec` only returns when it cannot run the
+# file, so the second line is the fallback — and the resolution costs no
+# subshell, which is what the previous form did on a path the macOS legs hung in.
 for a in "$@"; do case "$a" in *.rotating.*) exit 1;; esac; done
-exec "$REAL_MV" "$@"
+exec /bin/mv "$@"
+exec /usr/bin/mv "$@"
 SHIM
 chmod +x "$MVSHIM/mv"
 PATH="$MVSHIM:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
@@ -483,22 +493,33 @@ ROWS_AFTER=$(wc -l < "$LOG" | tr -d ' ')
   || { echo "FAIL: ROT-6 claimed rows were dropped ($ROWS_BEFORE -> $ROWS_AFTER)"; exit 1; }
 echo "PASS: ROT-6 a stale over-cap reading neither archives nor loses the claimed rows"
 
-# Case ROT-8: orphan placement is CHRONOLOGICAL. An orphan predates any `.1`
-# written after the crash that stranded it, so with `.1` occupied it belongs at
-# `.2`. Placing it at `.1` would leave `.1` older than `.2`, and
-# rule-hits-parse.js#logGenerations reads the three files as one sequence.
+# Case ROT-8: orphan placement is CHRONOLOGICAL, in BOTH directions. The first
+# version of this case only ever tried the age-consistent orientation — an
+# orphan older than `.1` — which the position-based code satisfied by accident,
+# so it was green whether placement compared ages or not (0.77.0 pre-tag review
+# round 2). Both orientations are asserted now, and `.1` must end up newer than
+# `.2` either way, because that is the invariant the rotator's cascade rests on.
+NOW=$(date +%s)
+stamp_at() { touch -d "@$2" "$1" 2>/dev/null || touch -t 200001010000 "$1"; }
+
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
-printf 'NEWER-ARCHIVE\n' > "$LOG.1"
+printf 'NEWER-ARCHIVE\n' > "$LOG.1"; stamp_at "$LOG.1" $((NOW-3600))
 rm -f "$LOG.2"
-printf 'OLDER-ORPHAN\n' > "$LOG.rotating.996.1"
-touch -t 200001010000 "$LOG.rotating.996.1"
+printf 'OLDER-ORPHAN\n' > "$LOG.rotating.$((NOW-10800)).996.1"; stamp_at "$LOG.rotating.$((NOW-10800)).996.1" $((NOW-10800))
 run 'rule_hits_append banned-vocab deny null'
-[[ "$(cat "$LOG.1")" == "NEWER-ARCHIVE" ]] \
-  || { echo "FAIL: ROT-8 the newer archive was displaced by an older orphan"; exit 1; }
-[[ "$(cat "$LOG.2" 2>/dev/null)" == "OLDER-ORPHAN" ]] \
-  || { echo "FAIL: ROT-8 orphan did not land in .2: $(cat "$LOG.2" 2>&1)"; exit 1; }
-echo "PASS: ROT-8 an orphan lands behind a newer archive, not in front of it"
+[[ "$(cat "$LOG.1")" == "NEWER-ARCHIVE" && "$(cat "$LOG.2" 2>/dev/null)" == "OLDER-ORPHAN" ]] \
+  || { echo "FAIL: ROT-8a older orphan should fall behind the newer archive (.1=$(cat "$LOG.1" 2>&1|head -1), .2=$(cat "$LOG.2" 2>&1|head -1))"; exit 1; }
+
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'OLDER-ARCHIVE\n' > "$LOG.1"; stamp_at "$LOG.1" $((NOW-10800))
+rm -f "$LOG.2"
+printf 'NEWER-ORPHAN\n' > "$LOG.rotating.$((NOW-3600)).995.1"; stamp_at "$LOG.rotating.$((NOW-3600)).995.1" $((NOW-3600))
+run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1")" == "NEWER-ORPHAN" && "$(cat "$LOG.2" 2>/dev/null)" == "OLDER-ARCHIVE" ]] \
+  || { echo "FAIL: ROT-8b newer orphan should take .1 and push the older archive down (.1=$(cat "$LOG.1" 2>&1|head -1), .2=$(cat "$LOG.2" 2>&1|head -1))"; exit 1; }
+echo "PASS: ROT-8 placement orders by age in both directions, not by which slot is free"
 
 # Case ROT-9: with both slots holding newer generations the orphan is the oldest
 # of three, and the two-archive retention drops it. What must NOT happen is a
@@ -548,13 +569,10 @@ MVSHIM2="$TMP_HOME/mvshim2"
 mkdir -p "$MVSHIM2"
 cat > "$MVSHIM2/mv" <<'SHIM'
 #!/usr/bin/env bash
-# See the ROT-1 shim: /usr/bin/mv does not exist on macOS. Hard-coding it made
-# the CLAIMING rename fail too, so no claim was ever left in flight and ROT-11a
-# reported "the shim did not bite" on both macOS legs (caught by CI before the
-# 0.77.0 tag).
-REAL_MV=$(command -v -p mv 2>/dev/null || echo /bin/mv)
+# See the ROT-1 shim for the two-`exec` idiom and why this is not `command -v`.
 for a in "$@"; do case "$a" in *.jsonl.1) exit 1;; esac; done
-exec "$REAL_MV" "$@"
+exec /bin/mv "$@"
+exec /usr/bin/mv "$@"
 SHIM
 chmod +x "$MVSHIM2/mv"
 PATH="$MVSHIM2:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
@@ -614,6 +632,52 @@ if [[ "$OUT" != *"rc=0"* ]] || [[ ! -f "$LOG" ]]; then
   exit 1
 fi
 echo "PASS: ROT-13 an unmatched orphan glob under failglob still writes the row"
+
+# Case ROT-14 (0.77.0 pre-tag review round 2, HIGH 3): placement must leave the
+# archives in age order, `.1` newest. The free-slot arms used to place by
+# POSITION, so an orphan NEWER than `.1` landed in an empty `.2` and inverted
+# them — and nothing else in the function compares the two, so the rotator's next
+# cascade (`mv .1 .2`) carried the older one over the newer and destroyed it.
+# Two ordinary appends, no concurrency.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+NOW=$(date +%s)
+printf 'GEN-OLD\n' > "$LOG.1"
+touch -d "@$((NOW-10800))" "$LOG.1" 2>/dev/null || touch -t 200001010000 "$LOG.1"
+rm -f "$LOG.2"
+printf 'GEN-NEW\n' > "$LOG.rotating.$((NOW-3600)).4242.7"
+touch -d "@$((NOW-3600))" "$LOG.rotating.$((NOW-3600)).4242.7" 2>/dev/null || touch -t 200001020000 "$LOG.rotating.$((NOW-3600)).4242.7"
+run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1" 2>/dev/null)" == "GEN-NEW" ]] \
+  || { echo "FAIL: ROT-14a the newer generation did not take .1 (.1=$(cat "$LOG.1" 2>&1|head -1), .2=$(cat "$LOG.2" 2>&1|head -1))"; exit 1; }
+[[ "$(cat "$LOG.2" 2>/dev/null)" == "GEN-OLD" ]] \
+  || { echo "FAIL: ROT-14a the older generation did not fall to .2"; exit 1; }
+# And the next real rotation must not destroy the newest archive.
+head -c 1200000 /dev/zero | tr '\0' 'z' > "$LOG"
+CLAUDEMD_LOG_MAX_MB=1 run 'rule_hits_append banned-vocab deny null'
+grep -qh 'GEN-NEW' "$LOG.1" "$LOG.2" 2>/dev/null \
+  || { echo "FAIL: ROT-14b the next rotation destroyed the newest archived generation"; exit 1; }
+echo "PASS: ROT-14 placement keeps the archives in age order, so the cascade evicts the oldest"
+
+# Case ROT-15 (same round, MEDIUM 1): a rotator whose `date` fails must not
+# create a claim that is instantly reapable. `0` is not a neutral sentinel — it
+# is an epoch in 1970, so a claim stamped with it is born past the reap threshold
+# and the next append deletes the generation it holds. The failure is one-sided:
+# only the ROTATING process's `date` has to fail, which a transient fork failure
+# under memory pressure gives. No rotation is the right answer when the clock
+# cannot be read, matching what the size reads do with an unreadable `stat`.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'GENERATION-AT-RISK\n' > "$LOG"
+DATESHIM="$TMP_HOME/dateshim"
+mkdir -p "$DATESHIM"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$DATESHIM/date"
+chmod +x "$DATESHIM/date"
+PATH="$DATESHIM:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+run 'rule_hits_append banned-vocab deny null'
+grep -qh 'GENERATION-AT-RISK' "$LOG" "$LOG.1" "$LOG.2" "$LOG".rotating.* 2>/dev/null \
+  || { echo "FAIL: ROT-15 a generation was destroyed because the rotator's clock failed"; exit 1; }
+echo "PASS: ROT-15 an unreadable clock skips the rotation instead of stamping it 1970"
 
 # Case ROT-7 (0.76.2 pre-tag review, CRITICAL-1): a size read must never put
 # non-numeric text into the arithmetic.

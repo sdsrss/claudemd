@@ -190,6 +190,89 @@ _rule_hits_path_age_seconds() {
   fi
 }
 
+# _rule_hits_place_generation CLAIMED LOG — file a recovered generation among the
+# two archive slots so that `.1` is the NEWEST of what survives, then drop the
+# oldest. Consumes CLAIMED either way.
+#
+# A PLACEMENT THAT FAILS LEAVES THE FILE. The earlier form was
+# `mv … || rm -f`, which answered a failed rename by deleting the rows it was
+# trying to file. The claim keeps its name, so the next reaper retries it once it
+# is past the threshold; only the explicit retention branch removes anything.
+#
+# TIES GO TO THE GENERATION BEING PLACED. mtime is whole seconds, so a rotation
+# that follows its predecessor inside one second reads as the same age — and with
+# a strict `<` the just-rotated live generation lost the tie and was filed at
+# `.2`, behind an older one, inverting the very order this function exists to
+# keep. The claim is by construction the newest thing on disk; an orphan is at
+# least as new as what it ties with.
+#
+# AGE DECIDES, NOT SLOT POSITION. The first version of this placed into whichever
+# slot was empty, which inverted the archives whenever the orphan was newer than
+# `.1` and `.2` was free — and nothing else in this file ever compares the two,
+# so the rotator's next cascade (`mv .1 .2`) carried the older generation over
+# the newer one and destroyed it. Two ordinary appends, no concurrency
+# (0.77.0 pre-tag review round 2, HIGH 3; the earlier round's HIGH 2 was the same
+# defect reached through the both-slots-full arm).
+#
+# The archives are normalised on the way in, so an inversion left by any earlier
+# code path heals rather than propagating. `.1` newer than `.2` is the invariant
+# the rotator's cascade depends on and the only one this function guarantees.
+_rule_hits_place_generation() {
+  local claimed="$1" log_file="$2" o_age a1_age a2_age swap
+  # A directory at an archive path would swallow the file: `mv -f file dir/`
+  # succeeds by moving it INSIDE. Leave the generation where it is — visible and
+  # recoverable by hand — rather than hiding it in there.
+  if [[ -d "$log_file.1" || -d "$log_file.2" ]]; then
+    return 0
+  fi
+  if [[ -e "$log_file.1" && -e "$log_file.2" ]]; then
+    a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
+    a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
+    if (( a2_age < a1_age )); then
+      swap="$log_file.2.swap.$$.${RANDOM:-0}"
+      if mv -f "$log_file.2" "$swap" 2>/dev/null; then
+        mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+        mv -f "$swap" "$log_file.1" 2>/dev/null
+      fi
+    fi
+  fi
+  o_age=$(_rule_hits_path_age_seconds "$claimed")
+  if [[ ! -e "$log_file.1" && ! -e "$log_file.2" ]]; then
+    mv -f "$claimed" "$log_file.1" 2>/dev/null
+    return 0
+  fi
+  if [[ ! -e "$log_file.1" ]]; then
+    # Only `.2` occupied. Newer than it → take `.1`; older → `.2` is the newer of
+    # the two and belongs in `.1`, so it moves up and the claim takes `.2`.
+    a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
+    if (( o_age <= a2_age )); then
+      mv -f "$claimed" "$log_file.1" 2>/dev/null
+    else
+      mv -f "$log_file.2" "$log_file.1" 2>/dev/null
+      mv -f "$claimed" "$log_file.2" 2>/dev/null
+    fi
+    return 0
+  fi
+  a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
+  if (( o_age <= a1_age )); then
+    # Newest of what is present: cascade `.1` down, dropping whatever was in `.2`.
+    mv -f "$log_file.1" "$log_file.2" 2>/dev/null
+    mv -f "$claimed" "$log_file.1" 2>/dev/null
+    return 0
+  fi
+  if [[ ! -e "$log_file.2" ]]; then
+    mv -f "$claimed" "$log_file.2" 2>/dev/null
+    return 0
+  fi
+  a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
+  if (( o_age <= a2_age )); then
+    mv -f "$claimed" "$log_file.2" 2>/dev/null
+  else
+    # Oldest of three, and only two are retained.
+    rm -f "$claimed" 2>/dev/null
+  fi
+}
+
 rule_hits_append() {
   [[ "${DISABLE_RULE_HITS_LOG:-0}" == "1" ]] && return 0
 
@@ -356,25 +439,7 @@ rule_hits_append() {
     fi
     _claimed="$_orphan.reap.$$.${RANDOM:-0}"
     mv "$_orphan" "$_claimed" 2>/dev/null || continue
-    if [[ ! -e "$log_file.1" ]]; then
-      mv -f "$_claimed" "$log_file.1" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
-    elif [[ ! -e "$log_file.2" ]]; then
-      mv -f "$_claimed" "$log_file.2" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
-    else
-      # Both slots taken: keep the two newest of the three. Age, not position —
-      # smaller age is newer.
-      _o_age=$(_rule_hits_path_age_seconds "$_claimed")
-      _a1_age=$(_rule_hits_path_age_seconds "$log_file.1")
-      _a2_age=$(_rule_hits_path_age_seconds "$log_file.2")
-      if (( _o_age < _a1_age )); then
-        mv -f "$log_file.1" "$log_file.2" 2>/dev/null
-        mv -f "$_claimed" "$log_file.1" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
-      elif (( _o_age < _a2_age )); then
-        mv -f "$_claimed" "$log_file.2" 2>/dev/null || rm -f "$_claimed" 2>/dev/null
-      else
-        rm -f "$_claimed" 2>/dev/null
-      fi
-    fi
+    _rule_hits_place_generation "$_claimed" "$log_file"
   done
   (( _fg == 1 )) && shopt -s failglob
 
@@ -421,10 +486,23 @@ rule_hits_append() {
       # landing between them sees the inherited timestamp. The name is written by
       # the rename ITSELF, so there is no window and no dependency on whether a
       # filesystem or a `stat` flavour reports mtime, ctime or birth time.
+      # A CLOCK WE CANNOT READ MEANS NO ROTATION. `0` is not a neutral sentinel —
+      # it is an epoch in 1970, so a claim stamped with it is born past the reap
+      # threshold and the next append deletes the generation it holds. The
+      # failure is one-sided: only the ROTATING process's `date` has to fail,
+      # which a transient fork failure under memory pressure gives, while every
+      # other process reads the clock fine and reaps normally (0.77.0 pre-tag
+      # review round 2, MEDIUM 1). Declining to rotate is the same posture the
+      # size reads take with an unreadable `stat`, and it keeps this file's
+      # stated rule — never act on an age that cannot be established — pointing
+      # in one direction.
       local claim claim_born
-      claim_born=$(date +%s 2>/dev/null || echo 0)
+      claim_born=$(date +%s 2>/dev/null || echo "")
+      if [[ ! "$claim_born" =~ ^[0-9]+$ ]] || (( claim_born == 0 )); then
+        claim_born=""
+      fi
       claim="$log_file.rotating.$claim_born.$$.${RANDOM:-0}"
-      if mv "$log_file" "$claim" 2>/dev/null; then
+      if [[ -n "$claim_born" ]] && mv "$log_file" "$claim" 2>/dev/null; then
         # RE-READ the size, now on the CLAIMED file. The check above only
         # decides whether to reach for the claim; this one decides whether to
         # archive, and it has to be this one — the lesson survives the mechanism
@@ -472,6 +550,16 @@ rule_hits_append() {
           fi
         fi
         if (( csize > max_bytes )); then
+          # UNCONDITIONAL CASCADE HERE, and no age comparison. The claim is the
+          # LIVE generation, so it is the newest by construction — a structural
+          # fact, not something to measure. An attempt to share the reaper's
+          # age-aware placement measured 200/200 generations destroyed: `rename(2)`
+          # preserves mtime, so the claim carries the time of its last ROW, and
+          # against archives written more recently it read as the oldest of the
+          # three and was dropped by the retention branch. That is HIGH 1's error
+          # in a second place, and the reason the two paths stay separate: the
+          # reaper compares two ARCHIVED generations, where both mtimes mean the
+          # same thing, while nothing here needs a comparison at all.
           [[ -e "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
           mv -f "$claim" "$log_file.1" 2>/dev/null
         else
