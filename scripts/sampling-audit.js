@@ -82,7 +82,7 @@ const CALIBRATION = {
   '§11-turn-yield': {
     precision: null,
     labeledAt: '2026-09-06',
-    note: 'subagent-await arm added with spec v6.26.0 — re-baselined, prior counts not comparable',
+    note: 'structural subagent-spawn suppression added with spec v6.26.0 — re-baselined, prior counts not comparable',
   },
   '§iron-law-2': {
     precision: null,
@@ -404,18 +404,29 @@ const YIELD_ASK_RE =
 // CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
 // the next typed message starts a new task (§1.5), it is not a nudge.
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
-// AWAIT: spec v6.26.0 gave §11 a fourth yield trigger — awaiting a spawned
-// subagent. That stop is legal, it is resumed by the subagent's completion
-// rather than by the user, and it neither asks nor closes four-section, so
-// without this arm every one of them scored a violation the moment the user
-// typed anything (0.78.0 pre-tag review, M2). Deliberately narrow: an await
-// verb AND a subagent-shaped noun within one clause of it. "waiting for CI"
-// does NOT suppress — nothing re-invokes the agent when a pipeline goes green,
-// so the tell still applies there, and a passing mention of a reviewer carries
-// no await verb.
-const YIELD_AWAIT_RE =
-  /\b(?:await(?:ing)?|waiting|wait)\b[^.\n]{0,40}\b(?:sub-?agents?|agents?|teammates?|reviewers?)\b|(?:等待?|让出)[^。\n]{0,20}(?:子代理|评审|sub-?agent|agent|teammate|reviewer)/i;
 const YIELD_ASK_WINDOW = 260;
+// SPAWNED: spec v6.26.0 gave §11 a fourth yield trigger — awaiting a spawned
+// subagent. That stop is legal and is resumed by the subagent's completion
+// rather than by the user, but it neither asks nor closes four-section, so
+// every one of them scored a violation the moment the user typed anything
+// (0.78.0 pre-tag review, M2).
+//
+// The first fix read the turn's PROSE for an await construction and the delta
+// review broke it with 13 probes, 12 of which suppressed — negations, passing
+// mentions, a wait on a human reviewer, and a 3 279-char turn whose only
+// mention sat 3 236 chars from the end. A regex cannot decide what prose means,
+// which is the same lesson the spec-gate tests in this release learned.
+//
+// So the signal is structural and lives in the scanner, where the transcript is
+// available: `Agent` in a turn's tool_use names IS a spawn, not a claim of one.
+// `yieldTellSuppressed` stays prose-only and stays narrow; the tests pin that no
+// await-shaped sentence suppresses on its own.
+//
+// Residue, stated: a turn that spawned a subagent, consumed it, and then stopped
+// prematurely is suppressed too. That requires a real spawn in the same turn —
+// far narrower than a prose match, and the direction is a known under-count
+// rather than an unbounded one.
+const SPAWN_TOOL_RE = /^Agent$/;
 
 // Returns true when the prior assistant turn makes the tell inapplicable.
 export function yieldTellSuppressed(priorText) {
@@ -423,10 +434,6 @@ export function yieldTellSuppressed(priorText) {
   // or an API error) — the stop is not attributable to the agent.
   if (!priorText || !priorText.trim()) return true;
   if (YIELD_CLOSED_RE.test(priorText)) return true;
-  // Whole-text, not the ASK tail window: a yield names what it awaits wherever
-  // the sentence lands, and the construction is specific enough not to need the
-  // positional guard the bare-么 alternation does.
-  if (YIELD_AWAIT_RE.test(priorText)) return true;
   return YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
 }
 
@@ -554,20 +561,25 @@ function scanSequence(events) {
   // assistant TEXT is tracked separately from tool activity: a turn can end
   // with tool calls and no prose, which is itself a signal (nothing was asked).
   let toolUseInTurn = false;
+  let spawnInTurn = false;
   let priorText = '';
   for (const e of main) {
     if (e.kind === 'assistant') {
       if (e.toolUses.length > 0) toolUseInTurn = true;
+      if (e.toolUses.some(tu => SPAWN_TOOL_RE.test(String(tu.name || '')))) spawnInTurn = true;
       if (e.hasText) priorText = e.text;
     }
     if (e.kind === 'user-typed' && !e.compactSummary) {
       if (toolUseInTurn) {
         out.turnYield.opportunities += 1;
-        if (YIELD_TELL_RE.test(e.text.trim()) && !yieldTellSuppressed(priorText)) {
+        // §11's fourth trigger is structural: the turn spawned a subagent, so
+        // ending it is the permitted stop and not a tell. See SPAWN_TOOL_RE.
+        if (!spawnInTurn && YIELD_TELL_RE.test(e.text.trim()) && !yieldTellSuppressed(priorText)) {
           out.turnYield.violations += 1;
         }
       }
       toolUseInTurn = false;
+      spawnInTurn = false;
       priorText = '';
     }
   }

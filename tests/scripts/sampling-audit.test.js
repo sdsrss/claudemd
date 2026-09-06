@@ -554,27 +554,59 @@ test('turn-yield precondition: a plain mid-work statement still counts as a tell
 });
 
 // Spec v6.26.0 gave §11 a fourth yield trigger: awaiting a spawned subagent. A
-// turn that ends naming what it waits for is a LEGAL stop and the subagent's
+// turn that ends naming what it waits for is a LEGAL stop — the subagent's
 // completion is what resumes it — but it neither asks nor closes four-section,
-// so before this arm every such yield scored a violation the moment the user
-// typed anything. That injects a known false-positive class into a series whose
-// precision is still null (0.78.0 pre-tag review, M2).
-test('turn-yield precondition: a named subagent wait suppresses the tell', () => {
-  assert.equal(yieldTellSuppressed('等 reviewer-spec 和 reviewer-claims 的报告，不 sleep 不催。'), true);
-  assert.equal(
-    yieldTellSuppressed('Yielding here: waiting on the reviewer subagent to deliver its findings.'),
-    true
-  );
-  assert.equal(yieldTellSuppressed('让出这一轮，等待两个子代理返回。'), true);
+// so the tell fired on every one of them.
+//
+// The first fix read the PROSE for an await construction. The 0.78.0 delta
+// review broke it with 13 probes, 12 of which suppressed: negations ("I did not
+// wait for the reviewer", "我没有等子代理"), passing mentions ("Refactored the
+// wait loop so agents no longer spin"), a wait on a HUMAN reviewer, and a
+// 3 279-char turn whose only mention sat 3 236 chars from the end. Same root
+// cause as the spec-gate defect in the same release: a regex cannot decide what
+// prose means.
+//
+// So the suppression is STRUCTURAL now and lives in scanSequence, not here: a
+// turn that issued an `Agent` tool_use spawned a subagent, and that is a fact in
+// the transcript rather than a reading of it. `yieldTellSuppressed` is back to
+// its three prose preconditions and deliberately does NOT suppress on any
+// await-shaped sentence — these cases pin that, so a prose arm cannot be
+// reintroduced without failing them.
+test('turn-yield precondition: await-shaped prose alone never suppresses', () => {
+  for (const probe of [
+    'Yielding here: waiting on the reviewer subagent to deliver its findings.',
+    '等 reviewer-spec 和 reviewer-claims 的报告，不 sleep 不催。',
+    'Patched the parser. I did not wait for the reviewer to weigh in on the naming.',
+    'You should never wait for an agent to self-report; poll the file instead.',
+    'Waiting on the reviewer (a human) to open the PR — nothing for me to do.',
+    'Refactored the wait loop so agents no longer spin. Stopping here.',
+    '我没有等子代理，直接自己改完了。',
+    '等一下，这个 reviewer 的意见我还没看完。',
+  ]) {
+    assert.equal(
+      yieldTellSuppressed(probe),
+      false,
+      `prose suppression reintroduced — this probe should not suppress: ${probe}`
+    );
+  }
 });
 
-test('turn-yield precondition: the subagent arm does not swallow other waits', () => {
-  // Control arm. CI is not a subagent — nothing re-invokes the agent when a
-  // pipeline goes green, so the old tell still applies to a turn that stops for
-  // one. And a passing mention of a reviewer is not an announced wait.
-  assert.equal(yieldTellSuppressed('CI 还要跑 9 分钟，我先等着。'), false);
-  assert.equal(yieldTellSuppressed('Waiting for the CI run to finish before tagging.'), false);
-  assert.equal(yieldTellSuppressed('The reviewer found a null deref in the parser; I patched it.'), false);
+test('turn-yield: a turn that spawned an Agent suppresses the tell; one that did not still counts', async () => {
+  const dir = stageFixture('turn-yield-subagent');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // Two typed nudges, both after tool-active turns → 2 opportunities. The
+    // first follows a turn containing an `Agent` tool_use (a legal §11 yield);
+    // the second follows an ordinary Edit turn and is still a violation.
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 2);
+    assert.equal(
+      r.byRule['§11-turn-yield'].violations,
+      1,
+      'the nudge after the Agent-spawning turn must not count — that stop is what §11 permits'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('turn-yield-asked fixture: opportunities counted, tells suppressed', async () => {

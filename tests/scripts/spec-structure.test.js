@@ -370,84 +370,92 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // report enters context only at turn end, so a rule forbidding turn-ending is a
 // rule forbidding delivery — measured 2026-09-06 on the v0.77.0 ship as a
 // 3h02m / 126-tool-call turn with zero completion notifications and a 230 ms
-// post-turn flush. Both halves are asserted because removing EITHER restores the
+// post-turn flush. Both halves matter because removing EITHER restores the
 // deadlock: §12's atomic window overrides the §11 trigger inside a ship, and §11
 // without the trigger leaves §12's exception with nothing to permit. §12 has no
 // numbered steps of its own; the review lands inside the atomic window in
 // projects whose runbook orders it between the push and the tag.
 //
-// These assertions check POLARITY and POSITION, not keyword presence. The first
-// draft checked presence, and the 0.78.0 pre-tag review broke it with five
-// mutations that left the suite green — among them replacing §12's exception
-// with a bare "See core §11." (the guarded sentence deleted, `/core §11/` still
-// matching the leftover cross-reference), inverting it to "the trigger is
-// suspended inside the atomic ship window", and reverting §11's trigger list to
-// the v6.25.4 enumeration verbatim while a neighbouring sentence kept the word
-// "subagent" to the right of `Yield only on`. Each named mutation below is one
-// of those. Keep them red.
+// WHY THESE ARE EXACT-TEXT PINS AND NOT SEMANTIC ASSERTIONS.
+// Two drafts tried to assert what the rules MEAN. The 0.78.0 pre-tag review
+// broke the first with five mutations and the second with seven more, all of
+// them green: `**Second exception**: none — … the wait is held open, never
+// yielded.` satisfied a heading check and a `suspend` blacklist; `do NOT name an
+// absolute output path` satisfied a positive phrase check and a `never name`
+// blacklist; the trigger list was reverted to v6.25.4 verbatim with the bold
+// phrase parked in a WITHDRAWN sentence that a delimiter-terminated slice
+// silently swallowed. Each fix added tokens to a blacklist and the next reader
+// wrote around it, because regex cannot decide what English prose means.
 //
-// Line selection is exact-heading, not substring: both files also carry prose
-// RESTATEMENTS of these rules (the Recent-changes bullets), and a first-match
-// `includes('Manual-ship atomicity')` would fall through to one the day the
-// real rule moves below it.
-const YIELD_ANCHOR = '**Mid-SPINE turn-yield** (HARD, all levels)';
-const ATOMICITY_ANCHOR = '**Manual-ship atomicity (HARD, clarification)**';
+// So these do not try. Each test asserts that exactly ONE line carries the
+// rule's bold heading, and that the line contains a clause VERBATIM. That is a
+// golden pin: it makes no claim about meaning, and it cannot be satisfied by a
+// paraphrase, an inversion, a withdrawal, a synonym or a decoy — every one of
+// the twelve mutations above changes the pinned text.
+//
+// The pin's honest limit: a maintainer can update it to match a bad edit. The
+// property it buys is that they cannot do so SILENTLY — the rule text and the
+// pin change in the same diff, in front of a human. Legitimate rewording fails
+// here BY DESIGN, including a meaning-preserving reorder; that failure is the
+// prompt to re-read the rule, not a bug to loosen away.
+//
+// Anchor uniqueness is half the gate. Both spec files also carry prose
+// RESTATEMENTS of these rules in their Recent-changes entries, and a decoy line
+// carrying the same heading above a gutted real one was one of the mutations
+// that survived. Requiring exactly one occurrence closes it by construction and
+// is independent of where in the file the rule sits.
+const PINS = [
+  {
+    what: 'core §11 Mid-SPINE turn-yield — the fourth trigger and its terms',
+    file: CORE,
+    anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
+    clause:
+      '**Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure ' +
+      '(§11 Context pressure → `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — ' +
+      'its report enters context only at turn end (measured 2026-09-06), so yield naming what is ' +
+      'awaited; completion re-invokes you, no user input needed, and a yield still unresumed when ' +
+      'the user next types owes `tasks/<slug>-paused.md` as a context-pressure yield does.',
+  },
+  {
+    what: '§EXT §12 manual-ship atomicity — the second exception for the review wait',
+    file: EXT,
+    anchor: '**Manual-ship atomicity (HARD, clarification)**',
+    clause:
+      '**Second exception**: awaiting the pre-tag review subagent (Author ≠ reviewer above) — ' +
+      'yield per core §11 naming the reviewers; their completion re-invokes the cycle, which ' +
+      'resumes at the tag.',
+  },
+  {
+    what: '§EXT §11-O subagent rules — the delivery fact and the file fallback',
+    file: EXT,
+    anchor: '- **Output reaches main only at turn end**',
+    clause:
+      'Inside a cycle you are blind to it, so the default is to yield per core §11. Where the ' +
+      'cycle genuinely cannot yield, name an absolute output path in the spawn prompt and poll ' +
+      'that file',
+  },
+];
 
-// The enumeration runs from `Yield only on` to the em-dash that opens the
-// fourth trigger's explanation. Slicing it off the line is what makes position
-// load-bearing: a mention of "subagent" anywhere else on the line is outside it.
-function yieldTriggerList(coreText) {
-  const line = coreText.split('\n').find(l => l.includes(YIELD_ANCHOR));
-  assert.ok(line, `core §11 must still carry the rule anchored as: ${YIELD_ANCHOR}`);
-  const idx = line.indexOf('Yield only on');
-  assert.ok(idx !== -1, '§11 turn-yield must still enumerate its yield triggers');
-  const emdash = line.indexOf(' — ', idx);
-  return { line, list: emdash === -1 ? line.slice(idx) : line.slice(idx, emdash) };
+for (const pin of PINS) {
+  test(`v6.26.0 pin: ${pin.what}`, () => {
+    const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
+    const carrying = lines.filter(l => l.includes(pin.anchor));
+    assert.equal(
+      carrying.length,
+      1,
+      `${pin.file} must carry the heading ${JSON.stringify(pin.anchor)} on exactly one line, ` +
+        `found ${carrying.length}. Two means a decoy or a duplicated restatement — the pin below ` +
+        'would then be checked against whichever came first.'
+    );
+    assert.ok(
+      carrying[0].includes(pin.clause),
+      `the pinned clause is no longer present verbatim in ${pin.file}.\n\n` +
+        `EXPECTED to find:\n${pin.clause}\n\n` +
+        `ON THE LINE:\n${carrying[0]}\n\n` +
+        'This pin does not judge meaning — it reports that rule text changed. Re-read the rule ' +
+        'and the v6.26.0 entry in spec/CLAUDE-changelog.md, decide whether the new wording still ' +
+        'lets an orchestrating cycle yield to read what it spawned, and only then update the ' +
+        'clause here in the same commit.'
+    );
+  });
 }
-
-test('§11 turn-yield lists the subagent wait AS a trigger, affirmatively', () => {
-  const { list } = yieldTriggerList(fs.readFileSync(CORE, 'utf8'));
-  assert.match(
-    list,
-    /,\s*or \*\*awaiting a spawned subagent\*\*/,
-    `the subagent wait must be an enumerated trigger inside the "Yield only on" list, not a mention elsewhere on the line (mutations M4b/M4c). List read: ${list}`
-  );
-  assert.doesNotMatch(
-    list,
-    /\bnot a yield trigger\b/i,
-    'the trigger list states the opposite of what this rule exists to permit (mutation M4b)'
-  );
-});
-
-test('§EXT §12 ship atomicity excepts that wait rather than suspending it', () => {
-  const ext = fs.readFileSync(EXT, 'utf8');
-  const atomicity = ext.split('\n').find(l => l.includes(ATOMICITY_ANCHOR));
-  assert.ok(atomicity, `§EXT §12 must still carry the rule anchored as: ${ATOMICITY_ANCHOR}`);
-  assert.match(
-    atomicity,
-    /\*\*Second exception\*\*/,
-    'the atomic ship window must carry an explicit second exception; a bare cross-reference to core §11 is not one (mutation M5c)'
-  );
-  assert.match(atomicity, /core §11/, 'the second exception must defer to the core §11 trigger');
-  assert.doesNotMatch(
-    atomicity,
-    /\bsuspend(ed|s)?\b/i,
-    'the ship window suspends the core §11 trigger instead of excepting the wait — that is the deadlock restated (mutation M5b)'
-  );
-});
-
-test('§EXT §11-O records the delivery fact and gives the file fallback', () => {
-  const ext = fs.readFileSync(EXT, 'utf8');
-  const bullet = ext.split('\n').find(l => l.startsWith('- ') && /reaches main only at turn end/i.test(l));
-  assert.ok(bullet, '§EXT §11-O must record that subagent output reaches main only at turn end');
-  assert.match(
-    bullet,
-    /name an absolute output path/i,
-    'the fallback must instruct naming an output path, affirmatively (mutation M6b inverted it to "Never name an output path")'
-  );
-  assert.doesNotMatch(
-    bullet,
-    /\bnever name\b/i,
-    '§11-O forbids the fallback it exists to give (mutation M6b)'
-  );
-});
