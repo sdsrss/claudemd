@@ -247,13 +247,16 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       ) {
         try {
           // A directory can carry one of these names: `claudemd.jsonl.rotating`
-          // is the rotation lock (hooks/lib/rule-hits.sh). `unlinkSync` throws
-          // EISDIR on it, the catch swallowed that, and the emptiness check
-          // below then failed — so purge left both the lock and ~/.claude/logs
-          // standing, the residue class this loop exists to close (2026-09-05
-          // post-ship review, finding 3). `rmdirSync` and not a recursive
-          // remove: the lock is always empty, and a directory here that is not
-          // deserves to be left alone rather than walked.
+          // was the rotation mutex up to v0.76.2 (hooks/lib/rule-hits.sh, since
+          // replaced by a rename-claim). `unlinkSync` throws EISDIR on it, the
+          // catch swallowed that, and the emptiness check below then failed — so
+          // purge left both the lock and ~/.claude/logs standing, the residue
+          // class this loop exists to close (2026-09-05 post-ship review,
+          // finding 3). Kept for machines that upgraded with one on disk.
+          // `rmdirSync` and not a recursive remove: the lock is always empty, and
+          // a directory here that is not deserves to be left alone rather than
+          // walked. The claim files that replaced it (`claudemd.jsonl.rotating.
+          // <pid>.<n>`) are ordinary files and match the prefix test above.
           const target = path.join(logsDir(), name);
           if (fs.lstatSync(target).isDirectory()) fs.rmdirSync(target);
           else fs.unlinkSync(target);

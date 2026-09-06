@@ -328,106 +328,120 @@ echo "$LAST" | jq -e --arg v "$PKG_VER" '.hook_version == $v' >/dev/null \
   || { echo "FAIL: ARCH-3 hook_version missing or wrong (want $PKG_VER, got: $LAST)"; exit 1; }
 
 
-# Case ROT-1 (2026-09-05 audit P1-1): the two-step rotation is under a mkdir
-# mutex, so a second process arriving mid-rotation leaves both archives alone.
-# Pre-fix, P2's `mv .1 .2` moved P1's just-rotated live generation onto .2 and
-# both prior generations were lost. Deterministic stand-in for the interleave:
-# hold the lock, then call append over an oversized log and assert it did not
-# rotate. (An interleaving test would have to win a microsecond-wide race to
-# fail, which is how the race survived two audits.)
+# --- Rotation: claim-based, v0.76.3 ----------------------------------------
+# The mkdir mutex these cases used to describe is gone. A rotator now renames
+# the live log to a private `<log>.rotating.<pid>.<n>` and archives from there,
+# so ownership of a generation is established by rename(2) unlinking the source.
+# The reason is measured: on the development host /usr/bin/mkdir is uutils
+# coreutils 0.8.0 and 200 four-way races produced 206 wins where 200 were
+# expected, while /usr/bin/mv is GNU coreutils 9.7 and the same 200 races over a
+# rename produced exactly one winner every time.
+
+# Case ROT-1: the loser of a claim leaves both archives alone. Under the mutex
+# this was "a second process arriving mid-rotation"; the claim expresses it as a
+# rename that finds no source. Deterministic stand-in: an `mv` shim that fails
+# only for the claim, which is the state of every process but the winner.
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
 printf 'ARCHIVE-1\n' > "$LOG.1"
 printf 'ARCHIVE-2\n' > "$LOG.2"
-mkdir "$LOG.rotating" || { echo "FAIL: ROT-1 could not take the lock"; exit 1; }
-CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+MVSHIM="$TMP_HOME/mvshim"
+mkdir -p "$MVSHIM"
+cat > "$MVSHIM/mv" <<'SHIM'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in *.rotating.*) exit 1;; esac; done
+exec /usr/bin/mv "$@"
+SHIM
+chmod +x "$MVSHIM/mv"
+PATH="$MVSHIM:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ "$(cat "$LOG.1")" == "ARCHIVE-1" ]] \
-  || { echo "FAIL: ROT-1 .1 was rotated while the lock was held: $(cat "$LOG.1")"; exit 1; }
+  || { echo "FAIL: ROT-1 .1 rotated by a process that lost the claim: $(cat "$LOG.1")"; exit 1; }
 [[ "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
-  || { echo "FAIL: ROT-1 .2 was overwritten while the lock was held: $(cat "$LOG.2")"; exit 1; }
-[[ -d "$LOG.rotating" ]] || { echo "FAIL: ROT-1 a fresh lock was reaped by the loser"; exit 1; }
-echo "PASS: ROT-1 rotation skipped while another process holds the lock"
+  || { echo "FAIL: ROT-1 .2 overwritten by a process that lost the claim: $(cat "$LOG.2")"; exit 1; }
+echo "PASS: ROT-1 losing the claim leaves both archives untouched"
 
-# Case ROT-2: a lock left behind by a killed holder does not stop rotation
-# forever. Older than a minute → the next append reaps it AND goes on to rotate
-# in the same call, because the reap runs before the size check. Nothing else
-# reaps it, which is why the age branch exists.
-touch -t 200001010000 "$LOG.rotating"
-CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
-[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-2 stale lock survived"; exit 1; }
-[[ "$(cat "$LOG.2")" == "ARCHIVE-1" ]] \
-  || { echo "FAIL: ROT-2 same call did not rotate after reaping the stale lock: $(cat "$LOG.2")"; exit 1; }
-echo "PASS: ROT-2 stale lock reaped and the same call rotates"
+# Case ROT-2: an orphan claim — a rotator killed between the claim and the
+# placement — holds a full generation of ROWS, so the reaper completes the
+# interrupted rotation rather than deleting it. The old stale-lock reap could
+# only ever `rmdir`; there was nothing in a lock to preserve.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+rm -f "$LOG.1" "$LOG.2"
+printf 'ORPHANED-GENERATION\n' > "$LOG.rotating.999.1"
+touch -t 200001010000 "$LOG.rotating.999.1"
+run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1" 2>/dev/null)" == "ORPHANED-GENERATION" ]] \
+  || { echo "FAIL: ROT-2 orphan rows not recovered into .1: $(ls "$TMP_HOME/.claude/logs")"; exit 1; }
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-2 orphan claim survived the reap"; exit 1; }
+echo "PASS: ROT-2 an orphan claim is completed into a free archive slot"
 
-# Case ROT-3: the lock releases on the happy path — a rotation that completes
-# leaves nothing behind for the age branch to reap.
+# Case ROT-3: the happy path leaves no residue — nothing for the reaper to find
+# after a rotation that completed.
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
 CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ -f "$LOG.1" ]] || { echo "FAIL: ROT-3 no rotation happened"; exit 1; }
-[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-3 lock left behind after a completed rotation"; exit 1; }
-echo "PASS: ROT-3 lock released after a completed rotation"
-
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-3 claim left behind after a completed rotation"; exit 1; }
+echo "PASS: ROT-3 a completed rotation leaves no claim behind"
 
 # Case ROT-4 (2026-09-05 post-ship review, finding 1): the age check must not be
 # `find -mmin`. BSD find — macOS, i.e. half the CI matrix — rounds the age UP to
-# the next full minute, so a lock two seconds old reads as "1 minute" and
-# `-mmin -1` prints nothing; the loser of mkdir then reaped a lock the winner
-# was still holding, reopening the race the lock exists to close. The shim below
-# stands in for that: a `find` on PATH that prints nothing, whatever it is asked.
-# A fresh lock must survive it.
+# the next full minute, so an entry two seconds old reads as "1 minute" and
+# `-mmin -1` prints nothing. The lesson outlives the lock: a FRESH orphan is a
+# rotation still in flight, and reaping it would hand its generation to a second
+# process. The shim stands in for that find: it prints nothing, whatever it is
+# asked.
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
-printf 'ARCHIVE-1\n' > "$LOG.1"
-mkdir "$LOG.rotating"
+printf 'IN-FLIGHT\n' > "$LOG.rotating.998.1"
 SHIMDIR="$TMP_HOME/shim"
 mkdir -p "$SHIMDIR"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$SHIMDIR/find"
 chmod +x "$SHIMDIR/find"
 sleep 2
 PATH="$SHIMDIR:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
-[[ -d "$LOG.rotating" ]] \
-  || { echo "FAIL: ROT-4 a 2s-old live lock was reaped (age check still depends on find's rounding)"; exit 1; }
-[[ "$(cat "$LOG.1")" == "ARCHIVE-1" ]] \
-  || { echo "FAIL: ROT-4 archive clobbered by a rotation that should not have run"; exit 1; }
-rmdir "$LOG.rotating"
-echo "PASS: ROT-4 a fresh lock survives a find that reports nothing"
+[[ "$(cat "$LOG.rotating.998.1" 2>/dev/null)" == "IN-FLIGHT" ]] \
+  || { echo "FAIL: ROT-4 a 2s-old in-flight claim was reaped (age check depends on find rounding)"; exit 1; }
+rm -f "$LOG.rotating.998.1"
+echo "PASS: ROT-4 a fresh claim survives a find that reports nothing"
 
 # Case ROT-5 (same review, finding 3): the reap must not sit inside the size
-# check. A holder killed after its last mv leaves the log already rotated and so
-# UNDER the cap — with the branch nested inside `size > max_bytes` it was
-# unreachable and the lock was permanent (measured: survived 10 appends with the
+# check. A rotator killed mid-rotation leaves the log already claimed and so
+# UNDER the cap — nested inside `size > max_bytes` the branch is unreachable and
+# the orphan is permanent (measured then: a lock survived 10 appends with the
 # live log at 1,960 bytes against the 5 MB default cap).
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
-mkdir "$LOG.rotating"
-touch -t 200001010000 "$LOG.rotating"
+rm -f "$LOG.1" "$LOG.2"
+printf 'STRANDED\n' > "$LOG.rotating.997.1"
+touch -t 200001010000 "$LOG.rotating.997.1"
 run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
-[[ ! -d "$LOG.rotating" ]] \
-  || { echo "FAIL: ROT-5 orphan lock survived an append under the size cap"; exit 1; }
-echo "PASS: ROT-5 orphan lock reaped even when the log is under the cap"
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-5 orphan claim survived an append under the size cap"; exit 1; }
+echo "PASS: ROT-5 an orphan claim is reaped even when the log is under the cap"
 
-# Case ROT-6 (2026-09-05 audit, Q-01 qualification): the size check that
-# AUTHORIZES a rotation must be re-read inside the mutex.
+# Case ROT-6 (2026-09-05 audit Q-01, carried across the redesign): the size that
+# AUTHORIZES an archive must be re-read on the file actually held.
 #
-# ROT-1 above covers the arm where `mkdir` fails. The arm that actually loses
-# data is the one where it SUCCEEDS a moment too late: P2 reads the size while
-# the log is still over the cap, P1 rotates and releases, and P2's `mkdir` then
-# wins an uncontested lock and re-runs the two-step move on a log that is
-# already rotated — `mv .1 .2` carrying P1's fresh archive onto .2 and `mv log
-# .1` failing silently. Both prior generations gone, under the mutex added to
-# prevent exactly that (measured pre-fix on 4 concurrent appends: 6/200 trials
-# with no lock involved, 33/200 with a stale lock also present; post-fix 0/200
-# and 8/400).
+# The claim closes the arm the mutex lost on — after the winner's rename there is
+# nothing left for a second process to claim. It does not close the same
+# interleaving one step further out: P2 reads the size, P1 claims and archives, a
+# THIRD process appends and re-creates the log, and P2's rename now succeeds
+# against a BRAND-NEW generation of a few hundred bytes. Archiving that would
+# push P1's just-placed `.1` onto `.2` and drop the generation in `.2` — the
+# P1-1 signature by a different route.
 #
-# Deterministic stand-in for the interleave, same trick as ROT-4's `find` shim:
-# a counting `stat` shim answers the FIRST size query with an over-cap number
-# and every later one truthfully. That is precisely the state P2 is in — an
-# outer check that passed against a log which is no longer over the cap.
+# Deterministic stand-in, same trick as ROT-4's find shim: a counting `stat`
+# answers the FIRST size query with an over-cap number and every later one
+# truthfully. That is exactly P2's state — an outer check that passed against a
+# generation it no longer holds.
 rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
 printf 'ARCHIVE-1\n' > "$LOG.1"
 printf 'ARCHIVE-2\n' > "$LOG.2"
+ROWS_BEFORE=$(wc -l < "$LOG" | tr -d ' ')
 STATSHIM="$TMP_HOME/statshim"
 mkdir -p "$STATSHIM"
 cat > "$STATSHIM/stat" <<'SHIM'
@@ -448,9 +462,58 @@ SHIM_COUNT="$TMP_HOME/statshim.count" PATH="$STATSHIM:$PATH" \
   || { echo "FAIL: ROT-6 .1 rotated on a stale size reading: $(cat "$LOG.1" 2>&1)"; exit 1; }
 [[ "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
   || { echo "FAIL: ROT-6 .2 clobbered on a stale size reading: $(cat "$LOG.2" 2>&1)"; exit 1; }
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-6 the no-op branch left the claim behind"; exit 1; }
+# The rows in the wrongly-claimed generation are telemetry, not scratch: the
+# no-op branch gives them back to the live log rather than dropping them.
+ROWS_AFTER=$(wc -l < "$LOG" | tr -d ' ')
+(( ROWS_AFTER >= ROWS_BEFORE + 1 )) \
+  || { echo "FAIL: ROT-6 claimed rows were dropped ($ROWS_BEFORE -> $ROWS_AFTER)"; exit 1; }
+echo "PASS: ROT-6 a stale over-cap reading neither archives nor loses the claimed rows"
+
+# Case ROT-8: orphan placement is CHRONOLOGICAL. An orphan predates any `.1`
+# written after the crash that stranded it, so with `.1` occupied it belongs at
+# `.2`. Placing it at `.1` would leave `.1` older than `.2`, and
+# rule-hits-parse.js#logGenerations reads the three files as one sequence.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'NEWER-ARCHIVE\n' > "$LOG.1"
+rm -f "$LOG.2"
+printf 'OLDER-ORPHAN\n' > "$LOG.rotating.996.1"
+touch -t 200001010000 "$LOG.rotating.996.1"
+run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1")" == "NEWER-ARCHIVE" ]] \
+  || { echo "FAIL: ROT-8 the newer archive was displaced by an older orphan"; exit 1; }
+[[ "$(cat "$LOG.2" 2>/dev/null)" == "OLDER-ORPHAN" ]] \
+  || { echo "FAIL: ROT-8 orphan did not land in .2: $(cat "$LOG.2" 2>&1)"; exit 1; }
+echo "PASS: ROT-8 an orphan lands behind a newer archive, not in front of it"
+
+# Case ROT-9: with both slots holding newer generations the orphan is the oldest
+# of three, and the two-archive retention drops it. What must NOT happen is a
+# newer archive being evicted to make room.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'KEEP-1\n' > "$LOG.1"
+printf 'KEEP-2\n' > "$LOG.2"
+printf 'OLDEST\n' > "$LOG.rotating.995.1"
+touch -t 200001010000 "$LOG.rotating.995.1"
+run 'rule_hits_append banned-vocab deny null'
+[[ "$(cat "$LOG.1")" == "KEEP-1" && "$(cat "$LOG.2")" == "KEEP-2" ]] \
+  || { echo "FAIL: ROT-9 a newer archive was evicted for an older orphan"; exit 1; }
+[[ -z "$(ls "$LOG".rotating.* 2>/dev/null)" ]] \
+  || { echo "FAIL: ROT-9 orphan left behind when both slots were full"; exit 1; }
+echo "PASS: ROT-9 an orphan older than both archives is dropped, not swapped in"
+
+# Case ROT-10: the v0.76.0-v0.76.2 mutex was a DIRECTORY at `<log>.rotating`.
+# Nothing creates one any more, so a machine upgraded while one was held would
+# carry it in ~/.claude/logs forever.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+mkdir "$LOG.rotating"
+run 'rule_hits_append banned-vocab deny null'
 [[ ! -d "$LOG.rotating" ]] \
-  || { echo "FAIL: ROT-6 lock left behind by the no-op branch"; exit 1; }
-echo "PASS: ROT-6 a stale over-cap size reading does not rotate an already-rotated log"
+  || { echo "FAIL: ROT-10 the legacy mutex directory survived the upgrade"; exit 1; }
+echo "PASS: ROT-10 the legacy mutex directory is removed on the next append"
 
 # Case ROT-7 (0.76.2 pre-tag review, CRITICAL-1): a size read must never put
 # non-numeric text into the arithmetic.
@@ -462,9 +525,11 @@ echo "PASS: ROT-6 a stale over-cap size reading does not rotate an already-rotat
 # `set -u`, `(( size > max_bytes ))` dereferences the word `File` and the shell
 # EXITS 127. hook_record calls rule_hits_append inline and every deny path
 # records BEFORE it denies, so the abort turns a §8 deny into an allow with no
-# row and no fail-open marker. Reachable because the in-mutex read (ROT-6) runs
-# with no `[[ -f ]]` guard above it: the log can be absent for the first stat
-# and re-created by another process before the second.
+# row and no fail-open marker. It was reachable through the second read (ROT-6),
+# which runs with no `[[ -f ]]` guard above it. The claim redesign narrows that
+# — the second read now stats a path this process owns — but the guard stays on
+# both reads: the outer one still runs against a shared path, and a stat that
+# prints to stdout and exits 1 is a shape neither read may hand to arithmetic.
 #
 # The shim reproduces exactly that pair: first call fails, second prints the GNU
 # --file-system blob and exits 1.
