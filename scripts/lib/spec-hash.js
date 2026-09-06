@@ -42,11 +42,18 @@ export function sha256File(filePath) {
 // user's bytes. v0.76.2 failed loudly and kept the link, so that was a
 // regression this guard introduced (0.77.0 pre-tag review, MEDIUM-1).
 //
-// `statSync` with `throwIfNoEntry` FOLLOWS the link and returns undefined only
-// for ENOENT; every other error throws and is caught below as "cannot tell",
-// which leaves the entry alone. A circular link (ELOOP) therefore survives too
-// and the copy fails loudly, which is the right end for a state nothing here
-// can safely resolve.
+// `statSync` with `throwIfNoEntry` FOLLOWS the link and returns undefined for
+// ENOENT and for ENOTDIR — both are deterministic statements that no entry can
+// exist at that path, the second when a path component is a regular file. Every
+// other error throws and is caught below as "cannot tell", which leaves the
+// entry alone. The distinction that matters is not the errno but its class: a
+// shape error is knowable, a permission or mount error is not.
+//
+// A circular link (ELOOP) therefore survives too and the copy fails loudly,
+// which is the right end for a state nothing here can safely resolve — on the
+// no-backup branch that leaves a partial upgrade, which is pre-existing, needs a
+// self-referential spec symlink to reach, and is recorded rather than fixed here
+// (0.77.0 pre-tag review, LOW-6).
 function danglingLinkTarget(p) {
   try {
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
