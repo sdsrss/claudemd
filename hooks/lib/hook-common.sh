@@ -589,6 +589,37 @@ hook_flatten_cmd() {
 # either — this view feeds trigger regexes, not a §8 verdict, and emptying can
 # only remove matches. An unterminated quote keeps its body, matching the seds
 # (no pair to match) rather than pre-bash's verdict-side handling.
+#
+# BACKSLASH IS MODELLED IN TWO OF THE THREE STATES (M-1, 0.76.2 pre-tag review).
+# Without it, `echo won\'t break && gh release create v1 --notes "runbook"` opened
+# a single-quote region at the escaped quote that never closed, so the whole tail
+# was re-emitted verbatim and the §11 gate denied an ordinary valid command. The
+# same shape inside double quotes — `echo "a \" ; git push origin main"`, which
+# bash reads as ONE argument — put `git push` at what looked like command position
+# and false-denied at the §7 gate too. Modelling the escape moves this view TOWARD
+# bash: text bash treats as data is text the triggers should not see.
+#
+# The rules are bash's, and they differ per state:
+#   unquoted   — `\X` makes X literal. Both characters are re-emitted VERBATIM
+#                rather than unescaped: nothing must disappear from a region that
+#                is not a quoted body, and keeping them cannot open a region.
+#   '...'      — NO escape processing at all. A backslash is an ordinary byte and
+#                only `'` closes. Unchanged, and pinned by a test.
+#   "..."      — `\` consumes the NEXT character into the body. `\"` therefore does
+#                not close the string, and — the case that matters for FN — `\\`
+#                is consumed AS A UNIT, so a `"` right after it DOES close and the
+#                command following it stays visible. Consuming `\"` there without
+#                consuming `\\` here is the false-negative this comment exists to
+#                prevent; it would swallow a genuine command position.
+#
+# `$'...'` is deliberately NOT modelled. ANSI-C quoting has its own escape rules,
+# the machine has no `$'` state, and adding one moves in the FN direction on a
+# gate that denies. Today the mismatch fails VISIBLE — the region is closed early,
+# the remainder re-emitted verbatim, and the trigger still sees it — which is the
+# safe direction. A test pins that property so the next edit cannot quietly flip
+# it. tasks/s8-sanitize-escaped-quote-gap.md carries the analysis; the §8 verdict
+# machine in pre-bash-safety-check.sh is a SEPARATE state machine and this change
+# does not touch it.
 HOOK_TRIGGER_QUOTE_AWK='
 BEGIN { RS = "\004" }
 {
@@ -596,14 +627,16 @@ BEGIN { RS = "\004" }
   for (i = 1; i <= n; i++) {
     ch = substr($0, i, 1)
     if (st == 0) {
-      if (ch == "\047")      { st = 1; buf = "" }
+      if (ch == "\\" && i < n) { final = final ch substr($0, i + 1, 1); i++ }
+      else if (ch == "\047") { st = 1; buf = "" }
       else if (ch == "\"")   { st = 2; buf = "" }
       else                     final = final ch
     } else if (st == 1) {
       if (ch == "\047") { final = final "\047\047"; st = 0; buf = "" }
       else buf = buf ch
     } else {
-      if (ch == "\"")   { final = final "\"\"";     st = 0; buf = "" }
+      if (ch == "\\" && i < n) { buf = buf ch substr($0, i + 1, 1); i++ }
+      else if (ch == "\"") { final = final "\"\"";     st = 0; buf = "" }
       else buf = buf ch
     }
   }

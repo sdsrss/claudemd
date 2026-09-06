@@ -851,6 +851,28 @@ OUT=$(mkevent_json 'ship '"'"'runbook'"'"' && echo "done"' "$SESS" | bash "$HOOK
 [[ -z "$OUT" ]] && echo "PASS: 49 quoted topic word still does not match a tag" \
   || { echo "FAIL: 49 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
 
+# Case 50: M-1 — the false-DENY this release removes, end to end. `\'` outside
+# quotes is a literal apostrophe in bash, so `--notes "runbook"` is a properly
+# terminated quoted body and the tag word inside it is prose. The old machine
+# opened a single-quote region at the escape that never closed, re-emitted the
+# whole tail verbatim, and `runbook` reached the tag matcher — denying an
+# ordinary release command with the memory file unread. Pre-fix this case denies.
+SESS="sess50"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent_json "echo won\\'t break && gh release create v1 --notes \"runbook\"" "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 50 escaped apostrophe no longer false-denies" \
+  || { echo "FAIL: 50 (expected silent, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 51: the FN guard at the gate itself, not just in the view. `\\` is an
+# escaped backslash, so the `"` closes and the command after it is REAL — the
+# tag word in it must still be seen and still deny.
+SESS="sess51"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+OUT=$(mkevent_json 'echo "a\\" && gh release create v1 --notes runbook' "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 51 escaped backslash keeps the real command visible" \
+  || { echo "FAIL: 51 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

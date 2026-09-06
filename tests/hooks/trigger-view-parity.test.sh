@@ -63,6 +63,51 @@ push origin main')"
 assert_contains "5 escaped backslash does not swallow the next command" ";git push" \
   "$(printf 'echo a\\\\\ngit push origin main' | bash -c "source '$LIB'; hook_trigger_view")"
 
+# ------------------------------------------- M-1 backslash escapes (0.76.2 review)
+# The escape matrix. Two directions, and the FN half is the reason this is a
+# batch of its own: honoring `\` HIDES text from the triggers, and two of the
+# three consumers DENY. Each case states what bash actually does, because that
+# is the standard the view is being held to — not "what the old machine did".
+
+# M1a — FP that was reported live. `\'` outside quotes is a literal apostrophe,
+# so bash opens no region at all; the old machine opened one that never closed
+# and re-emitted the whole tail, so `--notes "runbook"` reached the §11 tag
+# matcher and denied an ordinary release command.
+M1A="$(view "echo won\\'t break && gh release create v1 --notes \"runbook\"")"
+assert_not_contains "M1a escaped apostrophe no longer leaks the quoted body" "runbook" "$M1A"
+assert_contains "M1a the command itself is still visible" "gh release create" "$M1A"
+
+# M1b — FP inside double quotes. `echo "a \" ; git push origin main"` is ONE
+# argument in bash; nothing is pushed. The old machine closed the string at the
+# escaped quote and handed `git push` to the §7 gate at command position.
+assert_not_contains "M1b escaped quote does not end the string" "git push" \
+  "$(view 'echo "a \" ; git push origin main"')"
+
+# M1c — THE FN GUARD. `\\` is an escaped backslash, so the `"` after it really
+# does close the string and the `git push` that follows is a REAL command. A fix
+# that consumed `\"` without consuming `\\` as a unit would swallow it — the
+# false negative tasks/s8-sanitize-escaped-quote-gap.md warns about, on a gate
+# that is never-downgrade.
+assert_contains "M1c escaped backslash still closes the string (FN guard)" "git push" \
+  "$(view 'echo "a\\" ; git push origin main')"
+
+# M1d — no escape processing inside single quotes, per bash. The backslash is an
+# ordinary byte there and only `'` closes, so the push stays visible.
+assert_contains "M1d single quotes have no escapes (FN guard)" "git push" \
+  "$(view "echo 'a\\' ; git push origin main")"
+
+# M1e — an unquoted `\"` opens no region either, and the `;` after it is a real
+# separator, so the push must stay visible.
+assert_contains "M1e unquoted escaped quote opens no region (FN guard)" "git push" \
+  "$(view 'echo \" ; git push origin main')"
+
+# M1f — `$'...'` is deliberately NOT modelled: ANSI-C quoting has its own escape
+# rules and adding a state moves in the FN direction on a denying gate. The
+# mismatch must keep failing VISIBLE. This pins the safe direction, not the
+# parse — if someone teaches the machine `$'`, this test is where they declare it.
+assert_contains "M1f ANSI-C quoting stays unmodelled and fails visible" "git push" \
+  "$(view "echo \$'won\\'t' ; git push origin main")"
+
 # ------------------------------------------------------------ consumer set
 # Derive, do not name. The floor assertion is deliberate: an empty or shrunken
 # consumer set must fail loudly rather than vacuously pass (same lesson as the
