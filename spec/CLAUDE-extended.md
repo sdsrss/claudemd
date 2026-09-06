@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.26.0 — Extended
+# AI-CODING-SPEC v6.27.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -263,7 +263,7 @@ Override form: commit body line `known-red baseline: <one-line reason>` (e.g. `k
 
 ## §10-V Banned-vocab (reference list)
 
-Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); usage notes + fix recipes live in `reference_banned_vocab_examples.md`.
+Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); the OK-shapes below are the fix recipes.
 
 **OK (absolute)**: "reduced p99 580ms → 140ms" / "12/12 tests pass" / "65 → 64 tests after consolidation".
 
@@ -292,9 +292,9 @@ Uncertain: <not sure about, stated as "uncertain because <X>">
 ### Auto-decisions (post-AUTH ambiguity)
 One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>) if wrong." No bracketed form.
 
-### Lessons file
+### Lessons file (SHOULD)
 - Path: `tasks/lessons.md`. Cap 30 entries, newest first. Prepend on user correction. Drop oldest when full.
-- Read at session start and after compaction; cite when pattern matches.
+- Read when a task's keywords match an entry; no session-start read — MEMORY.md and the recall plugin are the session-start layer (§11-EXT-MEM).
 - Format: `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`.
 
 ## §11-O ORCHESTRATE
@@ -309,7 +309,7 @@ Universal session rules live in core §11 SESSION — they bind whether this ext
 ### Subagent rules
 - **1 task = 1 subagent**. Research/explore offloaded by default.
 - Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
-- **Output reaches main only at turn end** (measured 2026-09-06: one 3h02m / 126-tool-call turn produced zero completion notifications; the queue flushed 230 ms after the turn closed). Inside a cycle you are blind to it, so the default is to yield per core §11. Where the cycle genuinely cannot yield, name an absolute output path in the spawn prompt and poll that file — the notification channel is not pollable and `TaskOutput` is deprecated for local agents.
+- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
 - **Batch review**: ≥3 tasks OR ≥2 including ≥1 L2+ → sp:requesting-code-review for cross-task drift (error/log format, shared types). Single-task → no batch review.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
@@ -347,7 +347,7 @@ On `ship` / `deploy` / `create-release` / `merge-and-push`, after loading extend
 
 Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voice, release notes, GitHub Release artifact vs. bare tag) that are silent-failure-prone by hand (incidents: v2.33.2 manifest-sync CI failure; v2.6.3~v2.8.0 tag-without-Release update stall). Override form: REPORT Done first line `manual ship because <reason>`, so a reviewer can audit the manual diff against the skill's checklist.
 
-**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting the pre-tag review subagent (Author ≠ reviewer above) — yield per core §11 naming the reviewers; their completion re-invokes the cycle, which resumes at the tag. Without it the two HARDs deadlock — the review is owed inside the atomic window and its findings arrive only when that window opens. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
+**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting a subagent the ship owes (the pre-tag reviewer per Author ≠ reviewer above) — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
 
 **Runbook fast-path (ship-trigger only)**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
 
@@ -427,48 +427,44 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 ### B.2 Valid vs invalid evidence
 
 **Valid** (bugfix, ties prior-failing anchor to fresh pass):
-> Done: fixed double-apply coupon bug (tests/orders/test_checkout.py::test_coupon_applies_once — pre-fix FAILED expected 90.00 got 100.00, post-fix PASSED; coupon now subtracts once).
+> Done: fixed double-apply coupon bug. Checked: tests/orders/test_checkout.py::test_coupon_applies_once, pre-fix FAILED expected 90.00 got 100.00, post-fix PASSED; coupon now subtracts once.
 
 **Invalid — existence ≠ behavior**: `grep -n "def apply_coupon" src/orders/checkout.py → 127:def apply_coupon(…)` then claiming "fix works". ❌ Presence of the function is not proof it behaves.
 
 **Invalid — bugfix missing prior-failure anchor**: `pytest -q → 47 passed` then claiming "bug fixed". ❌ Need RED proof before GREEN — cite the failing run or test name that now passes.
 
 **Valid — additive new endpoint** (no prior-failing path; RED-first on new tests):
-> Done: added GET /users/{id}/preferences (tests/users/test_preferences.py: 3 passed — unknown → 200+{}, known → dict, deleted → 404; contract matches spec success-criteria).
+> Done: added GET /users/{id}/preferences. Checked: tests/users/test_preferences.py 3 passed: unknown → 200+{}, known → dict, deleted → 404; contract matches spec success-criteria.
 
 **Valid — intermittent/concurrency** (tier-2 stress-repro as tier-1 proxy):
-> Done: closed double-charge race window with row-level lock (./scripts/stress_race.sh --workers 20 --iterations 5000: pre-fix 47/5000 double-charges; post-fix 0/5000 across 3 runs). Intermittent — tier-2 stress-repro used as tier-1 proxy, reason: concurrency-dependent.
+> Done: closed double-charge race window with row-level lock. Checked: ./scripts/stress_race.sh --workers 20 --iterations 5000, pre-fix 47/5000 double-charges, post-fix 0/5000 across 3 runs. Intermittent: tier-2 stress-repro used as tier-1 proxy, reason concurrency-dependent.
 
 ## Recent changes
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.26.0 (minor, 2026-09-06)** — §11's turn-yield rule was forbidding the only action that delivers subagent output. One HARD relaxed, one HARD given a second exception, one orchestration default added. **No new HARD rule**: §13.2's evidence-rebuttal shortcut governs — an existing HARD shown in session evidence to produce wrong behavior is fixed, not wrapped.
+**v6.27.0 (minor, 2026-09-06)** — harness convergence. The 2026-09 Claude Code system prompt now states turn continuation, subagent delivery at turn end, memory-file hygiene and honest reporting natively; the spec carried each a second time, twice in a form that contradicts the harness's own style rules. Net-delete release; **no new HARD rule**; enforcement partition and every `hard-rules.json` anchor unchanged. Audit record: `docs/audit/20260906-231957.md` (local).
 
-- Measured 2026-09-06 during the v0.77.0 ship. The turn that carried it ran **3h02m and 126 tool calls without yielding**, because §11 Mid-SPINE turn-yield permitted no stop before VALIDATE. Two review subagents finished inside that turn and **zero** completion notifications entered context while it ran; the queue flushed **230 ms** after the turn closed. Sixteen `sleep` calls totalling 6870 s — **63%** of the window — returned nothing, and six messages to teammates that had already gone idle produced six further completions, four of them carrying nothing but `DONE`. §12's pre-tag review (Author ≠ reviewer) is HARD, and in a project whose runbook orders it between the push and the tag it lands inside §12's atomic ship window, so the two HARDs deadlock: the file side-channel that actually shipped v0.77.0 was invented at runtime, not specified.
-- **§11 Mid-SPINE turn-yield** takes a fourth yield trigger — awaiting a spawned subagent. Yielding IS the delivery mechanism and completion re-invokes the agent with no user input, so the trigger costs no wall-clock and no user attention. The same sentence says why the two substitutes fail — both were tried on 2026-09-06 and neither delivered — as rationale rather than as new prohibitions, since §13.2's shortcut licenses fixing a rule and not adding bans to it. An unresumed yield owes `tasks/<slug>-paused.md`, so the new turn-end shape still leaves an artifact.
-- **§12 Manual-ship atomicity** takes a second exception covering that same wait, which is what resolves the deadlock.
-- **§11-O Subagent rules** records the delivery fact plus the file-path fallback for a cycle that genuinely cannot yield (`TaskOutput` is deprecated for local agents and the notification channel is not pollable, so there is no third option).
-- Enforcement partition unchanged (6 hook / 16 self / 2 both / 1 external): `§11-mid-spine-yield` keeps its `section_anchor` and `enforcement: self`, and no rule was added or removed.
+- **Core**: §11 turn-yield keeps its four triggers, the anti-silence clause and the Tell, and drops the 2026-09-06 measurement (changelog v6.26.0 has it). §0 absorbs §5's obvious-follow-on clarification; §0.1 keeps the byte cap only; §1.5's maintainer note and §11's harness-duplicated skip-list are gone; §2.1 names the harness `Agent` tool as the parallel primitive; §5.1 inlines the `aggressive` skip-list, which bound nobody while it lived only here; the `Done:` example is sentence-form because the harness bans parentheticals in user-facing text; Post-compaction re-Reads the plan and extended, not a core the harness injects every turn.
+- **Extended**: §11-O and §12's second exception state the delivery fact in one sentence each, and the exception covers any subagent the ship owes; §10-R Lessons file is SHOULD and loses its session-start read (last entry 2026-05-09); five references to memory files that do not ship with the spec are dropped or re-pointed at `hooks/lib/platform.sh`; §5.1-EXT and §1.5-EXT lose the paragraphs core now carries; Appendix B.2 examples are sentence-form.
 
-**Sizing** (v6.26.0, 2026-09-06, single post-edit `wc -c` per `feedback_spec_sizing_recursive_rewrite.md` option 1): core 23445 → 23944 bytes (Δ +499: §11's fourth yield trigger and its Tell-clause exemption); extended 43819 → 45889 bytes (Δ +2070: the §11-O delivery bullet, §12's second atomicity exception, and this version's Recent-changes entry replacing a shorter one); OPERATOR.md 15514 → 15514 bytes (Δ +0: untouched this release). Size budget: core 23944/25000 (**1056 bytes headroom**); extended 45889/50000 (**4111 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Runtime L0/L1/L2 ≈ 5.5k tokens (core only).
+**Sizing** (v6.27.0, 2026-09-06, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23944 → 23405 bytes (Δ -539: harness-duplicated clauses and the §11 measurement removed; the `aggressive` skip-list and the `Agent` primitive added); extended 45899 → 44365 bytes (Δ -1534: the §11-O and §12 delivery restatements, five private-memory references, and this entry replacing a longer one); OPERATOR.md 15514 → 15996 bytes (Δ +482: two bullets moved in from core §0.1 and §1.5). Size budget: core 23405/25000 (**1595 bytes headroom**); extended 44365/50000 (**5635 bytes headroom**). Drift envelope: ±20B for this line's own rewrite.
 
 ## §1.5-EXT GLOSSARY
 
 Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Extended-only terms + clarifications:
 
 - **Assumption** — claim not verified this turn via Read/Grep/tool. Memory recall = assumption.
-- **Local-Δ note** — co-located = test path mirrors source path.
 
 ## §5.1-EXT AUTONOMY_LEVEL effects (full table)
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — the skip-list below says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
+| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1's skip-list says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
-**`aggressive` skip-list** (core §5.1 pointer): skill soft-trigger announcement optional; §1 Recommend-first single-obvious-option execute-without-preamble is the default; clear-scope bugfix goes fix → test → iterate without proposal. §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind — the reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
+The `aggressive` skip-list lives in core §5.1 (L0–L2 do not load this file); its reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
 
 **Published client** (defines "public API" for the §5 Hard row `Δ-contract on public API`, at every autonomy level): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 
@@ -502,7 +498,7 @@ One home per fact — double-writing creates drift.
 
 **Picking the home**: "will this be true 6 months from now?" Yes → durable. No → recall plugin. Conflict: durable wins; recall layer ages out.
 
-**Plugin-absent fallback**: detect via tool list (no `mem_save`/`mem_search` → plugin unloaded). Recall content then writes to `recall_<topic>_<YYYYMMDD>.md` in durable layer with `[fallback]` tag. Routing matrix + lesson disambiguation (bugfix postmortem vs trap rule) → `feedback_memory_layer_routing.md`.
+**Plugin-absent fallback**: detect via tool list (no `mem_save`/`mem_search` → plugin unloaded). Recall content then writes to `recall_<topic>_<YYYYMMDD>.md` in durable layer with `[fallback]` tag.
 
 **Body-structure scope**: `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — the incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; the hook does not warn when authors omit Why/How there.
 
@@ -518,7 +514,6 @@ One home per fact — double-writing creates drift.
 
 **Always skip regardless of step**: `git log`-recoverable, code invariant (→ inline comment), session-local (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
 
-After any `memory/*.md` write: refresh `MEMORY.md` index line.
 
 ### MEMORY.md tag syntax
 
@@ -538,4 +533,4 @@ Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
 
 ## §11-EXT-MAC macOS shell portability (cross-ref)
 
-Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) lives in memory anchors, not spec rules: `feedback_macos_shell_portability.md` + `feedback_hook_platform_lib_source.md` (silent fallthrough — must `source` `hooks/lib/platform.sh`; a `command -v` guard alone falls silently false).
+Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) is not a spec rule: hook scripts `source` the plugin's `hooks/lib/platform.sh` and call its wrappers — a `command -v` guard alone falls silently false.

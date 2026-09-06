@@ -421,27 +421,27 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // is independent of where in the file the rule sits.
 const PINS = [
   {
-    what: 'core §11 Mid-SPINE turn-yield — the fourth trigger and its terms',
+    what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE. `<system-reminder>` blocks (hook output, mid-turn recall, PostToolUse flushes) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (§11 Context pressure → `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end (measured 2026-09-06), so yield naming what is awaited; completion re-invokes you, no user input needed, and a yield still unresumed when the user next types owes `tasks/<slug>-paused.md` as a context-pressure yield does. Neither substitute reaches it: sleep-polling postpones the turn end that IS the delivery, and a message to an idle teammate only re-invokes it into an empty completion. "Natural-feeling" stop points and single-Edit completion are not yields. Silent mid-cycle yield followed by next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named a subagent it awaits = confirmed prior yield; if the prior turn asked, `继续` answers it — NOT a tell.',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end, so the yield IS the delivery: name what is awaited; completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. "Natural-feeling" stop points are not yields; a silent mid-cycle yield followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
-    what: '§EXT §12 manual-ship atomicity — the second exception for the review wait',
+    what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v6.27.0 wording)',
     file: EXT,
     anchor: '**Manual-ship atomicity (HARD, clarification)**',
-    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting the pre-tag review subagent (Author ≠ reviewer above) — yield per core §11 naming the reviewers; their completion re-invokes the cycle, which resumes at the tag. Without it the two HARDs deadlock — the review is owed inside the atomic window and its findings arrive only when that window opens. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
+    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting a subagent the ship owes (the pre-tag reviewer per Author ≠ reviewer above) — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
-    what: '§EXT §11-O subagent rules — the delivery fact and the file fallback',
+    what: '§EXT §11-O subagent rules — the delivery fact and the file fallback (v6.27.0 wording)',
     file: EXT,
     anchor: '- **Output reaches main only at turn end**',
-    line: '- **Output reaches main only at turn end** (measured 2026-09-06: one 3h02m / 126-tool-call turn produced zero completion notifications; the queue flushed 230 ms after the turn closed). Inside a cycle you are blind to it, so the default is to yield per core §11. Where the cycle genuinely cannot yield, name an absolute output path in the spawn prompt and poll that file — the notification channel is not pollable and `TaskOutput` is deprecated for local agents.',
+    line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.",
   },
 ];
 
 for (const pin of PINS) {
-  test(`v6.26.0 pin: ${pin.what}`, () => {
+  test(`v6.27.0 pin: ${pin.what}`, () => {
     const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
     const carrying = lines.filter(l => l.includes(pin.anchor));
     assert.equal(

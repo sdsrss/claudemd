@@ -8,6 +8,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.79.0] - 2026-09-06
+
+One spec change: **AI-CODING-SPEC v6.26.0 → v6.27.0**, the harness-convergence release the 2026-09-06 spec audit asked for. Core 23944 → 23405 bytes, extended 45899 → 44364 bytes, no new HARD rule, enforcement partition unchanged at 6 hook / 16 self / 2 both / 1 external. The full clause list is the v6.27.0 entry in `spec/CLAUDE-changelog.md`.
+
+A minor bump rather than a patch: spec rules steer agent routing, so a rule change is a user-visible default-behaviour change in a released artifact and owes a non-patch version, a migration note and a stated way back.
+
+**What changes for you.** Claude's `Done:` lines read as sentences instead of a parenthesised evidence clause; after a context compaction it re-reads the plan and, only if it had loaded it, the extended spec, and no longer spends a turn re-reading the core spec that is injected anyway; with `AUTONOMY_LEVEL: aggressive` the ceremony reductions now bind at L0–L2, where they were previously unreachable; `tasks/lessons.md` is no longer read at every session start; and parallel work is routed at the harness `Agent` tool first, with `sp:dispatching-parallel-agents` as the optional wrapper. **Migration**: run `/claudemd-update`; it shows the diff, waits for your choice, and backs the previous `~/.claude/CLAUDE*.md` trio up to `~/.claude/spec-backup-<stamp>/` before writing. **Way back**: pin the marketplace entry to `v0.78.0` and then run `/claudemd-update` — the pin alone leaves `~/.claude/` at v6.27.0, because `install.js` refuses a downgrade unless `CLAUDEMD_ALLOW_DOWNGRADE=1`. Either direction leaves the usual session banner; neither writes to `~/.claude/CLAUDE*.md` on its own.
+
+**Tests.** The three verbatim spec pins in `tests/scripts/spec-structure.test.js` are re-pinned to the shortened §11 / §11-O / §12 lines in the same commit as the rule text, which is the only way a whole-line pin is allowed to move. The independent mutation battery in `tests/tools/spec-pin-mutations.py` still targets the v6.26.0 wording and is not run in CI; it is left as the record of that review rather than rewritten against lines it never reviewed. No hook, script or command changes.
+
 ## [0.78.0] - 2026-09-06
 
 One spec change, measured rather than argued: **AI-CODING-SPEC v6.25.4 → v6.26.0**. §11's Mid-SPINE turn-yield rule was forbidding the only action that delivers a subagent's report, and §EXT §12 requires exactly the cycle that rule governs to spawn a reviewer before every tag. Held together the two HARD rules deadlocked by construction, and the file side-channel that actually shipped v0.77.0 was invented at runtime rather than specified.
