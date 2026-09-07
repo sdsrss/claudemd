@@ -1649,11 +1649,12 @@ fi
 # no net), `python3 -c "import urllib.request; urllib.request.urlretrieve(u,'/tmp/f')"`
 # (a DOWNLOAD with no execution — exactly the inspect-before-run path §8 tells
 # users to take), `perl -pe 's/a/b/'`, `node -e "console.log(1)"`.
-# (The command-position anchor that used to live here as REVSH_ONELINER_CMD is
-# gone: condition (1) is now expressed by the candidate EXTRACTION below, which
-# both anchors and delimits in one pass. Keeping the old regex as a separate
-# pre-check would have been a second spelling of the same condition, free to
-# drift from the one that actually decides.)
+# Condition (1) is expressed by the candidate EXTRACTION below, which anchors
+# and delimits in one pass (a separate pre-check regex would be a second spelling
+# of the same condition, free to drift). Condition (3) needs a CALL form —
+# `subprocess.call(`, `os.popen(`, `execSync(` — because a bare module name is
+# an import, and `import socket, subprocess, os` executes nothing (2026-09-06
+# audit, Round-14 HK-H1: it denied).
 REVSH_NET='socket\.socket|import[[:space:]]+socket|SOCK_STREAM|AF_INET|urlopen|urllib|requests\.get|http\.client|IO::Socket|use[[:space:]]+Socket|sockaddr_in|inet_aton|getprotobyname|LWP|HTTP::Tiny|Net::HTTP|TCPSocket|open-uri|fsockopen|stream_socket_client|curl_exec|file_get_contents|net\.connect|net\.Socket|require\([^A-Za-z0-9]{1,2}(net|http|https|dgram|tls)[^A-Za-z0-9]|https?\.get\(|fetch\('
 # `eval` is listed in BOTH its call form and its bare form: perl's
 # `eval get("http://…")` and ruby's `eval Net::HTTP.get(…)` have no paren after
@@ -1662,7 +1663,7 @@ REVSH_NET='socket\.socket|import[[:space:]]+socket|SOCK_STREAM|AF_INET|urlopen|u
 # `re_eval` do not match. Same lesson on the node side: the source text is
 # `require('net').connect(…)`, never the literal `net.connect`, so the module
 # form is matched with the quote character explicit.
-REVSH_EXEC='os\.dup2|pty\.spawn|subprocess|os\.system|os\.exec|popen|exec\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec|passthru|proc_open|IO\.popen|child_process|spawn\(|system\(|qx[{(]|exec[[:space:]]+["'"'"']|open\(STD|>&[[:space:]]*S|reopen|/bin/(sh|bash|zsh|dash)'
+REVSH_EXEC='os\.dup2\(|pty\.spawn\(|subprocess\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)\(|os\.system\(|os\.exec[a-z]*\(|popen[0-9]?\(|exec(Sync|File|FileSync)?\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec\(|passthru\(|proc_open\(|spawn(Sync)?\(|system\(|qx[{(]|exec[[:space:]]+["'"'"']|open\(STD|>&[[:space:]]*S|reopen\(|/bin/(sh|bash|zsh|dash)'
 # The three conditions are tested INSIDE ONE EXTRACTED ONE-LINER, not across the
 # command line (2026-07-28 review). The first version tested each condition
 # independently over the whole of NORMALIZED_CMD while its own comment claimed
@@ -1679,8 +1680,21 @@ REVSH_EXEC='os\.dup2|pty\.spawn|subprocess|os\.system|os\.exec|popen|exec\(|(^|[
 # each candidate is now a single interpreter invocation — its `-M`/flag tokens
 # through the end of its quoted payload — and both primitives must appear within
 # that one span.
-_revsh_candidates=$(printf '%s' "$UNWRAPPED_CMD" \
-  | grep -oE "(${CURLSH_INTERP})([[:space:]]+-[A-Za-z:_]+)*[[:space:]]+-[eErcM][A-Za-z:_]*[[:space:]]*('[^']*'|\"([^\"\\\\]|\\\\.)*\")" || true)
+# Command position, in a heredoc-free view (2026-09-06 audit, Round-14 HK-H1).
+# A one-liner is a command only where the shell will EXEC it: at line start,
+# after one of |;&(){}` or a then/do/else/-exec keyword, optionally behind a §8
+# wrapper (the shared S8_WRAP taxonomy plus xargs, option tokens consumed).
+# Anywhere else it is DATA — an echo argument, a commit message, a grep pattern
+# — and the unanchored extraction denied all three, plus the same text inside a
+# heredoc body, which this view blanks first. UNWRAPPED_CMD keeps its quotes
+# because the payload lives in them, so sanitize_cmd's quote-stripped view is the
+# wrong one here; only the heredoc half of that strip applies. Residual, by
+# design: a one-liner inside a QUOTED string that itself contains a separator
+# (`git commit -m "x; python3 -c '…'"`) still anchors on the `;`.
+_revsh_wrap_names=$(IFS='|'; printf '%s' "${S8_WRAP_ARGLESS[*]}|${S8_WRAP_FLAGGED[*]}|xargs")
+_revsh_anchor="(^|[|;&(){}\`]|[[:space:]](then|do|else|-exec)[[:space:]])[[:space:]]*((${_revsh_wrap_names})([[:space:]]+[^[:space:]|;&]+)*[[:space:]]+)?"
+_revsh_candidates=$(printf '%s' "$UNWRAPPED_CMD" | hook_strip_heredoc_bodies \
+  | grep -oE "${_revsh_anchor}(${CURLSH_INTERP})([[:space:]]+-[A-Za-z:_]+)*[[:space:]]+-[eErcM][A-Za-z:_]*[[:space:]]*('[^']*'|\"([^\"\\\\]|\\\\.)*\")" || true)
 if (( _ncmd_hit == 0 )) && [[ -n "$_revsh_candidates" ]]; then
   while IFS= read -r _cand; do
     [[ -z "$_cand" ]] && continue
