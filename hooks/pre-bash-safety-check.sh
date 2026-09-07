@@ -229,7 +229,14 @@ sanitize_cmd() {
   # still strip and never false-deny.
   # Unterminated quote → keep the body verbatim: exposing text to a deny-on-match
   # detector can only false-DENY, never bypass. Escape sequences (`\"` inside
-  # "...") are not modeled — pre-existing gap, not in scope. KNOWN RESIDUAL
+  # "...") ARE modelled now, and so are expansion spans — see the walk below.
+  # What is still NOT modelled, deliberately: a backslash OUTSIDE any quote
+  # (`echo \" ; rm -rf $X`). There, the stray `"` opens a region that never
+  # closes, the unterminated branch emits it verbatim, and the rm stays visible —
+  # which is the verdict bash gives too, since the `;` really is a separator.
+  # `$'…'` ANSI-C quoting has no state here either; its body reaches the
+  # single-quote branch and is dropped, matching what bash treats as one word.
+  # KNOWN RESIDUAL
   # (deliberate double-evasion, same bar as the heredoc note above): a quoted
   # RUNNER before an indirect payload (`"bash" -c 'rm -rf $X'`) unwraps only
   # AFTER unwrap_indirect already ran, so the payload stays stripped — the
@@ -250,12 +257,14 @@ sanitize_cmd() {
     }
     {
       n = length($0)
-      st = 0; buf = ""; has_dollar = 0; final = ""
+      st = 0; buf = ""; raw = ""; has_exp = 0; final = ""
+      esc = 0; depth = 0; tick = 0; sq = 0; dq = 0
       for (i = 1; i <= n; i++) {
         ch = substr($0, i, 1)
         if (st == 0) {
           if (ch == "\047") { st = 1; buf = "" }
-          else if (ch == "\"") { st = 2; buf = ""; has_dollar = 0 }
+          else if (ch == "\"") { st = 2; buf = ""; raw = ""; has_exp = 0
+                                 esc = 0; depth = 0; tick = 0; sq = 0; dq = 0 }
           else final = final ch
         } else if (st == 1) {
           if (ch == "\047") {
@@ -264,19 +273,52 @@ sanitize_cmd() {
           }
           else buf = buf ch
         } else {
-          if (ch == "\"") {
-            if (has_dollar) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
+          # A backslash inside "..." escapes the next char: it can neither close
+          # the string nor open an expansion. Consuming the PAIR is what makes
+          # the escaped-backslash case (\\ then a real closing quote) still end
+          # the string, which is where an FN would live if this only skipped one.
+          if (esc)          { buf = buf ch; raw = raw ch; esc = 0; continue }
+          if (ch == "\\")   { esc = 1; buf = buf ch; raw = raw ch; continue }
+          if (!(tick || depth > 0) && ch == "\"") {
+            if (has_exp) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
             else final = final close_quote(buf, "\"\"", substr(final, length(final), 1), substr($0, i+1, 1))
-            st = 0; buf = ""; has_dollar = 0
-          } else if (ch == "$") {
-            has_dollar = 1; buf = buf ch
-          } else {
-            buf = buf ch
+            st = 0; buf = ""; raw = ""; has_exp = 0
+            depth = 0; tick = 0; sq = 0; dq = 0
+            continue
           }
+          raw = raw ch
+          # Inside an expansion the text IS a command, so it is copied verbatim,
+          # separators and all. Sub-quotes are tracked so a paren inside them
+          # (`$(echo ")")`) does not close the span early.
+          if (tick)     { if (ch == "`") tick = 0; buf = buf ch; continue }
+          if (depth > 0) {
+            if (sq)                  { if (ch == "\047") sq = 0 }
+            else if (dq)             { if (ch == "\"")   dq = 0 }
+            else if (ch == "\047")   sq = 1
+            else if (ch == "\"")     dq = 1
+            else if (ch == "(")      depth++
+            else if (ch == ")")      depth--
+            buf = buf ch; continue
+          }
+          if (ch == "`") { tick = 1; has_exp = 1; buf = buf ch; continue }
+          if (ch == "$") {
+            has_exp = 1
+            if (substr($0, i+1, 1) == "(") { depth = 1; buf = buf "$("; i++; continue }
+            buf = buf ch; continue
+          }
+          # Outside every expansion, a double-quoted body is DATA to bash. A
+          # separator there cannot begin a command, so it is folded to a space:
+          # that is the whole false-deny this rewrite closes, and it is the only
+          # thing dropped — every other character survives.
+          if (ch == ";" || ch == "|" || ch == "&" || ch == "\n") { buf = buf " "; continue }
+          buf = buf ch
         }
       }
       if (st == 1)      { gsub(/#/, "", buf); final = final "\047" buf }
-      else if (st == 2) { gsub(/#/, "", buf); final = final "\"" buf }
+      # UNTERMINATED double quote: emit the RAW body, separators intact. bash
+      # would refuse to run this at all, so the fail-visible posture is kept
+      # rather than folding separators in text no parse ever reached.
+      else if (st == 2) { gsub(/#/, "", raw); final = final "\"" raw }
       printf "%s", final
     }
   ')
@@ -552,9 +594,20 @@ fi
 # it as before, and no segment boundary can be manufactured out of a quoted string.
 # Excluding the other quote char matters too — unwrapping `"don't"` would leave a
 # stray apostrophe for the quote state machine to trip over (the F11 class).
+# A BACKSLASH-ESCAPED quote is not a closing quote, and excluding separators from
+# the body is not enough to notice that (tasks/s8-sanitize-escaped-quote-gap.md).
+# `echo "a\" ; rm -rf $X"` is one argument to bash, but the old body class had no
+# opinion about the `\`, so this sed paired the opening quote with the ESCAPED one,
+# unwrapped `"a\"` and handed ` ; rm -rf $X` to the detectors as bare text — the
+# segment boundary the comment above says cannot be manufactured, manufactured.
+# That is the false-deny this file was blamed for; sanitize_cmd never saw the
+# string still quoted. The body is now a sequence of either a plain char or an
+# escape PAIR, so a trailing lone backslash cannot reach the closing quote.
+# Backslashes inside the body still unwrap (`"\rm"`, `"\npx"` — the alias-defeat
+# forms the F1 class depends on staying visible); measured on both.
 UNWRAPPED_CMD="$PROCESSED_CMD"
 PROCESSED_CMD=$(printf '%s' "$PROCESSED_CMD" \
-  | sed -E 's/"([^"'"'"'[:space:];&|]*)"/\1/g' \
+  | sed -E 's/"(([^"'"'"'[:space:];&|\]|\\[^"'"'"'[:space:];&|])*)"/\1/g' \
   | sed -E "s/'([^'\"[:space:];&|]*)'/\1/g")
 # Dedicated view for the reverse-shell transports (3c). They need the OPPOSITE
 # trade from every other gate here: quoted prose must be invisible (so a commit
