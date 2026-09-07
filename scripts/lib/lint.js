@@ -410,6 +410,17 @@ export function parseTranscript(jsonlText, integrity = null) {
       if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
       continue;
     }
+    // A line that PARSES but is not an object is corrupt too (Round-14 audit
+    // ALG-M1). `JSON.parse("null")` returns null, which walks straight past the
+    // catch above and then throws on the property read below — and the reader
+    // that throws here is `claudemd audit`, whose exit 1 also means "hits
+    // found", so one corrupt log line read as a §10-V finding. Every other
+    // non-object (`3`, `"x"`, `[]`) merely read as undefined and vanished
+    // uncounted; both are the same defect and both are counted here.
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
+      continue;
+    }
     if (row.type !== 'assistant') continue;
     const content = row.message?.content || [];
     const texts = [];

@@ -47,6 +47,15 @@ export function readLogRows(path) {
         badJson++;
         continue;
       }
+      // Parsing is not the whole test (Round-14 audit ALG-M1): `null` parses,
+      // walks past the catch, and throws on `row.ts` below — inside the reader
+      // every claudemd audit path goes through. Any non-object line is corrupt
+      // by the same argument, so it is counted here rather than reaching the
+      // consumers as a row with undefined everything.
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        badJson++;
+        continue;
+      }
       rows.push({ row, t: row.ts == null ? NaN : new Date(row.ts).getTime() });
     }
   }

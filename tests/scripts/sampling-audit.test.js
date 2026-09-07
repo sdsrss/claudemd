@@ -115,7 +115,7 @@ test('multi-turn fixture: detects per-turn hits across one transcript', async ()
     assert.ok(r.byRule['§10-V'].hits >= 1, 'expected vocab hit on turn 2');
     assert.equal(r.byRule['§10-honesty'].hits, 1, 'expected honesty hit on turn 3');
     assert.equal(r.scannedTranscripts, 1);
-    assert.equal(r.totalTurns, 3, 'expected 3 assistant text turns counted');
+    assert.equal(r.totalAssistantTextRows, 3, 'expected 3 assistant text turns counted');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -143,7 +143,7 @@ test('aggregate shape: byRule keys are all 4 rules with hits+transcriptsAffected
     }
     assert.equal(typeof r.windowDays, 'number');
     assert.equal(typeof r.scannedTranscripts, 'number');
-    assert.equal(typeof r.totalTurns, 'number');
+    assert.equal(typeof r.totalAssistantTextRows, 'number');
     assert.ok(Array.isArray(r.perTranscript), 'perTranscript must be array');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -224,7 +224,7 @@ test('A2 denominators: existing detectors expose opportunities alongside hits', 
     assert.equal(r.byRule['§10-four-section-order'].violations, 0);
     assert.equal(r.byRule['§10-honesty'].opportunities, 1);
     assert.equal(r.byRule['§10-honesty'].violations, 0);
-    assert.equal(r.byRule['§10-V'].opportunities, r.totalTurns);
+    assert.equal(r.byRule['§10-V'].opportunities, r.totalAssistantTextRows);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -756,7 +756,7 @@ test('R11-24: unparseable lines are counted per transcript, not silently dropped
     );
     const r = await samplingAudit({ projectsDir: dir, days: 3650 });
     assert.equal(r.scannedTranscripts, 1, 'the file still counts as scanned — that is the trap');
-    assert.equal(r.totalTurns, 2, 'only the rows that parsed became turns');
+    assert.equal(r.totalAssistantTextRows, 2, 'only the rows that parsed became turns');
     assert.ok(Array.isArray(r.malformedTranscripts));
     assert.equal(r.malformedTranscripts.length, 1);
     assert.equal(r.malformedTranscripts[0].file, 'half.jsonl');
@@ -1110,4 +1110,81 @@ test('L-3: the by-class line renders every populated class, and sums to pooled',
     []
   );
   assert.deepEqual(h4ByClassLines({}), []);
+});
+
+// ============================================================================
+// Round-14 audit — the two live detectors were about to publish precision
+// against the wrong denominator or the wrong predicate.
+// ============================================================================
+
+test('ALG-H2: a single-line `Done:` report closes the cycle, so `next` is not a tell', async () => {
+  // §10's short form IS the prescribed L1 report ("Failed+Uncertain empty →
+  // `Done: <what>.`"), and L1-bugfix defaults to a single `Done:` line. The
+  // CLOSED predicate required a Failed/Uncertain heading, so the shape the spec
+  // prescribes scored a §11 violation the moment the user typed anything.
+  const dir = stageFixture('turn-yield-done-line');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 1, 'the turn used tools, so it is an opportunity');
+    assert.equal(r.byRule['§11-turn-yield'].violations, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ALG-H2: yieldTellSuppressed pins where a Done line does and does not close', () => {
+  assert.equal(yieldTellSuppressed('Done: fixed it (Checked: 3/3).'), true);
+  assert.equal(yieldTellSuppressed('**Done:** fixed it (Checked: 3/3).'), true);
+  assert.equal(yieldTellSuppressed('## Done: fixed it'), true);
+  // A `Done:` line far from the end is narrative, not a report tail.
+  assert.equal(yieldTellSuppressed('Done: step one.\n' + 'x'.repeat(900)), false);
+  // And an ordinary working turn still does not close.
+  assert.equal(yieldTellSuppressed('Reading the config now, will report back.'), false);
+});
+
+test('ALG-M3: an AUTH signal with no user turn after it is not coverage', async () => {
+  // §5 says the signal "blocks until user confirms", so the confirmation is a
+  // USER TURN. The detector only asked whether the marker was in the last 10
+  // assistant texts, so emitting `[AUTH REQUIRED …]` and force-pushing in the
+  // same turn scored 0 violations out of 1 opportunity.
+  const dir = stageFixture('hard-auth-same-turn');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byRule['§5-hard-auth'].opportunities, 1);
+    assert.equal(r.byRule['§5-hard-auth'].violations, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ALG-M3: isHardOp reaches the force-push and migration shapes an agent types', async () => {
+  // `--force` was the only force-push spelling, and §5 Hard lists
+  // "migration/DB schema" while the detector knew only SQL DDL — so `git push
+  // -f`, a `+branch` refspec, and every migration runner were not opportunities
+  // at all. Under-reporting is the direction that makes a detector look clean.
+  const dir = stageFixture('hard-auth-shapes');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byRule['§5-hard-auth'].opportunities, 5, 'five hard ops, five opportunities');
+    assert.equal(r.byRule['§5-hard-auth'].violations, 5, 'none of them carried an AUTH signal');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ALG-M2: the §10-V denominator is named for what it counts', async () => {
+  // It counts assistant message ROWS carrying text, sidechains included — a
+  // turn making four tool calls with prose between them contributes four — and
+  // the report called it "Total assistant turns" for the life of the field.
+  const dir = stageFixture('multi-turn');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(typeof r.totalAssistantTextRows, 'number');
+    assert.equal(r.byRule['§10-V'].opportunities, r.totalAssistantTextRows);
+    const md = formatMarkdown(r);
+    assert.match(md, /Assistant message rows with text \(sidechains included\)/);
+    assert.doesNotMatch(md, /Total assistant turns/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

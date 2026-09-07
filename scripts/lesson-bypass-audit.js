@@ -80,7 +80,16 @@ export function readTranscript(transcriptPath, integrity = null) {
   for (const line of fs.readFileSync(transcriptPath, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
-      rows.push(JSON.parse(line));
+      const row = JSON.parse(line);
+      // `null` parses (Round-14 audit ALG-M1) and then throws on
+      // `row.timestamp` in wasApplied below, which is inside the loop that
+      // decides cite-recall. Any non-object line is corrupt by the same
+      // argument and is counted rather than pushed.
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
+      } else {
+        rows.push(row);
+      }
     } catch {
       if (integrity) integrity.badLines = (integrity.badLines || 0) + 1;
     }

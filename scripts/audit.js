@@ -147,7 +147,7 @@ async function selfCompliance(days) {
   return {
     windowDays: sa.windowDays,
     scannedTranscripts: sa.scannedTranscripts,
-    totalTurns: sa.totalTurns,
+    totalAssistantTextRows: sa.totalAssistantTextRows,
     metricContract: sa.metricContract,
     rules,
   };
