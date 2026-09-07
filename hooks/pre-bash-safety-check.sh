@@ -385,6 +385,15 @@ unwrap_indirect() {
   # (`dashboard`, `stash`). csh/tcsh excluded — different `-c` quoting + rare.
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
+  # `su -c 'cmd'` hands cmd to a shell exactly as `sh -c` does, and `ssh [opts]
+  # host 'cmd'` runs it on the far side — both quoted strings are commands, not
+  # data, so they are exposed the same way (0.79.0 pre-tag review H1: the
+  # command-position anchor below reads a quoted token as data by design, and
+  # would otherwise let a reverse shell through either wrapper).
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\3 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\3 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
   # Unquoted eval form: `eval rm -rf $X` — bash collapses the words with
@@ -1663,7 +1672,19 @@ REVSH_NET='socket\.socket|import[[:space:]]+socket|SOCK_STREAM|AF_INET|urlopen|u
 # `re_eval` do not match. Same lesson on the node side: the source text is
 # `require('net').connect(…)`, never the literal `net.connect`, so the module
 # form is matched with the quote character explicit.
-REVSH_EXEC='os\.dup2\(|pty\.spawn\(|subprocess\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)\(|os\.system\(|os\.exec[a-z]*\(|popen[0-9]?\(|exec(Sync|File|FileSync)?\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec\(|passthru\(|proc_open\(|spawn(Sync)?\(|system\(|qx[{(]|exec[[:space:]]+["'"'"']|open\(STD|>&[[:space:]]*S|reopen\(|/bin/(sh|bash|zsh|dash)'
+REVSH_EXEC='os\.dup2[[:space:]]*\(|pty\.spawn[[:space:]]*\(|subprocess\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\(|os\.system[[:space:]]*\(|os\.exec[a-z]*[[:space:]]*\(|popen[0-9]?[[:space:]]*\(|exec(Sync|File|FileSync)?[[:space:]]*\(|fork(Sync)?[[:space:]]*\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec[[:space:]]*\(|passthru[[:space:]]*\(|proc_open[[:space:]]*\(|spawn(Sync)?[[:space:]]*\(|system[[:space:]]*\(|qx[{(]|exec[[:space:]]+["'"'"']|open[[:space:]]*\(STD|>&[[:space:]]*S|reopen[[:space:]]*\(|/bin/(sh|bash|zsh|dash)'
+# The un-dotted family (0.79.0 pre-tag review H3): `from subprocess import call`,
+# `import subprocess as sp; sp.call(`, `from os import system`. A bare `call(` or
+# `run(` is too common to count on its own (`asyncio.run(`), so these names count
+# only when the same one-liner also imports the module that supplies them, and
+# only when not preceded by a `.` (that form is the dotted list above).
+REVSH_EXEC_IMPORTED='(^|[^A-Za-z_.])(call|run|Popen|check_call|check_output|getoutput|getstatusoutput|system|popen|execv[pe]*|fork)[[:space:]]*\('
+REVSH_EXEC_IMPORT='from[[:space:]]+(subprocess|os)[[:space:]]+import|child_process'
+# `import subprocess as sp` puts the call behind an alias the dotted list cannot
+# name in advance; the alias is read out of the candidate and tested as a dotted
+# call. `[A-Za-z_][A-Za-z0-9_]*` is the whole alias grammar, so the interpolation
+# below carries no regex metacharacters.
+REVSH_ALIAS_RE='subprocess[[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'
 # The three conditions are tested INSIDE ONE EXTRACTED ONE-LINER, not across the
 # command line (2026-07-28 review). The first version tested each condition
 # independently over the whole of NORMALIZED_CMD while its own comment claimed
@@ -1691,14 +1712,87 @@ REVSH_EXEC='os\.dup2\(|pty\.spawn\(|subprocess\.(call|run|Popen|check_call|check
 # wrong one here; only the heredoc half of that strip applies. Residual, by
 # design: a one-liner inside a QUOTED string that itself contains a separator
 # (`git commit -m "x; python3 -c '…'"`) still anchors on the `;`.
-_revsh_wrap_names=$(IFS='|'; printf '%s' "${S8_WRAP_ARGLESS[*]}|${S8_WRAP_FLAGGED[*]}|xargs")
-_revsh_anchor="(^|[|;&(){}\`]|[[:space:]](then|do|else|-exec)[[:space:]])[[:space:]]*((${_revsh_wrap_names})([[:space:]]+[^[:space:]|;&]+)*[[:space:]]+)?"
-_revsh_candidates=$(printf '%s' "$UNWRAPPED_CMD" | hook_strip_heredoc_bodies \
+# The heredoc view is QUOTE-AWARE (0.79.0 pre-tag review H2): the shared
+# hook_strip_heredoc_bodies matches `<<WORD` anywhere on a line, quotes included,
+# and a two-line trick — `echo "<<EOF"`, the reverse shell, then a bare `EOF` —
+# satisfied its terminator lookahead and blanked the real command. That
+# stripper serves trigger-anchored WARN gates where a phantom heredoc costs a
+# missed banner; this is a DENY gate for §8's highest-severity shape, so the
+# opener is read on a copy of the line with quoted bodies emptied. Fewer
+# openers → more text reaches the detectors → the deny side only.
+IFS= read -r -d '' REVSH_HEREDOC_AWK <<'AWKPROG' || true
+function inq(s, pos,   i, c, q) {
+  q = ""
+  for (i = 1; i < pos; i++) {
+    c = substr(s, i, 1)
+    if (q == "") { if (c == "'" || c == "\"") q = c; else if (c == "\\") i++ }
+    else if (q == "\"" && c == "\\") i++
+    else if (c == q) q = ""
+  }
+  return q != ""
+}
+{ lines[NR] = $0 }
+END {
+  n = NR
+  for (i = 1; i <= n; i++) {
+    if (blank[i]) { print ""; continue }
+    line = lines[i]; start = 1; found = 0
+    # The opener is the first `<<TAG` whose `<<` sits OUTSIDE quotes; the tag
+    # itself may be quoted (`<<'EOF'` is the common heredoc spelling).
+    while (match(substr(line, start), /<<-?[ \t]*['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/)) {
+      abs = start + RSTART - 1
+      if (!inq(line, abs)) { tok = substr(line, abs, RLENGTH); found = 1; break }
+      start = abs + 2
+    }
+    if (found) {
+      dash = (substr(tok, 3, 1) == "-")
+      tag = tok
+      sub(/^<<-?[ \t]*/, "", tag)
+      gsub(/['"]/, "", tag)
+      term = 0
+      for (j = i + 1; j <= n; j++) {
+        t = lines[j]
+        if (dash) sub(/^\t+/, "", t)
+        sub(/[ \t]+$/, "", t)
+        if (t == tag) { term = j; break }
+      }
+      if (term > 0) for (j = i + 1; j <= term; j++) blank[j] = 1
+    }
+    print line
+  }
+}
+AWKPROG
+revsh_heredoc_view() {
+  if [[ -z "${REVSH_HEREDOC_AWK:-}" ]]; then cat; return; fi
+  awk "$REVSH_HEREDOC_AWK"
+}
+# Command position is "start or separator, then any chain of tokens that are
+# quote-free or simply quoted, then an optional path prefix" (0.79.0 pre-tag
+# review H1 — the first draft enumerated wrappers and keywords and missed
+# `/usr/bin/python3`, `./venv/bin/python`, `PYTHONPATH=. python3`, `if python3`,
+# `! python3`, `find -execdir`, `>/dev/null python3`, `docker exec c python3`,
+# `strace -f python3`, 22 executable shapes in all). A bare token in the chain
+# is a wrapper, keyword, assignment or redirect and is not modelled further; a
+# quoted token is consumed whole, which is exactly what keeps
+# `echo 'python3 -c "…"' > f` and `git commit -m 'docs: python3 -c "…"'` as
+# data — the interpreter word must follow whitespace, never a quote. Residual,
+# by design: a quoted string that itself contains a separator before the
+# one-liner (`git commit -m "x; python3 -c '…'"`) still anchors on the `;`.
+_revsh_tok="([^[:space:]|;&'\"\`(){}]+|'[^']*'|\"([^\"\\\\]|\\\\.)*\")"
+_revsh_anchor="(^|[|;&(){}\`])[[:space:]]*(${_revsh_tok}[[:space:]]+)*(\\\\)?([^[:space:]|;&'\"\`]*/)?"
+_revsh_candidates=$(printf '%s' "$UNWRAPPED_CMD" | revsh_heredoc_view \
   | grep -oE "${_revsh_anchor}(${CURLSH_INTERP})([[:space:]]+-[A-Za-z:_]+)*[[:space:]]+-[eErcM][A-Za-z:_]*[[:space:]]*('[^']*'|\"([^\"\\\\]|\\\\.)*\")" || true)
 if (( _ncmd_hit == 0 )) && [[ -n "$_revsh_candidates" ]]; then
   while IFS= read -r _cand; do
     [[ -z "$_cand" ]] && continue
-    if printf '%s' "$_cand" | grep -qE "$REVSH_NET" && printf '%s' "$_cand" | grep -qE "$REVSH_EXEC"; then
+    _cand_exec=0
+    if printf '%s' "$_cand" | grep -qE "$REVSH_EXEC"; then _cand_exec=1
+    elif printf '%s' "$_cand" | grep -qE "$REVSH_EXEC_IMPORT" && printf '%s' "$_cand" | grep -qE "$REVSH_EXEC_IMPORTED"; then _cand_exec=1
+    else
+      _cand_alias=$(printf '%s' "$_cand" | grep -oE "$REVSH_ALIAS_RE" | head -n1 | sed -E 's/.*[[:space:]]//')
+      if [[ -n "$_cand_alias" ]] && printf '%s' "$_cand" | grep -qE "(^|[^A-Za-z0-9_])${_cand_alias}\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\("; then _cand_exec=1; fi
+    fi
+    if (( _cand_exec )) && printf '%s' "$_cand" | grep -qE "$REVSH_NET"; then
       _ncmd_hit=1
       _ncmd_reason='an interpreter one-liner opens a network connection AND executes (reverse shell / download-execute)'
       _ncmd_rule='interpreter-net-exec'

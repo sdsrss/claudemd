@@ -11,7 +11,7 @@ Surface the per-check [✓]/[△]/[✗] block first, then the severity-grouped f
 
 Severity meaning:
 - CRITICAL — breaks the spec's structural contract (unresolved §EXT ref)
-- HIGH — drift outside accepted tolerance (Sizing line off by >20B; per `feedback_spec_sizing_recursive_rewrite.md`)
+- HIGH — drift outside accepted tolerance (Sizing line off by >20B — the ±20B self-rewrite envelope)
 - MEDIUM — runtime-binding drift (MEMORY.md references missing file; a §10 quick-check term no `banned-vocab.patterns` row can match)
 - LOW — non-binding drift (orphan memory file not in index)
 
