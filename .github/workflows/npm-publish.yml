@@ -67,12 +67,47 @@ permissions:
   id-token: write  # required for npm provenance attestation (--provenance)
 
 jobs:
+  # Mirrors ci.yml's `static` job, and exists because this gate did not run it
+  # (Round-14 audit REL-M5). eslint, prettier and the real-tree metrics
+  # assertions — including `cycles.count === 0`, which ARCHITECTURE.md cites —
+  # were reachable only from ci.yml, and the two workflows have no `needs:` or
+  # `workflow_run` relationship, so ci.yml can still be executing, or already
+  # red, when the tarball reaches npm. That is not hypothetical: the tags for
+  # v0.73.0 / v0.74.0 / v0.75.0 all published while their `ci` run was red.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: eslint (blocking)
+        run: npm run lint:js
+      - name: prettier (blocking)
+        run: npm run format:check
+      - name: Real-tree metrics assertions
+        env:
+          CLAUDEMD_DEVDEPS_REQUIRED: '1'
+        run: node --test tests/scripts/baseline-metrics.test.js
+
   test:
     strategy:
       matrix:
+        os: [ubuntu-latest]
         node: [20, 22, 24]
+        # One macOS leg in the publish gate (Round-14 audit REL-H2). macOS is
+        # the whole reason the bash-3.2 gates exist — /bin/bash there is 3.2 —
+        # and it was the leg red on the three tags that published anyway. The
+        # matrix stays asymmetric on purpose: macOS runners are ~4x slower at
+        # process creation and this gate blocks a publish, so it buys the
+        # platform signal at one leg rather than three.
+        include:
+          - os: macos-latest
+            node: 24
       fail-fast: true
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -84,23 +119,47 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Install jq + shellcheck (test prereqs)
-        run: sudo apt-get update -y && sudo apt-get install -y jq shellcheck
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install jq shellcheck coreutils
+            echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          else
+            sudo apt-get update -y && sudo apt-get install -y jq shellcheck
+          fi
 
       - name: Run test suite (publish gate)
         run: bash tests/run-all.sh
 
   publish:
-    needs: test
+    needs: [test, static]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          fetch-depth: 1
+          # Full history: the main-ancestry guard below needs origin/main and
+          # the tagged commit in the same object store.
+          fetch-depth: 0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      - name: Verify the tagged commit is on main
+        # Any branch's `v*.*.*` tag published (Round-14 audit REL-M5), and the
+        # repo has no branch protection or ruleset to lean on, so this is the
+        # only place the invariant can be stated. Ancestry, not equality: the
+        # atomic ship flow pushes main and then the tag, and a later commit on
+        # main must not invalidate an in-flight publish.
+        run: |
+          set -eu
+          git fetch --no-tags --depth=0 origin main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "OK: $GITHUB_SHA is reachable from origin/main"
+          else
+            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on origin/main — refusing to publish a tag from an unmerged branch"
+            exit 1
+          fi
 
       - name: Verify package.json version matches the tag
         # Belt-and-suspenders: refuse to publish if the tag and package.json
