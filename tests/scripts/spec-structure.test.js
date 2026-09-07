@@ -517,33 +517,87 @@ const PINS = [
     line: '- **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.',
   },
   {
-    what: "core §2 LEVEL — the L1 file boundary in §1.5's own units (v6.29.0 wording)",
+    what: 'core §2 LEVEL — the L1 row, whose file count now lives in §1.5 Local-Δ (v6.29.0 wording)',
     file: CORE,
-    anchor: 'L1  ≤2 files after §1.5 pairing',
-    line: 'L1  ≤2 files after §1.5 pairing, LOC <80, Local-Δ only    → §7.L1',
+    anchor: 'L1  LOC <80, Local-Δ only',
+    why: 'If this row regains a file count, §1.5 Local-Δ stops being the single place that count lives — the SPEC-M1 overlap returning.',
+    line: 'L1  LOC <80, Local-Δ only (which is where ≤2 files lives) → §7.L1',
   },
   {
-    what: "core §2 LEVEL — the L2 trigger list, disjoint from L1's file count (v6.29.0 wording)",
+    what: 'core §2 LEVEL — the L2 row, qualified by the same pairing rule as L1 (v6.29.0 wording)',
     file: CORE,
-    anchor: 'L2  contract-Δ / >2 files',
-    line: 'L2  contract-Δ / >2 files / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9',
+    anchor: 'L2  contract-Δ / >2 files after §1.5 pairing',
+    why: 'Drop `after §1.5 pairing` and two paired files read as L1 by one row and L2 by the other — SPEC-M1 relocated rather than closed.',
+    line: 'L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9',
   },
   {
-    what: 'core §0 Fast-Path — the L0 whitelist and the user-facing floor above it (v6.29.0 wording)',
+    what: 'core §0 Fast-Path — the L0 whitelist under the user-facing floor above it (v6.29.0 wording)',
     file: CORE,
     anchor: '**Fast-Path (L0 only)**',
+    why: '`internal` is what separates a log line nobody reads from a CLI error line the user does; without it a user-facing string routes to L0.',
     line: '**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.',
+  },
+  {
+    what: 'core §0 — ambiguity resolution, including the subagent default (v6.29.0 wording)',
+    file: CORE,
+    anchor: '**Initial-prompt ambiguity**',
+    why: 'The subagent half is the core-side home of §EXT §11-O; extended is not loaded at L0-L2, so deleting it here leaves a subagent no reachable rule.',
+    line: '**Initial-prompt ambiguity**: multiple readings / action-vs-advice unclear / missing scope → (a) ASK once with candidates, or (b) state the chosen reading inline. Silent assumption banned. Default (a) when reversibility >10min or AUTH-relevant; (b) otherwise — and (b) always in a subagent, which has nobody to ask.',
+  },
+  {
+    what: 'core §5 AUTH — the signal, its scope, and what a subagent does instead (v6.29.0 wording)',
+    file: CORE,
+    anchor: '`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms',
+    why: 'Same reason: a subagent reading core alone would otherwise emit `[AUTH REQUIRED]` and block on a confirmation that cannot arrive.',
+    line: '`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the authorized part, report `[PARTIAL: <op> needs AUTH]`, never self-authorize (§EXT §11-O).',
   },
   {
     what: 'core §10 — the L1 short-report condition (v6.29.0 wording)',
     file: CORE,
     anchor: '- **L1**: Not done+Failed+Uncertain empty',
+    why: 'Dropping `Not done` lets a one-line report swallow a section the four-section order exists to protect.',
     line: '- **L1**: Not done+Failed+Uncertain empty → `Done: <what>.` Else four-section.',
+  },
+  {
+    what: 'core §10 — the L1-bugfix report condition, the same hole three lines down (v6.29.0 wording)',
+    file: CORE,
+    anchor: '- **L1-bugfix**: single-line `Done:`',
+    why: 'The pre-tag review found SPEC-M4 half-fixed: the L1 line was repaired and this one, inside the same cited range, still dropped a non-empty Not done.',
+    line: '- **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Not done non-empty OR Failed/Uncertain ≥2 OR scope ≥2 files.',
+  },
+  {
+    what: 'core §10 — the L2/L3 report shape the L1 rows are bounded by (v6.29.0 wording)',
+    file: CORE,
+    anchor: '- **L2/L3**: four-section;',
+    why: 'Unpinned, this line could be rewritten to grant L2 the one-line form, reversing the L1 pins above without touching them.',
+    line: '- **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.',
+  },
+  {
+    what: 'core §1.5 — Local-Δ, the definition the L1 row now defers to (v6.29.0 wording)',
+    file: CORE,
+    anchor: '- **Local-Δ**:',
+    why: "The L1 row points here for its file count, so widening `≤2 files` here moves L1's boundary with the pinned row untouched.",
+    line: '- **Local-Δ**: ≤2 files (source + co-located test = one; co-located = test path mirrors source path); no exported-symbol / import-surface / config / schema change.',
+  },
+  {
+    what: '§EXT §10-R — four-section applies at L2 and L3, deferring to core (v6.29.0 wording)',
+    file: EXT,
+    anchor: '### Full four-section',
+    why: 'This heading used to grant L2 a shortcut core §10 does not; reverting it re-opens a core/extended contradiction L2 can never see.',
+    line: '### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)',
+  },
+  {
+    what: '§EXT §10-R — the zero-issue short form is L3 only (v6.29.0 wording)',
+    file: EXT,
+    anchor: '**L3 zero-issue short**',
+    why: 'The other half of the same repair: re-granting L2 the short form here contradicts core §10 from a file L2 does not load.',
+    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.',
   },
   {
     what: '§EXT §11-O — a subagent has nobody to ASK (v6.29.0 wording)',
     file: EXT,
     anchor: '- **A subagent has nobody to ASK**',
+    why: "The detail behind core §0 and §5's subagent clauses; the three must move together.",
     line: "- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the authorized work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.",
   },
 ];
@@ -567,10 +621,10 @@ for (const pin of PINS) {
       carrying[0],
       pin.line,
       `the pinned rule line changed in ${pin.file}.\n\nEXPECTED:\n${pin.line}\n\nFOUND:\n${carrying[0]}\n\n` +
-        'This pin does not judge meaning — it reports that rule text moved. Re-read the rule and ' +
-        'the v6.26.0 entry in spec/CLAUDE-changelog.md, decide whether the new wording still lets ' +
-        'an orchestrating cycle yield to read what it spawned and still excepts that wait from the ' +
-        'atomic ship window, and only then update this pin in the same commit.'
+        'This pin does not judge meaning — it reports that rule text moved. ' +
+        (pin.why ? `What this line is load-bearing for: ${pin.why}\n` : '') +
+        'Re-read the rule and the changelog entry named in this pin, decide whether the new ' +
+        'wording still holds that property, and only then update this pin in the same commit.'
     );
   });
 }

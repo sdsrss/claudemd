@@ -422,6 +422,15 @@ test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', 
     m._doc.includes(docSentence),
     `spec/hard-rules.json _doc drifted from its own rules array — it must contain:\n  ${docSentence}`
   );
+  // …and the clause after it (v0.81.0 pre-tag review, LOW-2). The assertion
+  // above stopped one sentence short, so the `_doc`'s FIFTH copy of
+  // selfWithChannel went unread: demoting a rule left the manifest's own prose
+  // stale with the whole suite green.
+  const docEmitSentence = `and ${actual.selfWithChannel} of them do emit, via rule_hits_section`;
+  assert.ok(
+    m._doc.includes(docEmitSentence),
+    `spec/hard-rules.json _doc drifted from its own rules array — it must also contain:\n  ${docEmitSentence}`
+  );
 });
 
 test('hard-rules-6: manifest schema sanity — required fields present', () => {

@@ -81,7 +81,15 @@ test('REL-L1: CONTRIBUTING does not claim docs/ is wholly untracked', () => {
 
 test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declares', () => {
   const wf = read('.github/workflows/npm-publish.yml');
-  const m = wf.match(/^\s*needs:\s*(.+)$/m);
+  // Anchored on the `publish:` job, not the first `needs:` in the file
+  // (v0.81.0 pre-tag review, LOW-3). `.match` with /m returns the first match
+  // anywhere, so the message asserted a job identity the regex never
+  // established — correct today only because `publish` happens to be the only
+  // job with a `needs:`. That is the same "a gate that cannot see its own
+  // subject" class as the commits this suite was added alongside.
+  const publishIdx = wf.indexOf('\n  publish:');
+  assert.notEqual(publishIdx, -1, 'npm-publish.yml has no `publish:` job');
+  const m = wf.slice(publishIdx).match(/^\s{4}needs:\s*(.+)$/m);
   assert.ok(m, 'npm-publish.yml: no `needs:` on the publish job');
   const needs = m[1]
     .replace(/[[\]]/g, '')

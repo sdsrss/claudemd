@@ -151,9 +151,16 @@ jobs:
         # only place the invariant can be stated. Ancestry, not equality: the
         # atomic ship flow pushes main and then the tag, and a later commit on
         # main must not invalidate an in-flight publish.
+        #
+        # `--depth=0` is NOT "no depth limit" — git rejects it during argument
+        # parsing (`fatal: depth 0 is not a positive number`, exit 128), and
+        # under the `set -eu` above that aborted the step, failed this job, and
+        # meant `npm publish` never ran. An explicit refspec instead, so the
+        # remote-tracking ref the next line reads is the one being updated;
+        # tests/scripts/workflow-step-exec.test.js executes this body.
         run: |
           set -eu
-          git fetch --no-tags --depth=0 origin main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "OK: $GITHUB_SHA is reachable from origin/main"
           else

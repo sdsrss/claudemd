@@ -10,7 +10,7 @@ CLASSIFY (§2) → AUTH (§5) → ROUTE (§2.1) → EXECUTE → VALIDATE (§7) �
 
 **Hard-AUTH override (HARD)**: within an existing AUTH, §5-hard sub-decisions re-ASK, and so does an adjacent bug found mid-bundle whatever its size (`feels obvious` ≠ safe); exception: the authorized fix is literally blocked without it → proceed, surface in REPORT as a scope extension, not in the original Done list. Batch re-AUTH: in-scope → one re-ASK per hard-category; out-of-scope discoveries → individual re-ASK.
 
-**Initial-prompt ambiguity**: multiple readings / action-vs-advice unclear / missing scope → (a) ASK once with candidates, or (b) state the chosen reading inline. Silent assumption banned. Default (a) when reversibility >10min or AUTH-relevant; (b) otherwise.
+**Initial-prompt ambiguity**: multiple readings / action-vs-advice unclear / missing scope → (a) ASK once with candidates, or (b) state the chosen reading inline. Silent assumption banned. Default (a) when reversibility >10min or AUTH-relevant; (b) otherwise — and (b) always in a subagent, which has nobody to ask.
 
 **Mid-task feedback** → §0.2.
 
@@ -63,8 +63,8 @@ Extended-only terms (**Assumption** → §EXT §1.5-EXT) resolve on L3+ load; at
 
 ```
 L0  docs / comment / style                                → Fast-Path
-L1  ≤2 files after §1.5 pairing, LOC <80, Local-Δ only    → §7.L1
-L2  contract-Δ / >2 files / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
+L1  LOC <80, Local-Δ only (which is where ≤2 files lives) → §7.L1
+L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
@@ -125,7 +125,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 ## §5 AUTH
 
-`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH.
+`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the authorized part, report `[PARTIAL: <op> needs AUTH]`, never self-authorize (§EXT §11-O).
 
 **Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).
 
@@ -210,7 +210,7 @@ Simplicity / root-cause / reuse: single home = §1 Principles.
 
 - **L0**: single-line result + `[cmd]`.
 - **L1**: Not done+Failed+Uncertain empty → `Done: <what>.` Else four-section.
-- **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files.
+- **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Not done non-empty OR Failed/Uncertain ≥2 OR scope ≥2 files.
 - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
 
 **Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; self-enforced — the Stop scan is advisory and opt-in). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
