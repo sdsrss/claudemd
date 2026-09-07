@@ -36,6 +36,14 @@ Detects:
   - §8 rm-rf $VAR whitelist anchor: every spec-named whitelisted var
     (HOME/PWD/OLDPWD/TMPDIR) must appear in the hook's case statement.
 
+What it does NOT detect, stated because the name suggests otherwise (Round-14
+audit ALG-M5): every check here is KEYWORD-shaped. A mutation that keeps the
+keyword and removes the behaviour survives — measured, the three hook_deny
+calls in pre-bash-safety-check.sh were replaced with no-ops that kept their
+surrounding text and this tool still reported "Unimplemented rules: 0". Only
+the rm-rf whitelist anchor is a real join. Read a clean run as "no clause is
+quoted without a keyword behind it", never as "§8 is implemented".
+
 Output: human-readable report by default; '--json' emits structured JSON.
 
 Options:

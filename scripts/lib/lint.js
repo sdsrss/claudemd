@@ -175,6 +175,17 @@ export function stripIdentifiers(text) {
     //
     //    The bash engines need no equivalent: POSIX sed does not backtrack and
     //    the hook caps its input at `tail -c 4096`; the Node path caps nothing.
+    //
+    //    ACCEPTED RESIDUAL (Round-14 audit ALG-M4): a bare `word/word` is
+    //    stripped too, so `comprehensive/robust cleanup` scans clean in BOTH
+    //    engines — a false negative the parity gate cannot see, because the two
+    //    engines agree. Narrowing it was evaluated and rejected: the shapes this
+    //    clause exists for are branch names, and `feature/robust` is one, so any
+    //    rule that keeps `comprehensive/robust` also re-opens the v0.23.19
+    //    deny-loop on an ordinary branch name — a false DENY the author cannot
+    //    clear by renaming, which is the failure this clause was written to fix.
+    //    The direction of the residual is a miss on a gate that has an escape
+    //    hatch; the direction of the repair is a block on one that did not.
     .replace(/(?<![A-Za-z0-9._@~-])[A-Za-z0-9._@~-]*\/[A-Za-z0-9._/@~-]*/g, ' ');
   // 4. Bare dotted-file tokens (foo.js, comprehensive-parser.ts). JS-only
   //    when written; the bash sanitizer carries the same clause since

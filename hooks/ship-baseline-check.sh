@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ship-baseline-check.sh — PreToolUse:Bash hook.
-# Denies `git push` if base-branch CI is RED, unless bypass present.
+# Denies `git push` if the PUSHED branch's CI is RED, unless bypass present.
+# Not "base-branch": the gate runs `gh run list --branch "$BRANCH"` against the
+# branch being pushed, which is what core §7 says too. The old wording described
+# a check this hook has never performed (Round-14 audit SPEC-L).
 
 set -uo pipefail
 
@@ -296,7 +299,7 @@ Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
   hook_record ship-baseline deny-repeat "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
 else
-  REASON="§7 Ship-baseline: base-branch CI is RED — $RUN_TITLE
+  REASON="§7 Ship-baseline: this branch's CI is RED — $RUN_TITLE
 $RUN_URL
 
 Options:

@@ -60,6 +60,15 @@ Options:
                      concept --cwd; both tools accept both names.
   --help, -h         Print this message and exit.
 
+What it does NOT check, stated because --strict suggests otherwise (Round-14
+audit ALG-M5): every check is STRUCTURAL — a reference resolves, a byte count
+matches its claim, an index entry has a file. None of them reads what a rule
+MEANS. Measured: inverting Iron Law #2, reversing the four-section order,
+deleting a §8 clause, and re-pointing an extended cross-reference at the wrong
+section each left this tool reporting all checks clean. Whole-line golden pins
+in tests/scripts/spec-structure.test.js are what catch that class; this tool
+catches the drift between two places that state the same fact.
+
 Exit codes: 0 success | 1 runtime error, or --strict with CRITICAL/HIGH | 2 argv-shape error.
   Note: 1 is overloaded — a failed run and a --strict finding share it. Read
   stderr (a runtime failure prints '[claudemd] spec-coherence-audit failed: …'

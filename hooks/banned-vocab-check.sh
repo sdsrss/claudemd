@@ -196,7 +196,17 @@ done < <(printf '%s' "$CMD" | grep -oE -- "$MSG_REGEX" 2>/dev/null)
 # Baseline-context exemption: if the commit message carries an explicit
 # before-after anchor (number on both sides of →/->/=>) OR the literal word
 # `baseline`, ratio-class patterns (tagged `@ratio` in their reason column)
-# are suppressed. Non-ratio hedges/adjectives still deny regardless.
+# are suppressed.
+#
+# ACCEPTED RESIDUAL (Round-14 audit ALG-L3): the `baseline` arm is a bare word
+# test, so ANY mention of it — `refactor baseline-metrics.js, 50% faster` —
+# exempts every ratio pattern in the message. Narrowings were evaluated:
+# requiring a digit alongside it does not discriminate (the ratio claim supplies
+# one), and requiring proximity to a number passes `baseline-metrics.js; 50%`
+# too. Both engines would have to agree on whatever replaced it, in POSIX ERE.
+# Left as-is because the failure direction is a MISS on a gate whose other arm
+# still fires on non-ratio hedges, and the alternative is a false deny on the
+# word this project uses in half its commit subjects. Non-ratio hedges/adjectives still deny regardless.
 # Aligns with spec §10 "ratio with baseline" permission.
 BASELINE_EXEMPT=0
 if echo "$MSG_TEXT" | grep -qE '[0-9][^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]'; then

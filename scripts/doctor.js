@@ -48,8 +48,9 @@ import { printHelpAndExit, parsePositiveInt, invokedAsMain, parseStrictOrExit } 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
-settings.json issues, hook drift, backup inventory, rule-usage health, and §4
-Routing primaries disabled via skillOverrides.
+settings.json issues, hook drift, backup inventory, rule-usage health, §4
+Routing primaries disabled via skillOverrides, and the review cadence of the
+project's tasks/ deferred-work docs.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
@@ -80,6 +81,8 @@ const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 // with 0 hits in 30d are demotion candidates; this catch is the inverse —
 // hits exist, but they're routinely escape-hatched.
 const RULE_USAGE_WINDOW_DAYS = 30;
+// Deferred-work docs untouched this long are a review prompt, not a failure.
+const TASKS_STALE_DAYS = 30;
 const RULE_USAGE_DEMOTION_RATIO = 0.5;
 // Floor below which the bypass:deny ratio is statistically meaningless.
 // 3 events over 30 days is the smallest sample where a 50%+ override rate
@@ -117,7 +120,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // 0.71.1) so a test can assert the real predicate instead of reading this
 // comment — a gate that reads prose is the failure this repo keeps closing.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|routing:skills-enabled|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -884,6 +887,47 @@ export async function doctor({ pruneBackups: prune } = {}) {
       `could not be measured (${e && e.message ? e.message : e}) — this check reported nothing, ` +
         `which is not the same as a clean state dir. Advisory: this never fails the doctor exit code.`
     );
+  }
+
+  // tasks/ review cadence (Round-14 audit REL-L4). The repo's deferred-work
+  // docs had no review rhythm at all: 25 files, 10 of them untouched for over a
+  // month while their subject was still live in the code, and 4 already closed
+  // but still named `*-deferred.md`. Nothing read the directory — not this
+  // tool, not any gate — so "deferred" and "forgotten" were the same state.
+  //
+  // Advisory and count-only. Which of them are stale is a judgement no
+  // mtime can make; the number is what makes the question come up at all.
+  try {
+    const tasksDir = path.join(process.cwd(), 'tasks');
+    const cutoff = Date.now() - TASKS_STALE_DAYS * 86400000;
+    let total = 0;
+    const stale = [];
+    for (const name of fs.existsSync(tasksDir) ? fs.readdirSync(tasksDir) : []) {
+      if (!name.endsWith('.md')) continue;
+      let st;
+      try {
+        st = fs.statSync(path.join(tasksDir, name));
+      } catch {
+        continue;
+      }
+      if (!st.isFile()) continue;
+      total += 1;
+      if (st.mtimeMs < cutoff) stale.push(name);
+    }
+    if (total > 0) {
+      const sample = stale.slice(0, 5).join(', ');
+      push(
+        'tasks-review-cadence',
+        stale.length === 0,
+        stale.length === 0
+          ? `${total} doc(s) in ${tasksDir}, none untouched for ${TASKS_STALE_DAYS}+ days`
+          : `${stale.length} of ${total} doc(s) in ${tasksDir} untouched for ${TASKS_STALE_DAYS}+ days` +
+              `${sample ? ` (${sample}${stale.length > 5 ? ', …' : ''})` : ''} — re-read or close them. ` +
+              `Advisory: this never fails the doctor exit code.`
+      );
+    }
+  } catch {
+    /* no tasks/ dir, or unreadable — nothing to report */
   }
 
   const rrs = scanRunbookReviewSteps({});
