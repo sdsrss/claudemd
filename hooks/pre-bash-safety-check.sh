@@ -385,14 +385,19 @@ unwrap_indirect() {
   # (`dashboard`, `stash`). csh/tcsh excluded — different `-c` quoting + rare.
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
-  # `su [-flag arg] [user] -c 'cmd'` hands cmd to a shell exactly as `sh -c`
+  # `su [-flag arg | -] [user] -c 'cmd'` hands cmd to a shell exactly as
+  # `sh -c` does. The flag body is `*` not `+` so the login-shell shorthand's
+  # bare `-` (`su - deploy -c`) is a flag too — spelling it `-[a-zA-Z-]+`
+  # dropped that form, which denied on 0.78.0 (final verification V-H1). A
+  # `*` keeps the capture-group numbering the replacement depends on; an
+  # alternation would have shifted the payload from \5 to \6.
   # does, and `ssh [opts]
   # host 'cmd'` runs it on the far side — both quoted strings are commands, not
   # data, so they are exposed the same way (0.79.0 pre-tag review H1: the
   # command-position anchor below reads a quoted token as data by design, and
   # would otherwise let a reverse shell through either wrapper).
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\5 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\5 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\5 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\5 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")

