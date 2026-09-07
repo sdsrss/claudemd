@@ -36,7 +36,7 @@ test('countLines matches editor line numbers with and without a trailing newline
   assert.equal(countLines('\n\n'), 2);
 });
 
-test('longFunctionsInSh measures column-0 brace spans and skips one-liners', () => {
+test('longFunctionsInSh measures brace spans at the opener\'s own indent, and skips one-liners', () => {
   const body = n => Array.from({ length: n }, (_, i) => `  echo ${i}`).join('\n');
   const src = [
     'short() {',
@@ -49,7 +49,11 @@ test('longFunctionsInSh measures column-0 brace spans and skips one-liners', () 
     'long_paren() {',
     body(12),
     '}',
-    '  indented() {', // not column 0 — not counted
+    // Indented, and counted since Round-14 ALG-L6: the old scanner required
+    // column 0 on the strength of "every function in this repo is written that
+    // way", which session-end-check.sh already contradicted — so the published
+    // long-function count structurally could not see one.
+    '  indented() {',
     body(20),
     '  }',
     '',
@@ -60,8 +64,12 @@ test('longFunctionsInSh measures column-0 brace spans and skips one-liners', () 
     [
       ['long_kw', 12],
       ['long_paren', 14],
+      ['indented', 22],
     ]
   );
+  // A `}` at a DIFFERENT indent does not close it: the close has to be
+  // unambiguous without parsing bash.
+  assert.deepEqual(longFunctionsInSh('  f() {\n    a\n    b\n}\n', 1), []);
   assert.equal(got[0].line, 7, 'line numbers are 1-based and point at the opening line');
   // Threshold is strict "longer than": a 5-line function at threshold 5 is not reported.
   assert.deepEqual(longFunctionsInSh('f() {\n  a\n  b\n  c\n}\n', 5), []);

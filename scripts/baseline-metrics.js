@@ -194,23 +194,31 @@ function longFunctionsInJs(acorn, source, threshold, file = '<js>') {
   return out;
 }
 
-// Bash: a function opens at column 0 as `name() {` or `function name {` and
-// closes at the first following column-0 `}`. That is how every function in
-// this repo is written (shellcheck-clean, 2-space bodies); a one-line
-// `name() { …; }` has no separate closing line and is counted as 1 line.
+// Bash: a function opens as `name() {` or `function name {` and closes at the
+// first following `}` at the SAME indentation. A one-line `name() { …; }` has
+// no separate closing line and is counted as 1 line.
+//
+// The indentation is captured rather than pinned at column 0 (Round-14 audit
+// ALG-L6). "Every function in this repo is written at column 0" was the old
+// premise and it was false — `session-end-check.sh` has an indented one — so
+// the metric this repo publishes as its long-function count could not see it,
+// and neither could any future one. Matching the opener's own indent keeps the
+// close unambiguous without parsing bash.
 const SH_FN_OPEN =
-  /^(?:function\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\))\s*\{/;
+  /^([ \t]*)(?:function\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\))\s*\{/;
 export function longFunctionsInSh(source, threshold, file = '<sh>') {
   const lines = source.split('\n');
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     const m = SH_FN_OPEN.exec(lines[i]);
     if (!m) continue;
-    const name = m[1] || m[2];
+    const indent = m[1];
+    const name = m[2] || m[3];
     if (/\}\s*$/.test(lines[i])) continue; // one-liner
+    const closeRe = new RegExp(`^${indent.replace(/\t/g, '\\t')}\\}\\s*$`);
     let end = -1;
     for (let j = i + 1; j < lines.length; j++) {
-      if (/^\}\s*$/.test(lines[j])) {
+      if (closeRe.test(lines[j])) {
         end = j;
         break;
       }

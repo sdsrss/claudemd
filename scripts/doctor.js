@@ -795,13 +795,22 @@ export async function doctor({ pruneBackups: prune } = {}) {
     // Window resolved the way clean-residue resolves it, from the same helper —
     // a project that sets TMP_RETENTION_DAYS moves BOTH numbers together. Dry
     // run: `apply` defaults to false, so this never deletes.
+    //
+    // The window is read from `<cwd>/CLAUDE.md`, so it depends on where doctor
+    // was STARTED (Round-14 audit SCR-MAINT). That is the intended behaviour —
+    // a project sets its own retention and both tools must agree — but the
+    // number moving between two runs with no visible cause is not, so the
+    // message below names where it came from.
+    const projectWindow = readRetentionFromClaudeMd();
+    const windowSource =
+      projectWindow == null ? 'the built-in default' : `TMP_RETENTION_DAYS in ${process.cwd()}/CLAUDE.md`;
     const {
       scanned: candidates,
       targets,
       retentionDays: window,
     } = cleanStateDir({
       stateDir: stateDirPath,
-      retentionDays: readRetentionFromClaudeMd() ?? DEFAULT_RETENTION_DAYS,
+      retentionDays: projectWindow ?? DEFAULT_RETENTION_DAYS,
     });
     const summarize = list => {
       const byKind = list.reduce((acc, c) => {
@@ -818,7 +827,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
     // print the same thing, and the total is the figure that shows unbounded
     // growth even while the reapable subset is zero.
     const scale = `${targets.length} reapable of ${candidates.length} ephemeral state file(s) in ${stateDirPath}`;
-    const breakdown = `(past the ${window}-day window: ${summarize(targets)}; all: ${summarize(candidates)})`;
+    const breakdown = `(past the ${window}-day window from ${windowSource}: ${summarize(targets)}; all: ${summarize(candidates)})`;
     const advisory = 'Advisory: this never fails the doctor exit code.';
     if (targets.length > ORPHAN_ADVISORY_THRESHOLD) {
       push(
@@ -855,11 +864,21 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(
         'state-dir-orphans',
         true,
-        `${scale} — past the ${window}-day window: ${summarize(targets)}; all: ${summarize(candidates)}`
+        `${scale} — past the ${window}-day window from ${windowSource}: ${summarize(targets)}; all: ${summarize(candidates)}`
       );
     }
-  } catch {
-    // Never let a health check take down the health checker.
+  } catch (e) {
+    // Never let a health check take down the health checker — but SAY SO
+    // (Round-14 audit SCR-MAINT). A bare `catch {}` here meant an internal
+    // throw produced no check line and no count, so the whole orphan inventory
+    // was simply absent from a green, exit-0 report — indistinguishable from a
+    // clean state dir. Advisory, like every other outcome of this block.
+    push(
+      'state-dir-orphans',
+      true,
+      `could not be measured (${e && e.message ? e.message : e}) — this check reported nothing, ` +
+        `which is not the same as a clean state dir. Advisory: this never fails the doctor exit code.`
+    );
   }
 
   const rrs = scanRunbookReviewSteps({});

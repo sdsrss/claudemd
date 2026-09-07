@@ -834,6 +834,40 @@ if (( bypass_rm == 0 )); then
     trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
     rm_word="${trimmed%%[[:space:]]*}"
     rm_canon="${rm_word#\\}"; rm_canon="${rm_canon##*/}"
+    # `find "$VAR" -delete` and `find "$VAR" -exec rm -rf {} +` delete a tree
+    # rooted at an unvalidated variable exactly as `rm -rf "$VAR"` does, and
+    # neither reached the check below: the segment's command word is `find`, so
+    # the whole segment was skipped (Round-14 audit HK-L1, reproduced as ALLOW).
+    # This is the "natural command shape" direction ARCHITECTURE.md says this
+    # guardrail's investment goes to — not an attempt to make it a boundary.
+    #
+    # Rewritten into the `rm -rf <paths>` form the target analysis below already
+    # judges, rather than a second copy of that analysis. find's path operands
+    # are everything before the first `-`-prefixed primary, which is also why
+    # `find . -name '*.tmp' -delete` stays ALLOW: `.` carries no expansion, and
+    # the per-target check below skips any target without one.
+    S8_RM_VERB="rm -rf"
+    if [[ "$rm_canon" == find ]]; then
+      find_args="${trimmed#"$rm_word"}"
+      if printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-delete([[:space:]]|$)' \
+        || printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-(exec|execdir)[[:space:]]+([^[:space:]]*/)?\\?rm([[:space:]]|$)'; then
+        find_paths=""
+        set -f
+        for tok in $find_args; do
+          case "$tok" in
+            -*) break ;;
+            *) find_paths="$find_paths $tok" ;;
+          esac
+        done
+        set +f
+        if [[ -n "${find_paths//[[:space:]]/}" ]]; then
+          S8_RM_VERB="find … -delete/-exec rm"
+          trimmed="rm -rf$find_paths"
+          rm_word="rm"
+          rm_canon="rm"
+        fi
+      fi
+    fi
     [[ "$rm_canon" == rm ]] || continue
     # Parse args. Detect any of: -r / -R / -f / -F in a `-*[rRfF]*` short
     # flag block; OR `--recursive` / `--force` long form. Find the first
@@ -897,9 +931,9 @@ if (( bypass_rm == 0 )); then
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
         if [[ ! "$residue" =~ [^/] ]]; then
-          HITS+=("rm -rf \$$varname with no literal subpath (bare whitelisted-var expansion)")
+          HITS+=("$S8_RM_VERB \$$varname with no literal subpath (bare whitelisted-var expansion)")
           HIT_SECTIONS+=('§8-rm-rf-var')
-          REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+          REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
         fi
         ;;
       *)
@@ -1104,9 +1138,9 @@ if (( bypass_rm == 0 )); then
           if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
             hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
           else
-            HITS+=("rm -rf \$$varname (unvalidated variable expansion)")
+            HITS+=("$S8_RM_VERB \$$varname (unvalidated variable expansion)")
             HIT_SECTIONS+=('§8-rm-rf-var')
-            REASONS+=$'\n  - rm -rf with unvalidated $'"$varname"
+            REASONS+=$'\n  - '"$S8_RM_VERB"$' with unvalidated $'"$varname"
           fi
         fi
         ;;
