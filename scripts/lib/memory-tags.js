@@ -213,15 +213,29 @@ export function parseMemoryIndex(content) {
     // a prose line quoting a decorative `[label]` token plus any `(….md)`
     // token (e.g. code-graph-mcp's MEMORY.md blockquote header) parsed as a
     // tagged entry and produced a doctor finding against a non-entry line.
-    let tagBlock = line.match(/.*\.md\)\s*`\[([^\]]*)\]`/);
+    // `[ \t\r\v\f]`, NOT `\s` (Round-14 audit ALG-M6). JS `\s` is Unicode:
+    // it matches NBSP and U+3000, which the awk matcher's `[ \t\r\v\f]` does
+    // not. An entry separated from its tag block by an NBSP therefore parsed
+    // HERE and not in the hook — doctor reported it as tagged while the §11
+    // deny could never fire on it, which is the one direction that produces a
+    // gate believed to be covering something it is not. This engine follows the
+    // enforcing one; a non-ASCII separator now reads as untagged in both, and
+    // doctor says so.
+    let tagBlock = line.match(/.*\.md\)[ \t\r\v\f]*`\[([^\]]*)\]`/);
     if (!tagBlock) {
       // Plain form: anchor on `(file.md)` then `[tag, tag]` before `— ` or `- `.
-      tagBlock = line.match(/.*\.md\)\s*\[([^\]]*)\]\s*[—-]/);
+      tagBlock = line.match(/.*\.md\)[ \t\r\v\f]*\[([^\]]*)\][ \t\r\v\f]*[—-]/);
     }
     if (!tagBlock) continue;
     const tags = tagBlock[1]
       .split(',')
-      .map(t => t.trim())
+      // The awk matcher does `gsub(/ /, "", t)` — it removes EVERY space, not
+      // just the edges — so a tag written `spec gate` is matched as `specgate`
+      // and can never fire. `.trim()` here kept the space (and stripped NBSP,
+      // which awk does not), so doctor listed a tag the hook does not have.
+      // Same normalisation, same answer; the multi-word footgun is now visible
+      // in doctor's output instead of hidden behind a prettier copy of it.
+      .map(t => t.replace(/ /g, ''))
       .filter(Boolean);
     entries.push({ line, file: fileMatch[1], tags });
   }

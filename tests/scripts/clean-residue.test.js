@@ -18,9 +18,34 @@ const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..
 
 let tmpDir;
 
+// RECURSIVE (Round-14 audit SCR-M5). A directory's age is now the newest mtime
+// anywhere inside it, because its OWN mtime only records entries appearing and
+// disappearing — a live session rewriting the same file aged like an abandoned
+// one. Ageing just the top entry therefore builds a fixture that is stale by
+// the old measure and fresh by the one under test; three cases here created a
+// child directory after `mkStale` and then re-aged only the parent.
 const setMtime = (p, daysAgo) => {
   const t = (Date.now() - daysAgo * 86400000) / 1000;
-  fs.utimesSync(p, t, t);
+  const walk = q => {
+    let st;
+    try {
+      st = fs.lstatSync(q);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) return; // utimesSync follows links; a link's target is not ours to age
+    if (st.isDirectory()) {
+      let names = [];
+      try {
+        names = fs.readdirSync(q);
+      } catch {
+        /* unreadable — still age the dir itself */
+      }
+      for (const n of names) walk(path.join(q, n));
+    }
+    fs.utimesSync(q, t, t);
+  };
+  walk(p);
 };
 
 beforeEach(() => {
@@ -991,5 +1016,41 @@ test('the unreapable report can be empty and can be non-empty (mutation control)
     );
   } finally {
     unlock(locked);
+  }
+});
+
+test('SCR-M5: a directory whose FILES are fresh is not stale, whatever its own mtime says', () => {
+  // A directory's mtime records entries being created or removed in it, not
+  // its files being written. A live session scratchpad that keeps rewriting the
+  // same file therefore aged exactly like an abandoned one, and `--apply` from
+  // a second session deleted it out from under the first (Round-14 SCR-M5).
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-scrm5-'));
+  try {
+    const uid = path.join(root, 'claude-1000');
+    const live = path.join(uid, 'live-session');
+    const nested = path.join(live, 'scratchpad');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, 'notes.md'), 'being written right now\n');
+
+    const dead = path.join(uid, 'abandoned-session');
+    fs.mkdirSync(dead, { recursive: true });
+    fs.writeFileSync(path.join(dead, 'notes.md'), 'old\n');
+
+    // Both directories look 30 days old by their OWN mtime; only the live one
+    // has a recently-written file inside it.
+    const old = new Date(Date.now() - 30 * 86400000);
+    for (const p of [path.join(dead, 'notes.md'), dead, nested, live, uid]) fs.utimesSync(p, old, old);
+    fs.utimesSync(path.join(nested, 'notes.md'), new Date(), new Date());
+
+    const { candidates } = scanClaudeTmp({ claudeTmpDir: root });
+    const byPath = Object.fromEntries(candidates.map(c => [c.path, c.ageDays]));
+    assert.ok(byPath[live] !== undefined, 'the live session dir must still be inventoried');
+    assert.ok(
+      byPath[live] < 1,
+      `live session dir reported ${byPath[live]} days old — its newest file was written now`
+    );
+    assert.ok(byPath[dead] > 29, `abandoned dir reported ${byPath[dead]} days old, expected ~30`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

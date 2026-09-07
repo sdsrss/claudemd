@@ -260,6 +260,56 @@ function dirBytes(p) {
 // depth-1 children instead.
 const UID_DIR_PATTERN = /^claude-\d+$/;
 
+// A directory's own mtime records entries being CREATED or REMOVED in it, not
+// its files being written (Round-14 audit SCR-M5). A live session scratchpad
+// that keeps rewriting the same files therefore ages exactly like an abandoned
+// one, and `--apply` from a second session deletes it out from under the first.
+// Age is now the NEWEST mtime anywhere inside, which is what "stale" was always
+// supposed to mean.
+//
+// The walk is bounded, and exhausting either bound answers FRESH rather than
+// stale: this feeds a deletion, so an incomplete measurement must not be able
+// to authorise one. The cost is that a very large directory is never reaped
+// automatically, which is the side to be wrong on.
+const MTIME_WALK_MAX_DEPTH = 4;
+const MTIME_WALK_MAX_ENTRIES = 5000;
+function newestMtimeMs(full, stat, now) {
+  if (!stat.isDirectory()) return stat.mtimeMs;
+  let newest = stat.mtimeMs;
+  let budget = MTIME_WALK_MAX_ENTRIES;
+  let truncated = false;
+  const walk = (dir, depth) => {
+    if (truncated) return;
+    if (depth > MTIME_WALK_MAX_DEPTH) {
+      truncated = true;
+      return;
+    }
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // unreadable — the dir's own mtime is all we have
+    }
+    for (const e of entries) {
+      if (budget-- <= 0) {
+        truncated = true;
+        return;
+      }
+      const p = path.join(dir, e.name);
+      let st;
+      try {
+        st = fs.lstatSync(p); // lstat: a symlink's target is not this dir's activity
+      } catch {
+        continue;
+      }
+      if (st.mtimeMs > newest) newest = st.mtimeMs;
+      if (st.isDirectory()) walk(p, depth + 1);
+    }
+  };
+  walk(full, 1);
+  return truncated ? now : newest;
+}
+
 export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
   if (!claudeTmpDir || !fs.existsSync(claudeTmpDir)) return { candidates: [] };
   const candidates = [];
@@ -267,7 +317,7 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
     // §8.V4 exemption: a dir carrying a .keep marker is deliberately retained WIP,
     // not tool-exhaust — skip it regardless of age.
     if (stat.isDirectory() && fs.existsSync(path.join(full, '.keep'))) return;
-    const ageDays = Math.max(0, (now - stat.mtimeMs) / 86400000); // clamp: see scan()
+    const ageDays = Math.max(0, (now - newestMtimeMs(full, stat, now)) / 86400000); // clamp: see scan()
     candidates.push({ path: full, ageDays });
   };
   let entries;

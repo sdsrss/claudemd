@@ -14,6 +14,7 @@ import {
   specHome,
   backupRoot,
   readManifest,
+  manifestPath,
   legacyManifestPath,
 } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
@@ -31,8 +32,24 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // a fresh instance of the class 0.69.1 shipped a gate to close. Its blast
 // direction is benign (an unmatched stem is left behind, never wrongly deleted),
 // which is exactly why nothing would have noticed it going stale.
+//
+// ANCHORED AT BOTH ENDS (Round-14 audit SCR-M6). It used to anchor only at the
+// start, and half the stems are ordinary English: `session-start`,
+// `session-summary`, `tmp-baseline`. Point CLAUDEMD_STATE_DIR at a directory
+// that is not named `.claudemd-state` — the seam exists precisely so it can be
+// pointed elsewhere — and `CLAUDEMD_PURGE=1` deleted the user's
+// `session-start-plan.txt`, `session-summary-notes.md` and
+// `tmp-baseline-mine.csv` on the branch that exists to REFUSE recursing into an
+// unexpected directory. Reproduced in a sandbox.
+//
+// The fix is the anchor, not a wider basename guard: each alternative now names
+// a complete filename, with `*` admitted inside the interpolated segment
+// because the drift join below compares against source paths where `${SID}` has
+// been normalised to `*`. Over-anchoring fails in the benign direction the
+// header already describes — an unmatched file is left behind, never wrongly
+// deleted.
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(ext-read-|failopen-|mem-coverage-|vocab-scan-|session-start|tmp-baseline|session-summary|upstream-check|last-session-summary|bootstrap-failed|user-content-backup|l2-task-counter|ship-baseline-recent|mem-audit\.lastrun|statusline-prev|installed\.json)/;
+  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
@@ -58,6 +75,96 @@ Options:
   --help, -h     Print this message and exit.
 
 Exit codes: 0 success | 1 uninstall failure | 2 argv-shape error.`;
+
+// The state + logs half of a purge, lifted out of uninstall() so the branch
+// that returns `already-uninstalled` can run it too (Round-14 audit SCR-M6,
+// second arm). A missing manifest used to return ~90 lines above this point,
+// so `CLAUDEMD_PURGE=1` did nothing at all for the one user who most needs it:
+// someone whose manifest is gone but whose state dir and logs are not. Nothing
+// here reads the manifest — the two paths it unlinks are computed from
+// paths.js, and the state dir is name-anchored — so the dependency was
+// positional, not real.
+function purgeStateAndLogs(activeManifestPath, legacyPath) {
+  // Recursive delete only when the resolved path is OUR directory by name.
+  //
+  // stateDir() started honouring CLAUDEMD_STATE_DIR in 0.69.0 so the seam
+  // would reach writers as well as readers. That change also turned this line
+  // — a fixed `~/.claude/.claudemd-state` target since it was written — into
+  // `rm -rf $VAR` with no validation, on a variable the clean-residue USAGE
+  // advertises to anyone who runs `--help`. An operator who exports it to
+  // inspect reaper behaviour and then runs the documented two-step uninstall
+  // with CLAUDEMD_PURGE=1 loses that whole directory, recursively, including what
+  // claudemd never put there. Caught in the v0.69.0 pre-tag review; §8's
+  // "rm -rf $VAR without validating VAR" arriving through a testability seam.
+  //
+  // The guard keeps the seam usable — point it at `<fixture>/.claudemd-state`
+  // and purge behaves exactly as in production — while a redirect to anything
+  // else falls back to removing only the files claudemd is known to write.
+  const sd = stateDir();
+  if (path.basename(sd) === '.claudemd-state') {
+    fs.rmSync(sd, { recursive: true, force: true });
+  } else if (fs.existsSync(sd)) {
+    // Named something else: never recurse. Drop only our own known shapes and
+    // leave the directory (and anything else in it) alone.
+    for (const name of fs.readdirSync(sd)) {
+      if (!CLAUDEMD_STATE_FILE_RE.test(name)) continue;
+      try {
+        fs.rmSync(path.join(sd, name), { force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
+    console.error(
+      `[claudemd] CLAUDEMD_STATE_DIR points at ${sd}, which is not named .claudemd-state — ` +
+        `removed only claudemd's own state files there and left the directory in place.`
+    );
+  }
+  if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
+  if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
+  // ~/.claude/logs is shared with other plugins (e.g. claude-mem-lite) —
+  // only drop OUR files, and remove the dir if it ends up empty.
+  //
+  // 2026-07-25 audit: this unlinked `claudemd.jsonl` alone, while rule-hits.sh
+  // rotates to `claudemd.jsonl.1` / `.2` (up to ~10 MB) and session-start-check
+  // writes `claudemd-bootstrap.log`. Those three survived the purge, and because
+  // they did, the emptiness check below never fired either — so the documented
+  // two-step uninstall still left claudemd-owned files with no in-tree tool
+  // able to remove them.
+  for (const name of fs.existsSync(logsDir()) ? fs.readdirSync(logsDir()) : []) {
+    if (
+      name === 'claudemd.jsonl' ||
+      name.startsWith('claudemd.jsonl.') ||
+      name === 'claudemd-bootstrap.log'
+    ) {
+      try {
+        // A directory can carry one of these names: `claudemd.jsonl.rotating`
+        // is the rotation mutex (hooks/lib/rule-hits.sh). `unlinkSync` throws
+        // EISDIR on it, the catch swallowed that, and the emptiness check
+        // below then failed — so purge left both the lock and ~/.claude/logs
+        // standing, the residue class this loop exists to close (2026-09-05
+        // post-ship review, finding 3). `rmdirSync` and not a recursive
+        // remove: the lock is always empty, and a directory here that is not
+        // deserves to be left alone rather than walked.
+        //
+        // The rename-claim redesign that would have replaced the mutex was
+        // pulled from 0.77.0 after its third review round; if it lands, its
+        // `claudemd.jsonl.rotating.<epoch>.<pid>.<n>` files are ordinary files
+        // and already match the prefix test above, so this loop needs no
+        // change for them.
+        const target = path.join(logsDir(), name);
+        if (fs.lstatSync(target).isDirectory()) fs.rmdirSync(target);
+        else fs.unlinkSync(target);
+      } catch {
+        /* already gone, or a non-empty directory this loop will not recurse into */
+      }
+    }
+  }
+  try {
+    if (fs.readdirSync(logsDir()).length === 0) fs.rmdirSync(logsDir());
+  } catch {
+    /* dir gone or unreadable — fine */
+  }
+}
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
   const m = readManifest();
@@ -148,6 +255,16 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // unconditionally without a missing-key branch — same shape as the success
   // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
+    // …but a purge does not need one (Round-14 audit SCR-M6, second arm). This
+    // return sat ~90 lines above the purge branch, so `CLAUDEMD_PURGE=1` was
+    // silently a no-op for exactly the user who most needs it: someone whose
+    // manifest is gone while the state dir and the logs are not. Nothing the
+    // purge does reads the manifest.
+    let purged = false;
+    if (purge) {
+      purgeStateAndLogs(m.path || manifestPath(), legacyManifestPath());
+      purged = true;
+    }
     return {
       specAction: 'noop',
       restored: null,
@@ -155,6 +272,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       settingsRemoved,
       settingsWarning,
       statusline,
+      purged,
     };
   }
   const activeManifestPath = m.path;
@@ -194,91 +312,13 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // legacy → new in-place, but if install.js never ran on the upgraded
   // version the legacy location could still exist as a stale copy.
   if (purge) {
-    // Recursive delete only when the resolved path is OUR directory by name.
-    //
-    // stateDir() started honouring CLAUDEMD_STATE_DIR in 0.69.0 so the seam
-    // would reach writers as well as readers. That change also turned this line
-    // — a fixed `~/.claude/.claudemd-state` target since it was written — into
-    // `rm -rf $VAR` with no validation, on a variable the clean-residue USAGE
-    // advertises to anyone who runs `--help`. An operator who exports it to
-    // inspect reaper behaviour and then runs the documented two-step uninstall
-    // with CLAUDEMD_PURGE=1 loses that whole directory, recursively, including what
-    // claudemd never put there. Caught in the v0.69.0 pre-tag review; §8's
-    // "rm -rf $VAR without validating VAR" arriving through a testability seam.
-    //
-    // The guard keeps the seam usable — point it at `<fixture>/.claudemd-state`
-    // and purge behaves exactly as in production — while a redirect to anything
-    // else falls back to removing only the files claudemd is known to write.
-    const sd = stateDir();
-    if (path.basename(sd) === '.claudemd-state') {
-      fs.rmSync(sd, { recursive: true, force: true });
-    } else if (fs.existsSync(sd)) {
-      // Named something else: never recurse. Drop only our own known shapes and
-      // leave the directory (and anything else in it) alone.
-      for (const name of fs.readdirSync(sd)) {
-        if (!CLAUDEMD_STATE_FILE_RE.test(name)) continue;
-        try {
-          fs.rmSync(path.join(sd, name), { force: true });
-        } catch {
-          /* best-effort */
-        }
-      }
-      console.error(
-        `[claudemd] CLAUDEMD_STATE_DIR points at ${sd}, which is not named .claudemd-state — ` +
-          `removed only claudemd's own state files there and left the directory in place.`
-      );
-    }
-    if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
-    if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
-    // ~/.claude/logs is shared with other plugins (e.g. claude-mem-lite) —
-    // only drop OUR files, and remove the dir if it ends up empty.
-    //
-    // 2026-07-25 audit: this unlinked `claudemd.jsonl` alone, while rule-hits.sh
-    // rotates to `claudemd.jsonl.1` / `.2` (up to ~10 MB) and session-start-check
-    // writes `claudemd-bootstrap.log`. Those three survived the purge, and because
-    // they did, the emptiness check below never fired either — so the documented
-    // two-step uninstall still left claudemd-owned files with no in-tree tool
-    // able to remove them.
-    for (const name of fs.existsSync(logsDir()) ? fs.readdirSync(logsDir()) : []) {
-      if (
-        name === 'claudemd.jsonl' ||
-        name.startsWith('claudemd.jsonl.') ||
-        name === 'claudemd-bootstrap.log'
-      ) {
-        try {
-          // A directory can carry one of these names: `claudemd.jsonl.rotating`
-          // is the rotation mutex (hooks/lib/rule-hits.sh). `unlinkSync` throws
-          // EISDIR on it, the catch swallowed that, and the emptiness check
-          // below then failed — so purge left both the lock and ~/.claude/logs
-          // standing, the residue class this loop exists to close (2026-09-05
-          // post-ship review, finding 3). `rmdirSync` and not a recursive
-          // remove: the lock is always empty, and a directory here that is not
-          // deserves to be left alone rather than walked.
-          //
-          // The rename-claim redesign that would have replaced the mutex was
-          // pulled from 0.77.0 after its third review round; if it lands, its
-          // `claudemd.jsonl.rotating.<epoch>.<pid>.<n>` files are ordinary files
-          // and already match the prefix test above, so this loop needs no
-          // change for them.
-          const target = path.join(logsDir(), name);
-          if (fs.lstatSync(target).isDirectory()) fs.rmdirSync(target);
-          else fs.unlinkSync(target);
-        } catch {
-          /* already gone, or a non-empty directory this loop will not recurse into */
-        }
-      }
-    }
-    try {
-      if (fs.readdirSync(logsDir()).length === 0) fs.rmdirSync(logsDir());
-    } catch {
-      /* dir gone or unreadable — fine */
-    }
+    purgeStateAndLogs(activeManifestPath, legacyPath);
   } else {
     if (fs.existsSync(activeManifestPath)) fs.unlinkSync(activeManifestPath);
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  const result = { specAction: outcome, restored, settingsRemoved, settingsWarning, statusline };
+  const result = { specAction: outcome, restored, settingsRemoved, settingsWarning, statusline, purged: purge };
   // Same reasoning as the `warning: 'already-uninstalled'` return above: the
   // exit code and specAction say the requested disposition ran, and only this
   // field distinguishes "put your files back" from "found nothing to put back".

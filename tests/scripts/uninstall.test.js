@@ -572,3 +572,81 @@ test('R11-26: the CLAUDEMD_CONFIRM env→arg mapping gates the spec delete on ex
   assert.equal(JSON.parse(ok.stdout).specAction, 'delete');
   assert.equal(fs.existsSync(specFile), false, 'CLAUDEMD_CONFIRM=1 must carry the delete through');
 });
+
+// ============================================================================
+// Round-14 audit SCR-M6 — the purge branch that exists to REFUSE recursing.
+// ============================================================================
+
+test('SCR-M6: a redirected state dir keeps the user files whose names start like ours', async () => {
+  // `CLAUDEMD_STATE_FILE_RE` anchored only at the start, and half its stems are
+  // ordinary English. Point CLAUDEMD_STATE_DIR somewhere that is not named
+  // `.claudemd-state` — the seam exists so it CAN be pointed elsewhere — and
+  // the branch written to protect an unexpected directory deleted the user's
+  // own files out of it.
+  const alien = path.join(tmpHome, 'my-notes');
+  fs.mkdirSync(alien, { recursive: true });
+  const userFiles = {
+    'session-start-plan.txt': 'my plan\n',
+    'session-summary-notes.md': '# notes\n',
+    'tmp-baseline-mine.csv': 'a,b\n',
+    'installed.json.bak': '{}\n',
+    'mem-audit.lastrun.backup': 'x\n',
+  };
+  for (const [n, c] of Object.entries(userFiles)) fs.writeFileSync(path.join(alien, n), c);
+  // …and genuinely-ours files in the same directory, which MUST go.
+  const ours = ['session-start.ref', 'tmp-baseline.txt', 'mem-audit.lastrun', 'l2-task-counter'];
+  for (const n of ours) fs.writeFileSync(path.join(alien, n), 'ours\n');
+
+  const savedStateDir = process.env.CLAUDEMD_STATE_DIR;
+  process.env.CLAUDEMD_STATE_DIR = alien;
+  try {
+    await uninstall({ purge: true });
+  } finally {
+    if (savedStateDir === undefined) delete process.env.CLAUDEMD_STATE_DIR;
+    else process.env.CLAUDEMD_STATE_DIR = savedStateDir;
+  }
+
+  for (const [n, c] of Object.entries(userFiles)) {
+    assert.equal(
+      fs.existsSync(path.join(alien, n)),
+      true,
+      `purge deleted the user's ${n} from a directory it was told not to recurse into`
+    );
+    assert.equal(fs.readFileSync(path.join(alien, n), 'utf8'), c);
+  }
+  for (const n of ours) {
+    assert.equal(fs.existsSync(path.join(alien, n)), false, `purge left claudemd's own ${n} behind`);
+  }
+  assert.equal(fs.existsSync(alien), true, 'and the directory itself is never removed');
+});
+
+test('SCR-M6: CLAUDEMD_PURGE with no manifest still purges', async () => {
+  // The `already-uninstalled` return sat ~90 lines above the purge branch, so a
+  // purge requested by the one user who most needs it — manifest gone, state
+  // dir and logs still there — did nothing and said nothing.
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  fs.writeFileSync(path.join(stateDirPath, 'session-start.ref'), 'x\n');
+  const logs = path.join(tmpHome, '.claude/logs');
+  fs.mkdirSync(logs, { recursive: true });
+  fs.writeFileSync(path.join(logs, 'claudemd.jsonl'), '{}\n');
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), { force: true });
+
+  const res = await uninstall({ purge: true });
+  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(res.purged, true, 'the result must say whether the purge ran');
+  assert.equal(fs.existsSync(stateDirPath), false, 'state dir survived a purge');
+  assert.equal(fs.existsSync(path.join(logs, 'claudemd.jsonl')), false, 'log survived a purge');
+});
+
+test('SCR-M6: no manifest and no purge leaves the state dir alone', async () => {
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  fs.writeFileSync(path.join(stateDirPath, 'session-start.ref'), 'x\n');
+  fs.rmSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), { force: true });
+
+  const res = await uninstall({});
+  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(res.purged, false);
+  assert.equal(fs.existsSync(stateDirPath), true, 'a keep-mode uninstall must not purge');
+});
