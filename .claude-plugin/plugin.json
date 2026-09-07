@@ -1,11 +1,20 @@
 {
   "$schema": "https://claude.ai/plugin-schema.json",
   "name": "claudemd",
-  "version": "0.79.0",
+  "version": "0.80.0",
   "description": "Personal AI-coding discipline harness — one developer's opinionated AI-CODING-SPEC v6.28, enforced via Claude Code hooks + shipped with the plugin",
-  "author": {"name": "sds"},
+  "author": {
+    "name": "sds"
+  },
   "repository": "https://github.com/sdsrss/claudemd",
   "homepage": "https://github.com/sdsrss/claudemd",
   "license": "MIT",
-  "keywords": ["claude-code", "spec", "hooks", "enforcement", "banned-vocab", "ship-baseline"]
+  "keywords": [
+    "claude-code",
+    "spec",
+    "hooks",
+    "enforcement",
+    "banned-vocab",
+    "ship-baseline"
+  ]
 }
