@@ -6,7 +6,7 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
-## v6.27.0 (minor, 2026-09-06) — harness convergence: the spec keeps only what it adds on top of the Claude Code system prompt
+## v6.27.0 (minor, 2026-09-07) — harness convergence: the spec keeps only what it adds on top of the Claude Code system prompt
 
 The 2026-09-06 spec audit (`docs/audit/20260906-231957.md`) compared core line by line with the current Claude Code system prompt. Turn continuation, subagent delivery at turn end, memory-file hygiene and honest reporting are now stated natively by the harness; the spec carried each of them a second time, in two cases in a form that contradicts the harness's own style rules. Net-delete release: core 23944 → 23478 bytes, extended 45899 → 44596 bytes. No new HARD rule; enforcement partition unchanged (6/16/2/1); every `hard-rules.json` `section_anchor` resolves unchanged.
 

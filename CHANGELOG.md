@@ -8,7 +8,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
-## [0.79.0] - 2026-09-06
+## [0.79.0] - 2026-09-07
 
 One spec change: **AI-CODING-SPEC v6.26.0 → v6.27.0**, the harness-convergence release the 2026-09-06 spec audit asked for. Core 23944 → 23478 bytes, extended 45899 → 44596 bytes, no new HARD rule, enforcement partition unchanged at 6 hook / 16 self / 2 both / 1 external. The full clause list is the v6.27.0 entry in `spec/CLAUDE-changelog.md`.
 
