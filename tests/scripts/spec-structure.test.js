@@ -508,7 +508,7 @@ const PINS = [
     what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v6.28.0 wording)',
     file: CORE,
     anchor: '**User relaxation**: the Order resolves',
-    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, ceremony in §5.1's skip-list sense — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never. Neither set → ASK.",
+    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, ceremony in §5.1's skip-list sense — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never. Outside both sets: recommend and proceed, reading stated in one line.",
   },
   {
     what: '§EXT §13 Drift check — project CLAUDE.md ranks with the user, and §8/HARD never yield (v6.28.0 wording)',
