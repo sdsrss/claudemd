@@ -106,3 +106,33 @@ test('SCRIPT-2: extra positional rejects with exit 2', () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('SCR-L2: a settings.json that is an ARRAY is refused, not silently un-written', () => {
+  // `s.env ||= {}` works on an array, `JSON.stringify` drops non-index
+  // properties, and toggle reported the new state for a hook that stayed on —
+  // a success message for a write that never happened (Round-14 audit SCR-L2).
+  for (const [shape, body] of [
+    ['an array', '[]'],
+    ['null', 'null'],
+    ['a JSON number', '3'],
+  ]) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tgl-shape-'));
+    try {
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(home, '.claude/settings.json'), body);
+      const r = spawnSync(process.execPath, [TOGGLE_JS, 'banned-vocab'], {
+        encoding: 'utf8',
+        env: { ...process.env, HOME: home },
+      });
+      assert.notEqual(r.status, 0, `${shape}: toggle reported success on a file it cannot write`);
+      assert.match(r.stderr, /not a JSON object/, `${shape}: the error must name the shape problem`);
+      assert.equal(
+        fs.readFileSync(path.join(home, '.claude/settings.json'), 'utf8'),
+        body,
+        `${shape}: the file must be left exactly as it was`
+      );
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});

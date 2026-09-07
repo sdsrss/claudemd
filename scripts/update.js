@@ -91,8 +91,23 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   // CLAUDE.md backup: `CLAUDEMD_SPEC_ACTION=restore` reads listBackups()[0] and
   // returned the old SPEC, and five updates pruned the personal content away.
   // Rotation still applies — within this namespace only.
-  const { dir: backupDir } = createBackup(existing, { label: BACKUP_LABELS.spec });
+  const { dir: backupDir, movedLinks } = createBackup(existing, { label: BACKUP_LABELS.spec });
   pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.spec });
+
+  // Say it while it is still true (Round-14 audit SCR-L1). A user who symlinks
+  // a spec file into a dotfiles repo to sync it across machines loses that link
+  // here: createBackup renames it into `spec-backup-<stamp>/` and the copy below
+  // writes a REGULAR file at the home path, so the sync silently stops. The only
+  // record was the backup dir itself, which `pruneBackups` evicts after five
+  // updates. This does not change the behaviour — that is a separate decision
+  // about which of the two the user meant — it stops the behaviour being silent.
+  for (const l of movedLinks) {
+    process.stderr.write(
+      `[claudemd] WARN: ${l.from} was a symlink to ${l.target}. The update wrote a regular file ` +
+        `there, so that path no longer syncs with ${l.target}. The link itself is preserved in ` +
+        `${l.to}; re-create it with \`ln -sfn ${l.target} ${l.from}\` if you want the sync back.\n`
+    );
+  }
 
   // Shared with install.js (R11-09): verifies each copy's sha256 and, because
   // createBackup already renamed the originals away, restores all of them from

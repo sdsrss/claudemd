@@ -650,3 +650,24 @@ test('SCR-M6: no manifest and no purge leaves the state dir alone', async () => 
   assert.equal(res.purged, false);
   assert.equal(fs.existsSync(stateDirPath), true, 'a keep-mode uninstall must not purge');
 });
+
+test('SCR-L6: a restore that copies nothing back exits 3, not 0', () => {
+  // The user reaches `CLAUDEMD_SPEC_ACTION=restore` from install's own WARN,
+  // asking for their personal instructions back. A backup dir holding only an
+  // entry that cannot be opened — which install itself produced for every
+  // stow-style relative symlink until 0.76.2 — restored nothing and exited 0,
+  // which reads as "done" to a human skimming and to any wrapper script.
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir, { recursive: true });
+  fs.symlinkSync(path.join(tmpHome, 'gone/CLAUDE.md'), path.join(bkDir, 'CLAUDE.md'));
+
+  const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts', 'uninstall.js')], {
+    encoding: 'utf8',
+    timeout: 30000,
+    env: { ...process.env, HOME: tmpHome, CLAUDEMD_SPEC_ACTION: 'restore' },
+  });
+  assert.equal(r.status, 3, `expected exit 3; stdout=${r.stdout} stderr=${r.stderr}`);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.warning, 'restore-empty');
+  assert.deepEqual(out.restored, []);
+});

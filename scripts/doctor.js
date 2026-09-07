@@ -64,6 +64,11 @@ Options:
 
 Wrapped by /claudemd-doctor.
 
+
+Read-only with ONE exception: reading the install manifest relocates a
+pre-0.1.9 ~/.claude/.claudemd-state/installed.json to its current path.
+The move is lossless and happens once (Round-14 audit SCR-L5 — the
+"read-only command" description did not mention it).
 Exit codes: 0 all checks passed | 1 validation error | 2 argv-shape error | 3 one or more checks failed.`;
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

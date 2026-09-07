@@ -14,6 +14,23 @@ export function readSettings() {
   }
 }
 
+// settingsShapeError(parsed) → a human phrase naming why this is not a settings
+// OBJECT, or null when it is one.
+//
+// "Does it parse" is not the precondition (Round-14 audit SCR-M4 / SCR-L2):
+// `null`, `[]`, `"x"` and `3` all parse, and every writer here then either
+// throws deep inside a merge or — worse — appears to succeed. A JSON ARRAY is
+// the quiet one: setting `.env` on an array works, `JSON.stringify` drops
+// non-index properties, and `toggle` reported the new state while writing
+// nothing. Shared so the two callers cannot disagree about what a settings file
+// is.
+export function settingsShapeError(parsed) {
+  if (parsed === null) return 'null';
+  if (Array.isArray(parsed)) return 'an array';
+  if (typeof parsed !== 'object') return `a JSON ${typeof parsed}`;
+  return null;
+}
+
 // Mode + symlink preservation live in writeJsonAtomic (paths.js) — this file
 // used to own a second copy of the tmp+rename idiom that did neither.
 // The old `JSON.parse(JSON.stringify(obj))` self-check was dropped with it:

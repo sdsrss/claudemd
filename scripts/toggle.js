@@ -1,5 +1,6 @@
-import { readSettings, writeSettings } from './lib/settings-merge.js';
+import { readSettings, writeSettings, settingsShapeError } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
+import { settingsPath } from './lib/paths.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
 // Display name → env-var suffix. Source of truth: scripts/lib/hook-registry.js.
@@ -28,6 +29,17 @@ export async function toggle(name) {
   if (!upper) throw new Error(`unknown hook: ${name}`);
   const key = `DISABLE_${upper}_HOOK`;
   const s = readSettings();
+  // Refuse rather than report a state nothing wrote (Round-14 audit SCR-L2).
+  // With a JSON ARRAY here, `s.env ||= {}` succeeds, `JSON.stringify` drops the
+  // property on the way out, and this function returned `{newState: 'disabled'}`
+  // for a hook that stayed on.
+  const shape = settingsShapeError(s);
+  if (shape) {
+    throw new Error(
+      `toggle: ${settingsPath()} parses to ${shape}, not a JSON object. Refusing — the toggle would ` +
+        `report a new state and write nothing. Replace it with an object (\`{}\` is valid) and re-run.`
+    );
+  }
   s.env ||= {};
   let newState;
   if (s.env[key] === '1') {

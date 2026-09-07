@@ -74,7 +74,9 @@ three, so they are inert residue; delete them by hand if you want them gone
 Options:
   --help, -h     Print this message and exit.
 
-Exit codes: 0 success | 1 uninstall failure | 2 argv-shape error.`;
+Exit codes: 0 success | 1 uninstall failure | 2 argv-shape error |
+            3 restore ran and copied nothing back (warning: restore-empty);
+              your spec files are unchanged — check the backup dir it names.`;
 
 // The state + logs half of a purge, lifted out of uninstall() so the branch
 // that returns `already-uninstalled` can run it too (Round-14 audit SCR-M6,
@@ -351,6 +353,19 @@ if (invokedAsMain(import.meta.url)) {
   uninstall({ specAction, confirmHardAuth, purge })
     .then(r => {
       console.log(JSON.stringify(r, null, 2));
+      // A restore that copied NOTHING is not a success (Round-14 audit SCR-L6).
+      // The user reaches this command from install's own WARN, asking for their
+      // personal instructions back; `restore-empty` on stdout with exit 0 reads
+      // as "done" to a human skimming and to any script wrapping it. Exit 3 is
+      // this repo's "ran fine, the state is not clean yet" code, which is
+      // exactly the situation: the spec files are UNCHANGED and the backup dir
+      // needs looking at.
+      //
+      // Scoped to that one warning. An `abort` keeps exit 0 because it already
+      // names itself twice in the payload (`specAction: "abort"` plus `reason`)
+      // and is a refusal the caller asked for by omitting CLAUDEMD_CONFIRM,
+      // not a request that quietly did nothing.
+      if (r.warning === 'restore-empty') process.exit(3);
     })
     .catch(e => {
       console.error(`uninstall failed: ${e.message}`);

@@ -18,6 +18,7 @@ import {
   h4ByClassLines,
   loadVocabPatterns,
   scanVocab,
+  scanStructure,
   yieldTellSuppressed,
 } from '../../scripts/sampling-audit.js';
 import { encodeProjectCwd } from '../../scripts/lib/paths.js';
@@ -1187,4 +1188,32 @@ test('ALG-M2: the §10-V denominator is named for what it counts', async () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('ALG-L2: bold and heading section labels are seen, so the order check can fire on them', () => {
+  // `§10-four-section-order` is closed on "zero positives across 14056 turns".
+  // The label scanner saw `Done:` and `## Done` only, so `**Done**` / `### Done`
+  // / `- **Done:**` could not produce a positive at all — the zero was evidence
+  // about the regex. These are the same four labels in the spellings agents
+  // actually write.
+  const bold = [
+    '**Done**: moved the write ahead of the rename (Checked: 51/51 pass).',
+    '**Not done**: the marketplace gate.',
+    '**Uncertain**: whether the macOS leg times out for the same reason.',
+    '**Failed**: nothing.',
+  ].join('\n\n');
+  const s = scanStructure(bold);
+  assert.equal(s.fourSection, 1, 'a bold-label report must register as a four-section block');
+  assert.equal(s.orderViolation, 1, 'Uncertain before Failed is an order violation');
+
+  const heading = ['### Done', 'x', '### Not done', 'y', '### Failed', 'z', '### Uncertain', 'w'].join('\n');
+  const h = scanStructure(heading);
+  assert.equal(h.fourSection, 1, 'ATX headings must register too');
+  assert.equal(h.orderViolation, 0, 'and this one is in the right order');
+
+  const listItem = ['- **Done:** a', '- **Not done:** b', '- **Failed:** c', '- **Uncertain:** d'].join('\n');
+  assert.equal(scanStructure(listItem).fourSection, 1, 'list-item labels must register');
+
+  // Control: prose that merely mentions the words is still not a report.
+  assert.equal(scanStructure('I am done with the failed test and uncertain about the rest').fourSection, 0);
 });

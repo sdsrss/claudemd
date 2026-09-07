@@ -93,7 +93,12 @@ const CALIBRATION = {
   '§10-four-section-order': {
     precision: null,
     labeledAt: '2026-07-24',
-    closed: 'zero positives across 14056 turns; nothing to calibrate',
+    closed:
+      'zero positives across 14056 turns; nothing to calibrate. That number was evidence about the ' +
+      'REGEX, not the corpus: until the Round-14 audit (ALG-L2) the label scanner saw `Done:` and ' +
+      '`## Done` only, so `**Done**`, `### Done` and `- **Done:**` could not produce a positive at ' +
+      'all. The scanner now normalises those; the count stays closed but the pre-2026-09-07 zero is ' +
+      'not the reason any more.',
   },
   '§10-honesty': {
     precision: null,
@@ -284,6 +289,22 @@ export function scanVocab(text, patterns) {
 // Mirror transcript-structure-scan.sh awk: strip leading `## `, then test for
 // label followed by `:`, em-dash, trailing whitespace, or EOL. Captures both
 // canonical (`^Done:`) and markdown-header (`## Done`) forms.
+// One §10 section label, stripped of the markdown an agent wraps it in
+// (Round-14 audit ALG-L2). The scanner recognised `Done:` and `## Done` and
+// nothing else, so `**Done**`, `### Done` and `- **Done:**` — all ordinary
+// spellings of the same heading — were invisible. That matters here more than
+// most blind spots: `§10-four-section-order` is CLOSED on the strength of "zero
+// positives across 14056 turns", and a detector that cannot see the label
+// cannot produce a positive, so the number was evidence about the regex rather
+// than about the corpus.
+function normalizeLabelLine(raw) {
+  return raw
+    .replace(/^\s*[-*+]\s+/, '') // list-item bullet
+    .replace(/^\s*#{1,6}\s+/, '') // ATX heading
+    .replace(/\*\*/g, '') // bold markers, anywhere on the line
+    .replace(/^\s+/, '');
+}
+
 function locateLabels(text) {
   const lines = text.split('\n');
   let d = 0,
@@ -291,7 +312,7 @@ function locateLabels(text) {
     f = 0,
     u = 0;
   for (let i = 0; i < lines.length; i++) {
-    const l = lines[i].replace(/^##\s+/, '');
+    const l = normalizeLabelLine(lines[i]);
     if (!d && /^Done(\s+—|:|\s*$)/.test(l)) d = i + 1;
     if (!nd && /^Not done(\s+—|:|\s*$)/.test(l)) nd = i + 1;
     if (!f && /^Failed(\s+—|:|\s*$)/.test(l)) f = i + 1;
@@ -327,7 +348,7 @@ export function scanStructure(text) {
 
   const labelLines = [nd, f, u].sort((a, b) => a - b);
   for (let i = minLn - 1; i < maxLn; i++) {
-    const l = lines[i].replace(/^##\s+/, '');
+    const l = normalizeLabelLine(lines[i]);
     if (!/^Done(\s+—|:|\s*$)/.test(l)) continue;
     if (/^Done:\s*(\(none\)|\(无\)|none|N\/A|-+)?\s*$/.test(l)) continue;
     out.ironLaw2Opps += 1;

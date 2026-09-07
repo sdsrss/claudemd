@@ -6,6 +6,7 @@ import {
   writeSettings,
   unmergeHook,
   isClaudemdLegacyHookCommand,
+  settingsShapeError,
 } from './lib/settings-merge.js';
 import {
   createBackup,
@@ -342,10 +343,10 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     // doomed install. An array is included deliberately — settings.json as a
     // JSON array is the shape that made toggle report `set` while writing
     // nothing (SCR-L2).
-    if (parsedSettings === null || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings)) {
-      const kind = parsedSettings === null ? 'null' : Array.isArray(parsedSettings) ? 'an array' : typeof parsedSettings;
+    const settingsShape = settingsShapeError(parsedSettings);
+    if (settingsShape) {
       throw new Error(
-        `install: ${settingsPath()} parses to ${kind}, not a JSON object. Refusing to install — ` +
+        `install: ${settingsPath()} parses to ${settingsShape}, not a JSON object. Refusing to install — ` +
           `the install merges hook entries into this file and would otherwise leave a half-installed ` +
           `state. Replace it with an object (\`{}\` is valid) or move the file aside, then re-run. ` +
           `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`

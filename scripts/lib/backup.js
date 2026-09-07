@@ -131,6 +131,12 @@ export function reserveBackupDir({ label = DEFAULT_LABEL } = {}) {
 export function createBackup(files, { label = DEFAULT_LABEL, dir = null } = {}) {
   const target = dir || reserveBackupDir({ label });
   const movedFiles = [];
+  // Which of the moved entries were SYMLINKS, and where they pointed. The move
+  // converts a synced-dotfiles spec into a regular file at the home path — the
+  // caller is the only place that can say so while the fact is still fresh, and
+  // the backup dir that records it is pruned after five generations (Round-14
+  // audit SCR-L1).
+  const movedLinks = [];
   for (const src of files) {
     // lstat, NOT existsSync — see entryPresent above for why the difference is
     // a data path and not a style choice. A dangling link is still ours to move
@@ -185,14 +191,16 @@ export function createBackup(files, { label = DEFAULT_LABEL, dir = null } = {}) 
       } catch {
         /* unreadable ancestor — keep the lexical parent */
       }
-      fs.symlinkSync(path.resolve(base, linkTarget), dest);
+      const absoluteTarget = path.resolve(base, linkTarget);
+      fs.symlinkSync(absoluteTarget, dest);
       fs.unlinkSync(src);
+      movedLinks.push({ from: src, to: dest, target: absoluteTarget });
     } else {
       fs.renameSync(src, dest);
     }
     movedFiles.push(dest);
   }
-  return { dir: target, movedFiles };
+  return { dir: target, movedFiles, movedLinks };
 }
 
 export function listBackups({ label = DEFAULT_LABEL } = {}) {

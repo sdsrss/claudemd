@@ -25,6 +25,11 @@ Options:
                  to audit "which hook am I bypassing" without grepping README.
   --help, -h     Print this message and exit.
 
+
+Read-only with ONE exception: reading the install manifest relocates a
+pre-0.1.9 ~/.claude/.claudemd-state/installed.json to its current path.
+The move is lossless and happens once (Round-14 audit SCR-L5 — the
+"read-only command" description did not mention it).
 Exit codes: 0 success | 1 validation or runtime error | 2 argv-shape error.`;
 
 // Per-invocation escape tokens documented in README. Single source so
