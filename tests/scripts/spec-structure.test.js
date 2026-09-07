@@ -381,7 +381,13 @@ test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields 
   // trusting the two texts to be read together.
   //
   // The shipped clause scopes relaxation to DEFAULTS and excludes HARD and §5
-  // AUTH. This test fails if either half of that agreement is edited away.
+  // AUTH. This test fails if either half of that agreement is DELETED — and
+  // deletion is all a substring check catches. The v0.80.0 verification round
+  // restored the contradiction byte-neutrally by APPENDING to the extended
+  // line (', but core §3 User relaxation overrides that …') with the whole
+  // suite green, because the core half is whole-line pinned and the extended
+  // half was not. Both lines carry a whole-line pin now; this join stays as
+  // the statement of WHY the two must move together, which no pin encodes.
   // Limits, stated: it asserts two verbatim clauses, not what the surrounding
   // prose means — a sentence added beside either one can still revoke it, the
   // same open neighbour case the pin block documents below.
@@ -487,7 +493,7 @@ const PINS = [
     line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.",
   },
   {
-    what: 'core §5 Hard — the twelve hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
+    what: 'core §5 Hard — the eleven hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
     file: CORE,
     anchor: '**Hard** (default; HARD, self-enforced',
     line: '**Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).',
@@ -502,7 +508,13 @@ const PINS = [
     what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v6.28.0 wording)',
     file: CORE,
     anchor: '**User relaxation**: the Order resolves',
-    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, report shape, ceremony — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never.",
+    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, ceremony in §5.1's skip-list sense — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never. Neither set → ASK.",
+  },
+  {
+    what: '§EXT §13 Drift check — project CLAUDE.md ranks with the user, and §8/HARD never yield (v6.28.0 wording)',
+    file: EXT,
+    anchor: '- **Drift check**:',
+    line: '- **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.',
   },
 ];
 

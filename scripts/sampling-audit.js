@@ -645,11 +645,15 @@ function scanAskRate(events) {
       continue;
     }
     const typed = e.text.trim();
-    if (SLASH_COMMAND_RE.test(typed)) {
-      priorText = '';
-      continue;
-    }
-    const answersAsk = Boolean(priorText) && YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
+    // A slash command is a request the user typed, so it OPENS a task per §1.5
+    // — it is only never the ANSWER to a question. The first version of this
+    // fix `continue`d here, which also stopped it being a task: on this repo's
+    // corpus that removed 19 of 88 segments while `scanOverCeremony` still
+    // counted all of them, widening the very denominator gap the two measures
+    // are supposed to differ by for one stated reason (verification M-3).
+    const isSlash = SLASH_COMMAND_RE.test(typed);
+    const answersAsk =
+      !isSlash && Boolean(priorText) && YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
     if (answersAsk) {
       out.asks += 1;
       if (typed.length <= ASK_ASSENT_MAX_CHARS && ASK_ASSENT_RE.test(typed)) out.assent += 1;
@@ -1130,6 +1134,18 @@ export function formatMarkdown(r) {
       out.push(`| ${k} | ${s.violations}/${s.opportunities} | ${e.violations}/${e.opportunities} |`);
     }
     out.push('');
+    // H4 stratified too. Shipping it only in --json left the report — the place
+    // the pre-registered disposition is printed — showing the pooled figure,
+    // which is LOW-6's complaint unaddressed (verification M-4).
+    const ar = r.byClass.self.askRate;
+    const ae = r.byClass.external.askRate;
+    if (ar && ae) {
+      out.push(
+        `H4 by class — self: ${ar.asks} ask(s), ${ar.assent} assent, ${ar.segments} segment(s) · ` +
+          `external: ${ae.asks} ask(s), ${ae.assent} assent, ${ae.segments} segment(s)`
+      );
+      out.push('');
+    }
   }
   if (r.overCeremony) {
     const oc = r.overCeremony;
@@ -1165,7 +1181,7 @@ export function formatMarkdown(r) {
     // and the old renderer printed "9.00 asks per task" (MEDIUM-1). Both raw
     // counts are still shown; `segments` is a lower bound on the task count.
     out.push(
-      'Counts only — no per-task ratio: an ask-answer suppresses a segment boundary, so a false ask deflates the denominator it would be divided by.'
+      'Counts only — no per-task ratio: an ask-answer suppresses a segment boundary, so a false ask deflates the denominator it would be divided by. `segments` is neither an upper nor a lower bound on the real task count: a false ask merges two tasks, and a compaction boundary splits one whose answer landed after it.'
     );
     out.push('');
     out.push(
@@ -1180,12 +1196,20 @@ export function formatMarkdown(r) {
     // The count crossing 30 is NOT the condition for reading the disposition:
     // a transcript with zero questions reached 35 asks / 100% assent in the
     // v0.80.0 pre-tag review (HIGH-1). Calibration gates it, not volume.
-    out.push(
-      `> NOT YET READABLE — precision is ${ASK_RATE_PRECISION === null ? 'null' : ASK_RATE_PRECISION} (uncalibrated). The ask predicate is`
-    );
-    out.push('> YIELD_ASK_RE, whose non-`?` alternatives are unanchored, and a zero-question');
-    out.push('> transcript has been shown to clear both bars on noise. Hand-label a sample');
-    out.push('> before applying the disposition, whatever the count above says.');
+    if (ASK_RATE_PRECISION === null) {
+      out.push('> NOT YET READABLE — precision is null (never hand-labeled). The ask predicate is');
+      out.push('> YIELD_ASK_RE, whose non-`?` alternatives are unanchored, and a zero-question');
+      out.push('> transcript has been shown to clear both bars on noise. Hand-label a sample');
+      out.push('> before applying the disposition, whatever the count above says.');
+    } else if (ASK_RATE_PRECISION < PRECISION_GATE) {
+      out.push(`> NOT YET READABLE — labeled precision ${ASK_RATE_PRECISION} is below the pre-registered`);
+      out.push(`> PRECISION_GATE of ${PRECISION_GATE}. The disposition stays parked.`);
+    } else {
+      out.push(
+        `> READABLE — labeled precision ${ASK_RATE_PRECISION} clears PRECISION_GATE ${PRECISION_GATE}.`
+      );
+      out.push('> Apply the disposition above against the counts, and cite the labeling pass.');
+    }
     out.push('');
   }
   if (r.perTranscript.length > 0) {

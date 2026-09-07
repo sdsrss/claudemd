@@ -1002,14 +1002,20 @@ test("LOW-3: a compaction boundary ends the question's reach, and does not merge
   }
 });
 
-test('LOW-5: a slash-command invocation is not an answer to a question', async () => {
+test('LOW-5: a slash command is a task, but never the answer to a question', async () => {
   // Before the fix: {segments:1, asks:1} — `/claudemd-status` typed after an ask
   // scored as answered-with-direction. isUserTurn drops <system-reminder> and
   // isMeta rows but not <command-name>.
+  //
+  // segments is 2, not 1: the fix must stop the slash row being an ANSWER
+  // without also stopping it being a TASK. The first version skipped the row
+  // outright and pinned 1 here, which locked in a −19-segment shift on this
+  // repo's corpus under a test name that mentioned only the answer half
+  // (verification M-3). Both halves are asserted now.
   const dir = stageFixture('ask-rate-slash');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    assert.deepEqual(r.askRate, { segments: 1, asks: 0, assent: 0 });
+    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0 });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

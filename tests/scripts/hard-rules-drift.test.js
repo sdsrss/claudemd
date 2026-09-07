@@ -8,6 +8,7 @@
 //     known to the v0.7.0 hook taxonomy.
 
 import { test } from 'node:test';
+import { isImmutableSection } from '../../scripts/lib/rule-hits-parse.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -358,9 +359,18 @@ test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', 
   const m = loadManifest();
   const op = fs.readFileSync(path.join(ROOT, 'spec/OPERATOR.md'), 'utf8');
   const noChannel = m.rules.filter(r => !r.rule_hits_section);
+  // The ceiling is DERIVED, not typed. v0.80.0's first version of this gate
+  // hardcoded `- 4` and baked the same 4 into its regex, so the one mutation
+  // §13.1 exists to produce — demoting a `both` rule to `self` — left the
+  // ceiling at 4 and OPERATOR.md asserting a candidate list that no longer
+  // held, with the suite green (verification round M-1). The pipeline is
+  // hard-rules-audit's: start from hook ∪ both, drop the §8 safety-class ones.
+  const hookEnforced = m.rules.filter(r => r.enforcement === 'hook' || r.enforcement === 'both');
+  const candidates = hookEnforced.filter(r => !isImmutableSection(r.id));
   const actual = {
     total: m.rules.length,
-    others: m.rules.length - 4,
+    ceiling: candidates.length,
+    others: m.rules.length - candidates.length,
     noChannel: noChannel.length,
     noChannelSelf: noChannel.filter(r => r.enforcement === 'self').length,
   };
@@ -370,7 +380,8 @@ test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', 
     return Number(hit[1]);
   };
   const prose = {
-    total: read(/hold 4 of the (\d+) HARD rules/, 'the manifest total'),
+    total: read(/hold \d+ of the (\d+) HARD rules/, 'the manifest total'),
+    ceiling: read(/hold (\d+) of the \d+ HARD rules/, 'the demote ceiling'),
     others: read(/nothing about the other (\d+)\./, 'the non-candidate count'),
     noChannel: read(/\*\*(\d+) rules have no hit channel at all\*\*/, 'the no-channel count'),
     noChannelSelf: read(/no hit channel at all\*\* \((\d+) `self`/, 'the no-channel self count'),
@@ -379,8 +390,17 @@ test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', 
     prose,
     actual,
     'OPERATOR.md §13.1 counts drifted from spec/hard-rules.json — update them to: ' +
-      `4 of the ${actual.total} HARD rules, the other ${actual.others}, ` +
+      `${actual.ceiling} of the ${actual.total} HARD rules, the other ${actual.others}, ` +
       `${actual.noChannel} rules have no hit channel at all (${actual.noChannelSelf} \`self\` + the 1 \`external\`)`
+  );
+  // The bullet also NAMES the candidates. A demote that changes which rules
+  // qualify leaves the counts intact when one leaves and another arrives, so
+  // the ids are the half that catches a swap.
+  const missing = candidates.map(r => r.id).filter(id => !op.includes(id));
+  assert.deepEqual(
+    missing,
+    [],
+    `OPERATOR.md §13.1 names the demote candidates; these qualify but are not named: ${missing.join(', ')}`
   );
 });
 

@@ -417,6 +417,8 @@ Bypass options:
       §8 Escape tokens: ask the user first — the token records a bypass, it
       does not answer the finding.
   (b) Per-flag opt-out: BANNED_VOCAB_PROSE_SCAN=0 (keeps Path 1 commit-msg scan active).
+      §8 Escape tokens covers a hook feature flag too, not only DISABLE_*:
+      it is the user's to set and it records nothing.
   (c) Disable the whole hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
