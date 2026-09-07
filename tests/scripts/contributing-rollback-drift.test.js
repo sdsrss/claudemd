@@ -80,22 +80,10 @@ test('REL-L1: CONTRIBUTING does not claim docs/ is wholly untracked', () => {
 });
 
 test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declares', () => {
-  const wf = read('.github/workflows/npm-publish.yml');
   // Anchored on the `publish:` job, not the first `needs:` in the file
-  // (v0.81.0 pre-tag review, LOW-3). `.match` with /m returns the first match
-  // anywhere, so the message asserted a job identity the regex never
-  // established — correct today only because `publish` happens to be the only
-  // job with a `needs:`. That is the same "a gate that cannot see its own
-  // subject" class as the commits this suite was added alongside.
-  const publishIdx = wf.indexOf('\n  publish:');
-  assert.notEqual(publishIdx, -1, 'npm-publish.yml has no `publish:` job');
-  const m = wf.slice(publishIdx).match(/^\s{4}needs:\s*(.+)$/m);
-  assert.ok(m, 'npm-publish.yml: no `needs:` on the publish job');
-  const needs = m[1]
-    .replace(/[[\]]/g, '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  // (v0.81.0 pre-tag review, LOW-3), and shared with the two cases above so the
+  // anchoring has a resident decoy rather than a one-time manual mutation.
+  const needs = publishNeeds(read('.github/workflows/npm-publish.yml'));
   const rollback = read('docs/ROLLBACK.md');
   for (const n of needs) {
     assert.match(
@@ -104,6 +92,61 @@ test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declare
       `docs/ROLLBACK.md describes the npm gate without the \`${n}\` job npm-publish.yml requires`
     );
   }
+});
+
+function publishNeeds(wf) {
+  const publishIdx = wf.indexOf('\n  publish:');
+  assert.notEqual(publishIdx, -1, 'npm-publish.yml has no `publish:` job');
+  const m = wf.slice(publishIdx).match(/^\s{4}needs:\s*(.+)$/m);
+  assert.ok(m, 'npm-publish.yml: no `needs:` on the publish job');
+  return m[1]
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+test('REL-H1: the publish-job anchoring ignores a `needs:` on an earlier job', () => {
+  // A resident case, not a one-time mutation of the real file (v0.81.0 round-2
+  // review, LOW-2): reverting the anchoring to the first-match regex it replaced
+  // left the whole node leg green, so nothing held the repair in place.
+  const decoy = [
+    'jobs:',
+    '  static:',
+    '    needs: [decoy-should-not-be-read]',
+    '    runs-on: ubuntu-latest',
+    '  publish:',
+    '    needs: [test, static]',
+    '    runs-on: ubuntu-latest',
+    '',
+  ].join('\n');
+  assert.deepEqual(publishNeeds(decoy), ['test', 'static']);
+});
+
+test('REL-H1: ROLLBACK does not over-state the gate either', () => {
+  // The forward check iterates `needs:` and asserts each job appears in the doc,
+  // so SHRINKING needs shrinks the loop and a doc claiming more than the
+  // workflow requires passes (v0.81.0 round-2 review, LOW-3). The test's own
+  // name — "the npm gate that npm-publish.yml actually declares" — reads as a
+  // two-way claim, so it is one now.
+  const declared = publishNeeds(read('.github/workflows/npm-publish.yml'));
+  // Parse the LIST out of the doc's own `needs: [a, b]` phrase. A first draft
+  // looked for separately-backticked job names, and the doc writes the whole
+  // phrase inside one backtick span — so it extracted nothing and passed
+  // vacuously, which the control caught before this shipped.
+  const sentence = read('docs/ROLLBACK.md').match(/needs:\s*\[([^\]]*)\]/);
+  assert.ok(sentence, 'docs/ROLLBACK.md no longer describes the npm gate with a `needs: [...]` phrase');
+  const named = sentence[1]
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+  assert.ok(named.length > 0, 'the doc names no jobs — this check would pass over nothing');
+  const extra = named.filter(n => !declared.includes(n));
+  assert.deepEqual(
+    extra,
+    [],
+    `docs/ROLLBACK.md names job(s) the publish gate does not require: ${extra.join(', ')}`
+  );
 });
 
 test('REL-H1: the revert route names the three mechanisms that make a bare revert invisible', () => {

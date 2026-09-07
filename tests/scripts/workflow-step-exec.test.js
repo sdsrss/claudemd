@@ -30,20 +30,58 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const WORKFLOW = path.join(REPO_ROOT, '.github/workflows/npm-publish.yml');
 
 /**
- * The `run:` body of a named step, dedented.
+ * The `run:` body of a named step in the `publish` job, dedented.
  *
- * Extracted rather than copied: a copy would let the workflow and the thing
- * under test drift apart, which is the whole defect class this file exists for.
+ * ANCHORED ON THE JOB, unique by name, and refused if the step is conditional
+ * (v0.81.0 round-2 review, HIGH-1). The first draft found `- name: <name>`
+ * anywhere in the file and executed the first `run: |` after it, so it could
+ * not see the three properties CI actually depends on: an `if: false` on the
+ * real step left this green, and a same-name decoy above a gutted live step
+ * made it execute the dead copy. That is the identical "reads the first match,
+ * not the subject" defect the `needs:` gate one file over was just repaired
+ * for — reintroduced in the file written to close a Critical.
  */
 function stepBody(stepName) {
   const src = fs.readFileSync(WORKFLOW, 'utf8').split('\n');
-  const nameIdx = src.findIndex(l => l.trim() === `- name: ${stepName}`);
-  assert.notEqual(nameIdx, -1, `npm-publish.yml has no step named ${JSON.stringify(stepName)}`);
-  const runIdx = src.findIndex((l, i) => i > nameIdx && /^\s*run: \|\s*$/.test(l));
-  assert.notEqual(runIdx, -1, `step ${JSON.stringify(stepName)} has no block \`run: |\``);
-  const indent = src[runIdx + 1].match(/^\s*/)[0].length;
+  const jobIdx = src.findIndex(l => l === '  publish:');
+  assert.notEqual(jobIdx, -1, 'npm-publish.yml has no `publish:` job');
+
+  const hits = src.map((l, i) => (l.trim() === `- name: ${stepName}` ? i : -1)).filter(i => i >= 0);
+  assert.equal(
+    hits.length,
+    1,
+    `npm-publish.yml must name the step ${JSON.stringify(stepName)} exactly once, found ${hits.length} — ` +
+      'more than one means a decoy, and this extractor would run whichever came first'
+  );
+  const nameIdx = hits[0];
+  assert.ok(nameIdx > jobIdx, `step ${JSON.stringify(stepName)} is not inside the publish job`);
+
+  // The step's own key block: up to the next `- ` at step indentation.
+  const stepEnd = src.findIndex((l, i) => i > nameIdx && /^ {6}- /.test(l));
+  const keys = src.slice(nameIdx, stepEnd === -1 ? src.length : stepEnd);
+  assert.ok(
+    !keys.some(l => /^ {8}if:/.test(l)),
+    `step ${JSON.stringify(stepName)} carries an \`if:\` guard — it may not run in CI at all, so ` +
+      'executing its body here would prove nothing'
+  );
+
+  const runOffset = keys.findIndex(l => /^\s*run: \|\s*$/.test(l));
+  assert.notEqual(
+    runOffset,
+    -1,
+    `step ${JSON.stringify(stepName)} has no block \`run: |\` of its own (\`|-\` and \`|+\` are ` +
+      'valid YAML and deliberately not accepted — they change trailing-newline handling)'
+  );
+  const runIdx = nameIdx + runOffset;
+
+  const first = src[runIdx + 1];
+  assert.ok(
+    first !== undefined && first.trim() !== '',
+    `step ${JSON.stringify(stepName)}: the body's first line is blank, so its indent cannot be read`
+  );
+  const indent = first.match(/^\s*/)[0].length;
   const body = [];
-  for (let i = runIdx + 1; i < src.length; i++) {
+  for (let i = runIdx + 1; i < (stepEnd === -1 ? src.length : stepEnd); i++) {
     const line = src[i];
     if (line.trim() === '') {
       body.push('');
@@ -79,9 +117,15 @@ function fixture({ onMain }) {
   const origin = path.join(root, 'origin');
   fs.mkdirSync(origin);
   git(origin, 'init', '-q', '-b', 'main');
-  fs.writeFileSync(path.join(origin, 'f.txt'), 'one\n');
-  git(origin, 'add', '-A');
-  git(origin, 'commit', '-q', '-m', 'one');
+  // FIVE commits, with the tag two behind the tip — the shape of every real
+  // release, and the shape a one-commit main cannot express (v0.81.0 round-2
+  // review, MEDIUM-2). Against a single commit, changing the fetch to
+  // `--depth=1` stayed green while refusing every real tag in CI.
+  for (const n of ['one', 'two', 'three']) {
+    fs.writeFileSync(path.join(origin, 'f.txt'), `${n}\n`);
+    git(origin, 'add', '-A');
+    git(origin, 'commit', '-q', '-m', n);
+  }
 
   if (!onMain) {
     git(origin, 'checkout', '-q', '-b', 'side');
@@ -92,6 +136,15 @@ function fixture({ onMain }) {
   const tagged = git(origin, 'rev-parse', 'HEAD').trim();
   git(origin, 'tag', '-a', 'v9.9.9', '-m', 'v9.9.9');
   git(origin, 'checkout', '-q', 'main');
+  if (onMain) {
+    // Two more on main AFTER the tag: the atomic ship flow pushes main and then
+    // the tag, and a later commit must not invalidate an in-flight publish.
+    for (const n of ['four', 'five']) {
+      fs.writeFileSync(path.join(origin, 'f.txt'), `${n}\n`);
+      git(origin, 'add', '-A');
+      git(origin, 'commit', '-q', '-m', n);
+    }
+  }
 
   const checkout = path.join(root, 'checkout');
   git(root, 'clone', '-q', origin, checkout);
@@ -158,4 +211,21 @@ test('REL-M5: the version-match step compares the tag against package.json', () 
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('REL-M5: the publish job checks out full history, which merge-base needs', () => {
+  // The ancestry step is only as good as its object store. Dropping
+  // `fetch-depth: 0` from the publish job's checkout hands merge-base a shallow
+  // clone and produces the same false negative the `--depth=1` mutation does,
+  // with every executed-body test green (v0.81.0 round-2 review, MEDIUM-2).
+  const src = fs.readFileSync(WORKFLOW, 'utf8').split('\n');
+  const jobIdx = src.findIndex(l => l === '  publish:');
+  assert.notEqual(jobIdx, -1);
+  const stepEnd = src.findIndex((l, i) => i > jobIdx && /^ {6}- name: /.test(l));
+  const checkout = src.slice(jobIdx, stepEnd === -1 ? src.length : stepEnd);
+  assert.ok(
+    checkout.some(l => /^\s*fetch-depth: 0\s*$/.test(l)),
+    "the publish job's checkout must set `fetch-depth: 0` — the ancestry step's merge-base " +
+      'cannot answer over a shallow object store'
+  );
 });
