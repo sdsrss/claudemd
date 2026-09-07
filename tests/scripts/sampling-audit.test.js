@@ -14,6 +14,8 @@ import {
   ASK_DECISION_MIN_ANSWERS,
   ASK_RATE_PRECISION,
   formatMarkdown,
+  askDispositionVerdict,
+  h4ByClassLines,
   loadVocabPatterns,
   scanVocab,
   yieldTellSuppressed,
@@ -1059,4 +1061,53 @@ test('HIGH-1: the report never declares the disposition readable while precision
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('M-4: the disposition verdict has three branches and all of them are reachable', () => {
+  // Round-3 M-4: the verdict was inlined and a test pinned ASK_RATE_PRECISION to
+  // null, so the only way to execute the calibrated arms was to fail the suite —
+  // i.e. the documented next step (hand-label, then set the precision) was
+  // blocked by the gate meant to hold it until then. The verdict is a pure
+  // function now, and the boundary is under test.
+  assert.equal(PRECISION_GATE, 0.8);
+  assert.match(askDispositionVerdict(null)[0], /NOT YET READABLE — precision is null/);
+  assert.match(askDispositionVerdict(0.5)[0], /NOT YET READABLE — labeled precision 0\.5 is below/);
+  assert.match(askDispositionVerdict(0.79)[0], /NOT YET READABLE/);
+  // at the gate, not merely above it
+  assert.match(askDispositionVerdict(PRECISION_GATE)[0], /^> READABLE/);
+  assert.match(askDispositionVerdict(0.92)[0], /^> READABLE/);
+});
+
+test('M-4: today the shipped constant still lands on the uncalibrated branch', () => {
+  // Separated from the branch test on purpose. This one asserts the CURRENT
+  // configuration; the one above asserts the function. Setting a labeled
+  // precision should change this assertion, not break the branch coverage.
+  assert.equal(ASK_RATE_PRECISION, null);
+  assert.match(askDispositionVerdict(ASK_RATE_PRECISION)[0], /NOT YET READABLE/);
+});
+
+test('L-3: the by-class line renders every populated class, and sums to pooled', () => {
+  // Printing self+external only made the line silently disagree with the pooled
+  // figure beside it whenever `unknown` was non-empty.
+  const r = {
+    askRate: { segments: 167, asks: 29, assent: 1 },
+    byClass: {
+      self: { askRate: { segments: 45, asks: 6, assent: 0 } },
+      external: { askRate: { segments: 115, asks: 21, assent: 0 } },
+      unknown: { askRate: { segments: 7, asks: 2, assent: 1 } },
+    },
+  };
+  const [line] = h4ByClassLines(r);
+  assert.ok(line && line.startsWith('H4 by class'), 'the by-class line must render');
+  assert.match(line, /unknown: 2 ask\(s\), 1 assent, 7 segment\(s\)/);
+  const asks = [...line.matchAll(/(\d+) ask\(s\)/g)].reduce((a, m) => a + Number(m[1]), 0);
+  const segs = [...line.matchAll(/(\d+) segment\(s\)/g)].reduce((a, m) => a + Number(m[1]), 0);
+  assert.equal(asks, r.askRate.asks, 'class asks must sum to pooled');
+  assert.equal(segs, r.askRate.segments, 'class segments must sum to pooled');
+  // an empty class contributes nothing rather than a zero-filled fragment
+  assert.deepEqual(
+    h4ByClassLines({ byClass: { self: { askRate: { segments: 0, asks: 0, assent: 0 } } } }),
+    []
+  );
+  assert.deepEqual(h4ByClassLines({}), []);
 });

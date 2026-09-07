@@ -1096,6 +1096,46 @@ function integrityLine(r) {
   return `Reader integrity: **the denominators below are short** — ${parts.join('; ')}.`;
 }
 
+// The readability verdict, as a pure function of the labeled precision, so the
+// calibrated branches are reachable without editing a module constant. Round-3
+// M-4: the first version inlined this and a test pinned ASK_RATE_PRECISION to
+// null, so setting the precision the source comment prescribes as the next step
+// failed the suite and the `else` arms were never executed by anything.
+export function askDispositionVerdict(precision) {
+  if (precision === null) {
+    return [
+      '> NOT YET READABLE — precision is null (never hand-labeled). The ask predicate is',
+      '> YIELD_ASK_RE, whose non-`?` alternatives are unanchored, and a zero-question',
+      '> transcript has been shown to clear both bars on noise. Hand-label a sample',
+      '> before applying the disposition, whatever the count above says.',
+    ];
+  }
+  if (precision < PRECISION_GATE) {
+    return [
+      `> NOT YET READABLE — labeled precision ${precision} is below the pre-registered`,
+      `> PRECISION_GATE of ${PRECISION_GATE}. The disposition stays parked.`,
+    ];
+  }
+  return [
+    `> READABLE — labeled precision ${precision} clears PRECISION_GATE ${PRECISION_GATE}.`,
+    '> Apply the disposition above against the counts, and cite the labeling pass.',
+  ];
+}
+
+// Every populated class, not just self+external: `unknown` is published in the
+// JSON, and printing two of three made the line silently fail to sum to the
+// pooled figure beside it (round-3 L-3).
+export function h4ByClassLines(r) {
+  if (!r.byClass) return [];
+  const parts = Object.entries(r.byClass)
+    .filter(([, v]) => v.askRate && (v.askRate.asks > 0 || v.askRate.segments > 0))
+    .map(
+      ([k, v]) =>
+        `${k}: ${v.askRate.asks} ask(s), ${v.askRate.assent} assent, ${v.askRate.segments} segment(s)`
+    );
+  return parts.length === 0 ? [] : [`H4 by class — ${parts.join(' · ')}`, ''];
+}
+
 export function formatMarkdown(r) {
   const today = todayLocal();
   const out = [
@@ -1137,15 +1177,7 @@ export function formatMarkdown(r) {
     // H4 stratified too. Shipping it only in --json left the report — the place
     // the pre-registered disposition is printed — showing the pooled figure,
     // which is LOW-6's complaint unaddressed (verification M-4).
-    const ar = r.byClass.self.askRate;
-    const ae = r.byClass.external.askRate;
-    if (ar && ae) {
-      out.push(
-        `H4 by class — self: ${ar.asks} ask(s), ${ar.assent} assent, ${ar.segments} segment(s) · ` +
-          `external: ${ae.asks} ask(s), ${ae.assent} assent, ${ae.segments} segment(s)`
-      );
-      out.push('');
-    }
+    out.push(...h4ByClassLines(r));
   }
   if (r.overCeremony) {
     const oc = r.overCeremony;
@@ -1179,7 +1211,9 @@ export function formatMarkdown(r) {
     // so the two move together and the quotient is not a rate: the pre-tag
     // review drove a 10-task, zero-ask transcript to `segments: 1, asks: 9`
     // and the old renderer printed "9.00 asks per task" (MEDIUM-1). Both raw
-    // counts are still shown; `segments` is a lower bound on the task count.
+    // counts are still shown; `segments` bounds the task count in neither
+    // direction — see the printed caveat below, which this comment used to contradict.
+    out.push(...h4ByClassLines(r));
     out.push(
       'Counts only — no per-task ratio: an ask-answer suppresses a segment boundary, so a false ask deflates the denominator it would be divided by. `segments` is neither an upper nor a lower bound on the real task count: a false ask merges two tasks, and a compaction boundary splits one whose answer landed after it.'
     );
@@ -1196,20 +1230,7 @@ export function formatMarkdown(r) {
     // The count crossing 30 is NOT the condition for reading the disposition:
     // a transcript with zero questions reached 35 asks / 100% assent in the
     // v0.80.0 pre-tag review (HIGH-1). Calibration gates it, not volume.
-    if (ASK_RATE_PRECISION === null) {
-      out.push('> NOT YET READABLE — precision is null (never hand-labeled). The ask predicate is');
-      out.push('> YIELD_ASK_RE, whose non-`?` alternatives are unanchored, and a zero-question');
-      out.push('> transcript has been shown to clear both bars on noise. Hand-label a sample');
-      out.push('> before applying the disposition, whatever the count above says.');
-    } else if (ASK_RATE_PRECISION < PRECISION_GATE) {
-      out.push(`> NOT YET READABLE — labeled precision ${ASK_RATE_PRECISION} is below the pre-registered`);
-      out.push(`> PRECISION_GATE of ${PRECISION_GATE}. The disposition stays parked.`);
-    } else {
-      out.push(
-        `> READABLE — labeled precision ${ASK_RATE_PRECISION} clears PRECISION_GATE ${PRECISION_GATE}.`
-      );
-      out.push('> Apply the disposition above against the counts, and cite the labeling pass.');
-    }
+    out.push(...askDispositionVerdict(ASK_RATE_PRECISION));
     out.push('');
   }
   if (r.perTranscript.length > 0) {
