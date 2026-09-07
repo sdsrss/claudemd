@@ -118,6 +118,7 @@ Load `~/.claude/CLAUDE-extended.md` when:
 Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
 Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > harness + MCP + skill instructions > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
+**User relaxation**: the Order resolves *conflicts*, not permissions. An explicit user instruction may relax any clause of this spec except the §5.1 Never-downgrade set — per-task, and stated back in one line. Stricter-reading governs where the user has NOT spoken; it is not licence to overrule someone who has. Defaults yield to a direct request without ceremony (§1 language contract, §2.1 routing, report shape).
 **Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
 **Canonical artifact > derived prose**: code / diff / CI output > commit msg / PR / issue / Slack / wiki / docstring. Canonical = *behavior*; prose = *intent*. Behavior conflict → trust canonical, flag prose stale. Intent conflict → ASK or verify with author.

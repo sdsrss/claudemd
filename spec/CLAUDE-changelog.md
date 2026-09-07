@@ -14,6 +14,10 @@ Round 15 of the spec audit (`docs/audit/20260906-231957.md` §8) left three Roun
 
 - `[add]` **§8 Escape tokens** names the five bypass literals (`[allow-rm-rf-var]`, `[allow-npx-unpinned]`, `[allow-curl-sh]`, `[allow-banned-vocab]`, `[skip-memory-check]`) and every `DISABLE_*_HOOK`, and says what the deny text never did: they are AUTH artifacts. The hooks advertised the exit to whoever read the deny, which under `bypassPermissions` is the Agent; 30 days of `rule-hits.jsonl` carry 3 rm-rf and 3 memory-read bypasses with nothing recording who authorized them (audit SPEC-H3). The four deny messages in `pre-bash-safety-check.sh`, `banned-vocab-check.sh` (×2) and `memory-read-check.sh` now say the same thing the spec does.
 
+- `[add]` **§3 User relaxation** states what §5.1, §8.V3 and §13 each already assumed piecemeal: the Order line ranks *conflicts*, and an explicit user instruction may relax any clause of this spec except the §5.1 Never-downgrade set. Without it, "stricter reading wins" read as a standing mandate to overrule the person typing — Round 14 caught the spec's own §1 language default outranking a user who had asked for English (audit SPEC-H1). The floor is the existing Never-downgrade list; no new set was invented for this.
+
+**Budget**: core 23478 → 24468 bytes (+990), 97.9% of the 25000 cap with 532 bytes left; `spec-coherence-audit` reports it as a LOW. v6.27.0's net-delete is what paid for these three clauses, exactly as Round 14 sequenced it — but the room is now spent. Per §0.1 the next version adding to core must remove more than it adds. Extended 44596 → 44431 (−165).
+
 ---
 
 ## v6.27.0 (minor, 2026-09-07) — harness convergence: the spec keeps only what it adds on top of the Claude Code system prompt

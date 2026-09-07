@@ -453,6 +453,12 @@ const PINS = [
     anchor: '**Escape tokens** (`[allow-rm-rf-var]`',
     line: '**Escape tokens** (`[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` / `[allow-banned-vocab]` / `[skip-memory-check]`, and every `DISABLE_*_HOOK`): AUTH artifacts, not self-service. A deny naming one is telling the USER an exit exists. Insert one only on explicit user authorization for that command in this task; self-issuing one to clear your own deny is a §5 breach, and on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.',
   },
+  {
+    what: 'core §3 User relaxation — the Order ranks conflicts, and the Never-downgrade set is the floor (v6.28.0 wording)',
+    file: CORE,
+    anchor: '**User relaxation**: the Order resolves',
+    line: '**User relaxation**: the Order resolves *conflicts*, not permissions. An explicit user instruction may relax any clause of this spec except the §5.1 Never-downgrade set — per-task, and stated back in one line. Stricter-reading governs where the user has NOT spoken; it is not licence to overrule someone who has. Defaults yield to a direct request without ceremony (§1 language contract, §2.1 routing, report shape).',
+  },
 ];
 
 for (const pin of PINS) {
