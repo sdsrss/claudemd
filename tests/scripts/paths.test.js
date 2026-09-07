@@ -386,10 +386,7 @@ test('SCR-M2: writeJsonAtomic resolves a dangling relative link against the REAL
       true,
       'reading back through the link is the point — it must no longer dangle'
     );
-    assert.equal(
-      JSON.parse(fs.readFileSync(linkPath, 'utf8')).env.DISABLE_BANNED_VOCAB_HOOK,
-      '1'
-    );
+    assert.equal(JSON.parse(fs.readFileSync(linkPath, 'utf8')).env.DISABLE_BANNED_VOCAB_HOOK, '1');
   } finally {
     if (saved === undefined) delete process.env.HOME;
     else process.env.HOME = saved;

@@ -106,7 +106,11 @@ test('REL-H1: the revert route names the three mechanisms that make a bare rever
   // doc cannot outlive the behaviour it describes.
   const rollback = read('docs/ROLLBACK.md');
   assert.match(rollback, /would downgrade/, 'ROLLBACK.md no longer cites the version-sync skip');
-  assert.match(read('hooks/version-sync.sh'), /would downgrade/, 'version-sync.sh no longer skips on downgrade');
+  assert.match(
+    read('hooks/version-sync.sh'),
+    /would downgrade/,
+    'version-sync.sh no longer skips on downgrade'
+  );
 
   assert.match(rollback, /CLAUDEMD_ALLOW_DOWNGRADE/, 'ROLLBACK.md no longer cites the install refusal');
   assert.match(read('scripts/install.js'), /CLAUDEMD_ALLOW_DOWNGRADE/);

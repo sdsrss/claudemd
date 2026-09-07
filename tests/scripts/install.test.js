@@ -1177,9 +1177,7 @@ test('SCR-M1: a spec copy that fails mid-write leaves the installed file intact'
     installedText,
     'the installed spec must still be the previous complete file, not a partial write'
   );
-  const leftovers = fs
-    .readdirSync(path.join(tmpHome, '.claude'))
-    .filter(n => /\.claudemd-tmp-/.test(n));
+  const leftovers = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => /\.claudemd-tmp-/.test(n));
   assert.deepEqual(leftovers, [], 'and the failed copy leaves no temp file behind');
 });
 

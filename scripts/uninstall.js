@@ -320,7 +320,14 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
   }
 
-  const result = { specAction: outcome, restored, settingsRemoved, settingsWarning, statusline, purged: purge };
+  const result = {
+    specAction: outcome,
+    restored,
+    settingsRemoved,
+    settingsWarning,
+    statusline,
+    purged: purge,
+  };
   // Same reasoning as the `warning: 'already-uninstalled'` return above: the
   // exit code and specAction say the requested disposition ran, and only this
   // field distinguishes "put your files back" from "found nothing to put back".

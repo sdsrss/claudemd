@@ -71,7 +71,9 @@ test('ALG-M6: the doctor parser and the §11 matcher agree on every whitespace s
     const indexPath = path.join(dir, 'MEMORY.md');
     fs.writeFileSync(indexPath, CORPUS.map(([line]) => line).join('\n') + '\n');
 
-    const jsEntries = new Map(parseMemoryIndex(fs.readFileSync(indexPath, 'utf8')).map(e => [e.file, e.tags]));
+    const jsEntries = new Map(
+      parseMemoryIndex(fs.readFileSync(indexPath, 'utf8')).map(e => [e.file, e.tags])
+    );
 
     // A haystack carrying every tag either engine could plausibly produce, so
     // the matcher's answer is "which tags does it HAVE", not "which matched".

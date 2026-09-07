@@ -36,7 +36,7 @@ test('countLines matches editor line numbers with and without a trailing newline
   assert.equal(countLines('\n\n'), 2);
 });
 
-test('longFunctionsInSh measures brace spans at the opener\'s own indent, and skips one-liners', () => {
+test("longFunctionsInSh measures brace spans at the opener's own indent, and skips one-liners", () => {
   const body = n => Array.from({ length: n }, (_, i) => `  echo ${i}`).join('\n');
   const src = [
     'short() {',

@@ -36,9 +36,8 @@ const NON_OBJECT_LINES = ['null', '3', '"a string"', '[]', 'true'];
 
 function transcriptWithNulls() {
   return (
-    [assistantRow('Done: first turn.'), ...NON_OBJECT_LINES, assistantRow('Done: second turn.')].join(
-      '\n'
-    ) + '\n'
+    [assistantRow('Done: first turn.'), ...NON_OBJECT_LINES, assistantRow('Done: second turn.')].join('\n') +
+    '\n'
   );
 }
 
@@ -56,8 +55,7 @@ test('ALG-M1: lint.parseTranscript survives a bare null line and counts it', () 
 test('ALG-M1: lint.countStringContentAssistantRows survives a bare null line', () => {
   assert.equal(countStringContentAssistantRows(transcriptWithNulls()), 0);
   const withStringContent =
-    [JSON.stringify({ type: 'assistant', message: { content: 'plain text' } }), 'null'].join('\n') +
-    '\n';
+    [JSON.stringify({ type: 'assistant', message: { content: 'plain text' } }), 'null'].join('\n') + '\n';
   assert.equal(countStringContentAssistantRows(withStringContent), 1);
 });
 
