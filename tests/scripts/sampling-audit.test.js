@@ -10,6 +10,8 @@ import {
   samplingAuditGlobal,
   PRECISION_GATE,
   OVER_CEREMONY_THRESHOLD,
+  ASK_ASSENT_THRESHOLD,
+  ASK_DECISION_MIN_ANSWERS,
   loadVocabPatterns,
   scanVocab,
   yieldTellSuppressed,
@@ -928,4 +930,57 @@ test('R11-24: the markdown report states reader integrity in both states', () =>
   assert.doesNotMatch(dirty.md, /every transcript read in full/);
   // …and stdout says so too, so an operator who never opens the file still sees it.
   assert.match(dirty.r.stdout, /Reader integrity:.*denominators below are short/);
+});
+
+// --- H4 default-ASK measure (audit 20260906-231957 §7.2) -------------------
+//
+// The fixture is three tasks: one ask answered with assent ("就按你说的"), one
+// ask answered with direction, one task that never asks. The numbers below are
+// the whole contract — an assent classifier that drifts either way changes a
+// pre-registered disposition, so they are asserted exactly rather than as
+// bounds.
+test('H4 ask-rate fixture: asks counted, assent separated from direction', async () => {
+  const dir = stageFixture('ask-rate');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(r.askRate, { segments: 3, asks: 2, assent: 1 });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("H4 ask-rate: answering an ask continues the task, so its denominator is not C1's", async () => {
+  const dir = stageFixture('ask-rate');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    // Same transcript, two segmentations on purpose: C1 starts a task at every
+    // typed message, the ask measure folds an answer back into the task that
+    // provoked it (§1.5 continuation). If these ever coincide, one of the two
+    // definitions was quietly changed.
+    assert.equal(r.overCeremony.totalSegments, 5);
+    assert.equal(r.askRate.segments, 3);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('H4 ask-rate: a task with no ask contributes a segment and no ask', async () => {
+  const dir = stageFixture('clean');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.ok(r.askRate.segments >= 1, `expected ≥1 segment, got ${r.askRate.segments}`);
+    assert.equal(r.askRate.asks, 0);
+    assert.equal(r.askRate.assent, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('H4 disposition thresholds are pre-registered constants, not computed', () => {
+  // Fixed 2026-09-07 before any data existed. A later edit that moves either
+  // number to fit a measurement is the failure mode the audit warned about;
+  // this test makes moving one a visible diff rather than a silent retune.
+  assert.equal(ASK_ASSENT_THRESHOLD, 0.5);
+  assert.equal(ASK_DECISION_MIN_ANSWERS, 30);
+  assert.equal(OVER_CEREMONY_THRESHOLD, 0.05);
 });

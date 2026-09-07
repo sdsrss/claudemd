@@ -558,6 +558,81 @@ function scanOverCeremony(events) {
   return out;
 }
 
+// H4 default-ASK measure (audit docs/audit/20260906-231957.md §7.2, Round 15).
+// Core §0 Initial-prompt ambiguity defaults to (a) ASK once when reversibility
+// exceeds 10 minutes; the 2026-09 Claude Code system prompt tells the same
+// model to proceed without asking and stop only for destructive or genuinely
+// out-of-scope work. The audit filed that as a weak conflict (H4) and refused
+// to resolve it without data, asking for exactly one number first: of the asks
+// the agent actually makes, how many did the user answer with assent rather
+// than with direction? An ask the user answers "就按你说的" spent a turn to
+// learn nothing.
+//
+// DISPOSITION IS PRE-REGISTERED, and fixed before any data exists: with at
+// least ASK_DECISION_MIN_ANSWERS observed asks, an assent rate at or above
+// ASK_ASSENT_THRESHOLD flips core §0's default to (b) — state the reading
+// inline — leaving ASK mandatory only where §5 AUTH already requires it.
+// Below either bar, the default stands. Do not move these to fit the data.
+export const ASK_ASSENT_THRESHOLD = 0.5;
+export const ASK_DECISION_MIN_ANSWERS = 30;
+
+// Assent = a short reply that adds no direction. Length-capped on purpose: a
+// message that begins "好的，不过先把 X 改成 Y" is direction wearing an assent
+// prefix, and the cap is what keeps it out. `继续` is assent HERE (the user is
+// answering a question) even though YIELD_TELL_RE reads it as a nudge when no
+// question was asked — different predicate, different context, both narrow.
+const ASK_ASSENT_MAX_CHARS = 40;
+const ASK_ASSENT_RE =
+  /^(?:就)?(?:按|听)你(?:说的?|的)(?:办|来|做)?$|^你(?:来)?(?:定|决定|看着办|拍板)$|^(?:都行|随便|可以|行|好|好的|同意|没问题|继续|嗯)$|^(?:ok|okay|k|yes|yep|yeah|sure|fine|do it|go ahead|proceed|sounds good|your call|up to you|whatever you think|as you like|agreed)$/i;
+
+// Per task segment: how many turns ended by asking the user something, and how
+// the user answered. Segmentation is scanOverCeremony's, so "per task" means
+// the same thing in both measures.
+//
+// An ask counts only when a typed user message follows it — the reply is the
+// measurement, so an unanswered trailing ask is not an opportunity. That
+// undercounts asks at a transcript's tail by a bounded amount.
+//
+// KNOWN FP SOURCE, stated because the threshold above is pre-registered:
+// YIELD_ASK_RE was written as the turn-yield precondition, where over-matching
+// is the safe direction, and it fires on any `?` in the last 260 chars. A turn
+// closing with a rhetorical question scores as an ask here. Status stays
+// `collecting` and nothing consumes the rate until it is hand-labeled the way
+// the 2026-07-24 pass labeled the eight rule detectors.
+function scanAskRate(events) {
+  const main = events.filter(e => !e.sidechain);
+  const out = { segments: 0, asks: 0, assent: 0 };
+  let seen = false;
+  let priorText = '';
+  for (const e of main) {
+    if (e.kind === 'assistant') {
+      if (e.hasText) priorText = e.text;
+      continue;
+    }
+    if (e.kind !== 'user-typed' || e.compactSummary) continue;
+    const typed = e.text.trim();
+    const answersAsk = Boolean(priorText) && YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
+    if (answersAsk) {
+      out.asks += 1;
+      if (typed.length <= ASK_ASSENT_MAX_CHARS && ASK_ASSENT_RE.test(typed)) out.assent += 1;
+    }
+    // Segment boundary. A bare continuation nudge extends the current task, as
+    // in scanOverCeremony — and so does a message ANSWERING an ask, which is
+    // §1.5 "new user request = new task unless explicit continuation" read
+    // straight: replying to the agent's own question continues the request that
+    // provoked it. scanOverCeremony does not make that second exception, so
+    // `askRate.segments` is legitimately smaller than `overCeremony.
+    // totalSegments` on the same transcript; the two denominators answer
+    // different questions and are not interchangeable.
+    if (!seen || (!YIELD_TELL_RE.test(typed) && !answersAsk)) {
+      out.segments += 1;
+      seen = true;
+    }
+    priorText = '';
+  }
+  return out;
+}
+
 // Walk the main-line (non-sidechain) event sequence for the 3 detectors that
 // need cross-turn context. Sidechain (subagent) traffic is excluded — it
 // interleaves with the main conversation and would corrupt turn boundaries.
@@ -705,8 +780,15 @@ function emptyResult(windowDays, projectsDir) {
     totalTurns: 0,
     byRule: emptyByRule(),
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
+    askRate: { segments: 0, asks: 0, assent: 0 },
     perTranscript: [],
   };
+}
+
+function mergeAskRate(dst, src) {
+  dst.segments += src.segments;
+  dst.asks += src.asks;
+  dst.assent += src.assent;
 }
 
 function mergeOverCeremony(dst, src) {
@@ -822,6 +904,7 @@ export async function samplingAudit({
     }
 
     mergeOverCeremony(result.overCeremony, scanOverCeremony(events));
+    mergeAskRate(result.askRate, scanAskRate(events));
 
     const seq = scanSequence(events);
     const seqMap = {
@@ -912,6 +995,7 @@ export async function samplingAuditGlobal({
     }
     result.totalTurns += sub.totalTurns;
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
+    if (sub.askRate) mergeAskRate(result.askRate, sub.askRate);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalTurns += sub.totalTurns;
@@ -1022,6 +1106,32 @@ function formatMarkdown(r) {
     out.push('> hook-level disable. Threshold fixed before data collection.');
     out.push('');
   }
+  if (r.askRate) {
+    const ar = r.askRate;
+    const rate = ar.asks > 0 ? fmtRate(ar.assent, ar.asks) : 'n/a';
+    const perSeg = ar.segments > 0 ? (ar.asks / ar.segments).toFixed(2) : 'n/a';
+    const enough = ar.asks >= ASK_DECISION_MIN_ANSWERS;
+    out.push('## Default-ASK cost (H4)');
+    out.push('');
+    out.push(
+      `Task segments: ${ar.segments} · answered asks: ${ar.asks} · asks per task: ${perSeg} · answered with assent: ${ar.assent} · assent rate: ${rate}`
+    );
+    out.push(
+      `Sample: ${enough ? 'at' : 'below'} the ${ASK_DECISION_MIN_ANSWERS}-ask minimum — ${enough ? 'the disposition below can be read' : 'the rate above decides nothing yet'}.`
+    );
+    out.push('');
+    out.push(
+      `> H4 pre-registered disposition (audit 20260906-231957 §7.2): with ≥ ${ASK_DECISION_MIN_ANSWERS} answered`
+    );
+    out.push(
+      `> asks, assent rate ≥ ${ASK_ASSENT_THRESHOLD * 100}% flips core §0 Initial-prompt ambiguity to default (b) —`
+    );
+    out.push('> state the reading inline — leaving ASK where §5 AUTH already requires it. Below');
+    out.push('> either bar the default stands. Thresholds fixed before data collection.');
+    out.push('> Status: collecting, precision null — YIELD_ASK_RE over-matches by design (see');
+    out.push('> scanAskRate). Hand-label before acting on the rate.');
+    out.push('');
+  }
   if (r.perTranscript.length > 0) {
     out.push('## Per-transcript hits');
     out.push('');
@@ -1050,6 +1160,8 @@ Every rule reports violations WITH its opportunity denominator (A2 metric
 contract); heuristic rates stay 'collecting' until hand-labeled precision ≥ 0.8.
 Also collects the C1 over-ceremony measure: ceremony-skill invocations
 (sp:brainstorming / test-driven-development / …) on L0/L1-shaped task segments.
+Plus the H4 default-ASK measure: answered asks per task and how many the user
+answered with assent rather than direction (audit 20260906-231957 §7.2).
 
 Options:
   --days=N       Window in days (positive integer, default 30).
