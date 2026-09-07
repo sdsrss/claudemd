@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.28.0 — Extended
+# AI-CODING-SPEC v6.29.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -275,7 +275,7 @@ When banned, fix = strip the hedge, state the specific case with absolute or bas
 
 ## §10-R COMPLETE (L3)
 
-### Full four-section (L3 always; L2 when any section non-empty — see core §10)
+### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)
 ```
 Done:      <items, each with inline evidence (test/run output + numbers+baseline)>
 Not done:  <deferred, with reason>
@@ -283,7 +283,7 @@ Failed:    <blocked, with cause>
 Uncertain: <not sure about, stated as "uncertain because <X>">
 ```
 
-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed.
+**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.
 
 **Multi-task**: each task writes its own block. Do NOT merge.
 
@@ -312,6 +312,7 @@ Universal session rules live in core §11 SESSION — they bind whether this ext
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
 - **Batch review**: ≥3 tasks OR ≥2 including ≥1 L2+ → sp:requesting-code-review for cross-task drift (error/log format, shared types). Single-task → no batch review.
+- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the authorized work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
 - L3 → sp:subagent-driven-development (built-in 2-stage review).
 - Impact analysis before structural modifications; module overview before changes to unfamiliar code.
@@ -392,7 +393,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 17 self / 2 both / 1 external.
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
 
 ## §13.1 → `OPERATOR.md`
 
@@ -448,7 +449,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 - **Core**: §11 turn-yield keeps its four triggers, the anti-silence clause and the Tell, and drops the 2026-09-06 measurement (changelog v6.26.0 has it). §0 absorbs §5's obvious-follow-on clarification; §0.1 keeps the byte cap only; §1.5's maintainer note and §11's harness-duplicated skip-list are gone; §2.1, §4 and §11-O name the harness `Agent` tool as the parallel primitive; §5.1 inlines the `aggressive` skip-list, which bound nobody while it lived only here; the `Done:` example is sentence-form because the harness bans parentheticals in user-facing text; Post-compaction re-Reads the plan and extended, not a core the harness injects every turn.
 - **Extended**: §11-O and §12's second exception state the delivery fact in one sentence each, and the exception covers any subagent whose report the ship needs; §10-R Lessons file is SHOULD and loses its session-start read (last entry 2026-05-09); five references to memory files that do not ship with the spec are dropped or re-pointed at `hooks/lib/platform.sh`; §5.1-EXT and §1.5-EXT lose the paragraphs core now carries; Appendix B.2 examples are sentence-form.
 
-**Sizing** (v6.28.0, 2026-09-07, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23478 → 24642 bytes (Δ +1164: §5 Hard tagged self-enforced; §8 Escape tokens and §3 User relaxation added, both narrowed across three pre-tag review rounds); extended 44596 → 44482 bytes (Δ -114: the §13 partition counts and this entry); OPERATOR.md 15996 → 15996 bytes (Δ +0). Size budget: core 24642/25000 (**358 bytes headroom**); extended 44482/50000 (**5518 bytes headroom**). Drift envelope: ±20B for this line's own rewrite.
+**Sizing** (v6.29.0, 2026-09-07, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24642 → 24666 bytes (Δ +24: four wording repairs — the L1/L2 file boundary, `internal` on the log-string whitelist, `Not done` added to the L1 short-report condition, `tc` spelled out); extended 44482 → 45353 bytes (Δ +871: the subagent-has-nobody-to-ASK rule, the L2 four-section correction, the §13 partition counts and this entry); OPERATOR.md 15996 → 16017 bytes (Δ +21: the demote-loop counts). Size budget: core 24666/25000 (**334 bytes headroom**); extended 45353/50000 (**4647 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core is at 98.7% — per §0.1 the next version that adds to core must remove more than it adds.
 
 ## §1.5-EXT GLOSSARY
 

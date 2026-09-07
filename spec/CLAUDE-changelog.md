@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.29.0 (minor, 2026-09-07) — the definitions the levels were read against
+
+Round 14's remaining spec findings, all of one kind: a rule two layers state differently, or state with a term nothing defines. No new HARD rule; no rule changes what it requires.
+
+- `[fix]` **§2 LEVEL's file boundary is stated in §1.5's own units** (audit SPEC-M1). L1 said `files ≤2` while §1.5 counts a source file and its co-located test as ONE, so "≤2" meant up to four physical files to a reader who applied the pairing rule and two to a reader who did not; and L2's `multi-file` overlapped a two-file L1 outright. L1 now reads `≤2 files after §1.5 pairing` and L2 reads `>2 files`. Byte-neutral in the table — the arrow column is repaid out of its own padding.
+- `[fix]` **§0 Fast-Path's whitelist says `internal log-string`** (audit SPEC-M2). A CLI error line is a log string, user-facing text and a candidate for L1-copy at once. The sentence already ordered these — `user-facing text → L1 min` precedes the whitelist — but the whitelist entry did not say which kind of log string it meant. One word settles it.
+- `[fix]` **§10's L1 short report requires `Not done` empty too** (audit SPEC-M4). The condition read `Failed+Uncertain empty → Done: <what>.`, so a task with an empty Failed and Uncertain but a real `Not done` was told to report one line — dropping the section §10's own four-section order exists to protect.
+- `[fix]` **§EXT §10-R stops granting L2 a shortcut core does not** (same finding, other half). Its heading said "L3 always; L2 when any section non-empty" while core §10 says `L2/L3: four-section`. Core is what binds at L2, because §2.2 forbids loading extended there — so the extended sentence described a rule no L2 task could read. Extended now follows core, and says why.
+- `[fix]` **`tc` is spelled `typecheck`** in §7's L1-bugfix ladder (audit SPEC-L). It was used once and defined nowhere, in a §1.5 that defines seven other terms.
+- `[add]` **§EXT §11-O: a subagent has nobody to ASK** (audit SPEC-M14). §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user; a spawned agent has none, which this harness states in its own system text and the spec never did. A subagent takes §0's option (b), states the reading in its report, and stops at a §5 hard-AUTH boundary with `[PARTIAL: <op> needs AUTH]` rather than self-authorizing or waiting. Not tagged HARD: it routes two gates that already bind, and adds no obligation of its own.
+- `[fix]` **`hard-rules.json` enforcement labels stop overstating what a hook covers** (audit SPEC-M10). `§7-user-global-state` and `§8.V4-sandbox-disposal` were labelled `hook` while their hooks reach a fraction of the paths the rules name (`~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/`), and `§11-session-exit` was labelled `self` while `session-end-check.sh` emits a warn row for it. All three are `both`, which is the label for "hook covers a subset, Agent covers the rest". Partition 6/17/2/1 → 4/16/5/1; the demote pipeline's reachable set grows 4 → 5 (`§11-session-exit` joins it, which is the point — it emits rows and was excluded by its label). OPERATOR.md §13.1, the manifest `_doc` and §EXT §13's `Today:` line move with it; three gates check that they did.
+
+---
+
 ## v6.28.0 (minor, 2026-09-07) — the self-enforced layers say so out loud
 
 Round 15 of the spec audit (`docs/audit/20260906-231957.md` §8) left three Round 14 findings open, all of the same shape: a rule only the Agent can enforce, presented as if something mechanical stood behind it. This release labels each one and bounds it. No new HARD rule.

@@ -516,6 +516,36 @@ const PINS = [
     anchor: '- **Drift check**:',
     line: '- **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.',
   },
+  {
+    what: "core §2 LEVEL — the L1 file boundary in §1.5's own units (v6.29.0 wording)",
+    file: CORE,
+    anchor: "L1  ≤2 files after §1.5 pairing",
+    line: "L1  ≤2 files after §1.5 pairing, LOC <80, Local-Δ only    → §7.L1",
+  },
+  {
+    what: "core §2 LEVEL — the L2 trigger list, disjoint from L1's file count (v6.29.0 wording)",
+    file: CORE,
+    anchor: "L2  contract-Δ / >2 files",
+    line: "L2  contract-Δ / >2 files / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9",
+  },
+  {
+    what: "core §0 Fast-Path — the L0 whitelist and the user-facing floor above it (v6.29.0 wording)",
+    file: CORE,
+    anchor: "**Fast-Path (L0 only)**",
+    line: "**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.",
+  },
+  {
+    what: "core §10 — the L1 short-report condition (v6.29.0 wording)",
+    file: CORE,
+    anchor: "- **L1**: Not done+Failed+Uncertain empty",
+    line: "- **L1**: Not done+Failed+Uncertain empty → `Done: <what>.` Else four-section.",
+  },
+  {
+    what: "§EXT §11-O — a subagent has nobody to ASK (v6.29.0 wording)",
+    file: EXT,
+    anchor: "- **A subagent has nobody to ASK**",
+    line: "- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the authorized work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.",
+  },
 ];
 
 for (const pin of PINS) {

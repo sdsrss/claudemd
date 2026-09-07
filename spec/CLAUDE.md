@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.28.0 — Core
+# AI-CODING-SPEC v6.29.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -20,7 +20,7 @@ CLASSIFY (§2) → AUTH (§5) → ROUTE (§2.1) → EXECUTE → VALIDATE (§7) �
 
 Everything else = natural prose, no bracketed signals. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).
 
-**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
+**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
 
 ### §0.1 Core growth discipline (HARD)
 
@@ -63,8 +63,8 @@ Extended-only terms (**Assumption** → §EXT §1.5-EXT) resolve on L3+ load; at
 
 ```
 L0  docs / comment / style                                → Fast-Path
-L1  files ≤2, LOC <80, Local-Δ only                       → §7.L1
-L2  contract-Δ / multi-file / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
+L1  ≤2 files after §1.5 pairing, LOC <80, Local-Δ only    → §7.L1
+L2  contract-Δ / >2 files / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
@@ -147,7 +147,7 @@ Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (de
 L0        exists + syntax check    → single-line result
 L1        lint + typecheck         → inline evidence, or [PARTIAL] if gap
 L1-copy   Read changed file → confirm text + no typo → inline confirm
-L1-bugfix reproduce-once → fix → re-run repro → lint+tc (same signature 3× → §EXT §6)
+L1-bugfix reproduce-once → fix → re-run repro → lint+typecheck (same signature 3× → §EXT §6)
 L2        lint + typecheck + test  → inline evidence with numbers+baseline
 ```
 
@@ -209,7 +209,7 @@ Simplicity / root-cause / reuse: single home = §1 Principles.
 ## §10 REPORT
 
 - **L0**: single-line result + `[cmd]`.
-- **L1**: Failed+Uncertain empty → `Done: <what>.` Else four-section.
+- **L1**: Not done+Failed+Uncertain empty → `Done: <what>.` Else four-section.
 - **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Failed/Uncertain ≥2 OR scope ≥2 files.
 - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
 
