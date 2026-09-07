@@ -79,25 +79,39 @@ test('REL-L1: CONTRIBUTING does not claim docs/ is wholly untracked', () => {
   );
 });
 
-test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declares', () => {
-  // Anchored on the `publish:` job, not the first `needs:` in the file
-  // (v0.81.0 pre-tag review, LOW-3), and shared with the two cases above so the
-  // anchoring has a resident decoy rather than a one-time manual mutation.
-  const needs = publishNeeds(read('.github/workflows/npm-publish.yml'));
-  const rollback = read('docs/ROLLBACK.md');
-  for (const n of needs) {
-    assert.match(
-      rollback,
-      new RegExp(`needs:[^\\n]*\\b${n}\\b`),
-      `docs/ROLLBACK.md describes the npm gate without the \`${n}\` job npm-publish.yml requires`
-    );
-  }
+test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declares — both ways', () => {
+  // ANCHORED on the sentence that names the workflow (v0.81.0 round-3 review,
+  // MEDIUM-1). The forward half searched the whole doc for any `needs:` line
+  // carrying the job name and the over-state half read the doc's FIRST
+  // `needs: [...]` phrase, so adding one plausible sentence about a different
+  // workflow let the headline drift to `needs: [test]` with both halves green.
+  // One extraction, one set comparison, so under- and over-stating both fail.
+  const declared = publishNeeds(read('.github/workflows/npm-publish.yml'));
+  const m = read('docs/ROLLBACK.md').match(/needs:\s*\[([^\]]*)\][^\n]*npm-publish\.yml/);
+  assert.ok(
+    m,
+    'docs/ROLLBACK.md no longer describes the npm-publish gate with a `needs: [...]` phrase naming the workflow'
+  );
+  const named = m[1]
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+  assert.ok(named.length > 0, 'the doc names no jobs — this check would pass over nothing');
+  assert.deepEqual(
+    named.slice().sort(),
+    declared.slice().sort(),
+    `docs/ROLLBACK.md and npm-publish.yml disagree about the publish gate: doc says [${named}], workflow requires [${declared}]`
+  );
 });
 
 function publishNeeds(wf) {
   const publishIdx = wf.indexOf('\n  publish:');
   assert.notEqual(publishIdx, -1, 'npm-publish.yml has no `publish:` job');
-  const m = wf.slice(publishIdx).match(/^\s{4}needs:\s*(.+)$/m);
+  // `[^\\S\\n]*`, not `\\s*`: the latter spans the newline, so a `needs:` written
+  // as a YAML block sequence captured only its first item with the `- ` marker
+  // and the failure blamed the doc (v0.81.0 round-3 review, LOW-1). Refusing to
+  // match across a line makes the assert below fire honestly instead.
+  const m = wf.slice(publishIdx).match(/^ {4}needs:[^\S\n]*(\S[^\n]*)$/m);
   assert.ok(m, 'npm-publish.yml: no `needs:` on the publish job');
   return m[1]
     .replace(/[[\]]/g, '')
@@ -121,32 +135,6 @@ test('REL-H1: the publish-job anchoring ignores a `needs:` on an earlier job', (
     '',
   ].join('\n');
   assert.deepEqual(publishNeeds(decoy), ['test', 'static']);
-});
-
-test('REL-H1: ROLLBACK does not over-state the gate either', () => {
-  // The forward check iterates `needs:` and asserts each job appears in the doc,
-  // so SHRINKING needs shrinks the loop and a doc claiming more than the
-  // workflow requires passes (v0.81.0 round-2 review, LOW-3). The test's own
-  // name — "the npm gate that npm-publish.yml actually declares" — reads as a
-  // two-way claim, so it is one now.
-  const declared = publishNeeds(read('.github/workflows/npm-publish.yml'));
-  // Parse the LIST out of the doc's own `needs: [a, b]` phrase. A first draft
-  // looked for separately-backticked job names, and the doc writes the whole
-  // phrase inside one backtick span — so it extracted nothing and passed
-  // vacuously, which the control caught before this shipped.
-  const sentence = read('docs/ROLLBACK.md').match(/needs:\s*\[([^\]]*)\]/);
-  assert.ok(sentence, 'docs/ROLLBACK.md no longer describes the npm gate with a `needs: [...]` phrase');
-  const named = sentence[1]
-    .split(',')
-    .map(x => x.trim())
-    .filter(Boolean);
-  assert.ok(named.length > 0, 'the doc names no jobs — this check would pass over nothing');
-  const extra = named.filter(n => !declared.includes(n));
-  assert.deepEqual(
-    extra,
-    [],
-    `docs/ROLLBACK.md names job(s) the publish gate does not require: ${extra.join(', ')}`
-  );
 });
 
 test('REL-H1: the revert route names the three mechanisms that make a bare revert invisible', () => {

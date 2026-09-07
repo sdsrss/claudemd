@@ -30,21 +30,47 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const WORKFLOW = path.join(REPO_ROOT, '.github/workflows/npm-publish.yml');
 
 /**
+ * The bounds of the `publish` job: [first line, first line of the next job).
+ *
+ * Round 2 anchored on `nameIdx > jobIdx`, which is a LOWER bound and not
+ * membership — `publish:` happens to be the last job today, so a step moved
+ * into a new job appended after it still satisfied it, and the uniqueness
+ * check (computed over the whole file) was satisfied too because the step
+ * still occurred once. `npm publish` then ran with no ancestry check in its
+ * job at all, suite green (v0.81.0 round-3 review, HIGH-2).
+ */
+function publishJob(src) {
+  const start = src.findIndex(l => l === '  publish:');
+  assert.notEqual(start, -1, 'npm-publish.yml has no `publish:` job');
+  const after = src.findIndex((l, i) => i > start && /^ {2}[A-Za-z]/.test(l));
+  const end = after === -1 ? src.length : after;
+  // A job-level guard disables every step in it, which is strictly worse than
+  // disabling one step — and it sits at 4 spaces, invisible to the step-level
+  // check below (round-3 review, HIGH-3).
+  const header = src.slice(
+    start,
+    src.findIndex((l, i) => i > start && /^ {6}- /.test(l))
+  );
+  assert.ok(
+    !header.some(l => /^ {4}if\s*:/.test(l)),
+    'the publish job carries a job-level `if:` — none of its steps may run in CI, so executing one here proves nothing'
+  );
+  return { start, end };
+}
+
+/**
  * The `run:` body of a named step in the `publish` job, dedented.
  *
- * ANCHORED ON THE JOB, unique by name, and refused if the step is conditional
- * (v0.81.0 round-2 review, HIGH-1). The first draft found `- name: <name>`
- * anywhere in the file and executed the first `run: |` after it, so it could
- * not see the three properties CI actually depends on: an `if: false` on the
- * real step left this green, and a same-name decoy above a gutted live step
- * made it execute the dead copy. That is the identical "reads the first match,
- * not the subject" defect the `needs:` gate one file over was just repaired
- * for — reintroduced in the file written to close a Critical.
+ * ANCHORED ON THE JOB, unique by name, and refused if the step is conditional.
+ * The first draft found `- name: <name>` anywhere in the file and executed the
+ * first `run: |` after it, so an `if: false` on the real step left it green and
+ * a same-name decoy above a gutted step made it run the dead copy — the same
+ * "reads the first match, not the subject" defect the `needs:` gate one file
+ * over was repaired for.
  */
 function stepBody(stepName) {
   const src = fs.readFileSync(WORKFLOW, 'utf8').split('\n');
-  const jobIdx = src.findIndex(l => l === '  publish:');
-  assert.notEqual(jobIdx, -1, 'npm-publish.yml has no `publish:` job');
+  const { start: jobIdx, end: jobEnd } = publishJob(src);
 
   const hits = src.map((l, i) => (l.trim() === `- name: ${stepName}` ? i : -1)).filter(i => i >= 0);
   assert.equal(
@@ -54,13 +80,23 @@ function stepBody(stepName) {
       'more than one means a decoy, and this extractor would run whichever came first'
   );
   const nameIdx = hits[0];
-  assert.ok(nameIdx > jobIdx, `step ${JSON.stringify(stepName)} is not inside the publish job`);
-
-  // The step's own key block: up to the next `- ` at step indentation.
-  const stepEnd = src.findIndex((l, i) => i > nameIdx && /^ {6}- /.test(l));
-  const keys = src.slice(nameIdx, stepEnd === -1 ? src.length : stepEnd);
   assert.ok(
-    !keys.some(l => /^ {8}if:/.test(l)),
+    nameIdx > jobIdx && nameIdx < jobEnd,
+    `step ${JSON.stringify(stepName)} is not inside the publish job — a step that has moved to another ` +
+      'job is not a gate on publishing, however correct its body is'
+  );
+
+  // The step's own key block, bounded by the JOB as well as by the next step:
+  // a body must never be borrowed across a job boundary.
+  const nextStep = src.findIndex((l, i) => i > nameIdx && /^ {6}- /.test(l));
+  assert.ok(
+    nextStep !== -1 || jobEnd === src.length,
+    'no following step at 6-space indent — this file has been re-indented, and every anchor here reads the wrong block'
+  );
+  const stepEnd = Math.min(nextStep === -1 ? jobEnd : nextStep, jobEnd);
+  const keys = src.slice(nameIdx, stepEnd);
+  assert.ok(
+    !keys.some(l => /^ {8}if\s*:/.test(l)),
     `step ${JSON.stringify(stepName)} carries an \`if:\` guard — it may not run in CI at all, so ` +
       'executing its body here would prove nothing'
   );
@@ -81,7 +117,7 @@ function stepBody(stepName) {
   );
   const indent = first.match(/^\s*/)[0].length;
   const body = [];
-  for (let i = runIdx + 1; i < (stepEnd === -1 ? src.length : stepEnd); i++) {
+  for (let i = runIdx + 1; i < stepEnd; i++) {
     const line = src[i];
     if (line.trim() === '') {
       body.push('');
@@ -214,18 +250,23 @@ test('REL-M5: the version-match step compares the tag against package.json', () 
 });
 
 test('REL-M5: the publish job checks out full history, which merge-base needs', () => {
-  // The ancestry step is only as good as its object store. Dropping
-  // `fetch-depth: 0` from the publish job's checkout hands merge-base a shallow
-  // clone and produces the same false negative the `--depth=1` mutation does,
-  // with every executed-body test green (v0.81.0 round-2 review, MEDIUM-2).
+  // Anchored on the CHECKOUT STEP, not on a range (v0.81.0 round-3 review,
+  // HIGH-1). The first draft sliced from `publish:` to the first NAMED step —
+  // and the job's first two steps are unnamed — so it answered "does
+  // `fetch-depth: 0` appear anywhere in that span". Moving the key onto
+  // setup-node's `with:` block left the publish checkout shallow and the gate
+  // green, which is the precise false negative this case says it prevents.
   const src = fs.readFileSync(WORKFLOW, 'utf8').split('\n');
-  const jobIdx = src.findIndex(l => l === '  publish:');
-  assert.notEqual(jobIdx, -1);
-  const stepEnd = src.findIndex((l, i) => i > jobIdx && /^ {6}- name: /.test(l));
-  const checkout = src.slice(jobIdx, stepEnd === -1 ? src.length : stepEnd);
+  const { start: jobIdx, end: jobEnd } = publishJob(src);
+  const coIdx = src.findIndex(
+    (l, i) => i > jobIdx && i < jobEnd && /^ {6}- uses: actions\/checkout@/.test(l)
+  );
+  assert.notEqual(coIdx, -1, 'the publish job has no actions/checkout step');
+  const next = src.findIndex((l, i) => i > coIdx && /^ {6}- /.test(l));
+  const checkout = src.slice(coIdx, Math.min(next === -1 ? jobEnd : next, jobEnd));
   assert.ok(
     checkout.some(l => /^\s*fetch-depth: 0\s*$/.test(l)),
-    "the publish job's checkout must set `fetch-depth: 0` — the ancestry step's merge-base " +
+    "the publish job's checkout step must set `fetch-depth: 0` — the ancestry step's merge-base " +
       'cannot answer over a shallow object store'
   );
 });
