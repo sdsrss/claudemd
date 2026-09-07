@@ -222,7 +222,14 @@ test('hard-rules-5: every (HARD) annotation in the spec is covered by a manifest
   const violations = [];
   for (const scope of ['core', 'extended']) {
     const text = readSpec(scope);
-    const hardLines = text.split('\n').filter(l => /\(HARD/.test(l));
+    // WIDENED 2026-09-07 (v0.80.0 pre-tag review, MEDIUM-2): the selector was
+    // `/\(HARD/`, which reads an annotation only when `(` and `HARD` are adjacent.
+    // v6.28.0 tagged core §5 as `**Hard** (default; HARD, self-enforced …` and the
+    // line became invisible to this gate — the release's headline change could be
+    // reverted (manifest row deleted, §13 prose reverted with it) and the suite
+    // stayed green at 1081/1081, reproduced in a clone of the tagged tree. Any
+    // future `(…; HARD …)` spelling had the same hole.
+    const hardLines = text.split('\n').filter(l => /\(HARD|;\s*HARD\b/.test(l));
     for (const line of hardLines) {
       const trimmed = line.trim();
       const matched = m.rules.some(r => trimmed.includes(r.section_anchor));
@@ -337,6 +344,43 @@ test('hard-rules-9: §13 META partition prose matches computed manifest partitio
     actual,
     `§13 META partition prose drifted from spec/hard-rules.json — update the "partitions the N HARD rules" / "Today: …" line in CLAUDE-extended.md to: ` +
       `${actual.total} HARD rules, Today: ${actual.hook} hook / ${actual.self} self / ${actual.both} both / ${actual.external} external`
+  );
+});
+
+test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', () => {
+  // 2026-09-07, v0.80.0 pre-tag review M1. hard-rules-9 gates the §13 partition
+  // prose in CLAUDE-extended.md; OPERATOR.md §13.1 states four more counts about
+  // the same manifest and nothing gated those. v6.28.0 added a 26th rule, updated
+  // the manifest `_doc` and the extended prose, and left OPERATOR.md claiming
+  // "4 of the 25", "the other 21", "12 rules have no hit channel (11 self …)".
+  // OPERATOR.md is not Agent-loaded, but install.js writes it into ~/.claude/, so
+  // the stale numbers ship to users. Same drift class as hard-rules-9, same fix.
+  const m = loadManifest();
+  const op = fs.readFileSync(path.join(ROOT, 'spec/OPERATOR.md'), 'utf8');
+  const noChannel = m.rules.filter(r => !r.rule_hits_section);
+  const actual = {
+    total: m.rules.length,
+    others: m.rules.length - 4,
+    noChannel: noChannel.length,
+    noChannelSelf: noChannel.filter(r => r.enforcement === 'self').length,
+  };
+  const read = (re, what) => {
+    const hit = op.match(re);
+    assert.ok(hit, `OPERATOR.md §13.1 must state ${what} matching ${re}`);
+    return Number(hit[1]);
+  };
+  const prose = {
+    total: read(/hold 4 of the (\d+) HARD rules/, 'the manifest total'),
+    others: read(/nothing about the other (\d+)\./, 'the non-candidate count'),
+    noChannel: read(/\*\*(\d+) rules have no hit channel at all\*\*/, 'the no-channel count'),
+    noChannelSelf: read(/no hit channel at all\*\* \((\d+) `self`/, 'the no-channel self count'),
+  };
+  assert.deepEqual(
+    prose,
+    actual,
+    'OPERATOR.md §13.1 counts drifted from spec/hard-rules.json — update them to: ' +
+      `4 of the ${actual.total} HARD rules, the other ${actual.others}, ` +
+      `${actual.noChannel} rules have no hit channel at all (${actual.noChannelSelf} \`self\` + the 1 \`external\`)`
   );
 });
 

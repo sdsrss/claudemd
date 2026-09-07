@@ -365,6 +365,47 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
   }
 });
 
+test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields to a user', () => {
+  // v0.80.0 pre-tag review, CRITICAL-1. v6.28.0's first draft of §3 User
+  // relaxation said an explicit user instruction may relax any clause "except
+  // the §5.1 Never-downgrade set" — which grants relaxation over every HARD rule
+  // outside that ~10-item floor. Extended §13's Drift check says, unchanged,
+  // `§8/HARD never yield`, and draws the equation the grant depends on: project
+  // CLAUDE.md ranks WITH current-turn user.
+  //
+  // The two never meet, because core §2.2 forbids loading extended at L0–L2. So
+  // the same instruction relaxed a HARD rule at L2 and was refused at L3, and
+  // the contradiction was structurally invisible from the L2 side. This is the
+  // v6.25.2 defect class exactly (core §2.1 vs extended §4 routing, CHANGELOG
+  // :685), which was also closed by adding the missing join rather than by
+  // trusting the two texts to be read together.
+  //
+  // The shipped clause scopes relaxation to DEFAULTS and excludes HARD and §5
+  // AUTH. This test fails if either half of that agreement is edited away.
+  // Limits, stated: it asserts two verbatim clauses, not what the surrounding
+  // prose means — a sentence added beside either one can still revoke it, the
+  // same open neighbour case the pin block documents below.
+  const core = fs.readFileSync(CORE, 'utf8');
+  const ext = fs.readFileSync(EXT, 'utf8');
+
+  const relax = core.split('\n').filter(l => l.startsWith('**User relaxation**'));
+  assert.equal(relax.length, 1, 'core §3 must carry exactly one **User relaxation** line');
+  assert.ok(
+    relax[0].includes('HARD rules and §5 AUTH gates do NOT relax this way'),
+    'core §3 User relaxation must exclude HARD rules and §5 AUTH gates from what a user instruction ' +
+      'can relax. Without that exclusion it contradicts §EXT §13 `§8/HARD never yield`, and L0–L2 ' +
+      'never load extended, so the agent would get opposite answers by level from one instruction.'
+  );
+
+  const drift = ext.split('\n').filter(l => l.includes('**Drift check**'));
+  assert.equal(drift.length, 1, '§EXT §13 must carry exactly one **Drift check** line');
+  assert.ok(
+    drift[0].includes('§8/HARD never yield'),
+    '§EXT §13 Drift check must still state `§8/HARD never yield` — it is the half of this ' +
+      'agreement that binds project CLAUDE.md, which §3 ranks at current-turn-user level.'
+  );
+});
+
 // v6.26.0: §11 turn-yield and §EXT §12 manual-ship atomicity jointly decide
 // whether an orchestrating cycle can ever READ what it spawned. A subagent's
 // report enters context only at turn end, so a rule forbidding turn-ending is a
@@ -419,9 +460,13 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // carrying the same heading above a gutted real one was one of the mutations
 // that survived. Requiring exactly one occurrence closes it by construction and
 // is independent of where in the file the rule sits.
-// The label is read from the spec, not typed here: the 2026-07-25 audit found a
-// pinned test NAME a full version behind the assertion it introduced.
-const PIN_SPEC_VER = `v${fs.readFileSync(CORE, 'utf8').match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/)[1]}`;
+// The test name carries NO version. Deriving it from the spec H1 (v0.80.0's
+// first attempt) made it a tautology — always the current version, so it can
+// never be "behind" — while reading as "the version this pin was introduced",
+// which is the opposite: every pin not introduced this release then displayed a
+// label running AHEAD of its own `what`, widening each release. The 2026-07-25
+// audit's defect was a stale typed label; the honest fix is to keep the version
+// out of the name entirely. Each pin's `what` records when its wording was set.
 const PINS = [
   {
     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
@@ -448,21 +493,21 @@ const PINS = [
     line: '**Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).',
   },
   {
-    what: 'core §8 Escape tokens — the tokens are AUTH artifacts, not self-service (v6.28.0 wording)',
+    what: 'core §8 Escape tokens — token and switch routes are both AUTH artifacts (v6.28.0 wording)',
     file: CORE,
-    anchor: '**Escape tokens** (`[allow-rm-rf-var]`',
-    line: '**Escape tokens** (`[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` / `[allow-banned-vocab]` / `[skip-memory-check]`, and every `DISABLE_*_HOOK`): AUTH artifacts, not self-service. A deny naming one is telling the USER an exit exists. Insert one only on explicit user authorization for that command in this task; self-issuing one to clear your own deny is a §5 breach, and on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.',
+    anchor: '**Escape tokens** (the `[allow-…]`',
+    line: "**Escape tokens** (the `[allow-…]` / `[skip-…]` literals a hook deny advertises, plus every `DISABLE_*` kill switch and hook feature flag — the switch route is the wider one and records nothing): AUTH artifacts. A deny naming one names the USER's exit, not yours. Take one only on explicit user authorization for that command, this task; self-issuing one to clear your own deny is a §5 breach, on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.",
   },
   {
-    what: 'core §3 User relaxation — the Order ranks conflicts, and the Never-downgrade set is the floor (v6.28.0 wording)',
+    what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v6.28.0 wording)',
     file: CORE,
     anchor: '**User relaxation**: the Order resolves',
-    line: '**User relaxation**: the Order resolves *conflicts*, not permissions. An explicit user instruction may relax any clause of this spec except the §5.1 Never-downgrade set — per-task, and stated back in one line. Stricter-reading governs where the user has NOT spoken; it is not licence to overrule someone who has. Defaults yield to a direct request without ceremony (§1 language contract, §2.1 routing, report shape).',
+    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, report shape, ceremony — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never.",
   },
 ];
 
 for (const pin of PINS) {
-  test(`${PIN_SPEC_VER} pin: ${pin.what}`, () => {
+  test(`spec pin: ${pin.what}`, () => {
     const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
     const carrying = lines.filter(l => l.includes(pin.anchor));
     assert.equal(

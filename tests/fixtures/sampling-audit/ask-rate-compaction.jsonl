@@ -1,0 +1,6 @@
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "看下 rotation"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "先测 mutex 还是先测 reaper？"}]}}
+{"type": "system", "subtype": "compact_boundary", "isSidechain": false}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "compacted summary"}, "isCompactSummary": true}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "完全不相干的新任务：把 README 里的版本号更新一下"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}

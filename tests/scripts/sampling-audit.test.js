@@ -12,6 +12,8 @@ import {
   OVER_CEREMONY_THRESHOLD,
   ASK_ASSENT_THRESHOLD,
   ASK_DECISION_MIN_ANSWERS,
+  ASK_RATE_PRECISION,
+  formatMarkdown,
   loadVocabPatterns,
   scanVocab,
   yieldTellSuppressed,
@@ -983,4 +985,72 @@ test('H4 disposition thresholds are pre-registered constants, not computed', () 
   assert.equal(ASK_ASSENT_THRESHOLD, 0.5);
   assert.equal(ASK_DECISION_MIN_ANSWERS, 30);
   assert.equal(OVER_CEREMONY_THRESHOLD, 0.05);
+});
+
+// --- v0.80.0 pre-tag review repairs ---------------------------------------
+
+test("LOW-3: a compaction boundary ends the question's reach, and does not merge two tasks", async () => {
+  // Before the fix this fixture returned {segments:1, asks:1}: the pre-compaction
+  // question was scored as answered by a brand-new unrelated task, and because an
+  // ask-answer suppresses the segment boundary, the two tasks merged into one.
+  const dir = stageFixture('ask-rate-compaction');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0 });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('LOW-5: a slash-command invocation is not an answer to a question', async () => {
+  // Before the fix: {segments:1, asks:1} — `/claudemd-status` typed after an ask
+  // scored as answered-with-direction. isUserTurn drops <system-reminder> and
+  // isMeta rows but not <command-name>.
+  const dir = stageFixture('ask-rate-slash');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(r.askRate, { segments: 1, asks: 0, assent: 0 });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-1: a transcript with no question in it still scores asks at 100% assent', async () => {
+  // This fixture is the finding, kept executable. Eight tasks, not one question
+  // mark, agent signs off with "有问题说一声", user replies "好". YIELD_ASK_RE's
+  // non-`?` alternatives are unanchored inside the 260-char tail, so the sign-off
+  // fires the ask predicate and the bare word satisfies the assent one.
+  //
+  // The test asserts the DEFECT, not a fix: the predicate is the turn-yield
+  // precondition reused, and narrowing it is a calibration job, not a patch. What
+  // must hold is that this cannot reach the disposition — see the next test.
+  const dir = stageFixture('ask-rate-noise');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(r.askRate, { segments: 8, asks: 8, assent: 8 });
+    assert.equal(r.askRate.assent / r.askRate.asks, 1, 'assent rate is 100% on zero questions');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-1: the report never declares the disposition readable while precision is null', async () => {
+  // The pre-registered rule says "with ≥30 answered asks, assent ≥50% → flip
+  // core §0's default". The count is reachable by noise (previous test), so
+  // volume must not be what unlocks it. Take a real scan result and drive its
+  // askRate far past the bar, then assert the renderer still refuses.
+  assert.equal(ASK_RATE_PRECISION, null, 'precision must stay null until a labeling pass sets it');
+  const dir = stageFixture('ask-rate-noise');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    r.askRate = { segments: 200, asks: ASK_DECISION_MIN_ANSWERS * 10, assent: 999 };
+    const md = formatMarkdown(r);
+    assert.match(md, /NOT YET READABLE/, 'the disposition must be gated on calibration, not on volume');
+    assert.doesNotMatch(md, /the disposition below can be read/);
+    // MEDIUM-1: no per-task ratio. A false ask inflates `asks` AND suppresses the
+    // segment boundary it would be divided by, so the quotient is not a rate.
+    assert.doesNotMatch(md, /asks per task/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

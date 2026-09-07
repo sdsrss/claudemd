@@ -1,0 +1,4 @@
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "跑个状态"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "要我顺手把 doctor 也跑一遍吗？"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "<command-name>/claudemd-status</command-name>"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 状态正常。"}]}}

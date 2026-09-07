@@ -118,7 +118,7 @@ Load `~/.claude/CLAUDE-extended.md` when:
 Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
 Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > harness + MCP + skill instructions > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
-**User relaxation**: the Order resolves *conflicts*, not permissions. An explicit user instruction may relax any clause of this spec except the §5.1 Never-downgrade set — per-task, and stated back in one line. Stricter-reading governs where the user has NOT spoken; it is not licence to overrule someone who has. Defaults yield to a direct request without ceremony (§1 language contract, §2.1 routing, report shape).
+**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, report shape, ceremony — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never.
 **Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
 **Canonical artifact > derived prose**: code / diff / CI output > commit msg / PR / issue / Slack / wiki / docstring. Canonical = *behavior*; prose = *intent*. Behavior conflict → trust canonical, flag prose stale. Intent conflict → ASK or verify with author.
@@ -188,7 +188,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 NPX: lockfile → local → pinned whitelist; none → `[AUTH REQUIRED]`.
 Secret leak: stop, placeholder, suggest rotation.
 HACK / EMERGENCY / AUTONOMOUS do NOT exempt §8.
-**Escape tokens** (`[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` / `[allow-banned-vocab]` / `[skip-memory-check]`, and every `DISABLE_*_HOOK`): AUTH artifacts, not self-service. A deny naming one is telling the USER an exit exists. Insert one only on explicit user authorization for that command in this task; self-issuing one to clear your own deny is a §5 breach, and on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.
+**Escape tokens** (the `[allow-…]` / `[skip-…]` literals a hook deny advertises, plus every `DISABLE_*` kill switch and hook feature flag — the switch route is the wider one and records nothing): AUTH artifacts. A deny naming one names the USER's exit, not yours. Take one only on explicit user authorization for that command, this task; self-issuing one to clear your own deny is a §5 breach, on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.
 
 ### Verify-before-claim (HARD, 4 sub-rules)
 

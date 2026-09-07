@@ -290,6 +290,8 @@ Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE 
       (the -m payload or HEAD message). Chained commit+push in one bash
       call works — marker is detected in CMD itself, no separate amend.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
+      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
   hook_record ship-baseline deny-repeat "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
@@ -304,6 +306,8 @@ Options:
       so chained 'git commit -m \"...known-red baseline: x\" && git push'
       passes in one shot — no need to amend separately.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
+      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
   hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"

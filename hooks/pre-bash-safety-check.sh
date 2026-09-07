@@ -1869,7 +1869,9 @@ Bypass options:
       The token is an AUTH artifact (§8 Escape tokens): the USER authorizes it
       for this command. An agent self-issuing one to clear its own deny has
       not satisfied §8 — it has logged that it went around it.
-  (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
+  (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged).
+      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      records nothing — the gate is simply off for the session."
 
 # v0.23.6 — file the deny telemetry under the granular §8 section(s) that
 # triggered it (§8-rm-rf-var / §8-npx), one record per section present with

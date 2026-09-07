@@ -1,0 +1,32 @@
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 0：改一下 x0"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 1：改一下 x1"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 2：改一下 x2"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 3：改一下 x3"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 4：改一下 x4"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 5：改一下 x5"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 6：改一下 x6"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "任务 7：改一下 x7"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "我改完了。有问题说一声。"}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": "好"}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: 改好了。"}]}}

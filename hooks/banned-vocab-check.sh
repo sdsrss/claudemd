@@ -219,6 +219,8 @@ if (( ${#HITS[@]} != 0 )); then
   (b) Per-commit escape: include [allow-banned-vocab] in the commit message.
       §8 Escape tokens: this is the user's call, not the agent's.
   (c) Disable the hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
+      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
 
@@ -416,6 +418,8 @@ Bypass options:
       does not answer the finding.
   (b) Per-flag opt-out: BANNED_VOCAB_PROSE_SCAN=0 (keeps Path 1 commit-msg scan active).
   (c) Disable the whole hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
+      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE.md §10 — Specificity (HARD)."
 

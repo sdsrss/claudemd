@@ -574,6 +574,10 @@ function scanOverCeremony(events) {
 // inline — leaving ASK mandatory only where §5 AUTH already requires it.
 // Below either bar, the default stands. Do not move these to fit the data.
 export const ASK_ASSENT_THRESHOLD = 0.5;
+// Hand-labeled precision of the ask predicate. `null` = never labeled, which is
+// what gates the disposition in the renderer. Setting this to a number is a
+// deliberate act that must cite the labeling pass that produced it.
+export const ASK_RATE_PRECISION = null;
 export const ASK_DECISION_MIN_ANSWERS = 30;
 
 // Assent = a short reply that adds no direction. Length-capped on purpose: a
@@ -593,12 +597,33 @@ const ASK_ASSENT_RE =
 // measurement, so an unanswered trailing ask is not an opportunity. That
 // undercounts asks at a transcript's tail by a bounded amount.
 //
-// KNOWN FP SOURCE, stated because the threshold above is pre-registered:
-// YIELD_ASK_RE was written as the turn-yield precondition, where over-matching
-// is the safe direction, and it fires on any `?` in the last 260 chars. A turn
-// closing with a rhetorical question scores as an ask here. Status stays
-// `collecting` and nothing consumes the rate until it is hand-labeled the way
+// THE FP SURFACE, MEASURED, because the thresholds above are pre-registered
+// and a pre-registered rule invites being applied the moment the count clears.
+// YIELD_ASK_RE is the turn-yield precondition reused verbatim; there,
+// over-matching is the safe direction. Here it is not. Its non-`?` alternatives
+// are UNANCHORED inside the 260-char tail, so ordinary declarative prose fires
+// them: `要么…要么`, `说一声` as a sign-off, `下一步建议`, `由你定`, `要继续`
+// quoting an identifier, `等你的信号`. The v0.80.0 pre-tag review measured
+// 6 of 11 realistic non-ask tails scoring as asks, and built a transcript with
+// ZERO questions in it that reports 35 asks at 100% assent — clearing both
+// bars on noise alone.
+//
+// ASK_ASSENT_RE errs hard the other way (24 of 27 plausible pure-assent replies
+// score as direction — trailing punctuation alone is enough), so the two errors
+// do NOT cancel: the numerator tracks which five bare words the user happens to
+// type and the denominator which sign-off the agent happens to use. The live
+// `--global` reading, 46 asks and 0 assents over 41 transcripts, is what a
+// classifier that cannot fire looks like, not a 0% assent rate.
+//
+// So the renderer refuses to print "the disposition can be read" while
+// precision is null, however large the count gets. Hand-label first, the way
 // the 2026-07-24 pass labeled the eight rule detectors.
+// A typed message that is a slash-command invocation is not an answer to
+// anything — it is the user starting work (v0.80.0 pre-tag review, LOW-5:
+// `/claudemd-status` after an ask scored as answered-with-direction).
+// `isUserTurn` already drops <system-reminder> and isMeta rows but not this.
+const SLASH_COMMAND_RE = /^<command-(name|message|args)>/;
+
 function scanAskRate(events) {
   const main = events.filter(e => !e.sidechain);
   const out = { segments: 0, asks: 0, assent: 0 };
@@ -609,8 +634,21 @@ function scanAskRate(events) {
       if (e.hasText) priorText = e.text;
       continue;
     }
-    if (e.kind !== 'user-typed' || e.compactSummary) continue;
+    if (e.kind !== 'user-typed') continue;
+    // A compaction boundary ends the question's reach: the pre-compaction ask
+    // cannot be what the next typed message answers, and treating it that way
+    // both scored a phantom ask and swallowed a segment boundary, merging two
+    // unrelated tasks into one (v0.80.0 pre-tag review, LOW-3). The row itself
+    // is still not a typed turn.
+    if (e.compactSummary) {
+      priorText = '';
+      continue;
+    }
     const typed = e.text.trim();
+    if (SLASH_COMMAND_RE.test(typed)) {
+      priorText = '';
+      continue;
+    }
     const answersAsk = Boolean(priorText) && YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
     if (answersAsk) {
       out.asks += 1;
@@ -947,6 +985,11 @@ export async function samplingAuditGlobal({
   const emptyClass = () => ({
     scannedTranscripts: 0,
     totalTurns: 0,
+    // v0.80.0 pre-tag review LOW-6: H4 shipped pooled-only, so self-repo
+    // dogfood and external work were mixed in the one number the pre-registered
+    // disposition consumes — against this file's own header, which says the
+    // stratified view is the one to read because pooled counts already misled.
+    askRate: { segments: 0, asks: 0, assent: 0 },
     byRule: Object.fromEntries(
       RULE_KEYS.map(k => [
         k,
@@ -999,6 +1042,7 @@ export async function samplingAuditGlobal({
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalTurns += sub.totalTurns;
+    if (sub.askRate) mergeAskRate(cls.askRate, sub.askRate);
     for (const k of RULE_KEYS) {
       result.byRule[k].hits += sub.byRule[k].hits;
       result.byRule[k].violations += sub.byRule[k].violations;
@@ -1048,7 +1092,7 @@ function integrityLine(r) {
   return `Reader integrity: **the denominators below are short** — ${parts.join('; ')}.`;
 }
 
-function formatMarkdown(r) {
+export function formatMarkdown(r) {
   const today = todayLocal();
   const out = [
     `# Sampling audit — ${today}`,
@@ -1109,15 +1153,19 @@ function formatMarkdown(r) {
   if (r.askRate) {
     const ar = r.askRate;
     const rate = ar.asks > 0 ? fmtRate(ar.assent, ar.asks) : 'n/a';
-    const perSeg = ar.segments > 0 ? (ar.asks / ar.segments).toFixed(2) : 'n/a';
-    const enough = ar.asks >= ASK_DECISION_MIN_ANSWERS;
     out.push('## Default-ASK cost (H4)');
     out.push('');
     out.push(
-      `Task segments: ${ar.segments} · answered asks: ${ar.asks} · asks per task: ${perSeg} · answered with assent: ${ar.assent} · assent rate: ${rate}`
+      `Answered asks: ${ar.asks} · answered with assent: ${ar.assent} · assent rate: ${rate} · task segments: ${ar.segments}`
     );
+    // No asks-per-task ratio. The same predicate noise that inflates `asks`
+    // also SUPPRESSES segment boundaries (an ask-answer does not open a task),
+    // so the two move together and the quotient is not a rate: the pre-tag
+    // review drove a 10-task, zero-ask transcript to `segments: 1, asks: 9`
+    // and the old renderer printed "9.00 asks per task" (MEDIUM-1). Both raw
+    // counts are still shown; `segments` is a lower bound on the task count.
     out.push(
-      `Sample: ${enough ? 'at' : 'below'} the ${ASK_DECISION_MIN_ANSWERS}-ask minimum — ${enough ? 'the disposition below can be read' : 'the rate above decides nothing yet'}.`
+      'Counts only — no per-task ratio: an ask-answer suppresses a segment boundary, so a false ask deflates the denominator it would be divided by.'
     );
     out.push('');
     out.push(
@@ -1126,10 +1174,18 @@ function formatMarkdown(r) {
     out.push(
       `> asks, assent rate ≥ ${ASK_ASSENT_THRESHOLD * 100}% flips core §0 Initial-prompt ambiguity to default (b) —`
     );
-    out.push('> state the reading inline — leaving ASK where §5 AUTH already requires it. Below');
-    out.push('> either bar the default stands. Thresholds fixed before data collection.');
-    out.push('> Status: collecting, precision null — YIELD_ASK_RE over-matches by design (see');
-    out.push('> scanAskRate). Hand-label before acting on the rate.');
+    out.push('> state the reading inline — leaving ASK where §5 AUTH already requires it. Thresholds');
+    out.push('> fixed before data collection.');
+    out.push('>');
+    // The count crossing 30 is NOT the condition for reading the disposition:
+    // a transcript with zero questions reached 35 asks / 100% assent in the
+    // v0.80.0 pre-tag review (HIGH-1). Calibration gates it, not volume.
+    out.push(
+      `> NOT YET READABLE — precision is ${ASK_RATE_PRECISION === null ? 'null' : ASK_RATE_PRECISION} (uncalibrated). The ask predicate is`
+    );
+    out.push('> YIELD_ASK_RE, whose non-`?` alternatives are unanchored, and a zero-question');
+    out.push('> transcript has been shown to clear both bars on noise. Hand-label a sample');
+    out.push('> before applying the disposition, whatever the count above says.');
     out.push('');
   }
   if (r.perTranscript.length > 0) {
