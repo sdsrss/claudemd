@@ -150,9 +150,14 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Verify the tagged commit is on main
-        # Any branch's `v*.*.*` tag published (Round-14 audit REL-M5), and the
-        # repo has no branch protection or ruleset to lean on, so this is the
-        # only place the invariant can be stated. Ancestry, not equality: the
+        # Any branch's `v*.*.*` tag published (Round-14 audit REL-M5). The repo
+        # does carry rulesets since 2026-09-07, but they are ref-integrity only
+        # (no-delete / no-force on the default branch and on `refs/tags/v*`) and
+        # deliberately require no status check — docs/ROLLBACK.md says why — so
+        # this is still the only place the invariant can be stated. A tag can no
+        # longer be repointed at an unmerged commit after this check passes,
+        # which is new; nothing else about the check changes.
+        # Ancestry, not equality: the
         # atomic ship flow pushes main and then the tag, and a later commit on
         # main must not invalidate an in-flight publish.
         #

@@ -8,12 +8,20 @@ tag-is-on-`origin/main` ancestry check), while the **marketplace channel serves 
 commit immediately — CI validates after the fact**. The v0.58.1 / v0.59.1 macOS hotfixes
 are recorded instances of releases crossing that window.
 
-**The marketplace channel still has no gate**, and closing it needs a repo-settings change
-this repo cannot make from a file: a ruleset on `main` requiring the `ci` check. Until that
-exists, the ship runbook's "wait for the tag's CI to go green before `gh release create`"
-step is the only thing standing between a red tag and marketplace consumers — v0.73.0,
-v0.74.0 and v0.75.0 all published with their `ci` run red on the macOS leg (Round-14 audit
-REL-H2). Per failure point:
+**The marketplace channel still has no *green-CI* gate**, and by design will not get one.
+Two rulesets were added on 2026-09-07 (`gh api repos/sdsrss/claudemd/rulesets` to see them):
+`main-integrity` blocks deletion and non-fast-forward on the default branch, and
+`release-tags-immutable` blocks deletion, non-fast-forward and update on `refs/tags/v*`.
+Both are ref-integrity rules. Neither requires a status check, because GitHub applies
+required checks to direct pushes as well, a just-written commit has no check run yet, and
+the only account with write access here is the maintainer's — so that rule would not stop
+an outside contributor (there are none with push rights), it would end the atomic ship
+pipeline and replace it with a PR round-trip. The ship runbook's "wait for the tag's CI to
+go green before `gh release create`" step therefore remains the only thing standing between
+a red tag and marketplace consumers — v0.73.0, v0.74.0 and v0.75.0 all published with their
+`ci` run red on the macOS leg (Round-14 audit REL-H2). What the tag ruleset does buy: a
+pushed release tag can no longer be moved or deleted, so the same version string cannot
+later serve different code to marketplace consumers. Per failure point:
 
 ## Push landed, CI red, tag NOT pushed
 Forward-fix (hotfix commit), or revert **and bump**: `git revert <sha>`, raise the patch
