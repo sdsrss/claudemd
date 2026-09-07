@@ -6,6 +6,14 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.28.0 (minor, 2026-09-07) — the self-enforced layers say so out loud
+
+Round 15 of the spec audit (`docs/audit/20260906-231957.md` §8) left three Round 14 findings open, all of the same shape: a rule that only the Agent can enforce, presented as if something mechanical stood behind it. This release labels each one and bounds it. No new HARD rule — §5 AUTH, the escape tokens and the §3 order were all already binding; what changes is that the spec now states who enforces them.
+
+- `[fix]` **§5 Hard** is tagged `(HARD, self-enforced)` and enters `hard-rules.json` as `§5-hard-auth`. Twelve hard-AUTH categories had no manifest row, so §13.1's demote review and `/claudemd-rules` could not see the layer at all, while `sampling-audit.js` had been emitting a `§5-hard-auth` detector against it since v0.28.0. Verified 2026-09-07: a literal `rm -rf src/` returns exit 0 from `pre-bash-safety-check.sh` — the delete category has no hook behind it (audit SPEC-H4). Partition 6/16/2/1 → 6/17/2/1; 25 → 26 rules.
+
+---
+
 ## v6.27.0 (minor, 2026-09-07) — harness convergence: the spec keeps only what it adds on top of the Claude Code system prompt
 
 The 2026-09-06 spec audit (`docs/audit/20260906-231957.md`) compared core line by line with the current Claude Code system prompt. Turn continuation, subagent delivery at turn end, memory-file hygiene and honest reporting are now stated natively by the harness; the spec carried each of them a second time, in two cases in a form that contradicts the harness's own style rules. Net-delete release: core 23944 → 23478 bytes, extended 45899 → 44596 bytes. No new HARD rule; enforcement partition unchanged (6/16/2/1); every `hard-rules.json` `section_anchor` resolves unchanged.

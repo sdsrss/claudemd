@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.27.0 — Extended
+# AI-CODING-SPEC v6.28.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -392,7 +392,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 25 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 16 self / 2 both / 1 external.
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 6 hook / 17 self / 2 both / 1 external.
 
 ## §13.1 → `OPERATOR.md`
 
@@ -448,7 +448,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 - **Core**: §11 turn-yield keeps its four triggers, the anti-silence clause and the Tell, and drops the 2026-09-06 measurement (changelog v6.26.0 has it). §0 absorbs §5's obvious-follow-on clarification; §0.1 keeps the byte cap only; §1.5's maintainer note and §11's harness-duplicated skip-list are gone; §2.1, §4 and §11-O name the harness `Agent` tool as the parallel primitive; §5.1 inlines the `aggressive` skip-list, which bound nobody while it lived only here; the `Done:` example is sentence-form because the harness bans parentheticals in user-facing text; Post-compaction re-Reads the plan and extended, not a core the harness injects every turn.
 - **Extended**: §11-O and §12's second exception state the delivery fact in one sentence each, and the exception covers any subagent whose report the ship needs; §10-R Lessons file is SHOULD and loses its session-start read (last entry 2026-05-09); five references to memory files that do not ship with the spec are dropped or re-pointed at `hooks/lib/platform.sh`; §5.1-EXT and §1.5-EXT lose the paragraphs core now carries; Appendix B.2 examples are sentence-form.
 
-**Sizing** (v6.27.0, 2026-09-07, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23944 → 23478 bytes (Δ -466: harness-duplicated clauses and the §11 measurement removed; the `aggressive` skip-list and the `Agent` primitive added); extended 45899 → 44596 bytes (Δ -1302: the §11-O and §12 delivery restatements, five private-memory references, and this entry replacing a longer one); OPERATOR.md 15514 → 15996 bytes (Δ +482: two bullets moved in from core §0.1 and §1.5). Size budget: core 23478/25000 (**1522 bytes headroom**); extended 44596/50000 (**5404 bytes headroom**). Drift envelope: ±20B for this line's own rewrite.
+**Sizing** (v6.28.0, 2026-09-07, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23478 → 23572 bytes (Δ +94: §5 Hard tagged self-enforced); extended 44596 → 44382 bytes (Δ -214: the §13 partition counts and this entry); OPERATOR.md 15996 → 15996 bytes (Δ +0). Size budget: core 23572/25000 (**1428 bytes headroom**); extended 44382/50000 (**5618 bytes headroom**). Drift envelope: ±20B for this line's own rewrite.
 
 ## §1.5-EXT GLOSSARY
 

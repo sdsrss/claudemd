@@ -419,6 +419,9 @@ test('§3: every entity extended cites as ranked "per §3" appears in the core �
 // carrying the same heading above a gutted real one was one of the mutations
 // that survived. Requiring exactly one occurrence closes it by construction and
 // is independent of where in the file the rule sits.
+// The label is read from the spec, not typed here: the 2026-07-25 audit found a
+// pinned test NAME a full version behind the assertion it introduced.
+const PIN_SPEC_VER = `v${fs.readFileSync(CORE, 'utf8').match(/AI-CODING-SPEC v(\d+\.\d+\.\d+)\s+—\s+Core/)[1]}`;
 const PINS = [
   {
     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
@@ -438,10 +441,16 @@ const PINS = [
     anchor: '- **Output reaches main only at turn end**',
     line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.",
   },
+  {
+    what: 'core §5 Hard — the twelve hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
+    file: CORE,
+    anchor: '**Hard** (default; HARD, self-enforced',
+    line: '**Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).',
+  },
 ];
 
 for (const pin of PINS) {
-  test(`v6.27.0 pin: ${pin.what}`, () => {
+  test(`${PIN_SPEC_VER} pin: ${pin.what}`, () => {
     const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
     const carrying = lines.filter(l => l.includes(pin.anchor));
     assert.equal(
