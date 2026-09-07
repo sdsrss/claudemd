@@ -100,7 +100,25 @@ export function writeJsonAtomic(p, data, { mode } = {}) {
     // this function exists to prevent (0.71.4 pre-tag review). Resolve the link
     // by hand; if p is simply absent, write at p.
     try {
-      if (fs.lstatSync(p).isSymbolicLink()) real = path.resolve(path.dirname(p), fs.readlinkSync(p));
+      if (fs.lstatSync(p).isSymbolicLink()) {
+        // Resolve the relative target against the REAL parent, not the lexical
+        // one (Round-14 audit SCR-M2). path.resolve collapses `..` as text; the
+        // kernel walks it from the directory the path actually lands in, and
+        // the two disagree the moment an ancestor is itself a symlink —
+        // `~/.claude -> ~/config/claude`, the synced-dotfiles shape this whole
+        // branch exists for. Pre-fix the write landed at whatever sat at the
+        // lexical path (a different file, or nothing — the link stayed
+        // dangling), so toggle.js reported the kill-switch set and it was not.
+        // backup.js#createBackup was given this exact repair in 0.76.2 and this
+        // second site was missed.
+        let base = path.dirname(p);
+        try {
+          base = fs.realpathSync(base);
+        } catch {
+          /* unreadable ancestor — keep the lexical parent, no worse than before */
+        }
+        real = path.resolve(base, fs.readlinkSync(p));
+      }
     } catch {
       /* not a symlink and not present — new file at p */
     }

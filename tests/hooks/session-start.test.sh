@@ -708,6 +708,31 @@ else
 fi
 rm -f "$UC_SENTINEL"
 
+# Case 36b: the sentinel is written BEFORE the rename it records (install.js,
+# Round-14 SCR-H1), so a kill in between leaves a sentinel naming a backup dir
+# that does not hold the file. That is a DIFFERENT state from a completed
+# overwrite — the user's instructions are most likely still in place — and this
+# banner must say so instead of telling them their file was moved somewhere it
+# is not. Driven with a hand-written sentinel over an already-installed manifest
+# so no bootstrap runs and rewrites it.
+uc_reset_fresh
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+UC_EMPTY="$HOME/.claude/backup-20200101T000000000Z"
+mkdir -p "$UC_EMPTY" "$HOME/.claude/.claudemd-state"
+jq -cn --arg d "$UC_EMPTY" '{ts:"2026-09-07T00:00:00Z",backupDir:$d}' > "$UC_SENTINEL"
+OUT36B=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+CTX36B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT36B" 2>/dev/null || echo "")
+if grep -qF 'an install was interrupted' <<<"$CTX36B" \
+   && grep -qF "$UC_EMPTY" <<<"$CTX36B" \
+   && ! grep -qF 'NO LONGER in effect' <<<"$CTX36B" \
+   && [[ ! -f "$UC_SENTINEL" ]]; then
+  echo "PASS: 36b an interrupted move is reported as interrupted, not as a completed backup"
+else
+  echo "FAIL: 36b (out=$OUT36B)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$UC_EMPTY"
+rm -f "$UC_SENTINEL"
+
 # Case 37: the two guards this release added to the pre-bootstrap exits. They
 # are the paths that FIX the banner-loss bug (a pending consume-once banner used
 # to be dropped when the hook bailed before the install), so leaving them

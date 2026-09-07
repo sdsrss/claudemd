@@ -100,7 +100,15 @@ export function isoStamp() {
   return new Date().toISOString().replace(/[-:.]/g, '');
 }
 
-export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
+// Name and create the backup dir WITHOUT moving anything into it yet.
+//
+// Split out of createBackup so a caller can record where a file is about to go
+// BEFORE the rename that takes it there (Round-14 audit SCR-H1). install.js is
+// the caller of record: it moves the user's own ~/.claude/CLAUDE.md, and the
+// sentinel saying where it went used to be written ~30 lines after the move,
+// with two SIGKILL deadlines (4s sync bootstrap, 10s detached) landing inside
+// that window.
+export function reserveBackupDir({ label = DEFAULT_LABEL } = {}) {
   let dir = path.join(backupRoot(), `${label}-${isoStamp()}`);
   // Belt-and-braces: if the ms-precision stamp still collides (same process,
   // same ms — vanishingly rare), append a numeric suffix to avoid clobbering.
@@ -114,6 +122,14 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
     }
   }
   fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+// `dir` — use a directory reserveBackupDir already named, instead of naming one
+// here. The two spellings must not diverge, so this function has no naming
+// logic of its own left.
+export function createBackup(files, { label = DEFAULT_LABEL, dir = null } = {}) {
+  const target = dir || reserveBackupDir({ label });
   const movedFiles = [];
   for (const src of files) {
     // lstat, NOT existsSync — see entryPresent above for why the difference is
@@ -126,7 +142,7 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
     } catch {
       continue; // genuinely absent, or an unreadable parent — nothing to move
     }
-    const dest = path.join(dir, path.basename(src));
+    const dest = path.join(target, path.basename(src));
     // A SYMLINKED source is re-pointed, not moved.
     //
     // rename(2) moves the LINK, and a RELATIVE link resolves against its new
@@ -176,7 +192,7 @@ export function createBackup(files, { label = DEFAULT_LABEL } = {}) {
     }
     movedFiles.push(dest);
   }
-  return { dir, movedFiles };
+  return { dir: target, movedFiles };
 }
 
 export function listBackups({ label = DEFAULT_LABEL } = {}) {

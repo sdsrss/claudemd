@@ -984,3 +984,236 @@ test('M-2: a live link whose target is UNREADABLE is not mistaken for a dead one
   assert.equal(fs.readFileSync(target, 'utf8'), '# user content that exists\n');
   assert.ok(threw, 'and the copy through an unreadable target fails loudly rather than silently');
 });
+
+// ============================================================================
+// Round-14 audit — the interruption and concurrency window around the one
+// operation install() performs on a file it does not own.
+// ============================================================================
+
+// The fault injections below patch `fs.<fn>` on the node:fs default export.
+// backup.js and spec-hash.js call through that same object, so the patch reaches
+// them; every test restores in a finally. This is the deterministic stand-in for
+// the SIGKILL the bootstrap hooks actually send at 4s / 10s — a kill loop
+// reproduces the same states at 4/34 and needs 81 runs to do it.
+async function withPatchedFs(name, impl, fn) {
+  const fsMod = (await import('node:fs')).default;
+  const orig = fsMod[name];
+  fsMod[name] = impl(orig);
+  try {
+    return await fn();
+  } finally {
+    fsMod[name] = orig;
+  }
+}
+
+test('SCR-H1: the user-content sentinel is written BEFORE the rename that moves their file', async () => {
+  // createBackup renameSync's ~/.claude/CLAUDE.md into backup-<stamp>/ and the
+  // sentinel that records where it went was written ~30 lines later. A kill in
+  // between leaves the user's file in a backup dir with no sentinel, no
+  // manifest and nothing on stderr the user will ever read — and the NEXT
+  // SessionStart sees no home spec, calls it a fresh install, and never
+  // mentions the file again. 4 of 34 kill hits landed in exactly that window.
+  const userText = '# My own user-global instructions\nAlways use tabs.\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), userText);
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+
+  let threw = null;
+  await withPatchedFs(
+    'renameSync',
+    orig =>
+      function (src, dest) {
+        const r = orig(src, dest);
+        // Only the user-content move, not writeJsonAtomic's tmp→final rename:
+        // the fix makes the sentinel write the FIRST rename in the process, and
+        // an index-based trap would then be injecting into the fix.
+        if (String(dest).includes(`${path.sep}backup-`)) {
+          throw new Error('simulated kill immediately after the user file moved');
+        }
+        return r;
+      },
+    async () => {
+      try {
+        await install({ pluginRoot });
+      } catch (e) {
+        threw = e;
+      }
+    }
+  );
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.ok(threw, 'the injection must have fired — otherwise this test proves nothing');
+  assert.equal(
+    fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')),
+    false,
+    'precondition: the user file really was moved away'
+  );
+
+  const sentinel = path.join(tmpHome, '.claude/.claudemd-state/user-content-backup.json');
+  assert.ok(
+    fs.existsSync(sentinel),
+    'the user file is gone and nothing records where it went — this is the silent-loss window'
+  );
+  const rec = JSON.parse(fs.readFileSync(sentinel, 'utf8'));
+  assert.ok(rec.backupDir, 'sentinel must name the backup dir');
+  assert.equal(
+    fs.readFileSync(path.join(rec.backupDir, 'CLAUDE.md'), 'utf8'),
+    userText,
+    'and that dir must be the one holding their bytes'
+  );
+});
+
+test('SCR-H2: a second concurrent install does not run — it defers to the lock holder', async () => {
+  // install.js had no cross-process mutex while TWO paths spawn it (SessionStart
+  // bootstrap and the UserPromptSubmit piggy-back). Two fresh installs racing:
+  // the loser reads the user's content, createBackup finds the file already
+  // moved and `continue`s, and returns an EMPTY newest backup-<stamp>-1 — which
+  // is what `CLAUDEMD_SPEC_ACTION=restore` then restores from. 1 of 30 trials.
+  const userText = '# My own instructions\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), userText);
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  fs.writeFileSync(
+    path.join(stateDirPath, 'install.lock'),
+    JSON.stringify({ pid: 999999, startedAt: new Date().toISOString() })
+  );
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const r = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(r.spec, 'skipped-locked', `expected the loser to stand down, got ${r.spec}`);
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    userText,
+    'and it must not have touched the file the holder is in the middle of moving'
+  );
+  assert.deepEqual(listBackups(), [], 'nor left an empty backup dir for restore to find');
+});
+
+test('SCR-H2: a stale lock is taken over rather than blocking every future install', async () => {
+  // A lock left by a killed process must not brick the install path forever —
+  // this is the bootstrap, it runs on every SessionStart.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n'
+  );
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  const lock = path.join(stateDirPath, 'install.lock');
+  fs.writeFileSync(lock, JSON.stringify({ pid: 999999 }));
+  const old = Date.now() - 60 * 60 * 1000;
+  fs.utimesSync(lock, old / 1000, old / 1000);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const r = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.notEqual(r.spec, 'skipped-locked', 'an hour-old lock must not still be holding');
+  assert.equal(fs.existsSync(lock), false, 'and the lock is released when install returns');
+});
+
+test('SCR-M4: a settings.json that PARSES to null is refused before anything moves', async () => {
+  // The pre-flight only asked "does readSettings() throw". `null` parses fine,
+  // so install proceeded, moved the user's CLAUDE.md, copied the spec over it,
+  // and then crashed in unmergeHook — before the manifest was written. The
+  // manifest is what SessionStart keys on, so every later session re-ran the
+  // same doomed install.
+  const userText = '# My own instructions\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), userText);
+  fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), 'null');
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  let threw = null;
+  try {
+    await install({ pluginRoot });
+  } catch (e) {
+    threw = e;
+  }
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.ok(threw, 'install must refuse a settings.json that is not a JSON object');
+  assert.match(threw.message, /settings\.json/i);
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    userText,
+    'and it must refuse BEFORE moving the user file'
+  );
+});
+
+test('SCR-M1: a spec copy that fails mid-write leaves the installed file intact', async () => {
+  // spec-hash.js copied with a bare copyFileSync — open(O_TRUNC) then write. A
+  // concurrent upgrade (4 of 40 trials) tripped the post-copy sha check, and a
+  // reader arriving inside the window gets a truncated spec. tmp+rename makes
+  // the swap atomic for readers and leaves the previous bytes on failure.
+  const installedText = '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n';
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), installedText);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  let threw = null;
+  await withPatchedFs(
+    'copyFileSync',
+    orig =>
+      function (src, dest) {
+        if (String(src).includes(`${path.sep}spec${path.sep}`)) {
+          // Disk full / interrupted write: some bytes land, then it fails.
+          fs.writeFileSync(dest, 'PARTIAL');
+          throw new Error('simulated ENOSPC mid-copy');
+        }
+        return orig(src, dest);
+      },
+    async () => {
+      try {
+        await install({ pluginRoot });
+      } catch (e) {
+        threw = e;
+      }
+    }
+  );
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.ok(threw, 'the injection must have fired');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    installedText,
+    'the installed spec must still be the previous complete file, not a partial write'
+  );
+  const leftovers = fs
+    .readdirSync(path.join(tmpHome, '.claude'))
+    .filter(n => /\.claudemd-tmp-/.test(n));
+  assert.deepEqual(leftovers, [], 'and the failed copy leaves no temp file behind');
+});
+
+test('SCR-M3: install prunes personal backups without evicting legacy spec-shaped ones', async () => {
+  // doctor reports legacy `backup-<stamp>/` dirs holding a spec as "never
+  // deleted, never counted" and its own --prune-backups excludes them, because
+  // a pre-v0.23.11 one can hold the user's files BESIDE the spec. install.js
+  // called pruneBackups with no exclude, so six of them pushed a genuine
+  // personal backup out of the retain window on the next install.
+  const backupRootDir = path.join(tmpHome, '.claude');
+  const legacy = [];
+  for (let i = 1; i <= 6; i++) {
+    const d = path.join(backupRootDir, `backup-2020010${i}T000000000Z`);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'CLAUDE.md'), '# AI-CODING-SPEC v6.0.0 — Core\n');
+    fs.writeFileSync(path.join(d, 'my-notes.md'), `sibling ${i}\n`);
+    legacy.push(d);
+  }
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My own instructions\n');
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const r = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(r.spec, 'backup-and-overwrite');
+  for (const d of legacy) {
+    assert.ok(fs.existsSync(d), `legacy spec backup ${path.basename(d)} was deleted`);
+    assert.ok(
+      fs.existsSync(path.join(d, 'my-notes.md')),
+      'and the user files sitting beside it went with it'
+    );
+  }
+  assert.ok(
+    fs.existsSync(path.join(r.backupDir, 'CLAUDE.md')),
+    "this run's personal backup must survive its own prune"
+  );
+});

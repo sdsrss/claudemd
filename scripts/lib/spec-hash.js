@@ -110,12 +110,67 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
             `if its target comes back.\n`
         );
       }
-      fs.copyFileSync(src, dest);
-      if (sha256File(src) !== sha256File(dest)) {
-        throw new Error(
-          `spec copy: post-copy integrity check failed for ${name} ` +
-            `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run.`
-        );
+      // Write beside the destination, verify, then rename ONTO it (Round-14
+      // audit SCR-M1). A bare `copyFileSync(src, dest)` is open(O_TRUNC) + write:
+      // for the whole duration of that write the installed spec is TRUNCATED,
+      // and this is the file every Claude Code session reads at startup. A
+      // concurrent upgrade tripped the integrity check below at 4 of 40 trials,
+      // which is the same window seen from the writer's side. rename(2) is
+      // atomic within a filesystem, so a reader sees the old bytes or the new
+      // ones and never a prefix, and an interrupted write leaves the previous
+      // spec in place instead of a partial one.
+      //
+      // The tmp file goes next to the REAL destination, resolved through any
+      // symlink, for the two reasons writeJsonAtomic (paths.js) documents:
+      // rename cannot cross filesystems, and renaming onto the LINK would
+      // replace it with a regular file — silently detaching the dotfiles setup
+      // this function goes out of its way to keep working.
+      //
+      // So the swap only happens when the real destination can be NAMED.
+      // `realpathSync` failing is two different situations: nothing is there
+      // (the ordinary fresh-install case — safe, the rename creates the file),
+      // or there IS an entry that cannot be resolved, which on this path means a
+      // live link into an unreadable directory. Renaming onto that link is
+      // exactly the M-2 regression — deleting a live link and writing a regular
+      // file over it — so it falls back to the direct copy, which writes THROUGH
+      // the link and fails loudly when it cannot.
+      let realDest = null;
+      try {
+        realDest = fs.realpathSync(dest);
+      } catch {
+        try {
+          if (fs.lstatSync(dest, { throwIfNoEntry: false }) === undefined) realDest = dest;
+        } catch {
+          /* cannot even lstat — leave realDest null and copy through */
+        }
+      }
+      if (realDest === null) {
+        fs.copyFileSync(src, dest);
+        if (sha256File(src) !== sha256File(dest)) {
+          throw new Error(
+            `spec copy: post-copy integrity check failed for ${name} ` +
+              `(${dest} does not match shipped ${src}). Disk full or a concurrent writer? Re-run.`
+          );
+        }
+      } else {
+        const tmp = `${realDest}.claudemd-tmp-${process.pid}`;
+        try {
+          fs.copyFileSync(src, tmp);
+          if (sha256File(src) !== sha256File(tmp)) {
+            throw new Error(
+              `spec copy: post-copy integrity check failed for ${name} ` +
+                `(${tmp} does not match shipped ${src}). Disk full or a concurrent writer? Re-run.`
+            );
+          }
+          fs.renameSync(tmp, realDest);
+        } catch (e) {
+          try {
+            fs.unlinkSync(tmp);
+          } catch {
+            /* nothing to clean up */
+          }
+          throw e;
+        }
       }
     }
   } catch (e) {

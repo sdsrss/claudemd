@@ -346,3 +346,53 @@ test('R11-01.5: the tmp file is never more permissive than the target mode', () 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('SCR-M2: writeJsonAtomic resolves a dangling relative link against the REAL parent', () => {
+  // `~/.claude` is itself a symlink here — the synced-dotfiles shape the whole
+  // dangling-link branch exists for. `path.resolve` collapses `..` as TEXT,
+  // while the kernel walks it from the directory the path actually lands in, so
+  // the two disagree exactly when an ancestor is a link. Pre-fix the payload
+  // was written at the lexical path — a file the user never asked for, in a
+  // directory that had to be created for it — and the link stayed dangling, so
+  // toggle.js reported the kill-switch set while nothing read it back.
+  // backup.js#createBackup got this repair in 0.76.2; this second site was
+  // missed (Round-14 audit SCR-M2).
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-scrm2-'));
+  const saved = process.env.HOME;
+  try {
+    process.env.HOME = home;
+    fs.mkdirSync(path.join(home, 'config/claude'), { recursive: true });
+    fs.mkdirSync(path.join(home, 'config/dotfiles'), { recursive: true });
+    fs.symlinkSync(path.join(home, 'config/claude'), path.join(home, '.claude'));
+
+    const linkPath = path.join(home, '.claude/settings.json');
+    fs.symlinkSync('../dotfiles/settings.json', linkPath);
+    assert.equal(fs.existsSync(linkPath), false, 'precondition: the link is dangling');
+
+    writeJsonAtomic(linkPath, { env: { DISABLE_BANNED_VOCAB_HOOK: '1' } });
+
+    assert.equal(
+      fs.existsSync(path.join(home, 'config/dotfiles/settings.json')),
+      true,
+      'the payload must land where the kernel resolves the link'
+    );
+    assert.equal(
+      fs.existsSync(path.join(home, 'dotfiles/settings.json')),
+      false,
+      'and NOT at the lexical path, which is a file nobody asked for'
+    );
+    assert.equal(
+      fs.existsSync(linkPath),
+      true,
+      'reading back through the link is the point — it must no longer dangle'
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(linkPath, 'utf8')).env.DISABLE_BANNED_VOCAB_HOOK,
+      '1'
+    );
+  } finally {
+    if (saved === undefined) delete process.env.HOME;
+    else process.env.HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

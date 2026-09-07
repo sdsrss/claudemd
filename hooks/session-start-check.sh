@@ -279,7 +279,28 @@ emit_user_content_banner() {
   local backup_dir
   backup_dir=$(jq -r '.backupDir // ""' "$f" 2>/dev/null) || backup_dir=""
 
-  local msg="[claudemd] your existing ~/.claude/CLAUDE.md did not look like a claudemd spec (no \"# AI-CODING-SPEC\" H1), so it was treated as your own user-global instructions"
+  # The sentinel is written BEFORE the rename that moves the file, so that a
+  # kill in between cannot lose it silently (install.js, Round-14 SCR-H1). The
+  # price of that order is that a sentinel can outlive a move that never
+  # happened, so this banner reports what is ON DISK rather than what the
+  # sentinel implies. Both states are worth telling the user about; they are
+  # different states and used to read identically.
+  local msg
+  if [[ -n "$backup_dir" && ! -e "$backup_dir/CLAUDE.md" ]]; then
+    msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. Disable this notice: DISABLE_USER_CONTENT_BANNER=1"
+    jq -cn --arg ctx "$msg" '{
+      suppressOutput: true,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: $ctx
+      }
+    }' 2>/dev/null
+    rm -f "$f" 2>/dev/null || true
+    hook_record session-start user-content-banner-interrupted null '' "$SESSION_ID" 2>/dev/null || true
+    return 0
+  fi
+
+  msg="[claudemd] your existing ~/.claude/CLAUDE.md did not look like a claudemd spec (no \"# AI-CODING-SPEC\" H1), so it was treated as your own user-global instructions"
   if [[ -n "$backup_dir" ]]; then
     msg+=" and moved to $backup_dir/CLAUDE.md"
   else

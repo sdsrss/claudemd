@@ -9,10 +9,12 @@ import {
 } from './lib/settings-merge.js';
 import {
   createBackup,
+  reserveBackupDir,
   pruneBackups,
   backupSettingsFile,
   looksLikeSpec,
   entryPresent,
+  findLegacySpecBackups,
   BACKUP_LABELS,
   BACKUP_RETAIN_COUNT,
 } from './lib/backup.js';
@@ -78,7 +80,99 @@ function readPluginHookSpecs(pluginRoot) {
   return specs;
 }
 
-export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {}) {
+// A lock older than this is assumed to belong to a process that died. The
+// bootstrap SIGKILLs its own install at 4s (sync) / 10s (detached), so a lock
+// this old cannot be a live holder — and the failure mode of guessing wrong is
+// the pre-fix behaviour, not something worse.
+const INSTALL_LOCK_STALE_MS = 10 * 60 * 1000;
+
+// Cross-process mutex around the whole install.
+//
+// TWO paths spawn this concurrently — the SessionStart bootstrap and the
+// UserPromptSubmit piggy-back — and there was nothing serialising them. Two
+// fresh installs racing: both read the user's ~/.claude/CLAUDE.md as user
+// content, the winner renames it into its backup dir, and the loser's
+// createBackup finds nothing to move, `continue`s, and returns an EMPTY
+// `backup-<stamp>-1` that sorts NEWEST — which is the dir
+// `CLAUDEMD_SPEC_ACTION=restore` then restores from. Reproduced at 1/30, with
+// 4/40 concurrent upgrades also tripping the post-copy sha check.
+// ARCHITECTURE.md's "every change is idempotent so the race is acceptable" was
+// the premise; createBackup is not idempotent, so it did not hold.
+//
+// `fs.openSync(p, 'wx')` is O_CREAT|O_EXCL — one winner, decided by the kernel.
+// NOT `mkdirSync`: this repo's own Round-13 measurements showed the uutils
+// coreutils `mkdir` on the maintainer's box admitting two holders.
+function acquireInstallLock() {
+  const dir = stateDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const lockPath = path.join(dir, 'install.lock');
+  const claim = () => {
+    const fd = fs.openSync(lockPath, 'wx');
+    try {
+      fs.writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    } finally {
+      fs.closeSync(fd);
+    }
+    return lockPath;
+  };
+  try {
+    return claim();
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
+  let ageMs;
+  try {
+    ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+  } catch {
+    // Released between the open and the stat — try once more, then stand down.
+    try {
+      return claim();
+    } catch {
+      return null;
+    }
+  }
+  if (ageMs < INSTALL_LOCK_STALE_MS) return null;
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    /* another process won the steal — the claim below will say so */
+  }
+  try {
+    return claim();
+  } catch {
+    return null;
+  }
+}
+
+export async function install(opts = {}) {
+  const lockPath = acquireInstallLock();
+  if (!lockPath) {
+    // Standing down is the correct outcome, not an error: the holder is doing
+    // this exact work, and every caller of install() runs it for its effect on
+    // ~/.claude rather than for a return value.
+    return {
+      spec: 'skipped-locked',
+      backupDir: null,
+      settingsBackup: null,
+      settingsBackupsPruned: [],
+      entries: [],
+      cachePruned: { kept: [], removed: [], skipped: 'not-attempted' },
+      userContentDetected: false,
+      statusline: { action: 'skipped-locked' },
+    };
+  }
+  try {
+    return await installLocked(opts);
+  } finally {
+    try {
+      fs.rmSync(lockPath, { force: true });
+    } catch {
+      /* best-effort: a leftover lock goes stale in INSTALL_LOCK_STALE_MS */
+    }
+  }
+}
+
+async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {}) {
   if (!pluginRoot) throw new Error('install: pluginRoot missing');
 
   // v0.36.0 — never-downgrade guard (tasks/manifest-pluginroot-stale-cache.md,
@@ -227,8 +321,9 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
   // eventually shows points at /claudemd-refresh, which cannot fix JSON syntax
   // in a file this plugin does not own. Validate here, before anything moves.
   if (fs.existsSync(settingsPath())) {
+    let parsedSettings;
     try {
-      readSettings();
+      parsedSettings = readSettings();
     } catch (e) {
       throw new Error(
         `install: ${settingsPath()} is not valid JSON (${e.message}). Refusing to install — ` +
@@ -236,6 +331,24 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
           `Fix the JSON (a trailing comma is the usual cause) or move the file aside, then re-run. ` +
           `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`,
         { cause: e }
+      );
+    }
+    // "Parses" was the whole test, and it is not the precondition (Round-14
+    // audit SCR-M4). `null`, `[]`, `"x"` and `3` all parse; unmergeHook then
+    // dereferences a non-object ~80 lines below, i.e. AFTER the user's
+    // CLAUDE.md has been renamed away and the spec copied over it, and BEFORE
+    // the manifest is written. The manifest is what SessionStart keys on, so
+    // that state does not self-heal: every later session re-ran the same
+    // doomed install. An array is included deliberately — settings.json as a
+    // JSON array is the shape that made toggle report `set` while writing
+    // nothing (SCR-L2).
+    if (parsedSettings === null || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings)) {
+      const kind = parsedSettings === null ? 'null' : Array.isArray(parsedSettings) ? 'an array' : typeof parsedSettings;
+      throw new Error(
+        `install: ${settingsPath()} parses to ${kind}, not a JSON object. Refusing to install — ` +
+          `the install merges hook entries into this file and would otherwise leave a half-installed ` +
+          `state. Replace it with an object (\`{}\` is valid) or move the file aside, then re-run. ` +
+          `A pre-existing backup may be available as ${settingsPath()}.claudemd-backup-*.`
       );
     }
   }
@@ -268,9 +381,49 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
     // broken — restore after any upgrade returned the old spec.)
     specResult = 'overwrite-spec';
   } else {
-    const bk = createBackup(existing, { label: BACKUP_LABELS.personal });
-    backupDir = bk.dir;
-    pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.personal });
+    // Name the dir, RECORD it, and only then move anything into it (Round-14
+    // audit SCR-H1). The sentinel used to be written ~30 lines below this
+    // point, after createBackup had already renameSync'd the user's own
+    // ~/.claude/CLAUDE.md away. The bootstrap SIGKILLs this process at 4s
+    // (sync path) and 10s (detached path); a kill inside that window leaves the
+    // file in `backup-<stamp>/` with no sentinel, no manifest, and a stderr
+    // WARN that on the path almost everyone takes goes to a log file. The next
+    // SessionStart then finds no home spec, calls it a FRESH install, and the
+    // user is never told where their instructions went. 4 of 34 kill hits
+    // landed there.
+    //
+    // The cost of the new order is a sentinel that can outlive a backup that
+    // never happened (killed after the write, before the rename). That is a
+    // visible false alarm instead of silent loss, and the banner in
+    // session-start-check.sh decides on the evidence — whether the named dir
+    // actually holds the file — rather than on the sentinel's existence.
+    backupDir = reserveBackupDir({ label: BACKUP_LABELS.personal });
+    if (userContentDetected) {
+      // Best-effort: a state-dir failure must not fail an otherwise-good
+      // install. Losing it is the pre-0.75.0 behaviour, not a broken install.
+      try {
+        const sd = stateDir();
+        fs.mkdirSync(sd, { recursive: true });
+        writeJsonAtomic(path.join(sd, 'user-content-backup.json'), {
+          ts: new Date().toISOString(),
+          backupDir,
+        });
+      } catch {
+        /* the stderr WARN + the backup dir itself still stand */
+      }
+    }
+    createBackup(existing, { label: BACKUP_LABELS.personal, dir: backupDir });
+    // `exclude` — legacy pre-0.68.3 spec backups sit in the PERSONAL namespace
+    // and doctor reports them as "never deleted, never counted", excluding them
+    // from its own --prune-backups for a data-loss reason: such a dir can hold
+    // the user's files BESIDE the spec, and nothing at runtime tells a genuine
+    // pre-v0.23.11 personal backup from a spec-only one. install.js pruned with
+    // no exclude, so on a machine carrying six of them this run's genuine
+    // personal backup went straight out of the retain window (Round-14 SCR-M3).
+    pruneBackups(BACKUP_RETAIN_COUNT, {
+      label: BACKUP_LABELS.personal,
+      exclude: findLegacySpecBackups().map(b => b.dir),
+    });
     specResult = 'backup-and-overwrite';
     if (userContentDetected) {
       process.stderr.write(
@@ -290,22 +443,9 @@ export async function install({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = 
       // hand-written user-global instructions that Claude Code reads on EVERY
       // project, was announced only in a log nobody has a reason to open: the
       // user's instructions just stop working, with no notice and no pointer to
-      // the backup holding them. Leave a sentinel; session-start-check.sh turns
-      // it into a SessionStart banner and consumes it (fire-once).
-      //
-      // Best-effort by construction. This runs AFTER the backup + copy already
-      // succeeded, so a failure here must not fail an otherwise-good install —
-      // the cost of losing it is the pre-0.75.0 behavior, not a broken install.
-      try {
-        const sd = stateDir();
-        fs.mkdirSync(sd, { recursive: true });
-        writeJsonAtomic(path.join(sd, 'user-content-backup.json'), {
-          ts: new Date().toISOString(),
-          backupDir,
-        });
-      } catch {
-        /* best-effort: the stderr WARN + the backup dir itself still stand */
-      }
+      // the backup holding them. The sentinel session-start-check.sh turns into
+      // a SessionStart banner is written ABOVE, before the move — see SCR-H1
+      // there for why the order is the whole point.
     }
   }
   // Completeness of the shipped spec was validated above (before any backup
