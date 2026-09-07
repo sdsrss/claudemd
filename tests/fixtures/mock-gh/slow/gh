@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
-sleep 5
+# 12s, not 5s (Round-14 audit REL-M2). The assertion below separates "the
+# hook fail-opened at its own 2s timeout" from "the hook waited this stub out",
+# and at 5s the two were 3s apart while the clock reading them had 1s
+# granularity — a loaded runner turned a passing 2s into a failing 4s. Widening
+# the gap costs nothing: the timeout kills this process, so the suite still
+# spends ~2s here.
+sleep 12
 echo '[{"databaseId":3,"status":"completed","conclusion":"failure"}]'

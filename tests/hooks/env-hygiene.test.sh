@@ -92,10 +92,33 @@ fi
 # Case 5: behavioral spot check — a rule-hits-asserting suite run DIRECTLY
 # under the polluting env must pass (the exact ISSUE-001 shape that broke 15
 # suites via run-all, now hit via direct invocation).
-if DISABLE_RULE_HITS_LOG=1 TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HERE/rule-hits.test.sh" >/dev/null 2>&1; then
-  echo "PASS: 5 rule-hits suite passes under polluted direct invocation"
+#
+# CAPPED at 60s (Round-14 audit REL-M1). This case runs the WHOLE rule-hits
+# suite a second time, and run-all.sh gives each of its own suites a 300s cap —
+# so a single hang in rule-hits.test.sh was reported twice, once here and once
+# under its own name, and cost 600s of runner time to say one thing. The cap
+# also gives the hang a distinct message: "timed out" and "failed under a
+# polluted env" are different findings and used to read identically. 60s is ~15x
+# the suite's own runtime here and ~4x what the macOS runner's slower process
+# creation makes of it.
+CASE5_TIMEOUT_BIN=""
+if command -v timeout >/dev/null 2>&1; then CASE5_TIMEOUT_BIN="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then CASE5_TIMEOUT_BIN="gtimeout"; fi
+if [[ -n "$CASE5_TIMEOUT_BIN" ]]; then
+  DISABLE_RULE_HITS_LOG=1 TRANSCRIPT_STRUCTURE_SCAN=1 \
+    "$CASE5_TIMEOUT_BIN" 60 bash "$HERE/rule-hits.test.sh" >/dev/null 2>&1
+  CASE5_RC=$?
 else
-  echo "FAIL: 5 rule-hits suite fails under polluted direct invocation"
+  DISABLE_RULE_HITS_LOG=1 TRANSCRIPT_STRUCTURE_SCAN=1 bash "$HERE/rule-hits.test.sh" >/dev/null 2>&1
+  CASE5_RC=$?
+fi
+if (( CASE5_RC == 0 )); then
+  echo "PASS: 5 rule-hits suite passes under polluted direct invocation"
+elif (( CASE5_RC == 124 )); then
+  echo "FAIL: 5 rule-hits suite exceeded 60s under polluted direct invocation (hang, not an assertion — see its own suite for the same failure)"
+  FAIL=$((FAIL + 1))
+else
+  echo "FAIL: 5 rule-hits suite fails under polluted direct invocation (rc=$CASE5_RC)"
   FAIL=$((FAIL + 1))
 fi
 

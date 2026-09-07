@@ -1282,8 +1282,11 @@ fi
 #          commit sha stay allowed, mirroring Pattern 2's pinned rule.
 #   nix    a remote flakeref scheme vs `.#pkg` / `./#pkg` / no argument.
 # `uvx TOOL` / `pipx run TOOL` are deliberately NOT here: their argument is a
-# bare name, so they need Pattern 2's resolution, not this shape test. Deferred
-# with that reason recorded (tasks/audit-2026-07-27-deferred.md §E).
+# bare name, so they need Pattern 2's resolution, not this shape test, and the
+# FP surface is larger (`uvx ruff`, `pipx run black` are everyday). Deferred on
+# that reason — which is stated here rather than behind a citation, because the
+# `tasks/audit-2026-07-27-deferred.md` this line used to point at was never
+# written and never tracked (Round-14 audit REL-M4).
 REMOTE_RUN_DENY=""
 # Machine-readable twin of the human sentence, for the bypass record: telemetry
 # needs a stable key to group on, and a prose reason is not one.

@@ -63,12 +63,22 @@ OUT=$(run_hook fail-red "$EVENT_COMMIT")
 [[ -z "$OUT" ]] && echo "PASS: 5 non-push → pass" || { echo "FAIL: 5 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
 # Case 6: 2s timeout on slow gh → fail-open pass
+#
+# The bound is 6s against a 12s stub, not 3s against a 5s one (Round-14 audit
+# REL-M2). What this case discriminates is "the hook's own 2s timeout fired" vs
+# "the hook waited the stub out"; `date +%s` reads that with 1s granularity, and
+# `date +%s%N` is not an option (BSD/macOS date has no %N, and macOS is the leg
+# these flakes appeared on). So the fix is to move the two outcomes apart rather
+# than to measure more finely: 2s of real work now has 4s of load headroom
+# before it can be confused with a 12s wait. This suite is one of the two
+# candidate root causes for the pair of unreproducible `1 suite(s) failed` runs
+# in the 0.77.0 / 0.78.0 windows.
 START=$(date +%s)
 OUT=$(run_hook slow "$EVENT_PUSH")
 END=$(date +%s)
 ELAPSED=$((END - START))
-[[ -z "$OUT" && $ELAPSED -le 3 ]] && echo "PASS: 6 slow gh → timeout fail-open (${ELAPSED}s)" \
-  || { echo "FAIL: 6 (elapsed=${ELAPSED}s, got: $OUT)"; FAIL=$((FAIL + 1)); }
+[[ -z "$OUT" && $ELAPSED -le 6 ]] && echo "PASS: 6 slow gh → timeout fail-open (${ELAPSED}s, stub sleeps 12s)" \
+  || { echo "FAIL: 6 (elapsed=${ELAPSED}s against a 12s stub — the 2s hook timeout did not fail open; got: $OUT)"; FAIL=$((FAIL + 1)); }
 
 # Case 7: gh not on PATH → fail-open pass
 OUT=$(PATH="/usr/bin:/bin" bash "$HOOK" <<<"$EVENT_PUSH" 2>&1)

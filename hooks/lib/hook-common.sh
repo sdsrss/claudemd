@@ -568,7 +568,11 @@ hook_flatten_cmd() {
 # one of them being newly blind; and because the alternative was the live
 # false-DENY this recipe fixes (a newline inside an `-m` payload manufacturing
 # the separator the anchor needs). Closing it means unwrapping `-c` / ssh payloads
-# before the strip — see tasks/audit-2026-07-27-deferred.md.
+# before the strip, and that unwrap has to reproduce bash's own quote removal on
+# the payload or it re-opens the false-DENY above — which is why it is deferred.
+# (The reason is stated here rather than cited: the
+# `tasks/audit-2026-07-27-deferred.md` this line used to point at was never
+# written and never tracked — Round-14 audit REL-M4.)
 #
 # QUOTE STRIPPING IS ONE PASS (2026-09-02 audit R11-05). It used to be
 #   sed -E 's/"[^"]*"/""/g' | sed -E "s/'[^']*'/''/g"

@@ -55,6 +55,58 @@ run_suite "$BAD" 10 >/dev/null 2>&1; rc=$?
 if (( rc == 1 )); then ok "failing suite's exit 1 passes through (not masked)"
 else ng "failing suite rc=$rc (expected 1)"; fi
 
+# --- the runner must NAME what failed, and keep its output --------------------
+# `FAIL` in run-all.sh was a COUNTER and nothing else: a run that printed
+# "OVERALL: 1 suite(s) failed" identified no suite, and the node leg's 72 files
+# contributed at most 1 to it. Two unreproducible reds in the 0.77.0 and 0.78.0
+# release windows are unattributable for exactly this reason — no name, no
+# stdout on disk (Round-14 audit REL-M3). run_suite is the only place every bash
+# suite passes through, so the accumulator and the capture live here.
+NOISY="$TMP/noisy.test.sh"
+printf '#!/usr/bin/env bash\necho "marker-stdout"\necho "marker-stderr" >&2\nexit 3\n' > "$NOISY"
+
+LOGDIR="$TMP/suite-logs"
+mkdir -p "$LOGDIR"
+# shellcheck disable=SC2034  # read by run_suite in tests/lib/run-suite.sh
+CLAUDEMD_SUITE_LOG_DIR="$LOGDIR"
+CLAUDEMD_FAILED_SUITES=""
+
+run_suite "$NOISY" 10 >/dev/null 2>&1; rc=$?
+if (( rc == 3 )); then ok "captured suite's exit 3 passes through the tee"
+else ng "captured suite rc=$rc (expected 3)"; fi
+
+case "$CLAUDEMD_FAILED_SUITES" in
+  *noisy.test.sh*) ok "failing suite recorded by NAME, not just counted" ;;
+  *) ng "failing suite absent from CLAUDEMD_FAILED_SUITES (got: '$CLAUDEMD_FAILED_SUITES')" ;;
+esac
+
+run_suite "$OKAY" 10 >/dev/null 2>&1
+case "$CLAUDEMD_FAILED_SUITES" in
+  *ok.test.sh*) ng "passing suite recorded as a failure" ;;
+  *) ok "passing suite is not recorded as a failure" ;;
+esac
+
+# Both streams, because a suite's diagnostic is as likely to be on stderr as on
+# stdout and the reason this exists is that neither survived the run.
+if grep -q marker-stdout "$LOGDIR/noisy.test.sh.log" 2>/dev/null \
+  && grep -q marker-stderr "$LOGDIR/noisy.test.sh.log" 2>/dev/null; then
+  ok "failing suite's stdout AND stderr land in the log dir"
+else
+  ng "suite output not captured to $LOGDIR/noisy.test.sh.log"
+fi
+
+# A TIMEOUT is a failure with a name too — the shape both unattributable reds
+# took (300s cap hit, counter incremented, nothing said which file).
+if [[ -n "$CLAUDEMD_SUITE_TIMEOUT_BIN" ]]; then
+  CLAUDEMD_FAILED_SUITES=""
+  run_suite "$HANG" 1 >/dev/null 2>&1
+  case "$CLAUDEMD_FAILED_SUITES" in
+    *hang.test.sh*TIMEOUT*) ok "timed-out suite recorded by name and marked TIMEOUT" ;;
+    *) ng "timed-out suite not recorded as a named TIMEOUT (got: '$CLAUDEMD_FAILED_SUITES')" ;;
+  esac
+fi
+unset CLAUDEMD_SUITE_LOG_DIR
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

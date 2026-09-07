@@ -311,6 +311,12 @@ EVT_FILE="$SANDBOX/event.json"
 OUT_FILE="$SANDBOX/probe.out"
 ERR_FILE="$SANDBOX/probe.err"
 RC_FILE="$SANDBOX/probe.rc"
+# Scratch sinks for the load re-measure below. Separate files on purpose: the
+# reach proof and the differential signature are both computed from the FIRST
+# run's OUT_FILE/ERR_FILE, and a re-measure must not overwrite the evidence the
+# assertion above it already used.
+RETRY_OUT="$SANDBOX/probe-retry.out"
+RETRY_ERR="$SANDBOX/probe-retry.err"
 
 # --- differential-reach fixture + signature capture (see the section below) ---
 # Declared here because the loop that follows records the populated-fixture half
@@ -450,11 +456,41 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     fail "$hook — could not measure elapsed time (TIMEFORMAT output unparsable)"
     continue
   fi
-  if awk -v s="$SECS" -v b="$BUDGET" -v n="$RATIO_NUM" -v d="$RATIO_DEN" \
-      'BEGIN { exit !(s < b * n / d) }'; then
-    pass "$hook ${SECS}s < $((BUDGET))s x $RATIO_NUM/$RATIO_DEN budget"
+  # min-of-N, not first-of-1 (Round-14 audit REL-M2). One wall-clock sample of a
+  # subprocess is a measurement of the RUNNER as much as of the hook, and this
+  # assertion is one of the two candidate root causes for the pair of
+  # unreproducible `1 suite(s) failed` runs in the 0.77.0 / 0.78.0 windows. The
+  # minimum over a few samples is the right estimator for "can this hook fit in
+  # its budget" — the budget is a per-invocation ceiling, not an average — and
+  # re-sampling costs nothing on the green path because it only happens after a
+  # sample has already missed.
+  #
+  # Stated limit: a re-run may take a per-session idempotence path some hooks
+  # have, so a hook that is slow ONLY on its first invocation can pass here. All
+  # samples are printed either way, so that case is visible rather than hidden.
+  under_budget() {
+    awk -v s="$1" -v b="$BUDGET" -v n="$RATIO_NUM" -v d="$RATIO_DEN" \
+      'BEGIN { exit !(s < b * n / d) }'
+  }
+  BEST="$SECS"
+  SAMPLES="$SECS"
+  if ! under_budget "$SECS"; then
+    for _attempt in 2 3; do
+      TIMEFORMAT='%R'
+      RESAMPLE=$( { time { env HOME="$FIX_HOME" ${PROBE_ENV[@]+"${PROBE_ENV[@]}"} \
+                             bash "$HOOK_SH" < "$EVT_FILE" > "$RETRY_OUT" 2> "$RETRY_ERR"; }; } 2>&1 )
+      [[ "$RESAMPLE" =~ ^[0-9]+\.[0-9]+$ ]] || continue
+      SAMPLES="$SAMPLES, $RESAMPLE"
+      if under_budget "$RESAMPLE"; then
+        BEST="$RESAMPLE"
+        break
+      fi
+    done
+  fi
+  if under_budget "$BEST"; then
+    pass "$hook ${BEST}s < $((BUDGET))s x $RATIO_NUM/$RATIO_DEN budget (samples: $SAMPLES)"
   else
-    fail "$hook took ${SECS}s against a ${BUDGET}s hooks.json timeout (limit: half the budget). A hook killed at its timeout emits nothing — a blocking gate fails OPEN silently."
+    fail "$hook took $SAMPLES (seconds, best-of) against a ${BUDGET}s hooks.json timeout (limit: half the budget). Every sample missed, so this is the hook and not runner load. A hook killed at its timeout emits nothing — a blocking gate fails OPEN silently."
   fi
 done
 

@@ -15,6 +15,37 @@ source "$HERE/lib/env-hygiene.sh" && claudemd_reset_test_env
 # shellcheck source=lib/run-suite.sh
 source "$HERE/lib/run-suite.sh"
 
+# Per-suite output capture + a failure NAME list (Round-14 audit REL-M3). `FAIL`
+# below is a counter and used to be the whole record: "OVERALL: 1 suite(s)
+# failed" named nothing, the node leg's 72 files could contribute at most 1 to
+# it, and no suite's stdout was kept. Two reds in the 0.77.0 / 0.78.0 release
+# windows are unattributable because of it. run_suite tees into this dir and
+# appends to CLAUDEMD_FAILED_SUITES; the summary at the bottom prints the names
+# and the tail of each failing log, then the dir is removed — the evidence goes
+# into the run's own output rather than becoming §8.V4 residue.
+SUITE_LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-suitelog-XXXXXX") || {
+  echo "FAIL: mktemp -d failed — cannot capture per-suite output"
+  exit 1
+}
+# shellcheck disable=SC2034  # read by run_suite in tests/lib/run-suite.sh
+CLAUDEMD_SUITE_LOG_DIR="$SUITE_LOG_DIR"
+# One trap for both sandboxes. The node leg used to install its own EXIT trap;
+# a second `trap ... EXIT` REPLACES the first, so the two cannot each own one.
+cleanup_run_all() {
+  [[ -n "${NODE_TMP:-}" ]] && rm -rf "$NODE_TMP"
+  [[ -n "${SUITE_LOG_DIR:-}" ]] && rm -rf "$SUITE_LOG_DIR"
+  return 0
+}
+trap cleanup_run_all EXIT
+
+# note_fail <label> — the static gates below are not suites, so run_suite cannot
+# name them. Bumping the counter and naming the leg is one operation; splitting
+# them is how the counter ended up being the only record.
+note_fail() {
+  record_suite_failure "$1"
+  FAIL=$((FAIL + 1))
+}
+
 # Repo-write guard (2026-07-25 audit): no test or script may commit into the
 # real repository. This is a CLASS gate, not a per-file one — `perf-baseline.sh`
 # escaped through for two months precisely because only the files someone
@@ -56,8 +87,12 @@ for t in "$HERE"/hooks/*.test.sh; do
   # assertion passing (`# fail 0`, every suite printing N/N). Same reasoning the
   # node cap above already documents: a real hang is INFINITE, so 300s catches it
   # exactly as well as 120s and the only cost is minutes to report a hang someone
-  # is already debugging. The per-row spawn is the actual cost driver and is filed
-  # rather than fixed here — see tasks/audit-2026-07-27-deferred.md.
+  # is already debugging. The per-row spawn is the actual cost driver and is
+  # deferred rather than fixed here: both candidate fixes (a batch stdin entry
+  # point, or making the hook sourceable) mean changing the hook under test for
+  # the test's convenience. Reopen when this leg exceeds 300s on the macOS
+  # runner. (Stated inline because the `tasks/audit-2026-07-27-deferred.md` this
+  # line used to cite was never written and never tracked — Round-14 REL-M4.)
   run_suite "$t" 300 || FAIL=$((FAIL + 1))
 done
 
@@ -96,12 +131,30 @@ echo "== Node.js script tests =="
 # just wrong. Verified: `TMPDIR=/nonexistent bash -c 'X=$(cd "$(mktemp -d)" && pwd -P)'`
 # yields the cwd. Physical-path resolution is still needed (macOS /var → /private/var).
 NODE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || { echo "FAIL: mktemp -d failed — cannot isolate the node leg"; exit 1; }
-# Removed explicitly ~20 lines down; the trap covers the paths that never reach
-# that line (a failing node leg under `set -e`, a signal) — 2026-09-02 audit R11-38.
-trap '[[ -n "${NODE_TMP:-}" ]] && rm -rf "$NODE_TMP"' EXIT
+# Removed explicitly ~20 lines down; the EXIT trap installed at the top of this
+# file covers the paths that never reach that line (a failing node leg under
+# `set -e`, a signal) — 2026-09-02 audit R11-38.
 NODE_TMP=$(cd "$NODE_TMP" && pwd -P) || { echo "FAIL: cannot resolve $NODE_TMP"; exit 1; }
-if ! TMPDIR="$NODE_TMP" node --test --test-timeout=180000 "$HERE"/scripts/*.test.js; then
+# TWO reporters, not a `| tee` (REL-M3). The terminal keeps the `spec` output it
+# has always shown — piping would flip node's default reporter to TAP and change
+# what every local run looks like — while a machine-readable TAP copy lands in
+# the log dir. Each top-level `not ok` line there is a FAILING FILE, which is the
+# name the old counter could not produce: 72 test files contributed at most 1 to
+# `FAIL` and nothing said which one.
+NODE_LOG="$SUITE_LOG_DIR/node-leg.tap"
+if ! TMPDIR="$NODE_TMP" node --test --test-timeout=180000 \
+  --test-reporter=spec --test-reporter-destination=stdout \
+  --test-reporter=tap --test-reporter-destination="$NODE_LOG" \
+  "$HERE"/scripts/*.test.js; then
   FAIL=$((FAIL + 1))
+  NODE_FAILED=$(grep -E '^not ok [0-9]+ - ' "$NODE_LOG" 2>/dev/null | head -40)
+  if [[ -n "$NODE_FAILED" ]]; then
+    while IFS= read -r nf; do
+      record_suite_failure "node --test → ${nf#not ok }"
+    done <<< "$NODE_FAILED"
+  else
+    record_suite_failure "node --test (tests/scripts/*.test.js) — non-zero exit with no 'not ok' line (crash before the first test?)"
+  fi
 fi
 # `node-compile-cache` is Node's own, not a suite's to clean — allowlisted by
 # EXACT name, not `node-*`: the glob form silently ignores anything a real leak
@@ -112,12 +165,12 @@ NODE_LEAKS=$(find "$NODE_TMP" -maxdepth 1 -mindepth 1 ! -name 'node-compile-cach
 if [[ -n "$NODE_LEAKS" ]]; then
   echo "FAIL: node test suite(s) left sandbox dirs behind (§8.V4 — dispose in a finally/afterEach):"
   printf '%s\n' "$NODE_LEAKS" | sed 's/^/      /'
-  FAIL=$((FAIL + 1))
+  note_fail "node leg: sandbox dirs left behind (§8.V4)"
 else
   echo "-- node suites left 0 sandbox dirs behind"
 fi
 [[ -n "$NODE_TMP" ]] && rm -rf "$NODE_TMP"
-trap - EXIT
+NODE_TMP=""
 
 echo "== Integration tests =="
 for t in "$HERE"/integration/*.test.sh; do
@@ -141,7 +194,7 @@ done
 echo "== bash 3.2 constructs =="
 if ! bash "$HERE/lib/bash32-constructs.sh"; then
   echo "FAIL: bash 4+ construct(s) found — these break the macOS /bin/bash 3.2 the hooks run under"
-  FAIL=$((FAIL + 1))
+  note_fail "gate: bash 3.2 constructs"
 fi
 
 # bash 3.2 RUNTIME, when a 3.2 binary is reachable. The static gate above is a
@@ -160,7 +213,7 @@ fi
 echo "== bash 3.2 runtime =="
 if ! bash "$HERE/lib/bash32-runtime.sh"; then
   echo "FAIL: hook suite(s) fail when EXECUTED under bash 3.2 — that is the macOS /bin/bash"
-  FAIL=$((FAIL + 1))
+  note_fail "gate: bash 3.2 runtime"
 fi
 
 # No hand-built /tmp paths in test suites (2026-07-28). mem-audit.test.sh and
@@ -184,7 +237,7 @@ if (( TEST_SH_COUNT < 20 )); then
   # comment claimed the opposite for as long as the branch existed).
   # Loud SKIP there, hard FAIL under CI where a missing index IS the defect.
   echo "SKIP: only $TEST_SH_COUNT tracked test .sh file(s) resolved (floor 20) — not a git checkout?"
-  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; note_fail "gate: test-suite /tmp writes (SKIP not acceptable under CI)"; }
 else
   TMP_WRITES=$(cd "$GUARD_REPO" && printf '%s\n' "$TEST_SH" | while IFS= read -r f; do
     [[ -f "$f" ]] || continue
@@ -202,7 +255,7 @@ else
   if [[ -n "$TMP_WRITES" ]]; then
     echo "FAIL: test suite(s) write to a hand-built /tmp path — use the suite's mktemp sandbox:"
     printf '%s\n' "$TMP_WRITES" | sed 's/^/      /'
-    FAIL=$((FAIL + 1))
+    note_fail "gate: test-suite /tmp writes"
   else
     echo "-- $TEST_SH_COUNT test suite(s) keep their writes inside mktemp sandboxes"
   fi
@@ -225,7 +278,7 @@ echo "== Fail-open mktemp =="
 MKTEMP_SH=$(git -C "$GUARD_REPO" ls-files '*.sh' 2>/dev/null)
 if [[ -z "$MKTEMP_SH" ]]; then
   echo "SKIP: no tracked .sh files resolved (not a git checkout?)"
-  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+  [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; note_fail "gate: fail-open mktemp (SKIP not acceptable under CI)"; }
 else
   FAILOPEN=$(cd "$GUARD_REPO" && printf '%s\n' "$MKTEMP_SH" | while IFS= read -r f; do
     [[ -f "$f" ]] || continue
@@ -235,7 +288,7 @@ else
     echo "FAIL: fail-open mktemp — \`cd \"\$(mktemp -d)\"\` yields the CWD when mktemp fails."
     echo "      Use two statements: X=\$(mktemp -d) || exit 1; X=\$(cd \"\$X\" && pwd -P) || exit 1"
     printf '%s\n' "$FAILOPEN" | sed 's/^/      /'
-    FAIL=$((FAIL + 1))
+    note_fail "gate: fail-open mktemp"
   else
     echo "-- $(printf '%s\n' "$MKTEMP_SH" | wc -l | tr -d ' ') shell file(s) free of fail-open mktemp"
   fi
@@ -248,7 +301,7 @@ echo "== Untemplated mktemp =="
 # cannot live inline, because the matcher quotes the syntax it looks for and so
 # matches its own pattern string (feedback_self_referential_marker_regex).
 if ! bash "$HERE/lib/mktemp-template.sh"; then
-  FAIL=$((FAIL + 1))
+  note_fail "gate: untemplated mktemp"
 fi
 
 echo "== Shellcheck =="
@@ -260,14 +313,14 @@ if command -v shellcheck >/dev/null 2>&1; then
   SHELL_FILES=$(bash "$HERE/lib/shell-files.sh" 2>/dev/null)
   if [[ -z "$SHELL_FILES" ]]; then
     echo "SKIP: no tracked .sh files resolved (not a git checkout, or below the floor)"
-    [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; FAIL=$((FAIL + 1)); }
+    [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI"; note_fail "gate: shellcheck (SKIP not acceptable under CI)"; }
   else
     # shellcheck disable=SC2086  # word splitting is the point: one arg per file
     if (cd "$GUARD_REPO" && shellcheck --severity=warning $SHELL_FILES); then
       echo "-- shellcheck: $(printf '%s\n' "$SHELL_FILES" | wc -l | tr -d ' ') file(s) clean at warning+"
     else
       echo "FAIL: shellcheck reported warning+ findings, or could not be run over them"
-      FAIL=$((FAIL + 1))
+      note_fail "gate: shellcheck"
     fi
   fi
 else
@@ -275,16 +328,16 @@ else
   # closes: npm-publish.yml installs shellcheck and then runs this suite, so if
   # that install is ever dropped the publish gate silently stops checking.
   echo "SKIP: shellcheck not installed — install it to see this class before pushing"
-  [[ -n "${CI:-}" ]] && { echo "FAIL: shellcheck must be installed in CI"; FAIL=$((FAIL + 1)); }
+  [[ -n "${CI:-}" ]] && { echo "FAIL: shellcheck must be installed in CI"; note_fail "gate: shellcheck not installed under CI"; }
 fi
 
 if (( HOOK_SUITES < HOOK_SUITE_FLOOR )); then
   echo "FAIL: only $HOOK_SUITES shell hook suite(s) ran (floor $HOOK_SUITE_FLOOR) — the glob matched nothing or the layer moved."
-  FAIL=$((FAIL + 1))
+  note_fail "gate: hook suite-count floor"
 fi
 if (( INTEGRATION_SUITES < INTEGRATION_SUITE_FLOOR )); then
   echo "FAIL: only $INTEGRATION_SUITES integration suite(s) ran (floor $INTEGRATION_SUITE_FLOOR) — the glob matched nothing or the layer moved."
-  FAIL=$((FAIL + 1))
+  note_fail "gate: integration suite-count floor"
 fi
 
 COMMITS_AFTER=$(git -C "$GUARD_REPO" rev-list --count HEAD 2>/dev/null || echo skip)
@@ -292,18 +345,36 @@ if [[ "$COMMITS_BEFORE" != "skip" && "$COMMITS_BEFORE" != "$COMMITS_AFTER" ]]; t
   echo "FAIL: the suite committed into the real repo ($COMMITS_BEFORE -> $COMMITS_AFTER)."
   echo "      A test or script wrote commits outside its sandbox — find it with:"
   echo "      git -C \"$GUARD_REPO\" log --oneline HEAD~$((COMMITS_AFTER - COMMITS_BEFORE))..HEAD"
-  FAIL=$((FAIL + 1))
+  note_fail "gate: repo-write guard (commits)"
 fi
 PORCELAIN_AFTER=$(git -C "$GUARD_REPO" status --porcelain 2>/dev/null || echo skip)
 if [[ "$PORCELAIN_BEFORE" != "skip" && "$PORCELAIN_BEFORE" != "$PORCELAIN_AFTER" ]]; then
   echo "FAIL: the suite changed the real working tree (uncommitted writes)."
   echo "      Diff of \`git status --porcelain\` before -> after:"
   diff <(printf '%s\n' "$PORCELAIN_BEFORE") <(printf '%s\n' "$PORCELAIN_AFTER") | sed 's/^/      /'
-  FAIL=$((FAIL + 1))
+  note_fail "gate: repo-write guard (working tree)"
 fi
 
 if (( FAIL > 0 )); then
   echo "OVERALL: $FAIL suite(s) failed"
+  # The list, not just the count. Everything below this line exists because
+  # "OVERALL: 1 suite(s) failed" was the entire diagnostic for two reds nobody
+  # could reproduce afterwards (Round-14 audit REL-M3).
+  if [[ -n "$CLAUDEMD_FAILED_SUITES" ]]; then
+    echo "FAILED:"
+    printf '%s' "$CLAUDEMD_FAILED_SUITES" | sed 's/^/      /'
+    # Tail of each captured suite log, so a red that does not reproduce still
+    # leaves its assertion text behind. Only the failing ones, 30 lines each.
+    while IFS= read -r entry; do
+      [[ -n "$entry" ]] || continue
+      sname=${entry%% (rc=*}
+      [[ -f "$SUITE_LOG_DIR/$sname.log" ]] || continue
+      echo "--- last 30 lines of $sname ---"
+      tail -n 30 "$SUITE_LOG_DIR/$sname.log" | sed 's/^/      /'
+    done <<< "$CLAUDEMD_FAILED_SUITES"
+  else
+    echo "FAILED: (no leg registered a name — a FAIL= increment bypassed note_fail/run_suite)"
+  fi
   exit 1
 fi
 echo "OVERALL: all suites passed"
