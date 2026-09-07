@@ -12,6 +12,8 @@ Round 15 of the spec audit (`docs/audit/20260906-231957.md` §8) left three Roun
 
 - `[fix]` **§5 Hard** is tagged `(HARD, self-enforced)` and enters `hard-rules.json` as `§5-hard-auth`. Twelve hard-AUTH categories had no manifest row, so §13.1's demote review and `/claudemd-rules` could not see the layer at all, while `sampling-audit.js` had been emitting a `§5-hard-auth` detector against it since v0.28.0. Verified 2026-09-07: a literal `rm -rf src/` returns exit 0 from `pre-bash-safety-check.sh` — the delete category has no hook behind it (audit SPEC-H4). Partition 6/16/2/1 → 6/17/2/1; 25 → 26 rules.
 
+- `[add]` **§8 Escape tokens** names the five bypass literals (`[allow-rm-rf-var]`, `[allow-npx-unpinned]`, `[allow-curl-sh]`, `[allow-banned-vocab]`, `[skip-memory-check]`) and every `DISABLE_*_HOOK`, and says what the deny text never did: they are AUTH artifacts. The hooks advertised the exit to whoever read the deny, which under `bypassPermissions` is the Agent; 30 days of `rule-hits.jsonl` carry 3 rm-rf and 3 memory-read bypasses with nothing recording who authorized them (audit SPEC-H3). The four deny messages in `pre-bash-safety-check.sh`, `banned-vocab-check.sh` (×2) and `memory-read-check.sh` now say the same thing the spec does.
+
 ---
 
 ## v6.27.0 (minor, 2026-09-07) — harness convergence: the spec keeps only what it adds on top of the Claude Code system prompt

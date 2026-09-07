@@ -447,6 +447,12 @@ const PINS = [
     anchor: '**Hard** (default; HARD, self-enforced',
     line: '**Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).',
   },
+  {
+    what: 'core §8 Escape tokens — the tokens are AUTH artifacts, not self-service (v6.28.0 wording)',
+    file: CORE,
+    anchor: '**Escape tokens** (`[allow-rm-rf-var]`',
+    line: '**Escape tokens** (`[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` / `[allow-banned-vocab]` / `[skip-memory-check]`, and every `DISABLE_*_HOOK`): AUTH artifacts, not self-service. A deny naming one is telling the USER an exit exists. Insert one only on explicit user authorization for that command in this task; self-issuing one to clear your own deny is a §5 breach, and on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.',
+  },
 ];
 
 for (const pin of PINS) {

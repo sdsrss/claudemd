@@ -187,6 +187,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 NPX: lockfile → local → pinned whitelist; none → `[AUTH REQUIRED]`.
 Secret leak: stop, placeholder, suggest rotation.
 HACK / EMERGENCY / AUTONOMOUS do NOT exempt §8.
+**Escape tokens** (`[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` / `[allow-banned-vocab]` / `[skip-memory-check]`, and every `DISABLE_*_HOOK`): AUTH artifacts, not self-service. A deny naming one is telling the USER an exit exists. Insert one only on explicit user authorization for that command in this task; self-issuing one to clear your own deny is a §5 breach, and on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.
 
 ### Verify-before-claim (HARD, 4 sub-rules)
 

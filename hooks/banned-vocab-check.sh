@@ -217,6 +217,7 @@ if (( ${#HITS[@]} != 0 )); then
   REASON_TEXT+=$'\n\n'"Bypass options:
   (a) Rewrite with absolute numbers (preferred).
   (b) Per-commit escape: include [allow-banned-vocab] in the commit message.
+      §8 Escape tokens: this is the user's call, not the agent's.
   (c) Disable the hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
 
 Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
@@ -411,6 +412,8 @@ REASON_TEXT+=$'\n\n'"Why this fires: §10-V (Specificity HARD) bans vague-positi
 
 Bypass options:
   (a) Add [allow-banned-vocab] to the current command (acknowledges the slip).
+      §8 Escape tokens: ask the user first — the token records a bypass, it
+      does not answer the finding.
   (b) Per-flag opt-out: BANNED_VOCAB_PROSE_SCAN=0 (keeps Path 1 commit-msg scan active).
   (c) Disable the whole hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
 

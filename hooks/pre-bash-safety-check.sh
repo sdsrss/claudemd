@@ -1866,6 +1866,9 @@ Bypass options:
       • Download then inspect:    curl -o s.sh URL && less s.sh && sh s.sh
   (b) Per-command escape token: include [allow-rm-rf-var], [allow-npx-unpinned],
       or [allow-curl-sh] in the command (records as bypass in rule-hits log).
+      The token is an AUTH artifact (§8 Escape tokens): the USER authorizes it
+      for this command. An agent self-issuing one to clear its own deny has
+      not satisfied §8 — it has logged that it went around it.
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged)."
 
 # v0.23.6 — file the deny telemetry under the granular §8 section(s) that
