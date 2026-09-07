@@ -664,6 +664,66 @@ hook_trigger_view() {
   hook_strip_heredoc_bodies | hook_flatten_cmd | awk "$HOOK_TRIGGER_QUOTE_AWK"
 }
 
+# hook_vocab_grep — the ONE way a §10-V pattern is matched on the bash side.
+#
+# LC_ALL=C, and that is the whole point (Round-14 audit ALG-H1). GNU grep's `\b`
+# is locale-aware: under a UTF-8 locale a CJK character is a word constituent,
+# so `\brobust\b` has NO boundary in `实现更robust的重试` and does not match,
+# while JS `\b` is ASCII-only and `claudemd lint` exits 1 on the same string.
+# The blocking hook was therefore silent on every English banned term embedded
+# in 中文 prose — the language this repo's own commit messages and chat prose
+# are written in — and the engine-parity gate was green because none of its 34
+# probes mixed scripts. Under the C locale the two engines read the boundary the
+# same way, which is the ASCII one.
+#
+# Safe for the 中文 PATTERNS in banned-vocab.patterns: they are literal
+# multi-byte sequences and match byte-wise. The one construct that would break
+# is a multi-byte character inside a bracket expression (one BYTE per position
+# under C), and the patterns file already avoids it by hand — the `(x|×)`
+# alternation carries that reasoning in its own comment.
+#
+# Consumers: hooks/banned-vocab-check.sh (Path 1 + Path 2) and
+# hooks/transcript-vocab-scan.sh. tests/scripts/banned-vocab-engine-parity.test.js
+# requires every §10-V pattern grep in both to come through here, and spawns its
+# own grep the same way — so the parity it measures is the parity that ships.
+hook_vocab_grep() {
+  LC_ALL=C grep "$@"
+}
+
+# HOOK_SANITIZE_FENCE_AWK — stage 1 of the identifier-strip: drop fenced code
+# blocks, WITH A TERMINATOR GUARD.
+#
+# An opening ``` starts a fence only if a closing fence line exists later;
+# otherwise it is literal text and everything after it stays scannable. Without
+# the guard a single unclosed fence blanks the rest of the turn, and a value
+# claim after it is invisible to the gate (Round-14 audit ALG-H3).
+# lint.js#stripIdentifiers has had the guard since the 2026-07-25 audit; the
+# note there says the bash side cannot reach the case because "newlines are
+# flattened first", which is true of transcript-vocab-scan.sh and FALSE of
+# banned-vocab-check.sh's Path 2 — that one joins its text blocks with "\n".
+# So the blocking engine was the one missing it.
+#
+# Buffering the input is bounded by construction: Path 2 caps its text at 4096
+# characters and the Stop scan hands this a single line.
+#
+# SINGLE SOURCE for both bash engines; tests/scripts/sanitize-stage-parity.test.js
+# extracts this program (rather than re-typing it, which is how the old copy
+# went on testing a fence-awk that no hook ran) and requires both hooks to use it.
+# shellcheck disable=SC2034  # consumed by the hooks that source this file
+HOOK_SANITIZE_FENCE_AWK='
+{ line[NR] = $0; if ($0 ~ /^[[:space:]]*```/) last = NR }
+END {
+  inf = 0
+  for (i = 1; i <= NR; i++) {
+    if (line[i] ~ /^[[:space:]]*```/) {
+      if (inf) { inf = 0; continue }
+      if (last > i) { inf = 1; continue }
+      print line[i]; continue
+    }
+    if (!inf) print line[i]
+  }
+}'
+
 # HOOK_GIT_GLOBAL_FLAGS — ERE fragment for git's global options, to be spliced
 # between `git` and its subcommand in a trigger regex:
 #

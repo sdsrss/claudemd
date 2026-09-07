@@ -89,8 +89,13 @@ LAST_TEXT=$(tail -n 200 "$TRANSCRIPT_PATH" 2>/dev/null \
 # Strip, in order: fenced code blocks → inline backtick spans → slashed-path
 # runs → bare `name.ext` files (lowercase extension only, so decimals/versions
 # like "3.5x"/"v6.14" survive and a bare-word claim still matches).
+# Stage 1 is the shared HOOK_SANITIZE_FENCE_AWK (hook-common.sh). This engine's
+# input is already one line, so the terminator guard it carries cannot change a
+# verdict here — it is used anyway so the three engines run ONE fence program
+# rather than three copies of it, which is how the blocking engine ended up
+# being the only one without the guard (Round-14 audit ALG-H3).
 LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
-  | awk '/^[[:space:]]*```/{f=!f; next} !f' \
+  | awk "$HOOK_SANITIZE_FENCE_AWK" \
   | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g')
 [[ -n "${LAST_TEXT//[[:space:]]/}" ]] || exit 0
 
@@ -125,8 +130,8 @@ while IFS= read -r line; do
   local_regex="${line%|*}"
   local_reason="${line##*|}"
   [[ "$local_reason" == "@ratio "* ]] && continue
-  if echo "$LAST_TEXT" | grep -qiE "$local_regex"; then
-    match=$(echo "$LAST_TEXT" | grep -oiE "$local_regex" | head -n1)
+  if echo "$LAST_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
+    match=$(echo "$LAST_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     HITS+=("$match")
     REASONS+=("$local_reason")
   fi

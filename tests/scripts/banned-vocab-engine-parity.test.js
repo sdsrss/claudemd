@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readPatterns, scan } from '../../scripts/lib/lint.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 // hooks/banned-vocab.patterns is the single source consumed by TWO regex engines:
 //   • banned-vocab-check.sh via `grep -iE` (POSIX ERE)
@@ -53,10 +58,30 @@ const PROBES = [
   'the fix is verified, 12/12 tests', // clean
   'refactor the parser module', // clean
   'p99 580ms then 140ms after', // clean, no banned token
+  // MIXED SCRIPT (Round-14 audit ALG-H1). Not one of the 34 probes above was
+  // mixed, and mixed is what this maintainer writes: `\b` in GNU grep under a
+  // UTF-8 locale treats CJK as word constituents, so there is no boundary at
+  // 更|r and the blocking hook allowed every English banned word embedded in
+  // 中文 prose while `claudemd lint` exited 1 on the same string. Both engines
+  // now read the boundary the ASCII way — the hook greps under LC_ALL=C, which
+  // is the locale grepMatches below spawns.
+  '实现更robust的重试逻辑',
+  '这个改动significantly提升了吞吐',
+  '覆盖很comprehensive了',
+  '中文里的robustness不该命中', // boundary control, mixed script
 ];
 
+// LC_ALL=C, because that is what hook_vocab_grep (hooks/lib/hook-common.sh)
+// runs and therefore what ships. Spawning grep in the ambient locale measured a
+// grep no hook invokes, which is how the mixed-script divergence below stayed
+// green: `\b` is locale-aware in GNU grep and ASCII-only in JS. The consumer
+// test at the bottom of this file is what keeps the two spellings together.
 function grepMatches(regex, probe) {
-  const r = spawnSync('grep', ['-iE', '--', regex], { input: probe, encoding: 'utf8' });
+  const r = spawnSync('grep', ['-iE', '--', regex], {
+    input: probe,
+    encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C' },
+  });
   // grep exit: 0 = match, 1 = no match, 2 = error. Treat 2/spawn-error as a
   // hard failure — a silently-broken grep would fake agreement.
   if (r.error || r.status === 2) {
@@ -77,6 +102,33 @@ test('§10-V: grep -iE and JS RegExp return the same verdict for every (pattern,
     }
   }
   assert.deepEqual(divergences, [], `engine divergence:\n${divergences.join('\n')}`);
+});
+
+// The parity above is measured under LC_ALL=C. That measurement is only worth
+// something if the shipped engines match under LC_ALL=C too, so this pins the
+// consumers rather than the locale string: every §10-V pattern grep in both
+// bash engines must go through hook_vocab_grep, which is the single place the
+// locale is set. Cardinality is asserted in both directions — a file that
+// stopped matching patterns entirely would otherwise pass with zero offenders
+// (feedback_gate_must_report_its_cardinality).
+const BASH_ENGINES = ['hooks/banned-vocab-check.sh', 'hooks/transcript-vocab-scan.sh'];
+
+test('§10-V: both bash engines match patterns through hook_vocab_grep (the LC_ALL=C seam)', () => {
+  for (const rel of BASH_ENGINES) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    const code = src.split('\n').filter(l => !/^\s*#/.test(l));
+    const patternGreps = code.filter(l => /grep\s+-[qo]iE\s+"\$local_regex"/.test(l));
+    const throughHelper = patternGreps.filter(l => /hook_vocab_grep\s+-[qo]iE/.test(l));
+    assert.ok(
+      patternGreps.length >= 2,
+      `${rel}: expected at least 2 §10-V pattern greps (a -qiE test and a -oiE extract), found ${patternGreps.length} — the matcher stopped matching, so this gate judges nothing`
+    );
+    assert.deepEqual(
+      patternGreps.filter(l => !throughHelper.includes(l)).map(l => l.trim()),
+      [],
+      `${rel}: a §10-V pattern grep bypasses hook_vocab_grep, so it runs in the ambient locale and \\b stops agreeing with the JS engine on mixed-script text`
+    );
+  }
 });
 
 test('§10-V: every pattern is exercised by at least one matching probe (no untested pattern)', () => {

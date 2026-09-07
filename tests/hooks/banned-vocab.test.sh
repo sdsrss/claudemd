@@ -528,8 +528,65 @@ else
 fi
 rm -f "$TMP_FIX"; rm -rf "$BV_LOG_HOME"
 
+# ============================================================================
+# Round-14 audit: the three shapes on which this hook and `claudemd lint`
+# returned OPPOSITE verdicts. Each is a hook FALSE NEGATIVE — the CLI exits 1,
+# the blocking gate allows — and none was reachable through the existing
+# probes, so the engine-parity gate was green over all of them.
+# ============================================================================
+
+# Case 46 (ALG-H4): an ESCAPED double quote inside the -m body. `"[^"]*"` stops
+# at the `\"`, so MSG_TEXT captured `fix: handle \` — non-empty, which is what
+# suppresses the whole-command fallback — and the rest of the message, banned
+# word included, was never scanned. Third instance of the escaped-quote family
+# (tasks/s8-sanitize-escaped-quote-gap.md is the §8 twin).
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+jq -cn '{session_id:"bv46",tool_name:"Bash",tool_input:{command:"git commit -m \"fix: handle \\\"null\\\" input, now robust\""}}' > "$TMP_FIX"
+assert_deny "46: escaped quote inside -m body does not truncate the scan → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 47 (ALG-H1): an English banned word with CJK on both sides. GNU grep's
+# `\b` in a UTF-8 locale treats CJK as word constituents, so there was no
+# boundary at 更|r and the pattern did not match; JS `\b` is ASCII-only and did.
+# The maintainer's own writing language was the one the blocking gate skipped.
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+jq -cn '{session_id:"bv47",tool_name:"Bash",tool_input:{command:"git commit -m \"feat: 实现更robust的重试逻辑\""}}' > "$TMP_FIX"
+assert_deny "47: banned word between CJK characters still matches → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Case 48 (ALG-H3): Path 2's fence-stripping awk had no terminator guard, so a
+# single unclosed ``` blanked the rest of the turn. lint.js has carried that
+# guard since the 2026-07-25 audit; the claim that the bash side cannot reach
+# the case ("newlines are flattened first") is true of transcript-vocab-scan.sh
+# and false here — this Path 2 joins its text blocks with "\n".
+PCWD="/work/p48"
+PSID="sess48"
+mk_prose_transcript "$PCWD" "$PSID" "Here is the snippet:
+\`\`\`
+const x = 1;
+
+The retry path is robust under load."
+EVENT_48=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); printf '%s' "$EVENT_48" > "$TMP_FIX"
+assert_deny "48: unterminated fence does not blank the rest of the turn → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
+# Control for 48: a CLOSED fence must still hide what is inside it. Without
+# this, "stop treating ``` as a fence at all" would pass case 48.
+PCWD="/work/p49"
+PSID="sess49"
+mk_prose_transcript "$PCWD" "$PSID" "Example output:
+\`\`\`
+this build is robust
+\`\`\`
+Nothing claimed here."
+EVENT_49=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); printf '%s' "$EVENT_49" > "$TMP_FIX"
+assert_pass "49: closed fence still hides the word inside it" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((46 - FAIL))/46 passed"
+  echo "Tests: $((50 - FAIL))/50 passed"
   exit 1
 fi
-echo "Tests: 46/46 passed"
+echo "Tests: 50/50 passed"

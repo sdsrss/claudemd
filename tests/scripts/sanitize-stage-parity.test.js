@@ -36,17 +36,42 @@ function sedProgramOf(hookRel) {
   return m[1].replace(/'\)$/, '');
 }
 
+/**
+ * The fence-strip awk program, read out of hook-common.sh.
+ *
+ * It used to be TYPED INTO THIS FILE as a literal, which is the exact defect
+ * this file's header complains about one paragraph up: the gate ran a fence-awk
+ * of its own while the hooks ran theirs, so the blocking engine could lose the
+ * unterminated-fence terminator guard and this test would not notice — it never
+ * executed the hook's program (Round-14 audit ALG-H3).
+ */
+function fenceAwkProgram() {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'hooks/lib/hook-common.sh'), 'utf8');
+  const m = src.match(/^HOOK_SANITIZE_FENCE_AWK='([\s\S]*?)'$/m);
+  assert.ok(m, 'hook-common.sh: could not extract HOOK_SANITIZE_FENCE_AWK');
+  return m[1];
+}
+
+/** Each bash engine must run THAT program, not one of its own. */
+function assertUsesSharedFenceAwk(hookRel) {
+  const src = fs.readFileSync(path.join(REPO_ROOT, hookRel), 'utf8');
+  const code = src.split('\n').filter(l => !/^\s*#/.test(l));
+  assert.ok(
+    code.some(l => /\|\s*awk "\$HOOK_SANITIZE_FENCE_AWK"/.test(l)),
+    `${hookRel}: sanitize stage does not run the shared HOOK_SANITIZE_FENCE_AWK`
+  );
+  assert.deepEqual(
+    code.filter(l => /awk '\/\^\[\[:space:\]\]\*```\//.test(l)).map(l => l.trim()),
+    [],
+    `${hookRel}: an inline fence-awk is back — that is the copy that lost the terminator guard`
+  );
+}
+
 /** Run a hook's sanitize stage (fence-awk + extracted sed) over one probe. */
 function hookSanitize(sedProgram, text) {
   return execFileSync(
     'bash',
-    [
-      '-c',
-      `printf '%s\\n' "$1" | awk '/^[[:space:]]*\`\`\`/{f=!f; next} !f' | sed -E "$2"`,
-      'bash',
-      text,
-      sedProgram,
-    ],
+    ['-c', `printf '%s\\n' "$1" | awk "$3" | sed -E "$2"`, 'bash', text, sedProgram, fenceAwkProgram()],
     { encoding: 'utf8' }
   );
 }
@@ -68,6 +93,12 @@ const PROBES = [
   ['the coverage is comprehensive', true], // bare-word claim — MUST survive
   ['results look robust overall', true], // bare-word claim — MUST survive
   ['3.5x faster on the robust path', true], // decimals/versions must NOT be eaten by the name.ext clause
+  // Fence handling, both directions (Round-14 audit ALG-H3). The unterminated
+  // case is the divergence: an opening ``` with no closer is literal text, so a
+  // claim after it must stay scannable. The blocking engine's inline awk blanked
+  // to EOF, which lint.js has not done since the 2026-07-25 audit.
+  ['see below:\n```\nconst x = 1;\n\nthe retry path is robust', true],
+  ['example:\n```\nthis build is robust\n```\nnothing claimed here', false],
 ];
 
 const HIGH_FIRE = /\b(comprehensive|robust)\b/i;
@@ -86,4 +117,9 @@ test('sanitize stage: all three engines agree on every probe shape', () => {
       );
     }
   }
+});
+
+test('sanitize stage: both bash engines run the shared fence program, not a copy', () => {
+  assertUsesSharedFenceAwk('hooks/banned-vocab-check.sh');
+  assertUsesSharedFenceAwk('hooks/transcript-vocab-scan.sh');
 });

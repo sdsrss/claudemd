@@ -159,8 +159,27 @@ if (( IS_GIT_COMMIT == 1 )); then
 # denied a clean-message commit that the identical `-m` form would have passed.
 # BSD-safe: uses octal \047 for single quote inside regex (some macOS seds/greps
 # don't understand \x27).
+#
+# The three DOUBLE-quoted arms model the backslash, the single-quoted ones do
+# not, and that asymmetry is bash's own (Round-14 audit ALG-H4). Inside "…" a
+# backslash consumes the next character, so `\"` does not close the string;
+# inside '…' there is no escape processing at all and the first `'` ends it.
+# Pre-fix all six arms were `<q>[^<q>]*<q>`, so
+#   git commit -m "fix: handle \"null\" input, now robust"
+# matched only up to the `\"`. MSG_TEXT came out as `fix: handle \` — non-empty,
+# which is exactly what suppresses the whole-command fallback below — and the
+# banned word in the rest of the message was never scanned while `claudemd lint`
+# exited 1 on it. Third instance of the escaped-quote family; the §8 verdict-side
+# twin is tasks/s8-sanitize-escaped-quote-gap.md.
+#
+# `[^"\\]|\\.` rather than a state machine: POSIX ERE loses the backslash's
+# special meaning inside a bracket expression, so `[^"\\]` is "neither a quote
+# nor a backslash" on GNU and BSD grep alike, and `\\.` consumes an escaped pair
+# as a unit — including `\\` itself, so a body ending in a literal backslash
+# still closes at the right quote instead of swallowing the command after it.
 SQ=$'\047'
-MSG_REGEX="-[[:alpha:]]*m[[:space:]]+\"[^\"]*\"|-[[:alpha:]]*m[[:space:]]+${SQ}[^${SQ}]*${SQ}|--message=\"[^\"]*\"|--message=${SQ}[^${SQ}]*${SQ}|--message[[:space:]]+\"[^\"]*\"|--message[[:space:]]+${SQ}[^${SQ}]*${SQ}"
+DQ_BODY='([^"\\]|\\.)*'
+MSG_REGEX="-[[:alpha:]]*m[[:space:]]+\"${DQ_BODY}\"|-[[:alpha:]]*m[[:space:]]+${SQ}[^${SQ}]*${SQ}|--message=\"${DQ_BODY}\"|--message=${SQ}[^${SQ}]*${SQ}|--message[[:space:]]+\"${DQ_BODY}\"|--message[[:space:]]+${SQ}[^${SQ}]*${SQ}"
 MSG_TEXT=""
 while IFS= read -r match; do
   body=$(printf '%s' "$match" | sed -E "s/^(-[[:alpha:]]*m|--message([= ]))[\"${SQ}]?//; s/[\"${SQ}]\$//")
@@ -198,11 +217,11 @@ while IFS= read -r line; do
     is_ratio=1
     local_reason="${local_reason#@ratio }"
   fi
-  if echo "$MSG_TEXT" | grep -qiE "$local_regex"; then
+  if echo "$MSG_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
     if (( is_ratio == 1 && BASELINE_EXEMPT == 1 )); then
       continue
     fi
-    match=$(echo "$MSG_TEXT" | grep -oiE "$local_regex" | head -n1)
+    match=$(echo "$MSG_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     HITS+=("$match")
     REASONS+=("$local_reason")
   fi
@@ -346,8 +365,13 @@ fi
 # bare-prose violations still match. Keep the clause list identical to
 # transcript-vocab-scan.sh + lib/lint.js#stripIdentifiers —
 # tests/scripts/sanitize-stage-parity.test.js extracts and runs this program.
+#
+# Stage 1 is HOOK_SANITIZE_FENCE_AWK (hook-common.sh), not an inline toggle. The
+# inline one had no terminator guard, so an unclosed ``` blanked every line
+# after it and a claim below it was invisible to this gate while `claudemd lint`
+# still caught it (Round-14 audit ALG-H3).
 LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
-  | awk '/^[[:space:]]*```/{f=!f; next} !f' \
+  | awk "$HOOK_SANITIZE_FENCE_AWK" \
   | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g')
 
 # Scan high-fire region of PATTERNS_FILE only. Stop at prophylactic marker.
@@ -385,8 +409,8 @@ while IFS= read -r line; do
   # in prose scan (chat prose has different conventions than commit msgs;
   # the baseline-context exemption in Path 1 doesn't transfer cleanly).
   [[ "$local_reason" == "@ratio "* ]] && continue
-  if echo "$LAST_TEXT" | grep -qiE "$local_regex"; then
-    match=$(echo "$LAST_TEXT" | grep -oiE "$local_regex" | head -n1)
+  if echo "$LAST_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
+    match=$(echo "$LAST_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     PROSE_HITS+=("$match")
     PROSE_REASONS+=("$local_reason")
   fi
