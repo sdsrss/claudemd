@@ -733,6 +733,32 @@ fi
 rm -rf "$UC_EMPTY"
 rm -f "$UC_SENTINEL"
 
+# Case 36c: the backup entry is a DANGLING SYMLINK, which is what createBackup
+# leaves for a stow/chezmoi spec — it re-points the link into the backup dir
+# rather than copying bytes, and install classifies an unreadable ~/.claude/
+# CLAUDE.md as user content. `-e` follows links, so a fully SUCCESSFUL install
+# in exactly the dotfiles shape those two blocks exist for was reported as
+# interrupted, and the banner naming CLAUDEMD_SPEC_ACTION=restore — the one the
+# user needs — was suppressed (v0.81.0 pre-tag review, MEDIUM-1).
+uc_reset_fresh
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+UC_LINKDIR="$HOME/.claude/backup-20200102T000000000Z"
+mkdir -p "$UC_LINKDIR" "$HOME/.claude/.claudemd-state"
+ln -s "$HOME/dotfiles-gone/CLAUDE.md" "$UC_LINKDIR/CLAUDE.md"
+jq -cn --arg d "$UC_LINKDIR" '{ts:"2026-09-07T00:00:00Z",backupDir:$d}' > "$UC_SENTINEL"
+OUT36C=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+CTX36C=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT36C" 2>/dev/null || echo "")
+if grep -qF 'NO LONGER in effect' <<<"$CTX36C" \
+   && grep -qF 'CLAUDEMD_SPEC_ACTION=restore' <<<"$CTX36C" \
+   && ! grep -qF 'an install was interrupted' <<<"$CTX36C" \
+   && [[ ! -f "$UC_SENTINEL" ]]; then
+  echo "PASS: 36c a backed-up dangling symlink is a completed move, not an interrupted one"
+else
+  echo "FAIL: 36c (out=$OUT36C)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$UC_LINKDIR"
+rm -f "$UC_SENTINEL"
+
 # Case 37: the two guards this release added to the pre-bootstrap exits. They
 # are the paths that FIX the banner-loss bug (a pending consume-once banner used
 # to be dropped when the hook bailed before the install), so leaving them

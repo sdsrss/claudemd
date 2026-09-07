@@ -129,6 +129,16 @@ test('§10-V: both bash engines match patterns through hook_vocab_grep (the LC_A
       `${rel}: a §10-V pattern grep bypasses hook_vocab_grep, so it runs in the ambient locale and \\b stops agreeing with the JS engine on mixed-script text`
     );
   }
+  // …and the helper's own body, which nothing here read (v0.81.0 pre-tag review,
+  // LOW-5). Deleting `LC_ALL=C` from hook_vocab_grep left this whole file green
+  // while restoring the exact ALG-H1 divergence — the locale this test spawns
+  // grep under was hard-coded here and asserted nowhere against the shipped one.
+  const helper = fs.readFileSync(path.join(REPO_ROOT, 'hooks/lib/hook-common.sh'), 'utf8');
+  assert.match(
+    helper,
+    /^hook_vocab_grep\(\) \{\n {2}LC_ALL=C grep "\$@"\n\}$/m,
+    'hooks/lib/hook-common.sh: hook_vocab_grep must be exactly `LC_ALL=C grep "$@"` — the locale is the whole point of the helper, and the parity above is measured under it'
+  );
 });
 
 test('§10-V: every pattern is exercised by at least one matching probe (no untested pattern)', () => {

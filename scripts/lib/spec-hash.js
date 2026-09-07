@@ -64,8 +64,49 @@ function danglingLinkTarget(p) {
   }
 }
 
+// `<dest>.claudemd-tmp-<pid>` left by a killed run. The tmp+rename swap has no
+// `finally` a SIGKILL can reach, and the bootstrap SIGKILLs this process at 4s
+// and 10s — so a kill in that window leaves a full copy of the spec behind, and
+// on a dotfiles-symlinked spec `realDest` resolves through the link and the file
+// lands inside the user's own git repo. Nothing else reaps it: clean-residue's
+// inventory is $TMPDIR and the state dir (v0.81.0 pre-tag review, LOW-4).
+//
+// Best-effort and age-gated: a tmp file younger than the window may belong to a
+// concurrent writer, and this function must never delete one of those.
+const TMP_SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
+function sweepStaleTmpCopies(destPaths, now = Date.now()) {
+  const swept = [];
+  for (const dir of new Set(destPaths.map(d => path.dirname(d)))) {
+    let names;
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!/\.claudemd-tmp-\d+$/.test(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        if (now - fs.lstatSync(full).mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        fs.rmSync(full, { force: true });
+        swept.push(full);
+      } catch {
+        /* raced or unreadable — leaving it is the safe direction */
+      }
+    }
+  }
+  return swept;
+}
+
 export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null } = {}) {
   const written = [];
+  // Before writing, not after: a run that is itself killed should still have
+  // cleared the previous run's leftovers.
+  try {
+    sweepStaleTmpCopies(names.map(n => homeSpec(n)));
+  } catch {
+    /* best-effort — never fail an install over a sweep */
+  }
   try {
     for (const name of names) {
       const src = path.join(pluginRoot, 'spec', name);

@@ -211,8 +211,20 @@ else
   ng "14: missed bare-prose violation next to identifier (out: $OUT)"
 fi
 
+# 15: the mixed-script shape, on the Stop-side engine. Both engines share
+# hook_vocab_grep, so a regression is caught by the commit-path suite's case 47 —
+# but this engine's own §10-V behaviour on 中文 prose was asserted nowhere
+# (v0.81.0 pre-tag review, LOW-6). The maintainer's prose is the CJK in question.
+write_transcript '这次改动实现了更robust的重试逻辑。'
+OUT=$(TRANSCRIPT_VOCAB_SCAN=1 bash -c "echo '$EVENT_BASE' | bash '$HOOK' 2>&1")
+if echo "$OUT" | grep -qi 'robust'; then
+  ok "15: English banned term between CJK characters fires on the Stop scan"
+else
+  ng "15: mixed-script violation missed by the Stop scan (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"
+  echo "Tests: $((15 - FAIL))/15 passed"
   exit 1
 fi
-echo "Tests: 14/14 passed"
+echo "Tests: 15/15 passed"

@@ -1050,3 +1050,14 @@ pass	HK-L1 find -delete under a literal path	find /tmp/work -delete
 pass	HK-L1 find -delete under a relative literal path	find . -name "*.tmp" -delete	
 pass	HK-L1 find on a var that deletes nothing	find "$BUILD_DIR" -name "*.log" -print	
 pass	HK-L1 find -delete with the token	find "$BUILD_DIR" -delete # [allow-rm-rf-var]	
+deny	HIGH-1 find -L global option precedes the path	find -L "$BUILD_DIR" -delete	
+deny	HIGH-1 find -P global option precedes the path	find -P "$BUILD_DIR" -type f -exec rm -rf {} +	
+deny	HIGH-1 find -H global option precedes the path	find -H "$BUILD_DIR" -delete	
+deny	HIGH-1 find -O3 optimisation level precedes the path	find -O3 "$BUILD_DIR" -delete	
+deny	HIGH-1 find -D debug option consumes its own argument	find -D tree "$BUILD_DIR" -delete	
+pass	MEDIUM-2 bounded find under $HOME is not an unbounded delete	find "$HOME" -maxdepth 1 -name ".DS_Store" -delete	
+pass	MEDIUM-2 bounded find under $PWD	find "$PWD" -name "*.orig" -delete	
+pass	MEDIUM-2 bounded find under $TMPDIR	find "$TMPDIR" -name "claudemd-test-*" -delete	
+pass	MEDIUM-2 bounded find by -type on a whitelisted var	find "$OLDPWD" -type f -newer ref -delete	
+deny	MEDIUM-2 an UNBOUNDED find on a whitelisted var still denies	find "$HOME" -delete	
+deny	MEDIUM-2 -maxdepth alone does not bound a delete	find "$HOME" -maxdepth 2 -delete	

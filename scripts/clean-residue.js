@@ -271,10 +271,15 @@ const UID_DIR_PATTERN = /^claude-\d+$/;
 // stale: this feeds a deletion, so an incomplete measurement must not be able
 // to authorise one. The cost is that a very large directory is never reaped
 // automatically, which is the side to be wrong on.
-const MTIME_WALK_MAX_DEPTH = 4;
+// Depth 8, not 4 (v0.81.0 pre-tag review, LOW-3): a session scratchpad with
+// `scratchpad/tasks/<slug>/…` reaches 4 without trying, and a truncated walk
+// answers FRESH — so the §7-EXT retention window silently stopped applying to
+// every directory that happened to be deep. The entry cap stays, because one
+// `node_modules` is 5000 entries and this runs per candidate.
+const MTIME_WALK_MAX_DEPTH = 8;
 const MTIME_WALK_MAX_ENTRIES = 5000;
 function newestMtimeMs(full, stat, now) {
-  if (!stat.isDirectory()) return stat.mtimeMs;
+  if (!stat.isDirectory()) return { mtimeMs: stat.mtimeMs, truncated: false };
   let newest = stat.mtimeMs;
   let budget = MTIME_WALK_MAX_ENTRIES;
   let truncated = false;
@@ -307,7 +312,9 @@ function newestMtimeMs(full, stat, now) {
     }
   };
   walk(full, 1);
-  return truncated ? now : newest;
+  // Reported, not just applied: a caller that sees `ageTruncated` knows the
+  // number is a floor rather than a measurement.
+  return { mtimeMs: truncated ? now : newest, truncated };
 }
 
 export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
@@ -317,8 +324,9 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
     // §8.V4 exemption: a dir carrying a .keep marker is deliberately retained WIP,
     // not tool-exhaust — skip it regardless of age.
     if (stat.isDirectory() && fs.existsSync(path.join(full, '.keep'))) return;
-    const ageDays = Math.max(0, (now - newestMtimeMs(full, stat, now)) / 86400000); // clamp: see scan()
-    candidates.push({ path: full, ageDays });
+    const { mtimeMs, truncated } = newestMtimeMs(full, stat, now);
+    const ageDays = Math.max(0, (now - mtimeMs) / 86400000); // clamp: see scan()
+    candidates.push(truncated ? { path: full, ageDays, ageTruncated: true } : { path: full, ageDays });
   };
   let entries;
   try {

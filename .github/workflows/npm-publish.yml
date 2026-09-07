@@ -17,8 +17,10 @@ name: npm-publish
 #   Permissions: publish for the `claudemd-cli` package (granular token scope).
 #   Lifetime: rotate on a schedule consistent with org policy.
 #
-# Pre-publish gate: tests/run-all.sh must pass on BOTH Linux node legs before
-# `publish` runs. node 20 is the engines floor (node:sqlite absent — exercises
+# Pre-publish gate: `publish` needs BOTH the `static` job and every leg of the
+# `test` matrix — three Linux node legs plus one macOS leg (Round-14 audit
+# REL-H2/M5; the header below described a narrower gate than the file now
+# declares, in the same commit that widened it). node 20 is the engines floor (node:sqlite absent — exercises
 # the degradation path); node 22 has node:sqlite, so it is the only leg that
 # runs the real cross-layer SQL query. Gating on node 20 alone (through v0.57.0)
 # left that query invisible to the publish gate while ci.yml — which does run it
@@ -29,8 +31,10 @@ name: npm-publish
 # regression test then ran only under npm 10/11 in this gate. A publish gate
 # that never executes the maintainer's own runtime is the shape that let that
 # through, and it is the runtime `engines: >=20` invites users onto.
-# The macOS leg stays out: it is belt-and-suspenders for plugin behavior on
-# developer laptops, not a publish gate.
+# ONE macOS leg is in, on node 24. macOS is the whole reason the bash-3.2 gates
+# exist — /bin/bash there is 3.2 — and it was the leg red on v0.73.0, v0.74.0 and
+# v0.75.0, all three of which published anyway. One leg rather than three: macOS
+# runners are ~4x slower at process creation and this gate blocks a release.
 #
 # fetch-depth: 0 — tests/integration/upgrade-lifecycle.test.sh needs tag v0.2.3
 # reachable; under the previous shallow checkout it loud-skipped, so the publish

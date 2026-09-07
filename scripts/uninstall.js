@@ -49,7 +49,7 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // header already describes — an unmatched file is left behind, never wrongly
 // deleted.
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
@@ -111,7 +111,12 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
     for (const name of fs.readdirSync(sd)) {
       if (!CLAUDEMD_STATE_FILE_RE.test(name)) continue;
       try {
-        fs.rmSync(path.join(sd, name), { force: true });
+        // `recursive` because `ship-baseline-recent` is a DIRECTORY
+        // (ship-baseline-check.sh) — without it rmSync throws EISDIR into this
+        // catch and the one shape this loop could not drop was one of our own
+        // (v0.81.0 pre-tag review, LOW-2). Bounded: the entry already matched
+        // CLAUDEMD_STATE_FILE_RE, so only names claudemd writes get here.
+        fs.rmSync(path.join(sd, name), { recursive: true, force: true });
       } catch {
         /* best-effort */
       }

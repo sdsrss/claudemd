@@ -1215,3 +1215,27 @@ test('SCR-M3: install prunes personal backups without evicting legacy spec-shape
     "this run's personal backup must survive its own prune"
   );
 });
+
+test('LOW-4: a spec tmp copy left by a killed run is swept, and a fresh one is not', async () => {
+  // The tmp+rename swap has no `finally` a SIGKILL can reach, and the bootstrap
+  // SIGKILLs this process at 4s and 10s. A leftover is a full copy of the spec,
+  // and on a dotfiles-symlinked spec it lands inside the user's git repo.
+  const claudeDir = path.join(tmpHome, '.claude');
+  const stale = path.join(claudeDir, 'CLAUDE.md.claudemd-tmp-424242');
+  const fresh = path.join(claudeDir, 'CLAUDE-extended.md.claudemd-tmp-424243');
+  fs.writeFileSync(stale, '# a whole spec copy\n');
+  fs.writeFileSync(fresh, '# another run, still going\n');
+  const old = new Date(Date.now() - 60 * 60 * 1000);
+  fs.utimesSync(stale, old, old);
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.equal(fs.existsSync(stale), false, 'an hour-old tmp copy must be swept');
+  assert.equal(
+    fs.existsSync(fresh),
+    true,
+    'a tmp copy younger than the window may belong to a concurrent writer and must survive'
+  );
+});

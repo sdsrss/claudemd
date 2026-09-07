@@ -11,7 +11,7 @@ Backup is conditional, not universal: only genuine USER content is moved aside, 
 
 Surface the JSON output as a one-line human summary:
 
-- `spec`: `fresh` (no prior files) | `backup-and-overwrite` (existing files moved to `backup-<ISO>/`).
+- `spec`: `fresh` (no prior files) | `backup-and-overwrite` (existing files moved to `backup-<ISO>/`) | `overwrite-spec` (a claudemd spec was already there) | `skipped-locked` (another install held the lock — **report this as "did nothing", not as a success**; `entries` is empty because this run installed nothing).
 - `backupDir`: path to the backup directory when applicable.
 - `userContentDetected: true` — flag this loudly: the existing `~/.claude/CLAUDE.md` did not look like a claudemd spec; the user's hand-written content is in `backupDir/CLAUDE.md`. To bring it back on uninstall, run `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`.
 - `entries.length`: number of registered hooks.

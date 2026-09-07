@@ -1054,3 +1054,34 @@ test('SCR-M5: a directory whose FILES are fresh is not stale, whatever its own m
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('LOW-3: a deep directory is aged, not silently reported fresh', () => {
+  // Depth 4 was reached by ordinary nesting and a truncated walk answered
+  // FRESH, so the retention window stopped applying to a whole class without
+  // saying so (v0.81.0 pre-tag review).
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-low3-'));
+  try {
+    const uid = path.join(root, 'claude-1000');
+    const deep = path.join(uid, 'old-deep');
+    fs.mkdirSync(path.join(deep, 'a/b/c/d'), { recursive: true });
+    fs.writeFileSync(path.join(deep, 'a/b/c/d/f.txt'), 'x\n');
+    const shallow = path.join(uid, 'old-shallow');
+    fs.mkdirSync(shallow, { recursive: true });
+    fs.writeFileSync(path.join(shallow, 'f.txt'), 'x\n');
+
+    const old = new Date(Date.now() - 60 * 86400000);
+    const walk = p => {
+      const st = fs.lstatSync(p);
+      if (st.isDirectory()) for (const n of fs.readdirSync(p)) walk(path.join(p, n));
+      fs.utimesSync(p, old, old);
+    };
+    walk(uid);
+
+    const { candidates } = scanClaudeTmp({ claudeTmpDir: root });
+    const byPath = Object.fromEntries(candidates.map(c => [c.path, c.ageDays]));
+    assert.ok(byPath[deep] > 59, `a 60-day-old directory five levels deep read as ${byPath[deep]} days`);
+    assert.ok(byPath[shallow] > 59);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

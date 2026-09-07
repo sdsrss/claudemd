@@ -847,19 +847,41 @@ if (( bypass_rm == 0 )); then
     # `find . -name '*.tmp' -delete` stays ALLOW: `.` carries no expansion, and
     # the per-target check below skips any target without one.
     S8_RM_VERB="rm -rf"
+    S8_FIND_BOUNDED=0
     if [[ "$rm_canon" == find ]]; then
       find_args="${trimmed#"$rm_word"}"
       if printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-delete([[:space:]]|$)' \
         || printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-(exec|execdir)[[:space:]]+([^[:space:]]*/)?\\?rm([[:space:]]|$)'; then
+        # find's GLOBAL options come BEFORE the path operands (`find -L "$D"
+        # -delete`), so the first `-`-prefixed token is not necessarily where the
+        # expression starts. Breaking on it left `find_paths` empty and the whole
+        # segment skipped — `-L` is an everyday spelling, not an adversarial one
+        # (v0.81.0 pre-tag review, HIGH-1). `-D` takes a separate argument;
+        # `-O<level>` carries its own.
         find_paths=""
+        skip_next=0
         set -f
         for tok in $find_args; do
+          if (( skip_next == 1 )); then skip_next=0; continue; fi
           case "$tok" in
+            -[HLP]) continue ;;
+            -O[0-9]*) continue ;;
+            -D) skip_next=1; continue ;;
             -*) break ;;
             *) find_paths="$find_paths $tok" ;;
           esac
         done
         set +f
+        # Does the expression SELECT, or does it match everything? `find "$HOME"
+        # -name '.DS_Store' -delete` is bounded by its primary; `find "$HOME"
+        # -delete` is not. The whitelisted-var arm below exists for the second
+        # shape only — its rationale ("bare $HOME rms the entire home") does not
+        # transfer to the first, and denying it is a false positive on an
+        # everyday command (v0.81.0 pre-tag review, MEDIUM-2). `-maxdepth` is
+        # deliberately NOT a selector: it bounds depth, not what is deleted.
+        if printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-(i?name|i?path|i?regex|i?lname|type|xtype|newer[a-zA-Z]*|[acm]min|[acm]time|size|perm|user|group|uid|gid|links|empty|samefile|executable|readable|writable)([[:space:]]|$)'; then
+          S8_FIND_BOUNDED=1
+        fi
         if [[ -n "${find_paths//[[:space:]]/}" ]]; then
           S8_RM_VERB="find … -delete/-exec rm"
           trimmed="rm -rf$find_paths"
@@ -930,10 +952,19 @@ if (( bypass_rm == 0 )); then
     residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g; s/[(){}]//g')
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
-        if [[ ! "$residue" =~ [^/] ]]; then
+        if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
           HITS+=("$S8_RM_VERB \$$varname with no literal subpath (bare whitelisted-var expansion)")
           HIT_SECTIONS+=('§8-rm-rf-var')
-          REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+          # Verb-specific advice. "Add a subpath" is the fix for `rm -rf $HOME`;
+          # for a find it is not — adding one changes what the command means, and
+          # what actually bounds a find is a selection primary. Telling the user
+          # otherwise sends them to edit their command to get past a gate
+          # (v0.81.0 pre-tag review, MEDIUM-2).
+          if [[ "$S8_RM_VERB" == "rm -rf" ]]; then
+            REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+          else
+            REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare $'"$varname"$' with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
+          fi
         fi
         ;;
       *)

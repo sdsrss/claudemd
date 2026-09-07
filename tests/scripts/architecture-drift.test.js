@@ -494,7 +494,7 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   // now pins WHICH stem is unmatched, so a future omission fails here loudly
   // instead of quietly widening the control.
   const mutated =
-    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json|user-content-backup\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|user-content-backup\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
   const stateOnly = [...statePathsInSource()]
     .filter(([, family]) => family === 'state')
     .map(([name]) => name)

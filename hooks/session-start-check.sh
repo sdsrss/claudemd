@@ -286,7 +286,16 @@ emit_user_content_banner() {
   # sentinel implies. Both states are worth telling the user about; they are
   # different states and used to read identically.
   local msg
-  if [[ -n "$backup_dir" && ! -e "$backup_dir/CLAUDE.md" ]]; then
+  # `-e` follows the link and `-L` does not (v0.81.0 pre-tag review, MEDIUM-1).
+  # createBackup deliberately RE-POINTS a symlinked spec into the backup dir
+  # rather than copying its bytes, and install classifies an unreadable
+  # ~/.claude/CLAUDE.md as user content — so the stow/chezmoi shape both of
+  # those blocks exist for lands a DANGLING link here, and an `-e` test read a
+  # fully successful install as an interrupted one while suppressing the banner
+  # that names CLAUDEMD_SPEC_ACTION=restore. The entry being present is what
+  # says the move happened; whether its target still resolves is the user's
+  # dotfiles business.
+  if [[ -n "$backup_dir" && ! -e "$backup_dir/CLAUDE.md" && ! -L "$backup_dir/CLAUDE.md" ]]; then
     msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. Disable this notice: DISABLE_USER_CONTENT_BANNER=1"
     jq -cn --arg ctx "$msg" '{
       suppressOutput: true,

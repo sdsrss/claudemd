@@ -623,6 +623,19 @@ if (invokedAsMain(import.meta.url)) {
   const pluginRoot = resolvePluginRoot(import.meta.url);
   install({ pluginRoot })
     .then(r => {
+      // Say it on stderr when this run did nothing (v0.81.0 pre-tag review,
+      // MEDIUM-3). `skipped-locked` is a correct outcome, but the JSON reads as
+      // a success — `entries: []`, exit 0 — and commands/claudemd-install.md
+      // asks the model to summarise `spec` and `entries.length`, which for this
+      // value produces "0 registered hooks" for a command whose whole purpose is
+      // "install now". NOT a non-zero exit: hook_spawn_install reads the code and
+      // would write a bootstrap-failed sentinel for a stand-down that is right.
+      if (r.spec === 'skipped-locked') {
+        process.stderr.write(
+          '[claudemd] another install holds ~/.claude/.claudemd-state/install.lock — nothing was ' +
+            'installed by this run. If no install is running, the lock is treated as stale after 10 minutes.\n'
+        );
+      }
       console.log(JSON.stringify(r, null, 2));
     })
     .catch(e => {

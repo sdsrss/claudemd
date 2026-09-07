@@ -215,6 +215,7 @@ Stop hook
 - `~/.claude/.claudemd-state/tmp-baseline.txt` — legacy residue-audit baseline, still written by sessions whose event carries no session_id
 - `~/.claude/.claudemd-state/session-start-<sid>.ref` — sandbox-disposal per-session window ref (2026-08-16 audit F5); orphans reaped by clean-residue.js
 - `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns the `session-summary-*.lastrun` family)
+- `~/.claude/.claudemd-state/install.lock` — `install()`'s cross-process mutex, created with `open(O_CREAT|O_EXCL)` and released in a `finally`; a lock older than 10 minutes is treated as abandoned and taken over, because a SIGKILL has no `finally` (Round-14 audit SCR-H2)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
 - `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — install.js failure sentinel (v0.50.0; written/cleared by `hook_install_sentinel_write` / `hook_install_sentinel_clear` — the shared bookkeeping behind both `hook_spawn_install` and the v0.75.0 inline fresh-install path — read by the SessionStart failure banner, stale copy cleared on version match)
