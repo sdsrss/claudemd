@@ -1,6 +1,6 @@
 # Project lessons
 
-Per AI-CODING-SPEC §EXT §10-R: cap 30 entries, newest first, format `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`. Read at session start; cite when pattern matches.
+Per AI-CODING-SPEC §EXT §10-R: cap 30 entries, newest first, format `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`. Read when a task's keywords match an entry (SHOULD since spec v6.27.0, no session-start read); cite when it matches.
 
 ---
 

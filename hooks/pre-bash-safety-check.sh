@@ -385,13 +385,14 @@ unwrap_indirect() {
   # (`dashboard`, `stash`). csh/tcsh excluded — different `-c` quoting + rare.
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
-  # `su -c 'cmd'` hands cmd to a shell exactly as `sh -c` does, and `ssh [opts]
+  # `su [-flag arg] [user] -c 'cmd'` hands cmd to a shell exactly as `sh -c`
+  # does, and `ssh [opts]
   # host 'cmd'` runs it on the far side — both quoted strings are commands, not
   # data, so they are exposed the same way (0.79.0 pre-tag review H1: the
   # command-position anchor below reads a quoted token as data by design, and
   # would otherwise let a reverse shell through either wrapper).
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\3 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\3 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\5 ;/g")
+  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]+([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\5 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
@@ -1672,13 +1673,19 @@ REVSH_NET='socket\.socket|import[[:space:]]+socket|SOCK_STREAM|AF_INET|urlopen|u
 # `re_eval` do not match. Same lesson on the node side: the source text is
 # `require('net').connect(…)`, never the literal `net.connect`, so the module
 # form is matched with the quote character explicit.
-REVSH_EXEC='os\.dup2[[:space:]]*\(|pty\.spawn[[:space:]]*\(|subprocess\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\(|os\.system[[:space:]]*\(|os\.exec[a-z]*[[:space:]]*\(|popen[0-9]?[[:space:]]*\(|exec(Sync|File|FileSync)?[[:space:]]*\(|fork(Sync)?[[:space:]]*\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec[[:space:]]*\(|passthru[[:space:]]*\(|proc_open[[:space:]]*\(|spawn(Sync)?[[:space:]]*\(|system[[:space:]]*\(|qx[{(]|exec[[:space:]]+["'"'"']|open[[:space:]]*\(STD|>&[[:space:]]*S|reopen[[:space:]]*\(|/bin/(sh|bash|zsh|dash)'
+REVSH_EXEC='os\.dup2[[:space:]]*\(|pty\.spawn[[:space:]]*\(|subprocess\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\(|os\.system[[:space:]]*\(|os\.exec[a-z]*[[:space:]]*\(|popen[0-9]?[[:space:]]*\(|exec(Sync|File|FileSync)?[[:space:]]*\(|child_process[^A-Za-z0-9_]{0,3}\.[[:space:]]*fork[[:space:]]*\(|(^|[^A-Za-z_])eval([^A-Za-z_]|$)|shell_exec[[:space:]]*\(|passthru[[:space:]]*\(|proc_open[[:space:]]*\(|spawn(Sync)?[[:space:]]*\(|system[[:space:]]*\(|qx[{(]|exec[[:space:]]+["'"'"']|open[[:space:]]*\(STD|>&[[:space:]]*S|reopen[[:space:]]*\(|/bin/(sh|bash|zsh|dash)'
+# `fork(` is NOT a primitive on its own (0.79.0 delta review DH4): a forking
+# socket server (`os.fork()`) and a node `cluster.fork()` one-liner are ordinary
+# work, and both denied while the token was unconditional. The node
+# download-execute case it was added for is spelled as a dotted call gated on
+# `child_process`. Attribute-name evasion (`getattr(subprocess,'call')(…)`) is
+# the price of call forms over the bare module token, and is not covered.
 # The un-dotted family (0.79.0 pre-tag review H3): `from subprocess import call`,
 # `import subprocess as sp; sp.call(`, `from os import system`. A bare `call(` or
 # `run(` is too common to count on its own (`asyncio.run(`), so these names count
 # only when the same one-liner also imports the module that supplies them, and
 # only when not preceded by a `.` (that form is the dotted list above).
-REVSH_EXEC_IMPORTED='(^|[^A-Za-z_.])(call|run|Popen|check_call|check_output|getoutput|getstatusoutput|system|popen|execv[pe]*|fork)[[:space:]]*\('
+REVSH_EXEC_IMPORTED='(^|[^A-Za-z_.])(call|run|Popen|check_call|check_output|getoutput|getstatusoutput|system|popen|execv[pe]*)[[:space:]]*\('
 REVSH_EXEC_IMPORT='from[[:space:]]+(subprocess|os)[[:space:]]+import|child_process'
 # `import subprocess as sp` puts the call behind an alias the dotted list cannot
 # name in advance; the alias is read out of the candidate and tested as a dotted
@@ -1718,30 +1725,36 @@ REVSH_ALIAS_RE='subprocess[[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'
 # satisfied its terminator lookahead and blanked the real command. That
 # stripper serves trigger-anchored WARN gates where a phantom heredoc costs a
 # missed banner; this is a DENY gate for §8's highest-severity shape, so the
-# opener is read on a copy of the line with quoted bodies emptied. Fewer
+# opener is read with a quote state of its own, carried across lines. Fewer
 # openers → more text reaches the detectors → the deny side only.
 IFS= read -r -d '' REVSH_HEREDOC_AWK <<'AWKPROG' || true
-function inq(s, pos,   i, c, q) {
-  q = ""
-  for (i = 1; i < pos; i++) {
+# `qwalk` returns the quote state after walking a span, and the state CARRIES
+# from line to line: a quote opened on one line is still open on the next
+# (delta review DH2 — a per-line reset let `echo "x` + `<<EOF"` read as an
+# opener and blank the command below it). Heredoc BODY lines are not parsed by
+# the shell, so they contribute nothing.
+function qwalk(s, from, to, q,   i, c) {
+  for (i = from; i < to; i++) {
     c = substr(s, i, 1)
     if (q == "") { if (c == "'" || c == "\"") q = c; else if (c == "\\") i++ }
     else if (q == "\"" && c == "\\") i++
     else if (c == q) q = ""
   }
-  return q != ""
+  return q
 }
 { lines[NR] = $0 }
 END {
-  n = NR
+  n = NR; carry = ""
   for (i = 1; i <= n; i++) {
     if (blank[i]) { print ""; continue }
     line = lines[i]; start = 1; found = 0
-    # The opener is the first `<<TAG` whose `<<` sits OUTSIDE quotes; the tag
-    # itself may be quoted (`<<'EOF'` is the common heredoc spelling).
     while (match(substr(line, start), /<<-?[ \t]*['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/)) {
       abs = start + RSTART - 1
-      if (!inq(line, abs)) { tok = substr(line, abs, RLENGTH); found = 1; break }
+      # `<<<` is a here-string, not a heredoc: this regex lands on its second
+      # `<` and the line BELOW is a command, not a body (delta review DH3).
+      if ((abs == 1 || substr(line, abs - 1, 1) != "<") && qwalk(line, 1, abs, carry) == "") {
+        tok = substr(line, abs, RLENGTH); found = 1; break
+      }
       start = abs + 2
     }
     if (found) {
@@ -1758,6 +1771,7 @@ END {
       }
       if (term > 0) for (j = i + 1; j <= term; j++) blank[j] = 1
     }
+    carry = qwalk(line, 1, length(line) + 1, carry)
     print line
   }
 }
