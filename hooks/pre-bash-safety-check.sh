@@ -1690,6 +1690,7 @@ while IFS= read -r cseg; do
   while [[ "$cseg" == \(* || "$cseg" == \{* ]]; do
     cseg="${cseg#?}"; cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   done
+  _cseg_pre="$cseg"
   cseg=$(s8_strip_wrappers "$cseg")
   # F19: re-canonicalize command-position words after the wrapper strip — the
   # global :478 canon ran while the wrapper still held command position, so a
@@ -1697,7 +1698,40 @@ while IFS= read -r cseg; do
   # (`sudo /usr/bin/curl` → strip → `/usr/bin/curl`, canon → `curl`). Same
   # canon-after-strip order the rm (:626) and npx (:864) gates already use.
   cseg=$(canon_cmd_words "$cseg")
+  # ASSIGNMENT RHS (0.82.0 pre-tag review, HIGH 3). `x=$(curl … | sh)` — the
+  # commonest spelling of a command substitution — reached no gate: the strip
+  # above reads the first token up to whitespace, `x=$(curl` matches the
+  # assignment prefix, and the whole token goes, fetch word included. What is
+  # left starts `http://…`, a CURLSH_SRC word with no space after it, so nothing
+  # matches. The rm and npx arms never had this: s8_split_segments cuts on `(`
+  # and backtick, so their danger word lands at a segment head regardless.
+  #
+  # This ADDS a view rather than changing the strip. Cutting the token at the
+  # opener instead — the repair the review proposed — puts `$(date)` at the head
+  # of `FOO=$(date) rm -rf $X` and hides the rm from its own arm, which corpus
+  # row S8-AS8 pins. Adding a view can only expose more text to a deny-on-match
+  # regex, so it cannot open a false negative anywhere.
+  # Derived from the PRE-strip segment: after the strip the assignment token is
+  # already gone, which is the whole defect.
+  cseg_rhs=""
+  case "$_cseg_pre" in
+    [A-Za-z_]*=*)
+      _rhs_head="${_cseg_pre%%[[:space:]]*}"
+      case "$_rhs_head" in
+        *'$('* | *'`'*) cseg_rhs="${_cseg_pre#*=}" ;;
+      esac
+      ;;
+  esac
+  _curlsh_view=0
   if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
+    _curlsh_view=1
+  elif [[ -n "$cseg_rhs" ]] \
+       && { echo "$cseg_rhs" | grep -qE "$CURLSH_PIPE" || echo "$cseg_rhs" | grep -qE "$CURLSH_PROCSUB"; }; then
+    # Only when the primary view missed, so the src/sink fields below are read
+    # from whichever view actually matched.
+    _curlsh_view=1; cseg="$cseg_rhs"
+  fi
+  if (( _curlsh_view )); then
     curlsh_hit=1
     # Which SOURCE and which SINK, for the bypass record. Only the two command
     # WORDS — never the URL, which can carry credentials (§8: no sensitive data
