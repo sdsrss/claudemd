@@ -14,6 +14,7 @@ import {
   writeJsonAtomic,
   codeGraphRegistryPath,
   codeGraphProvidersBackupPath,
+  activePluginRoot,
   SEMVER_RE,
   semverCmp,
 } from '../../scripts/lib/paths.js';
@@ -392,4 +393,163 @@ test('SCR-M2: writeJsonAtomic resolves a dangling relative link against the REAL
     else process.env.HOME = saved;
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+// ── activePluginRoot: the directory ${CLAUDE_PLUGIN_ROOT} actually resolves to ──
+//
+// QA 2026-09-08. Three doctor checks used to ask this question of
+// marketplacePluginRoot(), i.e. the marketplace CLONE. Per the plugins
+// reference, ${CLAUDE_PLUGIN_ROOT} is "the plugin's installation directory" and
+// marketplace plugins are copied into
+// `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` rather than used
+// in place — so the clone is upstream of the running code, not the running code.
+//
+// HOME is redirected by hand rather than through useHomeSandbox: that helper
+// registers module-scope beforeEach/afterEach and also patches
+// CLAUDEMD_STATE_DIR, which the HOME-override tests above assert on directly.
+function withHome(fn) {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-apr-'));
+  const saved = process.env.HOME;
+  process.env.HOME = tmpHome;
+  const claude = (...p) => path.join(tmpHome, '.claude', ...p);
+  const seedCache = (version, marketplace = 'claudemd') => {
+    const root = claude('plugins/cache', marketplace, 'claudemd', version);
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
+    return root;
+  };
+  const seedRegistry = plugins => {
+    fs.mkdirSync(claude('plugins'), { recursive: true });
+    fs.writeFileSync(claude('plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins }));
+  };
+  try {
+    return fn({ home: tmpHome, claude, seedCache, seedRegistry });
+  } finally {
+    if (saved === undefined) delete process.env.HOME;
+    else process.env.HOME = saved;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+}
+
+test('activePluginRoot: prefers what installed_plugins.json recorded', () => {
+  withHome(({ seedCache, seedRegistry }) => {
+    const root = seedCache('0.83.0');
+    seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.83.0' }] });
+    assert.deepEqual(activePluginRoot(), { root, source: 'installed-plugins' });
+  });
+});
+
+test('activePluginRoot: matches the plugin half of the id, whatever the marketplace is named', () => {
+  // `<plugin>@<marketplace>`; the marketplace half is whatever name the user
+  // added it under, so keying on a literal 'claudemd@claudemd' would miss.
+  withHome(({ seedCache, seedRegistry }) => {
+    const root = seedCache('0.83.0', 'my-own-marketplace');
+    seedRegistry({
+      'claudemd@my-own-marketplace': [{ scope: 'user', installPath: root, version: '0.83.0' }],
+    });
+    assert.equal(activePluginRoot().root, root);
+  });
+});
+
+test('activePluginRoot: ignores other plugins in the registry', () => {
+  withHome(({ claude, seedRegistry }) => {
+    seedRegistry({
+      'some-other-plugin@claudemd': [
+        { scope: 'user', installPath: claude('plugins/cache/x'), version: '1.0.0' },
+      ],
+    });
+    assert.equal(activePluginRoot().source, 'none');
+  });
+});
+
+test('activePluginRoot: takes the newest version when several scopes carry the plugin', () => {
+  withHome(({ seedCache, seedRegistry }) => {
+    const older = seedCache('0.80.0');
+    const newer = seedCache('0.83.0');
+    seedRegistry({
+      'claudemd@claudemd': [
+        { scope: 'project', installPath: older, version: '0.80.0' },
+        { scope: 'user', installPath: newer, version: '0.83.0' },
+      ],
+    });
+    assert.equal(activePluginRoot().root, newer);
+  });
+});
+
+test('activePluginRoot: skips a recorded path that no longer exists', () => {
+  // CC leaves the record in place through the grace period after an update.
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const present = seedCache('0.83.0');
+    seedRegistry({
+      'claudemd@claudemd': [
+        {
+          scope: 'user',
+          installPath: claude('plugins/cache/claudemd/claudemd/9.9.9'),
+          version: '9.9.9',
+        },
+        { scope: 'user', installPath: present, version: '0.83.0' },
+      ],
+    });
+    assert.equal(activePluginRoot().root, present);
+  });
+});
+
+test('activePluginRoot: rejects a recorded path outside this HOME cache', () => {
+  // installPath is absolute and recorded at install time, so a home that was
+  // copied, moved, or restored from a backup carries a record pointing into the
+  // OTHER tree — which usually still exists, so an existence check alone passes
+  // and every drift comparison then runs against a stranger's plugin.
+  const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-foreign-'));
+  try {
+    fs.writeFileSync(path.join(foreign, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+    withHome(({ seedCache, seedRegistry }) => {
+      const mine = seedCache('0.83.0');
+      seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: foreign, version: '9.9.9' }] });
+      const got = activePluginRoot();
+      assert.notEqual(got.root, foreign, 'a path outside this home is stale by construction');
+      assert.equal(got.root, mine);
+      assert.equal(got.source, 'plugin-cache');
+    });
+  } finally {
+    fs.rmSync(foreign, { recursive: true, force: true });
+  }
+});
+
+test('activePluginRoot: falls back to the newest cache dir when the registry is absent', () => {
+  withHome(({ seedCache }) => {
+    seedCache('0.80.0');
+    const newest = seedCache('0.83.0');
+    // 0.10.0 sorts after 0.9.0 numerically and BEFORE it lexicographically; the
+    // fallback must not regress to a string sort the way status.js once did.
+    seedCache('0.9.0');
+    seedCache('0.10.0');
+    assert.deepEqual(activePluginRoot(), { root: newest, source: 'plugin-cache' });
+  });
+});
+
+test('activePluginRoot: falls back to the cache when the registry is unparseable', () => {
+  withHome(({ claude, seedCache }) => {
+    const root = seedCache('0.83.0');
+    fs.mkdirSync(claude('plugins'), { recursive: true });
+    fs.writeFileSync(claude('plugins/installed_plugins.json'), '{{{not json');
+    assert.equal(activePluginRoot().source, 'plugin-cache');
+    assert.equal(activePluginRoot().root, root);
+  });
+});
+
+test('activePluginRoot: falls back to the marketplace clone for pre-cache layouts', () => {
+  withHome(({ claude }) => {
+    const clone = claude('plugins/marketplaces/claudemd');
+    fs.mkdirSync(clone, { recursive: true });
+    assert.deepEqual(activePluginRoot(), { root: clone, source: 'marketplace-clone' });
+  });
+});
+
+test('activePluginRoot: reports none rather than guessing when nothing resolves', () => {
+  // Callers name the reason instead of comparing against a path that never
+  // existed — and never pass '' to readPluginVersion, which would join it with
+  // 'package.json' and read the current working directory's.
+  withHome(() => {
+    assert.deepEqual(activePluginRoot(), { root: null, source: 'none' });
+  });
 });

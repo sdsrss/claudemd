@@ -549,14 +549,26 @@ else
 fi
 cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
 
-# Case 29: a spec file this version does not install is not drift.
+# Case 29: an absent installed spec file is not reported as DRIFT — it gets its
+# own banner instead (Case 39). Both halves matter and this case owns the first:
+# the two states have different fixes (/claudemd-update vs /claudemd-install),
+# so collapsing absence into the drift wording would send the user to a command
+# that diffs a file which is not there.
+#
+# Until 2026-09-08 this case asserted SILENCE, on the reading that install.js
+# decides which files ship to ~/.claude and one this version does not install
+# must not raise a banner. That case is hypothetical — paths.js#SPEC_FILES is
+# the install list and it is every .md the hook's glob returns — while the case
+# the silence actually covered is real: the user's spec was deleted.
 rm -f "$HOME/.claude/CLAUDE.md"
 OUT29=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
-if [[ -z "$OUT29" ]]; then
-  echo "PASS: 29 absent installed spec file is not reported as drift"
+CTX29=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT29" 2>/dev/null)
+if grep -qF 'MISSING' <<<"$CTX29" && ! grep -qF 'differs from the shipped spec' <<<"$CTX29"; then
+  echo "PASS: 29 absent installed spec file is reported as missing, not as drift"
 else
-  echo "FAIL: 29 absent file reported as drift (out: $OUT29)"; FAIL=$((FAIL+1))
+  echo "FAIL: 29 absent file mis-classified (out: $OUT29)"; FAIL=$((FAIL+1))
 fi
+cp "$PLUGIN_ROOT/spec/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
 
 # --- v0.75.0 sync fresh-install bootstrap ---
 # The three cases below pin WHICH path each state takes, read off the bootstrap
@@ -783,6 +795,83 @@ else
   fi
 fi
 rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json"* 2>/dev/null || true
+
+# ── QA 2026-09-08: two self-heal gaps ──────────────────────────────────────
+#
+# Case 38: a manifest that EXISTS but does not PARSE. Pre-fix this read as an
+# installed state: the version probe pulls `.version` with jq, gets empty, and
+# the "skip when either side is unknown" guard — written for pre-0.1.9 manifests
+# that legitimately lack .version — exits 0. So the session after a truncated
+# write repaired nothing, and neither did any session after that, while
+# /claudemd-doctor called the file "missing" and sent the user to
+# `/plugin install`, a no-op on an installed plugin. install.js writes this file
+# atomically and last, so re-entering the bootstrap IS the repair.
+echo '{{{not json' > "$HOME/.claude/.claudemd-manifest.json"
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+if jq -e . "$HOME/.claude/.claudemd-manifest.json" >/dev/null 2>&1 \
+   && [[ "$(jq '.entries | length' "$HOME/.claude/.claudemd-manifest.json")" -gt 0 ]]; then
+  echo "PASS: 38 unparseable manifest re-bootstraps instead of exiting silently"
+else
+  echo "FAIL: 38 unparseable manifest left unrepaired"; FAIL=$((FAIL+1))
+fi
+
+# Case 38b: the jq gate. Without jq we cannot tell "corrupt" from "legacy, no
+# .version", and the historical skip is the safer read of an ambiguous file —
+# it must NOT turn into a bootstrap loop on every session.
+JQLESS_DIR=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-nojq-XXXXXX")
+for b in bash node cat rm mkdir cp mv date wc sed grep tr find sort head tail chmod git; do
+  P=$(command -v "$b" 2>/dev/null) && ln -sf "$P" "$JQLESS_DIR/$b"
+done
+echo '{{{not json' > "$HOME/.claude/.claudemd-manifest.json"
+PATH="$JQLESS_DIR" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+if [[ "$(cat "$HOME/.claude/.claudemd-manifest.json")" == '{{{not json' ]]; then
+  echo "PASS: 38b jq-absent leaves the ambiguous manifest alone (no blind rewrite)"
+else
+  echo "FAIL: 38b jq-absent rewrote a manifest it could not adjudicate"; FAIL=$((FAIL+1))
+fi
+rm -rf "$JQLESS_DIR"
+# Repair the manifest for the cases below.
+bash "$HOOK" <<<'{}' >/dev/null 2>&1
+
+# Case 39: an installed spec file that is GONE. `Absent is not drift` used to
+# skip it outright, so an EDITED spec bannered while a DELETED one said nothing
+# — and CC reads ~/.claude/CLAUDE.md as user-global instructions, so absence
+# silently unloads the whole spec. The fix differs from drift's, so the banner
+# must name /claudemd-install rather than /claudemd-update.
+cp "$HOME/.claude/CLAUDE.md" "$HOME/CLAUDE.md.bak"
+rm -f "$HOME/.claude/CLAUDE.md"
+OUT39=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+CTX39=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT39" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT39" 2>/dev/null)" == "1" ]] \
+   && grep -qF 'MISSING' <<<"$CTX39" \
+   && grep -qF 'CLAUDE.md' <<<"$CTX39" \
+   && grep -qF '/claudemd-install' <<<"$CTX39"; then
+  echo "PASS: 39 deleted spec file raises a banner naming /claudemd-install"
+else
+  echo "FAIL: 39 deleted spec was silent or mis-advised (ctx=$CTX39)"; FAIL=$((FAIL+1))
+fi
+cp "$HOME/CLAUDE.md.bak" "$HOME/.claude/CLAUDE.md"; rm -f "$HOME/CLAUDE.md.bak"
+
+# Case 39b: control — a healthy install must stay silent on this axis. Without
+# it, a banner that fired unconditionally would pass Case 39.
+OUT39B=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+if ! grep -qF 'MISSING' <<<"$OUT39B"; then
+  echo "PASS: 39b healthy install raises no missing-spec banner"
+else
+  echo "FAIL: 39b missing-spec banner fired on a healthy install (out=$OUT39B)"; FAIL=$((FAIL+1))
+fi
+
+# Case 39c: drift still reports as drift. The missing-spec branch returns early,
+# so an edited-but-present file must not be swallowed by it.
+printf 'locally edited\n' > "$HOME/.claude/OPERATOR.md"
+OUT39C=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+CTX39C=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT39C" 2>/dev/null)
+if grep -qF 'differs from the shipped spec' <<<"$CTX39C" && grep -qF 'OPERATOR.md' <<<"$CTX39C"; then
+  echo "PASS: 39c an edited spec still reports as drift, not as missing"
+else
+  echo "FAIL: 39c drift banner lost to the missing-spec branch (ctx=$CTX39C)"; FAIL=$((FAIL+1))
+fi
+cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
 
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:

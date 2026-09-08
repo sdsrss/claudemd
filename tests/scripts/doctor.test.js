@@ -31,19 +31,137 @@ beforeEach(() => {
   );
 });
 
+// ── QA 2026-09-08: repair advice must name a command that actually repairs ──
+// Every row below failed this once. `/plugin install claudemd@claudemd` on an
+// already-installed plugin prints "already installed" and copies nothing (CC
+// does not fire postInstall), so a user following the old advice watched the
+// same red row survive the fix they were told to run. install.js is what writes
+// ~/.claude, and /claudemd-install is what runs it now.
+test('missing installed spec names /claudemd-install, not a no-op /plugin install', async () => {
+  fs.writeFileSync(box.claude('CLAUDE-extended.md'), 'x');
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'spec-hash:CLAUDE.md');
+  assert.ok(c);
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /\/claudemd-install/);
+  assert.doesNotMatch(
+    c.detail,
+    /\/plugin install/,
+    'that command is a no-op here — it must not be the advice'
+  );
+});
+
+test('manifest: an unparseable file reports as corrupt, not as missing', async () => {
+  // readManifest returns {exists:true, data:null} here. The row used to collapse
+  // it into "missing — is plugin installed?", which is both wrong about the
+  // state and points at the wrong repair.
+  fs.writeFileSync(box.claude('.claudemd-manifest.json'), '{{{not json');
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'manifest');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /not valid JSON/);
+  assert.match(c.detail, /\/claudemd-install/);
+  assert.doesNotMatch(c.detail, /missing/);
+});
+
+test('manifest: a genuinely absent file still reports missing, with the right fix', async () => {
+  fs.rmSync(box.claude('.claudemd-manifest.json'));
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'manifest');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /missing/);
+  assert.match(c.detail, /\/claudemd-install/);
+});
+
+// ── QA 2026-09-08: statusline health ──
+// settings.json names a renderer path and CC shells out to it on EVERY render,
+// so a deleted renderer prints "No such file or directory" where the status line
+// belongs, permanently. doctor exited 0 through all of it.
+function wireStatusline(box, { renderer = null } = {}) {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'bash "$HOME/.claude/claudemd-statusline.sh"' },
+    })
+  );
+  if (renderer !== null) fs.writeFileSync(box.claude('claudemd-statusline.sh'), renderer);
+}
+
+test('statusline: flags a renderer that settings points at but disk does not have', async () => {
+  wireStatusline(box);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'statusline');
+  assert.ok(c, 'statusline row must exist');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /missing but the statusLine still points at it/);
+  assert.match(c.detail, /\/claudemd-install/);
+});
+
+test('statusline: flags a renderer left over from an older version', async () => {
+  wireStatusline(box, { renderer: '#!/usr/bin/env bash\n# an older claudemd renderer\n' });
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /differs from the shipped renderer/);
+});
+
+test('statusline: green when the wired renderer matches what this version ships', async () => {
+  const shipped = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/statusline.sh');
+  wireStatusline(box, { renderer: fs.readFileSync(shipped, 'utf8') });
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /matches shipped/);
+});
+
+test('statusline: silent when the slot is not claudemd-owned', async () => {
+  // A foreign statusline is not ours to repair, and an absent renderer under one
+  // is not a defect — the check must not manufacture a failure for these users.
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'my-own-prompt.sh' } })
+  );
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /not claudemd-owned/);
+});
+
+test('statusline failures are NOT advisory — they must move the exit code', () => {
+  assert.equal(isAdvisoryCheck('statusline'), false);
+});
+
 test('doctor returns checks array with at least 5 entries', async () => {
   const r = await doctor({});
   assert.ok(Array.isArray(r.checks));
   assert.ok(r.checks.length >= 5);
 });
 
-test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)', async () => {
+// Registers `version` as the INSTALLED plugin the way CC does, in the versioned
+// cache — not the marketplace clone. The clone is upstream of the cache, so a
+// version only it carries is one CC has not installed and cannot be running;
+// comparing against it reported "stale registration" for an upgrade that had
+// not happened, and said nothing at all when the marketplace was added from a
+// path (no clone is created for those).
+function registerInstalledPlugin(box, version) {
+  const root = path.join(box.home, `.claude/plugins/cache/claudemd/claudemd/${version}`);
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
+  fs.writeFileSync(
+    path.join(box.home, '.claude/plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version }] },
+    })
+  );
+  return root;
+}
+
+test('plugin cache staleness: flags pluginRoot older than the installed plugin (v0.36.0)', async () => {
   const staleRoot = path.join(box.home, 'cache/0.1.0');
   fs.mkdirSync(staleRoot, { recursive: true });
   fs.writeFileSync(path.join(staleRoot, 'package.json'), JSON.stringify({ version: '0.1.0' }));
-  const mkt = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
-  fs.mkdirSync(mkt, { recursive: true });
-  fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+  registerInstalledPlugin(box, '9.9.9');
   fs.writeFileSync(
     path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
@@ -54,19 +172,14 @@ test('plugin cache staleness: flags pluginRoot older than marketplace (v0.36.0)'
   );
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'plugin cache:staleness');
-  assert.ok(c, 'staleness check must exist when pluginRoot + marketplace are comparable');
+  assert.ok(c, 'staleness check must exist when pluginRoot + installed plugin are comparable');
   assert.equal(c.ok, false);
   assert.match(c.detail, /stale registration/);
   assert.match(c.detail, /reload-plugins/);
 });
 
-test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.36.0)', async () => {
-  const root = path.join(box.home, 'cache/9.9.9');
-  fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '9.9.9' }));
-  const mkt = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
-  fs.mkdirSync(mkt, { recursive: true });
-  fs.writeFileSync(path.join(mkt, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+test('plugin cache staleness: ok when pluginRoot is the installed plugin (v0.36.0)', async () => {
+  const root = registerInstalledPlugin(box, '9.9.9');
   fs.writeFileSync(
     path.join(box.home, '.claude/.claudemd-manifest.json'),
     JSON.stringify({
@@ -82,8 +195,12 @@ test('plugin cache staleness: ok when pluginRoot is current vs marketplace (v0.3
   assert.match(c.detail, /current/);
 });
 
-test('plugin cache staleness: absent when marketplace has no comparable version (v0.36.0)', async () => {
-  // beforeEach manifest has no pluginRoot; give it one but no marketplace dir.
+test('plugin cache staleness: absent when no plugin install is resolvable (v0.36.0)', async () => {
+  // beforeEach manifest has no pluginRoot; give it one but no plugin install.
+  // The row must be ABSENT rather than comparing against whatever package.json
+  // the current working directory holds — readPluginVersion('') joins its
+  // argument with 'package.json' and so reads a RELATIVE path, which for a
+  // doctor run from this repo is this repo's own version (QA 2026-09-08).
   const root = path.join(box.home, 'cache/1.2.3');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.3' }));
@@ -334,30 +451,119 @@ test('doctor reports spec-hash:* missing when installed spec absent (v0.6.0)', a
   assert.match(main.detail, /installed spec missing/);
 });
 
-test('hook-drift check skips when no marketplace install exists (v0.9.22)', async () => {
-  // beforeEach gives a clean ~/.claude with no plugins/marketplaces/claudemd.
-  // The drift check must not fail-loudly for fresh-install / npm-CLI-only
-  // users — skip with reason.
+test('hook-drift check skips when no plugin install exists (v0.9.22)', async () => {
+  // beforeEach gives a clean ~/.claude with no plugin cache and no marketplace
+  // clone. The drift check must not fail-loudly for fresh-install /
+  // npm-CLI-only users — skip with reason.
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'hook-drift');
   assert.ok(c, 'hook-drift check must exist');
   assert.equal(c.ok, true);
   assert.match(c.detail, /skipped/);
-  assert.match(c.detail, /market-root-missing/);
+  assert.match(c.detail, /no-active-plugin-root/);
 });
 
-test('hook-drift flags differing hooks when marketplace install lags source (v0.9.22)', async () => {
-  // Reproduces the v0.9.15 install-drift scenario: source ships
-  // tr '/._' '-' but marketplaces/claudemd/hooks/lib/rule-hits.sh still
-  // has the pre-fix tr '/.' '-'. doctor must surface it, not green-rubberstamp.
+// Helper: build the versioned plugin cache CC actually runs hooks from, mirror
+// source hooks/ into it, and register it the way CC does. Returns the root.
+function seedActivePluginRoot(box, version = '9.9.9') {
   const sourceHooks = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks');
-  const mktRoot = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
-  // Mirror source hooks/ into market so missing-in-market doesn't dominate.
-  fs.cpSync(sourceHooks, path.join(mktRoot, 'hooks'), { recursive: true });
-  // Then break ONE file (the canonical drift target) to simulate the real
-  // v0.9.15 silent fix that didn't propagate to the marketplace install.
+  const root = path.join(box.home, `.claude/plugins/cache/claudemd/claudemd/${version}`);
+  fs.cpSync(sourceHooks, path.join(root, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
   fs.writeFileSync(
-    path.join(mktRoot, 'hooks/lib/rule-hits.sh'),
+    path.join(box.home, '.claude/plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version }] },
+    })
+  );
+  return root;
+}
+
+// Helper: the marketplace side — where a REINSTALL would copy from. `location`
+// defaults to the github-source clone path; pass one to model a marketplace
+// added from a local directory, which creates no clone at all.
+function seedUpstreamMarketplace(box, { location = null, mirrorHooks = true } = {}) {
+  const loc = location ?? path.join(box.home, '.claude/plugins/marketplaces/claudemd');
+  fs.mkdirSync(path.join(loc, '.claude-plugin'), { recursive: true });
+  fs.writeFileSync(
+    path.join(loc, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ name: 'claudemd', plugins: [{ name: 'claudemd', source: './' }] })
+  );
+  fs.writeFileSync(
+    path.join(box.home, '.claude/plugins/known_marketplaces.json'),
+    JSON.stringify({ claudemd: { installLocation: loc } })
+  );
+  if (mirrorHooks) {
+    const sourceHooks = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks');
+    fs.cpSync(sourceHooks, path.join(loc, 'hooks'), { recursive: true });
+  }
+  return loc;
+}
+
+// ── QA 2026-09-08: the axis an END USER actually has ──
+// `/claudemd-doctor` runs `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js`, so for
+// a user doctor's own PLUGIN_ROOT IS the active plugin root and `hook-drift`
+// above is a self-compare that can never report anything. Their question is
+// "does what I run still match the marketplace", and it has a live answer:
+// `/plugin marketplace update` advances the marketplace on its own, and a change
+// carrying no version bump leaves `claude plugin update` reporting "already at
+// the latest version" with the newer code sitting upstream, unused.
+test('hook-drift:upstream flags a running plugin that the marketplace has moved past', async () => {
+  const root = seedActivePluginRoot(box);
+  const loc = seedUpstreamMarketplace(box);
+  fs.appendFileSync(path.join(loc, 'hooks/pre-bash-safety-check.sh'), '\n# newer upstream\n');
+  assert.ok(fs.existsSync(path.join(root, 'hooks/pre-bash-safety-check.sh')));
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.ok(c, 'the upstream row must exist');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /pre-bash-safety-check\.sh \(differs\)/);
+  assert.match(c.detail, /claudemd-refresh/);
+});
+
+test('hook-drift:upstream is green when the running hooks match the marketplace', async () => {
+  seedActivePluginRoot(box);
+  seedUpstreamMarketplace(box);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /match the marketplace/);
+});
+
+test('hook-drift:upstream resolves a marketplace added from a local directory', async () => {
+  // `source: directory` records installLocation as the directory itself and
+  // creates no plugins/marketplaces/claudemd — the shape that made both drift
+  // rows skip permanently while they keyed off the hardcoded clone path.
+  const root = seedActivePluginRoot(box);
+  const loc = seedUpstreamMarketplace(box, { location: path.join(box.home, 'my-checkout') });
+  assert.equal(fs.existsSync(path.join(box.home, '.claude/plugins/marketplaces/claudemd')), false);
+  fs.appendFileSync(path.join(loc, 'hooks/banned-vocab-check.sh'), '\n# newer upstream\n');
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(c.ok, false, 'a path-source marketplace is still a comparable upstream');
+  assert.match(c.detail, /banned-vocab-check\.sh \(differs\)/);
+  assert.ok(c.detail.includes(path.join(box.home, 'my-checkout')), 'must name the real location');
+  assert.equal(fs.existsSync(path.join(root, 'hooks')), true);
+});
+
+test('hook-drift:upstream skips cleanly when there is no marketplace on this machine', async () => {
+  seedActivePluginRoot(box);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(c.ok, true);
+  assert.match(c.detail, /no-upstream-marketplace/);
+});
+
+test('hook-drift flags differing hooks when the RUNNING plugin root lags source (v0.9.22)', async () => {
+  // Reproduces the v0.9.15 install-drift scenario: source ships
+  // tr '/._' '-' but the installed hooks/lib/rule-hits.sh still has the pre-fix
+  // tr '/.' '-'. doctor must surface it, not green-rubberstamp.
+  const root = seedActivePluginRoot(box);
+  fs.writeFileSync(
+    path.join(root, 'hooks/lib/rule-hits.sh'),
     '#!/usr/bin/env bash\n# stale (pre-v0.9.15)\nrule_hits_append() { :; }\n'
   );
 
@@ -367,6 +573,48 @@ test('hook-drift flags differing hooks when marketplace install lags source (v0.
   assert.equal(c.ok, false, 'must flag drift');
   assert.match(c.detail, /hooks\/lib\/rule-hits\.sh \(differs\)/);
   assert.match(c.detail, /uninstall claudemd@claudemd/);
+});
+
+// QA 2026-09-08. The check above passed for two years against the marketplace
+// CLONE, which is not where hooks run from: CC copies marketplace plugins into
+// `cache/<marketplace>/<plugin>/<version>/` and resolves ${CLAUDE_PLUGIN_ROOT}
+// there. `/plugin marketplace update` advances the clone on its own — a change
+// with no version bump reaches it and `claude plugin update` then reports
+// "already at the latest version" — so in the one state this check exists for,
+// source and clone AGREE and the stale hooks keep running behind a green row.
+test('hook-drift: a stale cache is flagged even when the marketplace clone matches source', async () => {
+  const sourceHooks = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../hooks');
+  // The clone is fresh — byte-identical to source, as it is right after
+  // `/plugin marketplace update`.
+  const mktRoot = path.join(box.home, '.claude/plugins/marketplaces/claudemd');
+  fs.cpSync(sourceHooks, path.join(mktRoot, 'hooks'), { recursive: true });
+  // The cache — what actually executes — is behind.
+  const root = seedActivePluginRoot(box);
+  fs.appendFileSync(path.join(root, 'hooks/pre-bash-safety-check.sh'), '\n# stale\n');
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(c.ok, false, 'a stale cache behind a fresh clone is exactly the drift to catch');
+  assert.match(c.detail, /pre-bash-safety-check\.sh \(differs\)/);
+  assert.match(c.detail, /installed-plugins/, 'must name which basis resolved the running root');
+});
+
+test('hook-drift runs for a path-source marketplace, which has no clone at all', async () => {
+  // `claude plugin marketplace add <path>` records `source: directory` and
+  // creates NO plugins/marketplaces/claudemd. Keying the comparison off that
+  // directory meant both drift checks skipped permanently for these users.
+  const root = seedActivePluginRoot(box);
+  fs.appendFileSync(path.join(root, 'hooks/banned-vocab-check.sh'), '\n# stale\n');
+  assert.equal(
+    fs.existsSync(path.join(box.home, '.claude/plugins/marketplaces/claudemd')),
+    false,
+    'precondition: no marketplace clone'
+  );
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(c.ok, false, 'must still compare against the cache');
+  assert.match(c.detail, /banned-vocab-check\.sh \(differs\)/);
 });
 
 test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 50%', async () => {
@@ -1120,4 +1368,17 @@ test('memory-index-size: a malformed declaration does not hide a genuine overage
   // default "is in force for those files".
   assert.match(c.detail, /2\/2 MEMORY\.md file\(s\) exceed their budget/);
   assert.match(c.detail, /-proj-genuine/);
+});
+
+test('hook-drift:upstream skips an upstream root that carries no hooks/ at all', async () => {
+  // compareHooks tests for hooks/ on its FIRST argument only, so an upstream
+  // without one would report all 15 scripts as missing-in-market and paint a
+  // healthy install solid red. Reachable via a monorepo marketplace whose
+  // catalog entry we could not resolve, a sparse checkout, a partial clone.
+  seedActivePluginRoot(box);
+  seedUpstreamMarketplace(box, { mirrorHooks: false });
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(c.ok, true, 'an upstream with no hooks/ is not 15 drifted hooks');
+  assert.match(c.detail, /upstream-has-no-hooks/);
 });

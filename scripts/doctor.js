@@ -8,8 +8,10 @@ import {
   specHome,
   homeSpec,
   readManifest,
-  marketplacePluginRoot,
+  activePluginRoot,
+  upstreamPluginRoot,
   readPluginVersion,
+  claudeHome,
   SEMVER_RE,
   semverCmp,
   stateDir,
@@ -25,6 +27,7 @@ import {
 import { readSettings } from './lib/settings-merge.js';
 import { compareSpecs } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
+import { detect as detectStatusline } from './lib/statusline.js';
 import {
   readHits,
   groupBySection,
@@ -127,7 +130,18 @@ export async function doctor({ pruneBackups: prune } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
 
+  // Resolved ONCE: four checks below ask "what does Claude Code actually run",
+  // and three of them used to answer it with a different directory each time
+  // they were written.
+  const ACTIVE = activePluginRoot();
+
   const m = readManifest();
+  // Three states, not two. `exists && data == null` is a manifest that is ON
+  // DISK but does not parse — an interrupted write, a truncating disk-full, a
+  // hand-edit. It used to report as "missing — is plugin installed?", which
+  // sends the user to `/plugin install`; that command is a no-op on an already
+  // installed plugin and leaves the state exactly as it was. Name the state and
+  // name the command that actually rewrites the file.
   push(
     'manifest',
     m.exists && m.data != null,
@@ -135,7 +149,10 @@ export async function doctor({ pruneBackups: prune } = {}) {
       ? m.migrated
         ? `present at ${m.path} (relocated from pre-0.1.9 state dir)`
         : 'present'
-      : 'missing — is plugin installed?'
+      : m.exists
+        ? `present at ${m.path} but not valid JSON — interrupted write or hand-edit. ` +
+          `Fix: /claudemd-install (rewrites the manifest atomically).`
+        : 'missing — run /claudemd-install to bootstrap'
   );
 
   // D8 (v0.5.4): orphan-manifest detection. CC marketplace lifecycle does not
@@ -152,7 +169,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
       orphan
         ? `manifest.pluginRoot (${m.data.pluginRoot}) no longer exists — orphan manifest. ` +
             `Likely cause: /plugin uninstall claudemd@claudemd ran without /claudemd-uninstall first. ` +
-            `Either /plugin install claudemd@claudemd to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
+            `Either /plugin install claudemd@claudemd then /claudemd-install to rebootstrap, or rm ~/.claude/.claudemd-manifest.json by hand.`
         : `present at ${m.data.pluginRoot}`
     );
     // v0.36.0 — stale-pluginRoot detection (tasks/manifest-pluginroot-stale-
@@ -166,16 +183,28 @@ export async function doctor({ pruneBackups: prune } = {}) {
     // install) — nothing comparable to diagnose.
     if (!orphan) {
       const rootVer = readPluginVersion(m.data.pluginRoot);
-      const mktVer = readPluginVersion(marketplacePluginRoot());
-      if (SEMVER_RE.test(rootVer) && SEMVER_RE.test(mktVer)) {
-        const stale = semverCmp(rootVer, mktVer) < 0;
+      // Compare against the ACTIVE plugin root, not the marketplace clone: the
+      // clone is upstream of the cache, so a version only it carries is one CC
+      // has not installed yet and cannot be running. Comparing against it
+      // reported "stale registration" for an upgrade the user had not asked
+      // for, and stayed silent on a marketplace added from a path (no clone).
+      // Guarded, not `?? ''`: readPluginVersion joins its argument with
+      // 'package.json', so an empty root yields the RELATIVE path 'package.json'
+      // and reads whatever the current working directory happens to hold — for
+      // a doctor run from this repo, its own. The row then compared the user's
+      // manifest against the version of a checkout that has nothing to do with
+      // their install. No active root means nothing to compare, which is what
+      // the missing-marketplace case has always meant here.
+      const activeVer = ACTIVE.root ? readPluginVersion(ACTIVE.root) : 'unknown';
+      if (SEMVER_RE.test(rootVer) && SEMVER_RE.test(activeVer)) {
+        const stale = semverCmp(rootVer, activeVer) < 0;
         push(
           'plugin cache:staleness',
           !stale,
           stale
-            ? `manifest.pluginRoot holds v${rootVer} but the marketplace has v${mktVer} — stale registration; ` +
+            ? `manifest.pluginRoot holds v${rootVer} but the installed plugin is v${activeVer} — stale registration; ` +
                 `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).`
-            : `manifest.pluginRoot v${rootVer} is current vs marketplace v${mktVer}`
+            : `manifest.pluginRoot v${rootVer} is current vs installed v${activeVer}`
         );
       }
     }
@@ -194,6 +223,46 @@ export async function doctor({ pruneBackups: prune } = {}) {
 
   for (const p of specHome()) {
     push(`spec:${path.basename(p)}`, fs.existsSync(p), fs.existsSync(p) ? 'present' : 'missing');
+  }
+
+  // Statusline renderer, when we are the one wired in. This slot is unlike every
+  // other file the install writes: settings.json names a path, and CC shells out
+  // to it on EVERY render, so a renderer that is gone produces a "No such file
+  // or directory" where the status line should be — several times a second,
+  // permanently, for as long as the settings entry survives it. doctor reported
+  // exit 0 through all of it, because nothing here had ever looked at the file.
+  //
+  // Wired-in means one of two shapes: our command in the slot, or a composite
+  // host (code-graph) that we guest-registered under and that will invoke the
+  // renderer on our behalf. When neither holds, claudemd does not own the
+  // statusline and an absent renderer is simply not our business.
+  try {
+    const sl = detectStatusline(ACTIVE.root ?? PLUGIN_ROOT);
+    const wired = sl.verdict === 'claudemd' || (sl.verdict === 'host' && sl.guestRegistered);
+    if (!wired) {
+      push('statusline', true, `not claudemd-owned (${sl.verdict}) — renderer not required`);
+    } else if (!sl.dest.exists) {
+      push(
+        'statusline',
+        false,
+        `${claudeHome('claudemd-statusline.sh')} is missing but the statusLine still points at it — ` +
+          `every render prints "No such file or directory". Fix: /claudemd-install (recopies the renderer), ` +
+          `or /claudemd-statusline remove to unwire it.`
+      );
+    } else if (!sl.dest.matchesShipped) {
+      // Stale, not broken: it renders, just not what this version ships.
+      push(
+        'statusline',
+        false,
+        `${claudeHome('claudemd-statusline.sh')} differs from the shipped renderer — left over from an ` +
+          `older version. Fix: /claudemd-install (recopies it).`
+      );
+    } else {
+      push('statusline', true, `renderer present and matches shipped (${sl.verdict})`);
+    }
+  } catch (e) {
+    // Never let a statusline read take doctor down — it is one advisory row.
+    push('statusline', true, `skipped (${e.code || e.name})`);
   }
 
   // §4 Routing primaries that this machine has switched off.
@@ -267,7 +336,11 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(
         `spec-hash:${s.name}`,
         false,
-        `installed spec missing — /plugin install claudemd@claudemd to bootstrap`
+        // NOT `/plugin install claudemd@claudemd`: on an already-installed
+        // plugin that command prints "already installed" and copies nothing,
+        // because CC does not fire postInstall. install.js is what writes
+        // ~/.claude/<spec>, and /claudemd-install is what runs it now.
+        `installed spec missing — run /claudemd-install to restore it`
       );
     } else if (s.match) {
       push(`spec-hash:${s.name}`, true, `${s.shipped.slice(0, 12)}… matches`);
@@ -291,11 +364,13 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // making §11-memory-read a silent no-op for `_`-bearing cwds. Skip cases
   // (self-compare / no marketplace install / source has no hooks/) are not
   // flagged — the surface is "you have both source AND a stale market install".
-  const drift2 = compareHooks(PLUGIN_ROOT, marketplacePluginRoot());
+  const drift2 = ACTIVE.root
+    ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
+    : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {
-    push('hook-drift', true, 'marketplace hooks match source');
+    push('hook-drift', true, `installed hooks match source (via ${ACTIVE.source})`);
   } else {
     const sample = drift2.diffs
       .slice(0, 3)
@@ -305,8 +380,51 @@ export async function doctor({ pruneBackups: prune } = {}) {
     push(
       'hook-drift',
       false,
-      `${drift2.driftCount} hook script(s) differ between source and ${marketplacePluginRoot()}: ${sample}${more}. ` +
-        `Likely cause: /plugin update is a silent no-op. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`
+      `${drift2.driftCount} hook script(s) differ between source and the running plugin root ${ACTIVE.root} (via ${ACTIVE.source}): ${sample}${more}. ` +
+        `Likely cause: the marketplace clone advanced but the versioned cache did not. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`
+    );
+  }
+
+  // Second axis, and the one an END USER actually has. The row above compares
+  // doctor's own tree against the running plugin; a user's `/claudemd-doctor`
+  // runs `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js`, so those two are the
+  // same directory and the comparison is a self-compare that can never report
+  // anything. Their question is "is what I run still what the marketplace
+  // holds", which is exactly the state `/plugin marketplace update` creates:
+  // it advances the marketplace on its own, and a change with no version bump
+  // leaves `claude plugin update` saying "already at the latest version".
+  const UPSTREAM = upstreamPluginRoot();
+  // The hooks/ guard is not belt-and-braces. compareHooks tests for a hooks/
+  // directory on its FIRST argument only, so an upstream root that has none —
+  // a monorepo marketplace whose catalog entry we could not resolve, a sparse
+  // checkout, a partial clone — makes every one of our 15 scripts report
+  // `missing-in-market` and turns the row solid red for a healthy install.
+  // `spec-cache-drift` below has carried the equivalent `spec/` guard since it
+  // was written.
+  const drift3 =
+    UPSTREAM.root && fs.existsSync(path.join(UPSTREAM.root, 'hooks'))
+      ? compareHooks(ACTIVE.root ?? PLUGIN_ROOT, UPSTREAM.root)
+      : {
+          skipped: true,
+          skippedReason: UPSTREAM.root ? 'upstream-has-no-hooks' : 'no-upstream-marketplace',
+          driftCount: 0,
+          diffs: [],
+        };
+  if (drift3.skipped) {
+    push('hook-drift:upstream', true, `skipped (${drift3.skippedReason})`);
+  } else if (drift3.driftCount === 0) {
+    push('hook-drift:upstream', true, 'the running hooks match the marketplace');
+  } else {
+    const sample = drift3.diffs
+      .slice(0, 3)
+      .map(d => `${d.path} (${d.reason})`)
+      .join(', ');
+    const more = drift3.diffs.length > 3 ? ` +${drift3.diffs.length - 3} more` : '';
+    push(
+      'hook-drift:upstream',
+      false,
+      `${drift3.driftCount} hook script(s) differ between the running plugin root and the marketplace at ${UPSTREAM.root}: ${sample}${more}. ` +
+        `The marketplace moved and your install did not — a change with no version bump does exactly this. Fix: /claudemd-refresh, then /reload-plugins.`
     );
   }
 
@@ -317,8 +435,16 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // this axis since v0.9.22 (compareHooks above); the spec side was blind —
   // during the v0.66.0 post-tag-edit incident the banner fired 713 times over
   // 4 days while doctor exited 0 and reported every spec hash green.
-  const mktRoot = marketplacePluginRoot();
-  if (!fs.existsSync(mktRoot)) {
+  //
+  // The root here is the UPSTREAM marketplace, not the active plugin: the row's
+  // own subject line says "marketplace-shipped (what CC actually installs)", and
+  // for an end user the active plugin root is doctor's own PLUGIN_ROOT, which
+  // axis 1 already covers and which this branch would discard as a self-compare.
+  // Resolved through known_marketplaces.json rather than the hardcoded clone
+  // path, so it also reaches a marketplace added from a local directory — those
+  // create no clone, and both drift rows used to skip permanently for them.
+  const mktRoot = UPSTREAM.root ?? '';
+  if (!mktRoot || !fs.existsSync(mktRoot)) {
     push('spec-cache-drift', true, 'skipped (market-root-missing)');
   } else if (path.resolve(mktRoot) === path.resolve(PLUGIN_ROOT)) {
     push('spec-cache-drift', true, 'skipped (self-compare)');

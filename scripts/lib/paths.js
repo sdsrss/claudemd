@@ -5,12 +5,26 @@ import { fileURLToPath } from 'node:url';
 
 const home = () => process.env.HOME || os.homedir();
 
+// The whole plugin cache — every marketplace, every plugin. Distinct from
+// pluginCacheDir() below, which is the subtree of the marketplace that happens
+// to be NAMED `claudemd`: a user may add this marketplace under any name, so
+// `cache/<their-name>/claudemd/<version>` is an equally valid install location.
+// cache-prune.js's delete guard deliberately keeps the narrower path.
+export const pluginsCacheRoot = () => path.join(home(), '.claude/plugins/cache');
 export const pluginCacheDir = () => path.join(home(), '.claude/plugins/cache/claudemd');
-// Production hook root: the path Claude Code resolves ${CLAUDE_PLUGIN_ROOT} to
-// at hook-fire time. /plugin update is a silent no-op in current CC versions
-// (memory: reference_plugin_update_manual_refresh.md), so this can lag the
-// shipped plugin version. install-drift compares this against the source repo.
+// The marketplace CLONE — `git fetch` lands here on `/plugin marketplace
+// update`. NOT the hook root: Claude Code copies marketplace plugins into the
+// versioned cache and runs them from there, so this directory can be several
+// commits ahead of the code that actually executes. Use activePluginRoot()
+// for anything that means "what CC runs"; this one is only the upstream side
+// of that comparison.
+//
+// Also note it exists ONLY for `source: github` marketplaces. A marketplace
+// added from a local path or a git path is recorded with `installLocation`
+// pointing at that path itself and no clone is made here at all.
 export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/marketplaces/claudemd');
+export const installedPluginsPath = () => path.join(home(), '.claude/plugins/installed_plugins.json');
+export const knownMarketplacesPath = () => path.join(home(), '.claude/plugins/known_marketplaces.json');
 // CLAUDEMD_STATE_DIR is the documented test seam for the state root. It lives
 // here rather than at each call site: doctor.js and clean-residue.js each
 // inlined `process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), …)` while
@@ -267,4 +281,158 @@ export function semverCmp(a, b) {
     if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
   }
   return 0;
+}
+
+// The directory Claude Code resolves ${CLAUDE_PLUGIN_ROOT} to when it fires our
+// hooks — i.e. the code that ACTUALLY RUNS. Per the plugins reference: "Absolute
+// path to the plugin's installation directory", and marketplace plugins are
+// copied into `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` rather
+// than used in place.
+//
+// This function exists because three doctor checks used to reach for
+// marketplacePluginRoot() instead, on a comment that called it the hook root.
+// It is not, and the gap is not cosmetic — it inverts the checks in the one
+// state they were written for. `/plugin marketplace update` advances the clone
+// while the cache keeps serving the old version (verified: a no-version-bump
+// change reaches the clone and `claude plugin update` then reports "already at
+// the latest version"), so source and clone agree, the drift check reports
+// "match", and the stale hooks it was meant to catch keep running. The reverse
+// miss is just as real: for a marketplace added from a local or git PATH no
+// clone is ever created, so both checks skipped permanently.
+//
+// Resolution order, most authoritative first:
+//   1. installed_plugins.json — what CC itself recorded at install/update time.
+//   2. newest semver dir in the plugin cache — correct whenever (1) is absent
+//      or predates the plugin (bootstrap-pending, hand-managed cache).
+//   3. the marketplace clone — pre-cache layouts kept the plugin there.
+// Returns { root, source }; root is null when nothing resolves, so callers can
+// report the reason instead of comparing against a path that never existed.
+export function activePluginRoot() {
+  try {
+    const data = JSON.parse(fs.readFileSync(installedPluginsPath(), 'utf8'));
+    // Keyed `<plugin>@<marketplace>`; the marketplace half is whatever name the
+    // user added it under, so match on the plugin half only.
+    const entries = [];
+    for (const [id, list] of Object.entries(data?.plugins ?? {})) {
+      if (id.split('@')[0] !== 'claudemd') continue;
+      for (const e of Array.isArray(list) ? list : []) {
+        if (e && typeof e.installPath === 'string') entries.push(e);
+      }
+    }
+    // Newest version wins when the plugin is installed at several scopes.
+    entries.sort((a, b) => {
+      const av = String(a.version ?? '');
+      const bv = String(b.version ?? '');
+      return SEMVER_RE.test(av) && SEMVER_RE.test(bv) ? semverCmp(av, bv) : av.localeCompare(bv);
+    });
+    // Existence alone is not enough, so both gates apply (the shape-vs-location
+    // distinction cache-prune.js already had to learn): installPath is an
+    // ABSOLUTE path recorded when the plugin was installed, so a home that was
+    // copied, moved or restored from a backup carries a record pointing into
+    // the OTHER tree — which usually still exists, so an existence check passes
+    // and every drift comparison below silently runs against a stranger's
+    // plugin. Constrain it to this home's cache; a record outside it is stale by
+    // construction, and the cache scan underneath resolves the real one.
+    const cacheRoot = pluginsCacheRoot() + path.sep;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const p = entries[i].installPath;
+      if (p.startsWith(cacheRoot) && fs.existsSync(p)) {
+        return { root: p, source: 'installed-plugins' };
+      }
+    }
+  } catch {
+    /* absent or unparseable — fall through to the cache scan */
+  }
+
+  // Marketplace-agnostic, for the same reason the guard above is: the cache is
+  // keyed by the name the user added the marketplace under, so scanning only
+  // `cache/claudemd/claudemd/` finds nothing for anyone who named it otherwise.
+  try {
+    const cacheRoot = pluginsCacheRoot();
+    let best = null;
+    for (const mkt of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+      if (!mkt.isDirectory()) continue;
+      const base = path.join(cacheRoot, mkt.name, 'claudemd');
+      let versions;
+      try {
+        versions = fs.readdirSync(base, { withFileTypes: true });
+      } catch {
+        continue; // this marketplace does not carry claudemd
+      }
+      for (const v of versions) {
+        if (!v.isDirectory() || !SEMVER_RE.test(v.name)) continue;
+        if (best === null || semverCmp(v.name, best.version) > 0) {
+          best = { version: v.name, root: path.join(base, v.name) };
+        }
+      }
+    }
+    if (best) return { root: best.root, source: 'plugin-cache' };
+  } catch {
+    /* no cache dir — fall through to the clone */
+  }
+
+  const mkt = marketplacePluginRoot();
+  if (fs.existsSync(mkt)) return { root: mkt, source: 'marketplace-clone' };
+  return { root: null, source: 'none' };
+}
+
+// The tree a REINSTALL would copy from — the upstream side of the drift the
+// cache can suffer. Distinct from activePluginRoot() and needed alongside it:
+// `/claudemd-doctor` runs `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js`, so for
+// an end user doctor's own PLUGIN_ROOT *is* the active root and comparing the
+// two is a self-compare that can never report anything. Their drift axis is
+// "what I run" vs "what the marketplace now holds", and it is a live state:
+// `/plugin marketplace update` advances the marketplace on its own, and a change
+// carrying no version bump then leaves `claude plugin update` reporting
+// "already at the latest version" with the new code sitting upstream, unused.
+//
+// Resolution: which marketplace owns claudemd (installed_plugins.json keys are
+// `<plugin>@<marketplace>`) → where that marketplace lives
+// (known_marketplaces.json `installLocation`, which is the clone for a `github`
+// source and the user's own directory for a `directory` one) → where the plugin
+// sits inside it (its marketplace.json entry's `source`, `./` for this plugin).
+// Every step falls back rather than guessing, and the last fallback is the
+// historical hardcoded clone path.
+export function upstreamPluginRoot() {
+  let marketplace = null;
+  try {
+    const data = JSON.parse(fs.readFileSync(installedPluginsPath(), 'utf8'));
+    for (const id of Object.keys(data?.plugins ?? {})) {
+      const at = id.indexOf('@');
+      if (at > 0 && id.slice(0, at) === 'claudemd') {
+        marketplace = id.slice(at + 1);
+        break;
+      }
+    }
+  } catch {
+    /* fall through to the hardcoded clone */
+  }
+
+  let location = null;
+  try {
+    const known = JSON.parse(fs.readFileSync(knownMarketplacesPath(), 'utf8'));
+    const entry = marketplace ? known?.[marketplace] : null;
+    if (entry && typeof entry.installLocation === 'string') location = entry.installLocation;
+  } catch {
+    /* fall through */
+  }
+  if (!location || !fs.existsSync(location)) {
+    const mkt = marketplacePluginRoot();
+    return fs.existsSync(mkt) ? { root: mkt, source: 'marketplace-clone' } : { root: null, source: 'none' };
+  }
+
+  // `source` may also be an object (a remote the marketplace points at), which
+  // is not a directory on this machine and so not comparable — treat it as no
+  // upstream rather than joining an object onto a path.
+  let rel = './';
+  try {
+    const cat = JSON.parse(fs.readFileSync(path.join(location, '.claude-plugin/marketplace.json'), 'utf8'));
+    const plugin = (cat?.plugins ?? []).find(p => p?.name === 'claudemd');
+    if (plugin && typeof plugin.source === 'string') rel = plugin.source;
+    else if (plugin && plugin.source !== undefined) return { root: null, source: 'none' };
+  } catch {
+    /* no catalog to read — assume the marketplace root is the plugin root */
+  }
+  const root = path.resolve(location, rel);
+  return fs.existsSync(root) ? { root, source: 'marketplace' } : { root: null, source: 'none' };
 }

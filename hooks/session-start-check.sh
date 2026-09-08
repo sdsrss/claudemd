@@ -75,6 +75,23 @@ PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRESH_INSTALL=0
 [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]] || FRESH_INSTALL=1
 
+# A manifest that EXISTS but does not PARSE is not an installed state, it is a
+# half-written one — an interrupted write, a disk-full truncation, a hand-edit.
+# Pre-fix it read as installed: the version probe below pulls `.version` with
+# jq, gets empty, and the "skip auto-upgrade when either side is unknown" guard
+# — written for pre-0.1.9 manifests that legitimately have no .version — exits 0.
+# So the session after a truncated write repaired nothing, and neither did any
+# session after that; /claudemd-doctor meanwhile called the file "missing" and
+# sent the user to `/plugin install`, which is a no-op on an installed plugin.
+# install.js writes this file atomically and last, so re-entering the bootstrap
+# IS the repair, and it is the same cost as the fresh path it now shares.
+#
+# jq-gated: without jq we cannot tell "corrupt" from "legacy, no .version", and
+# the historical skip is the safer read of an ambiguous file.
+if [[ "$FRESH_INSTALL" == "0" && -f "$MANIFEST_NEW" ]] && command -v jq >/dev/null 2>&1; then
+  jq -e . "$MANIFEST_NEW" >/dev/null 2>&1 || FRESH_INSTALL=1
+fi
+
 # merge_banners CANDIDATE... — print at most ONE SessionStart object.
 #
 # CC parses hook stdout with a strict single-value JSON.parse, so two objects on
@@ -182,18 +199,48 @@ spec_drift_check() {
   # Explicit one-level glob, no descent (§8: no recursive traversal of ~/.claude).
   # Spaces stripped so the banner's own suggested value works verbatim when more
   # than one file drifted (the report joins with ", ").
-  local f base installed drifted="" ignore=",${SPEC_DRIFT_IGNORE:-},"
+  local f base installed drifted="" missing="" ignore=",${SPEC_DRIFT_IGNORE:-},"
   ignore="${ignore// /}"
   for f in "$PLUGIN_ROOT"/spec/*.md; do
     [[ -f "$f" ]] || continue
     base=$(basename "$f")
     case "$ignore" in *",$base,"*) continue ;; esac
     installed="$HOME/.claude/$base"
-    # Absent is not drift: install.js decides WHICH files ship to ~/.claude, and
-    # a spec file this version does not install must not raise a banner.
-    [[ -f "$installed" ]] || continue
+    # Absent USED to be skipped outright, on the reading that install.js decides
+    # which files ship to ~/.claude and one this version does not install must
+    # not raise a banner. That case is hypothetical — paths.js#SPEC_FILES is the
+    # install list and it is every .md this glob returns — while the case the
+    # skip actually covered is real and worse than drift: the user's spec was
+    # DELETED. CC reads ~/.claude/CLAUDE.md as user-global instructions, so its
+    # absence silently unloads the whole spec, and an EDITED spec banners while a
+    # deleted one said nothing. Report it, separately, because the fix differs:
+    # drift is /claudemd-update, absence is /claudemd-install.
+    #
+    # Only reachable on the version-match branch (the sole caller), i.e. after a
+    # bootstrap has already run — so a genuinely fresh install, whose spec is
+    # legitimately not on disk yet, cannot reach this and false-fire.
+    if [[ ! -f "$installed" ]]; then
+      missing="${missing}${missing:+, }${base}"
+      continue
+    fi
     cmp -s "$f" "$installed" || drifted="${drifted}${drifted:+, }${base}"
   done
+
+  if [[ -n "$missing" ]]; then
+    hook_record session-start spec-missing \
+      "$(jq -cn --arg files "$missing" '{missing_files: $files}' 2>/dev/null || echo 'null')" \
+      '' "$SESSION_ID" 2>/dev/null || true
+
+    jq -cn --arg files "$missing" --arg drifted "$drifted" '{
+      suppressOutput: true,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". Claude Code reads these as your user-global instructions, so the spec is not loaded this session. Fix: /claudemd-install (recopies the shipped spec). Disable this check: DISABLE_SPEC_DRIFT_BANNER=1.")
+      }
+    }' 2>/dev/null || true
+    return 0
+  fi
+
   [[ -n "$drifted" ]] || return 0
 
   hook_record session-start spec-drift \
@@ -461,7 +508,11 @@ stale_cache_check() {
 # never ran, and manifest + spec froze at 0.2.2 state. We now re-run install
 # when `.claudemd-manifest.json` .version disagrees with the package.json of
 # the plugin root we're loading from.
-if [[ -f "$MANIFEST_NEW" || -f "$MANIFEST_OLD" ]]; then
+if [[ "$FRESH_INSTALL" == "0" ]]; then
+  # Same condition as the `-f "$MANIFEST_NEW" || -f "$MANIFEST_OLD"` this used to
+  # spell out — FRESH_INSTALL is exactly its negation — except that it now also
+  # excludes the unparseable-manifest case above, which belongs to the bootstrap
+  # tail rather than to the version-compare branch.
   # Authoritative current-plugin version = package.json .version, same source
   # install.js uses for readPluginVersion. Dir basename is unreliable in
   # dev-mode (git checkout basename is not semver).

@@ -31,7 +31,7 @@ Then bootstrap the **current** session (skip the wait-for-next-session restart) 
 /claudemd-doctor
 ```
 
-`install` copies the spec into `~/.claude/`, writes the hook manifest, and evicts legacy entries — idempotent, safe to re-run. (Background: Claude Code does not fire `postInstall`, so without `/claudemd-install`, `install.js` runs on the next `SessionStart` instead.) `status` reports plugin version, shipped vs installed spec version, kill-switch state, and rule-hits row count. `doctor` runs 9+ health checks with `[✓] / [△] / [✗]` markers.
+`install` copies the spec into `~/.claude/`, writes the hook manifest, and evicts legacy entries — idempotent, safe to re-run. (Background: Claude Code does not fire `postInstall`, so without `/claudemd-install`, `install.js` runs on the next `SessionStart` instead.) `status` reports plugin version, shipped vs installed spec version, kill-switch state, and rule-hits row count. `doctor` runs 40+ health checks with `[✓] / [△] / [✗]` markers — including whether the hooks Claude Code actually runs still match the marketplace, and whether the statusline renderer `settings.json` points at is still on disk.
 
 Fallback (no slash command — e.g. scripting outside CC): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js`. Find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`.
 
@@ -84,6 +84,8 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | Session end (Stop), at most once per 24h | `mem-audit` (v0.9.4+) | Scans CC auto-memory `~/.claude/projects/*/memory/feedback_*.md` for missing `**Why:**` / `**How to apply:**` body structure plus MEMORY.md ↔ files index drift; advisory stderr, never blocks. |
 | Session end | `session-summary` (v0.8.0+) | Writes `~/.claude/.claudemd-state/last-session-summary.json`; banner emit at next `SessionStart`. |
 | New session start with GitHub remote tag newer than local cache max version | `session-start-check` (v0.4.0+) | Injects an "upgrade available" banner via `additionalContext`. Rate-limited to once per 24h via `~/.claude/.claudemd-state/upstream-check.lastrun` sentinel. 3-second `git ls-remote` timeout, fail-open. |
+| New session start with a `~/.claude/CLAUDE*.md` / `OPERATOR.md` that is edited, or **missing** | `session-start-check` (v0.84.0+ for the missing half) | Two banners, because the fixes differ: an edited file says `/claudemd-update`, a deleted one says `/claudemd-install`. A deleted spec is the louder case — Claude Code reads these as your user-global instructions, so its absence silently unloads the spec. Silence both with `DISABLE_SPEC_DRIFT_BANNER=1`. |
+| New session start with a `~/.claude/.claudemd-manifest.json` that exists but does not parse | `session-start-check` (v0.84.0+) | Re-runs the bootstrap, which rewrites the manifest atomically. Previously this state exited silently on every session, forever. |
 | First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
 | `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
 | Session end with last assistant turn carrying §10 four-section out of order, `Done:` lines lacking evidence fingerprints, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
@@ -343,6 +345,8 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 
 `CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
 
+**What `--purge` deliberately leaves**: `~/.claude/settings.json.claudemd-backup-<ISO>` — the copy of your `settings.json` taken before install rewrote it, and `~/.claude/backup-<ISO>/` / `spec-backup-<ISO>/`. Purge removes claudemd's own state; it does not remove your data, and these files are the copies that exist so `restore` has something to restore from. Delete them by hand once you are sure you no longer want them.
+
 ### Direct script invocation (advanced fallback)
 
 If `/claudemd-uninstall` is unavailable (you already ran `/plugin uninstall` first and want to clean up by reaching into the cache before it gets pruned, or you need to script the uninstall outside CC):
@@ -395,7 +399,7 @@ claudemd/
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 19 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v6.29.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
+├── spec/                     # shipped v6.29 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20/22/24) + npm-publish.yml (tag-triggered)
