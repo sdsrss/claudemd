@@ -1,0 +1,32 @@
+{
+  "_doc": "Expected GitHub ruleset state for this repository, written from `gh api repos/sdsrss/claudemd/rulesets` on 2026-09-08. docs/ROLLBACK.md describes these in prose and tests/scripts/contributing-rollback-drift.test.js joins the two, so the doc cannot drift from this file. This file can still drift from the LIVE repo — reading rulesets needs admin scope, which the Actions GITHUB_TOKEN does not have, so there is no CI step. Re-run the command above when you change a ruleset.",
+  "rulesets": [
+    {
+      "name": "main-integrity",
+      "target": "branch",
+      "enforcement": "active",
+      "ref_include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "rules": [
+        "deletion",
+        "non_fast_forward"
+      ],
+      "bypass_actors": 0
+    },
+    {
+      "name": "release-tags-immutable",
+      "target": "tag",
+      "enforcement": "active",
+      "ref_include": [
+        "refs/tags/v*"
+      ],
+      "rules": [
+        "deletion",
+        "non_fast_forward",
+        "update"
+      ],
+      "bypass_actors": 0
+    }
+  ]
+}

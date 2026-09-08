@@ -677,11 +677,23 @@ const PINS = [
 // mechanism that keeps the table honest as pins are added — a new pin in a new
 // section cannot land without registering its neighbourhood.
 //
-// The limit, unchanged in kind from the line pins: a maintainer can re-bless a
-// bad edit by updating a hash. What they cannot do is land it unmarked. Churn
-// is the price and it is deliberate — an unrelated edit inside §11 fails this
-// gate, and that failure is the prompt to re-read the pinned rules sharing the
-// block. Hashes are the first 16 hex of sha256 over the block's exact bytes.
+// TWO LIMITS, and the first one is bigger than the first draft of this comment
+// admitted (0.82.0 pre-tag review, HIGH-2 — five revoking mutations passed 57/57
+// against the real spec). A block ends at the NEXT heading of any level, so what
+// is watched is the 13 blocks that hold a pin, not the files: 139 of core's 246
+// lines (59.1% of its bytes) and 43 of extended's 538 (15.3%). A sentence added
+// under `## §1 IDENTITY`, `### §2.1 ROUTE`, `### §5.1 AUTONOMY_LEVEL` or
+// `### Verify-before-claim` — none of which holds a pinned line — is not seen
+// here at all, and can revoke a pinned rule two headings away. The heading
+// inventory below closes the sub-case where such a section is NEW; it does not
+// widen coverage of sections that already exist. Read a passing run as "no
+// pinned line and no line sharing its block moved", nothing wider.
+// The second limit is the line pins' own, unchanged in kind: a maintainer can
+// re-bless a bad edit by updating a hash. What they cannot do is land it
+// unmarked. Churn is the price and it is deliberate — `## §11 SESSION` runs to
+// the end of core, so any edit in it fails this gate, and that failure is the
+// prompt to re-read the pinned rules sharing the block. Hashes are the first 16
+// hex of sha256 over the block's exact bytes.
 const PINNED_BLOCKS = [
   { file: CORE, heading: '## §0 SPINE', sha256: '4de3e66c67259a19' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
@@ -719,9 +731,61 @@ function blockFor(lines, idx) {
 
 const blockHash = text => crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
 
+// The ordered list of every heading in both spec files, hashed. Two shapes the
+// block hashes above cannot see, both demonstrated green against the real spec
+// (0.82.0 pre-tag review, HIGH-2): a `### Superseded` inserted at the END of a
+// pinned block — after its last line, before the next heading — leaves that
+// block's bytes untouched and creates a NEW block that holds no pin, so neither
+// arm looks at it; and a DUPLICATE of a registered heading is treated as
+// registered, because the table keys on heading text. A heading cannot be added,
+// removed, renamed or reordered anywhere in either file without this moving.
+const HEADING_INVENTORY = [
+  { file: CORE, count: 20, sha256: 'fdd8831e0ba58e73' },
+  { file: EXT, count: 62, sha256: '2c2de62b8a76aeb4' },
+];
+
+for (const inv of HEADING_INVENTORY) {
+  test(`spec neighbourhood: heading inventory of ${inv.file}`, () => {
+    const headings = fs
+      .readFileSync(inv.file, 'utf8')
+      .split('\n')
+      .filter(l => /^#{1,6} /.test(l));
+    const found = blockHash(headings.join('\n'));
+    assert.equal(
+      headings.length,
+      inv.count,
+      `${inv.file} has ${headings.length} headings, expected ${inv.count}. A heading was added ` +
+        'or removed. If that is intentional, read what moved under it — a header inserted at the ' +
+        'end of a pinned block is how a rule gets revoked with every other gate green — then ' +
+        'update this entry in the same commit.\n' +
+        headings.map(h => `  ${h}`).join('\n')
+    );
+    assert.equal(
+      found,
+      inv.sha256,
+      `the heading inventory of ${inv.file} changed (count is unchanged, so a heading was ` +
+        `renamed or reordered). EXPECTED ${inv.sha256}, FOUND ${found}. Update HEADING_INVENTORY ` +
+        'in tests/scripts/spec-structure.test.js once you have read the diff.\n' +
+        headings.map(h => `  ${h}`).join('\n')
+    );
+  });
+}
+
 for (const block of PINNED_BLOCKS) {
   test(`spec neighbourhood: ${block.heading}`, () => {
     const lines = fs.readFileSync(block.file, 'utf8').split('\n');
+    // Occurrence count, not indexOf: a DUPLICATE of this heading placed at the
+    // end of its own block, with a revocation under it, resolved to the first
+    // occurrence and passed (0.82.0 pre-tag review, HIGH-2). Same uniqueness
+    // rule the line pins below already enforce on their anchors.
+    const occurrences = lines.filter(l => l === block.heading).length;
+    assert.equal(
+      occurrences,
+      1,
+      `${block.file} carries the heading ${JSON.stringify(block.heading)} ${occurrences} times. ` +
+        'Two headings with the same text make the block boundary ambiguous, and the second one ' +
+        'is where a revocation hides.'
+    );
     const idx = lines.indexOf(block.heading);
     assert.notEqual(
       idx,
@@ -740,7 +804,8 @@ for (const block of PINNED_BLOCKS) {
         'other half, and it reports that something around them moved. A bullet beside a rule, a ' +
         'preamble above it, or a header inserted over it can revoke that rule without touching ' +
         'its text (0.78.0 round-3 HIGH-1). Read the diff of this block, decide whether every ' +
-        'pinned rule in it still holds, and only then update this hash in the same commit.'
+        'pinned rule in it still holds, and only then update this hash — it lives in ' +
+        'PINNED_BLOCKS in tests/scripts/spec-structure.test.js — in the same commit.'
     );
   });
 }

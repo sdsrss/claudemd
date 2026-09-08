@@ -157,9 +157,9 @@ jobs:
         # this is still the only place the invariant can be stated. A tag can no
         # longer be repointed at an unmerged commit after this check passes,
         # which is new; nothing else about the check changes.
-        # Ancestry, not equality: the
-        # atomic ship flow pushes main and then the tag, and a later commit on
-        # main must not invalidate an in-flight publish.
+        # Ancestry, not equality: the atomic ship flow pushes main and then the
+        # tag, and a later commit on main must not invalidate an in-flight
+        # publish.
         #
         # `--depth=0` is NOT "no depth limit" — git rejects it during argument
         # parsing (`fatal: depth 0 is not a positive number`, exit 128), and

@@ -137,6 +137,38 @@ test('REL-H1: the publish-job anchoring ignores a `needs:` on an earlier job', (
   assert.deepEqual(publishNeeds(decoy), ['test', 'static']);
 });
 
+test('0.82.0: ROLLBACK names the rulesets it describes, and their load-bearing rules', () => {
+  // The ruleset paragraph added in 0.82.0 is repo STATE, not intent — a UI click
+  // changes it and nothing in the tree would notice (0.82.0 pre-tag review,
+  // MEDIUM-5: the commit reported "16/16 pass" beside "both places are updated",
+  // and none of those 16 read a sentence it had changed). The expectation file is
+  // written from `gh api …/rulesets`; reading rulesets needs admin scope, which
+  // the Actions GITHUB_TOKEN does not have, so this join is offline-only: it
+  // catches the DOC drifting from the file, not the file drifting from GitHub.
+  const expected = JSON.parse(read('.github/rulesets.expected.json'));
+  const rollback = read('docs/ROLLBACK.md');
+  assert.ok(expected.rulesets.length >= 2, 'the expectation file lists fewer than two rulesets');
+  for (const rs of expected.rulesets) {
+    assert.ok(
+      rollback.includes(rs.name),
+      `docs/ROLLBACK.md does not name the ruleset \`${rs.name}\` that .github/rulesets.expected.json records`
+    );
+  }
+  const tagRs = expected.rulesets.find(r => r.target === 'tag');
+  assert.ok(tagRs, 'no tag-target ruleset in the expectation file');
+  assert.ok(
+    tagRs.rules.includes('update') && tagRs.rules.includes('deletion'),
+    "the tag ruleset must block update and deletion — ROLLBACK's claim that a published version " +
+      'string cannot be repointed at different code rests on both, and npm-publish.yml repeats it'
+  );
+  assert.equal(
+    tagRs.bypass_actors,
+    0,
+    'a bypass actor on the tag ruleset makes the immutability claim in docs/ROLLBACK.md and in ' +
+      "npm-publish.yml's main-ancestry comment false for that actor"
+  );
+});
+
 test('REL-H1: the revert route names the three mechanisms that make a bare revert invisible', () => {
   // The section used to say a plain `git revert && git push` reaches users via
   // the upgrade banner. It does not: all three of these refuse or ignore a
