@@ -95,6 +95,7 @@ tasks/*
 # implemented. Without these the citations dangle.
 !tasks/npm-download-attribution-2026-08-24.md
 !tasks/s8-sanitize-escaped-quote-gap.md
+!tasks/s8-provenance-residuals-2026-09-08.md
 !tasks/legacy-spec-backup-migration.md
 
 # dev tooling (eslint / prettier / c8 / jscpd / acorn) — devDependencies only,
