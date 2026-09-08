@@ -677,41 +677,71 @@ const PINS = [
 // mechanism that keeps the table honest as pins are added — a new pin in a new
 // section cannot land without registering its neighbourhood.
 //
-// TWO LIMITS, and the first one is bigger than the first draft of this comment
-// admitted (0.82.0 pre-tag review, HIGH-2 — five revoking mutations passed 57/57
-// against the real spec). A block ends at the NEXT heading of any level, so what
-// is watched is the 13 blocks that hold a pin, not the files: 139 of core's 246
-// lines (59.1% of its bytes) and 43 of extended's 538 (15.3%). A sentence added
-// under `## §1 IDENTITY`, `### §2.1 ROUTE`, `### §5.1 AUTONOMY_LEVEL` or
-// `### Verify-before-claim` — none of which holds a pinned line — is not seen
-// here at all, and can revoke a pinned rule two headings away. The heading
-// inventory below closes the sub-case where such a section is NEW; it does not
-// widen coverage of sections that already exist. Read a passing run as "no
-// pinned line and no line sharing its block moved", nothing wider.
-// The second limit is the line pins' own, unchanged in kind: a maintainer can
+// SCOPE, measured rather than asserted. The first cut of this watched only the
+// blocks that held a pin, and a block ended at the next heading of ANY level —
+// 59.1% of core's bytes, 15.3% of extended's. The 0.82.0 pre-tag review landed
+// five revoking mutations in the gaps at 57/57 green, four of them in
+// SUBSECTIONS of pinned sections (`### §5.1` under `## §5 AUTH`,
+// `### Verify-before-claim` under `## §8`), one in a section holding no pin at
+// all. Two changes close that: a section runs to the next heading of the same or
+// higher level, so it owns its subsections, and EVERY top-level section of both
+// files is registered, pinned or not — a revocation does not have to be near the
+// rule it revokes. With the file preamble registered too (a sentence above the
+// first heading reaches every rule below it) the watched span is the whole file:
+// 24942/24942 bytes of core and 45264/45264 of extended, verified by the
+// coverage assertion below rather than by this comment.
+//
+// The remaining limit is the line pins' own, unchanged in kind: a maintainer can
 // re-bless a bad edit by updating a hash. What they cannot do is land it
-// unmarked. Churn is the price and it is deliberate — `## §11 SESSION` runs to
-// the end of core, so any edit in it fails this gate, and that failure is the
-// prompt to re-read the pinned rules sharing the block. Hashes are the first 16
-// hex of sha256 over the block's exact bytes.
+// unmarked. Churn is the price and it is now the whole file — any spec edit
+// fails exactly the section entry it lands in, which is the prompt to re-read
+// the rules sharing that section. Hashes are the first 16 hex of sha256 over the
+// section's exact bytes; `''` is the preamble, from the first line to the first
+// `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '## §0 SPINE', sha256: '4de3e66c67259a19' },
+  { file: CORE, heading: '', sha256: '2b9e87a486143f06' },
+  { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '2824fe3590d57a1b' },
+  { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
+  { file: CORE, heading: '## §5 AUTH', sha256: 'a224c2c2aa3ee76d' },
+  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'edf5d84ce39ad5c4' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '8780c8ae583db693' },
+  { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: 'eaf0b61905f98bf7' },
-  { file: CORE, heading: '### §2.2 EXT LOADING', sha256: 'd42a54dbce37238f' },
-  { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
-  { file: CORE, heading: '## §5 AUTH', sha256: '4a9f3a3f72d514a9' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '471529e83fb9281c' },
+  { file: EXT, heading: '', sha256: '2cd8860e90b55f36' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'eb4a29edbe4668f1' },
+  { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
+  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
+  { file: EXT, heading: '## §4 FLOW', sha256: '0cbdc65ea73bea0e' },
+  { file: EXT, heading: '## §6 DEBUG', sha256: 'db02ad569420cd02' },
+  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'e9565da6dd7b190c' },
+  { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
+  { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'ac8308cd6980277a' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '356fb56b59350b52' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
+  { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
+  { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
+  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
+  { file: EXT, heading: '## Recent changes', sha256: 'b6c32215c5a3b070' },
+  { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
-    heading: '### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)',
-    sha256: '4981165c82541eb9',
+    heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)',
+    sha256: '2c9ac63c40a96c67',
   },
-  { file: EXT, heading: '### Ship-pipeline hardening (HARD)', sha256: '148656c5d76fa1e1' },
-  { file: EXT, heading: '### Subagent rules', sha256: 'b8122e6a1e0d72dd' },
+  { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '86c20226a6ea2b70' },
+  { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '08aa1e6f246a6876' },
+  { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '3acd6a6860646f20' },
+  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: 'f61a4e042919544f' },
+  {
+    file: EXT,
+    heading: '## §11-EXT-MAC macOS shell portability (cross-ref)',
+    sha256: 'db65bc3272ec5aeb',
+  },
 ];
 
 const headingLevel = line => {
@@ -719,13 +749,26 @@ const headingLevel = line => {
   return m ? m[1].length : 0;
 };
 
-/** The markdown block containing line `idx`: nearest heading → next heading of any level. */
+/**
+ * The markdown SECTION containing line `idx`: nearest heading → next heading of
+ * the SAME OR HIGHER level, so a section owns its subsections. The first cut of
+ * this stopped at the next heading of ANY level, which left every subsection
+ * that holds no pin of its own unwatched — `### §5.1 AUTONOMY_LEVEL` under a
+ * pinned `## §5 AUTH`, `### Verify-before-claim` under a pinned `## §8`, and so
+ * on. Four of the five mutations the 0.82.0 pre-tag review landed green were in
+ * exactly those subsections.
+ */
 function blockFor(lines, idx) {
   let start = idx;
   while (start >= 0 && headingLevel(lines[start]) === 0) start--;
   if (start < 0) return null;
+  const level = headingLevel(lines[start]);
   let end = start + 1;
-  while (end < lines.length && headingLevel(lines[end]) === 0) end++;
+  while (end < lines.length) {
+    const l = headingLevel(lines[end]);
+    if (l > 0 && l <= level) break;
+    end++;
+  }
   return { heading: lines[start], text: lines.slice(start, end).join('\n') };
 }
 
@@ -771,30 +814,44 @@ for (const inv of HEADING_INVENTORY) {
   });
 }
 
+/** The registered span for one table entry: the preamble when heading is ''. */
+function registeredSpan(lines, heading) {
+  if (heading === '') {
+    let end = 0;
+    while (end < lines.length && !/^## /.test(lines[end])) end++;
+    return { start: 0, end, text: lines.slice(0, end).join('\n') };
+  }
+  const start = lines.indexOf(heading);
+  if (start === -1) return null;
+  const span = blockFor(lines, start);
+  return { start, end: start + span.text.split('\n').length, text: span.text };
+}
+
 for (const block of PINNED_BLOCKS) {
-  test(`spec neighbourhood: ${block.heading}`, () => {
+  test(`spec neighbourhood: ${block.file} ${block.heading || '(preamble)'}`, () => {
     const lines = fs.readFileSync(block.file, 'utf8').split('\n');
-    // Occurrence count, not indexOf: a DUPLICATE of this heading placed at the
-    // end of its own block, with a revocation under it, resolved to the first
-    // occurrence and passed (0.82.0 pre-tag review, HIGH-2). Same uniqueness
-    // rule the line pins below already enforce on their anchors.
-    const occurrences = lines.filter(l => l === block.heading).length;
-    assert.equal(
-      occurrences,
-      1,
-      `${block.file} carries the heading ${JSON.stringify(block.heading)} ${occurrences} times. ` +
-        'Two headings with the same text make the block boundary ambiguous, and the second one ' +
-        'is where a revocation hides.'
-    );
-    const idx = lines.indexOf(block.heading);
-    assert.notEqual(
-      idx,
-      -1,
+    if (block.heading !== '') {
+      // Occurrence count, not indexOf: a DUPLICATE of this heading placed at the
+      // end of its own section, with a revocation under it, resolved to the first
+      // occurrence and passed (0.82.0 pre-tag review, HIGH-2). Same uniqueness
+      // rule the line pins below already enforce on their anchors.
+      const occurrences = lines.filter(l => l === block.heading).length;
+      assert.equal(
+        occurrences,
+        1,
+        `${block.file} carries the heading ${JSON.stringify(block.heading)} ${occurrences} times. ` +
+          'Two headings with the same text make the section boundary ambiguous, and the second ' +
+          'one is where a revocation hides.'
+      );
+    }
+    const span = registeredSpan(lines, block.heading);
+    assert.ok(
+      span,
       `${block.file} no longer carries the heading ${JSON.stringify(block.heading)} on a line of ` +
-        'its own. A renamed or deleted heading moves every pinned rule under it into some other ' +
-        "block, where this gate is not watching — re-point this entry at the rule's new home."
+        'its own. A renamed or deleted heading moves every rule under it into some other ' +
+        "section — re-point this entry at the rule's new home."
     );
-    const found = blockHash(blockFor(lines, idx).text);
+    const found = blockHash(span.text);
     assert.equal(
       found,
       block.sha256,
@@ -810,29 +867,41 @@ for (const block of PINNED_BLOCKS) {
   });
 }
 
-test('spec neighbourhood: every pinned line sits in a registered block', () => {
-  // Self-extending: a pin added in an unregistered section fails here rather
-  // than shipping with its neighbourhood unwatched. This is also the arm that
-  // catches a `### Superseded` header inserted directly above a pinned line —
-  // that header becomes the line's nearest heading, and it is not in the table.
-  const registered = new Set(PINNED_BLOCKS.map(b => `${b.file} ${b.heading}`));
-  const unregistered = [];
-  for (const pin of PINS) {
-    const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
-    const idx = lines.findIndex(l => l.includes(pin.anchor));
-    if (idx === -1) continue; // the pin's own anchor-uniqueness test reports this
-    const block = blockFor(lines, idx);
-    const key = `${pin.file} ${block.heading}`;
-    if (!registered.has(key)) unregistered.push(`${block.heading}  (holds: ${pin.what})`);
-  }
-  assert.deepEqual(
-    [...new Set(unregistered)],
-    [],
-    'a pinned rule sits under a heading with no entry in PINNED_BLOCKS, so nothing watches its ' +
-      'neighbours. Either the rule moved under a new heading (including one inserted above it), ' +
-      'or a new pin was added without registering its block. Add the heading and its hash.'
-  );
-});
+for (const file of [CORE, EXT]) {
+  test(`spec neighbourhood: every line of ${file} is inside exactly one registered section`, () => {
+    // The scope claim, asserted rather than described. The first cut of this gate
+    // registered only the sections holding a pin, and the review's five revoking
+    // mutations lived in the gaps; a percentage in a comment is not a property,
+    // this is. It is also what keeps the table self-extending: a new `## ` section
+    // cannot be added to either spec file without an entry, and a pin cannot move
+    // into an unwatched place because there is no unwatched place.
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const seen = new Map();
+    for (const block of PINNED_BLOCKS.filter(b => b.file === file)) {
+      const span = registeredSpan(lines, block.heading);
+      assert.ok(span, `PINNED_BLOCKS names ${JSON.stringify(block.heading)}, which ${file} lacks`);
+      for (let i = span.start; i < span.end; i++) {
+        assert.ok(
+          !seen.has(i),
+          `${file}:${i + 1} is inside two registered sections (${JSON.stringify(seen.get(i))} and ` +
+            `${JSON.stringify(block.heading)}) — the table must partition the file, not overlap`
+        );
+        seen.set(i, block.heading);
+      }
+    }
+    const uncovered = lines
+      .map((l, i) => (seen.has(i) || l === '' ? null : `${i + 1}: ${l}`))
+      .filter(Boolean);
+    assert.deepEqual(
+      uncovered,
+      [],
+      `${file} has lines outside every registered section. A rule can be revoked from anywhere in ` +
+        'the file, not only from beside itself, so an unwatched span is an unwatched revocation ' +
+        'site. Add a PINNED_BLOCKS entry for the section holding these lines:\n' +
+        uncovered.join('\n')
+    );
+  });
+}
 
 test('spec neighbourhood: the hash moves for all four demonstrated neighbour attacks', () => {
   // Mutation control. Without this, a table of hashes that can never go red
