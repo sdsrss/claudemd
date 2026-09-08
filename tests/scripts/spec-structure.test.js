@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 // Tokenizer moved to scripts/lib/spec-routing.js when doctor.js needed the same
 // §4 read against the INSTALLED spec. Two copies of this regex is the shape a
@@ -650,6 +651,157 @@ const PINS = [
     line: '- **L1-bugfix same signature 3×** (→ §EXT §6)',
   },
 ];
+
+// NEIGHBOURHOOD PINS — the second limit above, closed by visibility.
+//
+// The block above states it and calls it open: a pin covers THE LINE, not its
+// neighbours, so a bullet placed beside a rule, a preamble above it, or a
+// `### Superseded` header inserted over it kills the rule with every gate here
+// green (0.78.0 round-3 review, HIGH-1; re-demonstrated in v0.80.0's round 3
+// with a `**Relaxation exception**:` bullet next to the pinned §3 line, at 1088
+// tests, version-cascade-check and spec-coherence-audit --strict all green). It
+// also says closing it would need a mechanism that judges what the surrounding
+// prose MEANS, and that two rounds falsified that approach.
+//
+// This does not judge meaning either, and that is the point. It makes a
+// neighbour impossible to add SILENTLY — the same property the line pins
+// already have, bought the same way `hard-rules-10` bought it: compare a whole
+// artifact, not a substring of one. Each pinned line's markdown block (its
+// nearest heading through the next heading of any level) is hashed. Anything
+// added, removed or reworded anywhere in that block fails, so the neighbour and
+// the hash update land in ONE diff, in front of a human.
+//
+// A `### Superseded` header inserted directly above a pinned line is caught by
+// the other arm: it becomes that line's nearest heading, so the block key is
+// absent from the table, and an unregistered block fails. That is the same
+// mechanism that keeps the table honest as pins are added — a new pin in a new
+// section cannot land without registering its neighbourhood.
+//
+// The limit, unchanged in kind from the line pins: a maintainer can re-bless a
+// bad edit by updating a hash. What they cannot do is land it unmarked. Churn
+// is the price and it is deliberate — an unrelated edit inside §11 fails this
+// gate, and that failure is the prompt to re-read the pinned rules sharing the
+// block. Hashes are the first 16 hex of sha256 over the block's exact bytes.
+const PINNED_BLOCKS = [
+  { file: CORE, heading: '## §0 SPINE', sha256: '4de3e66c67259a19' },
+  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
+  { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'eaf0b61905f98bf7' },
+  { file: CORE, heading: '### §2.2 EXT LOADING', sha256: 'd42a54dbce37238f' },
+  { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
+  { file: CORE, heading: '## §5 AUTH', sha256: '4a9f3a3f72d514a9' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '471529e83fb9281c' },
+  { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
+  {
+    file: EXT,
+    heading: '### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)',
+    sha256: '4981165c82541eb9',
+  },
+  { file: EXT, heading: '### Ship-pipeline hardening (HARD)', sha256: '148656c5d76fa1e1' },
+  { file: EXT, heading: '### Subagent rules', sha256: 'b8122e6a1e0d72dd' },
+];
+
+const headingLevel = line => {
+  const m = /^(#{1,6}) /.exec(line);
+  return m ? m[1].length : 0;
+};
+
+/** The markdown block containing line `idx`: nearest heading → next heading of any level. */
+function blockFor(lines, idx) {
+  let start = idx;
+  while (start >= 0 && headingLevel(lines[start]) === 0) start--;
+  if (start < 0) return null;
+  let end = start + 1;
+  while (end < lines.length && headingLevel(lines[end]) === 0) end++;
+  return { heading: lines[start], text: lines.slice(start, end).join('\n') };
+}
+
+const blockHash = text => crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
+
+for (const block of PINNED_BLOCKS) {
+  test(`spec neighbourhood: ${block.heading}`, () => {
+    const lines = fs.readFileSync(block.file, 'utf8').split('\n');
+    const idx = lines.indexOf(block.heading);
+    assert.notEqual(
+      idx,
+      -1,
+      `${block.file} no longer carries the heading ${JSON.stringify(block.heading)} on a line of ` +
+        'its own. A renamed or deleted heading moves every pinned rule under it into some other ' +
+        "block, where this gate is not watching — re-point this entry at the rule's new home."
+    );
+    const found = blockHash(blockFor(lines, idx).text);
+    assert.equal(
+      found,
+      block.sha256,
+      `the block under ${JSON.stringify(block.heading)} in ${block.file} changed.\n` +
+        `EXPECTED sha256/16 ${block.sha256}, FOUND ${found}.\n\n` +
+        'The pinned rule LINES in this block may all still be byte-identical — this gate is the ' +
+        'other half, and it reports that something around them moved. A bullet beside a rule, a ' +
+        'preamble above it, or a header inserted over it can revoke that rule without touching ' +
+        'its text (0.78.0 round-3 HIGH-1). Read the diff of this block, decide whether every ' +
+        'pinned rule in it still holds, and only then update this hash in the same commit.'
+    );
+  });
+}
+
+test('spec neighbourhood: every pinned line sits in a registered block', () => {
+  // Self-extending: a pin added in an unregistered section fails here rather
+  // than shipping with its neighbourhood unwatched. This is also the arm that
+  // catches a `### Superseded` header inserted directly above a pinned line —
+  // that header becomes the line's nearest heading, and it is not in the table.
+  const registered = new Set(PINNED_BLOCKS.map(b => `${b.file} ${b.heading}`));
+  const unregistered = [];
+  for (const pin of PINS) {
+    const lines = fs.readFileSync(pin.file, 'utf8').split('\n');
+    const idx = lines.findIndex(l => l.includes(pin.anchor));
+    if (idx === -1) continue; // the pin's own anchor-uniqueness test reports this
+    const block = blockFor(lines, idx);
+    const key = `${pin.file} ${block.heading}`;
+    if (!registered.has(key)) unregistered.push(`${block.heading}  (holds: ${pin.what})`);
+  }
+  assert.deepEqual(
+    [...new Set(unregistered)],
+    [],
+    'a pinned rule sits under a heading with no entry in PINNED_BLOCKS, so nothing watches its ' +
+      'neighbours. Either the rule moved under a new heading (including one inserted above it), ' +
+      'or a new pin was added without registering its block. Add the heading and its hash.'
+  );
+});
+
+test('spec neighbourhood: the hash moves for all four demonstrated neighbour attacks', () => {
+  // Mutation control. Without this, a table of hashes that can never go red
+  // reads exactly like one that guards something. Each shape below is one the
+  // 0.78.0 round-3 review ran against a full clone at exit 0.
+  const lines = fs.readFileSync(CORE, 'utf8').split('\n');
+  const idx = lines.indexOf('## §3 TRUST');
+  const original = blockFor(lines, idx).text;
+  const pinned = original.split('\n').findIndex(l => l.startsWith('**User relaxation**'));
+  assert.ok(pinned > 0, 'the §3 block no longer carries the User relaxation line this control uses');
+
+  const mutate = (at, text) => {
+    const copy = original.split('\n');
+    copy.splice(at, 0, text);
+    return copy.join('\n');
+  };
+  const attacks = {
+    'bullet beside it': mutate(pinned + 1, '**Relaxation exception**: the clause above is suspended.'),
+    'preamble above it': mutate(pinned, 'The paragraph below is guidance, not a rule.'),
+    'header over it': mutate(pinned, '### Superseded'),
+    'clause appended to a NEIGHBOUR line': original.replace(
+      'Schemas/specs/types: trust + verify consistency.',
+      'Schemas/specs/types: trust + verify consistency, and the relaxation clause above does not bind.'
+    ),
+  };
+  for (const [name, mutated] of Object.entries(attacks)) {
+    assert.notEqual(mutated, original, `the ${name} mutation did not change the text`);
+    assert.notEqual(
+      blockHash(mutated),
+      blockHash(original),
+      `the ${name} mutation left the block hash unchanged — this gate would not see it`
+    );
+  }
+});
 
 for (const pin of PINS) {
   test(`spec pin: ${pin.what}`, () => {
