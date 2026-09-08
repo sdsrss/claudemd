@@ -66,7 +66,20 @@ IFS= read -r -d '' S8_BIND_AWK <<'AWKPROG' || true
 # `echo "SB=x"` read as rebinds and cost the field false denies. One exception:
 # a token that is exactly the quoted name (`unset 'S'`) is a mention, since that
 # is the one rebind spelling quoting would otherwise hide.
-function emit_mentions(raw, code,   L, j, ch, prev, nxt, nxt2, name, start) {
+#
+# `can_lhs` is decided by the CALLER, from the finished segment — never from this
+# token's own syntax. An adversarial review (2026-09-08) falsified the first
+# version, which read `start == 1 && nxt == "="` here and tagged `lhs` on that
+# alone: `export S=/etc`, `readonly S=/etc`, `{ S=/etc; }`, `then S=/etc`,
+# `do S=/etc`, `time S=/etc` and `! S=/etc` all spell a token that looks like an
+# assignment's left-hand side, and bash BINDS every one of them, but end_seg
+# classifies none of them — so the gate's `total == lhs` invariant read them as
+# accounted-for and granted provenance over a rebind it had never seen. Eleven
+# spellings, each measured DENY before the change and ALLOW after, one of them
+# the everyday `WORK=$(mktemp -d); if [ -n "$D" ]; then WORK=$D; fi; rm -rf
+# "$WORK/out"`. The two halves must not decide separately; `lhs` now means
+# exactly "end_seg classified this token", which is what the invariant needs.
+function emit_mentions(raw, code, can_lhs,   L, j, ch, prev, nxt, nxt2, name, start) {
   if (raw ~ /^'[A-Za-z_][A-Za-z0-9_]*'$/ || raw ~ /^"[A-Za-z_][A-Za-z0-9_]*"$/) {
     print "M\t" substr(raw, 2, length(raw) - 2) "\tbare"
     return
@@ -91,13 +104,51 @@ function emit_mentions(raw, code,   L, j, ch, prev, nxt, nxt2, name, start) {
     # `cfg.bak.XXXXXX`, denying the very idiom it sat next to.
     if (prev ~ /^[.\/-]$/ || nxt ~ /^[.\/-]$/) continue
     nxt2 = (j < L) ? substr(code, j + 1, 1) : ""
-    if (start == 1 && (nxt == "=" || (nxt == "+" && nxt2 == "="))) print "M\t" name "\tlhs"
+    if (can_lhs && start == 1 && (nxt == "=" || (nxt == "+" && nxt2 == "="))) print "M\t" name "\tlhs"
     else print "M\t" name "\tbare"
   }
 }
 
 function flush_tok() {
-  if (tok != "") { emit_mentions(tok, code); seg[segn++] = tok; tok = ""; code = "" }
+  if (tok != "") { seg[segn] = tok; segcode[segn] = code; segn++; tok = ""; code = "" }
+}
+
+# Can a command with this word as its command word rebind a variable in THIS
+# shell? Only builtins and keywords can — an external command gets a copy of the
+# environment and cannot reach back into the shell's variable table. That is an
+# invariant of how bash works, not a heuristic, which is what makes the list
+# below closeable rather than a denylist chasing spellings.
+#
+# It has to be asked because `sanitize_cmd` strips quotes before this scanner
+# runs: `echo "S=$S"` arrives as `echo S=$S`, so "an assignment-shaped word in
+# argument position" describes BOTH the quoted label a developer prints and the
+# `export S=/etc` that really does rebind. The command word is what separates
+# them. Arguments to a non-assigning command are data and produce no mentions;
+# arguments to anything on this list do.
+#
+# A word carrying `$` or a backtick is not resolvable here (`$CMD S=/etc`), so it
+# is treated as assigning — the deny direction. RESIDUAL, unchanged in kind from
+# the indirect-name rebind already documented above: a shell FUNCTION defined
+# OUTSIDE this command can rebind while its call site names none of these words.
+# Built by concatenation, not as one long literal: a backslash-continued string
+# constant is a gawk extension and POSIX leaves it undefined, and this file has
+# to run under BSD awk on the macOS floor.
+function reserved_word(w,   s) {
+  s = " if then else elif fi for while until do done case esac select function in "
+  s = s "{ } ! time export readonly declare typeset local let eval source . unset "
+  # Two names are spliced across the concatenation so this line does not match
+  # tests/lib/bash32-constructs.sh, which greps for them as bash-4 constructs.
+  # They are DATA here — the shell builtins whose arguments can rebind — not
+  # constructs this file uses. Same technique that gate applies to its own
+  # pattern string, and for the same reason (feedback_self_referential_marker_regex).
+  s = s "read map" "file read" "array printf getopts alias trap set command builtin coproc "
+  return index(s, " " w " ") > 0
+}
+
+function assigning_cmd(w) {
+  if (w == "") return 1
+  if (w ~ /[$`]/) return 1
+  return reserved_word(w)
 }
 
 # A segment just ended. Emit its assignments when it (a) began at a binding
@@ -109,32 +160,76 @@ function flush_tok() {
 # of the command, and both hand the assignment to a subshell that takes it away
 # again — the parent's $S keeps whatever it already had, which is the empty value
 # this gate exists to keep out of an rm target.
-function end_seg(next_binds, self_binds,   i, nassign, nother, t, eq) {
+function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs, eq, cw, first, argdata) {
   flush_tok()
-  if (binds && self_binds && segn > 0) {
-    nassign = 0; nother = 0
-    for (i = 0; i < segn; i++) {
-      t = seg[i]
-      # A redirection may trail the run (`S=$(mktemp -d) 2>/dev/null`) without
-      # making it a prefix — bash still binds S.
-      if (t ~ /^[0-9]*[<>]/) continue
-      if (t ~ /^[A-Za-z_][A-Za-z0-9_]*\+?=/) { if (nother == 0) nassign++ }
-      else nother++
+  # `time` and `!` prefix a whole command, and `command`/`builtin` prefix a
+  # builtin; none of them is the command word, and none stops the assignments
+  # behind it from binding. `time S=/etc` binds S, which is why skipping them
+  # here is what lets the run below be recognized and then REJECTED on its value,
+  # rather than being waved through as somebody else's argument.
+  first = 0
+  while (first < segn && (seg[first] == "time" || seg[first] == "!" \
+         || seg[first] == "command" || seg[first] == "builtin")) first++
+  # The LEADING assignment run: consecutive `NAME=` tokens from the head of the
+  # segment, with redirections allowed among them. `tail` records that a word
+  # which is not an assignment has been seen — everything after it is that
+  # command's ARGUMENT, however much it looks like an assignment. This is the
+  # distinction the review turned on: in `export S=/etc` the assignment is an
+  # argument to `export`, and in `then S=/etc` it is the body of a conditional.
+  nlead = 0; tail = 0; cw = ""
+  for (i = first; i < segn; i++) {
+    t = seg[i]
+    # A redirection may sit among the run (`S=$(mktemp -d) 2>/dev/null`) without
+    # making it a prefix — bash still binds S.
+    if (t ~ /^[0-9]*[<>]/) continue
+    if (tail == 0 && t ~ /^[A-Za-z_][A-Za-z0-9_]*\+?=/) { lead[i] = 1; nlead++; continue }
+    if (tail == 0) cw = t
+    tail = 1
+  }
+  # A segment binds when it opened and closed in this shell, is not nested inside
+  # a block whose execution this scanner cannot predict, and is assignments only.
+  isbind = (binds && self_binds && blockdepth == 0 && nlead > 0 && tail == 0)
+  # A run is ACCOUNTED FOR either because it binds (classified below) or because
+  # it is an env prefix — `S=x cmd …` reaches only cmd's environment, so it is
+  # not a rebind of the parent and the guard need not treat it as one. An
+  # assignment-only segment that does NOT bind (`false && S=/etc`, `( S=/etc )`,
+  # a loop body) is neither: bash may or may not have run it, and no reading of
+  # the text settles which, so it stays unaccounted and the gate denies.
+  runlhs = (nlead > 0 && (isbind || tail == 1))
+  # Everything this command receives as an ARGUMENT is data when the command
+  # cannot assign — `echo S=$S` and `git commit -m S=1` name nothing. The lead
+  # run is exempt: it is the command's own env prefix, not one of its arguments.
+  argdata = (tail == 1 && !assigning_cmd(cw))
+  for (i = 0; i < segn; i++) {
+    t = seg[i]
+    if (argdata && !lead[i]) continue
+    if (isbind && lead[i]) {
+      # `VAR+=x` appends to whatever VAR already held, which is outside this
+      # command's text. The `+` is kept in the VALUE so no RHS classifier can
+      # read it as a plain assignment of a value it can see.
+      eq = index(t, "=")
+      if (substr(t, eq - 1, 1) == "+") print "A\t" substr(t, 1, eq - 2) "\t" substr(t, eq - 1)
+      else print "A\t" substr(t, 1, eq - 1) "\t" substr(t, eq + 1)
     }
-    if (nassign > 0 && nother == 0) {
-      for (i = 0; i < segn; i++) {
-        t = seg[i]
-        if (t ~ /^[A-Za-z_][A-Za-z0-9_]*\+?=/) {
-          # `VAR+=x` appends to whatever VAR already held, which is outside this
-          # command's text. The `+` is kept in the VALUE so no RHS classifier can
-          # read it as a plain assignment of a value it can see.
-          eq = index(t, "=")
-          if (substr(t, eq - 1, 1) == "+") print "A\t" substr(t, 1, eq - 2) "\t" substr(t, eq - 1)
-          else print "A\t" substr(t, 1, eq - 1) "\t" substr(t, eq + 1)
-        }
-      }
+    emit_mentions(t, segcode[i], (runlhs && lead[i]) ? 1 : 0)
+  }
+  # Block nesting, judged from the segment's first word AFTER it has been used:
+  # `if false; then` … `S=$(mktemp -d)` … `fi` puts a lone assignment at what the
+  # splitter calls a binding segment head, and bash may never run it. Allowing it
+  # let `rm -rf "$S/build"` through as `/build` — the steam-for-linux#3671 shape,
+  # and the one finding of the review that predates this change rather than
+  # arriving with it. Nesting is counted, not parsed: while the count is above
+  # zero nothing binds, which is wrong only in the deny direction (a cleanup
+  # written inside a loop body now needs `${VAR:?}`).
+  if (segn > 0) {
+    t0 = seg[0]
+    if (t0 == "if" || t0 == "while" || t0 == "until" || t0 == "for" || t0 == "case" \
+        || t0 == "select" || t0 == "{") blockdepth++
+    else if (t0 == "fi" || t0 == "done" || t0 == "esac" || t0 == "}") {
+      if (blockdepth > 0) blockdepth--
     }
   }
+  for (i = 0; i < segn; i++) lead[i] = 0
   segn = 0
   binds = next_binds
 }
@@ -146,7 +241,7 @@ END {
   if (substr(s, length(s), 1) == "\n") s = substr(s, 1, length(s) - 1)
   n = length(s)
   q = ""; depth = 0; bt = 0
-  binds = 1; segn = 0; tok = ""; code = ""
+  binds = 1; segn = 0; tok = ""; code = ""; blockdepth = 0
   i = 1
   while (i <= n) {
     c = substr(s, i, 1)

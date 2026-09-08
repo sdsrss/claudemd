@@ -532,6 +532,28 @@ else
   mention_case "unrelated var is not a mention"   S 'S=$(mktemp -d /tmp/x.XXXXXX); unset OTHER; rm -rf "$S"'              '1 1'
   mention_case "name inside a path is not one"    bak 'bak="$(mktemp -d /tmp/x.XXXXXX)"; cp f "$bak/cfg.bak.1"'           '1 1'
   mention_case "braced read is a read"            S 'S=$(mktemp -d /tmp/x.XXXXXX); echo ${S}; rm -rf "$S"'                '1 1'
+  # --- 2026-09-08 review: only a builtin or keyword can rebind this shell ---
+  # sanitize_cmd strips quotes before the scanner runs, so `echo "S=x"` arrives
+  # as `echo S=x` — the same shape as `export S=x`, which really does rebind.
+  # The command word is the only thing that separates them, and an external
+  # command cannot reach the shell's variable table at all.
+  mention_case "export makes its argument code"   S 'S=$(mktemp -d /tmp/x.XXXXXX); export S=/etc'          '2 1'
+  mention_case "readonly likewise"                S 'S=$(mktemp -d /tmp/x.XXXXXX); readonly S=/etc'        '2 1'
+  mention_case "a brace group is not a command"   S 'S=$(mktemp -d /tmp/x.XXXXXX); { S=/etc; }'            '2 1'
+  mention_case "a then-body is not a command"     S 'S=$(mktemp -d /tmp/x.XXXXXX); if x; then S=/etc; fi'  '2 1'
+  mention_case "echo makes its argument data"     S 'S=$(mktemp -d /tmp/x.XXXXXX); echo S=/etc'            '1 1'
+  mention_case "so does any external command"     S 'S=$(mktemp -d /tmp/x.XXXXXX); git commit -m S=/etc'   '1 1'
+  # `time` and `!` prefix a command without stopping its assignments binding, so
+  # the run is RECOGNIZED here and rejected later on its value — not waved
+  # through as somebody else's argument.
+  bind_case "time does not stop the binding"  'time S=/tmp/x'                     'S=/tmp/x'
+  bind_case "! does not stop the binding"     '! S=/tmp/x'                        'S=/tmp/x'
+  bind_case "export is a command, not a run"  'export S=/tmp/x'                   ''
+  # A body the shell may never execute is not a binding, however the splitter
+  # cuts it. `if false; then` … `fi` put a lone assignment at a segment head.
+  bind_case "assignment inside an if body"    'if false; then__NL__S=/tmp/x__NL__fi'   ''
+  bind_case "assignment inside a loop body"   'for i in 1; do__NL__S=/tmp/x__NL__done' ''
+  bind_case "binding resumes after the block" 'if x; then__NL__:__NL__fi__NL__S=/tmp/x' 'S=/tmp/x'
 fi
 
 TOTAL=$((PASS + FAIL))

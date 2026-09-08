@@ -1223,3 +1223,38 @@ deny	F41: sh -c inner text cannot manufacture provenance	echo sh -c 'SP=$(mktemp
 deny	F41: a subshell assignment never reaches the parent shell	( SP=$(mktemp -d) ); rm -rf "$SP/build"
 deny	F41: an assignment behind && may never run	false && SP=$(mktemp -d); rm -rf "$SP/build"
 deny	F41: a backgrounded assignment dies with its subshell	SP=$(mktemp -d) & rm -rf "$SP/build"
+# === 2026-09-08 F42: only a builtin or keyword can rebind this shell ===
+# Found by adversarial review of F41, which shipped nothing: F41's two halves
+# decided "is this token an assignment?" separately — the mention scan from the
+# token's own syntax, the binding scan from the segment's shape — and the gate's
+# `total == lhs` invariant is sound only when `lhs` means "classified". Every row
+# below was measured DENY on v0.82.0 and ALLOW on the intermediate F41 commit, so
+# these are regressions caught before release, not hypotheticals. The mechanism
+# is that `sanitize_cmd` strips quotes before the scanner runs, which makes the
+# label a developer prints and the rebind that really happens the same shape:
+# `echo "S=$S"` arrives as `echo S=$S`. The command word is what tells them
+# apart — an external command cannot reach the shell's variable table at all.
+deny	F42: export rebinds, and its argument is not the segment's assignment run	S=$(mktemp -d /tmp/x.XXXXXX); export S=/etc; rm -rf "$S/build"
+deny	F42: export to an EMPTY value collapses the target to /build	S=$(mktemp -d /tmp/x.XXXXXX); export S=; rm -rf "$S/build"
+deny	F42: declare rebinds the same way	S=$(mktemp -d /tmp/x.XXXXXX); declare S=/etc; rm -rf "$S/build"
+deny	F42: readonly rebinds the same way	S=$(mktemp -d /tmp/x.XXXXXX); readonly S=/etc; rm -rf "$S/build"
+deny	F42: a brace group's assignment binds this shell	S=$(mktemp -d /tmp/x.XXXXXX); { S=/etc; }; rm -rf "$S/build"
+deny	F42: a then-body assignment binds this shell	S=$(mktemp -d /tmp/x.XXXXXX); if true; then S=/etc; fi; rm -rf "$S/build"
+deny	F42: a do-body assignment binds this shell	S=$(mktemp -d /tmp/x.XXXXXX); for i in 1; do S=/etc; done; rm -rf "$S/build"
+deny	F42: time prefixes a command and does not stop the binding	S=$(mktemp -d /tmp/x.XXXXXX); time S=/etc; rm -rf "$S/build"
+deny	F42: ! prefixes a command and does not stop the binding	S=$(mktemp -d /tmp/x.XXXXXX); ! S=/etc; rm -rf "$S/build"
+deny	F42: the override idiom — an env-supplied value wins over the temp path	WORK=$(mktemp -d /tmp/x.XXXXXX)__NL__if [ -n "$BUILD_DIR" ]; then WORK=$BUILD_DIR; fi__NL__rm -rf "$WORK/out"
+deny	F42: a body the shell may never run is not a binding	if false; then__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__fi__NL__rm -rf "$S/build"
+pass	F42-fp: an echoed label is data — the control the deny rows must not swallow	S=$(mktemp -d /tmp/x.XXXXXX); echo "S=$S"; rm -rf "$S/build"
+pass	F42-fp: arguments of a non-assigning command are data	S=$(mktemp -d /tmp/x.XXXXXX); git commit -m "set S=/etc for the build"; rm -rf "$S/build"
+# A DEBUG trap fires before every simple command, so it is the one trap that can
+# rebind BETWEEN the assignment and the rm. The four literal spellings deny
+# through the mention scan (the `trap` command word makes its arguments code);
+# the opaque one denies only because provenance is withdrawn on sight of a DEBUG
+# trap. Measured both ways before this row existed. Scoped to DEBUG on purpose —
+# the EXIT rows below are the disposal idiom this branch exists to allow, and
+# rejecting `trap` wholesale denied them.
+deny	F43: an opaque DEBUG trap body can rebind before the rm	S=$(mktemp -d /tmp/x.XXXXXX); trap "$CODE" DEBUG; rm -rf "$S/build"
+deny	F43: a DEBUG trap that empties the var	S=$(mktemp -d /tmp/x.XXXXXX); trap 'S=' DEBUG; rm -rf "$S/build"
+pass	F43-fp: an EXIT trap runs after the rm, and this is the disposal idiom	S=$(mktemp -d /tmp/x.XXXXXX); trap 'rm -rf "$S"' EXIT; mkdir -p "$S/a"; rm -rf "$S/build"
+pass	F43-fp: an opaque EXIT trap cannot fire between the assignment and the rm	S=$(mktemp -d /tmp/x.XXXXXX); trap "$CODE" EXIT; rm -rf "$S/build"

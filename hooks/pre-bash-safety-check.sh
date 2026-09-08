@@ -1114,6 +1114,21 @@ if (( bypass_rm == 0 )); then
            && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]'; then
           prov_eligible=0
         fi
+        # A DEBUG trap joins them (2026-09-08 review, break #5 of the rejected
+        # literal-provenance design, reached here by the same route): its body
+        # runs before EVERY simple command, the rm included, so
+        # `trap "$CODE" DEBUG` rebinds between the assignment and the rm out of
+        # text the gate cannot read. Scoped to DEBUG rather than to `trap`,
+        # because that is the only trap that can fire in between: an EXIT or
+        # signal trap runs after the rm or not at all, and rejecting those would
+        # deny `trap 'rm -rf "$S"' EXIT` — the most common spelling of the very
+        # §8.V4 disposal idiom this branch exists to allow. Measured both ways:
+        # the four DEBUG-rebind spellings deny either way through the mention
+        # scan, but the OPAQUE one only denies here.
+        if (( prov_eligible == 1 )) \
+           && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])trap[[:space:]][^;&|]*DEBUG'; then
+          prov_eligible=0
+        fi
         # F41 (2026-09-08): the three conditions below are decided from
         # `s8_bind_assignments`, which walks the command and reports only the
         # assignments bash BINDS into the parent shell. They used to be decided
