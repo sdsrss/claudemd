@@ -54,8 +54,50 @@ IFS= read -r -d '' S8_BIND_AWK <<'AWKPROG' || true
 # Accumulate the whole command; embedded newlines are separators and must survive.
 { buf = buf $0 "\n" }
 
+# Every identifier the finished token spells in CODE position, tagged `lhs` when
+# it is the token's own assignment target and `bare` otherwise. This is the
+# rebind guard's raw material: a mention that is not an lhs is the name being
+# handled by something this scanner does not model (`unset S`, `read S`,
+# `for S in`, `declare -n r=S`), after which the value is no longer determinable
+# from the command text.
+#
+# Mentions are read from the token's CODE view — the characters outside quotes —
+# because counting them inside quoted words is what made `echo "SB=$SB"` and
+# `echo "SB=x"` read as rebinds and cost the field false denies. One exception:
+# a token that is exactly the quoted name (`unset 'S'`) is a mention, since that
+# is the one rebind spelling quoting would otherwise hide.
+function emit_mentions(raw, code,   L, j, ch, prev, nxt, nxt2, name, start) {
+  if (raw ~ /^'[A-Za-z_][A-Za-z0-9_]*'$/ || raw ~ /^"[A-Za-z_][A-Za-z0-9_]*"$/) {
+    print "M\t" substr(raw, 2, length(raw) - 2) "\tbare"
+    return
+  }
+  L = length(code)
+  j = 1
+  while (j <= L) {
+    ch = substr(code, j, 1)
+    if (ch !~ /^[A-Za-z_]$/) { j++; continue }
+    start = j
+    while (j <= L && substr(code, j, 1) ~ /^[A-Za-z0-9_]$/) j++
+    name = substr(code, start, j - start)
+    prev = (start > 1) ? substr(code, start - 1, 1) : ""
+    nxt = (j <= L) ? substr(code, j, 1) : ""
+    # `$S` and `${S}` are READS. Reads must not count, or every use of the
+    # variable would look like a rebind and provenance could never hold.
+    if (prev == "$") continue
+    if (prev == "{" && start > 2 && substr(code, start - 2, 1) == "$") continue
+    # `.` `/` `-` next to the name disqualify it (F20): no rebind syntax puts
+    # those beside an identifier — shell names cannot contain them — but file
+    # paths do, and a var named `bak` was once false-counted inside
+    # `cfg.bak.XXXXXX`, denying the very idiom it sat next to.
+    if (prev ~ /^[.\/-]$/ || nxt ~ /^[.\/-]$/) continue
+    nxt2 = (j < L) ? substr(code, j + 1, 1) : ""
+    if (start == 1 && (nxt == "=" || (nxt == "+" && nxt2 == "="))) print "M\t" name "\tlhs"
+    else print "M\t" name "\tbare"
+  }
+}
+
 function flush_tok() {
-  if (tok != "") { seg[segn++] = tok; tok = "" }
+  if (tok != "") { emit_mentions(tok, code); seg[segn++] = tok; tok = ""; code = "" }
 }
 
 # A segment just ended. Emit its assignments when it (a) began at a binding
@@ -87,8 +129,8 @@ function end_seg(next_binds, self_binds,   i, nassign, nother, t, eq) {
           # command's text. The `+` is kept in the VALUE so no RHS classifier can
           # read it as a plain assignment of a value it can see.
           eq = index(t, "=")
-          if (substr(t, eq - 1, 1) == "+") print substr(t, 1, eq - 2) "\t" substr(t, eq - 1)
-          else print substr(t, 1, eq - 1) "\t" substr(t, eq + 1)
+          if (substr(t, eq - 1, 1) == "+") print "A\t" substr(t, 1, eq - 2) "\t" substr(t, eq - 1)
+          else print "A\t" substr(t, 1, eq - 1) "\t" substr(t, eq + 1)
         }
       }
     }
@@ -104,10 +146,13 @@ END {
   if (substr(s, length(s), 1) == "\n") s = substr(s, 1, length(s) - 1)
   n = length(s)
   q = ""; depth = 0; bt = 0
-  binds = 1; segn = 0; tok = ""
+  binds = 1; segn = 0; tok = ""; code = ""
   i = 1
   while (i <= n) {
     c = substr(s, i, 1)
+    # `code` is the token minus everything inside quotes — the part bash reads as
+    # syntax rather than as a word's contents. It is what emit_mentions counts,
+    # and keeping it alongside `tok` is why there is one walker here and not two.
     if (q != "") {
       # Inside quotes nothing separates and nothing nests. A backslash escapes
       # only within double quotes; inside single quotes it is a literal.
@@ -115,15 +160,18 @@ END {
       if (c == q) q = ""
       tok = tok c; i++; continue
     }
-    if (c == "\\" && i < n) { tok = tok c substr(s, i + 1, 1); i += 2; continue }
+    # An escaped character is data, but it is data OUTSIDE quotes: `unset \S`
+    # rebinds S. The backslash is dropped from the code view so the name behind
+    # it reads as the identifier it is.
+    if (c == "\\" && i < n) { tok = tok c substr(s, i + 1, 1); code = code substr(s, i + 1, 1); i += 2; continue }
     if (c == "'" || c == "\"") { q = c; tok = tok c; i++; continue }
-    if (c == "`") { bt = 1 - bt; tok = tok c; i++; continue }
+    if (c == "`") { bt = 1 - bt; tok = tok c; code = code c; i++; continue }
     # `(` covers both a subshell and the `$(` of a command substitution. Both
     # must suppress separator handling until they close: the assignments inside
     # a subshell do not reach the parent, and the `;` inside `$(a; b)` is not a
     # separator of the OUTER command.
-    if (bt == 0 && c == "(") { depth++; tok = tok c; i++; continue }
-    if (bt == 0 && c == ")" && depth > 0) { depth--; tok = tok c; i++; continue }
+    if (bt == 0 && c == "(") { depth++; tok = tok c; code = code c; i++; continue }
+    if (bt == 0 && c == ")" && depth > 0) { depth--; tok = tok c; code = code c; i++; continue }
     if (depth == 0 && bt == 0) {
       if (c == " " || c == "\t") { flush_tok(); i++; continue }
       two = substr(s, i, 2)
@@ -141,7 +189,7 @@ END {
       # as F28, and missing it here would withdraw provenance from every command
       # that merges its streams.
       if (c == "&" && (substr(s, i - 1, 1) == ">" || substr(s, i - 1, 1) == "<") \
-          && substr(s, i + 1, 1) ~ /^[0-9-]$/) { tok = tok c; i++; continue }
+          && substr(s, i + 1, 1) ~ /^[0-9-]$/) { tok = tok c; code = code c; i++; continue }
       if (c == "|" || c == "&") { end_seg(0, 0); i++; continue }
     }
     # `{` `}` `)` at depth 0 are left as ordinary characters on purpose: `${VAR}`
@@ -149,7 +197,7 @@ END {
     # in half and manufactured assignments out of the halves. A `{ …; }` group
     # therefore keeps its brace as the segment's first token, which is not an
     # assignment, so the group emits nothing — conservative, and correct here.
-    tok = tok c; i++
+    tok = tok c; code = code c; i++
   }
   end_seg(1, 1)
 }
@@ -163,5 +211,33 @@ AWKPROG
 # before this file existed.
 s8_bind_assignments() {
   [[ -n "${S8_BIND_AWK:-}" ]] || return 0
-  printf '%s' "$1" | awk "$S8_BIND_AWK"
+  printf '%s' "$1" | awk "$S8_BIND_AWK" | sed -n 's/^A\t//p'
+}
+
+# s8_name_mentions NAME CMD → `<total> <lhs>`: how many times NAME is spelled in
+# code position, and how many of those are an assignment's own left-hand side.
+#
+# The rebind guard reads the two as a single question — "is every mention of this
+# name one this scanner can account for?" — because enumerating rebind SYNTAX is
+# a denylist that cannot be completed (`unset` / `+=` / `printf -v` / `for` /
+# `read` / `mapfile` / `declare -n` and whatever bash adds next). Inverting it
+# costs nothing to maintain: a rebind that spells the name shows up as a mention
+# that is not an lhs, whatever keyword carries it.
+#
+# Residual, unchanged from the grep this replaces and stated so it is not mistaken
+# for coverage: an INDIRECT rebind never spells the name at all (`unset "$T"`,
+# `printf -v "$T" ""`, `declare -n r=$T`) and is invisible to any name-shaped
+# check. §8 is a guardrail, not an anti-injection boundary.
+#
+# Fail-safe: with no awk program the counts come back `0 0`, which the caller
+# reads as "no mentions, so the classified assignments do not account for the
+# name" — provenance is withheld and the gate denies, as it did before.
+s8_name_mentions() {
+  local _name="$1" _cmd="$2"
+  if [[ -z "${S8_BIND_AWK:-}" ]] || [[ ! "$_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    printf '0 0'
+    return 0
+  fi
+  printf '%s' "$_cmd" | awk "$S8_BIND_AWK" \
+    | awk -F'\t' -v n="$_name" '$1=="M" && $2==n { t++; if ($3=="lhs") l++ } END { printf "%d %d", t+0, l+0 }'
 }

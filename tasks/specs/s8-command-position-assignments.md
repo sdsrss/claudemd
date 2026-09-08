@@ -138,6 +138,11 @@ text `VAR=` occurrences; every verdict change is enumerated in the change log.
 **Interfaces:**
 - Produces: `s8_bind_assignments CMD` → stdout, one `NAME<TAB>RHS` per binding
   assignment, in source order. No output when none. Never reads globals.
+- Produces: `s8_name_mentions NAME CMD` → `<total> <lhs>`, the code-position
+  mentions of NAME and how many are an assignment's own left-hand side. Added
+  during Task 1 — see the r2 change-log entry: the bisect showed the field false
+  denies are triggered by the rebind guard's mention count, not by the
+  classification loop, so the binding scan alone would not have fixed either one.
 
 - [ ] **Step 1: Write the failing unit test** — a table in the test runner driving
       `s8_bind_assignments` directly and asserting the emitted `NAME<TAB>RHS` set:
@@ -179,6 +184,10 @@ text `VAR=` occurrences; every verdict change is enumerated in the change log.
 
 **Files:**
 - Modify: `CHANGELOG.md`, `package.json` + the version-cascade sites, `hooks/pre-bash-safety-check.sh` (opt-out flag)
+
+**Interfaces:**
+- Produces: `BASH_SAFETY_BIND_SCAN` — the env opt-out, `0` restoring the
+  flat-text grep. §2-EXT requires a revert path on a user-visible default change.
 
 - [ ] **Step 1: Add `BASH_SAFETY_BIND_SCAN=0` opt-out** restoring the flat-text
       grep exactly, with a corpus row pinning the restored behavior.

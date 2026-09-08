@@ -470,8 +470,8 @@ else
   bind_case "two assignments one segment"    'A=1 B=2'                           'A=1|B=2'
   bind_case "assignment on its own line"     'S=/tmp/x__NL__rm -rf "$S"'         'S=/tmp/x'
   bind_case "mktemp with quoted arg"         'SB=$(mktemp -d "$S/a-XXXXXX")'     'SB=$(mktemp -d "$S/a-XXXXXX")'
-  bind_case "backtick mktemp"                'D=`mktemp -d`'                     'D=`mktemp -d`'
-  bind_case "assignment first, && after"     'S=$(mktemp -d) && rm -rf "$S"'     'S=$(mktemp -d)'
+  bind_case "backtick mktemp"                'D=`mktemp -d /tmp/x.XXXXXX`'       'D=`mktemp -d /tmp/x.XXXXXX`'
+  bind_case "assignment first, && after"     'S=$(mktemp -d /tmp/x.XXXXXX) && rm -rf "$S"' 'S=$(mktemp -d /tmp/x.XXXXXX)'
   # Binds nothing: env prefix, quoted data, subshell, or a conditional/pipe arm.
   bind_case "env prefix before a command"    'S=/tmp/x rm -rf $S'                ''
   bind_case "env prefix reusing itself"      'SBX="$SBX" node -e "1"'            ''
@@ -491,10 +491,47 @@ else
   # The `&` of a redirection is not a background operator — the same distinction
   # F28 taught s8_split_segments. Reading `2>&1` as one would silently withdraw
   # provenance from every command that merges its streams.
-  bind_case "redirection & is not background" 'S=$(mktemp -d) 2>&1; rm -rf "$S"' 'S=$(mktemp -d)'
+  bind_case "redirection & is not background" 'S=$(mktemp -d /tmp/x.XXXXXX) 2>&1; rm -rf "$S"' 'S=$(mktemp -d /tmp/x.XXXXXX)'
   # `+=` appends to a value this scanner cannot know, so it is reported with the
   # operator kept in the value — no RHS classifier can mistake it for a safe one.
   bind_case "append operator kept in value"  'S+=/x'                             'S=+=/x'
+
+  # --- s8_name_mentions: the rebind guard's other half ---
+  # Provenance rests on "the var still holds the mktemp path when the rm runs",
+  # which the `VAR=` scan alone cannot establish: `unset S` / `read S` /
+  # `printf -v S` / `for S in` / `declare -n r=S` all rebind without being an
+  # assignment. The guard inverts that — a rebind must SPELL the name — by
+  # counting every code-position mention and requiring each one to be an
+  # assignment's left-hand side. A surplus is a rebind the scanner cannot model.
+  # Counting mentions inside quoted words is what made `echo "SB=$SB"` look like
+  # a rebind, so the count is taken outside quotes, with one exception: a token
+  # that is exactly the quoted name (`unset 'S'`) is a mention, because that is
+  # the rebind spelling quoting would otherwise hide.
+  mention_case() {
+    local note="$1" name="$2" cmd="$3" want="$4" got
+    cmd="${cmd//__NL__/$'\n'}"
+    got=$(s8_name_mentions "$name" "$cmd")
+    if [[ "$got" == "$want" ]]; then
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL [s8-mentions]: $note (want '$want', got '$got')"
+      FAIL=$((FAIL + 1))
+    fi
+  }
+  #             note                              name  command                                              total lhs
+  mention_case "assignment plus reads"            S 'S=$(mktemp -d /tmp/x.XXXXXX); mkdir -p "$S/a"; rm -rf "$S"'          '1 1'
+  mention_case "echoed VAR= is not a mention"     SB 'SB=$(mktemp -d /tmp/x.XXXXXX); echo "SB=$SB"; rm -rf "$SB"'         '1 1'
+  mention_case "echoed VAR= with a literal"       SB 'SB=$(mktemp -d /tmp/x.XXXXXX); echo "SB=x"; rm -rf "$SB"'           '1 1'
+  mention_case "env prefix is an explained lhs"   SB 'SB=$(mktemp -d /tmp/x.XXXXXX); SB="$SB" node -e 1; rm -rf "$SB"'    '2 2'
+  mention_case "unset is an unexplained mention"  S 'S=$(mktemp -d /tmp/x.XXXXXX); unset S; rm -rf "$S"'                  '2 1'
+  mention_case "quoted unset still counts"        S 'S=$(mktemp -d /tmp/x.XXXXXX); unset "S"; rm -rf "$S"'               '2 1'
+  mention_case "read rebind"                      S 'S=$(mktemp -d /tmp/x.XXXXXX); read S; rm -rf "$S"'                   '2 1'
+  mention_case "for-loop rebind"                  S 'S=$(mktemp -d /tmp/x.XXXXXX); for S in $E; do :; done'               '2 1'
+  mention_case "nameref names it on the rhs"      S 'S=$(mktemp -d /tmp/x.XXXXXX); declare -n r=S; rm -rf "$S"'           '2 1'
+  mention_case "append keeps its lhs"             S 'S=$(mktemp -d /tmp/x.XXXXXX); S+=$E; rm -rf "$S"'                    '2 2'
+  mention_case "unrelated var is not a mention"   S 'S=$(mktemp -d /tmp/x.XXXXXX); unset OTHER; rm -rf "$S"'              '1 1'
+  mention_case "name inside a path is not one"    bak 'bak="$(mktemp -d /tmp/x.XXXXXX)"; cp f "$bak/cfg.bak.1"'           '1 1'
+  mention_case "braced read is a read"            S 'S=$(mktemp -d /tmp/x.XXXXXX); echo ${S}; rm -rf "$S"'                '1 1'
 fi
 
 TOTAL=$((PASS + FAIL))

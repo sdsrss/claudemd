@@ -43,6 +43,12 @@ set -uo pipefail
 LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+# shellcheck source=/dev/null
+# s8-bind.sh answers "which assignments does bash bind into the parent shell?"
+# for the rm gate's provenance block. Sourcing failure is fail-safe by
+# construction: its two functions report nothing, and the gate reads that as no
+# provenance, i.e. it denies — see the file's own header.
+source "$LIB_DIR/s8-bind.sh" || true
 
 hook_kill_switch PRE_BASH_SAFETY || exit 0
 # Record fail-open on missing prereqs (roadmap OBS-1): a jq-less / malformed-stdin
@@ -1108,17 +1114,45 @@ if (( bypass_rm == 0 )); then
            && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]'; then
           prov_eligible=0
         fi
-        prov_prefix="${SANITIZED_CMD_FLAT%%"$segment"*}"
-        if (( prov_eligible == 1 )) && printf '%s' "$prov_prefix" | grep -qE "(^|[[:space:];&|\`(])${varname}="; then
+        # F41 (2026-09-08): the three conditions below are decided from
+        # `s8_bind_assignments`, which walks the command and reports only the
+        # assignments bash BINDS into the parent shell. They used to be decided
+        # from `grep -oE "(^|[[:space:];&|\`(])VAR="` over SANITIZED_CMD_FLAT, and
+        # text cannot tell a binding assignment from an env prefix (`SBX="$SBX"
+        # node …`, which binds one command's environment) or from a quoted word
+        # (`echo "SB=$SB"`, which binds nothing). Both were read as unexplained
+        # rebinds and denied — 8 of the 57 recoverable §8-rm-rf-var denies in the
+        # 2026-09-05..08 telemetry window, on the §8.V4 disposal idiom this branch
+        # exists to permit. The scan also reads SANITIZED_CMD, not the FLAT view:
+        # FLAT is `tr '\n' ' '`, which turns an assignment on its own line — the
+        # single most common real spelling — into an env prefix.
+        prov_prefix="${SANITIZED_CMD%%"$segment"*}"
+        prov_before=0
+        prov_preunwrap=0
+        if (( prov_eligible == 1 )); then
+          prov_before=$(s8_bind_assignments "$prov_prefix" \
+            | awk -F'\t' -v n="$varname" '$1 == n' | wc -l | tr -d ' ')
+          # (1b) The same binding must exist BEFORE unwrap_indirect ran. Unwrap
+          # rewrites `bash -c '<inner>'` / `eval '<inner>'` into real command
+          # position so the gates can see an rm hiding in there — which also
+          # promotes an assignment that the actual command only ever passed as a
+          # quoted ARGUMENT. `echo sh -c 'SP=$(mktemp -d)'; rm -rf "$SP/build"`
+          # assigns nothing at runtime, and it is review break #2 of the rejected
+          # literal-provenance design. Requiring the assignment in both views is
+          # an intersection, so it can only withhold provenance, never grant it;
+          # the price is that a genuine `bash -c` in the same command withdraws
+          # provenance too, which lands on the deny side.
+          prov_preunwrap=$(s8_bind_assignments "$NORMALIZED_CMD" \
+            | awk -F'\t' -v n="$varname" '$1 == n' | wc -l | tr -d ' ')
+        fi
+        if (( prov_eligible == 1 )) && (( prov_before > 0 )) && (( prov_preunwrap > 0 )); then
           prov_safe=1
-          prov_nassign=0
           # (2) EVERY assignment to varname in the whole command must be a safe class.
           # No `continue` on an empty RHS: `VAR=` (empty value) must fall through to the
           # unsafe branch. v0.47.2 skipped blank lines here and thereby skipped genuine
           # empty assignments, so `SP=; rm -rf "$SP/build"` ALLOWed — the steam class F14
           # was written to close. Empty matches neither regex below, so it now denies.
           while IFS= read -r prov_rhs; do
-            prov_nassign=$((prov_nassign + 1))
             # Optional leading double-quote (F20, 2026-07-25 audit): `bak="$(mktemp
             # …)"` is the QUOTING-CORRECT spelling of the same idiom and was the
             # top real false-deny shape in transcripts. The capture stops at the
@@ -1152,25 +1186,22 @@ if (( bypass_rm == 0 )); then
             # [allow-rm-rf-var] remain the supported answers.
             prov_safe=0
             break
-          done < <(printf '%s' "$SANITIZED_CMD_FLAT" \
-            | grep -oE "(^|[[:space:];&|\`(])${varname}=[^[:space:];&|]*" \
-            | sed -E "s/^[[:space:];&|\`(]+//; s/^${varname}=//")
-          # (0b) REBIND GUARD, second half — bare mentions must be exactly the
-          # assignments classified above. A surplus is `unset SP` / `SP+=…` /
-          # `printf -v SP` / `for SP in …` / `read SP` / `mapfile -t SP` /
-          # `declare -n r=SP` — a rebind the `VAR=` scan cannot see, after which the
-          # value is no longer determinable from the command text.
+          done < <(s8_bind_assignments "$SANITIZED_CMD" \
+            | awk -F'\t' -v n="$varname" '$1 == n { sub(/^[^\t]*\t/, ""); print }')
+          # (0b) REBIND GUARD, second half — every CODE-POSITION mention of the
+          # name must be an assignment's own left-hand side. A surplus is `unset
+          # SP` / `printf -v SP` / `for SP in …` / `read SP` / `mapfile -t SP` /
+          # `declare -n r=SP` — a rebind no assignment scan can see, after which
+          # the value is no longer determinable from the command text.
+          #
+          # The guard used to compare bare mentions against the number of `VAR=`
+          # text matches, and both counts were taken over flat text. That made
+          # `echo "SB=x"` a phantom rebind (it spells the name, matches no
+          # assignment) while `SBX="$SBX" cmd` was one twice over. Mentions are now
+          # read outside quotes, and an env prefix counts as the lhs it is.
           if (( prov_safe == 1 )); then
-            # Adjacent `.` `/` `-` disqualify a mention (F20, 2026-07-25): no
-            # rebind syntax puts those next to the NAME (shell identifiers
-            # cannot contain them), but file paths do — a var named `bak` was
-            # false-counted inside `cfg.bak.XXXXXX`, denying the quoted-mktemp
-            # idiom it sat next to. `unset X` / `X+=` / `read X` / `r=X` all
-            # still count.
-            prov_bare=$(printf '%s' "$SANITIZED_CMD_FLAT" \
-              | sed -E "s/\\\$\\{${varname}[^}]*\\}//g; s/\\\$${varname}([^A-Za-z0-9_]|\$)/\\1/g" \
-              | grep -oE "(^|[^A-Za-z0-9_\$./-])${varname}([^A-Za-z0-9_./-]|\$)" | wc -l | tr -d ' ')
-            [[ "$prov_bare" == "$prov_nassign" ]] || prov_safe=0
+            prov_mentions=$(s8_name_mentions "$varname" "$SANITIZED_CMD")
+            [[ "${prov_mentions%% *}" == "${prov_mentions##* }" ]] || prov_safe=0
           fi
           # (3) NO argument of this rm may depend on a var other than varname.
           # Scanned over the FULL args tail, not just the first positional
