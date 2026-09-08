@@ -1274,3 +1274,16 @@ deny	F44: an escaped > is a word character, so this backgrounds the assignment	S
 deny	F44: ${x-S} expands to the literal name and unsets it	S=$(mktemp -d /tmp/x.XXXXXX); unset ${x-S}; rm -rf "$S/build"
 pass	F44-fp: cleanup inside the loop body that created it	for f in a b; do__NL__D=$(mktemp -d /tmp/x.XXXXXX)__NL__tar xf "$f.tar" -C "$D"__NL__rm -rf "$D"__NL__done
 pass	F44-fp: the same idiom written on one line behind then	if [ -n "$NEED" ]; then D=$(mktemp -d /tmp/x.XXXXXX); tar xf a -C "$D"; rm -rf "$D"; fi
+# === 2026-09-08 F45: a brace opens a block wherever it sits ===
+# The enclosure rule read only the segment's FIRST token, and a function
+# definition puts the brace last (`f() {`). The body then bound at top level, so
+# an assignment inside a function that is never called reached an rm outside it.
+# All five ALLOW on v0.82.0. The `f() ( … )` form was already denied by paren
+# depth and is kept as the control that says so.
+deny	F45: a function body binds nothing until the function is called	f() {__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__}__NL__rm -rf "$S/build"
+deny	F45: the same on one line	f() { S=$(mktemp -d /tmp/x.XXXXXX); }__NL__rm -rf "$S/build"
+deny	F45: calling it does not help — the scanner cannot know it ran	f() { S=$(mktemp -d /tmp/x.XXXXXX); }__NL__f__NL__rm -rf "$S/build"
+deny	F45: a subshell function body cannot reach the parent at all	f() ( S=$(mktemp -d /tmp/x.XXXXXX) )__NL__f__NL__rm -rf "$S/build"
+deny	F45: a for over a possibly-empty list	for d in $DIRS; do__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__done__NL__rm -rf "$S/build"
+deny	F45: an until body	until true; do__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__done__NL__rm -rf "$S/build"
+deny	F45: a select body	select o in a b; do__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__done__NL__rm -rf "$S/build"

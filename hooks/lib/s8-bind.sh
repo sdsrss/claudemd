@@ -271,10 +271,22 @@ function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs
   if (segn > 0) {
     t0 = seg[0]
     if (t0 == "if" || t0 == "while" || t0 == "until" || t0 == "for" || t0 == "case" \
-        || t0 == "select" || t0 == "{") blockdepth++
-    else if (t0 == "fi" || t0 == "done" || t0 == "esac" || t0 == "}") {
+        || t0 == "select") blockdepth++
+    else if (t0 == "fi" || t0 == "done" || t0 == "esac") {
       if (blockdepth > 0) blockdepth--
       drop_above(blockdepth)
+    }
+    # A brace is counted wherever it appears in the segment, not only at its
+    # head: a function definition puts it LAST (`f() {`), and reading only the
+    # first token left the body binding at top level, so an assignment inside a
+    # function that is never called still reached an rm outside it. `${VAR}`
+    # cannot reach here — it is part of a larger token, never a bare `{`.
+    for (i = 0; i < segn; i++) {
+      if (seg[i] == "{") blockdepth++
+      else if (seg[i] == "}") {
+        if (blockdepth > 0) blockdepth--
+        drop_above(blockdepth)
+      }
     }
   }
   for (i = 0; i < segn; i++) lead[i] = 0
