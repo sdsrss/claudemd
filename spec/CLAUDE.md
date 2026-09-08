@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.29.0 — Core
+# AI-CODING-SPEC v6.29.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -177,12 +177,11 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 ## §8 SAFETY (immutable, never exempt)
 
 **Never**:
-- `rm -rf $VAR` without validating VAR
-- plaintext secrets in code/logs/commits
+- `rm -rf $VAR` unvalidated; use `rm -rf "${VAR:?}"`
+- plaintext secrets / sensitive data in code/logs/commits
 - `DELETE` / `UPDATE` / `DROP` without WHERE
 - disable SSL/cert verification
 - execute scripts of unknown origin
-- sensitive data in logs/commits
 - bash recursive/deep traversal on `~/.claude/` (`grep -r` / `find` / `rg` / `ls -R` / `du -a` / `tree` / `fd` / any subdir descent without depth cap — stdout lands in `~/.claude/tmp/`, traversal re-reads it exponentially). Use Grep tool (excludes tmp/) or `-maxdepth 1` / explicit paths.
 
 NPX: lockfile → local → pinned whitelist; none → `[AUTH REQUIRED]`.

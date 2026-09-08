@@ -1253,3 +1253,20 @@ pass	S8-PROV20 RESIDUAL: an opaque DEBUG trap body runs before the rm	S=$(mktemp
 # `pass` because the gate stopped judging this class altogether.
 deny	S8-PROV-CTL1 an unvalidated var with no provenance at all still denies	rm -rf "$EVIL/build"
 pass	S8-PROV-CTL2 the disposal idiom this branch exists to allow still allows	S=$(mktemp -d /tmp/x.XXXXXX); rm -rf "$S/build"
+# === 2026-09-08 S8-GUARD: the spelling core §8 now tells you to write ===
+# v6.29.1 put `rm -rf "${VAR:?}"` in §8's rm bullet. A spec that teaches a
+# spelling owes a test that the spelling still passes — otherwise the rule and
+# the gate can drift apart silently and the advice becomes a deny.
+#
+# The last three rows are the point of the whole exercise: a loop body, an
+# assignment behind `&&`, and a transitive `B="$EXP/…"` are shapes the
+# provenance branch could NOT be made to allow (tasks/s8-provenance-residuals-
+# 2026-09-08.md). The guard covers them for free, because it proves non-empty at
+# runtime instead of proving provenance from the text.
+pass	S8-GUARD1 the exact spelling §8 prints	rm -rf "${VAR:?}"
+pass	S8-GUARD2 a real scratchpad cleanup	D=/tmp/claude-1000/proj/sess/scratchpad; rm -rf "${D:?}"
+pass	S8-GUARD3 with a literal subpath	SP=/tmp/x/scratchpad; rm -rf "${SP:?}/build"
+pass	S8-GUARD4 inside a loop body	for f in a b; do D=/tmp/x/$f; rm -rf "${D:?}"; done
+pass	S8-GUARD5 behind &&	cd /repo && D=/tmp/x; rm -rf "${D:?}"
+pass	S8-GUARD6 a transitive assignment	EXP=/tmp/x; B="$EXP/node_modules/p"; rm -rf "${B:?}/build"
+deny	S8-GUARD-CTL the same command without the guard still denies	D=/tmp/x/scratchpad; rm -rf "$D"

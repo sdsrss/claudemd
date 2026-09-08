@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.29.0 — Extended
+# AI-CODING-SPEC v6.29.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -444,12 +444,12 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.29.0 (minor, 2026-09-07)** — the definitions the levels were read against. Round 14's remaining spec findings, all of one kind: a rule two layers state differently, or state with a term nothing defines. **No new HARD rule**; enforcement partition moves 6/17/2/1 → 4/16/5/1 because three labels stopped overstating what a hook covers, not because any rule changed. Audit record: `docs/audit/20260906-230810.md` §11.
+**v6.29.1 (patch, 2026-09-08)** — §8 names the spelling that passes. Two bullet edits in the immutable section, no rule added, relaxed or removed. The `rm -rf $VAR` bullet now carries `rm -rf "${VAR:?}"` — the guard the gate has always accepted and the deny message has always printed, which an agent only met AFTER being denied. Measured why it is worth core bytes: of 561 real gate-reaching commands in one machine's transcripts, 87 (15%) deny, and an attempt to widen the gate instead repaired 1 and broke 8 (`tasks/s8-provenance-residuals-2026-09-08.md`). The plaintext-secrets and sensitive-data bullets merge, which funds it — the two overlapped, and the merge widens `sensitive data` to `code` as well.
 
 - **Core**: §2's L1 row drops its own file count (§1.5 Local-Δ is where it lives) and L2 gains the same pairing qualifier; §0's Fast-Path whitelist says `internal log-string`; §10's L1 and L1-bugfix short reports both require Not done, Failed and Uncertain empty on the same threshold; `tc` is spelled `typecheck`; and §0 and §5 carry the subagent clauses — take option (b), report `[PARTIAL: <op> needs AUTH]`, never self-authorize — because a subagent at L0–L2 cannot read the extended file where they first landed.
 - **Extended**: §10-R stops granting L2 a zero-issue shortcut core §10 does not; §11-O carries the subagent rule's detail; the plan-drift bullet reports through §10's sections instead of a third bracketed token.
 
-**Sizing** (v6.29.0, 2026-09-07, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24642 → 24942 bytes (Δ +300: four wording repairs, the subagent clauses in §0 and §5 with their in-scope non-hard bound, the L1-bugfix report threshold, and §1.5 pointers on the two remaining file counts); extended 44482 → 45264 bytes (Δ +782: the subagent rule's detail, the L2 four-section correction, the plan-drift bullet losing its third signal token, the §13 partition counts, and a Recent-changes entry that had been two minors stale); OPERATOR.md 15996 → 16017 bytes (Δ +21: the demote-loop counts). Size budget: core 24942/25000 (**58 bytes headroom**); extended 45264/50000 (**4736 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core is at 99.8% — per §0.1 the next version that adds to core must remove more than it adds, and at this headroom that is no longer deferrable.
+**Sizing** (v6.29.1, 2026-09-08, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24942 → 24940 bytes (Δ **−2**: the `${VAR:?}` spelling added to §8's rm bullet, funded by merging the two overlapping secrets bullets — the first net-negative core release, which §0.1 required at 58 bytes of headroom); extended 45264 → 45341 bytes (Δ +77: this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24940/25000 (**60 bytes headroom**); extended 45341/50000 (**4659 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core stays at 99.8% — §0.1's net-delete requirement is now a standing condition on every core addition, not a one-off.
 
 ## §1.5-EXT GLOSSARY
 

@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.29.1 (patch, 2026-09-08) — §8 names the spelling that passes
+
+Two bullet edits inside the immutable section. No rule is added, relaxed or removed, and the first net-negative core release: **−2 bytes**.
+
+- `[fix]` **§8's `rm -rf $VAR` bullet carries the guard**: `rm -rf $VAR` unvalidated; use `rm -rf "${VAR:?}"`. The gate has always accepted that spelling and the deny message has always printed it, so the rule and its remedy were one round-trip apart — an agent met the remedy only after being denied. Measured before spending core bytes on it: across 561 real gate-reaching commands in one machine's transcripts, 87 (15%) deny, and the alternative — widening the gate so the ordinary spelling passes — was built, reviewed three times and **dropped**, having repaired 1 real command and broken 8. The residuals it uncovered and the bar a future attempt must clear are in `tasks/s8-provenance-residuals-2026-09-08.md`; the attempt itself is the unmerged branch `s8-command-position-assignments`.
+- `[fix]` **The two secrets bullets merge**: `plaintext secrets in code/logs/commits` and `sensitive data in logs/commits` became `plaintext secrets / sensitive data in code/logs/commits`. They overlapped, and the merge is what funds the line above — §0.1 required the next core addition to remove more than it adds at 58 bytes of headroom. `sensitive data` is now forbidden in `code` too, which is the stricter direction and the only behaviour this release changes.
+
 ## v6.29.0 (minor, 2026-09-07) — the definitions the levels were read against
 
 Round 14's remaining spec findings, all of one kind: a rule two layers state differently, or state with a term nothing defines. No new HARD rule; no rule changes what it requires.
