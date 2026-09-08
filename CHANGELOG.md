@@ -8,6 +8,32 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.83.0] - 2026-09-08
+
+A spec release: **no hook changes a single verdict**. §8 now names the spelling that gets you past its own gate, and the twenty places that gate is currently wrong are written down instead of left to be rediscovered. Spec goes to **v6.29.1** — the first core version that is net-negative, at **−2 bytes**.
+
+A minor bump rather than a patch because §8's rule text is what steers an agent, and that text changed.
+
+**What changes for you.** Two lines in §8, and a file of known holes.
+
+- **§8 tells you the spelling now**: `` `rm -rf $VAR` unvalidated; use `rm -rf "${VAR:?}"` ``. The gate has always accepted that guard and its deny message has always printed it — the rule and the remedy were simply one round-trip apart, so an agent met the remedy only after being denied. Nothing about what the gate accepts has moved; the spec caught up with it.
+- **Two `Never` bullets merge**: `plaintext secrets in code/logs/commits` and `sensitive data in logs/commits` are now one line, `plaintext secrets / sensitive data in code/logs/commits`. They overlapped. `sensitive data` is now forbidden in `code` as well, which is the stricter direction and the only prohibition this release widens. The merge is also what pays for the line above: §0.1 required the next core addition to remove more than it adds, at 58 bytes of headroom.
+- **Twenty §8 false negatives are recorded** as corpus rows `S8-PROV1`..`S8-PROV20` with two controls. Each one allows today and deletes outside the temp dir at runtime — mostly as `rm -rf /build`, the empty-variable collapse the provenance branch cites in its own comments. A subshell or backgrounded assignment; prose inside a quoted word; `sh -c` inner text that unwrap promotes to command position; an assignment that runs after the rm; six block bodies the shell may never enter; four function-body forms; `unset ${x-S}`; an opaque `DEBUG` trap. They are `pass` rows because that is the shipped verdict — the label records behaviour, it does not endorse it.
+
+**The interesting part is what did not ship.** The obvious fix for the reported complaint was to widen the gate so the ordinary spelling passes. That was built — a character-level scanner answering "which assignments does bash bind into the parent shell", five commits — and it was **dropped after three adversarial review rounds**. Not because the reviews found defects, which is expected, but because of one measurement: every `Bash` call in the local transcripts that can reach the rm gate, replayed through both revisions. **The change repaired 1 real command and broke 8.** Among the eight were `local D=$(mktemp -d)`, which is what every shell function writes, and `git stash push >/dev/null && T=$(mktemp -d) && …; rm -rf "$T"`.
+
+The regression corpus said otherwise, and that is the lesson worth carrying: **0 of 751 pre-existing corpus rows moved** while those eight commands broke. A corpus holds the shapes someone thought to write down, and nobody writes `local D=…` as a test case because nobody thinks of it as an edge case. `tasks/s8-provenance-residuals-2026-09-08.md` carries the accounting, the four design errors worth not repeating, and the bar a future attempt has to clear; the attempt itself stays on the unmerged branch `s8-command-position-assignments`.
+
+The guard reaches what that scanner could not, which is the argument for teaching it. Rows `S8-GUARD4`..`6` pin `${VAR:?}` passing inside a loop body, behind `&&`, and on a transitive `B="$EXP/…"` — three shapes no provenance scan can reach, because the guard proves the variable non-empty at runtime instead of proving its origin from the text.
+
+**Migration**: `/claudemd-refresh` for the plugin, then `/claudemd-update` to sync the four spec files. Unlike 0.82.0, this release **does** change a file you own — `~/.claude/CLAUDE.md` §8 — and `/claudemd-update` shows the diff and waits for you to accept it.
+
+**Way back**: skip `/claudemd-update` and your installed spec stays at v6.29.0; nothing else in this release reaches your machine. For the plugin, pin the marketplace entry to `v0.82.0` and run `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a `v0.82.0` checkout — `install.js` refuses a downgrade without that variable, and it is the only thing that repoints the plugin manifest. `docs/ROLLBACK.md` § "Local machine needs the previous version back" carries the same procedure. Since no hook changed, there is no new deny to escape from in this release.
+
+**Tests.** Corpus 751 → 780 data rows across 29 added rows (20 residuals, 2 residual controls, 6 guard-spelling rows, 1 guard control); `pre-bash-safety` suite 851 → 880 passing; this entry was spliced with Python's literal `str.replace` rather than JavaScript's, whose replacement strings read a `$` before a backtick as the text preceding the match — the mechanism that cut the 0.82.0 body in half, and the token `tests/scripts/changelog-structure.test.js` splices its mutation control at; `npm run check` exit 0 read from the exit code rather than from grepping its output; `version-cascade-check` ok across 3 spec sites and 6 semver sites; five spec section digests re-blessed (§8, both preambles, both heading inventories, `## Recent changes`) with `hard-rules.json`'s `spec_version` and the rm rule's `section_anchor` moved in the same diff.
+
+The differential worth citing, with its limit stated: all 751 corpus rows that existed at v0.82.0 were driven through the hook at both revisions — **0 moved**, which is what "no hook changes a verdict" means here. It is not evidence that the gate is correct; the twenty residual rows above are the standing statement that it is not.
+
 ## [0.82.0] - 2026-09-08
 
 Three §8 false negatives closed, one false deny closed, and one intended repair **reverted before shipping** because three rounds of adversarial review found five §8 false negatives inside it. The spec is untouched at **v6.29.0**; this is a plugin-only release. The per-item record, including what the review changed and what it cost, is `docs/audit/20260906-230810.md` §12.
