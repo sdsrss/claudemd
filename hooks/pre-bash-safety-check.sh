@@ -263,7 +263,7 @@ sanitize_cmd() {
         ch = substr($0, i, 1)
         if (st == 0) {
           if (ch == "\047") { st = 1; buf = "" }
-          else if (ch == "\"") { st = 2; buf = ""; raw = ""; has_exp = 0
+          else if (ch == "\"") { st = 2; buf = ""; raw = ""; has_exp = 0; has_sub = 0
                                  esc = 0; depth = 0; tick = 0; sq = 0; dq = 0 }
           else final = final ch
         } else if (st == 1) {
@@ -280,9 +280,22 @@ sanitize_cmd() {
           if (esc)          { buf = buf ch; raw = raw ch; esc = 0; continue }
           if (ch == "\\")   { esc = 1; buf = buf ch; raw = raw ch; continue }
           if (!(tick || depth > 0) && ch == "\"") {
-            if (has_exp) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
+            # A body carrying a command SUBSTITUTION is emitted verbatim, folded
+            # of nothing (0.82.0 pre-tag review, CRITICAL 1). The fold below asks
+            # a paren COUNTER whether it is inside `$( )`, and bash parses that
+            # recursively: a `)` closing a case pattern, or one inside
+            # `${x//)/-}`, does not end the substitution — and the single-token
+            # unquote turns `")"` into a bare `)` before this walker ever runs, so
+            # the desync needs no unbalanced paren at all. Every separator after
+            # the desync was folded, and the curl-sh arm — the one whose segmenter
+            # keeps `|` on purpose — went blind on a live `curl … | sh`. Deciding
+            # by "did this body contain executable text" needs no counter to be
+            # right; the counter now only decides where the string ENDS, and
+            # getting THAT wrong lands in the unterminated branch, which exposes.
+            if (has_sub) { gsub(/#/, "", raw); final = final "\"" raw "\"" }
+            else if (has_exp) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
             else final = final close_quote(buf, "\"\"", substr(final, length(final), 1), substr($0, i+1, 1))
-            st = 0; buf = ""; raw = ""; has_exp = 0
+            st = 0; buf = ""; raw = ""; has_exp = 0; has_sub = 0
             depth = 0; tick = 0; sq = 0; dq = 0
             continue
           }
@@ -300,10 +313,18 @@ sanitize_cmd() {
             else if (ch == ")")      depth--
             buf = buf ch; continue
           }
-          if (ch == "`") { tick = 1; has_exp = 1; buf = buf ch; continue }
+          if (ch == "`") { tick = 1; has_exp = 1; has_sub = 1; buf = buf ch; continue }
           if (ch == "$") {
             has_exp = 1
-            if (substr($0, i+1, 1) == "(") { depth = 1; buf = buf "$("; i++; continue }
+            # `raw = raw ch` above appended the `$` only. Without the `(` here the
+            # i++ steps over it, and an unterminated body reached the detectors
+            # spelled `$rm` / `$curl` / `$npx` — a command word no arm matches, on
+            # all three of them (0.82.0 pre-tag review, CRITICAL 2). The comment
+            # on the unterminated branch was auditing the separators, which were
+            # intact, and not the token in front of them.
+            if (substr($0, i+1, 1) == "(") {
+              depth = 1; has_sub = 1; buf = buf "$("; raw = raw "("; i++; continue
+            }
             buf = buf ch; continue
           }
           # Outside every expansion, a double-quoted body is DATA to bash. A
