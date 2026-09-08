@@ -368,7 +368,8 @@ export async function doctor({ pruneBackups: prune } = {}) {
   );
 
   // Inventory spans EVERY namespace (audit-2026-08-22 P1-1). Reporting only the
-  // default label would have made update.js's `spec-backup-` dirs invisible to
+  // default label would have made the `spec-backup-` dirs — update.js's, and
+  // install.js's since v0.83.0 — invisible to
   // the one command a user runs to see what claudemd left in ~/.claude — the
   // "gate narrower than its subject" shape this release is closing elsewhere.
   const backupsByLabel = Object.values(BACKUP_LABELS).map(label => ({ label, dirs: listBackups({ label }) }));

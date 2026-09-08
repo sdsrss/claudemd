@@ -322,8 +322,14 @@ for (const [name, build] of [
       withNotes,
       'the user notes must be recoverable verbatim'
     );
-    // The v0.23.11 property, restated as an assertion rather than a comment:
-    // nothing spec-shaped may enter the namespace uninstall's restore reads.
+    // The v0.23.11 property, restated as an assertion rather than a comment.
+    // The property is "no dir whose `CLAUDE.md` is the spec is created in the
+    // namespace uninstall's restore reads" — NOT "nothing spec-shaped enters
+    // it", which is false on the user-content branch, where all four home spec
+    // files are swept and three of them carry a spec H1. On THIS branch the
+    // personal namespace stays empty outright, so the assertion below is the
+    // stronger check that happens to be available here; do not generalise its
+    // message into the other branch's territory.
     assert.deepEqual(
       fs.readdirSync(path.join(tmpHome, '.claude')).filter(d => /^backup-/.test(d)),
       [],

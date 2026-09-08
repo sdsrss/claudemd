@@ -397,7 +397,8 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     // claim was false between v0.23.11 and v0.68.2 because update.js wrote the
     // SAME namespace; it now uses BACKUP_LABELS.spec (audit-2026-08-22 P1-1).
     // The prior spec version is recoverable from git / the plugin cache /
-    // update.js's own `spec-backup-` dirs.
+    // the `spec-backup-` dirs, which update.js and (since v0.83.0) this file
+    // both write.
     // (The earlier v0.23.11 "byte-identical only" guard left the upgrade path
     // broken — restore after any upgrade returned the old spec.)
     //
@@ -410,12 +411,23 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     // CHANGELOG sentence that claimed the opposite.
     //
     // The copy goes to the SPEC namespace, which is update.js's and which
-    // uninstall's restore does not read. So the property above is untouched —
-    // nothing spec-shaped ever enters `backup-`, restore still returns the
-    // user's own file, and prune still cannot bury it — while the bytes that
-    // were about to be destroyed become recoverable from `spec-backup-<ISO>/`.
-    // Byte-identical re-installs still copy nothing: there is nothing to lose,
-    // and this path runs on every SessionStart version match.
+    // uninstall's restore does not read. So the property above is untouched:
+    // no dir whose `CLAUDE.md` is the SPEC is ever created in `backup-`, so
+    // restore still returns the user's own file and prune still cannot bury it
+    // — while the bytes that were about to be destroyed become recoverable from
+    // `spec-backup-<ISO>/`. Stated that way on purpose: "nothing spec-shaped
+    // enters `backup-`" would be false, and was false before this commit. The
+    // user-content branch sweeps all four home spec files, so a personal dir
+    // does hold the three spec-shaped SIBLINGS beside the user's own
+    // `CLAUDE.md`. That is correct — restore's job there is to put the whole
+    // pre-install state back. What ruins restore is a personal dir whose
+    // `CLAUDE.md` is the spec, and that is what this branch never makes.
+    // Byte-identical re-installs still copy nothing: there is nothing to lose.
+    // The guard is not load-bearing per session — session-start-check.sh exits
+    // before install.js when the installed and plugin versions agree — so if it
+    // ever answered wrong the cost is one directory per UPGRADE, not per
+    // session. It earns its place on the forced paths: /claudemd-install, a
+    // repaired manifest, a re-run against the same version.
     // COPIED, not moved. createBackup uses renameSync, and on this branch that
     // is wrong twice over: it would carry off a SYMLINKED home spec, breaking
     // the write-through a stow/chezmoi checkout depends on, and it would leave

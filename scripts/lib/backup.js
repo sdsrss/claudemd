@@ -28,7 +28,14 @@ export const BACKUP_LABELS = {
   // install.js — the user's own ~/.claude/CLAUDE.md, moved aside so the spec
   // can take its place. This is the ONLY namespace uninstall's restore reads.
   personal: 'backup',
-  // update.js — the installed spec about to be replaced by a newer one.
+  // update.js AND install.js — the installed spec about to be replaced by a
+  // newer one. install.js joined as a writer in v0.83.0: it copies a
+  // spec-shaped ~/.claude/CLAUDE.md here before overwriting it, because
+  // `looksLikeSpec` also matches the spec with the user's notes appended, and
+  // those were being destroyed. It must not use the personal namespace for
+  // that — see install.js's overwrite-spec branch and the v0.23.11 note there.
+  // Both writers prune this namespace to BACKUP_RETAIN_COUNT; prune is
+  // writer-agnostic, so a dir's origin never changes its fate.
   spec: 'spec-backup',
   // install.js — pre-plugin hand-installed hook files (banned-vocab-check.sh
   // and its patterns). Its own namespace because the dir it needs holds those
