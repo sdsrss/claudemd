@@ -1,6 +1,29 @@
 # §8 sanitize: `\"` escape gap — now has a live FP hit
 
-**Status**: **CLOSED 2026-09-07.** Two changes, both in
+**Status**: **PARTLY CLOSED, and the headline half is still OPEN** (2026-09-08).
+
+> The false-deny this file is about — quoted prose read as a command — is NOT
+> closed. The fix for it (folding separators inside a double-quoted body) was
+> reverted before 0.82.0 shipped: three pre-tag review rounds found five §8 false
+> negatives inside it, each on a payload bash executes, while the release's three
+> other changes produced none. `docs/audit/20260906-230810.md` §12.10 carries the
+> attribution table and the user's decision. Workarounds unchanged: single
+> quotes, `git commit -F <file>`, or the `[allow-rm-rf-var]` token.
+>
+> What DID ship from this file's investigation: the single-token unquote no
+> longer pairs an opening quote with an escaped one (measured — it flips
+> `git commit -m "note: \" ; npx some-package\" …"` from deny to allow on a
+> `$`-free body, and moves 0 of 742 corpus rows otherwise), and the §8 false
+> negative found while measuring it — a backtick body inside double quotes being
+> erased before any gate saw it — is closed, at the cost of that body now being
+> preserved whole.
+>
+> **Do not re-attempt the fold without a different mechanism.** A paren counter
+> cannot decide where `$( )` ends: bash parses it recursively, and the
+> single-token unquote bares a quoted `)` before the walker runs. The five
+> regressions are enumerated in §12.10.
+
+**Superseded status line**: CLOSED 2026-09-07 — Two changes, both in
 `hooks/pre-bash-safety-check.sh`, plus 9 corpus rows (`S8-EQ1`…`S8-EQ9`).
 **Recorded**: 2026-07-15, during the v0.47.1 F10/F11/F13 fixes.
 
