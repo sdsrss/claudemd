@@ -60,6 +60,42 @@ test('CHANGELOG: the top release entry contains no foreign H2', () => {
   );
 });
 
+test('CHANGELOG: no long line of the top entry is repeated anywhere in the file', () => {
+  // The three checks above are walked past by the SIBLING metacharacter of the
+  // bug they were written for (0.82.0 pre-tag review round 2, MEDIUM-1). In a
+  // JS replacement string `$` + backtick is "the input before the match" — that
+  // is what shipped — and `$` + `'` is "the input AFTER it". Same prose, same
+  // splice, other direction: the file's TAIL lands mid-sentence, and because the
+  // injected tail carries a `## [x.y.z]` of its own, `topEntry` below stops at it
+  // and the foreign-H2 scan only ever sees the truncated prefix. Splicing a copy
+  // of an older entry does the same.
+  //
+  // Duplication is what all three shapes have in common, whatever the mechanism:
+  // a splice pastes text the file already contains. Long lines only, and scoped
+  // to the top entry, because one long line legitimately repeats across two older
+  // entries — file-wide this would need a baseline, and a check that needs a
+  // baseline is a check that gets updated instead of read.
+  const text = read();
+  const entry = topEntry(text);
+  const rest = text.replace(entry, '');
+  const offenders = [];
+  for (const line of entry.split('\n')) {
+    if (line.length < 120) continue;
+    const inEntry = entry.split(line).length - 1;
+    const inRest = rest.split(line).length - 1;
+    if (inEntry > 1 || inRest > 0)
+      offenders.push(`${inEntry}× in entry, ${inRest}× elsewhere: ${line.slice(0, 90)}…`);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    'a long line of the top release entry appears more than once. That is what a bad splice looks ' +
+      'like: text the file already holds, pasted into the middle of the entry. Read the entry as ' +
+      'prose before deciding this is a coincidence.\n' +
+      offenders.join('\n')
+  );
+});
+
 test('CHANGELOG: the structure checks can fail (mutation control)', () => {
   // The real corruption, replayed against a copy: the file header pasted into
   // the entry body. Without this, three assertions that can never fire read
@@ -67,19 +103,34 @@ test('CHANGELOG: the structure checks can fail (mutation control)', () => {
   const text = read();
   const header = text.split('\n').slice(0, 9).join('\n') + '\n';
   const entry = topEntry(text);
-  // Spliced by SLICING, at a line boundary inside the entry. The first draft of
-  // this control used `text.replace(entry, …)` and reproduced the very bug it
-  // exists to pin: the replacement string carried the entry's own `` `$` `` and
-  // ate the file prefix, so the assertions below read 1 instead of 2.
-  const at = text.indexOf('\n', text.indexOf(entry) + 200) + 1;
-  const corrupted = text.slice(0, at) + header + text.slice(at);
+  // Spliced MID-LINE, where the real one landed (0.82.0 pre-tag review round 2,
+  // MEDIUM-2). The first draft spliced at a line boundary and asserted that
+  // `^# Changelog$` went to 2 — but on the commit that actually shipped the
+  // corruption that count is **1**, because the injected copy was glued to
+  // `…holding a` + backtick and never reached column 0. Arm 1 is the one
+  // assertion that would NOT have fired on the bug this file exists for; arms 2
+  // and 3 are what caught it. Splicing at the `$`-backtick token reproduces it.
+  //
+  // The first draft also used `text.replace(entry, …)` and so reproduced the bug
+  // inside the test meant to pin it — the replacement string carried the entry's
+  // own token and ate the file prefix. Slicing has no replacement side.
+  const marker = '`$`';
+  const at = text.indexOf(marker, text.indexOf(entry));
+  assert.notEqual(at, -1, 'the entry no longer contains the token this control splices at');
+  const corrupted = text.slice(0, at + 1) + header + text.slice(at + 1);
   assert.notEqual(corrupted, text, 'the mutation did not change the text');
-  assert.equal(countMatches(corrupted, /^# Changelog$/gm), 2);
-  assert.equal(countMatches(corrupted, /^## Versioning policy/gm), 2);
+  assert.equal(
+    countMatches(corrupted, /^## Versioning policy/gm),
+    2,
+    'the policy-heading arm would not have caught the corruption that shipped'
+  );
   assert.ok(
     topEntry(corrupted)
       .split('\n')
       .filter(l => /^## /.test(l)).length > 1,
-    'the foreign-H2 check would not have seen the real corruption'
+    'the foreign-H2 arm would not have caught the corruption that shipped'
   );
+  // Arm 1 is recorded as NOT firing on this shape rather than asserted away: a
+  // mid-line injection leaves the H1 off column 0, so the count stays 1.
+  assert.equal(countMatches(corrupted, /^# Changelog$/gm), 1);
 });

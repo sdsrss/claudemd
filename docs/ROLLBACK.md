@@ -10,8 +10,12 @@ are recorded instances of releases crossing that window.
 
 **The marketplace channel still has no *green-CI* gate**, and by design will not get one.
 Two rulesets were added on 2026-09-07 (`gh api repos/sdsrss/claudemd/rulesets` to see them):
-`main-integrity` blocks deletion and non-fast-forward on the default branch, and
-`release-tags-immutable` blocks deletion, non-fast-forward and update on `refs/tags/v*`.
+`main-integrity` blocks `deletion` and `non_fast_forward` on the default branch, and
+`release-tags-immutable` blocks `deletion`, `non_fast_forward` and `update` on `refs/tags/v*`.
+The rule names are GitHub's own, spelled as the API spells them, because
+`tests/scripts/contributing-rollback-drift.test.js` joins this sentence to
+`.github/rulesets.expected.json` — a doc that keeps the ruleset name and quietly drops a
+rule from the list is the half-updated shape that join exists to catch.
 Both are ref-integrity rules. Neither requires a status check, because GitHub applies
 required checks to direct pushes as well, a just-written commit has no check run yet, and
 the only account with write access here is the maintainer's — so that rule would not stop

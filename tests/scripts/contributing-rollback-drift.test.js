@@ -167,6 +167,33 @@ test('0.82.0: ROLLBACK names the rulesets it describes, and their load-bearing r
     'a bypass actor on the tag ruleset makes the immutability claim in docs/ROLLBACK.md and in ' +
       "npm-publish.yml's main-ancestry comment false for that actor"
   );
+  // The three assertions above read the expectation FILE, which is the file
+  // checking itself; the doc side was only checked for two literal names. A
+  // review mutation that rewrote ROLLBACK to "blocks deletion; moving a tag is
+  // still allowed" — unsaying the claim npm-publish.yml repeats — left the suite
+  // green (0.82.0 pre-tag review round 2). These give the doc, `enforcement` and
+  // `ref_include` a consumer each.
+  assert.match(
+    rollback,
+    new RegExp(`\`${tagRs.name}\`[^.]*${tagRs.rules.join('[^.]*')}`),
+    `docs/ROLLBACK.md must restate the tag ruleset's rules (${tagRs.rules.join(', ')}) in order, ` +
+      'in the sentence that names it — a doc that keeps the name and drops a rule is the ' +
+      'half-updated shape this file exists to catch'
+  );
+  for (const rs of expected.rulesets) {
+    assert.equal(
+      rs.enforcement,
+      'active',
+      `${rs.name} is recorded as ${rs.enforcement}; a ruleset that is not active protects nothing, ` +
+        'and both docs describe these as in force'
+    );
+    for (const ref of rs.ref_include) {
+      assert.ok(
+        rollback.includes(ref) || ref === '~DEFAULT_BRANCH',
+        `docs/ROLLBACK.md does not name the refs ${rs.name} applies to (${ref})`
+      );
+    }
+  }
 });
 
 test('REL-H1: the revert route names the three mechanisms that make a bare revert invisible', () => {

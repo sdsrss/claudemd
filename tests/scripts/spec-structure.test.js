@@ -889,15 +889,15 @@ for (const file of [CORE, EXT]) {
         seen.set(i, block.heading);
       }
     }
-    const uncovered = lines
-      .map((l, i) => (seen.has(i) || l === '' ? null : `${i + 1}: ${l}`))
-      .filter(Boolean);
+    const uncovered = lines.map((l, i) => (seen.has(i) ? null : `${i + 1}: ${l}`)).filter(Boolean);
     assert.deepEqual(
       uncovered,
       [],
       `${file} has lines outside every registered section. A rule can be revoked from anywhere in ` +
         'the file, not only from beside itself, so an unwatched span is an unwatched revocation ' +
-        'site. Add a PINNED_BLOCKS entry for the section holding these lines:\n' +
+        'site. If these lines are under a real `## ` heading, add a PINNED_BLOCKS entry for it; ' +
+        'if they are not — a `#` inside a fenced code block reads as a heading to this gate and ' +
+        'to `blockFor` — the fix is in the spec file, not in the table:\n' +
         uncovered.join('\n')
     );
   });
