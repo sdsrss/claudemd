@@ -25,6 +25,7 @@ import {
   logsDir,
   settingsPath,
   specHome,
+  homeSpec,
   resolvePluginRoot,
   readPluginVersion,
   readManifest,
@@ -36,7 +37,7 @@ import {
   SPEC_FILES,
 } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
-import { copySpecFiles } from './lib/spec-hash.js';
+import { copySpecFiles, sha256File } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
@@ -103,6 +104,25 @@ const INSTALL_LOCK_STALE_MS = 10 * 60 * 1000;
 // `fs.openSync(p, 'wx')` is O_CREAT|O_EXCL — one winner, decided by the kernel.
 // NOT `mkdirSync`: this repo's own Round-13 measurements showed the uutils
 // coreutils `mkdir` on the maintainer's box admitting two holders.
+// Is every installed spec file byte-identical to the one about to replace it?
+// Only then is there provably nothing to preserve. Compared by digest through
+// spec-hash.js#sha256File rather than a fourth hand-rolled read-and-compare —
+// the same single-source reason copySpecFiles cites for its own integrity check.
+// A missing file on either side answers "no": a partial home spec is exactly the
+// state worth keeping a copy of.
+function homeSpecMatchesShipped(pluginRoot) {
+  return SPEC_FILES.every(name => {
+    const home = homeSpec(name);
+    const shipped = path.join(pluginRoot, 'spec', name);
+    if (!fs.existsSync(home) || !fs.existsSync(shipped)) return false;
+    try {
+      return sha256File(home) === sha256File(shipped);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function acquireInstallLock() {
   const dir = stateDir();
   fs.mkdirSync(dir, { recursive: true });
@@ -380,7 +400,43 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     // update.js's own `spec-backup-` dirs.
     // (The earlier v0.23.11 "byte-identical only" guard left the upgrade path
     // broken — restore after any upgrade returned the old spec.)
+    //
+    // v0.83.0 — that reasoning holds for the PERSONAL namespace and only for it.
+    // What it left unguarded is content this branch cannot see: `looksLikeSpec`
+    // asks for an `# AI-CODING-SPEC` line in the first 256 bytes, so the spec
+    // WITH the user's notes appended below it — the natural way to keep notes
+    // in a file that already is the spec — lands here and was overwritten with
+    // no copy anywhere and no warning. Found by the v0.83.0 pre-tag review of a
+    // CHANGELOG sentence that claimed the opposite.
+    //
+    // The copy goes to the SPEC namespace, which is update.js's and which
+    // uninstall's restore does not read. So the property above is untouched —
+    // nothing spec-shaped ever enters `backup-`, restore still returns the
+    // user's own file, and prune still cannot bury it — while the bytes that
+    // were about to be destroyed become recoverable from `spec-backup-<ISO>/`.
+    // Byte-identical re-installs still copy nothing: there is nothing to lose,
+    // and this path runs on every SessionStart version match.
+    // COPIED, not moved. createBackup uses renameSync, and on this branch that
+    // is wrong twice over: it would carry off a SYMLINKED home spec, breaking
+    // the write-through a stow/chezmoi checkout depends on, and it would leave
+    // ~/.claude/CLAUDE.md absent if the copy that follows failed mid-write —
+    // the exact state SCR-M1 pins. copySpecFiles writes through a tmp file and
+    // renames, so the original stands until it succeeds; a copy alongside it
+    // costs one file and breaks neither property.
     specResult = 'overwrite-spec';
+    if (!homeSpecMatchesShipped(pluginRoot)) {
+      const specBackupDir = reserveBackupDir({ label: BACKUP_LABELS.spec });
+      fs.mkdirSync(specBackupDir, { recursive: true });
+      for (const src of existing) {
+        try {
+          fs.copyFileSync(src, path.join(specBackupDir, path.basename(src)));
+        } catch {
+          /* unreadable entry (dangling link, permissions) — the copy is a
+             safety net, not a precondition; install must not fail on it. */
+        }
+      }
+      pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.spec });
+    }
   } else {
     // Name the dir, RECORD it, and only then move anything into it (Round-14
     // audit SCR-H1). The sentinel used to be written ~30 lines below this

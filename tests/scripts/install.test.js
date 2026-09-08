@@ -289,6 +289,63 @@ test('D7: existing CLAUDE.md without spec H1 flagged as user content + preserved
   );
 });
 
+// The gap `looksLikeSpec` leaves, found by the v0.83.0 pre-tag review. It tests
+// for an `# AI-CODING-SPEC` line in the first 256 bytes, so the spec WITH the
+// user's notes appended below it — the natural way to keep notes there, since
+// the file already is the spec — reads as "claudemd's own file, nothing to
+// preserve" and was overwritten with no backup and no warning.
+//
+// The fix must not be "back up whenever the bytes differ". That is what v0.23.11
+// tried; it puts a spec in the PERSONAL namespace on every upgrade, and since
+// restore takes the newest and prune evicts the oldest, enough upgrades bury the
+// user's real personal backup for good. The install.js comment records that
+// incident. So: spec-on-spec goes to the SPEC namespace, which restore does not
+// read, and the personal namespace stays exactly as pristine as v0.23.11 made it.
+for (const [name, build] of [
+  ['appended below', s => `${s}\n## MY OWN SECTION\nAlways prefer tabs.\n`],
+  ['prepended above', s => `Always prefer tabs.\n\n${s}`],
+]) {
+  test(`install: user notes ${name} the spec survive the overwrite`, async () => {
+    const shipped = '# AI-CODING-SPEC v6.9.2 — Core\nVersion: 6.9.2\n';
+    const withNotes = build('# AI-CODING-SPEC v6.16.0 — Core\nVersion: 6.16.0\n');
+    fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), withNotes);
+    const res = await install({ pluginRoot });
+    assert.equal(res.spec, 'overwrite-spec', 'still the spec-on-spec branch');
+    assert.equal(res.backupDir, null, 'and it must not reserve a PERSONAL backup dir');
+    assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), shipped);
+    const specBackups = fs
+      .readdirSync(path.join(tmpHome, '.claude'))
+      .filter(d => d.startsWith('spec-backup-'));
+    assert.equal(specBackups.length, 1, 'the replaced file must be kept in the spec namespace');
+    assert.equal(
+      fs.readFileSync(path.join(tmpHome, '.claude', specBackups[0], 'CLAUDE.md'), 'utf8'),
+      withNotes,
+      'the user notes must be recoverable verbatim'
+    );
+    // The v0.23.11 property, restated as an assertion rather than a comment:
+    // nothing spec-shaped may enter the namespace uninstall's restore reads.
+    assert.deepEqual(
+      fs.readdirSync(path.join(tmpHome, '.claude')).filter(d => /^backup-/.test(d)),
+      [],
+      'the personal backup namespace must stay empty for a spec-shaped file'
+    );
+  });
+}
+
+test('install: a byte-identical re-install still writes no backup at all', async () => {
+  // EVERY spec file, not just CLAUDE.md: "nothing to lose" is a claim about the
+  // whole set, and seeding one of four is a re-install only in the loosest sense.
+  for (const name of ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']) {
+    fs.copyFileSync(path.join(pluginRoot, 'spec', name), path.join(tmpHome, '.claude', name));
+  }
+  await install({ pluginRoot });
+  assert.deepEqual(
+    fs.readdirSync(path.join(tmpHome, '.claude')).filter(d => /backup-/.test(d)),
+    [],
+    'nothing is lost, so nothing is copied — this is what keeps upgrade churn down'
+  );
+});
+
 test('ENG-01: a stow-style RELATIVE symlink is backed up as a readable entry, not a dangling link', async () => {
   // GNU stow (and chezmoi) link ~/.claude/CLAUDE.md at a dotfiles checkout with
   // a RELATIVE target, and rename(2) moves the LINK — so the entry landing in
