@@ -257,13 +257,22 @@ sanitize_cmd() {
     }
     {
       n = length($0)
-      st = 0; buf = ""; raw = ""; has_exp = 0; final = ""
+      st = 0; buf = ""; raw = ""; has_exp = 0; final = ""; tickbuf = ""
       esc = 0; depth = 0; tick = 0; sq = 0; dq = 0
+      # rec_sub is per RECORD, not per region, and it is sticky. `has_sub` answers
+      # "did THIS region hold executable text"; a paren desync can also move the
+      # region BOUNDARY — the next inner `"` closes region 1 and the executable
+      # tail lands in region 2 with the flag clear, which folded it (0.82.0
+      # pre-tag review round 2, HIGH B). A desync can only ever lose structure,
+      # never invent it, so once a substitution has been seen every later region
+      # in the same record is emitted verbatim too.
+      rec_sub = 0
       for (i = 1; i <= n; i++) {
         ch = substr($0, i, 1)
         if (st == 0) {
           if (ch == "\047") { st = 1; buf = "" }
           else if (ch == "\"") { st = 2; buf = ""; raw = ""; has_exp = 0; has_sub = 0
+                                 tickbuf = ""
                                  esc = 0; depth = 0; tick = 0; sq = 0; dq = 0 }
           else final = final ch
         } else if (st == 1) {
@@ -292,10 +301,18 @@ sanitize_cmd() {
             # by "did this body contain executable text" needs no counter to be
             # right; the counter now only decides where the string ENDS, and
             # getting THAT wrong lands in the unterminated branch, which exposes.
-            if (has_sub) { gsub(/#/, "", raw); final = final "\"" raw "\"" }
+            if (has_sub || rec_sub) { rec_sub = 1; gsub(/#/, "", raw); final = final "\"" raw "\"" }
+            # A BACKTICK span has exact boundaries — they do not nest and an
+            # escaped one is consumed by the esc arm above — so nothing in the
+            # paragraph above applies to it: emit the span and drop its exterior,
+            # which bash treats as data. Promoting a `$`-free backtick body to
+            # verbatim made prose deny that v0.81.0 ERASED and allowed, e.g.
+            # `git commit -m "docs: run \`make setup\`; then npx prettier"`
+            # (0.82.0 pre-tag review round 2, MEDIUM C).
+            else if (tickbuf != "") { gsub(/#/, "", tickbuf); final = final "\"" tickbuf "\"" }
             else if (has_exp) { gsub(/#/, "", buf); final = final "\"" buf "\"" }
             else final = final close_quote(buf, "\"\"", substr(final, length(final), 1), substr($0, i+1, 1))
-            st = 0; buf = ""; raw = ""; has_exp = 0; has_sub = 0
+            st = 0; buf = ""; raw = ""; has_exp = 0; has_sub = 0; tickbuf = ""
             depth = 0; tick = 0; sq = 0; dq = 0
             continue
           }
@@ -303,7 +320,7 @@ sanitize_cmd() {
           # Inside an expansion the text IS a command, so it is copied verbatim,
           # separators and all. Sub-quotes are tracked so a paren inside them
           # (`$(echo ")")`) does not close the span early.
-          if (tick)     { if (ch == "`") tick = 0; buf = buf ch; continue }
+          if (tick)     { if (ch == "`") tick = 0; buf = buf ch; tickbuf = tickbuf ch; continue }
           if (depth > 0) {
             if (sq)                  { if (ch == "\047") sq = 0 }
             else if (dq)             { if (ch == "\"")   dq = 0 }
@@ -313,9 +330,18 @@ sanitize_cmd() {
             else if (ch == ")")      depth--
             buf = buf ch; continue
           }
-          if (ch == "`") { tick = 1; has_exp = 1; has_sub = 1; buf = buf ch; continue }
+          if (ch == "`") { tick = 1; has_exp = 1; buf = buf ch; tickbuf = tickbuf " " ch; continue }
           if (ch == "$") {
             has_exp = 1
+            # bash 5.3 funsub `${ cmd; }` and valsub `${| cmd; }` are command
+            # substitutions that work inside "…" exactly like `$( )`, and this
+            # walker knew only one spelling (0.82.0 pre-tag review round 2, HIGH
+            # A). No span tracking is needed — the flag alone routes the body to
+            # the verbatim branch. A parameter expansion cannot false-match: bash
+            # requires a blank or a `|` after the brace for these forms, and
+            # `${x}` / `${x:-y}` / `${#a}` always have an identifier character
+            # there.
+            if (substr($0, i+1, 2) ~ /^\{[ \t|]/) { has_sub = 1 }
             # `raw = raw ch` above appended the `$` only. Without the `(` here the
             # i++ steps over it, and an unterminated body reached the detectors
             # spelled `$rm` / `$curl` / `$npx` — a command word no arm matches, on
