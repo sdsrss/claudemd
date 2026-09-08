@@ -540,7 +540,11 @@ else
   mention_case "export makes its argument code"   S 'S=$(mktemp -d /tmp/x.XXXXXX); export S=/etc'          '2 1'
   mention_case "readonly likewise"                S 'S=$(mktemp -d /tmp/x.XXXXXX); readonly S=/etc'        '2 1'
   mention_case "a brace group is not a command"   S 'S=$(mktemp -d /tmp/x.XXXXXX); { S=/etc; }'            '2 1'
-  mention_case "a then-body is not a command"     S 'S=$(mktemp -d /tmp/x.XXXXXX); if x; then S=/etc; fi'  '2 1'
+  # `then` is transparent, so the assignment behind it IS classified — and the
+  # deny it earns comes from the value check, not from this guard. Recognizing a
+  # binding and trusting it are different steps, which is the whole point of
+  # splitting s8_bind_enclosing out from s8_bind_assignments.
+  mention_case "a then-body assignment is classified" S 'S=$(mktemp -d /tmp/x.XXXXXX); if x; then S=/etc; fi'  '2 2'
   mention_case "echo makes its argument data"     S 'S=$(mktemp -d /tmp/x.XXXXXX); echo S=/etc'            '1 1'
   mention_case "so does any external command"     S 'S=$(mktemp -d /tmp/x.XXXXXX); git commit -m S=/etc'   '1 1'
   # `time` and `!` prefix a command without stopping its assignments binding, so
@@ -549,11 +553,34 @@ else
   bind_case "time does not stop the binding"  'time S=/tmp/x'                     'S=/tmp/x'
   bind_case "! does not stop the binding"     '! S=/tmp/x'                        'S=/tmp/x'
   bind_case "export is a command, not a run"  'export S=/tmp/x'                   ''
-  # A body the shell may never execute is not a binding, however the splitter
-  # cuts it. `if false; then` … `fi` put a lone assignment at a segment head.
-  bind_case "assignment inside an if body"    'if false; then__NL__S=/tmp/x__NL__fi'   ''
-  bind_case "assignment inside a loop body"   'for i in 1; do__NL__S=/tmp/x__NL__done' ''
   bind_case "binding resumes after the block" 'if x; then__NL__:__NL__fi__NL__S=/tmp/x' 'S=/tmp/x'
+  # --- s8_bind_enclosing: does the binding still hold where the text ends? ---
+  # A body the shell may never execute DID assign, so it stays in the full list —
+  # the value check has to judge it. What it does not do is reach past its own
+  # `fi`. The two questions were one list until the 2026-09-08 review showed that
+  # collapsing them let `then WORK=$BUILD_DIR` vanish from the value check while
+  # still counting as an accounted-for mention.
+  enc_case() {
+    local note="$1" cmd="$2" want="$3" got
+    cmd="${cmd//__NL__/$'\n'}"
+    got=$(s8_bind_enclosing "$cmd" | sed 's/\t/=/' | tr '\n' '|')
+    got="${got%|}"
+    if [[ "$got" == "$want" ]]; then
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL [s8-enclosing]: $note (want '$want', got '$got')"
+      FAIL=$((FAIL + 1))
+    fi
+  }
+  bind_case "an if body still assigns"        'if false; then__NL__S=/tmp/x__NL__fi'   'S=/tmp/x'
+  enc_case  "but it does not reach past fi"   'if false; then__NL__S=/tmp/x__NL__fi'   ''
+  bind_case "a loop body still assigns"       'for i in 1; do__NL__S=/tmp/x__NL__done' 'S=/tmp/x'
+  enc_case  "and does not reach past done"    'for i in 1; do__NL__S=/tmp/x__NL__done' ''
+  # The rm in the SAME body is the disposal idiom, and the text the gate scans
+  # ends before the block closes — so the binding is still in reach there.
+  enc_case  "same-body cleanup keeps reach"   'for f in a b; do__NL__D=/tmp/x__NL__tar xf "$f"__NL__' 'D=/tmp/x'
+  enc_case  "one-line then-body keeps reach"  'if x; then D=/tmp/y; tar xf a; '        'D=/tmp/y'
+  enc_case  "a top-level binding always does" 'S=/tmp/x; echo hi; '                    'S=/tmp/x'
 fi
 
 TOTAL=$((PASS + FAIL))

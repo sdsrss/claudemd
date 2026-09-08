@@ -79,6 +79,20 @@ IFS= read -r -d '' S8_BIND_AWK <<'AWKPROG' || true
 # the everyday `WORK=$(mktemp -d); if [ -n "$D" ]; then WORK=$D; fi; rm -rf
 # "$WORK/out"`. The two halves must not decide separately; `lhs` now means
 # exactly "end_seg classified this token", which is what the invariant needs.
+# Is position `at` inside a `${…}` expansion? The F20 adjacency rule reads a
+# neighbouring `-` as "this is a path fragment", which is true in
+# `claudemd-test-XXXXXX` and false in `${x-S}`, where `-` is the default-value
+# operator and bash expands the whole thing to the literal name S. `unset ${x-S}`
+# is a literal-name rebind that the skip dropped outright (2026-09-08 review).
+function in_brace_expansion(code, at,   i, c) {
+  for (i = at - 1; i >= 1; i--) {
+    c = substr(code, i, 1)
+    if (c == "}") return 0
+    if (c == "{") return (i > 1 && substr(code, i - 1, 1) == "$")
+  }
+  return 0
+}
+
 function emit_mentions(raw, code, can_lhs,   L, j, ch, prev, nxt, nxt2, name, start) {
   if (raw ~ /^'[A-Za-z_][A-Za-z0-9_]*'$/ || raw ~ /^"[A-Za-z_][A-Za-z0-9_]*"$/) {
     print "M\t" substr(raw, 2, length(raw) - 2) "\tbare"
@@ -102,11 +116,36 @@ function emit_mentions(raw, code, can_lhs,   L, j, ch, prev, nxt, nxt2, name, st
     # those beside an identifier — shell names cannot contain them — but file
     # paths do, and a var named `bak` was once false-counted inside
     # `cfg.bak.XXXXXX`, denying the very idiom it sat next to.
-    if (prev ~ /^[.\/-]$/ || nxt ~ /^[.\/-]$/) continue
+    if ((prev ~ /^[.\/-]$/ || nxt ~ /^[.\/-]$/) && !in_brace_expansion(code, start)) continue
     nxt2 = (j < L) ? substr(code, j + 1, 1) : ""
     if (can_lhs && start == 1 && (nxt == "=" || (nxt == "+" && nxt2 == "="))) print "M\t" name "\tlhs"
     else print "M\t" name "\tbare"
   }
+}
+
+# A binding is PENDING until the text ends: it counts only if the block that
+# contained it still encloses the end of the scanned span. The gate scans the
+# text up to the rm, so "still enclosing" means "still in effect where the rm
+# runs". A blanket `blockdepth == 0` was the first attempt and it was wrong in
+# the direction that matters least but hurts most — it denied
+#   for f in a b; do D=$(mktemp -d …); tar xf "$f" -C "$D"; rm -rf "$D"; done
+# where the rm sits in the SAME body as the assignment and D always holds a fresh
+# path. That is the §8.V4 disposal idiom in its standard multi-item spelling, and
+# v0.82.0 allows it. What must stay denied is the assignment whose block CLOSED
+# before the rm (`if false; then S=$(mktemp -d); fi; rm -rf "$S/build"` → /build),
+# and dropping pendings when the depth falls below them says exactly that.
+function add_pending(name, val, d) {
+  pn_name[pnn] = name; pn_val[pnn] = val; pn_d[pnn] = d; pn_enc[pnn] = 1; pnn++
+}
+
+# Closing a block does not UNSAY the assignment — `then S=/etc` really did bind,
+# and the caller's "every binding must be mktemp" check has to keep seeing it.
+# What closing a block ends is the assignment's REACH: it no longer holds where
+# the scanned text ends. So enclosure is a flag on the record, not a deletion.
+# Deleting was the first attempt and it reopened the override idiom: the rebind
+# vanished from the value check while still counting as an accounted-for mention.
+function drop_above(nd,   i) {
+  for (i = 0; i < pnn; i++) if (pn_d[i] > nd) pn_enc[i] = 0
 }
 
 function flush_tok() {
@@ -167,9 +206,17 @@ function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs
   # behind it from binding. `time S=/etc` binds S, which is why skipping them
   # here is what lets the run below be recognized and then REJECTED on its value,
   # rather than being waved through as somebody else's argument.
+  # `then`/`do`/`else`/`elif` join them: they introduce a command without being
+  # one, so `if x; then D=$(mktemp -d); …; fi` on ONE line must read the same way
+  # as the multi-line spelling, where the newline already puts the assignment in
+  # a segment of its own. Recognizing the run is not the same as trusting it —
+  # the value check and the enclosure flag still apply, which is what keeps
+  # `then WORK=$BUILD_DIR` denied.
   first = 0
   while (first < segn && (seg[first] == "time" || seg[first] == "!" \
-         || seg[first] == "command" || seg[first] == "builtin")) first++
+         || seg[first] == "command" || seg[first] == "builtin" \
+         || seg[first] == "then" || seg[first] == "do" \
+         || seg[first] == "else" || seg[first] == "elif")) first++
   # The LEADING assignment run: consecutive `NAME=` tokens from the head of the
   # segment, with redirections allowed among them. `tail` records that a word
   # which is not an assignment has been seen — everything after it is that
@@ -188,7 +235,7 @@ function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs
   }
   # A segment binds when it opened and closed in this shell, is not nested inside
   # a block whose execution this scanner cannot predict, and is assignments only.
-  isbind = (binds && self_binds && blockdepth == 0 && nlead > 0 && tail == 0)
+  isbind = (binds && self_binds && nlead > 0 && tail == 0)
   # A run is ACCOUNTED FOR either because it binds (classified below) or because
   # it is an env prefix — `S=x cmd …` reaches only cmd's environment, so it is
   # not a rebind of the parent and the guard need not treat it as one. An
@@ -208,8 +255,8 @@ function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs
       # command's text. The `+` is kept in the VALUE so no RHS classifier can
       # read it as a plain assignment of a value it can see.
       eq = index(t, "=")
-      if (substr(t, eq - 1, 1) == "+") print "A\t" substr(t, 1, eq - 2) "\t" substr(t, eq - 1)
-      else print "A\t" substr(t, 1, eq - 1) "\t" substr(t, eq + 1)
+      if (substr(t, eq - 1, 1) == "+") add_pending(substr(t, 1, eq - 2), substr(t, eq - 1), blockdepth)
+      else add_pending(substr(t, 1, eq - 1), substr(t, eq + 1), blockdepth)
     }
     emit_mentions(t, segcode[i], (runlhs && lead[i]) ? 1 : 0)
   }
@@ -227,6 +274,7 @@ function end_seg(next_binds, self_binds,   i, t, t0, nlead, tail, isbind, runlhs
         || t0 == "select" || t0 == "{") blockdepth++
     else if (t0 == "fi" || t0 == "done" || t0 == "esac" || t0 == "}") {
       if (blockdepth > 0) blockdepth--
+      drop_above(blockdepth)
     }
   }
   for (i = 0; i < segn; i++) lead[i] = 0
@@ -241,7 +289,7 @@ END {
   if (substr(s, length(s), 1) == "\n") s = substr(s, 1, length(s) - 1)
   n = length(s)
   q = ""; depth = 0; bt = 0
-  binds = 1; segn = 0; tok = ""; code = ""; blockdepth = 0
+  binds = 1; segn = 0; tok = ""; code = ""; blockdepth = 0; pnn = 0
   i = 1
   while (i <= n) {
     c = substr(s, i, 1)
@@ -283,7 +331,11 @@ END {
       # operator and separates nothing; s8_split_segments learned the same thing
       # as F28, and missing it here would withdraw provenance from every command
       # that merges its streams.
+      # The preceding `>` must be a real redirection operator: `\>` is an escaped
+      # literal word character, and bash backgrounds `S=$(mktemp -d)\>&1` into a
+      # subshell. Reading the raw byte alone let that pass as `2>&1` does.
       if (c == "&" && (substr(s, i - 1, 1) == ">" || substr(s, i - 1, 1) == "<") \
+          && substr(s, i - 2, 1) != "\\" \
           && substr(s, i + 1, 1) ~ /^[0-9-]$/) { tok = tok c; code = code c; i++; continue }
       if (c == "|" || c == "&") { end_seg(0, 0); i++; continue }
     }
@@ -295,6 +347,9 @@ END {
     tok = tok c; code = code c; i++
   }
   end_seg(1, 1)
+  # Whatever is still pending was never closed out of scope, so it is in effect
+  # where the scanned text ends — which is where the rm is.
+  for (i = 0; i < pnn; i++) print "A\t" pn_name[i] "\t" pn_enc[i] "\t" pn_val[i]
 }
 AWKPROG
 
@@ -306,7 +361,20 @@ AWKPROG
 # before this file existed.
 s8_bind_assignments() {
   [[ -n "${S8_BIND_AWK:-}" ]] || return 0
-  printf '%s' "$1" | awk "$S8_BIND_AWK" | sed -n 's/^A\t//p'
+  printf '%s' "$1" | awk "$S8_BIND_AWK" \
+    | awk -F'\t' '$1 == "A" { v = $0; sub(/^A\t[^\t]*\t[01]\t/, "", v); print $2 "\t" v }'
+}
+
+# s8_bind_enclosing CMD → the same lines, restricted to bindings whose block is
+# still open where the text ends. The caller scans the text up to the rm, so this
+# answers "does the binding still hold THERE", while s8_bind_assignments answers
+# "was this ever assigned" — the value check needs the second, the
+# is-there-provenance check needs the first, and collapsing them into one list
+# broke the override idiom once already.
+s8_bind_enclosing() {
+  [[ -n "${S8_BIND_AWK:-}" ]] || return 0
+  printf '%s' "$1" | awk "$S8_BIND_AWK" \
+    | awk -F'\t' '$1 == "A" && $3 == "1" { v = $0; sub(/^A\t[^\t]*\t[01]\t/, "", v); print $2 "\t" v }'
 }
 
 # s8_name_mentions NAME CMD → `<total> <lhs>`: how many times NAME is spelled in

@@ -1258,3 +1258,19 @@ deny	F43: an opaque DEBUG trap body can rebind before the rm	S=$(mktemp -d /tmp/
 deny	F43: a DEBUG trap that empties the var	S=$(mktemp -d /tmp/x.XXXXXX); trap 'S=' DEBUG; rm -rf "$S/build"
 pass	F43-fp: an EXIT trap runs after the rm, and this is the disposal idiom	S=$(mktemp -d /tmp/x.XXXXXX); trap 'rm -rf "$S"' EXIT; mkdir -p "$S/a"; rm -rf "$S/build"
 pass	F43-fp: an opaque EXIT trap cannot fire between the assignment and the rm	S=$(mktemp -d /tmp/x.XXXXXX); trap "$CODE" EXIT; rm -rf "$S/build"
+# === 2026-09-08 F44: reach, not just presence (round-2 review) ===
+# Round 2 of the adversarial review. The deny rows are shapes v0.82.0 ALLOWS —
+# closures, not regression guards — except the last two, which were introduced by
+# this branch's own first repair and are guards. The pass rows are the disposal
+# idiom in its block-scoped spellings: the first repair denied both, which is the
+# idiom the whole change was justified by, so they are the controls that keep the
+# enclosure rule from collapsing back into "nothing in a block ever binds".
+deny	F44: an assignment whose if-block closed does not reach the rm	if false; then__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__fi__NL__rm -rf "$S/build"
+deny	F44: same for a while body that never runs	while false; do__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__done__NL__rm -rf "$S/build"
+deny	F44: same for a case with no matching arm	case $x in y) S=$(mktemp -d /tmp/x.XXXXXX);; esac__NL__rm -rf "$S/build"
+deny	F44: an assignment after the rm cannot vouch for it, even via sh -c	sh -c 'S=$(mktemp -d /tmp/x.XXXXXX)'; rm -rf "$S/build"; S=$(mktemp -d /tmp/x.XXXXXX)
+deny	F44: control for the row above — unwrap alone never grants provenance	sh -c 'S=$(mktemp -d /tmp/x.XXXXXX)'; rm -rf "$S/build"
+deny	F44: an escaped > is a word character, so this backgrounds the assignment	S=$(mktemp -d /tmp/x.XXXXXX)\>&1; rm -rf "$S/build"
+deny	F44: ${x-S} expands to the literal name and unsets it	S=$(mktemp -d /tmp/x.XXXXXX); unset ${x-S}; rm -rf "$S/build"
+pass	F44-fp: cleanup inside the loop body that created it	for f in a b; do__NL__D=$(mktemp -d /tmp/x.XXXXXX)__NL__tar xf "$f.tar" -C "$D"__NL__rm -rf "$D"__NL__done
+pass	F44-fp: the same idiom written on one line behind then	if [ -n "$NEED" ]; then D=$(mktemp -d /tmp/x.XXXXXX); tar xf a -C "$D"; rm -rf "$D"; fi

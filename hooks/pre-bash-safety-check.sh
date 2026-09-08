@@ -565,6 +565,12 @@ PROCESSED_CMD="$NORMALIZED_CMD"
 if [[ "${BASH_SAFETY_INDIRECT_CALL:-1}" != "0" ]]; then
   PROCESSED_CMD=$(unwrap_indirect "$NORMALIZED_CMD")
 fi
+# Did unwrap actually rewrite anything? The rm gate's provenance branch needs to
+# know, because unwrap moves text from inside a quoted argument into command
+# position — deliberately, so a gate can see an rm hiding in `bash -c '…'` — and
+# an assignment promoted the same way is one the command never performs.
+S8_UNWRAP_CHANGED=0
+[[ "$PROCESSED_CMD" == "$NORMALIZED_CMD" ]] || S8_UNWRAP_CHANGED=1
 # Unwrap quotes around a SINGLE bare token before sanitizing (2026-07-28 review).
 # sanitize_cmd blanks quoted BODIES, which is right for prose but wrong when the
 # quoted thing IS the argument a gate reads: `pip install "git+https://…"` and
@@ -1143,24 +1149,27 @@ if (( bypass_rm == 0 )); then
         # single most common real spelling — into an env prefix.
         prov_prefix="${SANITIZED_CMD%%"$segment"*}"
         prov_before=0
-        prov_preunwrap=0
+        # If unwrap rewrote the command, provenance is off entirely. The first
+        # attempt was an intersection — require the binding in the pre-unwrap
+        # view too — and the 2026-09-08 review broke it: `prov_before` is
+        # computed on the PREFIX but that check scanned the WHOLE command, so
+        # `sh -c 'S=$(mktemp -d)'; rm -rf "$S/build"; S=$(mktemp -d)` satisfied
+        # it with an assignment that runs AFTER the rm, while unwrap's promoted
+        # inner text satisfied the prefix half. Two views cannot be intersected
+        # positionally when only one of them has positions the segment loop
+        # shares. Withdrawing on any rewrite needs no position at all, and the
+        # cost is a genuine `bash -c` in the same command losing provenance.
+        if (( S8_UNWRAP_CHANGED == 1 )); then prov_eligible=0; fi
         if (( prov_eligible == 1 )); then
-          prov_before=$(s8_bind_assignments "$prov_prefix" \
-            | awk -F'\t' -v n="$varname" '$1 == n' | wc -l | tr -d ' ')
-          # (1b) The same binding must exist BEFORE unwrap_indirect ran. Unwrap
-          # rewrites `bash -c '<inner>'` / `eval '<inner>'` into real command
-          # position so the gates can see an rm hiding in there — which also
-          # promotes an assignment that the actual command only ever passed as a
-          # quoted ARGUMENT. `echo sh -c 'SP=$(mktemp -d)'; rm -rf "$SP/build"`
-          # assigns nothing at runtime, and it is review break #2 of the rejected
-          # literal-provenance design. Requiring the assignment in both views is
-          # an intersection, so it can only withhold provenance, never grant it;
-          # the price is that a genuine `bash -c` in the same command withdraws
-          # provenance too, which lands on the deny side.
-          prov_preunwrap=$(s8_bind_assignments "$NORMALIZED_CMD" \
+          # ENCLOSING, not merely present: an assignment whose `if`/`for` block
+          # closed before the rm no longer holds there. The value check below
+          # deliberately reads the FULL list instead — a rebind that went out of
+          # scope still has to be judged on its value, or `then WORK=$BUILD_DIR`
+          # disappears from the check while still counting as accounted-for.
+          prov_before=$(s8_bind_enclosing "$prov_prefix" \
             | awk -F'\t' -v n="$varname" '$1 == n' | wc -l | tr -d ' ')
         fi
-        if (( prov_eligible == 1 )) && (( prov_before > 0 )) && (( prov_preunwrap > 0 )); then
+        if (( prov_eligible == 1 )) && (( prov_before > 0 )); then
           prov_safe=1
           # (2) EVERY assignment to varname in the whole command must be a safe class.
           # No `continue` on an empty RHS: `VAR=` (empty value) must fall through to the
