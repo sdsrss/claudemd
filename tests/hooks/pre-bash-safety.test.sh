@@ -434,6 +434,69 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# --- s8_bind_assignments: which assignments bash BINDS into the parent shell ---
+# The mktemp-provenance recognizer used to answer this with a grep for
+# `(^|[ ;&|`(])VAR=` over the flattened command, which cannot tell an assignment
+# from the same characters sitting inside a quoted word or in front of a command.
+# Two shapes were denied for it in the field (2026-09-05..08 telemetry, 8 of 57
+# recoverable §8-rm-rf-var denies): `echo "SB=$SB"` read as a second, non-mktemp
+# assignment, and the env-prefix reuse `SBX="$SBX" node …` read as a rebind.
+# Neither rebinds anything. This asserts the scanner directly rather than only
+# through verdicts, because the corpus can only show that SOME row moved — it
+# cannot show which of the three states (binds / prefix / data) the scanner
+# believes a token is in.
+BIND_LIB="$HERE/../../hooks/lib/s8-bind.sh"
+if [[ ! -f "$BIND_LIB" ]]; then
+  echo "FAIL [s8-bind]: $BIND_LIB missing"
+  FAIL=$((FAIL + 1))
+else
+  # shellcheck source=/dev/null
+  source "$BIND_LIB"
+  bind_case() {
+    local note="$1" cmd="$2" want="$3" got
+    cmd="${cmd//__NL__/$'\n'}"
+    got=$(s8_bind_assignments "$cmd" | sed 's/\t/=/' | tr '\n' '|')
+    got="${got%|}"
+    if [[ "$got" == "$want" ]]; then
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL [s8-bind]: $note (want '$want', got '$got')"
+      FAIL=$((FAIL + 1))
+    fi
+  }
+  # Binds the parent shell: the segment is assignments and nothing else.
+  bind_case "bare literal assignment"        'S=/tmp/x'                          'S=/tmp/x'
+  bind_case "assignment then rm"             'S=/tmp/x; rm -rf "$S"'             'S=/tmp/x'
+  bind_case "two assignments one segment"    'A=1 B=2'                           'A=1|B=2'
+  bind_case "assignment on its own line"     'S=/tmp/x__NL__rm -rf "$S"'         'S=/tmp/x'
+  bind_case "mktemp with quoted arg"         'SB=$(mktemp -d "$S/a-XXXXXX")'     'SB=$(mktemp -d "$S/a-XXXXXX")'
+  bind_case "backtick mktemp"                'D=`mktemp -d`'                     'D=`mktemp -d`'
+  bind_case "assignment first, && after"     'S=$(mktemp -d) && rm -rf "$S"'     'S=$(mktemp -d)'
+  # Binds nothing: env prefix, quoted data, subshell, or a conditional/pipe arm.
+  bind_case "env prefix before a command"    'S=/tmp/x rm -rf $S'                ''
+  bind_case "env prefix reusing itself"      'SBX="$SBX" node -e "1"'            ''
+  bind_case "VAR= inside double quotes"      'echo "SB=$SB"'                     ''
+  bind_case "VAR= inside single quotes"      'echo '"'"'S=/tmp/x'"'"''           ''
+  bind_case "assignment inside a subshell"   '( S=/tmp/x )'                      ''
+  bind_case "assignment behind &&"           'false && S=/tmp/x'                 ''
+  bind_case "assignment behind a pipe"       'echo x | S=/tmp/y'                 ''
+  bind_case "assignment inside backticks"    'echo `S=/tmp/x`'                   ''
+  # The separator that ENDS a segment decides too, not just the one that opened
+  # it. `S=… &` is a background job and `S=… | cat` is a pipeline stage: both run
+  # in a subshell that takes the binding with it when it exits, so the parent's
+  # $S is whatever it already was — empty, in the shape this gate exists for.
+  bind_case "assignment sent to background"  'S=/tmp/x & rm -rf "$S"'            ''
+  bind_case "assignment as a pipeline stage" 'S=/tmp/x | cat'                    ''
+  bind_case "binding survives a trailing &&" 'S=/tmp/x && rm -rf "$S"'           'S=/tmp/x'
+  # The `&` of a redirection is not a background operator — the same distinction
+  # F28 taught s8_split_segments. Reading `2>&1` as one would silently withdraw
+  # provenance from every command that merges its streams.
+  bind_case "redirection & is not background" 'S=$(mktemp -d) 2>&1; rm -rf "$S"' 'S=$(mktemp -d)'
+  # `+=` appends to a value this scanner cannot know, so it is reported with the
+  # operator kept in the value — no RHS classifier can mistake it for a safe one.
+  bind_case "append operator kept in value"  'S+=/x'                             'S=+=/x'
+fi
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
