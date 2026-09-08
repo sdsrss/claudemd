@@ -26,6 +26,15 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
   (`node scripts/lint-argv.js` gates it); hooks source `hooks/lib/hook-common.sh`; spec
   edits go through `spec/` WITH a version bump in the same change (CI gates this against
   the last tag).
+- **Editing `CHANGELOG.md` with a script**: splice by SLICING, never through
+  `String.replace(pattern, replacementString)`. In a replacement *string* `$` followed by
+  a backtick means "the input before the match" and `$` followed by `'` means "the input
+  after it" — release prose is full of both sequences, and in 0.82.0 that pasted two
+  964-byte copies of the file header into the middle of two sentences, in the text that
+  `gh release create --notes-file` publishes. `tests/scripts/changelog-structure.test.js`
+  catches the effect (four arms, one of them a duplicate-long-line check that survives
+  either metacharacter); nothing catches the cause but this line. A replacement
+  *function*, `$$`, or a language without that rule are the other three ways out.
 - **Exit codes** — one table, because a `USAGE` string that disagrees with its own
   `process.exit` is a lie a caller acts on:
 
