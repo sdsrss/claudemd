@@ -77,8 +77,12 @@ test('manifest: a genuinely absent file still reports missing, with the right fi
 // renderer's own path (`…/claudemd-statusline.sh`) cannot satisfy it. 0.84.0
 // shipped a bare /\/claudemd-statusline/ here, which the path matched.
 function assertAdvises(detail, command) {
-  const fix = detail.slice(detail.indexOf('Fix:'));
-  if (!detail.includes('Fix:') || !new RegExp(`${command}(?![\\w-])`).test(fix)) {
+  const at = detail.indexOf('Fix:');
+  // `at < 0` checked before slicing: `slice(-1)` returns the LAST CHARACTER, so
+  // the no-Fix-clause case used to report one stray character where it meant to
+  // say the clause was absent (0.84.1 pre-tag review, Low).
+  const fix = at < 0 ? '' : detail.slice(at);
+  if (!fix || !new RegExp(`${command}(?![\\w-])`).test(fix)) {
     throw new Error(`detail does not advise ${command}; Fix clause was: ${fix || '<none>'}`);
   }
 }
@@ -154,6 +158,27 @@ test('statusline: the advice names a command that actually recopies the renderer
     'the helper must reject advice the row does not actually give'
   );
   assert.doesNotThrow(() => assertAdvises(withOldAdvice, '/claudemd-statusline'));
+
+  // THE KILLING CASE, and the one the first version of this control was missing
+  // (0.84.1 pre-tag review, Medium). Without it the control survives the very
+  // mutation it exists to catch: delete the `slice(indexOf('Fix:'))` — restoring
+  // 0.84.0's vacuity — and the two assertions above stay green, because
+  // `withOldAdvice` contains no `/claudemd-install` ANYWHERE, so the throws fires
+  // either way. What separates the two implementations is a detail whose PATH
+  // carries the command while the Fix clause does not. A control that passes on
+  // the mutant is the same defect as the assertion it replaced, one layer down.
+  const pathCarriesIt =
+    '/home/u/.claude/claudemd-statusline.sh differs from the shipped renderer. ' +
+    'Fix: run /claudemd-install (recopies it).';
+  assert.throws(
+    () => assertAdvises(pathCarriesIt, '/claudemd-statusline'),
+    /does not advise/,
+    'the renderer filename in the path must not count as advice'
+  );
+  assert.doesNotThrow(() => assertAdvises(pathCarriesIt, '/claudemd-install'));
+
+  // And the absent-clause branch reports absence, not a stray character.
+  assert.throws(() => assertAdvises('no fix clause here', '/claudemd-install'), /<none>/);
 });
 
 test('statusline: flags a renderer left over from an older version', async () => {
