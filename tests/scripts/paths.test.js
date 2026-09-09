@@ -14,6 +14,7 @@ import {
   writeJsonAtomic,
   codeGraphRegistryPath,
   codeGraphProvidersBackupPath,
+  upstreamPluginRoot,
   activePluginRoot,
   SEMVER_RE,
   semverCmp,
@@ -551,5 +552,149 @@ test('activePluginRoot: reports none rather than guessing when nothing resolves'
   // 'package.json' and read the current working directory's.
   withHome(() => {
     assert.deepEqual(activePluginRoot(), { root: null, source: 'none' });
+  });
+});
+
+// ── upstreamPluginRoot: the tree a REINSTALL would copy from ────────────────
+//
+// v0.84.0 pre-ship review, M5: this shipped with zero unit tests while two
+// doctor rows depended on it, and two of its branches were reachable from no
+// test at all. It resolves marketplace name (installed_plugins.json key) →
+// where that marketplace lives (known_marketplaces.json installLocation) →
+// where the plugin sits inside it (the catalog entry's `source`).
+const seedMarket = (claude, { name = 'claudemd', location, source = './', catalog = true } = {}) => {
+  fs.mkdirSync(claude('plugins'), { recursive: true });
+  fs.mkdirSync(location, { recursive: true });
+  if (catalog) {
+    fs.mkdirSync(path.join(location, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(
+      path.join(location, '.claude-plugin/marketplace.json'),
+      JSON.stringify({ name, plugins: [{ name: 'claudemd', source }] })
+    );
+  }
+  fs.writeFileSync(
+    claude('plugins/known_marketplaces.json'),
+    JSON.stringify({ [name]: { installLocation: location } })
+  );
+};
+
+test('upstreamPluginRoot: resolves installLocation + the catalog source', () => {
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const root = seedCache('0.84.0');
+    seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.84.0' }] });
+    const loc = claude('plugins/marketplaces/claudemd');
+    seedMarket(claude, { location: loc });
+    assert.deepEqual(upstreamPluginRoot(), { root: loc, source: 'marketplace' });
+  });
+});
+
+test('upstreamPluginRoot: a non-./ source resolves into the subdirectory (monorepo marketplace)', () => {
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const root = seedCache('0.84.0');
+    seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.84.0' }] });
+    const loc = path.join(claude('..'), 'mono');
+    seedMarket(claude, { location: loc, source: './plugins/claudemd' });
+    fs.mkdirSync(path.join(loc, 'plugins/claudemd'), { recursive: true });
+    assert.equal(upstreamPluginRoot().root, path.join(loc, 'plugins/claudemd'));
+  });
+});
+
+test('upstreamPluginRoot: an object source is a remote, not a directory here', () => {
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const root = seedCache('0.84.0');
+    seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.84.0' }] });
+    const loc = claude('plugins/marketplaces/claudemd');
+    fs.mkdirSync(path.join(loc, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(
+      path.join(loc, '.claude-plugin/marketplace.json'),
+      JSON.stringify({
+        name: 'claudemd',
+        plugins: [{ name: 'claudemd', source: { source: 'github', repo: 'x/y' } }],
+      })
+    );
+    fs.writeFileSync(
+      claude('plugins/known_marketplaces.json'),
+      JSON.stringify({ claudemd: { installLocation: loc } })
+    );
+    // Nothing on this machine to compare against — say none rather than joining
+    // an object onto a path.
+    assert.deepEqual(upstreamPluginRoot(), { root: null, source: 'none' });
+  });
+});
+
+test('upstreamPluginRoot: no installed_plugins.json falls back to the hardcoded clone', () => {
+  withHome(({ claude }) => {
+    const clone = claude('plugins/marketplaces/claudemd');
+    fs.mkdirSync(clone, { recursive: true });
+    assert.deepEqual(upstreamPluginRoot(), { root: clone, source: 'marketplace-clone' });
+  });
+});
+
+test('upstreamPluginRoot: a recorded installLocation that is gone falls back too', () => {
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const root = seedCache('0.84.0');
+    seedRegistry({ 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.84.0' }] });
+    fs.mkdirSync(claude('plugins'), { recursive: true });
+    fs.writeFileSync(
+      claude('plugins/known_marketplaces.json'),
+      JSON.stringify({ claudemd: { installLocation: claude('plugins/marketplaces/vanished') } })
+    );
+    const clone = claude('plugins/marketplaces/claudemd');
+    fs.mkdirSync(clone, { recursive: true });
+    assert.deepEqual(upstreamPluginRoot(), { root: clone, source: 'marketplace-clone' });
+  });
+});
+
+test('upstreamPluginRoot: picks the marketplace that owns the ACTIVE install', () => {
+  // L4: activePluginRoot picks the newest version across all claudemd@* entries
+  // while this used to break on the first key, so with two marketplaces the two
+  // resolvers disagreed and hook-drift:upstream compared A's cache to B's clone.
+  withHome(({ claude, seedCache, seedRegistry }) => {
+    const oldRoot = seedCache('0.70.0', 'alpha');
+    const newRoot = seedCache('0.84.0', 'beta');
+    seedRegistry({
+      'claudemd@alpha': [{ scope: 'user', installPath: oldRoot, version: '0.70.0' }],
+      'claudemd@beta': [{ scope: 'user', installPath: newRoot, version: '0.84.0' }],
+    });
+    assert.equal(activePluginRoot().root, newRoot, 'precondition: active is beta');
+    const betaLoc = claude('plugins/marketplaces/beta');
+    fs.mkdirSync(claude('plugins'), { recursive: true });
+    fs.mkdirSync(path.join(betaLoc, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(
+      path.join(betaLoc, '.claude-plugin/marketplace.json'),
+      JSON.stringify({ name: 'beta', plugins: [{ name: 'claudemd', source: './' }] })
+    );
+    const alphaLoc = claude('plugins/marketplaces/alpha');
+    fs.mkdirSync(path.join(alphaLoc, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(
+      path.join(alphaLoc, '.claude-plugin/marketplace.json'),
+      JSON.stringify({ name: 'alpha', plugins: [{ name: 'claudemd', source: './' }] })
+    );
+    fs.writeFileSync(
+      claude('plugins/known_marketplaces.json'),
+      JSON.stringify({
+        alpha: { installLocation: alphaLoc },
+        beta: { installLocation: betaLoc },
+      })
+    );
+    assert.equal(upstreamPluginRoot().root, betaLoc, 'must follow the install that is active');
+  });
+});
+
+test('activePluginRoot: the version comparator is a total order on mixed input', () => {
+  // L5: semverCmp for semver pairs and localeCompare otherwise is not
+  // transitive, and Array.sort on a non-total order may return an arbitrary
+  // permutation. Semver-shaped entries rank above unparseable ones.
+  withHome(({ seedCache, seedRegistry }) => {
+    const good = seedCache('0.84.0');
+    const odd = seedCache('0.70.0');
+    seedRegistry({
+      'claudemd@claudemd': [
+        { scope: 'user', installPath: odd, version: 'nightly' },
+        { scope: 'user', installPath: good, version: '0.84.0' },
+        { scope: 'user', installPath: odd, version: 'unknown' },
+      ],
+    });
+    assert.equal(activePluginRoot().root, good);
   });
 });

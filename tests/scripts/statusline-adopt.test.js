@@ -228,11 +228,50 @@ const seedCg = list => {
 const cgReg = () =>
   JSON.parse(fs.readFileSync(path.join(tmpHome, '.cache/code-graph/statusline-registry.json'), 'utf8'));
 
-test('adopt: host + emptyOnly → host-detected, nothing written', () => {
+// ── pre-ship review of v0.84.0, H1 ──
+// The install-time adopt is empty-slot-only, and for a host slot we are NOT
+// registered under that is exactly right: the slot is someone else's. But once
+// claudemd IS a registered guest, the file at ~/.claude/claudemd-statusline.sh
+// is OURS and the host shells out to it on every render — so an upgrade has to
+// refresh it, exactly as the `verdict === 'claudemd'` branch does. It did not:
+// `emptyOnly` returned before copyRenderer, so a guest-registered user kept the
+// renderer from whichever version first adopted it, forever.
+//
+// v0.84.0 gave doctor a `statusline` row that flags a stale renderer and is NOT
+// advisory, so without this fix the first release touching scripts/statusline.sh
+// turns that row red for every guest user and `/claudemd-doctor` exits 3
+// permanently — while the row's own advice, `/claudemd-install`, does nothing.
+// Shipping a repair instruction that is a no-op is the defect 0.84.0 exists to
+// remove; it must not ship one of its own.
+test('adopt: host + already guest-registered + emptyOnly → refreshes OUR renderer', () => {
+  seedCg([
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  // A renderer left behind by an older version.
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\n# an older claudemd renderer\n');
+  assert.equal(detect(pluginRoot).guestRegistered, true, 'precondition: we are the guest');
+  assert.equal(detect(pluginRoot).dest.matchesShipped, false, 'precondition: renderer is stale');
+
+  adopt({ pluginRoot, emptyOnly: true });
+
+  assert.equal(
+    fs.readFileSync(destFile(), 'utf8'),
+    fs.readFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), 'utf8'),
+    'the install-time adopt must refresh a renderer that is already ours'
+  );
+  assert.equal(detect(pluginRoot).dest.matchesShipped, true);
+  // The slot itself is still the host's — refreshing our file must not seize it.
+  assert.match(readS().statusLine.command, /statusline-composite\.js/);
+  assert.equal(cgReg().filter(p => p.id === 'claudemd').length, 1, 'no duplicate registration');
+});
+
+test('adopt: host + NOT registered + emptyOnly → host-detected, nothing written', () => {
   seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
   const r = adopt({ pluginRoot, emptyOnly: true });
   assert.equal(r.action, 'host-detected');
   assert.equal(r.host, 'code-graph');
+  assert.equal(fs.existsSync(destFile()), false, 'a slot that is not ours gets no renderer');
   assert.equal(
     cgReg().some(p => p.id === 'claudemd'),
     false

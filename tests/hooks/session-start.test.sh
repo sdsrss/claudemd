@@ -852,6 +852,36 @@ else
 fi
 cp "$HOME/CLAUDE.md.bak" "$HOME/.claude/CLAUDE.md"; rm -f "$HOME/CLAUDE.md.bak"
 
+# Case 39d (v0.84.0 pre-ship review, M3): the four files are not read the same
+# way, so one sentence cannot be true of all of them. Only ~/.claude/CLAUDE.md is
+# injected by the harness every session; CLAUDE-extended.md is read on demand per
+# §2.2, and OPERATOR.md / CLAUDE-changelog.md are not read by Claude Code at all.
+# The banner claimed "the spec is not loaded this session" for whichever file
+# went missing, which is false for three of the four.
+cp "$HOME/.claude/OPERATOR.md" "$HOME/OPERATOR.md.bak"
+rm -f "$HOME/.claude/OPERATOR.md"
+CTX39D=$(bash "$HOOK" <<<'{}' 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""')
+if grep -qF 'OPERATOR.md' <<<"$CTX39D" \
+   && grep -qF 'core spec is still loaded' <<<"$CTX39D" \
+   && ! grep -qF 'not loaded this session' <<<"$CTX39D"; then
+  echo "PASS: 39d a non-injected spec file is reported without claiming the spec went unloaded"
+else
+  echo "FAIL: 39d wrong consequence for a non-injected file (ctx=$CTX39D)"; FAIL=$((FAIL+1))
+fi
+cp "$HOME/OPERATOR.md.bak" "$HOME/.claude/OPERATOR.md"; rm -f "$HOME/OPERATOR.md.bak"
+
+# Case 39e: and CLAUDE.md itself still earns the strong sentence — the severe
+# case must not be softened by the fix for the mild one.
+cp "$HOME/.claude/CLAUDE.md" "$HOME/CLAUDE.md.bak2"
+rm -f "$HOME/.claude/CLAUDE.md"
+CTX39E=$(bash "$HOOK" <<<'{}' 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""')
+if grep -qF 'core spec is not loaded this session' <<<"$CTX39E"; then
+  echo "PASS: 39e a missing CLAUDE.md still says the core spec is not loaded"
+else
+  echo "FAIL: 39e lost the severe case (ctx=$CTX39E)"; FAIL=$((FAIL+1))
+fi
+cp "$HOME/CLAUDE.md.bak2" "$HOME/.claude/CLAUDE.md"; rm -f "$HOME/CLAUDE.md.bak2"
+
 # Case 39b: control — a healthy install must stay silent on this axis. Without
 # it, a banner that fired unconditionally would pass Case 39.
 OUT39B=$(bash "$HOOK" <<<'{}' 2>/dev/null)

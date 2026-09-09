@@ -231,11 +231,22 @@ spec_drift_check() {
       "$(jq -cn --arg files "$missing" '{missing_files: $files}' 2>/dev/null || echo 'null')" \
       '' "$SESSION_ID" 2>/dev/null || true
 
-    jq -cn --arg files "$missing" --arg drifted "$drifted" '{
+    # The four files are NOT read the same way, and a banner that says they are
+    # is wrong about three of them (v0.84.0 pre-ship review, M3). Only
+    # ~/.claude/CLAUDE.md is injected by the harness every session;
+    # CLAUDE-extended.md is read on demand per §2.2, and OPERATOR.md and
+    # CLAUDE-changelog.md are not read by Claude Code at all. Losing the first is
+    # the severe case and earns the strong sentence; losing the others is worth
+    # repairing without claiming the spec went unloaded. So the consequence
+    # clause is attached to CLAUDE.md's presence in the list, not to the list.
+    local core_gone=0
+    case ",${missing// /}," in *",CLAUDE.md,"*) core_gone=1 ;; esac
+
+    jq -cn --arg files "$missing" --arg drifted "$drifted" --argjson core "$core_gone" '{
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". Claude Code reads these as your user-global instructions, so the spec is not loaded this session. Fix: /claudemd-install (recopies the shipped spec). Disable this check: DISABLE_SPEC_DRIFT_BANNER=1.")
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (CLAUDE-extended.md per §2.2) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). Deleted it on purpose? SPEC_DRIFT_IGNORE=\"" + $files + "\" skips just these; DISABLE_SPEC_DRIFT_BANNER=1 disables the whole check.")
       }
     }' 2>/dev/null || true
     return 0

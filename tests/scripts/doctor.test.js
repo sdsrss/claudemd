@@ -87,6 +87,28 @@ function wireStatusline(box, { renderer = null } = {}) {
   if (renderer !== null) fs.writeFileSync(box.claude('claudemd-statusline.sh'), renderer);
 }
 
+// The OTHER wired shape, and the one the pre-ship review found uncovered: a
+// composite host (code-graph) owns the slot and invokes claudemd as a guest.
+// The renderer is just as load-bearing there, and the repair command differs.
+function wireStatuslineAsGuest(box, { renderer = null } = {}) {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: 'claudemd', command: `bash "${box.claude('claudemd-statusline.sh')}"`, needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  if (renderer !== null) fs.writeFileSync(box.claude('claudemd-statusline.sh'), renderer);
+}
+
 test('statusline: flags a renderer that settings points at but disk does not have', async () => {
   wireStatusline(box);
   const r = await doctor({});
@@ -94,7 +116,29 @@ test('statusline: flags a renderer that settings points at but disk does not hav
   assert.ok(c, 'statusline row must exist');
   assert.equal(c.ok, false);
   assert.match(c.detail, /missing but the statusLine still points at it/);
-  assert.match(c.detail, /\/claudemd-install/);
+  assert.match(c.detail, /\/claudemd-statusline/);
+});
+
+test('statusline: flags a missing renderer under a composite host too', async () => {
+  wireStatuslineAsGuest(box);
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, false, 'a guest-registered renderer is just as load-bearing');
+  assert.match(c.detail, /code-graph statusline invokes claudemd as a guest/);
+  assert.match(c.detail, /\/claudemd-statusline/);
+});
+
+test('statusline: the advice names a command that actually recopies the renderer', async () => {
+  // The whole point of this release is that repair advice must not be a no-op.
+  // `/claudemd-install` runs adopt({emptyOnly:true}), which for a guest slot
+  // returned before copyRenderer until the pre-ship review caught it; the row
+  // now names /claudemd-statusline, which recopies in both wired shapes.
+  for (const wire of [wireStatusline, wireStatuslineAsGuest]) {
+    wire(box, { renderer: '#!/usr/bin/env bash\n# stale\n' });
+    const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+    assert.equal(c.ok, false);
+    assert.match(c.detail, /\/claudemd-statusline/);
+  }
 });
 
 test('statusline: flags a renderer left over from an older version', async () => {
@@ -1370,6 +1414,147 @@ test('memory-index-size: a malformed declaration does not hide a genuine overage
   assert.match(c.detail, /-proj-genuine/);
 });
 
+// ── v0.84.0 pre-ship review, M1 ──
+// Claude Code pins a session's hook paths at startup, so after an update doctor
+// — launched as `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js` — runs from the
+// OLD cache dir while the registry names the new one. Both are real installs;
+// the gap is a pending restart, not a drifted file. Reported as hook drift it
+// said the opposite of the truth, calling the running root "source" and the
+// idle one "the running plugin root". Measured on the maintainer's machine
+// mid-review: compareHooks(0.81.0, 0.83.0) -> driftCount 1.
+// A root doctor can actually be RUN from: doctor derives its own PLUGIN_ROOT
+// from import.meta.url, so the only faithful way to model "doctor launched from
+// the old cache dir" is to launch it from one. `/claudemd-doctor` runs
+// `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js` (commands/claudemd-doctor.md).
+function seedRunnableRoot(box, version, { withScripts = false } = {}) {
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const root = path.join(box.home, `.claude/plugins/cache/claudemd/claudemd/${version}`);
+  fs.cpSync(path.join(repo, 'hooks'), path.join(root, 'hooks'), { recursive: true });
+  if (withScripts) {
+    fs.cpSync(path.join(repo, 'scripts'), path.join(root, 'scripts'), { recursive: true });
+    fs.cpSync(path.join(repo, 'spec'), path.join(root, 'spec'), { recursive: true });
+  }
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
+  return root;
+}
+
+// `launchedByCC` is read from CLAUDE_PLUGIN_ROOT, so every case sets it
+// explicitly rather than inheriting whatever the ambient shell has — the same
+// env-hygiene rule the suite learned in QA ISSUE-001. `byCC: true` models a
+// slash command or hook (CC sets the variable to the root it launched);
+// `byCC: false` models a maintainer running `node scripts/doctor.js` by hand.
+const runDoctorFrom = (box, root, { byCC = true } = {}) => {
+  const env = box.env();
+  if (byCC) env.CLAUDE_PLUGIN_ROOT = root;
+  else delete env.CLAUDE_PLUGIN_ROOT;
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts/doctor.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  return JSON.parse(r.stdout);
+};
+
+test('stale registration is reported as itself, not as hook drift', async () => {
+  const older = seedRunnableRoot(box, '0.81.0', { withScripts: true });
+  seedRunnableRoot(box, '0.83.0');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: {
+        'claudemd@claudemd': [
+          {
+            scope: 'user',
+            installPath: path.join(box.home, '.claude/plugins/cache/claudemd/claudemd/0.83.0'),
+            version: '0.83.0',
+          },
+        ],
+      },
+    })
+  );
+  // The two roots differ in content, which pre-fix surfaced as hook drift.
+  fs.appendFileSync(path.join(older, 'hooks/pre-bash-safety-check.sh'), '\n# older release\n');
+
+  const r = runDoctorFrom(box, older);
+  const stale = r.checks.find(x => x.name === 'plugin-root:stale-registration');
+  assert.ok(stale, 'the axis must have its own row');
+  assert.equal(stale.ok, false);
+  assert.match(stale.detail, /hooks run from v0\.81\.0/);
+  assert.match(stale.detail, /v0\.83\.0 is installed/);
+  assert.match(stale.detail, /reload-plugins/);
+  assert.match(stale.detail, /Nothing is wrong on disk/);
+
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, 'must not double-report the same state as drift');
+  assert.match(drift.detail, /stale-registration/);
+});
+
+test('a genuinely drifted install is hook drift, not stale registration', async () => {
+  // Control: the registry names the SAME root doctor runs from, so the only
+  // difference left is a drifted file and the drift row must still fire.
+  const root = seedRunnableRoot(box, '0.83.0', { withScripts: true });
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.83.0' }] },
+    })
+  );
+  const r = runDoctorFrom(box, root, { byCC: false });
+  assert.equal(
+    r.checks.find(x => x.name === 'plugin-root:stale-registration'),
+    undefined,
+    'no stale-registration row when the versions agree'
+  );
+  // Same root on both sides is a self-compare, which is the correct skip here.
+  assert.match(r.checks.find(x => x.name === 'hook-drift').detail, /self-compare/);
+});
+
+// ── v0.84.0 pre-ship review, L6 ──
+// The plugins reference documents three install shapes that are NOT copied into
+// the cache and run in place: `--plugin-dir`, a skills-directory plugin, and a
+// synced plugin. `activePluginRoot()` only ever resolves cache paths, so for
+// those it returns a leftover cache dir — and `hook-drift` then compared the
+// REAL running root against something that is not running. M1's mislabelling one
+// layer out. CLAUDE_PLUGIN_ROOT is the discriminator: CC sets it when it invokes
+// the plugin, and it is unset for a hand-run from a checkout.
+test('hook-drift does not compare an in-place plugin against a leftover cache dir', async () => {
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  // A --plugin-dir style root, outside the cache entirely.
+  const inPlace = path.join(box.home, 'my-plugin-dir');
+  fs.cpSync(path.join(repo, 'hooks'), path.join(inPlace, 'hooks'), { recursive: true });
+  fs.cpSync(path.join(repo, 'scripts'), path.join(inPlace, 'scripts'), { recursive: true });
+  fs.cpSync(path.join(repo, 'spec'), path.join(inPlace, 'spec'), { recursive: true });
+  fs.writeFileSync(path.join(inPlace, 'package.json'), JSON.stringify({ version: '0.84.0' }));
+  // …plus an unrelated, older cache install left on disk.
+  const leftover = seedRunnableRoot(box, '0.70.0');
+  fs.appendFileSync(path.join(leftover, 'hooks/pre-bash-safety-check.sh'), '\n# unrelated\n');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: leftover, version: '0.70.0' }] },
+    })
+  );
+
+  const r = runDoctorFrom(box, inPlace, { byCC: true });
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, 'a leftover cache dir is not what this session runs');
+  assert.match(drift.detail, /running-as-plugin/);
+});
+
+// ── v0.84.0 pre-ship review, M2 ──
+test('hook-drift:upstream is advisory; hook-drift and statusline are not', () => {
+  // The clone tracks `main`, not the released tag, and of the last 60 commits 19
+  // touch hooks/*.sh with 18 carrying no version bump — so for a user who has
+  // run `/plugin marketplace update` on its own, the row is red on a healthy,
+  // current install. It stays printed; it must not move the exit code.
+  assert.equal(isAdvisoryCheck('hook-drift:upstream'), true);
+  assert.equal(isAdvisoryCheck('hook-drift'), false, 'the source-vs-running axis has no such steady state');
+  assert.equal(isAdvisoryCheck('statusline'), false);
+  assert.equal(isAdvisoryCheck('plugin-root:stale-registration'), false);
+});
+
 test('hook-drift:upstream skips an upstream root that carries no hooks/ at all', async () => {
   // compareHooks tests for hooks/ on its FIRST argument only, so an upstream
   // without one would report all 15 scripts as missing-in-market and paint a
@@ -1381,4 +1566,34 @@ test('hook-drift:upstream skips an upstream root that carries no hooks/ at all',
   const c = r.checks.find(x => x.name === 'hook-drift:upstream');
   assert.equal(c.ok, true, 'an upstream with no hooks/ is not 15 drifted hooks');
   assert.match(c.detail, /upstream-has-no-hooks/);
+});
+
+test('hook-drift compares CLAUDE_PLUGIN_ROOT, never adopts it', async () => {
+  // A stale export, or one inherited from another plugin's command, must not be
+  // able to silence the row. `resolvePluginRoot()` already honours this variable
+  // as an override at fourteen call sites, so adopting it here would let a value
+  // that names a DIFFERENT tree redirect the comparison. Comparing fails closed:
+  // set-but-not-matching simply does not skip.
+  const root = seedRunnableRoot(box, '0.83.0', { withScripts: true });
+  fs.appendFileSync(path.join(root, 'hooks/pre-bash-safety-check.sh'), '\n# drifted\n');
+  const other = seedRunnableRoot(box, '0.70.0');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.83.0' }] },
+    })
+  );
+
+  const env = box.env();
+  env.CLAUDE_PLUGIN_ROOT = other; // set, but NOT the root doctor is running from
+  const r = JSON.parse(
+    spawnSync(process.execPath, [path.join(root, 'scripts/doctor.js')], { env, encoding: 'utf8' }).stdout
+  );
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.doesNotMatch(
+    drift.detail,
+    /running-as-plugin/,
+    'a foreign CLAUDE_PLUGIN_ROOT must not buy the skip'
+  );
 });

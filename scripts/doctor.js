@@ -10,6 +10,7 @@ import {
   readManifest,
   activePluginRoot,
   upstreamPluginRoot,
+  pluginsCacheRoot,
   readPluginVersion,
   claudeHome,
   SEMVER_RE,
@@ -122,8 +123,33 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // Exported (rather than inlined at the CLI exit-code site, where it lived until
 // 0.71.1) so a test can assert the real predicate instead of reading this
 // comment — a gate that reads prose is the failure this repo keeps closing.
+// `hook-drift:upstream` joined the list in 0.84.0, on the release that added it,
+// and for the reason the paragraph above gives rather than because the row is
+// unreliable — it is true when it fires. The marketplace clone tracks `main`,
+// not the released tag (verified on a real clone: `git branch` → `main`), and of
+// the last 60 commits 19 touch `hooks/*.sh` with 18 of those carrying no version
+// bump. So for any user who has run `/plugin marketplace update` on its own
+// since such a commit, the running hooks legitimately differ from the
+// marketplace and the row is red on a healthy, current install. Counting it
+// would make `/claudemd-doctor` exit 3 for most of the window between releases,
+// which is how an exit code stops carrying information. It still prints, and
+// `/claudemd-refresh` still clears it (that command updates AND reinstalls, so
+// it resolves the state rather than causing it). `hook-drift` — the
+// source-vs-running axis, which has no such steady state — stays counted, and so
+// does `statusline`.
+//
+// What this costs, measured rather than assumed (the pre-ship review built the
+// case against the demotion and then killed it): ENFORCEMENT drift stays
+// counted, because runHookSelfTests catches it behaviourally — on a sandbox tree
+// with `hooks/lib/hook-common.sh` deleted, 13 of 15 self-tests fail; with it
+// present but gutted, the 4 that fail are exactly the ones asserting a DENY,
+// which a gutted lib cannot produce. OBSERVABILITY drift is what becomes
+// report-only: a `hooks/lib/*.sh` change that leaves every enforcement path
+// intact but breaks telemetry — the v0.9.15 `rule-hits.sh` shape — passes all 15
+// self-tests, and once this row is advisory it no longer moves the exit code.
+// That is the trade, and it is deliberate.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -245,8 +271,8 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(
         'statusline',
         false,
-        `${claudeHome('claudemd-statusline.sh')} is missing but the statusLine still points at it — ` +
-          `every render prints "No such file or directory". Fix: /claudemd-install (recopies the renderer), ` +
+        `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline invokes claudemd as a guest` : 'the statusLine still points at it'} — ` +
+          `every render prints "No such file or directory". Fix: /claudemd-statusline (recopies the renderer), ` +
           `or /claudemd-statusline remove to unwire it.`
       );
     } else if (!sl.dest.matchesShipped) {
@@ -255,7 +281,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} differs from the shipped renderer — left over from an ` +
-          `older version. Fix: /claudemd-install (recopies it).`
+          `older version. Fix: /claudemd-statusline (recopies it), or /claudemd-install.`
       );
     } else {
       push('statusline', true, `renderer present and matches shipped (${sl.verdict})`);
@@ -364,9 +390,93 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // making §11-memory-read a silent no-op for `_`-bearing cwds. Skip cases
   // (self-compare / no marketplace install / source has no hooks/) are not
   // flagged — the surface is "you have both source AND a stale market install".
-  const drift2 = ACTIVE.root
-    ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
-    : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
+  // STALE REGISTRATION is not hook drift, and this is where the two used to be
+  // confused (v0.84.0 pre-ship review, M1). When Claude Code pins a session's
+  // hook paths to a versioned cache dir and the plugin is then updated, doctor —
+  // launched as `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js` — runs from the
+  // OLD dir while the registry names the new one. Both are real installs, both
+  // are inside the plugin cache, and the difference between them is a pending
+  // restart, not a drifted file. Reported as hook drift it said the opposite of
+  // the truth: it called the running root "source", called the one that is not
+  // running "the running plugin root", and blamed a marketplace clone that had
+  // nothing to do with it. Measured on the maintainer's own machine, which was
+  // in this state during the review: compareHooks(0.81.0, 0.83.0) → driftCount 1.
+  //
+  // Versions come from readPluginVersion (package.json), not the directory
+  // basename, so a root whose basename is not semver is judged by what it
+  // actually ships. Both roots must be inside the plugin cache: a dev checkout
+  // compared against an install is the ordinary hook-drift question, not this.
+  const inCache = p => {
+    try {
+      return (path.resolve(p) + path.sep).startsWith(fs.realpathSync(pluginsCacheRoot()) + path.sep);
+    } catch {
+      return false;
+    }
+  };
+  // realpath, not path.resolve, before concluding the two roots differ: the
+  // plugins reference documents link-mode installs used in place through links
+  // in the cache entry, so a cache dir can be a symlink into the real tree and a
+  // lexical compare reads ONE install as two roots at the same version.
+  // compareHooks realpaths both sides for the same reason.
+  const realOf = p => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const runningVer = readPluginVersion(PLUGIN_ROOT);
+  const registeredVer = ACTIVE.root ? readPluginVersion(ACTIVE.root) : 'unknown';
+  const staleRegistration =
+    !!ACTIVE.root &&
+    realOf(ACTIVE.root) !== realOf(PLUGIN_ROOT) &&
+    inCache(PLUGIN_ROOT) &&
+    inCache(ACTIVE.root) &&
+    SEMVER_RE.test(runningVer) &&
+    SEMVER_RE.test(registeredVer) &&
+    semverCmp(runningVer, registeredVer) < 0;
+  if (staleRegistration) {
+    push(
+      'plugin-root:stale-registration',
+      false,
+      `this session's hooks run from v${runningVer} (${PLUGIN_ROOT}) but v${registeredVer} is installed. ` +
+        `Claude Code pinned the hook paths when the session started and an update landed after that. ` +
+        `Fix: /reload-plugins, or restart Claude Code. Nothing is wrong on disk.`
+    );
+  }
+
+  // When Claude Code launched us, PLUGIN_ROOT IS the running plugin and there is
+  // no "source vs running" question to ask — CC sets CLAUDE_PLUGIN_ROOT for a
+  // plugin's own commands and hooks, and leaves it unset when a maintainer runs
+  // `node scripts/doctor.js` from a checkout by hand. That single bit is what
+  // separates the two callers, and without it the row misfires for every install
+  // shape the plugins reference documents as NOT copied into the cache
+  // (`--plugin-dir`, a skills-directory plugin, a synced plugin): those run in
+  // place, so `activePluginRoot()` — which only ever resolves cache paths —
+  // returns an unrelated leftover cache dir, and the row compared the real
+  // running root against something that is not running. M1's mislabelling, one
+  // layer out (v0.84.0 pre-ship review, L6).
+  //
+  // COMPARE the variable, never adopt it. `resolvePluginRoot()` already treats
+  // CLAUDE_PLUGIN_ROOT as an override honoured by fourteen call sites — a seam
+  // this codebase sets on itself — so adopting it here would let a stale export,
+  // or one inherited from another plugin's command, silently redirect the
+  // comparison. Comparing cannot: a value that is set but does NOT name this
+  // root simply fails to match, the skip does not happen, and the row falls back
+  // to the ordinary source-vs-installed question. That is the fail-closed
+  // direction, and it is why "is the variable set" — which this first shipped as
+  // — was the wrong test.
+  const launchedByCC =
+    typeof process.env.CLAUDE_PLUGIN_ROOT === 'string' &&
+    process.env.CLAUDE_PLUGIN_ROOT !== '' &&
+    realOf(process.env.CLAUDE_PLUGIN_ROOT) === realOf(PLUGIN_ROOT);
+  const drift2 = staleRegistration
+    ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
+    : launchedByCC
+      ? { skipped: true, skippedReason: 'running-as-plugin', driftCount: 0, diffs: [] }
+      : ACTIVE.root
+        ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
+        : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {

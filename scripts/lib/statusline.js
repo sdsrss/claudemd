@@ -128,7 +128,31 @@ export function adopt({
 
   if (verdict === 'host') {
     const adapter = HOST_ADAPTERS.find(a => a.id === host);
-    if (emptyOnly) return { action: 'host-detected', host: adapter.id, to: null };
+    if (emptyOnly) {
+      // `emptyOnly` is the install-time auto-adopt, and its rule is "never take a
+      // slot that is not ours". A host slot we are NOT registered under is not
+      // ours, so it stays untouched — the branch below.
+      //
+      // But once claudemd IS a registered guest, the file at destPath() is ours
+      // and the host shells out to it on every render, so an upgrade owes it the
+      // same refresh the `verdict === 'claudemd'` branch above performs. Pre-fix
+      // this `return` came first and copyRenderer never ran on this path: a
+      // guest-registered user kept whichever version's renderer first adopted
+      // them, forever. Found by the v0.84.0 pre-ship review, in the release that
+      // added a non-advisory `statusline` doctor row for a stale renderer — so
+      // the first release touching scripts/statusline.sh would have turned that
+      // row red for every guest user, with the row's own `/claudemd-install`
+      // advice doing nothing about it.
+      //
+      // Registration is NOT touched here: refreshing our own file is not the
+      // same as claiming the slot, and install-time adopt must not do the second.
+      if (adapter.isRegistered(CLAUDEMD_PROVIDER_ID)) {
+        if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND() };
+        copyRenderer(pluginRoot);
+        return { action: 'guest-refreshed', host: adapter.id, to: GUEST_COMMAND() };
+      }
+      return { action: 'host-detected', host: adapter.id, to: null };
+    }
     if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND(), supersede };
     copyRenderer(pluginRoot);
     let superseded = null;

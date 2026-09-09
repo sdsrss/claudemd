@@ -320,10 +320,28 @@ export function activePluginRoot() {
       }
     }
     // Newest version wins when the plugin is installed at several scopes.
+    //
+    // A TOTAL order, not the mixed comparator this first shipped with (v0.84.0
+    // pre-ship review, L5): `semverCmp` for semver pairs and `localeCompare`
+    // otherwise is not transitive, and Array.sort on a non-total order may
+    // return an arbitrary permutation rather than merely an imperfect one. Rank
+    // semver-shaped versions above unparseable ones, compare within each class,
+    // and fall back to the installPath so equal versions still order
+    // deterministically across runs.
     entries.sort((a, b) => {
       const av = String(a.version ?? '');
       const bv = String(b.version ?? '');
-      return SEMVER_RE.test(av) && SEMVER_RE.test(bv) ? semverCmp(av, bv) : av.localeCompare(bv);
+      const as = SEMVER_RE.test(av);
+      const bs = SEMVER_RE.test(bv);
+      if (as !== bs) return as ? 1 : -1;
+      if (as && bs) {
+        const c = semverCmp(av, bv);
+        if (c !== 0) return c;
+      } else {
+        const c = av.localeCompare(bv);
+        if (c !== 0) return c;
+      }
+      return String(a.installPath).localeCompare(String(b.installPath));
     });
     // Existence alone is not enough, so both gates apply (the shape-vs-location
     // distinction cache-prune.js already had to learn): installPath is an
@@ -397,13 +415,25 @@ export function upstreamPluginRoot() {
   let marketplace = null;
   try {
     const data = JSON.parse(fs.readFileSync(installedPluginsPath(), 'utf8'));
-    for (const id of Object.keys(data?.plugins ?? {})) {
+    // Resolve the marketplace that owns the install activePluginRoot() ACTUALLY
+    // PICKED, not whichever `claudemd@*` key happens to come first (v0.84.0
+    // pre-ship review, L4). With claudemd installed from two marketplaces the
+    // two resolvers otherwise disagree, and `hook-drift:upstream` compares
+    // marketplace A's cache against marketplace B's clone — a diff between two
+    // unrelated trees, reported as if it were staleness.
+    const active = activePluginRoot().root;
+    let fallback = null;
+    for (const [id, list] of Object.entries(data?.plugins ?? {})) {
       const at = id.indexOf('@');
-      if (at > 0 && id.slice(0, at) === 'claudemd') {
-        marketplace = id.slice(at + 1);
+      if (at <= 0 || id.slice(0, at) !== 'claudemd') continue;
+      const name = id.slice(at + 1);
+      if (fallback === null) fallback = name;
+      if (active && (Array.isArray(list) ? list : []).some(e => e?.installPath === active)) {
+        marketplace = name;
         break;
       }
     }
+    if (marketplace === null) marketplace = fallback;
   } catch {
     /* fall through to the hardcoded clone */
   }
