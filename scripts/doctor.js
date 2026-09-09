@@ -274,8 +274,24 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // host (code-graph) that we guest-registered under and that will invoke the
   // renderer on our behalf. When neither holds, claudemd does not own the
   // statusline and an absent renderer is simply not our business.
+  // PLUGIN_ROOT, not ACTIVE.root, is the comparison baseline, and the reason is
+  // the whole point of this release (v0.84.1, post-tag review H-3/M-4): BOTH
+  // repair commands run `node ${CLAUDE_PLUGIN_ROOT}/scripts/…`, so they copy the
+  // renderer from the root CC launched — PLUGIN_ROOT. Comparing against the
+  // REGISTERED root instead meant that whenever the two differ (the pending-
+  // restart window after any upgrade) the row asked for a file no reachable
+  // command could produce: measured end to end, doctor exited 3, the advised
+  // command reported success, and doctor still exited 3 with the same row.
+  // Advice that reports success without repairing is this release's own named
+  // defect, and it was sitting in the row added to catch it.
+  //
+  // `/claudemd-install` rather than `/claudemd-statusline`, for the guest path's
+  // sake: `commands/claudemd-statusline.md` says "Report and STOP" when
+  // guestRegistered is already true, so it declines the refresh by default,
+  // while install.js's adopt({emptyOnly:true}) now refreshes an
+  // already-ours renderer in both wired shapes without touching the slot.
   try {
-    const sl = detectStatusline(ACTIVE.root ?? PLUGIN_ROOT);
+    const sl = detectStatusline(PLUGIN_ROOT);
     const wired = sl.verdict === 'claudemd' || (sl.verdict === 'host' && sl.guestRegistered);
     if (!wired) {
       push('statusline', true, `not claudemd-owned (${sl.verdict}) — renderer not required`);
@@ -284,7 +300,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline invokes claudemd as a guest` : 'the statusLine still points at it'} — ` +
-          `every render prints "No such file or directory". Fix: /claudemd-statusline (recopies the renderer), ` +
+          `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer), ` +
           `or /claudemd-statusline remove to unwire it.`
       );
     } else if (!sl.dest.matchesShipped) {
@@ -293,7 +309,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} differs from the shipped renderer — left over from an ` +
-          `older version. Fix: /claudemd-statusline (recopies it), or /claudemd-install.`
+          `older version. Fix: run /claudemd-install (recopies it).`
       );
     } else {
       push('statusline', true, `renderer present and matches shipped (${sl.verdict})`);

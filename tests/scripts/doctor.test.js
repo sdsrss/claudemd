@@ -73,6 +73,16 @@ test('manifest: a genuinely absent file still reports missing, with the right fi
   assert.match(c.detail, /\/claudemd-install/);
 });
 
+// Assert a check's detail ADVISES a command, matching only after `Fix:` so the
+// renderer's own path (`…/claudemd-statusline.sh`) cannot satisfy it. 0.84.0
+// shipped a bare /\/claudemd-statusline/ here, which the path matched.
+function assertAdvises(detail, command) {
+  const fix = detail.slice(detail.indexOf('Fix:'));
+  if (!detail.includes('Fix:') || !new RegExp(`${command}(?![\\w-])`).test(fix)) {
+    throw new Error(`detail does not advise ${command}; Fix clause was: ${fix || '<none>'}`);
+  }
+}
+
 // ── QA 2026-09-08: statusline health ──
 // settings.json names a renderer path and CC shells out to it on EVERY render,
 // so a deleted renderer prints "No such file or directory" where the status line
@@ -116,7 +126,7 @@ test('statusline: flags a renderer that settings points at but disk does not hav
   assert.ok(c, 'statusline row must exist');
   assert.equal(c.ok, false);
   assert.match(c.detail, /missing but the statusLine still points at it/);
-  assert.match(c.detail, /\/claudemd-statusline/);
+  assertAdvises(c.detail, '/claudemd-install');
 });
 
 test('statusline: flags a missing renderer under a composite host too', async () => {
@@ -125,20 +135,25 @@ test('statusline: flags a missing renderer under a composite host too', async ()
   const c = r.checks.find(x => x.name === 'statusline');
   assert.equal(c.ok, false, 'a guest-registered renderer is just as load-bearing');
   assert.match(c.detail, /code-graph statusline invokes claudemd as a guest/);
-  assert.match(c.detail, /\/claudemd-statusline/);
+  assertAdvises(c.detail, '/claudemd-install');
 });
 
-test('statusline: the advice names a command that actually recopies the renderer', async () => {
-  // The whole point of this release is that repair advice must not be a no-op.
-  // `/claudemd-install` runs adopt({emptyOnly:true}), which for a guest slot
-  // returned before copyRenderer until the pre-ship review caught it; the row
-  // now names /claudemd-statusline, which recopies in both wired shapes.
-  for (const wire of [wireStatusline, wireStatuslineAsGuest]) {
-    wire(box, { renderer: '#!/usr/bin/env bash\n# stale\n' });
-    const c = (await doctor({})).checks.find(x => x.name === 'statusline');
-    assert.equal(c.ok, false);
-    assert.match(c.detail, /\/claudemd-statusline/);
-  }
+test('statusline: the advice names a command that actually recopies the renderer', () => {
+  // This assertion was VACUOUS as shipped in 0.84.0 (post-tag review M-1): the
+  // detail string embeds the renderer's own path, `…/claudemd-statusline.sh`, so
+  // `/\/claudemd-statusline/` matched the FILENAME and returned true for the old
+  // `/claudemd-install` advice too. A test that agrees with a claim instead of
+  // checking it — inside the release that exists to delete exactly that. The
+  // control below is what makes the helper mean something.
+  const withOldAdvice =
+    '/home/u/.claude/claudemd-statusline.sh is missing but the statusLine still ' +
+    'points at it. Fix: /claudemd-statusline (recopies the renderer).';
+  assert.throws(
+    () => assertAdvises(withOldAdvice, '/claudemd-install'),
+    /does not advise/,
+    'the helper must reject advice the row does not actually give'
+  );
+  assert.doesNotThrow(() => assertAdvises(withOldAdvice, '/claudemd-statusline'));
 });
 
 test('statusline: flags a renderer left over from an older version', async () => {
@@ -1571,4 +1586,44 @@ test('hook-drift:upstream skips an upstream root that carries no hooks/ at all',
   const c = r.checks.find(x => x.name === 'hook-drift:upstream');
   assert.equal(c.ok, true, 'an upstream with no hooks/ is not 15 drifted hooks');
   assert.match(c.detail, /upstream-has-no-hooks/);
+});
+
+// ── post-tag review of v0.84.0, H-3 ──
+// The row's comparison baseline must be the root the REPAIR copies from. Both
+// repair commands run `node ${CLAUDE_PLUGIN_ROOT}/scripts/…`, i.e. PLUGIN_ROOT.
+// 0.84.0 compared against the REGISTERED root instead, so in the pending-restart
+// window after any upgrade the row demanded a renderer no reachable command
+// could produce: doctor exit 3, run the advised fix, doctor still exit 3.
+test('statusline: the row is satisfiable by the command it names, mid-upgrade', async () => {
+  // Two installs at different versions shipping DIFFERENT renderers — the state
+  // any release that touches scripts/statusline.sh creates until you restart.
+  const older = seedRunnableRoot(box, '0.81.0', { withScripts: true });
+  const newer = seedRunnableRoot(box, '0.99.0', { withScripts: true });
+  fs.appendFileSync(path.join(older, 'scripts/statusline.sh'), '\n# 0.81.0 renderer\n');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: newer, version: '0.99.0' }] },
+    })
+  );
+  // The user's renderer came from the root that is actually running.
+  fs.copyFileSync(path.join(older, 'scripts/statusline.sh'), box.claude('claudemd-statusline.sh'));
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'bash "$HOME/.claude/claudemd-statusline.sh"' },
+    })
+  );
+
+  // doctor runs from the OLD root, as a pending-restart session does.
+  const r = runDoctorFrom(box, older);
+  const sl = r.checks.find(x => x.name === 'statusline');
+  assert.equal(
+    sl.ok,
+    true,
+    'the renderer matches what the RUNNING root ships — a pending restart is not a broken statusline'
+  );
+  // The pending restart is reported, by the row whose job that is.
+  assert.equal(r.checks.find(x => x.name === 'plugin-root:stale-registration').ok, false);
 });
