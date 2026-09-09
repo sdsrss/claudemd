@@ -146,10 +146,22 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // which a gutted lib cannot produce. OBSERVABILITY drift is what becomes
 // report-only: a `hooks/lib/*.sh` change that leaves every enforcement path
 // intact but breaks telemetry — the v0.9.15 `rule-hits.sh` shape — passes all 15
-// self-tests, and once this row is advisory it no longer moves the exit code.
+// self-tests, and once these rows are advisory they no longer move the exit code.
 // That is the trade, and it is deliberate.
+//
+// `hook-drift` itself joined them, by the maintainer's decision, for a different
+// and blunter reason: the row asks whether this checkout differs from the
+// installed plugin, and it CANNOT TELL WHICH CALLER IS ASKING. For a maintainer
+// with a checkout and an install that is signal; for an in-place install
+// (`--plugin-dir`, skills-directory, synced) the checkout IS the running plugin
+// and the row compares it against an unrelated leftover cache dir. The comment
+// at the row itself records why no discriminator exists. Before this release the
+// row skipped for those users; making it counted would have handed them a
+// permanent exit 3 with wrong advice, so it prints and does not count. One
+// alternative was considered and rejected by the same decision: dropping the row
+// outright, which loses the maintainer's signal to spare them one line.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -406,23 +418,34 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // basename, so a root whose basename is not semver is judged by what it
   // actually ships. Both roots must be inside the plugin cache: a dev checkout
   // compared against an install is the ordinary hook-drift question, not this.
-  const inCache = p => {
-    try {
-      return (path.resolve(p) + path.sep).startsWith(fs.realpathSync(pluginsCacheRoot()) + path.sep);
-    } catch {
-      return false;
-    }
-  };
-  // realpath, not path.resolve, before concluding the two roots differ: the
-  // plugins reference documents link-mode installs used in place through links
-  // in the cache entry, so a cache dir can be a symlink into the real tree and a
+  // realpath BOTH sides. This predicate shipped comparing a lexical left against
+  // a realpath'd right, and the asymmetry killed the row it gates: `ACTIVE.root`
+  // is the lexical `installPath` string CC recorded, while `PLUGIN_ROOT` comes
+  // from `import.meta.url`, which Node has already resolved. On a symlinked
+  // `~/.claude` — stow, chezmoi, a relocated or synced config dir, the same
+  // link-mode shape the comment below invokes — the two disagreed,
+  // `inCache(ACTIVE.root)` was false, and `staleRegistration` could never become
+  // true. Verified end to end: with `~/.claude` a symlink the row vanished and
+  // `hook-drift` printed the exact mislabelling this row exists to delete;
+  // without the symlink, same sandbox, the row fired.
+  // realpath, not path.resolve, before concluding two roots differ: the plugins
+  // reference documents link-mode installs used in place through links in the
+  // cache entry, so a cache dir can be a symlink into the real tree and a
   // lexical compare reads ONE install as two roots at the same version.
-  // compareHooks realpaths both sides for the same reason.
+  // compareHooks realpaths both sides for the same reason. Declared before
+  // inCache, which calls it.
   const realOf = p => {
     try {
       return fs.realpathSync(p);
     } catch {
       return path.resolve(p);
+    }
+  };
+  const inCache = p => {
+    try {
+      return (realOf(p) + path.sep).startsWith(fs.realpathSync(pluginsCacheRoot()) + path.sep);
+    } catch {
+      return false;
     }
   };
   const runningVer = readPluginVersion(PLUGIN_ROOT);
@@ -446,37 +469,36 @@ export async function doctor({ pruneBackups: prune } = {}) {
   }
 
   // When Claude Code launched us, PLUGIN_ROOT IS the running plugin and there is
-  // no "source vs running" question to ask — CC sets CLAUDE_PLUGIN_ROOT for a
-  // plugin's own commands and hooks, and leaves it unset when a maintainer runs
-  // `node scripts/doctor.js` from a checkout by hand. That single bit is what
-  // separates the two callers, and without it the row misfires for every install
-  // shape the plugins reference documents as NOT copied into the cache
-  // (`--plugin-dir`, a skills-directory plugin, a synced plugin): those run in
-  // place, so `activePluginRoot()` — which only ever resolves cache paths —
-  // returns an unrelated leftover cache dir, and the row compared the real
-  // running root against something that is not running. M1's mislabelling, one
-  // layer out (v0.84.0 pre-ship review, L6).
+  // no "source vs running" question to ask. THAT DISTINCTION CANNOT BE MADE HERE,
+  // and the attempt is worth recording so nobody rebuilds it.
   //
-  // COMPARE the variable, never adopt it. `resolvePluginRoot()` already treats
-  // CLAUDE_PLUGIN_ROOT as an override honoured by fourteen call sites — a seam
-  // this codebase sets on itself — so adopting it here would let a stale export,
-  // or one inherited from another plugin's command, silently redirect the
-  // comparison. Comparing cannot: a value that is set but does NOT name this
-  // root simply fails to match, the skip does not happen, and the row falls back
-  // to the ordinary source-vs-installed question. That is the fail-closed
-  // direction, and it is why "is the variable set" — which this first shipped as
-  // — was the wrong test.
-  const launchedByCC =
-    typeof process.env.CLAUDE_PLUGIN_ROOT === 'string' &&
-    process.env.CLAUDE_PLUGIN_ROOT !== '' &&
-    realOf(process.env.CLAUDE_PLUGIN_ROOT) === realOf(PLUGIN_ROOT);
+  // Two callers reach this row and they want opposite answers. A maintainer with
+  // a checkout AND an install wants the comparison. Someone whose checkout IS the
+  // running plugin — `--plugin-dir`, a skills-directory plugin, a synced plugin,
+  // all three documented in the plugins reference as used in place rather than
+  // copied — wants nothing, because `activePluginRoot()` only ever resolves cache
+  // paths and so hands back an unrelated leftover cache dir for them.
+  //
+  // `CLAUDE_PLUGIN_ROOT` looks like the discriminator and is not: Claude Code
+  // expands that token TEXTUALLY INTO THE COMMAND STRING and exports nothing.
+  // Measured three ways — `env | grep -c CLAUDE_PLUGIN` is 0 in a live session
+  // with these hooks firing; transcripts record the command as
+  // `node /home/ai/.claude/plugins/cache/claudemd/claudemd/0.81.0/scripts/doctor.js`
+  // with the token already substituted; `process.env.CLAUDE_PLUGIN_ROOT` is
+  // undefined. A version of this row gated on that variable was inert in
+  // production and fired only for someone who had exported it by hand, which is
+  // the maintainer run it would then wrongly silence. The filesystem cannot
+  // separate the two either: both callers run from a root outside the cache.
+  //
+  // So the row asks a question it cannot scope, and the resolution is to stop
+  // making it move the exit code — see ADVISORY above. It still prints, which is
+  // all a maintainer needs; an in-place user gets a line that is wrong about
+  // which root is running, and no failing check.
   const drift2 = staleRegistration
     ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
-    : launchedByCC
-      ? { skipped: true, skippedReason: 'running-as-plugin', driftCount: 0, diffs: [] }
-      : ACTIVE.root
-        ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
-        : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
+    : ACTIVE.root
+      ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
+      : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {

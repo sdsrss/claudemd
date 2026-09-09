@@ -1438,15 +1438,13 @@ function seedRunnableRoot(box, version, { withScripts = false } = {}) {
   return root;
 }
 
-// `launchedByCC` is read from CLAUDE_PLUGIN_ROOT, so every case sets it
-// explicitly rather than inheriting whatever the ambient shell has — the same
-// env-hygiene rule the suite learned in QA ISSUE-001. `byCC: true` models a
-// slash command or hook (CC sets the variable to the root it launched);
-// `byCC: false` models a maintainer running `node scripts/doctor.js` by hand.
-const runDoctorFrom = (box, root, { byCC = true } = {}) => {
+// CLAUDE_PLUGIN_ROOT is deleted rather than inherited: Claude Code expands that
+// token into the command string and exports nothing, so production never has it
+// set, and a suite that inherited an ambient value would be testing a state no
+// user is in.
+const runDoctorFrom = (box, root) => {
   const env = box.env();
-  if (byCC) env.CLAUDE_PLUGIN_ROOT = root;
-  else delete env.CLAUDE_PLUGIN_ROOT;
+  delete env.CLAUDE_PLUGIN_ROOT;
   const r = spawnSync(process.execPath, [path.join(root, 'scripts/doctor.js')], {
     env,
     encoding: 'utf8',
@@ -1500,7 +1498,7 @@ test('a genuinely drifted install is hook drift, not stale registration', async 
       plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.83.0' }] },
     })
   );
-  const r = runDoctorFrom(box, root, { byCC: false });
+  const r = runDoctorFrom(box, root);
   assert.equal(
     r.checks.find(x => x.name === 'plugin-root:stale-registration'),
     undefined,
@@ -1518,15 +1516,13 @@ test('a genuinely drifted install is hook drift, not stale registration', async 
 // REAL running root against something that is not running. M1's mislabelling one
 // layer out. CLAUDE_PLUGIN_ROOT is the discriminator: CC sets it when it invokes
 // the plugin, and it is unset for a hand-run from a checkout.
-test('hook-drift does not compare an in-place plugin against a leftover cache dir', async () => {
+test('an in-place plugin still gets a wrong hook-drift line, but not a failing check', async () => {
   const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-  // A --plugin-dir style root, outside the cache entirely.
   const inPlace = path.join(box.home, 'my-plugin-dir');
   fs.cpSync(path.join(repo, 'hooks'), path.join(inPlace, 'hooks'), { recursive: true });
   fs.cpSync(path.join(repo, 'scripts'), path.join(inPlace, 'scripts'), { recursive: true });
   fs.cpSync(path.join(repo, 'spec'), path.join(inPlace, 'spec'), { recursive: true });
   fs.writeFileSync(path.join(inPlace, 'package.json'), JSON.stringify({ version: '0.84.0' }));
-  // …plus an unrelated, older cache install left on disk.
   const leftover = seedRunnableRoot(box, '0.70.0');
   fs.appendFileSync(path.join(leftover, 'hooks/pre-bash-safety-check.sh'), '\n# unrelated\n');
   fs.writeFileSync(
@@ -1537,10 +1533,16 @@ test('hook-drift does not compare an in-place plugin against a leftover cache di
     })
   );
 
-  const r = runDoctorFrom(box, inPlace, { byCC: true });
+  const r = runDoctorFrom(box, inPlace);
   const drift = r.checks.find(x => x.name === 'hook-drift');
-  assert.equal(drift.ok, true, 'a leftover cache dir is not what this session runs');
-  assert.match(drift.detail, /running-as-plugin/);
+  // The row cannot tell this caller from a maintainer's checkout — no signal
+  // separates them, and CLAUDE_PLUGIN_ROOT is not exported to a doctor process.
+  // So it still reports, wrongly, that the leftover cache dir is "the running
+  // plugin root"…
+  assert.equal(drift.ok, false);
+  // …and the whole point of the disposition is that this costs the user nothing
+  // beyond a line: the row is advisory, so it must not move the exit code.
+  assert.equal(isAdvisoryCheck('hook-drift'), true, 'an undecidable row must not be counted');
 });
 
 // ── v0.84.0 pre-ship review, M2 ──
@@ -1550,7 +1552,10 @@ test('hook-drift:upstream is advisory; hook-drift and statusline are not', () =>
   // run `/plugin marketplace update` on its own, the row is red on a healthy,
   // current install. It stays printed; it must not move the exit code.
   assert.equal(isAdvisoryCheck('hook-drift:upstream'), true);
-  assert.equal(isAdvisoryCheck('hook-drift'), false, 'the source-vs-running axis has no such steady state');
+  // Both drift rows are advisory as of 0.84.0: upstream because its steady
+  // state is legitimately non-zero between releases, and hook-drift because it
+  // cannot tell which caller is asking (CLAUDE_PLUGIN_ROOT is never exported).
+  assert.equal(isAdvisoryCheck('hook-drift'), true);
   assert.equal(isAdvisoryCheck('statusline'), false);
   assert.equal(isAdvisoryCheck('plugin-root:stale-registration'), false);
 });
@@ -1566,34 +1571,4 @@ test('hook-drift:upstream skips an upstream root that carries no hooks/ at all',
   const c = r.checks.find(x => x.name === 'hook-drift:upstream');
   assert.equal(c.ok, true, 'an upstream with no hooks/ is not 15 drifted hooks');
   assert.match(c.detail, /upstream-has-no-hooks/);
-});
-
-test('hook-drift compares CLAUDE_PLUGIN_ROOT, never adopts it', async () => {
-  // A stale export, or one inherited from another plugin's command, must not be
-  // able to silence the row. `resolvePluginRoot()` already honours this variable
-  // as an override at fourteen call sites, so adopting it here would let a value
-  // that names a DIFFERENT tree redirect the comparison. Comparing fails closed:
-  // set-but-not-matching simply does not skip.
-  const root = seedRunnableRoot(box, '0.83.0', { withScripts: true });
-  fs.appendFileSync(path.join(root, 'hooks/pre-bash-safety-check.sh'), '\n# drifted\n');
-  const other = seedRunnableRoot(box, '0.70.0');
-  fs.writeFileSync(
-    box.claude('plugins/installed_plugins.json'),
-    JSON.stringify({
-      version: 2,
-      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: root, version: '0.83.0' }] },
-    })
-  );
-
-  const env = box.env();
-  env.CLAUDE_PLUGIN_ROOT = other; // set, but NOT the root doctor is running from
-  const r = JSON.parse(
-    spawnSync(process.execPath, [path.join(root, 'scripts/doctor.js')], { env, encoding: 'utf8' }).stdout
-  );
-  const drift = r.checks.find(x => x.name === 'hook-drift');
-  assert.doesNotMatch(
-    drift.detail,
-    /running-as-plugin/,
-    'a foreign CLAUDE_PLUGIN_ROOT must not buy the skip'
-  );
 });
