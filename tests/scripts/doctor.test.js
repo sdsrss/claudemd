@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { doctor, isAdvisoryCheck } from '../../scripts/doctor.js';
+import { runningPluginRoot } from '../../scripts/lib/paths.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
   cleanStateDir,
@@ -1651,4 +1652,36 @@ test('statusline: the row is satisfiable by the command it names, mid-upgrade', 
   );
   // The pending restart is reported, by the row whose job that is.
   assert.equal(r.checks.find(x => x.name === 'plugin-root:stale-registration').ok, false);
+});
+
+// ── Task 2, plan hook-root-ground-truth ──
+// runningPluginRoot() prefers the hook-fired record over activePluginRoot()'s
+// cache resolution, but only when that record still points at something real.
+test('runningPluginRoot: a valid hook-fired record wins over the cache resolution', () => {
+  const root = box.dir('actually-running-from-here');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'abc123' })
+  );
+  const r = runningPluginRoot();
+  assert.equal(r.source, 'hook-fired');
+  assert.equal(r.root, root);
+  assert.equal(r.sid, 'abc123');
+});
+
+test('runningPluginRoot: a record naming a root that no longer exists falls through to activePluginRoot()', () => {
+  const active = seedActivePluginRoot(box);
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({
+      root: path.join(box.home, 'uninstalled-or-moved-away'),
+      ts: '2026-09-11T00:00:00Z',
+      version: '0.85.0',
+      sid: 'abc123',
+    })
+  );
+  const r = runningPluginRoot();
+  assert.notEqual(r.source, 'hook-fired');
+  assert.equal(r.root, active);
+  assert.equal(r.source, 'installed-plugins');
 });

@@ -394,6 +394,36 @@ export function activePluginRoot() {
   return { root: null, source: 'none' };
 }
 
+// The root Claude Code actually loaded, as measured by a hook process rather
+// than inferred from the filesystem. `activePluginRoot()` above can only ever
+// resolve a CACHE path, so for an in-place load (`--plugin-dir`, a skills
+// directory, a synced tree) it hands back an unrelated leftover and every
+// comparison built on it runs against a stranger.
+//
+// Falls back to `activePluginRoot()` rather than failing, so a machine with no
+// record — fresh install, hooks never fired, SessionStart switched off —
+// behaves exactly as it did before this existed.
+export function runningPluginRoot() {
+  try {
+    const rec = JSON.parse(fs.readFileSync(path.join(stateDir(), 'hook-root.json'), 'utf8'));
+    const root = typeof rec?.root === 'string' ? rec.root : null;
+    // Existence is load-bearing: an uninstalled or moved tree leaves the record
+    // pointing at nothing, and a stale absolute path is worse than the cache
+    // resolution it would displace.
+    if (root && path.isAbsolute(root) && fs.existsSync(root)) {
+      return {
+        root,
+        source: 'hook-fired',
+        ts: typeof rec.ts === 'string' ? rec.ts : null,
+        sid: typeof rec.sid === 'string' ? rec.sid : null,
+      };
+    }
+  } catch {
+    /* absent, unreadable or unparseable — fall through to the cache resolution */
+  }
+  return activePluginRoot();
+}
+
 // The tree a REINSTALL would copy from — the upstream side of the drift the
 // cache can suffer. Distinct from activePluginRoot() and needed alongside it:
 // `/claudemd-doctor` runs `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js`, so for
