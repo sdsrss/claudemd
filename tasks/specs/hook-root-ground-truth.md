@@ -108,13 +108,21 @@ once for one session id (resume, clear). The count was never load-bearing; the
 writers are.
 
 `runningPluginRoot()` in `scripts/lib/paths.js`: read the record; if `root` parses
-and still exists on disk, return `{root, source:'hook-fired', ts, sid}`; otherwise
-fall through to `activePluginRoot()` unchanged.
+and is still a directory on disk, return `{root, source:'hook-fired', ts, sid}`;
+otherwise fall through to `activePluginRoot()` unchanged. Rev 4: a directory, not
+merely an existing path — `compareHooks` tests for `hooks/` on its first argument
+only, so a plain file at the recorded path reads as every script missing and, now
+that the row counts, exits 3.
 
 `hook-drift` then becomes:
 
 - `PLUGIN_ROOT === RUNNING.root` → `skipped (self-compare)`. Covers callers 2 and 3.
+- rev 4: both roots inside the plugin cache and different →
+  `skipped (cache-version-transition)`. The record is global and last-writer-wins,
+  so an upgrade with an older session still open puts the old cache dir in it;
+  that is a pending-restart state, which `plugin-root:stale-registration` owns.
 - otherwise → compare and **count**. This is caller 1, the row's actual subject.
+  A checkout is outside the cache, so the skip above does not reach it.
 
 ## Success criteria
 
@@ -140,8 +148,22 @@ fall through to `activePluginRoot()` unchanged.
 
 - **Concurrent sessions from different roots** (a maintainer dev-tree session
   beside an ordinary one): last writer wins, so doctor answers "whichever fired
-  most recently". The row will name `ts` and `sid` so the reader can see which
-  session it came from. Not solved, and stated rather than hidden.
+  most recently". The row names `ts` and `sid` so the reader can see which
+  session it came from. Not solved in general, and stated rather than hidden.
+  **Rev 4, from the final whole-branch review**: this was written at rev 2, when
+  the row was advisory and the cost of a wrong answer was a wrong line. Task 5
+  made the row counted and changed that price without re-reading this question.
+  The reachable case is not a maintainer's at all — an ordinary user upgrades
+  while an older session is still open, its closing hook writes the old cache dir
+  into the record, and doctor exits 3 with a false cause. That case is now
+  guarded: two different roots both inside the plugin cache is a version
+  transition, `plugin-root:stale-registration` already owns that question, and
+  `hook-drift` skips with `cache-version-transition`. What is left is the
+  original question in its narrow form — two roots that are both OUTSIDE the
+  cache — which reaches only someone running two checkouts, and for which `sid`
+  in the row is the whole mitigation. That is why `sid` is now in `basis` rather
+  than promised by this file: `doctor.js` built the string from `ts` alone
+  through Tasks 1-5.
 - ~~Should `hook-drift` counted-ness be gated behind an env kill switch
   (`DISABLE_HOOK_DRIFT_EXIT`)? §EXT §2-EXT wants an opt-out path for a
   user-visible default change; a marketplace pin may be enough, since the flip
@@ -169,3 +191,12 @@ fall through to `activePluginRoot()` unchanged.
 - rev 3 (2026-09-11): status → implemented on the Task 5 commit. The
   kill-switch open question is resolved in place (no switch) rather than deleted,
   and the `docs/ROLLBACK.md` correction is recorded beside it.
+- rev 4 (2026-09-11): final whole-branch review fixes. The concurrency open
+  question is narrowed in place to the case that is actually left, because the
+  case that reached an ordinary install is now guarded in `doctor.js`; `sid`
+  moves from a promise in this file into the row. Design's `hook-drift` becomes
+  three states rather than two — self-compare, cache-version-transition, compare
+  — and `runningPluginRoot()` requires a directory rather than any existing path.
+  No goal, non-goal or success criterion changed: criterion 3's maintainer shape
+  runs from a checkout, which is outside the cache, so the new skip cannot reach
+  it.

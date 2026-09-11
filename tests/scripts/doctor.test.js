@@ -1727,8 +1727,12 @@ test('hook-drift names the root that fired hooks, not the one the registry lists
     !drift.detail.includes(registered),
     `must not name the registry entry as running: ${drift.detail}`
   );
-  // The basis is stamped, so a reader can tell a measurement from an inference.
-  assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z/);
+  // The basis is stamped, so a reader can tell a measurement from an inference —
+  // and stamped with WHICH SESSION wrote it, which is the spec's own stated
+  // mitigation for concurrent sessions writing one global record (Open
+  // Questions). Without the sid a reader looking at a red row cannot tell "my
+  // tree really has drifted" from "another session wrote this basis".
+  assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z \(sid abc123\)/);
 });
 
 test('hook-drift moves the exit code again, and a matching tree leaves it at 0', async () => {
@@ -1793,6 +1797,78 @@ test('hook-drift moves the exit code again, and a matching tree leaves it at 0',
     'the exit code below must have exactly one cause'
   );
   assert.equal(drifted.status, 3, 'a counted row exits 3 — this was 0 for the whole of 0.84.x');
+});
+
+// ── Final whole-branch review, I-1 ──
+// `hook-root.json` is ONE global file and every hook that fires rewrites it,
+// including a hook from a different plugin root. As of 0.85.0 the row it feeds
+// moves the exit code, so last-writer-wins stopped being a wrong line and became
+// a wrong exit code: an ordinary marketplace user upgrades while an older
+// session is still open in another terminal, that session closes, its SessionEnd
+// hook — still pinned to the OLD cache dir — writes the old root into the
+// record, and doctor in the live session sees PLUGIN_ROOT !== RUNNING.root and
+// reports drift. The cause it names (the clone advanced, the cache did not) is
+// false and the fix it names (`/claudemd-refresh`) cannot clear it — only the
+// next SessionStart rewrites the record. `plugin-root:stale-registration` does
+// not catch it either: that gate needs `runningVer < registeredVer`, and here
+// doctor's own root IS the registered one.
+//
+// Two DIFFERENT cache dirs is a version-transition artifact, not maintainer
+// drift, so the row skips. A maintainer's checkout is not in the cache, which is
+// why the signal the row exists for survives the guard untouched — the case
+// directly above this one still goes red and still exits 3.
+test('a record left behind by an older session in the cache is not a counted red', async () => {
+  const live = seedRunnableRoot(box, '0.86.0', { withScripts: true });
+  const older = seedRunnableRoot(box, '0.85.0');
+  // The older release ships different hooks — that is what an upgrade IS — so
+  // compareHooks has something to report the moment it is asked the question.
+  fs.appendFileSync(path.join(older, 'hooks/pre-bash-safety-check.sh'), '\n# 0.85.0 hooks\n');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: live, version: '0.86.0' }] },
+    })
+  );
+  // Installed first, for the reason the exit-code case above states: on a bare
+  // sandbox HOME nine other counted rows are red and the 3 would have no single
+  // cause. After install.js the only candidate red here is `hook-drift`.
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const installed = spawnSync(process.execPath, [path.join(live, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, `the fixture needs a healthy install: ${installed.stderr}`);
+
+  const record = path.join(box.stateDir, 'hook-root.json');
+  const countedRed = r => r.checks.filter(c => c.ok === false && !isAdvisoryCheck(c.name)).map(c => c.name);
+  const writeRecord = root =>
+    fs.writeFileSync(
+      record,
+      JSON.stringify({ root, ts: '2026-09-11T00:00:00Z', version: '0.86.0', sid: 'twocache' })
+    );
+
+  // A — the record names the root this session actually fired from.
+  writeRecord(live);
+  const a = spawnDoctorFrom(box, live);
+  assert.deepEqual(countedRed(a.report), [], 'A is only a control while nothing else is counted red');
+  assert.equal(a.status, 0);
+  assert.match(a.report.checks.find(c => c.name === 'hook-drift').detail, /self-compare/);
+
+  // B — the closing 0.85.0 session rewrote the record on its way out. This leg
+  // was exit 3 on a healthy ordinary install.
+  writeRecord(older);
+  const b = spawnDoctorFrom(box, live);
+  assert.deepEqual(countedRed(b.report), [], 'an upgrade in flight is not drift in this user tree');
+  assert.equal(b.status, 0, 'exit 3 here has a false cause and a fix that cannot clear it');
+  assert.match(b.report.checks.find(c => c.name === 'hook-drift').detail, /cache-version-transition/);
+
+  // C — no record at all, the 0.84.1 fallback.
+  fs.rmSync(record);
+  const c = spawnDoctorFrom(box, live);
+  assert.deepEqual(countedRed(c.report), []);
+  assert.equal(c.status, 0);
 });
 
 test('a --plugin-dir tree with nothing registered compares against itself', async () => {
@@ -1883,6 +1959,48 @@ test('hook-drift:upstream skips an upstream root that carries no hooks/ at all',
   assert.match(c.detail, /upstream-has-no-hooks/);
 });
 
+// ── Final whole-branch review, I-2 ──
+// Task 3 repointed this row's LEFT argument from `ACTIVE.root ?? PLUGIN_ROOT` to
+// `RUNNING.root ?? PLUGIN_ROOT` and nothing held it: all five upstream cases
+// above predate the hook record and seed none, so every one of them exercises
+// the fallback leg where RUNNING and ACTIVE resolve to the same directory and
+// the repoint is invisible. The reviewer reverted that argument and the suite
+// stayed at 90 pass / 0 fail. The repoint is right — for an in-place install the
+// old left argument was a leftover cache dir, and the question the row asks is
+// whether the hooks Claude Code is RUNNING match the marketplace — so it needs a
+// case that fails when it is reverted.
+test('hook-drift:upstream compares the hook-fired root, not the registered one', async () => {
+  // The two roots give OPPOSITE answers, each drifted in its own file, so the
+  // detail names which argument reached compareHooks rather than merely whether
+  // the row is red.
+  const registered = seedActivePluginRoot(box, '0.85.0');
+  const running = seedRunnableRoot(box, '0.86.0');
+  const upstream = seedUpstreamMarketplace(box);
+  assert.notEqual(registered, running, 'the fixture is only meaningful while the two roots differ');
+  assert.ok(fs.existsSync(path.join(upstream, 'hooks')), 'the upstream side must be comparable');
+  fs.appendFileSync(path.join(running, 'hooks/banned-vocab-check.sh'), '\n# only in the running root\n');
+  fs.appendFileSync(path.join(registered, 'hooks/lib/rule-hits.sh'), '\n# only in the registered root\n');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: running, ts: '2026-09-11T00:00:00Z', version: '0.86.0', sid: 'upstream1' })
+  );
+
+  // doctor runs in-process, i.e. from a third directory that is neither root.
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(c.ok, false, c.detail);
+  assert.match(
+    c.detail,
+    /banned-vocab-check\.sh \(differs\)/,
+    'the left argument must be the root a hook measured'
+  );
+  assert.doesNotMatch(
+    c.detail,
+    /rule-hits\.sh/,
+    'the registered root is not what Claude Code is running, so this row is not about it'
+  );
+});
+
 // ── post-tag review of v0.84.0, H-3 ──
 // The row's comparison baseline must be the root the REPAIR copies from. Both
 // repair commands run `node ${CLAUDE_PLUGIN_ROOT}/scripts/…`, i.e. PLUGIN_ROOT.
@@ -1947,6 +2065,32 @@ test('runningPluginRoot: a record naming a root that no longer exists falls thro
       ts: '2026-09-11T00:00:00Z',
       version: '0.85.0',
       sid: 'abc123',
+    })
+  );
+  const r = runningPluginRoot();
+  assert.notEqual(r.source, 'hook-fired');
+  assert.equal(r.root, active);
+  assert.equal(r.source, 'installed-plugins');
+});
+
+// ── Final whole-branch review, M-3 ──
+// Existing is not enough; it has to be a DIRECTORY. `compareHooks` tests for a
+// `hooks/` subdirectory on its FIRST argument only, so a plain file handed back
+// as the compared-against root reads as all 15 scripts missing and paints the
+// row solid red — and since 0.85.0 that red counts and exits 3. The ledger
+// priced this as "wrong-but-harmless" while the row was advisory; the flip
+// re-priced it.
+test('runningPluginRoot: a record whose root is a plain file falls through to activePluginRoot()', () => {
+  const active = seedActivePluginRoot(box);
+  const replacedByAFile = path.join(box.home, 'was-a-plugin-root');
+  fs.writeFileSync(replacedByAFile, 'something replaced the directory at this path');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({
+      root: replacedByAFile,
+      ts: '2026-09-11T00:00:00Z',
+      version: '0.85.0',
+      sid: 'notadir',
     })
   );
   const r = runningPluginRoot();

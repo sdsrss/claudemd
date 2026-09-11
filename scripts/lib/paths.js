@@ -410,7 +410,16 @@ export function runningPluginRoot() {
     // Existence is load-bearing: an uninstalled or moved tree leaves the record
     // pointing at nothing, and a stale absolute path is worse than the cache
     // resolution it would displace.
-    if (root && path.isAbsolute(root) && fs.existsSync(root)) {
+    //
+    // A DIRECTORY, not merely something that exists. `compareHooks` tests for a
+    // `hooks/` subdirectory on its FIRST argument only, so a plain file returned
+    // here is fed in as the compared-against root, every script reads as missing
+    // and the row goes solid red — a counted red, and an exit 3, since 0.85.0
+    // put `hook-drift` back on the exit code. The writer only ever records a
+    // `-d` path, so this is the case where something replaced the directory
+    // afterwards. `statSync` throws on a missing path and the existing catch
+    // takes it, which is the same fall-through the old `existsSync` gave.
+    if (root && path.isAbsolute(root) && fs.statSync(root).isDirectory()) {
       return {
         root,
         source: 'hook-fired',

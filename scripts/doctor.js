@@ -177,10 +177,10 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // install left for it to reach, and a switch nobody can need is a switch that
 // rots; the revert path is the one `docs/ROLLBACK.md:59-61` documents,
 // `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old
-// tag. Not a marketplace pin: earlier CHANGELOG entries name one, and no such
-// procedure exists in this repo. Dropping the row outright was considered once
-// more and rejected again, on the 0.84.0 grounds: it spends the maintainer's
-// signal to save them one line.
+// tag. Not a marketplace pin: earlier CHANGELOG entries pair one with this
+// command, but `docs/ROLLBACK.md` documents no pin step. Dropping the row
+// outright was considered once more and rejected again, on the 0.84.0 grounds:
+// it spends the maintainer's signal to save them one line.
 //
 // The two row names below share a token, so read the next line as one thing:
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
@@ -552,17 +552,62 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // and nothing installed from a marketplace has RUNNING.root set while
   // ACTIVE.root is null. Guarding on ACTIVE there short-circuited past the very
   // root we had just measured.
+  //
+  // One more state the record can be in, and it is the one that reaches an
+  // ORDINARY install. `hook-root.json` is a single global file and the last
+  // writer wins: every hook that fires rewrites it, including a hook from a
+  // different plugin root. Upgrade 0.85.0 → 0.86.0 with a second session still
+  // open in another terminal; Claude Code pinned that session's hook paths to
+  // the OLD cache dir (the state `plugin-root:stale-registration` exists for),
+  // so when it closes, its SessionEnd hook writes the OLD root into the record.
+  // doctor in the live session then has PLUGIN_ROOT = the new cache dir and
+  // RUNNING.root = the old one, compares two real installs, and reports drift
+  // with a cause that is false and a fix that cannot clear it —
+  // `/claudemd-refresh` reinstalls; only the next SessionStart rewrites the
+  // record. `staleRegistration` above does not cover it, because it needs
+  // `runningVer < registeredVer` and doctor's own root IS the registered one.
+  // Advisory, that cost a line; counted, it is a standing exit 3 on a healthy
+  // machine — exactly the failure 0.84.0 demoted this row to avoid, arriving
+  // through a different door.
+  //
+  // Two DIFFERENT roots both inside the plugin cache is a version transition,
+  // not maintainer drift, and the pending-restart question is already owned by
+  // `plugin-root:stale-registration`. Every case this axis is for is untouched:
+  // a maintainer's checkout is not in the cache, so it still compares and still
+  // counts; an in-place `--plugin-dir` load has RUNNING.root === PLUGIN_ROOT and
+  // gets compareHooks's own self-compare skip; an ordinary install in its normal
+  // state is that same self-compare. realOf on both sides for the reason stated
+  // at its declaration — a cache entry can be a symlink into the real tree.
+  const twoCacheRoots =
+    !!RUNNING.root &&
+    realOf(RUNNING.root) !== realOf(PLUGIN_ROOT) &&
+    inCache(PLUGIN_ROOT) &&
+    inCache(RUNNING.root);
   const drift2 = staleRegistration
     ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
-    : RUNNING.root
-      ? compareHooks(PLUGIN_ROOT, RUNNING.root)
-      : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
+    : twoCacheRoots
+      ? { skipped: true, skippedReason: 'cache-version-transition', driftCount: 0, diffs: [] }
+      : RUNNING.root
+        ? compareHooks(PLUGIN_ROOT, RUNNING.root)
+        : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   // Hoisted above the branch so both outcomes describe the basis the same way. A
   // hook-fired basis carries WHEN it was recorded: this row names a root as
   // "running", and a reader who has restarted Claude Code since needs to see that
   // the claim is stamped rather than inferred.
+  //
+  // And WHICH SESSION stamped it. The record is global and last-writer-wins, so
+  // "which session wrote this" is the question a reader of a red row actually
+  // has: the guard above retires the cache-vs-cache case, but a maintainer
+  // running a checkout session beside an ordinary one still gets whichever fired
+  // most recently, and the sid is what separates "my tree has drifted" from
+  // "another session wrote this basis". The spec's Open Questions names ts AND
+  // sid as the mitigation for exactly that; `runningPluginRoot()` has returned
+  // `sid` since it was written. Guarded rather than assumed: a record from a
+  // hook that could not resolve a session id is still a usable basis.
   const basis =
-    RUNNING.source === 'hook-fired' && RUNNING.ts ? `hook-fired at ${RUNNING.ts}` : RUNNING.source;
+    RUNNING.source === 'hook-fired' && RUNNING.ts
+      ? `hook-fired at ${RUNNING.ts}${RUNNING.sid ? ` (sid ${RUNNING.sid})` : ''}`
+      : RUNNING.source;
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {
