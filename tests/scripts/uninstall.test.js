@@ -651,6 +651,59 @@ test('SCR-M6: no manifest and no purge leaves the state dir alone', async () => 
   assert.equal(fs.existsSync(stateDirPath), true, 'a keep-mode uninstall must not purge');
 });
 
+// ============================================================================
+// Task 4, plan hook-root-ground-truth — the record must not survive a purge.
+// ============================================================================
+
+test('Task 4: CLAUDEMD_PURGE=1 removes the hook-root record on BOTH purge paths', async () => {
+  // Two mechanisms, not one. A canonically-named state dir is removed wholesale
+  // (`fs.rmSync(sd, {recursive:true})`), and any other name never gets recursed
+  // into — there the per-file `CLAUDEMD_STATE_FILE_RE` decides, and an unmatched
+  // stem is skipped SILENTLY. Testing only the first path is how a stem can be
+  // missing from that regex while the suite stays green, which is exactly the
+  // state this branch shipped: the record was written and registered nowhere.
+  const canonical = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(canonical, { recursive: true });
+  fs.writeFileSync(path.join(canonical, 'hook-root.json'), '{"root":"/somewhere"}\n');
+  await uninstall({ purge: true });
+  assert.equal(fs.existsSync(canonical), false, 'the canonical state dir survived a purge');
+
+  // The redirected dir: the seam exists so it CAN be pointed elsewhere, and the
+  // branch that refuses to recurse is the one that needs the regex to be right.
+  const alien = path.join(tmpHome, 'my-state');
+  fs.mkdirSync(alien, { recursive: true });
+  const ours = {
+    'hook-root.json': '{"root":"/somewhere"}\n',
+    // Stranded by a process killed between the printf and the mv in
+    // `hook_record_plugin_root`. It has no ARCHITECTURE.md bullet and is a
+    // STATE_IGNORE entry in the drift gate — so this case is the ONLY thing
+    // holding it in the regex, and the drift join cannot notice if it leaves.
+    'hook-root.json.4242': '{"root":"/somewhere"}\n',
+  };
+  // The anchor control the Round-14 audit (SCR-M6) paid for: the temp suffix is
+  // a pid, so the arm takes DIGITS only. A user's own backup of the record must
+  // survive a branch whose whole purpose is not to touch an unexpected directory.
+  const theirs = { 'hook-root.json.bak': 'my backup\n', 'hook-root.json.orig': 'mine\n' };
+  for (const [n, c] of Object.entries({ ...ours, ...theirs })) fs.writeFileSync(path.join(alien, n), c);
+
+  const savedStateDir = process.env.CLAUDEMD_STATE_DIR;
+  process.env.CLAUDEMD_STATE_DIR = alien;
+  try {
+    await uninstall({ purge: true });
+  } finally {
+    if (savedStateDir === undefined) delete process.env.CLAUDEMD_STATE_DIR;
+    else process.env.CLAUDEMD_STATE_DIR = savedStateDir;
+  }
+
+  for (const n of Object.keys(ours))
+    assert.equal(fs.existsSync(path.join(alien, n)), false, `purge left claudemd's own ${n} behind`);
+  for (const [n, c] of Object.entries(theirs)) {
+    assert.equal(fs.existsSync(path.join(alien, n)), true, `purge deleted the user's ${n}`);
+    assert.equal(fs.readFileSync(path.join(alien, n), 'utf8'), c);
+  }
+  assert.equal(fs.existsSync(alien), true, 'and the directory itself is never removed');
+});
+
 test('SCR-L6: a restore that copies nothing back exits 3, not 0', () => {
   // The user reaches `CLAUDEMD_SPEC_ACTION=restore` from install's own WARN,
   // asking for their personal instructions back. A backup dir holding only an

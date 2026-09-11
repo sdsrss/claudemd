@@ -647,6 +647,45 @@ test('cleanStateDir never deletes live singleton state, however old', () => {
   }
 });
 
+// --- Task 4, plan hook-root-ground-truth ------------------------------------
+test('cleanStateDir never scans or reaps the hook-fired root record', () => {
+  // `hook-root.json` is the only place the directory Claude Code actually loaded
+  // the plugin from is observable, and doctor's hook-drift rows read it. It is
+  // rewritten every session, so its AGE says nothing: a machine idle for a year
+  // carries a year-old record that is still the live answer. STATE_EPHEMERAL is
+  // an allowlist by name, so the record is already safe by default — this pins
+  // that default rather than trusting it, because `scanned` is also what
+  // `state-dir-orphans` counts, and a record that merely APPEARS there starts
+  // advising a delete that breaks the rows reading it.
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  const record = path.join(stateDir, 'hook-root.json');
+  fs.writeFileSync(record, '{"root":"/somewhere","ts":"2026-09-11T00:00:00Z"}');
+  // The atomic-write temp `hook_record_plugin_root` mv's from. Current
+  // behaviour, stated so it is visible rather than assumed: this allowlist does
+  // not name it either, so a process killed between the printf and the mv
+  // strands one that only `CLAUDEMD_PURGE=1` reaches (pinned in
+  // uninstall.test.js). Widening the allowlist here would be a behaviour change,
+  // not a fix to this case.
+  const tmpWrite = path.join(stateDir, 'hook-root.json.4242');
+  fs.writeFileSync(tmpWrite, '{"root":"/somewhere"}');
+  // A genuine orphan alongside them, so a scan that silently returned nothing
+  // could not pass this case.
+  const bait = path.join(stateDir, 'ext-read-s1.ts');
+  fs.writeFileSync(bait, '0');
+  for (const p of [record, tmpWrite, bait]) setMtime(p, 3650);
+
+  // retentionDays: 0 floors to MIN_RETENTION_DAYS and every file here is ten
+  // years old — so the window is not what is protecting the record.
+  const res = cleanStateDir({ stateDir, apply: true, retentionDays: 0 });
+  const names = l => l.map(c => path.basename(c.path)).sort();
+  assert.deepEqual(names(res.scanned), ['ext-read-s1.ts'], 'the record must not even be SCANNED');
+  assert.deepEqual(names(res.targets), ['ext-read-s1.ts']);
+  assert.equal(res.deleted, 1, 'the control orphan proves the reaper ran');
+  assert.ok(fs.existsSync(record), 'hook-root.json was deleted by an age-based reap');
+  assert.ok(fs.existsSync(tmpWrite), 'hook-root.json.<pid> was deleted by an age-based reap');
+});
+
 test('cleanStateDir respects retention and dry-run by default', () => {
   const stateDir = path.join(tmpDir, 'state');
   fs.mkdirSync(stateDir, { recursive: true });

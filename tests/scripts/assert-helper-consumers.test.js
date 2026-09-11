@@ -44,7 +44,11 @@ const LEGACY_OWN_ASSERTIONS = [
   'env-hygiene.test.sh',
   'fail-open.test.sh',
   'hook-budget.test.sh',
-  'hook-common.test.sh',
+  // `hook-common.test.sh` left this list on the hook-root-ground-truth branch:
+  // the cases added for `hook_record_plugin_root` were written against
+  // tests/lib/assert.sh, and the suite sources it as of that change. The list
+  // only shrinks, so a migrated entry has to come off rather than linger as a
+  // standing permission to walk back off the shared helper.
   'mem-audit.test.sh',
   'memory-prompt-hint.test.sh',
   'memory-read-check.test.sh',

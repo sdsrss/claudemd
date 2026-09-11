@@ -48,8 +48,15 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // been normalised to `*`. Over-anchoring fails in the benign direction the
 // header already describes — an unmatched file is left behind, never wrongly
 // deleted.
+//
+// `hook-root.json(?:\.[0-9]+)?` carries a DIGIT suffix, not the `*` the
+// interpolated stems admit: the temp is `hook-root.json.$$`, and `$$` is a pid,
+// so the only names that reach a real state dir are digits. The drift join does
+// not reach this arm either way — the temp is a STATE_IGNORE entry, since it
+// lives only between the `printf` and the `mv` — which is why the sweep is
+// pinned directly in `uninstall.test.js` instead of riding on that join.
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 

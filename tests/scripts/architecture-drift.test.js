@@ -156,6 +156,18 @@ const STATE_IGNORE = new Map([
   ['last-session-', 'prefix fragment from a line-wrapped path, not a distinct kind'],
   ['l2-task-counter.', 'trailing period is prose punctuation captured by the char class'],
   ['installed.json', 'pre-v0.1.9 legacy manifest location, documented in the manifest bullet above'],
+  // Not a resting state: `hook_record_plugin_root` printf's into this name and
+  // `mv`s it onto `hook-root.json` (hooks/lib/hook-common.sh), so it exists only
+  // between those two calls. The doc lists what a user can find in the state dir
+  // and what writes it; a bullet here would document the write idiom as if it
+  // were a kind. The split is deliberate and the other half is NOT ignored: a
+  // process killed inside that window does strand one, so CLAUDEMD_STATE_FILE_RE
+  // matches it and `uninstall.test.js` pins that — an ignore here would otherwise
+  // take the temp out of the R10-13 join below along with this gate.
+  [
+    'hook-root.json.$$',
+    'atomic-write temp, alive only between the printf and the mv (hook_record_plugin_root)',
+  ],
 ]);
 
 test('ARCHITECTURE.md State locations lists every state path the source writes', () => {
@@ -494,7 +506,7 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   // now pins WHICH stem is unmatched, so a future omission fails here loudly
   // instead of quietly widening the control.
   const mutated =
-    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|user-content-backup\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
   const stateOnly = [...statePathsInSource()]
     .filter(([, family]) => family === 'state')
     .map(([name]) => name)

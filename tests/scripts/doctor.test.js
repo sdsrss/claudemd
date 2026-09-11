@@ -1380,6 +1380,78 @@ test('state-dir-orphans still fails on an unbounded total, with a remedy that is
   assert.match(c.detail, /per INVOCATION/);
 });
 
+// ── Task 4, plan hook-root-ground-truth ──
+test('state-dir-orphans does not count the hook-fired root record', async () => {
+  // The record is persistent by design — rewritten every session, never aged
+  // out — so it is not an ephemeral state file and must not appear in either
+  // number this row prints. Both numbers matter: counted as REAPABLE it would
+  // advise a delete that blinds hook-drift, and counted only in the total it
+  // would push a healthy machine toward the population ceiling for free.
+  const record = path.join(box.stateDir, 'hook-root.json');
+  fs.writeFileSync(record, JSON.stringify({ root: box.home, ts: '2026-09-11T00:00:00Z' }));
+  const old = new Date(Date.now() - 300 * 86400000);
+  fs.utimesSync(record, old, old);
+
+  const c = stateCheck(await doctor({}));
+  assert.equal(c.ok, true, c.detail);
+  // A state dir holding ONLY the record is an EMPTY ephemeral population, not a
+  // population of one that happens to be in-window.
+  assert.match(c.detail, /\b0 reapable of 0 ephemeral state file\(s\)/);
+  assert.ok(fs.existsSync(record), 'doctor must not delete anything here either');
+});
+
+// ── Task 4, plan hook-root-ground-truth ──
+test('the hook-fired record moves neither spec-cache-drift nor plugin cache:staleness', async () => {
+  // Scope pin. `runningPluginRoot()` answers "what is Claude Code EXECUTING",
+  // which is the question hook-drift and statusline ask. These two ask what is
+  // REGISTERED in the cache, and repointing them was explicitly out of scope —
+  // a non-cache path through `inCache()` would silently retire the
+  // stale-registration row. The no-record details are already pinned by the
+  // spec-cache-drift and cache-staleness cases above, which predate this branch;
+  // what is unpinned, and what this case adds, is that ADDING a record to a
+  // fixture where both rows have something real to say changes neither.
+  //
+  // `hook-drift:upstream` is deliberately NOT in this list: Task 3 repointed its
+  // left argument on purpose and owns its cases.
+  fs.writeFileSync(box.claude('CLAUDE-extended.md'), 'installed body\n');
+  const mktSpec = box.claude('plugins/marketplaces/claudemd/spec');
+  fs.mkdirSync(mktSpec, { recursive: true });
+  fs.writeFileSync(path.join(mktSpec, 'CLAUDE-extended.md'), 'cache body\n');
+  const staleRoot = box.dir('cache/0.1.0');
+  fs.writeFileSync(path.join(staleRoot, 'package.json'), JSON.stringify({ version: '0.1.0' }));
+  registerInstalledPlugin(box, '9.9.9');
+  fs.writeFileSync(
+    box.claude('.claudemd-manifest.json'),
+    JSON.stringify({ version: '0.1.0', pluginRoot: staleRoot, entries: [] })
+  );
+
+  const ROWS = ['spec-cache-drift', 'plugin cache:staleness'];
+  const rowsOf = r => ROWS.map(n => r.checks.find(x => x.name === n));
+
+  const record = path.join(box.stateDir, 'hook-root.json');
+  assert.equal(fs.existsSync(record), false, 'the no-record leg must start with no record');
+  const before = rowsOf(await doctor({}));
+  // Not vacuous: comparing two absent rows, or two rows that both said nothing,
+  // would pass on a fixture that exercised neither. Both must be present and
+  // both must be RED, which is the state a record could plausibly disturb.
+  for (const c of before) assert.ok(c && c.detail, `fixture produced no usable row: ${JSON.stringify(c)}`);
+  assert.equal(before[0].ok, false, `spec-cache-drift not exercised: ${before[0].detail}`);
+  assert.equal(before[1].ok, false, `cache staleness not exercised: ${before[1].detail}`);
+
+  fs.writeFileSync(
+    record,
+    JSON.stringify({
+      root: box.dir('actually-running-from-here'),
+      ts: '2026-09-11T00:00:00Z',
+      version: '0.85.0',
+      sid: 'abc123',
+    })
+  );
+  // …and the record is genuinely in play, not ignored for some unrelated reason.
+  assert.equal(runningPluginRoot().source, 'hook-fired', 'the record never reached the resolver');
+  assert.deepEqual(rowsOf(await doctor({})), before);
+});
+
 test('state-dir-orphans: the ceiling does not fire just below it', async () => {
   // Boundary control. Without it the ceiling could be off by any amount, or
   // firing on every population, and the test above would not notice.
