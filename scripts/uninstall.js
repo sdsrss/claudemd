@@ -51,10 +51,15 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 //
 // `hook-root.json(?:\.[0-9]+)?` carries a DIGIT suffix, not the `*` the
 // interpolated stems admit: the temp is `hook-root.json.$$`, and `$$` is a pid,
-// so the only names that reach a real state dir are digits. The drift join does
-// not reach this arm either way — the temp is a STATE_IGNORE entry, since it
-// lives only between the `printf` and the `mv` — which is why the sweep is
-// pinned directly in `uninstall.test.js` instead of riding on that join.
+// so the only names that reach a real state dir are digits.
+//
+// The drift join CANNOT reach this arm, and not because of a choice made
+// elsewhere: `norm()` in architecture-drift.test.js collapses `${VAR}` and
+// `$IDENT` but not `$$`, so the join tests the literal string
+// `hook-root.json.$$` — a filename no process ever writes. Documenting the temp
+// rather than ignoring it would not fix that; it would force an alternative
+// here matching an impossible name. The `Task 4: CLAUDEMD_PURGE=1 …` case in
+// uninstall.test.js holds this arm, and it is the only thing that does.
 export const CLAUDEMD_STATE_FILE_RE =
   /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 

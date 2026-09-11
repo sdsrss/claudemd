@@ -160,10 +160,12 @@ const STATE_IGNORE = new Map([
   // `mv`s it onto `hook-root.json` (hooks/lib/hook-common.sh), so it exists only
   // between those two calls. The doc lists what a user can find in the state dir
   // and what writes it; a bullet here would document the write idiom as if it
-  // were a kind. The split is deliberate and the other half is NOT ignored: a
-  // process killed inside that window does strand one, so CLAUDEMD_STATE_FILE_RE
-  // matches it and `uninstall.test.js` pins that — an ignore here would otherwise
-  // take the temp out of the R10-13 join below along with this gate.
+  // were a kind. Note what this ignore does NOT cost: `norm()` above collapses
+  // `${VAR}` and `$IDENT` but not `$$`, so the R10-13 join below could only ever
+  // test the literal `hook-root.json.$$`, a name no process writes. The join is
+  // structurally incapable of covering this temp, ignore entry or not. A killed
+  // process does strand a real one, so CLAUDEMD_STATE_FILE_RE matches it and the
+  // `Task 4: CLAUDEMD_PURGE=1 …` case in uninstall.test.js is what holds it.
   [
     'hook-root.json.$$',
     'atomic-write temp, alive only between the printf and the mv (hook_record_plugin_root)',
