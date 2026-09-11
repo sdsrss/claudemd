@@ -412,6 +412,46 @@ hook_install_sentinel_write() {
 # Caller must have sourced platform.sh (platform_timeout) — both callers do;
 # if it is missing the run fails and the sentinel records that, which is the
 # desired visible-failure behavior, not a silent skip.
+# Records the root Claude Code actually loaded this plugin from.
+#
+# This is the one bit no other mechanism carries. CC expands ${CLAUDE_PLUGIN_ROOT}
+# textually into the hooks.json command string and exports nothing (measured in
+# scripts/doctor.js:498-507), so the hook PROCESS is the only observer — via
+# BASH_SOURCE. Every alternative resolves a cache path (paths.js activePluginRoot)
+# or goes stale (.claudemd-manifest.json pluginRoot is written only when
+# install.js runs, so a same-version move between cache and dev tree keeps the
+# old value — the exact case that needs an answer).
+#
+# Callers are NON-BLOCKING hooks only. Do not call this from the pre-bash path:
+# tests/hooks/hook-budget.test.sh bounds its cost.
+hook_record_plugin_root() {
+  local root="${1:-}" sid="${2:-}"
+  [[ -n "$root" && -d "$root" ]] || return 0
+  # printf-built JSON cannot carry these, and a path holding one is rare enough
+  # that recording nothing — degrading to the cache resolution — beats emitting
+  # a file the reader throws away anyway.
+  case "$root" in *'"'* | *'\'*) return 0 ;; esac
+
+  local state_dir="$HOME/.claude/.claudemd-state"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+
+  local version=''
+  if [[ -r "$root/.claude-plugin/plugin.json" ]] && command -v jq >/dev/null 2>&1; then
+    version=$(jq -r '.version // ""' "$root/.claude-plugin/plugin.json" 2>/dev/null) || version=''
+  fi
+  version=$(printf '%s' "$version" | tr -cd '0-9A-Za-z._-')
+  sid=$(printf '%s' "$sid" | tr -cd '0-9A-Za-z._-')
+
+  local tmp="$state_dir/hook-root.json.$$"
+  if printf '{"root":"%s","ts":"%s","version":"%s","sid":"%s"}\n' \
+       "$root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$version" "$sid" >"$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$state_dir/hook-root.json" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  else
+    rm -f "$tmp" 2>/dev/null
+  fi
+  return 0
+}
+
 hook_spawn_install() {
   local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
   (

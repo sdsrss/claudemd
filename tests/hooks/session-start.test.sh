@@ -903,6 +903,22 @@ else
 fi
 cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
 
+# Case 40 (hook-root ground truth): a compact-source SessionStart still
+# records the root it fired from. This is precisely the case the OLD line
+# order could not reach — PLUGIN_ROOT used to be assigned AFTER the compact
+# early-exit, so a compact invocation returned before the variable existed.
+RESOLVED_PLUGIN_ROOT="$(cd "$PLUGIN_ROOT" && pwd)"
+HOOKROOT_STATE="$HOME/.claude/.claudemd-state/hook-root.json"
+rm -f "$HOOKROOT_STATE"
+bash "$HOOK" <<<'{"session_id":"root-t","source":"compact"}' >/dev/null 2>/dev/null
+if [[ -f "$HOOKROOT_STATE" ]] \
+   && grep -qF "\"root\":\"$RESOLVED_PLUGIN_ROOT\"" "$HOOKROOT_STATE" 2>/dev/null \
+   && grep -qF '"sid":"root-t"' "$HOOKROOT_STATE" 2>/dev/null; then
+  echo "PASS: 40 compact source records the hook root"
+else
+  echo "FAIL: 40 compact source did not record the hook root (state: $(cat "$HOOKROOT_STATE" 2>/dev/null))"; FAIL=$((FAIL+1))
+fi
+
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
 # the suite ran 35 assertions and reported "29/29", and a run where every

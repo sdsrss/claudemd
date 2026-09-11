@@ -42,6 +42,13 @@ else
   hook_record_failopen session-start jq-missing
 fi
 
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Recorded BEFORE the compact early-exit below: a session that opens on a
+# compaction event fired its hooks from the real root just the same, and this
+# record is the only place that root survives the process.
+hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
+
 # v0.27.0 — post-compaction re-read reminder (spec-optimization-plan P6/F4).
 # SessionStart fires with source=="compact" after auto/manual compaction
 # (docs: code.claude.com/docs/en/hooks). Core §11 post-compaction re-read is a
@@ -65,7 +72,6 @@ fi
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
-PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # FRESH install = neither manifest shape present. Captured HERE, before the
 # block below can act on it, because that block funnels TWO different states —

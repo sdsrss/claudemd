@@ -341,6 +341,24 @@ else
   ng "Case 17: post-mutation validate no longer suppresses (over-correction)"
 fi
 
+
+# --- Case 18 (hook-root ground truth): a SessionEnd invocation records the
+# real plugin root into a sandbox HOME carrying no prior record — the
+# fallback path for a session whose SessionStart hook never ran (disabled, or
+# a session that started before this writer shipped).
+reset_cwd
+RESOLVED_PLUGIN_ROOT="$(cd "$HERE/../.." && pwd)"
+HOOKROOT_STATE="$HOME/.claude/.claudemd-state/hook-root.json"
+rm -f "$HOOKROOT_STATE"
+T="$TMP_HOME/case18.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
+run_hook "$T"
+if [[ -f "$HOOKROOT_STATE" ]] && grep -qF "\"root\":\"$RESOLVED_PLUGIN_ROOT\"" "$HOOKROOT_STATE" 2>/dev/null; then
+  ok "Case 18: SessionEnd records the real plugin root with no prior record"
+else
+  ng "Case 18: SessionEnd did not record the plugin root (state: $(cat "$HOOKROOT_STATE" 2>/dev/null))"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

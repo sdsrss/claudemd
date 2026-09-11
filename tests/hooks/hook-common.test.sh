@@ -134,6 +134,40 @@ else
   echo "PASS: no hook keeps a private file_path matcher"
 fi
 
+# hook_record_plugin_root — the one bit no other mechanism carries (see the
+# function's own header in hook-common.sh for why BASH_SOURCE is the only
+# observer). Uses the shared assert vocabulary (R11-27) rather than run_case:
+# these cases assert file CONTENTS and exit status, not a single stdout string.
+# shellcheck source=../lib/assert.sh
+source "$(cd "$(dirname "$0")" && pwd)/../lib/assert.sh"
+# shellcheck source=../../hooks/lib/hook-common.sh
+source "$LIB"
+
+HOOKROOT_SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-hookroot.XXXXXX") || exit 1
+HOOKROOT_FILE="$HOOKROOT_SANDBOX/.claude/.claudemd-state/hook-root.json"
+
+# A root that is not a directory records nothing.
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/absent" "sid-1"
+if [[ -f "$HOOKROOT_FILE" ]]; then HOOKROOT_RC=0; else HOOKROOT_RC=1; fi
+assert_status "hook_record_plugin_root: no record for a root that does not exist" 1 "$HOOKROOT_RC"
+
+mkdir -p "$HOOKROOT_SANDBOX/fake-root"
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/fake-root" "sid-1"
+assert_contains "hook_record_plugin_root: records the root it was handed" \
+  "\"root\":\"$HOOKROOT_SANDBOX/fake-root\"" "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+assert_contains "hook_record_plugin_root: records the session id" \
+  '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+
+# A path carrying a JSON metacharacter records nothing and leaves the prior
+# record intact, rather than emitting a file the reader will throw away.
+mkdir -p "$HOOKROOT_SANDBOX/quo\"te"
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/quo\"te" "sid-2"
+assert_contains "hook_record_plugin_root: a quote-carrying root leaves the prior record intact" \
+  '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+
+rm -rf "${HOOKROOT_SANDBOX:?}"
+FAIL=$((FAIL + CLAUDEMD_ASSERT_FAIL))
+
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"
   exit 1

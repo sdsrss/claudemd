@@ -33,6 +33,16 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 
 hook_kill_switch SESSION_END_CHECK || exit 0
+
+# Beside SessionStart's own call to the same writer: a session whose
+# SessionStart hook was switched off (or one that started before this feature
+# shipped) still gets its real root recorded here. Reuses LIB_DIR — already
+# resolved from BASH_SOURCE above — rather than a second resolution.
+# LIB_DIR is hooks/lib, so the plugin root is two levels up, not one. Placed
+# before the jq requirement below: this write needs none of it.
+PLUGIN_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
+hook_record_plugin_root "$PLUGIN_ROOT" "${CLAUDE_SESSION_ID:-}" 2>/dev/null || true
+
 hook_require_jq || { hook_record_failopen session-end-check jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
