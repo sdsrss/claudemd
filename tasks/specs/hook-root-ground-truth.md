@@ -159,9 +159,15 @@ that the row counts, exits 3.
   guarded: two different roots both inside the plugin cache is a version
   transition, `plugin-root:stale-registration` already owns that question, and
   `hook-drift` skips with `cache-version-transition`. What is left is the
-  original question in its narrow form — two roots that are both OUTSIDE the
-  cache — which reaches only someone running two checkouts, and for which `sid`
-  in the row is the whole mitigation. That is why `sid` is now in `basis` rather
+  original question, and it is wider than two checkouts: the skip requires BOTH
+  roots to be in the cache, so any pair with a non-cache tree on either side
+  still compares — including the ordinary maintainer pair of one cache install
+  and one checkout. Measured by the re-review: doctor run from a 0.86.0 cache
+  install with the record naming a checkout another session wrote gives exit 3,
+  `hook-drift` the only counted red, detail naming the checkout. What it cannot
+  reach is a machine whose roots are all cache paths, which is every
+  install-only user. `sid` in the row is the whole mitigation. That is why `sid`
+  is now in `basis` rather
   than promised by this file: `doctor.js` built the string from `ts` alone
   through Tasks 1-5.
 - ~~Should `hook-drift` counted-ness be gated behind an env kill switch
