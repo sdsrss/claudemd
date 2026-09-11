@@ -9,6 +9,7 @@ import {
   homeSpec,
   readManifest,
   activePluginRoot,
+  runningPluginRoot,
   upstreamPluginRoot,
   pluginsCacheRoot,
   readPluginVersion,
@@ -172,6 +173,13 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // and three of them used to answer it with a different directory each time
   // they were written.
   const ACTIVE = activePluginRoot();
+  // ACTIVE answers "what is REGISTERED in the cache" and is still the right
+  // input for the two version rows below. RUNNING answers "what is Claude Code
+  // actually executing", which is a different question and, for an in-place
+  // install, a different directory. Keeping both is the point: repointing ACTIVE
+  // would put a non-cache path through `inCache()` at the staleRegistration gate
+  // and silently retire that row.
+  const RUNNING = runningPluginRoot();
 
   const m = readManifest();
   // Three states, not two. `exists && data == null` is a manifest that is ON
@@ -484,10 +492,6 @@ export async function doctor({ pruneBackups: prune } = {}) {
     );
   }
 
-  // When Claude Code launched us, PLUGIN_ROOT IS the running plugin and there is
-  // no "source vs running" question to ask. THAT DISTINCTION CANNOT BE MADE HERE,
-  // and the attempt is worth recording so nobody rebuilds it.
-  //
   // Two callers reach this row and they want opposite answers. A maintainer with
   // a checkout AND an install wants the comparison. Someone whose checkout IS the
   // running plugin — `--plugin-dir`, a skills-directory plugin, a synced plugin,
@@ -503,32 +507,44 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // with the token already substituted; `process.env.CLAUDE_PLUGIN_ROOT` is
   // undefined. A version of this row gated on that variable was inert in
   // production and fired only for someone who had exported it by hand, which is
-  // the maintainer run it would then wrongly silence. The filesystem cannot
-  // separate the two either: both callers run from a root outside the cache.
+  // the maintainer run it would then wrongly silence. Do not retry `process.env`.
+  // The filesystem cannot separate the two either: both callers run from a root
+  // outside the cache.
   //
-  // So the row asks a question it cannot scope, and the resolution is to stop
-  // making it move the exit code — see ADVISORY above. It still prints, which is
-  // all a maintainer needs; an in-place user gets a line that is wrong about
-  // which root is running, and no failing check.
+  // What does separate them is a MEASUREMENT rather than an inference. A hook
+  // that Claude Code itself invokes knows the directory it was loaded from and
+  // records it; `runningPluginRoot()` reads that record back. So this row
+  // compares against RUNNING, not ACTIVE. For the in-place caller RUNNING is the
+  // very directory doctor was launched from, and compareHooks then returns its
+  // own `self-compare` skip — nothing here branches on that case, and nothing
+  // should: a second lexical path compare would duplicate the rule and get
+  // symlinks wrong, where install-drift.js:43 realpaths both sides. With no
+  // record — hooks never fired, SessionStart off — RUNNING *is* ACTIVE and every
+  // line below reads exactly as it did before.
   const drift2 = staleRegistration
     ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
     : ACTIVE.root
-      ? compareHooks(PLUGIN_ROOT, ACTIVE.root)
+      ? compareHooks(PLUGIN_ROOT, RUNNING.root)
       : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {
-    push('hook-drift', true, `installed hooks match source (via ${ACTIVE.source})`);
+    push('hook-drift', true, `installed hooks match source (via ${RUNNING.source})`);
   } else {
     const sample = drift2.diffs
       .slice(0, 3)
       .map(d => `${d.path} (${d.reason})`)
       .join(', ');
     const more = drift2.diffs.length > 3 ? ` +${drift2.diffs.length - 3} more` : '';
+    // A hook-fired basis carries WHEN it was recorded: this row names a root as
+    // "running", and a reader who has restarted Claude Code since needs to see
+    // that the claim is stamped rather than inferred.
+    const basis =
+      RUNNING.source === 'hook-fired' && RUNNING.ts ? `hook-fired at ${RUNNING.ts}` : RUNNING.source;
     push(
       'hook-drift',
       false,
-      `${drift2.driftCount} hook script(s) differ between source and the running plugin root ${ACTIVE.root} (via ${ACTIVE.source}): ${sample}${more}. ` +
+      `${drift2.driftCount} hook script(s) differ between source and the running plugin root ${RUNNING.root} (via ${basis}): ${sample}${more}. ` +
         `Likely cause: the marketplace clone advanced but the versioned cache did not. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`
     );
   }
@@ -551,7 +567,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // was written.
   const drift3 =
     UPSTREAM.root && fs.existsSync(path.join(UPSTREAM.root, 'hooks'))
-      ? compareHooks(ACTIVE.root ?? PLUGIN_ROOT, UPSTREAM.root)
+      ? compareHooks(RUNNING.root ?? PLUGIN_ROOT, UPSTREAM.root)
       : {
           skipped: true,
           skippedReason: UPSTREAM.root ? 'upstream-has-no-hooks' : 'no-upstream-marketplace',

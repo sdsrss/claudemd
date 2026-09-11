@@ -1549,15 +1549,20 @@ test('a genuinely drifted install is hook drift, not stale registration', async 
   assert.match(r.checks.find(x => x.name === 'hook-drift').detail, /self-compare/);
 });
 
-// ── v0.84.0 pre-ship review, L6 ──
+// ── v0.84.0 pre-ship review, L6 · reopened by plan hook-root-ground-truth ──
 // The plugins reference documents three install shapes that are NOT copied into
 // the cache and run in place: `--plugin-dir`, a skills-directory plugin, and a
 // synced plugin. `activePluginRoot()` only ever resolves cache paths, so for
 // those it returns a leftover cache dir — and `hook-drift` then compared the
 // REAL running root against something that is not running. M1's mislabelling one
-// layer out. CLAUDE_PLUGIN_ROOT is the discriminator: CC sets it when it invokes
-// the plugin, and it is unset for a hand-run from a checkout.
-test('an in-place plugin still gets a wrong hook-drift line, but not a failing check', async () => {
+// layer out. 0.84.0 shipped on the reading that CLAUDE_PLUGIN_ROOT is the
+// discriminator; the release that carried it disproved that — Claude Code
+// expands the token into the hook command string and exports nothing, so no
+// doctor process ever sees it (doctor.js above the drift2 branch has the
+// measurement). The discriminator that does exist is written by a hook while
+// Claude Code is running it, and `runningPluginRoot()` reads it back. Here it
+// names the in-place dir doctor was launched from, so compareHooks self-compares.
+test('an in-place plugin is compared against the root that actually fired hooks', async () => {
   const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const inPlace = path.join(box.home, 'my-plugin-dir');
   fs.cpSync(path.join(repo, 'hooks'), path.join(inPlace, 'hooks'), { recursive: true });
@@ -1573,17 +1578,100 @@ test('an in-place plugin still gets a wrong hook-drift line, but not a failing c
       plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: leftover, version: '0.70.0' }] },
     })
   );
+  // What a hook recorded while Claude Code was running it: the in-place dir,
+  // which is also the root doctor is launched from below.
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({
+      root: inPlace,
+      ts: '2026-09-11T00:00:00Z',
+      version: '0.84.0',
+      sid: 'inplace1',
+    })
+  );
 
   const r = runDoctorFrom(box, inPlace);
   const drift = r.checks.find(x => x.name === 'hook-drift');
-  // The row cannot tell this caller from a maintainer's checkout — no signal
-  // separates them, and CLAUDE_PLUGIN_ROOT is not exported to a doctor process.
-  // So it still reports, wrongly, that the leftover cache dir is "the running
-  // plugin root"…
-  assert.equal(drift.ok, false);
-  // …and the whole point of the disposition is that this costs the user nothing
-  // beyond a line: the row is advisory, so it must not move the exit code.
+  // The leftover 0.70.0 cache dir is registered but is not what runs, so the
+  // row has no source-vs-running gap left to report.
+  assert.equal(drift.ok, true, 'the in-place root is what fired hooks — nothing to compare');
+  assert.match(drift.detail, /self-compare/);
+  // The 0.84.0 disposition still stands on its own terms: the row is advisory,
+  // so it must not move the exit code.
   assert.equal(isAdvisoryCheck('hook-drift'), true, 'an undecidable row must not be counted');
+});
+
+// ── Task 3, plan hook-root-ground-truth ──
+// A source checkout copied into the sandbox, so a test can launch doctor from a
+// root that is NOT in the plugin cache — the maintainer half of the two callers
+// the row serves.
+function seedCheckout(box, version) {
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const root = path.join(box.home, 'src/claudemd');
+  for (const d of ['hooks', 'scripts', 'spec'])
+    fs.cpSync(path.join(repo, d), path.join(root, d), { recursive: true });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
+  return root;
+}
+
+test('hook-drift names the root that fired hooks, not the one the registry lists', async () => {
+  // The maintainer shape: a checkout AND an install, with the registry naming a
+  // third, stale entry. Pre-fix the row compared against the registry's 0.70.0
+  // and named it "the running plugin root"; the only root that answers "what is
+  // Claude Code executing" is the one a hook measured.
+  const checkout = seedCheckout(box, '0.85.0');
+  const running = seedRunnableRoot(box, '0.85.0');
+  fs.appendFileSync(path.join(running, 'hooks/pre-bash-safety-check.sh'), '\n# drifted\n');
+  const registered = seedRunnableRoot(box, '0.70.0');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: {
+        'claudemd@claudemd': [{ scope: 'user', installPath: registered, version: '0.70.0' }],
+      },
+    })
+  );
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: running, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'abc123' })
+  );
+
+  const r = runDoctorFrom(box, checkout);
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, drift.detail);
+  assert.ok(drift.detail.includes(running), `must name the root that fired hooks: ${drift.detail}`);
+  assert.ok(
+    !drift.detail.includes(registered),
+    `must not name the registry entry as running: ${drift.detail}`
+  );
+  // The basis is stamped, so a reader can tell a measurement from an inference.
+  assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z/);
+});
+
+test('with no hook record at all, hook-drift reads exactly as it did before', async () => {
+  // The fallback is the whole safety property: a machine where hooks never fired
+  // — fresh install, SessionStart switched off, record hand-deleted — must get
+  // the 0.84.x line, resolved from installed_plugins.json.
+  const checkout = seedCheckout(box, '0.85.0');
+  const registered = seedRunnableRoot(box, '0.85.0');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: {
+        'claudemd@claudemd': [{ scope: 'user', installPath: registered, version: '0.85.0' }],
+      },
+    })
+  );
+  const record = path.join(box.stateDir, 'hook-root.json');
+  fs.writeFileSync(record, JSON.stringify({ root: checkout, ts: '2026-09-11T00:00:00Z' }));
+  fs.rmSync(record);
+
+  const r = runDoctorFrom(box, checkout);
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, drift.detail);
+  assert.equal(drift.detail, 'installed hooks match source (via installed-plugins)');
 });
 
 // ── v0.84.0 pre-ship review, M2 ──
