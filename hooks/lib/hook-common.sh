@@ -402,16 +402,6 @@ hook_install_sentinel_write() {
     || true
 }
 
-# hook_spawn_install PLUGIN_ROOT LOG_FILE HEADER [FROM_VER] [TO_VER]
-# Shared background install.js runner — single source for the session-start
-# bootstrap and the version-sync piggy-back (2026-07-15 seam audit: the two
-# hand-copied spawn blocks had already drifted once). Detached, 10s ceiling,
-# stdout+stderr appended to LOG_FILE. Success clears the bootstrap-failed
-# sentinel; failure (non-zero exit or timeout) rewrites it so the NEXT
-# SessionStart can banner the otherwise-silent background failure.
-# Caller must have sourced platform.sh (platform_timeout) — both callers do;
-# if it is missing the run fails and the sentinel records that, which is the
-# desired visible-failure behavior, not a silent skip.
 # Records the root Claude Code actually loaded this plugin from.
 #
 # This is the one bit no other mechanism carries. CC expands ${CLAUDE_PLUGIN_ROOT}
@@ -427,10 +417,14 @@ hook_install_sentinel_write() {
 hook_record_plugin_root() {
   local root="${1:-}" sid="${2:-}"
   [[ -n "$root" && -d "$root" ]] || return 0
-  # printf-built JSON cannot carry these, and a path holding one is rare enough
-  # that recording nothing — degrading to the cache resolution — beats emitting
-  # a file the reader throws away anyway.
+  # printf-built JSON cannot carry these. A raw newline is the same class of
+  # problem as the quote/backslash below: none of them corrupt anything
+  # downstream (the reader JSON.parse()s this file and falls back to the cache
+  # resolution on any parse failure) — the guard exists so a root this rare
+  # doesn't leave a broken file sitting on disk. Recording nothing degrades to
+  # that same cache resolution, so skipping is strictly no worse.
   case "$root" in *'"'* | *'\'*) return 0 ;; esac
+  [[ "$root" == *$'\n'* ]] && return 0
 
   local state_dir="$HOME/.claude/.claudemd-state"
   mkdir -p "$state_dir" 2>/dev/null || return 0
@@ -452,6 +446,16 @@ hook_record_plugin_root() {
   return 0
 }
 
+# hook_spawn_install PLUGIN_ROOT LOG_FILE HEADER [FROM_VER] [TO_VER]
+# Shared background install.js runner — single source for the session-start
+# bootstrap and the version-sync piggy-back (2026-07-15 seam audit: the two
+# hand-copied spawn blocks had already drifted once). Detached, 10s ceiling,
+# stdout+stderr appended to LOG_FILE. Success clears the bootstrap-failed
+# sentinel; failure (non-zero exit or timeout) rewrites it so the NEXT
+# SessionStart can banner the otherwise-silent background failure.
+# Caller must have sourced platform.sh (platform_timeout) — both callers do;
+# if it is missing the run fails and the sentinel records that, which is the
+# desired visible-failure behavior, not a silent skip.
 hook_spawn_install() {
   local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
   (

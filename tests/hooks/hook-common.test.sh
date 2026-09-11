@@ -165,6 +165,14 @@ HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/quo\"te" "si
 assert_contains "hook_record_plugin_root: a quote-carrying root leaves the prior record intact" \
   '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
 
+# Same failure class, different metacharacter: a raw newline in the root also
+# records nothing and leaves the prior record intact.
+NEWLINE_ROOT="$HOOKROOT_SANDBOX/new"$'\n'"line"
+mkdir -p "$NEWLINE_ROOT" 2>/dev/null
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$NEWLINE_ROOT" "sid-3"
+assert_contains "hook_record_plugin_root: a newline-carrying root leaves the prior record intact" \
+  '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+
 rm -rf "${HOOKROOT_SANDBOX:?}"
 FAIL=$((FAIL + CLAUDEMD_ASSERT_FAIL))
 
