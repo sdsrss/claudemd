@@ -114,15 +114,25 @@ merely an existing path — `compareHooks` tests for `hooks/` on its first argum
 only, so a plain file at the recorded path reads as every script missing and, now
 that the row counts, exits 3.
 
-`hook-drift` then becomes:
+`hook-drift` then becomes a chain, listed rev 5 in the order `doctor.js` evaluates
+it rather than the order it was written in:
 
-- `PLUGIN_ROOT === RUNNING.root` → `skipped (self-compare)`. Covers callers 2 and 3.
-- rev 4: both roots inside the plugin cache and different →
-  `skipped (cache-version-transition)`. The record is global and last-writer-wins,
-  so an upgrade with an older session still open puts the old cache dir in it;
-  that is a pending-restart state, which `plugin-root:stale-registration` owns.
-- otherwise → compare and **count**. This is caller 1, the row's actual subject.
-  A checkout is outside the cache, so the skip above does not reach it.
+1. `staleRegistration` (`doctor.js:501-508`) → `skipped (stale-registration)`.
+   Pre-existing; both roots in the cache and `runningVer < registeredVer`.
+2. rev 4: both roots inside the plugin cache and different →
+   `skipped (cache-version-transition)`. The record is global and last-writer-wins,
+   so an upgrade with an older session still open puts the old cache dir in it;
+   that is a pending-restart state, which `plugin-root:stale-registration` owns.
+3. no `RUNNING.root` at all → `skipped (no-active-plugin-root)`.
+4. otherwise `compareHooks(PLUGIN_ROOT, RUNNING.root)`, whose own gates run
+   `market-root-missing` → `self-compare` (`install-drift.js:43-45`) →
+   `no-hooks-in-source` → the byte compare. `self-compare` is what covers callers
+   2 and 3, and it sits HERE — inside `compareHooks`, after the two skips above —
+   not at the head of the chain.
+
+The row is red, and therefore **counts**, only when step 4 reaches the byte
+compare and the hooks differ. This is caller 1, the row's actual subject; a
+checkout is outside the cache, so step 2 does not reach it.
 
 ## Success criteria
 
@@ -164,12 +174,20 @@ that the row counts, exits 3.
   still compares — including the ordinary maintainer pair of one cache install
   and one checkout. Measured by the re-review: doctor run from a 0.86.0 cache
   install with the record naming a checkout another session wrote gives exit 3,
-  `hook-drift` the only counted red, detail naming the checkout. What it cannot
-  reach is a machine whose roots are all cache paths, which is every
-  install-only user. `sid` in the row is the whole mitigation. That is why `sid`
-  is now in `basis` rather
-  than promised by this file: `doctor.js` built the string from `ts` alone
-  through Tasks 1-5.
+  `hook-drift` the only counted red, detail naming the checkout. Comparing is
+  not yet counting: the hooks must also differ, so a checkout matching the root
+  it is compared against is green.
+  **Rev 5, from the pre-tag review**: an earlier draft of this bullet said the
+  residual cannot reach an install-only machine, on the ground that every root
+  such a machine has is a cache path. That is false — `activePluginRoot()`'s
+  third step (`scripts/lib/paths.js:392-393`) returns the marketplace clone,
+  which is not in the cache — and the review built a counted exit 3 out of it
+  with no checkout on the machine at all. It needed a cache directory whose name
+  is not a semver, which this plugin's releases do not produce, so the claim
+  this file now makes is the weaker one it can support: no shape reachable by an
+  ordinary install has been found. `sid` in the row is the mitigation for the
+  rest. That is why `sid` is now in `basis` rather than promised by this file:
+  `doctor.js` built the string from `ts` alone through Tasks 1-5.
 - ~~Should `hook-drift` counted-ness be gated behind an env kill switch
   (`DISABLE_HOOK_DRIFT_EXIT`)? §EXT §2-EXT wants an opt-out path for a
   user-visible default change; a marketplace pin may be enough, since the flip
@@ -197,6 +215,12 @@ that the row counts, exits 3.
 - rev 3 (2026-09-11): status → implemented on the Task 5 commit. The
   kill-switch open question is resolved in place (no switch) rather than deleted,
   and the `docs/ROLLBACK.md` correction is recorded beside it.
+- rev 5 (2026-09-11): pre-tag review. Prose only, no code change. The rev-4
+  by-construction claim about install-only machines is deleted rather than
+  narrowed — it was wrong about `activePluginRoot()`'s third step — and replaced
+  with "no shape reachable by an ordinary install has been found". Design's
+  `hook-drift` list now names the skip chain in evaluation order, with
+  `self-compare` where it actually sits: inside `compareHooks`, i.e. last.
 - rev 4 (2026-09-11): final whole-branch review fixes. The concurrency open
   question is narrowed in place to the case that is actually left, because the
   case that reached an ordinary install is now guarded in `doctor.js`; `sid`
