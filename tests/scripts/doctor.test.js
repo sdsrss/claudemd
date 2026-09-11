@@ -1602,9 +1602,10 @@ test('an in-place plugin is compared against the root that actually fired hooks'
 });
 
 // ── Task 3, plan hook-root-ground-truth ──
-// A source checkout copied into the sandbox, so a test can launch doctor from a
-// root that is NOT in the plugin cache — the maintainer half of the two callers
-// the row serves.
+// A runnable tree copied into the sandbox OUTSIDE the plugin cache, so a test
+// can launch doctor from one: the maintainer's checkout, or the `--plugin-dir`
+// tree of a user who never installed from a marketplace at all. Both are the
+// half of this row that `activePluginRoot()` structurally cannot resolve.
 function seedCheckout(box, version) {
   const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const root = path.join(box.home, 'src/claudemd');
@@ -1647,6 +1648,37 @@ test('hook-drift names the root that fired hooks, not the one the registry lists
   );
   // The basis is stamped, so a reader can tell a measurement from an inference.
   assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z/);
+});
+
+test('a --plugin-dir tree with nothing registered compares against itself', async () => {
+  // Round-1 FIX 1. `runningPluginRoot()` returns a hook-fired record WITHOUT
+  // consulting `activePluginRoot()`, so "RUNNING.root set while ACTIVE.root is
+  // null" is a reachable state, not an impossible one: a `--plugin-dir` user
+  // with hooks firing and no marketplace install anywhere. The guard used to ask
+  // about ACTIVE.root and short-circuit, so the root we had just measured never
+  // reached compareHooks at all.
+  const inPlace = seedCheckout(box, '0.85.0');
+  // Nothing registered: no installed_plugins.json, no versioned cache dir, no
+  // marketplace clone — so activePluginRoot() resolves to {root: null}.
+  assert.equal(
+    fs.existsSync(box.claude('plugins/installed_plugins.json')),
+    false,
+    'the fixture is only meaningful while nothing is registered'
+  );
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: inPlace, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'pd1' })
+  );
+
+  const r = runDoctorFrom(box, inPlace);
+  const drift = r.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, drift.detail);
+  assert.match(drift.detail, /self-compare/);
+  assert.doesNotMatch(
+    drift.detail,
+    /no-active-plugin-root/,
+    'the guard must ask about the variable the comparison actually uses'
+  );
 });
 
 test('with no hook record at all, hook-drift reads exactly as it did before', async () => {

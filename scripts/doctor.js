@@ -521,26 +521,34 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // symlinks wrong, where install-drift.js:43 realpaths both sides. With no
   // record — hooks never fired, SessionStart off — RUNNING *is* ACTIVE and every
   // line below reads exactly as it did before.
+  //
+  // The guard is RUNNING.root, not ACTIVE.root, because those two are not the
+  // same question: `runningPluginRoot()` returns a hook-fired record without ever
+  // consulting `activePluginRoot()`, so a `--plugin-dir` user with hooks firing
+  // and nothing installed from a marketplace has RUNNING.root set while
+  // ACTIVE.root is null. Guarding on ACTIVE there short-circuited past the very
+  // root we had just measured.
   const drift2 = staleRegistration
     ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
-    : ACTIVE.root
+    : RUNNING.root
       ? compareHooks(PLUGIN_ROOT, RUNNING.root)
       : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
+  // Hoisted above the branch so both outcomes describe the basis the same way. A
+  // hook-fired basis carries WHEN it was recorded: this row names a root as
+  // "running", and a reader who has restarted Claude Code since needs to see that
+  // the claim is stamped rather than inferred.
+  const basis =
+    RUNNING.source === 'hook-fired' && RUNNING.ts ? `hook-fired at ${RUNNING.ts}` : RUNNING.source;
   if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {
-    push('hook-drift', true, `installed hooks match source (via ${RUNNING.source})`);
+    push('hook-drift', true, `installed hooks match source (via ${basis})`);
   } else {
     const sample = drift2.diffs
       .slice(0, 3)
       .map(d => `${d.path} (${d.reason})`)
       .join(', ');
     const more = drift2.diffs.length > 3 ? ` +${drift2.diffs.length - 3} more` : '';
-    // A hook-fired basis carries WHEN it was recorded: this row names a root as
-    // "running", and a reader who has restarted Claude Code since needs to see
-    // that the claim is stamped rather than inferred.
-    const basis =
-      RUNNING.source === 'hook-fired' && RUNNING.ts ? `hook-fired at ${RUNNING.ts}` : RUNNING.source;
     push(
       'hook-drift',
       false,
