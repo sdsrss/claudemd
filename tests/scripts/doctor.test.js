@@ -1769,18 +1769,29 @@ test('hook-drift moves the exit code again, and a matching tree leaves it at 0',
   });
   assert.equal(installed.status, 0, `the fixture needs a healthy install: ${installed.stderr}`);
 
+  // COUNTED rows only, on both arms. Two reasons, and the second is the one that
+  // would have bitten someone else: only a counted row can move an exit code, so
+  // an advisory red in either list is noise against the subject of this case —
+  // and `gh` is advisory and resolved from the host `PATH`, which `box.env()`
+  // inherits, so a machine without `gh` installed would have failed both
+  // `deepEqual`s with a message pointing at the wrong row.
+  const countedRed = r => r.checks.filter(c => c.ok === false && !isAdvisoryCheck(c.name)).map(c => c.name);
+
   const clean = spawnDoctorFrom(box, checkout);
   assert.deepEqual(
-    clean.report.checks.filter(c => c.ok === false).map(c => c.name),
+    countedRed(clean.report),
     [],
-    'the control is only a control while nothing else in the sandbox is red'
+    'the control is only a control while nothing else in the sandbox is counted red'
   );
   assert.equal(clean.status, 0, 'a tree matching the running plugin must not fail the exit code');
 
   fs.appendFileSync(path.join(running, 'hooks/pre-bash-safety-check.sh'), '\n# drifted\n');
   const drifted = spawnDoctorFrom(box, checkout);
-  const red = drifted.report.checks.filter(c => c.ok === false).map(c => c.name);
-  assert.deepEqual(red, ['hook-drift'], 'the exit code below must have exactly one cause');
+  assert.deepEqual(
+    countedRed(drifted.report),
+    ['hook-drift'],
+    'the exit code below must have exactly one cause'
+  );
   assert.equal(drifted.status, 3, 'a counted row exits 3 — this was 0 for the whole of 0.84.x');
 });
 

@@ -5,11 +5,13 @@ revision: 3
 
 # Hook-fired plugin root as ground truth
 
-**Implemented and shipped as v0.85.0 (2026-09-11).** Tasks 1-4 landed the basis in
-`3715e73`, `b856276`, `f1d3cab`, `ccc72f1`, `85eaeec`, `10a1dd9`, `083577d` and
-`f3354cb`; Task 5 — the `ADVISORY` flip, the six-site version cascade, the
-CHANGELOG entry and the tracking of this file — is the release commit at the head
-of `worktree-hook-root-ground-truth`. All seven success criteria were met;
+**Implemented, pending release.** The work is complete and committed on
+`worktree-hook-root-ground-truth`; nothing is pushed, tagged or released, and the
+version sites carry 0.85.0 as a release candidate rather than a shipped artifact.
+Tasks 1-4 landed the basis in `3715e73`, `b856276`, `f1d3cab`, `ccc72f1`,
+`85eaeec`, `10a1dd9`, `083577d` and `f3354cb`; Task 5 — the `ADVISORY` flip, the
+six-site version cascade, the CHANGELOG entry and the tracking of this file — is
+the commit at the head of that branch. All seven success criteria were met;
 criterion 7's `npm run check` re-run on the committed tree is what caught this
 header's absence, because the gate below reads TRACKED specs and this file was
 untracked until that commit.
@@ -164,6 +166,6 @@ fall through to `activePluginRoot()` unchanged.
   `activePluginRoot()`. `hook-drift:upstream` moves from the "prove unchanged"
   list to "deliberately repointed", which is a plan-level move, not a criterion
   change: the criterion only ever claimed the no-record case.
-- rev 3 (2026-09-11): status → implemented on the v0.85.0 release commit. The
+- rev 3 (2026-09-11): status → implemented on the Task 5 commit. The
   kill-switch open question is resolved in place (no switch) rather than deleted,
   and the `docs/ROLLBACK.md` correction is recorded beside it.

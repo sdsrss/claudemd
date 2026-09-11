@@ -175,9 +175,12 @@ const RULE_USAGE_MIN_TOTAL = 3;
 //
 // No kill switch ships with the flip. After the skip above there is no ordinary
 // install left for it to reach, and a switch nobody can need is a switch that
-// rots; the revert path is the marketplace pin in `docs/ROLLBACK.md`. Dropping
-// the row outright was considered once more and rejected again, on the 0.84.0
-// grounds: it spends the maintainer's signal to save them one line.
+// rots; the revert path is the one `docs/ROLLBACK.md:59-61` documents,
+// `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old
+// tag. Not a marketplace pin: earlier CHANGELOG entries name one, and no such
+// procedure exists in this repo. Dropping the row outright was considered once
+// more and rejected again, on the 0.84.0 grounds: it spends the maintainer's
+// signal to save them one line.
 //
 // The two row names below share a token, so read the next line as one thing:
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
