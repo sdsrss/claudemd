@@ -1555,15 +1555,21 @@ function seedRunnableRoot(box, version, { withScripts = false } = {}) {
 // token into the command string and exports nothing, so production never has it
 // set, and a suite that inherited an ambient value would be testing a state no
 // user is in.
-const runDoctorFrom = (box, root) => {
+//
+// Two shapes over one spawn. Most cases below read a row, so `runDoctorFrom`
+// hands back the report alone; the exit-code case needs `status`, which the row
+// cannot tell it — whether a red row COUNTS is decided by the CLI branch, not by
+// the row's own `ok`.
+const spawnDoctorFrom = (box, root) => {
   const env = box.env();
   delete env.CLAUDE_PLUGIN_ROOT;
   const r = spawnSync(process.execPath, [path.join(root, 'scripts/doctor.js')], {
     env,
     encoding: 'utf8',
   });
-  return JSON.parse(r.stdout);
+  return { status: r.status, report: JSON.parse(r.stdout) };
 };
+const runDoctorFrom = (box, root) => spawnDoctorFrom(box, root).report;
 
 test('stale registration is reported as itself, not as hook drift', async () => {
   const older = seedRunnableRoot(box, '0.81.0', { withScripts: true });
@@ -1668,9 +1674,12 @@ test('an in-place plugin is compared against the root that actually fired hooks'
   // row has no source-vs-running gap left to report.
   assert.equal(drift.ok, true, 'the in-place root is what fired hooks — nothing to compare');
   assert.match(drift.detail, /self-compare/);
-  // The 0.84.0 disposition still stands on its own terms: the row is advisory,
-  // so it must not move the exit code.
-  assert.equal(isAdvisoryCheck('hook-drift'), true, 'an undecidable row must not be counted');
+  // What spares this caller as of 0.85.0 is the green line above, not a place in
+  // the advisory set: the row counts now, and a self-compare cannot move an exit
+  // code it never turns red. Asserted here because the two protections are
+  // confusable from the outside — both leave `/claudemd-doctor` at exit 0 — and
+  // only one of them survives someone editing the ADVISORY regex.
+  assert.equal(isAdvisoryCheck('hook-drift'), false, 'the row is counted; the skip is the guard');
 });
 
 // ── Task 3, plan hook-root-ground-truth ──
@@ -1720,6 +1729,59 @@ test('hook-drift names the root that fired hooks, not the one the registry lists
   );
   // The basis is stamped, so a reader can tell a measurement from an inference.
   assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z/);
+});
+
+test('hook-drift moves the exit code again, and a matching tree leaves it at 0', async () => {
+  // The user-visible half of 0.85.0, asserted through the CLI branch rather than
+  // through the row: `isAdvisoryCheck` above pins the predicate, this pins what a
+  // maintainer running `/claudemd-doctor` actually gets back from the shell.
+  //
+  // The sandbox is INSTALLED first, and that is what makes the assertion mean
+  // anything. On a bare HOME this fixture fails nine other non-advisory rows
+  // (`settings.json`, four `spec:*`, four `spec-hash:*`), and against those the
+  // process exits 3 whether or not `hook-drift` counts — a green assertion that
+  // would have stayed green on 0.84.1. Measured after `install.js`: the drifted
+  // arm's ONLY red row is `hook-drift`, so the 3 below can come from nowhere
+  // else. The clean arm is the control for the same reason: same fixture, hooks
+  // matching, exit 0 — without it, a predicate that counted everything would
+  // satisfy the drifted arm on its own.
+  const checkout = seedCheckout(box, '0.85.0');
+  const running = seedRunnableRoot(box, '0.85.0');
+  const registered = seedRunnableRoot(box, '0.70.0');
+  fs.writeFileSync(
+    box.claude('plugins/installed_plugins.json'),
+    JSON.stringify({
+      version: 2,
+      plugins: {
+        'claudemd@claudemd': [{ scope: 'user', installPath: registered, version: '0.70.0' }],
+      },
+    })
+  );
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: running, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'exit3' })
+  );
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const installed = spawnSync(process.execPath, [path.join(checkout, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, `the fixture needs a healthy install: ${installed.stderr}`);
+
+  const clean = spawnDoctorFrom(box, checkout);
+  assert.deepEqual(
+    clean.report.checks.filter(c => c.ok === false).map(c => c.name),
+    [],
+    'the control is only a control while nothing else in the sandbox is red'
+  );
+  assert.equal(clean.status, 0, 'a tree matching the running plugin must not fail the exit code');
+
+  fs.appendFileSync(path.join(running, 'hooks/pre-bash-safety-check.sh'), '\n# drifted\n');
+  const drifted = spawnDoctorFrom(box, checkout);
+  const red = drifted.report.checks.filter(c => c.ok === false).map(c => c.name);
+  assert.deepEqual(red, ['hook-drift'], 'the exit code below must have exactly one cause');
+  assert.equal(drifted.status, 3, 'a counted row exits 3 — this was 0 for the whole of 0.84.x');
 });
 
 test('a --plugin-dir tree with nothing registered compares against itself', async () => {
@@ -1778,17 +1840,21 @@ test('with no hook record at all, hook-drift reads exactly as it did before', as
   assert.equal(drift.detail, 'installed hooks match source (via installed-plugins)');
 });
 
-// ── v0.84.0 pre-ship review, M2 ──
+// ── v0.84.0 pre-ship review, M2 · reopened by plan hook-root-ground-truth ──
 test('hook-drift:upstream is advisory; hook-drift and statusline are not', () => {
   // The clone tracks `main`, not the released tag, and of the last 60 commits 19
   // touch hooks/*.sh with 18 carrying no version bump — so for a user who has
   // run `/plugin marketplace update` on its own, the row is red on a healthy,
   // current install. It stays printed; it must not move the exit code.
   assert.equal(isAdvisoryCheck('hook-drift:upstream'), true);
-  // Both drift rows are advisory as of 0.84.0: upstream because its steady
-  // state is legitimately non-zero between releases, and hook-drift because it
-  // cannot tell which caller is asking (CLAUDE_PLUGIN_ROOT is never exported).
-  assert.equal(isAdvisoryCheck('hook-drift'), true);
+  // And this is the assertion the pair exists for. The two row names share a
+  // token in the ADVISORY regex, so the edit that demotes one is a single `|`
+  // away from demoting both — the line above and the line below can only be
+  // read together. 0.85.0 makes `hook-drift` count again: the caller it could
+  // not decide in 0.84.0 now gets a self-compare skip from a root a hook
+  // measured, so a red row here means doctor's tree really does differ from the
+  // plugin Claude Code is running.
+  assert.equal(isAdvisoryCheck('hook-drift'), false);
   assert.equal(isAdvisoryCheck('statusline'), false);
   assert.equal(isAdvisoryCheck('plugin-root:stale-registration'), false);
 });

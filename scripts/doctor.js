@@ -150,19 +150,40 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // self-tests, and once these rows are advisory they no longer move the exit code.
 // That is the trade, and it is deliberate.
 //
-// `hook-drift` itself joined them, by the maintainer's decision, for a different
-// and blunter reason: the row asks whether this checkout differs from the
-// installed plugin, and it CANNOT TELL WHICH CALLER IS ASKING. For a maintainer
-// with a checkout and an install that is signal; for an in-place install
-// (`--plugin-dir`, skills-directory, synced) the checkout IS the running plugin
-// and the row compares it against an unrelated leftover cache dir. The comment
-// at the row itself records why no discriminator exists. Before this release the
-// row skipped for those users; making it counted would have handed them a
-// permanent exit 3 with wrong advice, so it prints and does not count. One
-// alternative was considered and rejected by the same decision: dropping the row
-// outright, which loses the maintainer's signal to spare them one line.
+//
+// `hook-drift` itself joined them in 0.84.0 and LEFT AGAIN in 0.85.0, and the
+// round trip is worth keeping because the reason for the demotion was a claim
+// about what is knowable, not a claim about the row. It read: the row asks
+// whether this checkout differs from the installed plugin, and it CANNOT TELL
+// WHICH CALLER IS ASKING. For a maintainer with a checkout and an install that
+// is signal; for an in-place install (`--plugin-dir`, skills-directory, synced)
+// the checkout IS the running plugin, and `activePluginRoot()` — which only ever
+// resolves cache paths — handed the row an unrelated leftover cache dir to
+// compare against. Counting that would have been a permanent exit 3 with wrong
+// advice, so the row printed and did not count.
+//
+// What changed is that the bit became measurable. Claude Code fires hooks from
+// the root it actually loaded, and a hook records that root into
+// `~/.claude/.claudemd-state/hook-root.json`; `runningPluginRoot()` reads it
+// back, and the row at `drift2` compares against it. So the in-place caller now
+// compares a directory against itself and `compareHooks` returns its own
+// `self-compare` skip — the row is green for them by measurement rather than
+// silent by policy — while the maintainer's checkout-vs-running comparison is
+// exactly the question this axis was written to answer. A red row here means
+// doctor's tree differs from the plugin Claude Code is running, which is a
+// condition with a repair, not a caller it cannot identify.
+//
+// No kill switch ships with the flip. After the skip above there is no ordinary
+// install left for it to reach, and a switch nobody can need is a switch that
+// rots; the revert path is the marketplace pin in `docs/ROLLBACK.md`. Dropping
+// the row outright was considered once more and rejected again, on the 0.84.0
+// grounds: it spends the maintainer's signal to save them one line.
+//
+// The two row names below share a token, so read the next line as one thing:
+// `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
+// moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
