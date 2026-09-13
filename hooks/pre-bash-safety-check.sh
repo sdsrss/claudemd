@@ -980,6 +980,126 @@ if (( bypass_rm == 0 )); then
     # The whitelist only certifies the var is shell-typed, not that the
     # target is bounded. Require ≥1 non-`/` character in the residue.
     residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g; s/[(){}]//g')
+    # A `..` COMPONENT in that residue walks out of whatever the var names, so
+    # nothing the arms below certify can bound the target: the whitelist says
+    # $HOME is shell-typed, `${VAR:?}` says VAR is set and non-empty, and
+    # neither says where a `..` walk from it lands. `rm -rf "$HOME/../victim"`
+    # resolves to /home/victim and ALLOWED on every arm before 2026-09-13.
+    #
+    # The provenance arm has carried exactly this guard since 2026-07-25 with
+    # the same reasoning written next to it ("Provenance certifies where the
+    # var POINTS, not where a `..` walk from it lands") — it was never put on
+    # the two arms above it or on the find verb, all of which reach this same
+    # loop. That is what audit round 16 found, and why the check sits HERE,
+    # above the `case`, rather than being copied into each arm.
+    #
+    # It is NOT a complete guard, and the pre-ship review said so before this
+    # shipped. Three limits, all recorded rather than papered over:
+    #
+    #   1. A target containing WHITESPACE never reaches here intact. The token
+    #      loop above splits on `$IFS`, so `"$HOME/My Drive/../victim"` becomes
+    #      two tokens: the one holding the var has no `..`, the one holding the
+    #      `..` has no var, and neither trips anything. That predates this
+    #      change and is a property of the whole gate, not of this check —
+    #      fixing it means teaching the token loop about quoting, which is its
+    #      own change. Pinned as residual rows so a future reader finds the
+    #      hole documented instead of assuming this guard covers it.
+    #   2. The provenance copy below is NOT redundant: it matches `*'..'*`,
+    #      dots ANYWHERE, so it denies `"$S/my..dir"` where this one allows
+    #      `"$HOME/my..dir"`. The two have different breadth on purpose — this
+    #      one matches the path component, that one the characters. Leave it.
+    #   3. Escapes in this same class that are still OPEN, all pre-existing and
+    #      all pinned as residual rows so nobody reads the guard as covering
+    #      them. `~` is the one that matters: `rm -rf ~/../victim` is the same
+    #      command as `rm -rf "$HOME/../victim"` in a spelling people use more
+    #      often, and it carries no `$`, so `:971` skips the target before any
+    #      of this runs. Also open: the `..` supplied by another variable
+    #      (`U=..; rm -rf "$HOME/$U/victim"`), by a default (`${U:-..}`), and
+    #      by a substitution that walks up without the characters at all
+    #      (`rm -rf "$(dirname "$HOME")/victim"`).
+    #
+    # What this guard does cover: a `..` component written literally in the
+    # target, on the whitelist arm, the `${VAR:?}` arm and the unbounded find
+    # verb. That is the whole of it. It is a narrowing of the hole, not a lid.
+    #
+    # Match the path COMPONENT, not the characters. `..` is legal inside a
+    # name: `my..dir`, `..foo` and `cache..` are ordinary filenames and are
+    # pinned as `pass` in the corpus. Wrapping in slashes makes a leading or
+    # trailing component match without a second pattern.
+    #
+    # REJECTED NARROWING, do not re-attempt without new evidence: counting
+    # depth over the residue's components and denying only when it goes
+    # negative. It is tempting — replaying 12337 real commands, the only
+    # allow->deny flip this guard causes is one whose walk is net-INSIDE the
+    # var (`$HOME/dev/proj/../../tmp/x`), which depth counting would let
+    # through. It is unsound anyway: depth arithmetic is LEXICAL and `rm` is
+    # not. With `$HOME/link` a symlink to /etc, `$HOME/link/../x` counts
+    # +1 -1 +1 = still inside, while the kernel resolves it to /x. §3 takes
+    # the stricter reading on a §8 gate, and the flipped command meant
+    # `$HOME/tmp/x` — it can say so. Pinned as a deny row in the corpus.
+    # `residue` DELETES the expansions, which is the EMPTY-expansion runtime:
+    # `"$HOME/..${X}/y"` with X unset IS `$HOME/../y`, and `"$HOME/.${V}./x"`
+    # with V unset IS `$HOME/../x`. Deletion is what models that, and the
+    # Steam-disaster rationale a few lines above exists because empty
+    # expansions are the case that hurts. One derivation, deliberately.
+    #
+    # A placeholder-substituting second derivation was tried, to model the
+    # NON-empty runtime, and combining the two was tried as a union. Both are
+    # gone, and the reason is worth keeping so nobody rebuilds them:
+    #
+    #   Deleting the `V`s from a placeholder residue can only bring characters
+    #   together, and `/../` contains no `V`, so any `/../` in the placeholder
+    #   version survives into the deletion version. `match(placeholder)` is a
+    #   SUBSET of `match(delete)`. A union is therefore the deletion version
+    #   alone — 25 lines of comment once claimed otherwise — and the only
+    #   non-trivial combination left is intersection, which is the version
+    #   that allowed the empty-expansion class. Verified three ways at review:
+    #   structurally, by brute force over 402233 target strings with zero
+    #   counter-examples, and by deleting the placeholder branch and seeing
+    #   0 of 809 corpus rows and 0 of 233 adversarial probes move.
+    #
+    # KNOWN OVER-DENY, accepted: an expansion that provably cannot be empty
+    # still gets the empty-runtime reading. `${VAR:?}` aborts on empty and
+    # `${VAR:-nonempty}` substitutes a literal, so `rm -rf "${D:?}../backup"`
+    # and `rm -rf "$HOME/${PROJ:-proj}../backup"` are safe under every value
+    # and are denied anyway. Pinned as deny rows. Narrowing this means parsing
+    # the expansion operator to decide whether empty is reachable, which is a
+    # separate change with its own evidence — §3 takes the stricter reading on
+    # a §8 gate until then, and the escape hatch is a literal path.
+    s8_dotdot=0
+    case "/$residue/" in */../*) s8_dotdot=1 ;; esac
+    # `S8_FIND_BOUNDED` is deliberately NOT consulted. A tempting version of
+    # this guard skipped bounded finds, on the reasoning that a selection
+    # primary bounds the find the way it bounds `find "$HOME" -name '*.log'
+    # -delete`. That reasoning is wrong twice. `-name '*'` sets the flag and
+    # bounds nothing, so the exemption is one flag wide: `find "$HOME/../victim"
+    # -delete` would deny and `find "$HOME/../victim" -name '*' -delete` allow.
+    # And the two flags answer orthogonal questions — the primary answers HOW
+    # MUCH of a known root, while a `..` voids the certification of WHICH root,
+    # which is this guard's whole thesis. A primary cannot re-certify that.
+    if (( s8_dotdot == 1 )); then
+      # `varname` keeps whatever followed the name inside `${…}` — the
+      # extraction above strips `$ { } " '` but not an operator, so `${D:?}`
+      # arrives here as `D:?`. Every other message in this gate carries the
+      # same wart and nobody has hit it, because `${HOME:?}` is not something
+      # people write. This arm DOES get hit that way: `${VAR:?}` is the guard
+      # §8 tells users to add, so the guarded spelling is the common one here.
+      # Strip the operator for display only — `varname` itself is shared with
+      # the whitelist case, the provenance matcher and `guard_re` below.
+      varname_disp=${varname%%:*}
+      HITS+=("$S8_RM_VERB \$$varname_disp target walks out via a .. component")
+      HIT_SECTIONS+=('§8-rm-rf-var')
+      # Verb-specific advice, per the v0.81.0 review recorded below: telling a
+      # find user to keep the target inside the var is the same species of bad
+      # advice as telling them to add a subpath — a sibling-directory sweep
+      # cannot do either without becoming a different command.
+      if [[ "$S8_RM_VERB" == "rm -rf" ]]; then
+        REASONS+=$'\n  - '"$S8_RM_VERB"$' target leaves $'"$varname_disp"$' through a `..` component. Whatever bounds $'"$varname_disp"$' does not bound where the walk lands — write the destination literally, or keep the target inside $'"$varname_disp"$'.'
+      else
+        REASONS+=$'\n  - '"$S8_RM_VERB"$' target leaves $'"$varname_disp"$' through a `..` component, so it deletes under a root $'"$varname_disp"$' does not name. A selection primary bounds how much is deleted, not where — write the starting path literally.'
+      fi
+      continue
+    fi
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
         if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then

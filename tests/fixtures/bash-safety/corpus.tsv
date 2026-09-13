@@ -282,7 +282,7 @@ deny	F8-fp: echo mktemp is not real mktemp	T=$(echo mktemp); rm -rf "$T"
 deny	F8-fp: mktemphack is not mktemp	T=$(mktemphack); rm -rf "$T"
 deny	F8-fp: cross-call rm $T (no provenance visible)	rm -rf "$T"
 deny	F8-fp: transitive var $S/x unresolvable	R="$S/x"; rm -rf "$R"
-deny	F8-fp: dotdot escape under $HOME	R="$HOME/../../etc"; rm -rf "$R"
+deny	F8-fp: transitive var from a literal (name says dotdot; the dotdot is incidental — R16)	R="$HOME/../../etc"; rm -rf "$R"
 
 # === §8 FP closure F9 (2026-07-13 comprehensive audit, roadmap B-1) ===
 # F9: runner detection moved to COMMAND POSITION (segment split + wrapper strip,
@@ -1279,3 +1279,92 @@ pass	S8-GUARD4 inside a loop body	for f in a b; do D=/tmp/x/$f; rm -rf "${D:?}";
 pass	S8-GUARD5 behind &&	cd /repo && D=/tmp/x; rm -rf "${D:?}"
 pass	S8-GUARD6 a transitive assignment	EXP=/tmp/x; B="$EXP/node_modules/p"; rm -rf "${B:?}/build"
 deny	S8-GUARD-CTL the same command without the guard still denies	D=/tmp/x/scratchpad; rm -rf "$D"
+
+# === R16 dotdot escape (2026-09-13 audit round 16, Critical 6.0) ===
+# A `..` component in the literal residue walks OUT of whatever the var names.
+# The provenance arm has carried this guard since 2026-07-25; the whitelist and
+# ${VAR:?} arms did not, and the find verb flows through the same loop. All eight
+# deny rows below ALLOWED before this round. The three pass rows are the boundary:
+# `..` inside a NAME is legal, so the guard must match the path COMPONENT.
+deny	R16 dotdot: $HOME/../ escapes home	rm -rf "$HOME/../victim"
+deny	R16 dotdot: $TMPDIR/../ reaches home	rm -rf "$TMPDIR/../home/ai"
+deny	R16 dotdot: $PWD/../ escapes cwd	rm -rf "$PWD/../victim"
+deny	R16 dotdot: $OLDPWD/../ escapes	rm -rf "$OLDPWD/../victim"
+deny	R16 dotdot: multi-level ../../ walk	rm -rf "$HOME/sub/../../victim"
+deny	R16 dotdot: trailing .. is the parent	rm -rf "$HOME/.."
+deny	R16 dotdot: guarded var does not bound a .. walk	rm -rf "${D:?}/../victim"
+deny	R16 dotdot: find verb takes the same escape	find "$HOME/../victim" -delete
+pass	R16 dotdot boundary: dots inside a name are legal	rm -rf "$HOME/my..dir"
+pass	R16 dotdot boundary: leading dots in a name are legal	rm -rf "$HOME/..foo"
+pass	R16 dotdot boundary: trailing dots in a name are legal	rm -rf "$HOME/cache.."
+# The one allow->deny flip across 12337 replayed real commands (R16). The
+# walk is net-INSIDE $HOME (dev/proj/../../tmp == tmp), so a lexical depth
+# counter would allow it. That narrowing is REJECTED and this row is why:
+# depth arithmetic is lexical, `rm` is not. With $HOME/link -> /etc,
+# $HOME/link/../x counts +1-1+1 = inside, and the kernel resolves it to /x.
+# Deny any `..` component; the author here meant $HOME/tmp/x and can write it.
+deny	R16 dotdot: net-inside walk is still denied (symlink-unsound to allow)	rm -f "$HOME/dev/proj/../../tmp/nonexistent"
+
+# === R16 dotdot: pre-ship review follow-ups (2026-09-13) ===
+# (a) An expansion sitting between or beside dots is judged on the EMPTY
+# runtime. With the var non-empty these are ordinary names; with it unset or
+# empty they ARE `$HOME/../...`, the class §8 exists for. The gate cannot know
+# which, so it denies. Two attempts to also model the non-empty runtime were
+# made and both are gone: modelling it ALONE turned a deny into an allow on the
+# empty class, and combining the two is a no-op, because the placeholder
+# derivation's matches are a subset of the deletion derivation's. See the
+# hook's comment for the proof. The cost is the accepted over-deny block below.
+deny	R16 dotdot: empty expansion makes the dots adjacent ($V unset == $HOME/../cache)	rm -rf "$HOME/.${V}./cache"
+deny	R16 dotdot: empty expansion leaves ../ ($PROJ unset == $HOME/../backup)	rm -rf "$HOME/${PROJ}../backup"
+# (b) A selection primary does NOT re-certify which root. An exemption for
+# bounded finds was tried and reverted: `-name '*'` sets the bounded flag and
+# bounds nothing, so the exemption was one flag wide, and the primary answers
+# HOW MUCH of a known root while `..` voids WHICH root. The one-flag bypass is
+# pinned below as its own row.
+deny	R16 dotdot: a primary bounds how much, not which root	find "$PWD/../logs" -maxdepth 1 -name '*.gz' -delete
+# (c) RESIDUAL, NOT FIXED. The token loop splits on $IFS, so a target with
+# whitespace arrives as two tokens: one carries the var and no dotdot, the
+# other carries the dotdot and no var. Neither trips. Pinned as `pass` to
+# record the hole honestly — these are FALSE NEGATIVES, not desired allows.
+# Closing them means teaching the token loop about quoting (own change).
+# The control directly below is the same path with the space removed.
+pass	R16 residual FN: whitespace splits the target (space in dir name)	rm -rf "$HOME/My Drive/../victim"
+pass	R16 residual FN: whitespace splits the target (guard message)	rm -rf "${D:?must be set}/../victim"
+deny	R16 residual control: same path, no whitespace, denies	rm -rf "$HOME/MyDrive/../victim"
+
+# === R16 dotdot: STILL-OPEN escapes in the same class (residuals) ===
+# Recorded, not fixed. `~` carries no `$`, so the target is skipped before
+# the guard runs — and `rm -rf ~/../victim` IS `rm -rf "$HOME/../victim"`.
+# The others supply the `..` from somewhere the literal residue cannot see.
+# The two `pass` controls at the end show ordinary spellings of the same
+# shapes are allowed; they are contrast, not liveness proof.
+pass	R16 residual FN: tilde is $HOME without the dollar	rm -rf ~/../victim
+pass	R16 residual FN: tilde with subpath walk	rm -rf ~/sub/../../victim
+pass	R16 residual FN: tilde with username	rm -rf ~ai/../victim
+pass	R16 residual FN: dotdot supplied by another var	U=..; rm -rf "$HOME/$U/victim"
+pass	R16 residual FN: dotdot hidden in a default value	rm -rf "$HOME/${U:-..}/victim"
+pass	R16 residual FN: substitution walks up with no literal dots	rm -rf "$(dirname "$HOME")/victim"
+pass	R16 residual control: ordinary tilde subpath allows	rm -rf ~/cache
+pass	R16 residual control: var-supplied subpath allows	U=sub; rm -rf "$HOME/$U/victim"
+# (removed) a `${HOME:-/tmp}/../victim` control lived here for one round. It
+# denies with the `..` removed as well, via the unvalidated-var arm, so it
+# discriminated nothing. The defaulted spelling never reaches the whitelist
+# case, so no control of that shape can work; the discriminating pair for
+# this arm is the plain `$HOME/../victim` deny row above and the allow row
+# directly below, which is its literal dots-removed mutation.
+pass	R16 dotdot control: same path without the dotdot allows	rm -rf "$HOME/victim"
+# Round-2 additions: the empty-expansion shape stated directly, and the
+# one-flag bypass that killed the S8_FIND_BOUNDED exemption.
+deny	R16 dotdot: empty expansion between the dots	rm -rf "$HOME/..${X}/y"
+deny	R16 dotdot: -name * sets the bounded flag and bounds nothing	find "$HOME/../victim" -name '*' -delete
+
+# === R16 dotdot: ACCEPTED OVER-DENY (2026-09-13, review round 3) ===
+# `${VAR:?}` aborts on empty and `${VAR:-nonempty}` substitutes a literal, so
+# these cannot expand to empty and are safe under every value. The guard reads
+# the empty-expansion runtime anyway and denies. Narrowing it means parsing the
+# expansion operator to decide whether empty is reachable — a separate change.
+# The last row is the control: same shape, no dots, allows.
+deny	R16 over-deny: :? cannot be empty but still reads as ../	rm -rf "${D:?}../backup"
+deny	R16 over-deny: :-nonempty cannot be empty but still reads as ../	rm -rf "$HOME/${PROJ:-proj}../backup"
+deny	R16 over-deny: :-nonempty between dots	rm -rf "$HOME/.${V:-v1}./cache"
+pass	R16 over-deny control: same expansion, no dots, allows	rm -rf "$HOME/${PROJ:-proj}/backup"

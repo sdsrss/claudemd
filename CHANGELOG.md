@@ -8,6 +8,84 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.86.0] - 2026-09-13
+
+The §8 gate's whitelist arm accepted `..` as part of the literal subpath it
+requires, so a target could walk out of the root the whitelist exists to bound.
+`rm -rf "$HOME/../victim"` resolved to `/home/victim` and was allowed. Audit
+round 16 found it; it had been reachable for the life of the repository.
+
+**Why it survived the suite.** The corpus row named for this case tested
+something else. `F8-fp: dotdot escape under $HOME` was
+`R="$HOME/../../etc"; rm -rf "$R"`, which denies through the transitive-var arm
+and goes on denying with the `..` removed and with `$HOME` removed. It asserted
+that transitive vars stay strict — a true thing, and not the thing its name
+promised. A row that passes for the wrong reason is worse than no row, because
+the confidence it creates is what stops anyone looking. It is renamed to what it
+checks, and the case it claimed now has rows of its own.
+
+**What changes for you.** A `..` component in a destructive target is denied
+where the target's root comes from a variable. This covers three arms that all
+reach the same loop: the `HOME|PWD|OLDPWD|TMPDIR` whitelist, the `${VAR:?}`
+guarded form, and the `find … -delete` / `-exec rm` verb. Two of those three were
+found by enumerating the arms rather than by the audit, which reported one.
+
+The deny names the variable and says to write the destination literally. For a
+find it says a selection primary bounds how much is deleted, not where — the
+advice a find user can act on, per the v0.81.0 review that fixed the same species
+of unusable advice on the bare-variable row.
+
+**What it costs, measured.** Replaying every `Bash` tool call in this machine's
+transcripts — 12337 commands, unfiltered, against the parent commit and this one:
+12248 allow→allow, 88 deny→deny, **1 allow→deny**, **0 deny→allow**. The single
+flip is `rm -f $HOME/dev/<proj>/../../tmp/nonexistent`, a walk that is net-inside
+`$HOME`, and it is pinned as a deny row rather than exempted. A lexical depth
+counter would let it through and is rejected: depth arithmetic is lexical and
+`rm` is not, so with `$HOME/link` a symlink to /etc, `$HOME/link/../x` counts as
+inside and the kernel resolves it to `/x`. Verified in a sandbox, not argued.
+
+**What is still open, because a guard nobody has bounded is worse than one that
+has.** Written into the hook and pinned as residual rows: a target containing
+whitespace never reaches the check intact, because the token loop splits on
+`$IFS` — `rm -rf "$HOME/My Drive/../victim"` still allows. `~` carries no `$`
+and is skipped before the check runs, so `rm -rf ~/../victim` still allows, which
+is the same command in the spelling people type more often. A `..` supplied by
+another variable, by a default value, or by `$(dirname …)` is not visible to a
+check that reads the literal residue. This release narrows the hole; it does not
+close it.
+
+**One accepted over-deny.** `${VAR:?}` aborts on empty and `${VAR:-nonempty}`
+substitutes a literal, so neither can expand to empty — but the check reads the
+empty-expansion runtime for every expansion, and denies
+`rm -rf "${D:?}../backup"` anyway. Narrowing that means parsing the expansion
+operator to decide whether empty is reachable, which is its own change with its
+own evidence. Until then a literal path is the way past it.
+
+**Three review rounds, and every finding was in a repair rather than in the
+original change.** Round 1 found that a bounded-find exemption and a
+placeholder-residue repair had each introduced a defect; round 2 found that the
+exemption was one flag wide, since `-name '*'` sets the bounded flag and bounds
+nothing; round 3 found that the two-derivation union it had produced was a no-op,
+because the placeholder derivation's matches are a subset of the deletion
+derivation's, and that 25 lines of comment were arguing the dead half was
+load-bearing — which would have led the next person to delete the live half. The
+reviewer also caught a control it had itself prescribed one round earlier, on the
+same defect as the corpus row above: it had verified which arm the deny came
+from, not whether the row could discriminate. The §12 depth limit was reached and
+the maintainer spent the escalation deliberately.
+
+**Tests.** `pre-bash-safety.test.sh` **880 → 913**; corpus **780 → 813 rows**.
+Every new row was mutation-tested: remove the property the name claims, confirm
+the verdict moves. Three rows that a first pass recorded as false positives are
+`deny` rows now, because with the expansion empty they are real escapes.
+`npm run check` exit 0, read from `$?`.
+
+**Migration**: `/claudemd-refresh`, then restart Claude Code. No spec change. If
+a command of yours starts denying, it contains a `..` that leaves a variable —
+write the path literally. **Way back**: `DISABLE_PRE_BASH_SAFETY_HOOK=1` turns
+the gate off for the session, or pin the marketplace entry to `v0.85.0`;
+`docs/ROLLBACK.md` carries the procedure.
+
 ## [0.85.0] - 2026-09-11
 
 `doctor`'s `hook-drift` row counts again. 0.84.0 demoted it to advisory on a claim about what a doctor process can know; this release replaces that claim with a measurement and puts the row back on the exit code.
