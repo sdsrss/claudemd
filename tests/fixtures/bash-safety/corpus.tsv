@@ -19,8 +19,9 @@
 #            sits between the §8 analysis and `hook_deny` — the exact stretch the
 #            HOME-unset fail-open died in. Set a non-`t` id on any row whose
 #            point is that the record path survives. The default is kept for the
-#            other ~880 rows because rule_hits_append spawns jq and this is
-#            already the slowest suite (~65s Linux, 300s cap).
+#            rest because rule_hits_append spawns jq and this is already the
+#            slowest suite (~65s Linux, 300s cap). No row count here — see the
+#            counting note below, which exists because this line said ~880.
 # Lines beginning with `#` are skipped. Blank lines skipped. Tabs separate columns.
 # Counting rows, because three release-prose claims got this wrong at 0.88.0 and
 # the pre-tag review caught them: `grep -cE '^(deny|pass)\t' corpus.tsv`. NOT

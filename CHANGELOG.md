@@ -29,7 +29,13 @@ describes bash 3.2 aborting on `declare -A` in the same stretch of code, and the
 it left behind — "hook_deny below blocks regardless of the telemetry outcome" — is the
 claim this release makes true. `hook-common.sh` now binds `HOME` once, above anything
 that can expand it, and the shared state and log writers each refuse an empty value
-rather than laying telemetry at the filesystem root.
+rather than laying telemetry at the filesystem root. That last part covers the shared
+writers only: the per-hook ones still build a path under `$HOME` and create it
+unguarded, which for an empty `HOME` means a `/.claude/…` that fails for every
+non-root user and would succeed under uid 0. It is a widening of a hole that already
+existed for an empty-but-set `HOME`, not a new one, and it is left open deliberately —
+`tasks/home-unset-per-hook-writers-2026-09-13.md` carries the derivation and the
+reason.
 
 Why 813 corpus rows and sixteen audit rounds did not see it: the corpus varies the
 command and almost nothing else, and `rule_hits_append` opens with a reserved test

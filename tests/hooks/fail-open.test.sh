@@ -307,8 +307,8 @@ unset HOME; export HOME="$TMP_HOME"
 
 # T21: an UNSET $HOME must not swallow a verdict the hook already computed.
 #
-# Every hook runs `set -uo pipefail`, and ~40 expansions across this family read
-# `$HOME` with no default — so an unset HOME is a FATAL, not a degrade. The two
+# Every hook runs `set -uo pipefail`, and dozens of expansions across this family
+# read `$HOME` with no default — so an unset HOME is a FATAL, not a degrade. Two
 # deny-capable gates reach one of them (`rule-hits.sh`'s log_dir) from the
 # telemetry call that sits one line ABOVE `hook_deny`: the §8 / §10-V analysis
 # finished and matched, the record died on the unbound variable, and the process

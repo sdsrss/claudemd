@@ -15,7 +15,7 @@
 _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 
 # Bind $HOME before anything can expand it. Every hook runs `set -uo pipefail`
-# and ~40 expansions across this family read `$HOME` with no default, so an
+# and dozens of expansions across this family read `$HOME` with no default, so an
 # UNSET HOME is a fatal mid-hook rather than a degrade — and the two deny-capable
 # gates reach one of them (rule-hits.sh's log_dir) from the telemetry call one
 # line ABOVE `hook_deny`. Observed: `rm -rf $X` with HOME unset finished the §8
@@ -26,26 +26,35 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # ENTRYPOINT under a numeric UID, `env -i`, or a scrubbed CI shell.
 #
 # EMPTY, not a substitute path: a fallback would have every hook lay state under
-# a directory it invented, or under a shared $TMPDIR. The four writers in this
+# a directory it invented, or under a shared $TMPDIR. The shared writers in this
 # file and in rule-hits.sh each carry their own `[[ -n "$HOME" ]]` guard, so an
-# empty value degrades them to "no telemetry".
+# empty value degrades them to "no telemetry". (Which ones: `grep -n '\[\[ -n
+# "\$HOME" \]\]' hooks/lib/*.sh`. No count here either — see below.)
 #
-# What that does NOT cover, measured in the 0.88.0 pre-tag review rather than
-# assumed: nine hooks build `$HOME/.claude/...` and `mkdir` it directly —
-# residue-audit, session-summary, mem-audit, sandbox-disposal-check and
-# session-start-check among them — and none of those is guarded. With an empty
-# HOME they attempt `/.claude/...`, which fails for every non-root user and is
-# swallowed by the `|| exit 0` each already has. Under uid 0 it would succeed.
+# What that does NOT cover: the PER-HOOK writers. Several hooks root a path at
+# $HOME and create or remove it with no guard of their own, so an empty HOME
+# sends them at `/.claude/...`. That fails for every non-root user and is
+# swallowed — by `|| exit 0`, `|| true`, or a brace group ending in `exit 0`,
+# depending on the hook; the silence is common to them, the spelling is not.
+# Under uid 0 the mkdir would succeed.
 #
-# That is a WIDENING of an existing hole, not a new one, and the distinction is
-# the reason this line is still the right shape: at 9dc08d2, before this bind
-# existed, `HOME=` (empty but SET) already reached the same `mkdir -p /.claude/…`
-# in those nine hooks. The bind extends the trigger from empty-HOME to
-# unset-HOME. Closing it properly means guarding all nine, which is a change
-# about a different subject than the release this landed in; it is recorded here
-# and in tasks/ rather than folded in silently. Nothing in hooks/, scripts/ or
-# tests/ distinguishes an unset HOME from an empty one, so the bind introduces
-# no other semantic change.
+# No list and no count here, deliberately, and the reason is worth the line:
+# "the set" has three defensible sizes depending on the question asked — hooks
+# that merely READ a $HOME path, hooks whose SOURCE contains an unguarded write,
+# and hooks that actually REACH one on a given event — and the 0.88.0 pre-tag
+# review caught this comment getting it wrong at each of the first two. That is
+# the same failure hook-registry.js opens with (a prose number reached 16 while
+# the registry held 15). `tasks/home-unset-per-hook-writers-2026-09-13.md` holds
+# both derivations, the measured set for each, and the reason they differ.
+#
+# It is a WIDENING of an existing hole, not a new one, and the distinction is why
+# this line is still the right shape: at 9dc08d2, before the bind existed,
+# `HOME=` (empty but SET) already reached the same `mkdir -p /.claude/…` in those
+# hooks. The bind extends the trigger from empty-HOME to unset-HOME. Closing it
+# means guarding each writer at its point of use — a change about a different
+# subject than the release this landed in, so it is recorded rather than folded
+# in silently. Nothing in hooks/, scripts/ or tests/ distinguishes an unset HOME
+# from an empty one, so the bind introduces no other semantic change.
 : "${HOME:=}"
 
 # shellcheck source=rule-hits.sh
