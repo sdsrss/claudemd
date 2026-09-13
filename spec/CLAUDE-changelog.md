@@ -6,6 +6,10 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.30.0 (minor, 2026-09-13) — §5 Safe-paths stops citing itself
+
+Audit round 16 §6.4 found `NEVER-covers` and the `SAFE_DELETE_PATHS:` extension rule were a closed citation loop, dangling since the first spec commit: core §5 delegated both to §EXT §5-EXT, and §5-EXT delegated them back to core. Core §3 names `SAFE_DELETE_PATHS:` one of three channels that move a §5 AUTH gate, so the channel had no ceiling — a project `CLAUDE.md` could widen delete-soft over anything. Both halves now have content in §EXT §5-EXT: five NEVER items (a `..` walk, `.git/`, a resolution leaving the project root, a bare prefix with no subpath, and a §5 Hard subject OTHER than the delete — a closed set, because `delete file/dir` is §5 Hard's own first item and an open reading would swallow the safe-path carve-out whole) and three bounds on the project override, the load-bearing one being that an entry covering a NEVER item is ignored rather than honoured. Core's byte count is unchanged at 24940 — the pointer was already right, so the content went where it pointed; the only core edit is the version string, and `v6.29.1` and `v6.30.0` are the same length. §0.1 leaves 60 bytes, which is why that mattered. A whole-line golden pin covers the ceiling clause, verified RED before the text landed.
+
 ## v6.29.1 (patch, 2026-09-08) — §8 names the spelling that passes
 
 Two bullet edits inside the immutable section. No rule is added, relaxed or removed, and the first net-negative core release: **−2 bytes**.

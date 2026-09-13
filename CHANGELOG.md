@@ -8,6 +8,70 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.87.0] - 2026-09-13
+
+Spec v6.30.0. `§5 Safe-paths` stops citing itself.
+
+`NEVER-covers` and the `SAFE_DELETE_PATHS:` extension rule were a closed citation
+loop, dangling since the repository's first spec commit: core §5 sent both to
+`§EXT §5-EXT`, and `§5-EXT` sent them back to core §5. Neither file held them. The
+twelve-prefix whitelist was there and correct; the two clauses that bound it were
+names with nothing behind them.
+
+That matters because of where `SAFE_DELETE_PATHS:` sits. Core §3 names it one of
+exactly three channels that can move a §5 AUTH gate — the others being
+`AUTONOMY_LEVEL` and §8.V3's on-real-repo exception — so a project `CLAUDE.md`
+could declare any prefix at all and turn deletion there from hard AUTH into soft.
+Nothing said it could not name `src/`, and under `AUTONOMY_LEVEL: aggressive` soft
+means no surface required.
+
+Both halves now have content, in the section core already pointed at. Five NEVER
+items: a path reached through a `..` component, anything under `.git/`, a path
+whose resolution leaves the project root, a bare prefix with no subpath, and
+a §5 Hard subject other than the delete itself — a safe prefix does not launder
+a `.env`. That last one is a closed set on purpose: `delete file/dir` is §5 Hard's
+first item, so an open reading would swallow the carve-out this whole section
+exists to bound.
+The first of those is the AUTH-layer twin of what v0.86.0 closed one layer down in
+the §8 gate, where the root arrives as a `$` expansion rather than as a literal
+prefix: in both places what bounds the root says nothing about where a `..` walk
+from it lands.
+Three bounds on the project override, of which the load-bearing one is that an
+entry covering a NEVER item is ignored rather than honoured: the project file
+extends the list, it cannot raise its ceiling.
+
+**Core's byte count is unchanged** — 24940 before and after — and that was a design
+constraint rather than an outcome. Core sits at 24940 of 25000 bytes, so under §0.1 any addition there
+owes a larger deletion. The pointer at core §5 was already correct, so the content
+went where it pointed and cost core nothing. The only core edit is the version
+string, and `v6.29.1` and `v6.30.0` are the same length.
+
+**Tests.** A whole-line golden pin covers the ceiling clause, verified RED before
+the text landed — it failed with `found 0`, which is the assertion that runs first
+and the one that catches a rule being deleted rather than reworded. The `§5-EXT`
+section hash moved, as a section-content change should move it.
+`spec-coherence-audit --strict` exit 0 with `unresolvedCount=0`;
+`version-cascade-check` reports v6.30 across 3 files and 0.87.0 across 6 sites;
+`npm run lint` exit 0 and `npm test` exit 0, run separately and read from `$?`.
+Not `npm run check`: this machine's background-task watchdog killed the combined
+run twice for low memory, so it never produced an exit code. `check` is
+`lint && test`, so the two cover it — but the claim names the commands that
+actually returned. Both were re-run AFTER `git add`, which is what caught the
+last defect in this release: `spec-status-drift` reads `git ls-files`, so the
+newly-tracked design record was invisible to it until staging, and its
+frontmatter still said `approved` after the work had landed.
+
+**Migration**: `/claudemd-refresh`, then restart Claude Code. If your project
+`CLAUDE.md` sets `SAFE_DELETE_PATHS:`, re-read it against the three bounds — an
+entry naming an absolute path, a `~`, a `..`, a glob, or anything in the NEVER
+list is now ignored rather than honoured. **Way back**: pin the marketplace entry
+to `v0.86.0`; `docs/ROLLBACK.md` carries the procedure.
+
+**One change reaches everyone, not only `SAFE_DELETE_PATHS:` users**: NEVER item 4
+makes a bare prefix with no subpath hard AUTH, so `rm -rf dist/` and
+`rm -rf node_modules` now ask where they did not before. `rm -rf dist/bundle.js`
+and `rm -rf tmp/<fixture>` are unaffected — they carry a subpath.
+
 ## [0.86.0] - 2026-09-13
 
 The §8 gate's whitelist arm accepted `..` as part of the literal subpath it

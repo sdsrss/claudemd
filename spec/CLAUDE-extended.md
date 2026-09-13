@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.29.1 — Extended
+# AI-CODING-SPEC v6.30.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -19,7 +19,21 @@ Strict prefix match (NOT glob):
 - `__pycache__/**`
 - `.pytest_cache/**`
 
-Core NEVER clauses and `SAFE_DELETE_PATHS:` extension rule still bind — see core §5 Safe-paths whitelist.
+**NEVER-covers** (hard AUTH even when the path matches a prefix above):
+
+- a path reached through a `..` component — the prefix certifies where it points, not where a walk from it lands
+- anything under `.git/`
+- a path whose resolution leaves the project root (symlink included — delete the link, not through it)
+- a bare prefix with no subpath (`dist/`, not `dist/bundle.js`)
+- a path that is itself a §5 Hard subject OTHER than the delete — `.env`/secret/config schema, migration/DB schema, CI/deploy/infra config, `~/.claude/settings.json` / user-global hooks / MCP config. Closed set, and the exclusion is load-bearing: `delete file/dir` is §5 Hard's first item, so a clause reading "anything §5 Hard names" would swallow the safe-path carve-out whole
+
+**`SAFE_DELETE_PATHS:` extension rule**: a project `CLAUDE.md` MAY add prefixes. Bounds, all of them:
+
+- project-root-relative directory prefixes only — no absolute path, no `~`, no `..`, no glob
+- an entry covering a NEVER-covers item is ignored, not honoured — the project file extends the list, it cannot raise its ceiling
+- effective only for the project declaring it
+
+§3 names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
 ## §2-EXT Override modes
 
@@ -444,12 +458,12 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.29.1 (patch, 2026-09-08)** — §8 names the spelling that passes. Two bullet edits in the immutable section, no rule added, relaxed or removed. The `rm -rf $VAR` bullet now carries `rm -rf "${VAR:?}"` — the guard the gate has always accepted and the deny message has always printed, which an agent only met AFTER being denied. Measured why it is worth core bytes: of 561 real gate-reaching commands in one machine's transcripts, 87 (15%) deny, and an attempt to widen the gate instead repaired 1 and broke 8 (`tasks/s8-provenance-residuals-2026-09-08.md`). The plaintext-secrets and sensitive-data bullets merge, which funds it — the two overlapped, and the merge widens `sensitive data` to `code` as well.
+**v6.30.0 (minor, 2026-09-13)** — §5 Safe-paths gets the two halves core has cited since the first spec commit. `NEVER-covers` and the `SAFE_DELETE_PATHS:` extension rule were a closed citation loop: core §5 pointed at §EXT §5-EXT for both, and §5-EXT pointed back at core, so neither existed. Core §3 names `SAFE_DELETE_PATHS:` one of exactly three channels that can move a §5 AUTH gate, and nothing bounded what a project file could put in it. Both are now written where core already points. Zero net core bytes — the pointer was already correct, so the content went where it pointed; the version string is the only core edit and is the same length. §0.1 leaves no room to add there. Found by audit round 16 §6.4.
 
 - **Core**: §2's L1 row drops its own file count (§1.5 Local-Δ is where it lives) and L2 gains the same pairing qualifier; §0's Fast-Path whitelist says `internal log-string`; §10's L1 and L1-bugfix short reports both require Not done, Failed and Uncertain empty on the same threshold; `tc` is spelled `typecheck`; and §0 and §5 carry the subagent clauses — take option (b), report `[PARTIAL: <op> needs AUTH]`, never self-authorize — because a subagent at L0–L2 cannot read the extended file where they first landed.
 - **Extended**: §10-R stops granting L2 a zero-issue shortcut core §10 does not; §11-O carries the subagent rule's detail; the plan-drift bullet reports through §10's sections instead of a third bracketed token.
 
-**Sizing** (v6.29.1, 2026-09-08, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24942 → 24940 bytes (Δ **−2**: the `${VAR:?}` spelling added to §8's rm bullet, funded by merging the two overlapping secrets bullets — the first net-negative core release, which §0.1 required at 58 bytes of headroom); extended 45264 → 45341 bytes (Δ +77: this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24940/25000 (**60 bytes headroom**); extended 45341/50000 (**4659 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core stays at 99.8% — §0.1's net-delete requirement is now a standing condition on every core addition, not a one-off.
+**Sizing** (v6.30.0, 2026-09-13, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24940 bytes (Δ **0**: the version string is the only core change and `v6.29.1` and `v6.30.0` are the same length); extended 45341 → 46470 bytes (Δ +1129: the §5-EXT content, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24940/25000 (**60 bytes headroom**); extended 46470/50000 (**3530 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core's byte count did not move, so §0.1's net-delete requirement did not fire — an addition that costs core nothing is the way past a 60-byte ceiling.
 
 ## §1.5-EXT GLOSSARY
 

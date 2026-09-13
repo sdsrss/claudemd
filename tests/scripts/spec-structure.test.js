@@ -512,6 +512,13 @@ const PINS = [
     line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, ceremony in §5.1's skip-list sense — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never. Outside both sets: recommend and proceed, reading stated in one line.",
   },
   {
+    what: '§EXT §5-EXT SAFE_DELETE_PATHS ceiling — a project entry covering a NEVER item is ignored, not honoured (v6.30.0)',
+    file: EXT,
+    anchor: '- an entry covering a NEVER-covers item',
+    why: 'core §3 names SAFE_DELETE_PATHS one of three channels that move a §5 AUTH gate. Without this clause the channel has no ceiling and a project file can widen delete-soft over anything. The clause was cited by core from the first spec commit and had no content until v6.30.0.',
+    line: '- an entry covering a NEVER-covers item is ignored, not honoured — the project file extends the list, it cannot raise its ceiling',
+  },
+  {
     what: '§EXT §13 Drift check — project CLAUDE.md ranks with the user, and §8/HARD never yield (v6.28.0 wording)',
     file: EXT,
     anchor: '- **Drift check**:',
@@ -699,7 +706,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'ec59f66d3a97e42b' },
+  { file: CORE, heading: '', sha256: 'ce6d32a64b6f4f7d' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
@@ -711,8 +718,8 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: EXT, heading: '', sha256: '2d7113d69e3de65f' },
-  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'eb4a29edbe4668f1' },
+  { file: EXT, heading: '', sha256: 'dc3f7fa6f6fcc451' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
   { file: EXT, heading: '## §4 FLOW', sha256: '0cbdc65ea73bea0e' },
@@ -726,7 +733,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '5c438ff124e394bb' },
+  { file: EXT, heading: '## Recent changes', sha256: '97f83824e998fcc7' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
@@ -783,8 +790,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 20, sha256: '37e61c082612c7e0' },
-  { file: EXT, count: 62, sha256: '98bb9ecb90e63a9a' },
+  { file: CORE, count: 20, sha256: '5ec48fa119efa66d' },
+  { file: EXT, count: 62, sha256: 'eec6ef1c627d6d0c' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

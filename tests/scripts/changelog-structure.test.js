@@ -115,8 +115,15 @@ test('CHANGELOG: the structure checks can fail (mutation control)', () => {
   // inside the test meant to pin it — the replacement string carried the entry's
   // own token and ate the file prefix. Slicing has no replacement side.
   const marker = '`$`';
-  const at = text.indexOf(marker, text.indexOf(entry));
-  assert.notEqual(at, -1, 'the entry no longer contains the token this control splices at');
+  const entryStart = text.indexOf(entry);
+  const at = text.indexOf(marker, entryStart);
+  assert.ok(
+    at !== -1 && at < entryStart + entry.length,
+    'this release entry carries no backticked `$` for the control to splice at. Do NOT widen ' +
+      'the marker and do NOT let it match later in the file: the splice would land outside the ' +
+      'top entry, topEntry(corrupted) would come back unchanged, and arms 2 and 3 would pass ' +
+      'while testing nothing. Splice at a structural offset inside the entry body instead.'
+  );
   const corrupted = text.slice(0, at + 1) + header + text.slice(at + 1);
   assert.notEqual(corrupted, text, 'the mutation did not change the text');
   assert.equal(
