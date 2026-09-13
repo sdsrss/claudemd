@@ -19,7 +19,18 @@ expansion of an unset name is fatal rather than empty. So with `HOME` absent the
 analysis ran, the
 command matched, and the process died before emitting its verdict: exit 1, empty
 stdout. Claude Code reads a non-zero hook exit as a non-blocking error, so the tool
-call proceeded. The gate was off, and the only trace was a raw `HOME: unbound
+call proceeded.
+
+`ship-baseline-check` is the third gate this restores, and it is the one that shows
+what the defect actually was. Its fatal is not the telemetry call at all — it is its
+own `STATE_DIR=` near the top of the deny path, well above `hook_deny`. Measured: at
+`9dc08d2`, with a `gh` reporting a red run and `HOME` unset, it exits 1 with an empty
+stdout and the push proceeds with the §7 red-CI gate unenforced; here it denies. So
+the hazard is any unguarded `$HOME` between a gate's analysis and its verdict, not one
+call site — which is why the fix is a single bind above every expansion rather than a
+guard added to the line that happened to be found first.
+
+The gate was off, and the only trace was a raw `HOME: unbound
 variable` on the stderr of every Bash call. A systemd unit with no `User=`, a
 container ENTRYPOINT under a numeric UID, `env -i`, or a scrubbed CI shell all reach
 that state.

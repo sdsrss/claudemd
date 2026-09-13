@@ -308,13 +308,20 @@ unset HOME; export HOME="$TMP_HOME"
 # T21: an UNSET $HOME must not swallow a verdict the hook already computed.
 #
 # Every hook runs `set -uo pipefail`, and dozens of expansions across this family
-# read `$HOME` with no default — so an unset HOME is a FATAL, not a degrade. Two
-# deny-capable gates reach one of them (`rule-hits.sh`'s log_dir) from the
-# telemetry call that sits one line ABOVE `hook_deny`: the §8 / §10-V analysis
-# finished and matched, the record died on the unbound variable, and the process
-# exited 1 with EMPTY stdout. Claude Code reads a non-zero hook exit as a
-# non-blocking error, so the command ran — §8 SAFETY not enforced, with a raw
-# `HOME: unbound variable` printed on every Bash tool call.
+# read `$HOME` with no default — so an unset HOME is a FATAL, not a degrade.
+# THREE deny-capable gates reach one of those expansions above their own
+# `hook_deny`: the analysis finished and matched, the process died on the unbound
+# variable, and it exited 1 with EMPTY stdout. Claude Code reads a non-zero hook
+# exit as a non-blocking error, so the command ran — the gate not enforced, with a
+# raw `HOME: unbound variable` printed on every Bash tool call.
+#
+# The two rows in T21_CASES die in the deny TELEMETRY, one line up. The third,
+# ship-baseline-check, dies in its own `STATE_DIR=` near the top of the deny path,
+# nowhere near a record call — which is why it gets its own block below rather
+# than a third row, and why it is worth a case at all: it proves the subject is
+# any unguarded `$HOME` between analysis and verdict, not one call site. It had no
+# test until the 0.88.0 pre-tag review asked which gates the release actually
+# restored and the answer was one more than every comment claimed.
 #
 # The shape is not new: the v0.23.7 note in pre-bash-safety-check.sh records the
 # same one (bash 3.2 aborting on `declare -A` before `hook_deny`), and the line
@@ -369,6 +376,58 @@ while IFS='|' read -r t21_hook t21_cmd; do
 done <<EOF
 $T21_CASES
 EOF
+# T21-sb: the third deny-capable gate. Needs a `gh` that reports a red run and a
+# git work tree for the known-red-marker read, so it cannot ride the loop above.
+# Measured on 9dc08d2: rc=1, 0 bytes stdout, `ship-baseline-check.sh:260: HOME:
+# unbound variable` — the §7 gate waves the push through. Here it must deny.
+sandbox_new || { ng "T21-sb mktemp failed"; T21_SB=""; }
+T21_SB="${SANDBOX_OUT:-}"
+if [[ -n "$T21_SB" ]]; then
+  mkdir -p "$T21_SB/bin" "$T21_SB/repo"
+  # One completed+failure run: the shape ship-baseline-check reads as red CI.
+  cat > "$T21_SB/bin/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+echo '[{"databaseId":9,"status":"completed","conclusion":"failure","displayTitle":"CI","url":"https://example/9"}]'
+GHSTUB
+  chmod +x "$T21_SB/bin/gh"
+  # A clean HEAD, so the `known-red baseline:` override is NOT in play and the
+  # deny under test is the ordinary one. Its own repo, not the suite's cwd: the
+  # real HEAD would make this case depend on whatever the last commit said.
+  ( cd "$T21_SB/repo" && git init -q \
+      && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "clean commit" ) \
+    || ng "T21-sb could not build the fixture repo"
+  t21_sb() {  # $1 = "nohome" to drop HOME
+    local ev errf
+    ev=$(jq -cn '{session_id:"qa-t21-sb",transcript_path:"/nonexistent.jsonl",cwd:"/tmp",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"git push origin main"}}')
+    errf=$(mktemp "${TMPDIR:-/tmp}/claudemd-t21sb-XXXXXX") || return 1
+    SANDBOXES+=("$errf")
+    if [[ "${1:-}" == nohome ]]; then
+      T21_OUT=$(cd "$T21_SB/repo" && printf '%s' "$ev" | env -u HOME PATH="$T21_SB/bin:$PATH" bash "$HOOKS_DIR/ship-baseline-check.sh" 2>"$errf")
+    else
+      T21_OUT=$(cd "$T21_SB/repo" && printf '%s' "$ev" | env PATH="$T21_SB/bin:$PATH" bash "$HOOKS_DIR/ship-baseline-check.sh" 2>"$errf")
+    fi
+    T21_RC=$?
+    T21_ERR=$(cat "$errf" 2>/dev/null)
+  }
+  t21_sb nohome
+  if printf '%s' "$T21_OUT" | grep -q '"permissionDecision":"deny"'; then
+    ok "T21 ship-baseline-check still denies a red-CI push with HOME unset"
+  else
+    ng "T21 ship-baseline-check LOST its §7 deny with HOME unset (rc=$T21_RC, stdout='$T21_OUT', stderr='$T21_ERR')"
+  fi
+  if [[ "$T21_ERR" == *"unbound variable"* ]]; then
+    ng "T21 ship-baseline-check printed a bash 'unbound variable' error: $T21_ERR"
+  else
+    ok "T21 ship-baseline-check stays quiet on stderr with HOME unset"
+  fi
+  t21_sb
+  if printf '%s' "$T21_OUT" | grep -q '"permissionDecision":"deny"'; then
+    ok "T21 control: ship-baseline-check denies the same push with HOME set"
+  else
+    ng "T21 control: ship-baseline-check did not deny with HOME set (rc=$T21_RC, stderr='$T21_ERR') — fixture no longer reads as red CI"
+  fi
+fi
+
 # Negative control: a clean command must still be ALLOWED with HOME unset, or
 # "denies with HOME unset" above would be satisfied by a hook that denies on the
 # fail path too.

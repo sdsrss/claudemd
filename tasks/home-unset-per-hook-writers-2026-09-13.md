@@ -40,7 +40,22 @@ done
 **(2) Hooks whose SOURCE contains an unguarded create/remove — 10.** The static
 candidate set. A regex is fragile here: the first attempt anchored variable
 assignments at `^` and so missed `transcript-vocab-scan`, whose
-`VS_STATE_DIR="$HOME/…"` is indented inside a function. Prefer (3).
+`VS_STATE_DIR="$HOME/…"` is indented inside a function — which is why the
+assignment match below is unanchored. Prefer (3).
+
+```sh
+for f in hooks/*.sh; do
+  s=$(sed -E 's/^[[:space:]]*#.*$//' "$f")
+  printf '%s' "$s" | grep -qE '\[\[ -n "\$HOME" \]\]' && continue   # already guarded
+  printf '%s' "$s" | grep -qE '(mkdir -p|rm -f|touch|>>?)[^|]*\$\{?HOME\b' \
+    && { basename "$f" .sh; continue; }                             # direct
+  printf '%s' "$s" | grep -oE '[A-Za-z_]+=("?)\$\{?HOME\b' | sed 's/=.*//' | sort -u \
+    | while read -r v; do                                           # via a bound name
+        printf '%s' "$s" | grep -qE "(mkdir -p|rm -f|touch|>>?)[[:space:]]*\"?\\\$\{?$v\b" \
+          && { basename "$f" .sh; break; }
+      done
+done | sort -u
+```
 
 **(3) Hooks that actually REACH a create/remove on a representative event — 7.**
 Ground truth, and the only one that needs no pattern guessing. Measured on
@@ -67,8 +82,11 @@ from empty-HOME to unset-HOME.
 Blast radius is bounded to **uid 0 with no HOME**: for every non-root user the
 `mkdir` fails and each hook's existing swallow (`|| exit 0`, `|| true`, or a
 brace group ending in `exit 0` — the spelling varies) absorbs it. Measured on
-`4d505b4`: all fifteen hooks run under `env -u HOME` exit 0, print nothing, and
-create no `/.claude`.
+`4d505b4`: on a NON-TRIGGERING event, all fifteen hooks run under `env -u HOME`
+exit 0, print nothing, and create no `/.claude`. The qualifier is load-bearing —
+a triggering one is supposed to speak: `rm -rf $EVIL` through
+`pre-bash-safety-check` with `HOME` unset prints its deny, which is the whole
+point of the release.
 
 0.88.0 is a release about the deny path surviving a missing HOME. Guarding the
 per-hook writers is a change about a different subject, and folding it in

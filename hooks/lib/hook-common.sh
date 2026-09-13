@@ -16,9 +16,13 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 
 # Bind $HOME before anything can expand it. Every hook runs `set -uo pipefail`
 # and dozens of expansions across this family read `$HOME` with no default, so an
-# UNSET HOME is a fatal mid-hook rather than a degrade — and the two deny-capable
-# gates reach one of them (rule-hits.sh's log_dir) from the telemetry call one
-# line ABOVE `hook_deny`. Observed: `rm -rf $X` with HOME unset finished the §8
+# UNSET HOME is a fatal mid-hook rather than a degrade — and three deny-capable
+# gates reach one of them ABOVE their own `hook_deny`. For pre-bash-safety-check
+# and banned-vocab-check it is rule-hits.sh's log_dir, one line up, in the deny
+# telemetry. For ship-baseline-check it is its own `STATE_DIR=` near the top of
+# its deny path, nowhere near the telemetry — which is the point: the hazard is
+# ANY unguarded `$HOME` between the analysis and the verdict, not one call site.
+# Observed: `rm -rf $X` with HOME unset finished the §8
 # analysis, matched, died on the unbound variable, and exited 1 with empty
 # stdout; CC reads a non-zero hook exit as a non-blocking error, so the command
 # ran with §8 not enforced and a raw `HOME: unbound variable` printed on every
@@ -29,7 +33,8 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # a directory it invented, or under a shared $TMPDIR. The shared writers in this
 # file and in rule-hits.sh each carry their own `[[ -n "$HOME" ]]` guard, so an
 # empty value degrades them to "no telemetry". (Which ones: `grep -n '\[\[ -n
-# "\$HOME" \]\]' hooks/lib/*.sh`. No count here either — see below.)
+# "\$HOME" \]\]' hooks/lib/*.sh` — it matches this very comment too, so the
+# guards are its hits minus one. No count here either; see below.)
 #
 # What that does NOT cover: the PER-HOOK writers. Several hooks root a path at
 # $HOME and create or remove it with no guard of their own, so an empty HOME
@@ -41,11 +46,12 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # No list and no count here, deliberately, and the reason is worth the line:
 # "the set" has three defensible sizes depending on the question asked — hooks
 # that merely READ a $HOME path, hooks whose SOURCE contains an unguarded write,
-# and hooks that actually REACH one on a given event — and the 0.88.0 pre-tag
-# review caught this comment getting it wrong at each of the first two. That is
+# and hooks that actually REACH one on a given event. The 0.88.0 pre-tag review
+# caught this comment answering the wrong one twice: first a shared-writer
+# coverage claim, then a SOURCE count. That is
 # the same failure hook-registry.js opens with (a prose number reached 16 while
 # the registry held 15). `tasks/home-unset-per-hook-writers-2026-09-13.md` holds
-# both derivations, the measured set for each, and the reason they differ.
+# all three derivations, the measured set for each, and the reason they differ.
 #
 # It is a WIDENING of an existing hole, not a new one, and the distinction is why
 # this line is still the right shape: at 9dc08d2, before the bind existed,
