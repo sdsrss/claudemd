@@ -40,7 +40,13 @@ function nearestHookName(name) {
 }
 
 export async function toggle(name) {
-  const upper = NAME_MAP[name];
+  // `Object.hasOwn`, not a bare `NAME_MAP[name]`: the map is a plain object, so
+  // a bracket lookup walks the prototype chain and `NAME_MAP.constructor` comes
+  // back truthy. `toggle.js constructor` then skipped the whole unknown-hook
+  // path below and wrote `DISABLE_function Object() { [native code] }_HOOK` into
+  // the user's settings, reporting exit 0 and `newState: disabled` for a hook
+  // that does not exist (0.88.0 pre-tag review, Low-1).
+  const upper = Object.hasOwn(NAME_MAP, name) ? NAME_MAP[name] : undefined;
   if (!upper) {
     const near = nearestHookName(name);
     throw new Error(

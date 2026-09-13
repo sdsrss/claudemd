@@ -34,10 +34,10 @@ run_case() {
   # a single line of it. The corpus therefore covered analysis-and-emit and
   # nothing in between, which is where the §8 HOME-unset fail-open lived: the
   # deny was computed, the record call one line above `hook_deny` died on an
-  # unbound `$HOME`, and the hook exited 1 with empty stdout. 893 rows could not
+  # unbound `$HOME`, and the hook exited 1 with empty stdout. 813 rows could not
   # see it, and the mutation check proved it — reverting the fix left the whole
   # corpus green. Rows that must exercise the record path set column 5 to a
-  # non-sentinel id; the default stays `t` so the other 880-odd rows keep their
+  # non-sentinel id; the default stays `t` so the other 810-odd rows keep their
   # current cost (rule_hits_append spawns jq, and this is already the slowest
   # suite at ~65s on Linux against a 300s cap).
   local sid="${5:-t}"
@@ -52,7 +52,7 @@ run_case() {
   #   -KEY      REMOVE it       →  env -u KEY …
   #
   # The unset form is why this parser exists. The corpus varies ONE axis — the
-  # command text — across 881 rows, and 5 of them touch the environment, all of
+  # command text — across 813 rows, and 5 of them touch the environment, all of
   # them setting a claudemd feature flag. `env "$env"` could only ever SET, so
   # "what does this gate do when the ambient shell is missing something" was not
   # expressible at all. It is the axis the §8 HOME-unset fail-open lived on: the
@@ -137,7 +137,13 @@ run_case pass "self-check: kill-switch live → deny-shaped command passes" 'rm 
 run_case deny "self-check: env column '-KEY' removes the live kill-switch" 'rm -rf $SELFCHK' '-DISABLE_PRE_BASH_SAFETY_HOOK'
 unset DISABLE_PRE_BASH_SAFETY_HOOK
 # And that a two-token env column applies BOTH tokens, in the presence of an
-# unset: single-token parsing would drop one silently.
+# unset. What this row actually discriminates, stated because the first version
+# of this comment claimed more than one row can carry (0.88.0 pre-tag review,
+# falsified-suspicion (c)): it catches the ASSIGNMENT being dropped, and it
+# catches the `-u`/assignment ORDER being wrong — GNU `env` stops reading options
+# at the first operand, so a misordered argv exits 127 and fails this `pass` row.
+# It does NOT catch the `-u` being dropped; the `-DISABLE_PRE_BASH_SAFETY_HOOK`
+# row above is the only thing covering that direction.
 run_case pass "self-check: two-token env (set + unset) applies both" 'bash -c "rm -rf $X"' 'BASH_SAFETY_INDIRECT_CALL=0 -HOME'
 
 # Inline edge case: malformed-JSON stdin must fail-open silently. Not a

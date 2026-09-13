@@ -25,10 +25,27 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # Bash tool call. Reachable from a systemd unit with no `User=`, a container
 # ENTRYPOINT under a numeric UID, `env -i`, or a scrubbed CI shell.
 #
-# EMPTY, not a substitute path. The writers below each carry their own
-# `[[ -n "$HOME" ]]` guard, so an empty value degrades to "no telemetry" — a
-# fallback path would instead have every hook lay state under `/.claude` (which
-# a root-owned process would succeed at creating) or under a shared $TMPDIR.
+# EMPTY, not a substitute path: a fallback would have every hook lay state under
+# a directory it invented, or under a shared $TMPDIR. The four writers in this
+# file and in rule-hits.sh each carry their own `[[ -n "$HOME" ]]` guard, so an
+# empty value degrades them to "no telemetry".
+#
+# What that does NOT cover, measured in the 0.88.0 pre-tag review rather than
+# assumed: nine hooks build `$HOME/.claude/...` and `mkdir` it directly —
+# residue-audit, session-summary, mem-audit, sandbox-disposal-check and
+# session-start-check among them — and none of those is guarded. With an empty
+# HOME they attempt `/.claude/...`, which fails for every non-root user and is
+# swallowed by the `|| exit 0` each already has. Under uid 0 it would succeed.
+#
+# That is a WIDENING of an existing hole, not a new one, and the distinction is
+# the reason this line is still the right shape: at 9dc08d2, before this bind
+# existed, `HOME=` (empty but SET) already reached the same `mkdir -p /.claude/…`
+# in those nine hooks. The bind extends the trigger from empty-HOME to
+# unset-HOME. Closing it properly means guarding all nine, which is a change
+# about a different subject than the release this landed in; it is recorded here
+# and in tasks/ rather than folded in silently. Nothing in hooks/, scripts/ or
+# tests/ distinguishes an unset HOME from an empty one, so the bind introduces
+# no other semantic change.
 : "${HOME:=}"
 
 # shellcheck source=rule-hits.sh
@@ -406,6 +423,7 @@ hook_is_readonly_bash() {
 # tests/hooks/hook-budget.test.sh, which is what keeps a blocking call inside
 # its hooks.json budget.
 hook_install_sentinel_clear() {
+  [[ -n "$HOME" ]] || return 0
   rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" 2>/dev/null || true
 }
 

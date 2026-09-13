@@ -31,7 +31,7 @@ claim this release makes true. `hook-common.sh` now binds `HOME` once, above any
 that can expand it, and the shared state and log writers each refuse an empty value
 rather than laying telemetry at the filesystem root.
 
-Why 1370 corpus rows and sixteen audit rounds did not see it: the corpus varies the
+Why 813 corpus rows and sixteen audit rounds did not see it: the corpus varies the
 command and almost nothing else, and `rule_hits_append` opens with a reserved test
 sentinel that returns when `session_id` is `t` — which is what the corpus harness
 wrote on every row. No row had ever executed the telemetry call that sits between the
@@ -52,8 +52,18 @@ file names, while the toggle is keyed by display name, and the reply was a bare
 the valid set. README's hook table states the `rm` arm's real coverage too, which is
 wider than the `-rf` shorthand it had been describing.
 
-Assertion counts: `fail-open` 29 → 53, `pre-bash-safety` 913 → 940, corpus 881 → 898
-rows.
+One consequence worth stating rather than leaving to be discovered. With no `HOME`
+the gate now enforces and says nothing: `rule_hits_append` and `hook_record_failopen`
+both return early, so an operator in a HOME-less container gets a working gate and
+zero rule-hits rows, which the §13.1 self-audit reads as "the rule was not relevant".
+Before this release the same condition was at least loud on stderr. A `$TMPDIR`
+fallback was considered and rejected — telemetry belongs under a home or nowhere —
+so the silence is deliberate; it had just never been written down as a cost.
+
+Assertion counts: `fail-open` 29 → 53, `pre-bash-safety` 913 → 940, corpus 813 → 829
+rows. Counted with `grep -cE '^(deny|pass)\t'`; the first draft of this entry used
+`grep -vc '^#'` and `wc -l`, which count blank and comment lines, and the pre-tag
+review caught all three inflated numbers.
 
 ## [0.87.0] - 2026-09-13
 

@@ -76,6 +76,38 @@ test('toggle names the nearest hook when given the README file-name spelling', (
   }
 });
 
+test('toggle rejects Object.prototype keys instead of writing junk into settings.json', () => {
+  // `NAME_MAP[name]` is a bare bracket lookup on a plain object, so it walks the
+  // prototype chain: `NAME_MAP.constructor` is truthy, `if (!upper)` is false,
+  // and the unknown-hook path — including the suggestion and the valid-set
+  // listing — is never reached. `toggle.js constructor` exited 0, reported
+  // `"newState": "disabled"`, and wrote the key
+  // `DISABLE_function Object() { [native code] }_HOOK` into the user's real
+  // ~/.claude/settings.json (0.88.0 pre-tag review, Low-1).
+  //
+  // Pre-dates the suggestion work — the same input does the same thing on the
+  // parent commit — but it is the exact "unknown hook name" path that work set
+  // out to repair, and the sibling case below missed it by choosing a fixture
+  // (`nonsense-hook`) that is not a prototype member. THAT is why the assertion
+  // here is on the file contents and not only on the exit code: a guard that
+  // rejected the name while still having written would pass an exit-code-only
+  // check.
+  const before = fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8');
+  for (const name of ['constructor', 'toString', '__proto__', 'valueOf', 'hasOwnProperty', 'isPrototypeOf']) {
+    const r = spawnSync(process.execPath, [TOGGLE_JS, name], {
+      env: { ...process.env, HOME: tmpHome },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1, `${name}: expected exit 1 (unknown hook); stdout=${r.stdout}`);
+    assert.match(r.stderr, /unknown hook/i, `${name}: must take the unknown-hook path`);
+    assert.equal(
+      fs.readFileSync(path.join(tmpHome, '.claude/settings.json'), 'utf8'),
+      before,
+      `${name}: settings.json must be left byte-identical`
+    );
+  }
+});
+
 test('toggle prints the valid set for a name with no near match', () => {
   // The suggestion above only covers the three README spellings. Any other
   // typo must still land somewhere: print the set rather than a dead end.

@@ -8,7 +8,7 @@
 #   env    : optional env perturbation — space-separated tokens, each either
 #            `KEY=VAL` (set it; no spaces inside the value) or `-KEY` (UNSET it).
 #            The unset form exists because this corpus varies the COMMAND and
-#            almost nothing else: before it, 5 of 881 rows touched the
+#            almost nothing else: before it, 5 of 813 rows touched the
 #            environment and all 5 set a claudemd feature flag, so "what does
 #            the gate do when the ambient shell is missing something" could not
 #            be written down. That was the axis the §8 HOME-unset fail-open
@@ -22,6 +22,10 @@
 #            other ~880 rows because rule_hits_append spawns jq and this is
 #            already the slowest suite (~65s Linux, 300s cap).
 # Lines beginning with `#` are skipped. Blank lines skipped. Tabs separate columns.
+# Counting rows, because three release-prose claims got this wrong at 0.88.0 and
+# the pre-tag review caught them: `grep -cE '^(deny|pass)\t' corpus.tsv`. NOT
+# `grep -vc '^#'` (that adds the ~69 blank lines) and NOT `wc -l` (that adds the
+# comment prose too, which is most of this file).
 # Trailing column may be empty (no env).
 
 # === non-trigger paths (smoke) ===
