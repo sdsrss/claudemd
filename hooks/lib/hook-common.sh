@@ -17,7 +17,11 @@ _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
 # Bind $HOME before anything can expand it. Every hook runs `set -uo pipefail`
 # and dozens of expansions across this family read `$HOME` with no default, so an
 # UNSET HOME is a fatal mid-hook rather than a degrade — and three deny-capable
-# gates reach one of them ABOVE their own `hook_deny`. For pre-bash-safety-check
+# gates LOSE A VERDICT THEY HAD ALREADY COMPUTED to one of them. That qualifier
+# is the whole claim: a fourth, memory-read-check, also has an unguarded $HOME
+# (`:223`) above its own `hook_deny` (`:301`), but there the expansion FEEDS the
+# analysis instead of following it — with HOME unset it has no verdict yet to
+# lose and allows either way, before the fix and after. For pre-bash-safety-check
 # and banned-vocab-check it is rule-hits.sh's log_dir, one line up, in the deny
 # telemetry. For ship-baseline-check it is its own `STATE_DIR=` near the top of
 # its deny path, nowhere near the telemetry — which is the point: the hazard is

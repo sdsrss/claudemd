@@ -360,8 +360,13 @@ while IFS='|' read -r t21_hook t21_cmd; do
   else
     ng "T21 $t21_hook LOST its deny with HOME unset (rc=$T21_RC, stdout='$T21_OUT', stderr='$T21_ERR')"
   fi
-  if [[ "$T21_ERR" == *"unbound variable"* ]]; then
-    ng "T21 $t21_hook printed a bash 'unbound variable' error to the user's session: $T21_ERR"
+  # Emptiness, not just the absence of "unbound variable": the label promises
+  # silence and the hook fires on EVERY Bash tool call, so any stderr at all is
+  # session noise. Measured 0 bytes for all three T21 gates in both arms; a tool
+  # warning appearing here later is a finding someone should look at, not
+  # something a narrower assertion should absorb (0.88.0 pre-tag review, Low-14).
+  if [[ -n "$T21_ERR" ]]; then
+    ng "T21 $t21_hook wrote to the user's session stderr with HOME unset: $T21_ERR"
   else
     ok "T21 $t21_hook stays quiet on stderr with HOME unset"
   fi
@@ -380,8 +385,17 @@ EOF
 # git work tree for the known-red-marker read, so it cannot ride the loop above.
 # Measured on 9dc08d2: rc=1, 0 bytes stdout, `ship-baseline-check.sh:260: HOME:
 # unbound variable` — the §7 gate waves the push through. Here it must deny.
-sandbox_new || { ng "T21-sb mktemp failed"; T21_SB=""; }
-T21_SB="${SANDBOX_OUT:-}"
+# Assign INSIDE the success arm. `sandbox_new` leaves SANDBOX_OUT untouched when
+# its mktemp fails, so an unconditional `T21_SB="${SANDBOX_OUT:-}"` after it would
+# inherit the PREVIOUS sandbox — `$STUB_HOOKS`, already removed above — and the
+# `-n` skip below could never fire: the block would `ng` and then run anyway
+# against a recreated stale path (0.88.0 pre-tag review, Low-13).
+if sandbox_new; then
+  T21_SB="$SANDBOX_OUT"
+else
+  ng "T21-sb mktemp failed"
+  T21_SB=""
+fi
 if [[ -n "$T21_SB" ]]; then
   mkdir -p "$T21_SB/bin" "$T21_SB/repo"
   # One completed+failure run: the shape ship-baseline-check reads as red CI.
@@ -415,8 +429,8 @@ GHSTUB
   else
     ng "T21 ship-baseline-check LOST its §7 deny with HOME unset (rc=$T21_RC, stdout='$T21_OUT', stderr='$T21_ERR')"
   fi
-  if [[ "$T21_ERR" == *"unbound variable"* ]]; then
-    ng "T21 ship-baseline-check printed a bash 'unbound variable' error: $T21_ERR"
+  if [[ -n "$T21_ERR" ]]; then
+    ng "T21 ship-baseline-check wrote to the user's session stderr with HOME unset: $T21_ERR"
   else
     ok "T21 ship-baseline-check stays quiet on stderr with HOME unset"
   fi
