@@ -27,13 +27,65 @@ PASS=0; FAIL=0
 
 run_case() {
   local label="$1" note="$2" cmd="$3" env="$4"
+  # Session id, default `t`. That default is not cosmetic: rule-hits.sh:210
+  # (`[[ "$session_id" == "t" ]] && return 0`) is a RESERVED TEST SENTINEL that
+  # drops the row before anything else in rule_hits_append runs — so with it,
+  # every case in this corpus returns from the telemetry call without touching
+  # a single line of it. The corpus therefore covered analysis-and-emit and
+  # nothing in between, which is where the §8 HOME-unset fail-open lived: the
+  # deny was computed, the record call one line above `hook_deny` died on an
+  # unbound `$HOME`, and the hook exited 1 with empty stdout. 893 rows could not
+  # see it, and the mutation check proved it — reverting the fix left the whole
+  # corpus green. Rows that must exercise the record path set column 5 to a
+  # non-sentinel id; the default stays `t` so the other 880-odd rows keep their
+  # current cost (rule_hits_append spawns jq, and this is already the slowest
+  # suite at ~65s on Linux against a 300s cap).
+  local sid="${5:-t}"
+  [[ -n "$sid" ]] || sid=t
   # __NL__ marker → LF (heredoc cases). Other backslash sequences pass through.
   cmd="${cmd//__NL__/$'\n'}"
-  local fix out decision
+  local fix out decision tok
   fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
-  jq -cn --arg c "$cmd" '{session_id:"t",tool_name:"Bash",tool_input:{command:$c}}' > "$fix"
+  jq -cn --arg c "$cmd" --arg s "$sid" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c}}' > "$fix"
+  # Env column → `env` argv. Two token forms, space-separated:
+  #   KEY=VAL   set it          →  env KEY=VAL …
+  #   -KEY      REMOVE it       →  env -u KEY …
+  #
+  # The unset form is why this parser exists. The corpus varies ONE axis — the
+  # command text — across 881 rows, and 5 of them touch the environment, all of
+  # them setting a claudemd feature flag. `env "$env"` could only ever SET, so
+  # "what does this gate do when the ambient shell is missing something" was not
+  # expressible at all. It is the axis the §8 HOME-unset fail-open lived on: the
+  # deny was computed, the telemetry one line above `hook_deny` died on an
+  # unbound `$HOME`, and the hook exited 1 with empty stdout — fail-open, past a
+  # corpus that had no way to ask.
+  #
+  # Splitting is on whitespace (`set -f` so a token is never glob-expanded), so
+  # a VALUE containing a space cannot be expressed — same limit the format
+  # comment already stated for the single-segment form, now with a reason.
+  # Two accumulators, not one: GNU `env` stops reading options at the first
+  # operand, so `env FOO=bar -u HOME cmd` runs a command literally named `-u`
+  # ("env: '-u': No such file or directory"). Every -u must precede every
+  # assignment, whatever order the corpus column writes them in.
+  local env_unsets env_sets
+  env_unsets=()
+  env_sets=()
   if [[ -n "$env" ]]; then
-    out=$(env "$env" bash "$HOOK" < "$fix" 2>&1)
+    set -f
+    for tok in $env; do
+      case "$tok" in
+        -?*) env_unsets+=(-u "${tok#-}") ;;
+        *) env_sets+=("$tok") ;;
+      esac
+    done
+    set +f
+  fi
+  local env_args
+  env_args=(${env_unsets[@]+"${env_unsets[@]}"} ${env_sets[@]+"${env_sets[@]}"})
+  # bash 3.2 (macOS) errors on `"${arr[@]}"` for an EMPTY array under `set -u`,
+  # which is every row without an env column — hence the `+` expansion.
+  if (( ${#env_args[@]} > 0 )); then
+    out=$(env ${env_args[@]+"${env_args[@]}"} bash "$HOOK" < "$fix" 2>&1)
   else
     out=$(bash "$HOOK" < "$fix" 2>&1)
   fi
@@ -65,12 +117,28 @@ run_case() {
 }
 
 # Drive the corpus.
-while IFS=$'\t' read -r label note cmd env || [[ -n "$label" ]]; do
+while IFS=$'\t' read -r label note cmd env sid || [[ -n "$label" ]]; do
   # Skip blanks and comment lines (corpus comments start with `#`).
   [[ -z "$label" ]] && continue
   [[ "$label" == \#* ]] && continue
-  run_case "$label" "$note" "$cmd" "${env:-}"
+  run_case "$label" "$note" "$cmd" "${env:-}" "${sid:-}"
 done < "$CORPUS"
+
+# Runner self-check: prove the env column's `-KEY` form actually unsets.
+#
+# Every environment row added below asserts that the verdict does NOT change
+# when a variable goes missing — which is precisely the shape that still passes
+# if the parser silently drops the token. The rows cannot discriminate their own
+# mechanism, so the mechanism is checked here, on a variable whose presence IS
+# observable in the verdict: with the kill-switch live a deny-shaped command is
+# waved through, and the env column has to be able to take it away again.
+export DISABLE_PRE_BASH_SAFETY_HOOK=1
+run_case pass "self-check: kill-switch live → deny-shaped command passes" 'rm -rf $SELFCHK' ''
+run_case deny "self-check: env column '-KEY' removes the live kill-switch" 'rm -rf $SELFCHK' '-DISABLE_PRE_BASH_SAFETY_HOOK'
+unset DISABLE_PRE_BASH_SAFETY_HOOK
+# And that a two-token env column applies BOTH tokens, in the presence of an
+# unset: single-token parsing would drop one silently.
+run_case pass "self-check: two-token env (set + unset) applies both" 'bash -c "rm -rf $X"' 'BASH_SAFETY_INDIRECT_CALL=0 -HOME'
 
 # Inline edge case: malformed-JSON stdin must fail-open silently. Not a
 # corpus case — corpus is "given valid event, hook produces correct
@@ -433,6 +501,56 @@ else
   echo "FAIL [curl-sh-prefilter]: expected \`[[ \"\$cseg\" =~ \$CURLSH_SRC ]]\` and no hand-written glob mirror (found line='$prefilter_line' mirror_arms=$mirror)"
   FAIL=$((FAIL + 1))
 fi
+
+# Deny REASON names the verb that was actually typed.
+#
+# The corpus above asserts the verdict and nothing else, so the reason text was
+# free to drift from the command: `S8_RM_VERB` was the literal string `rm -rf`
+# for every `rm` the gate matched, while the match itself fires on any `-r`/`-R`/
+# `-f`/`-F` short flag or `--recursive`/`--force`. `rm -f "$X/a.md"` — one file,
+# no `-r` anywhere — was denied with "rm -rf with unvalidated $X", a line that
+# quotes back a command the user did not type. This is the deny message's whole
+# job: a reader who cannot reconcile it with what they typed reads the gate as
+# broken, and the escape token is sitting three lines below.
+#
+# The `find` rows are the control for the mechanism, not decoration: the two
+# branch points that pick rm-wording over find-wording used to compare
+# `$S8_RM_VERB` against the literal `rm -rf`, so making the rm label track the
+# real flags silently routes every rm through the FIND wording unless that
+# discriminator is replaced too.
+reason_of() {  # $1 = command -> echoes the deny reason, or ALLOW
+  local f out
+  f=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX") || return 1
+  jq -cn --arg c "$1" '{session_id:"t",tool_name:"Bash",tool_input:{command:$c}}' > "$f"
+  out=$(bash "$HOOK" < "$f" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // "ALLOW"' 2>/dev/null)
+  rm -f "$f"
+  printf '%s' "$out"
+}
+# <command>|<substring the reason MUST contain>|<substring it must NOT contain>
+VERB_CASES='rm -f "$X/a.md"|rm -f with unvalidated $X|rm -rf
+rm -r "$X"|rm -r with unvalidated $X|rm -rf
+rm -fr "$X"|rm -fr with unvalidated $X|
+rm --force "$X"|rm --force with unvalidated $X|rm -rf
+rm -rf "$X"|rm -rf with unvalidated $X|
+rm -rf "$HOME"|rm -rf $HOME with no subpath|
+find "$X" -delete|find … -delete/-exec rm with unvalidated $X|
+find "$HOME" -delete|find … -delete/-exec rm on bare $HOME with no selection primary|'
+while IFS='|' read -r vc_cmd vc_want vc_absent; do
+  [[ -n "$vc_cmd" ]] || continue
+  vc_reason=$(reason_of "$vc_cmd")
+  if [[ "$vc_reason" != *"$vc_want"* ]]; then
+    echo "FAIL [deny-verb]: '$vc_cmd' reason should name '$vc_want', got: $(printf '%s' "$vc_reason" | head -2 | tr '\n' ' ')"
+    FAIL=$((FAIL + 1))
+  elif [[ -n "$vc_absent" && "$vc_reason" == *"$vc_absent with unvalidated"* ]]; then
+    echo "FAIL [deny-verb]: '$vc_cmd' reason quotes back '$vc_absent', which is not what was typed"
+    FAIL=$((FAIL + 1))
+  else
+    echo "PASS: deny reason for '$vc_cmd' names the verb actually typed"
+    PASS=$((PASS + 1))
+  fi
+done <<EOF
+$VERB_CASES
+EOF
 
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then

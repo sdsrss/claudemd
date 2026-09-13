@@ -8,6 +8,53 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.88.0] - 2026-09-13
+
+The §8 gate stopped enforcing when `$HOME` was unset, and the corpus had no way to ask.
+
+`pre-bash-safety-check` and `banned-vocab-check` file their deny telemetry one line
+above `hook_deny`. That record call reaches `rule_hits_append`, which expanded `$HOME`
+with no default — and every hook here runs under `set -uo pipefail`, where a bare `$`
+expansion of an unset name is fatal rather than empty. So with `HOME` absent the
+analysis ran, the
+command matched, and the process died before emitting its verdict: exit 1, empty
+stdout. Claude Code reads a non-zero hook exit as a non-blocking error, so the tool
+call proceeded. The gate was off, and the only trace was a raw `HOME: unbound
+variable` on the stderr of every Bash call. A systemd unit with no `User=`, a
+container ENTRYPOINT under a numeric UID, `env -i`, or a scrubbed CI shell all reach
+that state.
+
+The shape was already on record. The note in `pre-bash-safety-check.sh` dated v0.23.7
+describes bash 3.2 aborting on `declare -A` in the same stretch of code, and the line
+it left behind — "hook_deny below blocks regardless of the telemetry outcome" — is the
+claim this release makes true. `hook-common.sh` now binds `HOME` once, above anything
+that can expand it, and the shared state and log writers each refuse an empty value
+rather than laying telemetry at the filesystem root.
+
+Why 1370 corpus rows and sixteen audit rounds did not see it: the corpus varies the
+command and almost nothing else, and `rule_hits_append` opens with a reserved test
+sentinel that returns when `session_id` is `t` — which is what the corpus harness
+wrote on every row. No row had ever executed the telemetry call that sits between the
+analysis and `hook_deny`. Reverting the fix left the whole corpus green, and that is
+how the sentinel was found. The corpus gains an environment axis — `-KEY` in the env
+column now unsets a variable, where `env` could previously only set one — and a fifth
+`sid` column, so a row can opt into a non-sentinel session id and reach the record
+path. Sixteen rows do; removing the bind turns six of them red.
+
+Two smaller repairs, both messages that described something other than what happened.
+The `rm` deny named `rm -rf` whatever the user typed, while the gate fires on any of
+`-r`, `-R`, `-f`, `-F`, `--recursive` or `--force` — so a one-file `rm -f` was denied
+by a line quoting a command nobody wrote, three lines above an escape token. It now
+names the flag it matched. And `/claudemd-toggle` rejected the hook names README
+lists: `banned-vocab-check`, `pre-bash-safety-check` and `ship-baseline-check` are
+file names, while the toggle is keyed by display name, and the reply was a bare
+`unknown hook:` with no list. It now names the nearest accepted spelling and prints
+the valid set. README's hook table states the `rm` arm's real coverage too, which is
+wider than the `-rf` shorthand it had been describing.
+
+Assertion counts: `fail-open` 29 → 53, `pre-bash-safety` 913 → 940, corpus 881 → 898
+rows.
+
 ## [0.87.0] - 2026-09-13
 
 Spec v6.30.0. `§5 Safe-paths` stops citing itself.

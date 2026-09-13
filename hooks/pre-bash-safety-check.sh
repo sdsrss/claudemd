@@ -876,7 +876,17 @@ if (( bypass_rm == 0 )); then
     # are everything before the first `-`-prefixed primary, which is also why
     # `find . -name '*.tmp' -delete` stays ALLOW: `.` carries no expansion, and
     # the per-target check below skips any target without one.
+    # Default label, refined from the flags actually parsed once they are known
+    # (search for S8_RM_VERB below the flag loop). It stays `rm -rf` when the
+    # command really is `rm -rf`, and for the brief window before the loop runs.
+    #
+    # S8_RM_IS_FIND, rather than comparing S8_RM_VERB against the literal
+    # "rm -rf", is what the two rm-wording-vs-find-wording branches below read.
+    # They used to make that string comparison, so the moment the rm label began
+    # tracking real flags every `rm -f` / `rm -r` deny would have silently taken
+    # the find arm and told the user about `-name`/`-type` selection primaries.
     S8_RM_VERB="rm -rf"
+    S8_RM_IS_FIND=0
     S8_FIND_BOUNDED=0
     if [[ "$rm_canon" == find ]]; then
       find_args="${trimmed#"$rm_word"}"
@@ -914,6 +924,7 @@ if (( bypass_rm == 0 )); then
         fi
         if [[ -n "${find_paths//[[:space:]]/}" ]]; then
           S8_RM_VERB="find … -delete/-exec rm"
+          S8_RM_IS_FIND=1
           trimmed="rm -rf$find_paths"
           rm_word="rm"
           rm_canon="rm"
@@ -934,6 +945,10 @@ if (( bypass_rm == 0 )); then
     # multi-target cleanup spelling. Each target is now analyzed independently
     # below, so a validated target no longer vouches for its neighbours.
     danger=0
+    # The flag token that made this dangerous, for the deny message. Only the
+    # first is kept: it is what the reader has to recognize, and `rm -rf -v` does
+    # not need two labels.
+    rm_danger_flag=""
     rm_targets=()
     after_dash_dash=0
     # R11-33 (2026-09-02 audit): unquoted `$args_only` word-splits AND globs.
@@ -952,9 +967,9 @@ if (( bypass_rm == 0 )); then
       fi
       case "$tok" in
         '--')              after_dash_dash=1 ;;
-        --recursive|--force) danger=1 ;;
+        --recursive|--force) danger=1; [[ -n "$rm_danger_flag" ]] || rm_danger_flag="$tok" ;;
         --*)               ;;  # other long-flag, ignore
-        -*[rRfF]*)         danger=1 ;;
+        -*[rRfF]*)         danger=1; [[ -n "$rm_danger_flag" ]] || rm_danger_flag="$tok" ;;
         -*)                ;;  # short flag without r/R/f/F (e.g. -v -i)
         *)
           rm_targets+=("$tok")
@@ -964,6 +979,15 @@ if (( bypass_rm == 0 )); then
     set +f
     (( danger == 1 )) || continue
     (( ${#rm_targets[@]} > 0 )) || continue
+    # Name the verb the user typed. The gate matches any of -r/-R/-f/-F or
+    # --recursive/--force, so "rm -rf with unvalidated $X" was quoting back a
+    # command nobody wrote whenever the flag was anything else — and the deny
+    # message is the only thing the user has to reconcile with their own command.
+    # The find rewrite above keeps its own label (it replaced `trimmed` with a
+    # synthetic `rm -rf …`, so the loop just read flags find never had).
+    if (( S8_RM_IS_FIND == 0 )) && [[ -n "$rm_danger_flag" ]]; then
+      S8_RM_VERB="rm $rm_danger_flag"
+    fi
     # One verdict per target. `continue` inside this loop means "next target";
     # every pre-F22 `continue` in the body already had exactly that meaning for
     # the single target it analyzed.
@@ -1093,7 +1117,7 @@ if (( bypass_rm == 0 )); then
       # find user to keep the target inside the var is the same species of bad
       # advice as telling them to add a subpath — a sibling-directory sweep
       # cannot do either without becoming a different command.
-      if [[ "$S8_RM_VERB" == "rm -rf" ]]; then
+      if (( S8_RM_IS_FIND == 0 )); then
         REASONS+=$'\n  - '"$S8_RM_VERB"$' target leaves $'"$varname_disp"$' through a `..` component. Whatever bounds $'"$varname_disp"$' does not bound where the walk lands — write the destination literally, or keep the target inside $'"$varname_disp"$'.'
       else
         REASONS+=$'\n  - '"$S8_RM_VERB"$' target leaves $'"$varname_disp"$' through a `..` component, so it deletes under a root $'"$varname_disp"$' does not name. A selection primary bounds how much is deleted, not where — write the starting path literally.'
@@ -1110,7 +1134,7 @@ if (( bypass_rm == 0 )); then
           # what actually bounds a find is a selection primary. Telling the user
           # otherwise sends them to edit their command to get past a gate
           # (v0.81.0 pre-tag review, MEDIUM-2).
-          if [[ "$S8_RM_VERB" == "rm -rf" ]]; then
+          if (( S8_RM_IS_FIND == 0 )); then
             REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
           else
             REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare $'"$varname"$' with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'

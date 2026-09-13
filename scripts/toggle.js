@@ -24,9 +24,31 @@ Wrapped by /claudemd-toggle.
 
 Exit codes: 0 success | 1 unknown hook / no arg | 2 argv-shape error.`;
 
+// The names a user has in hand come from README's "15 shell hooks" row, which
+// lists them by FILE — `banned-vocab-check`, `pre-bash-safety-check`,
+// `ship-baseline-check`. Three of the fifteen differ from the displayName this
+// map is keyed by (the other twelve are identical), so copying that row got a
+// bare `unknown hook: banned-vocab-check` and exit 1, with the valid list
+// printed only by the no-argument path the user did not take. Map the file
+// spelling back rather than ACCEPTING it: a second accepted vocabulary would
+// need its own documentation and its own drift test, and `/claudemd-status
+// --verbose` would still report only the displayName.
+function nearestHookName(name) {
+  const strip = s => s.replace(/\.sh$/, '').replace(/-check$/, '');
+  const target = strip(String(name));
+  return Object.keys(NAME_MAP).find(n => strip(n) === target) || null;
+}
+
 export async function toggle(name) {
   const upper = NAME_MAP[name];
-  if (!upper) throw new Error(`unknown hook: ${name}`);
+  if (!upper) {
+    const near = nearestHookName(name);
+    throw new Error(
+      `unknown hook: ${name}` +
+        (near ? ` — did you mean '${near}'?` : '') +
+        `\nValid hook names: ${Object.keys(NAME_MAP).join(' | ')}`
+    );
+  }
   const key = `DISABLE_${upper}_HOOK`;
   const s = readSettings();
   // Refuse rather than report a state nothing wrote (Round-14 audit SCR-L2).

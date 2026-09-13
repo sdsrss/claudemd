@@ -43,6 +43,53 @@ test('toggle unknown name → error', async () => {
   await assert.rejects(() => toggle('not-a-hook'), /unknown hook/i);
 });
 
+test('toggle names the nearest hook when given the README file-name spelling', () => {
+  // README's "15 shell hooks" row is the only place a user finds hook names in
+  // bulk, and it lists them by FILE — `banned-vocab-check`, `pre-bash-safety-check`,
+  // `ship-baseline-check`. Three of the fifteen differ from the display name
+  // NAME_MAP is keyed by, so copying from that row produced a bare
+  // `unknown hook: banned-vocab-check` and exit 1: no valid list (that prints
+  // only on the no-argument path the user did not take), no suggestion, no way
+  // forward short of reading the source.
+  //
+  // Each pair is (what README gives, what toggle accepts). The ASSERTION is on
+  // the SUGGESTION, not merely on the failure — the pre-fix message already
+  // failed, so a case that only checked the exit code would have passed against
+  // the bug.
+  for (const [given, expected] of [
+    ['banned-vocab-check', 'banned-vocab'],
+    ['pre-bash-safety-check', 'pre-bash-safety'],
+    ['ship-baseline-check', 'ship-baseline'],
+    ['banned-vocab-check.sh', 'banned-vocab'],
+  ]) {
+    const r = spawnSync(process.execPath, [TOGGLE_JS, given], {
+      env: { ...process.env, HOME: tmpHome },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1, `${given}: expected exit 1; stderr=${r.stderr}`);
+    assert.match(r.stderr, /unknown hook/i, `${given}: keep the documented error phrase`);
+    assert.match(
+      r.stderr,
+      new RegExp(`did you mean '${expected}'`),
+      `${given}: the error must name the accepted spelling, got: ${r.stderr}`
+    );
+  }
+});
+
+test('toggle prints the valid set for a name with no near match', () => {
+  // The suggestion above only covers the three README spellings. Any other
+  // typo must still land somewhere: print the set rather than a dead end.
+  const r = spawnSync(process.execPath, [TOGGLE_JS, 'nonsense-hook'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown hook/i);
+  assert.doesNotMatch(r.stderr, /did you mean/, 'no near match exists, so none should be claimed');
+  assert.match(r.stderr, /banned-vocab/, 'the valid names must be listed');
+  assert.match(r.stderr, /session-end-check/, 'the whole set, not a prefix of it');
+});
+
 test('toggle CLI with no argument prints usage (F18)', () => {
   // Regression: bare `node toggle.js` printed "unknown hook: undefined" —
   // unhelpful. Should print usage with the valid names.

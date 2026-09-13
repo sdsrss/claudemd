@@ -13,6 +13,24 @@
 # invocation whose path carries no slash, where the strip leaves the filename
 # itself and `cd` on it fails — the script is then in the cwd.
 _HC_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)"
+
+# Bind $HOME before anything can expand it. Every hook runs `set -uo pipefail`
+# and ~40 expansions across this family read `$HOME` with no default, so an
+# UNSET HOME is a fatal mid-hook rather than a degrade — and the two deny-capable
+# gates reach one of them (rule-hits.sh's log_dir) from the telemetry call one
+# line ABOVE `hook_deny`. Observed: `rm -rf $X` with HOME unset finished the §8
+# analysis, matched, died on the unbound variable, and exited 1 with empty
+# stdout; CC reads a non-zero hook exit as a non-blocking error, so the command
+# ran with §8 not enforced and a raw `HOME: unbound variable` printed on every
+# Bash tool call. Reachable from a systemd unit with no `User=`, a container
+# ENTRYPOINT under a numeric UID, `env -i`, or a scrubbed CI shell.
+#
+# EMPTY, not a substitute path. The writers below each carry their own
+# `[[ -n "$HOME" ]]` guard, so an empty value degrades to "no telemetry" — a
+# fallback path would instead have every hook lay state under `/.claude` (which
+# a root-owned process would succeed at creating) or under a shared $TMPDIR.
+: "${HOME:=}"
+
 # shellcheck source=rule-hits.sh
 source "$_HC_LIB_DIR/rule-hits.sh" 2>/dev/null || true
 
@@ -241,6 +259,9 @@ hook_record_failopen() {
   local hook="${1:-unknown}"
   local reason="${2:-unspecified}"
 
+  # See the `: "${HOME:=}"` note at the top of this file: empty means "no home",
+  # and the rate-limit marker has nowhere to live.
+  [[ -n "$HOME" ]] || return 0
   local state_dir="$HOME/.claude/.claudemd-state"
   mkdir -p "$state_dir" 2>/dev/null || return 0
   # State file: fail-open-<hook>-<reason>. Replace `/`,`.` for filesystem safety
@@ -390,6 +411,7 @@ hook_install_sentinel_clear() {
 
 hook_install_sentinel_write() {
   local from="${1:-}" to="${2:-}"
+  [[ -n "$HOME" ]] || return 0
   local state_dir="$HOME/.claude/.claudemd-state"
   # Versions land in hand-built JSON — constrain to the semver-ish charset
   # (dev-mode roots can carry arbitrary package.json version strings).
@@ -426,6 +448,7 @@ hook_record_plugin_root() {
   case "$root" in *'"'* | *'\'*) return 0 ;; esac
   [[ "$root" == *$'\n'* ]] && return 0
 
+  [[ -n "$HOME" ]] || return 0
   local state_dir="$HOME/.claude/.claudemd-state"
   mkdir -p "$state_dir" 2>/dev/null || return 0
 

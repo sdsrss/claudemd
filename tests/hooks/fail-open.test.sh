@@ -305,6 +305,131 @@ has_failopen banned-vocab transcript-missing \
 rm -rf "$STUB_HOOKS"
 unset HOME; export HOME="$TMP_HOME"
 
+# T21: an UNSET $HOME must not swallow a verdict the hook already computed.
+#
+# Every hook runs `set -uo pipefail`, and ~40 expansions across this family read
+# `$HOME` with no default — so an unset HOME is a FATAL, not a degrade. The two
+# deny-capable gates reach one of them (`rule-hits.sh`'s log_dir) from the
+# telemetry call that sits one line ABOVE `hook_deny`: the §8 / §10-V analysis
+# finished and matched, the record died on the unbound variable, and the process
+# exited 1 with EMPTY stdout. Claude Code reads a non-zero hook exit as a
+# non-blocking error, so the command ran — §8 SAFETY not enforced, with a raw
+# `HOME: unbound variable` printed on every Bash tool call.
+#
+# The shape is not new: the v0.23.7 note in pre-bash-safety-check.sh records the
+# same one (bash 3.2 aborting on `declare -A` before `hook_deny`), and the line
+# it left behind — "hook_deny below blocks regardless of the telemetry outcome"
+# — is the claim this case exists to keep true. Telemetry must not be able to
+# abort enforcement, whatever kills it.
+#
+# Reachable without contrivance: a systemd unit with no `User=`, a container
+# ENTRYPOINT under a numeric UID, `env -i`, a scrubbed CI shell.
+#
+# Each case runs BOTH arms. The HOME-set arm is the control: a fix that made
+# these hooks deny unconditionally would pass the unset arm and is caught here.
+t21_probe() {  # $1=hook file  $2=command  -> sets T21_OUT / T21_ERR / T21_RC
+  local hook="$1" cmd="$2" ev
+  ev=$(jq -cn --arg c "$cmd" \
+    '{session_id:"qa-t21",transcript_path:"/nonexistent.jsonl",cwd:".",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}')
+  T21_ERR=$(mktemp "${TMPDIR:-/tmp}/claudemd-t21-XXXXXX") || return 1
+  SANDBOXES+=("$T21_ERR")
+  if [[ "${3:-}" == "nohome" ]]; then
+    T21_OUT=$(printf '%s' "$ev" | env -u HOME bash "$HOOKS_DIR/$hook" 2>"$T21_ERR")
+  else
+    T21_OUT=$(printf '%s' "$ev" | bash "$HOOKS_DIR/$hook" 2>"$T21_ERR")
+  fi
+  T21_RC=$?
+  T21_ERR=$(cat "$T21_ERR" 2>/dev/null)
+}
+# `rm -rf $X` → §8-rm-rf-var; the banned word → §10-V. Both are deny rows whose
+# telemetry call precedes hook_deny, which is the sequence under test.
+T21_CASES="pre-bash-safety-check.sh|rm -rf \$QA_T21_DIR
+banned-vocab-check.sh|git commit -m \"significantly faster\""
+while IFS='|' read -r t21_hook t21_cmd; do
+  [[ -n "$t21_hook" ]] || continue
+  t21_probe "$t21_hook" "$t21_cmd" nohome
+  if printf '%s' "$T21_OUT" | grep -q '"permissionDecision":"deny"'; then
+    ok "T21 $t21_hook still denies with HOME unset"
+  else
+    ng "T21 $t21_hook LOST its deny with HOME unset (rc=$T21_RC, stdout='$T21_OUT', stderr='$T21_ERR')"
+  fi
+  if [[ "$T21_ERR" == *"unbound variable"* ]]; then
+    ng "T21 $t21_hook printed a bash 'unbound variable' error to the user's session: $T21_ERR"
+  else
+    ok "T21 $t21_hook stays quiet on stderr with HOME unset"
+  fi
+  # Control arm: the same command with HOME set must still deny, so the case
+  # cannot be satisfied by a hook that denies everything.
+  t21_probe "$t21_hook" "$t21_cmd"
+  if printf '%s' "$T21_OUT" | grep -q '"permissionDecision":"deny"'; then
+    ok "T21 control: $t21_hook denies with HOME set"
+  else
+    ng "T21 control: $t21_hook did not deny with HOME set (rc=$T21_RC, stderr='$T21_ERR')"
+  fi
+done <<EOF
+$T21_CASES
+EOF
+# Negative control: a clean command must still be ALLOWED with HOME unset, or
+# "denies with HOME unset" above would be satisfied by a hook that denies on the
+# fail path too.
+t21_probe pre-bash-safety-check.sh 'ls -la' nohome
+if [[ -z "$T21_OUT" ]]; then
+  ok "T21 negative control: a safe command is not denied with HOME unset"
+else
+  ng "T21 negative control: safe command produced output with HOME unset: $T21_OUT"
+fi
+
+# T22: the invariant T21 rests on, pinned at the source.
+#
+# T21 proves two hooks survive an unset HOME today. What makes that true for all
+# fifteen is a single line — `: "${HOME:=}"` in hook-common.sh — which every hook
+# inherits by sourcing that file BEFORE it expands $HOME. Nothing enforces the
+# ordering. A sixteenth hook that reads $HOME above its source line, or one that
+# does not source hook-common at all, reopens the fail-open for itself, and the
+# symptom is the one this whole case exists for: a gate that stops enforcing and
+# writes no record of having stopped.
+#
+# Comment lines are blanked (not deleted) before the scan so line numbers stay
+# aligned with the file — pre-bash-safety-check.sh documents the whitelist as
+# "Whitelists $HOME, $PWD" on line 5, forty lines above its source, and a scan
+# that counted it reported the one hook that is fine as the one that is broken.
+# `${HOME:-}` / `${HOME:=}` are their own guard and are not a finding.
+T22_HOOKS=0
+for f in "$HOOKS_DIR"/*.sh; do
+  [[ -f "$f" ]] || continue
+  T22_HOOKS=$((T22_HOOKS + 1))
+  t22_name=$(basename "$f")
+  t22_stripped=$(sed -E 's/^[[:space:]]*#.*$//' "$f")
+  t22_src=$(printf '%s\n' "$t22_stripped" | grep -n 'source .*hook-common\.sh' | head -1 | cut -d: -f1)
+  t22_use=$(printf '%s\n' "$t22_stripped" | grep -nE '\$\{?HOME\b' | grep -vE '\$\{HOME:[-=]' | head -1 | cut -d: -f1)
+  if [[ -z "$t22_use" ]]; then
+    ok "T22 $t22_name never expands \$HOME"
+  elif [[ -z "$t22_src" ]]; then
+    ng "T22 $t22_name expands \$HOME at line $t22_use but never sources hook-common.sh — nothing binds HOME for it"
+  elif (( t22_src < t22_use )); then
+    ok "T22 $t22_name sources hook-common (L$t22_src) before its first \$HOME (L$t22_use)"
+  else
+    ng "T22 $t22_name expands \$HOME at line $t22_use, ABOVE its hook-common source at line $t22_src — an unset HOME is fatal there"
+  fi
+done
+# Floor: the loop must have had subjects. An empty HOOKS_DIR glob would print
+# nothing and pass, which is the shape run-all.sh's suite-count floors exist for.
+if (( T22_HOOKS >= 15 )); then
+  ok "T22 scanned $T22_HOOKS hook(s) (floor 15)"
+else
+  ng "T22 scanned only $T22_HOOKS hook(s) — the glob matched nothing or the layer moved"
+fi
+# And the bind itself must precede the lib sourcing inside hook-common.sh, or the
+# leaf libs it pulls in are evaluated with HOME still unbound.
+T22_COMMON="$HOOKS_DIR/lib/hook-common.sh"
+t22_bind=$(grep -n '^: "\${HOME:=}"' "$T22_COMMON" | head -1 | cut -d: -f1)
+t22_leaf=$(grep -n '^source .*rule-hits\.sh' "$T22_COMMON" | head -1 | cut -d: -f1)
+if [[ -n "$t22_bind" && -n "$t22_leaf" ]] && (( t22_bind < t22_leaf )); then
+  ok "T22 hook-common binds HOME (L$t22_bind) before sourcing rule-hits.sh (L$t22_leaf)"
+else
+  ng "T22 hook-common must bind HOME before sourcing its leaf libs (bind=${t22_bind:-absent} leaf=${t22_leaf:-absent})"
+fi
+
 # T20: class gate. Derive the subject set from source — a deny-capable hook that
 # sources platform.sh must ASSERT a platform_* symbol before relying on one.
 # Naming the two hooks that had the gap would be a list written against the same

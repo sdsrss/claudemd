@@ -76,7 +76,7 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | Trigger | Hook | What happens |
 |---|---|---|
 | `git commit` with banned vocab (e.g. `significantly`, `70% faster`, `should work`) | `banned-vocab-check` | Blocks the commit with a message pointing to the §10-V spec rule. |
-| Bash command with `rm -rf $VAR` (unvalidated expansion), unpinned `npx <pkg>`, or a fetch piped into an interpreter (`curl … \| sh`) | `pre-bash-safety-check` (v0.5.0+) | Blocks at PreToolUse:Bash per §8 SAFETY. Bypass via `[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` token in the command, or pin/validate the variable. |
+| Bash command with `rm -rf $VAR` (unvalidated expansion), unpinned `npx <pkg>`, or a fetch piped into an interpreter (`curl … \| sh`) | `pre-bash-safety-check` (v0.5.0+) | Blocks at PreToolUse:Bash per §8 SAFETY. Bypass via `[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` token in the command, or pin/validate the variable. The `rm` arm is **wider than the `-rf` shorthand**: it fires on any `-r` / `-R` / `-f` / `-F` short flag or `--recursive` / `--force` long form (so `rm -f "$VAR/one-file"` is blocked too), and on `find "$VAR" -delete` / `find "$VAR" -exec rm …`. The deny message names the verb you actually typed. |
 | `git push` while the pushed branch's CI is red | `ship-baseline-check` | Blocks the push (2-second `gh run list` timeout; fail-open if `gh` absent or times out). |
 | Bash command matching ship/push/deploy/release with an unread matched `MEMORY.md` entry | `memory-read-check` | Blocks the command with a list of memory files to Read first. |
 | Session end with `~/.claude/tmp/` growth > 20 entries | `residue-audit` | Advisory stderr warning; never blocks. |

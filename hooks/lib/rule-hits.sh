@@ -226,6 +226,21 @@ rule_hits_append() {
   local project=""
   [[ -n "$project_raw" ]] && project=$(hook_encode_project "$project_raw")
 
+  # No home, no log. hook-common.sh binds $HOME to empty when it is unset so
+  # this expansion cannot be the `set -u` fatal that once killed the caller one
+  # line above its `hook_deny`; the emptiness is handled HERE rather than by
+  # letting `mkdir -p` decide, because `/.claude/logs` is a path a root-owned
+  # process would succeed at creating.
+  #
+  # NOT COVERED BY A TEST, stated rather than implied: deleting this line leaves
+  # the whole suite green (measured). For any non-root user `mkdir -p
+  # "/.claude/logs"` fails and the `|| return 0` below reaches the same place, so
+  # the two spellings are behaviourally identical everywhere a test can run. The
+  # difference appears only under uid 0, and there is no portable way to hand a
+  # suite a writable `/`. It stays because the failure it prevents is silent and
+  # permanent (telemetry laid down at the filesystem root), not because anything
+  # checks it.
+  [[ -n "$HOME" ]] || return 0
   local log_dir="$HOME/.claude/logs"
   local log_file="$log_dir/claudemd.jsonl"
   mkdir -p "$log_dir" 2>/dev/null || return 0
