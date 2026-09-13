@@ -385,11 +385,30 @@ EOF
 # git work tree for the known-red-marker read, so it cannot ride the loop above.
 # Measured on 9dc08d2: rc=1, 0 bytes stdout, `ship-baseline-check.sh:260: HOME:
 # unbound variable` — the §7 gate waves the push through. Here it must deny.
-# Assign INSIDE the success arm. `sandbox_new` leaves SANDBOX_OUT untouched when
-# its mktemp fails, so an unconditional `T21_SB="${SANDBOX_OUT:-}"` after it would
-# inherit the PREVIOUS sandbox — `$STUB_HOOKS`, already removed above — and the
-# `-n` skip below could never fire: the block would `ng` and then run anyway
-# against a recreated stale path (0.88.0 pre-tag review, Low-13).
+# Assign INSIDE the success arm. This is a READABILITY change, not a bugfix, and
+# the distinction is worth the lines because the first version of this comment
+# claimed the opposite and shipped for one commit.
+#
+# The claim was: `sandbox_new` leaves SANDBOX_OUT untouched on a failed mktemp, so
+# the earlier `sandbox_new || { ng …; }` followed by an unconditional
+# `T21_SB="${SANDBOX_OUT:-}"` would inherit the PREVIOUS sandbox and the `-n` skip
+# could never fire. Measured, it is false: `SANDBOX_OUT=$(mktemp -d …) || return 1`
+# assigns unconditionally, so a failing mktemp leaves the EMPTY STRING, the `:-`
+# yields empty, and the skip fired exactly as intended. Both forms behave
+# identically — forcing the MKTEMP to fail gives 53/54 with the block skipped on
+# either. Force it the other way — stub `sandbox_new`'s return status while
+# leaving SANDBOX_OUT intact, which is what a bare `false ||` substitution does —
+# and the old form gives 56/57 with the block running. That second measurement is
+# the one that produced the wrong finding; a reader who reproduces it that way
+# will conclude this comment is wrong, so the distinction is the point.
+#
+# What the success-arm form buys is that a reader no longer has to know
+# command-substitution-on-failure semantics to see that the guard works.
+#
+# (0.88.0 pre-tag review, Low-13 as filed and Low-15 as retracted — the reviewer
+# inferred the stale-inheritance path from reading the two lines, I wrote it into
+# a comment without testing the premise either, and it took a third measurement
+# to settle. Same failure as the release itself, one layer further in.)
 if sandbox_new; then
   T21_SB="$SANDBOX_OUT"
 else
