@@ -2159,6 +2159,13 @@ Bypass options:
       • Pin the package:          npx pkg@1.2.3   /   npx @scope/pkg@1.2.3
       • Use a literal path:       rm -rf /tmp/work-dir
       • Download then inspect:    curl -o s.sh URL && less s.sh && sh s.sh
+      • Writing ABOUT one of these shapes — documentation, a commit or tag
+        message, a CHANGELOG entry — is not an invocation, but this gate
+        reads the command line and cannot tell the two apart. Keep the text
+        off the command line: write it to a file with the Write tool and
+        pass the path (git commit -F FILE, git tag -a -F FILE). That is the
+        same route the ship runbook takes for tag messages, and it needs no
+        token.
   (b) Per-command escape token: include [allow-rm-rf-var], [allow-npx-unpinned],
       or [allow-curl-sh] in the command (records as bypass in rule-hits log).
       The token is an AUTH artifact (§8 Escape tokens): the USER authorizes it

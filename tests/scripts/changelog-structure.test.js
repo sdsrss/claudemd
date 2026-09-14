@@ -114,17 +114,25 @@ test('CHANGELOG: the structure checks can fail (mutation control)', () => {
   // The first draft also used `text.replace(entry, …)` and so reproduced the bug
   // inside the test meant to pin it — the replacement string carried the entry's
   // own token and ate the file prefix. Slicing has no replacement side.
-  const marker = '`$`';
-  const entryStart = text.indexOf(entry);
-  const at = text.indexOf(marker, entryStart);
+  // The splice point is COMPUTED, not hunted for. It used to be the first
+  // backticked `$` in the entry, and that made a structural control depend on
+  // the wording of whichever release happened to be on top: 0.89.0 wrote no
+  // such token and the control went red having found nothing wrong with the
+  // file. The error message it printed said to splice at a structural offset
+  // instead, so that is what this does. The only property that matters is
+  // mid-LINE inside the entry body — that is what keeps the injected H1 off
+  // column 0, which is the whole point of arm 1 below.
+  const lines = entry.split('\n');
+  const bodyIdx = lines.findIndex((l, i) => i > 0 && l.trim().length >= 40);
   assert.ok(
-    at !== -1 && at < entryStart + entry.length,
-    'this release entry carries no backticked `$` for the control to splice at. Do NOT widen ' +
-      'the marker and do NOT let it match later in the file: the splice would land outside the ' +
-      'top entry, topEntry(corrupted) would come back unchanged, and arms 2 and 3 would pass ' +
-      'while testing nothing. Splice at a structural offset inside the entry body instead.'
+    bodyIdx > 0,
+    'the top entry has no body line long enough to splice inside. An entry that ' +
+      'short is itself suspect — read it before relaxing this.'
   );
-  const corrupted = text.slice(0, at + 1) + header + text.slice(at + 1);
+  let lineOffset = 0;
+  for (let i = 0; i < bodyIdx; i++) lineOffset += lines[i].length + 1;
+  const at = text.indexOf(entry) + lineOffset + Math.floor(lines[bodyIdx].length / 2);
+  const corrupted = text.slice(0, at) + header + text.slice(at);
   assert.notEqual(corrupted, text, 'the mutation did not change the text');
   assert.equal(
     countMatches(corrupted, /^## Versioning policy/gm),
