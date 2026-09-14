@@ -75,14 +75,3 @@ export function extractSizingClaim(line, prefix) {
   }
   return null;
 }
-
-// Convenience for a caller that wants the whole line resolved at once.
-// Returns { line, claims: { <target>: claim|null } } or null when there is no
-// Sizing line to read.
-export function parseSizingLine(extendedText, targets = SIZING_TARGETS) {
-  const line = findSizingLine(extendedText);
-  if (line == null) return null;
-  const claims = {};
-  for (const t of targets) claims[t.name] = extractSizingClaim(line, t.name);
-  return { line, claims };
-}

@@ -23,8 +23,12 @@ export const pluginCacheDir = () => path.join(home(), '.claude/plugins/cache/cla
 // added from a local path or a git path is recorded with `installLocation`
 // pointing at that path itself and no clone is made here at all.
 export const marketplacePluginRoot = () => path.join(home(), '.claude/plugins/marketplaces/claudemd');
-export const installedPluginsPath = () => path.join(home(), '.claude/plugins/installed_plugins.json');
-export const knownMarketplacesPath = () => path.join(home(), '.claude/plugins/known_marketplaces.json');
+// Module-private on purpose: both are read only by the resolvers further down
+// this file, and nothing outside should be reaching into Claude Code's own
+// plugin bookkeeping by path. Same narrowing as the nine surplus exports in
+// v0.69.0 — the public surface shrinks, no code is deleted.
+const installedPluginsPath = () => path.join(home(), '.claude/plugins/installed_plugins.json');
+const knownMarketplacesPath = () => path.join(home(), '.claude/plugins/known_marketplaces.json');
 // CLAUDEMD_STATE_DIR is the documented test seam for the state root. It lives
 // here rather than at each call site: doctor.js and clean-residue.js each
 // inlined `process.env.CLAUDEMD_STATE_DIR || path.join(os.homedir(), …)` while

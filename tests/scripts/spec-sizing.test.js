@@ -26,7 +26,6 @@ import {
   SIZING_TOLERANCE_BYTES,
   findSizingLine,
   extractSizingClaim,
-  parseSizingLine,
 } from '../../scripts/lib/spec-sizing.js';
 import { runSpecSizingCheck } from '../../scripts/version-cascade-check.js';
 import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
@@ -150,15 +149,6 @@ test('findSizingLine returns the line or null, never a partial match', () => {
   // Not at line start — the canonical line is a top-level paragraph, and a
   // mid-sentence mention of **Sizing** is prose about it, not the line itself.
   assert.equal(findSizingLine('see the **Sizing** (x): core 1 bytes above'), null);
-});
-
-test('parseSizingLine resolves every target in SIZING_TARGETS', () => {
-  const l = line('core 1 → 2 bytes; extended 3 → 4 bytes; OPERATOR.md 5 → 6 bytes.');
-  const parsed = parseSizingLine(`${l}\n`);
-  assert.deepEqual(Object.keys(parsed.claims).sort(), SIZING_TARGETS.map(t => t.name).sort());
-  assert.equal(parsed.claims.core.value, 2);
-  assert.equal(parsed.claims['OPERATOR.md'].value, 6);
-  assert.equal(parseSizingLine('nothing here'), null);
 });
 
 // --- consumer enumeration -----------------------------------------------------
