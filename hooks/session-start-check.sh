@@ -556,7 +556,14 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     # Versions agree → any bootstrap-failed sentinel is stale (state healed
     # out-of-band, e.g. a manual /claudemd-refresh succeeded). Clear it
     # silently — a "upgrade failed" banner over healthy state is noise.
-    rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" 2>/dev/null || true
+    # Through the shared helper, not a private `rm`: this was a hand-written
+    # copy of hook_install_sentinel_clear that had drifted in one respect —
+    # the helper refuses an empty $HOME, this did not, so an unset HOME aimed
+    # it at `/.claude/…` at the filesystem root. That is the per-hook half of
+    # the 0.88.0 HOME-bind work which tasks/home-unset-per-hook-writers-*.md
+    # records as still open; one site of it closes here by deleting the copy
+    # rather than by adding a second guard. Same path, same swallow, one home.
+    hook_install_sentinel_clear
     # Both helpers can emit a SessionStart additionalContext JSON object. CC
     # parses hook stdout with a strict single-value JSON.parse, so printing two
     # objects back-to-back is INVALID JSON and BOTH banners are silently dropped
