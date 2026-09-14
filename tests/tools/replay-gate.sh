@@ -41,8 +41,13 @@
 # allow; .hookSpecificOutput.permissionDecision == "deny" = deny.
 #
 # Spec §8 forbids recursive traversal of ~/.claude/. The extraction below uses
-# a fixed two-level glob, which is depth-capped by construction; every byte of
-# output goes to the directory passed as --out.
+# a fixed two-level glob, which is depth-capped by construction. Results go to
+# --out; the only other thing written is one mkdtemp sandbox HOME, which the
+# EXIT trap removes and which also holds the single reusable event fixture.
+# Earlier this mkdtemp'd a fresh fixture PER COMMAND under $TMPDIR, outside the
+# trap's reach, so an interrupted run left `replay-XXXXXX` files behind — spec
+# §8.V4 puts disposal on the creating task, and an aborted run is exactly when
+# that is hardest. One file inside the sandbox costs nothing and cannot leak.
 #
 # Usage:
 #   tests/tools/replay-gate.sh --a OLD_HOOK --b NEW_HOOK --out DIR [--limit N]
@@ -101,14 +106,17 @@ SANDBOX_HOME=$(mktemp -d "${TMPDIR:-/tmp}/replay-home-XXXXXX") || exit 2
 trap 'rm -rf "${SANDBOX_HOME:?}"' EXIT
 mkdir -p "$SANDBOX_HOME/.claude/.claudemd-state" "$SANDBOX_HOME/.claude/logs"
 
+# One fixture, reused. Inside the sandbox HOME so the EXIT trap owns it, and
+# because a fresh mkdtemp per command is 2N spawns for no benefit — the two
+# verdicts are taken sequentially.
+FIXTURE="$SANDBOX_HOME/event.json"
+
 # verdict HOOK COMMAND -> "allow" | "deny"
 verdict() {
-  local hook="$1" cmd="$2" out fix
-  fix=$(mktemp "${TMPDIR:-/tmp}/replay-XXXXXX") || return 1
+  local hook="$1" cmd="$2" out
   jq -cn --arg c "$cmd" \
-    '{session_id:"replay",tool_name:"Bash",tool_input:{command:$c}}' > "$fix"
-  out=$(HOME="$SANDBOX_HOME" bash "$hook" < "$fix" 2>/dev/null)
-  rm -f "${fix:?}"
+    '{session_id:"replay",tool_name:"Bash",tool_input:{command:$c}}' > "$FIXTURE"
+  out=$(HOME="$SANDBOX_HOME" bash "$hook" < "$FIXTURE" 2>/dev/null)
   if [[ -z "$out" ]]; then echo allow; return 0; fi
   if [[ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)" == "deny" ]]; then
     echo deny

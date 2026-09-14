@@ -65,10 +65,13 @@ CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeo
 # `$( )` returns only when EVERY write end of its pipe closes. The watchdog
 # subshell inherited fd 1, so once the wrapped command finished, the orphan
 # `sleep` kept the pipe open and the substitution blocked until the full
-# ceiling -- turning a bound into a floor. All three reachable production call
-# sites are command substitutions wrapping an EXTERNAL binary
-# (session-start-check.sh:464 git ls-remote; ship-baseline-check.sh:185 and
-# :187 gh run list), and with an external binary this is not a race at all:
+# ceiling -- turning a bound into a floor. Of the five production call sites,
+# the three the bug can REACH are the command substitutions, and all three wrap
+# an EXTERNAL binary (session-start-check.sh:464 git ls-remote;
+# ship-baseline-check.sh:185 and :187 gh run list). The other two --
+# session-start-check.sh:722 and hook-common.sh:531, both `node install.js` --
+# redirect into a log file, so nothing is waiting on a pipe and they were never
+# affected. With an external binary this is not a race at all:
 # measured 30/30 blocked with a MINIMUM of 2008ms against a 2s ceiling. The
 # audit's own production medians land on the ceilings exactly -- 3212ms for
 # SessionStart (ceiling 3) and 2213ms for ship-baseline (ceiling 2).
