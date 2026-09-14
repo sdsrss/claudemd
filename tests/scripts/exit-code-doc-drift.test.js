@@ -15,6 +15,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 // Scope constants and the main-guard shape come from the argv gate rather than
 // a second hand-written copy — a CLI this gate cannot see is a CLI it cannot
 // judge, and two definitions of "is this a CLI" is the drift class itself.
@@ -244,4 +246,76 @@ test('R11-25: the detector fires on a doc/code mismatch (control)', () => {
   const commented =
     'const USAGE = `Exit codes: 0 success | 2 argv-shape error.`;\n// process.exit(7) once lived here\n';
   assert.deepEqual([...usedExitCodes(stripComments(commented))], []);
+});
+
+// R3-01 (converge round 3, 2026-09-14): the gates above are PER FILE. They ask
+// whether a CLI's own USAGE names the codes that CLI uses, and nothing joins
+// those lines to the repo-wide meaning CONTRIBUTING.md publishes. Its exit-code
+// table states, with no exception, that a "missing required positional" is an
+// argv-shape error raised by parseStrict and therefore exit 2. Measured on
+// 2026-09-14: three of the four CLIs taking a required positional do exit 2,
+// and `scripts/toggle.js` exits 1 — deliberately, and it says so only in its
+// own USAGE line ("1 unknown hook / no arg"). A caller that branches on the
+// table, which is the artifact CONTRIBUTING offers for exactly that purpose,
+// mis-classifies that one. Same shape as the round-2 finding: a contract
+// sentence with nothing joined to it.
+//
+// BEHAVIOURAL, not a prose assertion. Each CLI is EXECUTED with its positional
+// missing and the observed status is the input; the doc is then required to
+// name whichever ones diverge. So the divergence cannot be reintroduced
+// silently, and it cannot be satisfied by deleting the table either.
+const MISSING_POSITIONAL_CLIS = [
+  { rel: 'bin/claudemd-lint.js', argv: ['lint'], what: '<text>' },
+  { rel: 'bin/claudemd-lint.js', argv: ['audit'], what: '<jsonl-path>' },
+  { rel: 'scripts/toggle.js', argv: [], what: '<hook-name>' },
+  { rel: 'scripts/statusline-adopt.js', argv: [], what: '<detect|adopt|remove>' },
+];
+
+// Every path seam comes from the shared sandbox, not a hand-written env
+// literal. The first draft of this gate spelled it `{ ...process.env, HOME }`
+// and R11-27 rejected it — correctly: that literal is one key short the day a
+// new seam lands in paths.js, which is how a destructive CLI test once reached
+// the maintainer's live ~/.claude/.claudemd-state. All four CLIs here reject
+// before touching a home, so the sandbox is belt-and-braces; it is also the
+// only spelling that stays true when that stops being so.
+const homeBox = useHomeSandbox('exit-code-doc');
+
+function statusWithPositionalMissing(cli) {
+  return spawnSync(process.execPath, [path.join(REPO_ROOT, cli.rel), ...cli.argv], {
+    env: homeBox.env(),
+    encoding: 'utf8',
+  }).status;
+}
+
+// The table is the last section of CONTRIBUTING.md; anchor on the header row so
+// a reordering does not silently narrow the search to nothing.
+function exitCodeTable(text) {
+  const at = text.indexOf('| Code | Meaning |');
+  return at === -1 ? null : text.slice(at);
+}
+
+test('R3-01: CONTRIBUTING names every CLI whose missing-positional exit is not 2', () => {
+  const observed = MISSING_POSITIONAL_CLIS.map(c => ({ ...c, status: statusWithPositionalMissing(c) }));
+  console.log(
+    `  missing-positional gate: executed ${observed.length} CLI(s) — ` +
+      observed.map(o => `${path.basename(o.rel)} ${o.argv.join(' ')}=>${o.status}`).join(', ')
+  );
+  // Control: the documented rule has to describe something. If NO cli exited 2
+  // the "divergence" list would be every CLI, and naming them all in the doc
+  // would satisfy this test while the rule it guards had become meaningless.
+  assert.ok(
+    observed.some(o => o.status === 2),
+    'no CLI exits 2 on a missing required positional — the rule the table states describes nothing'
+  );
+  const table = exitCodeTable(fs.readFileSync(path.join(REPO_ROOT, 'CONTRIBUTING.md'), 'utf8'));
+  assert.ok(table, 'CONTRIBUTING.md carries no exit-code table to check against');
+  const unnamed = observed
+    .filter(o => o.status !== 2)
+    .filter(o => !table.includes(path.basename(o.rel)))
+    .map(o => `${o.rel} ${o.argv.join(' ')} exits ${o.status}, not 2`);
+  assert.deepEqual(
+    unnamed,
+    [],
+    `CONTRIBUTING's exit-code table says a missing required positional is 2 and names no exception, but:\n  ${unnamed.join('\n  ')}`
+  );
 });
