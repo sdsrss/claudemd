@@ -322,6 +322,24 @@ for (const [name, build] of [
       withNotes,
       'the user notes must be recoverable verbatim'
     );
+    // The command doc is what a user reads BEFORE running this, and it said
+    // the spec-on-spec branch overwrites "with no backup" — true until
+    // v0.83.0, false since (round-16 audit 6.7). Bind the sentence to the
+    // directory this run actually created, so the claim cannot drift back
+    // without turning a test red. What this does NOT check: that the rest of
+    // that paragraph is accurate, only that the namespace this branch writes
+    // to is the one the doc names.
+    const installDoc = fs.readFileSync(path.join(REPO_ROOT, 'commands/claudemd-install.md'), 'utf8');
+    const namespace = specBackups[0].slice(0, specBackups[0].indexOf('-', 'spec-backup'.length) + 1);
+    assert.ok(
+      installDoc.includes(namespace),
+      `commands/claudemd-install.md never names ${namespace}, the namespace this branch just wrote the replaced spec into`
+    );
+    assert.doesNotMatch(
+      installDoc,
+      /overwritten with no backup/,
+      'commands/claudemd-install.md still tells the user this branch keeps no copy'
+    );
     // The v0.23.11 property, restated as an assertion rather than a comment.
     // The property is "no dir whose `CLAUDE.md` is the spec is created in the
     // namespace uninstall's restore reads" — NOT "nothing spec-shaped enters
