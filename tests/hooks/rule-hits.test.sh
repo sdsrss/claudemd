@@ -315,6 +315,58 @@ if (( ${#ARCH2_FIXTURES[@]} > 0 )); then
   echo "PASS: hook_encode_project ≡ encodeProjectCwd (cross-language parity, ${#ARCH2_FIXTURES[@]} fixtures)"
 fi
 
+# Case DOC-1 (converge round 2, 2026-09-14): docs/RULE-HITS-SCHEMA.md is the
+# EXTERNAL contract for this log, and its `project` row described a multi-byte
+# character as becoming "one `-` per BYTE" — the byte-wise behaviour that
+# rule-hits.sh:16-27 records as REPLACED by the 2026-07-17 audit, and the exact
+# reimplementation error the same sentence warns consumers against. ARCH-2 above
+# pins both ENCODERS against each other; the SENTENCE describing them was joined
+# to nothing, so it stayed wrong for the life of the file with the suite green.
+# Same failure class as the hook-taxonomy table before 2026-07-26: a doc that
+# declares itself source-of-truth with nothing checking it.
+#
+# The gate is BEHAVIOURAL. The row must publish a worked example, and that
+# example is executed against both encoders — so the doc can only state an
+# encoding the code actually performs. A regex cannot decide what English prose
+# means (that is why the spec gates use whole-line pins), so arm 2 is
+# deliberately narrow: it rejects the one literal claim that was false and does
+# NOT stop an equivalent claim written in other words. Its cost, written down
+# because the next editor will hit it: the phrase "per byte" is now unavailable
+# in this ONE row even when a future sentence would use it legitimately — say it
+# another way rather than widening the arm, since every widening of a blacklist
+# in this repo has been written around by the next reader.
+SCHEMA_DOC="$(cd "$(dirname "$0")/../../docs" && pwd)/RULE-HITS-SCHEMA.md"
+[[ -f "$SCHEMA_DOC" ]] || { echo "FAIL: DOC-1 cannot find RULE-HITS-SCHEMA.md"; exit 1; }
+DOC1_ROW=$(grep -F '| `project` |' "$SCHEMA_DOC")
+[[ -n "$DOC1_ROW" ]] || { echo "FAIL: DOC-1 no \`project\` row in RULE-HITS-SCHEMA.md"; exit 1; }
+
+# Arm 1: the row must carry `<input>` → `<output>`, and both encoders must agree
+# with the output the doc publishes. Deleting the example fails here too.
+DOC1_PAIR=$(printf '%s\n' "$DOC1_ROW" \
+  | grep -oE '`/[^`]+`[[:space:]]*→[[:space:]]*`-[A-Za-z0-9-]*`' | head -n 1)
+[[ -n "$DOC1_PAIR" ]] \
+  || { echo "FAIL: DOC-1 the \`project\` row publishes no worked \`in\` → \`out\` example"; exit 1; }
+DOC1_IN=$(printf '%s' "$DOC1_PAIR" | sed -E 's/^`([^`]+)`.*/\1/')
+DOC1_OUT=$(printf '%s' "$DOC1_PAIR" | sed -E 's/.*`([A-Za-z0-9-]*)`$/\1/')
+DOC1_JS=$(js_encode "$DOC1_IN")
+[[ "$DOC1_JS" == "$DOC1_OUT" ]] \
+  || { echo "FAIL: DOC-1 encodeProjectCwd('$DOC1_IN') = '$DOC1_JS', doc publishes '$DOC1_OUT'"; exit 1; }
+if [[ -n "$_arch2_locale" ]]; then
+  DOC1_BASH=$(LC_ALL="$_arch2_locale" LC_CTYPE="$_arch2_locale" run "hook_encode_project '$DOC1_IN'")
+  [[ "$DOC1_BASH" == "$DOC1_OUT" ]] \
+    || { echo "FAIL: DOC-1 hook_encode_project('$DOC1_IN') = '$DOC1_BASH', doc publishes '$DOC1_OUT'"; exit 1; }
+  echo "PASS: DOC-1 doc example matches BOTH encoders ('$DOC1_IN' -> '$DOC1_OUT')"
+else
+  echo "SKIP: DOC-1 bash arm — no codepoint-slicing locale; JS arm ran ('$DOC1_IN' -> '$DOC1_OUT')"
+fi
+
+# Arm 2: the falsified literal. Scoped to the `project` row, so a legitimate
+# "per byte" elsewhere in the doc (log size, rotation thresholds) is not caught.
+if printf '%s\n' "$DOC1_ROW" | grep -qiE 'per +byte'; then
+  echo "FAIL: DOC-1 the \`project\` row still describes the encoding as per-byte"; exit 1
+fi
+echo "PASS: DOC-1 the \`project\` row does not claim byte-wise encoding"
+
 
 # Case ARCH-3 (2026-07-25 audit, loop-F2): every row carries hook_version =
 # the emitting plugin build's package.json version, so telemetry written by a
