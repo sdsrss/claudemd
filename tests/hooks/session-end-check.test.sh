@@ -359,6 +359,29 @@ else
   ng "Case 18: SessionEnd did not record the plugin root (state: $(cat "$HOOKROOT_STATE" 2>/dev/null))"
 fi
 
+# --- Case 19 (converge round 9): the checkpoint must not tell the user it saw
+# zero validations when it saw one. Case 16 pins the BEHAVIOUR of a validate
+# that precedes the mutation — the checkpoint still fires, correctly. Nothing
+# pinned the SENTENCE the user then reads, and it was left behind by the same
+# change: `validates` is reset to 0 by each mutation, so it counts validations
+# AFTER the last mutation, while the prose read as a count over the whole
+# slice. A maintainer who ran the suite and then edited one file was told the
+# session contained no test run at all.
+reset_cwd
+T="$TMP_HOME/case19.jsonl"
+make_transcript "$T" "$USER_MSG" "$test_then_edit_test" "$TR_OK" "$edit_call" "$TR_OK"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+if [[ -z "$PAUSED_MD" ]]; then
+  ng "Case 19: control failed — this shape must still write a checkpoint (Case 16)"
+elif grep -qF '0 VALIDATE signals' "$PAUSED_MD"; then
+  ng "Case 19: checkpoint claims '0 VALIDATE signals' after a validate ran in the slice"
+elif ! grep -qi 'after the last mutation' "$PAUSED_MD"; then
+  ng "Case 19: checkpoint does not say the count is scoped to after the last mutation"
+else
+  ok "Case 19: checkpoint describes the validate count it actually computed"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
