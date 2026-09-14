@@ -200,3 +200,42 @@ test('scan(): default (sanitize:false) is unchanged — identifier still hits', 
   // Preserves the prior contract for any non-CLI caller.
   assert.ok(scan('refactor comprehensive-parser.js').length >= 1);
 });
+
+// --- the compiled-pattern cache (converge round 8) -------------------------
+// scan() compiles each pattern once per process and reuses it. These two pin
+// what the cache is NOT allowed to carry with the compiled matcher, and both
+// were driven red against the real source before being kept: caching the
+// caller's `reason`/`isRatio` alongside the compile fails the second, and
+// dropping the try/catch fails the first.
+//
+// A third one was written and DELETED rather than shipped: "repeating a scan
+// returns the same hits", meant to catch a matcher carrying state between
+// calls. Compiling the patterns with `g` — the mutation that should have
+// driven it red — left it green, because String.match resets lastIndex for a
+// global regex. The hazard only becomes real if scan() moves to .test()/
+// .exec(), so the precondition is recorded in lint.js instead of being
+// asserted by a row that cannot fail today.
+
+test('scan(): a pattern that does not compile is skipped on every call, not just the first', () => {
+  const pats = [
+    { regex: '(unclosed', reason: 'bad regex', isRatio: false },
+    { regex: 'robust', reason: 'good regex', isRatio: false },
+  ];
+  for (const attempt of [1, 2]) {
+    const hits = scan('a robust design', { patterns: pats });
+    assert.equal(hits.length, 1, `attempt ${attempt}: only the compilable pattern may hit`);
+    assert.equal(hits[0].reason, 'good regex');
+  }
+});
+
+test('scan(): the same regex string carries each caller OWN reason and isRatio', () => {
+  const first = [{ regex: 'robust', reason: 'first reason', isRatio: false }];
+  const second = [{ regex: 'robust', reason: 'second reason', isRatio: true }];
+  const a = scan('a robust design', { patterns: first });
+  const b = scan('a robust design', { patterns: second });
+  assert.equal(a[0].reason, 'first reason');
+  assert.equal(b[0].reason, 'second reason', 'cached compile leaked the first caller reason');
+  assert.equal(b[0].isRatio, true, 'cached compile leaked the first caller isRatio');
+  // And excludeRatio must still read the caller's flag, not a remembered one.
+  assert.deepEqual(scan('a robust design', { patterns: second, excludeRatio: true }), []);
+});

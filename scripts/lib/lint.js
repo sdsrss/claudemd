@@ -80,6 +80,40 @@ function posixClassesToJs(regex) {
   return out;
 }
 
+// Compiling the patterns is per-call work whose result never varies: the
+// pattern string plus the fixed `i` flag fully determine the regex, so the
+// same string always compiles to the same matcher. scan() runs once per
+// assistant turn in the audit family, which recompiled the same 23 patterns
+// on every one of them — 184,000 compilations for an 8,000-turn run.
+//
+// The key is the pattern STRING, deliberately not the pattern object: two
+// callers can hold different objects (a fresh readPatterns() array per run)
+// carrying the same regex, and the same regex can arrive with a different
+// `reason` or `isRatio`. Those two fields stay with the caller's object and
+// are read from it below — only the compiled matcher is shared.
+//
+// A pattern that does not compile caches as null, so the fail-open skip in
+// scan() keeps costing one lookup instead of one throw per call.
+//
+// Sharing one compiled regex across calls is stateless HERE because scan()
+// matches with String.match, which resets lastIndex even for a global regex.
+// That is the precondition, not an accident: moving this to .test() or
+// .exec() would make a cached `g`-flagged matcher resume from the previous
+// call's offset. A test for it was tried and deleted — with .match it cannot
+// be driven red, so the constraint lives in this comment instead.
+const RE_CACHE = new Map();
+function compilePattern(regex) {
+  if (RE_CACHE.has(regex)) return RE_CACHE.get(regex);
+  let re;
+  try {
+    re = new RegExp(posixClassesToJs(regex), 'i');
+  } catch {
+    re = null; // bad regex — skip (fail-open)
+  }
+  RE_CACHE.set(regex, re);
+  return re;
+}
+
 // stripIdentifiers — remove code / identifier / path regions before §10-V
 // matching so a filename, branch, or backtick span quoting a high-fire word is
 // not read as a value claim. `\b` treats '-', '/', '.' as word boundaries, so
@@ -382,12 +416,8 @@ export function scan(text, { excludeRatio = false, patterns, sanitize = false } 
   const hits = [];
   for (const p of pats) {
     if (excludeRatio && p.isRatio) continue;
-    let re;
-    try {
-      re = new RegExp(posixClassesToJs(p.regex), 'i');
-    } catch {
-      continue; // bad regex — skip (fail-open)
-    }
+    const re = compilePattern(p.regex);
+    if (!re) continue; // bad regex — skip (fail-open)
     const m = scanText.match(re);
     if (m) hits.push({ match: m[0], regex: p.regex, reason: p.reason, isRatio: p.isRatio });
   }
