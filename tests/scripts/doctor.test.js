@@ -2165,6 +2165,47 @@ test('hook-drift: the red copy does not invent a record when no hook ever wrote 
   );
 });
 
+// Third pass at the same sentence, from the delta review. The repair for the
+// case above asserted "No hook has recorded a root on this machine" — inferring
+// the ABSENCE of a record from `RUNNING.source`. But runningPluginRoot() falls
+// through to activePluginRoot() in four states, and three of them have a record
+// on disk: unparseable, `root` not a string, and this one — a record whose root
+// is no longer a directory (paths.js:414-425 is a comment block about exactly
+// it). A maintainer whose old cache version was pruned was told no record
+// exists while one sat in .claudemd-state, which points the repair elsewhere.
+// `source` says the root was resolved from the filesystem. It does not say
+// whether a record exists, so the copy no longer claims that.
+test('hook-drift: the red copy does not claim the record is absent when it is merely unusable', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const installed = seedActivePluginRoot(box, '0.85.0');
+  fs.writeFileSync(path.join(installed, 'hooks/session-start-check.sh'), '# drifted\n');
+  // A record that EXISTS, carries ts and sid, and points at a directory that
+  // has since been removed — the pruned-cache-version shape.
+  const vanished = box.dir('pruned-cache-version');
+  fs.rmSync(vanished, { recursive: true, force: true });
+  const record = path.join(box.stateDir, 'hook-root.json');
+  fs.writeFileSync(
+    record,
+    JSON.stringify({ root: vanished, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'pruned' })
+  );
+  assert.equal(fs.existsSync(record), true, 'the fixture needs the record to be present');
+
+  const drift = runDoctorFrom(box, checkout).checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, 'the fixture must actually produce drift');
+  assert.doesNotMatch(
+    drift.detail,
+    /No hook has recorded a root/,
+    'a record is on disk — only its target is gone'
+  );
+  assert.match(drift.detail, /resolved from the filesystem/, 'what source actually tells us');
+  // And the basis is named once, not twice.
+  assert.equal(
+    drift.detail.split('installed-plugins').length - 1,
+    1,
+    `the basis should appear once: ${drift.detail}`
+  );
+});
+
 // H-3. With no record at all, runningPluginRoot() falls through to
 // activePluginRoot(), whose LAST arm is the marketplace clone. The clone is
 // upstream — the tree a reinstall copies FROM — never what Claude Code runs

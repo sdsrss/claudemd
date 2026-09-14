@@ -629,7 +629,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
     push(
       'hook-drift',
       false,
-      `${RUNNING.root} is the plugin root ${basis} resolves to, and it carries no hooks/ directory. ` +
+      `${RUNNING.root} (via ${basis}) carries no hooks/ directory. ` +
         `Nothing can be running hooks from there, so no comparison was possible — this is not a clean bill of health. ` +
         `Fix: ${REINSTALL}.`
     );
@@ -653,13 +653,22 @@ export async function doctor({ pruneBackups: prune } = {}) {
       // other two there is no record to be last-writer-wins and nothing a new
       // session would rewrite, so that arm says what it can stand behind.
       `${drift2.driftCount} hook script(s) differ between this tree and ${RUNNING.root}, ` +
-        (hookFired ? 'the root that fired hooks' : `the plugin root ${basis} resolves to`) +
+        (hookFired ? 'the root that fired hooks' : 'the plugin root resolved from the filesystem') +
         ` (via ${basis}): ${sample}${more}. ` +
         (hookFired
           ? `Both sides are real installs, and the record is global and last-writer-wins, so a session running a different root may have written it. ` +
             `Fix: if this tree is what should be running, ${REINSTALL}. ` +
             `If the other root is, start a session from it — only its SessionStart rewrites the record.`
-          : `No hook has recorded a root on this machine, so this root was resolved from the filesystem rather than measured at hook-fire time. ` +
+          : // Says only what `source` knows. The previous wording opened with
+            // "No hook has recorded a root on this machine", inferring the
+            // ABSENCE of a record from the basis — but runningPluginRoot()
+            // falls through in four states and three of them have a record on
+            // disk (unparseable, non-string root, or a root that is no longer a
+            // directory — paths.js:414-425). Telling a maintainer whose cache
+            // version was pruned that no record exists points the repair at the
+            // wrong thing. If the record's existence is worth reporting, read
+            // it; do not infer it from this.
+            `This root was resolved from the filesystem rather than measured at hook-fire time. ` +
             `Fix: ${REINSTALL}.`)
     );
   }
