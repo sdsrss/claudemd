@@ -19,10 +19,17 @@ STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
   && echo "PASS: 1 first run silent + ref created" \
   || { echo "FAIL: 1 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
 
-# Case 2: no fresh tmp dirs since ref → silent
+# Case 2: no fresh tmp dirs since ref → silent.
+# Scoped to the sandbox via the override for the reason Cases 7+8 were scoped
+# in v0.5.0: the hook's production spec also scans the real /tmp, where any
+# fresh `claudemd-*` from another process lands in this window and makes an
+# empty-stderr assertion fail for a reason that has nothing to do with the
+# hook. The remedy existed since v0.5.0 and had not reached this case, which
+# is why Case 5's comment below could say an empty-stderr assertion was
+# impossible while this line was making one (round-16 audit 6.1).
 sleep 1
 touch "$HOME/.claude/.claudemd-state/session-start.ref"
-STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$HOME/.claude/tmp|both" bash "$HOOK" <<<'{}' 2>&1)
 [[ -z "$STDERR" ]] && echo "PASS: 2 no residue silent" || { echo "FAIL: 2 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
 
 # Case 3: fresh tmp.XXXXXX created → warn
@@ -38,16 +45,17 @@ STDERR=$(DISABLE_SANDBOX_DISPOSAL_HOOK=1 bash "$HOOK" <<<'{}' 2>&1)
 
 # Case 5: nested tmp.XXXXXX is NOT walked (M2) — spec §8 forbids recursive
 # ~/.claude/ traversal; hook must only scan immediate children of tmp/.
-# We cannot assert stderr is empty because the hook also scans /tmp, which on
-# CI runners routinely contains fresh tmp.*/claudemd-* directories unrelated
-# to this test. Instead: set ref to NOW, then sleep+mkdir our nested path,
-# and assert the hook's stderr does NOT mention that specific nested path.
+# Scoped to the sandbox like Case 2: without the override the hook also scans
+# the real /tmp, whose unrelated churn would reach stderr. The assertion is
+# still on the specific nested path rather than on empty stderr, because that
+# names the defect — a walked nested dir — instead of merely detecting that
+# something was printed.
 rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
 mkdir -p "$HOME/.claude/tmp/legit-container" "$HOME/.claude/.claudemd-state"
 touch "$HOME/.claude/.claudemd-state/session-start.ref"
 sleep 1
 mkdir -p "$HOME/.claude/tmp/legit-container/tmp.nested_m2_marker_xyz"
-STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+STDERR=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$HOME/.claude/tmp|both" bash "$HOOK" <<<'{}' 2>&1)
 if echo "$STDERR" | grep -q "tmp\.nested_m2_marker_xyz"; then
   echo "FAIL: 5 nested tmp.X walked — recursive traversal bug still present (stderr: $STDERR)"
   FAIL=$((FAIL+1))

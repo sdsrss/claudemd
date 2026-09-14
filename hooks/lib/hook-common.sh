@@ -225,8 +225,15 @@ hook_read_telemetry_ids() {
 
 # hook_memfile_was_read TRANSCRIPT MEMFILE
 #   0 = MEMFILE was opened this session, 1 = it was not (or cannot be known:
-#   no transcript, unreadable, missing arg — fail toward "not read", which costs
-#   a redundant hint or a deny the agent can answer by opening the file).
+#   no transcript, unreadable, missing arg — fail toward "not read").
+#
+#   What that costs is NOT uniform, and the comment here used to price it as
+#   though it were: "a redundant hint, or a deny the agent can answer by
+#   opening the file". That second half holds only where a transcript exists.
+#   A subagent's tool calls are not written to one, so the answer the deny
+#   asks for cannot be produced from inside the subagent and the remedy it
+#   prints is unreachable there (round-16 audit 6.1/6.2, still open — see
+#   memory-read-check.sh's deny text, which offers exactly that remedy).
 #
 #   The test anchors on a tool-input `file_path` FIELD, never a bare path
 #   substring, and this is why the predicate has one home. Both spellings are
