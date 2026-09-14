@@ -56,13 +56,21 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 # reliable; this banner makes it hook-assisted. Compact events exit here —
 # bootstrap / upgrade-banner / summary-banner are session-START concerns, and
 # running install.js mid-session on a compaction event is never desirable.
+#
+# The banner text is DERIVED from §11 and must track it. v0.27.0 wrote
+# "re-read the active plan + spec state"; spec v6.27.0 then rewrote §11 to say
+# core is harness-injected every turn and is never re-Read, and this line was
+# not part of that sweep — so the hook went on instructing a re-read the spec
+# forbids, under a telemetry label naming the very section it contradicted.
+# Case 15b in tests/hooks/session-start.test.sh pins both halves; read its
+# comment before rewording this string.
 if [[ "$SOURCE" == "compact" ]]; then
   if [[ "${DISABLE_COMPACT_REREAD_REMINDER:-0}" != "1" ]]; then
     jq -cn '{
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "[claudemd] compaction detected — §11: before continuing L2+ work, re-read the active plan + spec state (compaction may have dropped constraints). Disable: DISABLE_COMPACT_REREAD_REMINDER=1"
+        additionalContext: "[claudemd] compaction detected — §11: before continuing L2+ work, re-read the active plan (and extended, if this task had loaded it). Core is injected every turn — do not re-read it. Disable: DISABLE_COMPACT_REREAD_REMINDER=1"
       }
     }' 2>/dev/null
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true

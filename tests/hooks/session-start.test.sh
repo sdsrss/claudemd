@@ -296,6 +296,30 @@ else
   echo "FAIL: 15 compact banner missing/malformed (objects=$OBJCOUNT15, out: $OUT15)"; FAIL=$((FAIL+1))
 fi
 
+# Case 15b (round-16 audit 6.3): the banner must not tell the model to re-read
+# spec/core state. Spec v6.27.0 rewrote §11 — core is harness-injected every
+# turn and is never re-Read — but this hook kept emitting "re-read the active
+# plan + spec state", and the telemetry label on that very emit is
+# `§11-post-compaction`: it cited the section it was violating. Case 15 could
+# not catch it because `compaction detected` is equally true of the wrong text.
+#
+# Two arms, so the pair stays honest if EITHER side moves. Arm 1 is the defect
+# itself. Arm 3 pins the spec clause the banner is derived from: if someone
+# reinstates a spec-re-read in §11, it goes red HERE and sends the reader to
+# this comment, instead of leaving the banner free to drift back silently.
+# What this does NOT assert: that the banner's wording is *good* — only that it
+# names the plan and not the spec. Prose quality is not gate-able here.
+SPEC_PC_LINE=$(grep -h 'Post-compaction' "$PLUGIN_ROOT/spec/CLAUDE.md" | head -1)
+if echo "$OUT15" | grep -qiE 'spec state|re-read the spec'; then
+  echo "FAIL: 15b banner still tells the model to re-read spec state (out: $OUT15)"; FAIL=$((FAIL+1))
+elif ! echo "$OUT15" | grep -q 'active plan'; then
+  echo "FAIL: 15b banner no longer names the plan as the re-read target (out: $OUT15)"; FAIL=$((FAIL+1))
+elif ! printf '%s' "$SPEC_PC_LINE" | grep -q 'never re-Read it'; then
+  echo "FAIL: 15b spec §11 no longer says core is never re-Read — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
+else
+  echo "PASS: 15b compact banner matches §11 (plan yes, spec/core no)"
+fi
+
 # Case 16: DISABLE_COMPACT_REREAD_REMINDER=1 suppresses the banner; exit 0.
 OUT16=$(DISABLE_COMPACT_REREAD_REMINDER=1 bash "$HOOK" <<<'{"session_id":"t","source":"compact"}' 2>/dev/null); EC16=$?
 if [[ "$EC16" == "0" && -z "$OUT16" ]]; then
