@@ -51,10 +51,20 @@ set -uo pipefail
 HOOK_A=""; HOOK_B=""; OUT=""; LIMIT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --a)     HOOK_A="${2:-}"; shift 2 ;;
-    --b)     HOOK_B="${2:-}"; shift 2 ;;
-    --out)   OUT="${2:-}"; shift 2 ;;
-    --limit) LIMIT="${2:-0}"; shift 2 ;;
+    # `shift 2` FAILS when only one argument is left, and without `set -e` that
+    # leaves the positional parameters untouched — the loop then spins on the
+    # same flag forever, silently. Found by the 0.89.0 pre-ship review, which
+    # reproduced it on `--a` with no value. Each value-taking flag checks for
+    # its value first.
+    --a|--b|--out|--limit)
+      [[ $# -ge 2 ]] || { echo "$1 requires a value" >&2; exit 2; }
+      case "$1" in
+        --a)     HOOK_A="$2" ;;
+        --b)     HOOK_B="$2" ;;
+        --out)   OUT="$2" ;;
+        --limit) LIMIT="$2" ;;
+      esac
+      shift 2 ;;
     -h|--help)
       sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;

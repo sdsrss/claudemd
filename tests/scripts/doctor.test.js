@@ -2111,7 +2111,7 @@ test('runningPluginRoot: a record whose root is a plain file falls through to ac
 // missing-in-market and the row goes solid red. doctor's UPSTREAM axis has
 // guarded exactly this since it was written (doctor.js:646); the running axis
 // never got the same guard.
-test('hook-drift: a recorded root that lost its hooks/ skips instead of reporting every script missing', async () => {
+test('hook-drift: a recorded root that lost its hooks/ names that, instead of reporting every script missing', async () => {
   const checkout = seedCheckout(box, '0.85.0');
   const lostItsHooks = box.dir('recorded-root-that-lost-hooks');
   fs.writeFileSync(
@@ -2121,18 +2121,47 @@ test('hook-drift: a recorded root that lost its hooks/ skips instead of reportin
 
   const c = spawnDoctorFrom(box, checkout);
   const drift = c.report.checks.find(x => x.name === 'hook-drift');
-  assert.equal(drift.ok, true, drift.detail);
-  assert.match(drift.detail, /no-hooks-in-market/, 'the skip has to name why it skipped');
-  // Scoped to this row rather than to the whole report: the fixture is a bare
-  // checkout with no manifest and no installed spec, so other rows are red for
-  // reasons that have nothing to do with this axis. What the defect did was put
-  // `hook-drift` — a COUNTED row — into that list, which is what the exit code
-  // reads. Asserting the empty whole-report list would fail here for unrelated
-  // reasons and would stop discriminating.
-  const countedRed = r => r.checks.filter(x => x.ok === false && !isAdvisoryCheck(x.name)).map(x => x.name);
-  assert.ok(
-    !countedRed(c.report).includes('hook-drift'),
-    `a root with no hooks/ is not a drift signal (counted red: ${countedRed(c.report).join(', ')})`
+  // The 0.89.0 pre-ship review rejected the first version of this case, which
+  // asserted a silent green. 6.6 H-2's complaint was the false DETAIL — "19
+  // hook script(s) differ" about a root that has no hooks at all — not the fact
+  // of reporting. Turning it green hid the one state compareHooks exists to
+  // surface: the root Claude Code runs from carries no hooks, so nothing is
+  // enforcing. Reported, with a detail that names the real condition.
+  assert.equal(drift.ok, false, 'a running root with no hooks/ is not a clean bill of health');
+  assert.match(drift.detail, /no hooks\/ directory/);
+  assert.doesNotMatch(
+    drift.detail,
+    /hook script\(s\) differ/,
+    'the old false detail — nothing can differ against a root that has no hooks'
+  );
+  assert.doesNotMatch(drift.detail, /missing-in-market/);
+});
+
+// M1 from the same review. `hook-fired` is the only basis measured at hook-fire
+// time; `installed-plugins` and `plugin-cache` are resolved from the filesystem.
+// The red copy asserted a hook-fired narrative on all three, so with no record
+// on disk it claimed a hook fired at a root, that a record existed and was
+// last-writer-wins, and told the reader to rewrite that record — while printing
+// `(via installed-plugins)` in the same sentence.
+test('hook-drift: the red copy does not invent a record when no hook ever wrote one', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const installed = seedActivePluginRoot(box, '0.85.0');
+  fs.writeFileSync(path.join(installed, 'hooks/session-start-check.sh'), '# drifted\n');
+  assert.equal(
+    fs.existsSync(path.join(box.stateDir, 'hook-root.json')),
+    false,
+    'the fixture is only meaningful while no hook has recorded a root'
+  );
+
+  const drift = runDoctorFrom(box, checkout).checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, 'the fixture must actually produce drift');
+  assert.match(drift.detail, /via installed-plugins/, 'the basis is still stated');
+  assert.doesNotMatch(drift.detail, /fired hooks/, 'no hook fired at that root');
+  assert.doesNotMatch(drift.detail, /last-writer-wins/, 'there is no record to be last-writer-wins');
+  assert.doesNotMatch(
+    drift.detail,
+    /SessionStart rewrites/,
+    'nothing would be rewritten — that advice belongs to the hook-fired basis'
   );
 });
 

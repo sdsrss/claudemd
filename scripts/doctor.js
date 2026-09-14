@@ -608,7 +608,32 @@ export async function doctor({ pruneBackups: prune } = {}) {
     RUNNING.source === 'hook-fired' && RUNNING.ts
       ? `hook-fired at ${RUNNING.ts}${RUNNING.sid ? ` (sid ${RUNNING.sid})` : ''}`
       : RUNNING.source;
-  if (drift2.skipped) {
+  // `hook-fired` is the ONLY basis measured at hook-fire time. The other two
+  // are resolved from the filesystem, and every sentence below that talks about
+  // "the root that fired hooks" or about the record is false for them — the
+  // 0.89.0 pre-ship review caught this text making three such claims at once,
+  // in a row whose own `(via installed-plugins)` contradicted them in the same
+  // sentence. Same defect class as the H-1 this release repairs, so the copy
+  // branches on the basis rather than asserting the strongest one.
+  const hookFired = RUNNING.source === 'hook-fired';
+  const REINSTALL =
+    '/claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins)';
+  if (drift2.skipped && drift2.skippedReason === 'no-hooks-in-market') {
+    // NOT a silent green. `no-hooks-in-market` on THIS axis means the root
+    // Claude Code is running carries no hooks/ at all, which is the very
+    // failure compareHooks exists to surface (install-drift.js header). The
+    // 6.6 H-2 complaint was that this state printed "19 hook script(s) differ"
+    // — a false detail — not that it was reported. It is still reported; the
+    // detail now names what is actually wrong. The upstream axis keeps its own
+    // skip, where a sparse or partial clone is ordinary.
+    push(
+      'hook-drift',
+      false,
+      `${RUNNING.root} is the plugin root ${basis} resolves to, and it carries no hooks/ directory. ` +
+        `Nothing can be running hooks from there, so no comparison was possible — this is not a clean bill of health. ` +
+        `Fix: ${REINSTALL}.`
+    );
+  } else if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
   } else if (drift2.driftCount === 0) {
     push('hook-drift', true, `installed hooks match source (via ${basis})`);
@@ -622,15 +647,20 @@ export async function doctor({ pruneBackups: prune } = {}) {
       'hook-drift',
       false,
       // The cause used to name the marketplace clone, which is on NEITHER side
-      // of this comparison — compareHooks was handed this tree and the root that
-      // fired hooks (round-16 audit 6.6 H-1). And the advice could not clear the
-      // state described twenty lines above: /claudemd-refresh reinstalls, while
-      // only the next SessionStart rewrites the record. Both halves now describe
-      // what was actually compared and an action that can end it.
-      `${drift2.driftCount} hook script(s) differ between this tree and ${RUNNING.root}, the root that fired hooks (via ${basis}): ${sample}${more}. ` +
-        `Both sides are real installs, and the record is global and last-writer-wins, so a session running a different root may have written it. ` +
-        `Fix: if this tree is what should be running, /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins). ` +
-        `If the other root is, start a session from it — only its SessionStart rewrites the record.`
+      // of this comparison — compareHooks was handed this tree and whatever
+      // RUNNING resolved to (round-16 audit 6.6 H-1). The record narrative and
+      // the SessionStart advice are true ONLY of the hook-fired basis; on the
+      // other two there is no record to be last-writer-wins and nothing a new
+      // session would rewrite, so that arm says what it can stand behind.
+      `${drift2.driftCount} hook script(s) differ between this tree and ${RUNNING.root}, ` +
+        (hookFired ? 'the root that fired hooks' : `the plugin root ${basis} resolves to`) +
+        ` (via ${basis}): ${sample}${more}. ` +
+        (hookFired
+          ? `Both sides are real installs, and the record is global and last-writer-wins, so a session running a different root may have written it. ` +
+            `Fix: if this tree is what should be running, ${REINSTALL}. ` +
+            `If the other root is, start a session from it — only its SessionStart rewrites the record.`
+          : `No hook has recorded a root on this machine, so this root was resolved from the filesystem rather than measured at hook-fire time. ` +
+            `Fix: ${REINSTALL}.`)
     );
   }
 
