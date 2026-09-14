@@ -48,6 +48,12 @@ docs/*
 #    The generated metrics JSON stays local: `npm run metrics` reproduces it.
 !docs/audit/
 docs/audit/*.json
+#  - docs/flows/*.md (step-by-step expansions of the ARCHITECTURE "Main flows"
+#    entries). Tracked because they are read BEFORE the source, like the other
+#    reference docs above, and because the thing that makes them worth keeping —
+#    every step cites a verbatim anchor that tests/scripts/flow-doc-anchors.test.js
+#    re-resolves on each run — only works if CI can see the file.
+!docs/flows/
 
 # tasks/ is a local-only working space by default (audit / analysis / planning
 # scratch — not project function; npm tarball already excludes it via .npmignore).

@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 78 node suites, 28 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 79 node suites, 28 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -123,7 +123,11 @@ Two script-to-script edges exist and are deliberate: `doctor.js` reuses `clean-r
 
 ## Main flows
 
-Each flow in at most five steps. File names are the entry points to read.
+Each flow in at most five steps. File names are the entry points to read. Where a flow has a
+step-by-step expansion it lives under [`docs/flows/`](flows/) — currently
+[`flows/bootstrap.md`](flows/bootstrap.md) for flow 1. Those cite a verbatim anchor per step
+rather than a line number, and `tests/scripts/flow-doc-anchors.test.js` re-resolves every anchor
+on each run, so a citation that stops matching is a red build rather than a stale number.
 
 **1. Bootstrap / version sync (SessionStart)**
 1. Claude Code runs `session-start-check.sh` with the session event on stdin.
