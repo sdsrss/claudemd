@@ -123,7 +123,9 @@ merge_banners() {
 
 # v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
 # session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
-# Sentinel: rename file after read so banner only fires once. Skipped on:
+# Sentinel: consumed by the `rm` at the end of this function, so the banner
+# fires once. (Said "rename" until 2026-09-14; that idiom was replaced in
+# R10-21e because the renamed file is the state nothing reaps.) Skipped on:
 # DISABLE_SESSION_SUMMARY_BANNER=1, jq missing, file absent, total=0.
 emit_session_summary_banner() {
   [[ "${DISABLE_SESSION_SUMMARY_BANNER:-0}" == "1" ]] && return 0
@@ -168,7 +170,7 @@ emit_session_summary_banner() {
     }
   }' 2>/dev/null
 
-  # Rename → consumed. Next Stop will write a fresh summary; this one is done.
+  # Consumed, one line down. Next Stop writes a fresh summary; this one is done.
   rm -f "$f" 2>/dev/null
 }
 
@@ -277,7 +279,8 @@ spec_drift_check() {
 # failure from a PRIOR session (hook_spawn_install wrote the sentinel; the
 # failure itself was invisible in-session — bootstrap.log only). Emits one
 # SessionStart additionalContext JSON object and consumes the sentinel
-# (rename → shown once; a repeat failure rewrites it). Always returns 0.
+# (removed once shown, so one banner per failure; a repeat failure rewrites the
+# sentinel). Always returns 0.
 # Skipped on: DISABLE_BOOTSTRAP_FAIL_BANNER=1, jq missing, sentinel absent.
 emit_bootstrap_failed_banner() {
   [[ "${DISABLE_BOOTSTRAP_FAIL_BANNER:-0}" == "1" ]] && return 0
@@ -559,7 +562,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     # objects back-to-back is INVALID JSON and BOTH banners are silently dropped
     # — the upgrade notice vanishes exactly when the user also had session
     # activity (a summary to show). Capture each (side effects — sentinel touch,
-    # file rename, hook_record — still run inside the command substitution) and
+    # sentinel removal, hook_record — still run inside the command substitution) and
     # emit at most ONE object, merging additionalContext when both fire.
     stale_json=$(stale_cache_check)
     up_json=""
