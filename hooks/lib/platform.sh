@@ -46,7 +46,18 @@ platform_timeout() {
   # sleeper outlives it. Whichever finishes first, the other is reaped.
   "$@" &
   local cmd_pid=$!
-  ( sleep "$secs" 2>/dev/null; kill -TERM "$cmd_pid" 2>/dev/null ) &
+  # The watchdog's own stdout/stderr go to /dev/null, and that redirect is the
+  # whole point rather than tidiness (round-16 audit 6.8). `$( )` returns only
+  # when EVERY write end of its pipe closes. Without this the subshell inherited
+  # fd 1, so after the wrapped command finished the orphan `sleep` held the pipe
+  # open and the substitution blocked for the FULL ceiling — the bound became a
+  # floor. Not intermittent where it matters: with an external binary (which is
+  # what all three reachable call sites wrap — git ls-remote, gh run list) it
+  # measured 30/30 blocked, minimum 2008ms against a 2s ceiling; with the
+  # redirect, 0/30 at 8–20ms. The wrapped command keeps the caller's fds, so its
+  # own output and stderr are untouched; `disown` was tried and changes nothing,
+  # because the orphan holds the fd whether or not the shell tracks it.
+  ( sleep "$secs" 2>/dev/null; kill -TERM "$cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
   local watch_pid=$!
   local rc=0
   # PRESERVE the real exit code. `wait` returns the command's own status when it

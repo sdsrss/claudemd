@@ -59,7 +59,39 @@ CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeo
 CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeout 5 true" >/dev/null 2>&1
 [[ $? -eq 0 ]] && echo "PASS: 12 watchdog success returns 0" || { echo "FAIL: 12 (got $?)"; FAIL=$((FAIL+1)); }
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
+# Case 13 (round-16 audit 6.8): the watchdog must not hold the write end of a
+# command-substitution pipe.
+#
+# `$( )` returns only when EVERY write end of its pipe closes. The watchdog
+# subshell inherited fd 1, so once the wrapped command finished, the orphan
+# `sleep` kept the pipe open and the substitution blocked until the full
+# ceiling -- turning a bound into a floor. All three reachable production call
+# sites are command substitutions wrapping an EXTERNAL binary
+# (session-start-check.sh:464 git ls-remote; ship-baseline-check.sh:185 and
+# :187 gh run list), and with an external binary this is not a race at all:
+# measured 30/30 blocked with a MINIMUM of 2008ms against a 2s ceiling. The
+# audit's own production medians land on the ceilings exactly -- 3212ms for
+# SessionStart (ceiling 3) and 2213ms for ship-baseline (ceiling 2).
+#
+# The bound is the function's OWN ceiling rather than a machine-tuned number:
+# pre-fix the elapsed time is >= SECS by construction, post-fix it is the
+# runtime of /bin/echo (measured 2008ms -> 8ms). `SECONDS` is used instead of
+# `date +%s%N` because BSD date has no %N and this suite runs on the macOS leg;
+# one-second granularity is ample across a 5000ms-to-8ms gap.
+#
+# What this does NOT assert: that the orphan `sleep` is gone. It still lives
+# out the ceiling holding /dev/null -- harmless to the caller, and killing it
+# would need new control flow in a bash-3.2-safe function.
+SECONDS=0
+OUT=$(CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeout 5 /bin/echo pipe" 2>/dev/null)
+ELAPSED=$SECONDS
+if [[ "$OUT" == "pipe" ]] && (( ELAPSED < 4 )); then
+  echo "PASS: 13 watchdog does not hold the command-substitution pipe open (${ELAPSED}s of a 5s ceiling)"
+else
+  echo "FAIL: 13 command substitution blocked ${ELAPSED}s of a 5s ceiling (out '$OUT')"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 12/12 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((13 - FAIL))/13 passed"; exit 1
+fi
+echo "Tests: 13/13 passed"
