@@ -400,9 +400,14 @@ export function activePluginRoot() {
 
 // The root Claude Code actually loaded, as measured by a hook process rather
 // than inferred from the filesystem. `activePluginRoot()` above can only ever
-// resolve a CACHE path, so for an in-place load (`--plugin-dir`, a skills
-// directory, a synced tree) it hands back an unrelated leftover and every
-// comparison built on it runs against a stranger.
+// resolve an INSTALLED location — the registry entry, then the newest version
+// in the cache, then the marketplace clone — so for an in-place load
+// (`--plugin-dir`, a skills directory, a synced tree) it hands back an
+// unrelated leftover and every comparison built on it runs against a stranger.
+// It is NOT cache-only: the third arm returns the clone, which is why the
+// fallback below has to reject that source explicitly. Four places in this repo
+// said "cache paths"; CHANGELOG.md records that the same belief cost the 0.85.0
+// entry two draft revisions before anyone read the third arm.
 //
 // Falls back to `activePluginRoot()` rather than failing, so a machine with no
 // record — fresh install, hooks never fired, SessionStart switched off —

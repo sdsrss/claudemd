@@ -34,6 +34,8 @@ Two things are written into it that cost something to learn. Its header says wha
 
 **Convergence.** The banned-vocab scan compiled the same 23 patterns on every assistant turn — 184,000 compilations across an 8,000-turn run, now 23 per process, with byte-identical output verified on three workloads. A class gate for JSONL readers instructed the next maintainer to add themselves to a list that was never written; it derives its consumer set from source now. Two sandbox-disposal cases asserted an empty stderr against the machine's real `/tmp`. Two surplus exports are module-private — `SKILL_ALIASES` was a third candidate and stays exported, because an earlier release had already weighed and kept it — and one function whose own comment described a caller that does not exist is gone.
 
+One more of the same shape, found in the last review round and worth naming because of where it lived: four places in this repo, `docs/ARCHITECTURE.md` among them, said `activePluginRoot()` resolves only cache paths. Its third arm returns the marketplace clone, which is not a cache path — and the 0.85.0 entry records that this exact belief cost that release two draft revisions before anyone read the arm. It was still sitting there for the next person to reason from. Two of the four were wrapped across lines, so a line-based grep found half of them.
+
 ## [0.88.0] - 2026-09-13
 
 The §8 gate stopped enforcing when `$HOME` was unset, and the corpus had no way to ask.

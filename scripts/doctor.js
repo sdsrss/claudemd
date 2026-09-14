@@ -157,8 +157,9 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // whether this checkout differs from the installed plugin, and it CANNOT TELL
 // WHICH CALLER IS ASKING. For a maintainer with a checkout and an install that
 // is signal; for an in-place install (`--plugin-dir`, skills-directory, synced)
-// the checkout IS the running plugin, and `activePluginRoot()` — which only ever
-// resolves cache paths — handed the row an unrelated leftover cache dir to
+// the checkout IS the running plugin, and `activePluginRoot()` — which only
+// ever resolves an INSTALLED location, registry then newest cache version then
+// the marketplace clone — handed the row an unrelated leftover to
 // compare against. Counting that would have been a permanent exit 3 with wrong
 // advice, so the row printed and did not count.
 //
@@ -520,8 +521,9 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // a checkout AND an install wants the comparison. Someone whose checkout IS the
   // running plugin — `--plugin-dir`, a skills-directory plugin, a synced plugin,
   // all three documented in the plugins reference as used in place rather than
-  // copied — wants nothing, because `activePluginRoot()` only ever resolves cache
-  // paths and so hands back an unrelated leftover cache dir for them.
+  // copied — wants nothing, because `activePluginRoot()` only ever resolves an
+  // INSTALLED location (registry entry, then newest version in the cache, then
+  // the marketplace clone) and so hands back an unrelated leftover for them.
   //
   // `CLAUDE_PLUGIN_ROOT` looks like the discriminator and is not: Claude Code
   // expands that token TEXTUALLY INTO THE COMMAND STRING and exports nothing.

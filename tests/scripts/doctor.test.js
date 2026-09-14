@@ -1645,8 +1645,9 @@ test('a genuinely drifted install is hook drift, not stale registration', async 
 // ── v0.84.0 pre-ship review, L6 · reopened by plan hook-root-ground-truth ──
 // The plugins reference documents three install shapes that are NOT copied into
 // the cache and run in place: `--plugin-dir`, a skills-directory plugin, and a
-// synced plugin. `activePluginRoot()` only ever resolves cache paths, so for
-// those it returns a leftover cache dir — and `hook-drift` then compared the
+// synced plugin. `activePluginRoot()` only ever resolves an INSTALLED location
+// (registry, then newest cache version, then the marketplace clone — not
+// cache-only), so for those it returns a leftover — and `hook-drift` compared the
 // REAL running root against something that is not running. M1's mislabelling one
 // layer out. 0.84.0 shipped on the reading that CLAUDE_PLUGIN_ROOT is the
 // discriminator; the release that carried it disproved that — Claude Code
