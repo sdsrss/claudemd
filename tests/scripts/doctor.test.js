@@ -606,6 +606,21 @@ test('hook-drift:upstream flags a running plugin that the marketplace has moved 
   assert.equal(c.ok, false);
   assert.match(c.detail, /pre-bash-safety-check\.sh \(differs\)/);
   assert.match(c.detail, /claudemd-refresh/);
+  // Round 4 of the 0.89.0 pre-ship review, and the same over-claim M1 removed
+  // from drift2: this fixture has NO hook-root.json, so the compared root came
+  // from installed_plugins.json, not from a hook. The label called it "the
+  // running plugin root" for every basis. It costs more here than on drift2 —
+  // this is the end user's axis and it prints often, because the clone tracks
+  // main and moves ahead of the release — and drift2 at least printed the
+  // basis so a reader could cross-check. This row printed none.
+  assert.equal(
+    fs.existsSync(path.join(box.stateDir, 'hook-root.json')),
+    false,
+    'the fixture is only meaningful while no hook has recorded a root'
+  );
+  assert.doesNotMatch(c.detail, /the running plugin root/, 'no hook measured that root');
+  assert.match(c.detail, /resolved from the filesystem/);
+  assert.match(c.detail, /\(via installed-plugins\)/, 'the basis has to be printable to be checkable');
 });
 
 test('hook-drift:upstream is green when the running hooks match the marketplace', async () => {

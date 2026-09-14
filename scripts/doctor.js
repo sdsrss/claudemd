@@ -711,13 +711,20 @@ export async function doctor({ pruneBackups: prune } = {}) {
     push(
       'hook-drift:upstream',
       false,
-      // Name the side actually compared. The source argument is
-      // `RUNNING.root ?? PLUGIN_ROOT`, and the fallback half is doctor's own
-      // tree, not "the running plugin root" — 0.89.0's H-3 fix stops adopting
-      // the marketplace clone as RUNNING, which makes that fallback reachable
-      // in more states than before, so a label that was loose is now wrong
-      // more often. Same defect this release is otherwise about.
-      `${drift3.driftCount} hook script(s) differ between ${RUNNING.root ? 'the running plugin root' : 'this tree'} ${RUNNING.root ?? PLUGIN_ROOT} and the marketplace at ${UPSTREAM.root}: ${sample}${more}. ` +
+      // Name the side actually compared, on the same terms as drift2 above.
+      // The source argument is `RUNNING.root ?? PLUGIN_ROOT`, so there are
+      // three cases, not two: doctor's own tree when nothing resolved, a root
+      // measured at hook-fire time, and a root resolved from the filesystem.
+      // Only the second is "the running plugin root". The label carried that
+      // claim for all of them, and this row is where it costs most — it is the
+      // END USER's axis and it prints often, because the clone tracks main and
+      // moves ahead of the release. The basis is printed too: drift2 lets a
+      // reader cross-check its claim that way, and this row did not.
+      `${drift3.driftCount} hook script(s) differ between ` +
+        (RUNNING.root
+          ? `${hookFired ? 'the running plugin root' : 'the plugin root resolved from the filesystem'} ${RUNNING.root} (via ${basis})`
+          : `this tree ${PLUGIN_ROOT}`) +
+        ` and the marketplace at ${UPSTREAM.root}: ${sample}${more}. ` +
         `The marketplace moved and your install did not — a change with no version bump does exactly this. Fix: /claudemd-refresh, then /reload-plugins.`
     );
   }
