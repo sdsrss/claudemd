@@ -2098,3 +2098,102 @@ test('runningPluginRoot: a record whose root is a plain file falls through to ac
   assert.equal(r.root, active);
   assert.equal(r.source, 'installed-plugins');
 });
+
+// ── round-16 audit 6.6 (H-1/H-2/H-3) ──
+// Three reachable states in which this row gave a false cause or advice that
+// cannot clear it. All three end in a COUNTED red and exit 3, so each is a
+// standing failure on a healthy machine — the same shape 0.84.0 demoted the row
+// to avoid, arriving through three other doors.
+
+// H-2. The `isDirectory()` guard above closed the "a file replaced it" case
+// only. A directory that lost its hooks/ still reaches compareHooks, which
+// tests for hooks/ on its FIRST argument only — so all 15 scripts report
+// missing-in-market and the row goes solid red. doctor's UPSTREAM axis has
+// guarded exactly this since it was written (doctor.js:646); the running axis
+// never got the same guard.
+test('hook-drift: a recorded root that lost its hooks/ skips instead of reporting every script missing', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const lostItsHooks = box.dir('recorded-root-that-lost-hooks');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: lostItsHooks, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'nh' })
+  );
+
+  const c = spawnDoctorFrom(box, checkout);
+  const drift = c.report.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, drift.detail);
+  assert.match(drift.detail, /no-hooks-in-market/, 'the skip has to name why it skipped');
+  // Scoped to this row rather than to the whole report: the fixture is a bare
+  // checkout with no manifest and no installed spec, so other rows are red for
+  // reasons that have nothing to do with this axis. What the defect did was put
+  // `hook-drift` — a COUNTED row — into that list, which is what the exit code
+  // reads. Asserting the empty whole-report list would fail here for unrelated
+  // reasons and would stop discriminating.
+  const countedRed = r => r.checks.filter(x => x.ok === false && !isAdvisoryCheck(x.name)).map(x => x.name);
+  assert.ok(
+    !countedRed(c.report).includes('hook-drift'),
+    `a root with no hooks/ is not a drift signal (counted red: ${countedRed(c.report).join(', ')})`
+  );
+});
+
+// H-3. With no record at all, runningPluginRoot() falls through to
+// activePluginRoot(), whose LAST arm is the marketplace clone. The clone is
+// upstream — the tree a reinstall copies FROM — never what Claude Code runs
+// (feedback_plugin_root_is_the_versioned_cache). Adopting it here made the
+// counted row perform the comparison the advisory `hook-drift:upstream` row
+// owns, while that row printed `skipped (self-compare)`: the two swapped jobs.
+test('hook-drift: with no record, a marketplace clone is not adopted as the running root', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const clone = seedUpstreamMarketplace(box, { mirrorHooks: true });
+  // Make the clone actually differ, so a comparison against it would be red and
+  // this test cannot pass merely because the two trees happen to match.
+  fs.writeFileSync(path.join(clone, 'hooks/session-start-check.sh'), '# upstream moved\n');
+  assert.equal(
+    fs.existsSync(box.claude('plugins/installed_plugins.json')),
+    false,
+    'the fixture is only meaningful while the clone is the only thing left to resolve'
+  );
+
+  const c = spawnDoctorFrom(box, checkout);
+  const drift = c.report.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, true, drift.detail);
+  assert.doesNotMatch(
+    drift.detail,
+    /marketplaces[/\\]claudemd/,
+    'the counted row must not call the clone the running plugin root'
+  );
+  // The comparison is not lost — it belongs to the upstream axis, which is
+  // advisory precisely because the clone tracks main rather than the tag.
+  const up = c.report.checks.find(x => x.name === 'hook-drift:upstream');
+  assert.equal(up.ok, false, 'the upstream axis is the one that owns this comparison');
+  // Scoped for the same reason as the case above — a bare checkout has other
+  // red rows. The property under test is that the axis carrying the clone
+  // comparison is the ADVISORY one, so it cannot move the exit code, while the
+  // counted one no longer performs it at all.
+  assert.equal(isAdvisoryCheck('hook-drift:upstream'), true);
+  const countedRed = r => r.checks.filter(x => x.ok === false && !isAdvisoryCheck(x.name)).map(x => x.name);
+  assert.ok(
+    !countedRed(c.report).includes('hook-drift'),
+    `the clone comparison must not reach the counted row (counted red: ${countedRed(c.report).join(', ')})`
+  );
+});
+
+// H-1. The cause named an object that is on NEITHER side of the comparison.
+// compareHooks(PLUGIN_ROOT, RUNNING.root) compares this tree against the root
+// that fired hooks; the marketplace clone appears in neither. And the advice
+// could not clear the state it fires on most: /claudemd-refresh reinstalls,
+// while only the next SessionStart rewrites the record.
+test('hook-drift names what it compared, and advice that can clear it', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const otherInstall = seedRunnableRoot(box, '0.84.0');
+  fs.writeFileSync(path.join(otherInstall, 'hooks/session-start-check.sh'), '# older\n');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: otherInstall, ts: '2026-09-11T00:00:00Z', version: '0.84.0', sid: 'h1' })
+  );
+
+  const drift = runDoctorFrom(box, checkout).checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, 'the fixture must actually produce drift');
+  assert.doesNotMatch(drift.detail, /marketplace clone/, 'the clone is on neither side of this comparison');
+  assert.match(drift.detail, /SessionStart/, 'the advice must name what rewrites the record');
+});

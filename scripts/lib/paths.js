@@ -434,7 +434,18 @@ export function runningPluginRoot() {
   } catch {
     /* absent, unreadable or unparseable — fall through to the cache resolution */
   }
-  return activePluginRoot();
+  // The fallback resolves what is INSTALLED, and its last arm is the marketplace
+  // clone — which is upstream, the tree a reinstall copies FROM, and never what
+  // Claude Code executes (feedback_plugin_root_is_the_versioned_cache). Letting
+  // it through made doctor's counted `hook-drift` row compare against the clone
+  // and call it "the running plugin root", performing the comparison the
+  // advisory `hook-drift:upstream` row owns while that row printed
+  // `skipped (self-compare)`: the two axes swapped jobs, and the one that moves
+  // the exit code took the one that was never supposed to (round-16 audit 6.6
+  // H-3). `installed-plugins` and `plugin-cache` stay — those really are
+  // candidates for what runs; only the clone is categorically not.
+  const active = activePluginRoot();
+  return active.source === 'marketplace-clone' ? { root: null, source: 'none' } : active;
 }
 
 // The tree a REINSTALL would copy from — the upstream side of the drift the

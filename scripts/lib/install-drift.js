@@ -49,6 +49,24 @@ export function compareHooks(sourceRoot, marketRoot) {
     return { skipped: true, skippedReason: 'no-hooks-in-source', driftCount: 0, diffs: [] };
   }
 
+  // The same question about the OTHER side, which this function asked for two
+  // years without answering (round-16 audit 6.6 H-2). Absent this, a marketRoot
+  // that exists but carries no hooks/ makes every source script report
+  // `missing-in-market` — 19 of them today — and the caller reads a solid red
+  // where the truth is "there is nothing here to compare against". Reachable
+  // three ways: a hook-root record whose directory was emptied or replaced, a
+  // sparse or partial clone, a monorepo marketplace whose catalog entry we
+  // could not resolve. doctor.js guarded its upstream call site for exactly
+  // this; the running axis had no guard, and that one counts toward exit 3.
+  //
+  // Asked AFTER the source check so `no-hooks-in-source` keeps priority: the
+  // claudemd-cli npm package ships bin/ and no hooks/, and that case wants the
+  // reason naming its own side.
+  const mktHooksDir = path.join(marketRoot, 'hooks');
+  if (!fs.existsSync(mktHooksDir) || !fs.statSync(mktHooksDir).isDirectory()) {
+    return { skipped: true, skippedReason: 'no-hooks-in-market', driftCount: 0, diffs: [] };
+  }
+
   const srcFiles = listShellFilesRecursive(srcHooksDir).map(p => path.relative(sourceRoot, p));
   if (srcFiles.length === 0) {
     // Source has hooks/ but no .sh files (e.g., config-only sub-dir or

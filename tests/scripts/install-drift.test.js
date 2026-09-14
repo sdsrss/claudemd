@@ -153,14 +153,45 @@ test('reverse scan does not double-report a file that also differs', () => {
   }
 });
 
-test('a marketplace root with no hooks/ dir is not an error', () => {
+// Round-16 audit 6.6 H-2 rewrote what this case asserts, and the old assertion
+// is worth recording because it is what let the defect stand. The name says
+// "is not an error" — written to prove compareHooks does not THROW on a market
+// root with no hooks/ — but the assertion it reached for pinned the return
+// value: one `missing-in-market` per source file. That is a statement about
+// the SOURCE tree's contents dressed up as a statement about drift, and the
+// caller cannot tell the two apart: doctor turned those rows into "19 hook
+// script(s) differ", a counted red, and an exit 3 on a healthy machine.
+//
+// "No hooks/ on the other side" is not drift; it is the absence of anything to
+// compare. The function now says so, on the side it had only ever said it for
+// the source. The no-throw property the case was written for is still covered —
+// a skip is a return, not an exception.
+test('a marketplace root with no hooks/ dir is a skip, not drift on every source file', () => {
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-src3-'));
   const mkt = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-mkt3-'));
   try {
     fs.mkdirSync(path.join(src, 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(src, 'hooks/a.sh'), '#!/bin/bash\n:\n');
     const r = compareHooks(src, mkt);
-    assert.equal(r.diffs.filter(d => d.reason === 'missing-in-market').length, 1);
+    assert.equal(r.skipped, true);
+    assert.equal(r.skippedReason, 'no-hooks-in-market');
+    assert.equal(r.driftCount, 0);
+    assert.deepEqual(r.diffs, []);
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(mkt, { recursive: true, force: true });
+  }
+});
+
+// The source side keeps priority when NEITHER has hooks/: the claudemd-cli npm
+// package ships bin/ and no hooks/, and that case wants a reason naming its own
+// side. Ordering is load-bearing, so it gets an assertion rather than a comment.
+test('with neither side carrying hooks/, the source reason wins', () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-src4-'));
+  const mkt = fs.mkdtempSync(path.join(os.tmpdir(), 'idrift-mkt4-'));
+  try {
+    const r = compareHooks(src, mkt);
+    assert.equal(r.skippedReason, 'no-hooks-in-source');
   } finally {
     fs.rmSync(src, { recursive: true, force: true });
     fs.rmSync(mkt, { recursive: true, force: true });

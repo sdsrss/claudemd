@@ -621,8 +621,16 @@ export async function doctor({ pruneBackups: prune } = {}) {
     push(
       'hook-drift',
       false,
-      `${drift2.driftCount} hook script(s) differ between source and the running plugin root ${RUNNING.root} (via ${basis}): ${sample}${more}. ` +
-        `Likely cause: the marketplace clone advanced but the versioned cache did not. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins).`
+      // The cause used to name the marketplace clone, which is on NEITHER side
+      // of this comparison — compareHooks was handed this tree and the root that
+      // fired hooks (round-16 audit 6.6 H-1). And the advice could not clear the
+      // state described twenty lines above: /claudemd-refresh reinstalls, while
+      // only the next SessionStart rewrites the record. Both halves now describe
+      // what was actually compared and an action that can end it.
+      `${drift2.driftCount} hook script(s) differ between this tree and ${RUNNING.root}, the root that fired hooks (via ${basis}): ${sample}${more}. ` +
+        `Both sides are real installs, and the record is global and last-writer-wins, so a session running a different root may have written it. ` +
+        `Fix: if this tree is what should be running, /claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins). ` +
+        `If the other root is, start a session from it — only its SessionStart rewrites the record.`
     );
   }
 
