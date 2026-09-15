@@ -10,7 +10,9 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 ## [0.89.0] - 2026-09-14
 
-Fifteen commits with one shape between them: a claim with nothing holding it to the thing it describes.
+Twenty-one commits with one shape between them: a claim with nothing holding it to the thing it describes.
+
+Six of those twenty-one are repairs from four pre-ship review rounds, and every finding across all four rounds was prose rather than behaviour — two of them inside the repairs written for earlier rounds. One row's red copy took three passes. This paragraph opened with the wrong commit count until after the tag was cut, which is the same defect one more time and is left recorded here rather than quietly corrected.
 
 **A hook told the model to do what the spec forbids.** On every compaction event `session-start-check.sh` injected "re-read the active plan + spec state". Spec v6.27.0 had rewritten §11 to say core is harness-injected every turn and is never re-Read; this line was not part of that sweep, and the telemetry label on the emit is `§11-post-compaction` — it cited the section it contradicted. The one test touching the string grepped `compaction detected`, which the wrong text satisfies exactly as well. The replacement is derived from §11 and pinned to it from both ends: the banner may not name spec or core as a re-read target, it must still name the plan, and §11 must still say core is never re-Read. A future spec change that reverses this now lands red at the test instead of silently re-opening the gap.
 
