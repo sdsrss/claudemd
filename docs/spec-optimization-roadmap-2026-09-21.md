@@ -179,9 +179,28 @@ Skill 工具调用          61 / 33,140 tool_use  =  0.2%
 | `UserPromptSubmit` | 是 | 是 | version-sync、memory-prompt-hint | G4-B2 |
 | `Stop` | 是(exit 2) | 有限;有 `last_assistant_message`;`transcript_path` 可能滞后 | 5 个脚本(stderr advisory);`transcript-structure-scan.sh` 默认关闭 | **G1b**、G7 |
 | `SessionStart` | 否 | 是 | `source=compact` 分支已实现(F4) | G7 注入 |
-| `PreCompact` / `PostCompact` | — | — | 未注册;**未在本机验证** | G7 写账本 |
-| `SubagentStart` / `SubagentStop` | — / 是 | — | 未注册 | G5 |
-| `TaskCompleted` | 文档列出 | — | 未注册;**未验证** | G1b 候选 |
+| `PreCompact` / `PostCompact` | — | — | 未注册;**PreCompact 实测会触发**(手动 `/compact`),PostCompact 本轮未取得证据 | G7 写账本 |
+| `SubagentStart` / `SubagentStop` | — / 是 | — | 未注册;**两者实测都触发**,载荷带 `agent_id` / `agent_type` / `agent_transcript_path` | G5 |
+| `TaskCompleted` | 文档列出 | — | 未注册;**实测 4 个会话全程未触发一次** | G1b 候选 → **不采用**,G1b 挂 `Stop` |
+
+**0a 本机验证(2026-09-21,12.1 项 3)**。方法:scratchpad 建临时项目 + 临时 `.claude/settings.json`,把
+上表 12 个事件全部注册到同一个把 `hook_event_name` 与载荷键名落盘的脚本,再用 `claude -p` 跑 4 个会话
+(不触碰 `~/.claude/settings.json`)。**先立对照**:第 1 个会话(单轮问答)落盘 `SessionStart` /
+`UserPromptSubmit` / `Stop` / `SessionEnd` 四条——探针本身确实在工作,所以某个事件"没出现"才是证据而不是噪声。
+
+| 会话 | 驱动动作 | 落盘事件 |
+|---|---|---|
+| 1 对照 | 单轮问答 | SessionStart · UserPromptSubmit · Stop · SessionEnd |
+| 2 | Agent 工具派一个 general-purpose 子代理 | 上述 + PreToolUse ×2 · PostToolUse ×2 · **SubagentStart** · **SubagentStop** · Stop ×2 |
+| 3 | `/compact` | SessionStart · **PreCompact**(带 `trigger` / `custom_instructions`)· SessionEnd |
+| 4 | 后台命令 + 等待(模型改派了子代理) | 同会话 2 的形状 |
+
+结论三条:(a) **`PreCompact` 触发**——会话 3 里 Claude Code 随后回 "Not enough messages to compact",
+即 hook 在"是否真的压缩"之前就已触发;**自动压缩(而非手动)是否同样触发,本轮没有证据**,所以 G7 仍
+保留 Stop 侧刷新作为退路。(b) **`PostCompact` 无证据**——本轮没有任何一次压缩真正完成,属"未测"而非
+"不触发"。(c) **`TaskCompleted` 不可用**——4 个会话、31 次 hook 调用,覆盖工具前后、子代理起止、主/子
+Stop、会话起止与 PreCompact,一次都没有;二进制里有这个字符串(`grep -a -o TaskCompleted <binary> | wc -l` = 26)只说明它被编译进去了,
+不说明它会被投递,这正是 §8.V1 "存在 ≠ 行为"。因此 **D7 裁定:G1b 挂 `Stop`**。
 
 ---
 
