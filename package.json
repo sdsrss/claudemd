@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "test": "bash tests/run-all.sh",
+    "smoke": "bash tests/smoke.sh",
     "test:scripts": "bash -c 'source tests/lib/env-hygiene.sh && claudemd_reset_test_env && node --test tests/scripts/*.test.js'",
     "test:hooks": "bash -c 'source tests/lib/env-hygiene.sh && claudemd_reset_test_env && source tests/lib/run-suite.sh && for t in tests/hooks/*.test.sh; do run_suite \"$t\" 300 || exit 1; done'",
     "lint:argv": "node scripts/lint-argv.js",
