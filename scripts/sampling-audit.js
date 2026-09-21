@@ -739,6 +739,165 @@ function scanAskRate(events) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// G0 behaviour metrics (pre-registered, docs/spec-optimization-roadmap-2026-09-21.md
+// §7 G0 + 附 A).
+//
+// These are NOT detectors. Every rule above is a heuristic that guesses at an
+// intent from prose and therefore owes a precision label before its rate may be
+// published; the three below are exact counts of tool calls — a Skill call
+// either appears in the event stream or it does not. So they carry no
+// CALIBRATION row and are never `collecting`. What they owe instead is a
+// VALIDITY statement, because each measures a proxy and not the thing the
+// roadmap cares about. BEHAVIOR_VALIDITY below is that statement, printed with
+// the numbers and carried in --json, so a reader cannot pick up the rate
+// without it.
+//
+// The counting rules are pre-registered and must not be tuned to the data:
+// rework threshold 8; `isTest` = code extension AND (test directory OR test
+// naming) — matching on `spec/` alone is excluded by name, because this repo's
+// own `spec/` holds the specification, not tests, and a matcher that counted it
+// would report spec edits as test-weakening.
+const CODE_FILE_RE = /\.(m?[jt]sx?|rs|py|go|sh|rb|java|c|cpp|h)$/i;
+const TEST_DIR_RE = /(^|\/)(tests?|__tests__)\//i;
+const TEST_NAME_RE = /\.(test|spec)\.[a-z]+$|_test\.[a-z]+$/i;
+export const REWORK_THRESHOLD = 8;
+
+export function isTestFile(p) {
+  return CODE_FILE_RE.test(p) && (TEST_DIR_RE.test(p) || TEST_NAME_RE.test(p));
+}
+
+// Assertion and case-declaration shapes across the runners this corpus contains
+// (node:test / vitest / jest / pytest / cargo). Counted on the two halves of one
+// Edit: a hunk whose assertion count falls is the weakening signal, a hunk that
+// loses a case declaration is the deletion signal. Both are per-hunk UPPER
+// BOUNDS on weakening — see BEHAVIOR_VALIDITY.
+const ASSERT_RE =
+  /\bassert\w*|\bexpect\b|\btoBe\w*|\btoEqual\b|\btoMatch\b|\btoThrow\b|\bstrictEqual\b|\bdeepEqual\b|assert_eq!|assert!|panic!/g;
+const CASE_RE = /\b(it|test|describe)\s*\(|#\[test\]|^\s*def test_/gm;
+const countRe = (s, re) => (String(s == null ? '' : s).match(re) || []).length;
+
+export const BEHAVIOR_VALIDITY =
+  'Exact counts, not heuristics — no precision label applies. Validity limits, all three: ' +
+  '(1) rework rate measures EDIT SHAPE (repeat edits to one file in one session), and its ' +
+  'association with defect rate is untested — a large legitimate refactor scores the same as ' +
+  'hill-climbing; (2) test-weakening is a per-hunk UPPER BOUND — an Edit whose assertion count ' +
+  'falls may be a split, a rename or a move, and one that keeps the count may still weaken the ' +
+  'assertion it kept; (3) skill-invocation rate counts the Skill tool only — a model that ' +
+  'performs the equivalent work inline is indistinguishable here from one that skipped it. ' +
+  'All three are main-line AND sidechain traffic as the transcript records it, and the corpus ' +
+  'this was registered against carried isSidechain=0 on every row, so subagent work is ' +
+  'under-represented by an unmeasured amount.';
+
+const EDIT_BUCKETS = ['1-2', '3-4', '5-7', '8-14', '15-29', '30+'];
+
+function editBucket(n) {
+  if (n <= 2) return '1-2';
+  if (n <= 4) return '3-4';
+  if (n <= 7) return '5-7';
+  if (n <= 14) return '8-14';
+  if (n <= 29) return '15-29';
+  return '30+';
+}
+
+export function emptyBehavior() {
+  return {
+    // Rework: denominator is sessions that edited ANY file, matching the
+    // roadmap's headline. The code-only pair is carried beside it rather than
+    // instead of it — 3.2(b) reports both and they differ by 12 points.
+    editedSessions: 0,
+    reworkSessions: 0,
+    codeEditedSessions: 0,
+    reworkSessionsCodeOnly: 0,
+    editBuckets: Object.fromEntries(EDIT_BUCKETS.map(b => [b, 0])),
+    // Test-edit disposition: denominator is Edit calls on test files. Write is
+    // excluded — a whole-file Write has no `old_string` to compare against, so
+    // it cannot be classified either way and counting it would inflate the
+    // denominator with unclassifiable rows.
+    testEdits: 0,
+    testStrengthened: 0,
+    testNeutral: 0,
+    testWeakened: 0,
+    testCasesDeleted: 0,
+    // Skill routing: denominator is every tool_use in the window.
+    toolUses: 0,
+    skillInvocations: 0,
+    skillsByName: {},
+  };
+}
+
+/** Per-transcript behaviour contribution. Session-level fields are 0 or 1. */
+export function scanBehavior(events) {
+  const b = emptyBehavior();
+  const perFile = new Map();
+  const perCodeFile = new Map();
+  for (const e of events) {
+    if (e.kind !== 'assistant') continue;
+    for (const tu of e.toolUses) {
+      b.toolUses += 1;
+      if (tu.name === 'Skill') {
+        b.skillInvocations += 1;
+        const named = tu.input && (tu.input.skill || tu.input.name);
+        const key = typeof named === 'string' && named ? named : '(unnamed)';
+        b.skillsByName[key] = (b.skillsByName[key] || 0) + 1;
+      }
+      const fp = tu.input && tu.input.file_path;
+      if (typeof fp !== 'string' || !fp) continue;
+      if (tu.name === 'Edit' || tu.name === 'Write') {
+        perFile.set(fp, (perFile.get(fp) || 0) + 1);
+        if (CODE_FILE_RE.test(fp)) perCodeFile.set(fp, (perCodeFile.get(fp) || 0) + 1);
+      }
+      if (tu.name !== 'Edit' || !isTestFile(fp)) continue;
+      b.testEdits += 1;
+      const a0 = countRe(tu.input.old_string, ASSERT_RE);
+      const a1 = countRe(tu.input.new_string, ASSERT_RE);
+      const c0 = countRe(tu.input.old_string, CASE_RE);
+      const c1 = countRe(tu.input.new_string, CASE_RE);
+      // Ordered: a hunk that drops a case declaration is counted as a deletion
+      // even when its assertion count also fell, so the two classes partition
+      // the edits rather than double-counting them.
+      if (c1 < c0) b.testCasesDeleted += 1;
+      else if (a1 < a0) b.testWeakened += 1;
+      else if (a1 > a0) b.testStrengthened += 1;
+      else b.testNeutral += 1;
+    }
+  }
+  if (perFile.size > 0) {
+    b.editedSessions = 1;
+    const hottest = Math.max(...perFile.values());
+    b.editBuckets[editBucket(hottest)] = 1;
+    if (hottest >= REWORK_THRESHOLD) b.reworkSessions = 1;
+  }
+  if (perCodeFile.size > 0) {
+    b.codeEditedSessions = 1;
+    if (Math.max(...perCodeFile.values()) >= REWORK_THRESHOLD) b.reworkSessionsCodeOnly = 1;
+  }
+  return b;
+}
+
+// Field-by-field on purpose. A generic `for (const k of Object.keys(src))` adder
+// would silently start summing whatever field is added next — including a
+// non-numeric one — and this object already carries two nested maps that need
+// different treatment.
+export function mergeBehavior(dst, src) {
+  for (const k of [
+    'editedSessions',
+    'reworkSessions',
+    'codeEditedSessions',
+    'reworkSessionsCodeOnly',
+    'testEdits',
+    'testStrengthened',
+    'testNeutral',
+    'testWeakened',
+    'testCasesDeleted',
+    'toolUses',
+    'skillInvocations',
+  ])
+    dst[k] += src[k];
+  for (const b of EDIT_BUCKETS) dst.editBuckets[b] += src.editBuckets[b];
+  for (const [k, v] of Object.entries(src.skillsByName)) dst.skillsByName[k] = (dst.skillsByName[k] || 0) + v;
+}
+
 // Walk the main-line (non-sidechain) event sequence for the 3 detectors that
 // need cross-turn context. Sidechain (subagent) traffic is excluded — it
 // interleaves with the main conversation and would corrupt turn boundaries.
@@ -911,6 +1070,7 @@ function emptyResult(windowDays, projectsDir) {
     byRule: emptyByRule(),
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
     askRate: { segments: 0, asks: 0, assent: 0 },
+    behaviorMetrics: { ...emptyBehavior(), reworkThreshold: REWORK_THRESHOLD, validity: BEHAVIOR_VALIDITY },
     perTranscript: [],
   };
 }
@@ -982,6 +1142,12 @@ export async function samplingAudit({
 
   for (const file of files) {
     const events = extractEvents(file, cutoffMs, result.unreadableTranscripts, result.malformedTranscripts);
+    // G0 behaviour metrics run BEFORE the text-detector guard below. Their
+    // denominators are sessions-that-edited and tool_use, not assistant turns
+    // with prose, so a transcript that only ran tools belongs in them — and
+    // dropping it would make `toolUses` describe a narrower population than its
+    // own name claims.
+    mergeBehavior(result.behaviorMetrics, scanBehavior(events));
     // Text-detector surface preserved from v0.14.0: every assistant turn with
     // text, sidechains included (keeps the A1 2026-07-10 baseline comparable).
     const turns = events.filter(e => e.kind === 'assistant' && e.hasText).map(e => e.text);
@@ -1089,6 +1255,11 @@ export async function samplingAuditGlobal({
     // disposition consumes — against this file's own header, which says the
     // stratified view is the one to read because pooled counts already misled.
     askRate: { segments: 0, asks: 0, assent: 0 },
+    // Stratified for the same reason as everything else in this block
+    // (methodology note #5): the roadmap's 3.3 table is the one a reader should
+    // read, and a pooled behaviour rate would hide whether dogfooding differs
+    // from real work.
+    behaviorMetrics: emptyBehavior(),
     byRule: Object.fromEntries(
       RULE_KEYS.map(k => [
         k,
@@ -1138,10 +1309,12 @@ export async function samplingAuditGlobal({
     result.totalAssistantTextRows += sub.totalAssistantTextRows;
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
     if (sub.askRate) mergeAskRate(result.askRate, sub.askRate);
+    mergeBehavior(result.behaviorMetrics, sub.behaviorMetrics);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalAssistantTextRows += sub.totalAssistantTextRows;
     if (sub.askRate) mergeAskRate(cls.askRate, sub.askRate);
+    mergeBehavior(cls.behaviorMetrics, sub.behaviorMetrics);
     for (const k of RULE_KEYS) {
       result.byRule[k].hits += sub.byRule[k].hits;
       result.byRule[k].violations += sub.byRule[k].violations;
@@ -1229,6 +1402,56 @@ export function h4ByClassLines(r) {
         `${k}: ${v.askRate.asks} ask(s), ${v.askRate.assent} assent, ${v.askRate.segments} segment(s)`
     );
   return parts.length === 0 ? [] : [`H4 by class — ${parts.join(' · ')}`, ''];
+}
+
+// G0 behaviour block. Every line prints count/denominator beside the rate: the
+// A2 contract ("a rate without its denominator is not evidence") is not about
+// heuristics, it is about rates, and these are rates.
+export function behaviorLines(r) {
+  const b = r.behaviorMetrics;
+  const pct = (a, n) => (n ? `${((100 * a) / n).toFixed(1)}%` : 'n/a');
+  const out = [
+    '## Behaviour metrics (G0)',
+    '',
+    `Rework (≥${b.reworkThreshold} edits to one file in one session): ${b.reworkSessions}/${b.editedSessions} sessions with any edit = ${pct(b.reworkSessions, b.editedSessions)}`,
+    // Two denominators, both printed. The roadmap's 3.2(b) code-only figure is
+    // over the SAME any-edit denominator as the headline — the two rates are
+    // meant to be read against each other — while "of sessions that edited
+    // code" answers a different question. Printing one without saying which
+    // would make the pair non-comparable to the pre-registered number.
+    `  code files only: ${b.reworkSessionsCodeOnly}/${b.editedSessions} of edit-sessions = ${pct(b.reworkSessionsCodeOnly, b.editedSessions)}` +
+      ` · ${b.reworkSessionsCodeOnly}/${b.codeEditedSessions} of code-edit sessions = ${pct(b.reworkSessionsCodeOnly, b.codeEditedSessions)}`,
+    `Hottest-file edit counts: ${EDIT_BUCKETS.map(k => `${k}:${b.editBuckets[k]}`).join(' · ')}`,
+    `Test-file Edits: ${b.testEdits} · strengthened ${b.testStrengthened} (${pct(b.testStrengthened, b.testEdits)})` +
+      ` · unchanged ${b.testNeutral} (${pct(b.testNeutral, b.testEdits)})` +
+      ` · weakened ${b.testWeakened} (${pct(b.testWeakened, b.testEdits)})` +
+      ` · cases deleted ${b.testCasesDeleted} (${pct(b.testCasesDeleted, b.testEdits)})` +
+      ` · weakened+deleted ${b.testWeakened + b.testCasesDeleted} (${pct(b.testWeakened + b.testCasesDeleted, b.testEdits)})`,
+    `Skill invocations: ${b.skillInvocations}/${b.toolUses} tool_use = ${pct(b.skillInvocations, b.toolUses)}` +
+      (Object.keys(b.skillsByName).length
+        ? ` · ${Object.entries(b.skillsByName)
+            .sort((x, y) => y[1] - x[1])
+            .slice(0, 8)
+            .map(([k, v]) => `${k}×${v}`)
+            .join(', ')}`
+        : ' · (no Skill calls in window)'),
+    '',
+  ];
+  if (r.byClass) {
+    out.push(
+      '| Class | Rework ≥8 / edited sessions | Skill / tool_use | Test Edits | weakened+deleted |',
+      '|---|---:|---:|---:|---:|'
+    );
+    for (const cls of ['self', 'external']) {
+      const c = r.byClass[cls].behaviorMetrics;
+      out.push(
+        `| ${cls} | ${c.reworkSessions}/${c.editedSessions} (${pct(c.reworkSessions, c.editedSessions)}) | ${c.skillInvocations}/${c.toolUses} (${pct(c.skillInvocations, c.toolUses)}) | ${c.testEdits} | ${c.testWeakened + c.testCasesDeleted} (${pct(c.testWeakened + c.testCasesDeleted, c.testEdits)}) |`
+      );
+    }
+    out.push('');
+  }
+  out.push(`> Validity (pre-registered, G0): ${b.validity}`, '');
+  return out;
 }
 
 export function formatMarkdown(r) {
@@ -1328,6 +1551,7 @@ export function formatMarkdown(r) {
     out.push(...askDispositionVerdict(ASK_RATE_PRECISION));
     out.push('');
   }
+  if (r.behaviorMetrics) out.push(...behaviorLines(r));
   if (r.perTranscript.length > 0) {
     out.push('## Per-transcript hits');
     out.push('');
@@ -1358,6 +1582,10 @@ Also collects the C1 over-ceremony measure: ceremony-skill invocations
 (sp:brainstorming / test-driven-development / …) on L0/L1-shaped task segments.
 Plus the H4 default-ASK measure: answered asks per task and how many the user
 answered with assent rather than direction (audit 20260906-231957 §7.2).
+Plus the G0 behaviour metrics: rework rate, test-weakening rate and
+skill-invocation rate (docs/spec-optimization-roadmap-2026-09-21.md §7 G0).
+Those three are exact counts, not heuristics — they carry a validity statement
+instead of a precision label, printed and carried in --json beside the numbers.
 
 Options:
   --days=N       Window in days (positive integer, default 30).

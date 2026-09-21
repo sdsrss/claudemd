@@ -20,6 +20,10 @@ import {
   scanVocab,
   scanStructure,
   yieldTellSuppressed,
+  scanBehavior,
+  emptyBehavior,
+  isTestFile,
+  REWORK_THRESHOLD,
 } from '../../scripts/sampling-audit.js';
 import { encodeProjectCwd } from '../../scripts/lib/paths.js';
 
@@ -1216,4 +1220,247 @@ test('ALG-L2: bold and heading section labels are seen, so the order check can f
 
   // Control: prose that merely mentions the words is still not a report.
   assert.equal(scanStructure('I am done with the failed test and uncertain about the rest').fourSection, 0);
+});
+
+// ---------------------------------------------------------------------------
+// G0 behaviour metrics (docs/spec-optimization-roadmap-2026-09-21.md §7 G0).
+//
+// These are exact counts, so the test is arithmetic rather than calibration:
+// every assertion below states the input shape and the number it must produce,
+// and each threshold is driven on BOTH sides of its boundary. A count that
+// cannot distinguish 7 edits from 8 is a count nobody can act on.
+
+const ev = (...toolUses) => ({ kind: 'assistant', text: '', hasText: false, toolUses, sidechain: false });
+const edit = (file_path, old_string = '', new_string = '') => ({
+  name: 'Edit',
+  input: { file_path, old_string, new_string },
+});
+const write = file_path => ({ name: 'Write', input: { file_path, content: 'x' } });
+const editsTo = (file, n) => Array.from({ length: n }, () => ev(edit(file)));
+
+test('G0 isTestFile: code extension AND test dir/name — `spec/` alone does not qualify', () => {
+  assert.equal(isTestFile('tests/run.test.js'), true);
+  assert.equal(isTestFile('pkg/tests/helper.js'), true, 'a code file under tests/ qualifies');
+  assert.equal(isTestFile('src/parser.test.ts'), true);
+  assert.equal(isTestFile('src/parser_test.go'), true);
+  assert.equal(isTestFile('__tests__/a.rs'), true);
+  // The named exclusion. This repo's own spec/ holds CLAUDE.md and
+  // hard-rules.json; a matcher that counted `spec/` would report spec edits as
+  // test edits, and on this corpus that is where the difference lands.
+  assert.equal(isTestFile('spec/CLAUDE.md'), false, '`spec/` is not a test directory');
+  assert.equal(isTestFile('spec/hard-rules.json'), false);
+  assert.equal(isTestFile('tests/fixtures/sample.jsonl'), false, 'not a code extension');
+  assert.equal(isTestFile('docs/tests.md'), false);
+  assert.equal(isTestFile('src/parser.js'), false, 'plain source is not a test');
+});
+
+test('G0 rework: the threshold fires at 8 and not at 7, on both denominators', () => {
+  assert.equal(REWORK_THRESHOLD, 8, 'pre-registered before data collection — must not be tuned');
+
+  const seven = scanBehavior(editsTo('/p/src/a.js', 7));
+  assert.equal(seven.editedSessions, 1);
+  assert.equal(seven.reworkSessions, 0, '7 edits is below the threshold');
+  assert.equal(seven.editBuckets['5-7'], 1);
+
+  const eight = scanBehavior(editsTo('/p/src/a.js', 8));
+  assert.equal(eight.reworkSessions, 1, '8 edits is at the threshold');
+  assert.equal(eight.reworkSessionsCodeOnly, 1);
+  assert.equal(eight.editBuckets['8-14'], 1);
+  assert.equal(eight.editBuckets['5-7'], 0, 'a session lands in exactly one bucket');
+
+  // The count is per FILE, not per session: eight edits spread over two files
+  // is four apiece and not rework.
+  const spread = scanBehavior([...editsTo('/p/src/a.js', 4), ...editsTo('/p/src/b.js', 4)]);
+  assert.equal(spread.reworkSessions, 0);
+  assert.equal(spread.editBuckets['3-4'], 1);
+
+  // Write counts toward the same per-file tally as Edit (a rewrite is rework).
+  assert.equal(scanBehavior([...editsTo('/p/src/a.js', 7), ev(write('/p/src/a.js'))]).reworkSessions, 1);
+
+  // Non-code churn moves the any-file counter and not the code-only one — the
+  // two rates in 3.2(b) differ by exactly this.
+  const docs = scanBehavior(editsTo('/p/docs/notes.md', 9));
+  assert.equal(docs.editedSessions, 1);
+  assert.equal(docs.reworkSessions, 1);
+  assert.equal(docs.codeEditedSessions, 0);
+  assert.equal(docs.reworkSessionsCodeOnly, 0);
+});
+
+test('G0 test-edit disposition: the four classes partition the edits', () => {
+  const b = scanBehavior([
+    ev(edit('tests/a.test.js', 'assert(1)', 'assert(1); assert(2)')), // +1 assertion
+    ev(edit('tests/a.test.js', 'assert(1)', 'assert(2)')), // unchanged
+    ev(edit('tests/a.test.js', 'assert(1); assert(2)', 'assert(1)')), // −1 assertion
+    ev(
+      edit(
+        'tests/a.test.js',
+        'test("a", () => assert(1))\ntest("b", () => assert(2))',
+        'test("a", () => assert(1))'
+      )
+    ),
+    ev(edit('src/impl.js', 'assert(1); assert(2)', 'assert(1)')), // not a test file
+    ev(edit('spec/CLAUDE.md', 'assert(1); assert(2)', '')), // not a test file
+    ev(write('tests/b.test.js')), // Write has no old_string to compare
+  ]);
+  assert.equal(b.testEdits, 4, 'only Edit calls on test files enter the denominator');
+  assert.equal(b.testStrengthened, 1);
+  assert.equal(b.testNeutral, 1);
+  assert.equal(b.testWeakened, 1);
+  assert.equal(b.testCasesDeleted, 1);
+  assert.equal(
+    b.testStrengthened + b.testNeutral + b.testWeakened + b.testCasesDeleted,
+    b.testEdits,
+    'the four classes must sum to the denominator — no edit counted twice or dropped'
+  );
+});
+
+test('G0 skill rate: Skill calls counted by name against every tool_use', () => {
+  const b = scanBehavior([
+    ev({ name: 'Skill', input: { skill: 'superpowers:brainstorming' } }),
+    ev({ name: 'Skill', input: { skill: 'superpowers:brainstorming' } }),
+    ev({ name: 'Skill', input: {} }),
+    ev({ name: 'Bash', input: { command: 'ls' } }, { name: 'Read', input: { file_path: '/p/x.js' } }),
+  ]);
+  assert.equal(b.toolUses, 5, 'every tool_use is in the denominator, Skill included');
+  assert.equal(b.skillInvocations, 3);
+  assert.deepEqual(b.skillsByName, { 'superpowers:brainstorming': 2, '(unnamed)': 1 });
+  // Read carries a file_path and must not count as an edit.
+  assert.equal(b.editedSessions, 0);
+});
+
+test('G0 end-to-end: behaviorMetrics reaches the result with its threshold and validity', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-g0-'));
+  try {
+    // A transcript whose assistant rows carry NO text — only tool calls. The
+    // text detectors skip it; the behaviour metrics must not, because their
+    // denominators are sessions-that-edited and tool_use.
+    const rows = [
+      ...Array.from({ length: 8 }, () => ({
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: '/p/src/a.js' } }] },
+      })),
+      {
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'sp:tdd' } }] },
+      },
+    ];
+    fs.writeFileSync(path.join(dir, 'x.jsonl'), rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.scannedTranscripts, 0, 'no assistant TEXT rows — the text-detector sample is empty');
+    assert.equal(r.behaviorMetrics.editedSessions, 1, 'and the behaviour sample is not');
+    assert.equal(r.behaviorMetrics.reworkSessions, 1);
+    assert.equal(r.behaviorMetrics.toolUses, 9);
+    assert.equal(r.behaviorMetrics.skillInvocations, 1);
+    assert.equal(r.behaviorMetrics.reworkThreshold, REWORK_THRESHOLD);
+    // The validity statement is the thing these metrics carry INSTEAD of a
+    // precision label, so it has to travel with the numbers in --json.
+    assert.match(r.behaviorMetrics.validity, /Exact counts, not heuristics/);
+    assert.match(r.behaviorMetrics.validity, /EDIT SHAPE/);
+    assert.match(r.behaviorMetrics.validity, /UPPER BOUND/);
+    assert.match(r.behaviorMetrics.validity, /isSidechain=0/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('G0 stratification: the pooled behaviour counts equal the sum of the classes', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-g0g-'));
+  try {
+    const mk = (dirName, file, n) => {
+      const d = path.join(root, dirName);
+      fs.mkdirSync(d, { recursive: true });
+      const rows = Array.from({ length: n }, () => ({
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: file } }] },
+      }));
+      fs.writeFileSync(path.join(d, 's.jsonl'), rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    };
+    mk(encodeProjectCwd('/home/u/dev/claudemd'), '/home/u/dev/claudemd/src/a.js', 8);
+    mk(encodeProjectCwd('/home/u/dev/other'), '/home/u/dev/other/src/b.js', 3);
+
+    const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byClass.self.behaviorMetrics.reworkSessions, 1);
+    assert.equal(r.byClass.external.behaviorMetrics.reworkSessions, 0);
+    const sum = k => r.byClass.self.behaviorMetrics[k] + r.byClass.external.behaviorMetrics[k];
+    for (const k of ['editedSessions', 'reworkSessions', 'testEdits', 'toolUses', 'skillInvocations']) {
+      assert.equal(r.behaviorMetrics[k], sum(k), `pooled ${k} must equal self + external`);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('G0 report: every behaviour rate is printed with its denominator, and the line tracks the data', () => {
+  const base = {
+    windowDays: 30,
+    projectsDir: '/x',
+    scannedTranscripts: 1,
+    totalAssistantTextRows: 1,
+    unreadableTranscripts: [],
+    malformedTranscripts: [],
+    byRule: Object.fromEntries(
+      [
+        '§10-V',
+        '§iron-law-2',
+        '§10-four-section-order',
+        '§10-honesty',
+        '§11-turn-yield',
+        '§7-bugfix-anchor',
+        '§11-post-compaction',
+        '§5-hard-auth',
+      ].map(k => [
+        k,
+        {
+          hits: 0,
+          violations: 0,
+          opportunities: 0,
+          transcriptsAffected: 0,
+          precision: null,
+          status: 'closed',
+        },
+      ])
+    ),
+    perTranscript: [],
+    behaviorMetrics: {
+      ...emptyBehavior(),
+      editedSessions: 100,
+      reworkSessions: 40,
+      codeEditedSessions: 80,
+      reworkSessionsCodeOnly: 30,
+      testEdits: 200,
+      testStrengthened: 100,
+      testNeutral: 90,
+      testWeakened: 8,
+      testCasesDeleted: 2,
+      toolUses: 1000,
+      skillInvocations: 5,
+      reworkThreshold: REWORK_THRESHOLD,
+      validity: 'V-STATEMENT',
+    },
+  };
+  const md = formatMarkdown(base);
+  assert.match(md, /Rework \(≥8 edits to one file in one session\): 40\/100 sessions with any edit = 40\.0%/);
+  assert.match(
+    md,
+    /code files only: 30\/100 of edit-sessions = 30\.0% · 30\/80 of code-edit sessions = 37\.5%/
+  );
+  assert.match(md, /Test-file Edits: 200 · strengthened 100 \(50\.0%\)/);
+  assert.match(md, /weakened\+deleted 10 \(5\.0%\)/);
+  assert.match(md, /Skill invocations: 5\/1000 tool_use = 0\.5%/);
+  assert.match(md, /> Validity \(pre-registered, G0\): V-STATEMENT/);
+
+  // Mutation control: the renderer must be reading these fields, not printing a
+  // shape that happens to contain the right digits. One field moves; the line
+  // must move with it and the others must not.
+  const mutated = formatMarkdown({
+    ...base,
+    behaviorMetrics: { ...base.behaviorMetrics, reworkSessions: 41 },
+  });
+  assert.notEqual(mutated, md, 'changing reworkSessions changed nothing — the renderer is not reading it');
+  assert.match(mutated, /40\.0%|41\/100/);
+  assert.doesNotMatch(mutated, /: 40\/100 sessions with any edit/);
+  assert.match(mutated, /Skill invocations: 5\/1000 tool_use = 0\.5%/, 'unrelated lines must not move');
 });
