@@ -309,6 +309,7 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
       ks: ksFor('session-end-check.sh'),
       event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' },
     },
+    { hook: 'evidence-gate.sh', ks: ksFor('evidence-gate.sh'), event: stopEvt },
     { hook: 'session-summary.sh', ks: ksFor('session-summary.sh'), event: stopEvt },
     { hook: 'mem-audit.sh', ks: ksFor('mem-audit.sh'), event: stopEvt },
     { hook: 'residue-audit.sh', ks: ksFor('residue-audit.sh'), event: stopEvt },

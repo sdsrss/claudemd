@@ -270,6 +270,16 @@ probe_event() {
       PROBE_ENV=("TRANSCRIPT_STRUCTURE_SCAN=1")
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
         '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t}' ;;
+    evidence-gate)
+      # The fixture's final assistant turn is a Done claim and its Edit rows
+      # carry .js paths, so the hook reaches its verdict rather than exiting at
+      # the no-claim / no-code-edit guard. last_assistant_message has to be
+      # passed explicitly: the hook takes the CLAIM from the event and only the
+      # EVIDENCE from the transcript.
+      PROBE_ENV=("EVIDENCE_GATE=1")
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
+        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t,
+          last_assistant_message:"Done: rewrote the parser."}' ;;
     transcript-vocab-scan)
       PROBE_ENV=("TRANSCRIPT_VOCAB_SCAN=1")
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \

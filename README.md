@@ -57,7 +57,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 16 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 17 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `evidence-gate` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.30 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
@@ -87,6 +87,8 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | New session start with a `~/.claude/CLAUDE*.md` / `OPERATOR.md` that is edited, or **missing** | `session-start-check` (v0.84.0+ for the missing half) | Two banners, because the fixes differ: an edited file says `/claudemd-update`, a deleted one says `/claudemd-install`. A deleted spec is the louder case — Claude Code reads these as your user-global instructions, so its absence silently unloads the spec. Silence both with `DISABLE_SPEC_DRIFT_BANNER=1`. |
 | New session start with a `~/.claude/.claudemd-manifest.json` that exists but does not parse | `session-start-check` (v0.84.0+) | Re-runs the bootstrap, which rewrites the manifest atomically. Previously this state exited silently on every session, forever. |
 | First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
+| Session stop with a completion claim in the last assistant message and no verification output behind it | `evidence-gate` (v0.90.0+) | Stop advisory — judges the TRANSCRIPT (is there a non-error Bash result after the last code edit, and does it carry runner output) rather than the prose, which is what the six detectors closed at precision ≤0.17 in 2026-07-24 were doing. Opt-in (`EVIDENCE_GATE=1`, default OFF) for FP signal collection. |
+| `PostToolUse` on `Edit`/`Write`, at each 8th edit of one file in one session | `rework-breaker` (v0.90.0+) | Advisory; injects one line naming the count (§1 Root cause over patch). Opt-in (`REWORK_BREAKER=1`, default OFF) for FP signal collection — a large legitimate refactor looks identical from here. |
 | `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
 | Session end with last assistant turn carrying §10 four-section out of order, `Done:` lines lacking evidence fingerprints, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
 
@@ -187,7 +189,8 @@ export DISABLE_SESSION_START_HOOK=1              # or
 export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary
 export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
 export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
-export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write G2 rework advisory (§1 root-cause)
+export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write G2 rework advisory (§1 root-cause; opt-in REWORK_BREAKER=1)
+export DISABLE_EVIDENCE_GATE_HOOK=1              # v0.90.0+ — Stop G1b Iron Law #2 evidence-existence advisory (opt-in EVIDENCE_GATE=1)
 export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 four-section advisory
 export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
 export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd §11-session-exit mid-SPINE check
@@ -395,7 +398,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 16 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
+├── hooks/                    # 17 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)

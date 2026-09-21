@@ -128,6 +128,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'evidence-gate.sh',
+    displayName: 'evidence-gate',
+    envVarSuffix: 'EVIDENCE_GATE',
+    hookEvent: 'Stop',
+    matcher: '*',
+    timeout: 5,
+  },
+  {
     basename: 'rework-breaker.sh',
     displayName: 'rework-breaker',
     envVarSuffix: 'REWORK_BREAKER',

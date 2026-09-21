@@ -25,6 +25,10 @@ trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/logs"
 
+# Opt-in flag for every driving call below (§13.3 default-OFF). Case 0 pins the
+# default itself.
+export REWORK_BREAKER=1
+
 # Drive one Edit/Write event. Echoes the hook's stdout.
 fire() {
   local sid="$1" file="$2" tool="${3:-Edit}"
@@ -47,6 +51,20 @@ reset_state() {
   rm -rf "$HOME/.claude/.claudemd-state" "$HOME/.claude/logs/claudemd.jsonl"
   mkdir -p "$HOME/.claude/logs"
 }
+
+# --- Case 0: default OFF (no opt-in) ----------------------------------------
+# §EXT §13.3: a behaviour-layer hook ships default-OFF for FP collection. Eight
+# edits with the flag unset must produce nothing at all.
+reset_state
+DEF_OUT=""
+for _ in 1 2 3 4 5 6 7 8; do
+  DEF_OUT="$DEF_OUT$(REWORK_BREAKER=0 bash -c "jq -cn '{session_id:\"s0\",tool_name:\"Edit\",tool_input:{file_path:\"/p/src/a.js\"}}' | bash '$HOOK' 2>/dev/null")"
+done
+if [[ -z "$DEF_OUT" && "$(log_rows)" == "0" ]]; then
+  ok "0: default OFF → silent, no rule-hits row, no state written"
+else
+  ng "0: fired without the opt-in flag (out: $DEF_OUT, rows: $(log_rows))"
+fi
 
 # --- Case 1: below the threshold is silent ----------------------------------
 reset_state

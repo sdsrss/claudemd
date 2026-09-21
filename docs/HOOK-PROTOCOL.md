@@ -25,9 +25,16 @@ author to re-derive it from another hook's source:
   `memory-read-check.sh`, `pre-bash-safety-check.sh`,
   `session-extended-read.sh`, `ship-baseline-check.sh`,
   `transcript-vocab-scan.sh`, `rework-breaker.sh`.
+  One reader of the NAME is not a reader of this field: `evidence-gate.sh` is a
+  Stop hook, so its envelope carries no `tool_use_id` at all — it reads the
+  `tool_use_id` that each `tool_result` in the TRANSCRIPT carries, to join a
+  result back to the command that produced it. Same spelling, different object;
+  the derivation gate here matches on the spelling, which is why the
+  distinction is written down rather than left to look like an omission.
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,
-  `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`. Treat it as
+  `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
+  `evidence-gate.sh`. Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
 
 Other tools have different `tool_input` shapes:

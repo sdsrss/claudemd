@@ -21,11 +21,22 @@
 # high, change the PRESENTATION, not the threshold. The threshold was fixed at 8
 # before the data was collected and must not be tuned to it.
 #
+# Opt-in: REWORK_BREAKER=1 (default OFF). §EXT §13.3 is explicit that a
+# behaviour-layer hook ships default-OFF for >=30d of FP signal collection
+# before advancing to default-ON advisory and only then to deny, and this is a
+# behaviour-layer hook — the roadmap's "advisory 起步" is about the VERDICT, not
+# about the default, and where the two readings differ §3 takes the stricter.
+# Same shape as transcript-vocab-scan / transcript-structure-scan.
+#
 # Kill-switches:
-#   DISABLE_REWORK_BREAKER_HOOK=1 — disable this hook
+#   DISABLE_REWORK_BREAKER_HOOK=1 — disable after opt-in
 #   DISABLE_CLAUDEMD_HOOKS=1      — global
 
 set -uo pipefail
+
+# Opt-in gate (default OFF). Checked BEFORE sourcing hook-common so the default
+# path costs one string compare — this hook is on every Edit and every Write.
+[[ "${REWORK_BREAKER:-0}" == "1" ]] || exit 0
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null

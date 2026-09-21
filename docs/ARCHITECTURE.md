@@ -19,7 +19,7 @@ Module → responsibility → external interface. "External" means what a caller
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `hooks/*.sh` (16 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
+| `hooks/*.sh` (17 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
 | `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn, install-failure sentinel bookkeeping | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_memfile_was_read` / `hook_spawn_install` / `hook_install_sentinel_clear` / `hook_install_sentinel_write` |
 | `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
 | `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 81 node suites, 29 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 81 node suites, 30 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -258,7 +258,8 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PreToolUse:Bash | `memory-read-check.sh` | ship/release require matched MEMORY.md Read | `§11-memory-read` |
 | PreToolUse | `session-extended-read.sh` | enforce extended-spec Read on L3/ship triggers | `§13.1-extended-read` |
 | PostToolUse | `transcript-vocab-scan.sh` | post-hoc §10-V scan of assistant prose | `§10-V` |
-| PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8 | `§1-root-cause` |
+| Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result carrying runner output after the last code edit. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
+| PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
