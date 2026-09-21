@@ -271,5 +271,71 @@ else
   ng "14b: widening the window changed nothing — the bound is not what case 14 measured"
 fi
 
+# --- Case 15 (pre-ship H1): the verdict line lands at the END of the output ---
+# Every common runner prints its summary last. A head-truncated read of the
+# result therefore misses exactly the line that carries the evidence, and the
+# hook nags a correct claim — the expensive direction for an advisory.
+LONG_PAD=$(head -c 2000 /dev/zero | tr '\0' 'x')
+{
+  row_edit /p/src/a.js
+  row_bash tu_long "npm test"
+  row_result tu_long "$LONG_PAD Tests: 18/18 passed"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" ]]; then
+  ok "15: a runner summary 2000 chars into the output still counts as evidence"
+else
+  ng "15: nagged a claim backed by a real run whose summary is not in the first bytes: $OUT"
+fi
+
+# --- Case 16 (pre-ship H2): silent-success verifiers ------------------------
+# tsc / eslint print NOTHING when clean, and the runner NAME lives in the
+# command, not in the output. Matching runner names against the output made
+# `lint + typecheck` — the literal §7 L1 row — read as "no evidence".
+EG_QUIET_OK=1
+eg_quiet_case() {
+  {
+    row_edit /p/src/a.js
+    row_bash tu_q "$1"
+    row_result tu_q "$2"
+    row_text "$DONE_CLAIM"
+  } > "$TRANSCRIPT"
+  local o
+  o=$(run_hook "$DONE_CLAIM")
+  if [[ -n "$o" ]]; then
+    EG_QUIET_OK=0
+    echo "      still fires for: $1"
+  fi
+}
+reset_log
+eg_quiet_case "npx tsc --noEmit" ""
+eg_quiet_case "npx eslint ." ""
+eg_quiet_case "npx prettier --check ." "All matched files use Prettier code style!"
+eg_quiet_case "go test ./..." "ok  	github.com/acme/foo	0.012s"
+eg_quiet_case "cargo clippy --all-targets" ""
+if [[ "$EG_QUIET_OK" == "1" ]]; then
+  ok "16: a verifier that exits clean with no output is evidence — the command says so"
+else
+  ng "16: at least one silent-success verifier still reads as no-evidence"
+fi
+
+# Control for case 16: widening to the command must not make EVERY command
+# count. `git status` is still not verification.
+{
+  row_edit /p/src/a.js
+  row_bash tu_ctl "git status --porcelain"
+  row_result tu_ctl " M src/a.js"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"none of them produced test / typecheck / build output"* ]]; then
+  ok "16b: control — git status is still not a verifier after the widening"
+else
+  ng "16b: the command-side widening swallowed the T3 arm: $OUT"
+fi
+
 echo
 claudemd_assert_summary

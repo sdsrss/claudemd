@@ -241,5 +241,36 @@ else
   ng "13: space-bearing path miscounted: $OUTW2"
 fi
 
+# --- Case 14 (pre-ship H3): concurrent edits ---------------------------------
+# Claude Code issues several Edit/Write calls in one assistant message, so their
+# PostToolUse hooks run at the same time. The first version appended and then
+# re-read the file to count, which is a read-modify-check race: the pre-ship
+# review measured 1, 3, 3, 5, 2 and 3 firings across six trials of 16
+# concurrent edits, where the answer is exactly 2 (at 8 and at 16). Both
+# directions are wrong — a duplicate nag, and a threshold crossed by two
+# processes that neither of them observes.
+reset_state
+CONC_OUT="$TMP_HOME/conc.out"
+: > "$CONC_OUT"
+for _ in $(seq 1 16); do
+  ( fire sC /p/src/hot.js >> "$CONC_OUT" 2>/dev/null ) &
+done
+wait
+CONC_FIRINGS=$(grep -c 'additionalContext' "$CONC_OUT" 2>/dev/null || echo 0)
+LEDGER_C=$(find "$HOME/.claude/.claudemd-state" -maxdepth 1 -name 'rework-sC.counts' 2>/dev/null | head -n1)
+LEDGER_LINES=$(wc -l < "$LEDGER_C" 2>/dev/null | tr -d ' ')
+if [[ "$LEDGER_LINES" == "16" && "$CONC_FIRINGS" == "2" ]]; then
+  ok "14: 16 concurrent edits to one file → exactly 2 advisories (8 and 16), ledger 16 lines"
+else
+  ng "14: concurrency wrong — $CONC_FIRINGS advisory/ies over $LEDGER_LINES ledger line(s), expected 2 over 16"
+fi
+# And the counts named are the two multiples, not the same one twice.
+CONC_COUNTS=$(grep -oE 'at least [0-9]+ times' "$CONC_OUT" 2>/dev/null | grep -oE '[0-9]+' | sort -n | tr '\n' ',')
+if [[ "$CONC_COUNTS" == "8,16," ]]; then
+  ok "14b: the two advisories name 8 and 16, not one multiple twice"
+else
+  ng "14b: advisories named [$CONC_COUNTS], expected [8,16,]"
+fi
+
 echo
 claudemd_assert_summary

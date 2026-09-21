@@ -131,15 +131,26 @@ ledger_banner() {
   # `## Decisions` and `## Next` only, each up to the next `## `. A ledger whose
   # headings were renamed yields nothing and the banner is skipped — silence
   # rather than a banner carrying the wrong half of the file.
+  #
+  # The cap is applied INSIDE jq, by character. `cut -c1-N` was the first
+  # spelling and it caps each LINE, not the text: a 400-line ledger produced a
+  # 24,000-character banner, spending on a stale ledger exactly the context the
+  # compaction had been run to reclaim (found in pre-ship review). jq slices
+  # strings by codepoint, so it also cannot leave a truncated multibyte tail —
+  # and invalid UTF-8 here would fail the whole envelope, taking the §11
+  # re-read reminder down with the ledger rather than just shortening it.
+  # `head -n` bounds what is read into the variable in the first place; the
+  # character cap is what the reader actually sees.
   local body
   body=$(awk '
     /^## / { want = ($2 == "Decisions" || $2 == "Next") ? 1 : 0 }
     want { print }
-  ' "$newest" 2>/dev/null | cut -c1-400)
+  ' "$newest" 2>/dev/null | head -n 400 | cut -c1-400)
   [[ -n "${body//[[:space:]]/}" ]] || return 0
-  body=$(printf '%s' "$body" | cut -c1-"$LEDGER_MAX_BYTES")
 
-  jq -cn --arg p "$newest" --arg b "$body" '{
+  jq -cn --arg p "$newest" --arg b "$body" --argjson max "$LEDGER_MAX_BYTES" '
+    ($b | if length > $max then .[0:$max] + "\n… (ledger truncated at " + ($max|tostring) + " characters)" else . end) as $b |
+    {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",

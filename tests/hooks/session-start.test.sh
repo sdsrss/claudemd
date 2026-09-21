@@ -1045,6 +1045,71 @@ else
 fi
 touch "$LEDGER_PROJ/tasks/demo-ledger.md"
 
+# Case 42 (pre-ship H4): the injected text is actually capped.
+# `cut -c1-N` is PER LINE, so the first version bounded each line and nothing
+# bounded the total — a 29KB ledger produced a 29KB banner, into the context a
+# compaction had just been run to reclaim. Both a long-line and a many-lines
+# ledger are driven, because a per-line cap passes the first and fails the second.
+BIG_PROJ="$HOME/bigledgerproj"
+mkdir -p "$BIG_PROJ/tasks"
+{
+  echo "## Decisions"
+  echo
+  for i in $(seq 1 400); do echo "- D$i: decision line $i with enough text on it to matter"; done
+  echo
+  echo "## Next"
+  echo
+  echo "keep going"
+} > "$BIG_PROJ/tasks/big-ledger.md"
+OUT42=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
+CTX42=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT42" 2>/dev/null)
+CTX42_LEN=${#CTX42}
+if (( CTX42_LEN > 0 && CTX42_LEN < 3000 )); then
+  echo "PASS: 42 a 400-line ledger is capped (banner ${CTX42_LEN} chars, cap 1600 + reminder)"
+else
+  echo "FAIL: 42 many-line ledger not capped (banner ${CTX42_LEN} chars)"; FAIL=$((FAIL+1))
+fi
+
+{
+  echo "## Decisions"
+  echo
+  head -c 9000 /dev/zero | tr '\0' 'y'
+  echo
+  echo "## Next"
+  echo
+  echo "keep going"
+} > "$BIG_PROJ/tasks/big-ledger.md"
+OUT42B=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
+CTX42B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT42B" 2>/dev/null)
+CTX42B_LEN=${#CTX42B}
+if (( CTX42B_LEN > 0 && CTX42B_LEN < 3000 )); then
+  echo "PASS: 42b a single 9000-char line is capped too (banner ${CTX42B_LEN} chars)"
+else
+  echo "FAIL: 42b long-line ledger not capped (banner ${CTX42B_LEN} chars)"; FAIL=$((FAIL+1))
+fi
+
+# The cap must not be able to emit invalid UTF-8: jq encodes this string, and a
+# truncated multibyte tail would make the whole envelope fail to build, taking
+# the §11 re-read reminder down with the ledger.
+{
+  echo "## Decisions"
+  echo
+  for i in $(seq 1 400); do echo "- D$i: 决定 $i,中文字符串用来测试多字节截断的边界情况"; done
+  echo
+  echo "## Next"
+  echo
+  echo "继续"
+} > "$BIG_PROJ/tasks/big-ledger.md"
+OUT42C=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT42C" 2>/dev/null)" == "1" ]] \
+   && jq -e '.hookSpecificOutput.additionalContext | length > 0' <<<"$OUT42C" >/dev/null 2>&1 \
+   && grep -qF 'compaction detected' <<<"$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT42C")"; then
+  echo "PASS: 42c a multibyte ledger still produces one valid object carrying both banners"
+else
+  echo "FAIL: 42c multibyte truncation broke the envelope (out=$OUT42C)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$BIG_PROJ"
+
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
 # the suite ran 35 assertions and reported "29/29", and a run where every

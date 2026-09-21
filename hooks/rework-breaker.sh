@@ -95,17 +95,43 @@ COUNT=$(grep -c -x -F "$RB_KEY" "$RB_LEDGER" 2>/dev/null || true)
 # would leave a 58-edit session with a single line at edit 8; every edit past
 # the threshold would be noise that says nothing new. The multiple carries the
 # escalation in the number itself.
-(( COUNT % REWORK_THRESHOLD == 0 )) || exit 0
+#
+# The firing decision is a CLAIM, not a comparison, because the append-then-read
+# above is a read-modify-check race and Claude Code issues several Edit/Write
+# calls in one assistant message, so these hooks run concurrently. Measured in
+# pre-ship review over six trials of 16 concurrent edits: 1, 3, 3, 5, 2 and 3
+# advisories where the answer is 2 — both duplicates on one multiple and a
+# multiple crossed by two processes that neither of them observed.
+#
+# `(set -o noclobber; : > file)` is an O_CREAT|O_EXCL create: exactly one
+# process can win each multiple, whatever order they interleave in. The loop
+# claims every UNCLAIMED multiple at or below the observed count rather than
+# only `COUNT % T == 0`, so a count that jumps the boundary (every process
+# appends, then every process reads 16) still reports the 8 that was crossed.
+# Fires once per invocation, for the highest multiple this process won.
+CLAIMED=0
+M=$REWORK_THRESHOLD
+while (( M <= COUNT )); do
+  RB_CLAIM="$RB_STATE_DIR/rework-${RB_SAFE_SID}.fired-${RB_KEY}-${M}"
+  if (set -o noclobber; : > "$RB_CLAIM") 2>/dev/null; then
+    CLAIMED=$M
+  fi
+  M=$((M + REWORK_THRESHOLD))
+done
+(( CLAIMED > 0 )) || exit 0
 
-EXTRA=$(jq -cn --argjson n "$COUNT" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
-  '{edits:$n, threshold:$t, tool:$tool}' 2>/dev/null) || EXTRA='null'
+# CLAIMED, not COUNT, is what the message names. Under concurrency the count
+# this process happened to read is whatever the other processes had appended by
+# then; the multiple it won is exact, and "at least N" is true of both.
+EXTRA=$(jq -cn --argjson n "$COUNT" --argjson c "$CLAIMED" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
+  '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool}' 2>/dev/null) || EXTRA='null'
 hook_record rework-breaker rework-advisory "$EXTRA" '§1-root-cause' "$SESSION_ID" "$TOOL_USE_ID"
 
 # The model reads additionalContext; PostToolUse delivery was verified on
 # Claude Code 2.1.278 (roadmap §5, 0a). suppressOutput keeps the terminal quiet
 # — this is a note to the agent, not a banner for the user, and the same line on
 # every eighth edit of a long refactor would be the user's noise, not theirs.
-CONTEXT="[claudemd] system-injected: this session has now edited ${FILE_PATH} ${COUNT} times (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; disable with DISABLE_REWORK_BREAKER_HOOK=1."
+CONTEXT="[claudemd] system-injected: this session has now edited ${FILE_PATH} at least ${CLAIMED} times (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; disable with DISABLE_REWORK_BREAKER_HOOK=1."
 jq -cn --arg ctx "$CONTEXT" '{
   suppressOutput: true,
   hookSpecificOutput: {

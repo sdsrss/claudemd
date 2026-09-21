@@ -435,6 +435,10 @@ const STATE_EPHEMERAL = [
   // Edit/Write, so an active session's file grows with its edit count and
   // nothing reaps it on session end — same class as vocab-scan above.
   { kind: 'rework', re: /^rework-.+\.counts$/ },
+  // Per-(session, file, multiple) firing claim (v0.90.0). One O_EXCL-created
+  // empty file per advisory actually emitted, so exactly one process can win
+  // each multiple under concurrent Edits. Same lifetime as the tally beside it.
+  { kind: 'rework-fired', re: /^rework-.+\.fired-.+$/ },
   // Per-session sandbox-disposal window ref (2026-08-16 audit F5). The
   // sid-less legacy `session-start.ref` (no dash) stays OUT of this pattern —
   // it is live singleton state for sessions whose event carries no session_id.

@@ -118,7 +118,8 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
         + (if .is_error == true then "1" else "0" end) + "\t"
         + ((.content // "")
            | if type == "array" then (map(.text // "") | join(" ")) else tostring end
-           | gsub("[\\r\\n]+"; " ") | .[0:800])
+           | gsub("[\\r\\n]+"; " ")
+           | (if length > 900 then .[:100] + " … " + .[-800:] else . end))
       else empty end)
   | .[]' 2>/dev/null)
 [[ -n "$STREAM" ]] || exit 0
@@ -127,17 +128,25 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
 # than the output: `npm run smoke` prints whatever the project's suites print,
 # and there is no output shape common to every project's smoke entry.
 T1_CMD_RE='(^|[;&|[:space:]])((npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+smoke|make[[:space:]]+smoke|\.?/?scripts?/smoke)([[:space:]]|$)'
-# Runner output. Anchored on a digit-plus-verdict, a label-colon, a tick/cross,
-# or a runner name — plain prose containing the word "failed" does not match,
-# which is the direction that matters: a loose pattern here buys silence, and
-# silence is this hook saying "evidence exists".
-T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*[:：]|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(cargo|go|npm|pnpm|yarn)[[:space:]]+test|pytest|tsc|shellcheck|eslint|prettier'
+# T2 has two halves, and the split is the whole point. The runner's NAME lives
+# in the command; its VERDICT lives in the output. The first draft matched names
+# against the output, where they do not appear, so every silent-success verifier
+# read as no-evidence — `tsc --noEmit` and `eslint .` print nothing at all when
+# clean, and §7's L1 row is literally "lint + typecheck". The hook fired on
+# exactly the evidence the spec asks for. Found in pre-ship review.
+T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test|check)|(npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+(test|check|lint|typecheck|types|build|verify)|(npx[[:space:]]+)?(tsc|eslint|prettier|jest|vitest|mocha|ava|biome|ruff|mypy|shellcheck)|pytest|python[[:space:]]+-m[[:space:]]+(pytest|unittest)|node[[:space:]]+--test|cargo[[:space:]]+clippy|make[[:space:]]+(test|check|lint)|ctest|gradle[[:space:]]+test|mvn[[:space:]]+test|dotnet[[:space:]]+test|rspec|bundle[[:space:]]+exec[[:space:]]+rspec)([[:space:]]|$)'
+# Output verdicts, for runners the command pattern does not name: a
+# digit-plus-verdict, a label-colon, a tick/cross, a TAP `ok N`, or go test's
+# `ok <pkg> <time>`. Plain prose containing the word "failed" does not match —
+# a loose pattern here buys silence, and silence is this hook saying "evidence
+# exists".
+T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*[:：]|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
 
 # The last code edit splits the stream: evidence produced BEFORE it cannot be
 # evidence about it. Bash commands are indexed so a tool_result can be joined
 # back to the command that produced it — a result whose tool_use_id belongs to
 # a Read or a Grep is not command output.
-VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2="$T2_OUT_RE" '
+VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CMD_RE" -v t2="$T2_OUT_RE" '
   $1 == "E" { lastedit = NR; next }
   $1 == "U" { cmd[$2] = $3; next }
   $1 == "R" { n++; ridx[n] = NR; rid[n] = $2; rerr[n] = $3; rtxt[n] = $4; next }
@@ -150,7 +159,7 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2="$T2_OUT
       if (!(rid[i] in cmd)) continue
       if (tier < 1) tier = 1
       if (cmd[rid[i]] ~ t1) { tier = 3; break }
-      if (rtxt[i] ~ t2 && tier < 2) tier = 2
+      if ((cmd[rid[i]] ~ t2c || rtxt[i] ~ t2) && tier < 2) tier = 2
     }
     if (tier >= 2) print "verified"
     else if (tier == 1) print "command-but-no-runner"

@@ -60,8 +60,13 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // rather than ignoring it would not fix that; it would force an alternative
 // here matching an impossible name. The `Task 4: CLAUDEMD_PURGE=1 …` case in
 // uninstall.test.js holds this arm, and it is the only thing that does.
+// The extension class admits `*` because the drift gate compares against the
+// NORMALISED name: architecture-drift extracts `rework-*.fired-*-*` from the
+// hook source, where each `${VAR}` collapses to `*`. Without it, a state file
+// whose name has a variable segment after the dot reads as unmatched and
+// a CLAUDEMD_PURGE=1 run would appear to leave it behind (v0.90.0).
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9*-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|mem-audit\.lastrun|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
