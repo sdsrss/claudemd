@@ -28,6 +28,9 @@ const SCRIPTS = [
   ['scripts/doctor.js', /Usage:.*doctor\.js/],
   ['scripts/status.js', /Usage:.*status\.js/],
   ['scripts/lint-argv.js', /Usage:.*lint-argv\.js/],
+  // Takes a positional <doc.md>, so its bogus-arg path is parseStrictOrExit on
+  // the flag half — the same exit-2 contract, reached a different way.
+  ['scripts/doc-check.mjs', /Usage:.*doc-check\.mjs/],
   // Round-5 additions: lifecycle scripts. Pre-fix `install --help` actually
   // RAN the install destructively because argv was silently dropped.
   ['scripts/install.js', /Usage:.*install\.js/],

@@ -37,7 +37,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..');
 
 export const SCAN_DIRS = ['bin', 'scripts'];
-export const SCAN_EXT = ['.js'];
+// `.mjs` joined `.js` when scripts/doc-check.mjs landed. The extension is a
+// packaging detail, not a contract boundary: an .mjs CLI in scripts/ parses the
+// same argv and owes the same `Exit codes:` line, and three gates (this one,
+// exit-code-doc-drift, the main-block/argv join) read their scope from here. A
+// list that names one extension is a list that exempts every file spelled the
+// other way — the "gate scope narrower than its subject" shape this repo keeps
+// re-finding in its own hooks.
+export const SCAN_EXT = ['.js', '.mjs'];
 
 // File-level allowlist. Each entry MUST have a reason — these files contain
 // antipattern strings as part of detector code or documentation, NOT runtime
