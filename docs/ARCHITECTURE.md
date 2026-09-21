@@ -212,6 +212,52 @@ Stop hook
                   └─> rm (consume-once)
 ```
 
+## Long-task ledger (G7)
+
+`tasks/<slug>-ledger.md` — the file a task carries across compaction and resume.
+Not an orchestrator and not a plan: it is the small set of facts a later turn
+cannot re-derive from the code. `session-start-check.sh` re-injects two of its
+sections on `SessionStart` with `source` `compact` or `resume`.
+
+Five sections, in this order, all `## `-level:
+
+| Section | Holds | Why it is a section |
+|---|---|---|
+| `Goal` | one paragraph: what finishing looks like | re-derivable from the work, so it is NOT injected |
+| `Decisions` | one row per settled choice: options, the choice, reversibility, when | **injected** — filled once at task start, and the half a compaction cannot reconstruct |
+| `Verified-done` | one line per finished item, each carrying the command and its exit code | not injected: it is the record, not the state, and it is the longest section |
+| `Open` | what is known to be unresolved | not injected |
+| `Next` | the immediate next action | **injected** — where the task stands |
+
+Rules the format exists to enforce, in the order they are usually broken:
+
+1. **`Decisions` is filled at task start, not as you go.** The 2026-09-21
+   measurement of 42 answered asks found an assent rate of 0 — every question
+   carried real direction. The problem was never that there were too many
+   questions, it was that decisions which could have been settled once at the
+   start were scattered through execution. Reversible choices get a written
+   default rather than a question.
+2. **A `Verified-done` line without a command and an exit code is not done.**
+   That is Iron Law #2 in the one place a long task accumulates claims fastest;
+   `evidence-gate.sh` is the same rule one layer down, on the transcript.
+3. **Update the ledger before starting the next item, not after finishing it.**
+   A ledger written afterwards records what was remembered, not what happened.
+
+Injection is bounded three ways — newest ledger under the event's `cwd` only,
+mtime within `CLAUDEMD_LEDGER_MAX_AGE_DAYS` (default 14), and the extracted text
+capped at `CLAUDEMD_LEDGER_MAX_BYTES` (default 1600) — because it lands in
+context at exactly the moment context is scarce. A ledger whose headings were
+renamed yields nothing and is skipped, rather than injecting the wrong half of
+the file. Opt out with `DISABLE_LEDGER_INJECT=1`.
+
+`PreCompact` was measured to fire on this build (2026-09-21, manual `/compact`;
+see the roadmap's §5 table) and is deliberately NOT registered: the fact it would
+record — that a compaction happened — is already available to the
+`source=="compact"` SessionStart branch, which has 8 real firings in this
+machine's rule-hits log, whereas PreCompact's behaviour under AUTO compaction has
+no evidence either way. One event, verified on both triggers, beats two where the
+second is unverified on the trigger that matters.
+
 ## State locations
 
 - `~/.claude/.claudemd-manifest.json` — install manifest (command string + SHA256, hook entries) (v0.1.9+; pre-0.1.9 lived at `stateDir()/installed.json` and is migrated on first read)

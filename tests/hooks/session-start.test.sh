@@ -943,6 +943,108 @@ else
   echo "FAIL: 40 compact source did not record the hook root (state: $(cat "$HOOKROOT_STATE" 2>/dev/null))"; FAIL=$((FAIL+1))
 fi
 
+# Case 41 (G7 ledger injection). The ledger is the artifact a long task carries
+# across a compaction; these cover both directions, because "no ledger" and
+# "ledger read" must not produce the same output.
+LEDGER_PROJ="$HOME/ledgerproj"
+mkdir -p "$LEDGER_PROJ/tasks"
+cat > "$LEDGER_PROJ/tasks/demo-ledger.md" <<'LEDGEREOF'
+# Ledger — demo
+
+## Goal
+
+LEDGER-GOAL-TEXT
+
+## Decisions
+
+- D1: LEDGER-DECISION-TEXT
+
+## Verified-done
+
+- LEDGER-VERIFIED-TEXT
+
+## Open
+
+- LEDGER-OPEN-TEXT
+
+## Next
+
+LEDGER-NEXT-TEXT
+LEDGEREOF
+
+OUT41=$(bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
+CTX41=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT41" 2>/dev/null)" == "1" ]] \
+   && grep -qF 'LEDGER-DECISION-TEXT' <<<"$CTX41" \
+   && grep -qF 'LEDGER-NEXT-TEXT' <<<"$CTX41" \
+   && grep -qF 'compaction detected' <<<"$CTX41"; then
+  echo "PASS: 41 compact with a ledger injects Decisions + Next in ONE object, alongside the re-read reminder"
+else
+  echo "FAIL: 41 ledger injection missing or split across objects (objs=$(jq -s 'length' <<<"$OUT41" 2>/dev/null), ctx=$CTX41)"; FAIL=$((FAIL+1))
+fi
+
+# Only those two sections. A banner that carried Verified-done would spend the
+# context the compaction was trying to recover, and Goal/Open are re-derivable
+# from the work itself.
+if ! grep -qF 'LEDGER-VERIFIED-TEXT' <<<"$CTX41" \
+   && ! grep -qF 'LEDGER-OPEN-TEXT' <<<"$CTX41" \
+   && ! grep -qF 'LEDGER-GOAL-TEXT' <<<"$CTX41"; then
+  echo "PASS: 41b only Decisions and Next are carried — Goal / Verified-done / Open are not"
+else
+  echo "FAIL: 41b the banner carried a section it should not (ctx=$CTX41)"; FAIL=$((FAIL+1))
+fi
+
+# The other direction: same event, no ledger on disk.
+NOLEDGER_PROJ="$HOME/noledgerproj"
+mkdir -p "$NOLEDGER_PROJ/tasks"
+OUT41C=$(bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$NOLEDGER_PROJ\"}" 2>/dev/null)
+CTX41C=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41C" 2>/dev/null)
+if grep -qF 'compaction detected' <<<"$CTX41C" && ! grep -qF 'long-task ledger' <<<"$CTX41C"; then
+  echo "PASS: 41c compact with no ledger still emits the re-read reminder and nothing about a ledger"
+else
+  echo "FAIL: 41c no-ledger path wrong (ctx=$CTX41C)"; FAIL=$((FAIL+1))
+fi
+
+# A ledger whose section headings were renamed yields nothing rather than the
+# wrong half of the file.
+cat > "$NOLEDGER_PROJ/tasks/renamed-ledger.md" <<'LEDGEREOF'
+## Choices
+
+- D1: RENAMED-DECISION-TEXT
+
+## Up next
+
+RENAMED-NEXT-TEXT
+LEDGEREOF
+OUT41D=$(bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$NOLEDGER_PROJ\"}" 2>/dev/null)
+CTX41D=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41D" 2>/dev/null)
+if ! grep -qF 'RENAMED-DECISION-TEXT' <<<"$CTX41D" && ! grep -qF 'long-task ledger' <<<"$CTX41D"; then
+  echo "PASS: 41d a ledger with renamed headings is skipped, not partially read"
+else
+  echo "FAIL: 41d renamed-heading ledger leaked into the banner (ctx=$CTX41D)"; FAIL=$((FAIL+1))
+fi
+rm -f "$NOLEDGER_PROJ/tasks/renamed-ledger.md"
+
+# Sub-feature kill-switch.
+OUT41E=$(DISABLE_LEDGER_INJECT=1 bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
+CTX41E=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41E" 2>/dev/null)
+if ! grep -qF 'LEDGER-DECISION-TEXT' <<<"$CTX41E" && grep -qF 'compaction detected' <<<"$CTX41E"; then
+  echo "PASS: 41e DISABLE_LEDGER_INJECT=1 drops the ledger half and keeps the reminder"
+else
+  echo "FAIL: 41e kill-switch wrong (ctx=$CTX41E)"; FAIL=$((FAIL+1))
+fi
+
+# A stale ledger is not the state of anything. Age it past the window.
+touch -t 200001010000 "$LEDGER_PROJ/tasks/demo-ledger.md" 2>/dev/null
+OUT41F=$(bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
+CTX41F=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41F" 2>/dev/null)
+if ! grep -qF 'LEDGER-DECISION-TEXT' <<<"$CTX41F"; then
+  echo "PASS: 41f a ledger older than the age window is not injected"
+else
+  echo "FAIL: 41f stale ledger injected (ctx=$CTX41F)"; FAIL=$((FAIL+1))
+fi
+touch "$LEDGER_PROJ/tasks/demo-ledger.md"
+
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
 # the suite ran 35 assertions and reported "29/29", and a run where every

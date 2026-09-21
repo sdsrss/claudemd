@@ -215,6 +215,12 @@ export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compacti
                                            # source=="compact"); compact events still
                                            # skip bootstrap/upgrade-banner either way.
 
+export DISABLE_LEDGER_INJECT=1             # v0.90.0+ — only the G7 long-task ledger
+                                           # injection (SessionStart source=="compact" or
+                                           # "resume" re-injects tasks/<slug>-ledger.md's
+                                           # Decisions + Next); the re-read reminder above
+                                           # still fires.
+
 export CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1    # v0.75.0+ — restores the pre-0.75.0 detached
                                            # bootstrap on the FRESH-install path (no
                                            # manifest yet), which otherwise runs install.js

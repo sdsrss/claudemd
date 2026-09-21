@@ -27,6 +27,7 @@ hook_kill_switch SESSION_START || exit 0
 SESSION_ID="${CLAUDE_SESSION_ID:-}"
 EVENT=""
 SOURCE=""
+EVT_CWD=""
 if hook_require_jq; then
   EVENT=$(hook_read_event) || EVENT=""
   if [[ -n "$EVENT" ]]; then
@@ -37,6 +38,7 @@ if hook_require_jq; then
     SID_PARSED=$(hook_jq_field session-start "$EVENT" '.session_id // ""') || SID_PARSED=""
     [[ -z "$SESSION_ID" ]] && SESSION_ID="$SID_PARSED"
     SOURCE=$(printf '%s' "$EVENT" | jq -r '.source // ""' 2>/dev/null)
+    EVT_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
   fi
 else
   hook_record_failopen session-start jq-missing
@@ -64,18 +66,117 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 # forbids, under a telemetry label naming the very section it contradicted.
 # Case 15b in tests/hooks/session-start.test.sh pins both halves; read its
 # comment before rewording this string.
+# merge_banners CANDIDATE... — print at most ONE SessionStart object.
+#
+# CC parses hook stdout with a strict single-value JSON.parse, so two objects on
+# stdout are invalid JSON and BOTH are dropped silently (docs/HOOK-PROTOCOL.md).
+# Empty candidates are skipped, one survivor is emitted as-is, several are
+# joined into one additionalContext. Both emit points call this: the
+# version-match branch with five candidates, the tail with three. They were two
+# byte-identical jq programs, which is one place to add a sixth banner and one
+# place to forget (2026-09-05 audit P2-2).
+merge_banners() {
+  printf '%s\n' "$@" | jq -s -c '
+    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
+    | if length == 0 then empty
+      elif length == 1 then .[0]
+      else {
+        suppressOutput: true,
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
+        }
+      } end' 2>/dev/null || true
+}
+
+# --- G7: the long-task ledger ------------------------------------------------
+#
+# `tasks/<slug>-ledger.md`, five fixed sections (docs/ARCHITECTURE.md, "Long-task
+# ledger"). Compaction destroys the two that are expensive to reconstruct:
+# `Decisions`, which is filled once at task start and is precisely what a later
+# turn cannot re-derive, and `Next`. Both are re-injected here rather than left
+# to the agent to remember to re-read — §11 already tells it to re-read the plan,
+# and the 2026-09-21 measurement is that self-enforced reminders are the class
+# that does not hold.
+#
+# Bounded three ways, because this lands in context on every compaction: newest
+# ledger only, mtime within LEDGER_MAX_AGE_DAYS, and the extracted text capped at
+# LEDGER_MAX_BYTES. An unbounded read here would spend on a stale ledger exactly
+# the context the compaction was trying to recover.
+LEDGER_MAX_BYTES="${CLAUDEMD_LEDGER_MAX_BYTES:-1600}"
+LEDGER_MAX_AGE_DAYS="${CLAUDEMD_LEDGER_MAX_AGE_DAYS:-14}"
+
+ledger_banner() {
+  [[ "${DISABLE_LEDGER_INJECT:-0}" == "1" ]] && return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  local dir="$1"
+  [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
+
+  # Newest by mtime. `ls -t` over the glob rather than find -printf: the latter
+  # is GNU-only and the macOS leg would silently pick nothing.
+  local newest
+  # shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
+  newest=$(ls -t "$dir"/tasks/*-ledger.md 2>/dev/null | head -n 1)
+  [[ -n "$newest" && -r "$newest" ]] || return 0
+
+  if command -v platform_stat_mtime >/dev/null 2>&1; then
+    local mt now age
+    mt=$(platform_stat_mtime "$newest" 2>/dev/null) || return 0
+    now=$(date +%s 2>/dev/null) || return 0
+    [[ "$mt" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]] || return 0
+    age=$(((now - mt) / 86400))
+    (( age <= LEDGER_MAX_AGE_DAYS )) || return 0
+  fi
+
+  # `## Decisions` and `## Next` only, each up to the next `## `. A ledger whose
+  # headings were renamed yields nothing and the banner is skipped — silence
+  # rather than a banner carrying the wrong half of the file.
+  local body
+  body=$(awk '
+    /^## / { want = ($2 == "Decisions" || $2 == "Next") ? 1 : 0 }
+    want { print }
+  ' "$newest" 2>/dev/null | cut -c1-400)
+  [[ -n "${body//[[:space:]]/}" ]] || return 0
+  body=$(printf '%s' "$body" | cut -c1-"$LEDGER_MAX_BYTES")
+
+  jq -cn --arg p "$newest" --arg b "$body" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: ("[claudemd] system-injected — active long-task ledger " + $p + " (§11 / G7). Its Decisions were settled at task start and its Next is where the task stands; both are below so this turn does not re-derive them. Update the ledger before the next item, not after. Disable: DISABLE_LEDGER_INJECT=1.\n\n" + $b)
+    }
+  }' 2>/dev/null
+}
+
 if [[ "$SOURCE" == "compact" ]]; then
+  _cr_json=""
   if [[ "${DISABLE_COMPACT_REREAD_REMINDER:-0}" != "1" ]]; then
-    jq -cn '{
+    _cr_json=$(jq -cn '{
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
         additionalContext: "[claudemd] compaction detected — §11: before continuing L2+ work, re-read the active plan (and extended, if this task had loaded it). Core is injected every turn — do not re-read it. Disable: DISABLE_COMPACT_REREAD_REMINDER=1"
       }
-    }' 2>/dev/null
+    }' 2>/dev/null)
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
   fi
+  # G7. Through merge_banners, not a second `jq -cn`: two objects on stdout are
+  # invalid JSON and CC drops BOTH silently, which would take the re-read
+  # reminder down with the ledger (docs/HOOK-PROTOCOL.md).
+  _lg_json=$(ledger_banner "$EVT_CWD")
+  [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
+  merge_banners "$_cr_json" "$_lg_json"
   exit 0
+fi
+
+# `resume` reopens a session whose context was never in this process either, so
+# the ledger is worth the same re-injection. It does NOT take the early exit
+# above: bootstrap, version and drift checks are session-start concerns and a
+# resume is a session start. The banner joins the candidate lists below.
+_lg_json=""
+if [[ "$SOURCE" == "resume" ]]; then
+  _lg_json=$(ledger_banner "$EVT_CWD")
+  [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
 fi
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
@@ -106,28 +207,6 @@ if [[ "$FRESH_INSTALL" == "0" && -f "$MANIFEST_NEW" ]] && command -v jq >/dev/nu
   jq -e . "$MANIFEST_NEW" >/dev/null 2>&1 || FRESH_INSTALL=1
 fi
 
-# merge_banners CANDIDATE... — print at most ONE SessionStart object.
-#
-# CC parses hook stdout with a strict single-value JSON.parse, so two objects on
-# stdout are invalid JSON and BOTH are dropped silently (docs/HOOK-PROTOCOL.md).
-# Empty candidates are skipped, one survivor is emitted as-is, several are
-# joined into one additionalContext. Both emit points call this: the
-# version-match branch with five candidates, the tail with three. They were two
-# byte-identical jq programs, which is one place to add a sixth banner and one
-# place to forget (2026-09-05 audit P2-2).
-merge_banners() {
-  printf '%s\n' "$@" | jq -s -c '
-    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
-    | if length == 0 then empty
-      elif length == 1 then .[0]
-      else {
-        suppressOutput: true,
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
-        }
-      } end' 2>/dev/null || true
-}
 
 # v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
 # session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
@@ -591,7 +670,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     # CLAUDEMD_FORCE_ASYNC_BOOTSTRAP path. The fresh path emits it at the tail,
     # in the same session as the overwrite.
     uc_json=$(emit_user_content_banner)
-    merge_banners "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json"
+    merge_banners "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json" "$_lg_json"
     exit 0
   fi
   # v0.36.0 — direction gate. INSTALLED_VER newer than this hook's own
@@ -650,7 +729,7 @@ _sum_json=$(emit_session_summary_banner)
 _uc_json=""
 
 emit_tail_banners() {
-  merge_banners "$_bf_json" "$_sum_json" "$_uc_json"
+  merge_banners "$_bf_json" "$_sum_json" "$_uc_json" "$_lg_json"
 }
 
 # node required to run install.js — silent no-op if absent. The banners still
