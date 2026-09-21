@@ -288,6 +288,22 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_response: {},
       },
     },
+    // The doctor probe drives it ONCE, so it lands at edit 1 of 8 and must exit
+    // 0 having said nothing — which is the liveness question here. This comment
+    // sits ABOVE the brace on purpose: the partition gate in
+    // tests/scripts/subject-set-drift.test.js extracts rows with
+    // `/\{\s*hook:\s*'…'/`, so a comment between `{` and `hook:` makes the row
+    // invisible to it and the hook reads as covered by neither list.
+    {
+      hook: 'rework-breaker.sh',
+      ks: ksFor('rework-breaker.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
+        tool_response: {},
+      },
+    },
     {
       hook: 'session-end-check.sh',
       ks: ksFor('session-end-check.sh'),

@@ -128,6 +128,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'rework-breaker.sh',
+    displayName: 'rework-breaker',
+    envVarSuffix: 'REWORK_BREAKER',
+    hookEvent: 'PostToolUse',
+    matcher: 'Edit|Write',
+    timeout: 3,
+  },
+  {
     basename: 'transcript-structure-scan.sh',
     displayName: 'transcript-structure-scan',
     envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN',

@@ -144,6 +144,13 @@ const NON_RULE_SECTIONS = new Set([
   // children (§8-rm-rf-var / §8-npx / §8-curl-sh) each
   // have their own manifest entry
   '§hooks-fail-open', // plugin-internal observability, not a spec rule
+  // G2's rework advisory. It files under §1's "Root cause over patch" PRINCIPLE,
+  // which is prose guidance and not one of the 26 HARD rules. Deliberately NOT
+  // §iron-law-3, which IS a HARD rule: the roadmap that commissioned G2
+  // pre-registered it as advisory and as adding no HARD rule, and filing an
+  // advisory under a HARD rule's section would put rows in the §13.1 demote
+  // accounting for a gate that never denies. Promoting it is the §13.3 route.
+  '§1-root-cause',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

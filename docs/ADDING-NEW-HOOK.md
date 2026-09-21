@@ -53,7 +53,7 @@ Create `tests/hooks/foo.test.sh` with at least:
 Skipping any of these is a red build, not a style nit:
 
 1. `docs/RULE-HITS-SCHEMA.md` — document every `(event, emitter)` pair the hook emits via `hook_record`. Gate: `tests/hooks/contract.test.sh` asserts documented ↔ emitted in BOTH directions.
-2. `tests/hooks/contract.test.sh` — add the same pairs to its `DOCUMENTED` array.
+2. `tests/hooks/contract.test.sh` — nothing to edit: it DERIVES its `DOCUMENTED` list by parsing the Events table out of `docs/RULE-HITS-SCHEMA.md`, so step 1 is the whole job. (This line used to say "add the same pairs to its `DOCUMENTED` array", which stopped being true when the parser landed and would send you looking for an array that is not there.)
 3. `spec/hard-rules.json` — only if the hook files a **blocking deny** under a NEW `§section`: add a manifest entry with `enforcement: "hook"` + `rule_hits_section: "<§section>"`, and add the section to `KNOWN_HOOK_SECTIONS` in `tests/scripts/hard-rules-drift.test.js` + the RULE-HITS-SCHEMA taxonomy table. Gate: `hard-rules-drift.test.js` test 8 (every hook deny section needs a manifest entry).
 
 ## 5. Update docs

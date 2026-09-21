@@ -30,7 +30,7 @@ working directory or its $TMPDIR (reported under \`protected\`). Under the Claud
 Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
 placed there sits inside the retention scope's target tree.
 
-State-dir scope: only ext-read-*, vocab-scan-*, failopen-*, mem-coverage-*,
+State-dir scope: only ext-read-*, vocab-scan-*, rework-*, failopen-*, mem-coverage-*,
 session-start-<sid>.ref, tmp-baseline-<sid>.txt, session-summary-<sid>.lastrun
 and the two legacy last-shown-* banner sentinels
 (last-session-summary.json.last-shown, bootstrap-failed.json.last-shown)
@@ -431,6 +431,10 @@ const STATE_EPHEMERAL = [
   // path from `$VS_STATE_DIR`, so the extraction keyed on `$STATE_DIR` could
   // not see it: this list's own scope failing to cover its subject.
   { kind: 'vocab-scan', re: /^vocab-scan-.+\.last$/ },
+  // Per-session G2 rework tally (v0.90.0). Append-only, one short line per
+  // Edit/Write, so an active session's file grows with its edit count and
+  // nothing reaps it on session end — same class as vocab-scan above.
+  { kind: 'rework', re: /^rework-.+\.counts$/ },
   // Per-session sandbox-disposal window ref (2026-08-16 audit F5). The
   // sid-less legacy `session-start.ref` (no dash) stays OUT of this pattern —
   // it is live singleton state for sessions whose event carries no session_id.

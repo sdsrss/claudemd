@@ -24,7 +24,7 @@ author to re-derive it from another hook's source:
   from those events log `null`. Read by `banned-vocab-check.sh`,
   `memory-read-check.sh`, `pre-bash-safety-check.sh`,
   `session-extended-read.sh`, `ship-baseline-check.sh`,
-  `transcript-vocab-scan.sh`.
+  `transcript-vocab-scan.sh`, `rework-breaker.sh`.
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`. Treat it as
@@ -63,9 +63,15 @@ A hook can also return text for the model to read instead of a decision. Same
 }
 ```
 
-- `hookEventName` must match the event the hook is registered for —
-  `PreToolUse`, `UserPromptSubmit` or `SessionStart`. This envelope is how a
-  hook speaks to the model; `stderr` is how it speaks to the human.
+- `hookEventName` must match the event the hook is registered for. This
+  envelope is how a hook speaks to the model; `stderr` is how it speaks to the
+  human. The events this repo has CONFIRMED deliver it are `PreToolUse`,
+  `UserPromptSubmit`, `SessionStart` and `PostToolUse`. That list used to read
+  as a closed set of the first three, which was this file asserting a limit it
+  had never tested: on 2026-09-21 a probe registered a PostToolUse hook emitting
+  a unique token and the model quoted the token back, on Claude Code 2.1.278
+  (`rework-breaker.sh` ships on that path). `Stop` genuinely does not — see
+  below, where the absence is a schema fact rather than an untested assumption.
 - `suppressOutput: true` keeps the text out of the transcript UI while the
   model still receives it. Every emitter here sets it.
 - **A hook must emit exactly one JSON object per run.** Two objects on stdout
@@ -91,6 +97,11 @@ Emitters, derived from source and gated by
 - `memory-prompt-hint.sh` — UserPromptSubmit; lists MEMORY.md files matching
   the prompt that have not been Read this session.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
+- `rework-breaker.sh` — PostToolUse (`Edit|Write`); one line naming how many
+  times this session has edited the file, at each multiple of the G2 threshold.
+  It reads `.tool_input.file_path` and `.session_id`, and quotes the path from
+  the EVENT rather than from its own state file, because that state is keyed by
+  checksum and a collision there must not be able to name the wrong file.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
 context schema, so `mem-audit.sh`, `residue-audit.sh` and

@@ -57,7 +57,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 15 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 16 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.30 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
@@ -187,6 +187,7 @@ export DISABLE_SESSION_START_HOOK=1              # or
 export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary
 export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
 export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
+export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write G2 rework advisory (§1 root-cause)
 export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 four-section advisory
 export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
 export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd §11-session-exit mid-SPINE check
@@ -394,7 +395,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 15 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
+├── hooks/                    # 16 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
