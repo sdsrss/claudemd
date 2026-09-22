@@ -161,10 +161,11 @@ const NON_RULE_SECTIONS = new Set([
   // accounting for a gate that never denies. Promoting it is the §13.3 route.
   '§1-root-cause',
   // G7's ledger advisory. `tasks/<slug>-ledger.md` is a convention this plugin
-  // defines in docs/ARCHITECTURE.md, not a rule in the spec: §11 asks a long
-  // task to keep its state re-readable and says nothing about a file. Filing it
-  // under §11-post-compaction — the section the SessionStart arm uses — would
-  // be the closer lie: nothing has compacted when this fires.
+  // defines in docs/ARCHITECTURE.md, not a rule in the spec: the word `ledger`
+  // appears nowhere under `spec/`, and the one file §11 does name is
+  // `tasks/<slug>-paused.md`. Filing it under §11-post-compaction — the section
+  // the SessionStart arm uses — would be the closer lie: nothing has compacted
+  // when this fires.
   '§11-ledger',
 ]);
 

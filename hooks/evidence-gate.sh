@@ -131,7 +131,7 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
   | map(
       if .type == "tool_use" then
         if (.name == "Edit" or .name == "Write") then
-          (if ((.input.file_path // "") | test("\\.(m?[jt]sx?|rs|py|go|sh|rb|java|c|cpp|h)$"; "i"))
+          (if ((.input.file_path // "") | test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i"))
            then "E" else empty end)
         elif .name == "Bash" then
           "U\t" + (.id // "") + "\t"

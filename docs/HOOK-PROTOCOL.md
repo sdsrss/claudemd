@@ -115,8 +115,8 @@ Emitters, derived from source and gated by
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
 context schema, so the ones with something to say write advisory text to
 `stderr` — `mem-audit.sh`, `residue-audit.sh`, `sandbox-disposal-check.sh`,
-`transcript-structure-scan.sh` and `evidence-gate.sh` — and
-`session-summary.sh` writes
+`transcript-structure-scan.sh`, `evidence-gate.sh` and
+`ledger-staleness.sh` — and `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for
 `session-start-check.sh` to turn into a banner at the START of the next
 session. That indirection is the schema's doing, not a design preference.

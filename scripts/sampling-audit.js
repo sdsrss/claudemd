@@ -189,6 +189,52 @@ export function loadVocabPatterns(pluginRoot) {
 // unparseable LINES drops those turns and still counts as fully sampled, so
 // every §13.2 opportunity denominator quietly shrinks by an amount no output
 // reports (audit R11-24). Recorded per transcript, same as `unreadable`.
+// `--until` value → epoch ms, or NaN for anything this flag should not accept
+// (the caller rejects it loudly; silently ignoring a mistyped bound would
+// publish a WIDER window under a narrower-looking command line).
+//
+// Three rules, each of which exists because the loose version of it shipped
+// first and the v0.91.0 pre-ship review found what it cost:
+//
+// 1. THE BOUND COVERS THE FINEST UNIT NAMED, inclusively. Epoch seconds and an
+//    ISO timestamp with no fraction cover their own second; an explicit
+//    fraction is taken exactly (write `.000` to ask for the edge); a
+//    minute-granularity time covers its minute and a bare date covers its day.
+//    Taken at `.000`, a bound located at second granularity drops every row
+//    inside its own second — which is what happened to both of this project's
+//    published reproductions: `--until=1790021570` returned 33,139 rows beside
+//    the sentence that located 1790021570 as the instant the count reaches
+//    33,140.
+// 2. AN ISO TIME MUST CARRY AN EXPLICIT OFFSET. `Date.parse` reads a bare
+//    local time in the runner's zone, a 16-hour spread across this project's
+//    own machines — in a flag whose entire purpose is that a baseline stays
+//    reproducible. A bare DATE is unambiguous per ISO-8601 (UTC) and stays
+//    allowed.
+// 3. THE RESULT MUST BE A PLAUSIBLE INSTANT. `Number(raw) * 1000` turned a
+//    pasted 13-digit epoch-MILLISECONDS value into the year 58694, i.e. no
+//    bound at all — the exact silent-widening this flag's own comment claimed
+//    to have closed. `20260921` and `2026` land in 1970 and empty the window
+//    instead. A range check catches all three in one place.
+const UNTIL_MIN_MS = Date.UTC(2020, 0, 1);
+const UNTIL_MAX_AHEAD_MS = 366 * 86400000;
+export function parseUntilMs(raw) {
+  let ms;
+  if (/^[0-9]+$/.test(raw)) {
+    ms = Number(raw) * 1000 + 999;
+  } else {
+    const hasTime = /T/.test(raw);
+    if (hasTime && !/(Z|[+-][0-9]{2}:?[0-9]{2})$/.test(raw)) return NaN;
+    const parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) return NaN;
+    if (!hasTime) ms = parsed + 86400000 - 1;
+    else if (/T[0-9:]*[0-9]\.[0-9]/.test(raw)) ms = parsed;
+    else if ((raw.split('T')[1].match(/:/g) || []).length < 2) ms = parsed + 60000 - 1;
+    else ms = parsed + 999;
+  }
+  if (ms < UNTIL_MIN_MS || ms > Date.now() + UNTIL_MAX_AHEAD_MS) return NaN;
+  return ms;
+}
+
 function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed = null, untilMs = null) {
   const events = [];
   let raw;
@@ -223,11 +269,19 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
         // Upper bound. `--days` only ever bounded the OLD side, so a
         // pre-registered measurement could not be re-derived once the corpus
         // grew past it — and a baseline nobody can reproduce is not a baseline.
-        // Rows without a parseable timestamp are kept by the same rule as the
-        // lower bound: a transcript-shape change must not silently empty the
-        // sample.
         if (untilMs !== null && t > untilMs) continue;
+      } else if (untilMs !== null) {
+        continue; // unparseable stamp, bounded run — see below
       }
+    } else if (untilMs !== null) {
+      // No timestamp at all, and an upper bound is set. Keeping the row is
+      // conservative on the LOWER bound — an old-looking row stays in a recent
+      // window — but on the upper bound it is the opposite: every unstamped row
+      // written AFTER the bound joins the sample, so the "reproducible"
+      // baseline drifts upward as the corpus grows. Dropping it is what makes
+      // the bound a bound (v0.91.0 pre-ship review, S6). Unbounded runs keep
+      // the old rule, so `--days` alone is unchanged.
+      continue;
     }
     const sidechain = obj.isSidechain === true;
     if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
@@ -1123,7 +1177,13 @@ export async function samplingAudit({
     return result; // missing projectsDir is not an error — empty result.
   }
 
-  const cutoffMs = Date.now() - days * 86400000;
+  // Anchored to `--until` when it is set, so `--days=30 --until=T` names the
+  // SAME 30 days however long after T it is re-run. Anchored to Date.now()
+  // instead, the window's old end kept moving and the whole thing went empty
+  // once T was more than `days` in the past — which is the reproducibility
+  // failure `--until` exists to close, reintroduced at the other end
+  // (v0.91.0 pre-ship review, S1).
+  const cutoffMs = (untilMs !== null ? untilMs : Date.now()) - days * 86400000;
   files = files.filter(f => {
     try {
       return fs.statSync(f).mtimeMs >= cutoffMs;
@@ -1478,7 +1538,16 @@ export function formatMarkdown(r) {
   const out = [
     `# Sampling audit — ${today}`,
     '',
-    `Window: ${r.windowDays}d · Transcripts scanned: ${r.scannedTranscripts} · Assistant message rows with text (sidechains included): ${r.totalAssistantTextRows}`,
+    // The bound belongs in the artifact, not only in `--json`: this file is
+    // where hand-annotated calibration records live, so it IS the baseline, and
+    // its name carries the RUN date rather than the window's end. Without this
+    // line a bounded run and an unbounded one read identically (v0.91.0
+    // pre-ship review, S4).
+    `Window: ${r.windowDays}d${
+      r.untilMs == null
+        ? ' (ending now)'
+        : ` ending ${new Date(r.untilMs).toISOString()} (--until), i.e. ${new Date(r.untilMs - r.windowDays * 86400000).toISOString()} ..`
+    } · Transcripts scanned: ${r.scannedTranscripts} · Assistant message rows with text (sidechains included): ${r.totalAssistantTextRows}`,
     `Source: \`${r.projectsDir}\``,
     integrityLine(r),
     '',
@@ -1618,6 +1687,10 @@ Options:
                  With --until the window is closed at both ends and a
                  pre-registered baseline stays reproducible. Rows with no
                  parseable timestamp are kept, same rule as the lower bound.
+                 Inclusive, and a value naming no fraction of a second covers
+                 that whole second: --until=1790021570 and
+                 --until=2026-09-21T20:12:50.999Z are the same bound. Write the
+                 fraction (.000) to ask for the edge instead.
   --force        Overwrite an existing tasks/sampling-audit-<date>.md. Without
                  it a same-day re-run refuses, because that file is where
                  hand-annotated calibration records live.
@@ -1658,12 +1731,13 @@ if (invokedAsMain(import.meta.url)) {
   let untilMs = null;
   if (parsed.values['--until'] != null) {
     const raw = parsed.values['--until'];
-    // Epoch seconds or anything Date.parse accepts. Rejected loudly rather than
-    // silently ignored: a mistyped bound that falls back to "no bound" would
-    // publish a WIDER window under a narrower-looking command line.
-    untilMs = /^[0-9]+$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw);
+    untilMs = parseUntilMs(raw);
     if (!Number.isFinite(untilMs)) {
-      console.error(`--until requires ISO-8601 or epoch seconds (got '${raw}').`);
+      console.error(
+        `--until requires ISO-8601 with an explicit UTC offset (2026-09-21T20:12:50Z) ` +
+          `or epoch SECONDS, resolving to an instant between 2020-01-01 and a year from now ` +
+          `(got '${raw}').`
+      );
       process.exit(1);
     }
   }
@@ -1685,7 +1759,9 @@ if (invokedAsMain(import.meta.url)) {
     // audit and litters tasks/ with stubs. Say so and write nothing.
     if (result.scannedTranscripts === 0) {
       console.log(
-        `No transcripts in the ${days}d window — skipped writing tasks/sampling-audit-${today}.md (nothing scanned, nothing to report).`
+        `No transcripts in the ${days}d window${
+          untilMs === null ? '' : ` ending ${new Date(untilMs).toISOString()} (--until)`
+        } — skipped writing tasks/sampling-audit-${today}.md (nothing scanned, nothing to report).`
       );
       return;
     }

@@ -2,8 +2,8 @@
 # Env hygiene: scrub inherited claudemd knobs so a direct `bash <this-file>` run
 # matches run-all.sh behavior (which scrubs once for the whole suite pass).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
-# ledger-staleness.test.sh — G7 (iii)
-# (docs/spec-optimization-roadmap-2026-09-21.md §7, the Stop arm of G7).
+# ledger-staleness.test.sh — G7 arm (iii)
+# (docs/spec-optimization-roadmap-2026-09-21.md, 第 7 节, the Stop arm of G7).
 #
 # The claim under test is "this session did code work and did not record it in
 # the ledger". Both halves are read from the TRANSCRIPT's structure, so the
@@ -72,10 +72,33 @@ fi
 # --- Case 1: code edits, ledger untouched → advisory -------------------------
 reset_log
 OUT=$(run_hook)
+RC=$?
 if [[ "$OUT" == *"ledger"* && "$OUT" == *"demo-ledger.md"* && "$(log_rows)" == "1" ]]; then
   ok "1: code edits + an active ledger nobody wrote to → advisory, one rule-hits row"
 else
   ng "1: expected the staleness advisory naming the ledger, got: $OUT (rows $(log_rows))"
+fi
+# Exit status on the FIRING path. Every shipped hook exits 0 on every branch;
+# `exit 2` is undefined behaviour to the harness (docs/HOOK-PROTOCOL.md), and
+# the repo's one exit-0 sweep (tests/integration/user-journey.test.sh) cannot
+# reach this path — it builds a Stop event with no transcript_path and never
+# sets the opt-in, so this hook exits at its gate there. Found in pre-ship
+# review: rewriting the terminal `exit 0` to `exit 2` left the suite green.
+if [[ "$RC" == "0" ]]; then
+  ok "1c: the advisory path still exits 0 (advisory, not a deny)"
+else
+  ng "1c: the firing path exited $RC — hooks exit 0 on every branch"
+fi
+# The message IS the product. Asserting only the filename let two mutations
+# through in pre-ship review: deleting the three actionable lines, and printing
+# the ledger-write count in place of the code-edit count, so a firing advisory
+# read "0 code-file edit(s)".
+if [[ "$OUT" == *"1 code-file edit(s)"* \
+   && "$OUT" == *"Verified-done"* && "$OUT" == *"exit code"* \
+   && "$OUT" == *"re-injects"* && "$OUT" == *"DISABLE_LEDGER_STALENESS_HOOK=1"* ]]; then
+  ok "1d: the message carries the real edit count, what to do, why, and how to disable"
+else
+  ng "1d: the advisory text lost content or reports the wrong count: $OUT"
 fi
 V=$(jq -r 'select(.hook=="ledger-staleness") | "\(.event) \(.spec_section) \(.extra.edits)"' "$HOME/.claude/logs/claudemd.jsonl" | head -n1)
 if [[ "$V" == "ledger-stale-advisory §11-ledger 1" ]]; then
@@ -217,9 +240,150 @@ fi
 reset_log
 OUT=$(export LEDGER_STALENESS_WINDOW=notanumber; run_hook)
 if [[ "$OUT" == *"demo-ledger.md"* ]]; then
-  ok "6c: a non-numeric window falls back to the default instead of reaching awk"
+  ok "6c: a non-numeric window falls back to the default instead of reaching tail -n"
 else
   ng "6c: non-numeric window changed the verdict: $OUT"
+fi
+
+# --- Case 6d: the SHIPPED default window, with no knob set -------------------
+# Cases 6/6b/6c all set the knob. Pre-ship review changed the default from 1200
+# to 5 and the suite stayed green — and given case 6e below, the default is not
+# a tuning detail but the boundary that decides the false-positive rate.
+BIG="$TMP_HOME/big.jsonl"
+{
+  row_edit /p/src/deep.js
+  FILLER=$(row_text "filler")
+  i=0
+  while [[ $i -lt 1250 ]]; do
+    printf '%s\n' "$FILLER"
+    i=$((i + 1))
+  done
+} > "$BIG"
+reset_log
+OUT=$(run_hook "$PROJ" "$BIG")
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "6d: with no knob set, an edit 1250 rows back is outside the default window"
+else
+  ng "6d: the default window is not 1200 rows: $OUT"
+fi
+{
+  row_edit /p/src/deep.js
+  FILLER=$(row_text "filler")
+  i=0
+  while [[ $i -lt 1100 ]]; do
+    printf '%s\n' "$FILLER"
+    i=$((i + 1))
+  done
+} > "$BIG"
+reset_log
+OUT=$(run_hook "$PROJ" "$BIG")
+if [[ "$OUT" == *"demo-ledger.md"* ]]; then
+  ok "6e: control — the same shape 1100 rows back is inside it, so 6d is the bound and not the fixture"
+else
+  ng "6e: control failed, the default window is smaller than claimed: $OUT"
+fi
+
+# --- Case 6f: the silencing side is NOT windowed (pre-ship review B1) --------
+# Write the ledger's Next first — the order docs/ARCHITECTURE.md asks for —
+# then do the code work. On a long session the ledger write slides out of the
+# tail window while the code edits do not, and an earlier version fired at a
+# session that did exactly what the advisory asks. The firing side is windowed;
+# the silencing side reads the whole file.
+{
+  row_edit "$LEDGER"
+  for i in $(seq 1 20); do row_text "filler $i"; done
+  row_edit /p/src/a.js
+  row_edit /p/src/b.js
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(export LEDGER_STALENESS_WINDOW=10; run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "6f: a ledger write outside the tail window still silences (the two sides read different spans)"
+else
+  ng "6f: fired at a session that wrote its ledger first — the B1 false positive: $OUT"
+fi
+# Control: the same transcript with the ledger row dropped fires, so 6f is
+# about the ledger row and not about the window swallowing the code edits too.
+{
+  row_text "no ledger write here"
+  for i in $(seq 1 20); do row_text "filler $i"; done
+  row_edit /p/src/a.js
+  row_edit /p/src/b.js
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(export LEDGER_STALENESS_WINDOW=10; run_hook)
+if [[ "$OUT" == *"2 code-file edit(s)"* ]]; then
+  ok "6g: control — drop the ledger row and the same session fires, naming both edits"
+else
+  ng "6g: control failed, 6f's silence came from somewhere else: $OUT"
+fi
+
+# --- Case 10: which ledger, when tasks/ holds more than one ------------------
+# `ls -t` resolution was untested: the suite never put two ledger FILES on
+# disk, so changing `head -n 1` to `tail -n 1` left it green. The property is
+# load-bearing — session-start-check.sh's injector resolves the same way, and
+# the two arms have to name the same file.
+MANY="$TMP_HOME/many"
+mkdir -p "$MANY/tasks"
+printf '# a\n' > "$MANY/tasks/aaa-ledger.md"
+printf '# z\n' > "$MANY/tasks/zzz-ledger.md"
+touch -t 202601010000 "$MANY/tasks/aaa-ledger.md"
+{
+  row_edit /p/src/a.js
+  row_text "work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$MANY")
+if [[ "$OUT" == *"zzz-ledger.md"* && "$OUT" != *"aaa-ledger.md"* ]]; then
+  ok "10: with two ledgers on disk the advisory names the newest by mtime"
+else
+  ng "10: resolved the wrong ledger: $OUT"
+fi
+if [[ "$OUT" == *"most recently modified of 2 ledgers"* ]]; then
+  ok "10b: and says it chose between 2, because the newest is not always the right task"
+else
+  ng "10b: the multi-ledger caveat is missing: $OUT"
+fi
+# Control: flip the mtimes and the other one is named.
+touch "$MANY/tasks/aaa-ledger.md"
+reset_log
+OUT=$(run_hook "$MANY")
+if [[ "$OUT" == *"aaa-ledger.md"* && "$OUT" != *"zzz-ledger.md"* ]]; then
+  ok "10c: control — touch the older one and it becomes the resolved one"
+else
+  ng "10c: resolution does not follow mtime: $OUT"
+fi
+
+# --- Case 11: the code-extension list, exercised past .js --------------------
+# Every firing case used .js, so cutting the rest of the list out of the regex
+# left the suite green (pre-ship review). A Python or Go session going silent
+# would have been invisible.
+for EXT in py go sh rs rb java c cpp h cjs cts mjs tsx; do
+  {
+    row_edit "/p/src/mod.$EXT"
+    row_text "work"
+  } > "$TRANSCRIPT"
+  reset_log
+  OUT=$(run_hook)
+  if [[ "$OUT" == *"demo-ledger.md"* ]]; then
+    ok "11.$EXT: a .$EXT edit counts as code work"
+  else
+    ng "11.$EXT: a .$EXT edit did not count: $OUT"
+  fi
+done
+# Control: an extension that is NOT in the list stays silent, so case 11 is
+# about the list rather than about everything matching.
+{
+  row_edit /p/src/notes.md
+  row_edit /p/src/data.json
+  row_text "work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "11.control: .md and .json are not code files"
+else
+  ng "11.control: a non-code extension fired: $OUT"
 fi
 
 # --- Case 7: kill-switches ---------------------------------------------------

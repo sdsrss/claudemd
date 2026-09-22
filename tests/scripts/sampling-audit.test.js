@@ -6,6 +6,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
+  parseUntilMs,
   samplingAudit,
   samplingAuditGlobal,
   PRECISION_GATE,
@@ -1517,6 +1518,238 @@ test('--until: rows after the bound are excluded, rows before it are kept', asyn
   }
 });
 
+// A bound written at second granularity means that whole second, not its
+// `.000` edge. Found in the v0.91.0 pre-ship review, and it had already cost
+// two published reproductions: `--until=1790021570` printed 33,139 tool calls
+// beside a sentence saying the instant was the one where the count reaches
+// 33,140, and `--until=1790021507` printed a test-edit split of 804/762/37/14
+// under a claim of 804/763/37/14. Both commands were short by exactly the rows
+// inside their own second, and both errors ran against the author — the real
+// reconciliation was the exact one, so nothing downstream noticed.
+//
+// The rule: a value that names no fraction of a second is inclusive to the end
+// of that second; a value that names one is taken exactly.
+test('--until: a second-granularity bound includes that whole second', () => {
+  const S = 1790021570; // 2026-09-21T20:12:50Z
+  assert.equal(parseUntilMs('1790021570'), S * 1000 + 999, 'epoch seconds cover their own second');
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12:50Z'),
+    S * 1000 + 999,
+    'ISO with no fraction covers its own second, same as the epoch form'
+  );
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12:50.999Z'),
+    S * 1000 + 999,
+    'an explicit .999 is the same instant, spelled out'
+  );
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12:50.000Z'),
+    S * 1000,
+    'an explicit fraction is taken exactly — .000 still means the edge'
+  );
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12:50.4Z'),
+    S * 1000 + 400,
+    'a one-digit fraction is a fraction, not a missing one'
+  );
+  assert.ok(!Number.isFinite(parseUntilMs('nonsense')), 'an unparseable value stays unparseable');
+  // The same rule one unit up and one unit down: the bound covers the finest
+  // unit the value actually names.
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12Z'),
+    Date.UTC(2026, 8, 21, 20, 12, 59, 999),
+    'a minute-granularity time covers its minute'
+  );
+  assert.equal(
+    parseUntilMs('2026-09-21'),
+    Date.UTC(2026, 8, 21, 23, 59, 59, 999),
+    'a bare date covers its day'
+  );
+});
+
+// Every numeric form that is not epoch seconds used to parse into a silent
+// nonsense bound: 13-digit epoch-MILLISECONDS multiplied to the year 58694 and
+// bounded nothing at all — the exact silent-widening the flag's own comment
+// claimed to have closed — while `20260921` and `2026` landed in 1970 and
+// emptied the window. A plausibility range catches all of them in one place.
+test('--until: a value that resolves to an implausible instant is rejected, not used', () => {
+  for (const raw of ['1790054707000', '20260921', '2026', '1']) {
+    assert.ok(
+      !Number.isFinite(parseUntilMs(raw)),
+      `${raw} must be rejected — it resolves outside 2020-01-01..+1y`
+    );
+  }
+  // Control: the correct form of the same instant is accepted, so the range
+  // check is rejecting the SPELLING and not the date.
+  assert.ok(
+    Number.isFinite(parseUntilMs('1790054707')),
+    'epoch seconds for the same instant are still accepted'
+  );
+});
+
+// `Date.parse` reads a bare local time in the runner's zone — a 16-hour spread
+// on the same command line, in the one flag whose purpose is that a baseline
+// stays reproducible. A bare DATE is unambiguous per ISO-8601 and stays legal.
+test('--until: an ISO time without an explicit offset is rejected', () => {
+  assert.ok(!Number.isFinite(parseUntilMs('2026-09-21T12:00:00')), 'bare local time is ambiguous');
+  for (const raw of ['2026-09-21T12:00:00Z', '2026-09-21T12:00:00+09:00', '2026-09-21T12:00:00+0900']) {
+    assert.ok(Number.isFinite(parseUntilMs(raw)), `${raw} carries an offset and must be accepted`);
+  }
+  assert.equal(
+    parseUntilMs('2026-09-21T12:00:00+09:00'),
+    Date.UTC(2026, 8, 21, 3, 0, 0, 999),
+    'the offset is applied, not ignored'
+  );
+});
+
+test('--until: the rounding is visible end to end, not only in the parser', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-untilsec-'));
+  try {
+    const edit = (t, f) => ({
+      type: 'assistant',
+      timestamp: new Date(t).toISOString(),
+      message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: f } }] },
+    });
+    // A whole second, with a row at its edge and a row 400ms into it. The
+    // second is an hour ago so it sits inside any 30-day window.
+    const SEC = Math.floor((Date.now() - 3600_000) / 1000) * 1000;
+    fs.writeFileSync(
+      path.join(dir, 's.jsonl'),
+      [edit(SEC, '/p/src/a.js'), edit(SEC + 400, '/p/src/b.js')].map(r => JSON.stringify(r)).join('\n') + '\n'
+    );
+    const bounded = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: parseUntilMs(String(SEC / 1000)),
+    });
+    assert.equal(bounded.behaviorMetrics.toolUses, 2, 'both rows inside the named second are in window');
+    // Control: the edge form, spelled explicitly, keeps only the first row —
+    // so the assertion above is about the rounding and not about the fixture.
+    const edge = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: parseUntilMs(new Date(SEC).toISOString()),
+    });
+    assert.equal(edge.behaviorMetrics.toolUses, 1, 'an explicit .000 stops at the edge');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// `--days` stayed anchored to Date.now() while `--until` bounded the new end,
+// so `--days=30 --until=<fixed instant>` named a DIFFERENT window every day it
+// ran and went empty once the instant was more than 30 days old — the
+// reproducibility failure this flag exists to close, reintroduced at the other
+// end (v0.91.0 pre-ship review, S1).
+test('--until: --days is measured back from the bound, not from now', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-untilanchor-'));
+  try {
+    const edit = (t, f) => ({
+      type: 'assistant',
+      timestamp: new Date(t).toISOString(),
+      message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: f } }] },
+    });
+    const DAY = 86400000;
+    const now = Date.now();
+    // Rows at 200, 100 and 1 days ago, one per file so file-mtime prefiltering
+    // cannot be what decides the outcome.
+    const rows = [
+      [now - 200 * DAY, 'old.jsonl'],
+      [now - 100 * DAY, 'mid.jsonl'],
+      [now - 1 * DAY, 'new.jsonl'],
+    ];
+    for (const [t, name] of rows) {
+      fs.writeFileSync(path.join(dir, name), JSON.stringify(edit(t, '/p/src/a.js')) + '\n');
+    }
+    const run = (days, untilMs) => samplingAudit({ projectsDir: dir, days, pluginRoot: REPO_ROOT, untilMs });
+
+    // A 30-day window ending 100 days ago holds the -100d row and nothing else.
+    // Anchored to Date.now() this returned zero, silently.
+    const anchored = await run(30, now - 100 * DAY + 1000);
+    assert.equal(anchored.behaviorMetrics.toolUses, 1, '--days is counted back from --until');
+
+    // Controls: a bound whose window sits entirely BETWEEN two rows, and the
+    // same window with no bound at all. (A 1-day window ending at the -100d
+    // row still contains it — that is the row's own instant, not a gap.)
+    const between = await run(1, now - 98 * DAY);
+    assert.equal(between.behaviorMetrics.toolUses, 0, 'a window between two rows holds neither');
+    const unbounded = await run(30, null);
+    assert.equal(unbounded.behaviorMetrics.toolUses, 1, 'unbounded 30d still means the last 30 days');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A row with no parseable timestamp cannot be placed inside a bounded window.
+// Keeping it made the "reproducible" baseline drift upward as unstamped rows
+// accumulated after the bound (v0.91.0 pre-ship review, S6).
+test('--until: rows with no timestamp are dropped from a bounded run only', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-untilnots-'));
+  try {
+    const tool = f => ({ type: 'tool_use', name: 'Edit', input: { file_path: f } });
+    const stamped = {
+      type: 'assistant',
+      timestamp: new Date(Date.now() - 3600_000).toISOString(),
+      message: { content: [tool('/p/src/a.js')] },
+    };
+    const unstamped = { type: 'assistant', message: { content: [tool('/p/src/b.js')] } };
+    fs.writeFileSync(
+      path.join(dir, 's.jsonl'),
+      [stamped, unstamped].map(r => JSON.stringify(r)).join('\n') + '\n'
+    );
+    const unbounded = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(unbounded.behaviorMetrics.toolUses, 2, 'unbounded: the old rule is unchanged');
+    const bounded = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: Date.now(),
+    });
+    assert.equal(bounded.behaviorMetrics.toolUses, 1, 'bounded: the unplaceable row is dropped');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The markdown report is the artifact a baseline IS — hand-annotated
+// calibration records live in it — and its filename carries the RUN date, not
+// the window's end. Without the bound in the header a bounded run and an
+// unbounded one read identically (v0.91.0 pre-ship review, S4).
+test('--until: the written report records the bound it was taken under', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-untilrep-'));
+  try {
+    const at = Date.now() - 3600_000;
+    fs.writeFileSync(
+      path.join(dir, 's.jsonl'),
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date(at - 60_000).toISOString(),
+        message: { content: [{ type: 'text', text: 'Done: a thing.' }] },
+      }) + '\n'
+    );
+    const bounded = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: at,
+    });
+    const withBound = formatMarkdown(bounded);
+    assert.match(withBound, /--until/, 'a bounded report names the flag');
+    assert.ok(
+      withBound.includes(new Date(at).toISOString()),
+      `the exact bound is missing from the header: ${withBound.split('\n').slice(0, 6).join(' | ')}`
+    );
+    const unbounded = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const without = formatMarkdown(unbounded);
+    assert.doesNotMatch(without, /--until/, 'an unbounded report does not claim a bound');
+    assert.match(without, /ending now/, 'and says what its window ends at instead');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('--until CLI: a value that is not a time is rejected, not silently ignored', () => {
   // Silently ignoring it would publish a WIDER window under a narrower-looking
   // command line — the argv silent-fallback shape this repo has a lint for.
@@ -1527,6 +1760,14 @@ test('--until CLI: a value that is not a time is rejected, not silently ignored'
     });
   const bad = run(['--until=nonsense', '--json']);
   assert.equal(bad.status, 1, `expected exit 1; stdout=${bad.stdout}`);
-  assert.match(bad.stderr, /--until requires ISO-8601 or epoch seconds/);
+  assert.match(bad.stderr, /--until requires ISO-8601 with an explicit UTC offset/);
+  // The message has to name every constraint the parser enforces, or the
+  // operator learns them one rejected command at a time.
+  assert.match(bad.stderr, /epoch SECONDS/);
+  assert.match(bad.stderr, /2020-01-01/);
+  for (const raw of ['1790054707000', '2026-09-21T12:00:00']) {
+    const r = run([`--until=${raw}`, '--json']);
+    assert.equal(r.status, 1, `${raw} must exit 1, got ${r.status}: ${r.stdout.slice(0, 120)}`);
+  }
   assert.match(run(['--help']).stdout, /--until=T/, 'the flag must be discoverable from --help');
 });

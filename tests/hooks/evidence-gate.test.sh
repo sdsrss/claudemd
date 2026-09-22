@@ -433,5 +433,43 @@ else
   ng "19b: the widening produced a false completion claim"
 fi
 
+# --- Case 20: CommonJS extensions count as code edits (v0.91.0) -------------
+# Until v0.91.0 this regex omitted `.cjs` and `.cts`, which rework-breaker.sh
+# has carried since v0.90.0, while a comment in each file said the three copies
+# were one list. A CommonJS-only session therefore read as "no code edit" here
+# and as code work next door. tests/scripts/code-ext-parity.test.js now holds
+# the three to each other; this case is the behavioural half on this hook.
+EG_CJS_OK=1
+for ext in cjs cts; do
+  {
+    row_edit "/p/src/mod.$ext"
+    row_text "$DONE_CLAIM"
+  } > "$TRANSCRIPT"
+  reset_log
+  O=$(run_hook "$DONE_CLAIM")
+  [[ "$O" == *"Iron Law #2"* ]] || {
+    EG_CJS_OK=0
+    echo "      .$ext edit did not register as a code edit"
+  }
+done
+if [[ "$EG_CJS_OK" == "1" ]]; then
+  ok "20: .cjs and .cts edits register as code work (parity with rework-breaker.sh)"
+else
+  ng "20: a CommonJS session still reads as no-code-edit"
+fi
+# Control: an extension outside the list still reads as no code edit, so case
+# 20 is about those two extensions and not about everything matching.
+{
+  row_edit /p/docs/readme.md
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+O=$(run_hook "$DONE_CLAIM")
+if [[ -z "$O" && "$(log_rows)" == "0" ]]; then
+  ok "20b: control — a .md edit is still not code work"
+else
+  ng "20b: the widening swallowed a non-code extension: $O"
+fi
+
 echo
 claudemd_assert_summary
