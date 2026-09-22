@@ -34,7 +34,7 @@ author to re-derive it from another hook's source:
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
-  `evidence-gate.sh`. Treat it as
+  `evidence-gate.sh`, `ledger-staleness.sh`. Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
 
 Other tools have different `tool_input` shapes:

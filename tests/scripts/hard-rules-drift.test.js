@@ -160,6 +160,12 @@ const NON_RULE_SECTIONS = new Set([
   // advisory under a HARD rule's section would put rows in the §13.1 demote
   // accounting for a gate that never denies. Promoting it is the §13.3 route.
   '§1-root-cause',
+  // G7's ledger advisory. `tasks/<slug>-ledger.md` is a convention this plugin
+  // defines in docs/ARCHITECTURE.md, not a rule in the spec: §11 asks a long
+  // task to keep its state re-readable and says nothing about a file. Filing it
+  // under §11-post-compaction — the section the SessionStart arm uses — would
+  // be the closer lie: nothing has compacted when this fires.
+  '§11-ledger',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

@@ -8,6 +8,24 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.91.0] - 2026-09-22
+
+Closes the two things 0.90.1 shipped with open: G7's third hook arm, and the one measurement residual the `--until` work left behind. `spec/` is byte-identical to 0.90.1 — this is a plugin-only cascade, and AI-CODING-SPEC stays at **v6.31.0**.
+
+**`ledger-staleness.sh` (Stop, `LEDGER_STALENESS=1`, default OFF).** G7 specifies three hook arms for `tasks/<slug>-ledger.md`. Two shipped in 0.90.0 — the `SessionStart` re-injection of `Decisions` and `Next` after a compaction or a resume, and the format in `docs/ARCHITECTURE.md`. This is the third: at Stop, a session that edited code and never wrote to its ledger gets one line saying so. Hook count 17 → 18.
+
+Why the arm is worth having at all: the ledger's value is entirely in being current, and the SessionStart arm re-injects it whether or not it is. A task that stops updating its ledger produces no error — just a quietly out-of-date `Decisions` and `Next` landing in context on the far side of the next compaction, which is the one moment that context is scarce.
+
+Both halves of the verdict come from the transcript's structure: a code-file `Edit`/`Write` inside the tail window, and no `Edit`/`Write` whose basename is the resolved ledger's. No mtime arithmetic between the two files, and that is a deliberate choice rather than an omission — row-level `.timestamp` is present in real transcripts and absent from this repo's own budget fixture, and a join on a field that can be missing is exactly how 0.90.1's reverse join came to return `[]` for every row while the gate around it stayed green.
+
+It reports a STATE rather than an event, so it carries no per-session firing claim — unlike `rework-breaker.sh` next door, which needs one because its subject is an event. Write the ledger and the next Stop is silent, because the write lands inside the window the hook reads; there is nothing for a claim file to buy, and no new state class for `clean-residue` and `uninstall` to carry. Four false-positive controls, checked in this order: no ledger under the event's `cwd`, a ledger older than `CLAUDEMD_LEDGER_MAX_AGE_DAYS`, no code-file edit in the window, any write to that ledger.
+
+`tests/hooks/ledger-staleness.test.sh` is 20 cases. The two that carry the design hold the entire transcript constant and move one row — the same session fires or goes silent depending only on whether a single `Edit` on the ledger is present — and the age bound and the window bound each get a control proving that they, and not something else, are what produced the silence. Against the 5,215,776-byte budget fixture it runs in 0.080s on a 5s timeout, and its populated and empty signatures differ, which is what the differential probe requires of a hook that reads a data source it does not size.
+
+**`--until=<ISO|epoch>` for `scripts/sampling-audit.js`** — landed on `main` after 0.90.1 was cut, released here. `--days` closes the old side of the window and nothing closed the new side, so a pre-registered measurement stopped being reproducible the moment the corpus grew past it. Both ends now close. An unparseable value exits 1 and names the two accepted forms rather than being silently ignored.
+
+**The last measurement residual is located rather than open.** `docs/spec-optimization-roadmap-2026-09-21.md` §3.3 stratifies tool calls into 28,099 external and 5,055 self, which sum to 33,154 against §3.2's 33,140. Re-read at §3.2's own instant (`--until=1790021570`), the two layers are 28,091 and 5,048, summing to 33,139 — one below the §3.2 total, inside the ±1 the work package asked for. So the stratified figures are reproducible at a single instant and consistent with the total; the document's pair is not, because its halves were read at 20:14:25 and 20:14:49 with an active session writing transcripts in between. The recorded numbers are unchanged — this is a measurement record, not a conclusion that can be corrected in place — and the reading instants are now written beside them, in §3.3 and in Appendix A.
+
 ## [0.90.1] - 2026-09-22
 
 Ships AI-CODING-SPEC **v6.31.0**. No plugin behaviour changes — the hooks, scripts and commands are byte-identical to 0.90.0; this is the spec half of the same work package, cut separately because the spec cascade and the plugin cascade are two different sets of sites with two different gates, and failing them together compounds the failure surface.

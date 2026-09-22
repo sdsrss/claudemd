@@ -167,6 +167,14 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-
 awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync-aged-%d\n", d, i }' \
   | xargs touch -t 200001010000
 
+# ledger-staleness: a current ledger under the fixture cwd. Without one the
+# hook exits at its "no ledger here" guard, which is the cheap branch, and the
+# gate would time an early exit instead of the transcript scan. Its mtime is
+# now, inside the 14-day age bound; the fixture transcript writes .js paths and
+# never this file, so the hook reaches its verdict and emits.
+mkdir -p "$CWD/tasks"
+printf '# ledger\n\n## Decisions\n\nd\n\n## Next\n\nn\n' > "$CWD/tasks/budget-ledger.md"
+
 # Pre-seeded per-session state so the two Stop scanners take their FULL path
 # instead of the silent first-run branch (which establishes a baseline and
 # exits — cheap, and measuring it is the underread this gate exists to catch).
@@ -280,6 +288,13 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
         '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t,
           last_assistant_message:"Done: rewrote the parser."}' ;;
+    ledger-staleness)
+      # Reaches its verdict on the populated fixture (3,000 Edit rows on .js
+      # paths, a seeded ledger nothing writes to) and exits at the no-code-edit
+      # guard on the empty one, which is what the differential compares.
+      PROBE_ENV=("LEDGER_STALENESS=1")
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
+        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t}' ;;
     transcript-vocab-scan)
       PROBE_ENV=("TRANSCRIPT_VOCAB_SCAN=1")
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \

@@ -136,6 +136,14 @@ export const HOOK_REGISTRY = [
     timeout: 5,
   },
   {
+    basename: 'ledger-staleness.sh',
+    displayName: 'ledger-staleness',
+    envVarSuffix: 'LEDGER_STALENESS',
+    hookEvent: 'Stop',
+    matcher: '*',
+    timeout: 5,
+  },
+  {
     basename: 'rework-breaker.sh',
     displayName: 'rework-breaker',
     envVarSuffix: 'REWORK_BREAKER',
