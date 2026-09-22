@@ -14,7 +14,9 @@ Flags (append after the number when needed):
 | `--days=N` | Window in days (positive integer, default 30; overrides env). |
 | `--sample=N` | Random subset of N transcripts within the window (per project dir). |
 | `--global` | Scan all CC project dirs (`~/.claude/projects/*`) — not just cwd; adds `byClass` self-repo vs external stratification. |
+| `--until=T` | Upper bound on row timestamps (ISO-8601, or epoch seconds). `--days` bounds only the old side, so a measurement taken at one instant stops being re-derivable once the corpus grows past it; with `--until` the window is closed at both ends. Inclusive, and a value naming no fraction of a second covers that whole second. Rows with **no** parseable timestamp are DROPPED under this flag — the opposite of the lower bound, which keeps them, because an unstamped row written after the bound would widen the window the command line asks for. |
 | `--json` | Emit machine-readable JSON to stdout instead of a markdown report. |
+| `--force` | Overwrite an existing `tasks/sampling-audit-<date>.md`. Without it a same-day re-run refuses (see below). |
 
 The JSON / markdown contains:
 

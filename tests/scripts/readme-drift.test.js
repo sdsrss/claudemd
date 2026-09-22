@@ -147,7 +147,7 @@ test('FLW-M3: README states what happens to an already-installed spec, pinned wh
   assert.match(
     backup,
     /spec: 'spec-backup'/,
-    "the spec-backup label the README names by path is gone from backup.js"
+    'the spec-backup label the README names by path is gone from backup.js'
   );
 });
 

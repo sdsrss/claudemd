@@ -92,3 +92,47 @@ test('bin/claudemd-lint.js: USAGE references actual npm bin name', () => {
     assert.match(r.stdout, rightRe, `USAGE should mention '${binName} ${sub}'`);
   }
 });
+
+// SCR-M3 (round-17): the accepted-flag set, derived from the parser call, must
+// reach BOTH places a user looks. `sampling-audit.js` grew `--until` and
+// `--force` and neither reached its `Usage:` synopsis line or the flag table in
+// commands/claudemd-sampling-audit.md — `--until` being the headline feature of
+// the release that added it.
+//
+// Deliberately a named list rather than every CLI: this asserts a doc SHAPE (a
+// `| `--flag` |` table row) that only the commands/ twins use. Adding a pair
+// here is one line, and a missing twin fails loudly rather than silently
+// narrowing the gate.
+const FLAG_DOC_PAIRS = [['scripts/sampling-audit.js', 'commands/claudemd-sampling-audit.md']];
+
+test('SCR-M3: every accepted flag reaches the Usage synopsis and the command doc', () => {
+  assert.ok(FLAG_DOC_PAIRS.length > 0, 'this gate would pass over nothing');
+  for (const [scriptRel, docRel] of FLAG_DOC_PAIRS) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, scriptRel), 'utf8');
+
+    // Derived from the parser call, not a second hand-kept list — the whole
+    // defect is a hand-kept list falling behind the one that decides.
+    const spec = src.match(/parseStrictOrExit\(\s*process\.argv\.slice\(2\),\s*\{([\s\S]*?)\}\s*\)/);
+    assert.ok(spec, `${scriptRel}: could not locate the parseStrictOrExit flag spec`);
+    const flags = [...spec[1].matchAll(/'(--[a-z-]+)'/g)].map(m => m[1]);
+    assert.ok(flags.length >= 3, `${scriptRel}: parsed ${flags.length} flags — the spec regex slipped`);
+
+    // The synopsis is the `Usage:` line plus its wrapped continuation lines,
+    // i.e. up to the first blank line. `--help` is conventionally listed under
+    // Options rather than in the synopsis, so it is exempt there.
+    const usage = src.match(/Usage:[\s\S]*?\n\s*\n/);
+    assert.ok(usage, `${scriptRel}: no Usage: synopsis block`);
+    const doc = fs.readFileSync(path.join(REPO_ROOT, docRel), 'utf8');
+
+    for (const flag of flags) {
+      assert.ok(
+        usage[0].includes(flag),
+        `${scriptRel}: ${flag} is accepted but missing from the Usage synopsis line`
+      );
+      assert.ok(
+        new RegExp(`\\|\\s*\`${flag}(=[A-Za-z]+)?\`\\s*\\|`).test(doc),
+        `${docRel}: ${flag} is accepted by ${scriptRel} but has no row in the flag table`
+      );
+    }
+  }
+});

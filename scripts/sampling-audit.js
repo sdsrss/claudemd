@@ -175,8 +175,14 @@ export function loadVocabPatterns(pluginRoot) {
 // --days. Each rule's opportunity denominator is a turn count, so the published
 // rates described a different population than `windowDays` claimed — and
 // audit.js#selfCompliance republishes that number verbatim. Rows without a
-// parseable timestamp are KEPT (a transcript-shape change must not silently
-// empty the sample).
+// parseable timestamp are KEPT on an unbounded run (a transcript-shape change
+// must not silently empty the sample) and DROPPED once `--until` sets an upper
+// bound: keeping them is conservative against the lower bound and the exact
+// opposite against the upper one, since every unstamped row written after the
+// bound would join the sample and drift a "reproducible" baseline upward as the
+// corpus grows (v0.91.0 pre-ship review, S6 — the rule is at the `untilMs`
+// branch in scanTranscript, and this sentence said "KEPT" flatly until round-17
+// SCR-M3).
 // `unreadable` (out param, optional): a transcript this could not read is
 // dropped from the sample and, before 2026-08-29 (audit R10-20), left no trace
 // — the denominators just came out smaller. Transcripts are the only unbounded
@@ -1670,7 +1676,8 @@ export function formatMarkdown(r) {
   return out.join('\n');
 }
 
-const USAGE = `Usage: node scripts/sampling-audit.js [--days=N] [--sample=N] [--global] [--json]
+const USAGE = `Usage: node scripts/sampling-audit.js [--days=N] [--until=T] [--sample=N] [--global]
+                                      [--json] [--force]
 
 Retrospective batch scan of historical transcripts for 8 self-enforced HARD rules:
   text detectors    §10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty
@@ -1697,7 +1704,11 @@ Options:
                  instant could not be re-derived once the corpus grew past it.
                  With --until the window is closed at both ends and a
                  pre-registered baseline stays reproducible. Rows with no
-                 parseable timestamp are kept, same rule as the lower bound.
+                 parseable timestamp are DROPPED by this flag — the opposite of
+                 the lower bound, which keeps them. Keeping one is conservative
+                 against --days and not against --until: an unstamped row
+                 written after the bound would join the sample and widen the
+                 window the command line asks for.
                  Inclusive, and a value naming no fraction of a second covers
                  that whole second: --until=1790021570 and
                  --until=2026-09-21T20:12:50.999Z are the same bound. Write the

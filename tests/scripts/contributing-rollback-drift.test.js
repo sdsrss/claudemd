@@ -216,11 +216,7 @@ test('REL-H1: ROLLBACK says who gates a red tag, pinned whole-line', () => {
   const hits = read('docs/ROLLBACK.md')
     .split('\n')
     .filter(l => l.trim() === CLAIM);
-  assert.equal(
-    hits.length,
-    1,
-    `docs/ROLLBACK.md must carry this line verbatim, exactly once:\n  ${CLAIM}`
-  );
+  assert.equal(hits.length, 1, `docs/ROLLBACK.md must carry this line verbatim, exactly once:\n  ${CLAIM}`);
 
   // And it has to stay true, which rests on one mechanism: the upgrade banner
   // polls REFS, so the tag push is itself the thing consumers see.
