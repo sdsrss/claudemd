@@ -193,6 +193,16 @@ export function acquireInstallLock() {
   const expired = Date.now() - observed.mtimeMs >= INSTALL_LOCK_STALE_MS;
   if (!expired && lockOwnerAlive(lockPath)) return null;
 
+  // The bytes of the lock being judged, read here so the takeover below can ask
+  // whether the file it moved is still that one. `null` on any failure, which
+  // compares equal only to another failure.
+  let observedBody;
+  try {
+    observedBody = fs.readFileSync(lockPath, 'utf8');
+  } catch {
+    observedBody = null;
+  }
+
   // Take the lock over by MOVING the inode that was judged, not by unlinking
   // the path. `unlink(path)` + `open(path,'wx')` is a TOCTOU and it was live:
   // two processes that stat the same expired lock both proceed, the second
@@ -202,10 +212,20 @@ export function acquireInstallLock() {
   //
   // `rename` is atomic, so of two simultaneous takeovers exactly one moves the
   // inode and the other gets ENOENT and stands down. That alone does not close
-  // it: a taker arriving AFTER the winner has re-claimed finds a DIFFERENT
-  // inode at the same path and would move that one — the live lock. Hence the
+  // it: a taker arriving AFTER the winner has re-claimed finds a DIFFERENT file
+  // at the same path and would move that one — the live lock. Hence the
   // identity check below. Renaming is what makes the check possible at all;
   // unlink destroys the evidence it needs.
+  //
+  // Identity is BYTES first, stat second, and that ordering is measured rather
+  // than chosen. The first version of this compared `ino`/`dev` alone and was
+  // green on tmpfs and red on ext4: the winner's `rmSync` frees the judged
+  // inode and its `open(wx)` is handed the same number straight back, so a late
+  // taker's inode check matched the winner's live lock and it took it anyway.
+  // Two processes cannot write the same `{pid, startedAt}`, so the body is the
+  // half that cannot collide; `mtimeMs` covers the one case the body cannot — a
+  // lock observed between its `open(wx)` and its write, whose body is empty on
+  // both sides.
   const aside = `${lockPath}.stale.${process.pid}`;
   try {
     fs.renameSync(lockPath, aside);
@@ -214,12 +234,23 @@ export function acquireInstallLock() {
     return null;
   }
   let moved;
+  let movedBody;
   try {
     moved = fs.statSync(aside);
   } catch {
     return null;
   }
-  if (moved.ino !== observed.ino || moved.dev !== observed.dev) {
+  try {
+    movedBody = fs.readFileSync(aside, 'utf8');
+  } catch {
+    movedBody = null;
+  }
+  if (
+    movedBody !== observedBody ||
+    moved.mtimeMs !== observed.mtimeMs ||
+    moved.ino !== observed.ino ||
+    moved.dev !== observed.dev
+  ) {
     // Not the lock that was judged expired: a takeover completed between the
     // stat and the rename, and this is the winner's live claim. Put it back
     // with `link`, which is atomic and fails EEXIST if a third claim has

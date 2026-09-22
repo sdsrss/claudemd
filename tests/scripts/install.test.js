@@ -1228,35 +1228,49 @@ test('SCR-H1: a takeover that arrives late must not delete the holder it lost to
   fs.writeFileSync(lock, JSON.stringify({ pid: 999999 }));
   const old = Date.now() - 60 * 60 * 1000;
   fs.utimesSync(lock, old / 1000, old / 1000);
-  const observedByLoser = fs.statSync(lock);
+  // What the loser saw before the winner moved anything: the stat AND the bytes.
+  const observedStat = fs.statSync(lock);
+  const observedBody = fs.readFileSync(lock, 'utf8');
 
   const winner = acquireInstallLock();
   assert.equal(winner, lock, 'the first caller must take the expired lock over');
-  const winnerInode = fs.statSync(lock).ino;
+  const winnerBody = fs.readFileSync(lock, 'utf8');
+  // Bytes, not inode. ext4 hands the winner's `open(wx)` the inode its `rmSync`
+  // just freed, so `ino` can be equal here on a filesystem that reuses — which
+  // is the defect this case found in its own first fix. The body cannot be
+  // equal: it records a different pid.
   assert.notEqual(
-    winnerInode,
-    observedByLoser.ino,
-    'the winner must claim a NEW file — otherwise this test proves nothing'
+    winnerBody,
+    observedBody,
+    'the winner must have written its OWN lock — otherwise this test proves nothing'
   );
 
   let loser = 'unset';
   await withPatchedFs(
     'statSync',
-    orig =>
+    statOrig =>
       function (p, ...rest) {
-        return String(p).endsWith('install.lock') ? observedByLoser : orig(p, ...rest);
+        return String(p).endsWith('install.lock') ? observedStat : statOrig(p, ...rest);
       },
-    async () => {
-      loser = acquireInstallLock();
-    }
+    () =>
+      withPatchedFs(
+        'readFileSync',
+        readOrig =>
+          function (p, ...rest) {
+            return String(p).endsWith('install.lock') ? observedBody : readOrig(p, ...rest);
+          },
+        async () => {
+          loser = acquireInstallLock();
+        }
+      )
   );
 
   assert.equal(loser, null, 'the late caller must stand down, not become a second holder');
   assert.equal(fs.existsSync(lock), true, "and the winner's lock must still be on disk");
   assert.equal(
-    fs.statSync(lock).ino,
-    winnerInode,
-    'the same file the winner created, not a replacement written over it'
+    fs.readFileSync(lock, 'utf8'),
+    winnerBody,
+    "the winner's own bytes, not a replacement written over them"
   );
   assert.deepEqual(
     fs.readdirSync(stateDirPath).filter(n => n.includes('.stale.')),
