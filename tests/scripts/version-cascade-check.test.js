@@ -137,6 +137,40 @@ test('CLI: unknown flag → exit 2 + argv-shape error', () => {
 
 // --- Spec sizing drift check (v0.21.2) ------------------------------------
 
+test('REL-M3: ADDING-NEW-HOOK names as many semver sites as the gate enumerates', () => {
+  // Round-17 REL-M3. The contributor doc told you to bump four sites; this gate
+  // has checked six since the lockfile pair was added, and its own failure text
+  // still said "All four" — three statements of one number, two of them stale,
+  // and the one that decides is the array. The array is the source here: the doc
+  // is joined to `--json`'s own output, not to a second literal.
+  const r = spawnSync(process.execPath, [SCRIPT, '--json'], { encoding: 'utf8' });
+  const sites = JSON.parse(r.stdout).pluginSemver.sites;
+  assert.ok(sites.length >= 4, `--json reported ${sites.length} semver sites — too few to be real`);
+
+  const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/ADDING-NEW-HOOK.md'), 'utf8');
+  const WORDS = { four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  const m = doc.match(/\*\*(\w+)\*\* semver sites/);
+  assert.ok(m, 'ADDING-NEW-HOOK.md no longer states a semver-site count in the pinned form');
+  assert.equal(
+    WORDS[m[1]] ?? Number(m[1]),
+    sites.length,
+    `ADDING-NEW-HOOK.md says ${m[1]} semver sites; the gate enumerates ${sites.length}`
+  );
+
+  // And each file by name, so a correct total over a wrong list still fails.
+  for (const file of new Set(sites.map(s => s.file))) {
+    assert.ok(doc.includes(`\`${file}\``), `ADDING-NEW-HOOK.md never names the semver site ${file}`);
+  }
+
+  // The gate's own failure text derives its count rather than restating it.
+  const src = fs.readFileSync(SCRIPT, 'utf8');
+  assert.match(
+    src,
+    /All \$\{semverResult\.sites\.length\} MUST match/,
+    'version-cascade-check.js went back to a hand-written count in its failure text'
+  );
+});
+
 test('real repo: spec sizing claim matches actual fs sizes within ±20B', () => {
   const r = runSpecSizingCheck({ root: REPO_ROOT });
   assert.equal(r.ok, true, `Sizing line claims diverge from actual: ${JSON.stringify(r.drifts, null, 2)}`);

@@ -84,4 +84,4 @@ The four sections above cover registration and docs. These fire on the hook's CO
 
 ## 6. Bump plugin version
 
-Patch bump in `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (×2 sites), and `CHANGELOG.md` with the new hook description. Gate: `runPluginSemverCheck` (in the standard suite) asserts all four semver sites agree.
+Patch bump every semver site, plus `CHANGELOG.md` with the new hook description. There are **six** semver sites, not the four a hand-written list tends to reach: `package.json`, `package-lock.json` (×2 — `version` and `packages[""].version`), `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` (×2 — `metadata.version` and `plugins[0].version`). `npm version` rewrites the lockfile pair; a hand-edited `package.json` does not, and v0.72.0 reached its pre-tag review with the lockfile two patches behind. Gate: `runPluginSemverCheck` (in the standard suite) asserts all six agree — do not re-copy the list here by hand, run `npm run version-check` and read what it enumerates.

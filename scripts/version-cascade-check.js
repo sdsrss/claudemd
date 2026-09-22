@@ -340,7 +340,12 @@ if (invokedAsMain(import.meta.url)) {
           );
         }
         process.stderr.write(
-          `\nAll four MUST match. package.json is the one the runbook's grep list historically missed, ` +
+          // Derived, not written down. The literal said "four" while this gate
+          // has enumerated six sites since the lockfile pair was added, and
+          // nothing re-checked the sentence when the list grew (round-17
+          // REL-M3). A count in prose beside the array it counts is a number
+          // with no owner.
+          `\nAll ${semverResult.sites.length} MUST match. package.json is the one the runbook's grep list historically missed, ` +
             `and it is the one that matters most: scripts/lib/paths.js#readPluginVersion reads package.json ` +
             `(NOT .claude-plugin/plugin.json), so a stale value there is what install.js stamps into ` +
             `~/.claude/.claudemd-manifest.json — making status/doctor report the wrong version and blinding ` +
