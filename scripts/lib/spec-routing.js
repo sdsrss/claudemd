@@ -35,7 +35,11 @@ export function skillTokens(cell) {
   const out = [];
   let ns = null;
   const text = cell.replace(/\*\*/g, '');
-  const re = /(?:\b(sp|gs):\/?|(?<=^|[\s,])\/)([a-z*][a-z0-9*-]*)/gi;
+  // `matt` joined sp|gs in v6.31.0. Until then the nine mattpocock rows that
+  // release added resolved to nothing, so the forward join, the reverse join and
+  // a typo in any `matt:` name were all invisible to `npm run check` — the one
+  // part of the new table with no gate over it.
+  const re = /(?:\b(sp|gs|matt):\/?|(?<=^|[\s,])\/)([a-z*][a-z0-9*-]*)/gi;
   for (const m of text.matchAll(re)) {
     if (m[1]) ns = m[1].toLowerCase();
     if (!ns) continue; // bare `/x` before any namespace → not a skill
@@ -61,7 +65,10 @@ export function tableRows(text, startHeading, endMarker, onMissing) {
   return text
     .slice(start, end)
     .split('\n')
-    .filter(l => l.startsWith('|') && !/^\|[\s-]+\|/.test(l) && !/^\|\s*(Request type|Missing)\s*\|/.test(l))
+    .filter(
+      l =>
+        l.startsWith('|') && !/^\|[\s-]+\|/.test(l) && !/^\|\s*(Request type|Missing|Task class)\s*\|/.test(l)
+    )
     .map(l => l.split('|').slice(1, -1));
 }
 

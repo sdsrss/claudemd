@@ -18,7 +18,7 @@ The criteria move to §EXT §12, where the fallbacks they need already lived. Th
 
 Three items stay in core because they are not skill routing: UI verification is `gs:/browse` ONLY and never `mcp__chrome` or computer-use — a prohibition, and L0–L2 never load the extended file, so moving it would make it invisible exactly where it binds; 2+ disjoint tasks go to `Agent`; code-free Q&A is answered directly.
 
-**Core is 24940 → 24229 bytes, −711.** The first net-delete since core reached its 25,000-byte ceiling, taking headroom from 60 bytes to 771. §0.1's net-delete requirement is met by construction rather than by exemption.
+**Core is 24940 → 24347 bytes, -593**, taking headroom from 60 bytes to 653 against the 25,000-byte cap. §0.1's net-delete requirement is met by construction rather than by exemption. (No ranking claim: an earlier draft called this the first net-delete since core reached its ceiling, and this repo's own record refutes that twice over — v6.29.1 was −2 at 58 bytes of headroom, and `git log` shows a −1751. Derive with `for c in $(git log --format=%h -- spec/CLAUDE.md); do git show $c:spec/CLAUDE.md | wc -c; done`.)
 
 **Closed: C2 and P3.** `sampling-audit --global --days=30` reports over-ceremony 0 of 180 L0/L1 segments against a 5% threshold pre-registered before collection. The denominator grew from 11 at first measurement to 180 and the count stayed at zero. Recorded with the caveat that it measures whether a ceremony skill was invoked, not whether invoking one would have been right, and that a zero here is consistent with the same 0.2% skill-invocation rate rather than independent of it.
 

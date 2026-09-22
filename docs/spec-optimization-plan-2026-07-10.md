@@ -64,8 +64,8 @@
 **✅ C2 关闭 2026-09-22(P3 一并关闭)**。依据:`node scripts/sampling-audit.js --global --days=30 --json` →
 `overCeremony: {totalSegments: 1660, l0l1Segments: 180, overCeremonySegments: 0}`,rate **0.000**,
 预登记阈值 5%。分母从首测的 11 个 L0/L1 段长到 **180** 个,仍是 0 次命中——不是分母太小得不出结论,
-是这一年里 L0/L1 段上一次 ceremony 调用都没有发生过。三次 ceremony 调用
-(systematic-debugging×5、writing-plans×2、test-driven-development×1)全部落在非 L0/L1 段。
+是这一年里 L0/L1 段上一次 ceremony 调用都没有发生过。三类共 **8** 次 ceremony 调用
+(systematic-debugging×5、writing-plans×2、test-driven-development×1;5+2+1=8)全部落在非 L0/L1 段。
 按预登记分支:rate < 5% → **保留 superpowers,关闭 P3**。
 
 **保留**:该检测器是 `closed` 之外的少数几个有真实分母的之一,但它测的是"调用了 ceremony skill",
@@ -97,8 +97,19 @@ grep -c '^- \[' …/memory/MEMORY.md = 18   ·   ls …/memory/*.md | grep -vc M
 (`spec-coherence-audit` 的 `memory-index` 检查同样报 `danglingCount=0, orphanCount=0`),所以它不是
 "索引丢了文件",是这个文件从未存在或早已被删而没有留下记录。
 
-因此 promote 条件**没有被否定,是从未被测量过**:30 天内扫 190 份 transcript,3 份提到这些关键词,
-全部是在讨论**本计划文档**,不是在引用 anchor。D1 维持不 promote——但理由要改:不是"命中不足说明
+因此 promote 条件**没有被否定,是从未被测量过**。30 天窗口内的 transcript 数可复算:
+
+```
+find ~/.claude/projects -maxdepth 2 -name '*.jsonl' -newermt '2026-08-23' | wc -l        → 190
+grep -l -F '单向棘轮'          ~/.claude/projects/*/*.jsonl | wc -l                        → 3
+grep -l -F 'provisional_upgrade' ~/.claude/projects/*/*.jsonl | wc -l                     → 2
+grep -l -i -F 'tripwire'       ~/.claude/projects/*/*.jsonl | wc -l                       → 17
+```
+
+三个关键词给出三个不同的数,**没有一个是"引用 anchor 的会话数"**——`tripwire` 的 17 份里绝大多数
+是别的上下文,`单向棘轮` 的 3 份是在讨论**本计划文档**。初稿把"3"写成结论,而"3"只在单取
+`单向棘轮` 时成立;这个数没有判据,已按记忆 #108 换成上面的推导命令。无论取哪个口径,结论不变:
+anchor 文件不存在,所以这些命中都不是 anchor 命中。D1 维持不 promote——但理由要改:不是"命中不足说明
 频率不值 core 字节",而是**先决条件缺失**。要么补写 anchor 再等 30 天,要么把 D1' 一并关掉;
 这是操作者的裁定,不在本次执行包范围内(12.1 项 10 只要求"跑一次计数并写入结果")。
 

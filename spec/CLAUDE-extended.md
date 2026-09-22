@@ -168,7 +168,7 @@ Chain: clarify → primary → secondary only if needed → ship. Do NOT flatten
 Example: "登录页又慢又报 500" → bug first (resolve 500), then perf only if slowness persists after fix.
 
 ### Skill invocation
-Routing keyword / task type / user names skill. sp before gs, except clarify and ship (gs entry).
+Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins — v6.31.0 removed the `sp` before `gs` rule, and it is not restated here.
 
 ### §4.FULL (L3 full path)
 
@@ -379,16 +379,16 @@ Judgment by fit; no precedence among skills. Each candidate's criterion is taken
 
 | Task class (§2) | Candidates, each with its fit criterion | All missing |
 |---|---|---|
-| L0 / L1 | none — invoke no skill | — |
+| L0 / L1 | none — invoke no skill. A LEVEL rule, not a trigger rule: core §2.2's ship triggers and the receiving-review row below fire at any level, L0 included | — |
 | L2 bug | `matt:diagnosing-bugs`: hard to reproduce / perf regression / intermittent · `sp:systematic-debugging`: ordinary bug, test failure or wrong behaviour, BEFORE proposing a fix · `gs:/investigate`: env / staging / deploy side | §6 + Iron Law #3 inline |
 | L2 feature (additive) | `matt:tdd`: user asked for test-first / red-green-refactor / integration tests · `sp:test-driven-development`: ordinary RED-first | §7 ladder by hand, RED→GREEN |
 | L2 / L3 design | `matt:domain-modeling`: terminology / CONTEXT.md / ADR · `matt:codebase-design`: module interface, seam, testability · `sp:brainstorming`: creative work whose intent is not yet settled · `matt:prototype`: a throwaway answering one design question · gs:/design-consultation, /design-review: a UI surface to design or review | self-ask: intent → constraints → options → recommend |
 | review (per-task / pre-ship) | `matt:code-review`: a fixed base (commit / branch / merge-base) and both axes, standards and spec · `sp:requesting-code-review`: ordinary task-complete or pre-merge review · `gs:/review`: web-project pre-ship | fresh subagent + review brief. Author ≠ reviewer does not degrade |
 | receiving review | `sp:receiving-code-review` | verify each finding before implementing; §12 Review-finding repair |
-| web-visible behaviour | gs:/browse, /qa, /qa-only | `[PARTIAL: no-browser]` — there is no substitute, only the declaration |
-| ship / deploy / release notes | gs:/ship, /land-and-deploy, /document-release | `manual ship because <reason>` in REPORT; release notes by hand from the CHANGELOG top entry; name the substitution |
+| web-visible behaviour | gs:/browse, /qa, /qa-only | browse: request a screenshot / log from the user. qa: a browse pass over the changed user-facing surface, reported per §7 L2 evidence and repaired via §12 Review-finding repair. Neither reachable → `[PARTIAL: no-browser]` |
+| ship / deploy / release notes | gs:/ship, /land-and-deploy, /document-release | `manual ship because <reason>` in REPORT; manual push + `[AUTH REQUIRED op:manual-deploy]`; release notes by hand from the CHANGELOG top entry, naming the substitution |
 | branch finish | `sp:finishing-a-development-branch` | manual: rebase, squash, changelog, clean tree |
-| plan / execute (L3) | `sp:writing-plans`: a spec exists and needs decomposing · `sp:executing-plans`: a written plan exists · `sp:subagent-driven-development`: sub-tasks are independent | inline `tasks/<n>.md`, user reviews. No subagent at all → L3 not executable, escalate (HARD) |
+| plan / execute (L3) | `sp:writing-plans`: a spec exists and needs decomposing · `sp:executing-plans`: a written plan exists · `sp:subagent-driven-development`: sub-tasks are independent | inline `tasks/<n>.md`, user reviews; main + a fresh subagent review per sub-task. No subagent at all → L3 not executable, escalate (HARD) |
 | plan review | `gs:/autoplan` | inline 3-view self-critique (CEO / design / eng) |
 | parallel work | `sp:dispatching-parallel-agents` | direct `Agent` spawns; serial if that tool is absent too |
 | isolated workspace | `sp:using-git-worktrees` | single tree + branch; stash before switching |
@@ -470,7 +470,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 - **Core**: §2.1 keeps its intro sentence, `Tool escalation`, `Ambiguous trigger` and a two-line `Non-skill defaults` carrying the three items that are NOT skill routing — `gs:/browse` ONLY for UI verification (a prohibition, and L0–L2 never load this file), `Agent` for 2+ disjoint tasks, and direct answers for code-free Q&A. The `sp` before `gs` clause is deleted rather than moved: the 2026-09-21 ruling is that skills are chosen by fit, with no precedence among them.
 - **Extended**: §12's `Fallback table` becomes the `Skill routing table` — task class → candidates each carrying a fit criterion taken from that skill's own `description` → what to do when all of them are missing. Every fallback the old table held survives in the last column; mattpocock gains rows for the first time, that plugin having been installed after §12 was written. `Detection` / `Absent-from-listing` / `Gated` / `Batch confirmation` are unchanged.
 
-**Sizing** (v6.31.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24229 bytes (Δ **-711**: §2.1's table out, a pointer and two default lines in — the first net-delete since core reached its ceiling); extended 46470 → 48577 bytes (Δ +2107: the routing table's criteria, the Matt rows, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24229/25000 (**771 bytes headroom**); extended 48577/50000 (**1423 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. §0.1's net-delete requirement is satisfied by construction this version: core removes more than it adds, which is what bought the headroom back.
+**Sizing** (v6.31.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24347 bytes (Δ **-593**: §2.1's table out, a pointer and two default lines in); extended 46470 → 49025 bytes (Δ +2555: the routing table's criteria, the Matt rows, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24347/25000 (**653 bytes headroom**); extended 49025/50000 (**975 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. §0.1's net-delete requirement is satisfied by construction this version: core removes more than it adds, which is what bought the headroom back.
 
 ## §1.5-EXT GLOSSARY
 

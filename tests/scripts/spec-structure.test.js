@@ -223,12 +223,29 @@ test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', 
   // compared a normalised `gs/canary` against raw spec prose that spells it
   // `gs:/canary`, so every row looked orphaned — 25 false positives, which is
   // the shape of a gate that would have been "fixed" by loosening it.
-  const mentioned = new Set(skillTokens(elsewhere));
+  // "Mentioned elsewhere in the spec" was a proxy for "this skill is real", and
+  // it held while every candidate was also a §4 Routing primary. v6.31.0 broke
+  // that: §12 is now the routing authority and is the ONLY place in the spec
+  // naming the nine `matt:` skills and `sp:executing-plans`. Requiring a second
+  // spec mention would fail all ten for sitting exactly where they belong, and
+  // exempting them by prefix would exempt the release's headline addition from
+  // its own gate. So the corpus gains the document that introduced them — the
+  // roadmap's G4 table is tracked, and it carries each skill with the fit
+  // criterion §12 quotes. A skill in neither place is still an orphan, which is
+  // the `gs:/canary` case this test exists for (pre-ship review R2, H1/M3).
+  const roadmapG4 = fs.readFileSync('docs/spec-optimization-roadmap-2026-09-21.md', 'utf8');
+  const mentioned = new Set([...skillTokens(elsewhere), ...skillTokens(roadmapG4)]);
 
+  // v6.31.0: candidates moved to column 1 with the table's new shape. The
+  // FORWARD join was repointed and this one was not, so it resolved zero tokens
+  // and returned [] for every possible table content — the exact vacuity its
+  // sibling's comment warns about, one test away. The `rows.length >= 15` floor
+  // below counts ROWS, not resolved tokens, so it cannot catch this; the
+  // mutation control at the end of this file is what does.
   const orphans = [
     ...new Set(
       rows
-        .flatMap(cols => skillTokens(cols[0]))
+        .flatMap(cols => skillTokens(cols[1]))
         .filter(tok => !tok.includes('*')) // globs are families, checked by the sibling test
         .filter(tok => !mentioned.has(tok))
     ),
@@ -360,6 +377,36 @@ test('§12 ↔ §4: the routing table must not mandate a skill §4 tells L2-addi
     core,
     /feat L2 \(additive\)/,
     'core §2.1 carries an additive-feature routing row again — this join no longer covers the conflict'
+  );
+});
+
+test('§12: every `matt:` candidate is one the roadmap that introduced them names', () => {
+  // The reverse join above cannot judge these — §12 is the only place in the
+  // SPEC that names a mattpocock skill. The join that can is against the
+  // document the rows came from: docs/spec-optimization-roadmap-2026-09-21.md's
+  // G4 table, which is tracked, and which lists each skill with the fit
+  // criterion §12 quotes. A typo in a `matt:` name breaks this; before
+  // v6.31.0's pre-ship review, nothing in `npm run check` saw those rows at all.
+  const ext = fs.readFileSync(EXT, 'utf8');
+  const roadmap = fs.readFileSync('docs/spec-optimization-roadmap-2026-09-21.md', 'utf8');
+  const inTable = [
+    ...new Set(
+      tableRows(ext, '### Skill routing table', 'Detection: first call fails')
+        .flatMap(cols => skillTokens(cols[1]))
+        .filter(tok => tok.startsWith('matt/'))
+    ),
+  ];
+  assert.ok(
+    inTable.length >= 6,
+    `vacuity guard: resolved ${inTable.length} matt: candidate(s) from §12 — the tokenizer or the ` +
+      'table moved, and this join would pass over nothing'
+  );
+  const missing = inTable.filter(tok => !roadmap.includes(tok.replace('matt/', 'matt:')));
+  assert.deepEqual(
+    missing,
+    [],
+    `§12 names mattpocock skill(s) the roadmap's G4 table does not: ${missing.join(', ')} — ` +
+      'a typo, or a row added without the analysis behind it.'
   );
 });
 
@@ -751,7 +798,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: 'bddf3faa52d40a7d' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '03a25de87d4d24f1' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
   { file: CORE, heading: '## §5 AUTH', sha256: 'a224c2c2aa3ee76d' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'edf5d84ce39ad5c4' },
@@ -763,18 +810,18 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
-  { file: EXT, heading: '## §4 FLOW', sha256: '0cbdc65ea73bea0e' },
+  { file: EXT, heading: '## §4 FLOW', sha256: 'ecc6ffd1055cbe5c' },
   { file: EXT, heading: '## §6 DEBUG', sha256: 'db02ad569420cd02' },
   { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'e9565da6dd7b190c' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'ac8308cd6980277a' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '8558dd9e1cd981b2' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '30553ba459cdd5d2' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: 'd07ccee96e34324b' },
+  { file: EXT, heading: '## Recent changes', sha256: '0e98f9b1a910eb89' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,

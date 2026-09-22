@@ -45,7 +45,11 @@ const CONSUMERS = ['scripts/doctor.js', 'tests/scripts/spec-structure.test.js'];
 // fragments so this line is not itself the second occurrence it exists to ban —
 // a detector whose definition site is its own first finding is a permanent false
 // positive (feedback_self_referential_marker_regex).
-const TOKENIZER_SPELLING = '(?:\\b(sp' + '|gs):';
+// Split so this file does not itself count as a second copy. v6.31.0 added
+// `matt` to the alternation; this literal has to track it, and the failure
+// when it does not is `(nowhere — the module lost it)` rather than a false
+// pass, which is the right direction for a uniqueness gate.
+const TOKENIZER_SPELLING = '(?:\\b(sp' + '|gs|matt):';
 
 const stripComments = text =>
   text

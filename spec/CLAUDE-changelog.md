@@ -14,7 +14,7 @@ So the table becomes a pointer, and the criteria move to §EXT §12, which is wh
 
 Three things stay in core because they are not skill routing: UI verification is `gs:/browse` ONLY and never `mcp__chrome` or computer-use — a prohibition, and L0–L2 do not load extended, so moving it would make it invisible exactly where it binds; 2+ disjoint tasks → `Agent`; Q&A with no code → answer directly. §3's stricter reading is what keeps them here.
 
-Core 24940 → 24229 bytes (−711), which is the first net-delete since core reached its ceiling and takes headroom from 60 bytes to 771. Extended grows by the criteria and the Matt rows. §0.1's net-delete requirement is satisfied by construction rather than by exemption.
+Core 24940 → 24347 bytes (-593), taking headroom from 60 bytes to 653. Extended pays for it: 46470 → 49025 (+2555), leaving 975 of its 3530, which `spec-coherence-audit` flags at 98.0% of the 50K cap. The budget moved between files rather than shrinking. Extended grows by the criteria and the Matt rows. §0.1's net-delete requirement is satisfied by construction rather than by exemption.
 
 This is a §13 META change to LLM-visible spec text: rule relaxed (routing becomes judgment by fit), so minor.
 
