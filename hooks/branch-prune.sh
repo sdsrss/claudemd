@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 # branch-prune.sh — PostToolUse(Bash) hook. After a command that can land a
 # branch on the default branch (git merge / pull / fetch / push, gh pr merge),
-# deletes the local branches whose content is already there.
+# deletes local branches that were merged and whose remote branch is gone.
 #
 # Why: nothing else ever does. On 2026-09-22 two repos held 15 local branches
 # besides main: 8 were `worktree-agent-*` names left by Claude Code's worktree
 # isolation, and 10 of the 15 had their content on main already. One of the
 # two also held 6 remote-tracking refs for branches the remote had deleted.
 #
-# What counts as "already there", and what is never touched, is decided by
-# scripts/housekeeping.js (see its USAGE): an ancestor of the default branch
-# or origin/<default>, or patch-equivalent to it (rebase / squash merge); never
-# the default branch or a branch checked out in any worktree; an ancestor that
-# never moved since creation is left alone. Local git only — no fetch, no
-# remote deletion. Every deletion is reported with its sha so
-# `git branch <name> <sha>` restores it.
+# What is deleted is decided by scripts/housekeeping.js (see its USAGE): a
+# branch whose upstream the remote deleted (`[gone]`) and whose tip is on the
+# default branch or origin/<default>, plus worktree-agent-* branches on it.
+# Never the default branch, a worktree checkout, a branch whose upstream still
+# exists, or one with no upstream; nothing at all while a rebase or bisect is in
+# progress. Local git only — no fetch, no remote deletion. Each deletion is
+# reported with the sha that recreates the ref, unless the 8 s ceiling below
+# kills the run mid-way (then some may be deleted unreported).
+#
+# Known limits: the trigger reads the command TEXT, so a commit message that
+# mentions `git pull` fires it; and it prunes the event's cwd, not a repo named
+# by `git -C` or a `cd`. Both only change WHEN the gone-and-merged rule runs,
+# never what it may delete.
 #
 # Kill-switches:
 #   DISABLE_BRANCH_PRUNE_HOOK=1 — this hook
@@ -57,9 +63,9 @@ OUT=$(platform_timeout 8 node "$SCRIPT" branches --apply --cwd="$CWD" 2>/dev/nul
 N=$(printf '%s' "$OUT" | jq -r '.deleted | length' 2>/dev/null) || exit 0
 [[ "$N" =~ ^[0-9]+$ ]] && ((N > 0)) || exit 0
 
-LIST=$(printf '%s' "$OUT" | jq -r '[.deleted[] | "\(.name) \(.sha[0:12]) (\(.why))"] | join(", ")')
+LIST=$(printf '%s' "$OUT" | jq -r '[.deleted[] | "\(.name) \(.sha)"] | join(", ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
-MSG="[claudemd] branch-prune: deleted $N local branch(es) whose content is already on $DEF: $LIST. Restore any with \`git branch <name> <sha>\`. Disable: DISABLE_BRANCH_PRUNE_HOOK=1."
+MSG="[claudemd] branch-prune: deleted $N local branch(es) already on $DEF whose remote branch was deleted (or worktree-agent-*): $LIST. Recreate any with \`git branch <name> <sha>\`. Disable: DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-applied "{\"deleted\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

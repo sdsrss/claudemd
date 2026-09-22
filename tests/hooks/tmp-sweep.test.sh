@@ -84,5 +84,34 @@ rm -f "$STAMP"
 OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=101 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
 [[ -z "$OUT" ]] && ok "4b silent below threshold" || ng "4b (out: $OUT)"
 
+# Case 5 (review H1): TMPDIR unset — the stock-Linux default. The hook must
+# exit 0 and still reach the advisory, falling back to /tmp (df only; the
+# sweep itself stays on the seam root).
+rm -f "$STAMP"
+OUT=$(env -u TMPDIR CLAUDEMD_TMP_PRESSURE_PCT=0 bash "$HOOK" <<<"$EVT" 2>"$SANDBOX/err5")
+RC=$?
+if [[ $RC -eq 0 && ! -s "$SANDBOX/err5" ]] && printf '%s' "$OUT" | jq -e '.hookSpecificOutput.additionalContext | test("temp root /tmp is")' >/dev/null 2>&1; then
+  ok "5 TMPDIR unset: exit 0, advisory names /tmp"
+else
+  ng "5 TMPDIR unset (rc $RC, err: $(cat "$SANDBOX/err5"), out: $OUT)"
+fi
+
+# Case 6 (review L1): parallel Bash calls against a stale stamp spawn ONE
+# sweep. A `node` shim on PATH counts spawns instead of sweeping.
 wait_result || true
+SHIM="$SANDBOX/shim"
+mkdir -p "$SHIM"
+printf '#!/usr/bin/env bash\necho x >>"%s/spawns"\n' "$SANDBOX" >"$SHIM/node"
+chmod +x "$SHIM/node"
+rm -f "$SANDBOX/spawns"
+touch -d '20 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-20M +%Y%m%d%H%M)" "$STAMP"
+for _ in 1 2 3 4 5 6 7 8; do
+  PATH="$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" >/dev/null 2>&1 &
+done
+wait
+sleep 0.5
+N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
+assert_eq "6 eight concurrent calls spawn exactly one sweep" "1" "${N:-0}"
+[[ ! -e "$HOME/.claude/.claudemd-state/tmp-sweep.lock" ]] && ok "6b lock released" || ng "6b lock left behind"
+
 claudemd_assert_summary

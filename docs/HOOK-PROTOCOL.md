@@ -126,7 +126,7 @@ Emitters, derived from source and gated by
   and, on a tmpfs, that the bytes are RAM. Rate-limited with the sweep itself
   to one run per `CLAUDEMD_TMP_SWEEP_INTERVAL_MIN` (default 10).
 - `branch-prune.sh` — PostToolUse (`Bash`); one line listing the local
-  branches it just deleted, each with the sha that restores it. Silent when it
+  branches it just deleted, each with the full sha that recreates the ref. Silent when it
   deleted nothing.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no

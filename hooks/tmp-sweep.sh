@@ -15,9 +15,11 @@
 # directory carrying the exact vitest signature (name, owner, children,
 # 40-hex file names, no symlinks) and idle past the floor. See its USAGE.
 #
-# Cost: every Bash call pays one stat of the stamp; at most once per
-# CLAUDEMD_TMP_SWEEP_INTERVAL_MIN (default 10) it spawns the sweep DETACHED
-# and runs one `df`. The hook itself never waits on the sweep.
+# Cost: every Bash call pays the hook preamble (sourcing two libs) plus a
+# mkdir, two stats and a `date` — about 23 ms measured on 2026-09-22, against
+# about 3 ms for a bare `bash -c 'exit 0'`. At most once per
+# CLAUDEMD_TMP_SWEEP_INTERVAL_MIN (default 10) it spawns the sweep DETACHED and
+# runs one `df`. The hook itself never waits on the sweep.
 #
 # Kill-switches:
 #   DISABLE_TMP_SWEEP_HOOK=1 — this hook
@@ -41,14 +43,30 @@ fi
 STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 STAMP="$STATE_DIR/tmp-sweep.stamp"
+LOCK="$STATE_DIR/tmp-sweep.lock"
 
 INTERVAL_MIN="${CLAUDEMD_TMP_SWEEP_INTERVAL_MIN:-10}"
 [[ "$INTERVAL_MIN" =~ ^[0-9]+$ ]] || INTERVAL_MIN=10
+NOW=$(date +%s)
+# Check-then-touch of the stamp is two steps, so parallel Bash calls all read
+# the same stale stamp and each spawn a sweep (0.93.0 pre-tag review L1: 5 of 6
+# concurrent hooks did). `mkdir` is the atomic claim: one holder decides, the
+# rest skip. A lock older than 60 s is a hook killed while holding it; it is
+# cleared so the next call can claim, and this call skips.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  held=$(platform_stat_mtime "$LOCK") || held=$NOW
+  ((NOW - held > 60)) && rmdir "$LOCK" 2>/dev/null
+  exit 0
+fi
 if [[ -f "$STAMP" ]]; then
   last=$(platform_stat_mtime "$STAMP") || last=0
-  (($(date +%s) - last < INTERVAL_MIN * 60)) && exit 0
+  if ((NOW - last < INTERVAL_MIN * 60)); then
+    rmdir "$LOCK" 2>/dev/null
+    exit 0
+  fi
 fi
-touch "$STAMP" 2>/dev/null || exit 0
+touch "$STAMP" 2>/dev/null
+rmdir "$LOCK" 2>/dev/null
 
 EVENT=$(hook_read_event) || EVENT=""
 SESSION_ID=""
@@ -82,7 +100,10 @@ THRESHOLD="${CLAUDEMD_TMP_PRESSURE_PCT:-80}"
 # derives its data-scaling subjects by grepping for it, and this hook is not
 # one — its synchronous path is one `df`, O(1) in the temp root's entry count;
 # the scan that does scale runs in the detached child above, off the budget.
-TMP_ROOT="$TMPDIR"
+# printenv, not a bare expansion: TMPDIR is unset on stock Linux, and under
+# `set -u` a bare read of it aborted the hook with exit 1 before the advisory
+# (0.93.0 pre-tag review H1).
+TMP_ROOT=$(printenv TMPDIR 2>/dev/null) || TMP_ROOT=""
 [[ -n "$TMP_ROOT" ]] || TMP_ROOT=/tmp
 PCT=$(df -P "$TMP_ROOT" 2>/dev/null | awk 'NR==2 { sub(/%/, "", $5); print $5 }')
 if ((HAVE_JQ)) && [[ "$PCT" =~ ^[0-9]+$ ]] && ((PCT >= THRESHOLD)); then

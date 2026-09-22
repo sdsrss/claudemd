@@ -18,18 +18,27 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 source "$HERE/../lib/assert.sh"
 
 REPO="$SANDBOX/repo"
-# A repo with one branch fully merged into main (fast-forward) and one not.
+# A clone of a bare remote. `feat` was merged into main and then deleted on the
+# remote, so its upstream reads [gone] — the only state this hook prunes.
+# `wip` is pushed and not merged; `local-only` has no upstream at all.
 fresh_repo() {
-  rm -rf "${REPO:?}"
-  mkdir -p "$REPO"
+  rm -rf "${SANDBOX:?}/remote.git" "${SANDBOX:?}/seed" "${REPO:?}"
+  git init -q --bare -b main "$SANDBOX/remote.git"
+  (
+    mkdir -p "$SANDBOX/seed" && cd "$SANDBOX/seed" || exit 1
+    git init -q -b main && echo a >a && git add a && git commit -q -m a
+    git remote add origin "$SANDBOX/remote.git" && git push -q origin main
+  )
+  git clone -q "$SANDBOX/remote.git" "$REPO"
   (
     cd "$REPO" || exit 1
-    git init -q -b main
-    echo a >a && git add a && git commit -q -m a
     git checkout -q -b feat && echo b >b && git add b && git commit -q -m b
-    git checkout -q main && git merge -q --ff-only feat
+    git push -q -u origin feat
+    git checkout -q main && git merge -q --ff-only feat && git push -q origin main
+    git push -q origin --delete feat && git fetch -q --prune
     git checkout -q -b wip && echo c >c && git add c && git commit -q -m c
-    git checkout -q main
+    git push -q -u origin wip
+    git checkout -q main && git branch local-only
   )
 }
 evt() { jq -cn --arg c "$1" --arg cwd "$REPO" '{session_id:"branch-prune-test",tool_name:"Bash",tool_input:{command:$c},tool_response:{},cwd:$cwd}'; }
@@ -48,12 +57,12 @@ OUT=$(evt 'git merge-base main feat' | bash "$HOOK" 2>&1)
 OUT=$(evt 'git merge feat' | DISABLE_BRANCH_PRUNE_HOOK=1 bash "$HOOK" 2>&1)
 [[ -z "$OUT" ]] && has_branch feat && ok "3 kill switch" || ng "3 (out: $OUT)"
 
-# Case 4: a merge prunes the merged branch, keeps the unmerged one, and says
-# which, with the sha that restores it.
+# Case 4: a merge prunes the gone-and-merged branch, keeps the pushed-unmerged
+# one and the one with no upstream, and names the sha that recreates it.
 SHA=$(git -C "$REPO" rev-parse feat)
 OUT=$(evt 'git merge feat' | bash "$HOOK" 2>/dev/null)
-if ! has_branch feat && has_branch wip &&
-  printf '%s' "$OUT" | jq -e --arg s "${SHA:0:12}" '.suppressOutput == true and (.hookSpecificOutput.additionalContext | test("feat " + $s))' >/dev/null 2>&1; then
+if ! has_branch feat && has_branch wip && has_branch local-only &&
+  printf '%s' "$OUT" | jq -e --arg s "$SHA" '.suppressOutput == true and (.hookSpecificOutput.additionalContext | test("feat " + $s))' >/dev/null 2>&1; then
   ok "4 merged branch pruned with restore sha, unmerged kept"
 else
   ng "4 (out: $OUT; branches: $(git -C "$REPO" branch --format='%(refname:short)' | tr '\n' ' '))"

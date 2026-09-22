@@ -18,13 +18,15 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           (60 min, or 24 h while a vitest watch-mode process of this uid runs).
           Roots: $TMPDIR, os.tmpdir(), /tmp and ~/.cache/tmp, de-duplicated
           (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces the list).
-branches  Delete local branches whose content is already on the default
-          branch (local or origin/<default>): the tip is an ancestor, or the
-          branch's squashed diff / every commit is patch-equivalent to one
-          there. Never touches the default branch or a branch checked out in
-          any worktree. An ancestor branch that never moved since creation is
-          reported under \`fresh\`, not deleted — except worktree-agent-*,
-          which Claude Code's worktree isolation names. Local git only.
+branches  Delete local branches whose upstream the remote deleted (\`[gone]\`)
+          and whose tip is already on the default branch (local or
+          origin/<default>); also worktree-agent-* branches on the default
+          branch, with or without an upstream. Never the default branch, a
+          branch checked out in any worktree, a branch whose upstream still
+          exists, or a branch with no upstream. Skips the whole run while a
+          rebase or bisect is in progress in any worktree. A gone branch whose
+          tip is NOT on the default branch (squash merge) is listed under
+          \`goneUnmerged\` and never deleted. Local git only.
 
 Options:
   --apply                Delete (default is a dry run that only reports).
@@ -34,7 +36,8 @@ Options:
   --help, -h             Print this message and exit.
 
 Output: JSON on stdout. Every deleted branch carries its sha, so
-\`git branch <name> <sha>\` restores it.
+\`git branch <name> <sha>\` recreates the ref (its reflog and its
+branch.<name>.* config, which named the deleted upstream, are not restored).
 
 Exit codes: 0 success | 2 argv-shape error.`;
 
@@ -163,6 +166,27 @@ export function scanVitestTmp({
   return targets;
 }
 
+// Deletes scan targets, re-checking each one's signature and age right before
+// its rm: scan and delete are separate moments, and a run that restarted in
+// between has made the directory fresh again.
+export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(), now = Date.now() }) {
+  let deleted = 0;
+  let bytes = 0;
+  const errors = [];
+  for (const t of targets) {
+    const sig = vitestSignature(t.path, uid);
+    if (!sig || now - sig.newestMs < minAgeMs) continue;
+    try {
+      fs.rmSync(t.path, { recursive: true });
+      deleted++;
+      bytes += t.bytes;
+    } catch (e) {
+      errors.push({ path: t.path, code: e.code || String(e) });
+    }
+  }
+  return { deleted, bytes, errors };
+}
+
 export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
   if (minAgeMs == null) {
     const lines = psLines();
@@ -170,49 +194,40 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
     minAgeMs = ageFloorMs({ watchAlive: lines === null || vitestWatchAlive(lines) });
   }
   const targets = scanVitestTmp({ ...opts, minAgeMs });
-  let deleted = 0;
-  let bytes = 0;
-  const errors = [];
-  if (apply) {
-    const uid = opts.uid ?? process.getuid();
-    for (const t of targets) {
-      // Re-check right before the delete: the scan and the rm are separate
-      // moments, and a run that restarted in between makes the dir fresh.
-      const sig = vitestSignature(t.path, uid);
-      if (!sig || (opts.now ?? Date.now()) - sig.newestMs < minAgeMs) continue;
-      try {
-        fs.rmSync(t.path, { recursive: true });
-        deleted++;
-        bytes += t.bytes;
-      } catch (e) {
-        errors.push({ path: t.path, code: e.code || String(e) });
-      }
-    }
-  }
-  return { minAgeMs, targets, deleted, bytes, errors };
+  const removed = apply
+    ? removeVitestTargets({ targets, minAgeMs, uid: opts.uid, now: opts.now })
+    : { deleted: 0, bytes: 0, errors: [] };
+  return { minAgeMs, targets, ...removed };
 }
 
 // ---- branches ----
-
-// commit-tree needs an identity; a machine with none configured must still be
-// able to test a squash, so the probe commit gets a fixed one.
-const PROBE_ENV = {
-  ...process.env,
-  GIT_AUTHOR_NAME: 'claudemd',
-  GIT_AUTHOR_EMAIL: 'claudemd@localhost',
-  GIT_COMMITTER_NAME: 'claudemd',
-  GIT_COMMITTER_EMAIL: 'claudemd@localhost',
-};
+//
+// The rule is the one `git branch -vv` users apply by hand: a branch whose
+// upstream the remote deleted (`[gone]` — GitHub's delete_branch_on_merge plus
+// fetch.prune produce exactly that after a merge) and whose tip is already on
+// the default branch. Nothing else is judged "merged":
+//   - no patch-id equivalence (`git cherry`, squash probes): patch-id ignores
+//     whitespace, so two different edits compare equal (0.93.0 pre-tag review
+//     H3), and it asks whether a patch ever landed, not whether it is still
+//     there (M2);
+//   - no "has an upstream that still exists" branch is ever a candidate, which
+//     is what keeps `main` / `develop` safe in a git-flow repo whose origin/HEAD
+//     names the other one (H2, M1);
+//   - no branch without an upstream is a candidate (a backup made before a
+//     rebase, a renamed fresh branch — M3) except worktree-agent-*, the name
+//     Claude Code's worktree isolation gives and no person reuses.
+// A gone branch whose tip is NOT on the default branch (a squash merge, or
+// work the remote lost) is listed under goneUnmerged for a person to judge.
 
 function gitIn(cwd) {
   return (...args) => {
-    const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: PROBE_ENV });
+    const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
     return r.status === 0 ? r.stdout.replace(/\n$/, '') : null;
   };
 }
 
 const MAX_CANDIDATES = 200;
-const EMPTY = () => ({ defaultBranch: null, prune: [], fresh: [] });
+const EMPTY = () => ({ defaultBranch: null, prune: [], goneUnmerged: [], skipped: null });
 
 function defaultBranchOf(git) {
   const sym = git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
@@ -222,17 +237,23 @@ function defaultBranchOf(git) {
   return null;
 }
 
-function patchEquivalent(git, base, name) {
-  // Every commit already there (rebase-merge) ...
-  const cherry = git('cherry', base, name);
-  if (cherry !== null && cherry !== '' && !cherry.split('\n').some(l => l.startsWith('+'))) return true;
-  // ... or the whole branch as one diff (squash-merge).
-  const mb = git('merge-base', base, name);
-  if (!mb) return false;
-  const probe = git('commit-tree', `${name}^{tree}`, '-p', mb, '-m', 'claudemd squash probe');
-  if (!probe) return false;
-  const c = git('cherry', base, probe);
-  return c !== null && c.startsWith('-');
+// A rebase or bisect in ANY worktree leaves its branch unlisted by
+// `worktree list` (the worktree reads as detached), and deleting that branch
+// makes `rebase --continue` fail to update it (H4). Skip the whole run.
+function operationInProgress(git) {
+  const porcelain = git('worktree', 'list', '--porcelain') || '';
+  const dirs = porcelain
+    .split('\n')
+    .filter(l => l.startsWith('worktree '))
+    .map(l => l.slice('worktree '.length));
+  for (const wt of dirs) {
+    const gd = gitIn(wt)('rev-parse', '--absolute-git-dir');
+    if (!gd) continue;
+    for (const marker of ['rebase-merge', 'rebase-apply', 'BISECT_START']) {
+      if (fs.existsSync(path.join(gd, marker))) return true;
+    }
+  }
+  return false;
 }
 
 export function classifyBranches({ cwd = process.cwd() } = {}) {
@@ -240,6 +261,7 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   if (git('rev-parse', '--is-inside-work-tree') !== 'true') return EMPTY();
   const defaultBranch = defaultBranchOf(git);
   if (!defaultBranch) return EMPTY();
+  if (operationInProgress(git)) return { ...EMPTY(), defaultBranch, skipped: 'rebase-or-bisect-in-progress' };
   const bases = [`refs/heads/${defaultBranch}`, `refs/remotes/origin/${defaultBranch}`].filter(
     ref => git('show-ref', '--verify', '--quiet', ref) !== null
   );
@@ -249,52 +271,55 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
       .filter(l => l.startsWith('branch refs/heads/'))
       .map(l => l.slice('branch refs/heads/'.length))
   );
-  const refs = (git('for-each-ref', '--format=%(refname)%09%(objectname)', 'refs/heads') || '')
+  const refs = (
+    git('for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:track)', 'refs/heads') || ''
+  )
     .split('\n')
     .filter(Boolean)
     .map(l => {
-      const [ref, sha] = l.split('\t');
-      return { name: ref.slice('refs/heads/'.length), sha };
+      const [ref, sha, track] = l.split('\t');
+      return { name: ref.slice('refs/heads/'.length), sha, gone: track === '[gone]' };
     })
     .filter(b => b.name !== defaultBranch && !checkedOut.has(b.name))
+    .filter(b => b.gone || b.name.startsWith('worktree-agent-'))
     .slice(0, MAX_CANDIDATES);
 
   const prune = [];
-  const fresh = [];
+  const goneUnmerged = [];
   for (const b of refs) {
-    const ancestor = bases.some(base => git('merge-base', '--is-ancestor', b.sha, base) !== null);
-    if (ancestor) {
-      if (b.name.startsWith('worktree-agent-')) {
-        prune.push({ ...b, why: 'worktree-agent' });
-        continue;
-      }
-      const reflog = git('reflog', 'show', '--format=%H', `refs/heads/${b.name}`);
-      const moved = reflog !== null && reflog.split('\n').filter(Boolean).length >= 2;
-      if (moved) prune.push({ ...b, why: 'ancestor' });
-      else fresh.push(b);
+    const onDefault = bases.some(base => git('merge-base', '--is-ancestor', b.sha, base) !== null);
+    if (onDefault) prune.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
+    else if (b.gone) goneUnmerged.push({ name: b.name, sha: b.sha });
+  }
+  return { defaultBranch, prune, goneUnmerged, skipped: null };
+}
+
+// `git branch -D`, not `update-ref -d`: git runs its own in-use checks there
+// (a branch being rebased or bisected elsewhere), which update-ref skips. The
+// sha is re-checked right before each delete, so a branch that moved since
+// classification is left alone. -D also drops the branch's reflog and its
+// `branch.<name>.*` config — for a gone branch that config names a remote
+// branch that no longer exists, so recreating the ref from its sha restores
+// everything that still means something.
+export function deleteBranches({ cwd, branches }) {
+  const git = gitIn(cwd);
+  const deleted = [];
+  const errors = [];
+  for (const b of branches) {
+    if (git('rev-parse', '--verify', '--quiet', `refs/heads/${b.name}`) !== b.sha) {
+      errors.push({ name: b.name, code: 'moved-since-classified' });
       continue;
     }
-    if (bases.some(base => patchEquivalent(git, base, b.sha))) prune.push({ ...b, why: 'squash' });
+    if (git('branch', '-D', b.name) !== null) deleted.push(b);
+    else errors.push({ name: b.name, code: 'git-branch-refused' });
   }
-  return { defaultBranch, prune, fresh };
+  return { deleted, errors };
 }
 
 export function pruneBranches({ cwd = process.cwd(), apply = false } = {}) {
   const c = classifyBranches({ cwd });
-  const deleted = [];
-  const errors = [];
-  if (apply) {
-    const git = gitIn(cwd);
-    for (const b of c.prune) {
-      // Compare-and-delete: if the branch moved since classification, the old
-      // value no longer matches and git refuses.
-      if (git('update-ref', '-d', `refs/heads/${b.name}`, b.sha) !== null) {
-        git('config', '--remove-section', `branch.${b.name}`);
-        deleted.push(b);
-      } else errors.push({ name: b.name, code: 'update-ref-refused' });
-    }
-  }
-  return { ...c, deleted, errors };
+  if (!apply || c.prune.length === 0) return { ...c, deleted: [], errors: [] };
+  return { ...c, ...deleteBranches({ cwd, branches: c.prune }) };
 }
 
 if (invokedAsMain(import.meta.url)) {

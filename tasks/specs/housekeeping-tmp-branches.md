@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 2
+revision: 3
 ---
 
 # Housekeeping hooks: vitest tmp sweep + merged-branch prune
@@ -42,21 +42,23 @@ in the plugin reclaims them:
   `$TMPDIR`, `/tmp`, `~/.cache/tmp`, de-duplicated. Runs detached; rate-limited
   to once per 10 minutes by a stamp file.
 - branch-prune fires only on commands naming `git merge|pull|fetch|push` or
-  `gh pr merge`; local git only. Candidates exclude the default branch and
-  every branch checked out in any worktree. Deletes a branch when its content
-  is on the default branch (local or `origin/<default>`): tip is an ancestor,
-  or the branch's squashed diff is patch-equivalent to a commit there. An
-  ancestor branch that never moved since creation (reflog of one entry) is
-  reported, not deleted — it may be a branch someone is about to start —
-  except `worktree-agent-*`, which the harness names and no person reuses.
-  Every deletion prints the SHA so `git branch <name> <sha>` restores it.
+  `gh pr merge`; local git only. Deletes a branch only when its upstream is
+  `[gone]` and its tip is an ancestor of the default branch or
+  `origin/<default>`, or when it is a `worktree-agent-*` branch on the default
+  branch. Never the default branch, a worktree checkout, a branch whose
+  upstream exists, or one with no upstream; nothing while a rebase or bisect
+  is in progress. Deletes via `git branch -D` after re-reading the sha.
+  (r3: replaced the patch-equivalence and reflog rules after the pre-tag
+  review — see CHANGELOG 0.93.0.)
 
 ## success-criteria
 
 - `tests/scripts/housekeeping.test.js`: signature positive + each negative
   (wrong name, symlink, extra child, non-hex file, too young, nested dir),
-  watch-mode floor, branch classes (ancestor-moved, ancestor-fresh,
-  worktree-agent fresh, squash-merged, unmerged, checked-out-in-worktree).
+  watch-mode floor, recheck before rm; branch classes (gone+merged, gone via
+  origin only, gone+squash kept, whitespace-different kept, upstream-exists
+  kept, no-upstream kept, worktree-agent, worktree checkout, rebase in
+  progress, compare-and-delete).
 - Hook tests: fast path silent, kill switch, rate limit, trigger match.
 - `npm run check` exit 0; hook-registry / kill-switch-doc drift tests green.
 
@@ -69,3 +71,4 @@ in the plugin reclaims them:
 
 - r1 2026-09-22: initial, approved by user in-session ("确认授权").
 - r2 2026-09-22: implemented in 0.93.0 (scripts/housekeeping.js, hooks/tmp-sweep.sh, hooks/branch-prune.sh).
+- r3 2026-09-22: branch rule replaced after the pre-tag review (4 High / 6 Medium); tmp-sweep unset-TMPDIR abort and non-atomic rate limit fixed.
