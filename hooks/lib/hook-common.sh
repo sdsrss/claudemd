@@ -250,11 +250,36 @@ hook_read_telemetry_ids() {
 #   substring for another round (R11-28): the same self-satisfying match, this
 #   time suppressing a hint for a file nobody read. Assistant prose that merely
 #   quotes a path disarms the substring form the same way.
+#   SIDECHAINS (round-17 HK-H1). A subagent's rows are not in the session's own
+#   transcript. Claude Code 2.1.278 writes them one directory down, at
+#   `<sid>/subagents/agent-<name>-<hash>.jsonl` (rows carry `isSidechain:true`
+#   and the PARENT's `sessionId`), while the PreToolUse events a subagent's own
+#   tool calls raise still carry the parent `session_id`. So the gate opened the
+#   parent transcript, found no Read, and denied a file the subagent had just
+#   opened — and the deny's remedy, "Read it and retry", is unreachable from
+#   inside a subagent, which is the first half of this header. §EXT §12 requires
+#   a fresh subagent to review before every tag, so that deny sat on the ship
+#   path: three of them in the round-17 audit session alone, against a reviewer
+#   that had read both matching files.
+#
+#   What this widens, stated rather than left to be discovered: a parent session
+#   that never opened the file now passes the gate if any subagent of the SAME
+#   session did. That is the intended reading of "the session consulted its
+#   memory", and it is the cheaper error — the alternative is a HARD rule with
+#   no compliant path for the role the spec itself mandates.
 hook_memfile_was_read() {
   local _transcript="${1:-}" _memfile="${2:-}"
   [[ -n "$_transcript" && -n "$_memfile" && -f "$_transcript" ]] || return 1
   grep -qF -e "\"file_path\":\"$_memfile\"" -e "\"file_path\": \"$_memfile\"" \
-    -- "$_transcript" 2>/dev/null
+    -- "$_transcript" 2>/dev/null && return 0
+  # Fixed depth, explicit path, no recursive walk — §8 forbids descending
+  # ~/.claude without a depth cap. An empty dir leaves the glob literal (bash
+  # default nullglob-off) and `grep -F` on a path that does not exist is a
+  # silent non-match, so the no-sidechain case needs no separate guard.
+  local _sidechains="${_transcript%.jsonl}/subagents"
+  [[ -d "$_sidechains" ]] || return 1
+  grep -qF -e "\"file_path\":\"$_memfile\"" -e "\"file_path\": \"$_memfile\"" \
+    -- "$_sidechains"/*.jsonl 2>/dev/null
 }
 
 # hook_deny HOOK_NAME REASON — emits PreToolUse deny JSON, exits 0.

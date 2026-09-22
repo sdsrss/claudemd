@@ -36,6 +36,15 @@ author to re-derive it from another hook's source:
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
   `evidence-gate.sh`, `ledger-staleness.sh`. Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
+  It also does not contain everything the session did. Since Claude Code
+  2.1.278 a subagent's rows go to `<encoded-cwd>/<session>/subagents/agent-<name>-<hash>.jsonl`
+  — one directory down, carrying `isSidechain: true` and the PARENT's
+  `sessionId` — while the events that subagent's own tool calls raise still
+  carry the parent `session_id`. A hook that reconstructs `<session>.jsonl` and
+  reads only that sees the parent's turns and none of its subagents'. That is
+  round-17 HK-H1: `hook_memfile_was_read` denied files a reviewer subagent had
+  open. Read both, at fixed depth — §8 forbids descending `~/.claude`
+  recursively.
 
 Other tools have different `tool_input` shapes:
 - `Edit`: `{"file_path": "...", "old_string": "...", "new_string": "..."}`

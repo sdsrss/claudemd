@@ -873,6 +873,75 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 51 escaped backslash keeps the real command visible" \
   || { echo "FAIL: 51 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
 
+# --- round-17 HK-H1: subagent (sidechain) transcripts ---
+# Claude Code 2.1.278 writes subagent rows to `<sid>/subagents/agent-*.jsonl`,
+# not to `<sid>.jsonl`, while the PreToolUse event a subagent's own Bash call
+# raises still carries the PARENT session_id. The gate opened the parent
+# transcript, saw no Read, and denied a file the subagent had open — and
+# §EXT §12 makes a fresh subagent the mandatory pre-tag reviewer, so this sat on
+# the ship path every release (three live denies in the round-17 audit session,
+# against a reviewer that had read the matching file).
+#
+# Own project dir, own MEMORY.md. The shared $MEM_DIR one is rewritten by case
+# 16 to hold a single `[deploy]` entry, so a `git push` case written against it
+# matches no tag and the hook is silent — which is the PASS condition for 52 and
+# would have made it vacuous. Case 53 is the liveness control that says so.
+S52_DIR="$HOME/.claude/projects/${ENCODED}-s52"
+S52_MEM="$S52_DIR/memory"
+S52_CWD="${CWD}-s52"
+mkdir -p "$S52_MEM"
+cat > "$S52_MEM/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push]` — don't skip baseline
+EOF
+touch "$S52_MEM/feedback_ship.md"
+s52event() {
+  printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"%s"}' \
+    "$1" "$S52_CWD"
+}
+
+# Case 53 FIRST — the control. No sidechain dir at all: this project, this tag
+# and this command must produce a deny, or nothing 52 asserts means anything.
+SESS="sess53"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S52_DIR/$SESS.jsonl"
+OUT=$(s52event "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 53 control — unread memory file still denies here" \
+  || { echo "FAIL: 53 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 52: same project, same command — a Read that exists ONLY in the sidechain.
+SESS="sess52"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S52_DIR/$SESS.jsonl"
+mkdir -p "$S52_DIR/$SESS/subagents"
+cat > "$S52_DIR/$SESS/subagents/agent-reviewer-abc123.jsonl" <<EOF
+{"isSidechain":true,"sessionId":"$SESS","tool":"Read","file_path":"$S52_MEM/feedback_ship.md"}
+EOF
+OUT=$(s52event "$SESS" | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && echo "PASS: 52 a subagent's Read satisfies the gate" \
+  || { echo "FAIL: 52 (expected silence, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 54: a sidechain holding a Read of a DIFFERENT file must still deny —
+# otherwise 52 would pass on the mere existence of the directory.
+SESS="sess54"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S52_DIR/$SESS.jsonl"
+mkdir -p "$S52_DIR/$SESS/subagents"
+echo '{"isSidechain":true,"tool":"Read","file_path":"/somewhere/else.md"}' \
+  > "$S52_DIR/$SESS/subagents/agent-other-def456.jsonl"
+OUT=$(s52event "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 54 a sidechain without the Read still denies" \
+  || { echo "FAIL: 54 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 55: an EMPTY subagents/ dir is its own path — the glob matches nothing and
+# stays literal, so grep is handed a filename that does not exist. That must read
+# as "not found", silently, and still deny.
+SESS="sess55"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S52_DIR/$SESS.jsonl"
+mkdir -p "$S52_DIR/$SESS/subagents"
+OUT=$(s52event "$SESS" | bash "$HOOK" 2>&1)
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 55 an empty sidechain dir denies without noise" \
+  || { echo "FAIL: 55 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was
