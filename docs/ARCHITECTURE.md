@@ -312,7 +312,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PreToolUse | `session-extended-read.sh` | enforce extended-spec Read on L3/ship triggers | `§13.1-extended-read` |
 | PostToolUse | `transcript-vocab-scan.sh` | post-hoc §10-V scan of assistant prose | `§10-V` |
 | Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result after the last code edit whose command names a runner or whose output carries a runner verdict. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
-| Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file Edit/Write in the transcript tail, and no Edit/Write on that ledger. Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
+| Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file Edit/Write in the transcript tail, and no Edit/Write on that ledger in the same span (the window is a staleness threshold, read on both sides). Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
 | PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |

@@ -29,18 +29,31 @@
 # — that one was pointed at the wrong column rather than at an optional field;
 # the shared half is the empty key set nothing downstream noticed).
 #
-# THE TWO SIDES ARE SCANNED OVER DIFFERENT SPANS, and that asymmetry is the
-# whole correctness argument. The firing side (code edits) reads the tail
-# window; the silencing side (a write to the ledger) reads the WHOLE
-# transcript. An earlier version windowed both, and pre-ship review produced the
-# false positive that follows from it: write the ledger's `Next` first — which
-# is the order docs/ARCHITECTURE.md asks for — then do the code work, and on a
-# long enough session the ledger write slides out of the window while the code
-# edits do not. The hook then nagged a session that did exactly what the
-# advisory asks. Long sessions are the ones the ledger exists for, so that is
-# not a corner. The full-file pass is gated by a literal `grep -q` on the
-# ledger's basename, so the common case (the name appears nowhere) costs one
-# grep and the jq pass runs only when there is something for it to find.
+# THE WINDOW IS A STALENESS THRESHOLD, not a scanning budget, and both sides are
+# read over it. Two pre-ship review rounds argued this from opposite ends and
+# they are the same argument. Round one: write the ledger's `Next` first — the
+# order docs/ARCHITECTURE.md asks for — then do the code work, and on a long
+# enough session the ledger write slides out of the window while the code edits
+# do not, so the hook nags a session that did what it asks. Round two, against
+# the fix for that (scan the whole transcript for the ledger write): one ledger
+# write at minute three then two thousand code edits over six hours goes silent
+# forever, because the session "wrote its ledger" once.
+#
+# Both describe the same quantity — how much work may pass between two ledger
+# writes — and neither "ever" nor "this turn" is an answer to it. A threshold
+# is. The window IS that threshold, in transcript rows: the hook fires when
+# there is code work in the last LEDGER_STALENESS_WINDOW rows and no write to
+# the ledger in that same span. At the shipped 1200 that means roughly "an item
+# went by unrecorded", which is the rule docs/ARCHITECTURE.md states. What the
+# first round actually found was a FALSE CLAIM — an earlier header said the
+# window could only ever under-report — not a false positive, and that claim is
+# gone rather than patched.
+#
+# So the failure modes are symmetric and both are real: a session that writes
+# its ledger every 1200+ rows is nagged, and one that writes it just inside
+# every window is never nagged however little it records. That is what a
+# threshold buys, it is why this hook ships default-OFF, and the §13.3 decision
+# is where the number gets revisited — from data, not from argument.
 #
 # False-positive control, in the order it matters:
 #   - no ledger under the event's cwd     -> never fires (the convention is not
@@ -73,9 +86,8 @@
 #     hook in this repo filters `isSidechain`; matching that is the consistent
 #     choice until one of them does.
 #   - the match is on the ledger's BASENAME, so a same-named ledger in another
-#     project silences this one. The transcript records absolute paths and the
-#     event's cwd may be spelled through a different symlink, which is what a
-#     prefix compare would get wrong more often than the collision it prevents.
+#     project silences this one — see the scan below for why a prefix compare
+#     would get more cases wrong than the collision it prevents.
 #   - a code edit anywhere counts, not only under the event's cwd. Cross-repo
 #     work still belongs in the ledger of the task driving it.
 #
@@ -178,28 +190,28 @@ LS_EDITS=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
 [[ "$LS_EDITS" =~ ^[0-9]+$ ]] || exit 0
 (( LS_EDITS > 0 )) || exit 0
 
-# Silencing side, over the WHOLE file — see the header. The literal pre-filter
-# is what keeps that affordable: if the basename appears nowhere in the
-# transcript, no row can be an Edit/Write on it, and the jq pass is skipped.
-if grep -qF -- "$LS_BASE" "$TRANSCRIPT_PATH" 2>/dev/null; then
-  LS_WRITES=$(jq -R -r --arg lb "$LS_BASE" '
-    try fromjson catch empty
-    | ((.message.content // []) | if type == "array" then . else [] end)
-    | map(
-        if .type == "tool_use" and (.name == "Edit" or .name == "Write")
-           and (((.input.file_path // "") | split("/") | last) == $lb)
-        then "L" else empty end)
-    | .[]' < "$TRANSCRIPT_PATH" 2>/dev/null | grep -c '^L$' 2>/dev/null || true)
-  [[ "$LS_WRITES" =~ ^[0-9]+$ ]] || exit 0
-  (( LS_WRITES == 0 )) || exit 0
-fi
+# Silencing side, over the SAME window — see the header for why that span and
+# not the whole file. Matched on the BASENAME: the transcript records absolute
+# paths and the event's cwd may be spelled through a different symlink, while a
+# ledger edited under another name cannot be the one resolved above, because
+# writing it would have made it the newest.
+LS_WRITES=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r --arg lb "$LS_BASE" '
+  try fromjson catch empty
+  | ((.message.content // []) | if type == "array" then . else [] end)
+  | map(
+      if .type == "tool_use" and (.name == "Edit" or .name == "Write")
+         and (((.input.file_path // "") | split("/") | last) == $lb)
+      then "L" else empty end)
+  | .[]' 2>/dev/null | grep -c '^L$' 2>/dev/null || true)
+[[ "$LS_WRITES" =~ ^[0-9]+$ ]] || exit 0
+(( LS_WRITES == 0 )) || exit 0
 
 EXTRA=$(jq -cn --arg l "$LS_BASE" --argjson n "$LS_EDITS" --argjson w "$LS_WINDOW" --argjson c "$LS_COUNT" \
   '{ledger:$l, edits:$n, window:$w, ledgers:$c}' 2>/dev/null) || EXTRA='null'
 hook_record ledger-staleness ledger-stale-advisory "$EXTRA" '§11-ledger' "$SESSION_ID"
 
 printf '[claudemd] §11 / G7 — this session edited code and never wrote to its ledger.\n' >&2
-printf '  Ledger: %s (%s code-file edit(s) in the last %s transcript rows, no Edit/Write on it in the whole transcript).\n' \
+printf '  Ledger: %s (%s code-file edit(s) in the last %s transcript rows, and no Edit/Write on it in that span).\n' \
   "$LEDGER" "$LS_EDITS" "$LS_WINDOW" >&2
 if (( LS_COUNT > 1 )); then
   printf '  Chosen as the most recently modified of %s ledgers under tasks/ — if the work belongs to another one, this names the wrong file.\n' "$LS_COUNT" >&2

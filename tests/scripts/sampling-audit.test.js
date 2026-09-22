@@ -372,6 +372,18 @@ test('CLI: zero scanned transcripts → no tasks/ report file written (skip mess
       false,
       'tasks/ must not be created on a zero-transcript run'
     );
+    // The message is the operator's only signal that a bound emptied the
+    // window, so it has to name the bound. Unpinned, deleting the
+    // interpolation left the suite green (delta review, M6).
+    const bounded = spawnSync(
+      process.execPath,
+      [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), '--days=30', '--until=2020-06-01'],
+      { cwd: fakeCwd, env: { ...process.env, HOME: fakeHome }, encoding: 'utf8', timeout: 15000 }
+    );
+    assert.equal(bounded.status, 0, `stderr=${bounded.stderr}`);
+    assert.match(bounded.stdout, /--until/, 'the empty-window message names the bound that emptied it');
+    assert.match(bounded.stdout, /2020-06-01/, 'and the instant it was set to');
+    assert.doesNotMatch(r.stdout, /--until/, 'control: the unbounded run does not claim a bound');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -1584,6 +1596,46 @@ test('--until: a value that resolves to an implausible instant is rejected, not 
   assert.ok(
     Number.isFinite(parseUntilMs('1790054707')),
     'epoch seconds for the same instant are still accepted'
+  );
+});
+
+// Two spellings of the same minute-granularity instant must give the same
+// bound. Reading the unit off the raw string counted the OFFSET's colon and put
+// `+08:00` in the seconds branch, 59s from where `+0800` landed (delta review,
+// M5). The unit now comes from the matched groups.
+test('--until: the named unit is read from the shape, not from punctuation', () => {
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12+08:00'),
+    parseUntilMs('2026-09-21T20:12+0800'),
+    'two spellings of one offset must not differ by a minute'
+  );
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12+08:00'),
+    Date.UTC(2026, 8, 21, 12, 12, 59, 999),
+    'and both cover the minute they name'
+  );
+});
+
+// `Date.parse` also accepts a space separator and RFC-ish prose. A `/T/` test in
+// front of it read `2026-09-21 20:12:50` as a bare DATE and widened the bound by
+// 24 hours, and found the `T` of `GMT` in `Sep 21 2026 … GMT+0000`. Neither is
+// visible to the range check, because both land on plausible instants — the same
+// shape as the `.000` defect this release repaired (delta review, H2).
+test('--until: only a literal-T ISO shape is accepted', () => {
+  for (const raw of [
+    '2026-09-21 20:12:50Z',
+    '2026-09-21 20:12:50',
+    'Sep 21 2026 20:12:50 GMT+0000',
+    '2026/09/21T20:12:50Z',
+  ]) {
+    assert.ok(!Number.isFinite(parseUntilMs(raw)), `${raw} must be rejected, not reinterpreted`);
+  }
+  // Control: the canonical spelling of the same instant is accepted and is NOT
+  // widened to the end of its day.
+  assert.equal(
+    parseUntilMs('2026-09-21T20:12:50Z'),
+    Date.UTC(2026, 8, 21, 20, 12, 50, 999),
+    'the T form covers its second, not its day'
   );
 });
 

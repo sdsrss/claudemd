@@ -205,11 +205,14 @@ export function loadVocabPatterns(pluginRoot) {
 //    published reproductions: `--until=1790021570` returned 33,139 rows beside
 //    the sentence that located 1790021570 as the instant the count reaches
 //    33,140.
-// 2. AN ISO TIME MUST CARRY AN EXPLICIT OFFSET. `Date.parse` reads a bare
-//    local time in the runner's zone, a 16-hour spread across this project's
-//    own machines — in a flag whose entire purpose is that a baseline stays
-//    reproducible. A bare DATE is unambiguous per ISO-8601 (UTC) and stays
-//    allowed.
+// 2. AN ISO TIME MUST CARRY AN EXPLICIT OFFSET, and the shape is matched
+//    STRICTLY rather than handed to `Date.parse` with a `/T/` test in front of
+//    it. `Date.parse` accepts `2026-09-21 20:12:50` and `Sep 21 2026 …` too,
+//    and a `/T/` test reads the first as a bare DATE — silently widening the
+//    bound by 24 hours — and finds the `T` of `GMT` in the second. The range
+//    check cannot see either, because +1 day is a plausible instant. Found in
+//    the delta review of this very repair. A bare DATE is unambiguous per
+//    ISO-8601 (UTC) and stays allowed; anything else is rejected.
 // 3. THE RESULT MUST BE A PLAUSIBLE INSTANT. `Number(raw) * 1000` turned a
 //    pasted 13-digit epoch-MILLISECONDS value into the year 58694, i.e. no
 //    bound at all — the exact silent-widening this flag's own comment claimed
@@ -217,18 +220,26 @@ export function loadVocabPatterns(pluginRoot) {
 //    instead. A range check catches all three in one place.
 const UNTIL_MIN_MS = Date.UTC(2020, 0, 1);
 const UNTIL_MAX_AHEAD_MS = 366 * 86400000;
+// Date, optional time introduced by a literal `T`, optional seconds, optional
+// fraction, and an offset that is mandatory as soon as a time is given. The
+// capture groups are what say which unit was named — reading that off the raw
+// string instead (counting colons, testing for a dot) counted the OFFSET's
+// colon and put `2026-09-21T20:12+08:00` in the seconds branch, 59s away from
+// the same instant spelled `+0800`.
+const UNTIL_ISO_RE = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?(Z|[+-]\d{2}:?\d{2}))?$/;
 export function parseUntilMs(raw) {
   let ms;
   if (/^[0-9]+$/.test(raw)) {
     ms = Number(raw) * 1000 + 999;
   } else {
-    const hasTime = /T/.test(raw);
-    if (hasTime && !/(Z|[+-][0-9]{2}:?[0-9]{2})$/.test(raw)) return NaN;
+    const m = UNTIL_ISO_RE.exec(raw);
+    if (!m) return NaN;
     const parsed = Date.parse(raw);
     if (!Number.isFinite(parsed)) return NaN;
-    if (!hasTime) ms = parsed + 86400000 - 1;
-    else if (/T[0-9:]*[0-9]\.[0-9]/.test(raw)) ms = parsed;
-    else if ((raw.split('T')[1].match(/:/g) || []).length < 2) ms = parsed + 60000 - 1;
+    const [, , hh, , ss, frac] = m;
+    if (hh === undefined) ms = parsed + 86400000 - 1;
+    else if (frac !== undefined) ms = parsed;
+    else if (ss === undefined) ms = parsed + 60000 - 1;
     else ms = parsed + 999;
   }
   if (ms < UNTIL_MIN_MS || ms > Date.now() + UNTIL_MAX_AHEAD_MS) return NaN;

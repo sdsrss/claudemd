@@ -283,12 +283,12 @@ else
   ng "6e: control failed, the default window is smaller than claimed: $OUT"
 fi
 
-# --- Case 6f: the silencing side is NOT windowed (pre-ship review B1) --------
-# Write the ledger's Next first — the order docs/ARCHITECTURE.md asks for —
-# then do the code work. On a long session the ledger write slides out of the
-# tail window while the code edits do not, and an earlier version fired at a
-# session that did exactly what the advisory asks. The firing side is windowed;
-# the silencing side reads the whole file.
+# --- Case 6f: the window is the staleness threshold, on BOTH sides -----------
+# Two pre-ship rounds argued this from opposite ends and it is one argument:
+# how much work may pass between two ledger writes. Scanning the whole file for
+# the ledger write (round one's fix) made the first write of a session an
+# exemption for the rest of it — round two's finding. Both sides read the same
+# span, so the threshold is a threshold in both directions.
 {
   row_edit "$LEDGER"
   for i in $(seq 1 20); do row_text "filler $i"; done
@@ -297,25 +297,34 @@ fi
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(export LEDGER_STALENESS_WINDOW=10; run_hook)
-if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
-  ok "6f: a ledger write outside the tail window still silences (the two sides read different spans)"
+if [[ "$OUT" == *"2 code-file edit(s)"* ]]; then
+  ok "6f: a ledger write older than the window is stale — code work since it fires"
 else
-  ng "6f: fired at a session that wrote its ledger first — the B1 false positive: $OUT"
+  ng "6f: a ledger write outside the threshold still silenced: $OUT"
 fi
-# Control: the same transcript with the ledger row dropped fires, so 6f is
-# about the ledger row and not about the window swallowing the code edits too.
+# Control: the same transcript with a window that reaches the ledger write is
+# silent, so 6f is the threshold and not the rows themselves.
+reset_log
+OUT=$(export LEDGER_STALENESS_WINDOW=100; run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "6g: control — widen the window past the ledger write and the same session is silent"
+else
+  ng "6g: control failed, the window is not what decided 6f: $OUT"
+fi
+
+# --- Case 6h: one early ledger write does not exempt the whole session -------
+# The regression the whole-file scan introduced: write the ledger once at the
+# start, then do a session's worth of code work, and it went silent forever.
 {
-  row_text "no ledger write here"
-  for i in $(seq 1 20); do row_text "filler $i"; done
-  row_edit /p/src/a.js
-  row_edit /p/src/b.js
+  row_edit "$LEDGER"
+  for i in $(seq 1 1400); do row_edit "/p/src/m$i.js"; done
 } > "$TRANSCRIPT"
 reset_log
-OUT=$(export LEDGER_STALENESS_WINDOW=10; run_hook)
-if [[ "$OUT" == *"2 code-file edit(s)"* ]]; then
-  ok "6g: control — drop the ledger row and the same session fires, naming both edits"
+OUT=$(run_hook)
+if [[ "$OUT" == *"demo-ledger.md"* && "$OUT" == *"1200 code-file edit(s)"* ]]; then
+  ok "6h: 1400 code edits after one early ledger write still fires at the default window"
 else
-  ng "6g: control failed, 6f's silence came from somewhere else: $OUT"
+  ng "6h: an early ledger write exempted the rest of the session: $OUT"
 fi
 
 # --- Case 10: which ledger, when tasks/ holds more than one ------------------
