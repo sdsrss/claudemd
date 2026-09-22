@@ -67,8 +67,17 @@ const KNOWN_HOOK_SECTIONS = (() => {
 //   • Iron Law #1 / #2 — each has its own manifest entry.
 //   • Manual-ship atomicity — its own entry.
 //   • Each top-level (HARD) section heading or bold-tagged rule — own entry.
+// Lines carrying `(HARD)` that POINT at a HARD rule documented elsewhere rather
+// than declaring one. Each entry is a substring of the exempted line; an entry
+// that stops matching fails this gate rather than silently widening it.
 const SPEC_HARD_LINE_EXEMPTIONS = new Set([
-  'sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD)',
+  // v6.31.0 rewrote §12's table from `Missing | Fallback` to task-class rows, so
+  // this clause moved into the `plan / execute (L3)` row's last column. Same
+  // rule, same pointer: the HARD obligation is `sp:subagent-driven-development`'s
+  // own (main + fresh-subagent review per sub-task), which §12's `Hard
+  // cooperation rules` and §11-O both carry. The old substring was
+  // 'sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD)'.
+  'No subagent at all → L3 not executable, escalate (HARD)',
 ]);
 
 function loadManifest() {

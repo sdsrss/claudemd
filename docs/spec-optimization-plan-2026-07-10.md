@@ -61,6 +61,17 @@
 
 **✅ C1 完成 2026-07-10**(plugin v0.29.0,commit 2e21937):`overCeremony` 段落挂进 sampling-audit 同一扫描;任务段按 typed 用户消息切分(裸继续词延续当前段),L0/L1 形态 = ≥1 edit / ≤2 files / <80 估算 LOC;ceremony 集合 = sp brainstorming/TDD/systematic-debugging/writing-plans/executing-plans 的模型侧 Skill 调用(用户 /command 不计;0-edit Q&A 段不算机会——§2.1 本就路由 brainstorming)。`OVER_CEREMONY_THRESHOLD=0.05` 预登记并测试锁死。**首次实测(本仓库 30d)**:281 段 / 11 个 L0/L1 段 / over-ceremony 0(brainstorming×2、writing-plans×2 全在大任务或 Q&A 段)。**C2 决策点**:30d 后(≈2026-08-09)重跑(建议 `--global` 覆盖外部项目)按 5% 阈值走分支;当前自仓库信号在阈值下方。
 
+**✅ C2 关闭 2026-09-22(P3 一并关闭)**。依据:`node scripts/sampling-audit.js --global --days=30 --json` →
+`overCeremony: {totalSegments: 1660, l0l1Segments: 180, overCeremonySegments: 0}`,rate **0.000**,
+预登记阈值 5%。分母从首测的 11 个 L0/L1 段长到 **180** 个,仍是 0 次命中——不是分母太小得不出结论,
+是这一年里 L0/L1 段上一次 ceremony 调用都没有发生过。三次 ceremony 调用
+(systematic-debugging×5、writing-plans×2、test-driven-development×1)全部落在非 L0/L1 段。
+按预登记分支:rate < 5% → **保留 superpowers,关闭 P3**。
+
+**保留**:该检测器是 `closed` 之外的少数几个有真实分母的之一,但它测的是"调用了 ceremony skill",
+不是"调用得对不对";0 命中同时也和 2026-09-21 测到的 skill 总调用率 0.2% 一致——两个数字可能是
+同一个现象(skill 层整体不产生调用)的两个切面,而不是两个独立的好消息。
+
 ---
 
 ## P4 分级判据事前不可知(Provisional 仅限 bug)
@@ -72,6 +83,26 @@
 - **D1' — anchor 先行(零 core 字节,立即可做)**:新建 `feedback_provisional_upgrade_tripwire.md`(Tier 2):任务中途越过 L1 边界(>2 files 或 ≥80 LOC 或触发 Δ-contract)→ 一行 prose 宣布升级 + **当前级别验证要求回溯适用**(L1→L2 需补 RED-first 证据或声明 additive exception)。升级是单向棘轮:只升不降,防"L1 起手逃 TDD"逃逸通道。
   **✅ 完成 2026-07-10**:anchor 已写入 durable memory + MEMORY.md 索引行(含 tags:provisional-upgrade / tripwire / 中途升级 / 单向棘轮 等);promote 条件(30d 内命中 ≥3 sessions → D1 core 正式化)写在 anchor 正文内,不需另行跟踪。
 - **D1 — core 正式化(按 §0.1 promote 条件触发)**:D1' anchor 在 30d 内命中 ≥3 sessions 后,把 §2 Provisional 的 "(bugs only)" 放宽为全任务类型(minor bump,±150B,需 paired deletion,操作者按 §13 META 走)。命中不足则说明问题频率不值 core 字节,维持 anchor。
+
+**D1 计数 2026-09-22 — 无法计数,因为 anchor 不存在**。本节上一行记录 D1' 为「✅ 完成 2026-07-10:
+anchor 已写入 durable memory + MEMORY.md 索引行」。实测:
+
+```
+ls ~/.claude/projects/-home-ai-dev-claudemd/memory/ | grep -i 'provision\|tripwire'   → (none)
+grep -ci 'provisional\|tripwire' …/memory/MEMORY.md                                   → 0
+grep -c '^- \[' …/memory/MEMORY.md = 18   ·   ls …/memory/*.md | grep -vc MEMORY.md = 18
+```
+
+`feedback_provisional_upgrade_tripwire.md` 不在盘上,也不在索引里;索引 18 条与盘上 18 个文件一一对应
+(`spec-coherence-audit` 的 `memory-index` 检查同样报 `danglingCount=0, orphanCount=0`),所以它不是
+"索引丢了文件",是这个文件从未存在或早已被删而没有留下记录。
+
+因此 promote 条件**没有被否定,是从未被测量过**:30 天内扫 190 份 transcript,3 份提到这些关键词,
+全部是在讨论**本计划文档**,不是在引用 anchor。D1 维持不 promote——但理由要改:不是"命中不足说明
+频率不值 core 字节",而是**先决条件缺失**。要么补写 anchor 再等 30 天,要么把 D1' 一并关掉;
+这是操作者的裁定,不在本次执行包范围内(12.1 项 10 只要求"跑一次计数并写入结果")。
+
+这一条本身就是本次发版的主题:一份文档宣布某件事完成了,而没有任何东西再去核它。
 
 ---
 

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.30.0 — Extended
+# AI-CODING-SPEC v6.31.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -373,31 +373,38 @@ Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voi
 - **Low**: user discretion. Default skip with reason logged.
 - **Resume**: re-run gs:/review on repair commit only (delta scope). Green → resume at gs:/ship. Depth limit 2; third miss → escalate with full context.
 
-### Fallback table
-| Missing | Fallback |
-|---|---|
-| sp:test-driven-development | manual RED-GREEN per §7 ladder |
-| sp:systematic-debugging, gs:/investigate | §6 + Iron Law #3 |
-| sp:writing-plans | inline `tasks/<n>.md`; user reviews |
-| sp:brainstorming, gs:/office-hours, /design-* | self-ask: intent→constraints→options→recommend |
-| sp:dispatching-parallel-agents | direct `Agent` spawns; sequential if that tool is absent too |
-| sp:using-git-worktrees | single tree + branch; stash before switch |
-| sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD). No subagent → L3 not executable, escalate |
-| sp:*-code-review, gs:/review | fresh subagent + review brief; serves per-task and pre-ship |
-| sp:finishing-a-development-branch | manual: rebase, squash, changelog, clean-tree |
-| gs:/autoplan | user reviews; inline 3-view self-critique (CEO/design/eng) |
-| gs:/ship, /land-and-deploy | manual git push + `[AUTH REQUIRED op:manual-deploy]` |
-| gs:/browse | request user screenshot/log |
-| gs:/qa, /qa-only | gs:/browse pass over the changed user-facing surface; report per §7 L2 evidence, repair via §12 Review-finding repair |
-| gs:/benchmark | hyperfine/time/native; `tasks/perf-<n>.md` |
-| gs:/cso | manual STRIDE on auth/payment/crypto paths |
-| gs:/codex | skip; note "no second-opinion review" in §10 |
-| context7 (API docs-lookup) | WebFetch official docs; cite lookup source in answer |
-| gs:/freeze, /careful, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
-| gs:/document-release | release notes by hand from the CHANGELOG top entry (gh release body); name the substitution |
+### Skill routing table
 
-Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its fallback row and name the substitution in one prose line. No fallback row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
-**Gated = missing**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires. §3 ranks that layer below this spec, so the gate may not win SILENTLY: name it, then treat as missing → take the fallback row. Where that row itself needs the gated capability (`sp:subagent-driven-development`, `sp:*-code-review` / `gs:/review`) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate (the subagent-driven row governs). Rows carrying a written non-subagent degrade (`gs:/autoplan` self-critique, `gs:/codex` skip, `gs:/qa`) take it as written.
+Judgment by fit; no precedence among skills. Each candidate's criterion is taken from that skill's own `description` — the text the model already sees — so this table adds no second vocabulary. Two candidates both fitting → take the more specific criterion; one skill per stage, never stacked. Any subset of the three plugins absent → drop to the last column: no error, no ASK. Core §2.1 points here for skill routing.
+
+| Task class (§2) | Candidates, each with its fit criterion | All missing |
+|---|---|---|
+| L0 / L1 | none — invoke no skill | — |
+| L2 bug | `matt:diagnosing-bugs`: hard to reproduce / perf regression / intermittent · `sp:systematic-debugging`: ordinary bug, test failure or wrong behaviour, BEFORE proposing a fix · `gs:/investigate`: env / staging / deploy side | §6 + Iron Law #3 inline |
+| L2 feature (additive) | `matt:tdd`: user asked for test-first / red-green-refactor / integration tests · `sp:test-driven-development`: ordinary RED-first | §7 ladder by hand, RED→GREEN |
+| L2 / L3 design | `matt:domain-modeling`: terminology / CONTEXT.md / ADR · `matt:codebase-design`: module interface, seam, testability · `sp:brainstorming`: creative work whose intent is not yet settled · `matt:prototype`: a throwaway answering one design question · gs:/design-consultation, /design-review: a UI surface to design or review | self-ask: intent → constraints → options → recommend |
+| review (per-task / pre-ship) | `matt:code-review`: a fixed base (commit / branch / merge-base) and both axes, standards and spec · `sp:requesting-code-review`: ordinary task-complete or pre-merge review · `gs:/review`: web-project pre-ship | fresh subagent + review brief. Author ≠ reviewer does not degrade |
+| receiving review | `sp:receiving-code-review` | verify each finding before implementing; §12 Review-finding repair |
+| web-visible behaviour | gs:/browse, /qa, /qa-only | `[PARTIAL: no-browser]` — there is no substitute, only the declaration |
+| ship / deploy / release notes | gs:/ship, /land-and-deploy, /document-release | `manual ship because <reason>` in REPORT; release notes by hand from the CHANGELOG top entry; name the substitution |
+| branch finish | `sp:finishing-a-development-branch` | manual: rebase, squash, changelog, clean tree |
+| plan / execute (L3) | `sp:writing-plans`: a spec exists and needs decomposing · `sp:executing-plans`: a written plan exists · `sp:subagent-driven-development`: sub-tasks are independent | inline `tasks/<n>.md`, user reviews. No subagent at all → L3 not executable, escalate (HARD) |
+| plan review | `gs:/autoplan` | inline 3-view self-critique (CEO / design / eng) |
+| parallel work | `sp:dispatching-parallel-agents` | direct `Agent` spawns; serial if that tool is absent too |
+| isolated workspace | `sp:using-git-worktrees` | single tree + branch; stash before switching |
+| merge conflict | `matt:resolving-merge-conflicts` | by hand |
+| product / biz clarify | gs:/office-hours: the fuzziness is product-side, not technical | combined ask, tagging `[product]` / `[tech]` |
+| research | `matt:research`: high-trust primary sources, captured as a repo md file | context7 / WebFetch inline, citing the lookup source |
+| perf | `gs:/benchmark` | hyperfine / time / native; `tasks/perf-<n>.md` |
+| security | `gs:/cso` | manual STRIDE over auth / payment / crypto paths |
+| second opinion | `gs:/codex` — user request only, never automatic | skip; note "no second-opinion review" in §10 |
+| API docs lookup | context7 | WebFetch the official docs; cite the lookup source in the answer |
+| scope / process utilities | gs:/freeze, /careful, /guard, /retro | inline scope-lock; retro in `tasks/retro-<date>.md` |
+
+`matt:to-spec`, `to-tickets`, `implement` and `wayfinder` are **user-only**: never model-routed, at any level.
+
+Detection: first call fails → session flag → auto-degrade. Flag expires after 5 turns or env change. **Absent-from-listing = missing**: a skill switched off via `skillOverrides` or never installed produces no failing call — it is simply not in the session's skill list, so call-failure detection never fires. Check the routed skill is listed before invoking; unlisted → take its last-column fallback and name the substitution in one prose line. No row for it → say so in REPORT under Uncertain; do not silently improvise a substitute.
+**Gated = missing**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires. §3 ranks that layer below this spec, so the gate may not win SILENTLY: name it, then treat as missing → take the fallback. Where the fallback itself needs the gated capability (`sp:subagent-driven-development`, the review row) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate. Rows carrying a written non-subagent degrade (`gs:/autoplan`, `gs:/codex`, `gs:/qa`) take it as written.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
 
 ## §13 META (Agent-facing)
@@ -458,12 +465,12 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.30.0 (minor, 2026-09-13)** — §5 Safe-paths gets the two halves core has cited since the first spec commit. `NEVER-covers` and the `SAFE_DELETE_PATHS:` extension rule were a closed citation loop: core §5 pointed at §EXT §5-EXT for both, and §5-EXT pointed back at core, so neither existed. Core §3 names `SAFE_DELETE_PATHS:` one of exactly three channels that can move a §5 AUTH gate, and nothing bounded what a project file could put in it. Both are now written where core already points. Zero net core bytes — the pointer was already correct, so the content went where it pointed; the version string is the only core edit and is the same length. §0.1 leaves no room to add there. Found by audit round 16 §6.4.
+**v6.31.0 (minor, 2026-09-22)** — skill routing moves to where its criteria live. Core §2.1's 8-row routing table is replaced by a pointer to this section's table. The measurement behind it: 61 Skill calls in 33,140 tool calls over 178 transcripts, every mattpocock engineering skill at zero, with all three plugins installed before the corpus begins — so the narrow conclusion, which is the only one claimed, is that core's table was not what made a skill get invoked.
 
-- **Core**: §2's L1 row drops its own file count (§1.5 Local-Δ is where it lives) and L2 gains the same pairing qualifier; §0's Fast-Path whitelist says `internal log-string`; §10's L1 and L1-bugfix short reports both require Not done, Failed and Uncertain empty on the same threshold; `tc` is spelled `typecheck`; and §0 and §5 carry the subagent clauses — take option (b), report `[PARTIAL: <op> needs AUTH]`, never self-authorize — because a subagent at L0–L2 cannot read the extended file where they first landed.
-- **Extended**: §10-R stops granting L2 a zero-issue shortcut core §10 does not; §11-O carries the subagent rule's detail; the plan-drift bullet reports through §10's sections instead of a third bracketed token.
+- **Core**: §2.1 keeps its intro sentence, `Tool escalation`, `Ambiguous trigger` and a two-line `Non-skill defaults` carrying the three items that are NOT skill routing — `gs:/browse` ONLY for UI verification (a prohibition, and L0–L2 never load this file), `Agent` for 2+ disjoint tasks, and direct answers for code-free Q&A. The `sp` before `gs` clause is deleted rather than moved: the 2026-09-21 ruling is that skills are chosen by fit, with no precedence among them.
+- **Extended**: §12's `Fallback table` becomes the `Skill routing table` — task class → candidates each carrying a fit criterion taken from that skill's own `description` → what to do when all of them are missing. Every fallback the old table held survives in the last column; mattpocock gains rows for the first time, that plugin having been installed after §12 was written. `Detection` / `Absent-from-listing` / `Gated` / `Batch confirmation` are unchanged.
 
-**Sizing** (v6.30.0, 2026-09-13, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24940 bytes (Δ **0**: the version string is the only core change and `v6.29.1` and `v6.30.0` are the same length); extended 45341 → 46470 bytes (Δ +1129: the §5-EXT content, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24940/25000 (**60 bytes headroom**); extended 46470/50000 (**3530 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. Core's byte count did not move, so §0.1's net-delete requirement did not fire — an addition that costs core nothing is the way past a 60-byte ceiling.
+**Sizing** (v6.31.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24229 bytes (Δ **-711**: §2.1's table out, a pointer and two default lines in — the first net-delete since core reached its ceiling); extended 46470 → 48577 bytes (Δ +2107: the routing table's criteria, the Matt rows, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24229/25000 (**771 bytes headroom**); extended 48577/50000 (**1423 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. §0.1's net-delete requirement is satisfied by construction this version: core removes more than it adds, which is what bought the headroom back.
 
 ## §1.5-EXT GLOSSARY
 

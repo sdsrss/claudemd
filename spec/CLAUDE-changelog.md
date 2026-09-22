@@ -6,6 +6,18 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.31.0 (minor, 2026-09-22) — skill routing moves to where its criteria live
+
+Core §2.1 carried an 8-row routing table whose measured effect was 0.2%: over 178 transcripts and 33,140 tool calls, 61 Skill invocations, with all of mattpocock's engineering skills at zero — and the three plugins were installed before the corpus starts, so absence of opportunity does not explain it. Three routing layers were resident at once (this table, superpowers' SessionStart injection, gstack's router), and Claude Code's own progressive disclosure already puts every skill's `description` in the system prompt. What can be concluded is narrow and is all that is claimed here: this table is not the thing that makes a skill get invoked.
+
+So the table becomes a pointer, and the criteria move to §EXT §12, which is where the fallbacks they need already lived. The new §12 table is task-class → candidates, each carrying a fit criterion taken from that skill's own `description`, → what to do when all of them are missing. No precedence between skills — the 2026-09-21 ruling is fit, not order, so core's `sp` before `gs` clause is gone rather than relocated. mattpocock is covered for the first time: that plugin was installed after §12 was written and had no rows at all.
+
+Three things stay in core because they are not skill routing: UI verification is `gs:/browse` ONLY and never `mcp__chrome` or computer-use — a prohibition, and L0–L2 do not load extended, so moving it would make it invisible exactly where it binds; 2+ disjoint tasks → `Agent`; Q&A with no code → answer directly. §3's stricter reading is what keeps them here.
+
+Core 24940 → 24229 bytes (−711), which is the first net-delete since core reached its ceiling and takes headroom from 60 bytes to 771. Extended grows by the criteria and the Matt rows. §0.1's net-delete requirement is satisfied by construction rather than by exemption.
+
+This is a §13 META change to LLM-visible spec text: rule relaxed (routing becomes judgment by fit), so minor.
+
 ## v6.30.0 (minor, 2026-09-13) — §5 Safe-paths stops citing itself
 
 Audit round 16 §6.4 found `NEVER-covers` and the `SAFE_DELETE_PATHS:` extension rule were a closed citation loop, dangling since the first spec commit: core §5 delegated both to §EXT §5-EXT, and §5-EXT delegated them back to core. Core §3 names `SAFE_DELETE_PATHS:` one of three channels that move a §5 AUTH gate, so the channel had no ceiling — a project `CLAUDE.md` could widen delete-soft over anything. Both halves now have content in §EXT §5-EXT: five NEVER items (a `..` walk, `.git/`, a resolution leaving the project root, a bare prefix with no subpath, and a §5 Hard subject OTHER than the delete — a closed set, because `delete file/dir` is §5 Hard's own first item and an open reading would swallow the safe-path carve-out whole) and three bounds on the project override, the load-bearing one being that an entry covering a NEVER item is ignored rather than honoured. Core's byte count is unchanged at 24940 — the pointer was already right, so the content went where it pointed; the only core edit is the version string, and `v6.29.1` and `v6.30.0` are the same length. §0.1 leaves 60 bytes, which is why that mattered. A whole-line golden pin covers the ceiling clause, verified RED before the text landed.

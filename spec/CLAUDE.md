@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.30.0 — Core
+# AI-CODING-SPEC v6.31.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -82,22 +82,13 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 ROUTE (unified)
 
-SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict with this table → §3 order decides. Full L3 / composite / specialized-clarify matrix → §EXT §4.
+SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → §EXT §12 table. Full L3 / composite / specialized-clarify matrix → §EXT §4.
 
-| Trigger | Primary | Note |
-|---|---|---|
-| code/logic bug | L1: reproduce→fix→§7; L2+: `sp:systematic-debugging` | env/staging/deploy → `gs:/investigate` |
-| feat L0/L1 | direct edit → §7 | |
-| feat L2 (additive) | RED-first → §7 (`sp:test-driven-development` optional — full ceremony not required); bundle deps one AUTH | no prior failing path |
-| 2+ disjoint tasks | `Agent` tool (fork inherits context; general-purpose starts fresh) | `sp:dispatching-parallel-agents` optional wrapper |
-| UI/visual verify | `gs:/browse` ONLY | never `mcp__chrome` / computer-use |
-| tech/arch clarify (no code) | `sp:brainstorming` | |
-| Q&A no code | direct answer; docs-lookup for API claims (e.g. context7, if available) | |
-| L3 / ship / deploy / PR / release / migration / design / plan-review / perf / security / specialized-clarify | Load extended → §EXT §4 FLOW | full table + FULL/FULL-lite chains there |
+Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent`; Q&A no code → direct answer + docs-lookup.
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
 
-**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. `sp` before `gs` except clarify/ship (gs). Ship-pipeline skills NOT soft (§EXT §12). A skill's own "MUST invoke" wording does not override this table at L0–L2 (§3).
+**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Ship-pipeline skills NOT soft (§EXT §12). A skill's own "MUST invoke" wording does not override §EXT §12 at L0–L2 (§3).
 
 **Ambiguous trigger** → ASK per §0.
 

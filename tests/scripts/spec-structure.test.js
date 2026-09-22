@@ -80,9 +80,30 @@ test('changelog top entry matches the core header version', () => {
   assert.equal(first[1], core[1]);
 });
 
-test('§2.1 table contains sp:brainstorming row', () => {
-  const text = fs.readFileSync(CORE, 'utf8');
-  assert.match(text, /sp:brainstorming/);
+test('§2.1 points at the §12 table, and that table still reaches sp:brainstorming', () => {
+  // Until v6.31.0 this asserted core §2.1 mentioned `sp:brainstorming` directly,
+  // because core carried the routing table. G4-A moved skill routing to §EXT §12
+  // and left core a pointer, so the property worth holding is the one the old
+  // assertion was a proxy for: the skill is still REACHABLE, and core still says
+  // where to look. Asserting the literal in core would now pass only by
+  // re-introducing the table this version deleted.
+  const core = fs.readFileSync(CORE, 'utf8');
+  const ext = fs.readFileSync(EXT, 'utf8');
+  assert.match(
+    core,
+    /Skill routing = fit criteria[^\n]*§EXT §12 table/,
+    'core §2.1 must point at the §EXT §12 table for skill routing'
+  );
+  assert.doesNotMatch(
+    core,
+    /^\| Trigger \| Primary \| Note \|$/m,
+    'the §2.1 routing table is back in core — G4-A removed it and §0.1 has no room for it'
+  );
+  const routingRows = tableRows(ext, '### Skill routing table', 'Detection: first call fails');
+  assert.ok(
+    routingRows.flatMap(cols => skillTokens(cols[1])).includes('sp/brainstorming'),
+    '§12 must still reach sp:brainstorming — core now delegates that routing entirely'
+  );
 });
 
 // v6.21.0: every §4 Routing primary must own a §12 Fallback-table row. `gs:/qa`
@@ -103,8 +124,13 @@ const tableRows = (text, startHeading, endMarker) =>
 test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
   const text = fs.readFileSync(EXT, 'utf8');
 
-  const covered = tableRows(text, '### Fallback table', 'Detection: first call fails')
-    .flatMap(cols => skillTokens(cols[0]))
+  // v6.31.0: §12's table became task-class → candidates → all-missing. The
+  // candidates moved from column 0 to column 1; column 0 is now the task class
+  // and column 2 the degradation. Reading column 0 here would resolve zero
+  // skills and the join would go vacuously green, which is the failure its own
+  // floor below exists to catch.
+  const covered = tableRows(text, '### Skill routing table', 'Detection: first call fails')
+    .flatMap(cols => skillTokens(cols[1]))
     // `/design-*` and `sp:*-code-review` are globs over a skill family
     .map(tok => new RegExp(`^${tok.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9-]*')}$`));
 
@@ -158,13 +184,13 @@ test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', 
   // the Routing table.
   const ext = fs.readFileSync(EXT, 'utf8');
   const core = fs.readFileSync(CORE, 'utf8');
-  const rows = tableRows(ext, '### Fallback table', 'Detection: first call fails');
+  const rows = tableRows(ext, '### Skill routing table', 'Detection: first call fails');
   assert.ok(
     rows.length >= 15,
     `vacuity guard: parsed ${rows.length} fallback rows — the table anchor moved and this gate is checking nothing`
   );
 
-  const FALLBACK_START = ext.indexOf('### Fallback table');
+  const FALLBACK_START = ext.indexOf('### Skill routing table');
   const FALLBACK_END = ext.indexOf('Detection: first call fails');
   // `Recent changes` is excluded along with the table itself. It is a
   // historical record, and a release entry NAMING the row just removed
@@ -285,7 +311,7 @@ test('§EXT: every phrase extended quotes as a core § clause exists in core', (
   );
 });
 
-test('§2.1 ↔ §4: core must not mandate a skill extended tells L2-additive to skip', () => {
+test('§12 ↔ §4: the routing table must not mandate a skill §4 tells L2-additive to skip', () => {
   // core §2.1 routed L2-additive at `sp:test-driven-development RED-first` while
   // §4's feat row said `skip full sp:TDD ceremony` for the same case. L0-L2 load
   // core ONLY, so the highest-frequency routing path had two tables giving
@@ -306,20 +332,35 @@ test('§2.1 ↔ §4: core must not mandate a skill extended tells L2-additive to
     'vacuity guard: §4 feat row must still name a skill it skips, or this join tests nothing'
   );
 
-  const coreAdditiveRow = core.split('\n').find(l => l.startsWith('|') && /feat L2 \(additive\)/.test(l));
-  assert.ok(coreAdditiveRow, 'core §2.1 must carry the `feat L2 (additive)` row');
-  const coreTokens = skillTokens(coreAdditiveRow.split('|').slice(1, -1)[1] || '');
+  // v6.31.0: the additive row moved from core §2.1 to §12's routing table, so
+  // the join moves with it. It also gets STRONGER rather than weaker — core no
+  // longer carries any skill routing, so the conflict class it guards can only
+  // exist between these two extended tables, and both are now in scope.
+  const additiveRow = ext.split('\n').find(l => l.startsWith('|') && /L2 feature \(additive\)/.test(l));
+  assert.ok(additiveRow, '§12 routing table must carry the `L2 feature (additive)` row');
+  const routedTokens = skillTokens(additiveRow.split('|').slice(1, -1)[1] || '');
+  assert.ok(
+    routedTokens.length > 0,
+    'vacuity guard: the additive row must resolve at least one candidate, or this join tests nothing'
+  );
 
   for (const s of skipped) {
-    if (!coreTokens.includes(s)) continue;
+    if (!routedTokens.includes(s)) continue;
     assert.match(
-      coreAdditiveRow,
-      /optional|not required/i,
-      `§4 tells L2-additive to skip ${s} while core §2.1 routes it there as the primary, with no optionality marker. ` +
-        'L0-L2 never load extended, so core wins by default and the two tables read as opposite instructions ' +
-        'on the most-travelled path. Align the wording in whichever table is wrong.'
+      additiveRow,
+      /optional|not required|ordinary/i,
+      `§4 tells L2-additive to skip ${s} while §12 routes it there with no optionality marker. ` +
+        'The two tables would read as opposite instructions on the most-travelled path. ' +
+        'Align the wording in whichever one is wrong.'
     );
   }
+  // core is read above for the §4 side; assert it stays out of this routing
+  // decision entirely, which is what makes the two-table join sufficient.
+  assert.doesNotMatch(
+    core,
+    /feat L2 \(additive\)/,
+    'core §2.1 carries an additive-feature routing row again — this join no longer covers the conflict'
+  );
 });
 
 // 2026-07-25 audit (spec HIGH-1/MEDIUM-3): content consistency was test-gated
@@ -706,11 +747,11 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'ce6d32a64b6f4f7d' },
+  { file: CORE, heading: '', sha256: 'cd9e1c6610e0c199' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '2824fe3590d57a1b' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'bddf3faa52d40a7d' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
   { file: CORE, heading: '## §5 AUTH', sha256: 'a224c2c2aa3ee76d' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'edf5d84ce39ad5c4' },
@@ -718,7 +759,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: EXT, heading: '', sha256: 'dc3f7fa6f6fcc451' },
+  { file: EXT, heading: '', sha256: 'bad941e43ff72d21' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
@@ -728,12 +769,12 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'ac8308cd6980277a' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '356fb56b59350b52' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '8558dd9e1cd981b2' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '97f83824e998fcc7' },
+  { file: EXT, heading: '## Recent changes', sha256: 'd07ccee96e34324b' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
@@ -790,8 +831,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 20, sha256: '5ec48fa119efa66d' },
-  { file: EXT, count: 62, sha256: 'eec6ef1c627d6d0c' },
+  { file: CORE, count: 20, sha256: 'e563aa4e4a3e9446' },
+  { file: EXT, count: 62, sha256: '0edaee64be11ec46' },
 ];
 
 for (const inv of HEADING_INVENTORY) {
