@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { install } from '../../scripts/install.js';
+import { install, acquireInstallLock } from '../../scripts/install.js';
 import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
 import { listBackups, restoreBackup } from '../../scripts/lib/backup.js';
 
@@ -1153,14 +1153,25 @@ test('SCR-H2: a second concurrent install does not run — it defers to the lock
   fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), userText);
   const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
   fs.mkdirSync(stateDirPath, { recursive: true });
+  // A REAL running process, not a made-up number. Since round-17 FLW-H1 the
+  // lock is only honoured while its owner is alive, so `pid: 999999` — this
+  // fixture's original value — now describes an abandoned lock and would be
+  // taken over, asserting the opposite of what this test is about.
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
+  assert.ok(holder.pid, 'could not spawn a live lock holder');
   fs.writeFileSync(
     path.join(stateDirPath, 'install.lock'),
-    JSON.stringify({ pid: 999999, startedAt: new Date().toISOString() })
+    JSON.stringify({ pid: holder.pid, startedAt: new Date().toISOString() })
   );
 
   process.env.CLAUDEMD_NO_STATUSLINE = '1';
-  const r = await install({ pluginRoot });
-  delete process.env.CLAUDEMD_NO_STATUSLINE;
+  let r;
+  try {
+    r = await install({ pluginRoot });
+  } finally {
+    delete process.env.CLAUDEMD_NO_STATUSLINE;
+    holder.kill('SIGKILL');
+  }
 
   assert.equal(r.spec, 'skipped-locked', `expected the loser to stand down, got ${r.spec}`);
   assert.equal(
@@ -1169,6 +1180,89 @@ test('SCR-H2: a second concurrent install does not run — it defers to the lock
     'and it must not have touched the file the holder is in the middle of moving'
   );
   assert.deepEqual(listBackups(), [], 'nor left an empty backup dir for restore to find');
+});
+
+test('FLW-H1: a lock whose owner is already gone is taken over now, not in ten minutes', async () => {
+  // `platform_timeout 4 node scripts/install.js` SIGTERMs the synchronous
+  // bootstrap, and SIGTERM runs no `finally`, so the lock outlives the process.
+  // Judged by age alone that lock is seconds old = "someone is working", and
+  // every SessionStart for the next INSTALL_LOCK_STALE_MS stood down: exit 0,
+  // empty stdout, nothing installed, and the bootstrap-failed banner cleared by
+  // a run that installed nothing.
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '# AI-CODING-SPEC v6.9.1 — Core\nVersion: 6.9.1\n'
+  );
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  const lock = path.join(stateDirPath, 'install.lock');
+  // A pid that ran and exited — dead for certain, unlike a guessed number.
+  const dead = spawnSync(process.execPath, ['-e', 'process.exit(0)']).pid;
+  assert.ok(dead, 'could not produce a dead pid');
+  // mtime is NOW on purpose: the age window says "live", only the owner says otherwise.
+  fs.writeFileSync(lock, JSON.stringify({ pid: dead, startedAt: new Date().toISOString() }));
+
+  process.env.CLAUDEMD_NO_STATUSLINE = '1';
+  const r = await install({ pluginRoot });
+  delete process.env.CLAUDEMD_NO_STATUSLINE;
+
+  assert.notEqual(
+    r.spec,
+    'skipped-locked',
+    'a lock with no owner must not hold the bootstrap for the full stale window'
+  );
+  assert.equal(fs.existsSync(lock), false, 'and the lock is released when install returns');
+});
+
+test('SCR-H1: a takeover that arrives late must not delete the holder it lost to', async () => {
+  // The old takeover was stat → unlink → claim. Two processes that stat the
+  // same expired lock both proceed; the second one's unlink deletes the first
+  // one's FRESH claim and its own `open(wx)` then succeeds — two holders, 1 of
+  // 40 aged-lock trials. The race window is microseconds wide, so this test
+  // does not race: it replays the losing process with its stat frozen to the
+  // inode it observed, which is exactly what being late means. Everything after
+  // that stat is the production path.
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  const lock = path.join(stateDirPath, 'install.lock');
+  fs.writeFileSync(lock, JSON.stringify({ pid: 999999 }));
+  const old = Date.now() - 60 * 60 * 1000;
+  fs.utimesSync(lock, old / 1000, old / 1000);
+  const observedByLoser = fs.statSync(lock);
+
+  const winner = acquireInstallLock();
+  assert.equal(winner, lock, 'the first caller must take the expired lock over');
+  const winnerInode = fs.statSync(lock).ino;
+  assert.notEqual(
+    winnerInode,
+    observedByLoser.ino,
+    'the winner must claim a NEW file — otherwise this test proves nothing'
+  );
+
+  let loser = 'unset';
+  await withPatchedFs(
+    'statSync',
+    orig =>
+      function (p, ...rest) {
+        return String(p).endsWith('install.lock') ? observedByLoser : orig(p, ...rest);
+      },
+    async () => {
+      loser = acquireInstallLock();
+    }
+  );
+
+  assert.equal(loser, null, 'the late caller must stand down, not become a second holder');
+  assert.equal(fs.existsSync(lock), true, "and the winner's lock must still be on disk");
+  assert.equal(
+    fs.statSync(lock).ino,
+    winnerInode,
+    'the same file the winner created, not a replacement written over it'
+  );
+  assert.deepEqual(
+    fs.readdirSync(stateDirPath).filter(n => n.includes('.stale.')),
+    [],
+    'and a takeover leaves no .stale.<pid> file behind'
+  );
 });
 
 test('SCR-H2: a stale lock is taken over rather than blocking every future install', async () => {

@@ -123,7 +123,42 @@ function homeSpecMatchesShipped(pluginRoot) {
   });
 }
 
-function acquireInstallLock() {
+// Is the PID recorded in a lock file still running?
+//
+// The age window alone answers the wrong question. A sync bootstrap killed by
+// `platform_timeout 4` (hooks/session-start-check.sh) takes SIGTERM with no
+// `finally` to run, so its lock outlives the process by the full
+// INSTALL_LOCK_STALE_MS and every SessionStart inside that window stands down
+// having installed nothing — silently, because standing down is exit 0
+// (round-17 FLW-H1). A dead owner makes the lock stale NOW.
+//
+// Every uncertain answer is "alive": an unparseable or half-written lock, a
+// missing or non-numeric pid, EPERM (alive, owned by another user). A wrong
+// "dead" lets two installs run at once, which is the failure this lock exists
+// to prevent; a wrong "alive" costs at most the age window, which is the
+// behavior that shipped for six months. Pid reuse inside the window is the
+// residual and it resolves "alive" too.
+function lockOwnerAlive(lockPath) {
+  let pid;
+  try {
+    pid = JSON.parse(fs.readFileSync(lockPath, 'utf8')).pid;
+  } catch {
+    return true;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== 'ESRCH';
+  }
+}
+
+// Exported for tests only — install() is the sole production caller. The
+// takeover below turns on an interleaving no in-process caller can produce, and
+// tests/scripts/install.test.js reproduces it by freezing one caller's stat()
+// to the inode it observed.
+export function acquireInstallLock() {
   const dir = stateDir();
   fs.mkdirSync(dir, { recursive: true });
   const lockPath = path.join(dir, 'install.lock');
@@ -141,9 +176,9 @@ function acquireInstallLock() {
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
   }
-  let ageMs;
+  let observed;
   try {
-    ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+    observed = fs.statSync(lockPath);
   } catch {
     // Released between the open and the stat — try once more, then stand down.
     try {
@@ -152,11 +187,60 @@ function acquireInstallLock() {
       return null;
     }
   }
-  if (ageMs < INSTALL_LOCK_STALE_MS) return null;
+  // A live owner inside the age window is the normal case — stand down. Past
+  // the window, or with an owner that is already gone, fall through and take it.
+  const expired = Date.now() - observed.mtimeMs >= INSTALL_LOCK_STALE_MS;
+  if (!expired && lockOwnerAlive(lockPath)) return null;
+
+  // Take the lock over by MOVING the inode that was judged, not by unlinking
+  // the path. `unlink(path)` + `open(path,'wx')` is a TOCTOU and it was live:
+  // two processes that stat the same expired lock both proceed, the second
+  // one's unlink deletes the first one's fresh claim, and its `open('wx')` then
+  // succeeds — 1 of 40 aged-lock trials ended with two holders (round-17
+  // SCR-H1).
+  //
+  // `rename` is atomic, so of two simultaneous takeovers exactly one moves the
+  // inode and the other gets ENOENT and stands down. That alone does not close
+  // it: a taker arriving AFTER the winner has re-claimed finds a DIFFERENT
+  // inode at the same path and would move that one — the live lock. Hence the
+  // identity check below. Renaming is what makes the check possible at all;
+  // unlink destroys the evidence it needs.
+  const aside = `${lockPath}.stale.${process.pid}`;
   try {
-    fs.unlinkSync(lockPath);
+    fs.renameSync(lockPath, aside);
   } catch {
-    /* another process won the steal — the claim below will say so */
+    // Someone else moved it first; they are the one holder.
+    return null;
+  }
+  let moved;
+  try {
+    moved = fs.statSync(aside);
+  } catch {
+    return null;
+  }
+  if (moved.ino !== observed.ino || moved.dev !== observed.dev) {
+    // Not the lock that was judged expired: a takeover completed between the
+    // stat and the rename, and this is the winner's live claim. Put it back
+    // with `link`, which is atomic and fails EEXIST if a third claim has
+    // already landed — in which case dropping this copy is the right move.
+    // `link` keeps the inode, so the owner's own `finally` still removes the
+    // file it created.
+    try {
+      fs.linkSync(aside, lockPath);
+    } catch {
+      /* a newer claim holds the path — leave it alone */
+    }
+    try {
+      fs.rmSync(aside, { force: true });
+    } catch {
+      /* inert leftover: nothing reads `.stale.<pid>` */
+    }
+    return null;
+  }
+  try {
+    fs.rmSync(aside, { force: true });
+  } catch {
+    /* inert leftover: nothing reads `.stale.<pid>` */
   }
   try {
     return claim();
