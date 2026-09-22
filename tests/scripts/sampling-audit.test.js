@@ -1464,3 +1464,69 @@ test('G0 report: every behaviour rate is printed with its denominator, and the l
   assert.doesNotMatch(mutated, /: 40\/100 sessions with any edit/);
   assert.match(mutated, /Skill invocations: 5\/1000 tool_use = 0\.5%/, 'unrelated lines must not move');
 });
+
+// --- `--until`: the window's missing upper bound ---------------------------
+//
+// `--days` bounded only the OLD side, so a pre-registered measurement could not
+// be re-derived once the corpus grew past it — and a baseline nobody can
+// reproduce is not a baseline. That is not hypothetical: §3.2/3.3 of the
+// roadmap are a snapshot taken at one instant on 2026-09-21, and by the time
+// G0 shipped the same command returned different denominators. With both ends
+// closed, `--until=1790021507` reproduces that snapshot's test-edit split
+// exactly (804/763/37/14), which is what settled which matcher produced it.
+
+test('--until: rows after the bound are excluded, rows before it are kept', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-until-'));
+  try {
+    const at = t => new Date(t).toISOString();
+    const edit = (t, f) => ({
+      type: 'assistant',
+      timestamp: at(t),
+      message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: f } }] },
+    });
+    const T0 = Date.now() - 3600_000; // an hour ago, inside any 30d window
+    const rows = [
+      edit(T0, '/p/src/early.js'),
+      edit(T0 + 1000, '/p/src/early.js'),
+      edit(T0 + 600_000, '/p/src/late.js'), // ten minutes later
+    ];
+    fs.writeFileSync(path.join(dir, 's.jsonl'), rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+
+    const all = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(all.behaviorMetrics.toolUses, 3, 'unbounded: every row counts');
+
+    const bounded = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: T0 + 60_000,
+    });
+    assert.equal(bounded.behaviorMetrics.toolUses, 2, 'bounded: the later row is out of window');
+    assert.equal(bounded.untilMs, T0 + 60_000, 'the bound is carried in the result for the reader');
+
+    // The bound must be a bound, not a filter that also drops the old side.
+    const wide = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: T0 + 3600_000,
+    });
+    assert.equal(wide.behaviorMetrics.toolUses, 3, 'a bound past every row changes nothing');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--until CLI: a value that is not a time is rejected, not silently ignored', () => {
+  // Silently ignoring it would publish a WIDER window under a narrower-looking
+  // command line — the argv silent-fallback shape this repo has a lint for.
+  const run = args =>
+    spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), ...args], {
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+  const bad = run(['--until=nonsense', '--json']);
+  assert.equal(bad.status, 1, `expected exit 1; stdout=${bad.stdout}`);
+  assert.match(bad.stderr, /--until requires ISO-8601 or epoch seconds/);
+  assert.match(run(['--help']).stdout, /--until=T/, 'the flag must be discoverable from --help');
+});

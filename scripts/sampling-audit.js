@@ -189,7 +189,7 @@ export function loadVocabPatterns(pluginRoot) {
 // unparseable LINES drops those turns and still counts as fully sampled, so
 // every §13.2 opportunity denominator quietly shrinks by an amount no output
 // reports (audit R11-24). Recorded per transcript, same as `unreadable`.
-function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed = null) {
+function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed = null, untilMs = null) {
   const events = [];
   let raw;
   try {
@@ -216,9 +216,18 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
       badLines++;
       continue;
     }
-    if (cutoffMs !== null && typeof obj.timestamp === 'string') {
+    if ((cutoffMs !== null || untilMs !== null) && typeof obj.timestamp === 'string') {
       const t = Date.parse(obj.timestamp);
-      if (Number.isFinite(t) && t < cutoffMs) continue;
+      if (Number.isFinite(t)) {
+        if (cutoffMs !== null && t < cutoffMs) continue;
+        // Upper bound. `--days` only ever bounded the OLD side, so a
+        // pre-registered measurement could not be re-derived once the corpus
+        // grew past it — and a baseline nobody can reproduce is not a baseline.
+        // Rows without a parseable timestamp are kept by the same rule as the
+        // lower bound: a transcript-shape change must not silently empty the
+        // sample.
+        if (untilMs !== null && t > untilMs) continue;
+      }
     }
     const sidechain = obj.isSidechain === true;
     if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
@@ -1095,11 +1104,13 @@ export async function samplingAudit({
   days = DEFAULT_WINDOW_DAYS,
   sample = null,
   pluginRoot,
+  untilMs = null,
 } = {}) {
   if (!pluginRoot) pluginRoot = resolvePluginRoot(import.meta.url);
   if (!projectsDir) projectsDir = defaultProjectsDir();
 
   const result = emptyResult(days, projectsDir);
+  if (untilMs !== null) result.untilMs = untilMs;
   result.projectClass = classifyProject(path.basename(projectsDir));
 
   let files;
@@ -1141,7 +1152,13 @@ export async function samplingAudit({
   const R = result.byRule;
 
   for (const file of files) {
-    const events = extractEvents(file, cutoffMs, result.unreadableTranscripts, result.malformedTranscripts);
+    const events = extractEvents(
+      file,
+      cutoffMs,
+      result.unreadableTranscripts,
+      result.malformedTranscripts,
+      untilMs
+    );
     // G0 behaviour metrics run BEFORE the text-detector guard below. Their
     // denominators are sessions-that-edited and tool_use, not assistant turns
     // with prose, so a transcript that only ran tools belongs in them — and
@@ -1239,9 +1256,11 @@ export async function samplingAuditGlobal({
   days = DEFAULT_WINDOW_DAYS,
   sample = null,
   pluginRoot,
+  untilMs = null,
 } = {}) {
   if (!projectsRoot) projectsRoot = projectsRootDir();
   const result = emptyResult(days, projectsRoot);
+  if (untilMs !== null) result.untilMs = untilMs;
   // Per-class rows carry `status` too. The stratified view is the one a reader
   // should be reading (pooled counts already misled once — see the A2 note in
   // this file's header), so a detector CLOSED in the 2026-07-24 labeling pass
@@ -1290,7 +1309,7 @@ export async function samplingAuditGlobal({
     /* no projects dir */
   }
   for (const dir of subDirs) {
-    const sub = await samplingAudit({ projectsDir: dir, days, sample, pluginRoot });
+    const sub = await samplingAudit({ projectsDir: dir, days, sample, pluginRoot, untilMs });
     result.scannedTranscripts += sub.scannedTranscripts;
     // Carry the unreadable list up too — the --global caliber is the one whose
     // rates get published, so a per-project omission that never reaches the
@@ -1593,6 +1612,12 @@ Options:
   --global       Scan all CC project dirs (~/.claude/projects/*), stratified
                  self-repo vs external — not just cwd.
   --json         Emit machine-readable JSON to stdout instead of markdown report.
+  --until=T      Upper bound on row timestamps (ISO-8601, or epoch seconds).
+                 --days bounds only the OLD side, so a measurement taken at one
+                 instant could not be re-derived once the corpus grew past it.
+                 With --until the window is closed at both ends and a
+                 pre-registered baseline stays reproducible. Rows with no
+                 parseable timestamp are kept, same rule as the lower bound.
   --force        Overwrite an existing tasks/sampling-audit-<date>.md. Without
                  it a same-day re-run refuses, because that file is where
                  hand-annotated calibration records live.
@@ -1610,7 +1635,7 @@ if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   const parsed = parseStrictOrExit(process.argv.slice(2), {
     bools: ['--global', '--json', '--force'],
-    values: ['--days', '--sample'],
+    values: ['--days', '--sample', '--until'],
   });
   const { raw: rawDays, days } = resolveDaysFlag(parsed, {
     env: 'CLAUDEMD_SAMPLING_DAYS',
@@ -1630,12 +1655,25 @@ if (invokedAsMain(import.meta.url)) {
     sample = s;
   }
 
+  let untilMs = null;
+  if (parsed.values['--until'] != null) {
+    const raw = parsed.values['--until'];
+    // Epoch seconds or anything Date.parse accepts. Rejected loudly rather than
+    // silently ignored: a mistyped bound that falls back to "no bound" would
+    // publish a WIDER window under a narrower-looking command line.
+    untilMs = /^[0-9]+$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw);
+    if (!Number.isFinite(untilMs)) {
+      console.error(`--until requires ISO-8601 or epoch seconds (got '${raw}').`);
+      process.exit(1);
+    }
+  }
+
   const pluginRoot = resolvePluginRoot(import.meta.url);
 
   (async () => {
     const result = parsed.bools.has('--global')
-      ? await samplingAuditGlobal({ days, sample, pluginRoot })
-      : await samplingAudit({ days, sample, pluginRoot });
+      ? await samplingAuditGlobal({ days, sample, pluginRoot, untilMs })
+      : await samplingAudit({ days, sample, pluginRoot, untilMs });
 
     if (parsed.bools.has('--json')) {
       console.log(JSON.stringify(result, null, 2));
