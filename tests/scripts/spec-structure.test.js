@@ -576,10 +576,24 @@ const PINS = [
     line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer per Author ≠ reviewer above, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
-    what: '§EXT §11-O subagent rules — the delivery fact and the file fallback (v6.27.0 wording)',
+    what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v6.32.0 wording)',
     file: EXT,
     anchor: '- **Output reaches main only at turn end**',
-    line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.",
+    line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.",
+  },
+  {
+    what: '§EXT §11-O Report by file — full report to a named path, a capped final message, no resend (v6.32.0)',
+    file: EXT,
+    anchor: '- **Report by file**',
+    why: 'The harness cuts a teammate result at 4000 chars (100 of 176 measured). Drop the path default or the cap and reviews arrive cut; drop the no-resend clause and each ask wakes the reviewer into another completion event.',
+    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
+  },
+  {
+    what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds (v6.32.0)',
+    file: EXT,
+    anchor: '- **Blind brief**',
+    why: 'Author ≠ reviewer fixes the context, not the prompt; the withhold list is what keeps the author verdict out of the review.',
+    line: "- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.",
   },
   {
     what: 'core §5 Hard — the eleven hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
@@ -794,7 +808,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'cd9e1c6610e0c199' },
+  { file: CORE, heading: '', sha256: '464670eeb3e6f899' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
@@ -806,7 +820,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: EXT, heading: '', sha256: 'bad941e43ff72d21' },
+  { file: EXT, heading: '', sha256: 'd36be3558c747a82' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
@@ -815,13 +829,13 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'e9565da6dd7b190c' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'ac8308cd6980277a' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '30553ba459cdd5d2' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '76cfb3d00d3e5cd4' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '08affab2f4d1b19e' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '0e98f9b1a910eb89' },
+  { file: EXT, heading: '## Recent changes', sha256: 'be4dbbe67f4b0bf6' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
@@ -878,8 +892,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 20, sha256: 'e563aa4e4a3e9446' },
-  { file: EXT, count: 62, sha256: '0edaee64be11ec46' },
+  { file: CORE, count: 20, sha256: '1fe382424655e789' },
+  { file: EXT, count: 62, sha256: 'ddc4582bb10b52e8' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.31.0 — Extended
+# AI-CODING-SPEC v6.32.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -323,7 +323,8 @@ Universal session rules live in core §11 SESSION — they bind whether this ext
 ### Subagent rules
 - **1 task = 1 subagent**. Research/explore offloaded by default.
 - Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
-- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield names an absolute output path in the spawn prompt and polls that file; the notification channel itself is not pollable.
+- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
+- **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
 - **Batch review**: ≥3 tasks OR ≥2 including ≥1 L2+ → sp:requesting-code-review for cross-task drift (error/log format, shared types). Single-task → no batch review.
 - **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
@@ -354,6 +355,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 
 ### Hard cooperation rules
 - **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection below.
+- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: per-task in sp:subagent-driven-development; pre-ship cross-cutting via gs:/review.
 - **Ship pipeline owned by gs**: sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist.
 
@@ -465,12 +467,12 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.31.0 (minor, 2026-09-22)** — skill routing moves to where its criteria live. Core §2.1's 8-row routing table is replaced by a pointer to this section's table. The measurement behind it: 61 Skill calls in 33,140 tool calls over 178 transcripts, every mattpocock engineering skill at zero, with all three plugins installed before the corpus begins — so the narrow conclusion, which is the only one claimed, is that core's table was not what made a skill get invoked.
+**v6.32.0 (minor, 2026-09-22)** — subagent reports travel by file, and a review brief stays blind. Measured over this repo's 30 transcripts: 100 of 176 teammate completion results end at exactly 4064 chars, a 4000-char body plus the harness's own truncation notice; asking for the remainder by message was cut again, and each ask woke the reviewer into another completion event.
 
-- **Core**: §2.1 keeps its intro sentence, `Tool escalation`, `Ambiguous trigger` and a two-line `Non-skill defaults` carrying the three items that are NOT skill routing — `gs:/browse` ONLY for UI verification (a prohibition, and L0–L2 never load this file), `Agent` for 2+ disjoint tasks, and direct answers for code-free Q&A. The `sp` before `gs` clause is deleted rather than moved: the 2026-09-21 ruling is that skills are chosen by fit, with no precedence among them.
-- **Extended**: §12's `Fallback table` becomes the `Skill routing table` — task class → candidates each carrying a fit criterion taken from that skill's own `description` → what to do when all of them are missing. Every fallback the old table held survives in the last column; mattpocock gains rows for the first time, that plugin having been installed after §12 was written. `Detection` / `Absent-from-listing` / `Gated` / `Batch confirmation` are unchanged.
+- **§11-O**: `Report by file` makes the output path the default for any report that can exceed the cap, not only for a cycle that cannot yield; the final message is ≤1500 chars. One ask for the file after a cut, nothing sent to an author whose report has landed.
+- **§12**: `Blind brief` under Author ≠ reviewer — what a spawn prompt gives and withholds, the `claims to falsify` list, per-finding evidence, and a fresh spawn for re-review. Not HARD: §13.2's budget is not spent.
 
-**Sizing** (v6.31.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24940 → 24347 bytes (Δ **-593**: §2.1's table out, a pointer and two default lines in); extended 46470 → 49025 bytes (Δ +2555: the routing table's criteria, the Matt rows, this entry and this line); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24347/25000 (**653 bytes headroom**); extended 49025/50000 (**975 bytes headroom**). Drift envelope: ±20B for this line's own rewrite. §0.1's net-delete requirement is satisfied by construction this version: core removes more than it adds, which is what bought the headroom back.
+**Sizing** (v6.32.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24347 bytes (unchanged); extended 49025 → 49316 bytes (Δ +291: two bullets in, the v6.31.0 entry out to the changelog); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24347/25000 (**653 bytes headroom**); extended 49316/50000 (**684 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.32.0 (minor, 2026-09-22) — subagent reports travel by file, and a review brief stays blind
+
+The harness cuts a teammate's reported result at 4000 characters and appends `[result truncated — ask the agent for the rest via SendMessage]`. Over this repo's 30 transcripts, 100 of 176 teammate completion results end at exactly 4064 characters — the body plus that notice — in 19 of the 19 transcripts that spawned teammates. The spec's only file channel, in §11-O, was scoped to "a cycle that genuinely cannot yield", so review spawns reached for a file in 43 of 83 prompts and capped the final message in 19. When a report was cut, the recovery was a message asking for the rest; in the 0.92.0 pre-ship round that resend was cut again, and every message to an idle reviewer woke it into another completion event, which is the late burst of `Teammate … finished` lines seen after a closing summary. Upstream issues #74113, #85047 and #86090 describe the same mechanics.
+
+- **§EXT §11-O `Report by file`**: any spawn whose report can exceed the cap — every review or audit — gets an absolute output path for the full report and ends on a message of at most 1500 characters: verdict, count per severity, one line per blocking finding, the path. A cut report gets one message asking for the file, never a resend; an author whose report has landed is sent nothing. The existing `Output reaches main only at turn end` bullet keeps its polling fallback and now points at that file.
+- **§EXT §12 `Blind brief`**: Author ≠ reviewer already required an empty context; it did not say what the spawn prompt may carry in, and the prompt is where the author's view enters. The brief gives the artifact, the contract and the questions, and withholds the author's rationale, its verdict, earlier rounds' findings and any expected count. Author claims go in a separate `claims to falsify` list; each finding cites file:line with a reproducing command or quoted evidence, unexamined scope goes under `NOT CHECKED`, and re-review after a repair is a new spawn. Not tagged HARD, so §13.2's budget is untouched.
+
+Not measured: whether a blind brief changes finding quality. The 4000-character cap is observed, not documented, and could move in a later Claude Code release; the rule's 1500-character ceiling leaves room either way.
+
+Core 24347 bytes, unchanged apart from the version string. Extended 49025 → 49316 (+291): the two bullets add more than that, and moving the v6.31.0 Recent-changes entry here pays for the rest. Headroom 684 bytes.
+
+This is a §13 META change to LLM-visible spec text: rules added, so minor.
+
 ## v6.31.0 (minor, 2026-09-22) — skill routing moves to where its criteria live
 
 Core §2.1 carried an 8-row routing table whose measured effect was 0.2%: over 178 transcripts and 33,140 tool calls, 61 Skill invocations, with all of mattpocock's engineering skills at zero — and the three plugins were installed before the corpus starts, so absence of opportunity does not explain it. Three routing layers were resident at once (this table, superpowers' SessionStart injection, gstack's router), and Claude Code's own progressive disclosure already puts every skill's `description` in the system prompt. What can be concluded is narrow and is all that is claimed here: this table is not the thing that makes a skill get invoked.
