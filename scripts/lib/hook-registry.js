@@ -152,6 +152,22 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'tmp-sweep.sh',
+    displayName: 'tmp-sweep',
+    envVarSuffix: 'TMP_SWEEP',
+    hookEvent: 'PostToolUse',
+    matcher: 'Bash',
+    timeout: 3,
+  },
+  {
+    basename: 'branch-prune.sh',
+    displayName: 'branch-prune',
+    envVarSuffix: 'BRANCH_PRUNE',
+    hookEvent: 'PostToolUse',
+    matcher: 'Bash',
+    timeout: 10,
+  },
+  {
     basename: 'transcript-structure-scan.sh',
     displayName: 'transcript-structure-scan',
     envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN',

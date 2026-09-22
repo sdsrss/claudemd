@@ -24,7 +24,7 @@ author to re-derive it from another hook's source:
   from those events log `null`. Read by `banned-vocab-check.sh`,
   `memory-read-check.sh`, `pre-bash-safety-check.sh`,
   `session-extended-read.sh`, `ship-baseline-check.sh`,
-  `transcript-vocab-scan.sh`, `rework-breaker.sh`.
+  `transcript-vocab-scan.sh`, `rework-breaker.sh`, `branch-prune.sh`.
   One reader of the NAME is not a reader of this field: `evidence-gate.sh` is a
   Stop hook, so its envelope carries no `tool_use_id` at all — it reads the
   `tool_use_id` that each `tool_result` in the TRANSCRIPT carries, to join a
@@ -121,6 +121,13 @@ Emitters, derived from source and gated by
   It reads `.tool_input.file_path` and `.session_id`, and quotes the path from
   the EVENT rather than from its own state file, because that state is keyed by
   checksum and a collision there must not be able to name the wrong file.
+- `tmp-sweep.sh` — PostToolUse (`Bash`); one line when the temp root is at or
+  past `CLAUDEMD_TMP_PRESSURE_PCT` (default 80) full, naming the percentage
+  and, on a tmpfs, that the bytes are RAM. Rate-limited with the sweep itself
+  to one run per `CLAUDEMD_TMP_SWEEP_INTERVAL_MIN` (default 10).
+- `branch-prune.sh` — PostToolUse (`Bash`); one line listing the local
+  branches it just deleted, each with the sha that restores it. Silent when it
+  deleted nothing.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
 context schema, so the ones with something to say write advisory text to

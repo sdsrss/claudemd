@@ -57,7 +57,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 18 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `evidence-gate` · `ledger-staleness` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 20 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `tmp-sweep` · `branch-prune` · `evidence-gate` · `ledger-staleness` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.32 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
@@ -90,6 +90,8 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | Session stop with a completion claim in the last assistant message and no verification output behind it | `evidence-gate` (v0.90.0+) | Stop advisory — judges the TRANSCRIPT (is there a non-error Bash result after the last code edit whose command names a runner, or whose output looks like one) rather than the prose, which is what the prose-reading detector closed in the 2026-07-24 labeling pass, one of six closed there at a pooled precision bound of 0.17 were doing. Opt-in (`EVIDENCE_GATE=1`, default OFF) for FP signal collection. |
 | Session stop after code edits, with a long-task ledger under `cwd` that nothing wrote to | `ledger-staleness` (v0.91.0+) | Stop advisory — the third G7 arm, beside the `SessionStart` re-injection. Both halves are transcript structure over the same tail window: a code-file `Edit`/`Write` in it, and no `Edit`/`Write` on the resolved `tasks/<slug>-ledger.md` in it. The window is a staleness threshold rather than a scanning budget, so a ledger written more than a window ago reads as behind. No ledger means the convention is not in use in this project; a ledger older than `CLAUDEMD_LEDGER_MAX_AGE_DAYS` (default 14) means a finished task. Either way it stays silent — and the age bound is skipped rather than guessed if `hooks/lib/platform.sh` is unavailable, so on that path an old ledger can still draw the advisory. Opt-in (`LEDGER_STALENESS=1`, default OFF) for FP signal collection. |
 | `PostToolUse` on `Edit`/`Write`, at each 8th edit of one file in one session | `rework-breaker` (v0.90.0+) | Advisory; injects one line naming the count (§1 Root cause over patch). Opt-in (`REWORK_BREAKER=1`, default OFF) for FP signal collection — a large legitimate refactor looks identical from here. |
+| `PostToolUse` on any `Bash` call, at most once per 10 min | `tmp-sweep` (v0.93.0+) | Deletes, detached, the per-run dirs vitest leaves in the temp root and never removes (`<tmp>/<21-char id>/ssr/<sha1>`, 13-45 MB each; on a tmpfs `/tmp` that is RAM). Only the exact vitest signature, only when idle 60 min (24 h while a vitest watcher runs), across `$TMPDIR`, `/tmp` and `~/.cache/tmp`. Also injects one line when the temp root is ≥ 80% full. **On by default.** |
+| `PostToolUse` after `git merge` / `pull` / `fetch` / `push` or `gh pr merge` | `branch-prune` (v0.93.0+) | Deletes local branches whose content is already on the default branch (ancestor, or rebase/squash-equivalent), never the default branch or one checked out in a worktree, and names each with the sha that restores it. Local git only. **On by default.** |
 | `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
 | Session end with last assistant turn carrying §10 four-section out of order, `Done:` lines lacking evidence fingerprints, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
 
@@ -191,6 +193,8 @@ export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing
 export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
 export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
 export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write G2 rework advisory (§1 root-cause; opt-in REWORK_BREAKER=1)
+export DISABLE_TMP_SWEEP_HOOK=1                  # v0.93.0+ — PostToolUse:Bash vitest tmp-dir sweep + temp-root pressure advisory
+export DISABLE_BRANCH_PRUNE_HOOK=1               # v0.93.0+ — PostToolUse:Bash delete local branches already merged into the default branch
 export DISABLE_EVIDENCE_GATE_HOOK=1              # v0.90.0+ — Stop G1b Iron Law #2 evidence-existence advisory (opt-in EVIDENCE_GATE=1)
 export DISABLE_LEDGER_STALENESS_HOOK=1           # v0.91.0+ — Stop G7 long-task ledger staleness advisory (opt-in LEDGER_STALENESS=1)
 export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 four-section advisory
@@ -420,11 +424,11 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 18 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
+├── hooks/                    # 20 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 19 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
+├── scripts/                  # 20 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
 ├── spec/                     # shipped v6.32 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/

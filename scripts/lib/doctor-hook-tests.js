@@ -242,7 +242,7 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
     if (!entry) throw new Error(`doctor liveness: ${basename} is not in HOOK_REGISTRY`);
     return `DISABLE_${entry.envVarSuffix}_HOOK`;
   };
-  // The complement, written out. The table below covers 11 of the 15 hooks; the
+  // The complement, written out. At audit-2026-08-22 the table covered 11 of the then 15 hooks; the
   // comment above named 2 of the 4 it leaves out, so two hooks were outside both
   // the check and its stated scope (audit-2026-08-22 条目 8). Keys here plus the
   // table's `hook` fields must union to HOOK_REGISTRY — asserted by
@@ -261,6 +261,8 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
     'pre-bash-safety-check.sh':
       'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
     'banned-vocab-check.sh': 'same blocking-gate shape; tests/hooks/banned-vocab.test.sh covers it',
+    'tmp-sweep.sh':
+      'spawns a deleting sweep against the REAL temp root — an isolated HOME does not isolate $TMPDIR or /tmp, so a health command must not trigger it; tests/hooks/tmp-sweep.test.sh covers it',
   };
   const livenessTests = [
     {
@@ -301,6 +303,16 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         session_id: 'doctor-selftest',
         tool_name: 'Edit',
         tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
+        tool_response: {},
+      },
+    },
+    {
+      hook: 'branch-prune.sh',
+      ks: ksFor('branch-prune.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        tool_input: { command: 'true' },
         tool_response: {},
       },
     },
