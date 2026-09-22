@@ -114,4 +114,18 @@ N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
 assert_eq "6 eight concurrent calls spawn exactly one sweep" "1" "${N:-0}"
 [[ ! -e "$HOME/.claude/.claudemd-state/tmp-sweep.lock" ]] && ok "6b lock released" || ng "6b lock left behind"
 
+# Case 7 (re-review F5): a stale lock that is not an empty directory is
+# still cleared, so the sweep resumes on the call after.
+rm -rf "${HOME:?}/.claude/.claudemd-state/tmp-sweep.lock"
+mkdir -p "$HOME/.claude/.claudemd-state/tmp-sweep.lock" && echo junk >"$HOME/.claude/.claudemd-state/tmp-sweep.lock/f"
+touch -d '5 minutes ago' "$HOME/.claude/.claudemd-state/tmp-sweep.lock" 2>/dev/null ||
+  touch -t "$(date -v-5M +%Y%m%d%H%M)" "$HOME/.claude/.claudemd-state/tmp-sweep.lock"
+touch -d '20 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-20M +%Y%m%d%H%M)" "$STAMP"
+rm -f "$SANDBOX/spawns"
+PATH="$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" >/dev/null 2>&1
+PATH="$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" >/dev/null 2>&1
+sleep 0.3
+N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
+assert_eq "7 non-empty stale lock cleared, next call sweeps" "1" "${N:-0}"
+
 claudemd_assert_summary

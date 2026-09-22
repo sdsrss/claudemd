@@ -21,10 +21,12 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
 branches  Delete local branches whose upstream the remote deleted (\`[gone]\`)
           and whose tip is already on the default branch (local or
           origin/<default>); also worktree-agent-* branches on the default
-          branch, with or without an upstream. Never the default branch, a
-          branch checked out in any worktree, a branch whose upstream still
-          exists, or a branch with no upstream. Skips the whole run while a
-          rebase or bisect is in progress in any worktree. A gone branch whose
+          branch, with or without an upstream. Never the default branch or a
+          branch checked out in any worktree; and, worktree-agent-* aside,
+          never a branch whose upstream still exists or one with no upstream.
+          Skips the whole run while a
+          rebase or bisect is in progress in any worktree. Deletes with a
+          compare-and-delete on the classified sha. A gone branch whose
           tip is NOT on the default branch (squash merge) is listed under
           \`goneUnmerged\` and never deleted. Local git only.
 
@@ -210,7 +212,8 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 //     whitespace, so two different edits compare equal (0.93.0 pre-tag review
 //     H3), and it asks whether a patch ever landed, not whether it is still
 //     there (M2);
-//   - no "has an upstream that still exists" branch is ever a candidate, which
+//   - apart from worktree-agent-*, no branch whose upstream still exists is a
+//     candidate (a `[behind N]` / `[ahead N]` track is not `[gone]`), which
 //     is what keeps `main` / `develop` safe in a git-flow repo whose origin/HEAD
 //     names the other one (H2, M1);
 //   - no branch without an upstream is a candidate (a backup made before a
@@ -294,24 +297,26 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   return { defaultBranch, prune, goneUnmerged, skipped: null };
 }
 
-// `git branch -D`, not `update-ref -d`: git runs its own in-use checks there
-// (a branch being rebased or bisected elsewhere), which update-ref skips. The
-// sha is re-checked right before each delete, so a branch that moved since
-// classification is left alone. -D also drops the branch's reflog and its
-// `branch.<name>.*` config — for a gone branch that config names a remote
-// branch that no longer exists, so recreating the ref from its sha restores
-// everything that still means something.
+// `update-ref -d <ref> <sha>` is a compare-and-delete in one ref transaction:
+// if another writer moved the branch after classification, git refuses and
+// the new commits stay reachable. A read-then-`git branch -D` pair has a
+// window between the two calls (0.93.0 re-review F1). git's own in-use checks,
+// which update-ref skips, are covered upstream: worktree checkouts are never
+// candidates and a rebase or bisect anywhere skips the run. The branch's
+// `branch.<name>.*` config goes too — for a gone branch it names a remote
+// branch that no longer exists — and so does its reflog, so recreating the
+// ref from the reported sha restores everything that still means something.
 export function deleteBranches({ cwd, branches }) {
   const git = gitIn(cwd);
   const deleted = [];
   const errors = [];
   for (const b of branches) {
-    if (git('rev-parse', '--verify', '--quiet', `refs/heads/${b.name}`) !== b.sha) {
-      errors.push({ name: b.name, code: 'moved-since-classified' });
+    if (git('update-ref', '-d', `refs/heads/${b.name}`, b.sha) === null) {
+      errors.push({ name: b.name, code: 'moved-or-refused' });
       continue;
     }
-    if (git('branch', '-D', b.name) !== null) deleted.push(b);
-    else errors.push({ name: b.name, code: 'git-branch-refused' });
+    git('config', '--remove-section', `branch.${b.name}`);
+    deleted.push(b);
   }
   return { deleted, errors };
 }

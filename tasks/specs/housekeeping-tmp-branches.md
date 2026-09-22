@@ -45,9 +45,9 @@ in the plugin reclaims them:
   `gh pr merge`; local git only. Deletes a branch only when its upstream is
   `[gone]` and its tip is an ancestor of the default branch or
   `origin/<default>`, or when it is a `worktree-agent-*` branch on the default
-  branch. Never the default branch, a worktree checkout, a branch whose
-  upstream exists, or one with no upstream; nothing while a rebase or bisect
-  is in progress. Deletes via `git branch -D` after re-reading the sha.
+  branch. Never the default branch or a worktree checkout; worktree-agent-*
+  aside, never a branch whose upstream exists or one with no upstream; nothing while a rebase or bisect
+  is in progress. Deletes with `update-ref -d <ref> <sha>` (compare-and-delete).
   (r3: replaced the patch-equivalence and reflog rules after the pre-tag
   review — see CHANGELOG 0.93.0.)
 

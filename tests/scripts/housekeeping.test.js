@@ -407,3 +407,63 @@ test('vitest tmp: a target that turns fresh between scan and delete is kept (rec
   assert.equal(out.deleted, 0);
   assert.ok(fs.existsSync(d));
 });
+
+test('branches: a branch moved by another writer between check and delete survives (atomic compare-and-delete, re-review F1)', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'ff');
+  const [target] = classifyBranches({ cwd: r }).prune;
+  git(r, 'checkout', '-q', '-b', 'side');
+  commit(r, 'new.txt', 'not on main\n');
+  const NEW = git(r, 'rev-parse', 'HEAD');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'branch', '-D', 'side');
+  // A `git` shim that moves feat to NEW immediately before forwarding any
+  // deleting call — the concurrent writer, placed inside the window.
+  const shimDir = path.join(root, 'shim');
+  fs.mkdirSync(shimDir);
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  fs.writeFileSync(
+    path.join(shimDir, 'git'),
+    `#!/bin/sh\ncase " $* " in *" update-ref -d "*|*" branch -D "*) "${realGit}" -C "${r}" update-ref refs/heads/feat ${NEW} ;; esac\nexec "${realGit}" "$@"\n`,
+    { mode: 0o755 }
+  );
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${shimDir}:${savedPath}`;
+  let out;
+  try {
+    out = deleteBranches({ cwd: r, branches: [target] });
+  } finally {
+    process.env.PATH = savedPath;
+  }
+  assert.deepEqual(out.deleted, []);
+  assert.equal(git(r, 'rev-parse', 'feat'), NEW, 'feat and its new commit survive');
+});
+
+test('branches: a local default branch behind its upstream stays safe in a git-flow repo (re-review F3)', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'develop');
+  git(r, 'push', '-q', '-u', 'origin', 'develop');
+  git(r, 'remote', 'set-head', 'origin', 'develop');
+  // origin/main advances past local main, so local main reads [behind 1]
+  // and is an ancestor of develop.
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'm.txt', 'm\n');
+  git(r, 'push', '-q', 'origin', 'main');
+  git(r, 'reset', '-q', '--hard', 'HEAD~1');
+  git(r, 'checkout', '-q', 'develop');
+  const track = git(r, 'for-each-ref', '--format=%(upstream:track)', 'refs/heads/main');
+  assert.equal(track, '[behind 1]', 'fixture: main is behind, not gone');
+  const c = classifyBranches({ cwd: r });
+  assert.equal(c.defaultBranch, 'develop');
+  assert.deepEqual(names(c.prune), []);
+});
+
+test('branches: a bisect in progress skips the whole run (re-review F7)', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'other', 'ff');
+  commit(r, 'b1.txt', '1\n');
+  git(r, 'bisect', 'start', 'HEAD', 'HEAD~1');
+  const out = pruneBranches({ cwd: r, apply: true });
+  assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
+  assert.ok(git(r, 'branch', '--list', 'other'));
+});

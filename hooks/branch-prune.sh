@@ -11,8 +11,8 @@
 # What is deleted is decided by scripts/housekeeping.js (see its USAGE): a
 # branch whose upstream the remote deleted (`[gone]`) and whose tip is on the
 # default branch or origin/<default>, plus worktree-agent-* branches on it.
-# Never the default branch, a worktree checkout, a branch whose upstream still
-# exists, or one with no upstream; nothing at all while a rebase or bisect is in
+# Never the default branch or a worktree checkout; worktree-agent-* aside, never
+# a branch whose upstream still exists or one with no upstream; nothing at all while a rebase or bisect is in
 # progress. Local git only — no fetch, no remote deletion. Each deletion is
 # reported with the sha that recreates the ref, unless the 8 s ceiling below
 # kills the run mid-way (then some may be deleted unreported).
