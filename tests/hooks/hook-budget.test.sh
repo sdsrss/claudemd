@@ -167,12 +167,31 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-
 awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync-aged-%d\n", d, i }' \
   | xargs touch -t 200001010000
 
-# ledger-staleness: a current ledger under the fixture cwd. Without one the
-# hook exits at its "no ledger here" guard, which is the cheap branch, and the
-# gate would time an early exit instead of the transcript scan. Its mtime is
-# now, inside the 14-day age bound; the fixture transcript writes .js paths and
-# never this file, so the hook reaches its verdict and emits.
+# ledger-staleness: ledgers under the fixture cwd. Without one the hook exits at
+# its "no ledger here" guard, which is the cheap branch, and the gate would time
+# an early exit instead of the transcript scan.
+#
+# More than one of them, inside a tasks/ directory wider than the ledgers alone,
+# because both are what the hook walks: it resolves its subject with
+# `ls -t "$cwd"/tasks/*-ledger.md` — a glob over the whole directory — and prints
+# an extra line only when it chose between several candidates. One ledger timed
+# the one-candidate arm of both (v0.91.0 pre-ship review M7, residual form).
+# Sized above this maintainer's real tasks/ (45 entries, 1 ledger) for the same
+# reason the memory index and the transcript are oversized: 200 entries, 12
+# ledgers.
+#
+# Eleven of the twelve are aged far past the hook's 14-day bound. That is the
+# production shape — finished tasks' ledgers linger — and it also makes the
+# `ls -t` head unambiguous: the current one is strictly newest, so no tie-break
+# order decides which file the probe reaches (this file has already paid once
+# for letting readdir order pick a probe's subject, see the `head -n 50` note
+# above). The age bound reads the NEWEST candidate only, so the aged siblings
+# cannot silence it. The fixture transcript writes .js paths and never any of
+# these files, so the hook reaches its verdict and emits.
 mkdir -p "$CWD/tasks"
+awk -v d="$CWD/tasks" 'BEGIN { for (i = 1; i <= 188; i++) printf "%s/fixture-task-%d.md\n", d, i }' | xargs touch
+awk -v d="$CWD/tasks" 'BEGIN { for (i = 1; i <= 11; i++) printf "%s/aged-%02d-ledger.md\n", d, i }' \
+  | xargs touch -t 200001010000
 printf '# ledger\n\n## Decisions\n\nd\n\n## Next\n\nn\n' > "$CWD/tasks/budget-ledger.md"
 
 # Pre-seeded per-session state so the two Stop scanners take their FULL path
@@ -208,6 +227,28 @@ if [[ "$FIX_NEWER_TOTAL" == "50" && "$FIX_NEWER_DIRS" == "50" ]]; then
   pass "fixture: exactly 50 entries newer than the session ref, all directories (head -n 50 cut is order-independent)"
 else
   fail "fixture: $FIX_NEWER_TOTAL entries newer than the session ref ($FIX_NEWER_DIRS dirs) — expected 50/50. sandbox-disposal's \`| head -n 50\` would then depend on readdir order and its reach proof is luck"
+fi
+
+# The same kind of premise for ledger-staleness: it resolves its subject with
+# `ls -t "$cwd"/tasks/*-ledger.md` and prints one extra line only when it chose
+# between more than one candidate. With a single ledger on disk the probe times
+# the one-candidate arm of both and the gate says nothing about the other one
+# (v0.91.0 pre-ship review M7, residual form). Asserted rather than assumed,
+# because a fixture that quietly drops back to one ledger takes the coverage
+# with it and nothing else here would notice.
+#
+# Counted off the same glob the hook uses, through the shell rather than
+# `ls | grep` (SC2010). The `-f` test is what makes zero matches read as zero:
+# with no match the glob stays literal and the array still holds one element.
+LS_FIX_LEDGERS=("$CWD"/tasks/*-ledger.md)
+LS_FIX_COUNT=0
+for _lg in ${LS_FIX_LEDGERS[@]+"${LS_FIX_LEDGERS[@]}"}; do
+  [[ -f "$_lg" ]] && LS_FIX_COUNT=$((LS_FIX_COUNT + 1))
+done
+if (( LS_FIX_COUNT > 1 )); then
+  pass "fixture: tasks/ holds $LS_FIX_COUNT ledgers, so ledger-staleness resolves between candidates instead of taking its single-ledger arm"
+else
+  fail "fixture: tasks/ holds $LS_FIX_COUNT ledger(s) — ledger-staleness then times its one-candidate arm and the multi-candidate message line is never reached"
 fi
 
 # ------------------------------------------------------------ subject set ----
@@ -469,6 +510,11 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     "$(norm_ck "$OUT_FILE")" "$(norm_ck "$ERR_FILE")" \
     "$((LOG_AFTER - LOG_BEFORE))" "$((STATE_AFTER - STATE_BEFORE))" \
     "$((SYNC_AFTER - SYNC_BEFORE))" >> "$SIG_FILE"
+  # Keep this subject's stderr under its own name. ERR_FILE is reused by the
+  # next subject and the reach assertion consumes it only as a byte count, while
+  # the arm after this loop needs the TEXT of this run — re-running the hook to
+  # read it would be a different invocation than the one that was measured.
+  cp "$ERR_FILE" "$SANDBOX/probe-err-$hook.txt" 2>/dev/null || true
 
   if (( REACHED == 1 )); then
     pass "$hook probe ran to completion and did observable work (stdout ${OUT_SIZE}B, stderr ${ERR_SIZE}B, log Δ$((LOG_AFTER - LOG_BEFORE))B, state Δ$((STATE_AFTER - STATE_BEFORE)))"
@@ -518,6 +564,24 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
     fail "$hook took $SAMPLES (seconds, best-of) against a ${BUDGET}s hooks.json timeout (limit: half the budget). Every sample missed, so this is the hook and not runner load. A hook killed at its timeout emits nothing — a blocking gate fails OPEN silently."
   fi
 done
+
+# ------------------------------------ ledger-staleness: the multi-candidate arm ----
+# The fixture assertion near the top pins that there WERE candidates to choose
+# between. This pins that the probe actually printed the line that only exists on
+# that branch — otherwise the fixture could hold a dozen ledgers while the hook
+# exited earlier for an unrelated reason, and the gate would still read as though
+# `ledgers > 1` were covered.
+#
+# Stated to its limit: it proves the FIRST sample took that arm, which is the run
+# the reach assertion above validated and the one whose stderr is on disk. A
+# resample (only taken after a sample misses budget, which this hook does not do
+# at ~0.1s against 5s) writes to RETRY_ERR and is not inspected here.
+LS_PROBE_ERR="$SANDBOX/probe-err-ledger-staleness.txt"
+if grep -q "of $LS_FIX_COUNT ledgers" "$LS_PROBE_ERR" 2>/dev/null; then
+  pass "ledger-staleness's measured run took the multi-candidate arm (named $LS_FIX_COUNT candidates)"
+else
+  fail "ledger-staleness's measured run never printed the multi-candidate line, so the recorded time is the one-ledger path: $(head -c 200 "$LS_PROBE_ERR" 2>/dev/null | tr '\n' ' ')"
+fi
 
 # ------------------------------------------- differential reach discrimination ----
 # The loop above proves "the probe ran to completion and did observable work".
