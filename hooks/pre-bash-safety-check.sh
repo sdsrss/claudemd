@@ -1461,8 +1461,21 @@ if [[ -n "$runner" ]]; then
       esac
     done
     set +f
+    # `pkg_token` comes from the user's command line and lands inside a
+    # hand-built JSON fragment, so it goes through the same escape the row
+    # builder uses (round-16 M-4 / round-17 HK-M1). One backslash — `npx a\b` —
+    # wrote an unparseable line into the rule-hits log, and every consumer of
+    # that file reads it line by line. hook-common.sh sources rule-hits.sh
+    # eagerly, so the function is defined here; it is bash 3.2 safe, spawns no
+    # jq, and returns empty (never aborts) if the source failed — a fatal here
+    # would swallow the verdict below it, which is the round-16 §8 telemetry
+    # defect. Naming the log FILE in this comment is deliberately avoided:
+    # tests/hooks/hook-budget.test.sh derives its data-scaling subject set by
+    # grepping these sources, so the literal would enrol this hook in a timing
+    # class it does not belong to.
     if [[ -n "$pkg_token" && $no_install -eq 1 ]]; then
-      hook_record pre-bash-safety npx-allow-no-install "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
+      hook_record pre-bash-safety npx-allow-no-install \
+        "{\"pkg\":\"$(_rule_hits_json_escape "$pkg_token")\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
       pkg_token=""
     fi
     if [[ -n "$pkg_token" ]]; then
@@ -1474,7 +1487,8 @@ if [[ -n "$runner" ]]; then
           # Unpinned (scoped or unscoped). Per spec §8 lockfile → local → pinned:
           # check lockfile/node_modules in EVENT_CWD before denying.
           if npx_pkg_locally_resolved "$pkg_token" "$NPX_EFFECTIVE_CWD"; then
-            hook_record pre-bash-safety npx-allow-local "{\"pkg\":\"$pkg_token\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
+            hook_record pre-bash-safety npx-allow-local \
+              "{\"pkg\":\"$(_rule_hits_json_escape "$pkg_token")\"}" '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
           else
             case "$pkg_token" in
               @*/*) HITS+=("$runner $pkg_token (scoped, unpinned, no lockfile/local)")

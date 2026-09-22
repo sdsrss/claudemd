@@ -437,6 +437,32 @@ else
 fi
 rm -rf "$tel_home"
 
+# HK-M1 (round-16 M-4, reproduced round-17). `pkg_token` comes off the user's
+# command line and was interpolated raw into a hand-built JSON fragment, so one
+# backslash wrote a line into claudemd.jsonl that jq cannot parse — and every
+# consumer of that log reads it line by line, so one bad row is not one lost
+# row. Asserts the WHOLE file parses, not just that the row exists: a row that
+# is present and unparseable is the defect.
+esc_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$esc_home/.claude/logs"
+esc_log="$esc_home/.claude/logs/claudemd.jsonl"
+jq -cn '{session_id:"esc",cwd:"/tmp",tool_name:"Bash",tool_input:{command:"npx --no-install pkg\\zoo"}}' \
+  | HOME="$esc_home" bash "$HOOK" >/dev/null 2>&1
+esc_rows=$(wc -l < "$esc_log" 2>/dev/null | tr -d ' ')
+esc_bad=0
+while IFS= read -r esc_line; do
+  [[ -n "$esc_line" ]] || continue
+  printf '%s' "$esc_line" | jq -e . >/dev/null 2>&1 || esc_bad=$((esc_bad + 1))
+done < "$esc_log"
+esc_npx=$(jq -rc 'select(.event=="npx-allow-no-install")' "$esc_log" 2>/dev/null | head -1)
+if [[ "${esc_rows:-0}" -ge 1 && "$esc_bad" -eq 0 && -n "$esc_npx" ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [npx-token-escape]: rows=${esc_rows:-0} unparseable=$esc_bad npx_row='$esc_npx' raw='$(cat "$esc_log" 2>/dev/null)'"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "${esc_home:?}"
+
 # --- v0.51.0 curl-sh wrapper-set parity ---
 # Every wrapper the curl-sh regex accepts must exist in the shared taxonomy
 # (S8_WRAP_ARGLESS ∪ S8_WRAP_FLAGGED), so the single-source arrays and the regex
