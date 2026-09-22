@@ -231,12 +231,16 @@ Five sections, in this order, all `## `-level:
 
 Rules the format exists to enforce, in the order they are usually broken:
 
-1. **`Decisions` is filled at task start, not as you go.** The 2026-09-21
-   measurement of 42 answered asks found an assent rate of 0 — every question
-   carried real direction. The problem was never that there were too many
-   questions, it was that decisions which could have been settled once at the
-   start were scattered through execution. Reversible choices get a written
-   default rather than a question.
+1. **`Decisions` is filled at task start, not as you go.** The reason is
+   structural, not measured: a decision settled at the start is one the task
+   can be re-entered against after a compaction, and one settled mid-execution
+   is not, because nothing records that it was settled at all. Reversible
+   choices get a written default instead of a question; irreversible ones stay
+   questions. (An earlier draft of this line cited `sampling-audit`'s answered-
+   ask counts. Those come from a detector whose precision was never labeled —
+   `tasks/sampling-audit-2026-09-21.md` marks the metric NOT YET READABLE — and
+   this project's MEMORY.md carries the standing rule not to cite them. It also
+   quoted the 2026-09-07 figures as the 2026-09-21 ones.)
 2. **A `Verified-done` line without a command and an exit code is not done.**
    That is Iron Law #2 in the one place a long task accumulates claims fastest;
    `evidence-gate.sh` is the same rule one layer down, on the transcript.
@@ -305,7 +309,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PreToolUse:Bash | `memory-read-check.sh` | ship/release require matched MEMORY.md Read | `§11-memory-read` |
 | PreToolUse | `session-extended-read.sh` | enforce extended-spec Read on L3/ship triggers | `§13.1-extended-read` |
 | PostToolUse | `transcript-vocab-scan.sh` | post-hoc §10-V scan of assistant prose | `§10-V` |
-| Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result carrying runner output after the last code edit. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
+| Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result after the last code edit whose command names a runner or whose output carries a runner verdict. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
 | PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |

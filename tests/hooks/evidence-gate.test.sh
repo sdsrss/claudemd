@@ -118,7 +118,7 @@ fi
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(run_hook "$DONE_CLAIM")
-if [[ "$OUT" == *"none of them produced test / typecheck / build output"* && "$(log_rows)" == "1" ]]; then
+if [[ "$OUT" == *"none of them was a test / typecheck / build runner"* && "$(log_rows)" == "1" ]]; then
   ok "4: T3 — git status is a command, not verification → advisory names the difference"
 else
   ng "4: expected the command-but-no-runner advisory, got: $OUT"
@@ -331,10 +331,106 @@ fi
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(run_hook "$DONE_CLAIM")
-if [[ "$OUT" == *"none of them produced test / typecheck / build output"* ]]; then
+if [[ "$OUT" == *"none of them was a test / typecheck / build runner"* ]]; then
   ok "16b: control — git status is still not a verifier after the widening"
 else
   ng "16b: the command-side widening swallowed the T3 arm: $OUT"
+fi
+
+# --- Case 17 (pre-ship M4): a backgrounded run's output arrives on BashOutput --
+# `Bash(run_in_background)` answers its own call with "Command running in
+# background"; the real output comes later on a BashOutput tool_use with a
+# different id. Joining only on Bash ids discarded it, so verifying in the
+# background read as no verification at all.
+{
+  row_edit /p/src/a.js
+  row_bash tu_bg "npm test &"
+  row_result tu_bg "Command running in background with ID: bash_1"
+  jq -cn '{type:"assistant",message:{content:[{type:"tool_use",id:"tu_bo",name:"BashOutput",input:{bash_id:"bash_1"}}]}}'
+  row_result tu_bo "Tests: 12 passed, 12 total"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" ]]; then
+  ok "17: a BashOutput carrying the runner verdict counts as evidence"
+else
+  ng "17: background verification still reads as no-evidence: $OUT"
+fi
+
+# Control: a BashOutput carrying nothing runner-shaped must NOT count. The
+# BashOutput is indexed with an empty command on purpose — only its output can
+# satisfy T2, because we know what it printed and not what was run.
+{
+  row_edit /p/src/a.js
+  row_bash tu_bg2 "./long-thing &"
+  row_result tu_bg2 "Command running in background with ID: bash_2"
+  jq -cn '{type:"assistant",message:{content:[{type:"tool_use",id:"tu_bo2",name:"BashOutput",input:{bash_id:"bash_2"}}]}}'
+  row_result tu_bo2 "still working on it"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"none of them was a test / typecheck / build runner"* ]]; then
+  ok "17b: control — a BashOutput with no runner verdict is still not evidence"
+else
+  ng "17b: an empty-signal BashOutput satisfied the gate: $OUT"
+fi
+
+# --- Case 18 (pre-ship L4): a tab in the output must not truncate the scan ----
+# awk splits the stream on tabs, so an untranslated tab in the result body cut
+# `rtxt` at the first one — go test's own output is tab-separated.
+{
+  row_edit /p/src/a.js
+  row_bash tu_tab "./run-checks"
+  row_result tu_tab "$(printf 'header\tcolumn\tnoise')  Tests: 9 passed"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" ]]; then
+  ok "18: a verdict after a tab is still seen (tabs normalised before awk splits)"
+else
+  ng "18: tab truncated the output scan: $OUT"
+fi
+
+# --- Case 19 (pre-ship M3): the completion shapes this corpus actually uses ---
+# A replay of this project's 22 transcripts matched their final assistant
+# message ONCE. A detector that cannot see the corpus collects nothing in 30
+# days, which makes the §13.3 promotion decision uninterpretable.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+EG_SHAPES_OK=1
+for msg in '发布完成。' '清理完成。' '审核完成,报告已生成' '**v0.78.0 已发布。**' 'v0.75.0 已实现' '**Shipped: v0.84.1.**'; do
+  O=$(run_hook "$msg")
+  [[ "$O" == *"Iron Law #2"* ]] || {
+    EG_SHAPES_OK=0
+    echo "      shape not detected: $msg"
+  }
+done
+if [[ "$EG_SHAPES_OK" == "1" ]]; then
+  ok "19: the corpus's own completion shapes (完成。/ 已发布 / 已实现 / Shipped:) register"
+else
+  ng "19: at least one real completion shape is still invisible"
+fi
+
+# Control: widening a CLAIM detector costs false positives, so prose that is
+# merely ABOUT finishing must still not register.
+EG_NEG_OK=1
+for msg in '我还没完成这件事,下一步是先复现' 'Not done: the marketplace gate.' 'I will finish this after the review.'; do
+  O=$(run_hook "$msg")
+  [[ -z "$O" ]] || {
+    EG_NEG_OK=0
+    echo "      false claim detected in: $msg"
+  }
+done
+if [[ "$EG_NEG_OK" == "1" ]]; then
+  ok "19b: control — prose about not-finishing is not a completion claim"
+else
+  ng "19b: the widening produced a false completion claim"
 fi
 
 echo

@@ -105,6 +105,14 @@ merge_banners() {
 # the context the compaction was trying to recover.
 LEDGER_MAX_BYTES="${CLAUDEMD_LEDGER_MAX_BYTES:-1600}"
 LEDGER_MAX_AGE_DAYS="${CLAUDEMD_LEDGER_MAX_AGE_DAYS:-14}"
+# Both knobs reach jq / arithmetic, so a non-integer is not merely ignored. The
+# cap is the sharper case: it is passed as `--argjson`, and jq reads `.[0:-5]`
+# as "all but the last 5" with `length > -5` always true — so ONE negative
+# character restores the exact unbounded-injection defect this cap exists to
+# close (pre-ship review, behaviour L7). Same guard shape as
+# EVIDENCE_GATE_WINDOW's.
+[[ "$LEDGER_MAX_BYTES" =~ ^[0-9]+$ ]] || LEDGER_MAX_BYTES=1600
+[[ "$LEDGER_MAX_AGE_DAYS" =~ ^[0-9]+$ ]] || LEDGER_MAX_AGE_DAYS=14
 
 ledger_banner() {
   [[ "${DISABLE_LEDGER_INJECT:-0}" == "1" ]] && return 0
@@ -137,8 +145,13 @@ ledger_banner() {
   # 24,000-character banner, spending on a stale ledger exactly the context the
   # compaction had been run to reclaim (found in pre-ship review). jq slices
   # strings by codepoint, so it also cannot leave a truncated multibyte tail —
-  # and invalid UTF-8 here would fail the whole envelope, taking the §11
-  # re-read reminder down with the ledger rather than just shortening it.
+  # and a codepoint slice cannot emit a partial multibyte sequence. What that
+  # buys is a clean tail rather than a U+FFFD glyph — NOT the envelope: this
+  # function's trailing `jq -cn … 2>/dev/null` IS its stdout, so a jq failure
+  # yields an empty candidate and merge_banners drops it, leaving the §11
+  # reminder intact. An earlier version of this comment claimed the reminder
+  # would go down with the ledger; pre-ship review falsified that twice on the
+  # real code path (behaviour L8).
   # `head -n` bounds what is read into the variable in the first place; the
   # character cap is what the reader actually sees.
   local body
@@ -154,7 +167,7 @@ ledger_banner() {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — active long-task ledger " + $p + " (§11 / G7). Its Decisions were settled at task start and its Next is where the task stands; both are below so this turn does not re-derive them. Update the ledger before the next item, not after. Disable: DISABLE_LEDGER_INJECT=1.\n\n" + $b)
+      additionalContext: ("[claudemd] system-injected — most recently modified long-task ledger " + $p + " (§11 / G7). Nothing here checks whether that task is still open: this is the newest ledger under this cwd, not a verified-active one, and `Verified-done` / `Open` — the sections that would say — are deliberately not carried. If the task is finished, ignore this. Otherwise: its Decisions were settled at task start and its Next is where it stands, so this turn does not have to re-derive them, and the ledger is updated before the next item rather than after. Disable: DISABLE_LEDGER_INJECT=1.\n\n" + $b)
     }
   }' 2>/dev/null
 }
@@ -646,6 +659,10 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
   # .version (pre-0.1.9), jq absent, unreadable package.json, etc. — to avoid
   # a re-bootstrap loop on broken state. No upstream check on broken state.
   if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" ]]; then
+    # The ledger is still owed on this path: a manifest with no .version says
+    # nothing about whether the session is resuming a long task. This was a
+    # bare `exit 0` and dropped it (pre-ship review, behaviour M1).
+    merge_banners "$_lg_json"
     exit 0
   fi
   # Match: local install is current. Run upstream check before exiting — this
@@ -698,13 +715,19 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
       mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
       echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
-      jq -cn --arg old "$PLUGIN_VER" --arg new "$INSTALLED_VER" '{
+      # Through merge_banners with the ledger candidate, not a bare `jq -cn`.
+      # This is the session being told to run /claudemd-refresh, i.e. a long
+      # one, i.e. one that will compact — exactly when the ledger is owed. It
+      # emitted its own single object and exited, so a `resume` here lost the
+      # ledger silently (pre-ship review, behaviour M1).
+      _stale_json=$(jq -cn --arg old "$PLUGIN_VER" --arg new "$INSTALLED_VER" '{
         suppressOutput: true,
         hookSpecificOutput: {
           hookEventName: "SessionStart",
           additionalContext: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix: run /claudemd-refresh, then restart Claude Code.")
         }
-      }' 2>/dev/null
+      }' 2>/dev/null)
+      merge_banners "$_stale_json" "$_lg_json"
       STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
       hook_record session-start stale-root "$STALE_EXTRA" '' "$SESSION_ID" 2>/dev/null || true
       exit 0

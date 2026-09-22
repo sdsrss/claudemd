@@ -4,8 +4,11 @@
 # What it measures and why. The 2026-09-21 transcript measurement
 # (docs/spec-optimization-roadmap-2026-09-21.md §3.2b) counted, per session, how
 # many Edit/Write calls landed on the session's hottest file: 58.7% of sessions
-# with any edit reached 8 or more, the modal bucket was 8-14, and one session
-# reached 58 on a single file. That shape is a loop: make an edit, run the
+# with any edit reached 8 or more on a file of any kind, 46.8% counting code
+# files only, and one session reached 58 edits on a single file. (The 8-14
+# modal bucket quoted alongside these belongs to the code-file histogram, which
+# is a different denominator — stated because an earlier draft of this comment
+# ran the two together.) That shape is a loop: make an edit, run the
 # suite, see red, edit again — hill-climbing rather than diagnosis. §1 "Root
 # cause over patch" already forbids it and is pure prose, so nothing observes
 # the loop while it is running.
@@ -58,6 +61,19 @@ esac
 
 FILE_PATH=$(printf '%s' "$EVENT" | jq -r '.tool_input.file_path // ""' 2>/dev/null)
 [[ -n "$FILE_PATH" ]] || exit 0
+# Code files only. The line this hook injects quotes §1 "reproduce the failure,
+# name the cause" — advice that means nothing about the eighth edit to a
+# markdown file, which is what it used to say (pre-ship review, behaviour L1).
+# The G0 metric in scripts/sampling-audit.js deliberately keeps BOTH
+# denominators (any-file 58.7%, code-only 46.8%); this is the hook narrowing
+# its subject to match its own message, not a change to the measurement.
+# Same extension list as evidence-gate.sh and sampling-audit.js's CODE_FILE_RE
+# — three copies in three languages, and the roadmap's G0 pre-registration is
+# what pins the JS one, so they are changed together or not at all.
+case "$FILE_PATH" in
+  *.js | *.mjs | *.cjs | *.jsx | *.ts | *.mts | *.cts | *.tsx | *.rs | *.py | *.go | *.sh | *.rb | *.java | *.c | *.cpp | *.h) ;;
+  *) exit 0 ;;
+esac
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 # No session_id, no per-session tally. Counting into a shared file instead would
@@ -79,7 +95,12 @@ RB_KEY=$(printf '%s' "$FILE_PATH" | cksum 2>/dev/null | awk '{print $1"-"$2}')
 [[ -n "$RB_KEY" ]] || { hook_record_failopen rework-breaker prereq-missing; exit 0; }
 
 mkdir -p "$RB_STATE_DIR" 2>/dev/null || { hook_record_failopen rework-breaker prereq-missing; exit 0; }
-printf '%s\n' "$RB_KEY" >> "$RB_LEDGER" 2>/dev/null || {
+# The redirection is inside the subshell, not after `printf`. A failing `>>` is
+# reported by the SHELL before printf runs, so `printf … 2>/dev/null` left
+# `rework-breaker.sh: line N: …: Permission denied` on the user's stderr while
+# still exiting 0 (pre-ship review, behaviour L2). The claim write below already
+# had this shape; now both writers in this file do.
+(printf '%s\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {
   hook_record_failopen rework-breaker prereq-missing
   exit 0
 }

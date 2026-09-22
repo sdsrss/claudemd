@@ -1047,59 +1047,60 @@ touch "$LEDGER_PROJ/tasks/demo-ledger.md"
 
 # Case 42 (pre-ship H4): the injected text is actually capped.
 # `cut -c1-N` is PER LINE, so the first version bounded each line and nothing
-# bounded the total — a 29KB ledger produced a 29KB banner, into the context a
-# compaction had just been run to reclaim. Both a long-line and a many-lines
-# ledger are driven, because a per-line cap passes the first and fails the second.
+# bounded the total — a 400-line ledger produced a 24,000-character banner, into
+# the context a compaction had just been run to reclaim. Both a many-lines and a
+# long-line ledger are driven, because a per-line cap passes the second and
+# fails the first.
+#
+# Generated with one `awk`, not with shell loops / `head -c /dev/zero` / `tr
+# '\0'`. The first spelling used all three and the macOS leg took the suite from
+# 20s to a 300s timeout while Linux ran it in 22s; `tr` with a NUL operand is the
+# one construct there that BSD and GNU do not agree on. The bodies below are
+# sized just past the 1600 cap rather than 10-30x past it — a cap either holds or
+# it does not, and the extra bytes only bought the timeout.
 BIG_PROJ="$HOME/bigledgerproj"
 mkdir -p "$BIG_PROJ/tasks"
-{
-  echo "## Decisions"
-  echo
-  for i in $(seq 1 400); do echo "- D$i: decision line $i with enough text on it to matter"; done
-  echo
-  echo "## Next"
-  echo
-  echo "keep going"
-} > "$BIG_PROJ/tasks/big-ledger.md"
+
+# 60 lines x ~55 chars = ~3300 chars: over the cap, cheap to build and to read.
+awk 'BEGIN {
+  print "## Decisions"; print ""
+  for (i = 1; i <= 60; i++) print "- D" i ": decision line " i " with enough text to matter"
+  print ""; print "## Next"; print ""; print "keep going"
+}' > "$BIG_PROJ/tasks/big-ledger.md"
 OUT42=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
 CTX42=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT42" 2>/dev/null)
 CTX42_LEN=${#CTX42}
-if (( CTX42_LEN > 0 && CTX42_LEN < 3000 )); then
-  echo "PASS: 42 a 400-line ledger is capped (banner ${CTX42_LEN} chars, cap 1600 + reminder)"
+if (( CTX42_LEN > 0 && CTX42_LEN < 2600 )); then
+  echo "PASS: 42 a 60-line ledger is capped (banner ${CTX42_LEN} chars: 1600 cap + the reminder)"
 else
   echo "FAIL: 42 many-line ledger not capped (banner ${CTX42_LEN} chars)"; FAIL=$((FAIL+1))
 fi
 
-{
-  echo "## Decisions"
-  echo
-  head -c 9000 /dev/zero | tr '\0' 'y'
-  echo
-  echo "## Next"
-  echo
-  echo "keep going"
-} > "$BIG_PROJ/tasks/big-ledger.md"
+# One line, over the cap. This shape PASSED under the per-line `cut`, so it is
+# the control that keeps case 42 honest about which bound it measures.
+awk 'BEGIN {
+  print "## Decisions"; print ""
+  s = ""; for (i = 0; i < 2500; i++) s = s "y"; print s
+  print ""; print "## Next"; print ""; print "keep going"
+}' > "$BIG_PROJ/tasks/big-ledger.md"
 OUT42B=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
 CTX42B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT42B" 2>/dev/null)
 CTX42B_LEN=${#CTX42B}
-if (( CTX42B_LEN > 0 && CTX42B_LEN < 3000 )); then
-  echo "PASS: 42b a single 9000-char line is capped too (banner ${CTX42B_LEN} chars)"
+if (( CTX42B_LEN > 0 && CTX42B_LEN < 2600 )); then
+  echo "PASS: 42b a single 2500-char line is capped too (banner ${CTX42B_LEN} chars)"
 else
   echo "FAIL: 42b long-line ledger not capped (banner ${CTX42B_LEN} chars)"; FAIL=$((FAIL+1))
 fi
 
 # The cap must not be able to emit invalid UTF-8: jq encodes this string, and a
 # truncated multibyte tail would make the whole envelope fail to build, taking
-# the §11 re-read reminder down with the ledger.
-{
-  echo "## Decisions"
-  echo
-  for i in $(seq 1 400); do echo "- D$i: 决定 $i,中文字符串用来测试多字节截断的边界情况"; done
-  echo
-  echo "## Next"
-  echo
-  echo "继续"
-} > "$BIG_PROJ/tasks/big-ledger.md"
+# the §11 re-read reminder down with the ledger. jq slices by codepoint, which
+# is why the cap lives there rather than in `cut`.
+awk 'BEGIN {
+  print "## Decisions"; print ""
+  for (i = 1; i <= 60; i++) print "- D" i ": 决定 " i ",中文字符串用来测试多字节截断的边界"
+  print ""; print "## Next"; print ""; print "继续"
+}' > "$BIG_PROJ/tasks/big-ledger.md"
 OUT42C=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
 if [[ "$(jq -s 'length' <<<"$OUT42C" 2>/dev/null)" == "1" ]] \
    && jq -e '.hookSpecificOutput.additionalContext | length > 0' <<<"$OUT42C" >/dev/null 2>&1 \
@@ -1109,6 +1110,84 @@ else
   echo "FAIL: 42c multibyte truncation broke the envelope (out=$OUT42C)"; FAIL=$((FAIL+1))
 fi
 rm -rf "$BIG_PROJ"
+
+# Case 43 (pre-ship behaviour M1): `resume` delivers the ledger on every
+# manifest state, not only the two that happen to reach merge_banners. The
+# stale-root row is the one that matters: that is the session being told to run
+# /claudemd-refresh, so it is a long session, so it is one that will compact.
+RES_PROJ="$HOME/resumeproj"
+mkdir -p "$RES_PROJ/tasks"
+printf '## Decisions\n\n- D1: RESUME-DECISION-TEXT\n\n## Next\n\nRESUME-NEXT-TEXT\n' > "$RES_PROJ/tasks/r-ledger.md"
+RES_MANIFEST="$HOME/.claude/.claudemd-manifest.json"
+cp "$RES_MANIFEST" "$HOME/manifest.bak" 2>/dev/null || true
+
+res_case() {
+  local label="$1" expect="$2"
+  local out ctx objs
+  out=$(bash "$HOOK" <<<"{\"session_id\":\"res\",\"source\":\"resume\",\"cwd\":\"$RES_PROJ\"}" 2>/dev/null)
+  objs=$(jq -s 'length' <<<"$out" 2>/dev/null)
+  ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$out" 2>/dev/null)
+  if [[ "$objs" != "0" && "$objs" != "1" ]]; then
+    echo "FAIL: 43 $label emitted $objs JSON objects (must be at most 1)"; FAIL=$((FAIL+1)); return
+  fi
+  if [[ "$expect" == "yes" ]]; then
+    if grep -qF 'RESUME-DECISION-TEXT' <<<"$ctx"; then
+      echo "PASS: 43 resume delivers the ledger on the $label manifest state"
+    else
+      echo "FAIL: 43 resume dropped the ledger on the $label manifest state (objs=$objs ctx=$ctx)"; FAIL=$((FAIL+1))
+    fi
+  fi
+}
+
+# manifest with no .version — used to be a bare `exit 0` before any banner existed
+printf '{}\n' > "$RES_MANIFEST"
+res_case "no-.version" yes
+
+# installed version NEWER than the plugin — the stale-root branch, which
+# printed its own single object and exited
+PLUGIN_SEMVER=$(jq -r '.version' "$PLUGIN_ROOT/package.json" 2>/dev/null)
+printf '{"version":"99.9.9"}\n' > "$RES_MANIFEST"
+OUT43B=$(bash "$HOOK" <<<"{\"session_id\":\"res\",\"source\":\"resume\",\"cwd\":\"$RES_PROJ\"}" 2>/dev/null)
+CTX43B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT43B" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT43B" 2>/dev/null)" == "1" ]] \
+   && grep -qF 'RESUME-DECISION-TEXT' <<<"$CTX43B" \
+   && grep -qF 'stale plugin registration' <<<"$CTX43B"; then
+  echo "PASS: 43b the stale-root resume carries BOTH its own banner and the ledger, in one object"
+else
+  echo "FAIL: 43b stale-root resume lost a banner (objs=$(jq -s 'length' <<<"$OUT43B" 2>/dev/null) ctx=$CTX43B)"; FAIL=$((FAIL+1))
+fi
+
+# version match — the path that already worked, kept as the control
+printf '{"version":"%s"}\n' "$PLUGIN_SEMVER" > "$RES_MANIFEST"
+res_case "version-match" yes
+cp "$HOME/manifest.bak" "$RES_MANIFEST" 2>/dev/null || true
+rm -rf "$RES_PROJ"
+
+# Case 44 (pre-ship behaviour L7): a negative cap must not defeat the cap.
+# `--argjson max -5` makes jq read `.[0:-5]` as "all but the last 5", and
+# `length > -5` is always true, so one character restored the whole H4 defect.
+CAP_PROJ="$HOME/capproj"
+mkdir -p "$CAP_PROJ/tasks"
+awk 'BEGIN {
+  print "## Decisions"; print ""
+  for (i = 1; i <= 60; i++) print "- D" i ": decision line " i " with enough text to matter"
+  print ""; print "## Next"; print ""; print "go"
+}' > "$CAP_PROJ/tasks/cap-ledger.md"
+CAP_OK=1
+for bad in -5 abc 1e9 ""; do
+  o=$(CLAUDEMD_LEDGER_MAX_BYTES="$bad" bash "$HOOK" <<<"{\"session_id\":\"cap\",\"source\":\"compact\",\"cwd\":\"$CAP_PROJ\"}" 2>/dev/null)
+  c=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$o" 2>/dev/null)
+  if (( ${#c} >= 2600 )); then
+    CAP_OK=0
+    echo "      cap defeated by CLAUDEMD_LEDGER_MAX_BYTES='$bad' (${#c} chars)"
+  fi
+done
+if [[ "$CAP_OK" == "1" ]]; then
+  echo "PASS: 44 a negative / non-numeric / huge cap value cannot defeat the cap"
+else
+  echo "FAIL: 44 an out-of-shape cap value defeated the cap"; FAIL=$((FAIL+1))
+fi
+rm -rf "$CAP_PROJ"
 
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:

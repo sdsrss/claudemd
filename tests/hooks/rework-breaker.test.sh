@@ -272,5 +272,60 @@ else
   ng "14b: advisories named [$CONC_COUNTS], expected [8,16,]"
 fi
 
+# --- Case 15 (pre-ship L1): non-code files are not this hook's subject -------
+# The injected line quotes §1 "reproduce the failure, name the cause". That is
+# advice about code; on the eighth edit to a markdown file it is noise wearing a
+# spec citation.
+reset_state
+DOCS_OUT=""
+for _ in 1 2 3 4 5 6 7 8 9; do
+  DOCS_OUT="$DOCS_OUT$(fire sD /p/docs/NOTES.md)"
+done
+if [[ -z "$DOCS_OUT" && "$(log_rows)" == "0" ]]; then
+  ok "15: nine edits to a markdown file → silent"
+else
+  ng "15: quoted §1 root-cause at a docs file (out: $DOCS_OUT)"
+fi
+# Control: the same count on a code file still fires, so case 15 is measuring
+# the extension filter and not a broken harness.
+reset_state
+CODE_OUT=""
+for _ in 1 2 3 4 5 6 7 8; do CODE_OUT="$CODE_OUT$(fire sE /p/src/a.ts)"; done
+if [[ "$CODE_OUT" == *"at least 8 times"* ]]; then
+  ok "15b: control — the same eight edits to a .ts file do fire"
+else
+  ng "15b: the extension filter also silenced a code file: $CODE_OUT"
+fi
+
+# --- Case 16 (pre-ship L2): an unwritable ledger must not leak to stderr -----
+reset_state
+RO_STATE="$HOME/.claude/.claudemd-state"
+mkdir -p "$RO_STATE"
+: > "$RO_STATE/rework-sF.counts"
+chmod 444 "$RO_STATE/rework-sF.counts"
+RO_ERR=$(jq -cn '{session_id:"sF",tool_name:"Edit",tool_input:{file_path:"/p/src/a.js"}}' | bash "$HOOK" 2>&1 >/dev/null)
+RO_RC=$?
+chmod 644 "$RO_STATE/rework-sF.counts" 2>/dev/null || true
+if [[ -z "$RO_ERR" && "$RO_RC" == "0" ]]; then
+  ok "16: an unwritable ledger fails open silently (no shell redirection error on stderr)"
+else
+  ng "16: leaked to stderr on an unwritable ledger (rc=$RO_RC): $RO_ERR"
+fi
+
+# --- Case 17: the claim-file set is the invariant the fix establishes --------
+# The reviewer's point: at higher concurrency one process can win two multiples
+# and announce only the higher one, so the ADVISORY count is not invariant
+# while the CLAIM set is. Assert the thing that is actually guaranteed.
+reset_state
+for _ in $(seq 1 24); do ( fire sG /p/src/hot.js >/dev/null 2>&1 ) & done
+wait
+CLAIMS=$(find "$HOME/.claude/.claudemd-state" -maxdepth 1 -name 'rework-sG.fired-*' 2>/dev/null \
+  | sed 's/.*-//' | sort -n | tr '\n' ',')
+if [[ "$CLAIMS" == "8,16,24," ]]; then
+  ok "17: 24 concurrent edits claim exactly the multiples 8, 16 and 24 — once each"
+else
+  ng "17: claim set was [$CLAIMS], expected [8,16,24,]"
+fi
+
 echo
 claudemd_assert_summary

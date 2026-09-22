@@ -1211,7 +1211,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // /claudemd-clean-residue path.
   // v0.74.2 — the threshold judges the REAPABLE subset, not the whole
   // population. Those are different sets, and only one of them is actionable:
-  // three of the eight ephemeral kinds (session-ref / session-summary /
+  // three of the ten ephemeral kinds (session-ref / session-summary /
   // tmp-baseline) are written once per session and are supposed to sit here for
   // the whole retention window, so the total is session-rate x window and
   // crossed a fixed 50-file line permanently once v0.68/v0.69 added them to the

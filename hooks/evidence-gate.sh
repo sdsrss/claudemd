@@ -2,12 +2,20 @@
 # evidence-gate.sh — Stop hook (G1b, advisory only).
 #
 # Iron Law #2 says no completion claim without fresh evidence. It is one of the
-# 16 HARD rules the manifest marks `self`: the agent is the only thing checking
-# it. The 2026-07-24 labeling pass explains why nothing else does — six
-# detectors that tried were closed at a precision upper bound of 0.17, and all
-# six worked the same way, by reading the PROSE for evidence (looking for
-# `Checked:`, for digits, for the word `passed`). Prose has unbounded shapes;
-# precision collapsed.
+# 16 HARD rules the manifest marks `self`, and nothing that can BLOCK checks it:
+# `transcript-structure-scan.sh` does emit `§iron-law-2` rows, but it is
+# advisory and ships default-OFF.
+#
+# Why that scan is not enough, and why this hook is shaped differently: the
+# 2026-07-24 labeling pass hand-labeled all 178 flagged instances across the
+# detectors then collecting and closed six of the eight, at a pooled precision
+# upper bound of 0.17 over the labeled set. The closed reasons are not one
+# failure but several — `§5-hard-auth` could not separate an executed command
+# from a command string passed as data, `§11-post-compaction` hardcoded this
+# repo's plan-file naming. The one that matters here is `§iron-law-2`, which
+# hunted an evidence fingerprint in PROSE (`Checked:`, digits, the word
+# `passed`), and whose closed reason is that the fingerprint misses bolded
+# numbers and N/N ratios. Prose has unbounded shapes.
 #
 # So this one does not read prose for evidence. It reads the TRANSCRIPT for the
 # command output, which is a structural fact: either a Bash tool_result exists
@@ -16,7 +24,7 @@
 #
 # Verdict, three tiers (roadmap G1b):
 #   T1  a smoke entry point ran (the G1a anchor's command shape)   -> silent
-#   T2  a test / typecheck / build runner produced output          -> silent
+#   T2  a runner ran — by its command name, or by output shape    -> silent
 #   T3  some other command ran, no runner output                   -> advisory
 #   --  no non-error command output at all after the last edit     -> advisory
 #
@@ -67,13 +75,29 @@ case "$LAST_MSG" in
   *'[PARTIAL'*) exit 0 ;;
 esac
 
-# Completion-claim shapes, the same normalisation scripts/sampling-audit.js uses
-# after the Round-14 audit found the scanner saw `Done:` and `## Done` only:
-# `Done:`, `## Done`, `**Done**`, `### Done`, `- **Done:**`. 中文 `完成:` too —
-# the label is English by the §1 language contract, but the contract is a rule
-# and this is a detector, which has to match what gets written.
-DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|完成)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
-printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE" || exit 0
+# Completion-claim shapes. Wider than scripts/sampling-audit.js's, deliberately
+# — that one is `/^(?:#{1,4}\s*)?(?:\*\*)?Done\b(?:\*\*)?\s*[:：]/m`: no 中文, no
+# list prefix, colon mandatory. A pre-ship replay of this project's own 22
+# transcripts matched their FINAL assistant message exactly once. A detector
+# that cannot see its corpus's completion shapes collects nothing in 30 days,
+# which makes the §13.3 promotion decision uninterpretable rather than safe.
+#
+# Two patterns. DONE_RE is the labelled form — `Done:` / `## Done` / `**Done**`
+# / `### Done` / `- **Done:**` / `Shipped:`. DONE_TAIL_RE is what the replay
+# actually found: 中文 completion reads as a verb compound, not a label
+# (`发布完成。`, `清理完成。`, `审核完成,报告已生成`, `**v0.78.0 已发布。**`).
+# The character class excludes 没 / 未 / 不 before 完成, so "还没完成" — the
+# negation, which is the opposite claim — does not match.
+#
+# Widening a CLAIM detector buys false positives, and a false positive here is
+# a nag. All three FP controls still gate every shape added: a code edit must
+# have happened, `[PARTIAL` suppresses, and the evidence lookup still has to
+# come up empty.
+DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
+DONE_TAIL_RE='[^[:space:]没未不]完成|已(发布|上线|实现|修复|生成|完成)'
+printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE" \
+  || printf '%s' "$LAST_MSG" | grep -Eq "$DONE_TAIL_RE" \
+  || exit 0
 
 TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
 if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
@@ -111,14 +135,21 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
            then "E" else empty end)
         elif .name == "Bash" then
           "U\t" + (.id // "") + "\t"
-          + ((.input.command // "") | gsub("[\\r\\n]+"; " ") | .[0:300])
+          + ((.input.command // "") | gsub("[\\r\\n\\t]+"; " ") | .[0:300])
+        elif .name == "BashOutput" then
+          # A backgrounded run answers its own Bash call with "Command running
+          # in background", and the real output arrives later on a BashOutput
+          # whose id is a different one. Indexed with an EMPTY command so T1 and
+          # the command half of T2 cannot match it and only its OUTPUT can,
+          # which is the honest reading: we know what it printed, not what ran.
+          "U\t" + (.id // "") + "\t"
         else empty end
       elif .type == "tool_result" then
         "R\t" + (.tool_use_id // "") + "\t"
         + (if .is_error == true then "1" else "0" end) + "\t"
         + ((.content // "")
            | if type == "array" then (map(.text // "") | join(" ")) else tostring end
-           | gsub("[\\r\\n]+"; " ")
+           | gsub("[\\r\\n\\t]+"; " ")
            | (if length > 900 then .[:100] + " … " + .[-800:] else . end))
       else empty end)
   | .[]' 2>/dev/null)
@@ -171,7 +202,7 @@ case "$VERDICT" in
 esac
 
 if [[ "$VERDICT" == "command-but-no-runner" ]]; then
-  DETAIL='commands ran after the last code edit, but none of them produced test / typecheck / build output.'
+  DETAIL='commands ran after the last code edit, but none of them was a test / typecheck / build runner and none produced runner output.'
 else
   DETAIL='no command output at all after the last code edit.'
 fi

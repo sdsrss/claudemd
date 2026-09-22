@@ -41,9 +41,9 @@ const knownMarketplacesPath = () => path.join(home(), '.claude/plugins/known_mar
 // (v0.69.0 pre-tag review): the seam is now ONE function instead of three, and
 // it reaches every JS caller. It does NOT reach the bash hooks — they resolve
 // `STATE_DIR="$HOME/.claude/.claudemd-state"` directly, and they are what
-// writes every ephemeral class the reapers delete (ext-read-*, vocab-scan-*,
-// failopen-*, session-start-<sid>.ref, tmp-baseline-<sid>.txt,
-// session-summary-<sid>.lastrun). Redirect this variable and you still get a
+// writes the ephemeral classes the reapers delete. The authoritative list is
+// `STATE_EPHEMERAL` in scripts/clean-residue.js — naming a subset here and
+// calling it "every" is how this comment came to omit four of them. Redirect this variable and you still get a
 // directory no hook has written to; redirect HOME and you get both sides.
 // Anything that recursively DELETES the result must not trust it blindly —
 // see the basename guard on uninstall.js's --purge path.

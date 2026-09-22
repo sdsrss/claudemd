@@ -175,9 +175,9 @@ Skill 工具调用          61 / 33,140 tool_use  =  0.2%
 | 事件 | 可阻断 | additionalContext | 本仓库现状(`hooks/hooks.json`) | 本路线图用途 |
 |---|---|---|---|---|
 | `PreToolUse` | 是 | 是 | matcher 仅 `Bash`、`Read` | — |
-| `PostToolUse` | 否 | 是 | matcher `*` | G2 / G6(`Edit\|Write`,官方语法已核实) |
+| `PostToolUse` | 否 | **是(本轮实测:模型原样引回注入的 token)** | 两个条目:matcher `*`(transcript-vocab-scan)与 `Edit\|Write`(rework-breaker,v0.90.0) | G2 已落地 / G6 不做 |
 | `UserPromptSubmit` | 是 | 是 | version-sync、memory-prompt-hint | G4-B2 |
-| `Stop` | 是(exit 2) | 有限;有 `last_assistant_message`;`transcript_path` 可能滞后 | 5 个脚本(stderr advisory);`transcript-structure-scan.sh` 默认关闭 | **G1b**、G7 |
+| `Stop` | 是(exit 2) | 有限;有 `last_assistant_message`;`transcript_path` 可能滞后 | 6 个脚本;其中 5 个写 stderr advisory(`session-summary.sh` 不写),`transcript-structure-scan.sh` 与 v0.90.0 的 `evidence-gate.sh` 默认关闭 | **G1b** 已落地、G7 |
 | `SessionStart` | 否 | 是 | `source=compact` 分支已实现(F4) | G7 注入 |
 | `PreCompact` / `PostCompact` | — | — | 未注册;**PreCompact 实测会触发**(手动 `/compact`),PostCompact 本轮未取得证据 | G7 写账本 |
 | `SubagentStart` / `SubagentStop` | — / 是 | — | 未注册;**两者实测都触发**,载荷带 `agent_id` / `agent_type` / `agent_transcript_path` | G5 |

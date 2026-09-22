@@ -104,15 +104,18 @@ Emitters, derived from source and gated by
 - `memory-prompt-hint.sh` — UserPromptSubmit; lists MEMORY.md files matching
   the prompt that have not been Read this session.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
-- `rework-breaker.sh` — PostToolUse (`Edit|Write`); one line naming how many
-  times this session has edited the file, at each multiple of the G2 threshold.
+- `rework-breaker.sh` — PostToolUse (`Edit|Write`); one line naming a LOWER
+  BOUND on how many times this session has edited the file — the multiple of
+  the G2 threshold this process won, not the tally it read, because concurrent
+  Edit hooks interleave and only the claim is exact. Code files only.
   It reads `.tool_input.file_path` and `.session_id`, and quotes the path from
   the EVENT rather than from its own state file, because that state is keyed by
   checksum and a collision there must not be able to name the wrong file.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
-context schema, so `mem-audit.sh`, `residue-audit.sh` and
-`sandbox-disposal-check.sh` write advisory text to `stderr`, and
+context schema, so the ones with something to say write advisory text to
+`stderr` — `mem-audit.sh`, `residue-audit.sh`, `sandbox-disposal-check.sh`,
+`transcript-structure-scan.sh` and `evidence-gate.sh` — and
 `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for
 `session-start-check.sh` to turn into a banner at the START of the next

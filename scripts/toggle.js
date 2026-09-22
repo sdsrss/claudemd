@@ -24,10 +24,11 @@ Wrapped by /claudemd-toggle.
 
 Exit codes: 0 success | 1 unknown hook / no arg | 2 argv-shape error.`;
 
-// The names a user has in hand come from README's "15 shell hooks" row, which
+// The names a user has in hand come from README's "N shell hooks" row, which
 // lists them by FILE — `banned-vocab-check`, `pre-bash-safety-check`,
-// `ship-baseline-check`. Three of the fifteen differ from the displayName this
-// map is keyed by (the other twelve are identical), so copying that row got a
+// `ship-baseline-check`. Exactly those three differ from the displayName this
+// map is keyed by and the rest are identical (the row's count is derived from
+// the registry, so it is not repeated here), so copying that row got a
 // bare `unknown hook: banned-vocab-check` and exit 1, with the valid list
 // printed only by the no-argument path the user did not take. Map the file
 // spelling back rather than ACCEPTING it: a second accepted vocabulary would
