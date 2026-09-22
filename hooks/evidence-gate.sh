@@ -94,10 +94,31 @@ esac
 # have happened, `[PARTIAL` suppresses, and the evidence lookup still has to
 # come up empty.
 DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
-DONE_TAIL_RE='[^[:space:]没未不]完成|已(发布|上线|实现|修复|生成|完成)'
-printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE" \
-  || printf '%s' "$LAST_MSG" | grep -Eq "$DONE_TAIL_RE" \
-  || exit 0
+DONE_TAIL_RE='[^[:space:]]完成|已(发布|上线|实现|修复|生成|完成)'
+# Round-17 ALG-M2. The exclusion used to live inside the class as
+# `[^[:space:]没未不]完成`, which only rejected a negation sitting IMMEDIATELY
+# before the word — so `任务不能完成`, `无法完成验证` and `这个还没有完成` all
+# read as completion claims, 3 of 3 measured. A negation and the word it negates
+# are normally a word or two apart.
+#
+# Bounded distance rather than a clause split: splitting on Chinese punctuation
+# needs a multibyte bracket expression, and a bracket of multibyte characters is
+# byte-wise and wrong under LC_ALL=C — which is also what the old class was, its
+# 没未不 decomposing into nine individual bytes there. Both greps below therefore
+# FIX the locale to C and the window is counted in BYTES: 9 of them, i.e. up to
+# three CJK characters between the negation and 完成. Same window on every
+# machine, instead of nine characters here and three there.
+#
+# Wide enough for 不能 / 还没有 / 无法…; narrow enough that
+# `修复了不少问题，功能完成` (six characters of gap) stays a claim. The veto is
+# message-scoped, so a message carrying BOTH a real claim and a negated one is
+# suppressed — the conservative direction for an advisory whose cost is a nag,
+# and the structural `Done:` form above is checked first and is not vetoed.
+DONE_NEG_RE='(不|没|未|无法|尚未|还没|难以)(.{0,9})?完成'
+if ! printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE"; then
+  printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_TAIL_RE" || exit 0
+  printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_NEG_RE" && exit 0
+fi
 
 TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
 if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
@@ -186,14 +207,20 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CM
     tier = 0
     for (i = 1; i <= n; i++) {
       if (ridx[i] <= lastedit) continue
-      if (rerr[i] == "1") continue
       if (!(rid[i] in cmd)) continue
+      # Round-17 HK-M4/FLW-M1: an errored result is still a result. Skipping it
+      # silently left tier at 0, and the advisory then told the agent there was
+      # "no command output at all" — the more serious state described as the
+      # absence of anything. The join is the same one the tiers use, so this
+      # counts only errors belonging to a command this stream actually saw.
+      if (rerr[i] == "1") { errored = 1; continue }
       if (tier < 1) tier = 1
       if (cmd[rid[i]] ~ t1) { tier = 3; break }
       if ((cmd[rid[i]] ~ t2c || rtxt[i] ~ t2) && tier < 2) tier = 2
     }
     if (tier >= 2) print "verified"
     else if (tier == 1) print "command-but-no-runner"
+    else if (errored) print "error-output-only"
     else print "no-command-output"
   }' 2>/dev/null)
 
@@ -201,11 +228,17 @@ case "$VERDICT" in
   verified | no-code-edit | '') exit 0 ;;
 esac
 
-if [[ "$VERDICT" == "command-but-no-runner" ]]; then
-  DETAIL='commands ran after the last code edit, but none of them was a test / typecheck / build runner and none produced runner output.'
-else
-  DETAIL='no command output at all after the last code edit.'
-fi
+case "$VERDICT" in
+  command-but-no-runner)
+    DETAIL='commands ran after the last code edit, but none of them was a test / typecheck / build runner and none produced runner output.'
+    ;;
+  error-output-only)
+    DETAIL='every command after the last code edit FAILED. A failing run is not the verification a Done claim needs — it is evidence against it.'
+    ;;
+  *)
+    DETAIL='no command output at all after the last code edit.'
+    ;;
+esac
 
 EXTRA=$(jq -cn --arg v "$VERDICT" --argjson w "$EG_WINDOW" '{verdict:$v, window:$w}' 2>/dev/null) || EXTRA='null'
 hook_record evidence-gate evidence-advisory "$EXTRA" '§iron-law-2' "$SESSION_ID"

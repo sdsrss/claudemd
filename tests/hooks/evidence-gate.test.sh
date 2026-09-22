@@ -148,7 +148,12 @@ fi
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(run_hook "$DONE_CLAIM")
-if [[ "$OUT" == *"no command output at all"* ]]; then
+# The invariant is that the advisory FIRES: a red run is not evidence for a Done
+# claim. The wording it fires with moved in round-17 (HK-M4) — this case used to
+# assert "no command output at all", which is the defect that finding is about:
+# the gate described a failing run as silence. Case 21 pins the new wording and
+# the verdict value; this one stays about the decision.
+if [[ "$OUT" == *"Iron Law #2"* && "$OUT" != *"no command output at all"* ]]; then
   ok "6: a red run is not evidence for a Done claim (is_error → not counted)"
 else
   ng "6: an errored result satisfied the gate: $OUT"
@@ -469,6 +474,82 @@ if [[ -z "$O" && "$(log_rows)" == "0" ]]; then
   ok "20b: control — a .md edit is still not code work"
 else
   ng "20b: the widening swallowed a non-code extension: $O"
+fi
+
+# --- Case 21 (round-17 HK-M4/FLW-M1): a FAILED run is not "nothing ran" ------
+# The awk skipped errored results before the tier loop could see them, so tier
+# stayed 0 and the advisory said "no command output at all after the last code
+# edit" — the more serious state reported as the absence of anything. An agent
+# reading that goes looking for a command it already ran and watched fail.
+{
+  row_edit /p/src/a.js
+  row_bash tu_fail "npm test"
+  row_result tu_fail "1 failing" true
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+V21=$(jq -r 'select(.hook=="evidence-gate") | .extra.verdict' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | head -n1)
+if [[ "$OUT" == *"Iron Law #2"* && "$OUT" == *"FAILED"* && "$OUT" != *"no command output at all"* && "$V21" == "error-output-only" ]]; then
+  ok "21: a failing test run is reported as a failing run, not as silence"
+else
+  ng "21: expected the error-output-only advisory, got verdict='$V21' out: $OUT"
+fi
+
+# Control: the SAME shape with the error flag cleared must still be `verified`,
+# so case 21 is about the error flag and not about the command or the ordering.
+{
+  row_edit /p/src/a.js
+  row_bash tu_ok "npm test"
+  row_result tu_ok "1 passing" false
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "21b: control — the same run without the error flag is verified, silently"
+else
+  ng "21b: a passing runner should verify, got: $OUT"
+fi
+
+# --- Case 22 (round-17 ALG-M2): negation is a clause away, not a character ---
+# `[^[:space:]没未不]完成` rejected a negation only when it sat IMMEDIATELY
+# before the word, so all three of these read as completion claims (3/3
+# measured). The FP is cheap individually and it pollutes the §13.3 promotion
+# clock, which is collecting exactly this signal right now.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+EG_NEG2_OK=1
+for msg in '任务不能完成,先记在这里' '无法完成验证,缺少 fixture' '这个还没有完成'; do
+  O=$(run_hook "$msg")
+  [[ -z "$O" ]] || {
+    EG_NEG2_OK=0
+    echo "      false claim detected in: $msg"
+  }
+done
+if [[ "$EG_NEG2_OK" == "1" ]]; then
+  ok "22: a negation a word or two before 完成 is still a negation"
+else
+  ng "22: non-adjacent negation still reads as a completion claim"
+fi
+
+# Control: the veto must not swallow real claims whose sentence merely CONTAINS
+# a negation further away than the window. Six characters of gap here.
+EG_NEG2B_OK=1
+for msg in '修复了不少问题,功能完成' '发布完成。' '审核完成,报告已生成'; do
+  O=$(run_hook "$msg")
+  [[ "$O" == *"Iron Law #2"* ]] || {
+    EG_NEG2B_OK=0
+    echo "      real claim swallowed: $msg"
+  }
+done
+if [[ "$EG_NEG2B_OK" == "1" ]]; then
+  ok "22b: control — a distant negation does not veto a real completion claim"
+else
+  ng "22b: the veto is too wide and swallowed a real claim"
 fi
 
 echo
