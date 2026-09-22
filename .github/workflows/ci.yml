@@ -41,6 +41,16 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege, stated rather than inherited (round-17 REL-L3). With no
+# `permissions:` block the GITHUB_TOKEN takes the repository-wide default, which
+# a settings change can widen without touching this file — and this workflow
+# runs on `pull_request`, so that token is reachable from a fork's branch name
+# and from whatever the matrix executes. It only reports: it checks out, installs
+# and runs the suite, and writes nothing back. npm-publish.yml declares its own
+# wider set (`id-token: write`) for provenance; nothing here needs it.
+permissions:
+  contents: read
+
 jobs:
   # The only job that installs devDependencies. It exists because eslint and
   # prettier had no enforcement point at all: `npm run lint` exited 1 on a clean

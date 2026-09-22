@@ -191,6 +191,27 @@ jobs:
           echo "tag $GITHUB_REF_NAME matches package.json version $pkg"
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        # The dist-tag is DERIVED from the version, never defaulted (round-17
+        # REL-M4). This workflow triggers on `v*.*.*`, which `v1.0.0-rc.1`
+        # satisfies, and `npm publish` with no `--tag` writes `dist-tags.latest`
+        # — the tag a cold `npx claudemd-cli` resolves, and README's quick start
+        # is an `npx` line. So the first prerelease ever tagged would have become
+        # what every new user installs, with nothing in the tree to stop it.
+        #
+        # Reading package.json rather than parsing GITHUB_REF_NAME: the step
+        # above has already refused to continue unless the two agree, so this is
+        # the same value with one less parser. A `-` anywhere in a semver version
+        # is the prerelease separator; build metadata (`+`) is not a prerelease
+        # and correctly stays on `latest`.
+        # tests/scripts/workflow-step-exec.test.js executes this body.
+        run: |
+          set -eu
+          pkg=$(node -p "require('./package.json').version")
+          case "$pkg" in
+            *-*) dist_tag=next ;;
+            *)   dist_tag=latest ;;
+          esac
+          echo "publishing $pkg to dist-tag $dist_tag"
+          npm publish --provenance --access public --tag "$dist_tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

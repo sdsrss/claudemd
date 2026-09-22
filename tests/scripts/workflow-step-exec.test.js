@@ -270,3 +270,70 @@ test('REL-M5: the publish job checks out full history, which merge-base needs', 
       'cannot answer over a shallow object store'
   );
 });
+
+test('REL-M4: the publish step derives its dist-tag, so a prerelease cannot take `latest`', () => {
+  // Round-17 REL-M4. The trigger is `v*.*.*`, which `v1.0.0-rc.1` satisfies, and
+  // `npm publish` with no `--tag` writes `dist-tags.latest` — the tag a cold
+  // `npx claudemd-cli` resolves, and README's quick start is an `npx` line. The
+  // first prerelease ever tagged would have become what every new user installs.
+  //
+  // The step BODY is executed, against an `npm` shim that records its argv: a
+  // regex over the YAML would be satisfied by the string `--tag` appearing in a
+  // comment, which is how the neighbouring gates in this file were written wrong
+  // the first time.
+  const body = stepBody('Publish to npm');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-wfdist-'));
+  try {
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin);
+    const argvLog = path.join(root, 'npm-argv.txt');
+    fs.writeFileSync(
+      path.join(bin, 'npm'),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > ${JSON.stringify(argvLog)}\n`
+    );
+    fs.chmodSync(path.join(bin, 'npm'), 0o755);
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+
+    const publishedTag = version => {
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'x', version }));
+      fs.rmSync(argvLog, { force: true });
+      const r = runStep(body, root, env);
+      assert.equal(
+        r.status,
+        0,
+        `the step must succeed for ${version}.\nstdout: ${r.stdout}\nstderr: ${r.stderr}`
+      );
+      const argv = fs.readFileSync(argvLog, 'utf8');
+      const m = argv.match(/--tag (\S+)/);
+      assert.ok(m, `npm was invoked without --tag for ${version}: ${argv}`);
+      return m[1];
+    };
+
+    assert.equal(publishedTag('1.2.3'), 'latest', 'a release must still take the latest dist-tag');
+    assert.equal(publishedTag('1.2.3-rc.1'), 'next', 'a prerelease must not take the latest dist-tag');
+    assert.equal(publishedTag('2.0.0-beta.4'), 'next', 'any prerelease identifier, not just rc');
+    // Build metadata is not a prerelease and must stay on `latest` — the `-`
+    // test is about the semver prerelease separator, not about punctuation.
+    assert.equal(publishedTag('1.2.3+build.9'), 'latest', 'build metadata is not a prerelease');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('REL-L3: every workflow declares its own top-level permissions', () => {
+  // Round-17 REL-L3. With no `permissions:` block the GITHUB_TOKEN takes the
+  // repository-wide default, which a settings change can widen without touching
+  // any file in this tree. ci.yml runs on `pull_request`, so that token is in
+  // scope for whatever the matrix executes.
+  const dir = path.join(REPO_ROOT, '.github/workflows');
+  const files = fs.readdirSync(dir).filter(f => /\.ya?ml$/.test(f));
+  assert.ok(files.length >= 2, `expected several workflows, found ${files.length}`);
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    assert.match(
+      src,
+      /^permissions:\n\s+\S+:/m,
+      `.github/workflows/${f} declares no top-level permissions: block, so its GITHUB_TOKEN inherits the repository default`
+    );
+  }
+});
