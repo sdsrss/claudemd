@@ -113,6 +113,44 @@ const codeOf = src =>
     .filter(l => !/^\s*#/.test(l))
     .join('\n');
 
+test('FLW-M3: README states what happens to an already-installed spec, pinned whole-line', () => {
+  // Round-17 FLW-M3. README said an already-installed claudemd spec is
+  // "overwritten **without** a backup". True until v0.83.0, false after it:
+  // install.js's overwrite-spec branch copies the existing spec files to
+  // `spec-backup-<ISO>/` whenever they do not match the shipped ones. The
+  // v0.23.11 half of the sentence — that it stays OUT of the personal
+  // `backup-<ISO>/` namespace, so `restore` cannot return a stale spec — is
+  // still true and is kept.
+  //
+  // WHOLE LINE, exactly once: a fragment match would survive someone
+  // re-appending "without a backup" as a trailing clause. The pin covers this
+  // sentence only; the backup-before-overwrite sentence preceding it in the same
+  // paragraph is not constrained here.
+  const CLAIM =
+    'An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): the sole entry in that namespace is always your own content, so `restore` can never return a stale spec instead. It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept).';
+  const hits = README.split('\n').filter(l => l.includes(CLAIM));
+  assert.equal(hits.length, 1, `README.md must carry this sentence verbatim, exactly once:\n  ${CLAIM}`);
+
+  // Joined to the code, so the sentence cannot outlive the branch it describes.
+  const install = fs.readFileSync(path.join(REPO_ROOT, 'scripts/install.js'), 'utf8');
+  assert.match(
+    install,
+    /BACKUP_LABELS\.spec/,
+    'install.js no longer writes the spec-backup namespace the README promises'
+  );
+  assert.match(
+    install,
+    /homeSpecMatchesShipped\(pluginRoot\)/,
+    'install.js no longer has the byte-comparison the README calls the exemption'
+  );
+  const backup = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lib/backup.js'), 'utf8');
+  assert.match(
+    backup,
+    /spec: 'spec-backup'/,
+    "the spec-backup label the README names by path is gone from backup.js"
+  );
+});
+
 test('R10-14: README does not claim a PreToolUse:Bash hook lacks the readonly fast-path', () => {
   const withFastPath = hookSources()
     .filter(h => /hook_is_readonly_bash/.test(codeOf(h.src)))
