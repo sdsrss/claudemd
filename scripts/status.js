@@ -99,6 +99,16 @@ const SUB_FEATURE_TOGGLES = [
     partOf: 'all hooks',
     disables: 'telemetry appends to ~/.claude/logs/claudemd.jsonl; enforcement is unaffected',
   },
+  // Its own entry because the one above does NOT cover it (round-16 7.1 /
+  // round-17 HK-M2): a sandboxed probe that set DISABLE_RULE_HITS_LOG believed
+  // it had stopped writing to the live state dir and was still rewriting
+  // hook-root.json on every session start and end.
+  {
+    envVar: 'DISABLE_HOOK_ROOT_RECORD',
+    partOf: 'session-start-check.sh, session-end-check.sh',
+    disables:
+      'the ~/.claude/.claudemd-state/hook-root.json write recording which plugin root fired; doctor then falls back to cache resolution',
+  },
   // 5h/7d only — `ctx` renders unconditionally (statusline.sh:102). This said
   // "ctx/5h/7d" while the script's own header and README:64 both said 5h/7d
   // (2026-08-29 audit R10-21a), and this is the string /claudemd-status prints

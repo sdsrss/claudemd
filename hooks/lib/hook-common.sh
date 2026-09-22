@@ -506,6 +506,12 @@ hook_install_sentinel_write() {
 # Callers are NON-BLOCKING hooks only. Do not call this from the pre-bash path:
 # tests/hooks/hook-budget.test.sh bounds its cost.
 hook_record_plugin_root() {
+  # Round-16 7.1 / round-17 HK-M2. This writes to ~/.claude on every session
+  # start and end, and `DISABLE_RULE_HITS_LOG=1` does NOT cover it — a sandboxed
+  # audit that set the telemetry switch and believed it had stopped writing to
+  # the live state dir was still rewriting hook-root.json under it. Own switch,
+  # because it is a separate write to a separate file with a separate purpose.
+  [[ "${DISABLE_HOOK_ROOT_RECORD:-0}" == "1" ]] && return 0
   local root="${1:-}" sid="${2:-}"
   [[ -n "$root" && -d "$root" ]] || return 0
   # printf-built JSON cannot carry these. A raw newline is the same class of
@@ -527,6 +533,25 @@ hook_record_plugin_root() {
   fi
   version=$(printf '%s' "$version" | tr -cd '0-9A-Za-z._-')
   sid=$(printf '%s' "$sid" | tr -cd '0-9A-Za-z._-')
+
+  # An EMPTY sid must not erase a recorded one (round-16 M-1 / round-17 HK-M3).
+  # session-end-check.sh calls this before it has parsed its event — deliberately,
+  # so the root is recorded even with no jq on the box — and had nothing to pass.
+  # Every clean exit therefore rewrote this file with `"sid":""`, and the sid is
+  # what doctor uses to tell "recorded by the session that is running" from
+  # "left by an older one". The root, which is the field this file exists for, is
+  # still written from the live BASH_SOURCE either way; only the sid is carried.
+  if [[ -z "$sid" && -r "$state_dir/hook-root.json" ]]; then
+    local prev prev_sid
+    prev=$(tr -d '\n' < "$state_dir/hook-root.json" 2>/dev/null)
+    case "$prev" in
+      *'"sid":"'*)
+        prev_sid="${prev##*\"sid\":\"}"
+        prev_sid="${prev_sid%%\"*}"
+        sid=$(printf '%s' "$prev_sid" | tr -cd '0-9A-Za-z._-')
+        ;;
+    esac
+  fi
 
   local tmp="$state_dir/hook-root.json.$$"
   if printf '{"root":"%s","ts":"%s","version":"%s","sid":"%s"}\n' \

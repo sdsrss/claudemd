@@ -264,6 +264,18 @@ export DISABLE_RULE_HITS_LOG=1             # stop every hook from appending to
                                            # /claudemd-rules and the §13.1 demote loop
                                            # read. Set it while hand-probing a hook so
                                            # the probe does not land in the real corpus.
+                                           # It does NOT cover hook-root.json — see below.
+
+export DISABLE_HOOK_ROOT_RECORD=1          # stop SessionStart/SessionEnd rewriting
+                                           # ~/.claude/.claudemd-state/hook-root.json,
+                                           # the record of which plugin root actually
+                                           # fired. Separate switch because
+                                           # DISABLE_RULE_HITS_LOG covers the jsonl and
+                                           # nothing else: a sandboxed probe that set
+                                           # only that one was still writing to the live
+                                           # state dir. Turning this off makes
+                                           # /claudemd-doctor's hook-drift row fall back
+                                           # to cache resolution.
 
 export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
                                            # cadence advisory inside session-end-check;

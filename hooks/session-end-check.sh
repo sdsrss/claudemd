@@ -41,7 +41,13 @@ hook_kill_switch SESSION_END_CHECK || exit 0
 # LIB_DIR is hooks/lib, so the plugin root is two levels up, not one. Placed
 # before the jq requirement below: this write needs none of it.
 PLUGIN_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
-hook_record_plugin_root "$PLUGIN_ROOT" "${CLAUDE_SESSION_ID:-}" 2>/dev/null || true
+# No sid here, and saying so beats reaching for one that does not exist: this
+# runs before the event is parsed, and `CLAUDE_SESSION_ID` — what this argument
+# used to be — is a variable Claude Code never exports, so it read as an empty
+# string on every invocation and blanked the recorded sid (round-16 M-1 /
+# round-17 HK-M3). hook_record_plugin_root carries the recorded one forward when
+# handed nothing.
+hook_record_plugin_root "$PLUGIN_ROOT" "" 2>/dev/null || true
 
 hook_require_jq || { hook_record_failopen session-end-check jq-missing; exit 0; }
 

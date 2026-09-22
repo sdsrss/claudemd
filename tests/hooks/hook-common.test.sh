@@ -173,6 +173,38 @@ HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$NEWLINE_ROOT" "sid-3"
 assert_contains "hook_record_plugin_root: a newline-carrying root leaves the prior record intact" \
   '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
 
+# HK-M3 (round-17): an EMPTY sid must carry the recorded one forward, not blank
+# it. session-end-check.sh calls this before parsing its event and passed
+# `${CLAUDE_SESSION_ID:-}`, a variable Claude Code never exports, so every clean
+# exit rewrote the file with `"sid":""` — and the sid is how doctor tells "the
+# session that is running recorded this" from "an older one left it".
+mkdir -p "$HOOKROOT_SANDBOX/second-root"
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/second-root" ""
+assert_contains "hook_record_plugin_root: an empty sid keeps the recorded one" \
+  '"sid":"sid-1"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+# The control: the ROOT still updates on that same call, so the carry-over is a
+# carry-over and not a silent no-op that would hide a stale root.
+assert_contains "hook_record_plugin_root: an empty sid still updates the root" \
+  "\"root\":\"$HOOKROOT_SANDBOX/second-root\"" "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+# And a non-empty sid still overwrites — the carry-over must not become a lock.
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/second-root" "sid-9"
+assert_contains "hook_record_plugin_root: a real sid still replaces the recorded one" \
+  '"sid":"sid-9"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+
+# HK-M2 (round-17): its own kill switch. DISABLE_RULE_HITS_LOG covers the jsonl
+# and nothing else, so a sandboxed probe that set only that one was still
+# rewriting this file in the live state dir on every session start and end.
+HOOKROOT_PRE=$(cat "$HOOKROOT_FILE" 2>/dev/null)
+HOME="$HOOKROOT_SANDBOX" DISABLE_HOOK_ROOT_RECORD=1 \
+  hook_record_plugin_root "$HOOKROOT_SANDBOX/fake-root" "sid-switched-off"
+assert_eq "hook_record_plugin_root: DISABLE_HOOK_ROOT_RECORD=1 writes nothing" \
+  "$HOOKROOT_PRE" "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+# Control: the same call without the switch DOES write, so the case above is
+# about the switch and not about an argument that was never going to record.
+HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/fake-root" "sid-switched-off"
+assert_contains "hook_record_plugin_root: the same call records with the switch unset" \
+  '"sid":"sid-switched-off"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
+
 rm -rf "${HOOKROOT_SANDBOX:?}"
 FAIL=$((FAIL + CLAUDEMD_ASSERT_FAIL))
 
