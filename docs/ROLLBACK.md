@@ -20,10 +20,16 @@ Both are ref-integrity rules. Neither requires a status check, because GitHub ap
 required checks to direct pushes as well, a just-written commit has no check run yet, and
 the only account with write access here is the maintainer's — so that rule would not stop
 an outside contributor (there are none with push rights), it would end the atomic ship
-pipeline and replace it with a PR round-trip. The ship runbook's "wait for the tag's CI to
-go green before `gh release create`" step therefore remains the only thing standing between
-a red tag and marketplace consumers — v0.73.0, v0.74.0 and v0.75.0 all published with their
-`ci` run red on the macOS leg (Round-14 audit REL-H2). What the tag ruleset does buy: a
+pipeline and replace it with a PR round-trip.
+Nothing stands between a red tag and marketplace consumers, and no release-time step could: pushing the tag IS the marketplace publish.
+`hooks/session-start-check.sh` polls `git ls-remote` for the newest upstream tag and banners
+it, so a consumer sees the new version the moment the ref lands, whatever `gh release create`
+does afterwards. Measured over the last 8 releases: each was published 15-89 s after its own
+tag object, while that tag's `ci` run took 10-13 minutes (v0.91.0 — tag 06:54:45Z, release
+06:55:14Z, `ci` green 07:07:07Z). The gates that do exist are the runbook's own and both sit
+BEFORE the tag: the main-branch CI wait and the pre-tag review, each self-imposed — v0.73.0,
+v0.74.0 and v0.75.0 all published with their `ci` run red on the macOS leg (Round-14 audit
+REL-H2). What the tag ruleset does buy: a
 pushed release tag can no longer be moved or deleted, so the same version string cannot
 later serve different code to marketplace consumers. Per failure point:
 

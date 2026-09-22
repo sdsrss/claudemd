@@ -196,6 +196,47 @@ test('0.82.0: ROLLBACK names the rulesets it describes, and their load-bearing r
   }
 });
 
+test('REL-H1: ROLLBACK says who gates a red tag, pinned whole-line', () => {
+  // Round-17 REL-H1. This doc claimed the ship runbook has a "wait for the tag's
+  // CI to go green before `gh release create`" step and called that step "the only
+  // thing standing between a red tag and marketplace consumers". The runbook has
+  // no such step — it pushes the tag, creates the release immediately, and
+  // verifies afterwards — and no step there could be one: consumers never read
+  // the release object. This suite was 9/9 green over that sentence for two
+  // releases, because everything it pins is job names, ruleset names and revert
+  // mechanisms, and prose is not a job name.
+  //
+  // WHOLE LINE, exactly once. A substring join catches deletion and never
+  // reversal: `, but a green tag CI is still required first` appended here would
+  // satisfy any match on a fragment. The pin covers THIS line and nothing
+  // adjacent — the required-status-check rationale above it and the tag-ruleset
+  // immutability note below it are not constrained by this test.
+  const CLAIM =
+    'Nothing stands between a red tag and marketplace consumers, and no release-time step could: pushing the tag IS the marketplace publish.';
+  const hits = read('docs/ROLLBACK.md')
+    .split('\n')
+    .filter(l => l.trim() === CLAIM);
+  assert.equal(
+    hits.length,
+    1,
+    `docs/ROLLBACK.md must carry this line verbatim, exactly once:\n  ${CLAIM}`
+  );
+
+  // And it has to stay true, which rests on one mechanism: the upgrade banner
+  // polls REFS, so the tag push is itself the thing consumers see.
+  const sessionStart = read('hooks/session-start-check.sh');
+  assert.match(
+    sessionStart,
+    /git ls-remote/,
+    'session-start-check.sh no longer polls tags — the pinned claim rests on it'
+  );
+  assert.doesNotMatch(
+    sessionStart,
+    /gh release/,
+    'session-start-check.sh now reads release objects, which would make the pinned claim false'
+  );
+});
+
 test('REL-H1: the revert route names the three mechanisms that make a bare revert invisible', () => {
   // The section used to say a plain `git revert && git push` reaches users via
   // the upgrade banner. It does not: all three of these refuse or ignore a
