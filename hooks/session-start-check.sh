@@ -830,10 +830,12 @@ if [[ "$FRESH_INSTALL" == "1" && "${CLAUDEMD_FORCE_ASYNC_BOOTSTRAP:-0}" != "1" ]
   # hook_spawn_install's detached `( … ) >/dev/null 2>&1 &` and was swallowed;
   # this branch runs in the foreground, so it has to swallow it itself. The
   # inner `2>&1` still binds install.js's stderr to fd1 = the log.
-  if {
+  SYNC_RC=0
+  {
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart fresh-install bootstrap (sync) → $PLUGIN_ROOT/scripts/install.js"
     platform_timeout 4 node "$PLUGIN_ROOT/scripts/install.js" 2>&1
-  } 2>/dev/null >> "$LOG"; then
+  } 2>/dev/null >> "$LOG" || SYNC_RC=$?
+  if [[ "$SYNC_RC" -eq 0 ]]; then
     hook_install_sentinel_clear
     # The install just finished, so its user-content sentinel — if it wrote one
     # — is on disk NOW. Reading it here is the whole reason this branch is
@@ -844,7 +846,24 @@ if [[ "$FRESH_INSTALL" == "1" && "${CLAUDEMD_FORCE_ASYNC_BOOTSTRAP:-0}" != "1" ]
     hook_record session-start bootstrap-sync null '' "$SESSION_ID"
     exit 0
   fi
-  # Same left-to-right ordering as above, for the same reason.
+  # rc 3 = install.js stood down because another process holds install.lock.
+  # Nothing was written, so nothing here may say otherwise. This is the branch
+  # round-17 FLW-H1 measured: a lock leaked by a `platform_timeout 4` SIGTERM
+  # sent every session for the next ten minutes down the rc-0 arm above, which
+  # cleared the bootstrap-failed sentinel, bannered a user-content backup that
+  # this run had not made, and recorded `bootstrap-sync` — for three sessions
+  # whose stdout was empty and whose ~/.claude held neither manifest nor spec.
+  #
+  # No detached retry: it would take the same lock decision and stand down
+  # again. The holder finishes this, or the next SessionStart re-enters the
+  # fresh path because install.js still wrote no manifest. Same left-to-right
+  # redirect ordering as above, for the same reason.
+  if [[ "$SYNC_RC" -eq 3 ]]; then
+    echo "[claudemd] sync bootstrap stood down — another install holds the lock" 2>/dev/null >> "$LOG" || true
+    emit_tail_banners
+    hook_record session-start bootstrap-stand-down null '' "$SESSION_ID"
+    exit 0
+  fi
   echo "[claudemd] sync bootstrap exited non-zero or timed out — retrying detached" 2>/dev/null >> "$LOG" || true
 fi
 

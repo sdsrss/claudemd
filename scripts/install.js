@@ -55,7 +55,8 @@ No flags. Behavior is read from the plugin cache + the following env vars:
 Options:
   --help, -h     Print this message and exit.
 
-Exit codes: 0 success | 1 install failure | 2 argv-shape error.`;
+Exit codes: 0 success | 1 install failure | 2 argv-shape error |
+            3 stood down (another install holds the lock; nothing was written).`;
 
 // (The back-compat `export { HOOK_BASENAMES }` that used to sit here is gone as
 // of 2026-09-03, audit R11-32. uninstall.js had already moved to the registry;
@@ -780,13 +781,27 @@ if (invokedAsMain(import.meta.url)) {
       // a success — `entries: []`, exit 0 — and commands/claudemd-install.md
       // asks the model to summarise `spec` and `entries.length`, which for this
       // value produces "0 registered hooks" for a command whose whole purpose is
-      // "install now". NOT a non-zero exit: hook_spawn_install reads the code and
-      // would write a bootstrap-failed sentinel for a stand-down that is right.
+      // "install now".
+      //
+      // And exit 3, not 0. Exit 0 was chosen so hook_spawn_install would not
+      // write a bootstrap-failed sentinel for a stand-down that is right — but
+      // the two callers read exit 0 as "installed", and the fresh-install path
+      // in session-start-check.sh acts on it: it clears the bootstrap-failed
+      // sentinel, reads the user-content banner and records `bootstrap-sync`,
+      // all for a run that copied nothing. Round-17 FLW-H1 measured three such
+      // sessions — rc 0, empty stdout, no manifest, no spec, and the banner
+      // from the previous real failure erased. Both callers now branch on 3 and
+      // touch neither sentinel, which is what "a stand-down is right" was
+      // supposed to mean.
+      //
+      // `process.exitCode`, not `process.exit()`: the JSON above may still be
+      // buffered on a pipe, and exiting outright truncates it.
       if (r.spec === 'skipped-locked') {
         process.stderr.write(
           '[claudemd] another install holds ~/.claude/.claudemd-state/install.lock — nothing was ' +
             'installed by this run. If no install is running, the lock is treated as stale after 10 minutes.\n'
         );
+        process.exitCode = 3;
       }
       console.log(JSON.stringify(r, null, 2));
     })

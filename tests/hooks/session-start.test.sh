@@ -401,6 +401,35 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Case 19b (round-17 FLW-H1): a DETACHED install that stood down is not a
+# failure. install.js exits 3 when another process already holds install.lock;
+# the wrapper read every non-zero code as "exited non-zero or timed out" and
+# wrote the failure sentinel, so the next session bannered a bootstrap failure
+# that had not happened. Before the exit-code split the same run exited 0 and
+# took the CLEAR arm instead, erasing a banner a real earlier failure was owed —
+# the two opposite wrong answers this one code separates.
+rm -f "$BOOT_SENTINEL" "$BOOT_SENTINEL.last-shown" 2>/dev/null || true
+printf '#!/usr/bin/env bash\nexit 3\n' > "$TMP_HOME/fakebin/node"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  grep -q 'stood down' "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null && break
+  sleep 0.5
+done
+LOG19B=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
+if grep -qF 'bootstrap stood down — another install holds the lock' <<<"$LOG19B" \
+   && [[ ! -f "$BOOT_SENTINEL" ]] \
+   && ! grep -qF 'non-zero or timed out' <<<"$LOG19B"; then
+  echo "PASS: 19b a detached install that stood down writes no failure sentinel"
+else
+  echo "FAIL: 19b (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo yes || echo no) log=$LOG19B)"
+  FAIL=$((FAIL+1))
+fi
+# Restore the exit-1 shim — every case below this one depends on it.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
+
 # Case 20: sentinel present + manifest still mismatched → next SessionStart
 # emits exactly ONE JSON banner (the retry spawn is stdout-silent) and
 # consumes the sentinel so a healthy follow-up session stays quiet.
@@ -670,6 +699,47 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   [[ -n "$NEW_VER" && "$NEW_VER" != "0.0.1" ]] && break
   sleep 0.5
 done
+
+# Case 32b (round-17 FLW-H1): a held install.lock must stand down VISIBLY.
+# install.js returned `skipped-locked` with exit 0, so this hook took the
+# success arm: it cleared the bootstrap-failed sentinel and recorded a
+# `bootstrap-sync` row for a run that copied nothing. Three sandboxed sessions
+# were measured at rc 0, empty stdout, and neither manifest nor spec on disk.
+# The assertion that discriminates is the NEGATIVE one — no `bootstrap-sync`
+# row — because the log line and the manifest check both passed before the fix
+# too (the log said "(sync)", the manifest was simply never written).
+MANIFEST_32B_SAVE=$(cat "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
+rm -f "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+RULE_LOG_32B="$HOME/.claude/logs/claudemd.jsonl"
+rm -f "$RULE_LOG_32B"
+mkdir -p "$HOME/.claude/.claudemd-state"
+# A REAL running process holds it. A made-up pid no longer works: since round-17
+# install.js takes over a lock whose owner is gone, so `pid: 999999` would
+# describe an abandoned lock and this case would test the opposite branch.
+sleep 60 &
+LOCK_PID_32B=$!
+printf '{"pid":%s,"startedAt":"%s"}\n' "$LOCK_PID_32B" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$HOME/.claude/.claudemd-state/install.lock"
+STDERR=$(bash "$HOOK" <<<'{"session_id":"sess-standdown-32b"}' 2>&1)
+LOG_TXT=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
+kill "$LOCK_PID_32B" 2>/dev/null || true
+wait "$LOCK_PID_32B" 2>/dev/null || true
+rm -f "$HOME/.claude/.claudemd-state/install.lock"
+if [[ -z "$STDERR" ]] \
+   && grep -qF 'stood down — another install holds the lock' <<<"$LOG_TXT" \
+   && [[ ! -f "$HOME/.claude/.claudemd-manifest.json" ]] \
+   && ! grep -qF 'retrying detached' <<<"$LOG_TXT" \
+   && ! jq -e 'select(.hook=="session-start" and .event=="bootstrap-sync")' "$RULE_LOG_32B" >/dev/null 2>&1 \
+   && jq -e 'select(.hook=="session-start" and .event=="bootstrap-stand-down")' "$RULE_LOG_32B" >/dev/null 2>&1; then
+  echo "PASS: 32b a held lock stands down without claiming an install"
+else
+  echo "FAIL: 32b held lock reported as an install (stderr=$STDERR manifest=$([[ -f "$HOME/.claude/.claudemd-manifest.json" ]] && echo yes || echo no) rows=$(jq -r 'select(.hook=="session-start") | .event' "$RULE_LOG_32B" 2>/dev/null | tr '\n' ',') log=$LOG_TXT)"
+  FAIL=$((FAIL+1))
+fi
+[[ -n "$MANIFEST_32B_SAVE" ]] && printf '%s\n' "$MANIFEST_32B_SAVE" > "$HOME/.claude/.claudemd-manifest.json"
+rm -f "$RULE_LOG_32B"
 
 # --- v0.75.0 user-content overwrite banner ---
 # install.js has warned on stderr since v0.5.3 that it moved a hand-written

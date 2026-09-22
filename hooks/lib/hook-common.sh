@@ -525,11 +525,21 @@ hook_record_plugin_root() {
 # desired visible-failure behavior, not a silent skip.
 hook_spawn_install() {
   local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
+  local rc
   (
     {
       echo "$header"
-      if platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1; then
+      rc=0
+      platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1 || rc=$?
+      if [[ "$rc" -eq 0 ]]; then
         hook_install_sentinel_clear
+      elif [[ "$rc" -eq 3 ]]; then
+        # install.js stood down: another process holds install.lock and is doing
+        # this exact work. NEITHER sentinel outcome belongs to this run —
+        # clearing would erase a banner a real earlier failure is owed, writing
+        # would banner a stand-down that is correct. Before round-17 FLW-H1 this
+        # exited 0 and took the clear branch.
+        echo "[claudemd] bootstrap stood down — another install holds the lock"
       else
         echo "[claudemd] bootstrap exited non-zero or timed out"
         hook_install_sentinel_write "$from" "$to"
