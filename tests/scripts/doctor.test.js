@@ -699,6 +699,46 @@ test('hook-drift: a stale cache is flagged even when the marketplace clone match
   assert.match(c.detail, /installed-plugins/, 'must name which basis resolved the running root');
 });
 
+test('SCR-M1: a running root with no hooks/ stays a counted red, and CHANGELOG says so', async () => {
+  // Round-17 SCR-M1. The 0.89.0 entry told scripted callers that all three
+  // repaired states now exit 0 where they exited 3. This one does not, by
+  // decision in that same release's pre-ship review: nothing can be running
+  // hooks from a root that carries none, so a green here is a false clean bill.
+  // Nothing pinned the exception and the sentence shipped as written, which is
+  // how a release note came to describe an exit code the code does not produce.
+  const root = seedActivePluginRoot(box);
+  fs.rmSync(path.join(root, 'hooks'), { recursive: true, force: true });
+
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'hook-drift');
+  assert.ok(c, 'hook-drift check must exist');
+  assert.equal(c.ok, false, 'a running root with no hooks/ must stay counted, not skip green');
+  assert.match(c.detail, /carries no hooks\/ directory/);
+  assert.doesNotMatch(
+    c.detail,
+    /hook script\(s\) differ/,
+    'the false detail round-16 6.6 H-2 was about must not come back with it'
+  );
+
+  // The entry that describes this row has to agree with it. Joined to the
+  // behaviour asserted above, not standing alone as a text check.
+  const changelog = fs.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../CHANGELOG.md'),
+    'utf8'
+  );
+  const EXCEPTION = 'a recorded running root that carries no `hooks/` stays a counted red';
+  assert.equal(
+    changelog.split(EXCEPTION).length - 1,
+    1,
+    `CHANGELOG.md must state the exception verbatim, exactly once:\n  ${EXCEPTION}`
+  );
+  assert.doesNotMatch(
+    changelog,
+    /in those three states `claudemd-doctor` now exits 0/,
+    'the superseded all-three claim is back in CHANGELOG.md'
+  );
+});
+
 test('hook-drift runs for a path-source marketplace, which has no clone at all', async () => {
   // `claude plugin marketplace add <path>` records `source: directory` and
   // creates NO plugins/marketplaces/claudemd. Keying the comparison off that
