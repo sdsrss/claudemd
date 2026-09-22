@@ -1279,6 +1279,147 @@ test('SCR-H1: a takeover that arrives late must not delete the holder it lost to
   );
 });
 
+test('SCR-H1: the identity check is decided by the BYTES when mtime, inode and device all agree', async () => {
+  // install.js calls the body "the half that cannot collide" and orders the
+  // conjunction BYTES first, stat second. The case above does not test that.
+  // Its fixture ages the judged lock an hour with `utimesSync`, so `mtimeMs`
+  // separates the two locks by itself and the body conjunct never decides
+  // anything: deleting `movedBody !== observedBody` and keeping mtime/ino/dev
+  // leaves that case at 57/57, and keeping ONLY the body leaves it at 57/57 too
+  // (0.92.0 pre-ship review, F2 — both mutations survived).
+  //
+  // The interleaving the body exists for needs the takeover driven by a DEAD
+  // OWNER rather than by age, so the judged lock's mtime is `now` and the
+  // winner's replacement can carry the same mtimeMs, ino and dev. That is the
+  // ext4 case: the inode freed by the winner's `rmSync` handed straight back to
+  // its own `open(wx)`. Constructed here rather than raced — the loser's
+  // observation is frozen to the winner's own stat, which is what "same inode,
+  // same millisecond" looks like from inside the losing process. Only the bytes
+  // can separate them.
+  //
+  // Constructing it also removes the filesystem dependency the ext4 measurement
+  // had (F5): the previous case only distinguishes 9c78288 from its predecessor
+  // when TMPDIR is on a filesystem that reuses inodes, so on a tmpfs runner a
+  // revert of that commit ships green. This one is red on any filesystem.
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  const lock = path.join(stateDirPath, 'install.lock');
+  // Dead owner, CURRENT mtime: expiry comes from the pid, not from the clock.
+  const deadBody = JSON.stringify({ pid: 999999, startedAt: '2026-09-22T00:00:00Z' });
+  fs.writeFileSync(lock, deadBody);
+
+  const winner = acquireInstallLock();
+  assert.equal(winner, lock, 'the first caller must take the dead owner’s lock over');
+  // The winner's own stat IS the adversarial observation: after the loser's
+  // `rename`, `statSync(aside)` returns these same three numbers, because a
+  // rename changes none of them. Nothing is faked into agreement.
+  const winnerStat = fs.statSync(lock);
+  const winnerBody = fs.readFileSync(lock, 'utf8');
+  assert.notEqual(winnerBody, deadBody, 'the winner must have written its OWN lock');
+
+  let loser = 'unset';
+  await withPatchedFs(
+    'statSync',
+    statOrig =>
+      function (p, ...rest) {
+        return String(p).endsWith('install.lock') ? winnerStat : statOrig(p, ...rest);
+      },
+    () =>
+      withPatchedFs(
+        'readFileSync',
+        readOrig =>
+          function (p, ...rest) {
+            return String(p).endsWith('install.lock') ? deadBody : readOrig(p, ...rest);
+          },
+        async () => {
+          loser = acquireInstallLock();
+        }
+      )
+  );
+
+  assert.equal(
+    loser,
+    null,
+    'mtime, inode and device all agree here — only the bytes can make the late caller stand down'
+  );
+  assert.equal(fs.existsSync(lock), true, "and the winner's lock must still be on disk");
+  assert.equal(
+    fs.readFileSync(lock, 'utf8'),
+    winnerBody,
+    "the winner's own bytes, not the late caller's replacement written over them"
+  );
+  assert.deepEqual(
+    fs.readdirSync(stateDirPath).filter(n => n.includes('.stale.')),
+    [],
+    'and a stood-down takeover leaves no .stale.<pid> file behind'
+  );
+});
+
+test('SCR-H1: the identity check falls back to the STAT when both bodies are empty', async () => {
+  // The other half of the same conjunction. install.js's comment says `mtimeMs`
+  // "covers the one case the body cannot — a lock observed between its
+  // `open(wx)` and its write, whose body is empty on both sides". Nothing tested
+  // that either: deleting all three stat conjuncts and keeping only the body
+  // left the suite at 57/57 (0.92.0 pre-ship review, F2, second mutation).
+  //
+  // A lock with an unparseable body reads as ALIVE (`lockOwnerAlive` returns
+  // true when JSON.parse throws — conservative, and load-bearing here), so this
+  // takeover has to be driven by AGE rather than by a dead owner. The loser's
+  // observation is frozen to a different inode and an expired mtime; the file it
+  // actually moves is the live empty one. Both bodies are the empty string, so
+  // the body conjunct is equal and only the stat can separate them.
+  const stateDirPath = path.join(tmpHome, '.claude/.claudemd-state');
+  fs.mkdirSync(stateDirPath, { recursive: true });
+  const lock = path.join(stateDirPath, 'install.lock');
+  // Caught between `open(wx)` and `write`: the file exists and has no bytes.
+  fs.writeFileSync(lock, '');
+  const realStat = fs.statSync(lock);
+
+  // What a caller saw two hours ago: expired, and a DIFFERENT inode.
+  const observedStat = {
+    mtimeMs: Date.now() - 2 * 60 * 60 * 1000,
+    ino: realStat.ino + 1,
+    dev: realStat.dev,
+  };
+
+  let loser = 'unset';
+  await withPatchedFs(
+    'statSync',
+    statOrig =>
+      function (p, ...rest) {
+        return String(p).endsWith('install.lock') ? observedStat : statOrig(p, ...rest);
+      },
+    () =>
+      withPatchedFs(
+        'readFileSync',
+        readOrig =>
+          function (p, ...rest) {
+            return String(p).endsWith('install.lock') ? '' : readOrig(p, ...rest);
+          },
+        async () => {
+          loser = acquireInstallLock();
+        }
+      )
+  );
+
+  assert.equal(
+    loser,
+    null,
+    'both bodies are empty here — only mtime/inode/dev can make the late caller stand down'
+  );
+  assert.equal(fs.existsSync(lock), true, 'the live lock must be put back, not consumed');
+  assert.equal(
+    fs.readFileSync(lock, 'utf8'),
+    '',
+    'and it must still be the empty file that was there, not a fresh claim written over it'
+  );
+  assert.deepEqual(
+    fs.readdirSync(stateDirPath).filter(n => n.includes('.stale.')),
+    [],
+    'and a stood-down takeover leaves no .stale.<pid> file behind'
+  );
+});
+
 test('SCR-H2: a stale lock is taken over rather than blocking every future install', async () => {
   // A lock left by a killed process must not brick the install path forever —
   // this is the bootstrap, it runs on every SessionStart.

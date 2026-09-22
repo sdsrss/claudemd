@@ -166,6 +166,15 @@ hand-written `CLAUDE.md` is the session that gets told about it, rather than the
 manifest and the next SessionStart re-enters this same path — and this run still falls through to
 the detached spawn below, which makes the branch never worse than what it replaced.
 
+**17b. A held lock is a dead end, on purpose** — `hooks/session-start-check.sh` → `if [[ "$SYNC_RC" -eq 3 ]]`
+
+`install.js` exits 3 when another process holds `install.lock`. This run wrote nothing, so it records
+`bootstrap-stand-down` rather than `bootstrap-sync`, leaves any `bootstrap-failed.json` alone, and —
+unlike every other non-zero outcome — does NOT fall through to the detached spawn: that retry would
+take the same lock decision and stand down again. The holder finishes the install, or the next
+SessionStart re-enters the fresh path because no manifest was written. Before round-17 FLW-H1 this
+branch returned 0 and every session in the ten-minute stale window recorded it as a success.
+
 **18. Detached install** — `hooks/session-start-check.sh` → `hook_spawn_install "$PLUGIN_ROOT" "$LOG"`
 
 Detached, 10s ceiling, writes or clears the failure sentinel accordingly. Any failure is

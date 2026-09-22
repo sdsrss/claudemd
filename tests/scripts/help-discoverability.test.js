@@ -115,7 +115,26 @@ test('SCR-M3: every accepted flag reaches the Usage synopsis and the command doc
     const spec = src.match(/parseStrictOrExit\(\s*process\.argv\.slice\(2\),\s*\{([\s\S]*?)\}\s*\)/);
     assert.ok(spec, `${scriptRel}: could not locate the parseStrictOrExit flag spec`);
     const flags = [...spec[1].matchAll(/'(--[a-z-]+)'/g)].map(m => m[1]);
-    assert.ok(flags.length >= 3, `${scriptRel}: parsed ${flags.length} flags — the spec regex slipped`);
+    // The floor is derived from the spec's own array ELEMENTS, counted with a
+    // DIFFERENT regex than the one under test: /'[^']*'/ accepts any quoted
+    // token, while the extraction above accepts only --[a-z-]+. Equality between
+    // the two is what catches a narrowed extraction; a shared regex would just
+    // agree with itself. The old floor was a hand-written `>= 3` against an
+    // actual 6, so narrowing the flag regex dropped the count and the suite
+    // stayed 35/35 — the exact slip its own message names (0.92.0 review, F10).
+    const declared = [...spec[1].matchAll(/(?:bools|values)\s*:\s*\[([^\]]*)\]/g)].reduce(
+      (n, m) => n + [...m[1].matchAll(/'[^']*'/g)].length,
+      0
+    );
+    assert.ok(
+      declared >= 3,
+      `${scriptRel}: counted ${declared} flags in the parser spec — re-anchor this floor`
+    );
+    assert.equal(
+      flags.length,
+      declared,
+      `${scriptRel}: extracted ${flags.length} flags from a spec declaring ${declared} — the spec regex slipped`
+    );
 
     // The synopsis is the `Usage:` line plus its wrapped continuation lines,
     // i.e. up to the first blank line. `--help` is conventionally listed under

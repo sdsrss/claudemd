@@ -122,14 +122,30 @@ test('FLW-M3: README states what happens to an already-installed spec, pinned wh
   // `backup-<ISO>/` namespace, so `restore` cannot return a stale spec — is
   // still true and is kept.
   //
-  // WHOLE LINE, exactly once: a fragment match would survive someone
-  // re-appending "without a backup" as a trailing clause. The pin covers this
-  // sentence only; the backup-before-overwrite sentence preceding it in the same
-  // paragraph is not constrained here.
-  const CLAIM =
-    'An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): the sole entry in that namespace is always your own content, so `restore` can never return a stale spec instead. It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept).';
-  const hits = README.split('\n').filter(l => l.includes(CLAIM));
-  assert.equal(hits.length, 1, `README.md must carry this sentence verbatim, exactly once:\n  ${CLAIM}`);
+  // 0.92.0 pre-ship review, two defects in one pin.
+  //
+  // (1) The matcher was `l.includes(CLAIM)` while the comment above it claimed a
+  // whole-line pin. A substring test cannot fail on appended text, so the exact
+  // mutation bb242c4's commit message offers as its evidence — appending
+  // "and is overwritten without a backup" takes readme-drift to 7/8 — could not
+  // have happened. Measured at that commit and at HEAD: it stays 8/8.
+  //
+  // (2) The v0.23.11 half was narrower than it read. "the sole entry in that
+  // namespace is always your own content" is false in the letter: install.js's
+  // user-content branch sweeps all four home spec files, so the personal dir does
+  // hold CLAUDE-extended.md, CLAUDE-changelog.md and OPERATOR.md beside the user's
+  // own CLAUDE.md. The invariant the code holds, and the one `restore` depends on,
+  // is that no directory there has the SPEC as its CLAUDE.md.
+  //
+  // The pin is now the whole PARAGRAPH LINE, byte for byte, exactly once. That is
+  // stricter than pinning the sentence: the two sentences sharing the line —
+  // backup-before-overwrite ahead of it, uninstall keep/restore/delete after it —
+  // are inside the pin rather than beside it. Sentence-scoped pins are how a
+  // repair lands correctly and its neighbour stays wrong.
+  const CLAIM_LINE =
+    'Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): no directory in that namespace ever has the spec as its `CLAUDE.md`, so `restore` can never return a stale spec instead. (The user-content sweep does move `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` along beside your own file, so the directory is not literally yours alone — the `CLAUDE.md` in it is.) It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.';
+  const hits = README.split('\n').filter(l => l.trimEnd() === CLAIM_LINE);
+  assert.equal(hits.length, 1, `README.md must carry this line verbatim, exactly once:\n  ${CLAIM_LINE}`);
 
   // Joined to the code, so the sentence cannot outlive the branch it describes.
   const install = fs.readFileSync(path.join(REPO_ROOT, 'scripts/install.js'), 'utf8');

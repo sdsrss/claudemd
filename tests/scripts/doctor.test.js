@@ -2129,6 +2129,57 @@ test('runningPluginRoot: a record naming a root that no longer exists falls thro
   assert.equal(r.source, 'installed-plugins');
 });
 
+// ── 0.92.0, round-17 HK-M2 ──
+// README documents `DISABLE_HOOK_ROOT_RECORD=1` as the way to stop SessionStart
+// and SessionEnd rewriting hook-root.json, and the first version of that comment
+// said setting it makes doctor's hook-drift row fall back to cache resolution.
+// It does not. The switch returns early inside `hook_record_plugin_root`, which
+// is a WRITER; `runningPluginRoot()` never consults it. A machine that recorded
+// a root once keeps being told `hook-fired at <ts>` from that record — the exact
+// state SPEC-H1 is about — until the file itself is removed.
+//
+// Both halves of the README sentence are gated here: the switch does not change
+// what is read, and removing the record is what produces the fallback. Gating
+// only the first half would leave the remedy unpinned, which is how the sentence
+// came to name a remedy that does not work.
+test('runningPluginRoot: DISABLE_HOOK_ROOT_RECORD suppresses the write, not the read', () => {
+  const root = box.dir('recorded-before-the-switch-was-set');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root, ts: '2026-09-22T00:00:00Z', version: '0.92.0', sid: 'sid92' })
+  );
+  const prev = process.env.DISABLE_HOOK_ROOT_RECORD;
+  process.env.DISABLE_HOOK_ROOT_RECORD = '1';
+  try {
+    const r = runningPluginRoot();
+    assert.equal(
+      r.source,
+      'hook-fired',
+      'the kill switch changed which source the resolver reports — it is a writer switch, and README says so'
+    );
+    assert.equal(r.root, root);
+    assert.equal(r.sid, 'sid92');
+  } finally {
+    if (prev === undefined) delete process.env.DISABLE_HOOK_ROOT_RECORD;
+    else process.env.DISABLE_HOOK_ROOT_RECORD = prev;
+  }
+});
+
+test('runningPluginRoot: removing the record is what produces the cache fallback (the README remedy)', () => {
+  const active = seedActivePluginRoot(box);
+  const root = box.dir('recorded-then-removed');
+  const rec = path.join(box.stateDir, 'hook-root.json');
+  fs.writeFileSync(
+    rec,
+    JSON.stringify({ root, ts: '2026-09-22T00:00:00Z', version: '0.92.0', sid: 'sid92' })
+  );
+  assert.equal(runningPluginRoot().source, 'hook-fired', 'fixture did not take — nothing is being measured');
+  fs.rmSync(rec);
+  const after = runningPluginRoot();
+  assert.notEqual(after.source, 'hook-fired');
+  assert.equal(after.root, active);
+});
+
 // ── Final whole-branch review, M-3 ──
 // Existing is not enough; it has to be a DIRECTORY. `compareHooks` tests for a
 // `hooks/` subdirectory on its FIRST argument only, so a plain file handed back

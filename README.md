@@ -63,7 +63,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | Spec v6.31 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
 | StatusLine (opt-out) | PS1-style line — `user@host:dir (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (`dir` = cwd basename; context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
 
-Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): the sole entry in that namespace is always your own content, so `restore` can never return a stale spec instead. It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
+Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): no directory in that namespace ever has the spec as its `CLAUDE.md`, so `restore` can never return a stale spec instead. (The user-content sweep does move `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` along beside your own file, so the directory is not literally yours alone — the `CLAUDE.md` in it is.) It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
 
 > Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks. Claude Code's plugin-lifecycle `postInstall` field is not honored, so the script runs from `SessionStart` instead.
 
@@ -273,9 +273,11 @@ export DISABLE_HOOK_ROOT_RECORD=1          # stop SessionStart/SessionEnd rewrit
                                            # DISABLE_RULE_HITS_LOG covers the jsonl and
                                            # nothing else: a sandboxed probe that set
                                            # only that one was still writing to the live
-                                           # state dir. Turning this off makes
-                                           # /claudemd-doctor's hook-drift row fall back
-                                           # to cache resolution.
+                                           # state dir. Setting it stops the rewrite
+                                           # only: an existing hook-root.json is still
+                                           # what /claudemd-doctor reads, so remove that
+                                           # file too for the hook-drift row to fall
+                                           # back to cache resolution.
 
 export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
                                            # cadence advisory inside session-end-check;

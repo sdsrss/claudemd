@@ -528,3 +528,98 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
       `mirror every stem of CLAUDEMD_STATE_FILE_RE into the \`mutated\` copy except that one`
   );
 });
+
+// --- round-17 SCR-H1 / 0.92.0: the lock-takeover identity check -------------
+//
+// install() takes over an expired lock by renaming it aside and then checking
+// that the file it moved is the one it judged expired. The FIRST implementation
+// compared inode and device alone: 57/57 green on tmpfs, red on ext4, which
+// hands the inode freed by the winner's `rmSync` straight back to the winner's
+// own `open(wx)` — same inode, different file. The comparison now leads with
+// the file's BYTES.
+//
+// docs/ARCHITECTURE.md described the superseded design in two places and went
+// on describing it inside the same release that replaced it: the ext4
+// correction touched scripts/install.js and its suite and no doc at all. A
+// contributor reimplementing the mutex from ARCHITECTURE.md rebuilds the
+// defect. So this joins the prose to the comparison's OPERANDS rather than to
+// a keyword — dropping a field from the code fails the gate until the sentence
+// that describes it is updated too, and in both places, because both were
+// wrong and repairing one is the failure mode this repo keeps hitting.
+
+/** The operands install.js compares when verifying it moved aside its own lock. */
+function takeoverIdentityFields() {
+  const src = fs.readFileSync(path.join(ROOT, 'scripts/install.js'), 'utf8');
+  // Anchored on `observed`, not on the bytes term, so deleting the bytes
+  // comparison still matches here and fails the count below — an anchor that
+  // disappears with the thing it measures reports "no drift" on a deletion.
+  const cmp = src.match(/if \(\s*([^()]*observed[^()]*)\)\s*\{/);
+  assert.ok(
+    cmp,
+    'scripts/install.js: the takeover identity comparison moved — re-anchor this gate before trusting it'
+  );
+  const cond = cmp[1];
+  const fields = [];
+  if (/movedBody !== observedBody/.test(cond)) fields.push('bytes');
+  if (/\.mtimeMs !== observed\.mtimeMs/.test(cond)) fields.push('mtime');
+  if (/\.ino !== observed\.ino/.test(cond)) fields.push('inode');
+  if (/\.dev !== observed\.dev/.test(cond)) fields.push('dev');
+  return fields;
+}
+
+/** Every ARCHITECTURE.md line that describes the takeover. */
+function takeoverProseLines() {
+  const full = fs.readFileSync(ARCH_DOC, 'utf8');
+  const lines = full.split('\n').filter(l => /install\.lock|takeover|taken over/.test(l) && /rename/.test(l));
+  assert.ok(
+    lines.length >= 2,
+    `expected ARCHITECTURE.md to describe the lock takeover in at least two places, found ${lines.length} — ` +
+      `the invariant bullet and the state-locations entry both describe it`
+  );
+  return lines;
+}
+
+const TAKEOVER_FIELD_TOKENS = {
+  bytes: /\bbytes\b/i,
+  mtime: /\bmtime\b/i,
+  inode: /\binode\b/i,
+  dev: /\bdev(ice)?\b/i,
+};
+
+test('SCR-H1: every ARCHITECTURE.md description of the lock takeover names every field install.js compares', () => {
+  const fields = takeoverIdentityFields();
+  assert.deepEqual(
+    fields,
+    ['bytes', 'mtime', 'inode', 'dev'],
+    `install.js's takeover identity check compares ${JSON.stringify(fields)} — ` +
+      `change the doc sentences and this expectation in the same commit`
+  );
+  const bad = [];
+  for (const line of takeoverProseLines()) {
+    const unnamed = fields.filter(f => !TAKEOVER_FIELD_TOKENS[f].test(line));
+    if (unnamed.length) bad.push(`missing ${unnamed.join(', ')} in: ${line.slice(0, 110)}…`);
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    `docs/ARCHITECTURE.md describes the lock takeover without naming every field it compares:\n` +
+      bad.map(b => `  ${b}`).join('\n')
+  );
+});
+
+test('SCR-H1: the takeover join rejects the superseded inode-only sentence (mutation control)', () => {
+  // The exact wording this release replaced, in both of its shapes. If the
+  // predicate stops rejecting these, the gate above is green by vacuity.
+  const superseded = [
+    'The takeover itself `rename`s the inode it judged aside and checks that the inode it moved is the one it judged',
+    '- `~/.claude/.claudemd-state/install.lock` — taken over by an inode-verified `rename`, because a SIGKILL has no `finally`',
+  ];
+  for (const line of superseded) {
+    const unnamed = ['bytes', 'mtime', 'inode', 'dev'].filter(f => !TAKEOVER_FIELD_TOKENS[f].test(line));
+    assert.deepEqual(
+      unnamed.sort(),
+      ['bytes', 'dev', 'mtime'],
+      `the field predicate no longer rejects a superseded inode-only sentence: ${line.slice(0, 80)}`
+    );
+  }
+});

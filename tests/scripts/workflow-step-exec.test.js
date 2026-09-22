@@ -315,6 +315,14 @@ test('REL-M4: the publish step derives its dist-tag, so a prerelease cannot take
     // Build metadata is not a prerelease and must stay on `latest` — the `-`
     // test is about the semver prerelease separator, not about punctuation.
     assert.equal(publishedTag('1.2.3+build.9'), 'latest', 'build metadata is not a prerelease');
+    // Build-metadata identifiers may themselves contain hyphens (semver BNF), so a
+    // `*-*` match over the whole version string reads `1.2.3+build-9` as a prerelease
+    // and would ship a release to `next`. The `+build.9` case above does not reach this.
+    assert.equal(
+      publishedTag('1.2.3+build-9'),
+      'latest',
+      'a hyphen inside build metadata is not a prerelease separator'
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -332,7 +340,11 @@ test('REL-L3: every workflow declares its own top-level permissions', () => {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
     assert.match(
       src,
-      /^permissions:\n\s+\S+:/m,
+      // `permissions: {}` is the STRICTEST declaration GitHub offers, and a
+      // block-mapping-only pattern rejected it: rewriting ci.yml that way took this
+      // suite to 5/6, i.e. the gate whose purpose is least privilege failed a
+      // tightening (0.92.0 pre-ship review, F7). Both forms count as declared.
+      /^permissions:[ \t]*(\{[ \t]*\}|\n[ \t]+\S+:)/m,
       `.github/workflows/${f} declares no top-level permissions: block, so its GITHUB_TOKEN inherits the repository default`
     );
   }

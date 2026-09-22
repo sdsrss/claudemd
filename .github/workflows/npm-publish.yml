@@ -194,20 +194,24 @@ jobs:
         # The dist-tag is DERIVED from the version, never defaulted (round-17
         # REL-M4). This workflow triggers on `v*.*.*`, which `v1.0.0-rc.1`
         # satisfies, and `npm publish` with no `--tag` writes `dist-tags.latest`
-        # — the tag a cold `npx claudemd-cli` resolves, and README's quick start
-        # is an `npx` line. So the first prerelease ever tagged would have become
-        # what every new user installs, with nothing in the tree to stop it.
+        # — the tag a cold `npx claudemd-cli` resolves. That CLI is the standalone
+        # lint entry point for pre-commit hooks and CI; the plugin's own quick start
+        # is two slash commands resolving from marketplace git refs, which read no
+        # npm dist-tag at all. So the first prerelease ever tagged would have become
+        # what every `npx` user gets, with nothing in the tree to stop it.
         #
         # Reading package.json rather than parsing GITHUB_REF_NAME: the step
         # above has already refused to continue unless the two agree, so this is
-        # the same value with one less parser. A `-` anywhere in a semver version
-        # is the prerelease separator; build metadata (`+`) is not a prerelease
-        # and correctly stays on `latest`.
+        # the same value with one less parser. Build metadata is stripped BEFORE the
+        # match, not merely excluded by it: semver lets a build identifier contain a
+        # hyphen, so `1.2.3+build-9` carries no prerelease and a `*-*` test over the
+        # whole string would ship a release to `next`. After the strip, a `-` is the
+        # prerelease separator.
         # tests/scripts/workflow-step-exec.test.js executes this body.
         run: |
           set -eu
           pkg=$(node -p "require('./package.json').version")
-          case "$pkg" in
+          case "${pkg%%+*}" in
             *-*) dist_tag=next ;;
             *)   dist_tag=latest ;;
           esac
