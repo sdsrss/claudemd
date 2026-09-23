@@ -68,9 +68,16 @@ OUT=$(platform_timeout 8 node "$SCRIPT" branches --cwd="$CWD" 2>/dev/null) || ex
 N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 [[ "$N" =~ ^[0-9]+$ ]] && ((N > 0)) || exit 0
 
-NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(" ")')
+# The command is built by jq's @sh, never by interpolation: git accepts `$( )`,
+# braces, `;` and a leading `-` in branch names and anything in a directory
+# name, and this line exists to be pasted into a shell. Unquoted, a branch
+# named `{-D,wip}` brace-expanded into `branch -d -D wip` and force-deleted
+# unmerged work, and `$(…)` in a name or the cwd ran (0.93.0 claims review
+# H1/M1). `--` ends option parsing for a name that starts with `-`.
+NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(", ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
-MSG="[claudemd] branch-prune: $N local branch(es) are already on $DEF and their remote branch was deleted (or they are worktree-agent-*): $NAMES. Delete, with $DEF checked out, via \`git -C \"$CWD\" branch -d $NAMES\` — -d re-checks that each is merged into HEAD and not checked out anywhere, and refuses otherwise. Disable this hint: DISABLE_BRANCH_PRUNE_HOOK=1."
+CMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" '"git -C \($cwd | @sh) branch -d -- \([.deletable[].name] | @sh)"')
+MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. Delete, with $DEF checked out, via \`$CMD\` — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. Disable this hint: DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

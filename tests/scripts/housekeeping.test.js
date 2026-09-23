@@ -132,6 +132,11 @@ test('vitest tmp: ssr as a symlink to a dir is not a target', () => {
     fs.symlinkSync(outside, path.join(d, 'ssr'));
     age(d, 2);
     age(outside, 2);
+    // age() skips links; age the link itself too, so only the symlink check
+    // (not freshness) can keep this dir out.
+    const t = (Date.now() - 2 * HOUR) / 1000;
+    fs.lutimesSync(path.join(d, 'ssr'), t, t);
+    fs.utimesSync(d, t, t);
     assert.deepEqual(scan(), []);
   } finally {
     fs.rmSync(outside, { recursive: true, force: true });
@@ -207,7 +212,7 @@ test('CLI: unknown subcommand exits 2', () => {
 
 // ---- branches ----
 //
-// A branch is pruned only when (a) its upstream was deleted on the remote
+// A branch is listed as deletable only when (a) its upstream was deleted on the remote
 // (`[gone]`) or its name is worktree-agent-*, AND (b) its tip is an ancestor of
 // the default branch or origin/<default>. Every fixture below is built against
 // a real bare remote so `[gone]` is the state git itself reports.
@@ -266,7 +271,7 @@ function landAndDeleteRemote(r, name, mode) {
 
 const names = list => list.map(b => b.name).sort();
 
-test('branches: upstream gone + tip on main → pruned', () => {
+test('branches: upstream gone + tip on main → listed', () => {
   const r = clone();
   landAndDeleteRemote(r, 'feat', 'ff');
   const c = classifyBranches({ cwd: r });
@@ -275,7 +280,7 @@ test('branches: upstream gone + tip on main → pruned', () => {
   assert.equal(c.deletable[0].why, 'gone');
 });
 
-test('branches: upstream gone but tip only on origin/main (local main behind) → pruned', () => {
+test('branches: upstream gone but tip only on origin/main (local main behind) → listed', () => {
   const r = clone();
   landAndDeleteRemote(r, 'feat', 'ff');
   git(r, 'reset', '-q', '--hard', 'HEAD~1'); // local main no longer contains feat
@@ -322,7 +327,7 @@ test('branches: no upstream (backup / renamed / fresh) → kept even when an anc
   assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
-test('branches: worktree-agent-* on main → pruned without an upstream; with unique commits → kept', () => {
+test('branches: worktree-agent-* on main → listed without an upstream; with unique commits → kept', () => {
   const r = clone();
   git(r, 'branch', 'worktree-agent-a0123456789abcdef');
   git(r, 'checkout', '-q', '-b', 'worktree-agent-b0123456789abcdef');
@@ -357,6 +362,28 @@ test('branches: a rebase in progress in any worktree skips the whole run (review
   const out = classifyBranches({ cwd: r });
   assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
   assert.deepEqual(out.deletable, []);
+});
+
+test('branches: the default branch is never listed, even with a gone upstream (claims review L3)', () => {
+  const r = clone();
+  git(r, 'push', '-q', 'origin', 'main:tmpx');
+  git(r, 'branch', '-q', '-u', 'origin/tmpx', 'main');
+  git(r, 'push', '-q', 'origin', '--delete', 'tmpx');
+  git(r, 'fetch', '-q', '--prune');
+  git(r, 'checkout', '-q', '-b', 'other');
+  assert.equal(
+    git(r, 'for-each-ref', '--format=%(upstream:track)', 'refs/heads/main'),
+    '[gone]',
+    'fixture: main is gone'
+  );
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
+});
+
+test('branches: an am-style rebase (rebase-apply) in progress also skips the run (claims review L3)', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'other', 'ff');
+  fs.mkdirSync(path.join(r, '.git', 'rebase-apply'));
+  assert.equal(classifyBranches({ cwd: r }).skipped, 'rebase-or-bisect-in-progress');
 });
 
 test('branches: not a git repo is an empty result, not a throw', () => {

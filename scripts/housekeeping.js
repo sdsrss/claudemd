@@ -220,14 +220,14 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // A gone branch whose tip is NOT on the default branch (a squash merge, or
 // work the remote lost) is listed under goneUnmerged for a person to judge.
 //
-// Report-only, by the maintainer's decision after three pre-tag review rounds
-// each found a new way an automatic delete here removed something in use: a
-// branch checked out in a new worktree between classification and delete,
-// a symbolic ref whose TARGET was deleted, a rebase in a prunable worktree.
-// Every one came from a window between this process's check and its delete;
-// `git branch -d`, run by whoever acts on the report, re-checks merged-ness
-// and use at the moment of deletion, which nothing here can. Symbolic refs
-// are not listed at all.
+// Report-only, by the maintainer's decision after the 0.93.0 pre-tag reviews:
+// git has no delete that both compares and checks use. `update-ref -d <sha>`
+// is a compare-and-delete but skips git's in-use checks (a branch mid-rebase,
+// one checked out in a worktree created after classification) and
+// dereferences a symbolic ref, deleting its target; `git branch -d`/`-D`
+// checks use but takes no expected sha, so a branch moved in between loses its
+// new commits. `git branch -d`, run by whoever acts on the report, checks
+// merged-ness and use at the moment it deletes. Symbolic refs are not listed.
 
 function gitIn(cwd) {
   return (...args) => {

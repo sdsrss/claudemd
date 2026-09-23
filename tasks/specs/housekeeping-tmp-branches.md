@@ -71,4 +71,4 @@ in the plugin reclaims them:
 - r1 2026-09-22: initial, approved by user in-session ("确认授权").
 - r2 2026-09-22: implemented in 0.93.0 (scripts/housekeeping.js, hooks/tmp-sweep.sh, hooks/branch-prune.sh).
 - r3 2026-09-22: branch rule replaced after the pre-tag review (4 High / 6 Medium); tmp-sweep unset-TMPDIR abort and non-atomic rate limit fixed.
-- r4 2026-09-23: branch-prune made advisory-only by the maintainer after the second re-review found a new High (update-ref bypassed git's in-use check); deletion code removed.
+- r4 2026-09-23: branch-prune made advisory-only by the maintainer after the second re-review found round 1's in-use defect again (update-ref skips git's in-use check) plus a symref-target delete; deletion code removed. The suggested command is built with jq @sh and `--`.
