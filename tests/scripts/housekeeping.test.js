@@ -11,8 +11,6 @@ import {
   vitestWatchAlive,
   ageFloorMs,
   classifyBranches,
-  pruneBranches,
-  deleteBranches,
   removeVitestTargets,
 } from '../../scripts/housekeeping.js';
 
@@ -273,22 +271,22 @@ test('branches: upstream gone + tip on main → pruned', () => {
   landAndDeleteRemote(r, 'feat', 'ff');
   const c = classifyBranches({ cwd: r });
   assert.equal(c.defaultBranch, 'main');
-  assert.deepEqual(names(c.prune), ['feat']);
-  assert.equal(c.prune[0].why, 'gone');
+  assert.deepEqual(names(c.deletable), ['feat']);
+  assert.equal(c.deletable[0].why, 'gone');
 });
 
 test('branches: upstream gone but tip only on origin/main (local main behind) → pruned', () => {
   const r = clone();
   landAndDeleteRemote(r, 'feat', 'ff');
   git(r, 'reset', '-q', '--hard', 'HEAD~1'); // local main no longer contains feat
-  assert.deepEqual(names(classifyBranches({ cwd: r }).prune), ['feat']);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), ['feat']);
 });
 
 test('branches: upstream gone, squash-merged (tip not an ancestor) → kept, listed as goneUnmerged', () => {
   const r = clone();
   landAndDeleteRemote(r, 'sq', 'squash');
   const c = classifyBranches({ cwd: r });
-  assert.deepEqual(names(c.prune), []);
+  assert.deepEqual(names(c.deletable), []);
   assert.deepEqual(names(c.goneUnmerged), ['sq']);
 });
 
@@ -302,7 +300,7 @@ test('branches: whitespace-only difference is never judged equivalent (review H3
   git(r, 'push', '-q', 'origin', 'main');
   git(r, 'push', '-q', 'origin', '--delete', 'ws');
   git(r, 'fetch', '-q', '--prune');
-  assert.deepEqual(names(classifyBranches({ cwd: r }).prune), []);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
 test('branches: upstream still on the remote → kept even when an ancestor (git-flow main/develop, review H2/M1)', () => {
@@ -313,7 +311,7 @@ test('branches: upstream still on the remote → kept even when an ancestor (git
   git(r, 'push', '-q');
   git(r, 'checkout', '-q', 'main');
   git(r, 'merge', '-q', '--ff-only', 'develop');
-  assert.deepEqual(names(classifyBranches({ cwd: r }).prune), []);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
 test('branches: no upstream (backup / renamed / fresh) → kept even when an ancestor (review M3)', () => {
@@ -321,7 +319,7 @@ test('branches: no upstream (backup / renamed / fresh) → kept even when an anc
   git(r, 'branch', 'backup-before-rebase');
   git(r, 'branch', 'newwork');
   git(r, 'branch', '-m', 'newwork', 'my-next-feature');
-  assert.deepEqual(names(classifyBranches({ cwd: r }).prune), []);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
 test('branches: worktree-agent-* on main → pruned without an upstream; with unique commits → kept', () => {
@@ -331,8 +329,8 @@ test('branches: worktree-agent-* on main → pruned without an upstream; with un
   commit(r, 'w.txt', 'w\n');
   git(r, 'checkout', '-q', 'main');
   const c = classifyBranches({ cwd: r });
-  assert.deepEqual(names(c.prune), ['worktree-agent-a0123456789abcdef']);
-  assert.equal(c.prune[0].why, 'worktree-agent');
+  assert.deepEqual(names(c.deletable), ['worktree-agent-a0123456789abcdef']);
+  assert.equal(c.deletable[0].why, 'worktree-agent');
 });
 
 test('branches: the current branch and worktree checkouts are never candidates', () => {
@@ -341,7 +339,7 @@ test('branches: the current branch and worktree checkouts are never candidates',
   git(r, 'worktree', 'add', '-q', path.join(root, 'wt'), 'here');
   landAndDeleteRemote(r, 'current', 'ff');
   git(r, 'checkout', '-q', 'current');
-  assert.deepEqual(names(classifyBranches({ cwd: r }).prune), []);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
 test('branches: a rebase in progress in any worktree skips the whole run (review H4)', () => {
@@ -356,44 +354,34 @@ test('branches: a rebase in progress in any worktree skips the whole run (review
     env: GIT_ENV,
   });
   assert.notEqual(rb.status, 0, 'fixture: the rebase was expected to stop');
-  const out = pruneBranches({ cwd: r, apply: true });
+  const out = classifyBranches({ cwd: r });
   assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
-  assert.deepEqual(out.deleted, []);
-  assert.ok(git(r, 'branch', '--list', 'other'), 'other survives');
-});
-
-test('branches: apply deletes, reports sha, and `git branch <name> <sha>` restores the ref', () => {
-  const r = clone();
-  landAndDeleteRemote(r, 'done', 'ff');
-  const sha = git(r, 'rev-parse', 'done');
-  const out = pruneBranches({ cwd: r, apply: true });
-  assert.deepEqual(
-    out.deleted.map(b => [b.name, b.sha]),
-    [['done', sha]]
-  );
-  assert.equal(git(r, 'branch', '--list', 'done'), '');
-  git(r, 'branch', 'done', sha);
-});
-
-test('branches: a branch that moved after classification is not deleted (compare-and-delete)', () => {
-  const r = clone();
-  landAndDeleteRemote(r, 'moving', 'ff');
-  const stale = classifyBranches({ cwd: r }).prune;
-  git(r, 'checkout', '-q', 'moving');
-  commit(r, 'm2.txt', 'more\n');
-  git(r, 'checkout', '-q', 'main');
-  const out = deleteBranches({ cwd: r, branches: stale });
-  assert.deepEqual(out.deleted, []);
-  assert.deepEqual(
-    out.errors.map(e => e.name),
-    ['moving']
-  );
-  assert.ok(git(r, 'branch', '--list', 'moving'));
+  assert.deepEqual(out.deletable, []);
 });
 
 test('branches: not a git repo is an empty result, not a throw', () => {
-  const out = pruneBranches({ cwd: root, apply: true });
-  assert.deepEqual(out.deleted, []);
+  assert.deepEqual(classifyBranches({ cwd: root }).deletable, []);
+});
+
+test('branches: the CLI only reports — the listed branch still exists, and --apply is rejected', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'ff');
+  const out = spawnSync('node', [SCRIPT, 'branches', `--cwd=${r}`], { encoding: 'utf8' });
+  assert.equal(out.status, 0, out.stderr);
+  assert.deepEqual(
+    JSON.parse(out.stdout).deletable.map(b => b.name),
+    ['feat']
+  );
+  assert.ok(git(r, 'branch', '--list', 'feat'), 'feat still exists');
+  const apply = spawnSync('node', [SCRIPT, 'branches', '--apply', `--cwd=${r}`], { encoding: 'utf8' });
+  assert.equal(apply.status, 2);
+  assert.ok(git(r, 'branch', '--list', 'feat'), 'feat still exists after --apply');
+});
+
+test('branches: a symbolic ref is never listed, whatever it points at (re-review 2 M1)', () => {
+  const r = clone();
+  git(r, 'symbolic-ref', 'refs/heads/worktree-agent-x', 'refs/heads/main');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
 });
 
 test('vitest tmp: a target that turns fresh between scan and delete is kept (recheck)', () => {
@@ -406,37 +394,6 @@ test('vitest tmp: a target that turns fresh between scan and delete is kept (rec
   const out = removeVitestTargets({ targets, minAgeMs: HOUR });
   assert.equal(out.deleted, 0);
   assert.ok(fs.existsSync(d));
-});
-
-test('branches: a branch moved by another writer between check and delete survives (atomic compare-and-delete, re-review F1)', () => {
-  const r = clone();
-  landAndDeleteRemote(r, 'feat', 'ff');
-  const [target] = classifyBranches({ cwd: r }).prune;
-  git(r, 'checkout', '-q', '-b', 'side');
-  commit(r, 'new.txt', 'not on main\n');
-  const NEW = git(r, 'rev-parse', 'HEAD');
-  git(r, 'checkout', '-q', 'main');
-  git(r, 'branch', '-D', 'side');
-  // A `git` shim that moves feat to NEW immediately before forwarding any
-  // deleting call — the concurrent writer, placed inside the window.
-  const shimDir = path.join(root, 'shim');
-  fs.mkdirSync(shimDir);
-  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
-  fs.writeFileSync(
-    path.join(shimDir, 'git'),
-    `#!/bin/sh\ncase " $* " in *" update-ref -d "*|*" branch -D "*) "${realGit}" -C "${r}" update-ref refs/heads/feat ${NEW} ;; esac\nexec "${realGit}" "$@"\n`,
-    { mode: 0o755 }
-  );
-  const savedPath = process.env.PATH;
-  process.env.PATH = `${shimDir}:${savedPath}`;
-  let out;
-  try {
-    out = deleteBranches({ cwd: r, branches: [target] });
-  } finally {
-    process.env.PATH = savedPath;
-  }
-  assert.deepEqual(out.deleted, []);
-  assert.equal(git(r, 'rev-parse', 'feat'), NEW, 'feat and its new commit survive');
 });
 
 test('branches: a local default branch behind its upstream stays safe in a git-flow repo (re-review F3)', () => {
@@ -455,7 +412,7 @@ test('branches: a local default branch behind its upstream stays safe in a git-f
   assert.equal(track, '[behind 1]', 'fixture: main is behind, not gone');
   const c = classifyBranches({ cwd: r });
   assert.equal(c.defaultBranch, 'develop');
-  assert.deepEqual(names(c.prune), []);
+  assert.deepEqual(names(c.deletable), []);
 });
 
 test('branches: a bisect in progress skips the whole run (re-review F7)', () => {
@@ -463,7 +420,7 @@ test('branches: a bisect in progress skips the whole run (re-review F7)', () => 
   landAndDeleteRemote(r, 'other', 'ff');
   commit(r, 'b1.txt', '1\n');
   git(r, 'bisect', 'start', 'HEAD', 'HEAD~1');
-  const out = pruneBranches({ cwd: r, apply: true });
+  const out = classifyBranches({ cwd: r });
   assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
-  assert.ok(git(r, 'branch', '--list', 'other'));
+  assert.deepEqual(out.deletable, []);
 });

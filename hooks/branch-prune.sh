@@ -1,26 +1,31 @@
 #!/usr/bin/env bash
-# branch-prune.sh — PostToolUse(Bash) hook. After a command that can land a
-# branch on the default branch (git merge / pull / fetch / push, gh pr merge),
-# deletes local branches that were merged and whose remote branch is gone.
+# branch-prune.sh — PostToolUse(Bash) hook, ADVISORY. After a command that can
+# land a branch on the default branch (git merge / pull / fetch / push, gh pr
+# merge), tells the session which local branches are safe to delete and the
+# `git branch -d` command that deletes them. It deletes nothing itself.
 #
-# Why: nothing else ever does. On 2026-09-22 two repos held 15 local branches
-# besides main: 8 were `worktree-agent-*` names left by Claude Code's worktree
-# isolation, and 10 of the 15 had their content on main already. One of the
-# two also held 6 remote-tracking refs for branches the remote had deleted.
+# Why: nothing ever reminded anyone. On 2026-09-22 two repos held 15 local
+# branches besides main: 8 were `worktree-agent-*` names left by Claude Code's
+# worktree isolation, and 10 of the 15 had their content on main already. One
+# of the two also held 6 remote-tracking refs for branches the remote had
+# deleted.
 #
-# What is deleted is decided by scripts/housekeeping.js (see its USAGE): a
+# Why advisory: the first 0.93.0 build deleted, and three pre-tag review rounds
+# each found a new way that delete removed something in use or not merged (see
+# scripts/housekeeping.js, "Report-only"). `git branch -d`, run by whoever acts
+# on this line, re-checks merged-ness and use at the moment it deletes.
+#
+# What is listed is decided by scripts/housekeeping.js (see its USAGE): a
 # branch whose upstream the remote deleted (`[gone]`) and whose tip is on the
 # default branch or origin/<default>, plus worktree-agent-* branches on it.
-# Never the default branch or a worktree checkout; worktree-agent-* aside, never
-# a branch whose upstream still exists or one with no upstream; nothing at all while a rebase or bisect is in
-# progress. Local git only — no fetch, no remote deletion. Each deletion is
-# reported with the sha that recreates the ref, unless the 8 s ceiling below
-# kills the run mid-way (then some may be deleted unreported).
+# Never the default branch, a worktree checkout or a symbolic ref;
+# worktree-agent-* aside, never a branch whose upstream still exists or one
+# with no upstream; nothing while a rebase or bisect is in progress in a
+# worktree it can see. Silent when there is nothing to list.
 #
 # Known limits: the trigger reads the command TEXT, so a commit message that
-# mentions `git pull` fires it; and it prunes the event's cwd, not a repo named
-# by `git -C` or a `cd`. Both only change WHEN the gone-and-merged rule runs,
-# never what it may delete.
+# mentions `git pull` fires it; and it inspects the event's cwd, not a repo
+# named by `git -C` or a `cd`.
 #
 # Kill-switches:
 #   DISABLE_BRANCH_PRUNE_HOOK=1 — this hook
@@ -59,13 +64,13 @@ if ! declare -f platform_timeout >/dev/null 2>&1; then
 fi
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/housekeeping.js"
-OUT=$(platform_timeout 8 node "$SCRIPT" branches --apply --cwd="$CWD" 2>/dev/null) || exit 0
-N=$(printf '%s' "$OUT" | jq -r '.deleted | length' 2>/dev/null) || exit 0
+OUT=$(platform_timeout 8 node "$SCRIPT" branches --cwd="$CWD" 2>/dev/null) || exit 0
+N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 [[ "$N" =~ ^[0-9]+$ ]] && ((N > 0)) || exit 0
 
-LIST=$(printf '%s' "$OUT" | jq -r '[.deleted[] | "\(.name) \(.sha)"] | join(", ")')
+NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(" ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
-MSG="[claudemd] branch-prune: deleted $N local branch(es) already on $DEF whose remote branch was deleted (or worktree-agent-*): $LIST. Recreate any with \`git branch <name> <sha>\`. Disable: DISABLE_BRANCH_PRUNE_HOOK=1."
-hook_record branch-prune branch-prune-applied "{\"deleted\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
+MSG="[claudemd] branch-prune: $N local branch(es) are already on $DEF and their remote branch was deleted (or they are worktree-agent-*): $NAMES. Delete, with $DEF checked out, via \`git -C \"$CWD\" branch -d $NAMES\` — -d re-checks that each is merged into HEAD and not checked out anywhere, and refuses otherwise. Disable this hint: DISABLE_BRANCH_PRUNE_HOOK=1."
+hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

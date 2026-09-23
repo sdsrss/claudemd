@@ -318,7 +318,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file Edit/Write in the transcript tail, and no Edit/Write on that ledger in the same span (the window is a staleness threshold, read on both sides). Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
 | PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | PostToolUse:Bash | `tmp-sweep.sh` | reclaims vitest per-run tmp dirs (exact signature only, detached, ≤ once per 10 min) + temp-root pressure advisory | `§8.V4` |
-| PostToolUse:Bash | `branch-prune.sh` | after git merge/pull/fetch/push or gh pr merge, deletes local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it); skips while a rebase/bisect is in progress | n/a |
+| PostToolUse:Bash | `branch-prune.sh` | advisory: after git merge/pull/fetch/push or gh pr merge, lists local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it) with the `git branch -d` command; deletes nothing | n/a |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |

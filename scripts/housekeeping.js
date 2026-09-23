@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit, parsePositiveInt } from './lib/argv.js';
 
 const USAGE = `Usage: node scripts/housekeeping.js tmp [--apply] [--root=DIR] [--min-age-minutes=N]
-       node scripts/housekeeping.js branches [--apply] [--cwd=DIR]
+       node scripts/housekeeping.js branches [--cwd=DIR]
 
 tmp       Reclaim the per-run directories vitest leaves in the temp root.
           vitest 5.0.0 creates join(os.tmpdir(), nanoid()) on its root object
@@ -18,28 +18,26 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           (60 min, or 24 h while a vitest watch-mode process of this uid runs).
           Roots: $TMPDIR, os.tmpdir(), /tmp and ~/.cache/tmp, de-duplicated
           (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces the list).
-branches  Delete local branches whose upstream the remote deleted (\`[gone]\`)
-          and whose tip is already on the default branch (local or
-          origin/<default>); also worktree-agent-* branches on the default
-          branch, with or without an upstream. Never the default branch or a
-          branch checked out in any worktree; and, worktree-agent-* aside,
-          never a branch whose upstream still exists or one with no upstream.
-          Skips the whole run while a
-          rebase or bisect is in progress in any worktree. Deletes with a
-          compare-and-delete on the classified sha. A gone branch whose
-          tip is NOT on the default branch (squash merge) is listed under
-          \`goneUnmerged\` and never deleted. Local git only.
+branches  REPORT (never delete) the local branches that are safe to delete:
+          a branch whose upstream the remote deleted (\`[gone]\`) and whose
+          tip is already on the default branch (local or origin/<default>),
+          plus worktree-agent-* branches on the default branch. Never lists
+          the default branch or a branch checked out in any worktree; and,
+          worktree-agent-* aside, never a branch whose upstream still exists
+          or one with no upstream. Reports nothing while a rebase or bisect is
+          in progress in a worktree it can see. A gone branch whose tip is NOT
+          on the default branch (squash merge) is listed under
+          \`goneUnmerged\`. Deleting is left to \`git branch -d\`, which runs
+          git's own merged and in-use checks at the moment of deletion.
 
 Options:
-  --apply                Delete (default is a dry run that only reports).
+  --apply                tmp: delete (default is a dry run that only reports).
   --root=DIR             tmp: scan only DIR (test seam).
   --min-age-minutes=N    tmp: override the age floor.
-  --cwd=DIR              branches: repository to prune (default: cwd).
+  --cwd=DIR              branches: repository to inspect (default: cwd).
   --help, -h             Print this message and exit.
 
-Output: JSON on stdout. Every deleted branch carries its sha, so
-\`git branch <name> <sha>\` recreates the ref (its reflog and its
-branch.<name>.* config, which named the deleted upstream, are not restored).
+Output: JSON on stdout.
 
 Exit codes: 0 success | 2 argv-shape error.`;
 
@@ -221,6 +219,15 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 //     Claude Code's worktree isolation gives and no person reuses.
 // A gone branch whose tip is NOT on the default branch (a squash merge, or
 // work the remote lost) is listed under goneUnmerged for a person to judge.
+//
+// Report-only, by the maintainer's decision after three pre-tag review rounds
+// each found a new way an automatic delete here removed something in use: a
+// branch checked out in a new worktree between classification and delete,
+// a symbolic ref whose TARGET was deleted, a rebase in a prunable worktree.
+// Every one came from a window between this process's check and its delete;
+// `git branch -d`, run by whoever acts on the report, re-checks merged-ness
+// and use at the moment of deletion, which nothing here can. Symbolic refs
+// are not listed at all.
 
 function gitIn(cwd) {
   return (...args) => {
@@ -230,7 +237,7 @@ function gitIn(cwd) {
 }
 
 const MAX_CANDIDATES = 200;
-const EMPTY = () => ({ defaultBranch: null, prune: [], goneUnmerged: [], skipped: null });
+const EMPTY = () => ({ defaultBranch: null, deletable: [], goneUnmerged: [], skipped: null });
 
 function defaultBranchOf(git) {
   const sym = git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
@@ -275,56 +282,36 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
       .map(l => l.slice('branch refs/heads/'.length))
   );
   const refs = (
-    git('for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:track)', 'refs/heads') || ''
+    git(
+      'for-each-ref',
+      '--format=%(refname)%09%(objectname)%09%(upstream:track)%09%(symref)',
+      'refs/heads'
+    ) || ''
   )
     .split('\n')
     .filter(Boolean)
     .map(l => {
-      const [ref, sha, track] = l.split('\t');
-      return { name: ref.slice('refs/heads/'.length), sha, gone: track === '[gone]' };
+      const [ref, sha, track, symref] = l.split('\t');
+      return {
+        name: ref.slice('refs/heads/'.length),
+        sha,
+        gone: track === '[gone]',
+        symref: Boolean(symref),
+      };
     })
+    .filter(b => !b.symref)
     .filter(b => b.name !== defaultBranch && !checkedOut.has(b.name))
     .filter(b => b.gone || b.name.startsWith('worktree-agent-'))
     .slice(0, MAX_CANDIDATES);
 
-  const prune = [];
+  const deletable = [];
   const goneUnmerged = [];
   for (const b of refs) {
     const onDefault = bases.some(base => git('merge-base', '--is-ancestor', b.sha, base) !== null);
-    if (onDefault) prune.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
+    if (onDefault) deletable.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
     else if (b.gone) goneUnmerged.push({ name: b.name, sha: b.sha });
   }
-  return { defaultBranch, prune, goneUnmerged, skipped: null };
-}
-
-// `update-ref -d <ref> <sha>` is a compare-and-delete in one ref transaction:
-// if another writer moved the branch after classification, git refuses and
-// the new commits stay reachable. A read-then-`git branch -D` pair has a
-// window between the two calls (0.93.0 re-review F1). git's own in-use checks,
-// which update-ref skips, are covered upstream: worktree checkouts are never
-// candidates and a rebase or bisect anywhere skips the run. The branch's
-// `branch.<name>.*` config goes too — for a gone branch it names a remote
-// branch that no longer exists — and so does its reflog, so recreating the
-// ref from the reported sha restores everything that still means something.
-export function deleteBranches({ cwd, branches }) {
-  const git = gitIn(cwd);
-  const deleted = [];
-  const errors = [];
-  for (const b of branches) {
-    if (git('update-ref', '-d', `refs/heads/${b.name}`, b.sha) === null) {
-      errors.push({ name: b.name, code: 'moved-or-refused' });
-      continue;
-    }
-    git('config', '--remove-section', `branch.${b.name}`);
-    deleted.push(b);
-  }
-  return { deleted, errors };
-}
-
-export function pruneBranches({ cwd = process.cwd(), apply = false } = {}) {
-  const c = classifyBranches({ cwd });
-  if (!apply || c.prune.length === 0) return { ...c, deleted: [], errors: [] };
-  return { ...c, ...deleteBranches({ cwd, branches: c.prune }) };
+  return { defaultBranch, deletable, goneUnmerged, skipped: null };
 }
 
 if (invokedAsMain(import.meta.url)) {
@@ -347,9 +334,10 @@ if (invokedAsMain(import.meta.url)) {
     }
     process.stdout.write(JSON.stringify(sweepVitestTmp(opts)) + '\n');
   } else if (sub === 'branches') {
-    const p = parseStrictOrExit(rest, { bools: ['--apply'], values: ['--cwd'] });
-    const out = pruneBranches({ cwd: p.values['--cwd'] || process.cwd(), apply: p.bools.has('--apply') });
-    process.stdout.write(JSON.stringify(out) + '\n');
+    const p = parseStrictOrExit(rest, { values: ['--cwd'] });
+    process.stdout.write(
+      JSON.stringify(classifyBranches({ cwd: p.values['--cwd'] || process.cwd() })) + '\n'
+    );
   } else {
     console.error(`Unknown subcommand: '${sub ?? ''}'. Expected 'tmp' or 'branches'.`);
     process.exit(2);

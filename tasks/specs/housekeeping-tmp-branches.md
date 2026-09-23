@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 3
+revision: 4
 ---
 
 # Housekeeping hooks: vitest tmp sweep + merged-branch prune
@@ -41,15 +41,14 @@ in the plugin reclaims them:
   min; 24 h while a vitest watch-mode process of this uid is alive). Roots:
   `$TMPDIR`, `/tmp`, `~/.cache/tmp`, de-duplicated. Runs detached; rate-limited
   to once per 10 minutes by a stamp file.
-- branch-prune fires only on commands naming `git merge|pull|fetch|push` or
-  `gh pr merge`; local git only. Deletes a branch only when its upstream is
-  `[gone]` and its tip is an ancestor of the default branch or
-  `origin/<default>`, or when it is a `worktree-agent-*` branch on the default
-  branch. Never the default branch or a worktree checkout; worktree-agent-*
-  aside, never a branch whose upstream exists or one with no upstream; nothing while a rebase or bisect
-  is in progress. Deletes with `update-ref -d <ref> <sha>` (compare-and-delete).
-  (r3: replaced the patch-equivalence and reflog rules after the pre-tag
-  review — see CHANGELOG 0.93.0.)
+- branch-prune is ADVISORY (r4): fires only on commands naming
+  `git merge|pull|fetch|push` or `gh pr merge`; local git only; lists — never
+  deletes — branches whose upstream is `[gone]` and whose tip is an ancestor
+  of the default branch or `origin/<default>`, plus `worktree-agent-*` on the
+  default branch, with the `git branch -d` command. Never lists the default
+  branch, a worktree checkout or a symbolic ref; worktree-agent-* aside, never
+  a branch whose upstream exists or one with no upstream; nothing while a
+  rebase or bisect is in progress in a worktree it can see.
 
 ## success-criteria
 
@@ -58,7 +57,7 @@ in the plugin reclaims them:
   watch-mode floor, recheck before rm; branch classes (gone+merged, gone via
   origin only, gone+squash kept, whitespace-different kept, upstream-exists
   kept, no-upstream kept, worktree-agent, worktree checkout, rebase in
-  progress, compare-and-delete).
+  progress, symbolic ref, CLI never deletes).
 - Hook tests: fast path silent, kill switch, rate limit, trigger match.
 - `npm run check` exit 0; hook-registry / kill-switch-doc drift tests green.
 
@@ -72,3 +71,4 @@ in the plugin reclaims them:
 - r1 2026-09-22: initial, approved by user in-session ("确认授权").
 - r2 2026-09-22: implemented in 0.93.0 (scripts/housekeeping.js, hooks/tmp-sweep.sh, hooks/branch-prune.sh).
 - r3 2026-09-22: branch rule replaced after the pre-tag review (4 High / 6 Medium); tmp-sweep unset-TMPDIR abort and non-atomic rate limit fixed.
+- r4 2026-09-23: branch-prune made advisory-only by the maintainer after the second re-review found a new High (update-ref bypassed git's in-use check); deletion code removed.

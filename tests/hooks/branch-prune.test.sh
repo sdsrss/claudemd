@@ -47,32 +47,46 @@ has_branch() { [[ -n "$(git -C "$REPO" branch --list "$1")" ]]; }
 # Case 1: a command that is not a merge does nothing.
 fresh_repo
 OUT=$(evt 'ls -la' | bash "$HOOK" 2>&1)
-[[ -z "$OUT" ]] && has_branch feat && ok "1 non-trigger silent" || ng "1 (out: $OUT)"
+[[ -z "$OUT" ]] && ok "1 non-trigger silent" || ng "1 (out: $OUT)"
 
 # Case 2: `git merge-base` names merge but is not one.
 OUT=$(evt 'git merge-base main feat' | bash "$HOOK" 2>&1)
 [[ -z "$OUT" ]] && has_branch feat && ok "2 merge-base is not a trigger" || ng "2 (out: $OUT)"
 
+# Case 2b: a word merely ending in "git" is not git (leading boundary).
+OUT=$(evt 'legit pull request notes' | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && ok "2b leading word boundary" || ng "2b (out: $OUT)"
+
 # Case 3: kill switch.
 OUT=$(evt 'git merge feat' | DISABLE_BRANCH_PRUNE_HOOK=1 bash "$HOOK" 2>&1)
 [[ -z "$OUT" ]] && has_branch feat && ok "3 kill switch" || ng "3 (out: $OUT)"
 
-# Case 4: a merge prunes the gone-and-merged branch, keeps the pushed-unmerged
-# one and the one with no upstream, and names the sha that recreates it.
-SHA=$(git -C "$REPO" rev-parse feat)
+# Case 4: a merge lists the gone-and-merged branch — and deletes nothing. The
+# pushed-unmerged branch and the one with no upstream are not listed.
 OUT=$(evt 'git merge feat' | bash "$HOOK" 2>/dev/null)
-if ! has_branch feat && has_branch wip && has_branch local-only &&
-  printf '%s' "$OUT" | jq -e --arg s "$SHA" '.suppressOutput == true and (.hookSpecificOutput.additionalContext | test("feat " + $s))' >/dev/null 2>&1; then
-  ok "4 merged branch pruned with restore sha, unmerged kept"
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if has_branch feat && has_branch wip && has_branch local-only &&
+  printf '%s' "$OUT" | jq -e '.suppressOutput == true' >/dev/null 2>&1 &&
+  [[ "$CTX" == *"branch -d feat"* && "$CTX" != *wip* && "$CTX" != *local-only* ]]; then
+  ok "4 lists feat only, deletes nothing"
 else
-  ng "4 (out: $OUT; branches: $(git -C "$REPO" branch --format='%(refname:short)' | tr '\n' ' '))"
+  ng "4 (ctx: $CTX; branches: $(git -C "$REPO" branch --format='%(refname:short)' | tr '\n' ' '))"
+fi
+
+# Case 4b: the command the advisory hands over actually works on the default
+# branch — extracted from the message and run as-is.
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*via `\(git -C "[^"]*" branch -d [^`]*\)`.*/\1/p')
+if [[ -n "$CMD" ]] && eval "$CMD" >/dev/null 2>&1 && ! has_branch feat && has_branch wip; then
+  ok "4b suggested command deletes exactly the listed branch"
+else
+  ng "4b (cmd: $CMD)"
 fi
 
 # Case 5: other trigger spellings reach the prune.
 for cmd in 'git pull --ff-only' 'git -C . fetch origin' 'gh pr merge 12 --squash' 'cd x && git push origin main'; do
   fresh_repo
-  evt "$cmd" | bash "$HOOK" >/dev/null 2>&1
-  has_branch feat && ng "5 trigger not recognised: $cmd" || ok "5 trigger: $cmd"
+  OUT=$(evt "$cmd" | bash "$HOOK" 2>/dev/null)
+  [[ "$OUT" == *"branch -d feat"* ]] && ok "5 trigger: $cmd" || ng "5 trigger not recognised: $cmd"
 done
 
 # Case 6: outside a git repo the hook is silent and exits 0.
