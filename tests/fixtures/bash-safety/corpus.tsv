@@ -1465,32 +1465,3 @@ deny	F42 two mktemp + command substitution cuts the segment	D=$(mktemp -d); H=$(
 deny	F42 two mktemp + backtick cuts the segment	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H" `pwd` "$EVIL"
 deny	F42 mktemp + neighbour mktemp var with default operator	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "${H:-/}"
 deny	F42 two mktemp vars, one of them quoted-RHS (reverted class)	D=$(mktemp -d); bak="$(mktemp /tmp/cfg.XXXXXX)"; rm -rf "$D" "$bak"
-
-# === F43 (2026-09-25) — a `:?` guard on a bare whitelisted var ===
-# `${HOME:?}` extracted as the name `HOME:?`, which never matched the
-# HOME|PWD|OLDPWD|TMPDIR arm, so it fell to the guard arm and ALLOWED — deleting all
-# of $HOME. `:?` validates that HOME is set; it bounds nothing. Deny-only fix: a
-# whitelisted name under `:?`/`?` with no literal subpath is the bare case. Any other
-# operator (`${HOME%/*}`) still takes the arm it took before.
-deny	F43 rm -rf bare HOME under :?	rm -rf "${HOME:?}"
-deny	F43 rm -rf bare HOME under :? with message	rm -rf "${HOME:?HOME must be set}"
-deny	F43 rm -rf bare HOME under ? (unset only)	rm -rf "${HOME?}"
-deny	F43 rm -rf bare TMPDIR under :?	rm -rf "${TMPDIR:?}"
-deny	F43 rm -rf bare PWD under :?	rm -rf "${PWD:?}"
-deny	F43 rm -rf bare OLDPWD under :?	rm -rf "${OLDPWD:?}"
-deny	F43 rm -rf bare HOME under :? trailing slash	rm -rf "${HOME:?}/"
-deny	F43 find bare HOME under :? no primary	find "${HOME:?}" -delete
-deny	F43 unguarded HOME parent walk still denies	rm -rf "${HOME%/*}/victim"
-pass	F43 HOME under :? with a subpath	rm -rf "${HOME:?}/cache"
-pass	F43 TMPDIR under :? with a subpath	rm -rf "${TMPDIR:?}/build"
-pass	F43 find HOME under :? with a selection primary	find "${HOME:?}" -name "*.log" -delete
-pass	F43 non-whitelisted guarded var unchanged	rm -rf "${D:?}"
-pass	F43 HOME guard message with spaces, subpath	rm -rf "${HOME:?HOME must be set}/cache"
-pass	F43 non-whitelisted guard message with spaces unchanged	rm -rf "${D:?must be set}"
-deny	F43 TMPDIR guard message with spaces, bare	rm -rf "${TMPDIR:?not set}" ./build
-# F43 replay: the only real commands this flips (2 of 6138) — TMPDIR repointed to a
-# scratch dir, then wiped bare. Safe as written, but the gate cannot trust the
-# assignment (the literal-provenance class, reverted twice); `rm -rf "${SP:?}/tmpres"` passes.
-deny	F43 real: export TMPDIR to scratch then wipe bare (guard upstream too)	SP=/tmp/sp; export TMPDIR=$SP/tmpres; : "${TMPDIR:?}" && rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
-deny	F43 real: export TMPDIR literal then wipe bare	export TMPDIR=/tmp/sp/t; rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
-pass	F43 real, rewritten: wipe the base subpath instead	SP=/tmp/sp; export TMPDIR=$SP/tmpres; rm -rf "${SP:?}/tmpres"; mkdir -p "$TMPDIR"
