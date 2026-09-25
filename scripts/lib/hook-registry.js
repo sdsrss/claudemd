@@ -152,6 +152,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'cross-repo-write-check.sh',
+    displayName: 'cross-repo-write',
+    envVarSuffix: 'CROSS_REPO_WRITE',
+    hookEvent: 'PreToolUse',
+    matcher: 'Edit|Write|NotebookEdit|Bash',
+    timeout: 3,
+  },
+  {
     basename: 'tmp-sweep.sh',
     displayName: 'tmp-sweep',
     envVarSuffix: 'TMP_SWEEP',

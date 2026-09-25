@@ -358,6 +358,18 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"UserPromptSubmit", session_id:$s, cwd:$c,
           prompt:"budget probe prompt"}' ;;
+    cross-repo-write-check)
+      # In the subject set only for the `${TMPDIR` literal, which it reads as a
+      # string prefix, never as a directory to walk. The probe drives the full
+      # path — Bash segment walk, two identity walks, claim, row, advisory — on
+      # a multi-segment command, with TMPDIR moved off the fixture repos so the
+      # exclusion does not end it early.
+      mkdir -p "$SANDBOX/xr/own/.git" "$SANDBOX/xr/other/.git" "$SANDBOX/xr/tmp"
+      PROBE_ENV=("CROSS_REPO_WRITE=1" "TMPDIR=$SANDBOX/xr/tmp")
+      jq -cn --arg s "xr-$RANDOM-$SESSION_ID" --arg c "$SANDBOX/xr/own" \
+        --arg x "git status; git log -3; cd $SANDBOX/xr/other && git add -A && git commit -q -m probe; git -C $SANDBOX/xr/own tag -l | head -3" \
+        '{hook_event_name:"PreToolUse", session_id:$s, cwd:$c, tool_name:"Bash",
+          tool_use_id:"tu_probe", tool_input:{command:$x}}' ;;
     *) return 1 ;;
   esac; } > "$EVT_FILE"
 }
@@ -644,6 +656,8 @@ diff_exempt_reason() {
   case "$1" in
     banned-vocab-check)
       printf 'reads a transcript, but bounded at `tail -n 200` so its cost does not scale with transcript size; and its probe DENIES on the commit-message path before the transcript path runs, so the signature is identical under both fixtures either way (verified: removing this exemption fails it at 3837877947|4294967295|262|0|0)' ;;
+    cross-repo-write-check)
+      printf 'admitted by the `${TMPDIR` literal only: TMPDIR is a string prefix for the scratch exclusion and is never walked, and nothing else it reads is a directory listing or a log, so its cost scales with the command and path depth, not with any fixture this gate varies' ;;
     *) printf '' ;;
   esac
 }

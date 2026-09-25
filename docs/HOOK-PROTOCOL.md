@@ -24,7 +24,8 @@ author to re-derive it from another hook's source:
   from those events log `null`. Read by `banned-vocab-check.sh`,
   `memory-read-check.sh`, `pre-bash-safety-check.sh`,
   `session-extended-read.sh`, `ship-baseline-check.sh`,
-  `transcript-vocab-scan.sh`, `rework-breaker.sh`, `branch-prune.sh`.
+  `transcript-vocab-scan.sh`, `rework-breaker.sh`, `branch-prune.sh`,
+  `cross-repo-write-check.sh`.
   One reader of the NAME is not a reader of this field: `evidence-gate.sh` is a
   Stop hook, so its envelope carries no `tool_use_id` at all — it reads the
   `tool_use_id` that each `tool_result` in the TRANSCRIPT carries, to join a
@@ -121,6 +122,12 @@ Emitters, derived from source and gated by
   It reads `.tool_input.file_path` and `.session_id`, and quotes the path from
   the EVENT rather than from its own state file, because that state is keyed by
   checksum and a collision there must not be able to name the wrong file.
+- `cross-repo-write-check.sh` — PreToolUse (`Edit|Write|NotebookEdit|Bash`);
+  one line per git repo, other than the one owning `cwd`, that the call writes
+  into — the target path of a file tool, or a git write after a literal `cd` or
+  `git -C` in Bash. Told once per repo per session (an `O_EXCL` claim), recorded
+  on every hit. Opt-in `CROSS_REPO_WRITE=1`. It never sets
+  `permissionDecision`, so the envelope carries context only.
 - `tmp-sweep.sh` — PostToolUse (`Bash`); one line when the temp root is at or
   past `CLAUDEMD_TMP_PRESSURE_PCT` (default 80) full, naming the percentage
   and, on a tmpfs, that the bytes are RAM. Rate-limited with the sweep itself

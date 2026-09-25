@@ -32,6 +32,12 @@
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-extended-read.sh\"", "timeout": 3 }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/cross-repo-write-check.sh\"", "timeout": 3 }
+        ]
       }
     ],
     "Stop": [

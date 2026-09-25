@@ -167,6 +167,12 @@ const NON_RULE_SECTIONS = new Set([
   // the SessionStart arm uses — would be the closer lie: nothing has compacted
   // when this fires.
   '§11-ledger',
+  // The cross-repo write advisory (v0.95.0). It files under §5's "Files outside
+  // grant → re-AUTH" — general §5 text, not the §5 Hard list, which has its own
+  // self-enforced entry (§5-hard-auth). Same reasoning as §1-root-cause above:
+  // an advisory that never denies must not put rows into a HARD rule's §13.1
+  // demote accounting. Promoting it is the §13.3 route.
+  '§5-scope',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

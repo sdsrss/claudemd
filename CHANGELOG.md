@@ -8,6 +8,33 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.95.0] - 2026-09-25
+
+**New opt-in hook: `cross-repo-write-check` tells the agent when a tool call is about to write into another git repository.** Set `CROSS_REPO_WRITE=1` to turn it on. It is off by default, and with the flag unset it makes one string comparison and exits. It is advisory: it never allows or denies anything.
+
+**Why.** On 2026-09-25 a session working in `claude-mem-lite` edited two files in `claudemd`, created a branch there and committed. The `claudemd` working tree was shared with a live session that had just checked out its own branch, so the commit landed on that other session's branch. The session then undid it with `git branch -f` and `git reset --keep` on the other session's branch. Nothing was lost, only because `--keep` happened to keep the other session's uncommitted edits. Under `bypassPermissions` nothing mechanical stood in the way.
+
+**What it sees.**
+- An `Edit`, `Write` or `NotebookEdit` whose target is in a git repository other than the one that owns the session's `cwd`.
+- A Bash git write into another repository through a literal `cd <path>` earlier in the command or `git -C <path>`. The git writes are `commit`, `push`, `pull`, `switch`, `checkout`, `reset`, `rebase`, `merge`, `add`, and so on; `branch` and `tag` only when they create, delete, move or force a ref.
+- Reads are not writes: `log`, `show`, `status`, `merge-base`, `merge-tree`, `fetch`, branch and tag listings, `stash list`, `worktree list`.
+- Repositories are identified by the `.git` that owns the path, found without running git. A worktree's or submodule's `.git` file resolves to the repository that owns it, so the session's own worktrees and submodules count as its own repository.
+- Paths under `~/.claude/`, `${TMPDIR:-/tmp}`, `/tmp/claude-*` and `/var/tmp` are skipped, because sandbox repositories live there.
+
+**What it says.** One line per target repository per session: the call writes into repository B while the session's project is A. If the user did not ask for work in B, stop and ask. If they did, make git changes in B from a separate checkout created with `git worktree add`, not by switching branches in B's shared working tree. Every hit writes a `cross-repo-advisory` row (section `§5-scope`) with `first` set on the announced one. `CROSS_REPO_WRITE_ALLOW` takes colon-separated repository roots; hits there are recorded with `allowlisted: true` and get no message.
+
+**Not covered, by decision:** Bash file writes that do not go through git (`sed -i`, `>`, `cp`, `rm`), paths held in variables, `eval` and `bash -c`. This is a guardrail against cooperative mistakes, not an anti-injection boundary.
+
+**Measured before release.** The hook was replayed over the 22,944 historical `Edit`/`Write`/`NotebookEdit` calls, plus Bash calls containing `git`, in local transcripts.
+- It produced 9 hits, and every one is a real write into another repository: all five write steps of the 2026-09-25 incident, and four calls from a 2026-09-22 session. That session committed in `claude-mem-lite` and `daagu` on a user-authorized task, deleted remote branches in `sgc`, and deleted local branches in `code-graph-mcp` and `loop-testing`.
+- No read was flagged.
+- The first run had 6 more hits, all throwaway `git init` sandboxes under `/var/tmp`; `/var/tmp` was then added to the skipped paths.
+- p95 latency per call was 29 ms with the flag on.
+
+Tests: `tests/hooks/cross-repo-write.test.sh`, 33 cases. Each of these changes turns at least one case red: removing the listing-means-read rule for `branch`/`tag`, the worktree or submodule resolution, the `stash list` read, any of the skipped paths, the check of the path's physical directory, or the once-per-session suppression.
+
+**Evaluation plan** (`tasks/specs/cross-repo-write.md`): with the flag on for at least 30 days or 20 advisories, count advisories per 100 sessions, the share on user-authorized work, and how often the agent stopped or asked after an unauthorized hit. A default-on advisory is proposed only if at least one unauthorized hit changed the agent's course and authorized work draws at most one advisory per 20 sessions. A deny is not considered before that.
+
 ## [0.94.1] - 2026-09-25
 
 **`rm -rf "${HOME:?}"` was allowed, and it deletes all of `$HOME`.** The §8 rm gate lets a whitelisted var (`HOME`, `PWD`, `OLDPWD`, `TMPDIR`) through only with a literal subpath: `rm -rf "$HOME"` denies, `rm -rf "$HOME/cache"` passes. But the name it extracts from a target keeps any operator inside the braces, so `${HOME:?}` arrived as `HOME:?`, missed the whitelist arm, and reached the guard arm. That arm builds its guard pattern from the same operator-bearing name, and for an empty-message `:?` guard the pattern matches, so it allowed. `:?` proves the var is set; it bounds nothing. The same held for `${TMPDIR:?}`, `${PWD:?}`, `${OLDPWD:?}`, a trailing slash (`"${HOME:?}/"`), `find "${HOME:?}" -delete`, and a concatenation such as `"${HOME:?}${EVIL}"`. The `?` form (`${HOME?}`) and a guard with a message (`${HOME:?x}`) were already denied: their patterns never matched.

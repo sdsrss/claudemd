@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 83 node suites, 33 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 83 node suites, 34 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -290,6 +290,7 @@ second is unverified on the trigger that matters.
 - `~/.claude/.claudemd-state/vocab-scan-<sid>.last` — per-session transcript-vocab-scan content-hash cursor (`transcript-vocab-scan.sh`). Nothing reaps it on session end; `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/rework-<sid>.fired-<key>-<n>` — the claim that the advisory for multiple `<n>` of file `<key>` has already been emitted this session (`rework-breaker.sh`). Created with `set -o noclobber`, i.e. `O_CREAT|O_EXCL`, so exactly one process wins each multiple when several Edit hooks run concurrently; the tally file beside it cannot carry that, because appending and then re-reading it is a race.
 - `~/.claude/.claudemd-state/rework-<sid>.counts` — per-session append-only edit tally, one `cksum` key per Edit/Write (`rework-breaker.sh`). One short line per edit, so a long session's file is the size of its edit count; nothing reaps it on session end, `/claudemd-clean-residue` reaps it past the retention window.
+- `~/.claude/.claudemd-state/xrepo-<sid>-<key>` — the claim that this session has already been told about target repo `<key>` (`cksum` of the repo's physical `.git` path; `cross-repo-write-check.sh`). Empty, created with `set -o noclobber` so concurrent Edits announce a repo once; `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/tmp-sweep.stamp` — `tmp-sweep.sh` rate-limit stamp; its mtime is the last sweep. One file, rewritten in place, never grows.
 - `~/.claude/.claudemd-state/tmp-sweep.lock` — `tmp-sweep.sh`'s atomic claim (a directory, created with `mkdir`) held only between reading and rewriting the stamp, so parallel Bash calls spawn one sweep, not several. One left by a killed hook is cleared once it is older than 60 s.
 - `~/.claude/.claudemd-state/tmp-sweep.last.json` — the detached sweep's JSON result (`scripts/housekeeping.js tmp --apply`), overwritten on each run, so the last sweep's targets, deletions and errors can be read after the fact.
@@ -317,6 +318,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result after the last code edit whose command names a runner or whose output carries a runner verdict. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
 | Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file Edit/Write in the transcript tail, and no Edit/Write on that ledger in the same span (the window is a staleness threshold, read on both sides). Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
 | PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
+| PreToolUse | `cross-repo-write-check.sh` | Advisory when an Edit/Write/NotebookEdit target, or a Bash git write after a literal `cd`/`git -C`, belongs to a git repo other than the one owning `cwd` (worktrees and submodules collapse to their owning repo). Once per target repo per session. Opt-in `CROSS_REPO_WRITE=1` (§13.3 default-OFF) | `§5-scope` |
 | PostToolUse:Bash | `tmp-sweep.sh` | reclaims vitest per-run tmp dirs (exact signature only, detached, ≤ once per 10 min) + temp-root pressure advisory | `§8.V4` |
 | PostToolUse:Bash | `branch-prune.sh` | advisory: after git merge/pull/fetch/push or gh pr merge, lists local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it) with the `git branch -d` command; deletes nothing | n/a |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |

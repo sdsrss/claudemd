@@ -306,6 +306,19 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_response: {},
       },
     },
+    // Default OFF, so the probe reaches the opt-in exit and must say nothing;
+    // opted in, a /tmp target is under the scratch exclusion. Either way the
+    // liveness question is exit 0 with a clean stderr.
+    {
+      hook: 'cross-repo-write-check.sh',
+      ks: ksFor('cross-repo-write-check.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Edit',
+        cwd: '/tmp',
+        tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
+      },
+    },
     {
       hook: 'branch-prune.sh',
       ks: ksFor('branch-prune.sh'),
