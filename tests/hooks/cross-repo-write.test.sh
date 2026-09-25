@@ -58,6 +58,16 @@ printf 'gitdir: ../.git/modules/sub\n' > "$R/alpha/sub/.git"
 # exists, or the row would pass on "no repo found" instead.
 mkrepo "$HOME/.claude/mem"
 mkrepo "$HOOK_TMPDIR/sbx"
+# A repo whose root has a space in it, for quoted and escaped operands.
+mkrepo "$R/my repo"
+# Bare-repo worktree layout: `git clone --bare proj.git` + `git worktree add`.
+# Each worktree's gitdir is proj.git/worktrees/<n>, NOT under a `.git/`, and
+# git writes a `commondir` there pointing at the shared repo.
+for w in main feat; do
+  mkdir -p "$R/proj.git/worktrees/$w" "$R/proj/$w/src"
+  printf '../..\n' > "$R/proj.git/worktrees/$w/commondir"
+  printf 'gitdir: %s\n' "$R/proj.git/worktrees/$w" > "$R/proj/$w/.git"
+done
 
 LOG="$HOME/.claude/logs/claudemd.jsonl"
 SEQ=0
@@ -148,6 +158,12 @@ next_sid
 expect_advisory "X7 another repo's worktree is that repo" "$(run "$(file_ev Edit "$R/beta-wt/src/f" "$R/alpha" "$SID")")" beta alpha
 next_sid
 expect_silent "X8 own submodule (relative gitdir) is the own repo" "$(run "$(file_ev Edit "$R/alpha/sub/f" "$R/alpha" "$SID")")"
+next_sid
+expect_silent "X6c bare-repo layout: a sibling worktree is the own repo" "$(run "$(file_ev Edit "$R/proj/feat/src/f" "$R/proj/main" "$SID")")"
+next_sid
+expect_silent "X6d bare-repo layout: cd into a sibling worktree and commit" "$(run "$(bash_ev "cd $R/proj/feat && git commit -m x" "$R/proj/main" "$SID")")"
+next_sid
+expect_advisory "X6e bare-repo layout: still another repo from alpha" "$(run "$(file_ev Edit "$R/proj/feat/src/f" "$R/alpha" "$SID")")" proj alpha
 
 # --- X9: exclusions, each on a path that IS inside a repo ------------------------
 next_sid
@@ -160,10 +176,16 @@ expect_silent "X9d a symlink whose physical path is under TMPDIR" "$(run "$(file
 # /var/tmp: a real repo there, so the row fails if the exclusion goes. The
 # replay's only false positives were throwaway repos under /var/tmp.
 VT=$(mktemp -d /var/tmp/claudemd-test-XXXXXX)
-trap 'rm -rf "${BASE:?}" "${VT:?}"' EXIT
+# /tmp/claude-*: Claude Code's scratchpad root, which stays there when TMPDIR
+# points elsewhere (run() points it at HOOK_TMPDIR). A real repo, as above.
+CT=$(mktemp -d /tmp/claude-xrtest-XXXXXX)
+trap 'rm -rf "${BASE:?}" "${VT:?}" "${CT:?}"' EXIT
 mkrepo "$VT/sbx"
+mkrepo "$CT/sbx"
 next_sid
 expect_silent "X9e under /var/tmp" "$(run "$(file_ev Write "$VT/sbx/src/x" "$R/alpha" "$SID")")"
+next_sid
+expect_silent "X9f under /tmp/claude-*" "$(run "$(file_ev Write "$CT/sbx/src/x" "$R/alpha" "$SID")")"
 next_sid
 expect_silent "X9c a path in no repo" "$(run "$(file_ev Write "$R/plain/src/x" "$R/alpha" "$SID")")"
 
@@ -222,13 +244,31 @@ for c in \
   "(cd $R/beta && git checkout main)" \
   "cd $R/beta; git -c user.name=x commit -m y" \
   "git -C $R/beta-wt commit -m x" \
-  "cd $R/beta && git log -1; git cherry-pick abc"; do
+  "cd $R/beta && git log -1; git cherry-pick abc" \
+  "(cd $R/beta && git push)" \
+  "(cd $R/beta && git pull)" \
+  "(cd $R/beta && git stash)" \
+  "cd $R/beta && git merge feat" \
+  "git -C $R/beta revert HEAD" \
+  "cd $R/beta && git rm f" \
+  "cd $R/beta && git mv a b" \
+  "cd $R/beta && git restore f" \
+  "cd $R/beta && git am p.patch" \
+  "cd $R/beta && git apply p.diff" \
+  "cd $R/beta && git clean -fd" \
+  "cd -P $R/beta && git commit -m x" \
+  "cd -- $R/beta && git commit -m x" \
+  "cd \"$R/my repo\" && git commit -m x" \
+  "git -C \"$R/my repo\" commit -m x" \
+  "git -C '$R/my repo' commit -m x" \
+  "cd $R/my\\ repo && git commit -m x"; do
   WROWS=$((WROWS + 1))
   next_sid
   OUT=$(run "$(bash_ev "$c" "$R/alpha" "$SID")")
-  if [[ "$(ctx "$OUT")" == *beta* ]]; then WROTE=$((WROTE + 1)); else echo "  X15 silent on: $c"; fi
+  C=$(ctx "$OUT")
+  if [[ "$C" == *beta* || "$C" == *"my repo"* ]]; then WROTE=$((WROTE + 1)); else echo "  X15 silent on: $c"; fi
 done
-if ((WROTE == WROWS && WROWS >= 19)); then
+if ((WROTE == WROWS && WROWS >= 36)); then
   ok "X15 every git write into another repo is announced ($WROWS rows)"
 else
   ng "X15 ($WROTE of $WROWS write rows announced)"
@@ -265,13 +305,21 @@ for c in \
   "cd \$X && git commit -m x" \
   "cd $HOOK_TMPDIR/sbx && git commit -m x" \
   $'cat <<EOF\ncd '"$R"$'/beta && git commit -m x\nEOF' \
-  "echo cd $R/beta; git commit -m x"; do
+  "echo cd $R/beta; git commit -m x" \
+  "(cd $R/beta && git log -1) && git commit -m x" \
+  "(cd $R/beta; git fetch); git add -A && git commit -m own" \
+  "cd $R/beta && git branch 2> /dev/null" \
+  "cd $R/beta && git branch > /dev/null" \
+  "cd $R/beta && git tag > tags.txt" \
+  "cd $R/beta && git branch # list" \
+  "cd $R/beta && git tag --verify v1" \
+  "cd $R/beta && git log -1; cd \$X && git commit -m x"; do
   QROWS=$((QROWS + 1))
   next_sid
   OUT=$(run "$(bash_ev "$c" "$R/alpha" "$SID")")
   if [[ -z "$OUT" ]]; then QUIET=$((QUIET + 1)); else echo "  X17 spoke on: $c"; fi
 done
-if ((QUIET == QROWS && QROWS >= 25)); then
+if ((QUIET == QROWS && QROWS >= 33)); then
   ok "X17 reads, own worktrees/submodules, excluded and unknown targets stay silent ($QROWS rows)"
 else
   ng "X17 ($((QROWS - QUIET)) of $QROWS control rows spoke)"
@@ -281,6 +329,56 @@ fi
 next_sid
 OUT=$(run "$(bash_ev "cd $R/alpha-wt && git commit -m a; cd $R/beta && git push" "$R/alpha" "$SID")")
 expect_advisory "X18 the other-repo write is found after an own-worktree write" "$OUT" beta alpha
+
+# --- X20: allowlist entries that are not absolute -----------------------------------
+# settings.json `env` values are literal: `~` and `$HOME` arrive unexpanded. The
+# hook expands a leading `~/` or `$HOME/`, ignores any other relative entry, and
+# must never spin on one (it did: `${d%/*}` on a slash-free string is itself).
+# shellcheck source=../../hooks/lib/platform.sh
+source "$HERE/../../hooks/lib/platform.sh"
+allow_run() {
+  printf '%s' "$1" | CROSS_REPO_WRITE=1 CROSS_REPO_WRITE_ALLOW="$2" TMPDIR="$HOOK_TMPDIR" \
+    platform_timeout 5 bash "$HOOK" 2>/dev/null
+}
+next_sid
+OUT=$(allow_run "$(file_ev Edit "$R/beta/src/f" "$R/alpha" "$SID")" 'beta:~/nothere:$HOME/nothere')
+RC=$?
+assert_eq "X20a relative allowlist entries: the hook exits 0" 0 "$RC"
+expect_advisory "X20a and the hit is still announced" "$OUT" beta alpha
+# Silence alone would also be what a killed hook prints, so each row also
+# needs the allowlisted rule-hits row the hook writes only when it finishes.
+# shellcheck disable=SC2088  # the literal, unexpanded forms ARE the input
+for entry in '~/proj' '$HOME/proj'; do
+  next_sid
+  OUT=$(allow_run "$(file_ev Edit "$HOME/proj/src/f" "$R/alpha" "$SID")" "$entry")
+  AL=$(jq -r --arg s "$SID" 'select(.hook=="cross-repo-write" and .session_id==$s) | .extra.allowlisted' "$LOG" 2>/dev/null)
+  if [[ -z "$OUT" && "$AL" == true ]]; then
+    ok "X20b allowlist entry $entry is expanded and matches"
+  else
+    ng "X20b allowlist entry $entry (out: ${OUT:-<silent>}, allowlisted row: ${AL:-<none>})"
+  fi
+done
+# A relative HOME reaches the same walk through `cd ~`. Run from BASE, so the
+# relative log path lands inside the sandbox.
+next_sid
+EV=$(bash_ev "cd ~ && git commit -m x" "$R/alpha" "$SID")
+(cd "$BASE" && printf '%s' "$EV" | HOME=relhome CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" \
+  platform_timeout 5 bash "$HOOK" >/dev/null 2>&1)
+assert_eq "X20d a relative HOME does not hang the hook" 0 "$?"
+
+# --- X21: an unreadable .git file is silent on stderr ------------------------------
+mkdir -p "$R/unr/src"
+printf 'gitdir: %s\n' "$R/beta/.git/worktrees/x" > "$R/unr/.git"
+chmod 000 "$R/unr/.git"
+if [[ -r "$R/unr/.git" ]]; then
+  ok "X21 skipped: running as a user who can read mode-000 files"
+else
+  next_sid
+  ERR=$(printf '%s' "$(file_ev Edit "$R/unr/src/f" "$R/alpha" "$SID")" \
+    | CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>&1 >/dev/null)
+  assert_eq "X21 an unreadable .git file writes nothing to stderr" "" "$ERR"
+fi
+chmod 600 "$R/unr/.git"
 
 # --- X19: default path is free --------------------------------------------------------
 # The opt-in check runs before hook-common is sourced: with the flag unset the

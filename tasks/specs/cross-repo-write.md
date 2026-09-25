@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 4
+revision: 5
 ---
 
 # Cross-repo write advisory
@@ -24,7 +24,8 @@ because `--keep` preserved the other session's uncommitted edits.
 Baseline (all transcripts, 747 sessions with tool calls, 2026-09-05..09-25): 2 sessions
 wrote into another repo. `4555aa6b` (cwd claudemd, 2026-09-22) committed in claude-mem-lite
 and daagu on a user-authorized task, and ran `git push origin --delete` in sgc, which no user
-prompt in that session names. `9bc9a9aa` is the incident. Every other cross-repo tool
+prompt in that session names; one more of its calls deleted local branches in
+code-graph-mcp and loop-testing. `9bc9a9aa` is the incident. Every other cross-repo tool
 call in the window was a read (`git log`, `git show`, `git merge-base`, `git merge-tree`,
 `git tag | grep`, `git branch --contains`).
 
@@ -59,8 +60,10 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
   jq-spawn budget, bash 3.2 parse + runtime, shellcheck.
 - **Repo identity**: walk up from the path, or from its nearest existing ancestor, to the
   first `.git` entry. A `.git` directory is its own identity. A `.git` file (worktree or
-  submodule) is resolved through its `gitdir:` line. A `…/.git/worktrees/<n>` or
-  `…/.git/modules/<n>` gitdir collapses to the `.git` that owns it, and identities are
+  submodule) is resolved through its `gitdir:` line. A gitdir holding a `commondir` file
+  (every linked worktree, including the bare-repo `proj.git/worktrees/<n>` layout)
+  resolves through it; otherwise a `…/.git/worktrees/<n>` or `…/.git/modules/<n>` gitdir
+  collapses to the `.git` that owns it, and identities are
   compared after `pwd -P`, so `..` and symlinks do not split one repo into two. A
   worktree or submodule of the session's own repo is therefore NOT cross-repo, and a
   worktree of another repo IS. No `git` process is spawned; the walk is
@@ -71,7 +74,9 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
   identity exists, differs from own, and the path is not under an excluded prefix.
 - **Bash**:
   - Parse a heredoc-stripped, newline-flattened view that keeps quote characters. Take
-    the path of a `cd` or `-C` operand from inside its quotes. `hook_trigger_view` cannot
+    the path of a `cd` or `-C` operand from inside its quotes, or across a `\ ` escape;
+    `cd -P/-L/-e/-@/--` options come before it. A `( … )` subshell's `cd` ends at its
+    `)`. `hook_trigger_view` cannot
     be reused, because it empties quoted bodies and loses `cd "/path"`.
   - Split the view into segments on `;` `&&` `||` `|`. Track the last literal absolute or
     `~` `cd` target; a later segment's git write is attributed to it, or to `git -C <p>`
@@ -95,7 +100,9 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
   under section `§5-scope` (§5: files outside the grant → re-AUTH). `own` and `target`
   are repo basenames, not full paths. This is an advisory, not a blocking deny, so it
   needs no `spec/hard-rules.json` entry.
-- **Allowlist**: `CROSS_REPO_WRITE_ALLOW` holds colon-separated absolute repo roots. A hit
+- **Allowlist**: `CROSS_REPO_WRITE_ALLOW` holds colon-separated absolute repo roots; a
+  leading `~/` or `$HOME/` is expanded (settings.json `env` values arrive literal), and
+  any other relative entry is ignored. A hit
   on a listed repo is recorded with `allowlisted:true` and gets no message.
 
 ## success-criteria
@@ -165,3 +172,9 @@ Produces:
 - r4 2026-09-25: `/var/tmp/` added to the exclusions. The criterion-1 replay (22,938 calls)
   produced 15 hits: 9 true writes into another repo and 6 throwaway `git init` sandboxes
   under `/var/tmp/cgqa`.
+- r5 2026-09-25: pre-merge review repairs. A non-absolute allowlist entry made the path
+  walk spin until the harness timeout (fail-open broken); bare-repo worktrees are
+  resolved through `commondir`; a subshell's `)` ends it and restores the directory;
+  `-C` operands with spaces and `cd` options are parsed; a redirection target or a
+  comment word after `git branch|tag` is not a ref name, and `tag --verify` is a read.
+  Replay re-run over 23,075 calls: the same 9 hits.

@@ -33,14 +33,16 @@
 #
 # Repo identity is the `.git` that owns a path, found by walking up with no git
 # process spawned. A worktree's or submodule's `.git` FILE collapses to the
-# owning repo's `.git`, so the session's own worktrees and submodules are not
+# owning repo's `.git` (through `commondir` when the gitdir has one, which is
+# how the bare-repo `proj.git/worktrees/<n>` layout resolves), so the
+# session's own worktrees and submodules are not
 # "another repo", and another repo's worktree is that repo. Identities are
 # compared after `pwd -P`, so `..` and symlinks cannot split one repo in two.
 #
 # Skipped outright: writes under ~/.claude/ (memory, plans), ${TMPDIR:-/tmp},
 # /tmp/claude-* (Claude Code's scratchpad root, which stays there when TMPDIR
 # points elsewhere) and /var/tmp. Sandbox repos live in those places by design:
-# the replay over 22,938 historical calls found six throwaway `git init` repos
+# the first replay (22,938 historical calls) found six throwaway `git init` repos
 # under /var/tmp/cgqa, and they were the only false positives it produced.
 #
 # One advisory per (session, target repo); every hit writes a rule-hits row
@@ -50,8 +52,9 @@
 # Opt-in: CROSS_REPO_WRITE=1 (default OFF). §EXT §13.3: behaviour-layer hooks
 # ship default-OFF for >=30d of FP signal collection before default-ON advisory,
 # and only then deny. Same shape as rework-breaker / evidence-gate.
-# Allowlist: CROSS_REPO_WRITE_ALLOW — colon-separated repo roots; a hit there
-# is recorded with allowlisted:true and gets no message.
+# Allowlist: CROSS_REPO_WRITE_ALLOW — colon-separated absolute repo roots (a
+# leading `~/` or `$HOME/` is expanded, other relative entries are ignored); a
+# hit there is recorded with allowlisted:true and gets no message.
 #
 # Kill-switches:
 #   DISABLE_CROSS_REPO_WRITE_HOOK=1 — disable after opt-in
@@ -117,9 +120,11 @@ esac
 # xrepo_canon_dir PATH — the nearest existing directory at or above PATH,
 # physical (`pwd -P`). A Write usually targets a file, often in a directory
 # that does not exist yet; the repo that will own it is the one owning its
-# nearest existing ancestor.
+# nearest existing ancestor. Absolute paths only: on a slash-free string
+# `${d%/*}` returns the string itself, and the walk below would never end.
 xrepo_canon_dir() {
   local d="$1"
+  [[ "$d" == /* ]] || return 1
   while [[ -n "$d" && "$d" != "/" && ! -d "$d" ]]; do d="${d%/*}"; done
   [[ -n "$d" ]] || d=/
   (cd "$d" 2>/dev/null && pwd -P)
@@ -127,10 +132,13 @@ xrepo_canon_dir() {
 
 # xrepo_identity PATH — the physical path of the `.git` directory that owns
 # PATH; returns 1 when no repo owns it. A `.git` FILE (worktree, submodule) is
-# followed through its `gitdir:` line, and a gitdir under `<x>/.git/worktrees/`
-# or `<x>/.git/modules/` collapses to `<x>/.git` — the repo that owns it.
+# followed through its `gitdir:` line. A linked worktree's gitdir holds a
+# `commondir` file naming the shared repo — the only form a bare-repo layout
+# (`proj.git/worktrees/<n>`) has — and is followed through it. Without one, a
+# gitdir under `<x>/.git/worktrees/` or `<x>/.git/modules/` collapses to
+# `<x>/.git`, the repo that owns it.
 xrepo_identity() {
-  local d line g
+  local d line g c
   d=$(xrepo_canon_dir "$1") || return 1
   while :; do
     if [[ -d "$d/.git" ]]; then
@@ -139,14 +147,23 @@ xrepo_identity() {
     fi
     if [[ -f "$d/.git" ]]; then
       line=""
-      IFS= read -r line < "$d/.git" 2>/dev/null
+      { IFS= read -r line < "$d/.git"; } 2>/dev/null
+      line="${line%$'\r'}"
       g="${line#gitdir: }"
       [[ -n "$g" && "$g" != "$line" ]] || return 1
       [[ "$g" == /* ]] || g="$d/$g"
-      case "$g" in
-        */.git/worktrees/*) g="${g%/.git/worktrees/*}/.git" ;;
-        */.git/modules/*) g="${g%/.git/modules/*}/.git" ;;
-      esac
+      c=""
+      [[ -f "$g/commondir" ]] && { IFS= read -r c < "$g/commondir"; } 2>/dev/null
+      c="${c%$'\r'}"
+      if [[ -n "$c" ]]; then
+        [[ "$c" == /* ]] || c="$g/$c"
+        g="$c"
+      else
+        case "$g" in
+          */.git/worktrees/*) g="${g%/.git/worktrees/*}/.git" ;;
+          */.git/modules/*) g="${g%/.git/modules/*}/.git" ;;
+        esac
+      fi
       break
     fi
     [[ "$d" == "/" ]] && return 1
@@ -212,9 +229,19 @@ xrepo_abs() {
 # creates one. `git tag -a` annotates and `git branch -a` lists, which is why
 # the flags are per-kind. Tokens carrying `<`/`>` are redirections, not names.
 xrepo_ref_writes() {
-  local kind="$1" a listing=0 pos=0
+  local kind="$1" a listing=0 pos=0 skip=0
   shift
   for a in "$@"; do
+    # A bare redirection operator (`2> /dev/null`) takes the next word as its
+    # target; a `#` word starts a comment. Neither names a ref.
+    if ((skip)); then
+      skip=0
+      continue
+    fi
+    case "$a" in
+      '#'*) break ;;
+      *'>' | *'<') skip=1 ;;
+    esac
     case "$a" in
       -d | -D | -f | -m | -M | --delete | --force) return 0 ;;
     esac
@@ -229,7 +256,7 @@ xrepo_ref_writes() {
       esac
     fi
     case "$a" in
-      -l | --list | --contains* | --no-contains* | --merged* | --no-merged* | --points-at* | --sort* | --format* | -n* | --column* | --show-current | -v | -vv | --verbose | -i | --ignore-case) listing=1 ;;
+      -l | --list | --contains* | --no-contains* | --merged* | --no-merged* | --points-at* | --sort* | --format* | -n* | --column* | --show-current | -v | -vv | --verbose | --verify | -i | --ignore-case) listing=1 ;;
       -*) ;;
       *'<'* | *'>'*) ;;
       *) pos=1 ;;
@@ -261,11 +288,35 @@ xrepo_git_writes() {
   return 1
 }
 
+# xrepo_operand — toks[JI] as one operand, in ARG. `read -a` splits a quoted
+# path with spaces, so a word opening a quote is re-joined up to the word that
+# closes it, and `a\ b` is re-joined too. JI is left on the last word used.
+xrepo_operand() {
+  local q=""
+  ARG="${toks[$JI]:-}"
+  case "$ARG" in
+    \"*) q='"' ;;
+    \'*) q="'" ;;
+  esac
+  if [[ -n "$q" ]]; then
+    while [[ ${#ARG} -lt 2 || "$ARG" != *"$q" ]] && ((JI + 1 < ${#toks[@]})); do
+      JI=$((JI + 1))
+      ARG+=" ${toks[$JI]}"
+    done
+  else
+    while [[ "$ARG" == *'\' ]] && ((JI + 1 < ${#toks[@]})); do
+      JI=$((JI + 1))
+      ARG="${ARG%\\} ${toks[$JI]}"
+    done
+  fi
+}
+
 # xrepo_scan_bash — walk the command's segments, tracking the directory a
-# literal `cd` moved to, and check every git write against its repo.
+# literal `cd` moved to, and check every git write against its repo. A `( … )`
+# subshell's `cd` ends with it: the directory is saved at `(` and restored at `)`.
 xrepo_scan_bash() {
-  local view seg cur t word sub arg
-  local -a toks rest
+  local view seg cur t word sub arg closes
+  local -a toks rest saved
   [[ "$XR_CMD" == *git* ]] || return 0
   # Heredoc bodies are data, not commands; newlines become `;`. Quote
   # characters are KEPT (hook_trigger_view would empty `cd "/path"`).
@@ -276,27 +327,53 @@ xrepo_scan_bash() {
   view="${view//;/$'\n'}"
   view="${view//&/$'\n'}"
   cur="$XR_CWD"
+  saved=()
   while IFS= read -r seg; do
-    # Leading grouping / negation, then VAR=value prefixes.
+    # Leading grouping / negation, then VAR=value prefixes. Each `(` saves the
+    # directory; each trailing `)` restores it once the segment has run.
+    closes=0
     while :; do
       seg="${seg#"${seg%%[![:space:]]*}"}"
       case "$seg" in
-        '('* | '{'* | '!'*) seg="${seg:1}" ;;
+        '('*)
+          seg="${seg:1}"
+          saved+=("$cur")
+          ;;
+        '{'* | '!'*) seg="${seg:1}" ;;
+        *) break ;;
+      esac
+    done
+    while :; do
+      seg="${seg%"${seg##*[![:space:]]}"}"
+      case "$seg" in
+        *')')
+          seg="${seg%)}"
+          closes=$((closes + 1))
+          ;;
         *) break ;;
       esac
     done
     while [[ "$seg" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+(.*)$ ]]; do
       seg="${BASH_REMATCH[1]}"
     done
-    [[ -n "$seg" ]] || continue
-    read -r -a toks <<< "$seg"
+    toks=()
+    [[ -n "$seg" ]] && read -r -a toks <<< "$seg"
     case "${toks[0]:-}" in
       cd)
-        arg="${toks[1]:-}"
-        # A quoted target with spaces was split by `read -a`; take it whole.
-        if [[ "$seg" =~ ^cd[[:space:]]+\"([^\"]*)\" ]] || [[ "$seg" =~ ^cd[[:space:]]+\'([^\']*)\' ]]; then
-          arg="${BASH_REMATCH[1]}"
-        fi
+        # `cd -P`, `-L`, `-e`, `-@` and `--` come before the target.
+        JI=1
+        while :; do
+          case "${toks[$JI]:-}" in
+            -P | -L | -e | -@ | -LP | -PL | -Pe) JI=$((JI + 1)) ;;
+            --)
+              JI=$((JI + 1))
+              break
+              ;;
+            *) break ;;
+          esac
+        done
+        xrepo_operand
+        arg="$ARG"
         if [[ -z "$arg" ]]; then
           cur="$HOME"
         elif [[ "$arg" == "-" || "$arg" == *'$'* || "$arg" == *'`'* ]]; then
@@ -315,8 +392,10 @@ xrepo_scan_bash() {
           if [[ -z "$sub" ]]; then
             case "$word" in
               -C)
-                i=$((i + 1))
-                arg="${toks[$i]:-}"
+                JI=$((i + 1))
+                xrepo_operand
+                i=$JI
+                arg="$ARG"
                 if [[ -z "$arg" || "$arg" == *'$'* || "$arg" == *'`'* ]]; then
                   t=""
                 elif [[ -n "$t" || "$arg" == /* || "$arg" == "~"* ]]; then
@@ -332,12 +411,16 @@ xrepo_scan_bash() {
           fi
           i=$((i + 1))
         done
-        [[ -n "$sub" && -n "$t" ]] || continue
-        if xrepo_git_writes "$sub" ${rest[@]+"${rest[@]}"}; then
+        if [[ -n "$sub" && -n "$t" ]] && xrepo_git_writes "$sub" ${rest[@]+"${rest[@]}"}; then
           xrepo_check "$t" git "git $sub"
         fi
         ;;
     esac
+    while ((closes > 0 && ${#saved[@]} > 0)); do
+      cur="${saved[${#saved[@]} - 1]}"
+      unset "saved[${#saved[@]} - 1]"
+      closes=$((closes - 1))
+    done
   done <<< "$view"
 }
 
@@ -367,7 +450,14 @@ for ((h = 0; h < ${#HIT_IDS[@]}; h++)); do
   T_NAME="${T_ROOT##*/}"
   ALLOWED=false
   for a in ${ALLOW_LIST[@]+"${ALLOW_LIST[@]}"}; do
-    [[ -n "$a" ]] || continue
+    # settings.json `env` values are literal, so `~/x` and `$HOME/x` arrive
+    # unexpanded; expand those two. Any other relative entry is ignored.
+    case "$a" in
+      \~/*) a="$HOME/${a#\~/}" ;;
+      '$HOME/'*) a="$HOME/${a#\$HOME/}" ;;
+      '${HOME}/'*) a="$HOME/${a#\$\{HOME\}/}" ;;
+    esac
+    [[ "$a" == /* ]] || continue
     if [[ "$(xrepo_identity "$a" 2>/dev/null)" == "$ID" ]]; then
       ALLOWED=true
       break
