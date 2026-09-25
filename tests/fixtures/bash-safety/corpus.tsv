@@ -1465,3 +1465,34 @@ deny	F42 two mktemp + command substitution cuts the segment	D=$(mktemp -d); H=$(
 deny	F42 two mktemp + backtick cuts the segment	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H" `pwd` "$EVIL"
 deny	F42 mktemp + neighbour mktemp var with default operator	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "${H:-/}"
 deny	F42 two mktemp vars, one of them quoted-RHS (reverted class)	D=$(mktemp -d); bak="$(mktemp /tmp/cfg.XXXXXX)"; rm -rf "$D" "$bak"
+
+# === F43 (2026-09-25) — a `:?` guard on a BARE whitelisted var ===
+# `${HOME:?}` extracted as the name `HOME:?`, missed the HOME|PWD|OLDPWD|TMPDIR
+# arm and reached the guard arm, which ALLOWED — deleting all of $HOME. Deny-only
+# fix: the name is folded only when the target is bare and not a bounded find.
+# The unfolded controls below each deny or pass exactly as they did in 0.94.0.
+deny	F43 rm -rf bare HOME under :?	rm -rf "${HOME:?}"
+deny	F43 rm -rf bare TMPDIR under :?	rm -rf "${TMPDIR:?}"
+deny	F43 rm -rf bare PWD under :?	rm -rf "${PWD:?}"
+deny	F43 rm -rf bare OLDPWD under :?	rm -rf "${OLDPWD:?}"
+deny	F43 rm -rf bare HOME under :? trailing slash	rm -rf "${HOME:?}/"
+deny	F43 find bare HOME under :? no primary	find "${HOME:?}" -delete
+deny	F43 rm -f bare TMPDIR under :?	rm -f "${TMPDIR:?}"
+deny	F43 control: bare HOME under ? (denied in 0.94.0 too)	rm -rf "${HOME?}"
+deny	F43 control: bare HOME under :?msg (denied in 0.94.0 too)	rm -rf "${HOME:?x}"
+deny	F43 control: HOME parent walk	rm -rf "${HOME%/*}/victim"
+deny	F43 control: ? guard with subpath keeps its 0.94.0 deny	rm -rf "${HOME?}/sub"
+deny	F43 control: :?msg guard with subpath keeps its 0.94.0 deny	rm -rf "${HOME:?msg}/sub"
+deny	F43 review: quoted literal ${HOME:? must not swallow real operands	rm -rf '${HOME:?' "$HOME" '}/x'
+pass	F43 control: HOME under :? with a subpath	rm -rf "${HOME:?}/cache"
+pass	F43 control: TMPDIR under :? with a subpath	rm -rf "${TMPDIR:?}/build"
+pass	F43 control: find HOME under :? with a selection primary	find "${HOME:?}" -name "*.log" -delete
+pass	F43 control: non-whitelisted guarded var	rm -rf "${D:?}"
+pass	F43 control: non-whitelisted guard with spaced message	rm -rf "${D:?must be set}"
+pass	F43 RESIDUAL: spaced guard message on bare HOME — whitespace split skips the target	rm -rf "${HOME:?HOME must be set}"
+# F43 replay: the only real commands this flips (2 of 6138) — TMPDIR repointed to a
+# scratch dir, then wiped bare. Safe as written, but the gate cannot trust the
+# assignment (the literal-provenance class, reverted twice); `rm -rf "${SP:?}/tmpres"` passes.
+deny	F43 real: export TMPDIR to scratch then wipe bare (guard upstream too)	SP=/tmp/sp; export TMPDIR=$SP/tmpres; : "${TMPDIR:?}" && rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
+deny	F43 real: export TMPDIR literal then wipe bare	export TMPDIR=/tmp/sp/t; rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
+pass	F43 real, rewritten: wipe the base subpath instead	SP=/tmp/sp; export TMPDIR=$SP/tmpres; rm -rf "${SP:?}/tmpres"; mkdir -p "$TMPDIR"

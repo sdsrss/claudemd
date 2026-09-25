@@ -1124,6 +1124,28 @@ if (( bypass_rm == 0 )); then
       fi
       continue
     fi
+    # F43 (2026-09-25): a `:?` guard on a BARE whitelisted var is still the bare
+    # case. The name extraction keeps the operator, so `${HOME:?}` arrived here as
+    # `HOME:?`, missed the arm below, fell to the guard arm and ALLOWED — deleting
+    # all of $HOME. `:?` proves the var is set; it bounds nothing.
+    #
+    # DENY-ONLY by construction: the fold fires only when the target is bare (no
+    # literal subpath) and not a bounded find — exactly the case the arm below
+    # denies. Anywhere else the name keeps the arm it took before, so
+    # `"${HOME?}/sub"` and `find "${HOME:?}" -name x -delete` are unchanged.
+    # A first version (8310fd2, reverted unreleased) folded unconditionally and
+    # rejoined whitespace-split `${HOME:?msg with spaces}` tokens; the pre-tag
+    # review showed the rejoin swallowing real operands after a single-quoted
+    # `'${HOME:?'` — a deny→allow — and the unconditional fold allowing
+    # `"${HOME?}/sub"`, which 0.94.0 denied. A spaced guard message stays the
+    # documented whitespace residual (pinned as a RESIDUAL row).
+    # The base comes from `%%[:?]*`, not BASH_REMATCH: the `=~` on `$residue`
+    # below resets BASH_REMATCH, and under `set -u` reading it aborts the hook,
+    # which the harness reads as ALLOW (fail-open, the #106 class).
+    if [[ "$varname" =~ ^(HOME|PWD|OLDPWD|TMPDIR):?\? ]] \
+       && (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
+      varname="${varname%%[:?]*}"
+    fi
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
         if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
@@ -1135,7 +1157,9 @@ if (( bypass_rm == 0 )); then
           # otherwise sends them to edit their command to get past a gate
           # (v0.81.0 pre-tag review, MEDIUM-2).
           if (( S8_RM_IS_FIND == 0 )); then
-            REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+            # The verb the user typed, as every other rm line does (0.94.0
+            # pre-tag review: this one line was still hard-coded as `rm -rf`).
+            REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
           else
             REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare $'"$varname"$' with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
           fi
@@ -2166,9 +2190,10 @@ fi
 # `${W:?}` on the target.
 #
 # The "follow that line" bullet comes FIRST (review r3): for a bare-$HOME/$TMPDIR
-# deny, the guard advice leads to `rm -rf "${HOME:?}"`, which this gate allows
-# (the extracted name keeps its `:?`, so the whitelist arm never sees it) and
-# which deletes the whole directory.
+# deny, the guard advice leads to `rm -rf "${HOME:?}"`, which deletes the whole
+# directory. Up to 0.94.0 this gate allowed it (the extracted name kept its `:?`,
+# so the whitelist arm never saw it); F43 closed that, and the bullet still leads
+# because a guard on a bare root is the wrong fix whether or not it passes.
 #
 # Several mktemp targets in one rm (`rm -rf "$D" "$H"`) still deny. Per-target
 # provenance for them was built and REVERTED the same day: two review rounds
@@ -2189,8 +2214,8 @@ This gate reads command text and does not accept a plain assignment
 Fix the invocation (no token needed):
   • If a line above names its own fix — a \`..\` walk, a bare \$HOME/\$TMPDIR/
     \$PWD/\$OLDPWD, a find with no selection primary — follow THAT line, and do
-    not add a guard to it: rm -rf \"\${HOME:?}\" passes this gate and still
-    deletes all of \$HOME.
+    not add a guard to it: \${HOME:?} proves \$HOME is set, not that deleting it
+    is bounded.
   • Guard the var that can be empty, inside the rm target:
       rm -rf \"\${SP:?}/x\"      for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done
     A var built from it (W=\"\$SP/x\") or a loop var over \"\$SP\"/* is never
