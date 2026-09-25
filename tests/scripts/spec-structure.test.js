@@ -568,7 +568,7 @@ const PINS = [
     file: CORE,
     anchor: '**Language contract**:',
     why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
-    line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new or rewritten; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
+    line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
   },
   {
     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
@@ -817,7 +817,7 @@ const PINS = [
 const PINNED_BLOCKS = [
   { file: CORE, heading: '', sha256: '834edbb33d74f69c' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: '1d8d7d8e2d372aad' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: '95b3bfdc670977b4' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
   { file: CORE, heading: '## §2 LEVEL', sha256: '03a25de87d4d24f1' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
@@ -842,7 +842,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '9a169be8d8eddded' },
+  { file: EXT, heading: '## Recent changes', sha256: '1c4850cd5bf118cb' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,

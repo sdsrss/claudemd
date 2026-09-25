@@ -16,15 +16,11 @@
 #     transcript). English = after stripping fenced code, inline code, URLs,
 #     paths and <tags>, no CJK character and at least REPLY_LANGUAGE_MIN_WORDS
 #     (default 10) words of two or more letters. Mixed text is never judged,
-#     and neither is the harness's own `API Error:` line.
-#   - the human: user-role rows in the transcript tail that are the human's
-#     own — not tool results, meta rows, compact summaries, sidechain rows,
-#     task notifications, teammate messages, command/bash relays — except a
-#     slash command's `<command-args>`, which the human typed. The newest
-#     one that is classifiable decides: >=2 CJK characters is 中文, no CJK and
-#     >=3 words is English, anything else (`1`, `y`) defers to the one before.
-#     A human request for English (`用英文` / `in English`) newer than that
-#     message lets every reply through.
+#     nor the harness's own `API Error:` line, nor a reply whose first line is
+#     a conventional-commit subject (a commit message is English by §1).
+#   - the human: see rl_human_lang below — the human's own messages only, a
+#     reply-language directive first, then a request for an English artifact,
+#     then the majority language of the newest 20.
 #   - the entrypoint: a headless run (`claude -p`, entrypoint `sdk-*` on the
 #     newest user row) is left alone — nobody reads it as it is written, and
 #     a restatement there only costs a turn.
@@ -67,24 +63,31 @@ hook_require_jq || {
 
 EVENT=$(hook_read_event) || exit 0
 
+# Positive decimal integers only: `08` would be an arithmetic error, `010`
+# octal, and `0` would judge an empty reply English.
 RL_MIN="${REPLY_LANGUAGE_MIN_WORDS:-10}"
-[[ "$RL_MIN" =~ ^[0-9]+$ ]] || RL_MIN=10
+[[ "$RL_MIN" =~ ^[1-9][0-9]*$ ]] || RL_MIN=10
 RL_WINDOW="${REPLY_LANGUAGE_WINDOW:-3000}"
-[[ "$RL_WINDOW" =~ ^[0-9]+$ ]] || RL_WINDOW=3000
+[[ "$RL_WINDOW" =~ ^[1-9][0-9]*$ ]] || RL_WINDOW=3000
 
 # The text a language is judged on: code, URLs, paths and tags removed — an
 # English identifier inside a 中文 sentence is still a 中文 sentence, and a
-# fenced block of English is code, not the reply's language.
-# POSIX classes only, as every hook source here (no \s \w \S): a fence is
-# three backticks, then any run holding no three in a row, then three more.
+# fenced block of English is code, not the reply's language. Every text is
+# cut to its first 4000 characters first: jq's gsub is quadratic in its match
+# count, and the opening of a message says what language it is in.
+# No \s \w \S (hook sources use POSIX classes); the path class is spelled out
+# in ASCII because Oniguruma's [[:alnum:]] also matches CJK. A fence is three
+# backticks, a run holding no three in a row, and three more.
 RL_JQ_DEFS='
   def rl_strip:
-    gsub("```([^`]|`[^`]|``[^`])*```"; " ")
+    .[0:4000]
+    | gsub("```([^`]|`[^`]|``[^`])*```"; " ")
     | gsub("`[^`\\n]*`"; " ")
     | gsub("https?://[^[:space:]]+"; " ")
     | gsub("<[^>\\n]{0,200}>"; " ")
-    | gsub("(~|\\.{1,2})?/[[:alnum:]_.~/-]+"; " ");
-  def rl_cjk: [scan("[㐀-鿿豈-﫿]")] | length;
+    | gsub("(~|\\.{1,2})?/[A-Za-z0-9_.~/-]+"; " ");
+  def rl_cjk: [scan("[㐀-鿿豈-﫿]")] | length;
+  def rl_kana: test("[ぁ-ヿ]");
   def rl_words: [scan("[A-Za-z]{2,}")] | length;
 '
 
@@ -95,15 +98,18 @@ RL_ACTIVE=$(hook_jq_field reply-language "$EVENT" '.stop_hook_active // false') 
 [[ "$RL_ACTIVE" == true ]] && exit 0
 
 # rl_reply_is_english — one more jq spawn: the transcript path, the session id,
-# and the reply's CJK and word counts, NUL-separated.
+# whether the reply is one the hook never judges, and its CJK and word counts,
+# NUL-separated. Never judged: the harness's own "API Error: …" line after a
+# dropped response, and a conventional-commit subject as the first line — a
+# commit message the human asked for, which §1 names English.
 TRANSCRIPT_PATH=""
 SESSION_ID=""
-RL_API_ERR=""
+RL_SKIP=""
 RL_CJK=""
 RL_WORDS=""
 {
   IFS= read -r -d '' TRANSCRIPT_PATH &&
-    IFS= read -r -d '' RL_API_ERR &&
+    IFS= read -r -d '' RL_SKIP &&
     IFS= read -r -d '' SESSION_ID &&
     IFS= read -r -d '' RL_CJK &&
     IFS= read -r -d '' RL_WORDS
@@ -111,14 +117,12 @@ RL_WORDS=""
     ((.last_assistant_message // "") | tostring) as $raw
     | ($raw | rl_strip) as $m
     | ((.transcript_path // "") | tostring) + "\u0000"
-    + ($raw | test("^API Error:") | tostring) + "\u0000"
+    + ($raw | test("^API Error:|^(feat|fix|docs|chore|refactor|test|perf|ci|build|revert|style|change)(\\([^)\\n]*\\))?!?: ") | tostring) + "\u0000"
     + ((.session_id // "") | tostring) + "\u0000"
     + ($m | rl_cjk | tostring) + "\u0000"
     + ($m | rl_words | tostring) + "\u0000"' 2>/dev/null) || exit 0
-# "API Error: …" is the harness's own line after a dropped response, not a
-# reply the model wrote.
 rl_reply_is_english() {
-  [[ "$RL_API_ERR" != true ]] && [[ "$RL_CJK" == 0 && "$RL_WORDS" =~ ^[0-9]+$ ]] && ((RL_WORDS >= RL_MIN))
+  [[ "$RL_SKIP" != true ]] && [[ "$RL_CJK" == 0 && "$RL_WORDS" =~ ^[0-9]+$ ]] && ((RL_WORDS >= RL_MIN))
 }
 rl_reply_is_english || exit 0
 
@@ -127,50 +131,102 @@ if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
   exit 0
 fi
 
-# rl_human_lang — prints "<lang>\t<trigger>". lang: zh / en / en-request /
-# none. trigger: what the newest user-role message was. A fixed-string grep
-# first keeps only user rows without a tool_result, so a long agentic turn —
-# hundreds of tool rows — does not push the human prompt out of reach of the
-# one jq pass that follows.
+# rl_human_lang — prints "<verdict>\t<trigger>".
+#   verdict: zh | en | none | en-request | artifact | headless
+#   trigger: human | task-notification | teammate | other — the newest
+#            user-role message, i.e. what started this turn.
+# A fixed-string grep keeps only user rows without a tool_result, plus the
+# `queued_command` attachments a message typed mid-turn is written as, so a
+# long agentic turn does not push the human prompt out of the one jq pass.
+# `-a`: a stray NUL must not turn grep's output into "Binary file matches".
+#
+# Whose words count: user rows that are real turns (is_user_turn), not compact
+# summaries or sidechain rows, whose `origin.kind` (when the row carries one)
+# is `human`, and that do not open with a machine prefix — except a slash
+# command's `<command-args>`, which the human typed. Of the newest 20 of
+# those:
+#   - the newest reply-language DIRECTIVE decides first — "后面都用英文回复" /
+#     "reply in English" (en-request), "用中文回复" / "中文输出" (zh). It holds
+#     until another directive, so "继续" after it does not end it. A directive
+#     phrase under a negation or a complaint ("不要用英文", "为什么用英文") is
+#     not one.
+#   - else, when the NEWEST human message is short (<=300 characters) and asks
+#     for an English artifact (a commit message, PR text, release notes, a
+#     translation, "英文版"), this reply is let through (artifact).
+#   - else the majority of the classifiable messages: >=2 CJK and at least
+#     half as many CJK characters as English words is 中文; no CJK and >=3
+#     words is English; kana makes a message neither. A pasted English log
+#     among 中文 messages does not flip the session's language.
 rl_human_lang() {
   tail -n "$RL_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null \
-    | grep -F '"type":"user"' 2>/dev/null \
-    | grep -vF '"type":"tool_result"' 2>/dev/null \
+    | grep -aE '"type":"user"|"type":"queued_command"' 2>/dev/null \
+    | grep -avF '"type":"tool_result"' 2>/dev/null \
     | jq -R -n -r "$HOOK_USER_TURN_JQ$RL_JQ_DEFS"'
       def machine:
         test("^[[:space:]]*(<task-notification>|Another Claude session sent a message|<command-|<local-command|<bash-|This session is being continued|\\[Request interrupted)");
+      def rl_neg:
+        gsub("(不要|别再?|不用|不必|不许|禁止|为什么|为何|怎么|干嘛|又)[^，。！？,.!?\\n]{0,8}(英文|英语|[Ee]nglish)"; " ");
+      def rl_directive:
+        (.[0:4000] | rl_neg) as $t
+        | if ($t | test("(中文|汉语)(来)?(回复|回答|输出|交流|沟通|对话)|(回复|回答|输出|交流|沟通)(都|全部|请|就)?(用|以)?(中文|汉语)|说中文")) then "zh"
+          elif ($t | test("(用|以|改用|换成|改成|切换到|切到)(英文|英语)(来)?(回复|回答|输出|交流|沟通|对话|说|写)|(回复|回答|输出|交流|沟通)(都|全部|请|就)?(用|以)?(英文|英语)|(英文|英语)(回复|回答|输出)|(reply|respond|answer|talk|speak|write)[^.\\n]{0,24}in english|(switch|stick) to english|english only"; "i")) then "en"
+          else empty end;
+      # Short messages only: a request for an artifact is a sentence, and a
+      # long pasted brief that merely mentions a commit message is not one.
+      def rl_artifact:
+        (rl_strip | length) <= 300
+        and ((.[0:4000] | rl_neg)
+             | test("commit message|提交信息|commit 信息|pr ?(描述|说明|正文|body|description)|release notes|翻译(成|为)?(英文|英语)|(英文|英语)版|(英文|英语)的|into english|translate"; "i"));
+      def rl_class:
+        rl_strip as $t | ($t | rl_cjk) as $c | ($t | rl_words) as $w
+        | if ($t | rl_kana) then empty
+          elif $c >= 2 and $c * 2 >= $w then "zh"
+          elif $c == 0 and $w >= 3 then "en"
+          else empty end;
       [inputs | try fromjson catch empty] as $rows
       # A headless run (`claude -p`, entrypoint sdk-*) has no one reading the
       # reply as it is written; a restatement there only costs a turn.
       | (($rows | map(.entrypoint? // empty) | last) // "") as $ep
       | [$rows[]
-        | select(is_user_turn and (.isCompactSummary != true) and (.isSidechain != true))
-        | .message.content
-        | if type == "array" then ([.[] | select((.type? // "") == "text") | .text] | join("\n"))
-          else tostring end
+        | if .type == "attachment" then
+            select((.attachment.type? // "") == "queued_command")
+            | {t: (.attachment.prompt | if type == "string" then . else tostring end),
+               k: (.attachment.origin.kind? // "human")}
+          else
+            select(is_user_turn and (.isCompactSummary != true) and (.isSidechain != true))
+            | {k: (.origin.kind? // .message.origin.kind? // "human"),
+               t: (.message.content
+                   | if type == "array" then ([.[] | select((.type? // "") == "text") | .text] | join("\n"))
+                     else tostring end)}
+          end
       ] as $all
-      | ($all | last // "") as $newest
-      | (if ($newest | test("^[[:space:]]*<task-notification>")) then "task-notification"
-         elif ($newest | test("^[[:space:]]*Another Claude session sent a message")) then "teammate"
-         elif ($newest | machine) then "other"
+      | ($all | last // {t: "", k: "human"}) as $newest
+      | (if ($newest.t | test("^[[:space:]]*<task-notification>")) or $newest.k == "task-notification" then "task-notification"
+         elif ($newest.t | test("^[[:space:]]*Another Claude session sent a message")) or $newest.k == "peer" then "teammate"
+         elif ($newest.t | machine) or $newest.k != "human" then "other"
          else "human" end) as $trigger
-      | ([$all | reverse[]
-          # A slash command row is machine text, except its arguments: those
-          # the human typed (`/goal 按第 12 节施工`).
+      | [$all[]
+          | select(.k == "human")
+          | .t
+          # A slash command row is machine text, except its arguments.
           | (if machine then
-               (if test("^[[:space:]]*<command-") then
-                  (if contains("<command-args>")
-                   then (split("<command-args>")[1] | split("</command-args>")[0])
-                   else empty end)
+               (if test("^[[:space:]]*<command-") and contains("<command-args>")
+                then (split("<command-args>")[1] | split("</command-args>")[0])
                 else empty end)
              else . end)
           | select(length > 0)
-          | if test("(用|写成?|翻译成?|换成?|改成?|输出)英文|[Ii]n English") then "en-request"
-            else (rl_strip | if rl_cjk >= 2 then "zh"
-                             elif rl_cjk == 0 and rl_words >= 3 then "en"
-                             else empty end)
-            end] | first // "none") as $lang
-      | (if ($ep | test("^sdk")) then "headless" else $lang end) + "\t" + $trigger' 2>/dev/null
+        ][-20:] as $human
+      | (first($human | reverse[] | rl_directive) // "") as $dir
+      | ([$human[] | rl_class]) as $cls
+      | ([$cls[] | select(. == "zh")] | length) as $zh
+      | ([$cls[] | select(. == "en")] | length) as $en
+      | (if ($ep | test("^sdk")) then "headless"
+         elif $dir == "en" then "en-request"
+         elif (($human | last // "") | rl_artifact) then "artifact"
+         elif $dir == "zh" then "zh"
+         elif $zh == 0 and $en == 0 then "none"
+         elif $zh >= $en then "zh"
+         else "en" end) + "\t" + $trigger' 2>/dev/null
 }
 
 RL_HUMAN=$(rl_human_lang)
