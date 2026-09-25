@@ -1496,3 +1496,5 @@ pass	F43 RESIDUAL: spaced guard message on bare HOME — whitespace split skips 
 deny	F43 real: export TMPDIR to scratch then wipe bare (guard upstream too)	SP=/tmp/sp; export TMPDIR=$SP/tmpres; : "${TMPDIR:?}" && rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
 deny	F43 real: export TMPDIR literal then wipe bare	export TMPDIR=/tmp/sp/t; rm -rf "${TMPDIR:?}"; mkdir -p "$TMPDIR"
 pass	F43 real, rewritten: wipe the base subpath instead	SP=/tmp/sp; export TMPDIR=$SP/tmpres; rm -rf "${SP:?}/tmpres"; mkdir -p "$TMPDIR"
+deny	F43 control: ? guard on find with a primary keeps its 0.94.0 deny (bounded find is not folded)	find "${HOME?}" -name x -delete
+deny	F43 control: :?msg guard on find with a primary keeps its 0.94.0 deny	find "${HOME:?x}" -name x -delete
