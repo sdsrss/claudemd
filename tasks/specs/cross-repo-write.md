@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 5
+revision: 6
 ---
 
 # Cross-repo write advisory
@@ -76,7 +76,8 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
   - Parse a heredoc-stripped, newline-flattened view that keeps quote characters. Take
     the path of a `cd` or `-C` operand from inside its quotes, or across a `\ ` escape;
     `cd -P/-L/-e/-@/--` options come before it. A `( … )` subshell's `cd` ends at its
-    `)`. `hook_trigger_view` cannot
+    unmatched `)`, also when a redirection or comment follows; a `$( … )` is balanced
+    within its segment and closes nothing. `hook_trigger_view` cannot
     be reused, because it empties quoted bodies and loses `cd "/path"`.
   - Split the view into segments on `;` `&&` `||` `|`. Track the last literal absolute or
     `~` `cd` target; a later segment's git write is attributed to it, or to `git -C <p>`
@@ -177,4 +178,9 @@ Produces:
   resolved through `commondir`; a subshell's `)` ends it and restores the directory;
   `-C` operands with spaces and `cd` options are parsed; a redirection target or a
   comment word after `git branch|tag` is not a ref name, and `tag --verify` is a read.
-  Replay re-run over 23,075 calls: the same 9 hits.
+  Replay re-run over 23,075 calls: the same 9 calls flagged.
+- r6 2026-09-25: second review round. A subshell `)` followed by a redirection or comment
+  now closes it, and a `$( … )` no longer does (a new miss the r5 repair introduced);
+  a partly quoted `cd` target resolves; a worktree of the own submodule is the own repo;
+  combined `cd` options (`-eP`) are skipped. Replay over 23,315 calls: 9 calls flagged
+  (10 repo hits), no verdict change from r5, 0 non-zero exits, 0 stderr.

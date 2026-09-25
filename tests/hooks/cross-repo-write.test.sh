@@ -60,6 +60,11 @@ mkrepo "$HOME/.claude/mem"
 mkrepo "$HOOK_TMPDIR/sbx"
 # A repo whose root has a space in it, for quoted and escaped operands.
 mkrepo "$R/my repo"
+# A worktree of alpha's own submodule: its gitdir sits under
+# alpha/.git/modules/sub/worktrees/<n>, with a `commondir` of ../..
+mkdir -p "$R/alpha/.git/modules/sub/worktrees/w" "$R/subwt/src"
+printf '../..\n' > "$R/alpha/.git/modules/sub/worktrees/w/commondir"
+printf 'gitdir: %s\n' "$R/alpha/.git/modules/sub/worktrees/w" > "$R/subwt/.git"
 # Bare-repo worktree layout: `git clone --bare proj.git` + `git worktree add`.
 # Each worktree's gitdir is proj.git/worktrees/<n>, NOT under a `.git/`, and
 # git writes a `commondir` there pointing at the shared repo.
@@ -68,6 +73,12 @@ for w in main feat; do
   printf '../..\n' > "$R/proj.git/worktrees/$w/commondir"
   printf 'gitdir: %s\n' "$R/proj.git/worktrees/$w" > "$R/proj/$w/.git"
 done
+# A bare-layout worktree whose `.git` line ends in CRLF (a tool that writes
+# CRLF): with the CR kept, `<gitdir>/commondir` is not found and the path
+# resolves to no repo at all.
+mkdir -p "$R/proj.git/worktrees/crlf" "$R/proj/crlf/src"
+printf '../..\n' > "$R/proj.git/worktrees/crlf/commondir"
+printf 'gitdir: %s\r\n' "$R/proj.git/worktrees/crlf" > "$R/proj/crlf/.git"
 
 LOG="$HOME/.claude/logs/claudemd.jsonl"
 SEQ=0
@@ -158,6 +169,10 @@ next_sid
 expect_advisory "X7 another repo's worktree is that repo" "$(run "$(file_ev Edit "$R/beta-wt/src/f" "$R/alpha" "$SID")")" beta alpha
 next_sid
 expect_silent "X8 own submodule (relative gitdir) is the own repo" "$(run "$(file_ev Edit "$R/alpha/sub/f" "$R/alpha" "$SID")")"
+next_sid
+expect_silent "X6f a worktree of the own submodule is the own repo" "$(run "$(file_ev Edit "$R/subwt/src/f" "$R/alpha" "$SID")")"
+next_sid
+expect_advisory "X6g a CRLF gitdir line still resolves" "$(run "$(file_ev Edit "$R/proj/crlf/src/f" "$R/alpha" "$SID")")" proj alpha
 next_sid
 expect_silent "X6c bare-repo layout: a sibling worktree is the own repo" "$(run "$(file_ev Edit "$R/proj/feat/src/f" "$R/proj/main" "$SID")")"
 next_sid
@@ -261,14 +276,19 @@ for c in \
   "cd \"$R/my repo\" && git commit -m x" \
   "git -C \"$R/my repo\" commit -m x" \
   "git -C '$R/my repo' commit -m x" \
-  "cd $R/my\\ repo && git commit -m x"; do
+  "cd $R/my\\ repo && git commit -m x" \
+  "(cd $R/beta && BR=\$(git branch --show-current) && git push origin \$BR)" \
+  "(cd $R/beta && V=\$(cat VERSION) && git tag v\$V)" \
+  "cd \"$R/beta\"/src && git commit -m x" \
+  "cd '$R/beta'/src && git commit -m x" \
+  "cd -eP $R/beta && git commit -m x"; do
   WROWS=$((WROWS + 1))
   next_sid
   OUT=$(run "$(bash_ev "$c" "$R/alpha" "$SID")")
   C=$(ctx "$OUT")
   if [[ "$C" == *beta* || "$C" == *"my repo"* ]]; then WROTE=$((WROTE + 1)); else echo "  X15 silent on: $c"; fi
 done
-if ((WROTE == WROWS && WROWS >= 36)); then
+if ((WROTE == WROWS && WROWS >= 41)); then
   ok "X15 every git write into another repo is announced ($WROWS rows)"
 else
   ng "X15 ($WROTE of $WROWS write rows announced)"
@@ -313,13 +333,17 @@ for c in \
   "cd $R/beta && git tag > tags.txt" \
   "cd $R/beta && git branch # list" \
   "cd $R/beta && git tag --verify v1" \
-  "cd $R/beta && git log -1; cd \$X && git commit -m x"; do
+  "cd $R/beta && git log -1; cd \$X && git commit -m x" \
+  "(cd $R/beta && git fetch) 2>/dev/null; git commit -m own" \
+  "(cd $R/beta && git fetch) >/dev/null 2>&1; git commit -m own" \
+  $'(cd '"$R"$'/beta && git fetch) # peek\ngit commit -m own' \
+  "cd $R/beta && git log -1; git -C \$X commit -m x"; do
   QROWS=$((QROWS + 1))
   next_sid
   OUT=$(run "$(bash_ev "$c" "$R/alpha" "$SID")")
   if [[ -z "$OUT" ]]; then QUIET=$((QUIET + 1)); else echo "  X17 spoke on: $c"; fi
 done
-if ((QUIET == QROWS && QROWS >= 33)); then
+if ((QUIET == QROWS && QROWS >= 37)); then
   ok "X17 reads, own worktrees/submodules, excluded and unknown targets stay silent ($QROWS rows)"
 else
   ng "X17 ($((QROWS - QUIET)) of $QROWS control rows spoke)"
@@ -348,7 +372,7 @@ expect_advisory "X20a and the hit is still announced" "$OUT" beta alpha
 # Silence alone would also be what a killed hook prints, so each row also
 # needs the allowlisted rule-hits row the hook writes only when it finishes.
 # shellcheck disable=SC2088  # the literal, unexpanded forms ARE the input
-for entry in '~/proj' '$HOME/proj'; do
+for entry in '~/proj' '$HOME/proj' '${HOME}/proj'; do
   next_sid
   OUT=$(allow_run "$(file_ev Edit "$HOME/proj/src/f" "$R/alpha" "$SID")" "$entry")
   AL=$(jq -r --arg s "$SID" 'select(.hook=="cross-repo-write" and .session_id==$s) | .extra.allowlisted' "$LOG" 2>/dev/null)

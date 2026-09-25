@@ -157,13 +157,14 @@ xrepo_identity() {
       c="${c%$'\r'}"
       if [[ -n "$c" ]]; then
         [[ "$c" == /* ]] || c="$g/$c"
-        g="$c"
-      else
-        case "$g" in
-          */.git/worktrees/*) g="${g%/.git/worktrees/*}/.git" ;;
-          */.git/modules/*) g="${g%/.git/modules/*}/.git" ;;
-        esac
+        c=$(cd "$c" 2>/dev/null && pwd -P) && g="$c"
       fi
+      # After `commondir` too: a worktree of a submodule resolves to
+      # `<x>/.git/modules/<n>`, which is still `<x>`'s repo.
+      case "$g" in
+        */.git/worktrees/*) g="${g%/.git/worktrees/*}/.git" ;;
+        */.git/modules/*) g="${g%/.git/modules/*}/.git" ;;
+      esac
       break
     fi
     [[ "$d" == "/" ]] && return 1
@@ -208,13 +209,12 @@ xrepo_check() {
 }
 
 # xrepo_abs PATH BASE — PATH made absolute: `~` and `~/…` are HOME, a relative
-# path is taken from BASE. Surrounding quotes are dropped first.
+# path is taken from BASE. Quote characters are dropped first — all of them,
+# so a partly quoted word (`"/a/b"/src`) is the path the shell would see.
 xrepo_abs() {
   local p="$1"
-  p="${p#\"}"
-  p="${p%\"}"
-  p="${p#\'}"
-  p="${p%\'}"
+  p="${p//\"/}"
+  p="${p//\'/}"
   case "$p" in
     \~) p="$HOME" ;;
     \~/*) p="$HOME/${p#\~/}" ;;
@@ -289,17 +289,20 @@ xrepo_git_writes() {
 }
 
 # xrepo_operand — toks[JI] as one operand, in ARG. `read -a` splits a quoted
-# path with spaces, so a word opening a quote is re-joined up to the word that
-# closes it, and `a\ b` is re-joined too. JI is left on the last word used.
+# path with spaces, so a word opening a quote is re-joined until its quotes
+# pair up (the closing one need not end a word: `"/a b"/src`), and `a\ b` is
+# re-joined too. JI is left on the last word used.
 xrepo_operand() {
-  local q=""
+  local q="" qs
   ARG="${toks[$JI]:-}"
   case "$ARG" in
     \"*) q='"' ;;
     \'*) q="'" ;;
   esac
   if [[ -n "$q" ]]; then
-    while [[ ${#ARG} -lt 2 || "$ARG" != *"$q" ]] && ((JI + 1 < ${#toks[@]})); do
+    while :; do
+      qs="${ARG//[^$q]/}"
+      ((${#qs} % 2 == 1 && JI + 1 < ${#toks[@]})) || break
       JI=$((JI + 1))
       ARG+=" ${toks[$JI]}"
     done
@@ -313,7 +316,10 @@ xrepo_operand() {
 
 # xrepo_scan_bash — walk the command's segments, tracking the directory a
 # literal `cd` moved to, and check every git write against its repo. A `( … )`
-# subshell's `cd` ends with it: the directory is saved at `(` and restored at `)`.
+# subshell's `cd` ends with it: the directory is saved at a leading `(` and
+# restored after the segment holding the unmatched `)` — at its end, or before a
+# redirection or a comment. A `$( … )` within one segment is balanced and
+# closes nothing.
 xrepo_scan_bash() {
   local view seg cur t word sub arg closes
   local -a toks rest saved
@@ -329,9 +335,9 @@ xrepo_scan_bash() {
   cur="$XR_CWD"
   saved=()
   while IFS= read -r seg; do
-    # Leading grouping / negation, then VAR=value prefixes. Each `(` saves the
-    # directory; each trailing `)` restores it once the segment has run.
-    closes=0
+    # Leading grouping / negation, then VAR=value prefixes. Each leading `(`
+    # saves the directory; each unmatched `)` restores it once the segment has
+    # run.
     while :; do
       seg="${seg#"${seg%%[![:space:]]*}"}"
       case "$seg" in
@@ -343,16 +349,14 @@ xrepo_scan_bash() {
         *) break ;;
       esac
     done
-    while :; do
-      seg="${seg%"${seg##*[![:space:]]}"}"
-      case "$seg" in
-        *')')
-          seg="${seg%)}"
-          closes=$((closes + 1))
-          ;;
-        *) break ;;
-      esac
-    done
+    word="${seg//[^)]/}"
+    arg="${seg//[^(]/}"
+    closes=$((${#word} - ${#arg}))
+    if ((closes > 0)); then
+      seg="${seg//)/ }"
+    else
+      closes=0
+    fi
     while [[ "$seg" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+(.*)$ ]]; do
       seg="${BASH_REMATCH[1]}"
     done
@@ -364,11 +368,11 @@ xrepo_scan_bash() {
         JI=1
         while :; do
           case "${toks[$JI]:-}" in
-            -P | -L | -e | -@ | -LP | -PL | -Pe) JI=$((JI + 1)) ;;
             --)
               JI=$((JI + 1))
               break
               ;;
+            -*) [[ "${toks[$JI]}" =~ ^-[LPe@]+$ ]] && JI=$((JI + 1)) || break ;;
             *) break ;;
           esac
         done
