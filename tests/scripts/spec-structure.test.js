@@ -564,6 +564,13 @@ test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields 
 // out of the name entirely. Each pin's `what` records when its wording was set.
 const PINS = [
   {
+    what: 'core §1 Language contract — whose language, what never switches it, docs/ prose (v6.33.0)',
+    file: CORE,
+    anchor: '**Language contract**:',
+    why: '122 of 146 English finals in a 中文 user\'s sessions ended turns started by a task-notification or teammate message; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
+    line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new or rewritten; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
+  },
+  {
     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
@@ -808,9 +815,9 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'd442747c1e0354a4' },
+  { file: CORE, heading: '', sha256: '834edbb33d74f69c' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: 'a8f4c22d23ff10b8' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: '1d8d7d8e2d372aad' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
   { file: CORE, heading: '## §2 LEVEL', sha256: '03a25de87d4d24f1' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
@@ -820,7 +827,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: EXT, heading: '', sha256: 'cef483268f3d8311' },
+  { file: EXT, heading: '', sha256: '2de1ba30746328b7' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
@@ -835,7 +842,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '59fbb680c0cbf73e' },
+  { file: EXT, heading: '## Recent changes', sha256: '87fad90bc2aad150' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
@@ -892,8 +899,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 20, sha256: '3dd270a8bc5a80e4' },
-  { file: EXT, count: 62, sha256: '1c83eb5da033cadb' },
+  { file: CORE, count: 20, sha256: '439aef7ff5363827' },
+  { file: EXT, count: 62, sha256: '7e40cb06e47f405d' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

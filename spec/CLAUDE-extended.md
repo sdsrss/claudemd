@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.32.1 — Extended
+# AI-CODING-SPEC v6.33.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -467,9 +467,9 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.32.1 (patch, 2026-09-25)** — §8's rm bullet names what the gate covers and which var the guard goes on. The gate matches any `-r`/`-f` flag, and `find $VAR -delete` since plugin 0.81.0, while the bullet named only `rm -rf`: 95 of the 343 `§8-rm-rf-var` denies logged since the message began naming the flag (0.88.0) were `rm -f` alone. The guard goes on the var that can be EMPTY: a var built from it (`W="$SP/x"`) or a loop var over it is never empty, so `${W:?}` alone guards nothing, and the gate still wants `${W:?}` on the target — so a derived target needs both. Wording only — no verdict changes.
+**v6.33.0 (minor, 2026-09-25)** — §1 says whose language "user's language" is. Measured over 1544 final messages in 166 sessions with a 中文-writing user: 146 came out English, and 122 of them ended turns started by a machine message in the user's role — a `<task-notification>` (73) or a teammate message (49). Of the 23 that ended a turn the human started, 16 were wait/yield notes, 15 of them in a turn that had just spawned a subagent. The language is now the human's, fixed for the session, and binds every message the user reads. `docs/` prose moves to that language (new or rewritten docs; identifiers and test-parsed keys stay English); README and subagent prompts are named English.
 
-**Sizing** (v6.32.1, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24347 → 24484 bytes (Δ +137: the §8 rm bullet); extended 49316 → 49070 bytes (Δ -246: the v6.32.0 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24484/25000 (**516 bytes headroom**); extended 49070/50000 (**930 bytes headroom**).
+**Sizing** (v6.33.0, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24484 → 24793 bytes (Δ +309: the §1 Language contract); extended 49070 → 49159 bytes (Δ +89: the v6.32.1 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24793/25000 (**207 bytes headroom**); extended 49159/50000 (**841 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 
