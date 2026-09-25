@@ -37,8 +37,12 @@ export HOME="$BASE/home"
 mkdir -p "$HOME/.claude/logs"
 # The hook's own TMPDIR exclusion is pointed at a subdir, so the fixture repos
 # (siblings of it) are NOT excluded while the exclusion row still has a target.
+# A symlink, as macOS's TMPDIR is: /var/folders/… is /private/var/folders/…
+# physically, so a path resolved with `pwd -P` never starts with $TMPDIR as
+# written. CI caught X9d failing on macOS only; the symlink makes Linux see it.
+mkdir -p "$BASE/realtmp"
+ln -s "$BASE/realtmp" "$BASE/tmpdir"
 HOOK_TMPDIR="$BASE/tmpdir"
-mkdir -p "$HOOK_TMPDIR"
 
 R="$BASE/repos"
 mkrepo() { mkdir -p "$1/.git" "$1/src"; }

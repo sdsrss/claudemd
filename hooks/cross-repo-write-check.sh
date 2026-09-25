@@ -175,11 +175,17 @@ xrepo_identity() {
 }
 
 # xrepo_excluded PATH — 0 when PATH sits under a root sessions write to by design.
+# Each root is matched as written AND physically, because xrepo_check also
+# tests the path's `pwd -P` form: on macOS TMPDIR is /var/folders/…, which is
+# /private/var/folders/… physically, and /tmp and /var/tmp live under /private.
+XR_TMP="${TMPDIR:-/tmp}"
+XR_TMP="${XR_TMP%/}"
+XR_TMP_PHYS=$(cd "$XR_TMP" 2>/dev/null && pwd -P) || XR_TMP_PHYS="$XR_TMP"
+XR_CLAUDE_PHYS=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || XR_CLAUDE_PHYS="$HOME/.claude"
 xrepo_excluded() {
-  local t="${TMPDIR:-/tmp}"
-  t="${t%/}"
   case "$1/" in
-    "$HOME/.claude/"* | "$t/"* | /tmp/claude-* | /var/tmp/*) return 0 ;;
+    "$HOME/.claude/"* | "$XR_CLAUDE_PHYS/"* | "$XR_TMP/"* | "$XR_TMP_PHYS/"* | \
+      /tmp/claude-* | /private/tmp/claude-* | /var/tmp/* | /private/var/tmp/*) return 0 ;;
   esac
   return 1
 }
