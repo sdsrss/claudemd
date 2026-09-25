@@ -942,6 +942,51 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 55 an empty sidechain dir denies without noise" \
   || { echo "FAIL: 55 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
 
+# Case 56/57: `gh release` / `gh pr` / `glab mr` followed by a READ subcommand
+# is not a ship command. The trigger matched `gh (release|pr)` with any
+# subcommand, and the fixture's `release` tag then matched the same word, so
+# `gh release list` was denied until the ship memory was Read: 19 of the 45
+# denies logged 2026-09-05..09-25 were read-only gh commands, and 2 of the 3
+# bypass tokens in that window were spent on them. The fixture index still
+# carries the `release` tag (plus `gh`/`glab`, so the pr/mr rows match a tag
+# too), so every allow row below denied before the fix.
+# The index is rewritten HERE: earlier cases leave it mutated, and an inherited
+# index without the tag made case 56 pass vacuously on the first run — case 57's
+# deny rows are the liveness control that caught it.
+cat > "$MEM_DIR/MEMORY.md" <<'EOF'
+- [Ship lessons](feedback_ship.md) `[ship, release, push, gh, glab]` — don't skip baseline
+EOF
+touch "$MEM_DIR/feedback_ship.md"
+SESS="sess56"
+echo '{"tool":"Read","path":"/unrelated"}' > "$PROJ_DIR/$SESS.jsonl"
+RO_FAIL=0; RO_ROWS=0
+for c in 'gh release list --limit 2' 'gh release view v0.94.1' 'gh pr list' \
+         'gh pr view 3 --json title' 'gh pr checks 12' 'gh pr diff 12' 'gh pr status' \
+         'git status --short && gh release list --limit 2' \
+         'glab mr list' 'glab mr view 3' 'glab mr diff 3'; do
+  RO_ROWS=$((RO_ROWS+1))
+  OUT=$(mkevent "$c" "$SESS" | bash "$HOOK" 2>&1)
+  [[ -z "$OUT" ]] || { echo "  56 row denied: $c"; RO_FAIL=$((RO_FAIL+1)); }
+done
+(( RO_FAIL == 0 && RO_ROWS >= 11 )) && echo "PASS: 56 read-only gh/glab subcommands do not reach the gate ($RO_ROWS rows)" \
+  || { echo "FAIL: 56 ($RO_FAIL of $RO_ROWS read-only rows denied)"; FAIL=$((FAIL+1)); }
+
+# Case 57: the controls. A write subcommand still denies, including when a read
+# subcommand sits beside it in the same command, and a flag between the group
+# and the subcommand keeps the old, conservative verdict.
+WR_FAIL=0; WR_ROWS=0
+for c in 'gh release create v1 --notes x' 'gh release edit v1 --draft=false' 'gh pr merge 3' \
+         'gh pr create --fill' 'gh release list && gh release create v1' \
+         'gh release view v1; git push origin main' 'gh pr view 3 && gh pr merge 3' \
+         'gh release -R o/r list' 'glab mr create --fill' 'gh pr view 3; release now'; do
+  WR_ROWS=$((WR_ROWS+1))
+  OUT=$(mkevent "$c" "$SESS" | bash "$HOOK" 2>&1)
+  DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+  [[ "$DEC" == "deny" ]] || { echo "  57 row allowed: $c"; WR_FAIL=$((WR_FAIL+1)); }
+done
+(( WR_FAIL == 0 && WR_ROWS >= 10 )) && echo "PASS: 57 write subcommands still deny beside a read one ($WR_ROWS rows)" \
+  || { echo "FAIL: 57 ($WR_FAIL of $WR_ROWS write rows allowed)"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

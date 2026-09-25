@@ -8,6 +8,18 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.94.2] - 2026-09-25
+
+**`gh release list` no longer asks you to read the ship runbook first.** The §11 memory-read gate is documented as holding ship, release and push commands. Its trigger matched `gh release`, `gh pr` and `glab mr` with any subcommand, and the word `release` then matched the ship runbook's own tag, so a read-only `gh release list`, `gh release view` or `gh pr checks` was denied until that file had been Read. Of the 45 denies this gate logged from 2026-09-05 to 2026-09-25, 19 held no write command, only read-only gh subcommands. Two of the three escape tokens spent in that window went on these commands.
+
+**The fix blanks only a read subcommand.** Before the trigger match, a `gh release` / `gh pr` / `glab mr` group at the start of a command segment and directly followed by `list`, `view`, `checks`, `diff` or `status` is replaced with a placeholder. Every other byte is kept. `gh release list && gh release create v1` and `gh pr view 3; git push` still deny, on the write command beside the read. A flag between the group and its subcommand (`gh release -R o/r list`) keeps the old, stricter verdict.
+
+**Replay.** The trigger stage was run over all 2019 unique real Bash commands in local transcripts that invoke `gh` or `glab`. It fired on 640 before and on 334 after. All 306 commands that stopped firing were read against a write-verb pattern (`create`, `merge`, `edit`, `delete`, `upload`, `close`, `ready`, `reopen`, `comment`, `review`, `checkout`, `git push`, `npm publish`, `cargo publish`, `gh api -X POST|PATCH|PUT|DELETE`), and none matched. No command started firing.
+
+Tests: Case 56 (11 read-only rows, all denied before the fix) and Case 57 (10 write rows that must still deny). Adding `create|merge` to the read list turns 6 of the Case 57 rows to allow. Case 56 rewrites the fixture index itself. On the first run, the index an earlier case had left behind lacked the tag, and Case 56 passed without checking anything; Case 57's rows caught it.
+
+**Not changed**: a trigger verb after a shell keyword (`for …; do gh release create v1; done`) does not reach this gate, because the trigger anchors only on the start of the command or on `;`/`&`/`|`. That miss predates this release and is left for a separate fix.
+
 ## [0.94.1] - 2026-09-25
 
 **`rm -rf "${HOME:?}"` was allowed, and it deletes all of `$HOME`.** The §8 rm gate lets a whitelisted var (`HOME`, `PWD`, `OLDPWD`, `TMPDIR`) through only with a literal subpath: `rm -rf "$HOME"` denies, `rm -rf "$HOME/cache"` passes. But the name it extracts from a target keeps any operator inside the braces, so `${HOME:?}` arrived as `HOME:?`, missed the whitelist arm, and reached the guard arm. That arm builds its guard pattern from the same operator-bearing name, and for an empty-message `:?` guard the pattern matches, so it allowed. `:?` proves the var is set; it bounds nothing. The same held for `${TMPDIR:?}`, `${PWD:?}`, `${OLDPWD:?}`, a trailing slash (`"${HOME:?}/"`), `find "${HOME:?}" -delete`, and a concatenation such as `"${HOME:?}${EVIL}"`. The `?` form (`${HOME?}`) and a guard with a message (`${HOME:?x}`) were already denied: their patterns never matched.

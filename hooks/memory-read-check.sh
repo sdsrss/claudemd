@@ -96,6 +96,16 @@ TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:spa
 # the same direction as the v0.9.28 anchor fix, which already declared quoted
 # `release`/`deploy` text to be data rather than an invocation.
 CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
+# A READ subcommand of `gh release` / `gh pr` / `glab mr` is not a ship command,
+# but the trigger's `gh (release|pr)` / `glab mr` arms take any subcommand — and
+# the word `release` then matches the ship runbook's own tag. 19 of the 45
+# denies logged 2026-09-05..09-25 were read-only gh commands, and 2 of the 3
+# bypass tokens in that window were spent on them. Blank ONLY a segment-start
+# group directly followed by one of these read verbs; every other byte is kept,
+# so a write verb or any other trigger in the same command still matches. A
+# flag between the group and its subcommand (`gh release -R o/r list`) is left
+# alone and keeps the old verdict. Tests: Cases 56-57.
+CMD_FLAT=$(printf '%s' "$CMD_FLAT" | sed -E 's/(^|[;&|][[:space:]]*)(gh[[:space:]]+(release|pr)|glab[[:space:]]+mr)[[:space:]]+(list|view|checks|diff|status)([^[:alnum:]_-]|$)/\1:\5/g')
 echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
 
 # vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-
