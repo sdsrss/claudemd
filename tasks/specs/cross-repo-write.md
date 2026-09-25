@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 6
+revision: 7
 ---
 
 # Cross-repo write advisory
@@ -74,10 +74,10 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
   identity exists, differs from own, and the path is not under an excluded prefix.
 - **Bash**:
   - Parse a heredoc-stripped, newline-flattened view that keeps quote characters. Take
-    the path of a `cd` or `-C` operand from inside its quotes, or across a `\ ` escape;
-    `cd -P/-L/-e/-@/--` options come before it. A `( … )` subshell's `cd` ends at its
-    unmatched `)`, also when a redirection or comment follows; a `$( … )` is balanced
-    within its segment and closes nothing. `hook_trigger_view` cannot
+    the path of a `cd` operand from inside its quotes when its first word opens one;
+    `cd -P/-L/-e/-@/--` options come before it. Subshells are not tracked, and a `-C`
+    path with spaces or a `\ `-escaped path is not re-joined: known limits, pinned by
+    tests (r7). `hook_trigger_view` cannot
     be reused, because it empties quoted bodies and loses `cd "/path"`.
   - Split the view into segments on `;` `&&` `||` `|`. Track the last literal absolute or
     `~` `cd` target; a later segment's git write is attributed to it, or to `git -C <p>`
@@ -184,3 +184,10 @@ Produces:
   a partly quoted `cd` target resolves; a worktree of the own submodule is the own repo;
   combined `cd` options (`-eP`) are skipped. Replay over 23,315 calls: 9 calls flagged
   (10 repo hits), no verdict change from r5, 0 non-zero exits, 0 stderr.
+- r7 2026-09-25: third review round found two new misses from the r6 subshell and quote
+  handling. By user decision, that component is reverted to r4's simple form — no
+  subshell tracking, surrounding quotes only, no operand re-joining — keeping every
+  unrelated repair (allowlist hang, `commondir`, stderr, `cd` options, redirection /
+  comment / `--verify` after branch/tag, allowlist expansion). The reverted shapes are
+  documented known limits. Replay over 23,453 calls: 9 calls flagged, 10 repo hits, no
+  verdict change from r6, 0 non-zero exits, 0 stderr.

@@ -209,12 +209,14 @@ xrepo_check() {
 }
 
 # xrepo_abs PATH BASE — PATH made absolute: `~` and `~/…` are HOME, a relative
-# path is taken from BASE. Quote characters are dropped first — all of them,
-# so a partly quoted word (`"/a/b"/src`) is the path the shell would see.
+# path is taken from BASE. Surrounding quotes are dropped first; a quote inside
+# the path (`bob's repo`) is part of it.
 xrepo_abs() {
   local p="$1"
-  p="${p//\"/}"
-  p="${p//\'/}"
+  p="${p#\"}"
+  p="${p%\"}"
+  p="${p#\'}"
+  p="${p%\'}"
   case "$p" in
     \~) p="$HOME" ;;
     \~/*) p="$HOME/${p#\~/}" ;;
@@ -288,41 +290,20 @@ xrepo_git_writes() {
   return 1
 }
 
-# xrepo_operand — toks[JI] as one operand, in ARG. `read -a` splits a quoted
-# path with spaces, so a word opening a quote is re-joined until its quotes
-# pair up (the closing one need not end a word: `"/a b"/src`), and `a\ b` is
-# re-joined too. JI is left on the last word used.
-xrepo_operand() {
-  local q="" qs
-  ARG="${toks[$JI]:-}"
-  case "$ARG" in
-    \"*) q='"' ;;
-    \'*) q="'" ;;
-  esac
-  if [[ -n "$q" ]]; then
-    while :; do
-      qs="${ARG//[^$q]/}"
-      ((${#qs} % 2 == 1 && JI + 1 < ${#toks[@]})) || break
-      JI=$((JI + 1))
-      ARG+=" ${toks[$JI]}"
-    done
-  else
-    while [[ "$ARG" == *'\' ]] && ((JI + 1 < ${#toks[@]})); do
-      JI=$((JI + 1))
-      ARG="${ARG%\\} ${toks[$JI]}"
-    done
-  fi
-}
-
 # xrepo_scan_bash — walk the command's segments, tracking the directory a
-# literal `cd` moved to, and check every git write against its repo. A `( … )`
-# subshell's `cd` ends with it: the directory is saved at a leading `(` and
-# restored after the segment holding the unmatched `)` — at its end, or before a
-# redirection or a comment. A `$( … )` within one segment is balanced and
-# closes nothing.
+# literal `cd` moved to, and check every git write against its repo.
+#
+# Deliberately simple, and its limits are documented rather than patched
+# (three review rounds of subshell and quote tracking each added a new miss):
+#   - a `( … )` subshell is not tracked. Its `cd` is taken to persist, so a
+#     later own-repo write in the same command can draw a false advisory, and
+#     a git write that is the last word before `)` (`git push)`) is missed.
+#   - a `cd` target keeps its spaces only when its first word opens a quote
+#     (`cd "/a b"`, `cd "/a b"/src` — the quoted part is taken); a `git -C`
+#     path with spaces and a `\ `-escaped path are missed.
 xrepo_scan_bash() {
-  local view seg cur t word sub arg closes
-  local -a toks rest saved
+  local view seg cur t word sub arg
+  local -a toks rest
   [[ "$XR_CMD" == *git* ]] || return 0
   # Heredoc bodies are data, not commands; newlines become `;`. Quote
   # characters are KEPT (hook_trigger_view would empty `cd "/path"`).
@@ -333,51 +314,42 @@ xrepo_scan_bash() {
   view="${view//;/$'\n'}"
   view="${view//&/$'\n'}"
   cur="$XR_CWD"
-  saved=()
   while IFS= read -r seg; do
-    # Leading grouping / negation, then VAR=value prefixes. Each leading `(`
-    # saves the directory; each unmatched `)` restores it once the segment has
-    # run.
+    # Leading grouping / negation, then VAR=value prefixes.
     while :; do
       seg="${seg#"${seg%%[![:space:]]*}"}"
       case "$seg" in
-        '('*)
-          seg="${seg:1}"
-          saved+=("$cur")
-          ;;
-        '{'* | '!'*) seg="${seg:1}" ;;
+        '('* | '{'* | '!'*) seg="${seg:1}" ;;
         *) break ;;
       esac
     done
-    word="${seg//[^)]/}"
-    arg="${seg//[^(]/}"
-    closes=$((${#word} - ${#arg}))
-    if ((closes > 0)); then
-      seg="${seg//)/ }"
-    else
-      closes=0
-    fi
     while [[ "$seg" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+(.*)$ ]]; do
       seg="${BASH_REMATCH[1]}"
     done
-    toks=()
-    [[ -n "$seg" ]] && read -r -a toks <<< "$seg"
+    [[ -n "$seg" ]] || continue
+    read -r -a toks <<< "$seg"
     case "${toks[0]:-}" in
       cd)
-        # `cd -P`, `-L`, `-e`, `-@` and `--` come before the target.
-        JI=1
+        # `cd -P`, `-L`, `-e`, `-@` (any combination) and `--` come before the
+        # target.
+        local j=1
         while :; do
-          case "${toks[$JI]:-}" in
+          case "${toks[$j]:-}" in
             --)
-              JI=$((JI + 1))
+              j=$((j + 1))
               break
               ;;
-            -*) [[ "${toks[$JI]}" =~ ^-[LPe@]+$ ]] && JI=$((JI + 1)) || break ;;
+            -*) [[ "${toks[$j]}" =~ ^-[LPe@]+$ ]] && j=$((j + 1)) || break ;;
             *) break ;;
           esac
         done
-        xrepo_operand
-        arg="$ARG"
+        arg="${toks[$j]:-}"
+        # A target quoted as one word with spaces was split by `read -a`;
+        # take it whole.
+        if [[ "$seg" =~ ^cd([[:space:]]+-[^[:space:]]*)*[[:space:]]+\"([^\"]*)\" ]] ||
+          [[ "$seg" =~ ^cd([[:space:]]+-[^[:space:]]*)*[[:space:]]+\'([^\']*)\' ]]; then
+          arg="${BASH_REMATCH[2]}"
+        fi
         if [[ -z "$arg" ]]; then
           cur="$HOME"
         elif [[ "$arg" == "-" || "$arg" == *'$'* || "$arg" == *'`'* ]]; then
@@ -396,10 +368,8 @@ xrepo_scan_bash() {
           if [[ -z "$sub" ]]; then
             case "$word" in
               -C)
-                JI=$((i + 1))
-                xrepo_operand
-                i=$JI
-                arg="$ARG"
+                i=$((i + 1))
+                arg="${toks[$i]:-}"
                 if [[ -z "$arg" || "$arg" == *'$'* || "$arg" == *'`'* ]]; then
                   t=""
                 elif [[ -n "$t" || "$arg" == /* || "$arg" == "~"* ]]; then
@@ -415,16 +385,12 @@ xrepo_scan_bash() {
           fi
           i=$((i + 1))
         done
-        if [[ -n "$sub" && -n "$t" ]] && xrepo_git_writes "$sub" ${rest[@]+"${rest[@]}"}; then
+        [[ -n "$sub" && -n "$t" ]] || continue
+        if xrepo_git_writes "$sub" ${rest[@]+"${rest[@]}"}; then
           xrepo_check "$t" git "git $sub"
         fi
         ;;
     esac
-    while ((closes > 0 && ${#saved[@]} > 0)); do
-      cur="${saved[${#saved[@]} - 1]}"
-      unset "saved[${#saved[@]} - 1]"
-      closes=$((closes - 1))
-    done
   done <<< "$view"
 }
 
