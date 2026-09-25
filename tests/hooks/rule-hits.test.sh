@@ -468,9 +468,10 @@ echo "PASS: ROT-5 orphan lock reaped even when the log is under the cap"
 # wins an uncontested lock and re-runs the two-step move on a log that is
 # already rotated — `mv .1 .2` carrying P1's fresh archive onto .2 and `mv log
 # .1` failing silently. Both prior generations gone, under the mutex added to
-# prevent exactly that (measured pre-fix on 4 concurrent appends: 6/200 trials
-# with no lock involved, 33/200 with a stale lock also present; post-fix 0/200
-# and 8/400).
+# prevent exactly that. The pre- and post-fix rates once quoted here were
+# withdrawn in 0.76.2 (ebd335c): they were measured on a host whose `mkdir` is
+# not atomic, so they could not separate this race from the mutex admitting two
+# holders. The shim below is the evidence, not a rate.
 #
 # Deterministic stand-in for the interleave, same trick as ROT-4's `find` shim:
 # a counting `stat` shim answers the FIRST size query with an over-cap number

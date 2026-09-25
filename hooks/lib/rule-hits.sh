@@ -359,9 +359,12 @@ rule_hits_append() {
         # .2` carries P1's just-archived live generation onto .2 and `mv log .1`
         # silently fails because there is no log left. End state {gone, gone,
         # live-as-.2} — both prior generations lost, the exact P1-1 signature,
-        # under the mutex meant to prevent it. Measured on this tree with 4
-        # concurrent appends over an over-cap log: 6/200 trials with no lock
-        # involved at all, 33/200 with a stale lock also present.
+        # under the mutex meant to prevent it. ROT-6 in
+        # tests/hooks/rule-hits.test.sh forces P2's stale reading with a `stat`
+        # shim. The 4-process rates first quoted here were withdrawn in 0.76.2
+        # with the rest — see ITS RATE IS NOT ESTABLISHED above: they came from
+        # a host whose `mkdir` is not atomic, so they cannot say how often this
+        # interleave, rather than two concurrent holders, produced the loss.
         #
         # A second holder now re-reads a log that is either gone (stat → 0) or
         # already under the cap, and does nothing. That also demotes the
