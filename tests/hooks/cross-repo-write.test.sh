@@ -282,14 +282,16 @@ for c in \
   "(cd $R/beta && V=\$(cat VERSION) && git tag v\$V)" \
   "cd \"$R/beta\"/src && git commit -m x" \
   "cd '$R/beta'/src && git commit -m x" \
-  "cd -eP $R/beta && git commit -m x"; do
+  "cd -eP $R/beta && git commit -m x" \
+  "git -C \"$R/beta\" commit -m x" \
+  "cd -P \"$R/my repo\" && git commit -m x"; do
   WROWS=$((WROWS + 1))
   next_sid
   OUT=$(run "$(bash_ev "$c" "$R/alpha" "$SID")")
   C=$(ctx "$OUT")
   if [[ "$C" == *beta* || "$C" == *"my repo"* ]]; then WROTE=$((WROTE + 1)); else echo "  X15 silent on: $c"; fi
 done
-if ((WROTE == WROWS && WROWS >= 35)); then
+if ((WROTE == WROWS && WROWS >= 37)); then
   ok "X15 every git write into another repo is announced ($WROWS rows)"
 else
   ng "X15 ($WROTE of $WROWS write rows announced)"
@@ -352,8 +354,8 @@ expect_advisory "X18 the other-repo write is found after an own-worktree write" 
 
 # --- X22: documented limits, pinned as they are -----------------------------------------
 # The CHANGELOG lists these as known limits: subshells are not tracked, and a
-# `git -C` path with spaces or a `\ `-escaped path is not re-joined. Three
-# review rounds of tracking them each added a new miss, so they stay simple.
+# `git -C` path with spaces or a `\ `-escaped path is not re-joined. Two
+# attempts to track them each added a new miss, so they stay simple.
 # Pinned so a change to them is a decision, not a drift.
 LIMIT_MISS=0
 for c in \
@@ -364,6 +366,9 @@ for c in \
   [[ -z "$(run "$(bash_ev "$c" "$R/alpha" "$SID")")" ]] && LIMIT_MISS=$((LIMIT_MISS + 1))
 done
 assert_eq "X22a known misses stay missed (subshell tail, -C with spaces, escaped space)" 3 "$LIMIT_MISS"
+next_sid
+OUT=$(run "$(bash_ev "(cd $R/beta && git stash list)" "$R/alpha" "$SID")")
+expect_advisory "X22c known misread: a read touching the closing ) is taken for a write" "$OUT" beta alpha
 next_sid
 OUT=$(run "$(bash_ev "(cd $R/beta && git log -1) && git commit -m own" "$R/alpha" "$SID")")
 expect_advisory "X22b known false advisory: a subshell's cd is taken to persist" "$OUT" beta alpha

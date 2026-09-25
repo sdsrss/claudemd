@@ -294,10 +294,11 @@ xrepo_git_writes() {
 # literal `cd` moved to, and check every git write against its repo.
 #
 # Deliberately simple, and its limits are documented rather than patched
-# (three review rounds of subshell and quote tracking each added a new miss):
+# (two attempts at subshell and quote tracking each added a new miss):
 #   - a `( … )` subshell is not tracked. Its `cd` is taken to persist, so a
 #     later own-repo write in the same command can draw a false advisory, and
-#     a git write that is the last word before `)` (`git push)`) is missed.
+#     a git word touching the closing `)` is misread: `git push)` is missed,
+#     `git stash list)` is taken for a write.
 #   - a `cd` target keeps its spaces only when its first word opens a quote
 #     (`cd "/a b"`, `cd "/a b"/src` — the quoted part is taken); a `git -C`
 #     path with spaces and a `\ `-escaped path are missed.

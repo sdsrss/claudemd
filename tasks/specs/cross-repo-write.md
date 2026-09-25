@@ -189,5 +189,7 @@ Produces:
   subshell tracking, surrounding quotes only, no operand re-joining — keeping every
   unrelated repair (allowlist hang, `commondir`, stderr, `cd` options, redirection /
   comment / `--verify` after branch/tag, allowlist expansion). The reverted shapes are
-  documented known limits. Replay over 23,453 calls: 9 calls flagged, 10 repo hits, no
+  documented known limits, including a git word touching the closing `)` being misread
+  (`git stash list)` read as a write; found by the r4 scoped review, documented, not
+  patched). Replay over 23,453 calls: 9 calls flagged, 10 repo hits, no
   verdict change from r6, 0 non-zero exits, 0 stderr.
