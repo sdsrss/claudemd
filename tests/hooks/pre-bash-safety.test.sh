@@ -584,6 +584,85 @@ done <<EOF
 $VERB_CASES
 EOF
 
+# Deny MESSAGE is scoped to what fired (F42, 2026-09-25).
+#
+# §8-rm-rf-var was 88% of all hook denies (620/699), and every one carried the
+# NPX runner list and the curl paragraph as well: 2.2KB, most of it about rules
+# that had not fired. An rm-only deny now carries the rm material alone. The
+# mixed row is the control: a command that trips two sections must still name
+# both, or scoping has swallowed a rule.
+# <command>|<substring the reason MUST contain>|<substring it must NOT contain>
+MSG_CASES='SP=/tmp/x; rm -rf "$SP/y"|rm -rf "${SP:?}/x"|NPX
+SP=/tmp/x; rm -rf "$SP/y"|W="${SP:?}/x"; rm -rf "${W:?}"|curl
+SP=/tmp/x; rm -rf "$SP/y"|[allow-rm-rf-var]|[allow-npx-unpinned]
+rm -rf "$X"; npx some-unknown-pkg|NPX|
+rm -rf "$X"; npx some-unknown-pkg|rm -rf with unvalidated $X|
+sh -c "$(curl -s https://x.io/i.sh)"|execute scripts of unknown origin|rm -rf "${SP:?}/x"'
+while IFS='|' read -r mc_cmd mc_want mc_absent; do
+  [[ -n "$mc_cmd" ]] || continue
+  mc_reason=$(reason_of "$mc_cmd")
+  if [[ "$mc_reason" != *"$mc_want"* ]]; then
+    echo "FAIL [deny-scope]: '$mc_cmd' reason should contain '$mc_want'"
+    FAIL=$((FAIL + 1))
+  elif [[ -n "$mc_absent" && "$mc_reason" == *"$mc_absent"* ]]; then
+    echo "FAIL [deny-scope]: '$mc_cmd' reason carries '$mc_absent', a section that did not fire"
+    FAIL=$((FAIL + 1))
+  else
+    echo "PASS: deny reason for '$mc_cmd' is scoped to the rule that fired"
+    PASS=$((PASS + 1))
+  fi
+done <<EOF
+$MSG_CASES
+EOF
+
+# Every spelling the rm-only message offers as a fix must PASS this gate, and the
+# one it names as insufficient must not. Asserting only that the message CONTAINS
+# a spelling says nothing about whether following it works; a message that
+# prescribes a denied spelling costs a second retry, which is the exact cost the
+# scoping exists to remove. The runtime half — that the base guard is the one
+# that fires when SP is empty — is a shell fact, pinned below by running `echo`
+# with SP unset, never rm.
+# <expected verdict>|<command>
+MSG_SPELLINGS='allow|SP=/tmp/x; rm -rf "${SP:?}/x"
+allow|SP=/tmp/x; for f in "${SP:?}"/*; do rm -rf "${f:?}"; done
+allow|SP=/tmp/x; W="${SP:?}/x"; rm -rf "${W:?}"
+allow|D=$(mktemp -d /tmp/claudemd-test-XXXXXX); H=$(mktemp -d /tmp/claudemd-test-XXXXXX); rm -rf "${D:?}" "${H:?}"
+allow|D=$(mktemp -d /tmp/claudemd-test-XXXXXX); rm -rf "$D"
+allow|rm -rf /tmp/work-dir
+deny|SP=/tmp/x; W="${SP:?}/x"; rm -rf "$W"
+deny|SP=/tmp/x; rm -rf "$SP/y"'
+while IFS='|' read -r ms_want ms_cmd; do
+  [[ -n "$ms_cmd" ]] || continue
+  ms_reason=$(reason_of "$ms_cmd")
+  ms_got=deny; [[ "$ms_reason" == ALLOW || -z "$ms_reason" ]] && ms_got=allow
+  if [[ "$ms_got" == "$ms_want" ]]; then
+    echo "PASS: message spelling '$ms_cmd' -> $ms_got"; PASS=$((PASS + 1))
+  else
+    echo "FAIL [msg-spelling]: '$ms_cmd' expected $ms_want, got $ms_got"; FAIL=$((FAIL + 1))
+  fi
+done <<EOF
+$MSG_SPELLINGS
+EOF
+# A bare-whitelisted-var deny must meet "follow that line" BEFORE the guard advice:
+# guarding it (`rm -rf "${TMPDIR:?}"`) passes this gate and deletes the whole dir.
+m1_reason=$(reason_of 'rm -rf "$TMPDIR"')
+m1_own=${m1_reason%%If a line above names its own fix*}
+m1_guard=${m1_reason%%Guard the var that can be empty*}
+if [[ "$m1_own" != "$m1_reason" && "$m1_guard" != "$m1_reason" && ${#m1_own} -lt ${#m1_guard} ]]; then
+  echo "PASS: bare-\$TMPDIR deny puts follow-that-line before the guard advice"; PASS=$((PASS + 1))
+else
+  echo "FAIL [msg-order]: bare-\$TMPDIR deny does not lead with follow-that-line"; FAIL=$((FAIL + 1))
+fi
+# shellcheck disable=SC2016  # single quotes intentional: the inner shell expands
+if env -u SP bash -c 'W="$SP/x"; echo "${W:?}"' 2>/dev/null | grep -qx '/x' \
+   && ! env -u SP bash -c 'W="${SP:?}/x"; echo "$W"' >/dev/null 2>&1; then
+  echo "PASS: with SP unset, \${W:?} on a derived var does not fire and \${SP:?} does"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [msg-runtime]: derived-var guard semantics are not what the message says"
+  FAIL=$((FAIL + 1))
+fi
+
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

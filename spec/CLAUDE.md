@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.32.0 — Core
+# AI-CODING-SPEC v6.32.1 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -168,7 +168,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 ## §8 SAFETY (immutable, never exempt)
 
 **Never**:
-- `rm -rf $VAR` unvalidated; use `rm -rf "${VAR:?}"`
+- `rm -rf $VAR` unvalidated — any `-r`/`-f`, and `find $VAR -delete`; guard the var that can be empty: `rm -rf "${SP:?}/x"`; a var built from it needs both, `W="${SP:?}/x"` … `"${W:?}"`
 - plaintext secrets / sensitive data in code/logs/commits
 - `DELETE` / `UPDATE` / `DROP` without WHERE
 - disable SSL/cert verification

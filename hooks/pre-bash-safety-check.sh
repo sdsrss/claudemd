@@ -2151,6 +2151,64 @@ if (( ${#HITS[@]} == 0 )); then
   exit 0
 fi
 
+# F42 (2026-09-25): an rm-only deny carries the rm material alone. Over 20 days
+# §8-rm-rf-var was 620 of 699 hook denies, and every one of them also carried the
+# NPX runner list and the curl paragraph — 2.2KB per deny, most of it about rules
+# that had not fired. A deny that trips any other section falls through to the
+# full message below.
+#
+# The guard advice names the var that can be EMPTY. A var built from it
+# (`W="$SP/x"`) or a loop var over it (`for f in "$SP"/*`) is never empty — it
+# is `/x`, or `/*`'s entries, when SP is — so `${W:?}` alone passes this gate and
+# guards nothing. A first cut of this message told the agent to guard W; the
+# pre-tag review caught it. The gate credits only a guard on the var a target
+# names, so a derived target needs both: the base guarded where W is built, and
+# `${W:?}` on the target.
+#
+# The "follow that line" bullet comes FIRST (review r3): for a bare-$HOME/$TMPDIR
+# deny, the guard advice leads to `rm -rf "${HOME:?}"`, which this gate allows
+# (the extracted name keeps its `:?`, so the whitelist arm never sees it) and
+# which deletes the whole directory.
+#
+# Several mktemp targets in one rm (`rm -rf "$D" "$H"`) still deny. Per-target
+# provenance for them was built and REVERTED the same day: two review rounds
+# showed each neighbour var inheriting the residual holes of whatever arm would
+# pass it alone, for a false deny that 10 of 6138 replayed commands hit and that
+# `rm -rf "${D:?}" "${H:?}"` already avoids. The message teaches that spelling.
+_s8_rm_only=1
+for i in "${!HITS[@]}"; do
+  [[ "${HIT_SECTIONS[$i]:-§8}" == '§8-rm-rf-var' ]] || _s8_rm_only=0
+done
+if (( _s8_rm_only == 1 )); then
+REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
+
+Spec: ~/.claude/CLAUDE.md §8 SAFETY — rm -r/-f on an unvalidated \$VAR (forbidden).
+This gate reads command text and does not accept a plain assignment
+(SP=/path) as validation: text position is not what the shell runs.
+
+Fix the invocation (no token needed):
+  • If a line above names its own fix — a \`..\` walk, a bare \$HOME/\$TMPDIR/
+    \$PWD, a find with no selection primary — follow THAT line, and do not add a
+    guard to it: rm -rf \"\${HOME:?}\" passes this gate and still deletes all of \$HOME.
+  • Guard the var that can be empty, inside the rm target:
+      rm -rf \"\${SP:?}/x\"      for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done
+    A var built from it (W=\"\$SP/x\") or a loop var over \"\$SP\"/* is never
+    empty, so \${W:?} alone guards nothing. Guard the base where W is built AND name W's guard
+    on the target — this gate credits only a guard on the var a target names:
+      W=\"\${SP:?}/x\"; rm -rf \"\${W:?}\"
+  • Several scratch dirs:  rm -rf \"\${D:?}\" \"\${H:?}\"
+  • One scratch dir made by mktemp in the SAME command:  D=\$(mktemp -d) … rm -rf \"\$D\"
+    Any other use of the bare name (export D, D=1), source/eval, or IFS= in the
+    command withdraws it.
+  • A literal path:  rm -rf /tmp/work-dir
+  • Writing ABOUT rm (commit or tag message, docs) is not an invocation, but the
+    gate may not tell them apart: write the text to a file with the Write tool
+    and pass the path (git commit -F FILE, git tag -a -F FILE).
+
+Escapes are the USER's to authorize (§8 Escape tokens), never the agent's to
+self-issue: the per-command token [allow-rm-rf-var] (logged as a bypass), or
+DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged; records nothing)."
+else
 REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
 
 Spec: ~/.claude/CLAUDE.md §8 SAFETY —
@@ -2188,6 +2246,7 @@ Bypass options:
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged).
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session."
+fi
 
 # v0.23.6 — file the deny telemetry under the granular §8 section(s) that
 # triggered it (§8-rm-rf-var / §8-npx), one record per section present with

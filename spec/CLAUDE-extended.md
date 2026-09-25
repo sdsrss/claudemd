@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.32.0 — Extended
+# AI-CODING-SPEC v6.32.1 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -467,12 +467,9 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.32.0 (minor, 2026-09-22)** — subagent reports travel by file, and a review brief stays blind. Measured over this repo's 30 transcripts: 100 of 176 teammate completion results end at exactly 4064 chars, a 4000-char body plus the harness's own truncation notice; asking for the remainder by message was cut again, and each ask woke the reviewer into another completion event.
+**v6.32.1 (patch, 2026-09-25)** — §8's rm bullet names what the gate covers and which var the guard goes on. The gate matches any `-r`/`-f` flag, and `find $VAR -delete` since plugin 0.81.0, while the bullet named only `rm -rf`: 95 of the 343 `§8-rm-rf-var` denies logged since the message began naming the flag (0.88.0) were `rm -f` alone. The guard goes on the var that can be EMPTY: a var built from it (`W="$SP/x"`) or a loop var over it is never empty, so `${W:?}` alone guards nothing, and the gate still wants `${W:?}` on the target — so a derived target needs both. Wording only — no verdict changes.
 
-- **§11-O**: `Report by file` makes the output path the default for any report that can exceed the cap, not only for a cycle that cannot yield; the final message is ≤1500 chars. One ask for the file after a cut, nothing sent to an author whose report has landed.
-- **§12**: `Blind brief` under Author ≠ reviewer — what a spawn prompt gives and withholds, the `claims to falsify` list, per-finding evidence, and a fresh spawn for re-review. Not HARD: §13.2's budget is not spent.
-
-**Sizing** (v6.32.0, 2026-09-22, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24347 bytes (unchanged); extended 49025 → 49316 bytes (Δ +291: two bullets in, the v6.31.0 entry out to the changelog); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24347/25000 (**653 bytes headroom**); extended 49316/50000 (**684 bytes headroom**).
+**Sizing** (v6.32.1, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24347 → 24484 bytes (Δ +137: the §8 rm bullet); extended 49316 → 49070 bytes (Δ -246: the v6.32.0 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24484/25000 (**516 bytes headroom**); extended 49070/50000 (**930 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

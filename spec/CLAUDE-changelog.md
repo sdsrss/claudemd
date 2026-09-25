@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.32.1 (patch, 2026-09-25) — §8's rm bullet names what the gate covers and which var the guard goes on
+
+Measured over 20 days of `~/.claude/logs/claudemd.jsonl`: 620 `§8-rm-rf-var` denies, 88% of all hook denies. Two of the causes were the bullet's own wording.
+
+- **Coverage**: the bullet named `rm -rf`; the gate matches any `-r`/`-R`/`-f`/`-F` flag and `--recursive`/`--force`, and since plugin 0.81.0 `find $VAR -delete`, as the README states. 95 of the 343 denies logged since 0.88.0 — when the message began naming the matched flag — were `rm -f` alone; the 277 earlier records do not say. The bullet is a rule for the agent and reads wider than the gate in places the gate does not reach (`--recur` abbreviations, `find -- "$VAR"`).
+- **Which var the guard goes on**: the var that can be empty. `SP` can; `W="$SP/x"` cannot — it is `/x` when SP is unset — and neither can a loop var over `"$SP"/*`, so `${W:?}` alone passes the gate and guards nothing. The gate credits only a guard on the var a target names, so a derived target needs both: `W="${SP:?}/x"` and `"${W:?}"`. 71 denies were an upstream `: "${SP:?}"` followed by `rm -rf "$W"` — safe at runtime, since a failed `:?` exits the shell, but not credited by the gate.
+
+A first draft of this entry, and of the deny message shipped with it, told the agent to guard `W` itself. The pre-tag review caught that it prescribed a guard that never fires.
+
+Wording only: the spec edit changes no verdict. The plugin release that carries it also scopes the rm deny message to the rule that fired (`CHANGELOG.md`).
+
+Core 24347 → 24484 bytes. Extended 49316 → 49070: the v6.32.0 Recent-changes entry leaves extended (this file already holds it), replaced by a shorter one.
+
 ## v6.32.0 (minor, 2026-09-22) — subagent reports travel by file, and a review brief stays blind
 
 The harness cuts a teammate's reported result at 4000 characters and appends `[result truncated — ask the agent for the rest via SendMessage]`. Over this repo's 30 transcripts, 100 of 176 teammate completion results end at exactly 4064 characters — the body plus that notice — in 19 of the 19 transcripts that spawned teammates. The spec's only file channel, in §11-O, was scoped to "a cycle that genuinely cannot yield", so review spawns reached for a file in 43 of 83 prompts and capped the final message in 19. When a report was cut, the recovery was a message asking for the rest; in the 0.92.0 pre-ship round that resend was cut again, and every message to an idle reviewer woke it into another completion event, which is the late burst of `Teammate … finished` lines seen after a closing summary. Upstream issues #74113, #85047 and #86090 describe the same mechanics.

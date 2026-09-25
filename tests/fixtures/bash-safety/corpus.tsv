@@ -1424,3 +1424,41 @@ deny	env: rm-rf arm holds with LANG unset	rm -rf $EVIL	-LANG	corpus-env
 deny	env: CJK component in target, C locale, denies	rm -rf "$EVIL/项目"	LC_ALL=C	corpus-env
 pass	env: $HOME/CJK subpath allows (C locale)	rm -rf "$HOME/项目/缓存"	LC_ALL=C	corpus-env
 pass	env: $HOME/CJK subpath allows (UTF-8 locale)	rm -rf "$HOME/项目/缓存"	LC_ALL=en_US.UTF-8	corpus-env
+
+# === F42 (2026-09-25) — several mktemp targets in one rm: DENY, on purpose ===
+# Per-target provenance for `rm -rf "$D" "$H"` (both from mktemp) was built and
+# REVERTED the same day. Two review rounds showed every accepted neighbour var
+# inheriting the residual holes of whatever other arm would pass it alone — a
+# whitelisted `"$HOME/x/$EVIL"`, a segment cut at `$(`, a quoted `)` or `\;` —
+# for a false deny 10 of 6138 replayed real commands hit, and that
+# `rm -rf "${D:?}" "${H:?}"` (in the deny message) already avoids. These rows pin
+# the deny so a re-attempt has to face them, as F21 pins the literal class.
+deny	F42 two mktemp dirs one rm (reverted class)	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H"
+deny	F42 two mktemp dirs one rm, subpath on second (reverted class)	D=$(mktemp -d) && H=$(mktemp -d) && rm -rf "$D" "$H/sub"
+deny	F42 three mktemp targets, one a file (reverted class)	D=$(mktemp -d); H=$(mktemp -d); F=$(mktemp); rm -rf "$D" "$H" "$F"
+deny	F42 neighbour never assigned	D=$(mktemp -d); rm -rf "$D" "$H"
+deny	F42 neighbour assigned from env	D=$(mktemp -d); H=$EVIL; rm -rf "$D" "$H"
+deny	F42 neighbour mktemp then reassigned	D=$(mktemp -d); H=$(mktemp -d); H=$EVIL; rm -rf "$D" "$H"
+deny	F42 neighbour mktemp then unset	D=$(mktemp -d); H=$(mktemp -d); unset H; rm -rf "$D" "$H/x"
+deny	F42 two mktemp vars in ONE token	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D/$H"
+deny	F42 provenance var concatenated with foreign var	D=$(mktemp -d); rm -rf "$D" "$D$EVIL"
+deny	F42 neighbour walks out with ..	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H/../victim"
+deny	F42 third target foreign	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H" "$EVIL"
+deny	F42 neighbour assigned AFTER the rm	D=$(mktemp -d); rm -rf "$D" "$H"; H=$(mktemp -d)
+deny	F42 neighbour via default expansion	D=$(mktemp -d); rm -rf "$D" "${H:-/}"
+deny	F42 var inside an option token (no target iteration of its own)	D=$(mktemp -d); rm -rf -$O "$D"
+deny	F42 var inside an option token, two mktemp targets	D=$(mktemp -d); H=$(mktemp -d); rm -rf -$F "$D" "$H"
+deny	F42 literal after -- plus two mktemp targets (reverted class)	D=$(mktemp -d); H=$(mktemp -d); rm -rf -- "$D" "$H" ./build
+# F42 review probes: a neighbour another arm would pass alone must not ride on
+# mktemp provenance. The first cut of the reverted change allowed each of these.
+deny	F42 mktemp + whitelisted $HOME subpath	D=$(mktemp -d); rm -rf "$D" "$HOME/cache"
+deny	F42 mktemp + whitelisted $PWD subpath	D=$(mktemp -d); rm -rf "$D" "$PWD/build"
+deny	F42 mktemp + guarded neighbour inline	D=$(mktemp -d); rm -rf "$D" "${X:?}"
+deny	F42 mktemp + guarded neighbour upstream	: "${X:?}"; D=$(mktemp -d); rm -rf "$D" "$X"
+deny	F42 mktemp + $HOME subpath carrying a foreign var	D=$(mktemp -d); rm -rf "$D" "$HOME/x/$EVIL"
+deny	F42 mktemp + guard arm carrying a foreign var	D=$(mktemp -d); rm -rf "$D" "${X:?}/$EVIL"
+deny	F42 mktemp + bounded find over $HOME	D=$(mktemp -d); find "$D" "$HOME" -name "*" -delete
+deny	F42 two mktemp + command substitution cuts the segment	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H" "$(pwd)" "$EVIL"
+deny	F42 two mktemp + backtick cuts the segment	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "$H" `pwd` "$EVIL"
+deny	F42 mktemp + neighbour mktemp var with default operator	D=$(mktemp -d); H=$(mktemp -d); rm -rf "$D" "${H:-/}"
+deny	F42 two mktemp vars, one of them quoted-RHS (reverted class)	D=$(mktemp -d); bak="$(mktemp /tmp/cfg.XXXXXX)"; rm -rf "$D" "$bak"
