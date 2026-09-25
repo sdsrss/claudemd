@@ -173,6 +173,11 @@ const NON_RULE_SECTIONS = new Set([
   // an advisory that never denies must not put rows into a HARD rule's §13.1
   // demote accounting. Promoting it is the §13.3 route.
   '§5-scope',
+  // The reply-language restatement (v0.96.0). §1's Language contract is a
+  // spec default, not a HARD rule (§3 lists it among the defaults a user
+  // instruction relaxes), so its rows must not enter any HARD rule's §13.1
+  // demote accounting.
+  '§1-language',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

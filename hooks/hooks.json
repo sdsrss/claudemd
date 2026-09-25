@@ -50,6 +50,7 @@
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/transcript-structure-scan.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/evidence-gate.sh\"", "timeout": 5 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-staleness.sh\"", "timeout": 5 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/reply-language-check.sh\"", "timeout": 3 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-summary.sh\"", "timeout": 3 }
         ]
       }

@@ -467,9 +467,9 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.33.0 (minor, 2026-09-25)** — §1 says whose language "user's language" is. Measured over 1544 final messages in 166 sessions with a 中文-writing user: 146 came out English, and 122 of them ended turns started by a machine message in the user's role — a `<task-notification>` (73) or a teammate message (49). Of the 23 that ended a turn the human started, 16 were wait/yield notes, 15 of them in a turn that had just spawned a subagent. The language is now the human's, fixed for the session, and binds every message the user reads. `docs/` prose moves to that language (new or rewritten docs; identifiers and test-parsed keys stay English); README and subagent prompts are named English.
+**v6.33.0 (minor, 2026-09-25)** — §1 says whose language "user's language" is. Measured over 1448 final messages in 158 interactive sessions with a 中文-writing user: 93 came out English, and 70 of them ended turns started by a machine message in the user's role — a teammate message (49) or a `<task-notification>` (21). Of the 23 that ended a turn the human started, 16 were wait/yield notes, 15 of them in a turn that had just spawned a subagent. The language is now the human's, fixed for the session, and binds every message the user reads. `docs/` prose moves to that language (new or rewritten docs; identifiers and test-parsed keys stay English); README and subagent prompts are named English.
 
-**Sizing** (v6.33.0, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24484 → 24793 bytes (Δ +309: the §1 Language contract); extended 49070 → 49159 bytes (Δ +89: the v6.32.1 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24793/25000 (**207 bytes headroom**); extended 49159/50000 (**841 bytes headroom**).
+**Sizing** (v6.33.0, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24484 → 24793 bytes (Δ +309: the §1 Language contract); extended 49070 → 49169 bytes (Δ +99: the v6.32.1 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24793/25000 (**207 bytes headroom**); extended 49169/50000 (**831 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

@@ -35,7 +35,7 @@ author to re-derive it from another hook's source:
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
-  `evidence-gate.sh`, `ledger-staleness.sh`. Treat it as
+  `evidence-gate.sh`, `ledger-staleness.sh`, `reply-language-check.sh`. Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
   It also does not contain everything the session did. As of Claude Code
   2.1.278 — observed there, still true at 2.1.280, no earlier bound established —
@@ -137,7 +137,12 @@ Emitters, derived from source and gated by
   deletes them. It deletes nothing. Silent when there is nothing to list.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
-context schema, so the ones with something to say write advisory text to
+context schema. One Stop hook prints stdout JSON of a different shape:
+`reply-language-check.sh` (opt-in) returns top-level
+`{"decision":"block","reason":…}`, which Claude Code documents for Stop as
+"keep going" — the model receives `reason` and writes one more message. It
+lets the next Stop through when the event carries `stop_hook_active: true`, so
+it asks once per turn. The others with something to say write advisory text to
 `stderr` — `mem-audit.sh`, `residue-audit.sh`, `sandbox-disposal-check.sh`,
 `transcript-structure-scan.sh`, `evidence-gate.sh` and
 `ledger-staleness.sh` — and `session-summary.sh` writes
@@ -159,4 +164,6 @@ from treating injected prose as something the user said.
 
 ## Stop hooks cannot block
 
-The Stop event does not respect `permissionDecision: "deny"`. Hooks on Stop are advisory — write to `stderr` (shown to user) + record via `hook_record`.
+The Stop event does not respect `permissionDecision: "deny"`; its only control
+is `decision: "block"`, which does not undo anything — it only asks for more
+output (see `reply-language-check.sh` above). Hooks on Stop are otherwise advisory — write to `stderr` (shown to user) + record via `hook_record`.

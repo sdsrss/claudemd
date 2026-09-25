@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 83 node suites, 34 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 83 node suites, 35 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -317,6 +317,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PostToolUse | `transcript-vocab-scan.sh` | post-hoc §10-V scan of assistant prose | `§10-V` |
 | Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result after the last code edit whose command names a runner or whose output carries a runner verdict. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
 | Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file Edit/Write in the transcript tail, and no Edit/Write on that ledger in the same span (the window is a staleness threshold, read on both sides). Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
+| Stop | `reply-language-check.sh` | The last reply has no CJK character and at least 10 words once code, paths and tags are stripped (a harness `API Error:` line excluded), while the newest classifiable HUMAN message (tool results, meta, compact-summary, sidechain, task-notification and teammate rows excluded; a slash command counts by its arguments) is 中文, in an interactive session (entrypoint not `sdk-*`): returns `{"decision":"block"}` asking for a 中文 restatement, once per turn (`stop_hook_active`). Opt-in `REPLY_LANGUAGE_CHECK=1` or `=log` (§13.3 default-OFF) | `§1-language` |
 | PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write tally; injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | PreToolUse | `cross-repo-write-check.sh` | Advisory when an Edit/Write/NotebookEdit target, or a Bash git write after a literal `cd`/`git -C`, belongs to a git repo other than the one owning `cwd` (worktrees and submodules collapse to their owning repo). Once per target repo per session. Opt-in `CROSS_REPO_WRITE=1` (§13.3 default-OFF) | `§5-scope` |
 | PostToolUse:Bash | `tmp-sweep.sh` | reclaims vitest per-run tmp dirs (exact signature only, detached, ≤ once per 10 min) + temp-root pressure advisory | `§8.V4` |

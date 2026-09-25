@@ -8,11 +8,11 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ## v6.33.0 (minor, 2026-09-25) — §1 says whose language "user's language" is
 
-Measured over every transcript still on disk in the 8 non-sandbox project directories (about 20 days): 1544 final messages in 166 sessions where the human writes 中文. 146 came out English, in 25 sessions. The method, the frozen per-turn table and its classifier live outside the repo; a message counts as English when, with code, backticks and paths stripped, it has no CJK character and at least 8 English words.
+Measured over every transcript still on disk in the 8 non-sandbox project directories (about 20 days): 1448 final messages in 158 interactive sessions where the human writes 中文. 93 came out English, in 22 sessions. Headless `claude -p` runs are left out: 8 sessions, 96 final messages, 54 of them English — driven by slash commands, so no human language to measure against. The method, the frozen per-turn table and its classifier live outside the repo; a message counts as English when, with code, backticks and paths stripped, it has no CJK character and at least 8 English words.
 
-- **What started those turns**: a `<task-notification>` from a finished background subagent (73), a message from another Claude session (49), a human 中文 prompt (23), a skill body (1). The rule said "user's language" and never said whose; in the first two the most recent message in the user's role is English.
+- **What started those turns**: a message from another Claude session (49), a human 中文 prompt (23), a `<task-notification>` from a finished background subagent (21). The rule said "user's language" and never said whose; in the first and last the most recent message in the user's role is English.
 - **The human-started 23**: 16 are wait/yield notes ("both reviewers are running…"), 15 of them in a turn that had just spawned a subagent. Opus 5 at xhigh effort, human-started turns: 1 of 363 English with no subagent call in the turn, 11 of 116 with one.
-- **Model**: Opus 5.5 ends 55 of 101 notification turns in English, Opus 5 18 of 156. The wording fix cannot reach that difference by itself.
+- **Model**: Opus 5.5 ends 20 of 64 notification turns in English, Opus 5 1 of 104. The wording fix cannot reach that difference by itself.
 
 **§1** now defines the language as the one the human types in, fixed for the session, and lists the messages that never switch it. It binds every message the user reads, wait/yield notes and relayed subagent findings named. `docs/` prose moves from English ("shipped reference+contract docs") to the user's language for new or rewritten docs; identifiers and table keys a test parses stay English, so existing docs are not translated wholesale. README and subagent prompts are named in the English list.
 

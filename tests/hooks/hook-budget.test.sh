@@ -336,6 +336,21 @@ probe_event() {
       PROBE_ENV=("LEDGER_STALENESS=1")
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
         '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t}' ;;
+    reply-language-check)
+      # The fixture's human rows are English, which this hook reads as "the
+      # human writes English" and exits on after the scan — silent, so no
+      # reach proof. The probe scans a copy whose human rows are 中文 instead:
+      # the same 6,000+ rows, so the grep + jq pass over the tail costs what it
+      # costs on the real fixture, and the verdict (a block on stdout) proves
+      # the scan reached a human row. The empty fixture copies to an empty
+      # file and exits at "no classifiable human message", silent.
+      _rl_dir="$SANDBOX/rl-$(printf '%s' "$TRANSCRIPT" | cksum | cut -d' ' -f1)"
+      mkdir -p "$_rl_dir"
+      sed 's/budget fixture turn/预算夹具第几轮/' "$TRANSCRIPT" > "$_rl_dir/$SESSION_ID.jsonl"
+      PROBE_ENV=("REPLY_LANGUAGE_CHECK=1")
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$_rl_dir/$SESSION_ID.jsonl" \
+        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t,
+          last_assistant_message:"The pre-tag reviewer is still running against the repair commit and I will merge to main, push, wait for CI and publish once it reports."}' ;;
     transcript-vocab-scan)
       PROBE_ENV=("TRANSCRIPT_VOCAB_SCAN=1")
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \

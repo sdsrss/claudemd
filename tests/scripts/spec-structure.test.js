@@ -567,7 +567,7 @@ const PINS = [
     what: 'core §1 Language contract — whose language, what never switches it, docs/ prose (v6.33.0)',
     file: CORE,
     anchor: '**Language contract**:',
-    why: '122 of 146 English finals in a 中文 user\'s sessions ended turns started by a task-notification or teammate message; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
+    why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
     line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new or rewritten; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
   },
   {
@@ -842,7 +842,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '87fad90bc2aad150' },
+  { file: EXT, heading: '## Recent changes', sha256: '9a169be8d8eddded' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,

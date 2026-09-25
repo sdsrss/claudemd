@@ -144,6 +144,14 @@ export const HOOK_REGISTRY = [
     timeout: 5,
   },
   {
+    basename: 'reply-language-check.sh',
+    displayName: 'reply-language',
+    envVarSuffix: 'REPLY_LANGUAGE',
+    hookEvent: 'Stop',
+    matcher: '*',
+    timeout: 3,
+  },
+  {
     basename: 'rework-breaker.sh',
     displayName: 'rework-breaker',
     envVarSuffix: 'REWORK_BREAKER',

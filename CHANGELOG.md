@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.96.0] - 2026-09-25
+
+**Spec v6.33.0: §1 says whose language "user's language" is.** It is the language the human types in, fixed for the session. Task notifications, teammate messages, skill and command bodies, hook text and subagent reports never switch it. It binds every message the user reads, including wait/yield notes and relayed subagent findings. `docs/` prose now follows the user's language for new or rewritten docs; identifiers and table keys that a test parses stay English, so existing docs are not translated wholesale. README and subagent prompts are named English. Details in `spec/CLAUDE-changelog.md`.
+
+**Why.** Over 1,448 final messages in 158 interactive sessions of a 中文-writing user, 93 came out English. 70 of them ended turns started by a machine message in the user's role: a teammate message (49) or a `<task-notification>` (21). The old rule said "user's language" without saying whose.
+
+**New opt-in hook: `reply-language-check`** (Stop). When the last reply is English and the human writes 中文, it returns `{"decision":"block"}` once, and the model restates the same content in 中文 with no new work and no tool calls. The English text already shown stays on screen. It is the first claudemd hook that returns a Stop `decision`. Off by default: `REPLY_LANGUAGE_CHECK=1` to restate, `REPLY_LANGUAGE_CHECK=log` to record without asking; `DISABLE_REPLY_LANGUAGE_HOOK=1` turns it off after opt-in.
+- **The reply** is English when, with fenced code, inline code, URLs, paths and tags removed, it has no CJK character and at least `REPLY_LANGUAGE_MIN_WORDS` words (default 10). The harness's own `API Error:` line is not a reply.
+- **The human's language** comes from the human's own messages in the transcript tail (`REPLY_LANGUAGE_WINDOW`, default 3,000 rows). Tool results, meta rows, compact summaries, sidechain rows, task notifications and teammate messages are skipped. A slash command counts by its arguments. The newest classifiable message decides; a request for English (`用英文`, `in English`) lets every reply through.
+- **Skipped:** headless `claude -p` runs (entrypoint `sdk-*`), where nobody reads the reply as it is written; and the Stop that follows a block (`stop_hook_active`), so it asks once per turn.
+- Every English verdict writes `reply-language-restate` or `reply-language-logged` with `{mode, words, trigger}` (section `§1-language`).
+
+**Measured before release.** Replayed over 1,634 historical turn ends, each given the transcript rows the hook would read at that point. At the default threshold it fired 93 times, all in interactive sessions of the 中文-writing user; every one was checked by hand and every one was an English reply there (single labeler, the author). It caught 89 of the 93 English finals the language measurement found; the 4 it missed are 9-word status lines. At a threshold of 20 it would have caught 80. No run exited non-zero or wrote to stderr. The budget probe over a 6,000-row transcript took 0.165 s. A live `claude -p` probe with a Stop hook returning this decision got a 中文 restatement, and the following Stop carried `stop_hook_active: true`.
+
+Tests: `tests/hooks/reply-language.test.sh`, 49 cases. Removing any one of these turns at least one case red: the user-turn filter, the compact-summary or sidechain exclusion, the machine-message filter, slash-command arguments, either form of the English request, the `stop_hook_active` pass, the fence or inline-code strip, the default threshold or its inclusive bound, the zero-CJK test, the `API Error:` skip, the window, deferral past unclassifiable messages, the English-human test, log mode's silence, the trigger label, array-form prompts, or the headless skip and its newest-row rule.
+
 ## [0.95.0] - 2026-09-25
 
 **New opt-in hook: `cross-repo-write-check` tells the agent when a tool call is about to write into another git repository.** Set `CROSS_REPO_WRITE=1` to turn it on. It is off by default, and with the flag unset it makes one string comparison and exits. It is advisory: it never allows or denies anything.
