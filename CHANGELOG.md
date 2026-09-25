@@ -8,6 +8,26 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.94.1] - 2026-09-25
+
+**`rm -rf "${HOME:?}"` was allowed, and it deletes all of `$HOME`.** The §8 rm gate lets a whitelisted var (`HOME`, `PWD`, `OLDPWD`, `TMPDIR`) through only with a literal subpath — `rm -rf "$HOME"` denies, `rm -rf "$HOME/cache"` passes. But the name it extracts from a target keeps any operator inside the braces, so `${HOME:?}` arrived as `HOME:?`, missed the whitelist arm, and reached the guard arm, which allows any var carrying a `:?` guard. `:?` proves the var is set. It bounds nothing. The same held for `${TMPDIR:?}`, `${PWD:?}`, `${OLDPWD:?}`, the unset-only `${HOME?}` form, a trailing slash (`"${HOME:?}/"`), and `find "${HOME:?}" -delete`.
+
+This mattered more after 0.94.0, whose rm deny message teaches the agent to add `:?` guards. That message already told the agent not to guard a bare root; now the gate enforces it too.
+
+**The fix is deny-only.** The two validation operators, `:?` and `?`, leave the value unchanged, so a whitelisted name carrying one is folded to the bare name and judged by the whitelist arm: no literal subpath → deny; a subpath or a `find` selection primary → allow, as for `$HOME` itself. That arm is never looser than the guard arm the name used to reach, which allowed on the guard alone. Any other operator is not folded: `"${HOME%/*}/victim"` (HOME's parent) keeps the arm it took before.
+
+A guard message with spaces needed one more step. `rm -rf "${HOME:?HOME must be set}"` word-split into `"${HOME:?HOME`, `must`, `be`, `set}"`, and a word with no closing brace was skipped outright. For these four names only, the split words are rejoined up to the closing brace. Rejoining every `${VAR:?msg with spaces}` would break `rm -rf "${D:?must be set}"`, the spelling this gate's older message taught, so the general whitespace limit stays as documented.
+
+**A first cut failed open, and the test caught it.** It read the base name from `BASH_REMATCH` after a second `=~` had reset it, so under `set -u` the hook aborted — which the harness reads as allow. All seven RED rows came back allowed. The base now comes from a parameter expansion.
+
+**The bare-root deny line names the verb that was typed.** It was hard-coded as `rm -rf`, so `rm -f "$HOME"` was told about an `rm -rf` nobody wrote — the one rm line that missed 0.88.0's verb change (found by the 0.94.0 pre-tag review). Two verb rows pin it.
+
+**Cost, measured.** Replaying 6138 real commands from `~/.claude/projects/*/*.jsonl` that contain `rm` or `find`: 2 flip allow → deny, 0 deny → allow. Both are the same task shape — `export TMPDIR=$SP/tmpres; … rm -rf "${TMPDIR:?}"` — which is safe as written, because TMPDIR was repointed a moment earlier. The gate cannot trust that assignment: literal-assignment provenance was built and reverted twice. `rm -rf "${SP:?}/tmpres"` passes and says the same thing. Both shapes are pinned in the corpus, with the rewrite as a pass row.
+
+Tests: 19 corpus rows (12 deny, 7 pass) and 2 deny-verb rows. Mutating each half once turns rows red: without the fold, `"${HOME:?}"`, `"${TMPDIR:?}"` and `find "${HOME:?}" -delete` allow; without the rejoin, both spaced-message rows allow.
+
+**Not closed here**, and unchanged from 0.94.0's list: targets after `$(…)`, a backtick, a quoted `)` or an escaped `\;`; backslash- or brace-built `..`; vars in option tokens; mktemp assignments that never bind; positional targets. Over the same 6138 commands, the `$(…)`/backtick cut, the escaped `..` and the option-token var appear only in text testing the gate itself; the non-binding mktemp and positional shapes appear in real work (31 and 17 commands) but in benign forms, and closing them would deny those. They stay documented residuals of a guardrail that does not claim to stop a crafted command.
+
 ## [0.94.0] - 2026-09-25
 
 > **Migration note — the §8 rm deny message is shorter and says which var to guard; no verdict changes.** An rm-only deny now prints the rm material alone (median 2300 → 1769 bytes over the 582 rm-only denies in the replay). It first sends a deny that names its own fix — a `..` walk, a bare `$HOME`, an unbounded `find` — to that fix, and warns that guarding a bare `$HOME` (`"${HOME:?}"`) passes the gate and still deletes all of it; then it gives a guard on the var that can be empty. Every command allowed or denied by 0.93.0 gets the same verdict: a replay of 6138 real commands moved 0 in either direction. No switch restores the old message; only the 0.93.0 hooks print it, and they run from the installed version's plugin cache, so files extracted elsewhere do not change what runs. Going back to 0.93.0 also means its installer syncing the spec and manifest back, which it refuses unless `CLAUDEMD_ALLOW_DOWNGRADE=1` is set — that variable permits the downgrade; it does not bring the message back by itself.

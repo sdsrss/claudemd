@@ -565,6 +565,8 @@ rm -fr "$X"|rm -fr with unvalidated $X|
 rm --force "$X"|rm --force with unvalidated $X|rm -rf
 rm -rf "$X"|rm -rf with unvalidated $X|
 rm -rf "$HOME"|rm -rf $HOME with no subpath|
+rm -f "$HOME"|rm -f $HOME with no subpath|rm -rf
+rm -f "${TMPDIR:?}"|rm -f $TMPDIR with no subpath|rm -rf
 find "$X" -delete|find … -delete/-exec rm with unvalidated $X|
 find "$HOME" -delete|find … -delete/-exec rm on bare $HOME with no selection primary|'
 while IFS='|' read -r vc_cmd vc_want vc_absent; do

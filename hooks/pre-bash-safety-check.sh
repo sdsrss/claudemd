@@ -979,6 +979,29 @@ if (( bypass_rm == 0 )); then
     set +f
     (( danger == 1 )) || continue
     (( ${#rm_targets[@]} > 0 )) || continue
+    # F43 (2026-09-25): rejoin a whitelisted var's `:?` / `?` guard that the
+    # whitespace split above cut apart. `rm -rf "${HOME:?HOME must be set}"` became
+    # `"${HOME:?HOME`, `must`, `be`, `set}"`; the first word has no closing brace,
+    # so the var test below skipped it and the rm ALLOWED — all of $HOME. Only these
+    # four names are rejoined: rejoining every `${VAR:?msg with spaces}` would hand
+    # the guard arm a name carrying the message text, whose guard regex then fails,
+    # and `rm -rf "${D:?must be set}"` — the spelling this gate's old message taught
+    # — would start denying. The general whitespace limit is documented at the `..`
+    # check below and is not closed here.
+    _f43_joined=()
+    _f43_i=0
+    while (( _f43_i < ${#rm_targets[@]} )); do
+      _f43_tok="${rm_targets[$_f43_i]}"
+      if [[ "$_f43_tok" =~ \$\{(HOME|PWD|OLDPWD|TMPDIR):?\? ]]; then
+        while [[ "$_f43_tok" != *'}'* ]] && (( _f43_i + 1 < ${#rm_targets[@]} )); do
+          _f43_i=$((_f43_i + 1))
+          _f43_tok="$_f43_tok ${rm_targets[$_f43_i]}"
+        done
+      fi
+      _f43_joined+=("$_f43_tok")
+      _f43_i=$((_f43_i + 1))
+    done
+    rm_targets=("${_f43_joined[@]}")
     # Name the verb the user typed. The gate matches any of -r/-R/-f/-F or
     # --recursive/--force, so "rm -rf with unvalidated $X" was quoting back a
     # command nobody wrote whenever the flag was anything else — and the deny
@@ -1124,6 +1147,23 @@ if (( bypass_rm == 0 )); then
       fi
       continue
     fi
+    # F43 (2026-09-25): a `:?` / `?` guard on a whitelisted var is still the bare
+    # case. The name extraction keeps the operator, so `${HOME:?}` arrived here as
+    # `HOME:?`, missed the arm below, fell to the guard arm and ALLOWED — deleting
+    # all of $HOME. `:?` proves the var is set; it bounds nothing. Deny-only: only
+    # the two validation operators are folded to the bare name, because they leave
+    # the value untouched — `${HOME%/*}` (HOME's parent) keeps the arm it took
+    # before. The fold is unconditional: the whitelist arm below does the bare
+    # check itself, and it is never looser than the guard arm the name used to
+    # reach (that arm allowed on the guard alone), so a subpath or a find
+    # selection primary passes exactly as it does for `$HOME`.
+    # The base comes from `%%[:?]*`, NOT from BASH_REMATCH: an intervening `=~`
+    # resets BASH_REMATCH, and under `set -u` reading it aborts the hook — which
+    # the harness reads as ALLOW (fail-open, the #106 class). A first cut did
+    # exactly that; RED caught it, all seven deny rows coming back allowed.
+    if [[ "$varname" =~ ^(HOME|PWD|OLDPWD|TMPDIR):?\? ]]; then
+      varname="${varname%%[:?]*}"
+    fi
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
         if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
@@ -1135,7 +1175,9 @@ if (( bypass_rm == 0 )); then
           # otherwise sends them to edit their command to get past a gate
           # (v0.81.0 pre-tag review, MEDIUM-2).
           if (( S8_RM_IS_FIND == 0 )); then
-            REASONS+=$'\n  - rm -rf $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+            # The verb the user typed, as every other rm line does (F43 carried
+            # this in; the 0.94.0 pre-tag review found it hard-coded as `rm -rf`).
+            REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
           else
             REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare $'"$varname"$' with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
           fi
@@ -2166,9 +2208,10 @@ fi
 # `${W:?}` on the target.
 #
 # The "follow that line" bullet comes FIRST (review r3): for a bare-$HOME/$TMPDIR
-# deny, the guard advice leads to `rm -rf "${HOME:?}"`, which this gate allows
-# (the extracted name keeps its `:?`, so the whitelist arm never sees it) and
-# which deletes the whole directory.
+# deny, the guard advice leads to `rm -rf "${HOME:?}"`, which deletes the whole
+# directory. Up to 0.94.0 this gate allowed it (the extracted name kept its `:?`,
+# so the whitelist arm never saw it); F43 closed that, and the bullet still leads
+# because a guard on a bare root is the wrong fix whether or not it passes.
 #
 # Several mktemp targets in one rm (`rm -rf "$D" "$H"`) still deny. Per-target
 # provenance for them was built and REVERTED the same day: two review rounds
@@ -2189,8 +2232,8 @@ This gate reads command text and does not accept a plain assignment
 Fix the invocation (no token needed):
   • If a line above names its own fix — a \`..\` walk, a bare \$HOME/\$TMPDIR/
     \$PWD/\$OLDPWD, a find with no selection primary — follow THAT line, and do
-    not add a guard to it: rm -rf \"\${HOME:?}\" passes this gate and still
-    deletes all of \$HOME.
+    not add a guard to it: \${HOME:?} proves \$HOME is set, not that deleting it
+    is bounded.
   • Guard the var that can be empty, inside the rm target:
       rm -rf \"\${SP:?}/x\"      for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done
     A var built from it (W=\"\$SP/x\") or a loop var over \"\$SP\"/* is never
