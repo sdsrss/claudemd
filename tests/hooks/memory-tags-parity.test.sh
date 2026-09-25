@@ -240,7 +240,14 @@ fi
 # which can only be an invocation.
 for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
   base=$(basename "$c")
-  if grep -vE '^[[:space:]]*#' "$c" | grep -v 'declare -f memtags_match' | grep -q 'memtags_match'; then
+  # `grep -c`, not `grep -q`: under `set -o pipefail` a `grep -q` that exits at
+  # its first match can leave the grep feeding it writing into a closed pipe,
+  # which dies of SIGPIPE (141) and fails the whole pipeline — a false "never
+  # invokes". Measured 2026-09-25: 273 of 6400 runs under 16-way load, 0 of 2000
+  # unloaded, which is why it surfaced only inside the full suite. `-c` reads
+  # its input to the end, so nothing upstream ever writes to a closed pipe.
+  _inv=$(grep -vE '^[[:space:]]*#' "$c" | grep -v 'declare -f memtags_match' | grep -c 'memtags_match')
+  if (( ${_inv:-0} > 0 )); then
     pass "$base invokes the shared memtags_match"
   else
     fail "$base resolves a MEMORY.md index but never INVOKES memtags_match (comments and the prereq guard do not count) — private tag loop"

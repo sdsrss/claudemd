@@ -8,10 +8,10 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ## v6.32.1 (patch, 2026-09-25) — §8's rm bullet names what the gate covers and which var the guard goes on
 
-Measured over 20 days of `~/.claude/logs/claudemd.jsonl`: 620 `§8-rm-rf-var` denies, 88% of all hook denies. Two of the causes were the bullet's own wording.
+Measured over 20 days of `~/.claude/logs/claudemd.jsonl`: 620 `§8-rm-rf-var` denies, 89% of all hook denies. Two of the causes were the bullet's own wording.
 
 - **Coverage**: the bullet named `rm -rf`; the gate matches any `-r`/`-R`/`-f`/`-F` flag and `--recursive`/`--force`, and since plugin 0.81.0 `find $VAR -delete`, as the README states. 95 of the 343 denies logged since 0.88.0 — when the message began naming the matched flag — were `rm -f` alone; the 277 earlier records do not say. The bullet is a rule for the agent and reads wider than the gate in places the gate does not reach (`--recur` abbreviations, `find -- "$VAR"`).
-- **Which var the guard goes on**: the var that can be empty. `SP` can; `W="$SP/x"` cannot — it is `/x` when SP is unset — and neither can a loop var over `"$SP"/*`, so `${W:?}` alone passes the gate and guards nothing. The gate credits only a guard on the var a target names, so a derived target needs both: `W="${SP:?}/x"` and `"${W:?}"`. 71 denies were an upstream `: "${SP:?}"` followed by `rm -rf "$W"` — safe at runtime, since a failed `:?` exits the shell, but not credited by the gate.
+- **Which var the guard goes on**: the var that can be empty. `SP` can; `W="$SP/x"` cannot — it is `/x` when SP is unset — and neither can a loop var over `"$SP"/*`, so `${W:?}` alone passes the gate and guards nothing. The gate credits only a guard on the var a target names, so a derived target needs both: `W="${SP:?}/x"` and `"${W:?}"`. 77 of 588 denied calls matched in the transcripts removed a var derived from one assigned in the same command (`W="$SP/x"; rm -rf "$W"`); 6 of those also carried a `${SP:?}` guard on the base — safe at runtime, since a failed `:?` exits the shell, but not credited by the gate.
 
 A first draft of this entry, and of the deny message shipped with it, told the agent to guard `W` itself. The pre-tag review caught that it prescribed a guard that never fires.
 

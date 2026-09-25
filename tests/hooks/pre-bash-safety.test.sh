@@ -586,7 +586,7 @@ EOF
 
 # Deny MESSAGE is scoped to what fired (F42, 2026-09-25).
 #
-# §8-rm-rf-var was 88% of all hook denies (620/699), and every one carried the
+# §8-rm-rf-var was 89% of all hook denies (620/699), and every one carried the
 # NPX runner list and the curl paragraph as well: 2.2KB, most of it about rules
 # that had not fired. An rm-only deny now carries the rm material alone. The
 # mixed row is the control: a command that trips two sections must still name

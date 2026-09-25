@@ -1290,9 +1290,12 @@ pass	S8-PROV-CTL2 the disposal idiom this branch exists to allow still allows	S=
 # The last three rows are the point of the whole exercise: a loop body, an
 # assignment behind `&&`, and a transitive `B="$EXP/…"` are shapes the
 # provenance branch could NOT be made to allow (tasks/s8-provenance-residuals-
-# 2026-09-08.md). The guard covers them for free, because it proves non-empty at
-# runtime instead of proving provenance from the text.
-pass	S8-GUARD1 the exact spelling §8 prints	rm -rf "${VAR:?}"
+# 2026-09-08.md). The GATE passes them on the guard alone. That is not the same
+# as being safe: a transitive `B="$EXP/…"` or a loop var over "$EXP"/* is never
+# empty, so `${B:?}` does not fire when EXP is unset. The guard that protects is
+# the one on the base (`B="${EXP:?}/…"`), which the rm deny message says since
+# 0.94.0. The verdict rows below stand; only this reasoning was wrong.
+pass	S8-GUARD1 the spelling §8 printed before v6.32.1	rm -rf "${VAR:?}"
 pass	S8-GUARD2 a real scratchpad cleanup	D=/tmp/claude-1000/proj/sess/scratchpad; rm -rf "${D:?}"
 pass	S8-GUARD3 with a literal subpath	SP=/tmp/x/scratchpad; rm -rf "${SP:?}/build"
 pass	S8-GUARD4 inside a loop body	for f in a b; do D=/tmp/x/$f; rm -rf "${D:?}"; done

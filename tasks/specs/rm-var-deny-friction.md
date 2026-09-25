@@ -11,7 +11,7 @@ Cut the retry cost of the §8 `rm $VAR` gate without widening what it lets throu
 beyond the mktemp provenance class it already certifies.
 
 Measured 2026-09-25 over 20 days (`~/.claude/logs/claudemd.jsonl`, 741 transcripts):
-620 `§8-rm-rf-var` denies = 88% of all hook denies. ~93% of the denied commands bind
+620 `§8-rm-rf-var` denies = 89% of all hook denies. ~93% of the denied commands bind
 the flagged var in the same command (scratchpad literal, mktemp, derived from a bound
 var, loop var). 93.5% are fixed in one retry, so the cost is one wasted round-trip plus
 a rejected command (median 760 chars) and a 2.2KB deny message, most of which is about

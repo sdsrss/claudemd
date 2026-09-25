@@ -2188,8 +2188,9 @@ This gate reads command text and does not accept a plain assignment
 
 Fix the invocation (no token needed):
   • If a line above names its own fix — a \`..\` walk, a bare \$HOME/\$TMPDIR/
-    \$PWD, a find with no selection primary — follow THAT line, and do not add a
-    guard to it: rm -rf \"\${HOME:?}\" passes this gate and still deletes all of \$HOME.
+    \$PWD/\$OLDPWD, a find with no selection primary — follow THAT line, and do
+    not add a guard to it: rm -rf \"\${HOME:?}\" passes this gate and still
+    deletes all of \$HOME.
   • Guard the var that can be empty, inside the rm target:
       rm -rf \"\${SP:?}/x\"      for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done
     A var built from it (W=\"\$SP/x\") or a loop var over \"\$SP\"/* is never
