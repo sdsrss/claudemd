@@ -619,6 +619,39 @@ else
   ng "Case 25d: an in-project edit was dropped because the project sits under ~/.claude"
 fi
 
+# --- Case 26: the reported count is the changes made AFTER the last validation.
+# The headline used to be every mutation in the slice: a session that ran the
+# suite and committed, then touched one more file, was told "N unvalidated" for
+# N changes of which N-1 were covered, and the "last 3" list showed validated
+# files beside the open one. Replaying 196 local transcripts, 5 of the 10 that
+# wrote a checkpoint over-reported (54 reported against 27 open).
+reset_cwd
+echo -n '' > "$LOG"
+T="$TMP_HOME/case26.jsonl"
+make_transcript "$T" "$USER_MSG" "$(edit_at "$TMP_CWD/a.js")" "$TR_OK" "$test_call" "$TR_OK" \
+  "$(edit_at "$TMP_CWD/b.js")" "$TR_OK" "$(edit_at "$TMP_CWD/c.js")" "$TR_OK"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+if [[ -z "$PAUSED_MD" ]]; then
+  ng "Case 26: control failed — edits after the last validation must still write a checkpoint"
+else
+  grep -qF '2 unvalidated change(s) after the last validation (3 in this turn)' "$TMP_HOME/stderr" \
+    && ok "Case 26a: stderr leads with the 2 open changes and gives the turn's 3 as context" \
+    || ng "Case 26a: stderr count wrong ($(cat "$TMP_HOME/stderr"))"
+  grep -qF '**2 change(s) after the last validation**' "$PAUSED_MD" \
+    && ok "Case 26b: paused.md headline is the open count" \
+    || ng "Case 26b: paused.md headline is not the open count"
+  if grep -qF "Edit: $TMP_CWD/b.js" "$PAUSED_MD" && grep -qF "Edit: $TMP_CWD/c.js" "$PAUSED_MD" \
+     && ! grep -qF "Edit: $TMP_CWD/a.js" "$PAUSED_MD"; then
+    ok "Case 26c: the list holds the open changes b and c, not the validated a"
+  else
+    ng "Case 26c: list wrong ($(sed -n '/## Unvalidated/,/## Source/p' "$PAUSED_MD" | tr '\n' '|'))"
+  fi
+  jq -e 'select(.hook == "session-end-check" and .event == "warn") | .extra | .open == 2 and .mutations == 3' "$LOG" >/dev/null \
+    && ok "Case 26d: rule-hits row carries open 2 beside the unchanged mutations 3" \
+    || ng "Case 26d: rule-hits extra wrong ($(grep session-end-check "$LOG"))"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
