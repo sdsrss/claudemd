@@ -117,7 +117,7 @@ if ((HAVE_JQ)) && [[ "$PCT" =~ ^[0-9]+$ ]] && ((PCT >= THRESHOLD)); then
   FSTYPE=$(stat -f -c %T "$TMP_ROOT" 2>/dev/null)
   NOTE=""
   [[ "$FSTYPE" == "tmpfs" ]] && NOTE=" It is a tmpfs, so every byte there is RAM (or swap)."
-  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} The vitest per-run dirs are swept automatically once idle 60 min; anything else there is not attributable, so list the largest entries (\`du -sh $TMP_ROOT/* | sort -rh | head\`) and delete what THIS session created. Disable: DISABLE_TMP_SWEEP_HOOK=1."
+  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} The vitest per-run dirs are swept automatically once idle 60 min; anything else there is not attributable, so list the largest entries (\`du -sh $TMP_ROOT/* | sort -rh | head\`); what this session created is yours to clean up, anything else is the user's call. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
   hook_record tmp-sweep tmp-pressure-advisory "{\"pct\":$PCT,\"threshold\":$THRESHOLD}" '§8.V4' "$SESSION_ID"
   jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 fi

@@ -77,7 +77,7 @@ N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(", ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
 CMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" '"git -C \($cwd | @sh) branch -d -- \([.deletable[].name] | @sh)"')
-MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. Delete, with $DEF checked out, via \`$CMD\` — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. Disable this hint: DISABLE_BRANCH_PRUNE_HOOK=1."
+MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. If the user wants them removed: \`$CMD\`, run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

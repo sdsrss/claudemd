@@ -76,7 +76,7 @@ fi
 
 # Case 4b: the command the advisory hands over actually works on the default
 # branch — extracted from the message and run as-is.
-CMD=$(printf '%s' "$CTX" | sed -n 's/.*via `\(git -C .* branch -d [^`]*\)`.*/\1/p')
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*removed: `\(git -C .* branch -d [^`]*\)`.*/\1/p')
 if [[ -n "$CMD" ]] && eval "$CMD" >/dev/null 2>&1 && ! has_branch feat && has_branch wip; then
   ok "4b suggested command deletes exactly the listed branch"
 else
@@ -119,7 +119,7 @@ git clone -q "$SANDBOX/remote.git" "$HOSTILE"
 )
 OUT=$(jq -cn --arg cwd "$HOSTILE" '{session_id:"branch-prune-test",tool_name:"Bash",tool_input:{command:"git pull"},cwd:$cwd}' | bash "$HOOK" 2>/dev/null)
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
-CMD=$(printf '%s' "$CTX" | sed -n 's/.*via `\(git -C .* branch -d [^`]*\)`.*/\1/p')
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*removed: `\(git -C .* branch -d [^`]*\)`.*/\1/p')
 ( cd "$SANDBOX" && eval "$CMD" ) >/dev/null 2>&1
 LEFT=$(git -C "$HOSTILE" branch --format='%(refname:short)' | sort | tr '\n' ' ')
 if [[ -n "$CMD" && ! -e "$SANDBOX/PWNED_BR" && ! -e "$SANDBOX/PWNED_CWD" && ! -e "$HOSTILE/PWNED_BR" && "$LEFT" == "main wip " ]]; then

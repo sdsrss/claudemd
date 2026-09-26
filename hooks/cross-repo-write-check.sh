@@ -462,7 +462,7 @@ for ((h = 0; h < ${#HIT_IDS[@]}; h++)); do
     '{kind:$k, tool:$tool, own:$o, target:$t, first:$f, allowlisted:$al}' 2>/dev/null) || EXTRA='null'
   hook_record cross-repo-write cross-repo-advisory "$EXTRA" '§5-scope' "$SESSION_ID" "$TOOL_USE_ID"
   [[ "$FIRST" == true ]] || continue
-  MSG+="[claudemd] system-injected: this ${HIT_DESCS[$h]} writes into the git repo ${T_NAME} (${T_ROOT}), but this session's project is ${OWN_NAME} (${OWN_ROOT}). Spec §5: files outside the grant need the user's AUTH. If the user did not ask for work in ${T_NAME}, stop and ask before writing there. If they did, do git work in ${T_NAME} from a separate checkout made with \`git worktree add\` rather than switching branches in its shared working tree — another session may be using it. Advisory only; told once per repo per session; disable with DISABLE_CROSS_REPO_WRITE_HOOK=1."$'\n'
+  MSG+="[claudemd] system-injected: this ${HIT_DESCS[$h]} writes into the git repo ${T_NAME} (${T_ROOT}), but this session's project is ${OWN_NAME} (${OWN_ROOT}). Spec §5: files outside the grant need the user's AUTH. If the user did not ask for work in ${T_NAME}, stop and ask before writing there. If they did, do git work in ${T_NAME} from a separate checkout made with \`git worktree add\` rather than switching branches in its shared working tree — another session may be using it. Advisory only; told once per repo per session; the user can turn it off with DISABLE_CROSS_REPO_WRITE_HOOK=1."$'\n'
 done
 
 [[ -n "$MSG" ]] || exit 0

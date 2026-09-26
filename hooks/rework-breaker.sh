@@ -192,7 +192,7 @@ done
 (( ${#RB_CROSSED[@]} > 0 )) || exit 0
 RB_LIST=""
 for RB_ONE in "${RB_CROSSED[@]}"; do RB_LIST+="${RB_LIST:+, }${RB_ONE}"; done
-CONTEXT="[claudemd] system-injected: this session has now edited ${RB_LIST} (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; disable with DISABLE_REWORK_BREAKER_HOOK=1."
+CONTEXT="[claudemd] system-injected: this session has now edited ${RB_LIST} (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; the user can turn it off with DISABLE_REWORK_BREAKER_HOOK=1."
 jq -cn --arg ctx "$CONTEXT" '{
   suppressOutput: true,
   hookSpecificOutput: {
