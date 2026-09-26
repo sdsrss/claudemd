@@ -96,7 +96,17 @@ TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:spa
 # the same direction as the v0.9.28 anchor fix, which already declared quoted
 # `release`/`deploy` text to be data rather than an invocation.
 CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
-echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
+# Read-only gh queries are not a ship action (2026-09-26). The `gh (release|pr)`
+# arm matched every subcommand, so a status check — `gh release list`,
+# `gh release view vX --json …`, `gh pr checks` — was held until the release
+# runbook was opened: five of that day's twelve live denies, each one a command
+# that publishes nothing. Those segments are renamed for the TRIGGER test only;
+# the tag stage below still sees their text, so a query sitting next to a real
+# `git push` keeps matching a `release` tag (tests Cases 56-58).
+CMD_TRIG=$(printf '%s' "$CMD_FLAT" | sed -E -e ':a' \
+  -e 's/(^[[:space:]]*|[;&|][[:space:]]*)gh[[:space:]]+(release|pr)[[:space:]]+(list|view|status|checks|diff)([^a-zA-Z0-9_-]|$)/\1gh-query\4/' \
+  -e 'ta')
+echo "$CMD_TRIG" | grep -qE "$TRIGGER_RE" || exit 0
 
 # vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-
 # segment-start so `release` inside `git commit -m "release notes"` no longer
@@ -151,6 +161,19 @@ sanitize_for_tagmatch() {
   # routine. By this point all quoted bodies are emptied, so any surviving `#` is
   # a genuine unquoted comment. (Same ordering fix as pre-bash-safety-check.sh.)
   out=$(printf '%s' "$out" | sed -E 's/(^|[[:space:]])#.*$/\1/')
+  # Drop a plumbing utility's NAME where it is the command of a segment
+  # (2026-09-26). `tail -2 push.log` and `sleep 15` say nothing about the topic
+  # of the command, yet a memory tagged `tail` or `sleep` matched them: ten of
+  # the 62 logged denies came from exactly those two words, one of them against
+  # an agent that had already redirected the push to a log — the practice the
+  # matched memory teaches. Only the command word goes; its arguments stay, and
+  # the same word in argument position (`git push origin tail`) still matches
+  # (tests Cases 59-61). The list is generic readers and shell plumbing, never a
+  # tool that can itself ship (git / gh / npm / cargo / docker stay matchable).
+  # Runs after the quote strip, so `echo "; tail"` cannot fake a segment start.
+  out=$(printf '%s' "$out" | sed -E -e ':a' \
+    -e 's/(^[[:space:]]*|[;&|(`][[:space:]]*)(sleep|tail|head|cat|echo|printf|grep|wc|sort|uniq|cut|tr|tee|xargs|timeout|cd|ls|true|false)([[:space:]]|$)/\1\3/' \
+    -e 'ta')
   # vNEXT: strip filesystem-path / URL tokens (any unquoted run containing `/`).
   # A path segment is not a topic declaration — e.g. `~/.claude/projects/...`
   # would otherwise match a `projects` tag and deny an unrelated command.

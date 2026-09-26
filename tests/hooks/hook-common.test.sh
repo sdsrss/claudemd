@@ -86,6 +86,51 @@ run_case "memfile_was_read missing transcript" "NO" \
 run_case "memfile_was_read no args" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read && echo YES || echo NO'"
 
+# Bash-channel reads (2026-09-26). In bypassPermissions mode the harness tells
+# the agent to read with cat / sed -n / head, and the field-anchored test above
+# never sees those: two of that day's twelve live §11 denies named a memory file
+# the session had already `cat`-ed. Rows are shaped like real Claude Code rows —
+# an assistant tool_use, then the user row carrying its tool_result.
+mkbash() { # FILE ID COMMAND [IS_ERROR]  — IS_ERROR "none" writes no result row
+  jq -cn --arg id "$2" --arg c "$3" \
+    '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:$id,name:"Bash",input:{command:$c}}]}}' > "$1"
+  [[ "${4:-false}" == none ]] && return 0
+  jq -cn --arg id "$2" --argjson e "${4:-false}" \
+    '{type:"user",message:{role:"user",content:[{tool_use_id:$id,type:"tool_result",content:"x",is_error:$e}]}}' >> "$1"
+}
+mkbash "$MEMT/b_cat.jsonl"   t1 "cat $MEMFILE; git status --short"
+mkbash "$MEMT/b_sed.jsonl"   t2 "cd /x && sed -n '1,80p' \"$MEMFILE\""
+mkbash "$MEMT/b_tilde.jsonl" t3 "head -40 ~/memory/feedback_x.md"
+mkbash "$MEMT/b_deny.jsonl"  t4 "cat $MEMFILE && git push" true
+mkbash "$MEMT/b_now.jsonl"   t5 "cat $MEMFILE && git push" none
+mkbash "$MEMT/b_edit.jsonl"  t6 "sed -i 's/a/b/' $MEMFILE"
+mkbash "$MEMT/b_echo.jsonl"  t7 "echo $MEMFILE; grep -n covers $MEMFILE"
+mkbash "$MEMT/b_node.jsonl"  t8 "node - <<'EOF'
+const p='$MEMFILE';
+EOF"
+mkbash "$MEMT/b_other.jsonl" t9 "cat $MEMT/memory/feedback_x.md.bak"
+
+run_case "memfile_was_read Bash cat" "YES" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_cat.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read Bash sed -n, quoted path, after cd" "YES" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_sed.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read Bash head on a ~/ path" "YES" \
+  "HOME=$MEMT bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_tilde.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+# The call being gated is already in the transcript when PreToolUse fires, and a
+# denied call leaves an is_error result: neither ran, so neither read anything.
+run_case "memfile_was_read denied Bash call is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_deny.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read the pending call itself is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_now.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read sed -i is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_edit.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read echo/grep naming the path is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_echo.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read path inside a script body is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_node.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read cat of a longer sibling path is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_other.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+
 # Consumer gate. Extraction, not a list: any hook that resolves a path inside the
 # memory dir has to answer this question, and must answer it here. Without this
 # join the extraction fixes today's two copies and nothing holds the third

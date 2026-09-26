@@ -267,19 +267,93 @@ hook_read_telemetry_ids() {
 #   session did. That is the intended reading of "the session consulted its
 #   memory", and it is the cheaper error — the alternative is a HARD rule with
 #   no compliant path for the role the spec itself mandates.
+#
+#   BASH-CHANNEL READS (2026-09-26). In bypassPermissions mode the harness tells
+#   the agent to read files with cat / sed -n / head rather than the Read tool,
+#   and a `cat` carries no `file_path` field. Two of that day's twelve live
+#   denies named a memory file the session had already `cat`-ed, so the remedy
+#   the deny prints ("Read it, then retry") had in fact been carried out.
+#   _hook_memfile_bash_read accepts that shape and nothing wider: see its header.
 hook_memfile_was_read() {
   local _transcript="${1:-}" _memfile="${2:-}"
   [[ -n "$_transcript" && -n "$_memfile" && -f "$_transcript" ]] || return 1
   grep -qF -e "\"file_path\":\"$_memfile\"" -e "\"file_path\": \"$_memfile\"" \
     -- "$_transcript" 2>/dev/null && return 0
+  _hook_memfile_bash_read "$_transcript" "$_memfile" && return 0
   # Fixed depth, explicit path, no recursive walk — §8 forbids descending
   # ~/.claude without a depth cap. An empty dir leaves the glob literal (bash
   # default nullglob-off) and `grep -F` on a path that does not exist is a
   # silent non-match, so the no-sidechain case needs no separate guard.
-  local _sidechains="${_transcript%.jsonl}/subagents"
+  local _sidechains="${_transcript%.jsonl}/subagents" _sc
   [[ -d "$_sidechains" ]] || return 1
   grep -qF -e "\"file_path\":\"$_memfile\"" -e "\"file_path\": \"$_memfile\"" \
-    -- "$_sidechains"/*.jsonl 2>/dev/null
+    -- "$_sidechains"/*.jsonl 2>/dev/null && return 0
+  for _sc in "$_sidechains"/*.jsonl; do
+    [[ -f "$_sc" ]] || continue
+    _hook_memfile_bash_read "$_sc" "$_memfile" && return 0
+  done
+  return 1
+}
+
+# _hook_memfile_bash_read TRANSCRIPT MEMFILE
+#   0 = some Bash call in TRANSCRIPT printed MEMFILE and ran. Deliberately
+#   narrow, because every widening here turns a §11 deny into an allow:
+#     * the command must be an assistant `tool_use` of the Bash tool — a hint
+#       banner or a deny reason quoting the path is not a command (R10-01);
+#     * a `;` `&` `|` segment must START with a reader: cat, head, tail, less,
+#       more, bat, nl, or `sed -n`. `sed -i`, `grep`, `echo`, `ls`, and a path
+#       inside a heredoc script body do not count;
+#     * the path must appear whole — absolute, `~/`, `$HOME/` or `${HOME}/` —
+#       and end there, so `x.md.bak` is not `x.md`. `cat "$F"` is not
+#       resolved: a miss keeps the deny, which is the safe direction;
+#     * its tool_result must exist and not be an error. The call this hook is
+#       gating is already in the transcript when PreToolUse fires, and a call
+#       an earlier gate denied leaves an is_error result; neither one ran, so
+#       `cat mem.md && git push` cannot satisfy its own check.
+#   Cost: one grep -F prefilter on the basename, then jq over the matched rows
+#   only, so a long transcript is not parsed whole inside the 3s budget.
+_hook_memfile_bash_read() {
+  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _hit
+  local -a _forms=("$_m")
+  if [[ -n "${HOME:-}" && "$_m" == "$HOME/"* ]]; then
+    _rest="${_m#"$HOME"/}"
+    # Literal `~` and `$HOME` on purpose: these are spellings to find in a
+    # command's TEXT, not paths to expand.
+    # shellcheck disable=SC2088
+    _forms+=("~/$_rest" "\$HOME/$_rest" "\${HOME}/$_rest")
+  fi
+  _rows=$(grep -F -- "${_m##*/}" "$_f" 2>/dev/null) || return 1
+  while IFS=$'\t' read -r _id _cmd; do
+    [[ -n "$_id" ]] || continue
+    _hit=0
+    while IFS= read -r _seg; do
+      _seg="${_seg#"${_seg%%[![:space:](]*}"}"
+      _w="${_seg%%[[:space:]]*}"
+      case "$_w" in
+        cat|head|tail|less|more|bat|nl) ;;
+        sed) [[ "$_seg" =~ ^sed[[:space:]]+-n[[:space:]] ]] || continue ;;
+        *) continue ;;
+      esac
+      for _p in "${_forms[@]}"; do
+        _rest="$_seg"
+        while [[ "$_rest" == *"$_p"* ]]; do
+          _rest="${_rest#*"$_p"}"
+          case "${_rest:0:1}" in
+            ''|[[:space:]]|'"'|"'"|')') _hit=1; break 2 ;;
+          esac
+        done
+      done
+      (( _hit )) && break
+    done < <(printf '%s\n' "$_cmd" | tr ';&|' '\n\n\n')
+    (( _hit )) || continue
+    grep -F -- "\"tool_use_id\":\"$_id\"" "$_f" 2>/dev/null \
+      | jq -e --arg id "$_id" 'select(.type == "user") | .message.content[]?
+          | select(type == "object" and .tool_use_id == $id and .is_error != true)' \
+        >/dev/null 2>&1 && return 0
+  done < <(printf '%s\n' "$_rows" | jq -r 'select(.type == "assistant")
+      | .message.content[]? | select(type == "object" and .type == "tool_use" and .name == "Bash")
+      | [.id, (.input.command // "" | gsub("\n"; ";"))] | @tsv' 2>/dev/null)
+  return 1
 }
 
 # hook_deny HOOK_NAME REASON — emits PreToolUse deny JSON, exits 0.

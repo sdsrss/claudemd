@@ -942,6 +942,87 @@ DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 55 an empty sidechain dir denies without noise" \
   || { echo "FAIL: 55 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
 
+# Cases 56-63 (2026-09-26 live-deny replay). Own project dir and index, for the
+# reason given at case 52: the shared $MEM_DIR is rewritten mid-file. One entry
+# carries a trigger-verb tag, one carries the two utility names that produced
+# ten of that week's live denies (`tail`, `sleep`).
+S56_DIR="$HOME/.claude/projects/${ENCODED}-s56"
+S56_MEM="$S56_DIR/memory"
+S56_CWD="${CWD}-s56"
+mkdir -p "$S56_MEM"
+cat > "$S56_MEM/MEMORY.md" <<'EOF'
+- [Release runbook](project_runbook.md) [release, ship] — the steps
+- [Piped exit codes](feedback_pipe.md) [tail, sleep, exit-code] — capture $?
+EOF
+touch "$S56_MEM/project_runbook.md" "$S56_MEM/feedback_pipe.md"
+s56() { # SESS COMMAND
+  jq -cn --arg s "$1" --arg c "$2" --arg cwd "$S56_CWD" \
+    '{session_id:$s,tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' | bash "$HOOK" 2>&1
+}
+s56dec() { echo "$1" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null; }
+
+# Case 57 FIRST — control: a release WRITE with the same tag must still deny,
+# or 56's silence could come from a broken fixture.
+SESS="sess57"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "gh release create v1.2.3 --notes-file n.md")
+[[ "$(s56dec "$OUT")" == "deny" ]] && echo "PASS: 57 control — gh release create still denies" \
+  || { echo "FAIL: 57 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 56: read-only gh queries are not a ship action. Five of that day's twelve
+# live denies were `gh release list|view` status checks.
+SESS="sess56"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "gh run list --limit 3; gh release view v1.2.3 --json tagName 2>&1 | head; gh pr list; gh release list --limit 4")
+[[ -z "$OUT" ]] && echo "PASS: 56 read-only gh release/pr queries do not trigger" \
+  || { echo "FAIL: 56 (expected silence, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 58: a read-only query next to a real push still triggers, and the release
+# tag in the query text still matches — the exemption is for the trigger only.
+SESS="sess58"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "gh release view v1.2.3; git push origin main")
+[[ "$(s56dec "$OUT")" == "deny" && "$OUT" == *project_runbook.md* ]] \
+  && echo "PASS: 58 push beside a read-only query still denies on the release tag" \
+  || { echo "FAIL: 58 (expected deny naming project_runbook.md, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 59: `tail` / `sleep` as the COMMAND of a segment are plumbing, not a
+# topic. Live shape: output already redirected to a log (the very practice the
+# memory teaches), then denied for running `tail` on the log.
+SESS="sess59"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "git push origin main >push.log 2>&1; echo \"exit=\$?\"; tail -2 push.log; sleep 15; gh run list --limit 2")
+[[ -z "$OUT" ]] && echo "PASS: 59 tail/sleep at command position do not match tags" \
+  || { echo "FAIL: 59 (expected silence, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 60: the same words after a pipe and inside \$( ) are still commands.
+SESS="sess60"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "git push origin main 2>&1 | tail -3 && N=\$(sleep 1)")
+[[ -z "$OUT" ]] && echo "PASS: 60 tail after a pipe / sleep in \$( ) are commands too" \
+  || { echo "FAIL: 60 (expected silence, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 61: FN guard — the tag still matches where the word is an ARGUMENT.
+SESS="sess61"; echo '' > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "git push origin tail")
+[[ "$(s56dec "$OUT")" == "deny" && "$OUT" == *feedback_pipe.md* ]] \
+  && echo "PASS: 61 a tag word in argument position still matches" \
+  || { echo "FAIL: 61 (expected deny naming feedback_pipe.md, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
+# Case 62: end to end for the Bash-channel read — the runbook was `cat`-ed
+# earlier in the session (a real tool_use + non-error tool_result pair).
+SESS="sess62"
+{
+  jq -cn --arg c "cat $S56_MEM/project_runbook.md; git status --short" \
+    '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:"toolu_62",name:"Bash",input:{command:$c}}]}}'
+  jq -cn '{type:"user",message:{role:"user",content:[{tool_use_id:"toolu_62",type:"tool_result",content:"...",is_error:false}]}}'
+} > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "gh release create v1.2.3 --notes-file n.md")
+[[ -z "$OUT" ]] && echo "PASS: 62 a memory file read with cat satisfies the gate" \
+  || { echo "FAIL: 62 (expected silence, got: $OUT)"; FAIL=$((FAIL+1)); }
+
+# Case 63: ...and the same transcript with the cat DENIED still denies.
+SESS="sess63"
+sed 's/"is_error":false/"is_error":true/' "$S56_DIR/sess62.jsonl" > "$S56_DIR/$SESS.jsonl"
+OUT=$(s56 "$SESS" "gh release create v1.2.3 --notes-file n.md")
+[[ "$(s56dec "$OUT")" == "deny" ]] && echo "PASS: 63 a denied cat is not a read" \
+  || { echo "FAIL: 63 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was
