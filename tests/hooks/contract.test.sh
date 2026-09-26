@@ -60,6 +60,61 @@ else
   ng "A.2 pre-bash-safety rm-rf bypass not recorded (log: $(cat "$LOG" 2>/dev/null))"
 fi
 
+# A.2b/c (analysis 2026-09-26 B3): the rm hatch records whether it SUPPRESSED
+# anything. The token is matched on the raw command, so it also appears as data
+# (heredoc bodies, commit messages); replaying 31 historical bypass rows with the
+# token removed found 29 that the detector allowed anyway. The detector now runs
+# read-only under the hatch: verdict unchanged (allow), `suppressed` says
+# whether a deny was actually avoided.
+drive_out() {
+  jq -cn --arg c "$1" '{session_id:"contract",tool_use_id:"toolu_c",tool_name:"Bash",tool_input:{command:$c},cwd:"/tmp/contract"}' \
+    | bash "$HOOKS_DIR/pre-bash-safety-check.sh" 2>/dev/null
+}
+rm -f "$LOG"
+OUT_S=$(drive_out 'rm -rf "$FOO" [allow-rm-rf-var]')
+if [[ "$OUT_S" != *'"deny"'* ]] \
+   && jq -e 'select(.event=="bypass-escape-hatch" and .extra.token=="allow-rm-rf-var" and .extra.suppressed==true)' "$LOG" >/dev/null 2>&1; then
+  ok "A.2b hatch over a real hit → allowed, suppressed:true"
+else
+  ng "A.2b expected allow + suppressed:true (out: $OUT_S; log: $(cat "$LOG" 2>/dev/null))"
+fi
+rm -f "$LOG"
+OUT_S=$(drive_out 'rm -rf "${FOO:?}/x" # [allow-rm-rf-var]')
+if [[ "$OUT_S" != *'"deny"'* ]] \
+   && jq -e 'select(.event=="bypass-escape-hatch" and .extra.suppressed==false)' "$LOG" >/dev/null 2>&1 \
+   && ! jq -e 'select(.event=="rm-rf-allow-validated" or .event=="rm-rf-allow-provenance")' "$LOG" >/dev/null 2>&1; then
+  ok "A.2c hatch over a command the detector allows → suppressed:false, no allow rows from the read-only pass"
+else
+  ng "A.2c expected suppressed:false and no allow rows (log: $(cat "$LOG" 2>/dev/null))"
+fi
+# A token with no `$VAR` anywhere in the command: `vars` is empty, and the row
+# must still be an object. The old `printf '' | jq -R .` printed nothing, the
+# row read `"vars":}`, and rule-hits stored `extra:null` (19 of 33 historical rows).
+rm -f "$LOG"
+drive_out 'git commit -m "document the [allow-rm-rf-var] token"' >/dev/null
+if jq -e 'select(.event=="bypass-escape-hatch" and .extra.vars=="" and .extra.suppressed==false)' "$LOG" >/dev/null 2>&1; then
+  ok "A.2f token with no \$VAR in the command → row keeps its fields (vars:\"\", suppressed:false)"
+else
+  ng "A.2f empty-vars bypass row lost its extra (log: $(cat "$LOG" 2>/dev/null))"
+fi
+# Control: the SAME guarded command without the token still writes its
+# validated-allow row, so A.2c's absence check is about the hatch.
+rm -f "$LOG"
+drive_out 'rm -rf "${FOO:?}/x"' >/dev/null
+if jq -e 'select(.event=="rm-rf-allow-validated")' "$LOG" >/dev/null 2>&1; then
+  ok "A.2d control — without the token the validated-allow row is still written"
+else
+  ng "A.2d validated-allow row missing without the token (log: $(cat "$LOG" 2>/dev/null))"
+fi
+# And the hatch does not leak its rolled-back hits into another pattern's deny:
+# a real npx hit in the same command still denies, and its reason names only npx.
+OUT_S=$(drive_out 'rm -rf "$FOO" [allow-rm-rf-var]; npx some-unpinned-pkg')
+if [[ "$OUT_S" == *'"deny"'* && "$OUT_S" == *'npx'* && "$OUT_S" != *'unvalidated'* ]]; then
+  ok "A.2e hatch rollback is scoped to the rm hits — a sibling npx hit still denies alone"
+else
+  ng "A.2e rollback leaked or swallowed a sibling hit: $OUT_S"
+fi
+
 # A.3 pre-bash-safety + [allow-npx-unpinned]
 rm -f "$LOG"
 drive "$HOOKS_DIR/pre-bash-safety-check.sh" \

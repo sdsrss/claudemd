@@ -20,6 +20,7 @@ import {
   blockingDenyCount,
   detectCutover,
   uniqueInvocations,
+  byBypass,
 } from '../../scripts/lib/rule-hits-parse.js';
 
 // v0.23.8 — self-dogfood vs external classification + per-hook split.
@@ -504,4 +505,22 @@ test('R11-06.5: an unrotated log behaves exactly as before', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Analysis 2026-09-26 B3: a bypass row counts a token that appeared, not a deny
+// that was avoided. `suppressed` splits the total three ways, and a row that
+// does not carry the field is `unrecorded` — never folded into `no`.
+test('byBypass: suppressed splits total into yes / no / unrecorded', () => {
+  const row = extra => ({ event: 'bypass-escape-hatch', hook: 'pre-bash-safety', extra });
+  const r = byBypass([
+    row({ token: 'allow-rm-rf-var', vars: 'D', suppressed: true }),
+    row({ token: 'allow-rm-rf-var', vars: '', suppressed: false }),
+    row({ token: 'allow-rm-rf-var', vars: 'X', suppressed: false }),
+    row({ token: 'allow-rm-rf-var', vars: 'Y' }),
+    { event: 'deny', hook: 'pre-bash-safety', extra: { token: 'allow-rm-rf-var', suppressed: true } },
+  ]);
+  const t = r['allow-rm-rf-var'];
+  assert.equal(t.total, 4, 'only bypass rows count');
+  assert.deepEqual(t.suppressed, { yes: 1, no: 2, unrecorded: 1 });
+  assert.equal(t.suppressed.yes + t.suppressed.no + t.suppressed.unrecorded, t.total);
 });

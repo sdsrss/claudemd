@@ -815,23 +815,34 @@ REASONS=""
 # is also exactly what the 30-day question needs ("what do people bypass FOR",
 # not "against which host").
 #
-# The rm hatch fires BEFORE the detector runs (the whole detection block is
-# skipped when it is set), so there is no verdict to name yet. What is recorded
-# is therefore the candidate set — the `$VAR` names present in the command — and
-# the field is named `vars` rather than `target` so it cannot be misread as the
+# The rm hatch is matched on the RAW command, so the token also takes effect
+# when it only appears as data — in a heredoc body, a python string, a commit
+# message. What is recorded is the candidate set — the `$VAR` names present in
+# the command — named `vars` rather than `target` so it cannot be misread as the
 # detector's finding. Capped at 5 to keep one row bounded (a full match list is
 # how telemetry rows grow unbounded — see the audit multi-emit history).
+#
+# `suppressed` says whether the hatch actually suppressed anything. With the
+# token present the detector below still runs, READ-ONLY: its hits are counted
+# and then discarded, and the provenance/validated allow rows it would write are
+# skipped, so the verdict is the unchanged allow and only this row learns
+# something. Until 0.98.0 the detector was skipped outright, and a replay of the
+# 31 historical rows with the token removed found 29 that would have been
+# allowed anyway (docs/claude-session-analysis-2026-09-26.md B3) — counting
+# every token as a bypass overstated this hatch's use by 29/31.
 bypass_rm=0
 if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
   bypass_rm=1
   _rm_vars=$(printf '%s' "$SANITIZED_CMD_FLAT" \
     | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*' | tr -d '${' | sort -u | head -5 | tr '\n' ',' | sed 's/,$//')
-  hook_record pre-bash-safety bypass-escape-hatch \
-    "{\"token\":\"allow-rm-rf-var\",\"vars\":$(printf '%s' "$_rm_vars" | jq -R .)}" \
-    '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
 fi
+_rm_pre_hits=${#HITS[@]}
+_rm_pre_reasons=$REASONS
 
-if (( bypass_rm == 0 )); then
+# Runs with the hatch set too — see `suppressed` above. Nothing in this block
+# exits or denies; it only appends to HITS / HIT_SECTIONS / REASONS, which the
+# hatch branch after it rolls back.
+if :; then
   # Split SANITIZED_CMD on terminators. Operators `&&` / `||` collapse to
   # newlines (multi-char first); then single-char `;` / `&` / `|`. Two passes
   # because sed -E alternation with backrefs is awkward for run-length groups.
@@ -1361,11 +1372,11 @@ if (( bypass_rm == 0 )); then
           esac
         fi
         if (( prov_safe == 1 )); then
-          hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+          (( bypass_rm == 1 )) || hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
         else
           guard_re='(^|[^\\])\$\{'"$varname"':\?'
           if echo "$SANITIZED_CMD_FLAT" | grep -qE "$guard_re"; then
-            hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
+            (( bypass_rm == 1 )) || hook_record pre-bash-safety rm-rf-allow-validated "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
           else
             HITS+=("$S8_RM_VERB \$$varname (unvalidated variable expansion)")
             HIT_SECTIONS+=('§8-rm-rf-var')
@@ -1376,6 +1387,24 @@ if (( bypass_rm == 0 )); then
     esac
     done  # F22 per-target loop
   done <<< "$RM_SEGMENTS"
+fi
+
+if (( bypass_rm == 1 )); then
+  # Roll back what the read-only pass added: the verdict under the hatch is
+  # allow, exactly as before the pass existed. Trimmed from the end one element
+  # at a time rather than re-sliced, because `"${arr[@]:0:n}"` on an empty array
+  # errors under `set -u` on bash 3.2 (macOS).
+  _rm_suppressed=false
+  (( ${#HITS[@]} > _rm_pre_hits )) && _rm_suppressed=true
+  while (( ${#HITS[@]} > _rm_pre_hits )); do unset "HITS[$(( ${#HITS[@]} - 1 ))]"; done
+  while (( ${#HIT_SECTIONS[@]} > _rm_pre_hits )); do unset "HIT_SECTIONS[$(( ${#HIT_SECTIONS[@]} - 1 ))]"; done
+  REASONS=$_rm_pre_reasons
+  # Built with --arg, not `printf | jq -R .`: with no `$VAR` in the command the
+  # latter prints NOTHING, the row read `"vars":}`, and rule-hits stored
+  # `extra:null` — 19 of 33 historical §8 bypass rows lost every field that way.
+  _rm_extra=$(jq -cn --arg v "$_rm_vars" --argjson s "$_rm_suppressed" \
+    '{token:"allow-rm-rf-var", vars:$v, suppressed:$s}' 2>/dev/null) || _rm_extra='null'
+  hook_record pre-bash-safety bypass-escape-hatch "$_rm_extra" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
 fi
 
 # Pattern 2: fetch-execute package runner (npx / npm exec / pnpm dlx / yarn dlx

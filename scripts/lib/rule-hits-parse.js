@@ -473,16 +473,25 @@ export function byFailOpen(hits) {
 // `runner` / `rule` / `shape` / `source`→`sink`); rows predating the emitters group
 // under `(no subject)` so a series spanning the change is visibly split rather than
 // silently averaged. Purely additive: `byToken` keeps its shape for existing callers.
+// v0.98.0 — `suppressed` splits `total` by whether the hatch actually avoided a
+// deny. The §8 rm hatch is matched on the raw command, so the token counts when it
+// only appears as data; since 0.98.0 its detector runs read-only under the token
+// and the row carries `suppressed: true|false`. Replaying 34 historical rows found
+// one real suppression (docs/claude-session-analysis-2026-09-26.md B3). `yes` is
+// the number a demote decision reads; `unrecorded` is rows from hooks or versions
+// that do not emit the field, and must not be read as `no`.
 export function byBypass(hits) {
   const byToken = {};
   for (const h of hits) {
     if (h.event !== 'bypass-escape-hatch') continue;
     const token = h.extra?.token || '(unspecified)';
-    byToken[token] ||= { total: 0, byHook: {}, bySubject: {} };
+    byToken[token] ||= { total: 0, byHook: {}, bySubject: {}, suppressed: { yes: 0, no: 0, unrecorded: 0 } };
     byToken[token].total++;
     byToken[token].byHook[h.hook] = (byToken[token].byHook[h.hook] || 0) + 1;
     const subject = bypassSubject(h.extra);
     byToken[token].bySubject[subject] = (byToken[token].bySubject[subject] || 0) + 1;
+    const sup = h.extra?.suppressed;
+    byToken[token].suppressed[sup === true ? 'yes' : sup === false ? 'no' : 'unrecorded']++;
   }
   return byToken;
 }
