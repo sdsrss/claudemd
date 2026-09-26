@@ -433,6 +433,21 @@ else
   ng "Case 20d: an earlier validate suppressed a later Bash-edit checkpoint"
 fi
 
+# --- Case 21 (review L7): an assistant row whose content is a STRING, not an
+# array. `[] + "text"` threw inside the flatten, jq exited under 2>/dev/null,
+# RESULT came back empty and the hook exited 0 — no checkpoint for the edit
+# that preceded it.
+ASSIST_STR='{"type":"assistant","message":{"role":"assistant","content":"plain text reply"}}'
+reset_cwd
+T="$TMP_HOME/case21.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$ASSIST_STR"
+run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+  ok "Case 21: a string-content assistant row does not blind the checkpoint"
+else
+  ng "Case 21: string-content assistant row suppressed the checkpoint"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

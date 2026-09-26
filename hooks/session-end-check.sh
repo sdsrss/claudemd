@@ -93,7 +93,9 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
                     | objects | .filePath | strings]]
                 | select((.[0] | type) == "string" and (.[1] | length) > 0))
           as $p ({}; .[$p[0]] = $p[1])) as $bed |
-  map(select(.type == "assistant") | (.message.content // [])) |
+  # String content (a plain-text assistant row) holds no tool_use; coerce it to
+  # [] so `. + $arr` below never adds a string to an array and kills the filter.
+  map(select(.type == "assistant") | (.message.content // [] | if type == "array" then . else [] end)) |
   (reduce .[] as $arr ([]; . + $arr)) |
   map(select(.type == "tool_use")) as $tools |
   $tools |
