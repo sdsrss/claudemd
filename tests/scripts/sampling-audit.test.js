@@ -1516,12 +1516,54 @@ test('B1 bashEditCapableSessions follows the CLI version, not mere presence of a
         type: 'user',
         timestamp: ts,
         version: v,
+        permissionMode: 'bypassPermissions',
         message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
       });
     fs.writeFileSync(path.join(dir, 'old.jsonl'), u('2.1.277') + '\n');
     fs.writeFileSync(path.join(dir, 'new.jsonl'), u('2.1.278') + '\n');
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
     assert.equal(r.behaviorMetrics.bashEditCapableSessions, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// D#88 probe (CC 2.1.283 binary + two headless runs): bashEditDiff is recorded
+// only when the feature is on — by default in auto / bypassPermissions mode, or
+// forced by CLAUDE_CODE_BASH_EDIT_DIFF. A default-mode or headless session on a
+// new CLI records none, so version alone over-counts the capable denominator
+// (5 of 99 sessions on this machine, 2026-09-26).
+test('B1 bashEditCapableSessions also needs a permission mode that records Bash edits', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b1m-'));
+  try {
+    const ts = new Date().toISOString();
+    const u = (mode, extra = {}) =>
+      JSON.stringify({
+        type: 'user',
+        timestamp: ts,
+        version: '2.1.283',
+        ...(mode ? { permissionMode: mode } : {}),
+        message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
+        ...extra,
+      });
+    fs.writeFileSync(path.join(dir, 'default.jsonl'), u('default') + '\n');
+    fs.writeFileSync(path.join(dir, 'nomode.jsonl'), u(null) + '\n');
+    fs.writeFileSync(path.join(dir, 'plan.jsonl'), u('plan') + '\n');
+    fs.writeFileSync(path.join(dir, 'auto.jsonl'), u('auto') + '\n');
+    fs.writeFileSync(path.join(dir, 'bypass.jsonl'), u('bypassPermissions') + '\n');
+    // Mode seen on a LATER row than the version still counts, once.
+    fs.writeFileSync(
+      path.join(dir, 'late.jsonl'),
+      u(null) + '\n' + u('bypassPermissions') + '\n' + u('bypassPermissions') + '\n'
+    );
+    // Env-forced: default mode, but a bashEditDiff was recorded — capable.
+    fs.writeFileSync(
+      path.join(dir, 'forced.jsonl'),
+      u('default', { toolUseResult: { stdout: '', bashEditDiff: { files: [{ filePath: '/p/a.py' }] } } }) +
+        '\n'
+    );
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.behaviorMetrics.bashEditCapableSessions, 4, 'auto, bypass, late, forced');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

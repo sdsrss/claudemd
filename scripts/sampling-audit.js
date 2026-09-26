@@ -271,6 +271,8 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
   }
   let badLines = 0;
   let bashEditCapable = false;
+  let cliRecordsBashEdits = false;
+  let modeRecordsBashEdits = false;
   for (const line of raw.split(/\r?\n/)) {
     if (!line) continue;
     let obj;
@@ -345,10 +347,16 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
         const files = bed.files.map(f => f && f.filePath).filter(fp => typeof fp === 'string' && fp);
         if (files.length > 0) events.push({ kind: 'bash-edit', files, sidechain });
       }
+      // Capable = this session could have recorded a Bash edit: a new enough
+      // CLI AND a permission mode in which the feature is on by default (both
+      // may first appear on different rows), or a recorded bashEditDiff, which
+      // also covers a session that forced it on with CLAUDE_CODE_BASH_EDIT_DIFF.
+      if (typeof obj.version === 'string' && ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE))
+        cliRecordsBashEdits = true;
+      if (BASH_EDIT_DIFF_MODES.has(obj.permissionMode)) modeRecordsBashEdits = true;
       if (
         !bashEditCapable &&
-        typeof obj.version === 'string' &&
-        ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE)
+        ((cliRecordsBashEdits && modeRecordsBashEdits) || (bed && typeof bed === 'object'))
       ) {
         bashEditCapable = true;
         events.push({ kind: 'bash-edit-capable', sidechain });
@@ -886,6 +894,12 @@ export const REWORK_THRESHOLD = 8;
 // cannot show a Bash edit at all, so its any-channel counts are tool-only by
 // construction — `bashEditCapableSessions` says how many sessions could.
 const BASH_EDIT_DIFF_SINCE = '2.1.278';
+// Permission modes in which that CLI records Bash edits by default — the
+// `bashEditDiffEnabled` gate in the 2.1.283 binary (D#88). Necessary, not
+// sufficient: a headless bypassPermissions run still recorded none until
+// CLAUDE_CODE_BASH_EDIT_DIFF was set, which is why BEHAVIOR_VALIDITY keeps its
+// "absence is not proof" clause.
+const BASH_EDIT_DIFF_MODES = new Set(['auto', 'bypassPermissions']);
 
 function ccAtLeast(version, floor) {
   return SEMVER_RE.test(version) && semverCmp(version, floor) >= 0;
@@ -917,9 +931,11 @@ export const BEHAVIOR_VALIDITY =
   'this was registered against carried isSidechain=0 on every row, so subagent work was ' +
   'under-represented there. Since CC 2.1.278 subagents write their own files; those are counted ' +
   'in subagentBehaviorMetrics, not here. Rework here is Edit/Write only (the pre-registered ' +
-  'number); the AnyChannel pair adds files from bashEditDiff (CC >=2.1.278), and a session on a ' +
-  'capable CLI with no bashEditDiff is not proof of no Bash edit — a headless `claude -p` probe ' +
-  'on 2.1.283 recorded none.';
+  'number); the AnyChannel pair adds files from bashEditDiff, which Claude Code records only on ' +
+  'CLI >=2.1.278 in auto / bypassPermissions mode (or with CLAUDE_CODE_BASH_EDIT_DIFF set); ' +
+  'bashEditCapableSessions counts those, and even there a session with no bashEditDiff is not ' +
+  'proof of no Bash edit — a headless `claude -p` run in bypassPermissions mode recorded none ' +
+  'until the variable was set.';
 
 const EDIT_BUCKETS = ['1-2', '3-4', '5-7', '8-14', '15-29', '30+'];
 
