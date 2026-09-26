@@ -301,8 +301,10 @@ hook_memfile_was_read() {
 #     * the command must be an assistant `tool_use` of the Bash tool — a hint
 #       banner or a deny reason quoting the path is not a command (R10-01);
 #     * a `;` `&` `|` segment must START with a reader: cat, head, tail, less,
-#       more, bat, nl, or `sed -n`. `sed -i`, `grep`, `echo`, `ls`, and a path
-#       inside a heredoc script body do not count;
+#       more, bat, nl, or `sed -n`. `sed -i`, `grep`, `echo` and `ls` do not
+#       count. Known gap (0.100.0 review, D#102): the split also cuts inside
+#       quoted strings, heredoc bodies and comments, so a reader word there
+#       counts, and so does a read that prints nothing (`>/dev/null`);
 #     * the path must appear whole — absolute, `~/`, `$HOME/` or `${HOME}/` —
 #       and end there, so `x.md.bak` is not `x.md`. `cat "$F"` is not
 #       resolved: a miss keeps the deny, which is the safe direction;

@@ -20,7 +20,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 **`memory-read-check`: 49 → 9 denies on the logged history.** All 62 logged denies (51 with a transcript) were replayed through the old and new hook in a sandbox HOME. Every flip has one of three causes:
 - A memory file read through Bash (`cat`, `sed -n`, `head`, `tail`, `less`, `more`, `bat`, `nl`) now counts as read, provided that tool call has a non-error result. The gated call itself, or a denied `cat`, does not count.
 - `gh release|pr list|view|status|checks|diff` no longer fire the trigger: they publish nothing.
-- A plumbing command name at command position (`tail`, `sleep`, `grep`, `timeout`) no longer matches a memory tag of the same name; the same word as an argument still matches.
+- A plumbing command name at command position and followed by a space (`tail -2 log`, `sleep 15`, `grep …`, `timeout …`) no longer matches a memory tag of the same name; the same word as an argument still matches, and so does one followed directly by `;` or `|`.
 
 **Hook text.**
 - The rm-only deny message drops from about 1.8K to about 0.9K characters. The line about commit and tag messages now appears only when the command is a commit or tag. Before shipping, 60 historical rm denies were replayed through `claude-opus-5-5` with each text and the retry was scored by this hook: 57/60 retries passed with the old text, 59/60 with the new; none of the 180 retries added a bypass token or kill switch.
@@ -28,7 +28,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - `evidence-gate` and `ledger-staleness` print to stderr with exit 0, which reaches the human and not the model, yet ended with an order to the model. The last line now says the note is for the reader and what to ask the agent for. The channel stays human-only: a replay over 1,747 historical turn ends fired 21 times, and at most 3 of the 21 were a completion claim without verification.
 
 **Known limits, found in the pre-tag review and left for a later release.** None touches a §8 verdict; the first can let a ship command through the memory-read check that 0.99.0 denied.
-- `memory-read-check` also counts as read a reader line inside a heredoc body or a multi-line quoted string, and `cat <file> >/dev/null`.
+- `memory-read-check` finds a Bash read by splitting the command at `;`, `&`, `|` and newlines, so a reader word inside a quoted string, a heredoc body or a comment also counts as a read (`echo "note; cat <file>"`), and so do reads that print nothing (`cat <file> >/dev/null`, `tail -n 0 <file>`).
 - The shorter rm-only deny text says a `mktemp -d` in the same command passes without naming what withdraws that credit (`export`, reassignment, `source`/`eval`, `IFS=`); the gate itself still applies those conditions. Its commit/tag line is not shown for `git -C <dir> commit`.
 - `session-end-check` does not recognise `bash -c '… npm test'` (0.99.0 did), `timeout -k`, `env …`, `npm --prefix`/`-w`, or `uv run pytest` as validations; with `cwd=/` no absolute-path edit counts, and `..` in a path is not normalised.
 
