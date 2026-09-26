@@ -35,6 +35,7 @@ import {
   groupBySection,
   blockingDenyCount,
   excludeTestSessions,
+  UNEVALUABLE_FAILOPEN_REASONS,
   IMMUTABLE_SECTION_RE,
 } from './lib/rule-hits-parse.js';
 import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
@@ -921,7 +922,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // The UNEVALUABLE set is the closed one, so a reason nobody has classified yet
   // (a new emitter, a renamed constant) lands in the ok:false bucket by default
   // rather than being quietly downgraded to advisory.
-  const UNEVALUABLE_REASONS = new Set(['mem-index-missing']);
+  const UNEVALUABLE_REASONS = UNEVALUABLE_FAILOPEN_REASONS;
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
   if (failOpenEvents.length > 0) {
     const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');

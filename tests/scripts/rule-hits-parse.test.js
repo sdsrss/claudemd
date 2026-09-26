@@ -21,6 +21,7 @@ import {
   detectCutover,
   uniqueInvocations,
   byBypass,
+  byFailOpen,
 } from '../../scripts/lib/rule-hits-parse.js';
 
 // v0.23.8 — self-dogfood vs external classification + per-hook split.
@@ -523,4 +524,60 @@ test('byBypass: suppressed splits total into yes / no / unrecorded', () => {
   assert.equal(t.total, 4, 'only bypass rows count');
   assert.deepEqual(t.suppressed, { yes: 1, no: 2, unrecorded: 1 });
   assert.equal(t.suppressed.yes + t.suppressed.no + t.suppressed.unrecorded, t.total);
+});
+
+// Analysis 2026-09-26 B5: hand-fed probe rows carry neither id and slipped past
+// the session-id sentinel filter. Only the pre-bash-safety decision events are
+// dropped on that shape — a fail-open row legitimately has no ids.
+test('excludeTestSessions: an id-less pre-bash-safety decision row is a probe; an id-less fail-open is not', () => {
+  const v = '0.83.0';
+  const rows = [
+    { hook: 'pre-bash-safety', event: 'deny', session_id: null, hook_version: v },
+    {
+      hook: 'pre-bash-safety',
+      event: 'rm-rf-allow-provenance',
+      session_id: null,
+      tool_use_id: null,
+      hook_version: v,
+    },
+    { hook: 'pre-bash-safety', event: 'deny', session_id: null, tool_use_id: 'toolu_01A', hook_version: v },
+    { hook: 'pre-bash-safety', event: 'fail-open', session_id: null, hook_version: v },
+    { hook: 'memory-read-check', event: 'fail-open', session_id: null, hook_version: v },
+    { hook: 'banned-vocab', event: 'deny', session_id: null, hook_version: v },
+    // Pre-v0.9.34 legacy shape: no ids AND no hook_version. Kept.
+    { hook: 'pre-bash-safety', event: 'deny', session_id: null, tool_use_id: null },
+  ];
+  const kept = excludeTestSessions(rows);
+  assert.deepEqual(
+    kept.map(r => `${r.hook}/${r.event}/${r.tool_use_id || '-'}/${r.hook_version || 'legacy'}`),
+    [
+      'pre-bash-safety/deny/toolu_01A/0.83.0',
+      'pre-bash-safety/fail-open/-/0.83.0',
+      'memory-read-check/fail-open/-/0.83.0',
+      'banned-vocab/deny/-/0.83.0',
+      'pre-bash-safety/deny/-/legacy',
+    ]
+  );
+});
+
+// Analysis 2026-09-26 B5: "no MEMORY.md in this project" and "the gate went
+// blind" were one fail-open count. The split is by the same closed set doctor
+// uses; an unclassified reason lands in `blind`.
+test('byFailOpen: notApplicable / blind split total by the unevaluable-reason set', () => {
+  const fo = (hook, reason) => ({ event: 'fail-open', hook, extra: { reason } });
+  const r = byFailOpen([
+    fo('memory-read-check', 'mem-index-missing'),
+    fo('memory-read-check', 'mem-index-missing'),
+    fo('memory-read-check', 'transcript-missing'),
+    fo('banned-vocab', 'some-new-reason'),
+  ]);
+  assert.deepEqual(
+    {
+      t: r['memory-read-check'].total,
+      na: r['memory-read-check'].notApplicable,
+      b: r['memory-read-check'].blind,
+    },
+    { t: 3, na: 2, b: 1 }
+  );
+  assert.equal(r['banned-vocab'].blind, 1, 'an unclassified reason is blind by default');
 });

@@ -381,7 +381,8 @@ export function byProjectClass(hits, { mode = 'deny' } = {}) {
 // dataIntegrity keeps full counts and exposes `testSessionsFiltered` so
 // the operator can quantify hook-test traffic without parsing the raw log.
 //
-// Scope rationale: session_id=null is NOT filtered. ~80% of historical rows
+// Scope rationale: session_id=null is NOT filtered (one exception, the id-less
+// decision rows below). ~80% of historical rows
 // carry null because pre-v0.9.34 Stop / SessionStart / UserPromptSubmit
 // hooks did not pass session_id, and bash CLI script invocations lack
 // CC_SESSION_ID. Filtering null would drop legitimate hook fires en masse.
@@ -397,9 +398,33 @@ export function byProjectClass(hits, { mode = 'deny' } = {}) {
 const TEST_SESSION_SENTINELS = new Set(['t', 'test']);
 const SENTINEL_MAX_LEN = 7;
 
+// v0.98.0 — decision rows that no real session can write without ids. A
+// PreToolUse event from Claude Code always carries `tool_use_id`, and
+// pre-bash-safety threads it into every decision row (record_section_deny and
+// the allow/bypass records), so such a row with NEITHER id came from a probe fed
+// by hand (`printf '{"tool_input":…}' | bash hooks/pre-bash-safety-check.sh`).
+// On 2026-09-26 the live log held 9 deny and 12 rm-rf-allow-provenance rows of
+// that shape, all from 09-07/08 probes, inside every audit view
+// (docs/claude-session-analysis-2026-09-26.md B5). Scoped to the hook and
+// events verified to always write the id: fail-open rows are written before
+// the event is parsed and legitimately carry neither, so they stay. And to rows
+// with `hook_version` (documented ~0.55.0, long after tool_use_id arrived in
+// v0.9.34): an older id-less row is the pre-v0.9.34 legacy shape
+// uniqueInvocations counts as `legacy_rows`, not a probe.
+const ID_REQUIRED_EVENTS = {
+  'pre-bash-safety': new Set([
+    'deny',
+    'rm-rf-allow-provenance',
+    'rm-rf-allow-validated',
+    'bypass-escape-hatch',
+  ]),
+};
+
 export function excludeTestSessions(hits) {
   return hits.filter(h => {
-    if (h.session_id == null) return true;
+    if (h.session_id == null) {
+      return !(h.tool_use_id == null && h.hook_version != null && ID_REQUIRED_EVENTS[h.hook]?.has(h.event));
+    }
     // A non-string session_id used to be dropped silently: `(12345).length` is
     // undefined and `undefined > 7` is false, so the row vanished from every
     // audit view without being counted anywhere — unlike the deliberate sentinel
@@ -445,14 +470,27 @@ export function groupBySection(hits, cutoverTs = null) {
 // rows by (hook, reason) so /claudemd-audit + /claudemd-doctor can see
 // "banned-vocab silently skipped 12× yesterday because jq was missing on
 // the runner" — a class of incident pre-fix had zero log trace.
+// Fail-open reasons that mean "the gate ran and had nothing to evaluate", not
+// "the gate went blind": `mem-index-missing` is a project with no MEMORY.md, the
+// normal state of most projects. Closed set — an unclassified reason counts as
+// blind by default. The argument for exactly one member (and against
+// `transcript-missing` / `event-fields-missing`, which are the cwd-encoding
+// drift alarm) lives beside doctor.js's hook-fail-open check, its first consumer.
+export const UNEVALUABLE_FAILOPEN_REASONS = new Set(['mem-index-missing']);
+
+// v0.98.0 — `notApplicable` / `blind` split `total` by that set. On 2026-09-26
+// 45 of the memory-read-check fail-open rows were mem-index-missing from
+// projects that never had an index (docs/claude-session-analysis-2026-09-26.md
+// B5); read as one number, "not applicable" looked like "gate blind".
 export function byFailOpen(hits) {
   const out = {};
   for (const h of hits) {
     if (h.event !== 'fail-open') continue;
     const hook = h.hook || '(unknown)';
     const reason = h.extra?.reason || '(unspecified)';
-    out[hook] ||= { total: 0, byReason: {} };
+    out[hook] ||= { total: 0, notApplicable: 0, blind: 0, byReason: {} };
     out[hook].total++;
+    out[hook][UNEVALUABLE_FAILOPEN_REASONS.has(reason) ? 'notApplicable' : 'blind']++;
     out[hook].byReason[reason] = (out[hook].byReason[reason] || 0) + 1;
   }
   return out;
