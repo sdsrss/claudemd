@@ -1259,6 +1259,49 @@ else
 fi
 rm -rf "$CAP_PROJ"
 
+# Case 45 (v0.98.0, analysis 2026-09-26 P2-4): unhandled paused checkpoints are
+# listed at session start. session-end-check writes tasks/session-end-*-paused.md
+# and nothing read them — ten sat in four projects, the oldest 13 days, while
+# five sessions here opened by pasting the previous one's "Not done" by hand.
+PZ_PROJ="$HOME/pausedproj"
+mkdir -p "$PZ_PROJ/tasks"
+for i in 1 2 3 4 5 6; do printf 'x\n' > "$PZ_PROJ/tasks/session-end-0000000$i-paused.md"; done
+touch -t 202001010000 "$PZ_PROJ/tasks/session-end-00000001-paused.md"
+pz_run() { bash "$HOOK" <<<"{\"session_id\":\"pz-session-000000\",\"source\":\"$1\",\"cwd\":\"$PZ_PROJ\"}" 2>/dev/null; }
+OUT45=$(pz_run startup)
+CTX45=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT45" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT45" 2>/dev/null)" == "1" ]] \
+   && grep -qF '6 paused checkpoint' <<<"$CTX45" \
+   && grep -qF 'session-end-00000006-paused.md' <<<"$CTX45" \
+   && ! grep -qF 'session-end-00000001-paused.md' <<<"$CTX45" \
+   && grep -qF 'DISABLE_PAUSED_BANNER=1' <<<"$CTX45" \
+   && jq -e 'select(.hook=="session-start" and .event=="paused-banner" and .extra.count==6)' "$HOME/.claude/logs/claudemd.jsonl" >/dev/null 2>&1; then
+  echo "PASS: 45 startup lists paused checkpoints (5 newest of 6, total stated) in one object + a paused-banner row"
+else
+  echo "FAIL: 45 paused banner missing or wrong (objs=$(jq -s 'length' <<<"$OUT45" 2>/dev/null) ctx=$CTX45)"; FAIL=$((FAIL+1))
+fi
+# 45b: resume with a ledger AND checkpoints → one object carrying both.
+printf '## Decisions\n\n- D1: PZ-DECISION\n\n## Next\n\nPZ-NEXT\n' > "$PZ_PROJ/tasks/pz-ledger.md"
+OUT45B=$(pz_run resume)
+CTX45B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT45B" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT45B" 2>/dev/null)" == "1" ]] && grep -qF 'PZ-DECISION' <<<"$CTX45B" && grep -qF 'paused checkpoint' <<<"$CTX45B"; then
+  echo "PASS: 45b resume carries the ledger and the paused list in one object"
+else
+  echo "FAIL: 45b (objs=$(jq -s 'length' <<<"$OUT45B" 2>/dev/null) ctx=$CTX45B)"; FAIL=$((FAIL+1))
+fi
+rm -f "$PZ_PROJ/tasks/pz-ledger.md"
+# 45c: the three silent arms — kill switch, compact, no checkpoints.
+C45_KILL=$(DISABLE_PAUSED_BANNER=1 bash "$HOOK" <<<"{\"session_id\":\"pz-session-000000\",\"source\":\"startup\",\"cwd\":\"$PZ_PROJ\"}" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+C45_COMPACT=$(pz_run compact | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+rm -f "$PZ_PROJ"/tasks/*-paused.md
+C45_NONE=$(pz_run startup | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if ! grep -qF 'paused checkpoint' <<<"$C45_KILL$C45_COMPACT$C45_NONE"; then
+  echo "PASS: 45c no paused list under DISABLE_PAUSED_BANNER=1, on compact, or with no checkpoints"
+else
+  echo "FAIL: 45c paused list leaked (kill=$C45_KILL | compact=$C45_COMPACT | none=$C45_NONE)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$PZ_PROJ"
+
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
 # the suite ran 35 assertions and reported "29/29", and a run where every

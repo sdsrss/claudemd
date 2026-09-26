@@ -172,6 +172,52 @@ ledger_banner() {
   }' 2>/dev/null
 }
 
+# --- Paused checkpoints (v0.98.0) --------------------------------------------
+#
+# `tasks/<slug>-paused.md` is where §11 sends unvalidated work at session exit,
+# and session-end-check.sh writes `session-end-<sid>-paused.md` on its own. Until
+# now nothing READ them: on 2026-09-26 ten sat across four projects, the oldest
+# 13 days, while five sessions in this repo opened by pasting the previous
+# session's "Not done" by hand (docs/claude-session-analysis-2026-09-26.md
+# P2-4). Names and ages only, newest first, at most five — never the content,
+# which can be long and can be stale; the session decides what to read. Not on
+# compact: a compaction continues the same session, whose own work these are
+# not. Folded into `_lg_json` below, so every exit that owes the ledger owes
+# this too, through the one merge_banners call each exit already makes.
+paused_banner() {
+  [[ "${DISABLE_PAUSED_BANNER:-0}" == "1" ]] && return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  local dir="$1"
+  [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
+  local files
+  # shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
+  files=$(ls -t "$dir"/tasks/*-paused.md 2>/dev/null)
+  [[ -n "$files" ]] || return 0
+  local count list="" now mt age f n=0
+  count=$(printf '%s\n' "$files" | grep -c .)
+  now=$(date +%s 2>/dev/null) || now=""
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    n=$((n + 1))
+    (( n <= 5 )) || break
+    age="?"
+    if [[ -n "$now" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
+      mt=$(platform_stat_mtime "$f" 2>/dev/null) || mt=""
+      [[ "$mt" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]] && age="$(((now - mt) / 86400))d"
+    fi
+    list+="  - ${f##*/} (${age})"$'\n'
+  done <<< "$files"
+  local shown=$(( count < 5 ? count : 5 ))
+  hook_record session-start paused-banner "{\"count\":$count}" '§11-session-exit' "$SESSION_ID" 2>/dev/null || true
+  jq -cn --arg d "$dir/tasks" --arg l "$list" --argjson c "$count" --argjson s "$shown" '{
+    suppressOutput: true,
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: ("[claudemd] system-injected — " + ($c|tostring) + " paused checkpoint(s) under " + $d + " from earlier sessions (" + ($s|tostring) + " newest listed, age in days). Each records work a session stopped before verifying: session-end-check writes session-end-<sid>-paused.md, and §11 sends unvalidated work to <slug>-paused.md. This lists files, not whether they are still open. Before related work, read the matching one; once its work is verified or abandoned, delete it. Disable: DISABLE_PAUSED_BANNER=1.\n" + $l)
+    }
+  }' 2>/dev/null
+}
+
 if [[ "$SOURCE" == "compact" ]]; then
   _cr_json=""
   if [[ "${DISABLE_COMPACT_REREAD_REMINDER:-0}" != "1" ]]; then
@@ -202,6 +248,9 @@ if [[ "$SOURCE" == "resume" ]]; then
   _lg_json=$(ledger_banner "$EVT_CWD")
   [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
 fi
+# Paused checkpoints ride in the same candidate (see paused_banner).
+_pz_json=$(paused_banner "$EVT_CWD")
+[[ -n "$_pz_json" ]] && _lg_json=$(merge_banners "$_lg_json" "$_pz_json")
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"

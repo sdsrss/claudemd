@@ -70,6 +70,11 @@ const SUB_FEATURE_TOGGLES = [
       'the G7 long-task ledger injection on compact/resume only; the §11 re-read reminder still fires',
   },
   {
+    envVar: 'DISABLE_PAUSED_BANNER',
+    partOf: 'session-start-check.sh',
+    disables: 'the SessionStart list of tasks/*-paused.md checkpoints only',
+  },
+  {
     envVar: 'DISABLE_BOOTSTRAP_FAIL_BANNER',
     partOf: 'session-start-check.sh',
     disables: 'the prior-session install-failure banner; the sentinel is still written',

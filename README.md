@@ -225,6 +225,11 @@ export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compacti
                                            # source=="compact"); compact events still
                                            # skip bootstrap/upgrade-banner either way.
 
+export DISABLE_PAUSED_BANNER=1             # v0.98.0+ — only the SessionStart list of
+                                           # tasks/*-paused.md checkpoints (names + ages,
+                                           # 5 newest; startup / resume / clear, never
+                                           # compact).
+
 export DISABLE_LEDGER_INJECT=1             # v0.90.0+ — only the G7 long-task ledger
                                            # injection (SessionStart source=="compact" or
                                            # "resume" re-injects tasks/<slug>-ledger.md's
