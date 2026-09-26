@@ -12,6 +12,8 @@ import {
   cleanClaudeTmp,
   scanStateDir,
   cleanStateDir,
+  scanProbeProjects,
+  cleanProbeProjects,
 } from '../../scripts/clean-residue.js';
 
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/clean-residue.js');
@@ -285,23 +287,30 @@ const mkStale = (rel, daysAgo, { dir = true } = {}) => {
 // through cliEnv() so a new case cannot reintroduce the omission by writing an
 // env literal that happens to be one key short.
 let cliStateDir;
+// Same argument for ~/.claude/projects (v0.98.0 probe-project pass): without the
+// seam every `--apply` spawn below would reap the maintainer's real temp-named
+// project dirs past the window.
+let cliProjectsDir;
 const cliEnv = (extra = {}) => ({
   ...process.env,
   TMPDIR: tmpDir,
   CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp,
   CLAUDEMD_STATE_DIR: cliStateDir,
+  CLAUDEMD_PROJECTS_DIR: cliProjectsDir,
   ...extra,
 });
 
 beforeEach(() => {
   claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-test-'));
   cliStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cstate-test-'));
+  cliProjectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cproj-test-'));
 });
 
 afterEach(() => {
   fs.rmSync(claudeTmp, { recursive: true, force: true });
   fs.chmodSync(cliStateDir, 0o700);
   fs.rmSync(cliStateDir, { recursive: true, force: true });
+  fs.rmSync(cliProjectsDir, { recursive: true, force: true });
 });
 
 test('scanClaudeTmp lists stale depth-1 entries; descends into claude-<uid> instead of listing it', () => {
@@ -1123,4 +1132,68 @@ test('LOW-3: a deep directory is aged, not silently reported fresh', () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// --- ~/.claude/projects probe dirs (analysis 2026-09-26 B8/P2-5) ---------------
+// A headless `claude -p` run from a temp cwd leaves `<projects>/-tmp-…`. The
+// four conditions are each driven on both sides: temp-encoded name, past the
+// window by the NEWEST mtime inside, no memory file, not this process's own cwd.
+const mkProj = (name, daysAgo, { memFile = false } = {}) => {
+  const d = path.join(cliProjectsDir, name);
+  fs.mkdirSync(path.join(d, 'memory'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'a1b2c3d4-0000.jsonl'), '{}\n');
+  if (memFile) fs.writeFileSync(path.join(d, 'memory', 'MEMORY.md'), '- x\n');
+  setMtime(d, daysAgo);
+  return d;
+};
+
+test('scanProbeProjects: temp-encoded, stale, memory-less dirs only', () => {
+  const stale = mkProj('-tmp-claude-1000--home-u-dev-x-scratchpad-probe', 10);
+  const bare = mkProj('-var-tmp', 10);
+  const mac = mkProj('-private-var-folders-ab-T-probe', 10);
+  const fresh = mkProj('-tmp-tmp-fresh', 0);
+  const withMem = mkProj('-tmp-kept-memory', 10, { memFile: true });
+  const real = mkProj('-home-u-dev-project', 30);
+  // `-tmpfoo` is not a temp-dir encoding: the pattern needs a `-` or the end
+  // after `tmp`, so a project literally named tmpfoo is out of scope.
+  const lookalike = mkProj('-tmpfoo', 30);
+  const own = mkProj('-tmp-own-cwd', 10);
+  const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/tmp/own/cwd' });
+  const targets = r.targets.map(t => t.path).sort();
+  assert.deepEqual(targets, [bare, mac, stale].sort());
+  assert.ok(!targets.includes(fresh), 'a probe dir written today is inside the window');
+  assert.ok(!targets.includes(real) && !targets.includes(lookalike), 'non-temp names are never candidates');
+  assert.deepEqual(r.kept.map(k => `${path.basename(k.path)}:${k.reason}`).sort(), [
+    '-tmp-kept-memory:has-memory',
+    '-tmp-own-cwd:own-cwd',
+  ]);
+  assert.ok(fs.existsSync(own) && fs.existsSync(withMem));
+  assert.equal(r.dryRun, true);
+  assert.equal(fs.existsSync(stale), true, 'dry run deletes nothing');
+});
+
+test('scanProbeProjects: age is the newest mtime INSIDE, not the dir own mtime', () => {
+  const d = mkProj('-tmp-live-probe', 10);
+  // A session still writing a subagent transcript two levels down.
+  const sub = path.join(d, 'a1b2c3d4', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, 'agent-1.jsonl'), '{}\n');
+  setMtime(d, 10);
+  fs.utimesSync(path.join(sub, 'agent-1.jsonl'), new Date(), new Date());
+  const r = scanProbeProjects({ projectsDir: cliProjectsDir, cwd: '/nowhere' });
+  const c = r.candidates.find(x => x.path === d);
+  assert.ok(c && c.ageDays < 1, `expected fresh, got ${c && c.ageDays}`);
+});
+
+test('CLI --apply reaps stale probe project dirs from CLAUDEMD_PROJECTS_DIR only', () => {
+  const stale = mkProj('-tmp-claude-1000--home-u-dev-x-scratchpad-probe', 10);
+  const fresh = mkProj('-var-tmp', 0);
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply'], { env: cliEnv(), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.probeProjects.dir, cliProjectsDir);
+  assert.equal(out.probeProjects.candidates, 1);
+  assert.equal(out.probeProjects.deleted, 1);
+  assert.equal(fs.existsSync(stale), false);
+  assert.equal(fs.existsSync(fresh), true);
 });

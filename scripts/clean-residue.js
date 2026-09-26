@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
-import { stateDir } from './lib/paths.js';
+import { stateDir, projectsRoot, encodeProjectCwd } from './lib/paths.js';
 
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
@@ -10,7 +10,8 @@ Clean leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and historical
 claudemd-(mockgh|work).*
 sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
 §EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
-per-session sentinels from ~/.claude/.claudemd-state. Default is dry-run.
+per-session sentinels from ~/.claude/.claudemd-state, and headless-probe
+project dirs from ~/.claude/projects. Default is dry-run.
 
 Also COUNTS and sizes — never deletes — $TMPDIR entries left by a bare
 \`mktemp\`/\`mktemp -d\` (the tmp.XXXXXXXXXX shape). Nothing can prove those were
@@ -42,8 +43,15 @@ tests/scripts/subject-set-drift.test.js — before that join existed, this text
 named four classes while the array held six, for the two releases after v0.67.0
 added the last two (audit-2026-08-22 条目 7).
 
+Probe project dirs: ~/.claude/projects entries whose name encodes a temp cwd
+(-tmp-…, -var-tmp, -private-tmp-…, -var-folders-…), left by a headless
+\`claude -p\` run from a temp dir. Reaped past the same retention window, by the
+newest mtime anywhere inside; never one whose memory/ holds a file, and never
+the one this process's own cwd encodes to (both listed under \`kept\`).
+
 Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
      CLAUDEMD_STATE_DIR overrides the ~/.claude/.claudemd-state root (test seam).
+     CLAUDEMD_PROJECTS_DIR overrides the ~/.claude/projects root (test seam).
 
 Wrapped by /claudemd-clean-residue.
 
@@ -402,6 +410,81 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
   return { dryRun: false, targets, protected: protectedTargets, deleted, failures, retentionDays: window };
 }
 
+// --- ~/.claude/projects probe dirs (spec §8.V4; analysis 2026-09-26 B8/P2-5) ---
+//
+// A headless `claude -p` run from a temp cwd leaves a transcript dir under
+// ~/.claude/projects named after that cwd (`-tmp-…`, `-var-tmp`). On 2026-09-26
+// nine such dirs sat there, 09-19 → 09-26, none holding a memory file, and every
+// `--global` measurement read their 35 headless sessions as real work.
+// sandbox-disposal-check.sh warns about a fresh one at Stop; nothing reaped the
+// ones already left behind.
+//
+// Candidates, all four required: the name is a temp-dir encoding (same spellings
+// the Stop hook matches, plus the bare `-tmp` / `-var-tmp` a probe run FROM the
+// temp root produces); the newest mtime anywhere inside is past the retention
+// window (the same bounded walk as ~/.claude/tmp — a truncated walk answers
+// fresh); `memory/` holds no file, so a project that grew real memory is never
+// a probe; and the dir is not the one this process's own cwd encodes to.
+const PROBE_PROJECT_PATTERN = /^-(private-)?(tmp|var-tmp|var-folders)(-|$)/;
+
+export function scanProbeProjects({ projectsDir, now = Date.now(), cwd = process.cwd() } = {}) {
+  if (!projectsDir || !fs.existsSync(projectsDir)) return { candidates: [], kept: [] };
+  let entries;
+  try {
+    entries = fs.readdirSync(projectsDir, { withFileTypes: true });
+  } catch {
+    return { candidates: [], kept: [] };
+  }
+  const own = encodeProjectCwd(cwd);
+  const candidates = [];
+  const kept = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !PROBE_PROJECT_PATTERN.test(entry.name)) continue;
+    const full = path.join(projectsDir, entry.name);
+    if (entry.name === own) {
+      kept.push({ path: full, reason: 'own-cwd' });
+      continue;
+    }
+    let memFiles = [];
+    try {
+      memFiles = fs.readdirSync(path.join(full, 'memory'));
+    } catch {
+      /* no memory/ dir — nothing to protect */
+    }
+    if (memFiles.length > 0) {
+      kept.push({ path: full, reason: 'has-memory' });
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
+    const { mtimeMs, truncated } = newestMtimeMs(full, stat, now);
+    const ageDays = Math.max(0, (now - mtimeMs) / 86400000);
+    candidates.push(truncated ? { path: full, ageDays, ageTruncated: true } : { path: full, ageDays });
+  }
+  return { candidates, kept };
+}
+
+export function cleanProbeProjects({
+  projectsDir,
+  apply = false,
+  retentionDays = 7,
+  now = Date.now(),
+  cwd,
+} = {}) {
+  const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
+  const { candidates, kept } = scanProbeProjects({ projectsDir, now, cwd });
+  const { allowed: targets, protected: protectedTargets } = partitionProtected(
+    candidates.filter(c => c.ageDays >= window)
+  );
+  if (!apply) return { dryRun: true, targets, protected: protectedTargets, kept, deleted: 0, failures: [] };
+  const { deleted, failures } = rmEach(targets, { recursive: true, force: true });
+  return { dryRun: false, targets, protected: protectedTargets, kept, deleted, failures };
+}
+
 // --- ~/.claude/.claudemd-state orphan reaping (2026-07-28 audit H3) ---
 //
 // The plugin's own state dir was outside every cleaner's scope: this script had
@@ -604,6 +687,8 @@ if (invokedAsMain(import.meta.url)) {
   const result = clean({ apply, ageDaysMin });
   const ctmp = cleanClaudeTmp({ claudeTmpDir, apply, retentionDays });
   const cstate = cleanStateDir({ stateDir: stateDirPath, apply, retentionDays });
+  const projectsDirPath = projectsRoot();
+  const cprobe = cleanProbeProjects({ projectsDir: projectsDirPath, apply, retentionDays });
   const sentinelCount = result.targets.filter(t => SENTINEL_PATTERN.test(path.basename(t.path))).length;
   const sandboxCount = result.targets.filter(t => SANDBOX_PATTERN.test(path.basename(t.path))).length;
   // Exit code reflects what REMAINS, not what was attempted (2026-08-29 audit
@@ -614,8 +699,9 @@ if (invokedAsMain(import.meta.url)) {
   // while the residue was still there (`cli-exit-code-must-reflect-remaining`).
   // Only meaningful under --apply: a dry run deletes nothing by definition.
   // Protected entries are not "remaining": they were never targets.
-  const attempted = result.targets.length + ctmp.targets.length + cstate.targets.length;
-  const removed = result.deleted + ctmp.deleted + cstate.deleted;
+  const attempted =
+    result.targets.length + ctmp.targets.length + cstate.targets.length + cprobe.targets.length;
+  const removed = result.deleted + ctmp.deleted + cstate.deleted + cprobe.deleted;
   const remaining = apply ? attempted - removed : 0;
   // `remaining` says HOW MANY are still there; this says WHICH and WHY. Without
   // it the operator's only route to the cause is a hand-written rmSync probe —
@@ -623,9 +709,9 @@ if (invokedAsMain(import.meta.url)) {
   // because the three causes need different actions: EACCES on a child dir is a
   // chmod, EPERM on a root-owned entry needs sudo or nothing, and ENOTEMPTY
   // means something is still writing into it.
-  const unreapable = [...result.failures, ...ctmp.failures, ...cstate.failures];
+  const unreapable = [...result.failures, ...ctmp.failures, ...cstate.failures, ...cprobe.failures];
   const agePath = t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 });
-  const protectedPaths = [...result.protected, ...ctmp.protected].map(agePath);
+  const protectedPaths = [...result.protected, ...ctmp.protected, ...cprobe.protected].map(agePath);
   if (protectedPaths.length > 0) {
     console.error(
       `${protectedPaths.length} stale entr${protectedPaths.length === 1 ? 'y' : 'ies'} skipped: ` +
@@ -661,6 +747,16 @@ if (invokedAsMain(import.meta.url)) {
           candidates: ctmp.targets.length,
           deleted: ctmp.deleted,
           paths: ctmp.targets.map(agePath),
+        },
+        probeProjects: {
+          dir: projectsDirPath,
+          retentionDays,
+          candidates: cprobe.targets.length,
+          deleted: cprobe.deleted,
+          paths: cprobe.targets.map(agePath),
+          // Temp-named dirs left alone on purpose, with why: `has-memory` (a
+          // file in memory/) or `own-cwd` (this run's own project dir).
+          kept: cprobe.kept.map(k => ({ path: k.path, reason: k.reason })),
         },
         remaining,
         unreapable,

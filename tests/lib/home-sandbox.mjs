@@ -37,7 +37,13 @@ import path from 'node:path';
 // HOME and TMPDIR are unconditional; the CLAUDEMD_* ones are the path seams
 // scripts/lib/paths.js reads. The consumer gate re-derives that set from source
 // and fails if a new `*_DIR` seam is missing here.
-export const PATH_SEAMS = ['HOME', 'TMPDIR', 'CLAUDEMD_STATE_DIR', 'CLAUDEMD_CLAUDE_TMP_DIR'];
+export const PATH_SEAMS = [
+  'HOME',
+  'TMPDIR',
+  'CLAUDEMD_STATE_DIR',
+  'CLAUDEMD_CLAUDE_TMP_DIR',
+  'CLAUDEMD_PROJECTS_DIR',
+];
 
 // A directory whose child lost its write bit cannot be unlinked, and rmSync
 // with force:true does not chmod its way in — a real `clean-residue --apply`
@@ -108,9 +114,10 @@ function makeSandbox(label) {
   const claudeDir = path.join(home, '.claude');
   const stateDir = path.join(claudeDir, '.claudemd-state');
   const claudeTmp = path.join(claudeDir, 'tmp');
+  const projects = path.join(claudeDir, 'projects');
   const tmp = path.join(home, 'tmp');
-  for (const d of [claudeDir, stateDir, claudeTmp, tmp]) fs.mkdirSync(d, { recursive: true });
-  return { home, claudeDir, stateDir, claudeTmp, tmp };
+  for (const d of [claudeDir, stateDir, claudeTmp, projects, tmp]) fs.mkdirSync(d, { recursive: true });
+  return { home, claudeDir, stateDir, claudeTmp, projects, tmp };
 }
 
 function seamValues(s) {
@@ -119,6 +126,7 @@ function seamValues(s) {
     TMPDIR: s.tmp,
     CLAUDEMD_STATE_DIR: s.stateDir,
     CLAUDEMD_CLAUDE_TMP_DIR: s.claudeTmp,
+    CLAUDEMD_PROJECTS_DIR: s.projects,
   };
 }
 

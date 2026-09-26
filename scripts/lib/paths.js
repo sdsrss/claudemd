@@ -243,8 +243,13 @@ export function encodeProjectCwd(cwd) {
 // was still rebuilt from a `.claude/projects` literal in five call sites
 // (sampling-audit ×2, lesson-bypass-audit ×2, memory-maintenance), so a change to
 // the layout had five places to miss. `home` is injectable for tests.
-export function projectsRoot(home = os.homedir()) {
-  return path.join(home, '.claude', 'projects');
+// CLAUDEMD_PROJECTS_DIR (v0.98.0) is the path seam for the DEFAULT root, same
+// shape as CLAUDEMD_STATE_DIR: clean-residue.js deletes temp-named probe dirs
+// under it, so a test that spawns `--apply` has to be able to point it away
+// from the real one. An explicit `home` argument still wins.
+export function projectsRoot(home) {
+  if (home === undefined && process.env.CLAUDEMD_PROJECTS_DIR) return process.env.CLAUDEMD_PROJECTS_DIR;
+  return path.join(home === undefined ? os.homedir() : home, '.claude', 'projects');
 }
 
 // Encoded per-project dir. Pass an already-encoded name through `encoded`
