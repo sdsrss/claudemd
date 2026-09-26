@@ -2236,35 +2236,21 @@ for i in "${!HITS[@]}"; do
   [[ "${HIT_SECTIONS[$i]:-§8}" == '§8-rm-rf-var' ]] || _s8_rm_only=0
 done
 if (( _s8_rm_only == 1 )); then
-REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
+# Short form, measured 2026-09-26 (docs/audit/20260926-180700.md, batch 3):
+# a paired replay of 60 historical rm denies through claude-opus-5-5, old
+# template vs this one, scored by this hook -- 57/60 vs 59/60 retries passed
+# with intent kept, 0/120 self-issued tokens, ~420 fewer input tokens per deny.
+# The commit-message line only rides along when the command is a commit/tag.
+_s8_about=""
+if [[ "$CMD" =~ git[[:space:]]+(commit|tag) ]]; then
+  _s8_about="
+Writing about rm in a commit or tag message: put the text in a file (Write tool) and pass it with -F FILE."
+fi
+REASON_TEXT="§8 SAFETY: denied Bash invocation:${REASONS}
 
-Spec: ~/.claude/CLAUDE.md §8 SAFETY — rm -r/-f on an unvalidated \$VAR (forbidden).
-This gate reads command text and does not accept a plain assignment
-(SP=/path) as validation: text position is not what the shell runs.
-
-Fix the invocation (no token needed):
-  • If a line above names its own fix — a \`..\` walk, a bare \$HOME/\$TMPDIR/
-    \$PWD/\$OLDPWD, a find with no selection primary — follow THAT line, and do
-    not add a guard to it: \${HOME:?} proves \$HOME is set, not that deleting it
-    is bounded.
-  • Guard the var that can be empty, inside the rm target:
-      rm -rf \"\${SP:?}/x\"      for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done
-    A var built from it (W=\"\$SP/x\") or a loop var over \"\$SP\"/* is never
-    empty, so \${W:?} alone guards nothing. Guard the base where W is built AND name W's guard
-    on the target — this gate credits only a guard on the var a target names:
-      W=\"\${SP:?}/x\"; rm -rf \"\${W:?}\"
-  • Several scratch dirs:  rm -rf \"\${D:?}\" \"\${H:?}\"
-  • One scratch dir made by mktemp in the SAME command:  D=\$(mktemp -d) … rm -rf \"\$D\"
-    Any other use of the bare name (export D, D=1), source/eval, or IFS= in the
-    command withdraws it.
-  • A literal path:  rm -rf /tmp/work-dir
-  • Writing ABOUT rm (commit or tag message, docs) is not an invocation, but the
-    gate may not tell them apart: write the text to a file with the Write tool
-    and pass the path (git commit -F FILE, git tag -a -F FILE).
-
-Escapes are the USER's to authorize (§8 Escape tokens), never the agent's to
-self-issue: the per-command token [allow-rm-rf-var] (logged as a bypass), or
-DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged; records nothing)."
+rm -r/-f on a \$VAR that can expand empty is refused. The gate reads command text, so an assignment earlier in the line does not count as validation.
+Fix (no token needed): if a line above names its own fix (a .. walk, a bare \$HOME/\$TMPDIR/\$PWD, a find without a selection primary), follow that line and add no guard: \${HOME:?} proves the var is set, not that deleting it is bounded. Otherwise guard the var that can be empty, inside the target: rm -rf \"\${SP:?}/x\". A var built from another (W=\"\$SP/x\") is never empty, so guard the base where W is built and name W's guard on the target: W=\"\${SP:?}/x\"; rm -rf \"\${W:?}\". Several dirs: rm -rf \"\${D:?}\" \"\${H:?}\". A mktemp -d in the same command, or a literal path, also passes.${_s8_about}
+The [allow-rm-rf-var] token and DISABLE_PRE_BASH_SAFETY_HOOK are the user's to grant, not yours."
 else
 REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
 

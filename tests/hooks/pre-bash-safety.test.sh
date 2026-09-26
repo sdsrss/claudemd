@@ -649,8 +649,8 @@ EOF
 # A bare-whitelisted-var deny must meet "follow that line" BEFORE the guard advice:
 # guarding it (`rm -rf "${TMPDIR:?}"`) passes this gate and deletes the whole dir.
 m1_reason=$(reason_of 'rm -rf "$TMPDIR"')
-m1_own=${m1_reason%%If a line above names its own fix*}
-m1_guard=${m1_reason%%Guard the var that can be empty*}
+m1_own=${m1_reason%%if a line above names its own fix*}
+m1_guard=${m1_reason%%guard the var that can be empty*}
 if [[ "$m1_own" != "$m1_reason" && "$m1_guard" != "$m1_reason" && ${#m1_own} -lt ${#m1_guard} ]]; then
   echo "PASS: bare-\$TMPDIR deny puts follow-that-line before the guard advice"; PASS=$((PASS + 1))
 else
