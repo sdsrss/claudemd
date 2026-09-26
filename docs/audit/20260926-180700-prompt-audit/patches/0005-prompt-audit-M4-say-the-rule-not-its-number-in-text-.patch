@@ -1,0 +1,30 @@
+From 834ef604d38ce60dce35a88c27ebaf6bf3442b08 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:53:49 +0000
+Subject: [PATCH 05/24] =?UTF-8?q?prompt-audit=20M4:=20say=20the=20rule,=20?=
+ =?UTF-8?q?not=20its=20=C2=A7=20number,=20in=20text=20the=20user=20reads?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE.md | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
+index 875638d..6c943f5 100644
+--- a/spec/CLAUDE.md
++++ b/spec/CLAUDE.md
+@@ -200,6 +200,8 @@ Principle: extraordinary claims require fresh tool-call evidence.
+ - **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Not done/Failed/Uncertain non-empty OR scope ≥2 files (§1.5).
+ - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
+ 
++**User-facing text**: state what a rule requires in plain words; cite its § number only when the user asks which rule.
++
+ **Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; self-enforced — the Stop scan is advisory and opt-in). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
+ 
+ **Honesty rules (HARD)**:
+-- 
+2.53.0
+

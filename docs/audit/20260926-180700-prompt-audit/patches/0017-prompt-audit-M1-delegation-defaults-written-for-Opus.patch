@@ -1,0 +1,36 @@
+From 9ff04c2446f39fdd9f2591747d690e40f0e14fdf Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:32 +0000
+Subject: [PATCH 17/24] prompt-audit M1: delegation defaults written for Opus
+ 4.x under-delegation become a cost test
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index 9fd1cfb..972895d 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -316,14 +316,13 @@ One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>
+ Universal session rules live in core §11 SESSION — they bind whether this extended spec is loaded or not. The rules below apply to orchestration contexts specifically.
+ 
+ ### Defaults
+-- **Parallel-preferred**: ≥2 tasks with disjoint scope + no shared mutable state → parallel `Agent` spawns (sp:dispatching-parallel-agents optional). File-scope overlap possible (grep-guessed edit surfaces intersect) → default serial, no justification needed.
+-- **Fresh-context-first**: research/exploration/scan/isolated repro → fresh subagent.
++- **Delegate when the payoff clearly exceeds the overhead**: each subagent re-establishes context, re-explores and reports back, and main re-reads the report. Fits: ≥2 sizeable tasks with disjoint scope and no shared mutable state (spawn them in parallel), a wide multi-file investigation, a review that needs an empty context (§12). Stays in main: work a handful of tool calls finishes — a few reads or edits, a simple search. File-scope overlap possible (grep-guessed edit surfaces intersect) → serial.
+ - **Automate-first**: reversible + below AUTH-soft → execute with one-line reason.
+ 
+ ### Subagent rules
+-- **1 task = 1 subagent**. Research/explore offloaded by default.
++- **1 task = 1 subagent**, briefed fully the first time.
+ - **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
+-- Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
++- Subagent output uses §7 evidence format.
+ - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
+ - **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
+ - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
+-- 
+2.53.0
+

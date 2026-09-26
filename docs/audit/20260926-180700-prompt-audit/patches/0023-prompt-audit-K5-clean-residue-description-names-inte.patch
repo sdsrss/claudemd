@@ -1,0 +1,26 @@
+From a418b58fe7b1c48759541878bdadb009b9ad7458 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:55:10 +0000
+Subject: [PATCH 23/24] prompt-audit K5: clean-residue description names
+ intent, the glob list stays in the body
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ commands/claudemd-clean-residue.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/commands/claudemd-clean-residue.md b/commands/claudemd-clean-residue.md
+index 5448f89..77c4a5d 100644
+--- a/commands/claudemd-clean-residue.md
++++ b/commands/claudemd-clean-residue.md
+@@ -1,6 +1,6 @@
+ ---
+ name: claudemd-clean-residue
+-description: Clean up leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and claudemd-(mockgh|work).* test sandbox dirs from $TMPDIR, stale tool-exhaust (session scratchpads, old fixtures) from ~/.claude/tmp per the spec §7-EXT retention window (mtime > TMP_RETENTION_DAYS, default 7), orphaned per-session sentinels from ~/.claude/.claudemd-state (ext-read-*, vocab-scan-*, rework-*, xrepo-*, failopen-*, mem-coverage-*), and headless-probe project dirs from ~/.claude/projects (-tmp-*, -var-tmp). Default is dry-run; pass `--apply` to delete.
++description: Find and remove claudemd leftovers — test sentinels and sandboxes in $TMPDIR, tool-exhaust in ~/.claude/tmp older than TMP_RETENTION_DAYS (default 7), orphaned per-session state files, and headless-probe project dirs. Dry-run by default; `--apply` deletes.
+ ---
+ 
+ Default is dry-run — the user must opt into deletion explicitly. Flags:
+-- 
+2.53.0
+

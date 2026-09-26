@@ -1,0 +1,26 @@
+From 11943fa9d232461cf71f94130cb74d08dc462f07 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 09/24] prompt-audit H3a: drop audit ID from agent-loaded text
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index a598fa9..e4f52fc 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -129,7 +129,7 @@ Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many p
+ ### Plan drift threshold (mid-implementation)
+ During execution, if the plan's file map / naming / schema / signatures disagree with the actual code:
+ - **1 mismatch**: fix inline, note in report under Uncertain.
+-- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain (audit SPEC-L).
++- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain.
+ - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
+ 
+ Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
+-- 
+2.53.0
+

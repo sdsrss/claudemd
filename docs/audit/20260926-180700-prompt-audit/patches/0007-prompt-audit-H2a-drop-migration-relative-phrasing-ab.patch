@@ -1,0 +1,27 @@
+From afc2093df03af5e4faf55fb32afee259b54279b1 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 07/24] prompt-audit H2a: drop migration-relative phrasing
+ about a removed rule
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index b766b6f..f47d4e6 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -168,7 +168,7 @@ Chain: clarify → primary → secondary only if needed → ship. Do NOT flatten
+ Example: "登录页又慢又报 500" → bug first (resolve 500), then perf only if slowness persists after fix.
+ 
+ ### Skill invocation
+-Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins — v6.31.0 removed the `sp` before `gs` rule, and it is not restated here.
++Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins.
+ 
+ ### §4.FULL (L3 full path)
+ 
+-- 
+2.53.0
+

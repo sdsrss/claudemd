@@ -1,0 +1,30 @@
+From c94430ebda4701c73755b73ad296f55552474b87 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 14/24] =?UTF-8?q?prompt-audit=20H6:=20=C2=A713=20says=20wh?=
+ =?UTF-8?q?at=20OPERATOR.md=20already=20measured=20about=20self=20rules?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index 99f1166..5d9f0ac 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -418,7 +418,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
+ - **HARD-rule removal**: rationale + 30-day grace note before deletion.
+ - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
+ - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
+-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
++- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; 4 of 16 emit advisory rows when their opt-in hooks are on, the other 12 emit nothing), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
+ 
+ ### §0.1 Core growth discipline (HARD)
+ 
+-- 
+2.53.0
+

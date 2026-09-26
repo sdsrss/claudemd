@@ -1,0 +1,432 @@
+diff --git a/commands/claudemd-audit.md b/commands/claudemd-audit.md
+index 9738fba..c5b90a1 100644
+--- a/commands/claudemd-audit.md
++++ b/commands/claudemd-audit.md
+@@ -24,7 +24,7 @@ The JSON contains:
+ 
+ For `denyByProjectClass`: report each hook's deny split as `<external> external / <self> self / <unknown> unknown` and **lead with the `external` count as the real downstream-interception signal** — do NOT present the raw deny total as the enforcement value (most of it is the plugin's own dogfood; see the 498/516 banned-vocab finding).
+ 
+-Format per-hook sections, the bySection heatmap (sorted by total desc), and call out any `byBypass` token with ≥3 occurrences as "review candidate" (where `suppressed` is recorded, count `suppressed.yes`, not `total`) per §0.1 demotion principle, and for each such token print its top `bySubject` entries — the subject is what makes the candidate actionable ("`vars:SCRATCH` ×9" is a gate mis-shaped for sandbox cleanup; nine different subjects is nine one-offs and no rule change). If a token's subjects are all `(no subject)`, say so rather than inferring — those rows predate the field. Surface `uniqueInvocations.<hook>.duplicate_rows_real > 0` for any PreToolUse/PostToolUse hook as a candidate registration/lib bug — EXCEPT for multi-emit hooks (pre-bash-safety logs one row per matched pattern in a compound command), where a residual `_real` can come from one command repeating the SAME pattern (`rm -rf $D; …; rm -rf $D`); telemetry can't distinguish that from a double-registration, so confirm against the source command before reporting a bug. **Do NOT report bare `duplicate_rows`** — that number includes legacy collision noise (`duplicate_rows_legacy`) which is expected for pre-v0.9.34 rows and Stop/SessionStart-class hooks. Always read the `_real` / `_legacy` split, never the bare sum.
++Format per-hook sections, the bySection heatmap (sorted by total desc), and call out any `byBypass` token with ≥3 occurrences as "review candidate" (where `suppressed` is recorded, count `suppressed.yes`, not `total`) per the OPERATOR.md §13.1 demotion review, and for each such token print its top `bySubject` entries — the subject is what makes the candidate actionable ("`vars:SCRATCH` ×9" is a gate mis-shaped for sandbox cleanup; nine different subjects is nine one-offs and no rule change). If a token's subjects are all `(no subject)`, say so rather than inferring — those rows predate the field. Surface `uniqueInvocations.<hook>.duplicate_rows_real > 0` for any PreToolUse/PostToolUse hook as a candidate registration/lib bug — EXCEPT for multi-emit hooks (pre-bash-safety logs one row per matched pattern in a compound command), where a residual `_real` can come from one command repeating the SAME pattern (`rm -rf $D; …; rm -rf $D`); telemetry can't distinguish that from a double-registration, so confirm against the source command before reporting a bug. **Do NOT report bare `duplicate_rows`** — that number includes legacy collision noise (`duplicate_rows_legacy`) which is expected for pre-v0.9.34 rows and Stop/SessionStart-class hooks. Always read the `_real` / `_legacy` split, never the bare sum.
+ 
+ For `bySection['(unset-historical)']`: note as pre-v0.7.0 legacy data — will age out of the window naturally; do NOT include in the heatmap leader.
+ 
+diff --git a/commands/claudemd-clean-residue.md b/commands/claudemd-clean-residue.md
+index 5448f89..77c4a5d 100644
+--- a/commands/claudemd-clean-residue.md
++++ b/commands/claudemd-clean-residue.md
+@@ -1,6 +1,6 @@
+ ---
+ name: claudemd-clean-residue
+-description: Clean up leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and claudemd-(mockgh|work).* test sandbox dirs from $TMPDIR, stale tool-exhaust (session scratchpads, old fixtures) from ~/.claude/tmp per the spec §7-EXT retention window (mtime > TMP_RETENTION_DAYS, default 7), orphaned per-session sentinels from ~/.claude/.claudemd-state (ext-read-*, vocab-scan-*, rework-*, xrepo-*, failopen-*, mem-coverage-*), and headless-probe project dirs from ~/.claude/projects (-tmp-*, -var-tmp). Default is dry-run; pass `--apply` to delete.
++description: Find and remove claudemd leftovers — test sentinels and sandboxes in $TMPDIR, tool-exhaust in ~/.claude/tmp older than TMP_RETENTION_DAYS (default 7), orphaned per-session state files, and headless-probe project dirs. Dry-run by default; `--apply` deletes.
+ ---
+ 
+ Default is dry-run — the user must opt into deletion explicitly. Flags:
+diff --git a/commands/claudemd-rules.md b/commands/claudemd-rules.md
+index f50aa8c..5e07152 100644
+--- a/commands/claudemd-rules.md
++++ b/commands/claudemd-rules.md
+@@ -27,6 +27,6 @@ The JSON contains:
+ | `byConfidence` | high / medium / low — author's pre-data assessment of rule reliability |
+ | `demoteCandidates` | hook-enforced rules with 0 hits in window — §13.1 demotion review queue |
+ | `staleReviews` | rules whose `last_demote_review` is null, unparseable, or older than the §13.1 review cadence (28d, per OPERATOR.md) — operator's demote-review queue. Independent of `--days`, which only sets the hit-counting window. |
+-| `rules` | per-rule rows with `hits: {total, deny, bypass, warn}` (null for self/external — agent text not yet captured; R-N8 transcript scan is the fix path) |
++| `rules` | per-rule rows with `hits: {total, deny, bypass, warn}` (null = the rule declares no `rule_hits_section`, so there is no telemetry to read) |
+ 
+ Format: surface `byEnforcement` + `byConfidence` summary first, then list `demoteCandidates` and `staleReviews` as action items. Suppress full `rules` array unless `$ARGS` contained `--verbose` (per the parsing table above).
+diff --git a/commands/claudemd-sampling-audit.md b/commands/claudemd-sampling-audit.md
+index de5e280..f96e508 100644
+--- a/commands/claudemd-sampling-audit.md
++++ b/commands/claudemd-sampling-audit.md
+@@ -1,13 +1,13 @@
+ ---
+ name: claudemd-sampling-audit
+-description: Retrospective batch scan of historical transcripts for 8 self-enforced HARD rules — text detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty) + sequence/claim detectors (§11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator; rates feed §13.2 staleReviews and the /claudemd-audit selfCompliance section once calibrated.
++description: Retrospective scan of historical transcripts with 8 rule detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty / §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator. Collection data only — the ratios are not compliance rates.
+ ---
+ 
+-Default window is 30 days, current project only. If the user passes a number (e.g. `/claudemd-sampling-audit 60`), set `CLAUDEMD_SAMPLING_DAYS=$ARGS` before invocation.
++Default window is 30 days, current project only. The command's arguments (`$ARGUMENTS`) are an optional leading day count followed by any flags from the table below; pass the count as `--days=N`.
+ 
+-Run: `CLAUDEMD_SAMPLING_DAYS=${ARGS:-30} node ${CLAUDE_PLUGIN_ROOT}/scripts/sampling-audit.js`
++Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/sampling-audit.js [--days=N] [flags]`
+ 
+-Flags (append after the number when needed):
++Flags:
+ 
+ | Flag | Effect |
+ |---|---|
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index 8304819..ba725fc 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -1,6 +1,6 @@
+ # AI-CODING-SPEC v6.35.0 — Extended
+ 
+-Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
++Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
+ 
+ ## §5-EXT Safe-paths whitelist (detail)
+ 
+@@ -129,7 +129,7 @@ Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many p
+ ### Plan drift threshold (mid-implementation)
+ During execution, if the plan's file map / naming / schema / signatures disagree with the actual code:
+ - **1 mismatch**: fix inline, note in report under Uncertain.
+-- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain (audit SPEC-L).
++- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain.
+ - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
+ 
+ Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
+@@ -138,28 +138,28 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
+ 
+ ### Routing
+ 
+-| Request type | Primary → Secondary | Notes |
++| Request type | Candidates (pick per §12 Skill routing table) | Notes |
+ |---|---|---|
+-| code/logic bug | **sp** (L1: reproduce→§7; L2+: sp:systematic-debugging) | gs:/investigate only for env/staging/deploy |
+-| env/staging/deploy bug | **gs:/investigate** | → sp if root cause is code |
+-| UI/visual bug | **gs:/browse** → route per cause | |
+-| feat | **sp** (L0-L1: edit→§7; L2: sp:TDD→§9→§7; L3: §4.FULL or §4.FULL-lite) | **L2-additive** (new branch/field/endpoint/optional param, no prior failing path): RED-first short evidence per §7-EXT Additive exception — skip full sp:TDD ceremony. Bugfix always needs prior reproduction. |
+-| bootstrap / scaffold | **sp** — L2; bundle deps one AUTH; skip §4.FULL | |
+-| ship L2 | **gs** — sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy | Skip /autoplan, /codex. /qa: skip unless user-facing. |
+-| ship/deploy/PR | **gs** — gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist | |
+-| prod incident | **gs** — [EMERGENCY] → revert or flag-off | |
+-| QA on staging | **gs:/qa** (fix) or gs:/qa-only (report) | |
+-| review | **per-task**: sp:requesting-code-review; **pre-ship**: gs:/review; **from user**: sp:receiving-code-review | One entry point per context |
+-| 2nd-opinion (opt-in) | **gs:/codex** | User request only; never auto |
+-| browser/web verify | **gs:/browse** ONLY | Never mcp__chrome or computer-use |
+-| design/UI | **gs:/design-consultation** → gs:/design-review | |
+-| perf check | **gs:/benchmark** (before/after) | |
+-| security audit | **gs:/cso** | |
++| code/logic bug | sp (L1: reproduce→§7; L2+: sp:systematic-debugging) | gs:/investigate only for env/staging/deploy |
++| env/staging/deploy bug | gs:/investigate | → sp if root cause is code |
++| UI/visual bug | gs:/browse → route per cause | |
++| feat | sp (L0-L1: edit→§7; L2: sp:TDD→§9→§7; L3: §4.FULL or §4.FULL-lite) | L2-additive (new branch/field/endpoint/optional param, no prior failing path): RED-first short evidence per §7-EXT Additive exception — skip full sp:TDD ceremony. Bugfix always needs prior reproduction. |
++| bootstrap / scaffold | sp — L2; bundle deps one AUTH; skip §4.FULL | |
++| ship L2 | gs — sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy | Skip /autoplan, /codex. /qa: skip unless user-facing. |
++| ship/deploy/PR | gs — gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist | |
++| prod incident | gs — [EMERGENCY] → revert or flag-off | |
++| QA on staging | gs:/qa (fix) or gs:/qa-only (report) | |
++| review | per-task: sp:requesting-code-review; pre-ship: gs:/review; from user: sp:receiving-code-review | One entry point per context |
++| 2nd-opinion (opt-in) | gs:/codex | User request only; never auto |
++| browser/web verify | gs:/browse ONLY | Never mcp__chrome or computer-use |
++| design/UI | gs:/design-consultation → gs:/design-review | |
++| perf check | gs:/benchmark (before/after) | |
++| security audit | gs:/cso | |
+ | Q&A (no code) | direct answer; docs-lookup for API claims (e.g. context7, if available) | |
+-| product/biz clarify | **gs:/office-hours** | |
+-| tech/arch clarify | **sp:brainstorming** | |
++| product/biz clarify | gs:/office-hours | |
++| tech/arch clarify | sp:brainstorming | |
+ | mixed product+tech | combined ask, tag `[product]`/`[tech]` | |
+-| 2+ independent tasks | `Agent` tool (fork / general-purpose); **sp:dispatching-parallel-agents** as optional wrapper | |
++| 2+ independent tasks | `Agent` tool (fork / general-purpose); sp:dispatching-parallel-agents as optional wrapper | |
+ | low-freq utilities | gs:/freeze, /careful, /guard, /retro; support ops | |
+ 
+ ### Composite requests
+@@ -168,7 +168,7 @@ Chain: clarify → primary → secondary only if needed → ship. Do NOT flatten
+ Example: "登录页又慢又报 500" → bug first (resolve 500), then perf only if slowness persists after fix.
+ 
+ ### Skill invocation
+-Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins — v6.31.0 removed the `sp` before `gs` rule, and it is not restated here.
++Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins.
+ 
+ ### §4.FULL (L3 full path)
+ 
+@@ -212,7 +212,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4
+ env/dep/config    → fix + 1 retry → pause, surface blocker in prose
+ syntax            → auto-fix ≤2 attempts
+ L1 code bug       → §7.L1-bugfix (core)
+-L2+ code/logic    → sp:systematic-debugging (4-phase root cause)
++L2+ code/logic    → §12 L2 bug row (root cause first)
+ env/staging/deploy → gs:/investigate
+ UI/visual         → gs:/browse → route per cause
+ sideways          → STOP + stash → re-plan (note pivot reason)
+@@ -297,7 +297,7 @@ Failed:    <blocked, with cause>
+ Uncertain: <not sure about, stated as "uncertain because <X>">
+ ```
+ 
+-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.
++**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.
+ 
+ **Multi-task**: each task writes its own block. Do NOT merge.
+ 
+@@ -316,18 +316,16 @@ One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>
+ Universal session rules live in core §11 SESSION — they bind whether this extended spec is loaded or not. The rules below apply to orchestration contexts specifically.
+ 
+ ### Defaults
+-- **Parallel-preferred**: ≥2 tasks with disjoint scope + no shared mutable state → parallel `Agent` spawns (sp:dispatching-parallel-agents optional). File-scope overlap possible (grep-guessed edit surfaces intersect) → default serial, no justification needed.
+-- **Fresh-context-first**: research/exploration/scan/isolated repro → fresh subagent.
++- **Delegate when the payoff clearly exceeds the overhead**: each subagent re-establishes context, re-explores and reports back, and main re-reads the report. Fits: ≥2 sizeable tasks with disjoint scope and no shared mutable state (spawn them in parallel), a wide multi-file investigation, a review that needs an empty context (§12). Stays in main: work a handful of tool calls finishes — a few reads or edits, a simple search. File-scope overlap possible (grep-guessed edit surfaces intersect) → serial.
+ - **Automate-first**: reversible + below AUTH-soft → execute with one-line reason.
+ 
+ ### Subagent rules
+-- **1 task = 1 subagent**. Research/explore offloaded by default.
+-- **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those (75× in 4 days, 2026-09).
+-- Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
++- **1 task = 1 subagent**, briefed fully the first time.
++- **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
++- Subagent output uses §7 evidence format.
+ - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
+-- **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
++- **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
+ - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
+-- **Batch review**: ≥3 tasks OR ≥2 including ≥1 L2+ → sp:requesting-code-review for cross-task drift (error/log format, shared types). Single-task → no batch review.
+ - **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
+ - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
+ - L3 → sp:subagent-driven-development (built-in 2-stage review).
+@@ -363,7 +361,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
+ ### Ship-pipeline hardening (HARD)
+ On `ship` / `deploy` / `create-release` / `merge-and-push`, after loading extended, invoke the `ship` skill. Manual ship allowed ONLY if stated in REPORT: `manual ship because <reason>` — absence = spec violation.
+ 
+-Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voice, release notes, GitHub Release artifact vs. bare tag) that are silent-failure-prone by hand (incidents: v2.33.2 manifest-sync CI failure; v2.6.3~v2.8.0 tag-without-Release update stall). Override form: REPORT Done first line `manual ship because <reason>`, so a reviewer can audit the manual diff against the skill's checklist.
++Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voice, release notes, GitHub Release artifact vs. bare tag) that are silent-failure-prone by hand. Override form: REPORT Done first line `manual ship because <reason>`, so a reviewer can audit the manual diff against the skill's checklist.
+ 
+ **Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer per Author ≠ reviewer above, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
+ 
+@@ -418,7 +416,11 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
+ - **HARD-rule removal**: rationale + 30-day grace note before deletion.
+ - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
+ - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
+-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
++- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; 4 of 16 emit advisory rows when their opt-in hooks are on, the other 12 emit nothing), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
++
++### §0.1 Core growth discipline (HARD)
++
++**Hard cap**: core ≤25K / extended ≤50K bytes; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: the Sizing line under Recent changes. Tier landing / promotion / cadence → `OPERATOR.md §13.1`.
+ 
+ ## §13.1 → `OPERATOR.md`
+ 
+@@ -440,7 +442,6 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
+ 
+ ## Appendix B — Canonical examples
+ 
+-B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
+ 
+ ### B.1 `[AUTH REQUIRED]`
+ 
+@@ -471,7 +472,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
+ 
+ **v6.35.0 (minor, 2026-09-26)** — two gaps from the 2026-09-26 transcript analysis. Core §2.2: the `ship` skill is used if listed, else manual ship; it said "required", and 9 calls failed `Unknown skill: ship` where gstack's ship sat unregistered under its router (§12 Detection already said absent-from-listing = missing). §11-O: a worktree-isolated spawn's prompt uses worktree-relative paths; main-checkout absolute paths drew 75 harness rejections in 4 days.
+ 
+-**Sizing** (v6.35.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24979 → 24994 bytes (Δ +15: §2.2's ship clause); extended 49810 → 49479 bytes (Δ -331: the §11-O worktree bullet in, v6.34.0's entry out to the changelog); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24994/25000 (**6 bytes headroom**); extended 49479/50000 (**521 bytes headroom**).
++**Sizing** (unreleased prompt-audit series, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24962 bytes (Δ -32: §0.1 to extended §13, matt prefix, gs router, plain-words rule); extended 49479 → 49281 bytes (Δ -198: history clauses and batch review out, §0.1 in); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24962/25000 (**38 bytes headroom**); extended 49281/50000 (**719 bytes headroom**).
+ 
+ ## §1.5-EXT GLOSSARY
+ 
+@@ -493,7 +494,7 @@ The `aggressive` skip-list lives in core §5.1 (L0–L2 do not load this file);
+ 
+ ## §7-EXT-TMP TMP_RETENTION policy
+ 
+-**`~/.claude/tmp/` retention**: harness SHOULD purge `mtime > 7d` at SessionStart (tool-exhaust, not WIP). Residue check ≥100 stale (>7d) + unconfigured harness → surface recommendation inline; no auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
++**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically: `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
+ 
+ ## §11-EXT Session heuristics (advisory)
+ 
+diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
+index 1900e57..cac4f0f 100644
+--- a/spec/CLAUDE.md
++++ b/spec/CLAUDE.md
+@@ -1,8 +1,8 @@
+ # AI-CODING-SPEC v6.35.0 — Core
+ 
+-Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
++Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load per §2.2) | History: `~/.claude/CLAUDE-changelog.md`.
+ 
+-Plugins: **sp** (superpowers) + **gs** (gstack). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
++Plugins: **sp** (superpowers) · **gs** (gstack) · **matt** (mattpocock-skills). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
+ 
+ ## §0 SPINE
+ 
+@@ -22,9 +22,6 @@ Everything else = natural prose, no bracketed signals. Completion claims / level
+ 
+ **Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
+ 
+-### §0.1 Core growth discipline (HARD)
+-
+-**Hard cap**: core ≤25K / extended ≤50K bytes; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: `CLAUDE-extended.md` Sizing line. Tier landing / promotion / cadence → `OPERATOR.md §13.1`.
+ 
+ ### §0.2 Mid-task feedback
+ 
+@@ -44,7 +41,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
+ - **Search before write; reuse first** — grep/Read existing code/lib before edit or add (§8.V1 binds verification).
+ - **Smallest diff wins** — fewest files, smallest blast radius. **Root cause over patch** — L2+: symptom-only fixes banned.
+ - **Zero-assume** — unsure → ASK; reversible → state choice inline.
+-- **Recommend-first** — ≥2 options → lead with pick + one-line reason; pure enumeration = abdication (exception: true 50/50 on user preference). **Single obvious option** (clear-scope bugfix / mechanical refactor / docs edit): execute directly, don't preface with "shall I proceed" — unless §5 hard-AUTH fires.
++- **Recommend-first** — ≥2 options → lead with pick + one-line reason; a list of options without a pick is not an answer (exception: true 50/50 on user preference). **Single obvious option** (clear-scope bugfix / mechanical refactor / docs edit): execute directly, don't preface with "shall I proceed" — unless §5 hard-AUTH fires.
+ 
+ ## §1.5 GLOSSARY
+ 
+@@ -83,7 +80,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
+ 
+ SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → §EXT §12 table. Full L3 / composite / specialized-clarify matrix → §EXT §4.
+ 
+-Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
++Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__chrome` / computer-use, which drive the user's own browser and desktop; 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
+ 
+ **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
+ 
+@@ -188,13 +185,13 @@ Principle: extraordinary claims require fresh tool-call evidence.
+ 
+ - **8.V1 Anti-hallucination**: cited file path / function / API / config key / version / test-runner pass-fail count MUST be verified this turn via Read/Grep/tool output (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
+ - **8.V2 Tool-noise vs ground-truth**: editor/IDE diagnostics (LSP unused-import / pure-JS type errors / SQL-literal warnings) are **advisory**. Conflict with project linter (ESLint / biome / ruff / clippy / `tsc --noEmit`) or grep/Read → trust linter + evidence.
+-- **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) MUST sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
++- **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
+ - **8.V4 Sandbox-artifact disposal**: creating task deletes its sandbox artifacts (`mkdtempSync` / scratch fixtures / HACK `tmp/`+`scripts/` output / test+probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) on exit — creating-task responsibility, not timer-based. HACK promotion prereq (§EXT §2-EXT). Carryover voids next task's residue baseline. Exception: `.keep`-marked or `tasks/<slug>-paused.md`-referenced fixtures.
+ 
+ ## §9 QUALITY
+ 
+ - **Parallel-first**: independent tool calls → single message; dependent → serial.
+-- **Parallel-path completeness** (HARD, L2+): a change touching a node with multiple parallel implementation paths (triggers: `fallback / feature flag / default arm / early return / else branch / fts vs like / sql order-by+limit / multi-dispatch`) MUST enumerate every path before edit and verify each after. Main-path green + silent siblings = not evidence.
++- **Parallel-path completeness** (HARD, L2+): a change touching a node with multiple parallel implementation paths (triggers: `fallback / feature flag / default arm / early return / else branch / fts vs like / sql order-by+limit / multi-dispatch`): enumerate every path before the edit and verify each after it. Main-path green + silent siblings = not evidence.
+ 
+ ## §10 REPORT
+ 
+@@ -203,13 +200,15 @@ Principle: extraordinary claims require fresh tool-call evidence.
+ - **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Not done/Failed/Uncertain non-empty OR scope ≥2 files (§1.5).
+ - **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → §EXT §10-R.
+ 
++**User-facing text**: state what a rule requires in plain words; cite its § number only when the user asks which rule.
++
+ **Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; self-enforced — the Stop scan is advisory and opt-in). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.
+ 
+ **Honesty rules (HARD)**:
+ - Uncertain → "uncertain because <X>". No "may/could" hedging.
+ - "Did this work?" → yes/no first, evidence second.
+ - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
+-- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, NOT PARTIAL — defensive PARTIAL on done work = own honesty failure.
++- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL — marking verified, finished work PARTIAL misreports it.
+ - **Banned-vocab quick-check** (top-5 EN): `should work / robust / significantly / N× faster (no baseline) / comprehensive`. 中文 quick-check: `显著提升 / 应该可以 / 基本可用`. Full enumeration → plugin `banned-vocab.patterns` (mechanical gate); §EXT §10-V keeps OK-shapes + fix recipes. Fix = strip + cite case with number.
+ 
+ ## §11 SESSION (universal)
+@@ -226,7 +225,7 @@ Binds every task; extended not reliably loaded post-compaction. Default strength
+ - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
+   - Optional tag syntax `- [Title](file.md) [tags] — desc`; match task keywords against tags before Read; untagged → decide per-line from title/desc. Detail: §EXT §11-EXT-MEM.
+ - **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end, so the yield IS the delivery (sleeping or pinging an idle agent does not deliver it): name what is awaited; completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. "Natural-feeling" stop points are not yields; a silent mid-cycle yield followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.
+-- **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → MUST NOT list under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
++- **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → do not list those items under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
+ 
+ Multi-task / subagent / cross-session → §EXT §11-O.
+ 
+diff --git a/spec/hard-rules.json b/spec/hard-rules.json
+index 4cb19ff..e1c1edf 100644
+--- a/spec/hard-rules.json
++++ b/spec/hard-rules.json
+@@ -31,7 +31,7 @@
+     {
+       "id": "§0.1-core-growth",
+       "name": "Core growth discipline",
+-      "scope": "core",
++      "scope": "extended",
+       "section_anchor": "### §0.1 Core growth discipline (HARD)",
+       "enforcement": "external",
+       "rule_hits_section": null,
+diff --git a/tests/scripts/spec-structure.test.js b/tests/scripts/spec-structure.test.js
+index 038f841..30b5374 100644
+--- a/tests/scripts/spec-structure.test.js
++++ b/tests/scripts/spec-structure.test.js
+@@ -50,9 +50,10 @@ test('A15: MEMORY.md tag syntax described in §11 (core summary + §EXT detail)'
+   assert.match(coreText, /tag syntax/i);
+ });
+ 
+-test('core contains §0.1 + §2.1 (unified ROUTE absorbs former §2.3 TOOLS)', () => {
++test('core contains §2.1; §0.1 lives with the other spec-editing rules in extended §13', () => {
+   const text = fs.readFileSync(CORE, 'utf8');
+-  assert.ok(text.includes('§0.1 Core growth discipline'));
++  assert.ok(fs.readFileSync(EXT, 'utf8').includes('§0.1 Core growth discipline'));
++  assert.ok(!text.includes('§0.1 Core growth discipline'));
+   assert.ok(text.includes('§2.1 ROUTE'));
+   // v6.10.0: §2.3 TOOLS merged into §2.1; escalation block retains the substance.
+   assert.match(text, /Tool escalation/);
+@@ -593,7 +594,7 @@ const PINS = [
+     file: EXT,
+     anchor: '- **Report by file**',
+     why: 'The harness cuts a teammate result at 4000 chars (100 of 176 measured). Drop the path default or the cap and reviews arrive cut; drop the no-resend clause and each ask wakes the reviewer into another completion event.',
+-    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
++    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
+   },
+   {
+     what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds (v6.32.0)',
+@@ -687,7 +688,7 @@ const PINS = [
+     file: EXT,
+     anchor: '**L3 zero-issue short**',
+     why: 'The other half of the same repair: re-granting L2 the short form here contradicts core §10 from a file L2 does not load.',
+-    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.',
++    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.',
+   },
+   {
+     what: 'core §2 LEVEL — the L1 row, whose file count lives in §1.5 Local-Δ (v6.29.0 wording)',
+@@ -815,41 +816,41 @@ const PINS = [
+ // section's exact bytes; `''` is the preamble, from the first line to the first
+ // `## ` heading.
+ const PINNED_BLOCKS = [
+-  { file: CORE, heading: '', sha256: 'c321552e65b58a91' },
+-  { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
+-  { file: CORE, heading: '## §1 IDENTITY', sha256: 'ce901e0783a7dff8' },
++  { file: CORE, heading: '', sha256: '4ea2616d722592ed' },
++  { file: CORE, heading: '## §0 SPINE', sha256: '88a46346809ae648' },
++  { file: CORE, heading: '## §1 IDENTITY', sha256: '046fe3b024df2f4c' },
+   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
+-  { file: CORE, heading: '## §2 LEVEL', sha256: '58770de22daa9671' },
++  { file: CORE, heading: '## §2 LEVEL', sha256: 'e3da636cd2e7fab5' },
+   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
+   { file: CORE, heading: '## §5 AUTH', sha256: '007498f2151b3c43' },
+   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: '418d3275ec9015cd' },
+-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'cc2ce65da6d6e45e' },
+-  { file: CORE, heading: '## §9 QUALITY', sha256: '0cf6b6630b936713' },
+-  { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
+-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
+-  { file: EXT, heading: '', sha256: 'a7d144f632935e05' },
++  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c9b6c20c94da3f28' },
++  { file: CORE, heading: '## §9 QUALITY', sha256: '7d5b2e25114582f1' },
++  { file: CORE, heading: '## §10 REPORT', sha256: 'fdca1a75c6678941' },
++  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '7c7522e8ac5a8722' },
++  { file: EXT, heading: '', sha256: '7361aedc09435826' },
+   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
+   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
+-  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
+-  { file: EXT, heading: '## §4 FLOW', sha256: 'ecc6ffd1055cbe5c' },
+-  { file: EXT, heading: '## §6 DEBUG', sha256: 'db02ad569420cd02' },
++  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '9084e228f6a3968d' },
++  { file: EXT, heading: '## §4 FLOW', sha256: '00052243101665da' },
++  { file: EXT, heading: '## §6 DEBUG', sha256: 'c303c51d842d2726' },
+   { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'e9565da6dd7b190c' },
+   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
+-  { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
+-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '4c31449593e49f77' },
+-  { file: EXT, heading: '## §12 PLUGINS', sha256: '6675348191a856f0' },
+-  { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
++  { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '82da9c6ca416603f' },
++  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'f21197206a9069a1' },
++  { file: EXT, heading: '## §12 PLUGINS', sha256: '0a9f0c61e05d423f' },
++  { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
+   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
+   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
+-  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
+-  { file: EXT, heading: '## Recent changes', sha256: 'c3547648c74456ea' },
++  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'c66f48b0dc11727c' },
++  { file: EXT, heading: '## Recent changes', sha256: '922b3b9556389c3b' },
+   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
+   {
+     file: EXT,
+     heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)',
+     sha256: '2c9ac63c40a96c67',
+   },
+-  { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '86c20226a6ea2b70' },
++  { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
+   { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '08aa1e6f246a6876' },
+   { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '3acd6a6860646f20' },
+   { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: 'f61a4e042919544f' },
+@@ -899,8 +900,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
+ // registered, because the table keys on heading text. A heading cannot be added,
+ // removed, renamed or reordered anywhere in either file without this moving.
+ const HEADING_INVENTORY = [
+-  { file: CORE, count: 20, sha256: '703ff22f98af42a2' },
+-  { file: EXT, count: 62, sha256: '85b5edbf3e0003e3' },
++  { file: CORE, count: 19, sha256: 'c53e91f99060e05a' },
++  { file: EXT, count: 63, sha256: '794e202145f553d5' },
+ ];
+ 
+ for (const inv of HEADING_INVENTORY) {

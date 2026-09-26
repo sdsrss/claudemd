@@ -1,0 +1,44 @@
+From 473ceda49a6c627886c972aab94afe8abda20683 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 08/24] =?UTF-8?q?prompt-audit=20H2b:=20drop=20the=20'used?=
+ =?UTF-8?q?=20to=20grant=20L2'=20history=20from=20=C2=A710-R?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md              | 2 +-
+ tests/scripts/spec-structure.test.js | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index f47d4e6..a598fa9 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -297,7 +297,7 @@ Failed:    <blocked, with cause>
+ Uncertain: <not sure about, stated as "uncertain because <X>">
+ ```
+ 
+-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.
++**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.
+ 
+ **Multi-task**: each task writes its own block. Do NOT merge.
+ 
+diff --git a/tests/scripts/spec-structure.test.js b/tests/scripts/spec-structure.test.js
+index 28d1116..134792c 100644
+--- a/tests/scripts/spec-structure.test.js
++++ b/tests/scripts/spec-structure.test.js
+@@ -688,7 +688,7 @@ const PINS = [
+     file: EXT,
+     anchor: '**L3 zero-issue short**',
+     why: 'The other half of the same repair: re-granting L2 the short form here contradicts core §10 from a file L2 does not load.',
+-    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.',
++    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.',
+   },
+   {
+     what: 'core §2 LEVEL — the L1 row, whose file count lives in §1.5 Local-Δ (v6.29.0 wording)',
+-- 
+2.53.0
+

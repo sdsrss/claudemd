@@ -1,0 +1,26 @@
+From 699da00edd8cbbd9527816a45a07e1c62eb37a41 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:55:10 +0000
+Subject: [PATCH 20/24] prompt-audit K2: sampling-audit description stops
+ promising calibration the script cannot reach
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ commands/claudemd-sampling-audit.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/commands/claudemd-sampling-audit.md b/commands/claudemd-sampling-audit.md
+index 1652264..f96e508 100644
+--- a/commands/claudemd-sampling-audit.md
++++ b/commands/claudemd-sampling-audit.md
+@@ -1,6 +1,6 @@
+ ---
+ name: claudemd-sampling-audit
+-description: Retrospective batch scan of historical transcripts for 8 self-enforced HARD rules — text detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty) + sequence/claim detectors (§11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator; rates feed §13.2 staleReviews and the /claudemd-audit selfCompliance section once calibrated.
++description: Retrospective scan of historical transcripts with 8 rule detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty / §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator. Collection data only — the ratios are not compliance rates.
+ ---
+ 
+ Default window is 30 days, current project only. The command's arguments (`$ARGUMENTS`) are an optional leading day count followed by any flags from the table below; pass the count as `--days=N`.
+-- 
+2.53.0
+

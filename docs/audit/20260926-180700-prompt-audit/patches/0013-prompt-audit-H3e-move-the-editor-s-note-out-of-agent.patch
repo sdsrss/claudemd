@@ -1,0 +1,26 @@
+From d059d103a7b801f93019e074792d08ce675afa1c Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 13/24] prompt-audit H3e: move the editor's note out of
+ agent-loaded Appendix B
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index 75c3765..99f1166 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -444,7 +444,6 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
+ 
+ ## Appendix B — Canonical examples
+ 
+-B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
+ 
+ ### B.1 `[AUTH REQUIRED]`
+ 
+-- 
+2.53.0
+

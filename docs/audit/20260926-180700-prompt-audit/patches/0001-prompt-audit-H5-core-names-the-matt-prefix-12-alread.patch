@@ -1,0 +1,30 @@
+From 4380dd67dce6e95e465bf512b186510b67bfa613 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:53:36 +0000
+Subject: [PATCH 01/24] =?UTF-8?q?prompt-audit=20H5:=20core=20names=20the?=
+ =?UTF-8?q?=20matt=20prefix=20=C2=A712=20already=20routes=20to?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
+index 1900e57..743af81 100644
+--- a/spec/CLAUDE.md
++++ b/spec/CLAUDE.md
+@@ -2,7 +2,7 @@
+ 
+ Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
+ 
+-Plugins: **sp** (superpowers) + **gs** (gstack). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
++Plugins: **sp** (superpowers) · **gs** (gstack) · **matt** (mattpocock-skills). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
+ 
+ ## §0 SPINE
+ 
+-- 
+2.53.0
+

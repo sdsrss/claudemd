@@ -1,0 +1,31 @@
+From 599bdbb03f8112c6d6a16dd2a76dd7db8504f13f Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:54:08 +0000
+Subject: [PATCH 15/24] =?UTF-8?q?prompt-audit=20H7:=20=C2=A77-EXT-TMP=20de?=
+ =?UTF-8?q?scribes=20the=20purge=20and=20threshold=20the=20code=20actually?=
+ =?UTF-8?q?=20has?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE-extended.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
+index 5d9f0ac..f068fd6 100644
+--- a/spec/CLAUDE-extended.md
++++ b/spec/CLAUDE-extended.md
+@@ -496,7 +496,7 @@ The `aggressive` skip-list lives in core §5.1 (L0–L2 do not load this file);
+ 
+ ## §7-EXT-TMP TMP_RETENTION policy
+ 
+-**`~/.claude/tmp/` retention**: harness SHOULD purge `mtime > 7d` at SessionStart (tool-exhaust, not WIP). Residue check ≥100 stale (>7d) + unconfigured harness → surface recommendation inline; no auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
++**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically: `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
+ 
+ ## §11-EXT Session heuristics (advisory)
+ 
+-- 
+2.53.0
+
