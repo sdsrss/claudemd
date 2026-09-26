@@ -1,6 +1,6 @@
 AUTONOMY_LEVEL: aggressive
 
-Solo OSS maintainer running with `bypassPermissions`. Atomic-ship convention applies (commit + push + tag + push tag + `gh release create` in one turn) — see `feedback_claudemd_ship_from_main_atomic.md`. §5.1 Never-downgrade set binds as written in core §5.1 (single source; the verbatim list was deduped here 2026-07-25 — it drifts).
+Solo OSS maintainer running with `bypassPermissions`. Atomic-ship convention applies (commit + push + tag + push tag + `gh release create` in one turn, except that the turn yields while the pre-tag reviewer runs, per §EXT §12 and runbook step 7) — see `feedback_claudemd_ship_from_main_atomic.md`. §5.1 Never-downgrade set binds as written in core §5.1 (single source; the verbatim list was deduped here 2026-07-25 — it drifts).
 
 <!-- claude-mem-lite:begin v1 -->
 ## claude-mem-lite — persistent memory
