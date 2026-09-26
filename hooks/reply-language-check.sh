@@ -18,9 +18,12 @@
 #     (default 10) words of two or more letters. Mixed text is never judged,
 #     nor the harness's own `API Error:` line, nor a reply whose first line is
 #     a conventional-commit subject (a commit message is English by §1).
-#   - the human: see rl_human_lang below — the human's own messages only, a
-#     reply-language directive first, then a request for an English artifact,
-#     then the majority language of the newest 20.
+#   - the human: see rl_human_lang below — the majority language of the
+#     human's own newest 20 messages. What the human SAYS about language is
+#     not parsed: two review rounds of reading "用英文回复" and its negations
+#     out of prose each found new High misreads, and the real corpus held no
+#     correct match. A human who wants English replies while writing 中文
+#     turns the hook off (DISABLE_REPLY_LANGUAGE_HOOK=1) or sets it to `log`.
 #   - the entrypoint: a headless run (`claude -p`, entrypoint `sdk-*` on the
 #     newest user row) is left alone — nobody reads it as it is written, and
 #     a restatement there only costs a turn.
@@ -132,7 +135,7 @@ if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
 fi
 
 # rl_human_lang — prints "<verdict>\t<trigger>".
-#   verdict: zh | en | none | en-request | artifact | headless
+#   verdict: zh | en | none | headless
 #   trigger: human | task-notification | teammate | other — the newest
 #            user-role message, i.e. what started this turn.
 # A fixed-string grep keeps only user rows without a tool_result, plus the
@@ -144,19 +147,11 @@ fi
 # summaries or sidechain rows, whose `origin.kind` (when the row carries one)
 # is `human`, and that do not open with a machine prefix — except a slash
 # command's `<command-args>`, which the human typed. Of the newest 20 of
-# those:
-#   - the newest reply-language DIRECTIVE decides first — "后面都用英文回复" /
-#     "reply in English" (en-request), "用中文回复" / "中文输出" (zh). It holds
-#     until another directive, so "继续" after it does not end it. A directive
-#     phrase under a negation or a complaint ("不要用英文", "为什么用英文") is
-#     not one.
-#   - else, when the NEWEST human message is short (<=300 characters) and asks
-#     for an English artifact (a commit message, PR text, release notes, a
-#     translation, "英文版"), this reply is let through (artifact).
-#   - else the majority of the classifiable messages: >=2 CJK and at least
-#     half as many CJK characters as English words is 中文; no CJK and >=3
-#     words is English; kana makes a message neither. A pasted English log
-#     among 中文 messages does not flip the session's language.
+# those, the majority of the classifiable messages decides: >=2 CJK and at
+# least half as many CJK characters as English words is 中文; no CJK and >=3
+# words is English; kana makes a message neither; a tie is 中文 (§1's
+# default). A pasted English log among 中文 messages does not flip the
+# session's language.
 rl_human_lang() {
   tail -n "$RL_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null \
     | grep -aE '"type":"user"|"type":"queued_command"' 2>/dev/null \
@@ -164,19 +159,6 @@ rl_human_lang() {
     | jq -R -n -r "$HOOK_USER_TURN_JQ$RL_JQ_DEFS"'
       def machine:
         test("^[[:space:]]*(<task-notification>|Another Claude session sent a message|<command-|<local-command|<bash-|This session is being continued|\\[Request interrupted)");
-      def rl_neg:
-        gsub("(不要|别再?|不用|不必|不许|禁止|为什么|为何|怎么|干嘛|又)[^，。！？,.!?\\n]{0,8}(英文|英语|[Ee]nglish)"; " ");
-      def rl_directive:
-        (.[0:4000] | rl_neg) as $t
-        | if ($t | test("(中文|汉语)(来)?(回复|回答|输出|交流|沟通|对话)|(回复|回答|输出|交流|沟通)(都|全部|请|就)?(用|以)?(中文|汉语)|说中文")) then "zh"
-          elif ($t | test("(用|以|改用|换成|改成|切换到|切到)(英文|英语)(来)?(回复|回答|输出|交流|沟通|对话|说|写)|(回复|回答|输出|交流|沟通)(都|全部|请|就)?(用|以)?(英文|英语)|(英文|英语)(回复|回答|输出)|(reply|respond|answer|talk|speak|write)[^.\\n]{0,24}in english|(switch|stick) to english|english only"; "i")) then "en"
-          else empty end;
-      # Short messages only: a request for an artifact is a sentence, and a
-      # long pasted brief that merely mentions a commit message is not one.
-      def rl_artifact:
-        (rl_strip | length) <= 300
-        and ((.[0:4000] | rl_neg)
-             | test("commit message|提交信息|commit 信息|pr ?(描述|说明|正文|body|description)|release notes|翻译(成|为)?(英文|英语)|(英文|英语)版|(英文|英语)的|into english|translate"; "i"));
       def rl_class:
         rl_strip as $t | ($t | rl_cjk) as $c | ($t | rl_words) as $w
         | if ($t | rl_kana) then empty
@@ -216,14 +198,10 @@ rl_human_lang() {
              else . end)
           | select(length > 0)
         ][-20:] as $human
-      | (first($human | reverse[] | rl_directive) // "") as $dir
       | ([$human[] | rl_class]) as $cls
       | ([$cls[] | select(. == "zh")] | length) as $zh
       | ([$cls[] | select(. == "en")] | length) as $en
       | (if ($ep | test("^sdk")) then "headless"
-         elif $dir == "en" then "en-request"
-         elif (($human | last // "") | rl_artifact) then "artifact"
-         elif $dir == "zh" then "zh"
          elif $zh == 0 and $en == 0 then "none"
          elif $zh >= $en then "zh"
          else "en" end) + "\t" + $trigger' 2>/dev/null
