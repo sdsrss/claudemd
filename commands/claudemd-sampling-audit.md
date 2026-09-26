@@ -1,6 +1,6 @@
 ---
 name: claudemd-sampling-audit
-description: Retrospective batch scan of historical transcripts for 8 self-enforced HARD rules — text detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty) + sequence/claim detectors (§11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator; rates feed §13.2 staleReviews and the /claudemd-audit selfCompliance section once calibrated.
+description: Retrospective scan of historical transcripts with 8 rule detectors (§10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty / §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth). Every rule reports violations with its opportunity denominator. Collection data only — the ratios are not compliance rates.
 ---
 
 Default window is 30 days, current project only. The command's arguments (`$ARGUMENTS`) are an optional leading day count followed by any flags from the table below; pass the count as `--days=N`.
