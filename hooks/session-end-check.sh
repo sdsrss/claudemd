@@ -4,9 +4,11 @@
 # Mechanizes core §11 "Session-exit mid-SPINE" HARD self-rule. At session
 # termination, scan the transcript JSONL for mutation tool_use entries
 # (Edit / Write / NotebookEdit, plus files a Bash command modified per
-# `toolUseResult.bashEditDiff`) since the last user-input message, and
-# count VALIDATE signals (Bash with test-runner / lint / typecheck /
-# git commit / git push patterns). If mutations > 0 AND validates == 0:
+# `toolUseResult.bashEditDiff`) since the last user-input message — only
+# files inside the project count, never ~/.claude/ or the session
+# scratchpad — and count VALIDATE signals (Bash with test-runner / lint /
+# typecheck / git commit / git push patterns) after the last mutation.
+# If mutations > 0 AND validates == 0:
 # write a `<cwd>/tasks/<slug>-paused.md` checkpoint, stderr a one-line
 # warn, and append a `warn` row to rule-hits.jsonl under §11-session-exit.
 #
@@ -19,10 +21,15 @@
 # tool_result), slice forward, flatten tool_use entries from assistant
 # turns, classify by name + Bash-command-pattern.
 #
-# Validate patterns (Bash command substring match):
-#   node --test, pytest, jest, vitest, npm test, go test, cargo test,
-#   bash tests/, tsc, eslint, ruff, clippy, shellcheck — test/lint chain
+# Validate patterns (at a command position; VALIDATE_RE below):
+#   node [opts] --test, pytest, unittest, mypy, jest, vitest, npm test,
+#   npm/pnpm/yarn/bun run <test|lint|typecheck|check|smoke|verify|validate…>,
+#   go test, cargo test/clippy/check/nextest/fmt --check, make <test|lint|check…>,
+#   bash tests/, tsc, vue-tsc, eslint, prettier --check, biome check,
+#   ruff, clippy, shellcheck                            — test/lint chain
 #   git commit, git push                                — finalization-as-validate
+#   each may follow `(`, `time`, VAR=value, `timeout N`, or a runner
+#   (npx, pnpm/yarn/npm exec, bunx, python -m)
 #
 # Kill-switch: DISABLE_SESSION_END_CHECK_HOOK=1
 # Fail-open on any hiccup.
@@ -60,6 +67,42 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 [[ -n "$TRANSCRIPT" && -f "$TRANSCRIPT" ]] || exit 0
 [[ -n "$CWD" ]] || CWD="$PWD"
 
+# Project roots. Only a file under one of these is a mutation: an edit to Claude
+# Code's own notes (~/.claude/projects/*/memory/), the session scratchpad, or
+# another repo is not a change the project's test run could validate, and it
+# used to reset the validate count after a clean commit (claude-mem-lite session
+# 8b475d66 checkpointed "12 unvalidated mutations" on one memory-file edit). The
+# roots are a union — cwd as given and resolved, its git toplevel, and
+# CLAUDE_PROJECT_DIR — because a missed root drops real edits and an extra one
+# only keeps counting them, the safe side for this checkpoint.
+ROOTS=("$CWD")
+_r=$(cd "$CWD" 2>/dev/null && pwd -P) && ROOTS+=("$_r")
+_r=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$_r")
+[[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && ROOTS+=("$CLAUDE_PROJECT_DIR")
+ROOTS_JSON=$(printf '%s\n' "${ROOTS[@]}" | jq -R . | jq -sc 'map(select(startswith("/")))' 2>/dev/null) || ROOTS_JSON='[]'
+
+# Validate command, anchored at a command position (see the comment at its use).
+# Between the anchor and the tool name it admits what real commands put there:
+# a subshell `(`, `time`, VAR=value assignments, `timeout [-opts] N`, and a
+# runner (npx [-opts], pnpm/yarn/npm exec, bunx, python -m). The list was built
+# from a replay over 30,372 local Bash commands (2026-09-26), where `npx vitest`
+# led the heads the tool-name-only anchor missed. `npm test` needs a word end so
+# a quoted mention (`grep "…\|npm test"`) no longer reads as one; `npm run`
+# scripts count when the name carries test/lint/typecheck/check/smoke/verify/
+# validate. Value classes exclude \n so a heredoc body's `s=…` line cannot chain
+# into the next one.
+_W='[^ \t\n;&|]'
+_OPT="([ \t]+-${_W}+([ \t]+[^- \t\n;&|]${_W}*)?)*"
+_SCRIPT="${_W}*(test|lint|typecheck|check|smoke|verify|validate)"
+VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?([A-Za-z_][A-Za-z0-9_]*=${_W}*[ \t]+)*"
+VALIDATE_RE+="(timeout([ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
+VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+)?"
+VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
+VALIDATE_RE+="|npm[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
+VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
+VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_W}*(test|lint|check)|bash tests/|tsc |vue-tsc|eslint"
+VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clippy|shellcheck|git commit|git push)"
+
 # Single jq pass over last 200 lines: find last user-input message,
 # slice forward, classify tool_use entries.
 # The boundary test is the shared `is_user_turn` (HOOK_USER_TURN_JQ in
@@ -73,7 +116,21 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 # is_user_turn branches on content type before iterating, so a string never
 # reaches an array operator (jq "Cannot iterate over string" errored the whole
 # filter under 2>/dev/null and the hook exited 0 silently).
-RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
+RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_RE" \
+  --argjson roots "$ROOTS_JSON" --arg home "${HOME:-}" "$HOOK_USER_TURN_JQ"'
+  # A path is in the project when it sits under a root. Relative or missing
+  # paths count (they resolve against cwd; unknown errs toward the checkpoint).
+  # ~/.claude/ and Claude Code'"'"'s /tmp/claude-<uid>/ scratch root are excluded
+  # even under a root, unless that root itself lies inside the same zone — a
+  # session run from $HOME must not count memory edits, one whose project lives
+  # under ~/.claude must keep counting its own.
+  def under($d): ($d | rtrimstr("/")) as $d | ($d | length) > 0 and (. == $d or startswith($d + "/"));
+  def zone: if ($home | length) > 0 and under($home + "/.claude") then $home + "/.claude"
+            else (capture("^(?<z>(/private)?/tmp/claude-[0-9]+)(/|$)") | .z) // null end;
+  def in_project: if type != "string" or (startswith("/") | not) then true
+                  else . as $p | ($p | zone) as $z
+                    | any($roots[]; . as $r | ($p | under($r)) and ($z == null or ($r | under($z))))
+                  end;
   split("\n") |
   map(select(length > 0) | try fromjson catch null) |
   # Normalize row shapes before any path expression runs (0.99.0 pre-tag review
@@ -115,13 +172,15 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
     # A non-string id or a non-object input must not throw (review M4).
     ($t.id | if type == "string" then . else "" end) as $tid |
     ($t.input | if type == "object" then . else {} end) as $in |
-    (if $t.name == "Bash" and (($bed[$tid] // []) | length) > 0 then
-      .mutations += ($bed[$tid] | length)
+    (($bed[$tid] // []) | map(select(in_project))) as $bf |
+    (if $t.name == "Bash" and ($bf | length) > 0 then
+      .mutations += ($bf | length)
       | .validates = 0
-      | .recent = ((.recent + ($bed[$tid] | map({name: "Bash", target: .})))
+      | .recent = ((.recent + ($bf | map({name: "Bash", target: .})))
                    | (if length > 3 then .[length-3:] else . end))
     else . end) |
-    if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit") then
+    if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit")
+       and (($in.file_path // $in.notebook_path) | in_project) then
       .mutations += 1
       # A validation that ran BEFORE this mutation did not validate it, so a
       # mutation resets the counter: `validates == 0` at the end now means "no
@@ -141,7 +200,7 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
       # `grep "npm test" file` counted as a validation and suppressed the
       # mid-SPINE paused.md checkpoint. A stricter anchor errs toward WRITING
       # the checkpoint (the safe side for this advisory safety-net).
-      if ($cmd | test("(^|[;&|\n]+[ \t]*)(node --test|pytest|npm test|jest|vitest|go test|cargo test|bash tests/|tsc |eslint|ruff |clippy|shellcheck|git commit|git push)")) then
+      if ($cmd | test($vre)) then
         .validates += 1
       else . end
     else . end
@@ -170,8 +229,9 @@ if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
 Generated by claudemd \`session-end-check.sh\` at $TS.
 
 The last assistant turn(s) since the final user prompt contained **$MUTATIONS mutation
-tool call(s)** (Edit / Write / NotebookEdit / Bash file edit) and **no VALIDATE signal
-after the last mutation** (test runner / lint / typecheck / git commit / git push).
+tool call(s)** (Edit / Write / NotebookEdit / Bash file edit of a file in the project)
+and **no VALIDATE signal after the last mutation** (test runner / lint / typecheck /
+git commit / git push).
 
 A validation earlier in the session does not count here, and this checkpoint is
 written even if you ran one: it could not have covered a change made after it.

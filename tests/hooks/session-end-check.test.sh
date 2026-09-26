@@ -387,14 +387,16 @@ fi
 # and under Opus 5.5 most edits take that route, so a checkpoint keyed on
 # Edit/Write alone never fired for those sessions.
 bash_edit_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"python3 - <<PY"}}]}}'
-TR_BASH_EDIT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[{"filePath":"/p/src/c.py","hunks":[]}]}}}'
+# The edited file sits inside the project (TMP_CWD): only those count (Case 25).
+TR_BASH_EDIT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[{"filePath":"__ROOT__/src/c.py","hunks":[]}]}}}'
+TR_BASH_EDIT=${TR_BASH_EDIT//__ROOT__/$TMP_CWD}
 TR_BASH_PLAIN='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":""}}'
 reset_cwd
 T="$TMP_HOME/case20.jsonl"
 make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_EDIT"
 run_hook "$T"
 PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
-if [[ -n "$PAUSED_MD" ]] && grep -qF 'Bash: /p/src/c.py' "$PAUSED_MD"; then
+if [[ -n "$PAUSED_MD" ]] && grep -qF "Bash: $TMP_CWD/src/c.py" "$PAUSED_MD"; then
   ok "Case 20: a Bash file edit with no validation → checkpoint naming the file"
 else
   ng "Case 20: bashEditDiff mutation missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
@@ -449,13 +451,14 @@ else
 fi
 
 # --- Case 22 (0.99.0 pre-tag review M1): changedFiles is the complete list ---
-TR_BASH_CF='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[],"moreFiles":1,"changedFiles":["/p/src/cf.py"]}}}'
+TR_BASH_CF='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[],"moreFiles":1,"changedFiles":["__ROOT__/src/cf.py"]}}}'
+TR_BASH_CF=${TR_BASH_CF//__ROOT__/$TMP_CWD}
 reset_cwd
 T="$TMP_HOME/case22.jsonl"
 make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_CF"
 run_hook "$T"
 PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
-if [[ -n "$PAUSED_MD" ]] && grep -qF 'Bash: /p/src/cf.py' "$PAUSED_MD"; then
+if [[ -n "$PAUSED_MD" ]] && grep -qF "Bash: $TMP_CWD/src/cf.py" "$PAUSED_MD"; then
   ok "Case 22: a file named only in changedFiles is a mutation"
 else
   ng "Case 22: changedFiles-only Bash edit missed"
@@ -485,6 +488,137 @@ for SHAPE in \
   fi
 done
 
+# --- Case 24 (claude-mem-lite session 8b475d66): real validation commands are
+# run through a runner prefix, an env assignment, `timeout`, or a subshell. The
+# command-position anchor used to require the tool name itself there, so
+# `npx vitest run` — the most frequent validate head in 30,372 local Bash
+# commands — never counted, and a vitest repo got a checkpoint after every
+# green run. Each command below follows an unvalidated Edit and must validate it.
+bash_call() { jq -cn --arg c "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:"t1",name:"Bash",input:{command:$c}}]}}'; }
+V_I=0
+for V_CMD in \
+  'npx vitest run tests/a.test.mjs' \
+  'cd /r && npx eslint .' \
+  'npm run test:coverage' \
+  'npm run -s lint' \
+  'FOO=1 npm test' \
+  '(timeout 900 cargo test --lib > log 2>&1)' \
+  'python3 -m pytest -q' \
+  'node --require ./t.cjs --test tests/x.js' \
+  'npx --no-install prettier --check .' \
+  'pnpm lint' \
+  'make test-js'; do
+  V_I=$((V_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case24-$V_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$V_CMD")" "$TR_OK"
+  run_hook "$T"
+  if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+    ok "Case 24.$V_I: '$V_CMD' validates"
+  else
+    ng "Case 24.$V_I: '$V_CMD' did not count as a validation"
+  fi
+done
+# Controls: a mention of the same verbs, or a runner doing something that is not
+# a check, still leaves the checkpoint. Without these the loop above would pass
+# for a regex that matched everything.
+N_I=0
+for N_CMD in \
+  'echo "npx vitest"' \
+  'grep -n "npm run\|npm test" README.md' \
+  'npm run format' \
+  'npx prettier --write .' \
+  'npm install eslint' \
+  "python3 - <<'PY'"$'\n'"s=s.replace(a,b)"$'\n'"PY"; do
+  N_I=$((N_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case24n-$N_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$N_CMD")" "$TR_OK"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    ok "Case 24n.$N_I: control '$N_CMD' is not a validation"
+  else
+    ng "Case 24n.$N_I: control '$N_CMD' read as a validation"
+  fi
+done
+
+# --- Case 25 (claude-mem-lite session 8b475d66): only a change to the project
+# is a mutation. The session committed, then edited an auto-memory file under
+# ~/.claude/projects/*/memory/, and the hook wrote a checkpoint claiming 12
+# unvalidated mutations — no test run in the project can validate a note.
+edit_at() { jq -cn --arg p "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:"t1",name:"Edit",input:{file_path:$p,old_string:"x",new_string:"y"}}]}}'; }
+P_I=0
+for P_PATH in \
+  "$HOME/.claude/projects/x/memory/y.md" \
+  "/tmp/claude-1000/-p/0b0e8a8c-0000-4000-8000-000000000000/scratchpad/n.md" \
+  "$TMP_HOME/elsewhere/repo/z.js"; do
+  P_I=$((P_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case25-$P_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$commit_call" "$TR_OK" "$(edit_at "$P_PATH")" "$TR_OK"
+  run_hook "$T"
+  if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+    ok "Case 25.$P_I: a post-commit edit outside the project ($P_PATH) is not a mutation"
+  else
+    ng "Case 25.$P_I: an edit outside the project ($P_PATH) wrote a checkpoint"
+  fi
+done
+# Control: the same sequence ending in an edit INSIDE the project still writes it.
+reset_cwd
+T="$TMP_HOME/case25c.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$commit_call" "$TR_OK" "$(edit_at "$TMP_CWD/src/z.js")" "$TR_OK"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+if [[ -n "$PAUSED_MD" ]] && grep -qF "Edit: $TMP_CWD/src/z.js" "$PAUSED_MD"; then
+  ok "Case 25c: control — a post-commit edit inside the project still writes the checkpoint"
+else
+  ng "Case 25c: an in-project edit after the commit was missed"
+fi
+# The Bash channel takes the same filter: a bashEditDiff naming only a memory
+# file is not a mutation, while the in-project one (Case 20) is.
+TR_BASH_MEM=${TR_BASH_EDIT//$TMP_CWD\/src\/c.py/$HOME/.claude/projects/x/memory/y.md}
+reset_cwd
+T="$TMP_HOME/case25b.jsonl"
+make_transcript "$T" "$USER_MSG" "$commit_call" "$TR_OK" "$bash_edit_call" "$TR_BASH_MEM"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 25b: a Bash edit of a memory file only is not a mutation"
+else
+  ng "Case 25b: a Bash edit outside the project wrote a checkpoint"
+fi
+# The exclusion zones hold even when a root CONTAINS them — a session run from
+# $HOME, or one whose CLAUDE_PROJECT_DIR is /tmp. Cases 25.1/25.2 alone pass on
+# the root check without ever reaching the zone arm (mutation: drop the zone
+# test and they stay green), so the root here is widened to cover each zone.
+Z_I=0
+for Z in \
+  "$HOME|$HOME/.claude/projects/x/memory/y.md" \
+  "/tmp|/tmp/claude-1000/-p/0b0e8a8c-0000-4000-8000-000000000000/scratchpad/n.md"; do
+  Z_I=$((Z_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case25e-$Z_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$commit_call" "$TR_OK" "$(edit_at "${Z#*|}")" "$TR_OK"
+  CLAUDE_PROJECT_DIR="${Z%%|*}" run_hook "$T"
+  if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+    ok "Case 25e.$Z_I: root ${Z%%|*} contains the zone, the edit of ${Z#*|} is still excluded"
+  else
+    ng "Case 25e.$Z_I: root ${Z%%|*} let an edit of ${Z#*|} count as a mutation"
+  fi
+done
+# A session whose own project lives under ~/.claude keeps its edits counted: the
+# exclusion covers paths outside the root, not a root inside the zone.
+CLAUDE_ROOT="$HOME/.claude/proj"
+mkdir -p "$CLAUDE_ROOT"
+T="$TMP_HOME/case25d.jsonl"
+make_transcript "$T" "$USER_MSG" "$(edit_at "$CLAUDE_ROOT/a.js")" "$TR_OK"
+printf '%s' "$(jq -cn --arg t "$T" --arg c "$CLAUDE_ROOT" '{hook_event_name:"SessionEnd",session_id:"x",transcript_path:$t,cwd:$c}')" \
+  | bash "$HOOK" 2>/dev/null
+if compgen -G "$CLAUDE_ROOT/tasks/*-paused.md" >/dev/null; then
+  ok "Case 25d: a project rooted under ~/.claude still counts its own edits"
+else
+  ng "Case 25d: an in-project edit was dropped because the project sits under ~/.claude"
+fi
+
 echo ""
-echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
+echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
