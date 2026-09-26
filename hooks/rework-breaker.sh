@@ -38,7 +38,7 @@
 set -uo pipefail
 
 # Opt-in gate (default OFF). Checked BEFORE sourcing hook-common so the default
-# path costs one string compare — this hook is on every Edit and every Write.
+# path costs one string compare — this hook is on every Edit, Write and Bash.
 [[ "${REWORK_BREAKER:-0}" == "1" ]] || exit 0
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
@@ -54,13 +54,19 @@ REWORK_THRESHOLD=8
 
 EVENT=$(hook_read_event) || exit 0
 TOOL=$(hook_jq_field rework-breaker "$EVENT" '.tool_name // ""') || exit 0
+# The files this call edited. Edit/Write name one in tool_input. A Bash command
+# names every file it changed in tool_response.bashEditDiff (Claude Code
+# >=2.1.278; on by default in auto/bypassPermissions mode, forced by
+# CLAUDE_CODE_BASH_EDIT_DIFF; probed on 2.1.283, D#88). Under Opus 5.5 about 80%
+# of edits take that route (analysis 2026-09-26, B1), so an Edit|Write-only
+# tally saw one edit in five. A Bash call with no recorded edit names nothing.
+# One command that changes a file is one edit to it, whatever it rewrote.
 case "$TOOL" in
-  Edit | Write) ;;
+  Edit | Write) FILES_JQ='.tool_input.file_path | strings' ;;
+  Bash) FILES_JQ='.tool_response.bashEditDiff | objects | .files | arrays | .[] | objects | .filePath | strings' ;;
   *) exit 0 ;;
 esac
 
-FILE_PATH=$(printf '%s' "$EVENT" | jq -r '.tool_input.file_path // ""' 2>/dev/null)
-[[ -n "$FILE_PATH" ]] || exit 0
 # Code files only. The line this hook injects quotes §1 "reproduce the failure,
 # name the cause" — advice that means nothing about the eighth edit to a
 # markdown file, which is what it used to say (pre-ship review, behaviour L1).
@@ -70,10 +76,14 @@ FILE_PATH=$(printf '%s' "$EVENT" | jq -r '.tool_input.file_path // ""' 2>/dev/nu
 # Same extension list as evidence-gate.sh and sampling-audit.js's CODE_FILE_RE
 # — three copies in three languages, and the roadmap's G0 pre-registration is
 # what pins the JS one, so they are changed together or not at all.
-case "$FILE_PATH" in
-  *.js | *.mjs | *.cjs | *.jsx | *.ts | *.mts | *.cts | *.tsx | *.rs | *.py | *.go | *.sh | *.rb | *.java | *.c | *.cpp | *.h) ;;
-  *) exit 0 ;;
-esac
+FILE_PATHS=()
+# NUL-delimited, so a path containing a newline stays one path.
+while IFS= read -r -d '' FILE_PATH; do
+  case "$FILE_PATH" in
+    *.js | *.mjs | *.cjs | *.jsx | *.ts | *.mts | *.cts | *.tsx | *.rs | *.py | *.go | *.sh | *.rb | *.java | *.c | *.cpp | *.h) FILE_PATHS+=("$FILE_PATH") ;;
+  esac
+done < <(printf '%s' "$EVENT" | jq -j "$FILES_JQ"' | select(length > 0) | . + "\u0000"' 2>/dev/null)
+(( ${#FILE_PATHS[@]} > 0 )) || exit 0
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 # No session_id, no per-session tally. Counting into a shared file instead would
@@ -85,74 +95,84 @@ RB_STATE_DIR="$HOME/.claude/.claudemd-state"
 RB_SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
 RB_LEDGER="$RB_STATE_DIR/rework-${RB_SAFE_SID}.counts"
 
-# Append-only, one short line per edit, keyed by a checksum of the path rather
-# than the path itself: paths contain spaces, newlines and non-ASCII, and a
-# fixed-width key keeps the line format greppable with an anchored match. A
-# checksum collision over-counts two files as one — the cost is one advisory
-# line that names a real count for the wrong file, which is why the message
-# quotes the path from the EVENT and never from this ledger.
-RB_KEY=$(printf '%s' "$FILE_PATH" | cksum 2>/dev/null | awk '{print $1"-"$2}')
-[[ -n "$RB_KEY" ]] || { hook_record_failopen rework-breaker prereq-missing; exit 0; }
-
 mkdir -p "$RB_STATE_DIR" 2>/dev/null || { hook_record_failopen rework-breaker prereq-missing; exit 0; }
-# The redirection is inside the subshell, not after `printf`. A failing `>>` is
-# reported by the SHELL before printf runs, so `printf … 2>/dev/null` left
-# `rework-breaker.sh: line N: …: Permission denied` on the user's stderr while
-# still exiting 0 (pre-ship review, behaviour L2). The claim write below already
-# had this shape; now both writers in this file do.
-(printf '%s\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {
-  hook_record_failopen rework-breaker prereq-missing
-  exit 0
-}
+RB_CROSSED=()
+for FILE_PATH in "${FILE_PATHS[@]}"; do
+  # Append-only, one short line per edit, keyed by a checksum of the path rather
+  # than the path itself: paths contain spaces, newlines and non-ASCII, and a
+  # fixed-width key keeps the line format greppable with an anchored match. A
+  # checksum collision over-counts two files as one — the cost is one advisory
+  # line that names a real count for the wrong file, which is why the message
+  # quotes the path from the EVENT and never from this ledger.
+  RB_KEY=$(printf '%s' "$FILE_PATH" | cksum 2>/dev/null | awk '{print $1"-"$2}')
+  [[ -n "$RB_KEY" ]] || { hook_record_failopen rework-breaker prereq-missing; continue; }
 
-COUNT=$(grep -c -x -F "$RB_KEY" "$RB_LEDGER" 2>/dev/null || true)
-# `grep -c` prints 0 and exits 1 when nothing matches; an unreadable ledger
-# prints nothing. Either way a non-numeric COUNT means "no tally", not "zero
-# edits" — treat it as nothing to say rather than firing on a garbage number.
-[[ "$COUNT" =~ ^[0-9]+$ ]] || exit 0
-(( COUNT > 0 )) || exit 0
+  # The redirection is inside the subshell, not after `printf`. A failing `>>` is
+  # reported by the SHELL before printf runs, so `printf … 2>/dev/null` left
+  # `rework-breaker.sh: line N: …: Permission denied` on the user's stderr while
+  # still exiting 0 (pre-ship review, behaviour L2). The claim write below already
+  # had this shape; now both writers in this file do.
+  (printf '%s\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {
+    hook_record_failopen rework-breaker prereq-missing
+    exit 0
+  }
 
-# Fire at the threshold and at each multiple of it. Once-per-session-per-file
-# would leave a 58-edit session with a single line at edit 8; every edit past
-# the threshold would be noise that says nothing new. The multiple carries the
-# escalation in the number itself.
-#
-# The firing decision is a CLAIM, not a comparison, because the append-then-read
-# above is a read-modify-check race and Claude Code issues several Edit/Write
-# calls in one assistant message, so these hooks run concurrently. Measured in
-# pre-ship review over six trials of 16 concurrent edits: 1, 3, 3, 5, 2 and 3
-# advisories where the answer is 2 — both duplicates on one multiple and a
-# multiple crossed by two processes that neither of them observed.
-#
-# `(set -o noclobber; : > file)` is an O_CREAT|O_EXCL create: exactly one
-# process can win each multiple, whatever order they interleave in. The loop
-# claims every UNCLAIMED multiple at or below the observed count rather than
-# only `COUNT % T == 0`, so a count that jumps the boundary (every process
-# appends, then every process reads 16) still reports the 8 that was crossed.
-# Fires once per invocation, for the highest multiple this process won.
-CLAIMED=0
-M=$REWORK_THRESHOLD
-while (( M <= COUNT )); do
-  RB_CLAIM="$RB_STATE_DIR/rework-${RB_SAFE_SID}.fired-${RB_KEY}-${M}"
-  if (set -o noclobber; : > "$RB_CLAIM") 2>/dev/null; then
-    CLAIMED=$M
-  fi
-  M=$((M + REWORK_THRESHOLD))
+  COUNT=$(grep -c -x -F "$RB_KEY" "$RB_LEDGER" 2>/dev/null || true)
+  # `grep -c` prints 0 and exits 1 when nothing matches; an unreadable ledger
+  # prints nothing. Either way a non-numeric COUNT means "no tally", not "zero
+  # edits" — treat it as nothing to say rather than firing on a garbage number.
+  [[ "$COUNT" =~ ^[0-9]+$ ]] || continue
+  (( COUNT > 0 )) || continue
+
+  # Fire at the threshold and at each multiple of it. Once-per-session-per-file
+  # would leave a 58-edit session with a single line at edit 8; every edit past
+  # the threshold would be noise that says nothing new. The multiple carries the
+  # escalation in the number itself.
+  #
+  # The firing decision is a CLAIM, not a comparison, because the append-then-read
+  # above is a read-modify-check race and Claude Code issues several Edit/Write
+  # calls in one assistant message, so these hooks run concurrently. Measured in
+  # pre-ship review over six trials of 16 concurrent edits: 1, 3, 3, 5, 2 and 3
+  # advisories where the answer is 2 — both duplicates on one multiple and a
+  # multiple crossed by two processes that neither of them observed.
+  #
+  # `(set -o noclobber; : > file)` is an O_CREAT|O_EXCL create: exactly one
+  # process can win each multiple, whatever order they interleave in. The loop
+  # claims every UNCLAIMED multiple at or below the observed count rather than
+  # only `COUNT % T == 0`, so a count that jumps the boundary (every process
+  # appends, then every process reads 16) still reports the 8 that was crossed.
+  # Names, per file, the highest multiple this process won.
+  CLAIMED=0
+  M=$REWORK_THRESHOLD
+  while (( M <= COUNT )); do
+    RB_CLAIM="$RB_STATE_DIR/rework-${RB_SAFE_SID}.fired-${RB_KEY}-${M}"
+    if (set -o noclobber; : > "$RB_CLAIM") 2>/dev/null; then
+      CLAIMED=$M
+    fi
+    M=$((M + REWORK_THRESHOLD))
+  done
+  (( CLAIMED > 0 )) || continue
+
+  # CLAIMED, not COUNT, is what the message names. Under concurrency the count
+  # this process happened to read is whatever the other processes had appended by
+  # then; the multiple it won is exact, and "at least N" is true of both.
+  EXTRA=$(jq -cn --argjson n "$COUNT" --argjson c "$CLAIMED" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
+    '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool}' 2>/dev/null) || EXTRA='null'
+  hook_record rework-breaker rework-advisory "$EXTRA" '§1-root-cause' "$SESSION_ID" "$TOOL_USE_ID"
+  RB_CROSSED+=("${FILE_PATH} at least ${CLAIMED} times")
 done
-(( CLAIMED > 0 )) || exit 0
-
-# CLAIMED, not COUNT, is what the message names. Under concurrency the count
-# this process happened to read is whatever the other processes had appended by
-# then; the multiple it won is exact, and "at least N" is true of both.
-EXTRA=$(jq -cn --argjson n "$COUNT" --argjson c "$CLAIMED" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
-  '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool}' 2>/dev/null) || EXTRA='null'
-hook_record rework-breaker rework-advisory "$EXTRA" '§1-root-cause' "$SESSION_ID" "$TOOL_USE_ID"
 
 # The model reads additionalContext; PostToolUse delivery was verified on
 # Claude Code 2.1.278 (roadmap §5, 0a). suppressOutput keeps the terminal quiet
 # — this is a note to the agent, not a banner for the user, and the same line on
 # every eighth edit of a long refactor would be the user's noise, not theirs.
-CONTEXT="[claudemd] system-injected: this session has now edited ${FILE_PATH} at least ${CLAIMED} times (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; disable with DISABLE_REWORK_BREAKER_HOOK=1."
+#
+# One object per invocation even when one Bash command pushed several files
+# over a multiple: two JSON objects on stdout and Claude Code drops both.
+(( ${#RB_CROSSED[@]} > 0 )) || exit 0
+RB_LIST=""
+for RB_ONE in "${RB_CROSSED[@]}"; do RB_LIST+="${RB_LIST:+, }${RB_ONE}"; done
+CONTEXT="[claudemd] system-injected: this session has now edited ${RB_LIST} (threshold ${REWORK_THRESHOLD}). Spec §1 Root cause over patch: if the last few edits were attempts rather than a planned change, stop editing — reproduce the failure, name the cause, then make one edit. Advisory only; disable with DISABLE_REWORK_BREAKER_HOOK=1."
 jq -cn --arg ctx "$CONTEXT" '{
   suppressOutput: true,
   hookSpecificOutput: {

@@ -327,5 +327,75 @@ else
   ng "17: claim set was [$CLAIMS], expected [8,16,24,]"
 fi
 
+# --- Case 18-22 (analysis 2026-09-26 B1, D#88): Bash-channel edits ----------
+# Claude Code >=2.1.278 puts the files a Bash command changed on the PostToolUse
+# payload as tool_response.bashEditDiff.files[].filePath (probed on 2.1.283 with
+# CLAUDE_CODE_BASH_EDIT_DIFF=1; on by default in auto/bypassPermissions). Under
+# Opus 5.5 ~80% of edits take this route, so an Edit|Write-only tally saw ~1/5.
+fire_bash() {
+  local sid="$1"; shift
+  jq -cn --arg s "$sid" --args '{session_id:$s,tool_name:"Bash",tool_use_id:"toolu_b",
+      tool_input:{command:"python3 - <<PY"},
+      tool_response:{stdout:"",bashEditDiff:{files:($ARGS.positional | map({filePath:., hunks:[]})),moreFiles:0}}}' \
+      "$@" | bash "$HOOK" 2>/dev/null
+}
+reset_state
+B_OUT=""
+for _ in 1 2 3 4 5 6 7; do B_OUT="$B_OUT$(fire_bash sH /p/src/b.py)"; done
+B8=$(fire_bash sH /p/src/b.py)
+B_TOOL=$(jq -r 'select(.hook=="rework-breaker") | .extra.tool' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | head -n1)
+if [[ -z "$B_OUT" && "$B8" == *"/p/src/b.py at least 8 times"* && "$B_TOOL" == "Bash" ]]; then
+  ok "18: the 8th Bash edit of one file fires, row tool=Bash"
+else
+  ng "18: Bash edits not counted (pre: $B_OUT, 8th: $B8, tool: $B_TOOL)"
+fi
+
+# Both channels feed ONE tally: 4 Edit + 4 Bash on the same file is 8 edits.
+reset_state
+MIX=""
+for _ in 1 2 3 4; do MIX="$MIX$(fire sI /p/src/m.js)"; done
+for _ in 1 2 3; do MIX="$MIX$(fire_bash sI /p/src/m.js)"; done
+MIX8=$(fire_bash sI /p/src/m.js)
+if [[ -z "$MIX" && "$MIX8" == *"at least 8 times"* ]]; then
+  ok "19: Edit and Bash edits of the same file share one count"
+else
+  ng "19: channels counted separately (pre: $MIX, 8th: $MIX8)"
+fi
+
+# Control: a Bash call whose response carries no bashEditDiff edits nothing.
+reset_state
+NB=""
+for _ in $(seq 1 9); do
+  NB="$NB$(jq -cn '{session_id:"sJ",tool_name:"Bash",tool_input:{command:"npm test"},tool_response:{stdout:"ok"}}' | bash "$HOOK" 2>/dev/null)"
+done
+if [[ -z "$NB" && ! -e "$HOME/.claude/.claudemd-state/rework-sJ.counts" ]]; then
+  ok "20: a Bash call with no recorded edit is not counted (no ledger written)"
+else
+  ng "20: a plain Bash call was counted (out: $NB)"
+fi
+
+# One command that changes two code files is one edit to EACH; both cross at 8
+# and both are named, one row per file.
+reset_state
+for _ in 1 2 3 4 5 6 7; do fire_bash sK /p/src/x.go /p/src/y.rs >/dev/null; done
+TWO=$(fire_bash sK /p/src/x.go /p/src/y.rs)
+TWO_CTX=$(printf '%s' "$TWO" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if [[ "$TWO_CTX" == *"/p/src/x.go at least 8"* && "$TWO_CTX" == *"/p/src/y.rs at least 8"* \
+      && "$(printf '%s' "$TWO" | jq -s 'length' 2>/dev/null)" == "1" && "$(log_rows)" == "2" ]]; then
+  ok "21: a two-file Bash edit names both files in one JSON object, one row each"
+else
+  ng "21: multi-file Bash edit mishandled (rows: $(log_rows), out: $TWO)"
+fi
+
+# The code-extension filter applies to the Bash channel too.
+reset_state
+MD=""
+for _ in $(seq 1 8); do MD="$MD$(fire_bash sL /p/README.md)"; done
+if [[ -z "$MD" && "$(log_rows)" == "0" ]]; then
+  ok "22: eight Bash edits of a markdown file stay silent"
+else
+  ng "22: the extension filter let a Bash .md edit through (out: $MD)"
+fi
+
 echo
 claudemd_assert_summary

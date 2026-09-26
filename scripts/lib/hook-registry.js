@@ -156,7 +156,7 @@ export const HOOK_REGISTRY = [
     displayName: 'rework-breaker',
     envVarSuffix: 'REWORK_BREAKER',
     hookEvent: 'PostToolUse',
-    matcher: 'Edit|Write',
+    matcher: 'Edit|Write|Bash',
     timeout: 3,
   },
   {
