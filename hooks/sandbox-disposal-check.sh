@@ -98,7 +98,8 @@ fi
 #                       The dir holding this session's own transcript_path
 #                       is excluded: a session run from a temp cwd writes
 #                       subagent transcripts there, which moves its mtime.)
-# Depth 1 everywhere (platform_find_newer): §8 forbids descending ~/.claude/.
+# Depth 1 for every scan (platform_find_newer), plus one level into an explicit
+# probe_session candidate: §8 forbids descending ~/.claude/ any further.
 # Override via CLAUDEMD_SCAN_SPECS_OVERRIDE for tests; production default below.
 DEFAULT_SCAN_SPECS=$(printf '/tmp|claudemd_only\x1e%s|both\x1e/var/tmp|both\x1e%s|probe_session' \
   "$HOME/.claude/tmp" "$HOME/.claude/projects")
@@ -125,11 +126,13 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
       probe_session)
         [[ "$base" =~ ^-(private-)?(tmp|var-tmp|var-folders)- ]] || continue
         [[ "$path" != "$OWN_PROJECT_DIR" ]] || continue
-        # Created in this window, not merely written to: a dir that already
-        # held anything older than the ref existed before it, and its mtime
-        # moved because some session (maybe a concurrent one) added a
-        # transcript (0.97.0 pre-tag review H1). One level into an explicit
-        # path — the §8 depth cap still holds.
+        # Every direct entry modified since the ref (none at or before it). A
+        # dir that still holds an untouched older file existed before the
+        # window and only moved because some session added to it (0.97.0
+        # pre-tag review H1). NOT an ownership test: a concurrent session
+        # whose only transcript was appended in the window still passes —
+        # the warn and block text say entries may belong to another session.
+        # One level into an explicit path — the §8 depth cap still holds.
         [[ -z "$(find "$path" -mindepth 1 -maxdepth 1 ! -newer "$SESSION_REF" 2>/dev/null | head -n 1)" ]] || continue ;;
       *)             continue ;;
     esac
@@ -151,7 +154,7 @@ if [[ -n "$FOUND" ]]; then
       exit 0
     fi
   fi
-  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories appeared or changed since this session's previous stop (some may belong to another session)." >&2
+  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories appeared or changed since this session's previous stop (up to 5 listed; some may belong to another session)." >&2
   printf '%s\n' "$LIST" >&2
   hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
 fi

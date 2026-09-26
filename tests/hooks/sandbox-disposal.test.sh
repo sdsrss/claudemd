@@ -184,28 +184,44 @@ PROJ="$HOME/.claude/projects"
 rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
 mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
 
-# Case 12: the DEFAULT scan list covers ~/.claude/projects/: a project dir
-# created since the previous Stop whose name encodes a temp-dir cwd (a headless
-# `claude -p` probe run from a scratchpad — the 2026-09-26 stopprobe leftover)
-# is flagged, in every spelling the hook documents: Linux -tmp- / -var-tmp-,
-# macOS -private-tmp- / -private-var-folders- / -var-folders-.
+# Case 12: a project dir made since the previous Stop whose name encodes a
+# temp-dir cwd (a headless `claude -p` probe run from a scratchpad — the
+# 2026-09-26 stopprobe leftover) is flagged, in every spelling the hook
+# documents: Linux -tmp- / -var-tmp-, macOS -private-tmp- /
+# -private-var-folders- / -var-folders-. Shaped like a real one: a fresh
+# <sid>.jsonl, and a <sid>/ subdir (0.97.0 re-review H-1: empty dirs let an
+# inverted freshness test pass). One dir also holds an OLD file two levels
+# down; the check looks one level in, so it is still flagged (re-review M-2:
+# without -maxdepth the deep file would hide it, and §8 forbids the descent).
+# Scoped to the projects arm, so the 5-line list cap cannot drop an entry
+# when another process makes /tmp/claudemd-* dirs meanwhile.
 stop_at s12 >/dev/null; sleep 1
 P12=(-tmp-claude-1000--home-x-scratchpad-stopprobe -var-tmp-probe
      -private-tmp-probe -private-var-folders-ab-T-probe -var-folders-ab-T-probe)
-for d in "${P12[@]}"; do mkdir "$PROJ/$d"; done
-OUT=$(stop_at s12)
+for d in "${P12[@]}"; do mkdir -p "$PROJ/$d/sid"; touch "$PROJ/$d/sid.jsonl"; done
+touch -t 202001010000 "$PROJ/${P12[0]}/sid/old.jsonl"
+OUT=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$PROJ|probe_session" stop_at s12)
 MISS=""
 for d in "${P12[@]}"; do echo "$OUT" | grep -q -- "/$d\$" || MISS+=" $d"; done
-if [[ -z "$MISS" ]]; then
-  echo "PASS: 12 temp-cwd probe project dirs flagged by the default scan"
+if [[ -z "$MISS" ]] && echo "$OUT" | grep -q "may belong to another session"; then
+  echo "PASS: 12 temp-cwd probe project dirs flagged, warn disclaims ownership"
 else
   echo "FAIL: 12 probe project dirs not flagged:$MISS (out: $OUT)"; FAIL=$((FAIL+1))
+fi
+# Case 12b: the DEFAULT scan list includes ~/.claude/projects (one dir, so
+# the list cap leaves room for unrelated /tmp churn).
+stop_at s12b >/dev/null; sleep 1
+mkdir "$PROJ/-tmp-default-list-probe"; touch "$PROJ/-tmp-default-list-probe/s.jsonl"
+OUT=$(stop_at s12b)
+if echo "$OUT" | grep -q -- "/-tmp-default-list-probe\$"; then
+  echo "PASS: 12b the default scan list covers ~/.claude/projects"
+else
+  echo "FAIL: 12b default list misses ~/.claude/projects (out: $OUT)"; FAIL=$((FAIL+1))
 fi
 
 # Case 13: a fresh project dir for an ordinary cwd is a real project, not
 # residue — never flagged, including one whose path merely contains `tmp`
 # (~/tmp/proj encodes to -home-u-tmp-proj; the pattern is anchored).
-# residue — never flagged.
 stop_at s13 >/dev/null; sleep 1
 mkdir "$PROJ/-home-ai-dev-newproject" "$PROJ/-home-u-tmp-proj"
 OUT=$(stop_at s13)
@@ -286,8 +302,10 @@ STDOUT=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s19
 # Case 20 (0.97.0 pre-tag review H1): a temp-cwd project dir that existed
 # before this session's window is not this session's residue, even when
 # another session writes a new transcript into it (which moves its mtime).
-# Only a dir with nothing older than the window counts as created in it.
-mkdir "$PROJ/-tmp-work"; touch -d '2 hours ago' "$PROJ/-tmp-work/A.jsonl"
+# A dir still holding an entry at or before the window's start is not
+# flagged. (Not ownership: a concurrent session that only appends to its sole
+# transcript still gets through — the block reason says so.)
+mkdir "$PROJ/-tmp-work"; touch -t 202001010000 "$PROJ/-tmp-work/A.jsonl"
 stop_at s20 >/dev/null; sleep 1
 touch "$PROJ/-tmp-work/B.jsonl"
 OUT=$(stop_at s20)
@@ -297,7 +315,7 @@ else
   echo "PASS: 20 pre-existing temp-cwd project dir not attributed to this session"
 fi
 
-TOTAL=$((20 - ${SKIPPED:-0}))
+TOTAL=$((21 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi

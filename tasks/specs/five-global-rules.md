@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 3
+revision: 4
 ---
 
 # 五条全局规则并入 spec v6.34.0
@@ -30,7 +30,7 @@ revision: 3
 ## success-criteria
 
 - `spec/CLAUDE.md` 包含第 1–4 条，`spec/CLAUDE-extended.md` §12 包含第 5 条；`spec-coherence-audit --strict` 结果为 `coreDelta=0, extendedDelta=0`，两个文件都在上限内。
-- `sandbox-disposal-check.sh` 默认扫描 `/var/tmp`（`tmp.*`、`claudemd-*`），以及 `~/.claude/projects/` 里本会话新建、目录名编码了临时目录的项目目录（排除本会话自己的 transcript 所在目录）；设置 `SANDBOX_DISPOSAL_BLOCK=1` 时返回 `{"decision":"block"}`，每轮最多一次（`stop_hook_active`）。
+- `sandbox-disposal-check.sh` 默认扫描 `/var/tmp`（`tmp.*`、`claudemd-*`），以及 `~/.claude/projects/` 里目录名编码了临时目录、且其中每一项都在本会话上次 Stop 之后改动过的项目目录（按 mtime 判断，不判断归属）（排除本会话自己的 transcript 所在目录）；设置 `SANDBOX_DISPOSAL_BLOCK=1` 时返回 `{"decision":"block"}`，每轮最多一次（`stop_hook_active`）。
 - `tests/hooks/sandbox-disposal.test.sh` 为每个新分支写一条用例，并做变异验证：去掉该分支后用例变红。
 - `npm run check` 退出码 0；`npm run smoke` 最后一行给出通过数。
 
@@ -43,3 +43,4 @@ revision: 3
 - r1 2026-09-26：初稿，按用户选定的四项推荐方案。
 - r2 2026-09-26：实现完成，钩子部分在 cf31b70。
 - r3 2026-09-26：按打 tag 前评审修复（H1 归属误判、M1–M4 及部分 Low）；core 24979B，extended 49810B。
+- r4 2026-09-26：按第二轮复审修正：判定说法改为「每一项都在窗口内改动过」，补真实形态的 probe 目录和深度上限用例（21 条，17 个变异全红）。
