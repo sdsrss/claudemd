@@ -615,5 +615,23 @@ else
   ng "23d: a Bash edit after the test run was not seen as the last edit: $OUT"
 fi
 
+# --- Case 24 (review M2): an editing command cannot verify itself by OUTPUT ---
+# The edit's E sits before its own R, so `edit && npm test` verifies itself by
+# its COMMAND. But its output text must not: a patch script printing
+# `✓ patched` matched the runner-verdict regex and the gate went silent with
+# no test run at all. The same command with a runner in it still verifies (23c).
+{
+  row_bash tu_sv "python3 - <<'PY'"
+  row_bash_edit_result tu_sv /p/src/a.py "✓ patched /p/src/a.py"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"Iron Law #2"* && "$OUT" == *"no command output at all"* ]]; then
+  ok "24: a Bash edit whose own output looks like a verdict is not its own verification"
+else
+  ng "24: the edit command's output verified itself: $OUT"
+fi
+
 echo
 claudemd_assert_summary

@@ -135,7 +135,8 @@ EG_WINDOW="${EVIDENCE_GATE_WINDOW:-1200}"
 #   E                        a code-file Edit/Write, or a Bash result whose
 #                            bashEditDiff lists a code file
 #   U <tool_use_id> <cmd>    a Bash tool_use and its command text
-#   R <tool_use_id> <0|1> <output>   a tool_result and whether it errored
+#   R <tool_use_id> <0|1> <output> <0|1>   a tool_result, whether it errored,
+#                            and whether its own row carries a code bashEditDiff
 # Nothing else is extracted; the point is to get out of jq with a few hundred
 # short lines rather than to carry the transcript into awk.
 #
@@ -159,8 +160,8 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
   def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty
   | ([.toolUseResult | objects | .bashEditDiff | objects | .files | arrays | .[]
-      | objects | .filePath | strings | select(is_code)]
-     | if length > 0 then ["E"] else [] end)
+      | objects | .filePath | strings | select(is_code)] | length > 0) as $selfedit
+  | (if $selfedit then ["E"] else [] end)
     + ((.message.content // []) | if type == "array" then . else [] end
   | map(
       if .type == "tool_use" then
@@ -185,6 +186,7 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
            | if type == "array" then (map(.text // "") | join(" ")) else tostring end
            | gsub("[\\r\\n\\t]+"; " ")
            | (if length > 900 then .[:100] + " … " + .[-800:] else . end))
+        + "\t" + (if $selfedit then "1" else "0" end)
       else empty end))
   | .[]' 2>/dev/null)
 [[ -n "$STREAM" ]] || exit 0
@@ -214,7 +216,7 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CMD_RE" -v t2="$T2_OUT_RE" '
   $1 == "E" { lastedit = NR; next }
   $1 == "U" { cmd[$2] = $3; next }
-  $1 == "R" { n++; ridx[n] = NR; rid[n] = $2; rerr[n] = $3; rtxt[n] = $4; next }
+  $1 == "R" { n++; ridx[n] = NR; rid[n] = $2; rerr[n] = $3; rtxt[n] = $4; rself[n] = $5; next }
   END {
     if (lastedit == 0) { print "no-code-edit"; exit }
     tier = 0
@@ -227,6 +229,15 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CM
       # absence of anything. The join is the same one the tiers use, so this
       # counts only errors belonging to a command this stream actually saw.
       if (rerr[i] == "1") { errored = 1; continue }
+      # The result of the command that MADE the last edit (review M2): it can
+      # verify itself only by what it RAN (`… && npm test`), never by what it
+      # printed — a patch script echoing `✓ patched` is not a test verdict —
+      # and it is not "a command after the edit" for the no-runner tier either.
+      if (rself[i] == "1") {
+        if (cmd[rid[i]] ~ t1) { tier = 3; break }
+        if (cmd[rid[i]] ~ t2c && tier < 2) tier = 2
+        continue
+      }
       if (tier < 1) tier = 1
       if (cmd[rid[i]] ~ t1) { tier = 3; break }
       if ((cmd[rid[i]] ~ t2c || rtxt[i] ~ t2) && tier < 2) tier = 2
