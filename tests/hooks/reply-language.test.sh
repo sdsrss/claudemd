@@ -236,6 +236,11 @@ for m in '<local-command-stdout>Set model to Opus and saved as your default for 
   [[ "$(decision "$(run "$(stop "$EN25")")")" == block ]] && MACH_OK=$((MACH_OK + 1)) || echo "  L21l read as human: ${m:0:40}"
 done
 assert_eq "L21l local-command, bash, continuation and interruption rows are not the human" 4 "$MACH_OK"
+SKILL='<command-message>polish</command-message>
+<command-name>/polish</command-name>
+Base directory for this skill: run the polish pass over every script in the repository now'
+tx "$(human "$ZH")" "$(human "$SKILL")" "$(human "$SKILL")"
+expect_block "L21o a skill body with no arguments is not the human" "$(run "$(stop "$EN25")")"
 tx "$(human "$ZH")" "$(human '<bash-stdout>all tests passed and nothing was written to stderr</bash-stdout>')"
 run "$(stop "$EN25")" >/dev/null
 assert_eq "L21m a machine row that is none of the named kinds is trigger 'other'" "reply-language-restate other" "$(row_of "$N")"
@@ -249,7 +254,8 @@ tx "$(human "$ZH")" "$(queued "$QM" human)" "$(queued "$QM" human)"
 expect_silent "L22a messages typed mid-turn (queued_command) are the human's" "$(run "$(stop "$EN25")")"
 tx "$(human "$ZH")" "$(queued "$QM" peer)" "$(queued "$QM" peer)"
 expect_block "L22b a queued message from a peer is not" "$(run "$(stop "$EN25")")"
-tx "$(human "$ZH")" "$(jq -cn '{type:"user",origin:{kind:"task-notification"},message:{role:"user",content:"Agent finished: all checks pass and the review is complete now."}}')"
+OK_ROW=$(jq -cn '{type:"user",origin:{kind:"task-notification"},message:{role:"user",content:"Agent finished: all checks pass and the review is complete now."}}')
+tx "$(human "$ZH")" "$OK_ROW" "$OK_ROW"
 expect_block "L22c a row whose origin.kind is not human is not the human's, whatever its text" "$(run "$(stop "$EN25")")"
 
 # --- L23: cost and odd inputs -----------------------------------------------------------
