@@ -418,7 +418,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **HARD-rule removal**: rationale + 30-day grace note before deletion.
 - **HARD → SHOULD downgrade**: rationale required (which rule, why unreliable, fallback posture).
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
-- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
+- **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; 4 of 16 emit advisory rows when their opt-in hooks are on, the other 12 emit nothing), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
 
 ### §0.1 Core growth discipline (HARD)
 
