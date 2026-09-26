@@ -1,6 +1,6 @@
 ---
-status: approved
-revision: 1
+status: implemented
+revision: 2
 ---
 
 # sandbox-disposal:延迟一轮确认再提醒
@@ -37,4 +37,5 @@ revision: 1
 
 # Change log
 
+- r2 (2026-09-26): implemented.
 - r1 (2026-09-26): initial, approved with the P1-6 AUTH.

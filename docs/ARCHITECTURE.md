@@ -271,6 +271,8 @@ second is unverified on the trigger that matters.
 - `~/.claude/.claudemd-state/tmp-baseline-<sid>.txt` — residue-audit per-session baseline (2026-08-16 audit CONC-3); orphans reaped by clean-residue.js
 - `~/.claude/.claudemd-state/tmp-baseline.txt` — legacy residue-audit baseline, still written by sessions whose event carries no session_id
 - `~/.claude/.claudemd-state/session-start-<sid>.ref` — sandbox-disposal per-session window ref (2026-08-16 audit F5); orphans reaped by clean-residue.js
+- `~/.claude/.claudemd-state/sandbox-pending-<sid>.list` — sandbox-disposal's deferred-report list (v0.98.0): temp dirs first seen at the previous Stop, reported at the next if still present; removed when empty, orphans reaped by clean-residue.js
+- `~/.claude/.claudemd-state/sandbox-pending.list` — the same list for a Stop event with no session_id; like `session-start.ref` it is live state for those sessions and clean-residue.js never reaps it
 - `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns the `session-summary-*.lastrun` family)
 - `~/.claude/.claudemd-state/install.lock` — `install()`'s cross-process mutex, created with `open(O_CREAT|O_EXCL)` and released in a `finally`; a lock older than 10 minutes **or** whose recorded pid is gone is treated as abandoned and taken over by a `rename` whose result the taker verifies by bytes, mtime and inode/dev, because a SIGKILL has no `finally` (Round-14 audit SCR-H2; owner check and rename from round-17 FLW-H1 / SCR-H1)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
