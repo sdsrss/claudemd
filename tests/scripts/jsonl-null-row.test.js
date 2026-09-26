@@ -157,6 +157,12 @@ const DECLARED = [
     "audit's pre-flight; guarded inline by `row && typeof row === 'object'`, so it has no case here",
   ],
   [
+    'scripts/doctor.js',
+    "const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));",
+    'not-a-row',
+    "Claude Code's plugin registry, one JSON document (routing:ship-skill)",
+  ],
+  [
     'scripts/baseline-metrics.js',
     "const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));",
     'not-a-row',

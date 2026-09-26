@@ -1280,6 +1280,46 @@ test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async ()
   assert.ok(fs.existsSync(d));
 });
 
+// --- routing:ship-skill (v0.98.0, analysis 2026-09-26 B6) ------------------
+// Three answers: registered, present-but-nested (the gstack sub-skill Claude
+// Code does not register — the 9 `Unknown skill: ship` failures), and absent.
+const shipCheck = r => r.checks.find(x => x.name === 'routing:ship-skill');
+const mkSkill = rel => {
+  const d = path.join(box.home, '.claude/skills', rel);
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'SKILL.md'), '---\nname: ship\n---\n');
+  return d;
+};
+
+test('routing:ship-skill: absent → advisory naming the manual path', async () => {
+  const c = shipCheck(await doctor({}));
+  assert.ok(c);
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /no `ship` skill/);
+  assert.match(c.detail, /manual ship because/);
+});
+
+test('routing:ship-skill: nested under a router → says it is not registered and where it is', async () => {
+  const nested = mkSkill('gstack/ship');
+  const c = shipCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.ok(c.detail.includes(nested), c.detail);
+  assert.match(c.detail, /not registered/);
+});
+
+test('routing:ship-skill: registered at ~/.claude/skills/ship → ok, and it wins over a nested copy', async () => {
+  mkSkill('gstack/ship');
+  const top = mkSkill('ship');
+  const c = shipCheck(await doctor({}));
+  assert.equal(c.ok, true, c.detail);
+  assert.ok(c.detail.includes(top));
+  assert.equal(
+    isAdvisoryCheck('routing:ship-skill'),
+    true,
+    'advisory: the spec fallback is a declared manual ship'
+  );
+});
+
 // --- routing:skills-enabled (2026-09-01) -----------------------------------
 // §4 routes work at named skills; skillOverrides can switch any of them off; for
 // seven weeks nothing related the two, and eight primaries sat unreachable. The

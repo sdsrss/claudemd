@@ -55,8 +55,9 @@ const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
 settings.json issues, hook drift, backup inventory, rule-usage health, §4
-Routing primaries disabled via skillOverrides, and the review cadence of the
-project's tasks/ deferred-work docs.
+Routing primaries disabled via skillOverrides, whether the \`ship\` skill core §2.2
+names is registered, and the review cadence of the project's tasks/
+deferred-work docs.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
@@ -188,7 +189,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
 // moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|routing:ship-skill|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -407,6 +408,62 @@ export async function doctor({ pruneBackups: prune } = {}) {
       } else {
         push('routing:skills-enabled', true, `all ${primaries.size} §4 Routing primaries are enabled`);
       }
+    }
+  }
+
+  // Core §2.2 names one skill by bare name: `ship`, for the ship triggers. The
+  // 2026-09-26 transcript analysis counted 9 `Unknown skill: ship` /
+  // `gstack:ship` failures (B6), and on that machine gstack's ship workflow was
+  // on disk at ~/.claude/skills/gstack/ship/SKILL.md — a sub-skill of the
+  // gstack router, which Claude Code does not register (only
+  // ~/.claude/skills/<name>/SKILL.md and a plugin's skills/<name>/SKILL.md are).
+  // "Not installed" and "installed but not registered" need different actions,
+  // so the check tells them apart. Advisory: the spec's own fallback for an
+  // unlisted ship skill is a declared manual ship.
+  {
+    const registered = [];
+    if (fs.existsSync(claudeHome('skills', 'ship', 'SKILL.md')))
+      registered.push(claudeHome('skills', 'ship'));
+    try {
+      const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
+      for (const entries of Object.values(ip.plugins || {})) {
+        for (const e of Array.isArray(entries) ? entries : []) {
+          const p =
+            e && typeof e.installPath === 'string' ? path.join(e.installPath, 'skills', 'ship') : null;
+          if (p && fs.existsSync(path.join(p, 'SKILL.md'))) registered.push(p);
+        }
+      }
+    } catch {
+      /* no plugin registry — only the user skills dir can answer */
+    }
+    const nested = [];
+    try {
+      for (const d of fs.readdirSync(claudeHome('skills'), { withFileTypes: true })) {
+        if (!d.isDirectory() || d.name === 'ship') continue;
+        const p = claudeHome('skills', d.name, 'ship');
+        if (fs.existsSync(path.join(p, 'SKILL.md'))) nested.push(p);
+      }
+    } catch {
+      /* no user skills dir */
+    }
+    if (registered.length > 0) {
+      push('routing:ship-skill', true, `\`ship\` skill registered: ${registered[0]}`);
+    } else if (nested.length > 0) {
+      push(
+        'routing:ship-skill',
+        false,
+        `a \`ship\` skill exists at ${nested[0]} but is not registered — Claude Code only loads ` +
+          '~/.claude/skills/<name>/SKILL.md and plugin skills/<name>/SKILL.md, so invoking `ship` fails with ' +
+          '"Unknown skill". Link it (e.g. ~/.claude/skills/ship -> that dir; gstack\'s own setup does this), ' +
+          'or leave it: core §2.2 then means a declared manual ship.'
+      );
+    } else {
+      push(
+        'routing:ship-skill',
+        false,
+        'no `ship` skill on this machine — core §2.2 ship triggers take the manual path ' +
+          '(`manual ship because <reason>` in the report). Install gstack to get one.'
+      );
     }
   }
 
