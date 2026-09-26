@@ -1375,7 +1375,10 @@ test('B1 any-channel rework: Bash edits merge per file, the tool-only pair does 
   assert.equal(scanBehavior([bashEdit('/p/a.js', '/p/b.js')]).editsViaBash, 2);
 });
 
-test('B4 skill rate: a Skill call answered with an error is not an invocation', () => {
+// Review H1: `skillInvocations` is the PRE-REGISTERED G0 field ("tool_use.name
+// === 'Skill'", roadmap 2026-09-21) and keeps counting every call; failed
+// lookups are reported BESIDE it, never subtracted from it.
+test('B4 skill rate: an errored Skill call stays in skillInvocations and is also counted as an error', () => {
   const b = scanBehavior([
     ev({ id: 'tu_ok', name: 'Skill', input: { skill: 'superpowers:tdd' } }),
     ev({ id: 'tu_bad', name: 'Skill', input: { skill: 'ship' } }),
@@ -1383,9 +1386,9 @@ test('B4 skill rate: a Skill call answered with an error is not an invocation', 
     // An error on a DIFFERENT id must not touch the Skill calls.
     { kind: 'tool-error', id: 'tu_other', sidechain: false },
   ]);
-  assert.equal(b.skillInvocations, 1);
+  assert.equal(b.skillInvocations, 2, 'pre-registered: every Skill tool_use');
   assert.equal(b.skillInvocationErrors, 1);
-  assert.deepEqual(b.skillsByName, { 'superpowers:tdd': 1 });
+  assert.deepEqual(b.skillsByName, { 'superpowers:tdd': 1, ship: 1 });
   assert.deepEqual(b.skillErrorsByName, { ship: 1 });
   assert.equal(b.toolUses, 2, 'a failed call is still a tool_use');
 });
@@ -1452,7 +1455,7 @@ test('B1/B2/B4 end-to-end: bashEditDiff, tool errors and subagent files reach th
     assert.equal(b.reworkSessionsAnyChannel, 1, '8 Bash edits to one file');
     assert.equal(b.editsViaBash, 8);
     assert.equal(b.bashEditCapableSessions, 1);
-    assert.equal(b.skillInvocations, 0);
+    assert.equal(b.skillInvocations, 1, 'the failed call is still an invocation (pre-registered)');
     assert.equal(b.skillInvocationErrors, 1);
     assert.equal(b.toolUses, 9, 'the subagent file does not leak into the main block');
     assert.equal(r.subagentTranscripts, 1);
@@ -1460,8 +1463,65 @@ test('B1/B2/B4 end-to-end: bashEditDiff, tool errors and subagent files reach th
     assert.equal(r.subagentBehaviorMetrics.skillInvocations, 1);
     const md = behaviorLines(r).join('\n');
     assert.match(md, /any channel \(Edit\/Write \+ bashEditDiff\): 1\/1/);
-    assert.match(md, /failed \(not counted\): 1/);
+    assert.match(md, /of which failed: 1/);
     assert.match(md, /Subagent transcripts \(1, counted separately\): tool_use 2/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Review M4/M5: the subagent pass is bounded by the window like the main
+// files, feeds BOTH --global aggregates, keeps its reader errors out of the
+// pre-existing unreadable/malformed lists, and the Bash-edit capability flag
+// follows the CLI version.
+test('B2 subagent pass: window, --global pooled + per-class merge, separate reader-error lists', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b2g-'));
+  try {
+    const ts = new Date().toISOString();
+    const row = name =>
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: ts,
+        message: { content: [{ type: 'tool_use', id: 'x', name, input: {} }] },
+      });
+    const proj = path.join(root, encodeProjectCwd('/home/u/dev/claudemd'));
+    const subDir = path.join(proj, 's1', 'subagents');
+    fs.mkdirSync(subDir, { recursive: true });
+    fs.writeFileSync(path.join(proj, 's1.jsonl'), row('Read') + '\n');
+    fs.writeFileSync(path.join(subDir, 'agent-fresh.jsonl'), row('Read') + '\n' + row('Grep') + '\n');
+    const old = path.join(subDir, 'agent-old.jsonl');
+    fs.writeFileSync(old, row('Read') + '\n');
+    const t = (Date.now() - 90 * 86400000) / 1000;
+    fs.utimesSync(old, t, t);
+    fs.writeFileSync(path.join(subDir, 'agent-bad.jsonl'), 'not json\n');
+    const r = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.subagentTranscripts, 2, 'the 90-day-old subagent file is outside the window');
+    assert.equal(r.subagentBehaviorMetrics.toolUses, 2, 'pooled --global merge');
+    assert.equal(r.byClass.self.subagentBehaviorMetrics.toolUses, 2, 'per-class --global merge');
+    assert.equal(r.byClass.self.subagentTranscripts, 2);
+    assert.deepEqual(r.malformedTranscripts, [], 'a subagent file does not move the pre-existing list');
+    assert.equal(r.subagentMalformedTranscripts.length, 1);
+    assert.match(r.subagentMalformedTranscripts[0].file, /s1\/subagents\/agent-bad\.jsonl$/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('B1 bashEditCapableSessions follows the CLI version, not mere presence of a version field', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b1v-'));
+  try {
+    const ts = new Date().toISOString();
+    const u = v =>
+      JSON.stringify({
+        type: 'user',
+        timestamp: ts,
+        version: v,
+        message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
+      });
+    fs.writeFileSync(path.join(dir, 'old.jsonl'), u('2.1.277') + '\n');
+    fs.writeFileSync(path.join(dir, 'new.jsonl'), u('2.1.278') + '\n');
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.behaviorMetrics.bashEditCapableSessions, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

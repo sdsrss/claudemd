@@ -955,8 +955,9 @@ export function emptyBehavior() {
     toolUses: 0,
     skillInvocations: 0,
     skillsByName: {},
-    // Skill calls whose tool_result came back is_error (`Unknown skill: …`).
-    // Kept OUT of skillInvocations: a failed lookup is not a routed skill.
+    // Skill calls whose tool_result came back is_error (`Unknown skill: …`) —
+    // a SUBSET of skillInvocations, reported beside it (the pre-registered
+    // field keeps its definition; succeeded = invocations - errors).
     skillInvocationErrors: 0,
     skillErrorsByName: {},
     // Edit channel. `editsViaTool` counts Edit/Write tool_use; `editsViaBash`
@@ -992,14 +993,16 @@ export function scanBehavior(events) {
     for (const tu of e.toolUses) {
       b.toolUses += 1;
       if (tu.name === 'Skill') {
+        // `skillInvocations` / `skillsByName` are the pre-registered G0 count
+        // (every Skill tool_use) and do not move; a call whose tool_result came
+        // back is_error is ALSO counted beside them, never subtracted.
+        b.skillInvocations += 1;
         const named = tu.input && (tu.input.skill || tu.input.name);
         const key = typeof named === 'string' && named ? named : '(unnamed)';
+        b.skillsByName[key] = (b.skillsByName[key] || 0) + 1;
         if (tu.id && erroredIds.has(tu.id)) {
           b.skillInvocationErrors += 1;
           b.skillErrorsByName[key] = (b.skillErrorsByName[key] || 0) + 1;
-        } else {
-          b.skillInvocations += 1;
-          b.skillsByName[key] = (b.skillsByName[key] || 0) + 1;
         }
       }
       const fp = tu.input && tu.input.file_path;
@@ -1250,6 +1253,8 @@ function emptyResult(windowDays, projectsDir) {
     // the main-line block above keeps its pre-registered population.
     subagentTranscripts: 0,
     subagentBehaviorMetrics: emptyBehavior(),
+    subagentUnreadableTranscripts: [],
+    subagentMalformedTranscripts: [],
     perTranscript: [],
   };
 }
@@ -1350,13 +1355,16 @@ export async function samplingAudit({
       } catch {
         continue;
       }
-      const subEvents = extractEvents(
-        full,
-        cutoffMs,
-        result.unreadableTranscripts,
-        result.malformedTranscripts,
-        untilMs
-      );
+      // Reader errors go to their own lists, labelled `<session>/subagents/<file>`
+      // (a bare agent-*.jsonl basename is ambiguous across sessions), so the
+      // pre-existing unreadable/malformed lists keep describing the main-line
+      // population they always did (review M5).
+      const subUnreadable = [];
+      const subMalformed = [];
+      const subEvents = extractEvents(full, cutoffMs, subUnreadable, subMalformed, untilMs);
+      const label = x => ({ ...x, file: `${path.basename(file, '.jsonl')}/subagents/${x.file}` });
+      result.subagentUnreadableTranscripts.push(...subUnreadable.map(label));
+      result.subagentMalformedTranscripts.push(...subMalformed.map(label));
       result.subagentTranscripts += 1;
       mergeBehavior(result.subagentBehaviorMetrics, scanBehavior(subEvents));
     }
@@ -1544,6 +1552,9 @@ export async function samplingAuditGlobal({
     mergeBehavior(result.behaviorMetrics, sub.behaviorMetrics);
     result.subagentTranscripts += sub.subagentTranscripts;
     mergeBehavior(result.subagentBehaviorMetrics, sub.subagentBehaviorMetrics);
+    for (const k of ['subagentUnreadableTranscripts', 'subagentMalformedTranscripts']) {
+      for (const m of sub[k]) result[k].push({ ...m, file: `${path.basename(dir)}/${m.file}` });
+    }
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalAssistantTextRows += sub.totalAssistantTextRows;
@@ -1678,7 +1689,7 @@ export function behaviorLines(r) {
             .map(([k, v]) => `${k}×${v}`)
             .join(', ')}`
         : ' · (no Skill calls in window)') +
-      (b.skillInvocationErrors ? ` · failed (not counted): ${b.skillInvocationErrors}` : ''),
+      (b.skillInvocationErrors ? ` · of which failed: ${b.skillInvocationErrors}` : ''),
     '',
   ];
   const sb = r.subagentBehaviorMetrics;
