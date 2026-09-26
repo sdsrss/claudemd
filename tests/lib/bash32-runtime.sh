@@ -156,7 +156,7 @@ RAN=0
 while IFS= read -r t; do
   [[ -n "$t" ]] || continue
   RAN=$((RAN + 1))
-  # 600s, double run-all.sh's 300s cap. Same reasoning that file records for
+  # 600s, double run-all.sh's default 300s cap. Same reasoning that file records for
   # raising 120 → 300: a real hang is infinite, so a longer cap catches it just
   # as well, and the only cost is minutes on a run someone is already debugging.
   # 3.2 is slower than 5.x at the per-row spawns pre-bash-safety.test.sh drives,

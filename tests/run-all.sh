@@ -93,7 +93,15 @@ for t in "$HERE"/hooks/*.test.sh; do
   # the test's convenience. Reopen when this leg exceeds 300s on the macOS
   # runner. (Stated inline because the `tasks/audit-2026-07-27-deferred.md` this
   # line used to cite was never written and never tracked — Round-14 REL-M4.)
-  run_suite "$t" 300 || FAIL=$((FAIL + 1))
+  #
+  # Reopened 2026-09-26 (D#91): on the macOS runners this leg took 159s / 199s /
+  # 238s (node 20 / 24 / 22, CI run 36249242779) and then exceeded 300s on run
+  # 36251410770 with every other suite green. That suite alone gets 600s, on the
+  # same infinite-hang argument; the others keep 300s. The per-row spawn is
+  # still the cost driver and still deferred.
+  SUITE_CAP=300
+  [[ "$(basename "$t")" != "pre-bash-safety.test.sh" ]] || SUITE_CAP=600
+  run_suite "$t" "$SUITE_CAP" || FAIL=$((FAIL + 1))
 done
 
 echo "== Node.js script tests =="

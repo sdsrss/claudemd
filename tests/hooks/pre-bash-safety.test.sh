@@ -39,7 +39,8 @@ run_case() {
   # corpus green. Rows that must exercise the record path set column 5 to a
   # non-sentinel id; the default stays `t` so the other 810-odd rows keep their
   # current cost (rule_hits_append spawns jq, and this is already the slowest
-  # suite at ~65s on Linux against a 300s cap).
+  # suite: ~65s on Linux, up to 238s on the macOS runners, against run-all.sh's
+  # 600s cap for this suite).
   local sid="${5:-t}"
   [[ -n "$sid" ]] || sid=t
   # __NL__ marker → LF (heredoc cases). Other backslash sequences pass through.
