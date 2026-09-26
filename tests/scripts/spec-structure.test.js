@@ -594,7 +594,7 @@ const PINS = [
     file: EXT,
     anchor: '- **Report by file**',
     why: 'The harness cuts a teammate result at 4000 chars (100 of 176 measured). Drop the path default or the cap and reviews arrive cut; drop the no-resend clause and each ask wakes the reviewer into another completion event.',
-    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
+    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
   },
   {
     what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds (v6.32.0)',
