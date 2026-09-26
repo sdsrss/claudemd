@@ -457,7 +457,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         'routing:ship-skill',
         false,
         `a \`ship\` skill exists at ${nested[0]} but is not registered — Claude Code only loads ` +
-          '~/.claude/skills/<name>/SKILL.md and plugin skills/<name>/SKILL.md, so invoking `ship` fails with ' +
+          '~/.claude/skills/<name>/SKILL.md, <cwd>/.claude/skills/<name>/SKILL.md and plugin skills/<name>/SKILL.md, so invoking `ship` fails with ' +
           '"Unknown skill". Link it (e.g. ~/.claude/skills/ship -> that dir; gstack\'s own setup does this), ' +
           'or leave it: core §2.2 then means a declared manual ship.'
       );

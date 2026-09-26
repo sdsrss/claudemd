@@ -627,10 +627,28 @@ fi
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(run_hook "$DONE_CLAIM")
-if [[ "$OUT" == *"Iron Law #2"* && "$OUT" == *"no command output at all"* ]]; then
+if [[ "$OUT" == *"Iron Law #2"* && "$OUT" == *"only output after the last code edit is the editing command"* ]]; then
   ok "24: a Bash edit whose own output looks like a verdict is not its own verification"
 else
   ng "24: the edit command's output verified itself: $OUT"
+fi
+
+# --- Case 25 (re-review M1): a LONG edit-then-test command still verifies ----
+# The command is indexed truncated; truncating to the first 300 characters cut
+# the runner name off every heredoc patch longer than that, and the self-edit
+# row (which may verify only by its command) read as unverified.
+LONGCMD="python3 - <<'PY'$(printf ' s = s.replace(\"aaaaaaaaaaaaaaaaaaaa\", \"bbbbbbbbbbbbbbbbbbbb\")%.0s' {1..12}) PY && npm test"
+{
+  row_bash tu_long "$LONGCMD"
+  row_bash_edit_result tu_long /p/src/a.js "84 passed"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if (( ${#LONGCMD} > 400 )) && [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "25: a ${#LONGCMD}-char edit-then-npm-test command verifies itself"
+else
+  ng "25: long edit-then-test read as unverified (len ${#LONGCMD}): $OUT"
 fi
 
 echo

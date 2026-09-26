@@ -189,40 +189,43 @@ paused_banner() {
   command -v jq >/dev/null 2>&1 || return 0
   local dir="$1"
   [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
-  local files
-  # shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
-  files=$(ls -t "$dir"/tasks/*-paused.md 2>/dev/null)
-  [[ -n "$files" ]] || return 0
-  local count list="" now mt age f n=0 odd=0 base
-  count=$(printf '%s\n' "$files" | grep -c .)
+  # A glob, not `ls -t`: `ls` output is split on lines, so a newline inside a
+  # name became two "safe" names, and a DIRECTORY named *-paused.md had its
+  # contents listed (re-review L1/L2). Regular files only; the names that pass
+  # the charset are sorted by mtime here, so the ones shown are the newest
+  # plain-named ones and the header says exactly that (L3).
+  local f base mt now rows="" odd=0 count=0 shown=0 list="" age
   now=$(date +%s 2>/dev/null) || now=""
-  while IFS= read -r f; do
-    [[ -n "$f" ]] || continue
-    # The names come from whatever repo this session opened, and they land in
-    # context under a system-injected prefix (review L6): a name outside a
-    # plain filename charset is counted, never echoed.
+  for f in "$dir"/tasks/*-paused.md; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    count=$((count + 1))
     base="${f##*/}"
+    # Names land in context under a system-injected prefix (review L6): one
+    # outside a plain filename charset is counted, never echoed.
     if [[ ! "$base" =~ ^[A-Za-z0-9._-]+$ ]]; then
       odd=$((odd + 1))
       continue
     fi
-    n=$((n + 1))
-    (( n <= 5 )) || continue
+    mt=""
+    command -v platform_stat_mtime >/dev/null 2>&1 && mt=$(platform_stat_mtime "$f" 2>/dev/null)
+    [[ "$mt" =~ ^[0-9]+$ ]] || mt=0
+    rows+="$mt $base"$'\n'
+  done
+  (( count > 0 )) || return 0
+  while read -r mt base; do
+    [[ -n "$base" ]] || continue
+    shown=$((shown + 1))
     age="?"
-    if [[ -n "$now" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
-      mt=$(platform_stat_mtime "$f" 2>/dev/null) || mt=""
-      [[ "$mt" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]] && age="$(((now - mt) / 86400))d"
-    fi
+    [[ "$now" =~ ^[0-9]+$ ]] && (( mt > 0 )) && age="$(((now - mt) / 86400))d"
     list+="  - ${base} (${age})"$'\n'
-  done <<< "$files"
+  done < <(printf '%s' "$rows" | sort -rn | head -n 5)
   (( odd > 0 )) && list+="  ($odd more with unusual characters in the name, not listed)"$'\n'
-  local shown=$(( n < 5 ? n : 5 ))
   hook_record session-start paused-banner "{\"count\":$count}" '§11-session-exit' "$SESSION_ID" 2>/dev/null || true
   jq -cn --arg d "$dir/tasks" --arg l "$list" --argjson c "$count" --argjson s "$shown" '{
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — " + ($c|tostring) + " paused checkpoint(s) under " + $d + " from earlier sessions (" + ($s|tostring) + " newest listed, age in days). Each records work a session stopped before verifying: session-end-check writes session-end-<sid>-paused.md, and §11 sends unvalidated work to <slug>-paused.md. This lists files, not whether they are still open. Before related work, read the matching one; once its work is verified or abandoned, delete it. Disable: DISABLE_PAUSED_BANNER=1.\n" + $l)
+      additionalContext: ("[claudemd] system-injected — " + ($c|tostring) + " paused checkpoint(s) under " + $d + " from earlier sessions (" + (if $s == 0 then "none listed" else ($s|tostring) + " newest plainly named ones listed, age in days" end) + "). Each records work a session stopped before verifying: session-end-check writes session-end-<sid>-paused.md, and §11 sends unvalidated work to <slug>-paused.md. This lists files, not whether they are still open. Before related work, read the matching one; once its work is verified or abandoned, delete it. Disable: DISABLE_PAUSED_BANNER=1.\n" + $l)
     }
   }' 2>/dev/null
 }

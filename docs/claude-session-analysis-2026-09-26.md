@@ -349,7 +349,7 @@ claudemd 17)。前两者是 `isolation: "worktree"` 的子代理:提示词里写
 
 - **P2-1** 审计过滤器:PreToolUse 类 hook 的行没有 `toolu_` 开头的 `tool_use_id` 就判为合成行(B5)。
 - **P2-2** `mem-index-missing` 改记 `not-applicable`,从 byFailOpen 中分出去(B5)。
-- **P2-3** 技能指标只计成功的调用,失败的单独计 `skillInvocationErrors`(B4)。
+- **P2-3** 失败的技能调用单独计 `skillInvocationErrors`(B4)。(落地时更正:`skillInvocations` 是 09-21 预注册字段,仍计全部调用,失败数在旁边单列,不相减。)
 - **P2-4** 未完成项的持久交接:会话结束报告里的 Not done 同步写入 `mem_defer` 或 `tasks/<slug>-paused.md`,
   下一会话由 SessionStart 注入。目标是不再需要粘贴。现有 `session-end-check` 只在有修改时写 paused 文件,
   4 个项目里还有 10 个最长 13 天的旧文件没人处理。
@@ -415,7 +415,7 @@ node ../../scripts/sampling-audit.js --global --days=30 --json | jq .behaviorMet
 |---|---|---|
 | P0-1 Bash 修改接入仪器 | evidence-gate / ledger-staleness / session-end-check / sampling-audit 已完成;**rework-breaker 未做** | `d464592`、`ad45330`。rework-breaker 需要先探针:headless `claude -p`(2.1.283)的 PostToolUse payload 和转录里都没有 `bashEditDiff`,会话中途新加的 project-local hook 又不会热加载,只能在新开的交互会话里测。已登记 D#88 |
 | P0-2 读取子代理转录 | 完成 | `ad45330`。复算:子代理 681 个转录、31,344 次 tool_use、Skill 16 次,与本文一致;主会话工具口径 81/160 保持不变,合并口径 91/165 |
-| P0-3 旁路遥测 `suppressed` | 完成 | `69d3947`。**验收数字更正**:保留令牌重放 34 条历史旁路,`suppressed=true` 只有 **1** 条;本文 B3 的"2 条拒绝"里另一条在带令牌时也会被**其他**模式拒绝,和 rm 令牌无关。同时修复了一个新发现的缺陷:命令里没有 `$VAR` 时,旁路行拼成 `"vars":}`,被存为 `extra:null`(34 条里 19 条) |
+| P0-3 旁路遥测 `suppressed` | 完成 | `69d3947`。**验收数字更正**:保留令牌重放 34 条历史旁路,`suppressed=true` 只有 **1** 条;本文 B3 的"2 条拒绝"里另一条在带令牌时也会被**其他**模式拒绝,和 rm 令牌无关。同时修复了一个新发现的缺陷:命令里没有 `$VAR` 时,旁路行拼成 `"vars":}`,被存为 `extra:null`(第一次重放时的 33 条里 19 条;第二次重放时日志已增长到 34 条) |
 | P2-1 审计过滤 id 缺失的探针行 | 完成 | `5a3d6c4`。`testSessionsFiltered` 46 → 67(+21 = 9 deny + 12 allow-provenance) |
 | P2-2 `mem-index-missing` 与失明分开 | 完成 | `5a3d6c4`。`byFailOpen` 新增 `notApplicable` / `blind`;doctor 与 audit 共用同一集合 |
 | P2-3 技能失败调用单列 | 完成(评审后更正口径) | `ad45330` 曾把失败调用从 `skillInvocations` 里减掉(63 → 54),这改动了 09-21 预注册的 G0 字段;`e27bd5b` 恢复为全部 63 次,失败的 9 次(`ship` 6、`gstack:ship` 3)在旁边单列为 `skillInvocationErrors` |

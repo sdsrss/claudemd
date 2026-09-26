@@ -152,10 +152,11 @@ EG_WINDOW="${EVIDENCE_GATE_WINDOW:-1200}"
 # A Bash command that modified a code file is an edit too. Claude Code records
 # the files on the RESULT row (`toolUseResult.bashEditDiff`, CC >=2.1.278), and
 # under Opus 5.5 most edits take this route (analysis 2026-09-26, B1: 82.8% of
-# one week's edits). The E is emitted BEFORE that row's R, so the command's own
-# output counts as after the edit: `python3 - <<PY … PY && npm test` is the
-# common shape and verifies itself. The reverse order inside ONE command
-# (`npm test; sed -i …`) is read the same way and is not distinguishable here.
+# one week's edits). The E is emitted BEFORE that row's R, and that R is flagged
+# as the edit's own: it verifies only by its COMMAND (`python3 - <<PY … PY &&
+# npm test`, the common shape), never by what it printed. The reverse order
+# inside ONE command (`npm test; sed -i …`) is read the same way and is not
+# distinguishable here.
 STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
   def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty
@@ -169,8 +170,13 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
           (if ((.input.file_path // "") | is_code)
            then "E" else empty end)
         elif .name == "Bash" then
+          # Head AND tail (re-review M1): a runner is usually the LAST thing a
+          # command runs, and `.[0:300]` cut `&& npm test` off every heredoc
+          # patch longer than that — the self-edit row, which may verify only by
+          # its command, then read as unverified.
           "U\t" + (.id // "") + "\t"
-          + ((.input.command // "") | gsub("[\\r\\n\\t]+"; " ") | .[0:300])
+          + ((.input.command // "") | gsub("[\\r\\n\\t]+"; " ")
+             | (if length > 600 then .[:200] + " … " + .[-400:] else . end))
         elif .name == "BashOutput" then
           # A backgrounded run answers its own Bash call with "Command running
           # in background", and the real output arrives later on a BashOutput
@@ -236,6 +242,7 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CM
       if (rself[i] == "1") {
         if (cmd[rid[i]] ~ t1) { tier = 3; break }
         if (cmd[rid[i]] ~ t2c && tier < 2) tier = 2
+        selfonly = 1
         continue
       }
       if (tier < 1) tier = 1
@@ -245,6 +252,7 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CM
     if (tier >= 2) print "verified"
     else if (tier == 1) print "command-but-no-runner"
     else if (errored) print "error-output-only"
+    else if (selfonly) print "edit-output-only"
     else print "no-command-output"
   }' 2>/dev/null)
 
@@ -258,6 +266,9 @@ case "$VERDICT" in
     ;;
   error-output-only)
     DETAIL='every command after the last code edit FAILED. A failing run is not the verification a Done claim needs — it is evidence against it.'
+    ;;
+  edit-output-only)
+    DETAIL='the only output after the last code edit is the editing command'"'"'s own. What a patch script prints about itself is not a test run.'
     ;;
   *)
     DETAIL='no command output at all after the last code edit.'

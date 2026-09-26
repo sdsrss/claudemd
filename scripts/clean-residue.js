@@ -436,7 +436,8 @@ const PROBE_PROJECT_PATTERN = /^-(private-)?(tmp|var-tmp|var-folders)(-|$)/;
 // shape — deleting it makes the session unresumable (review M3). Claude Code
 // records how each session was started on its rows (`entrypoint`: `sdk-cli`
 // for a headless `claude -p`, `cli` for an interactive one), so a dir is a
-// probe only when every transcript in it says `sdk-cli`. A transcript with no
+// probe only when it holds at least one transcript and every entrypoint in
+// each says `sdk-cli`. A transcript with no
 // entrypoint in its first 64 KiB (an older CLI) is not judged: kept.
 function transcriptEntrypoints(dir) {
   let names;
@@ -458,11 +459,14 @@ function transcriptEntrypoints(dir) {
     } catch {
       return 'unknown-entrypoint';
     }
-    const m = head.match(/"entrypoint":"([^"]*)"/);
-    if (!m) return 'unknown-entrypoint';
-    if (m[1] !== 'sdk-cli') return 'interactive';
+    // Every entrypoint in the window, not the first: a headless run later
+    // resumed interactively starts with sdk-cli (re-review L5).
+    const eps = [...head.matchAll(/"entrypoint":"([^"]*)"/g)].map(m => m[1]);
+    if (eps.length === 0) return 'unknown-entrypoint';
+    if (eps.some(e => e !== 'sdk-cli')) return 'not-headless';
   }
-  return 'headless';
+  // No top-level transcript at all is not evidence of a headless run (L5).
+  return names.length === 0 ? 'no-transcript' : 'headless';
 }
 
 export function scanProbeProjects({ projectsDir, now = Date.now(), cwd = process.cwd() } = {}) {

@@ -1221,7 +1221,7 @@ test('scanProbeProjects: only headless sessions are reaped — interactive or un
     [headless]
   );
   const kept = Object.fromEntries(r.kept.map(k => [k.path, k.reason]));
-  assert.equal(kept[interactive], 'interactive');
+  assert.equal(kept[interactive], 'not-headless');
   assert.equal(kept[unknown], 'unknown-entrypoint');
 });
 
@@ -1270,4 +1270,24 @@ test('CLI --apply never deletes the probe dir it is running inside (protected)',
     out.protected.some(p => p.path === d),
     JSON.stringify(out.protected)
   );
+});
+
+test('scanProbeProjects: no top-level transcript, or a transcript that is headless THEN interactive, is kept', () => {
+  // Re-review L5: zero *.jsonl used to read as "every transcript is headless".
+  const bare = path.join(cliProjectsDir, '-tmp-no-main-transcript');
+  fs.mkdirSync(path.join(bare, 'abc', 'subagents'), { recursive: true });
+  fs.writeFileSync(
+    path.join(bare, 'abc', 'subagents', 'agent-1.jsonl'),
+    JSON.stringify({ entrypoint: 'cli' }) + '\n'
+  );
+  setMtime(bare, 30);
+  // A headless run later resumed interactively: its FIRST row says sdk-cli.
+  const resumed = mkProj('-tmp-resumed', 30);
+  fs.appendFileSync(path.join(resumed, 'a1b2c3d4-0000.jsonl'), JSON.stringify({ entrypoint: 'cli' }) + '\n');
+  setMtime(resumed, 30);
+  const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
+  assert.deepEqual(r.targets, []);
+  const kept = Object.fromEntries(r.kept.map(k => [path.basename(k.path), k.reason]));
+  assert.equal(kept['-tmp-no-main-transcript'], 'no-transcript');
+  assert.equal(kept['-tmp-resumed'], 'not-headless');
 });
