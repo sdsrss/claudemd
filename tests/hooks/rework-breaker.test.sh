@@ -451,5 +451,18 @@ else
   ng "26: extra.command_files was [$CFN], expected [2,]"
 fi
 
+# --- Case 27 (0.99.0 second pre-tag review M4): `bashEditDiff.shared: true`
+# lists files other processes changed concurrently. The count is unchanged; the
+# row says so, so the G2 FP review can separate those rows.
+reset_state
+for _ in 1 2 3 4 5 6 7 8; do fire_bed sR '{"files":[],"moreFiles":1,"changedFiles":["/p/src/s.js"],"shared":true}' >/dev/null; done
+for _ in 1 2 3 4 5 6 7 8; do fire_bed sS '{"files":[],"moreFiles":1,"changedFiles":["/p/src/t.js"]}' >/dev/null; done
+SH=$(jq -r 'select(.hook=="rework-breaker") | "\(.session_id // "")=\(.extra.shared)"' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | sort | tr '\n' ',')
+if [[ "$SH" == "sR=true,sS=false," ]]; then
+  ok "27: extra.shared records a shared bashEditDiff (false otherwise)"
+else
+  ng "27: extra.shared was [$SH], expected [sR=true,sS=false,]"
+fi
+
 echo
 claudemd_assert_summary

@@ -290,6 +290,10 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
       badLines++;
       continue;
     }
+    // The permission mode is a session attribute, read before the time filter:
+    // `permission-mode` rows carry no timestamp, so a bounded (--until) run
+    // dropped every one of them (0.99.0 second pre-tag review L4).
+    if (BASH_EDIT_DIFF_MODES.has(obj.permissionMode)) modeRecordsBashEdits = true;
     if ((cutoffMs !== null || untilMs !== null) && typeof obj.timestamp === 'string') {
       const t = Date.parse(obj.timestamp);
       if (Number.isFinite(t)) {
@@ -323,12 +327,12 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
     // Capable = this session could have recorded a Bash edit: a new enough
     // CLI AND a permission mode in which the feature is on by default, or a
     // recorded bashEditDiff (which also covers a session that forced it on).
-    // Read on EVERY row: Claude Code writes the mode mostly on
-    // `permission-mode` rows, and the two may first appear on different rows
-    // (0.99.0 pre-tag review M2).
+    // The mode is read on EVERY row, above the time filter: Claude Code writes
+    // it mostly on `permission-mode` rows, and the two may first appear on
+    // different rows (0.99.0 pre-tag review M2). Subagent transcripts carry no
+    // mode at all, so a subagent counts as capable only by recording a diff.
     if (typeof obj.version === 'string' && ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE))
       cliRecordsBashEdits = true;
-    if (BASH_EDIT_DIFF_MODES.has(obj.permissionMode)) modeRecordsBashEdits = true;
     if (!bashEditCapable && ((cliRecordsBashEdits && modeRecordsBashEdits) || bed)) {
       bashEditCapable = true;
       events.push({ kind: 'bash-edit-capable', sidechain });
@@ -946,7 +950,8 @@ export const BEHAVIOR_VALIDITY =
   'bypassPermissions mode behind its own feature gate, and in any mode when the ' +
   'bashEditDiffEnabled setting or CLAUDE_CODE_BASH_EDIT_DIFF turns it on. ' +
   'bashEditCapableSessions counts sessions on such a CLI with such a mode, or with a recorded ' +
-  'diff; a setting-enabled session in another mode is missed, and a counted session with no ' +
+  'diff. Missed: a setting-enabled session in another mode, and every subagent transcript ' +
+  'without a recorded diff (subagent rows carry no permission mode). A counted session with no ' +
   'bashEditDiff is not proof of no Bash edit — a headless bypassPermissions run recorded none ' +
   'until CLAUDE_CODE_BASH_EDIT_DIFF was set.';
 

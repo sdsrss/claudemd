@@ -91,10 +91,16 @@ done < <(printf '%s' "$EVENT" | jq -j "$FILES_JQ"' | select(length > 0) | . + "\
 # A command that changed more than RB_BULK code files is a bulk operation —
 # checkout, merge, formatter run, codemod — not an edit attempt: the only such
 # commands in the 2026-09-26 corpus (51+ files each; nothing between 21 and 50)
-# were git checkouts and a worktree removal. Skipping them also bounds this
+# were git checkouts. Skipping them also bounds this
 # hook's run time, which is per file. Fixed before G2's T0, like the threshold.
 RB_BULK=20
 [[ "$TOOL" != "Bash" ]] || (( ${#FILE_PATHS[@]} <= RB_BULK )) || exit 0
+# `shared: true` marks a diff that also holds files other processes changed
+# while the command ran (a background mutation script, a watcher). Which ones
+# is not recorded, so the count stands and the row says so for the G2 FP review
+# (0.99.0 second pre-tag review M4).
+RB_SHARED=$(printf '%s' "$EVENT" | jq -r '.tool_response.bashEditDiff | objects | .shared == true' 2>/dev/null)
+[[ "$RB_SHARED" == "true" ]] || RB_SHARED=false
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 # No session_id, no per-session tally. Counting into a shared file instead would
@@ -170,8 +176,8 @@ for FILE_PATH in "${FILE_PATHS[@]}"; do
   # this process happened to read is whatever the other processes had appended by
   # then; the multiple it won is exact, and "at least N" is true of both.
   EXTRA=$(jq -cn --argjson n "$COUNT" --argjson c "$CLAIMED" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
-    --argjson cf "${#FILE_PATHS[@]}" \
-    '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool, command_files:$cf}' 2>/dev/null) || EXTRA='null'
+    --argjson cf "${#FILE_PATHS[@]}" --argjson sh "$RB_SHARED" \
+    '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool, command_files:$cf, shared:$sh}' 2>/dev/null) || EXTRA='null'
   hook_record rework-breaker rework-advisory "$EXTRA" '§1-root-cause' "$SESSION_ID" "$TOOL_USE_ID"
   RB_CROSSED+=("${FILE_PATH} at least ${CLAIMED} times")
 done

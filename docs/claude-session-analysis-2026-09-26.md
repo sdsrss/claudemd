@@ -59,7 +59,8 @@
 - **sleep 阻塞**:前台 Bash(排除 `run_in_background`)里 `sleep N` 的 N ≥ 30,阻塞时长取 `min(N, timeout)`,
   timeout 缺省 120 s。
 - **返工**:会话内同一文件被修改 ≥8 次(沿用 09-21 基线的阈值)。"工具口径"只数 Edit/Write/MultiEdit;
-  "合并口径"另加 `toolUseResult.bashEditDiff.files[].filePath`(CC ≥2.1.278 才有此字段)。
+  "合并口径"另加 `toolUseResult.bashEditDiff.files[].filePath`(CC ≥2.1.278 才有此字段)。本文各周表格用的是这个口径;
+  0.99.0 起仪器改读 `changedFiles` 与 `files[]` 的并集(`files[]` 最多 5 条),见附 C。
 - **交叉验证**:`node scripts/sampling-audit.js --global --days=30 --json` 的 `editedSessions=160`、
   `reworkSessions=81` 与 `an.py` 的工具口径逐项相等;遥测 deny 与转录 §8 拒绝按 `tool_use_id` 对账,
   629 个唯一 id 全部匹配。
@@ -446,6 +447,7 @@ node ../../scripts/sampling-audit.js --global --days=30 --json | jq .behaviorMet
 | P0-1 的 rework-breaker | 完成 | `db5c262`。D#88 探针结论:CC 2.1.283 的 `bashEditDiffEnabled` 设置说明写明 PostToolUse Bash hook 在 `tool_response` 里拿到改动文件列表;默认只在 `auto` / `bypassPermissions` 权限模式下开启,`CLAUDE_CODE_BASH_EDIT_DIFF=1` 可强制开启,且只在 git 仓库里记录。headless `claude -p` 在 bypass 模式下仍然没有该字段,加上环境变量后出现 `tool_response.bashEditDiff = {files:[{filePath,hunks}], moreFiles, changedFiles}`。附 C 第一行"headless 转录里没有 `bashEditDiff`"的原因就是这个开关,不是 payload 不带。matcher 改为 `Edit\|Write\|Bash`,一条 Bash 命令对它改动的每个代码文件各计一次(预发评审后改为读 `changedFiles` + `files[]`,见下行) |
 | `sampling-audit` 的 `bashEditCapableSessions` | 更正 | `49f5409`。只看 CLI 版本会把 default 模式与 headless 会话算成"能记录 Bash 修改";加上权限模式条件后本机 99 → 94;预发评审后改为在任意行(主要是 `permission-mode` 行)读模式,最终 95 |
 | 评审 L7 | 完成 | `40de8bc`。本机现有转录里字符串 content 的 assistant 行为 0 条,缺陷未触发过 |
-| P1-4 开启 G1b/G2 计时 | 开关已设,计时未开始 | 2026-09-26T14:17:52Z 在 settings env 设 `EVIDENCE_GATE=1`、`REWORK_BREAKER=1`。预注册在 `tasks/g1b-g2-eval/PREREG.md`(本地):G2 的 T0 是 0.98.0 之后下一个版本的第一条遥测行,基线合并口径 96/166 = 57.8%(评审修复后的口径),附功效表与截断规则 |
+| P1-4 开启 G1b/G2 计时 | 开关已设,计时未开始 | 2026-09-26T14:17:52Z 在 settings env 设 `EVIDENCE_GATE=1`、`REWORK_BREAKER=1`。预注册在 `tasks/g1b-g2-eval/PREREG.md`(本地):G2 的 T0 是 0.98.0 之后下一个版本的第一条遥测行,基线合并口径 96/166 = 57.8%(固定语料 `--until=2026-09-26T15:16:43Z`;同一语料上 0.98.0 也是 96/166,这个数不随版本变),附功效表与截断规则 |
 | P2-6 技能清单瘦身 | 部分完成 | 22 天、8 个项目里模型调用与用户命令都是 0 次的 `claude-security`、`code-review`、`skill-creator` 在 user 范围关闭(`claude plugin details` 估算合计约 914 token/会话常驻)。`mattpocock-skills`(约 1,611 token)保留:09-21 的 G4 决定把它列为路由候选,关掉它等于结束那项观察,需要单独决定 |
-| 0.99.0 预发评审修复 | 完成 | `141a257`。全新上下文评审:0 Critical / 0 High / 4 Medium / 8 Low。M1:`bashEditDiff.files[]` 最多 5 条且可能为空,`changedFiles` 才是完整列表,本机转录里 267 次代码文件修改只出现在 `changedFiles`(`files[]` 里 1,008 次);五个读取方全部改为两者并集、按路径去重。rework-breaker 把改动超过 20 个代码文件的命令当批量操作跳过(语料里只有 3 条,51 个以上文件,两次 git checkout 和一次 worktree 清理),遥测新增 `command_files`。M2 模式行、M3 文案、M4 `session-end-check` 九种行形态、L1/L3/L4/L6/L7 同批修复;L2(路径含 NUL)不修 |
+| 0.99.0 预发评审修复 | 完成 | `141a257`。全新上下文评审:0 Critical / 0 High / 4 Medium / 8 Low。M1:`bashEditDiff.files[]` 最多 5 条且可能为空,`changedFiles` 才是完整列表,本机转录里 267 次代码文件修改只出现在 `changedFiles`(`files[]` 里 1,008 次);五个读取方全部改为两者并集、按路径去重。rework-breaker 把改动超过 20 个代码文件的命令当批量操作跳过(语料里只有 3 条,51 个以上文件,都是 git checkout),遥测新增 `command_files`。M2 模式行、M3 文案、M4 `session-end-check` 九种行形态、L1/L3/L4/L6/L7 同批修复;L2(路径含 NUL)不修 |
+| 第二轮预发评审修复 | 完成 | 全新上下文评审:0 Critical / 0 High / 4 Medium / 7 Low。M1:发版说明把语料增长(94 → 96)算成了版本效果,改为同一固定语料上两个版本的对照;L4:`permission-mode` 行没有时间戳,在 `--until` 下被丢掉,改为时间过滤前读取;M4:`bashEditDiff.shared: true` 的行含其他进程同时改动的文件(语料 34 行),计数不变,遥测记 `extra.shared` 供 FP 分层;M2:子代理行没有权限模式,子代理能力计数 469 → 19,已在 `BEHAVIOR_VALIDITY` 与 CHANGELOG 披露。M3(text 字段非字符串,语料 0 次)、L1(paused.md 最近修改列表按字母重排)与 `break` 路径的测试登记为延后项 |

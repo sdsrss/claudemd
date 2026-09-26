@@ -1632,6 +1632,37 @@ test('B1 capability reads permission-mode rows and ignores an array bashEditDiff
   }
 });
 
+// 0.99.0 second pre-tag review L4: `permission-mode` rows carry no timestamp,
+// and a bounded (--until) run drops unstamped rows — which made the mode
+// invisible to exactly the reproducible runs a baseline is taken with.
+test('B1 capability survives --until: the mode is read before the time filter', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b1u-'));
+  try {
+    const ts = new Date(Date.now() - 3600000).toISOString();
+    fs.writeFileSync(
+      path.join(dir, 's.jsonl'),
+      JSON.stringify({ type: 'permission-mode', permissionMode: 'bypassPermissions', sessionId: 's' }) +
+        '\n' +
+        JSON.stringify({
+          type: 'user',
+          timestamp: ts,
+          version: '2.1.283',
+          message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
+        }) +
+        '\n'
+    );
+    const r = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      untilMs: Date.now(),
+      pluginRoot: REPO_ROOT,
+    });
+    assert.equal(r.behaviorMetrics.bashEditCapableSessions, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('G0 end-to-end: behaviorMetrics reaches the result with its threshold and validity', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-g0-'));
   try {
