@@ -444,7 +444,6 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 ## Appendix B — Canonical examples
 
-B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2.S — do not re-add.
 
 ### B.1 `[AUTH REQUIRED]`
 
