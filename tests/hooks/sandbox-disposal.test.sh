@@ -12,6 +12,7 @@ export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/.claudemd-state" "$HOME/.claude/tmp" "$HOME/.claude/logs"
 
 FAIL=0
+SKIPPED=0
 
 # Case 1: first run (no session-start.ref) → creates ref + silent
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
@@ -184,25 +185,31 @@ rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
 mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
 
 # Case 12: the DEFAULT scan list covers ~/.claude/projects/: a project dir
-# created this session whose name encodes a temp-dir cwd (a headless
+# created since the previous Stop whose name encodes a temp-dir cwd (a headless
 # `claude -p` probe run from a scratchpad — the 2026-09-26 stopprobe leftover)
-# is flagged, on Linux (-tmp-) and macOS (-private-var-folders-) spellings.
+# is flagged, in every spelling the hook documents: Linux -tmp- / -var-tmp-,
+# macOS -private-tmp- / -private-var-folders- / -var-folders-.
 stop_at s12 >/dev/null; sleep 1
-mkdir "$PROJ/-tmp-claude-1000--home-x-scratchpad-stopprobe" "$PROJ/-private-var-folders-ab-T-probe"
+P12=(-tmp-claude-1000--home-x-scratchpad-stopprobe -var-tmp-probe
+     -private-tmp-probe -private-var-folders-ab-T-probe -var-folders-ab-T-probe)
+for d in "${P12[@]}"; do mkdir "$PROJ/$d"; done
 OUT=$(stop_at s12)
-if echo "$OUT" | grep -q -- "-tmp-claude-1000--home-x-scratchpad-stopprobe" \
-   && echo "$OUT" | grep -q -- "-private-var-folders-ab-T-probe"; then
+MISS=""
+for d in "${P12[@]}"; do echo "$OUT" | grep -q -- "/$d\$" || MISS+=" $d"; done
+if [[ -z "$MISS" ]]; then
   echo "PASS: 12 temp-cwd probe project dirs flagged by the default scan"
 else
-  echo "FAIL: 12 probe project dirs not flagged (out: $OUT)"; FAIL=$((FAIL+1))
+  echo "FAIL: 12 probe project dirs not flagged:$MISS (out: $OUT)"; FAIL=$((FAIL+1))
 fi
 
 # Case 13: a fresh project dir for an ordinary cwd is a real project, not
+# residue — never flagged, including one whose path merely contains `tmp`
+# (~/tmp/proj encodes to -home-u-tmp-proj; the pattern is anchored).
 # residue — never flagged.
 stop_at s13 >/dev/null; sleep 1
-mkdir "$PROJ/-home-ai-dev-newproject"
+mkdir "$PROJ/-home-ai-dev-newproject" "$PROJ/-home-u-tmp-proj"
 OUT=$(stop_at s13)
-if echo "$OUT" | grep -q -- "-home-ai-dev-newproject"; then
+if echo "$OUT" | grep -q -- "-home-ai-dev-newproject\|-home-u-tmp-proj"; then
   echo "FAIL: 13 ordinary project dir flagged (out: $OUT)"; FAIL=$((FAIL+1))
 else
   echo "PASS: 13 ordinary project dir not flagged"
@@ -225,7 +232,7 @@ fi
 # is mktemp-named (so no collision) and removed right after. SKIP when
 # /var/tmp is not writable (sandboxed runner) — not a pass.
 if VT=$(mktemp -d /var/tmp/tmp.XXXXXXXXXX 2>/dev/null); then
-  rm -rf "$VT"
+  rm -rf "${VT:?}"
   stop_at s15 >/dev/null; sleep 1
   VT=$(mktemp -d /var/tmp/tmp.XXXXXXXXXX)
   OUT=$(stop_at s15)
@@ -236,7 +243,7 @@ if VT=$(mktemp -d /var/tmp/tmp.XXXXXXXXXX 2>/dev/null); then
     echo "FAIL: 15 /var/tmp residue not flagged (out: $OUT)"; FAIL=$((FAIL+1))
   fi
 else
-  echo "SKIP: 15 /var/tmp not writable here"
+  echo "SKIP: 15 /var/tmp not writable here"; SKIPPED=$((SKIPPED+1))
 fi
 
 # Cases 16-19: SANDBOX_DISPOSAL_BLOCK=1 turns the warn into a Stop block.
@@ -246,8 +253,10 @@ stop_at s16 >/dev/null; sleep 1
 mkdir "$HOME/.claude/tmp/tmp.block_me"
 STDOUT=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s16"}' 2>/dev/null)
 if [[ "$(jq -r '.decision // empty' <<<"$STDOUT" 2>/dev/null)" == "block" ]] \
-   && jq -r '.reason' <<<"$STDOUT" | grep -q "tmp\.block_me"; then
-  echo "PASS: 16 opt-in block names the residue"
+   && jq -r '.reason' <<<"$STDOUT" | grep -q "tmp\.block_me" \
+   && jq -r '.reason' <<<"$STDOUT" | grep -q "may belong to another session" \
+   && [[ "$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl" | jq -r '[.event, .spec_section] | join(" ")')" == "block §8.V4" ]]; then
+  echo "PASS: 16 opt-in block names the residue, disclaims ownership, records a block row"
 else
   echo "FAIL: 16 no block verdict (stdout: $STDOUT)"; FAIL=$((FAIL+1))
 fi
@@ -274,8 +283,22 @@ STDOUT=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s19
 [[ -z "$STDOUT" ]] && echo "PASS: 19 default mode stays advisory" \
   || { echo "FAIL: 19 (stdout: $STDOUT)"; FAIL=$((FAIL+1)); }
 
-TOTAL=19
-if (( FAIL > 0 )); then
-  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
+# Case 20 (0.97.0 pre-tag review H1): a temp-cwd project dir that existed
+# before this session's window is not this session's residue, even when
+# another session writes a new transcript into it (which moves its mtime).
+# Only a dir with nothing older than the window counts as created in it.
+mkdir "$PROJ/-tmp-work"; touch -d '2 hours ago' "$PROJ/-tmp-work/A.jsonl"
+stop_at s20 >/dev/null; sleep 1
+touch "$PROJ/-tmp-work/B.jsonl"
+OUT=$(stop_at s20)
+if echo "$OUT" | grep -q -- "-tmp-work"; then
+  echo "FAIL: 20 pre-existing project dir flagged after another session wrote into it (out: $OUT)"; FAIL=$((FAIL+1))
+else
+  echo "PASS: 20 pre-existing temp-cwd project dir not attributed to this session"
 fi
-echo "Tests: $TOTAL/$TOTAL passed"
+
+TOTAL=$((20 - ${SKIPPED:-0}))
+if (( FAIL > 0 )); then
+  echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
+fi
+echo "Tests: $TOTAL/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"

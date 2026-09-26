@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 2
+revision: 3
 ---
 
 # 五条全局规则并入 spec v6.34.0
@@ -41,4 +41,5 @@ revision: 2
 # Change log
 
 - r1 2026-09-26：初稿，按用户选定的四项推荐方案。
-- r2 2026-09-26：实现完成。钩子部分在 cf31b70；规范文本 core 24960B，extended 49812B。
+- r2 2026-09-26：实现完成，钩子部分在 cf31b70。
+- r3 2026-09-26：按打 tag 前评审修复（H1 归属误判、M1–M4 及部分 Low）；core 24979B，extended 49810B。

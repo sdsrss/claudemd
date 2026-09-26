@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # sandbox-disposal-check.sh — Stop hook. Advisory by default.
-# Warns if tmp.XXXXXX-style mkdtemp directories were created this session, in
-# the three places spec §8.V4 names for test/probe residue: /tmp (and
+# Warns about tmp.XXXXXX-style mkdtemp directories that appeared or changed
+# since this session's previous Stop (mtime, not ownership — a concurrent
+# session's sandbox can show up too), in the places spec §8.V4 names for
+# test/probe residue: /tmp (and
 # ~/.claude/tmp), /var/tmp, and ~/.claude/projects/ (the transcript dir a
 # headless `claude -p` probe leaves behind when it runs from a temp cwd).
 #
+# macOS: /tmp is a symlink and platform_find_newer (find -P) does not descend
+# it, so the /tmp arm finds nothing there; $TMPDIR is not scanned. Pre-existing
+# and open, recorded rather than fixed in 0.97.0.
+#
 # Opt-in: SANDBOX_DISPOSAL_BLOCK=1 returns {"decision":"block"} instead, so the
-# turn continues and the session removes what it left. The window is NOT
+# turn continues and the session removes what it created — the reason says
+# some entries may belong to another session. The window is NOT
 # advanced on a block, and the Stop that follows (`stop_hook_active`) only
 # warns — at most one block per turn. Default OFF (§EXT §13.3).
 # Kill-switches:
@@ -117,7 +124,13 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
       both)          [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue ;;
       probe_session)
         [[ "$base" =~ ^-(private-)?(tmp|var-tmp|var-folders)- ]] || continue
-        [[ "$path" != "$OWN_PROJECT_DIR" ]] || continue ;;
+        [[ "$path" != "$OWN_PROJECT_DIR" ]] || continue
+        # Created in this window, not merely written to: a dir that already
+        # held anything older than the ref existed before it, and its mtime
+        # moved because some session (maybe a concurrent one) added a
+        # transcript (0.97.0 pre-tag review H1). One level into an explicit
+        # path — the §8 depth cap still holds.
+        [[ -z "$(find "$path" -mindepth 1 -maxdepth 1 ! -newer "$SESSION_REF" 2>/dev/null | head -n 1)" ]] || continue ;;
       *)             continue ;;
     esac
     FOUND+="$path"$'\n'
@@ -132,13 +145,13 @@ if [[ -n "$FOUND" ]]; then
   # so that Stop re-scans: a dir still there is reported, not forgotten.
   if [[ "${SANDBOX_DISPOSAL_BLOCK:-0}" == "1" && "$STOP_HOOK_ACTIVE" != "true" ]] \
      && command -v jq >/dev/null 2>&1; then
-    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s fresh temp directories this session. Remove the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$LIST")
+    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s temp directories appeared or changed since this session'"'"'s previous stop (up to 5 listed). Some may belong to another session or process — remove only the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$LIST")
     if jq -nc --arg r "$REASON" '{decision:"block", reason:$r}' 2>/dev/null; then
       hook_record sandbox-disposal block "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
       exit 0
     fi
   fi
-  echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
+  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories appeared or changed since this session's previous stop (some may belong to another session)." >&2
   printf '%s\n' "$LIST" >&2
   hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
 fi

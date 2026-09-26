@@ -43,7 +43,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 - **Evidence over intuition** — "should work" ≠ evidence; bugfix claims need prior reproduction (reproduce before claim-fixed).
 - **Search before write; reuse first** — grep/Read existing code/lib before edit or add (§8.V1 binds verification).
 - **Smallest diff wins** — fewest files, smallest blast radius. **Root cause over patch** — L2+: symptom-only fixes banned.
-- **Zero-assume** — unsure → ASK; reversible → state choice inline. Unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source; never guess.
+- **Zero-assume** — unsure → ASK; reversible → state choice inline.
 - **Recommend-first** — ≥2 options → lead with pick + one-line reason; pure enumeration = abdication (exception: true 50/50 on user preference). **Single obvious option** (clear-scope bugfix / mechanical refactor / docs edit): execute directly, don't preface with "shall I proceed" — unless §5 hard-AUTH fires.
 
 ## §1.5 GLOSSARY
@@ -63,7 +63,7 @@ Extended-only terms (**Assumption** → §EXT §1.5-EXT) resolve on L3+ load; at
 ```
 L0  docs / comment / style                                → Fast-Path
 L1  LOC <80, Local-Δ only (which bounds the file count)   → §7.L1
-L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9
+L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not a co-located L1 test, §1.5) / additive-schema → §7 L2 + §9
 L3  architecture / breaking-schema / migration / prod / infra → §EXT §4
 ```
 
@@ -83,7 +83,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → §EXT §12 table. Full L3 / composite / specialized-clarify matrix → §EXT §4.
 
-Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH.
+Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
 
@@ -141,7 +141,7 @@ L1-bugfix reproduce-once → fix → re-run repro → lint+typecheck (same signa
 L2        lint + typecheck + test  → inline evidence with numbers+baseline
 ```
 
-**Tests** (L1+, not L1-copy): add/update a test covering the change; before delivery L1 → affected tests green, L2+ → full suite + smoke entry (if any) green.
+**Tests** (L1+ code, not L1-copy/comments): add/update a test covering the change (co-located stays L1); before delivery L1 → affected tests green, L2+ → full suite + smoke entry (if any) green.
 **Commit** (git repo, any level): each VALIDATE-passed change → its own local commit (one logical change); push only when asked; branching per project convention; project `AUTO_COMMIT: off` opts out.
 
 **L1-copy**: text-only, no logic/layout change. Covers UI strings (buttons / headings / errors / tooltips) + pure-wording code comments/docstrings.

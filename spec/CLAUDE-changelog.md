@@ -8,17 +8,17 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ## v6.34.0 (minor, 2026-09-26) — five operator-requested rules: tests, commits, lookup, residue, mature solutions
 
-The operator asked for five global rules on 2026-09-26. One was absent, four were partly present:
+The operator asked for five global rules on 2026-09-26. Two were absent, three were partly present:
 
 - **Commit per change** (absent): nothing in the spec asked for one, and the harness default is the opposite (commit only when asked). §7 **Commit**: each VALIDATE-passed change in a git repo → its own local commit, one logical change; push only when asked; branching follows project convention; project `AUTO_COMMIT: off` opts out.
-- **Tests on every change** (L2+ only): Iron Law #1 and the L2 row covered L2+; L1 asked for lint + typecheck, and no level asked for the full suite. §7 **Tests** (L1+, not L1-copy): add or update a covering test; affected tests green at L1, full suite + smoke entry (if any) green at L2+ before delivery. The L1 row reads `lint + typecheck + test`.
-- **Look it up, don't guess** (partial): §8.V1 bound citations and §2.1 sent no-code Q&A to docs-lookup; implementation-time facts had no rule. §1 Zero-assume: an unfamiliar or possibly stale fact → context7 / official docs / web search, cite the source. §2.1's Q&A clause is absorbed.
-- **Test residue** (partial): §8.V4 named mkdtemp and scratch fixtures, §7's residue list named `/tmp/`. §8.V4 now names test/probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`, §7 adds `/var/tmp/`. Plugin 0.97.0's `sandbox-disposal-check` scans all three, with an opt-in Stop block.
+- **Tests on every change** (partial, L2+ only): Iron Law #1 and the L2 row covered L2+; L1 asked for lint + typecheck, and no level asked for the full suite. §7 **Tests** (L1+ code, not L1-copy or comments): add or update a covering test — a co-located one keeps the change at L1, and §2's L2 trigger now says "not a co-located L1 test" instead of naming only the L1-bugfix RED; affected tests green at L1, full suite + smoke entry (if any) green at L2+ before delivery. The L1 row reads `lint + typecheck + test`.
+- **Look it up, don't guess** (partial): §8.V1 bound citations and §2.1 sent no-code Q&A to docs-lookup; implementation-time facts had no rule. §2.1 Non-skill defaults: an unfamiliar or possibly stale fact → context7 / official docs / web search, cite the source, never guess. It replaces §2.1's Q&A docs-lookup clause; the "direct answer" half stays in §EXT §4. A first draft put it in §1 Principles, whose header reads "reference when ambiguous" — and a confidently wrong agent does not see its case as ambiguous.
+- **Test residue** (partial): §8.V4 named mkdtemp and scratch fixtures, §7's residue list named `/tmp/`. §8.V4 now names test/probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`, §7 adds `/var/tmp/`. Plugin 0.97.0's `sandbox-disposal-check` scans all three (its `/tmp` arm finds nothing on macOS, where `/tmp` is a symlink — pre-existing), with an opt-in Stop block.
 - **Mature solutions in review** (absent): §6 three-strike and §12's depth limit said when to stop patching, not what to look at next. §EXT §12 Review-finding repair: many findings, a repair outgrowing its change, or immature tech → search established open-source projects / libraries and recommend adopt vs build with sources.
 
-None is HARD (§13.2 ratchet); §8.V4 was HARD already and only its scope grows. Placement in core was the operator's call, over OPERATOR.md §13.1's Tier-2-first landing, so that the rules bind at L0–L2 too.
+No new HARD rule (§13.2 ratchet), but the residue rule is HARD-strength: §8.V4 was HARD and never-downgrade already, and only its scope grows. Placing the first four in core was the operator's call, over OPERATOR.md §13.1's Tier-2-first landing, so that they bind at L0–L2 too; the review rule is in extended and so reaches L3 / ship / pre-ship reviews only.
 
-Core had 179 bytes of headroom. Paid for by deleting restatements: §1 Honest-partial (§0 `[PARTIAL]` + §10 honesty carry it), §9's single-home pointer to §1, L1-copy's behaviour-comment sentence (§0 Fast-Path carries it), and §5.1's autonomy advice, moved to OPERATOR.md §13.1.
+Core had 179 bytes of headroom. Paid for by deleting three restatements — §1 Honest-partial (§0 `[PARTIAL]` + §10 honesty carry it), §9's single-home pointer to §1, L1-copy's behaviour-comment sentence (§0 Fast-Path carries it) — and by moving §5.1's autonomy advice, its only copy, to OPERATOR.md §13.1, where the agent no longer reads it.
 
 ## v6.33.0 (minor, 2026-09-25) — §1 says whose language "user's language" is
 

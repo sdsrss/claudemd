@@ -170,4 +170,4 @@ from treating injected prose as something the user said.
 
 The Stop event does not respect `permissionDecision: "deny"`; its only control
 is `decision: "block"`, which does not undo anything — it only asks for more
-output (see `reply-language-check.sh` above). Hooks on Stop are otherwise advisory — write to `stderr` (shown to user) + record via `hook_record`.
+output (see `reply-language-check.sh` and `sandbox-disposal-check.sh` above). Hooks on Stop are otherwise advisory — write to `stderr` (shown to user) + record via `hook_record`.

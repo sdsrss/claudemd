@@ -638,7 +638,7 @@ const PINS = [
     file: CORE,
     anchor: 'L2  contract-Δ / >2 files after §1.5 pairing',
     why: 'Drop `after §1.5 pairing` and two paired files read as L1 by one row and L2 by the other — SPEC-M1 relocated rather than closed.',
-    line: 'L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not L1-bugfix RED, which is co-located per §1.5) / additive-schema → §7 L2 + §9',
+    line: 'L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not a co-located L1 test, §1.5) / additive-schema → §7 L2 + §9',
   },
   {
     what: 'core §0 Fast-Path — the L0 whitelist under the user-facing floor above it (v6.29.0 wording)',
@@ -817,12 +817,12 @@ const PINS = [
 const PINNED_BLOCKS = [
   { file: CORE, heading: '', sha256: '2d21fd35af6f8e8f' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: '8e648fdb86125780' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: 'ce901e0783a7dff8' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '490ceb372109916e' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '83f1b9970fca5192' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
   { file: CORE, heading: '## §5 AUTH', sha256: '007498f2151b3c43' },
-  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'bb544ef6c054ec03' },
+  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: '418d3275ec9015cd' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'cc2ce65da6d6e45e' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '0cf6b6630b936713' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
@@ -842,7 +842,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '4d27033784abeb9f' },
+  { file: EXT, heading: '## Recent changes', sha256: 'e49954e161ba908b' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
