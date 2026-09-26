@@ -585,6 +585,21 @@ if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
 else
   ng "23b: a non-code bashEditDiff row registered as a code edit: $OUT"
 fi
+# 0.99.0 pre-tag review M1: `files[]` holds at most 5 entries and may be empty
+# while `changedFiles` holds every changed path (CC 2.1.283). A code file that
+# only `changedFiles` names is still a code edit.
+{
+  row_bash tu_bc "git apply p.diff"
+  jq -cn '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"tu_bc",is_error:false,content:""}]},toolUseResult:{stdout:"",bashEditDiff:{files:[],moreFiles:1,changedFiles:["/p/src/z.py"]}}}'
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "23c: a code file named only in changedFiles is a code edit"
+else
+  ng "23c: a changedFiles-only code edit did not register: $OUT"
+fi
 # The ordering decision: the edit is placed before its own command's output,
 # so an edit-then-test command verifies itself.
 {

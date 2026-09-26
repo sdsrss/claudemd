@@ -489,4 +489,33 @@ else
   ng "12c: a non-code bashEditDiff row counted as code work: $OUT"
 fi
 
+# 0.99.0 pre-tag review M1: `changedFiles` is the complete list; `files[]` is
+# capped at 5 and can be empty. A path in both lists is one edit, not two.
+row_bash_edit_cf() { jq -cn --arg f "$1" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"tu_c",content:""}]},toolUseResult:{stdout:"",bashEditDiff:{files:[],moreFiles:1,changedFiles:[$f]}}}'; }
+row_bash_edit_both() { jq -cn --arg f "$1" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"tu_d",content:""}]},toolUseResult:{stdout:"",bashEditDiff:{files:[{filePath:$f,hunks:[]}],moreFiles:0,changedFiles:[$f]}}}'; }
+{
+  row_bash_edit_cf /p/src/a.py
+  row_bash_edit_both /p/src/b.py
+  row_text "some work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ "$OUT" == *"2 code-file edit(s)"* ]]; then
+  ok "12d: changedFiles-only and both-lists rows count one edit per file"
+else
+  ng "12d: expected 2 code-file edits from changedFiles/both rows: $OUT"
+fi
+{
+  row_bash_edit /p/src/a.py
+  row_bash_edit_cf "$LEDGER"
+  row_text "some work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "12e: a ledger write named only in changedFiles silences it"
+else
+  ng "12e: a changedFiles-only ledger write was not seen: $OUT"
+fi
+
 claudemd_assert_summary

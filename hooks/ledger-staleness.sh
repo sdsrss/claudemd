@@ -184,7 +184,9 @@ LS_BASE=${LEDGER##*/}
 # (analysis 2026-09-26, B1), so reading tool_use alone left this hook silent on
 # most of that model's sessions. `bash_edit_paths` is the one definition both
 # jq passes below use.
-LS_BED_JQ='def bash_edit_paths: [.toolUseResult | objects | .bashEditDiff | objects | .files | arrays | .[] | objects | .filePath | strings];'
+# `changedFiles` is the complete list; `files[]` holds at most 5 rendered diffs
+# and can be empty (0.99.0 pre-tag review M1). Both are read, once per path.
+LS_BED_JQ='def bash_edit_paths: [.toolUseResult | objects | .bashEditDiff | objects | ((.changedFiles | arrays | .[] | strings), (.files | arrays | .[] | objects | .filePath | strings))] | unique;'
 LS_EDITS=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r "$LS_BED_JQ"'
   def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty

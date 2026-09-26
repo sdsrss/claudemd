@@ -55,15 +55,19 @@ REWORK_THRESHOLD=8
 EVENT=$(hook_read_event) || exit 0
 TOOL=$(hook_jq_field rework-breaker "$EVENT" '.tool_name // ""') || exit 0
 # The files this call edited. Edit/Write name one in tool_input. A Bash command
-# names every file it changed in tool_response.bashEditDiff (Claude Code
-# >=2.1.278; on by default in auto/bypassPermissions mode, forced by
-# CLAUDE_CODE_BASH_EDIT_DIFF; probed on 2.1.283, D#88). Under Opus 5.5 about 80%
-# of edits take that route (analysis 2026-09-26, B1), so an Edit|Write-only
-# tally saw one edit in five. A Bash call with no recorded edit names nothing.
-# One command that changes a file is one edit to it, whatever it rewrote.
+# names the files it changed in tool_response.bashEditDiff (Claude Code
+# >=2.1.278, D#88): `changedFiles` is the complete list (at most 200) and
+# `files[]` the rendered diffs (at most 5, possibly none), so both are read,
+# once per path (0.99.0 pre-tag review M1/L1). Claude Code records it only when
+# its Bash edit diff is on: by default in auto/bypassPermissions mode behind its
+# own feature gate, on or off in any mode via the `bashEditDiffEnabled` setting,
+# forced by CLAUDE_CODE_BASH_EDIT_DIFF. Under Opus 5.5 about 80% of edits take
+# that route (analysis 2026-09-26, B1), so an Edit|Write-only tally saw one edit
+# in five. A Bash call with no recorded edit names nothing. One command that
+# changes a file is one edit to it, whatever it rewrote.
 case "$TOOL" in
   Edit | Write) FILES_JQ='.tool_input.file_path | strings' ;;
-  Bash) FILES_JQ='.tool_response.bashEditDiff | objects | .files | arrays | .[] | objects | .filePath | strings' ;;
+  Bash) FILES_JQ='[.tool_response.bashEditDiff | objects | ((.changedFiles | arrays | .[] | strings), (.files | arrays | .[] | objects | .filePath | strings))] | unique | .[]' ;;
   *) exit 0 ;;
 esac
 
@@ -84,6 +88,13 @@ while IFS= read -r -d '' FILE_PATH; do
   esac
 done < <(printf '%s' "$EVENT" | jq -j "$FILES_JQ"' | select(length > 0) | . + "\u0000"' 2>/dev/null)
 (( ${#FILE_PATHS[@]} > 0 )) || exit 0
+# A command that changed more than RB_BULK code files is a bulk operation —
+# checkout, merge, formatter run, codemod — not an edit attempt: the only such
+# commands in the 2026-09-26 corpus (51+ files each; nothing between 21 and 50)
+# were git checkouts and a worktree removal. Skipping them also bounds this
+# hook's run time, which is per file. Fixed before G2's T0, like the threshold.
+RB_BULK=20
+[[ "$TOOL" != "Bash" ]] || (( ${#FILE_PATHS[@]} <= RB_BULK )) || exit 0
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 TOOL_USE_ID=$(printf '%s' "$EVENT" | jq -r '.tool_use_id // ""' 2>/dev/null)
 # No session_id, no per-session tally. Counting into a shared file instead would
@@ -112,9 +123,11 @@ for FILE_PATH in "${FILE_PATHS[@]}"; do
   # `rework-breaker.sh: line N: …: Permission denied` on the user's stderr while
   # still exiting 0 (pre-ship review, behaviour L2). The claim write below already
   # had this shape; now both writers in this file do.
+  # `break`, not `exit`: a multiple an earlier file in this command already
+  # claimed and logged must still be announced (0.99.0 pre-tag review L7).
   (printf '%s\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {
     hook_record_failopen rework-breaker prereq-missing
-    exit 0
+    break
   }
 
   COUNT=$(grep -c -x -F "$RB_KEY" "$RB_LEDGER" 2>/dev/null || true)
@@ -157,7 +170,8 @@ for FILE_PATH in "${FILE_PATHS[@]}"; do
   # this process happened to read is whatever the other processes had appended by
   # then; the multiple it won is exact, and "at least N" is true of both.
   EXTRA=$(jq -cn --argjson n "$COUNT" --argjson c "$CLAIMED" --argjson t "$REWORK_THRESHOLD" --arg tool "$TOOL" \
-    '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool}' 2>/dev/null) || EXTRA='null'
+    --argjson cf "${#FILE_PATHS[@]}" \
+    '{edits:$n, threshold_crossed:$c, threshold:$t, tool:$tool, command_files:$cf}' 2>/dev/null) || EXTRA='null'
   hook_record rework-breaker rework-advisory "$EXTRA" '§1-root-cause' "$SESSION_ID" "$TOOL_USE_ID"
   RB_CROSSED+=("${FILE_PATH} at least ${CLAIMED} times")
 done

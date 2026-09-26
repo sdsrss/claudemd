@@ -1569,6 +1569,69 @@ test('B1 bashEditCapableSessions also needs a permission mode that records Bash 
   }
 });
 
+// 0.99.0 pre-tag review: M1 (`changedFiles` is the complete list, `files[]`
+// is capped at 5 and can be empty), M2 (Claude Code writes the mode on
+// `permission-mode` rows, not only on user rows), L3 (an array is not a diff).
+test('B1 Bash edits read changedFiles too, once per path per command', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b1c-'));
+  try {
+    const ts = new Date().toISOString();
+    const row = bed =>
+      JSON.stringify({
+        type: 'user',
+        timestamp: ts,
+        version: '2.1.283',
+        permissionMode: 'bypassPermissions',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
+        toolUseResult: { stdout: '', bashEditDiff: bed },
+      });
+    const lines = [];
+    // 8 commands each listing cf.py only in changedFiles; one listing d.py in both.
+    for (let i = 0; i < 8; i++) lines.push(row({ files: [], moreFiles: 1, changedFiles: ['/p/cf.py'] }));
+    lines.push(row({ files: [{ filePath: '/p/d.py' }], moreFiles: 0, changedFiles: ['/p/d.py'] }));
+    fs.writeFileSync(path.join(dir, 's.jsonl'), lines.join('\n') + '\n');
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.behaviorMetrics.editsViaBash, 9, '8 x cf.py + 1 x d.py');
+    assert.equal(r.behaviorMetrics.reworkSessionsAnyChannel, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('B1 capability reads permission-mode rows and ignores an array bashEditDiff', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b1p-'));
+  try {
+    const ts = new Date().toISOString();
+    const user = (extra = {}) =>
+      JSON.stringify({
+        type: 'user',
+        timestamp: ts,
+        version: '2.1.283',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: '' }] },
+        ...extra,
+      });
+    const pm = mode => JSON.stringify({ type: 'permission-mode', permissionMode: mode, timestamp: ts });
+    fs.writeFileSync(path.join(dir, 'pmrow.jsonl'), pm('bypassPermissions') + '\n' + user() + '\n');
+    fs.writeFileSync(path.join(dir, 'pmdefault.jsonl'), pm('default') + '\n' + user() + '\n');
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.behaviorMetrics.bashEditCapableSessions, 1, 'the permission-mode bypass row counts');
+    // Separate corpus, so the two assertions cannot offset each other.
+    fs.mkdirSync(path.join(dir, 'arr'));
+    fs.writeFileSync(
+      path.join(dir, 'arr', 'arraybed.jsonl'),
+      user({ permissionMode: 'default', toolUseResult: { stdout: '', bashEditDiff: [] } }) + '\n'
+    );
+    const r2 = await samplingAudit({ projectsDir: path.join(dir, 'arr'), days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(
+      r2.behaviorMetrics.bashEditCapableSessions,
+      0,
+      'an array bashEditDiff is not a recorded diff'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('G0 end-to-end: behaviorMetrics reaches the result with its threshold and validity', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-g0-'));
   try {

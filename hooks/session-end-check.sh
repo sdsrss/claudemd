@@ -76,7 +76,15 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
   split("\n") |
   map(select(length > 0) | try fromjson catch null) |
-  map(select(. != null)) |
+  # Normalize row shapes before any path expression runs (0.99.0 pre-tag review
+  # M4): a non-object line, a string `message`, or a non-object element in a
+  # content array each made one operator below throw, and a jq error under
+  # 2>/dev/null is an empty RESULT — the hook then exits 0 with no checkpoint.
+  # String content is kept: a human prompt is recorded that way.
+  map(select(type == "object")
+      | .message |= (if type == "object" then . else {} end)
+      | .message.content |= (if type == "array" then map(select(type == "object"))
+                             elif type == "string" then . else null end)) |
   (map(is_user_turn)) as $mask |
   ($mask | to_entries | map(select(.value)) | (last // {key: -1}) | .key) as $lastUser |
   .[$lastUser + 1:] |
@@ -85,12 +93,15 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
   # and under Opus 5.5 most edits take this route (analysis 2026-09-26, B1), so
   # a checkpoint keyed on Edit/Write alone never fired for those sessions. The
   # join puts the mutation BEFORE the validate test of the same command below:
-  # `python3 - <<PY … PY && npm test` edits and then verifies.
+  # `python3 - <<PY … PY && npm test` edits and then verifies. `changedFiles`
+  # is the complete list; `files[]` holds at most 5 diffs and can be empty
+  # (0.99.0 pre-tag review M1), so both are read, once per path.
   (reduce (.[] | select(.toolUseResult | type == "object")
                 | [(.message.content // [] | if type == "array" then . else [] end
                     | map(select(.type == "tool_result") | .tool_use_id) | first),
-                   [.toolUseResult.bashEditDiff | objects | .files | arrays | .[]
-                    | objects | .filePath | strings]]
+                   ([.toolUseResult.bashEditDiff | objects
+                     | ((.changedFiles | arrays | .[] | strings),
+                        (.files | arrays | .[] | objects | .filePath | strings))] | unique)]
                 | select((.[0] | type) == "string" and (.[1] | length) > 0))
           as $p ({}; .[$p[0]] = $p[1])) as $bed |
   # String content (a plain-text assistant row) holds no tool_use; coerce it to
@@ -101,10 +112,13 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
   $tools |
   reduce .[] as $t (
     {mutations: 0, validates: 0, recent: []};
-    (if $t.name == "Bash" and (($bed[$t.id // ""] // []) | length) > 0 then
-      .mutations += ($bed[$t.id] | length)
+    # A non-string id or a non-object input must not throw (review M4).
+    ($t.id | if type == "string" then . else "" end) as $tid |
+    ($t.input | if type == "object" then . else {} end) as $in |
+    (if $t.name == "Bash" and (($bed[$tid] // []) | length) > 0 then
+      .mutations += ($bed[$tid] | length)
       | .validates = 0
-      | .recent = ((.recent + ($bed[$t.id] | map({name: "Bash", target: .})))
+      | .recent = ((.recent + ($bed[$tid] | map({name: "Bash", target: .})))
                    | (if length > 3 then .[length-3:] else . end))
     else . end) |
     if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit") then
@@ -118,9 +132,9 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s "$HOOK_USER_TURN_JQ"'
       # `!command` caveat row stopped being a boundary, correctly), which turned
       # the latent flaw into a live suppression on a common shape.
       | .validates = 0
-      | .recent = ((.recent + [{name: $t.name, target: ($t.input.file_path // $t.input.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
+      | .recent = ((.recent + [{name: $t.name, target: ($in.file_path // $in.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
     elif $t.name == "Bash" then
-      ($t.input.command // "") as $cmd |
+      ($in.command // "" | if type == "string" then . else "" end) as $cmd |
       # Anchor each validate verb to a command position — start of string or
       # right after a shell separator (; && || | newline). Pre-v0.23.11 this was
       # a bare substring test, so `echo "TODO: git commit later"` /

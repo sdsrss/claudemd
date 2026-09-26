@@ -123,9 +123,13 @@ Emitters, derived from source and gated by
   the G2 threshold this process won, not the tally it read, because concurrent
   Edit hooks interleave and only the claim is exact. Code files only.
   It reads `.tool_input.file_path` (Edit/Write) or
-  `.tool_response.bashEditDiff.files[].filePath` (Bash; Claude Code >=2.1.278,
-  on by default in auto/bypassPermissions mode or with
-  `CLAUDE_CODE_BASH_EDIT_DIFF=1`, absent otherwise) and `.session_id`, and quotes the path from
+  `.tool_response.bashEditDiff` (Bash; Claude Code >=2.1.278): `changedFiles`
+  (the complete list, at most 200) and `files[].filePath` (at most 5 rendered
+  diffs, possibly none), once per path. Claude Code records it by default in
+  auto/bypassPermissions mode behind its own feature gate, and in any mode when
+  the `bashEditDiffEnabled` setting or `CLAUDE_CODE_BASH_EDIT_DIFF=1` turns it
+  on. A command changing more than 20 code files is skipped as a bulk
+  operation. It also reads `.session_id`, and quotes the path from
   the EVENT rather than from its own state file, because that state is keyed by
   checksum and a collision there must not be able to name the wrong file.
 - `cross-repo-write-check.sh` — PreToolUse (`Edit|Write|NotebookEdit|Bash`);

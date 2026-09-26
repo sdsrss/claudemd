@@ -329,8 +329,8 @@ fi
 
 # --- Case 18-22 (analysis 2026-09-26 B1, D#88): Bash-channel edits ----------
 # Claude Code >=2.1.278 puts the files a Bash command changed on the PostToolUse
-# payload as tool_response.bashEditDiff.files[].filePath (probed on 2.1.283 with
-# CLAUDE_CODE_BASH_EDIT_DIFF=1; on by default in auto/bypassPermissions). Under
+# payload as tool_response.bashEditDiff (files[].filePath here; changedFiles in
+# Cases 23-26; probed on 2.1.283 with CLAUDE_CODE_BASH_EDIT_DIFF=1). Under
 # Opus 5.5 ~80% of edits take this route, so an Edit|Write-only tally saw ~1/5.
 fire_bash() {
   local sid="$1"; shift
@@ -395,6 +395,60 @@ if [[ -z "$MD" && "$(log_rows)" == "0" ]]; then
   ok "22: eight Bash edits of a markdown file stay silent"
 else
   ng "22: the extension filter let a Bash .md edit through (out: $MD)"
+fi
+
+# --- Cases 23-26 (0.99.0 pre-tag review M1/L1/L8) ---------------------------
+# `files[]` holds at most 5 entries and can be empty; `changedFiles` is the
+# complete list (CC 2.1.283). Both are read, de-duplicated per command.
+fire_bed() {  # sid, bashEditDiff JSON
+  jq -cn --arg s "$1" --argjson b "$2" '{session_id:$s,tool_name:"Bash",tool_use_id:"toolu_c",
+      tool_input:{command:"x"},tool_response:{stdout:"",bashEditDiff:$b}}' | bash "$HOOK" 2>/dev/null
+}
+reset_state
+CF=""
+for _ in 1 2 3 4 5 6 7; do CF="$CF$(fire_bed sM '{"files":[],"moreFiles":1,"changedFiles":["/p/src/cf.js"]}')"; done
+CF8=$(fire_bed sM '{"files":[],"moreFiles":1,"changedFiles":["/p/src/cf.js"]}')
+if [[ -z "$CF" && "$CF8" == *"/p/src/cf.js at least 8 times"* ]]; then
+  ok "23: a file named only in changedFiles is counted"
+else
+  ng "23: changedFiles-only edits not counted (pre: $CF, 8th: $CF8)"
+fi
+
+# The same path in files[] (twice) and changedFiles is ONE edit for that command.
+reset_state
+DUP='{"files":[{"filePath":"/p/src/d.js"},{"filePath":"/p/src/d.js"}],"moreFiles":0,"changedFiles":["/p/src/d.js"]}'
+for _ in 1 2 3 4 5 6 7; do fire_bed sN "$DUP" >/dev/null; done
+LINES=$(wc -l < "$HOME/.claude/.claudemd-state/rework-sN.counts" 2>/dev/null | tr -d ' ')
+DUP8=$(fire_bed sN "$DUP")
+if [[ "$LINES" == "7" && "$DUP8" == *"/p/src/d.js at least 8 times"* && "$DUP8" != *"16 times"* ]]; then
+  ok "24: a path listed three times in one command counts once"
+else
+  ng "24: duplicate listing miscounted (ledger lines after 7: $LINES, 8th: $DUP8)"
+fi
+
+# More than 20 code files in one command is a bulk operation (checkout, merge,
+# formatter run): not counted. Exactly 20 still is.
+mkbed() { jq -cn --argjson n "$1" '{files:[],moreFiles:$n,changedFiles:[range($n) | "/p/src/f\(.).js"]}'; }
+reset_state
+fire_bed sO "$(mkbed 21)" >/dev/null
+fire_bed sP "$(mkbed 20)" >/dev/null
+O_LINES=$(cat "$HOME/.claude/.claudemd-state/rework-sO.counts" 2>/dev/null | wc -l | tr -d ' ')
+P_LINES=$(cat "$HOME/.claude/.claudemd-state/rework-sP.counts" 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$O_LINES" == "0" && "$P_LINES" == "20" ]]; then
+  ok "25: 21 code files in one command are skipped as bulk; 20 are counted"
+else
+  ng "25: bulk rule wrong (21 files → $O_LINES lines, 20 files → $P_LINES lines)"
+fi
+
+# The row records how many code files the command changed, so the 30-day FP
+# review can separate multi-file commands (checkouts, formatters) from edits.
+reset_state
+for _ in 1 2 3 4 5 6 7 8; do fire_bash sQ /p/src/q.go /p/src/r.rs >/dev/null; done
+CFN=$(jq -r 'select(.hook=="rework-breaker") | .extra.command_files' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | sort -u | tr '\n' ',')
+if [[ "$CFN" == "2," ]]; then
+  ok "26: extra.command_files records the command's code-file count"
+else
+  ng "26: extra.command_files was [$CFN], expected [2,]"
 fi
 
 echo

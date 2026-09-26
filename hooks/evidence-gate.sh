@@ -160,8 +160,9 @@ EG_WINDOW="${EVIDENCE_GATE_WINDOW:-1200}"
 STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
   def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty
-  | ([.toolUseResult | objects | .bashEditDiff | objects | .files | arrays | .[]
-      | objects | .filePath | strings | select(is_code)] | length > 0) as $selfedit
+  | ([.toolUseResult | objects | .bashEditDiff | objects
+      | ((.changedFiles | arrays | .[] | strings), (.files | arrays | .[] | objects | .filePath | strings))
+      | select(is_code)] | length > 0) as $selfedit
   | (if $selfedit then ["E"] else [] end)
     + ((.message.content // []) | if type == "array" then . else [] end
   | map(

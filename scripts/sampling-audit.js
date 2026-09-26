@@ -312,6 +312,27 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
       continue;
     }
     const sidechain = obj.isSidechain === true;
+    // Files a Bash command modified, as Claude Code records them (CC ≥2.1.278,
+    // `toolUseResult.bashEditDiff`). Opus 5.5 routes most edits through Bash
+    // heredocs, so a behaviour metric that reads only Edit/Write tool_use
+    // counted a 0/17 rework week that was 8/21 once these were included
+    // (docs/claude-session-analysis-2026-09-26.md B1). An array is not a diff.
+    const tur = obj.type === 'user' ? obj.toolUseResult : null;
+    const bedRaw = tur && typeof tur === 'object' ? tur.bashEditDiff : null;
+    const bed = bedRaw && typeof bedRaw === 'object' && !Array.isArray(bedRaw) ? bedRaw : null;
+    // Capable = this session could have recorded a Bash edit: a new enough
+    // CLI AND a permission mode in which the feature is on by default, or a
+    // recorded bashEditDiff (which also covers a session that forced it on).
+    // Read on EVERY row: Claude Code writes the mode mostly on
+    // `permission-mode` rows, and the two may first appear on different rows
+    // (0.99.0 pre-tag review M2).
+    if (typeof obj.version === 'string' && ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE))
+      cliRecordsBashEdits = true;
+    if (BASH_EDIT_DIFF_MODES.has(obj.permissionMode)) modeRecordsBashEdits = true;
+    if (!bashEditCapable && ((cliRecordsBashEdits && modeRecordsBashEdits) || bed)) {
+      bashEditCapable = true;
+      events.push({ kind: 'bash-edit-capable', sidechain });
+    }
     if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
       events.push({ kind: 'compact', sidechain });
       continue;
@@ -336,30 +357,19 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
       continue;
     }
     if (obj.type === 'user') {
-      // Files a Bash command modified, as Claude Code records them (CC ≥2.1.278,
-      // `toolUseResult.bashEditDiff`). Opus 5.5 routes most edits through Bash
-      // heredocs, so a behaviour metric that reads only Edit/Write tool_use
-      // counted a 0/17 rework week that was 8/21 once these were included
-      // (docs/claude-session-analysis-2026-09-26.md B1).
-      const tur = obj.toolUseResult;
-      const bed = tur && typeof tur === 'object' ? tur.bashEditDiff : null;
-      if (bed && typeof bed === 'object' && Array.isArray(bed.files)) {
-        const files = bed.files.map(f => f && f.filePath).filter(fp => typeof fp === 'string' && fp);
-        if (files.length > 0) events.push({ kind: 'bash-edit', files, sidechain });
-      }
-      // Capable = this session could have recorded a Bash edit: a new enough
-      // CLI AND a permission mode in which the feature is on by default (both
-      // may first appear on different rows), or a recorded bashEditDiff, which
-      // also covers a session that forced it on with CLAUDE_CODE_BASH_EDIT_DIFF.
-      if (typeof obj.version === 'string' && ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE))
-        cliRecordsBashEdits = true;
-      if (BASH_EDIT_DIFF_MODES.has(obj.permissionMode)) modeRecordsBashEdits = true;
-      if (
-        !bashEditCapable &&
-        ((cliRecordsBashEdits && modeRecordsBashEdits) || (bed && typeof bed === 'object'))
-      ) {
-        bashEditCapable = true;
-        events.push({ kind: 'bash-edit-capable', sidechain });
+      // `changedFiles` is the complete list (at most 200); `files[]` carries the
+      // rendered diffs and holds at most 5, possibly none (0.99.0 pre-tag
+      // review M1: 267 code-file edits were in changedFiles only). Read both,
+      // one entry per path per command.
+      if (bed) {
+        const paths = new Set();
+        for (const p of Array.isArray(bed.changedFiles) ? bed.changedFiles : []) {
+          if (typeof p === 'string' && p) paths.add(p);
+        }
+        for (const f of Array.isArray(bed.files) ? bed.files : []) {
+          if (f && typeof f.filePath === 'string' && f.filePath) paths.add(f.filePath);
+        }
+        if (paths.size > 0) events.push({ kind: 'bash-edit', files: [...paths], sidechain });
       }
       // Errored tool results, joined back to their tool_use by id in
       // scanBehavior. A `Skill` call answered `Unknown skill: ship` is a failed
@@ -931,11 +941,14 @@ export const BEHAVIOR_VALIDITY =
   'this was registered against carried isSidechain=0 on every row, so subagent work was ' +
   'under-represented there. Since CC 2.1.278 subagents write their own files; those are counted ' +
   'in subagentBehaviorMetrics, not here. Rework here is Edit/Write only (the pre-registered ' +
-  'number); the AnyChannel pair adds files from bashEditDiff, which Claude Code records only on ' +
-  'CLI >=2.1.278 in auto / bypassPermissions mode (or with CLAUDE_CODE_BASH_EDIT_DIFF set); ' +
-  'bashEditCapableSessions counts those, and even there a session with no bashEditDiff is not ' +
-  'proof of no Bash edit — a headless `claude -p` run in bypassPermissions mode recorded none ' +
-  'until the variable was set.';
+  'number); the AnyChannel pair adds files from bashEditDiff (changedFiles plus files[], once ' +
+  'per path per command). Claude Code >=2.1.278 records it by default in auto / ' +
+  'bypassPermissions mode behind its own feature gate, and in any mode when the ' +
+  'bashEditDiffEnabled setting or CLAUDE_CODE_BASH_EDIT_DIFF turns it on. ' +
+  'bashEditCapableSessions counts sessions on such a CLI with such a mode, or with a recorded ' +
+  'diff; a setting-enabled session in another mode is missed, and a counted session with no ' +
+  'bashEditDiff is not proof of no Bash edit — a headless bypassPermissions run recorded none ' +
+  'until CLAUDE_CODE_BASH_EDIT_DIFF was set.';
 
 const EDIT_BUCKETS = ['1-2', '3-4', '5-7', '8-14', '15-29', '30+'];
 
@@ -1690,7 +1703,7 @@ export function behaviorLines(r) {
     // was read as "no rework" (analysis 2026-09-26, B1).
     `  any channel (Edit/Write + bashEditDiff): ${b.reworkSessionsAnyChannel}/${b.editedSessionsAnyChannel} = ${pct(b.reworkSessionsAnyChannel, b.editedSessionsAnyChannel)}` +
       ` · edits via tool ${b.editsViaTool}, via Bash ${b.editsViaBash} (${pct(b.editsViaBash, b.editsViaTool + b.editsViaBash)} Bash)` +
-      ` · ${b.bashEditCapableSessions} session(s) on a CLI that records Bash edits`,
+      ` · ${b.bashEditCapableSessions} session(s) able to record Bash edits (CLI ≥2.1.278 + auto/bypass mode, or a recorded diff)`,
     `Hottest-file edit counts: ${EDIT_BUCKETS.map(k => `${k}:${b.editBuckets[k]}`).join(' · ')}`,
     `Test-file Edits: ${b.testEdits} · strengthened ${b.testStrengthened} (${pct(b.testStrengthened, b.testEdits)})` +
       ` · unchanged ${b.testNeutral} (${pct(b.testNeutral, b.testEdits)})` +

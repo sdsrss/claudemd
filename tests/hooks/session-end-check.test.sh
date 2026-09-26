@@ -448,6 +448,43 @@ else
   ng "Case 21: string-content assistant row suppressed the checkpoint"
 fi
 
+# --- Case 22 (0.99.0 pre-tag review M1): changedFiles is the complete list ---
+TR_BASH_CF='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[],"moreFiles":1,"changedFiles":["/p/src/cf.py"]}}}'
+reset_cwd
+T="$TMP_HOME/case22.jsonl"
+make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_CF"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+if [[ -n "$PAUSED_MD" ]] && grep -qF 'Bash: /p/src/cf.py' "$PAUSED_MD"; then
+  ok "Case 22: a file named only in changedFiles is a mutation"
+else
+  ng "Case 22: changedFiles-only Bash edit missed"
+fi
+
+# --- Case 23 (0.99.0 pre-tag review M4): no row shape may blind the hook -----
+# Each shape is appended after an unvalidated Edit; every one must still leave
+# the checkpoint. Before the fix each made jq error under 2>/dev/null.
+SHAPE_I=0
+for SHAPE in \
+  '{"type":"assistant","message":"x"}' \
+  '{"type":"assistant","message":{"content":["x"]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t9","name":"Bash","input":"ls"}]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":5,"name":"Bash","input":{"command":"ls"}}]}}' \
+  '5' '"x"' '[1]' \
+  '{"type":"user","message":"x","toolUseResult":{"stdout":""}}' \
+  '{"type":"user","message":{"content":["x"]},"toolUseResult":{"stdout":""}}'; do
+  SHAPE_I=$((SHAPE_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case23-$SHAPE_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$SHAPE"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    ok "Case 23.$SHAPE_I: checkpoint survives row shape $SHAPE"
+  else
+    ng "Case 23.$SHAPE_I: row shape $SHAPE suppressed the checkpoint"
+  fi
+done
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
