@@ -129,7 +129,7 @@ Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many p
 ### Plan drift threshold (mid-implementation)
 During execution, if the plan's file map / naming / schema / signatures disagree with the actual code:
 - **1 mismatch**: fix inline, note in report under Uncertain.
-- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain (audit SPEC-L).
+- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain.
 - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
 
 Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
