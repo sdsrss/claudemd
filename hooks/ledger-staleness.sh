@@ -177,13 +177,23 @@ LS_BASE=${LEDGER##*/}
 # v0.91.0, `evidence-gate.sh`'s regex — three copies in three languages, pinned
 # to each other by tests/scripts/code-ext-parity.test.js and to the roadmap's
 # G0 pre-registration, so they are changed together or not at all.
-LS_EDITS=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
+#
+# Both edit channels count: an Edit/Write tool_use, and each file a Bash command
+# modified as Claude Code records it on the result row (`toolUseResult.
+# bashEditDiff`, CC >=2.1.278). Under Opus 5.5 most edits take the Bash route
+# (analysis 2026-09-26, B1), so reading tool_use alone left this hook silent on
+# most of that model's sessions. `bash_edit_paths` is the one definition both
+# jq passes below use.
+LS_BED_JQ='def bash_edit_paths: [.toolUseResult | objects | .bashEditDiff | objects | .files | arrays | .[] | objects | .filePath | strings];'
+LS_EDITS=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r "$LS_BED_JQ"'
+  def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty
-  | ((.message.content // []) | if type == "array" then . else [] end)
+  | (bash_edit_paths | map(select(is_code) | "E"))
+    + ((.message.content // []) | if type == "array" then . else [] end
   | map(
       if .type == "tool_use" and (.name == "Edit" or .name == "Write")
-         and ((.input.file_path // "") | test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i"))
-      then "E" else empty end)
+         and ((.input.file_path // "") | is_code)
+      then "E" else empty end))
   | .[]' 2>/dev/null | grep -c '^E$' 2>/dev/null || true)
 # `grep -c` prints 0 and exits 1 on no match; a non-numeric count means "no
 # tally", not "zero", and is treated as nothing to say.
@@ -195,13 +205,14 @@ LS_EDITS=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
 # paths and the event's cwd may be spelled through a different symlink, while a
 # ledger edited under another name cannot be the one resolved above, because
 # writing it would have made it the newest.
-LS_WRITES=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r --arg lb "$LS_BASE" '
+LS_WRITES=$(tail -n "$LS_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r --arg lb "$LS_BASE" "$LS_BED_JQ"'
   try fromjson catch empty
-  | ((.message.content // []) | if type == "array" then . else [] end)
+  | (bash_edit_paths | map(select((split("/") | last) == $lb) | "L"))
+    + ((.message.content // []) | if type == "array" then . else [] end
   | map(
       if .type == "tool_use" and (.name == "Edit" or .name == "Write")
          and (((.input.file_path // "") | split("/") | last) == $lb)
-      then "L" else empty end)
+      then "L" else empty end))
   | .[]' 2>/dev/null | grep -c '^L$' 2>/dev/null || true)
 [[ "$LS_WRITES" =~ ^[0-9]+$ ]] || exit 0
 (( LS_WRITES == 0 )) || exit 0

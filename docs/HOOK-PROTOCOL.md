@@ -26,10 +26,11 @@ author to re-derive it from another hook's source:
   `session-extended-read.sh`, `ship-baseline-check.sh`,
   `transcript-vocab-scan.sh`, `rework-breaker.sh`, `branch-prune.sh`,
   `cross-repo-write-check.sh`.
-  One reader of the NAME is not a reader of this field: `evidence-gate.sh` is a
-  Stop hook, so its envelope carries no `tool_use_id` at all — it reads the
-  `tool_use_id` that each `tool_result` in the TRANSCRIPT carries, to join a
-  result back to the command that produced it. Same spelling, different object;
+  Two readers of the NAME are not readers of this field: `evidence-gate.sh`
+  (Stop) and `session-end-check.sh` (SessionEnd) get no `tool_use_id` in their
+  envelope at all — they read the `tool_use_id` that each `tool_result` in the
+  TRANSCRIPT carries, to join a result (and the files its `bashEditDiff`
+  lists) back to the command that produced it. Same spelling, different object;
   the derivation gate here matches on the spelling, which is why the
   distinction is written down rather than left to look like an omission.
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /

@@ -33,6 +33,7 @@ row_edit() { jq -cn --arg f "$1" '{type:"assistant",message:{content:[{type:"too
 row_bash() { jq -cn --arg i "$1" --arg c "$2" '{type:"assistant",message:{content:[{type:"tool_use",id:$i,name:"Bash",input:{command:$c}}]}}'; }
 row_result() { jq -cn --arg i "$1" --arg t "$2" --argjson e "${3:-false}" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:$i,is_error:$e,content:$t}]}}'; }
 row_read_result() { jq -cn --arg i "$1" --arg t "$2" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:$i,is_error:false,content:$t}]}}'; }
+row_bash_edit_result() { jq -cn --arg i "$1" --arg f "$2" --arg t "${3:-}" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:$i,is_error:false,content:$t}]},toolUseResult:{stdout:$t,bashEditDiff:{files:[{filePath:$f,hunks:[]}]}}}'; }
 row_text() { jq -cn --arg t "$1" '{type:"assistant",message:{content:[{type:"text",text:$t}]}}'; }
 
 run_hook() {
@@ -550,6 +551,68 @@ if [[ "$EG_NEG2B_OK" == "1" ]]; then
   ok "22b: control — a distant negation does not veto a real completion claim"
 else
   ng "22b: the veto is too wide and swallowed a real claim"
+fi
+
+# --- Case 23 (analysis 2026-09-26 B1): a Bash edit is a code edit -----------
+# Opus 5.5 writes most changes as `python3 - <<'PY' … open(p,'w')`, and Claude
+# Code records the touched files on the result row as bashEditDiff. Reading
+# Edit/Write only, this hook saw "no code edit" for 80% of that model's edits
+# and stayed silent on exactly the sessions it exists for.
+{
+  row_bash tu_be "python3 - <<'PY'"
+  row_bash_edit_result tu_be /p/src/a.py
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "23: a Bash-channel code edit with nothing run after it → advisory"
+else
+  ng "23: a bashEditDiff code edit did not register: $OUT"
+fi
+# Control: the same row listing a non-code file is still not code work, so 23
+# is about the code-extension filter applying to this channel, not about any
+# bashEditDiff row counting.
+{
+  row_bash tu_be "python3 - <<'PY'"
+  row_bash_edit_result tu_be /p/docs/notes.md
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "23b: control — a Bash edit of a .md file is not code work"
+else
+  ng "23b: a non-code bashEditDiff row registered as a code edit: $OUT"
+fi
+# The ordering decision: the edit is placed before its own command's output,
+# so an edit-then-test command verifies itself.
+{
+  row_bash tu_bt "python3 - <<'PY' && npm test"
+  row_bash_edit_result tu_bt /p/src/a.py "12 passed"
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "23c: edit + test runner in one Bash command → verified"
+else
+  ng "23c: a command that edited and then tested read as unverified: $OUT"
+fi
+# And a Bash edit AFTER a green run re-opens the gap, exactly as an Edit does.
+{
+  row_bash tu_t "npm test"
+  row_result tu_t "12 passed"
+  row_bash tu_be2 "sed -i s/a/b/ src/a.py"
+  row_bash_edit_result tu_be2 /p/src/a.py
+  row_text "$DONE_CLAIM"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"Iron Law #2"* ]]; then
+  ok "23d: a Bash edit after the last green run is unverified"
+else
+  ng "23d: a Bash edit after the test run was not seen as the last edit: $OUT"
 fi
 
 echo

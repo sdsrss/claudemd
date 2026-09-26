@@ -40,6 +40,8 @@ export LEDGER_STALENESS=1
 row_edit() { jq -cn --arg f "$1" '{type:"assistant",message:{content:[{type:"tool_use",id:"tu_e",name:"Edit",input:{file_path:$f}}]}}'; }
 row_write() { jq -cn --arg f "$1" '{type:"assistant",message:{content:[{type:"tool_use",id:"tu_w",name:"Write",input:{file_path:$f}}]}}'; }
 row_text() { jq -cn --arg t "$1" '{type:"assistant",message:{content:[{type:"text",text:$t}]}}'; }
+# A Bash command's result row with the files Claude Code saw it modify.
+row_bash_edit() { jq -cn --arg f "$1" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"tu_b",content:""}]},toolUseResult:{stdout:"",bashEditDiff:{files:[{filePath:$f,hunks:[]}]}}}'; }
 
 run_hook() {
   jq -cn --arg c "${1-$PROJ}" --arg t "${2-$TRANSCRIPT}" \
@@ -446,6 +448,45 @@ if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
   ok "9d: an event with no cwd → silent (there is no project to resolve a ledger in)"
 else
   ng "9d: fired with no cwd: $OUT"
+fi
+
+# --- Case 12 (analysis 2026-09-26 B1): the Bash edit channel -----------------
+# Under Opus 5.5 most edits are Bash heredocs, recorded as bashEditDiff on the
+# result row. Both halves of this hook have to read that channel: a Bash code
+# edit is code work, and a Bash write to the ledger is a ledger write.
+{
+  row_bash_edit /p/src/a.py
+  row_text "some work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ "$OUT" == *"demo-ledger.md"* && "$OUT" == *"1 code-file edit(s)"* ]]; then
+  ok "12: a Bash-channel code edit with the ledger untouched → advisory"
+else
+  ng "12: a bashEditDiff code edit did not count: $OUT"
+fi
+{
+  row_bash_edit /p/src/a.py
+  row_bash_edit "$LEDGER"
+  row_text "some work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "12b: a Bash write to the ledger silences it, as an Edit does"
+else
+  ng "12b: a bashEditDiff write to the ledger was not seen: $OUT"
+fi
+{
+  row_bash_edit /p/docs/notes.md
+  row_text "some work"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "12c: control — a Bash edit of a non-code file is not code work"
+else
+  ng "12c: a non-code bashEditDiff row counted as code work: $OUT"
 fi
 
 claudemd_assert_summary

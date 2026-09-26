@@ -132,7 +132,8 @@ EG_WINDOW="${EVIDENCE_GATE_WINDOW:-1200}"
 [[ "$EG_WINDOW" =~ ^[0-9]+$ ]] || EG_WINDOW=1200
 
 # One pass over the tail, emitting a tab-separated event stream:
-#   E                        a code-file Edit/Write
+#   E                        a code-file Edit/Write, or a Bash result whose
+#                            bashEditDiff lists a code file
 #   U <tool_use_id> <cmd>    a Bash tool_use and its command text
 #   R <tool_use_id> <0|1> <output>   a tool_result and whether it errored
 # Nothing else is extracted; the point is to get out of jq with a few hundred
@@ -146,13 +147,25 @@ EG_WINDOW="${EVIDENCE_GATE_WINDOW:-1200}"
 # (tests/scripts/user-turn-parity.test.js), which is a different question from
 # the one being asked. tool_use items only appear on assistant rows and
 # tool_result items only on user rows, so the item type is the whole signal.
+#
+# A Bash command that modified a code file is an edit too. Claude Code records
+# the files on the RESULT row (`toolUseResult.bashEditDiff`, CC >=2.1.278), and
+# under Opus 5.5 most edits take this route (analysis 2026-09-26, B1: 82.8% of
+# one week's edits). The E is emitted BEFORE that row's R, so the command's own
+# output counts as after the edit: `python3 - <<PY … PY && npm test` is the
+# common shape and verifies itself. The reverse order inside ONE command
+# (`npm test; sed -i …`) is read the same way and is not distinguishable here.
 STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
+  def is_code: test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i");
   try fromjson catch empty
-  | ((.message.content // []) | if type == "array" then . else [] end)
+  | ([.toolUseResult | objects | .bashEditDiff | objects | .files | arrays | .[]
+      | objects | .filePath | strings | select(is_code)]
+     | if length > 0 then ["E"] else [] end)
+    + ((.message.content // []) | if type == "array" then . else [] end
   | map(
       if .type == "tool_use" then
         if (.name == "Edit" or .name == "Write") then
-          (if ((.input.file_path // "") | test("\\.(m?[jt]sx?|cjs|cts|rs|py|go|sh|rb|java|c|cpp|h)$"; "i"))
+          (if ((.input.file_path // "") | is_code)
            then "E" else empty end)
         elif .name == "Bash" then
           "U\t" + (.id // "") + "\t"
@@ -172,7 +185,7 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
            | if type == "array" then (map(.text // "") | join(" ")) else tostring end
            | gsub("[\\r\\n\\t]+"; " ")
            | (if length > 900 then .[:100] + " … " + .[-800:] else . end))
-      else empty end)
+      else empty end))
   | .[]' 2>/dev/null)
 [[ -n "$STREAM" ]] || exit 0
 

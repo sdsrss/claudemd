@@ -382,6 +382,57 @@ else
   ok "Case 19: checkpoint describes the validate count it actually computed"
 fi
 
+# --- Case 20 (analysis 2026-09-26 B1): a Bash command that modified a file is
+# a mutation. Claude Code records the files on the result row as bashEditDiff,
+# and under Opus 5.5 most edits take that route, so a checkpoint keyed on
+# Edit/Write alone never fired for those sessions.
+bash_edit_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"python3 - <<PY"}}]}}'
+TR_BASH_EDIT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[{"filePath":"/p/src/c.py","hunks":[]}]}}}'
+TR_BASH_PLAIN='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":""}}'
+reset_cwd
+T="$TMP_HOME/case20.jsonl"
+make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_EDIT"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+if [[ -n "$PAUSED_MD" ]] && grep -qF 'Bash: /p/src/c.py' "$PAUSED_MD"; then
+  ok "Case 20: a Bash file edit with no validation → checkpoint naming the file"
+else
+  ng "Case 20: bashEditDiff mutation missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
+fi
+# Control: the SAME Bash call whose result carries no bashEditDiff is not a
+# mutation, so Case 20 is about the recorded edit and not about Bash calls.
+reset_cwd
+T="$TMP_HOME/case20b.jsonl"
+make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_PLAIN"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 20b: control — a Bash call with no recorded edit is not a mutation"
+else
+  ng "Case 20b: a plain Bash call wrote a checkpoint"
+fi
+# Edit then test in ONE command validates itself: the join places the mutation
+# before that command's own validate test.
+bash_edit_test_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"python3 - <<PY && node --test tests/"}}]}}'
+reset_cwd
+T="$TMP_HOME/case20c.jsonl"
+make_transcript "$T" "$USER_MSG" "$bash_edit_test_call" "$TR_BASH_EDIT"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 20c: edit + test runner in one Bash command → validated, no checkpoint"
+else
+  ng "Case 20c: an edit-then-test command read as unvalidated"
+fi
+# And a test run BEFORE the Bash edit does not validate it.
+reset_cwd
+T="$TMP_HOME/case20d.jsonl"
+make_transcript "$T" "$USER_MSG" "$test_call" "$TR_OK" "$bash_edit_call" "$TR_BASH_EDIT"
+run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+  ok "Case 20d: a test run before the Bash edit does not validate it"
+else
+  ng "Case 20d: an earlier validate suppressed a later Bash-edit checkpoint"
+fi
+
 echo ""
 echo "session-end-check: $([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
