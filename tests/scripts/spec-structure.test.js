@@ -50,9 +50,10 @@ test('A15: MEMORY.md tag syntax described in §11 (core summary + §EXT detail)'
   assert.match(coreText, /tag syntax/i);
 });
 
-test('core contains §0.1 + §2.1 (unified ROUTE absorbs former §2.3 TOOLS)', () => {
+test('core contains §2.1; §0.1 lives with the other spec-editing rules in extended §13', () => {
   const text = fs.readFileSync(CORE, 'utf8');
-  assert.ok(text.includes('§0.1 Core growth discipline'));
+  assert.ok(fs.readFileSync(EXT, 'utf8').includes('§0.1 Core growth discipline'));
+  assert.ok(!text.includes('§0.1 Core growth discipline'));
   assert.ok(text.includes('§2.1 ROUTE'));
   // v6.10.0: §2.3 TOOLS merged into §2.1; escalation block retains the substance.
   assert.match(text, /Tool escalation/);

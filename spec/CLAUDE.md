@@ -22,9 +22,6 @@ Everything else = natural prose, no bracketed signals. Completion claims / level
 
 **Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
 
-### §0.1 Core growth discipline (HARD)
-
-**Hard cap**: core ≤25K / extended ≤50K bytes; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: `CLAUDE-extended.md` Sizing line. Tier landing / promotion / cadence → `OPERATOR.md §13.1`.
 
 ### §0.2 Mid-task feedback
 

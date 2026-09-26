@@ -31,7 +31,7 @@
     {
       "id": "§0.1-core-growth",
       "name": "Core growth discipline",
-      "scope": "core",
+      "scope": "extended",
       "section_anchor": "### §0.1 Core growth discipline (HARD)",
       "enforcement": "external",
       "rule_hits_section": null,

@@ -420,6 +420,10 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 - **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.
 - **HARD ≠ always hook-blocked**: `spec/hard-rules.json#rules[].enforcement` partitions the 26 HARD rules by how they are checked — `hook` (mechanical deny / advisory), `self` (Agent self-enforces; observed via Stop-time advisory scan), `both` (hook covers a subset, Agent covers the rest), `external` (manual via `/claudemd-rules` + operator audit). Calibrate expectation accordingly: when planning a destructive op, a `self`-enforced HARD will NOT auto-block — Agent owns the gate. Today: 4 hook / 16 self / 5 both / 1 external.
 
+### §0.1 Core growth discipline (HARD)
+
+**Hard cap**: core ≤25K / extended ≤50K bytes; over ceiling → next version MUST net-delete (removal > addition) or refuse the addition. Headroom: the Sizing line under Recent changes. Tier landing / promotion / cadence → `OPERATOR.md §13.1`.
+
 ## §13.1 → `OPERATOR.md`
 
 Operator responsibilities live in `OPERATOR.md §13.1` — human-only, not Agent-loaded. The `§13.1` anchor persists in hook telemetry (`§13.1-extended-read`) as a stable label.
