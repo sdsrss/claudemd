@@ -32,7 +32,7 @@ Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
 placed there sits inside the retention scope's target tree.
 
 State-dir scope: only ext-read-*, vocab-scan-*, rework-*, xrepo-*, failopen-*, mem-coverage-*,
-session-start-<sid>.ref, tmp-baseline-<sid>.txt, session-summary-<sid>.lastrun
+session-start-<sid>.ref, sandbox-pending-<sid>.list, tmp-baseline-<sid>.txt, session-summary-<sid>.lastrun
 and the two legacy last-shown-* banner sentinels
 (last-session-summary.json.last-shown, bootstrap-failed.json.last-shown)
 past the retention window.
@@ -530,6 +530,10 @@ const STATE_EPHEMERAL = [
   // sid-less legacy `session-start.ref` (no dash) stays OUT of this pattern —
   // it is live singleton state for sessions whose event carries no session_id.
   { kind: 'session-ref', re: /^session-start-.+\.ref$/ },
+  // Per-session sandbox-disposal pending list (v0.98.0): dirs first seen at the
+  // previous Stop, re-checked at the next. The sid-less `sandbox-pending.list`
+  // stays OUT for the same reason as `session-start.ref`.
+  { kind: 'sandbox-pending', re: /^sandbox-pending-.+\.list$/ },
   // Per-session residue-audit baseline (2026-08-16 audit CONC-3); legacy
   // `tmp-baseline.txt` likewise excluded.
   { kind: 'tmp-baseline', re: /^tmp-baseline-.+\.txt$/ },

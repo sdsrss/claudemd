@@ -11,6 +11,10 @@
 # it, so the /tmp arm finds nothing there; $TMPDIR is not scanned. Pre-existing
 # and open, recorded rather than fixed in 0.97.0.
 #
+# Timing: by default a directory is reported only if it is still there at the
+# session's NEXT Stop (v0.98.0); SANDBOX_DISPOSAL_IMMEDIATE=1 reports it at the
+# Stop that first sees it, as before. See the pending-list block below.
+#
 # Opt-in: SANDBOX_DISPOSAL_BLOCK=1 returns {"decision":"block"} instead, so the
 # turn continues and the session removes what it created — the reason says
 # some entries may belong to another session. The window is NOT
@@ -140,6 +144,53 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
   done < <(platform_find_newer "$loc" "$SESSION_REF" 2>/dev/null | head -n 50)
 done < <(printf '%s\x1e' "$SCAN_SPECS")
 
+# Timing (v0.98.0). The default is DEFERRED: a candidate is remembered at the
+# Stop that first sees it and reported only if it still exists at this
+# session's NEXT Stop. The first-sight report named directories that were still
+# in use — 149 of 149 paths reported since the 2026-09-25 boot were gone
+# afterwards, 127 of them this repo's own test-suite dirs, alive at Stop only
+# because a background run had not finished (docs/claude-session-analysis-
+# 2026-09-26.md B7). Cost: residue left in a session's LAST turn is never
+# reported, because there is no next Stop. SANDBOX_DISPOSAL_IMMEDIATE=1
+# restores first-sight reporting. The pending list is per session, like the
+# window ref, and clean-residue reaps orphans of it (sandbox-pending kind).
+if [[ -n "$SAFE_SID" ]]; then
+  PENDING_FILE="$STATE_DIR/sandbox-pending-${SAFE_SID}.list"
+else
+  PENDING_FILE="$STATE_DIR/sandbox-pending.list"
+fi
+if [[ "${SANDBOX_DISPOSAL_IMMEDIATE:-0}" == "1" ]]; then
+  MODE=immediate
+  NEXT_PENDING=""
+else
+  MODE=deferred
+  CONFIRMED=""
+  if [[ -f "$PENDING_FILE" ]]; then
+    while IFS= read -r p; do
+      [[ -n "$p" && -d "$p" ]] && CONFIRMED+="$p"$'\n'
+    done < "$PENDING_FILE"
+  fi
+  NEXT_PENDING=""
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    case $'\n'"$CONFIRMED" in *$'\n'"$p"$'\n'*) continue ;; esac
+    NEXT_PENDING+="$p"$'\n'
+  done <<< "$FOUND"
+  FOUND="$CONFIRMED"
+fi
+# Written before the verdict; a block below rewrites it to hold the reported
+# dirs instead, so the Stop that follows the block re-checks them.
+if [[ -n "$NEXT_PENDING" ]]; then
+  printf '%s' "$NEXT_PENDING" > "$PENDING_FILE" 2>/dev/null
+else
+  rm -f "$PENDING_FILE" 2>/dev/null
+fi
+if [[ "$MODE" == deferred ]]; then
+  WHEN="were created or changed during an earlier turn of this session and are still present"
+else
+  WHEN="appeared or changed since this session's previous stop"
+fi
+
 if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   LIST=$(printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5)
@@ -148,15 +199,19 @@ if [[ -n "$FOUND" ]]; then
   # so that Stop re-scans: a dir still there is reported, not forgotten.
   if [[ "${SANDBOX_DISPOSAL_BLOCK:-0}" == "1" && "$STOP_HOOK_ACTIVE" != "true" ]] \
      && command -v jq >/dev/null 2>&1; then
-    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s temp directories appeared or changed since this session'"'"'s previous stop (up to 5 listed). Some may belong to another session or process — remove only the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$LIST")
+    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s temp directories %s (up to 5 listed). Some may belong to another session or process — remove only the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$WHEN" "$LIST")
     if jq -nc --arg r "$REASON" '{decision:"block", reason:$r}' 2>/dev/null; then
-      hook_record sandbox-disposal block "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
+      # Only the CONFIRMED dirs stay pending: the window is not advanced on a
+      # block, so this Stop's first-sight candidates are re-found by the next
+      # scan and must not be promoted to confirmed within the same turn.
+      [[ "$MODE" == deferred ]] && printf '%s' "$FOUND" > "$PENDING_FILE" 2>/dev/null
+      hook_record sandbox-disposal block "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
       exit 0
     fi
   fi
-  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories appeared or changed since this session's previous stop (up to 5 listed; some may belong to another session)." >&2
+  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories $WHEN (up to 5 listed; some may belong to another session)." >&2
   printf '%s\n' "$LIST" >&2
-  hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
+  hook_record sandbox-disposal warn "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
 fi
 
 touch "$SESSION_REF"

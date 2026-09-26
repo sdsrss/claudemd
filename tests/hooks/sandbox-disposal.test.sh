@@ -14,6 +14,13 @@ mkdir -p "$HOME/.claude/.claudemd-state" "$HOME/.claude/tmp" "$HOME/.claude/logs
 FAIL=0
 SKIPPED=0
 
+# Cases 1-20 pin WHAT counts as residue (locations, filters, depth, own-dir
+# exclusion, the block verdict). They run with the 0.97.0 first-sight timing,
+# which since v0.98.0 is the opt-out SANDBOX_DISPOSAL_IMMEDIATE=1; the default
+# deferred timing (report only what is still there one Stop later) is pinned by
+# cases 21-25 at the end, which unset it.
+export SANDBOX_DISPOSAL_IMMEDIATE=1
+
 # Case 1: first run (no session-start.ref) → creates ref + silent
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 [[ -z "$STDERR" && -f "$HOME/.claude/.claudemd-state/session-start.ref" ]] \
@@ -318,7 +325,88 @@ else
   echo "PASS: 20 pre-existing temp-cwd project dir not attributed to this session"
 fi
 
-TOTAL=$((21 - ${SKIPPED:-0}))
+# Cases 21-25 (v0.98.0, analysis 2026-09-26 B7): the DEFAULT timing is
+# deferred. 149 of 149 paths the old timing reported since boot were gone
+# afterwards; 127 were this repo's own test-suite dirs, alive at Stop only
+# because a background run had not finished. A candidate is now remembered at
+# the Stop that first sees it and reported only if it still exists at the next.
+unset SANDBOX_DISPOSAL_IMMEDIATE
+ISO="$HOME/.claude/tmp|both"
+dstop() { CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<"{\"session_id\":\"$1\"${2:+,$2}}" 2>&1; }
+# Case 21: first sight is silent; still there at the next Stop → reported.
+dstop s21 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.left_behind"
+OUT1=$(dstop s21)
+OUT2=$(dstop s21)
+if [[ -z "$OUT1" ]] && echo "$OUT2" | grep -q "tmp\.left_behind" && echo "$OUT2" | grep -q "may belong to another session" \
+   && [[ "$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl" | jq -r '.extra.mode')" == "deferred" ]]; then
+  echo "PASS: 21 default: silent at first sight, reported when still present one Stop later"
+else
+  echo "FAIL: 21 (first: $OUT1 | second: $OUT2)"; FAIL=$((FAIL+1))
+fi
+# Case 22: gone before the next Stop → never reported (the in-flight suite).
+dstop s22 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.in_flight"
+OUT1=$(dstop s22)
+rm -rf "$HOME/.claude/tmp/tmp.in_flight"
+OUT2=$(dstop s22)
+if [[ -z "$OUT1" && -z "$OUT2" ]]; then
+  echo "PASS: 22 default: a dir removed before the next Stop is never reported"
+else
+  echo "FAIL: 22 (first: $OUT1 | second: $OUT2)"; FAIL=$((FAIL+1))
+fi
+# Case 23: reported once; untouched afterwards → not reported again.
+OUT3=$(dstop s21)
+if [[ -z "$OUT3" ]]; then
+  echo "PASS: 23 default: a reported dir that is not touched again is not re-reported"
+else
+  echo "FAIL: 23 re-reported: $OUT3"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.left_behind"
+# Case 23b: a dir that is reported AND was written again during that turn is
+# still reported once — it must not be re-queued by the same Stop's scan.
+dstop s23b >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.busy"
+dstop s23b >/dev/null; sleep 1
+touch "$HOME/.claude/tmp/tmp.busy/f"
+R2=$(dstop s23b)
+R3=$(dstop s23b)
+if echo "$R2" | grep -q "tmp\.busy" && [[ -z "$R3" ]]; then
+  echo "PASS: 23b default: a reported dir written again in that turn is not re-queued"
+else
+  echo "FAIL: 23b (second: $R2 | third: $R3)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.busy"
+# Case 24: block mode blocks at the CONFIRMING Stop, not at first sight; the
+# follow-up Stop (stop_hook_active) re-checks and only warns.
+dstop s24 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.block_later"
+B1=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s24"}' 2>/dev/null)
+B2=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s24"}' 2>/dev/null)
+B3=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" \
+  <<<'{"session_id":"s24","stop_hook_active":true}' 2>"$TMP_HOME/s24.err")
+if [[ -z "$B1" ]] && [[ "$(jq -r '.decision // empty' <<<"$B2" 2>/dev/null)" == "block" ]] \
+   && jq -r '.reason' <<<"$B2" | grep -q "tmp\.block_later" \
+   && [[ -z "$B3" ]] && grep -q "tmp\.block_later" "$TMP_HOME/s24.err"; then
+  echo "PASS: 24 default + block: blocks at the confirming Stop, follow-up only warns"
+else
+  echo "FAIL: 24 (b1: $B1 | b2: $B2 | b3: $B3 / $(cat "$TMP_HOME/s24.err"))"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.block_later"
+# Case 25: the opt-out restores first-sight reporting — the SAME shape as case
+# 21's first Stop, which was silent.
+dstop s25 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.immediate"
+OUT=$(SANDBOX_DISPOSAL_IMMEDIATE=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s25"}' 2>&1)
+if echo "$OUT" | grep -q "tmp\.immediate" \
+   && [[ "$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl" | jq -r '.extra.mode')" == "immediate" ]]; then
+  echo "PASS: 25 SANDBOX_DISPOSAL_IMMEDIATE=1 reports at first sight"
+else
+  echo "FAIL: 25 (out: $OUT)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.immediate"
+
+TOTAL=$((27 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi
