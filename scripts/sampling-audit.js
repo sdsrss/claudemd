@@ -28,7 +28,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolvePluginRoot, projectDir, projectsRoot as projectsRootDir } from './lib/paths.js';
+import {
+  resolvePluginRoot,
+  projectDir,
+  projectsRoot as projectsRootDir,
+  semverCmp,
+  SEMVER_RE,
+} from './lib/paths.js';
 import { classifyProject } from './lib/rule-hits-parse.js';
 import {
   parsePositiveInt,
@@ -168,7 +174,9 @@ export function loadVocabPatterns(pluginRoot) {
 //   blocks and no tool_result (attachment-carrying prompt) also counts typed.
 // - compaction = system line subtype 'compact_boundary' (with compactMetadata)
 //   followed by a user line with isCompactSummary:true — one event, not two.
-// - subagent traffic shares the file under isSidechain:true.
+// - subagent traffic shared the file under isSidechain:true until CC 2.1.278;
+//   since then each subagent has its own `<session>/subagents/*.jsonl`, which
+//   samplingAudit reads separately (subagentBehaviorMetrics).
 // `cutoffMs` (optional) drops turns older than the window. File mtime alone was
 // the only window filter until 2026-07-25: a resumed or long-running session has
 // a recent mtime, so EVERY turn it ever held entered the sample regardless of
@@ -262,6 +270,7 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
     return events;
   }
   let badLines = 0;
+  let bashEditCapable = false;
   for (const line of raw.split(/\r?\n/)) {
     if (!line) continue;
     let obj;
@@ -313,7 +322,7 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
         .map(c => c.text);
       const toolUses = content
         .filter(c => c && c.type === 'tool_use')
-        .map(c => ({ name: c.name, input: c.input }));
+        .map(c => ({ id: c.id, name: c.name, input: c.input }));
       if (texts.length === 0 && toolUses.length === 0) continue;
       events.push({
         kind: 'assistant',
@@ -325,6 +334,35 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
       continue;
     }
     if (obj.type === 'user') {
+      // Files a Bash command modified, as Claude Code records them (CC ≥2.1.278,
+      // `toolUseResult.bashEditDiff`). Opus 5.5 routes most edits through Bash
+      // heredocs, so a behaviour metric that reads only Edit/Write tool_use
+      // counted a 0/17 rework week that was 8/21 once these were included
+      // (docs/claude-session-analysis-2026-09-26.md B1).
+      const tur = obj.toolUseResult;
+      const bed = tur && typeof tur === 'object' ? tur.bashEditDiff : null;
+      if (bed && typeof bed === 'object' && Array.isArray(bed.files)) {
+        const files = bed.files.map(f => f && f.filePath).filter(fp => typeof fp === 'string' && fp);
+        if (files.length > 0) events.push({ kind: 'bash-edit', files, sidechain });
+      }
+      if (
+        !bashEditCapable &&
+        typeof obj.version === 'string' &&
+        ccAtLeast(obj.version, BASH_EDIT_DIFF_SINCE)
+      ) {
+        bashEditCapable = true;
+        events.push({ kind: 'bash-edit-capable', sidechain });
+      }
+      // Errored tool results, joined back to their tool_use by id in
+      // scanBehavior. A `Skill` call answered `Unknown skill: ship` is a failed
+      // routing attempt, not an invocation (analysis B4: 9 of 63).
+      if (Array.isArray(obj.message && obj.message.content)) {
+        for (const c of obj.message.content) {
+          if (c && c.type === 'tool_result' && c.is_error === true && typeof c.tool_use_id === 'string') {
+            events.push({ kind: 'tool-error', id: c.tool_use_id, sidechain });
+          }
+        }
+      }
       // Shared with the two bash gates via transcript-user-turn.js ↔
       // HOOK_USER_TURN_JQ (2026-07-27 audit, H2). This engine's local spelling
       // already handled the array-with-text shape but counted isMeta rows and
@@ -843,6 +881,16 @@ const TEST_DIR_RE = /(^|\/)(tests?|__tests__)\//i;
 const TEST_NAME_RE = /\.(test|spec)\.[a-z]+$|_test\.[a-z]+$/i;
 export const REWORK_THRESHOLD = 8;
 
+// First Claude Code version whose transcripts carry `toolUseResult.bashEditDiff`
+// (measured on this machine's corpus, 2026-09-26). A session on an older CLI
+// cannot show a Bash edit at all, so its any-channel counts are tool-only by
+// construction — `bashEditCapableSessions` says how many sessions could.
+const BASH_EDIT_DIFF_SINCE = '2.1.278';
+
+function ccAtLeast(version, floor) {
+  return SEMVER_RE.test(version) && semverCmp(version, floor) >= 0;
+}
+
 export function isTestFile(p) {
   return CODE_FILE_RE.test(p) && (TEST_DIR_RE.test(p) || TEST_NAME_RE.test(p));
 }
@@ -866,8 +914,12 @@ export const BEHAVIOR_VALIDITY =
   'assertion it kept; (3) skill-invocation rate counts the Skill tool only — a model that ' +
   'performs the equivalent work inline is indistinguishable here from one that skipped it. ' +
   'All three are main-line AND sidechain traffic as the transcript records it, and the corpus ' +
-  'this was registered against carried isSidechain=0 on every row, so subagent work is ' +
-  'under-represented by an unmeasured amount.';
+  'this was registered against carried isSidechain=0 on every row, so subagent work was ' +
+  'under-represented there. Since CC 2.1.278 subagents write their own files; those are counted ' +
+  'in subagentBehaviorMetrics, not here. Rework here is Edit/Write only (the pre-registered ' +
+  'number); the AnyChannel pair adds files from bashEditDiff (CC >=2.1.278), and a session on a ' +
+  'capable CLI with no bashEditDiff is not proof of no Bash edit — a headless `claude -p` probe ' +
+  'on 2.1.283 recorded none.';
 
 const EDIT_BUCKETS = ['1-2', '3-4', '5-7', '8-14', '15-29', '30+'];
 
@@ -903,6 +955,19 @@ export function emptyBehavior() {
     toolUses: 0,
     skillInvocations: 0,
     skillsByName: {},
+    // Skill calls whose tool_result came back is_error (`Unknown skill: …`).
+    // Kept OUT of skillInvocations: a failed lookup is not a routed skill.
+    skillInvocationErrors: 0,
+    skillErrorsByName: {},
+    // Edit channel. `editsViaTool` counts Edit/Write tool_use; `editsViaBash`
+    // counts files in `bashEditDiff`. The any-channel rework pair merges both
+    // per file. The tool-only pair above stays the pre-registered G0 number;
+    // the any-channel pair is what an Opus 5.5 session actually did.
+    editsViaTool: 0,
+    editsViaBash: 0,
+    editedSessionsAnyChannel: 0,
+    reworkSessionsAnyChannel: 0,
+    bashEditCapableSessions: 0,
   };
 }
 
@@ -911,21 +976,39 @@ export function scanBehavior(events) {
   const b = emptyBehavior();
   const perFile = new Map();
   const perCodeFile = new Map();
+  const perFileAny = new Map();
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const erroredIds = new Set(events.filter(e => e.kind === 'tool-error').map(e => e.id));
   for (const e of events) {
+    if (e.kind === 'bash-edit-capable') b.bashEditCapableSessions = 1;
+    if (e.kind === 'bash-edit') {
+      for (const fp of e.files) {
+        b.editsViaBash += 1;
+        bump(perFileAny, fp);
+      }
+      continue;
+    }
     if (e.kind !== 'assistant') continue;
     for (const tu of e.toolUses) {
       b.toolUses += 1;
       if (tu.name === 'Skill') {
-        b.skillInvocations += 1;
         const named = tu.input && (tu.input.skill || tu.input.name);
         const key = typeof named === 'string' && named ? named : '(unnamed)';
-        b.skillsByName[key] = (b.skillsByName[key] || 0) + 1;
+        if (tu.id && erroredIds.has(tu.id)) {
+          b.skillInvocationErrors += 1;
+          b.skillErrorsByName[key] = (b.skillErrorsByName[key] || 0) + 1;
+        } else {
+          b.skillInvocations += 1;
+          b.skillsByName[key] = (b.skillsByName[key] || 0) + 1;
+        }
       }
       const fp = tu.input && tu.input.file_path;
       if (typeof fp !== 'string' || !fp) continue;
       if (tu.name === 'Edit' || tu.name === 'Write') {
-        perFile.set(fp, (perFile.get(fp) || 0) + 1);
-        if (CODE_FILE_RE.test(fp)) perCodeFile.set(fp, (perCodeFile.get(fp) || 0) + 1);
+        b.editsViaTool += 1;
+        bump(perFile, fp);
+        bump(perFileAny, fp);
+        if (CODE_FILE_RE.test(fp)) bump(perCodeFile, fp);
       }
       if (tu.name !== 'Edit' || !isTestFile(fp)) continue;
       b.testEdits += 1;
@@ -952,6 +1035,10 @@ export function scanBehavior(events) {
     b.codeEditedSessions = 1;
     if (Math.max(...perCodeFile.values()) >= REWORK_THRESHOLD) b.reworkSessionsCodeOnly = 1;
   }
+  if (perFileAny.size > 0) {
+    b.editedSessionsAnyChannel = 1;
+    if (Math.max(...perFileAny.values()) >= REWORK_THRESHOLD) b.reworkSessionsAnyChannel = 1;
+  }
   return b;
 }
 
@@ -972,10 +1059,18 @@ export function mergeBehavior(dst, src) {
     'testCasesDeleted',
     'toolUses',
     'skillInvocations',
+    'skillInvocationErrors',
+    'editsViaTool',
+    'editsViaBash',
+    'editedSessionsAnyChannel',
+    'reworkSessionsAnyChannel',
+    'bashEditCapableSessions',
   ])
     dst[k] += src[k];
   for (const b of EDIT_BUCKETS) dst.editBuckets[b] += src.editBuckets[b];
   for (const [k, v] of Object.entries(src.skillsByName)) dst.skillsByName[k] = (dst.skillsByName[k] || 0) + v;
+  for (const [k, v] of Object.entries(src.skillErrorsByName))
+    dst.skillErrorsByName[k] = (dst.skillErrorsByName[k] || 0) + v;
 }
 
 // Walk the main-line (non-sidechain) event sequence for the 3 detectors that
@@ -1151,6 +1246,10 @@ function emptyResult(windowDays, projectsDir) {
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
     askRate: { segments: 0, asks: 0, assent: 0 },
     behaviorMetrics: { ...emptyBehavior(), reworkThreshold: REWORK_THRESHOLD, validity: BEHAVIOR_VALIDITY },
+    // Same shape, counted over `<session>/subagents/*.jsonl` only. Separate so
+    // the main-line block above keeps its pre-registered population.
+    subagentTranscripts: 0,
+    subagentBehaviorMetrics: emptyBehavior(),
     perTranscript: [],
   };
 }
@@ -1227,6 +1326,41 @@ export async function samplingAudit({
   const patterns = loadVocabPatterns(pluginRoot);
   const affected = Object.fromEntries(RULE_KEYS.map(k => [k, new Set()]));
   const R = result.byRule;
+
+  // Subagent transcripts. Since CC 2.1.278 a spawned agent writes its own file
+  // under `<projectsDir>/<session-id>/subagents/` instead of sharing the
+  // parent's under isSidechain:true, and a reader of `*.jsonl` alone missed
+  // 43.1% of all tool calls on this machine (analysis 2026-09-26, B2). They
+  // feed a SEPARATE behaviour block: the main-line numbers stay comparable to
+  // the pre-registered G0 baseline, and the text/sequence detectors keep their
+  // main-file population (their opportunity denominators are the published
+  // §13.2 rates). Found via the sampled parents, so `--sample` bounds both.
+  for (const file of files) {
+    const subDir = path.join(projectsDir, path.basename(file, '.jsonl'), 'subagents');
+    let subFiles;
+    try {
+      subFiles = fs.readdirSync(subDir).filter(f => f.endsWith('.jsonl'));
+    } catch {
+      continue; // no subagents for this session — the common case
+    }
+    for (const f of subFiles) {
+      const full = path.join(subDir, f);
+      try {
+        if (fs.statSync(full).mtimeMs < cutoffMs) continue;
+      } catch {
+        continue;
+      }
+      const subEvents = extractEvents(
+        full,
+        cutoffMs,
+        result.unreadableTranscripts,
+        result.malformedTranscripts,
+        untilMs
+      );
+      result.subagentTranscripts += 1;
+      mergeBehavior(result.subagentBehaviorMetrics, scanBehavior(subEvents));
+    }
+  }
 
   for (const file of files) {
     const events = extractEvents(
@@ -1356,6 +1490,8 @@ export async function samplingAuditGlobal({
     // read, and a pooled behaviour rate would hide whether dogfooding differs
     // from real work.
     behaviorMetrics: emptyBehavior(),
+    subagentTranscripts: 0,
+    subagentBehaviorMetrics: emptyBehavior(),
     byRule: Object.fromEntries(
       RULE_KEYS.map(k => [
         k,
@@ -1406,11 +1542,15 @@ export async function samplingAuditGlobal({
     mergeOverCeremony(result.overCeremony, sub.overCeremony);
     if (sub.askRate) mergeAskRate(result.askRate, sub.askRate);
     mergeBehavior(result.behaviorMetrics, sub.behaviorMetrics);
+    result.subagentTranscripts += sub.subagentTranscripts;
+    mergeBehavior(result.subagentBehaviorMetrics, sub.subagentBehaviorMetrics);
     const cls = result.byClass[sub.projectClass] || result.byClass.unknown;
     cls.scannedTranscripts += sub.scannedTranscripts;
     cls.totalAssistantTextRows += sub.totalAssistantTextRows;
     if (sub.askRate) mergeAskRate(cls.askRate, sub.askRate);
     mergeBehavior(cls.behaviorMetrics, sub.behaviorMetrics);
+    cls.subagentTranscripts += sub.subagentTranscripts;
+    mergeBehavior(cls.subagentBehaviorMetrics, sub.subagentBehaviorMetrics);
     for (const k of RULE_KEYS) {
       result.byRule[k].hits += sub.byRule[k].hits;
       result.byRule[k].violations += sub.byRule[k].violations;
@@ -1517,6 +1657,13 @@ export function behaviorLines(r) {
     // would make the pair non-comparable to the pre-registered number.
     `  code files only: ${b.reworkSessionsCodeOnly}/${b.editedSessions} of edit-sessions = ${pct(b.reworkSessionsCodeOnly, b.editedSessions)}` +
       ` · ${b.reworkSessionsCodeOnly}/${b.codeEditedSessions} of code-edit sessions = ${pct(b.reworkSessionsCodeOnly, b.codeEditedSessions)}`,
+    // The pre-registered pair above counts Edit/Write only. Under Opus 5.5 most
+    // edits go through Bash, so the channel split and the merged rate print
+    // beside it — a tool-only rate with no channel line is how a 0/17 week
+    // was read as "no rework" (analysis 2026-09-26, B1).
+    `  any channel (Edit/Write + bashEditDiff): ${b.reworkSessionsAnyChannel}/${b.editedSessionsAnyChannel} = ${pct(b.reworkSessionsAnyChannel, b.editedSessionsAnyChannel)}` +
+      ` · edits via tool ${b.editsViaTool}, via Bash ${b.editsViaBash} (${pct(b.editsViaBash, b.editsViaTool + b.editsViaBash)} Bash)` +
+      ` · ${b.bashEditCapableSessions} session(s) on a CLI that records Bash edits`,
     `Hottest-file edit counts: ${EDIT_BUCKETS.map(k => `${k}:${b.editBuckets[k]}`).join(' · ')}`,
     `Test-file Edits: ${b.testEdits} · strengthened ${b.testStrengthened} (${pct(b.testStrengthened, b.testEdits)})` +
       ` · unchanged ${b.testNeutral} (${pct(b.testNeutral, b.testEdits)})` +
@@ -1530,9 +1677,20 @@ export function behaviorLines(r) {
             .slice(0, 8)
             .map(([k, v]) => `${k}×${v}`)
             .join(', ')}`
-        : ' · (no Skill calls in window)'),
+        : ' · (no Skill calls in window)') +
+      (b.skillInvocationErrors ? ` · failed (not counted): ${b.skillInvocationErrors}` : ''),
     '',
   ];
+  const sb = r.subagentBehaviorMetrics;
+  if (sb && r.subagentTranscripts > 0) {
+    out.push(
+      `Subagent transcripts (${r.subagentTranscripts}, counted separately): tool_use ${sb.toolUses}` +
+        ` · rework any channel ${sb.reworkSessionsAnyChannel}/${sb.editedSessionsAnyChannel} = ${pct(sb.reworkSessionsAnyChannel, sb.editedSessionsAnyChannel)}` +
+        ` · Skill ${sb.skillInvocations}/${sb.toolUses} = ${pct(sb.skillInvocations, sb.toolUses)}` +
+        ` · share of all tool_use ${pct(sb.toolUses, sb.toolUses + b.toolUses)}`,
+      ''
+    );
+  }
   if (r.byClass) {
     out.push(
       '| Class | Rework ≥8 / edited sessions | Skill / tool_use | Test Edits | weakened+deleted |',

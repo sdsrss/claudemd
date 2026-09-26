@@ -25,6 +25,7 @@ import {
   emptyBehavior,
   isTestFile,
   REWORK_THRESHOLD,
+  behaviorLines,
 } from '../../scripts/sampling-audit.js';
 import { encodeProjectCwd } from '../../scripts/lib/paths.js';
 
@@ -1339,6 +1340,131 @@ test('G0 skill rate: Skill calls counted by name against every tool_use', () => 
   assert.deepEqual(b.skillsByName, { 'superpowers:brainstorming': 2, '(unnamed)': 1 });
   // Read carries a file_path and must not count as an edit.
   assert.equal(b.editedSessions, 0);
+});
+
+// Analysis 2026-09-26 B1: Opus 5.5 routes most edits through Bash heredocs,
+// and a rework count that reads only Edit/Write reported 0/17 for a week that
+// was 8/21. The pre-registered tool-only pair must NOT move; the any-channel
+// pair must see the Bash edits, per file, merged with the tool edits.
+const bashEdit = (...files) => ({ kind: 'bash-edit', files, sidechain: false });
+
+test('B1 any-channel rework: Bash edits merge per file, the tool-only pair does not move', () => {
+  // 4 tool edits + 4 Bash edits to ONE file: rework on the merged count only.
+  const mixed = scanBehavior([
+    ...editsTo('/p/src/a.js', 4),
+    ...Array.from({ length: 4 }, () => bashEdit('/p/src/a.js')),
+  ]);
+  assert.equal(mixed.reworkSessions, 0, 'the pre-registered tool-only count sees 4 edits');
+  assert.equal(mixed.reworkSessionsAnyChannel, 1, 'the merged count sees 8');
+  assert.equal(mixed.editsViaTool, 4);
+  assert.equal(mixed.editsViaBash, 4);
+  // Control: 4 + 3 is still below the threshold on the merged count, so the
+  // case above is about the merge and not about Bash edits always counting.
+  const below = scanBehavior([
+    ...editsTo('/p/src/a.js', 4),
+    ...Array.from({ length: 3 }, () => bashEdit('/p/src/a.js')),
+  ]);
+  assert.equal(below.reworkSessionsAnyChannel, 0);
+  // A Bash-only session is an edited session on the merged count and not on
+  // the tool-only one — this is the population the 0/17 week was missing.
+  const bashOnly = scanBehavior(Array.from({ length: 8 }, () => bashEdit('/p/src/b.py')));
+  assert.equal(bashOnly.editedSessions, 0);
+  assert.equal(bashOnly.editedSessionsAnyChannel, 1);
+  assert.equal(bashOnly.reworkSessionsAnyChannel, 1);
+  // One command touching two files is two file edits, not one.
+  assert.equal(scanBehavior([bashEdit('/p/a.js', '/p/b.js')]).editsViaBash, 2);
+});
+
+test('B4 skill rate: a Skill call answered with an error is not an invocation', () => {
+  const b = scanBehavior([
+    ev({ id: 'tu_ok', name: 'Skill', input: { skill: 'superpowers:tdd' } }),
+    ev({ id: 'tu_bad', name: 'Skill', input: { skill: 'ship' } }),
+    { kind: 'tool-error', id: 'tu_bad', sidechain: false },
+    // An error on a DIFFERENT id must not touch the Skill calls.
+    { kind: 'tool-error', id: 'tu_other', sidechain: false },
+  ]);
+  assert.equal(b.skillInvocations, 1);
+  assert.equal(b.skillInvocationErrors, 1);
+  assert.deepEqual(b.skillsByName, { 'superpowers:tdd': 1 });
+  assert.deepEqual(b.skillErrorsByName, { ship: 1 });
+  assert.equal(b.toolUses, 2, 'a failed call is still a tool_use');
+});
+
+test('B1/B2/B4 end-to-end: bashEditDiff, tool errors and subagent files reach the result', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-b12-'));
+  try {
+    const ts = new Date().toISOString();
+    const bashRow = (id, file) => [
+      {
+        type: 'assistant',
+        timestamp: ts,
+        version: '2.1.283',
+        message: {
+          content: [{ type: 'tool_use', id, name: 'Bash', input: { command: "python3 - <<'PY'" } }],
+        },
+      },
+      {
+        type: 'user',
+        timestamp: ts,
+        version: '2.1.283',
+        message: { content: [{ type: 'tool_result', tool_use_id: id, content: '' }] },
+        toolUseResult: { stdout: '', bashEditDiff: { files: [{ filePath: file, hunks: [] }] } },
+      },
+    ];
+    const rows = [
+      ...Array.from({ length: 8 }, (_, i) => bashRow(`tu_b${i}`, '/p/src/a.py')).flat(),
+      {
+        type: 'assistant',
+        timestamp: ts,
+        message: { content: [{ type: 'tool_use', id: 'tu_s', name: 'Skill', input: { skill: 'ship' } }] },
+      },
+      {
+        type: 'user',
+        timestamp: ts,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'tu_s', is_error: true, content: 'Unknown skill: ship' },
+          ],
+        },
+      },
+    ];
+    const write = (f, rs) => fs.writeFileSync(f, rs.map(r => JSON.stringify(r)).join('\n') + '\n');
+    write(path.join(dir, 'sess1.jsonl'), rows);
+    const subDir = path.join(dir, 'sess1', 'subagents');
+    fs.mkdirSync(subDir, { recursive: true });
+    write(path.join(subDir, 'agent-a1.jsonl'), [
+      {
+        type: 'assistant',
+        timestamp: ts,
+        isSidechain: true,
+        message: { content: [{ type: 'tool_use', id: 'x', name: 'Read', input: {} }] },
+      },
+      {
+        type: 'assistant',
+        timestamp: ts,
+        isSidechain: true,
+        message: { content: [{ type: 'tool_use', id: 'y', name: 'Skill', input: { skill: 'sp:tdd' } }] },
+      },
+    ]);
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const b = r.behaviorMetrics;
+    assert.equal(b.editedSessions, 0, 'no Edit/Write — the tool-only count is empty');
+    assert.equal(b.reworkSessionsAnyChannel, 1, '8 Bash edits to one file');
+    assert.equal(b.editsViaBash, 8);
+    assert.equal(b.bashEditCapableSessions, 1);
+    assert.equal(b.skillInvocations, 0);
+    assert.equal(b.skillInvocationErrors, 1);
+    assert.equal(b.toolUses, 9, 'the subagent file does not leak into the main block');
+    assert.equal(r.subagentTranscripts, 1);
+    assert.equal(r.subagentBehaviorMetrics.toolUses, 2);
+    assert.equal(r.subagentBehaviorMetrics.skillInvocations, 1);
+    const md = behaviorLines(r).join('\n');
+    assert.match(md, /any channel \(Edit\/Write \+ bashEditDiff\): 1\/1/);
+    assert.match(md, /failed \(not counted\): 1/);
+    assert.match(md, /Subagent transcripts \(1, counted separately\): tool_use 2/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('G0 end-to-end: behaviorMetrics reaches the result with its threshold and validity', async () => {
