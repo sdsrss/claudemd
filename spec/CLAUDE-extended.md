@@ -138,28 +138,28 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 
 ### Routing
 
-| Request type | Primary → Secondary | Notes |
+| Request type | Candidates (pick per §12 Skill routing table) | Notes |
 |---|---|---|
-| code/logic bug | **sp** (L1: reproduce→§7; L2+: sp:systematic-debugging) | gs:/investigate only for env/staging/deploy |
-| env/staging/deploy bug | **gs:/investigate** | → sp if root cause is code |
-| UI/visual bug | **gs:/browse** → route per cause | |
-| feat | **sp** (L0-L1: edit→§7; L2: sp:TDD→§9→§7; L3: §4.FULL or §4.FULL-lite) | **L2-additive** (new branch/field/endpoint/optional param, no prior failing path): RED-first short evidence per §7-EXT Additive exception — skip full sp:TDD ceremony. Bugfix always needs prior reproduction. |
-| bootstrap / scaffold | **sp** — L2; bundle deps one AUTH; skip §4.FULL | |
-| ship L2 | **gs** — sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy | Skip /autoplan, /codex. /qa: skip unless user-facing. |
-| ship/deploy/PR | **gs** — gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist | |
-| prod incident | **gs** — [EMERGENCY] → revert or flag-off | |
-| QA on staging | **gs:/qa** (fix) or gs:/qa-only (report) | |
-| review | **per-task**: sp:requesting-code-review; **pre-ship**: gs:/review; **from user**: sp:receiving-code-review | One entry point per context |
-| 2nd-opinion (opt-in) | **gs:/codex** | User request only; never auto |
-| browser/web verify | **gs:/browse** ONLY | Never mcp__chrome or computer-use |
-| design/UI | **gs:/design-consultation** → gs:/design-review | |
-| perf check | **gs:/benchmark** (before/after) | |
-| security audit | **gs:/cso** | |
+| code/logic bug | sp (L1: reproduce→§7; L2+: sp:systematic-debugging) | gs:/investigate only for env/staging/deploy |
+| env/staging/deploy bug | gs:/investigate | → sp if root cause is code |
+| UI/visual bug | gs:/browse → route per cause | |
+| feat | sp (L0-L1: edit→§7; L2: sp:TDD→§9→§7; L3: §4.FULL or §4.FULL-lite) | L2-additive (new branch/field/endpoint/optional param, no prior failing path): RED-first short evidence per §7-EXT Additive exception — skip full sp:TDD ceremony. Bugfix always needs prior reproduction. |
+| bootstrap / scaffold | sp — L2; bundle deps one AUTH; skip §4.FULL | |
+| ship L2 | gs — sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy | Skip /autoplan, /codex. /qa: skip unless user-facing. |
+| ship/deploy/PR | gs — gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist | |
+| prod incident | gs — [EMERGENCY] → revert or flag-off | |
+| QA on staging | gs:/qa (fix) or gs:/qa-only (report) | |
+| review | per-task: sp:requesting-code-review; pre-ship: gs:/review; from user: sp:receiving-code-review | One entry point per context |
+| 2nd-opinion (opt-in) | gs:/codex | User request only; never auto |
+| browser/web verify | gs:/browse ONLY | Never mcp__chrome or computer-use |
+| design/UI | gs:/design-consultation → gs:/design-review | |
+| perf check | gs:/benchmark (before/after) | |
+| security audit | gs:/cso | |
 | Q&A (no code) | direct answer; docs-lookup for API claims (e.g. context7, if available) | |
-| product/biz clarify | **gs:/office-hours** | |
-| tech/arch clarify | **sp:brainstorming** | |
+| product/biz clarify | gs:/office-hours | |
+| tech/arch clarify | sp:brainstorming | |
 | mixed product+tech | combined ask, tag `[product]`/`[tech]` | |
-| 2+ independent tasks | `Agent` tool (fork / general-purpose); **sp:dispatching-parallel-agents** as optional wrapper | |
+| 2+ independent tasks | `Agent` tool (fork / general-purpose); sp:dispatching-parallel-agents as optional wrapper | |
 | low-freq utilities | gs:/freeze, /careful, /guard, /retro; support ops | |
 
 ### Composite requests
@@ -212,7 +212,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 env/dep/config    → fix + 1 retry → pause, surface blocker in prose
 syntax            → auto-fix ≤2 attempts
 L1 code bug       → §7.L1-bugfix (core)
-L2+ code/logic    → sp:systematic-debugging (4-phase root cause)
+L2+ code/logic    → §12 L2 bug row (root cause first)
 env/staging/deploy → gs:/investigate
 UI/visual         → gs:/browse → route per cause
 sideways          → STOP + stash → re-plan (note pivot reason)
