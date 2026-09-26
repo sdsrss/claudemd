@@ -43,6 +43,13 @@
 #     not lag; the EVIDENCE is older than the claim by construction, so the lag
 #     costs at most the most recent command. Registered as an FP source.
 #
+# Channel: stderr with exit 0, so the HUMAN reads it and the model does not
+# (Stop has no additionalContext; docs/HOOK-PROTOCOL.md). That is deliberate
+# until the verdict is precise enough to interrupt a model: a 2026-09-26
+# replay over 1,747 historical turn ends fired 21 times and at most 3 were a
+# code completion claim without verification (reports, questions and
+# waiting-on-CI messages read as Done claims). docs/audit/20260926-180700.md.
+#
 # Opt-in: EVIDENCE_GATE=1 (default OFF). §EXT §13.3: behaviour-layer hooks ship
 # default-OFF for >=30d of FP signal collection before default-ON advisory, and
 # only then is a `deny` form even on the table.
@@ -281,7 +288,7 @@ hook_record evidence-gate evidence-advisory "$EXTRA" '§iron-law-2' "$SESSION_ID
 
 printf '[claudemd] §7 Iron Law #2 — a completion claim this session has no verification output behind it.\n' >&2
 printf '  This session edited code files, the last assistant message makes a Done claim, and %s\n' "$DETAIL" >&2
-printf '  Run the verification and cite its output, or restate the claim as [PARTIAL: <what is unverified>].\n' >&2
+printf '  This note reaches you, not the agent (a Stop hook has no channel into the model). If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
 printf '  Checked the transcript, not the wording: the last %s rows, for a non-error Bash result after the last code edit.\n' "$EG_WINDOW" >&2
 printf '  Advisory. Disable: EVIDENCE_GATE=0 or DISABLE_EVIDENCE_GATE_HOOK=1.\n' >&2
 

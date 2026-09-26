@@ -229,7 +229,7 @@ printf '  Ledger: %s (%s code-file edit(s) in the last %s transcript rows, and n
 if (( LS_COUNT > 1 )); then
   printf '  Chosen as the most recently modified of %s ledgers under tasks/ — if the work belongs to another one, this names the wrong file.\n' "$LS_COUNT" >&2
 fi
-printf '  Add the finished item to Verified-done with its command and exit code, and move Next, before the task goes on.\n' >&2
+printf '  This note reaches you, not the agent. If the ledger matters, ask it to add the finished item to Verified-done with its command and exit code, and to move Next.\n' >&2
 printf '  A ledger that is behind is what SessionStart re-injects after the next compaction.\n' >&2
 printf '  Advisory. Disable: LEDGER_STALENESS=0 or DISABLE_LEDGER_STALENESS_HOOK=1.\n' >&2
 
