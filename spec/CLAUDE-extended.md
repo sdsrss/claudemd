@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.33.0 — Extended
+# AI-CODING-SPEC v6.34.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -374,6 +374,7 @@ Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voi
 - **Medium**: L2 if ship-blocking; L1 if isolated.
 - **Low**: user discretion. Default skip with reason logged.
 - **Resume**: re-run gs:/review on repair commit only (delta scope). Green → resume at gs:/ship. Depth limit 2; third miss → escalate with full context.
+- **Mature-solution check**: many findings in one round, a repair outgrowing the change it repairs, or immature tech underneath → before another patch round, search established open-source projects / libraries solving the same problem (web search / context7) and recommend adopt vs build, citing sources and trade-offs.
 
 ### Skill routing table
 
@@ -467,9 +468,9 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.33.0 (minor, 2026-09-25)** — §1 says whose language "user's language" is. Measured over 1448 final messages in 158 interactive sessions with a 中文-writing user: 93 came out English, and 70 of them ended turns started by a machine message in the user's role — a teammate message (49) or a `<task-notification>` (21). Of the 23 that ended a turn the human started, 16 were wait/yield notes, 15 of them in a turn that had just spawned a subagent. The language is now the human's, fixed for the session, and binds every message the user reads. `docs/` prose of new docs moves to that language (an existing doc keeps its own; identifiers and test-parsed keys stay English); README and subagent prompts are named English.
+**v6.34.0 (minor, 2026-09-26)** — five rules the operator asked for, four of them closing gaps in existing ones. §7 gains **Tests** (L1+: add or update a covering test; affected tests green at L1, full suite + smoke entry at L2+) and **Commit** (each VALIDATE-passed change → its own local commit; push only when asked; `AUTO_COMMIT: off` opts out), and its L1 row now reads `lint + typecheck + test`. §1 Zero-assume adds look-it-up-and-cite for unfamiliar or stale facts, absorbing §2.1's Q&A docs-lookup default. §8.V4 names test/probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`; §7's residue list adds `/var/tmp/`. §12 Review-finding repair adds a mature-solution check. Paid for in core by deleting restatements: §1 Honest-partial (§0 `[PARTIAL]` + §10 carry it), §9's single-home pointer, L1-copy's behaviour-comment sentence (§0 Fast-Path carries it), and §5.1's autonomy advice (now OPERATOR.md §13.1).
 
-**Sizing** (v6.33.0, 2026-09-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24484 → 24821 bytes (Δ +337: the §1 Language contract); extended 49070 → 49190 bytes (Δ +120: the v6.32.1 entry out, this one in); OPERATOR.md 16017 bytes (unchanged). Size budget: core 24821/25000 (**179 bytes headroom**); extended 49190/50000 (**810 bytes headroom**).
+**Sizing** (v6.34.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24821 → 24960 bytes (Δ +139: five rules in, four restatements out); extended 49190 → 49769 bytes (Δ +579: the §12 check, this entry for v6.33.0's); OPERATOR.md 16017 → 16200 bytes (Δ +183: §5.1's autonomy advice). Size budget: core 24960/25000 (**40 bytes headroom**); extended 49769/50000 (**231 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.34.0 (minor, 2026-09-26) — five operator-requested rules: tests, commits, lookup, residue, mature solutions
+
+The operator asked for five global rules on 2026-09-26. One was absent, four were partly present:
+
+- **Commit per change** (absent): nothing in the spec asked for one, and the harness default is the opposite (commit only when asked). §7 **Commit**: each VALIDATE-passed change in a git repo → its own local commit, one logical change; push only when asked; branching follows project convention; project `AUTO_COMMIT: off` opts out.
+- **Tests on every change** (L2+ only): Iron Law #1 and the L2 row covered L2+; L1 asked for lint + typecheck, and no level asked for the full suite. §7 **Tests** (L1+, not L1-copy): add or update a covering test; affected tests green at L1, full suite + smoke entry (if any) green at L2+ before delivery. The L1 row reads `lint + typecheck + test`.
+- **Look it up, don't guess** (partial): §8.V1 bound citations and §2.1 sent no-code Q&A to docs-lookup; implementation-time facts had no rule. §1 Zero-assume: an unfamiliar or possibly stale fact → context7 / official docs / web search, cite the source. §2.1's Q&A clause is absorbed.
+- **Test residue** (partial): §8.V4 named mkdtemp and scratch fixtures, §7's residue list named `/tmp/`. §8.V4 now names test/probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`, §7 adds `/var/tmp/`. Plugin 0.97.0's `sandbox-disposal-check` scans all three, with an opt-in Stop block.
+- **Mature solutions in review** (absent): §6 three-strike and §12's depth limit said when to stop patching, not what to look at next. §EXT §12 Review-finding repair: many findings, a repair outgrowing its change, or immature tech → search established open-source projects / libraries and recommend adopt vs build with sources.
+
+None is HARD (§13.2 ratchet); §8.V4 was HARD already and only its scope grows. Placement in core was the operator's call, over OPERATOR.md §13.1's Tier-2-first landing, so that the rules bind at L0–L2 too.
+
+Core had 179 bytes of headroom. Paid for by deleting restatements: §1 Honest-partial (§0 `[PARTIAL]` + §10 honesty carry it), §9's single-home pointer to §1, L1-copy's behaviour-comment sentence (§0 Fast-Path carries it), and §5.1's autonomy advice, moved to OPERATOR.md §13.1.
+
 ## v6.33.0 (minor, 2026-09-25) — §1 says whose language "user's language" is
 
 Measured over every transcript still on disk in the 8 non-sandbox project directories (about 20 days): 1448 final messages in 158 interactive sessions where the human writes 中文. 93 came out English, in 22 sessions. Headless `claude -p` runs are left out: 8 sessions, 96 final messages, 54 of them English — driven by slash commands, so no human language to measure against. The method, the frozen per-turn table and its classifier live outside the repo; a message counts as English when, with code, backticks and paths stripped, it has no CJK character and at least 8 English words.

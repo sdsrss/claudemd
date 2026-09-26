@@ -815,19 +815,19 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '834edbb33d74f69c' },
+  { file: CORE, heading: '', sha256: '2d21fd35af6f8e8f' },
   { file: CORE, heading: '## §0 SPINE', sha256: '5e2a65d550a38c33' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: '95b3bfdc670977b4' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: '8e648fdb86125780' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '03a25de87d4d24f1' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '490ceb372109916e' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
-  { file: CORE, heading: '## §5 AUTH', sha256: 'a224c2c2aa3ee76d' },
-  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'edf5d84ce39ad5c4' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '824b1aa57e092aff' },
-  { file: CORE, heading: '## §9 QUALITY', sha256: '05d9ecf7f17a73b9' },
+  { file: CORE, heading: '## §5 AUTH', sha256: '007498f2151b3c43' },
+  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'bb544ef6c054ec03' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'cc2ce65da6d6e45e' },
+  { file: CORE, heading: '## §9 QUALITY', sha256: '0cf6b6630b936713' },
   { file: CORE, heading: '## §10 REPORT', sha256: 'a1759faea2e4c7f6' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '9b225a811b713f24' },
-  { file: EXT, heading: '', sha256: '2de1ba30746328b7' },
+  { file: EXT, heading: '', sha256: 'e236c7246947f80d' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'ded0d33fc19f5334' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: '86775c582dc60ce5' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '65e73dbffa3e012c' },
@@ -837,12 +837,12 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: '056a3d259f6e5886' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '76cfb3d00d3e5cd4' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '08affab2f4d1b19e' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '6675348191a856f0' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: 'aed3335c80d538db' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
-  { file: EXT, heading: '## Recent changes', sha256: '1c4850cd5bf118cb' },
+  { file: EXT, heading: '## Recent changes', sha256: '4d27033784abeb9f' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,
@@ -899,8 +899,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 20, sha256: '439aef7ff5363827' },
-  { file: EXT, count: 62, sha256: '7e40cb06e47f405d' },
+  { file: CORE, count: 20, sha256: '097fd901191863c0' },
+  { file: EXT, count: 62, sha256: '91bc057fab590776' },
 ];
 
 for (const inv of HEADING_INVENTORY) {
