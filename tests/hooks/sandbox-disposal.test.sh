@@ -271,6 +271,8 @@ STDOUT=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOO
 if [[ "$(jq -r '.decision // empty' <<<"$STDOUT" 2>/dev/null)" == "block" ]] \
    && jq -r '.reason' <<<"$STDOUT" | grep -q "tmp\.block_me" \
    && jq -r '.reason' <<<"$STDOUT" | grep -q "may belong to another session" \
+   && jq -r '.reason' <<<"$STDOUT" | grep -q "remove only the ones this task created" \
+   && jq -r '.reason' <<<"$STDOUT" | grep -qF 'rm -rf "${D:?}"' \
    && [[ "$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl" | jq -r '[.event, .spec_section] | join(" ")')" == "block §8.V4" ]]; then
   echo "PASS: 16 opt-in block names the residue, disclaims ownership, records a block row"
 else
@@ -303,11 +305,12 @@ STDOUT=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s19
 # before this session's window is not this session's residue, even when
 # another session writes a new transcript into it (which moves its mtime).
 # A dir still holding an entry at or before the window's start is not
-# flagged. (Not ownership: a concurrent session that only appends to its sole
-# transcript still gets through — the block reason says so.)
-mkdir "$PROJ/-tmp-work"; touch -t 202001010000 "$PROJ/-tmp-work/A.jsonl"
+# flagged. The old entry is a memory/ DIRECTORY, the shape real project dirs
+# have (final re-review M-2: a freshness check narrowed to files let this
+# dir through).
+mkdir -p "$PROJ/-tmp-work/memory"; touch -t 202001010000 "$PROJ/-tmp-work/memory"
 stop_at s20 >/dev/null; sleep 1
-touch "$PROJ/-tmp-work/B.jsonl"
+touch "$PROJ/-tmp-work/B.jsonl"; mkdir "$PROJ/-tmp-work/B"
 OUT=$(stop_at s20)
 if echo "$OUT" | grep -q -- "-tmp-work"; then
   echo "FAIL: 20 pre-existing project dir flagged after another session wrote into it (out: $OUT)"; FAIL=$((FAIL+1))

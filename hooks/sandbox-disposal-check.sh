@@ -129,10 +129,10 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
         # Every direct entry modified since the ref (none at or before it). A
         # dir that still holds an untouched older file existed before the
         # window and only moved because some session added to it (0.97.0
-        # pre-tag review H1). NOT an ownership test: a concurrent session
-        # whose only transcript was appended in the window still passes —
-        # the warn and block text say entries may belong to another session.
-        # One level into an explicit path — the §8 depth cap still holds.
+        # pre-tag review H1). Any entry type counts: an old memory/ subdir is
+        # what usually marks a real pre-existing project dir. mtime, not
+        # ownership — the warn and block text say entries may belong to
+        # another session. One level into an explicit path (§8 depth cap).
         [[ -z "$(find "$path" -mindepth 1 -maxdepth 1 ! -newer "$SESSION_REF" 2>/dev/null | head -n 1)" ]] || continue ;;
       *)             continue ;;
     esac
