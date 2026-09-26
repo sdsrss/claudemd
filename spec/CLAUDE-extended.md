@@ -297,7 +297,7 @@ Failed:    <blocked, with cause>
 Uncertain: <not sure about, stated as "uncertain because <X>">
 ```
 
-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only — this heading used to grant L2 the same shortcut, and core §10 does not (audit SPEC-M4). Core wins by construction: L2 never loads this file.
+**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.
 
 **Multi-task**: each task writes its own block. Do NOT merge.
 
