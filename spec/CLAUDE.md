@@ -1,6 +1,6 @@
 # AI-CODING-SPEC v6.35.0 — Core
 
-Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
+Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load per §2.2) | History: `~/.claude/CLAUDE-changelog.md`.
 
 Plugins: **sp** (superpowers) · **gs** (gstack) · **matt** (mattpocock-skills). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
 
