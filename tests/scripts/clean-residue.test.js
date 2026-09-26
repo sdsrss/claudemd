@@ -291,8 +291,14 @@ let cliStateDir;
 // seam every `--apply` spawn below would reap the maintainer's real temp-named
 // project dirs past the window.
 let cliProjectsDir;
+// HOME too (review M1): with only the seam, deleting the seam line sent a
+// spawned `--apply` at the maintainer's real ~/.claude/projects before any
+// assertion could fail. A sandbox HOME makes the seam a second fence, not the
+// only one.
+let cliHome;
 const cliEnv = (extra = {}) => ({
   ...process.env,
+  HOME: cliHome,
   TMPDIR: tmpDir,
   CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp,
   CLAUDEMD_STATE_DIR: cliStateDir,
@@ -304,6 +310,7 @@ beforeEach(() => {
   claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-test-'));
   cliStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cstate-test-'));
   cliProjectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cproj-test-'));
+  cliHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-chome-test-'));
 });
 
 afterEach(() => {
@@ -311,6 +318,7 @@ afterEach(() => {
   fs.chmodSync(cliStateDir, 0o700);
   fs.rmSync(cliStateDir, { recursive: true, force: true });
   fs.rmSync(cliProjectsDir, { recursive: true, force: true });
+  fs.rmSync(cliHome, { recursive: true, force: true });
 });
 
 test('scanClaudeTmp lists stale depth-1 entries; descends into claude-<uid> instead of listing it', () => {
@@ -1138,10 +1146,15 @@ test('LOW-3: a deep directory is aged, not silently reported fresh', () => {
 // A headless `claude -p` run from a temp cwd leaves `<projects>/-tmp-…`. The
 // four conditions are each driven on both sides: temp-encoded name, past the
 // window by the NEWEST mtime inside, no memory file, not this process's own cwd.
-const mkProj = (name, daysAgo, { memFile = false } = {}) => {
+// Transcripts carry the entrypoint Claude Code recorded: `sdk-cli` for a
+// headless `claude -p` run, `cli` for an interactive session (review M3).
+const mkProj = (name, daysAgo, { memFile = false, entrypoint = 'sdk-cli' } = {}) => {
   const d = path.join(cliProjectsDir, name);
   fs.mkdirSync(path.join(d, 'memory'), { recursive: true });
-  fs.writeFileSync(path.join(d, 'a1b2c3d4-0000.jsonl'), '{}\n');
+  fs.writeFileSync(
+    path.join(d, 'a1b2c3d4-0000.jsonl'),
+    (entrypoint ? JSON.stringify({ type: 'user', entrypoint }) : '{}') + '\n'
+  );
   if (memFile) fs.writeFileSync(path.join(d, 'memory', 'MEMORY.md'), '- x\n');
   setMtime(d, daysAgo);
   return d;
@@ -1196,4 +1209,65 @@ test('CLI --apply reaps stale probe project dirs from CLAUDEMD_PROJECTS_DIR only
   assert.equal(out.probeProjects.deleted, 1);
   assert.equal(fs.existsSync(stale), false);
   assert.equal(fs.existsSync(fresh), true);
+});
+
+test('scanProbeProjects: only headless sessions are reaped — interactive or unknown entrypoints are kept', () => {
+  const headless = mkProj('-tmp-headless-probe', 10);
+  const interactive = mkProj('-tmp-interactive-work', 10, { entrypoint: 'cli' });
+  const unknown = mkProj('-tmp-no-entrypoint', 10, { entrypoint: null });
+  const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
+  assert.deepEqual(
+    r.targets.map(t => t.path),
+    [headless]
+  );
+  const kept = Object.fromEntries(r.kept.map(k => [k.path, k.reason]));
+  assert.equal(kept[interactive], 'interactive');
+  assert.equal(kept[unknown], 'unknown-entrypoint');
+});
+
+test('scanProbeProjects: an unreadable memory/ keeps the dir (fail closed)', t => {
+  if (process.getuid && process.getuid() === 0) return t.skip('root reads through mode 000');
+  const d = mkProj('-tmp-locked-memory', 10);
+  fs.chmodSync(path.join(d, 'memory'), 0o000);
+  try {
+    const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
+    assert.equal(r.targets.length, 0);
+    assert.equal(r.kept.find(k => k.path === d)?.reason, 'memory-unreadable');
+  } finally {
+    fs.chmodSync(path.join(d, 'memory'), 0o700);
+  }
+});
+
+test('scanProbeProjects: a temp-named SYMLINK is not followed or reaped', () => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-linktarget-'));
+  try {
+    fs.writeFileSync(path.join(target, 'keep.jsonl'), JSON.stringify({ entrypoint: 'sdk-cli' }) + '\n');
+    const link = path.join(cliProjectsDir, '-tmp-a-link');
+    fs.symlinkSync(target, link);
+    setMtime(target, 10);
+    const r = cleanProbeProjects({
+      projectsDir: cliProjectsDir,
+      apply: true,
+      retentionDays: 7,
+      cwd: '/nowhere',
+    });
+    assert.equal(r.targets.length, 0);
+    assert.ok(fs.existsSync(path.join(target, 'keep.jsonl')));
+  } finally {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test('CLI --apply never deletes the probe dir it is running inside (protected)', () => {
+  const d = mkProj('-tmp-running-inside', 10);
+  const inner = path.join(d, 'a1b2c3d4-0000');
+  fs.mkdirSync(inner);
+  setMtime(d, 10);
+  const r = spawnSync(process.execPath, [SCRIPT, '--apply'], { env: cliEnv(), cwd: inner, encoding: 'utf8' });
+  const out = JSON.parse(r.stdout);
+  assert.equal(fs.existsSync(d), true);
+  assert.ok(
+    out.protected.some(p => p.path === d),
+    JSON.stringify(out.protected)
+  );
 });

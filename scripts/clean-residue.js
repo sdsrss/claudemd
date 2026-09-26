@@ -46,8 +46,10 @@ added the last two (audit-2026-08-22 条目 7).
 Probe project dirs: ~/.claude/projects entries whose name encodes a temp cwd
 (-tmp-…, -var-tmp, -private-tmp-…, -var-folders-…), left by a headless
 \`claude -p\` run from a temp dir. Reaped past the same retention window, by the
-newest mtime anywhere inside; never one whose memory/ holds a file, and never
-the one this process's own cwd encodes to (both listed under \`kept\`).
+newest mtime anywhere inside, and only when every transcript in it is a
+headless session (entrypoint sdk-cli); never an interactive or unjudgeable
+one, one whose memory/ holds a file or cannot be read, or the one this
+process's own cwd encodes to (all listed under \`kept\` with the reason).
 
 Env: CLAUDEMD_CLAUDE_TMP_DIR overrides the ~/.claude/tmp root (test seam).
      CLAUDEMD_STATE_DIR overrides the ~/.claude/.claudemd-state root (test seam).
@@ -419,13 +421,49 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
 // sandbox-disposal-check.sh warns about a fresh one at Stop; nothing reaped the
 // ones already left behind.
 //
-// Candidates, all four required: the name is a temp-dir encoding (same spellings
+// Candidates, all five required: the name is a temp-dir encoding (same spellings
 // the Stop hook matches, plus the bare `-tmp` / `-var-tmp` a probe run FROM the
-// temp root produces); the newest mtime anywhere inside is past the retention
-// window (the same bounded walk as ~/.claude/tmp — a truncated walk answers
-// fresh); `memory/` holds no file, so a project that grew real memory is never
-// a probe; and the dir is not the one this process's own cwd encodes to.
+// temp root produces); every transcript in it is a headless session (see
+// transcriptEntrypoints); the newest mtime anywhere inside is past the
+// retention window (the same bounded walk as ~/.claude/tmp — a truncated walk
+// answers fresh); `memory/` holds no file and is readable, so a project that
+// grew real memory is never a probe; and the dir is not the one this process's
+// own cwd encodes to. Symlinks are never candidates (Dirent.isDirectory).
 const PROBE_PROJECT_PATTERN = /^-(private-)?(tmp|var-tmp|var-folders)(-|$)/;
+
+// A temp-looking NAME is not proof of a probe: `/tmp_work/proj` encodes to
+// `-tmp-work-proj`, and an interactive session run from `/tmp/x` leaves the same
+// shape — deleting it makes the session unresumable (review M3). Claude Code
+// records how each session was started on its rows (`entrypoint`: `sdk-cli`
+// for a headless `claude -p`, `cli` for an interactive one), so a dir is a
+// probe only when every transcript in it says `sdk-cli`. A transcript with no
+// entrypoint in its first 64 KiB (an older CLI) is not judged: kept.
+function transcriptEntrypoints(dir) {
+  let names;
+  try {
+    names = fs.readdirSync(dir).filter(n => n.endsWith('.jsonl'));
+  } catch {
+    return 'unknown-entrypoint';
+  }
+  for (const n of names) {
+    let head;
+    try {
+      const fd = fs.openSync(path.join(dir, n), 'r');
+      try {
+        const buf = Buffer.alloc(65536);
+        head = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0));
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return 'unknown-entrypoint';
+    }
+    const m = head.match(/"entrypoint":"([^"]*)"/);
+    if (!m) return 'unknown-entrypoint';
+    if (m[1] !== 'sdk-cli') return 'interactive';
+  }
+  return 'headless';
+}
 
 export function scanProbeProjects({ projectsDir, now = Date.now(), cwd = process.cwd() } = {}) {
   if (!projectsDir || !fs.existsSync(projectsDir)) return { candidates: [], kept: [] };
@@ -448,11 +486,21 @@ export function scanProbeProjects({ projectsDir, now = Date.now(), cwd = process
     let memFiles = [];
     try {
       memFiles = fs.readdirSync(path.join(full, 'memory'));
-    } catch {
-      /* no memory/ dir — nothing to protect */
+    } catch (e) {
+      // Only a MISSING memory/ means "nothing to protect". Unreadable, or a
+      // file where the dir should be, is kept: this feeds a deletion (review L5).
+      if (e.code !== 'ENOENT') {
+        kept.push({ path: full, reason: 'memory-unreadable' });
+        continue;
+      }
     }
     if (memFiles.length > 0) {
       kept.push({ path: full, reason: 'has-memory' });
+      continue;
+    }
+    const session = transcriptEntrypoints(full);
+    if (session !== 'headless') {
+      kept.push({ path: full, reason: session });
       continue;
     }
     let stat;
