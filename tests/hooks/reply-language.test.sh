@@ -156,10 +156,9 @@ expect_silent "L9b nothing classifiable at all: silent" "$(run "$(stop "$EN25")"
 # Two review rounds of reading requests and negations out of prose each found
 # new High misreads, so the rule was removed: a 中文 request for English still
 # gets a 中文 restatement. Pinned so reintroducing prose parsing is a decision.
+# What does switch it is writing in English: L7.
 tx "$(human "$ZH")" "$(human '后面都用英文回复')"
 expect_block "L10a a 中文 request for English is not parsed: the session is still 中文" "$(run "$(stop "$EN25")")"
-tx "$(human '后面都用英文回复')" "$(human 'please reply in English from now on, the reviewer reads it')" "$(human 'and keep the summary short')"
-expect_silent "L10b writing in English is what switches it" "$(run "$(stop "$EN25")")"
 tx "$(human "$ZH")"
 expect_silent "L10h a reply shaped as a conventional commit is not judged" \
   "$(run "$(stop "$(printf 'fix(hooks): stop the scan before the transcript tail grows past the window\n\nBody text explaining the change.')")")"

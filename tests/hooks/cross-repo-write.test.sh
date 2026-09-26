@@ -210,6 +210,35 @@ next_sid
 expect_silent "X9f under /tmp/claude-*" "$(run "$(file_ev Write "$CT/sbx/src/x" "$R/alpha" "$SID")")"
 next_sid
 expect_silent "X9c a path in no repo" "$(run "$(file_ev Write "$R/plain/src/x" "$R/alpha" "$SID")")"
+# Each root has an as-written arm and a physical arm, and the fixture TMPDIR is a
+# symlink, so a plain write under it matches both (X9b). These rows are the ones
+# only a single arm can silence. The /private/… literals have no Linux row: on
+# Linux no path resolves to them.
+next_sid
+ln -s "$R/beta" "$HOOK_TMPDIR/betalink"
+expect_silent "X9g a symlink under TMPDIR into a repo (as-written arm only)" "$(run "$(file_ev Write "$HOOK_TMPDIR/betalink/src/x" "$R/alpha" "$SID")")"
+# ~/.claude symlinked into a dotfiles repo: a write by the physical path is
+# still ~/.claude. The control row proves the dotfiles repo is live.
+H2="$BASE/home2"
+mkrepo "$BASE/dotfiles"
+mkdir -p "$BASE/dotfiles/claude/logs" "$BASE/dotfiles/other" "$H2"
+ln -s "$BASE/dotfiles/claude" "$H2/.claude"
+next_sid
+expect_advisory "X9h control: the dotfiles repo outside ~/.claude is another repo" "$(printf '%s' "$(file_ev Write "$BASE/dotfiles/other/x" "$R/alpha" "$SID")" | HOME="$H2" CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null)" dotfiles alpha
+next_sid
+expect_silent "X9i ~/.claude written by its physical path (physical arm only)" "$(printf '%s' "$(file_ev Write "$BASE/dotfiles/claude/CLAUDE.md" "$R/alpha" "$SID")" | HOME="$H2" CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null)"
+# Only a symlinked ~/.claude tells its two arms apart (in the main fixture they
+# are the same string), so the as-written row lives here too.
+ln -s "$R/beta" "$BASE/dotfiles/claude/betalink"
+next_sid
+expect_silent "X9l a symlink under ~/.claude into a repo (as-written arm only)" "$(printf '%s' "$(file_ev Write "$H2/.claude/betalink/src/x" "$R/alpha" "$SID")" | HOME="$H2" CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null)"
+# A TMPDIR that is not absolute excludes nothing. Resolving it through `cd`
+# would take `..` from the hook's own cwd and `-P` as a cd option (→ $HOME),
+# silencing every sibling repo or every repo under $HOME.
+next_sid
+expect_advisory "X9j TMPDIR=.. does not exclude the cwd's parent" "$(cd "$R/alpha" && printf '%s' "$(file_ev Edit "$R/beta/src/f" "$R/alpha" "$SID")" | CROSS_REPO_WRITE=1 TMPDIR=.. bash "$HOOK" 2>/dev/null)" beta alpha
+next_sid
+expect_advisory "X9k TMPDIR=-P does not exclude \$HOME" "$(printf '%s' "$(file_ev Edit "$HOME/proj/src/f" "$R/alpha" "$SID")" | CROSS_REPO_WRITE=1 TMPDIR=-P bash "$HOOK" 2>/dev/null)" proj alpha
 
 # --- X10-X11: path resolution --------------------------------------------------
 next_sid

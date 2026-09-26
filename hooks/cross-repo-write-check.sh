@@ -175,12 +175,17 @@ xrepo_identity() {
 }
 
 # xrepo_excluded PATH — 0 when PATH sits under a root sessions write to by design.
-# Each root is matched as written AND physically, because xrepo_check also
-# tests the path's `pwd -P` form: on macOS TMPDIR is /var/folders/…, which is
-# /private/var/folders/… physically, and /tmp and /var/tmp live under /private.
+# xrepo_check also tests the path's `pwd -P` form, so ~/.claude and TMPDIR are
+# matched as written AND by their resolved physical path (on macOS TMPDIR is
+# /var/folders/…, physically /private/var/folders/…), and /tmp/claude-* and
+# /var/tmp also by their macOS /private/… form. A TMPDIR that is not absolute
+# is not resolved: `cd` would read `..` from the hook's cwd and `-P` as an option.
 XR_TMP="${TMPDIR:-/tmp}"
 XR_TMP="${XR_TMP%/}"
-XR_TMP_PHYS=$(cd "$XR_TMP" 2>/dev/null && pwd -P) || XR_TMP_PHYS="$XR_TMP"
+XR_TMP_PHYS="$XR_TMP"
+if [[ "$XR_TMP" == /* ]]; then
+  XR_TMP_PHYS=$(cd "$XR_TMP" 2>/dev/null && pwd -P) || XR_TMP_PHYS="$XR_TMP"
+fi
 XR_CLAUDE_PHYS=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || XR_CLAUDE_PHYS="$HOME/.claude"
 xrepo_excluded() {
   case "$1/" in
