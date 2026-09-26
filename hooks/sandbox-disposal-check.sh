@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
-# sandbox-disposal-check.sh — Stop hook. Advisory only.
-# Warns if tmp.XXXXXX-style mkdtemp directories were created this session.
+# sandbox-disposal-check.sh — Stop hook. Advisory by default.
+# Warns if tmp.XXXXXX-style mkdtemp directories were created this session, in
+# the three places spec §8.V4 names for test/probe residue: /tmp (and
+# ~/.claude/tmp), /var/tmp, and ~/.claude/projects/ (the transcript dir a
+# headless `claude -p` probe leaves behind when it runs from a temp cwd).
+#
+# Opt-in: SANDBOX_DISPOSAL_BLOCK=1 returns {"decision":"block"} instead, so the
+# turn continues and the session removes what it left. The window is NOT
+# advanced on a block, and the Stop that follows (`stop_hook_active`) only
+# warns — at most one block per turn. Default OFF (§EXT §13.3).
+# Kill-switches:
+#   DISABLE_SANDBOX_DISPOSAL_HOOK=1 — this hook
+#   DISABLE_CLAUDEMD_HOOKS=1        — global
 
 set -uo pipefail
 
@@ -29,10 +40,14 @@ fi
 # fail-open row and CONTINUE rather than exit (2026-08-16 audit F4: the
 # inline `command -v jq` guard was invisible to jq-guard-consumers.test.js).
 SESSION_ID=""
+TRANSCRIPT_PATH=""
+STOP_HOOK_ACTIVE=""
 if hook_require_jq; then
   EVENT=$(hook_read_event) || EVENT=""
   if [[ -n "$EVENT" ]]; then
     SESSION_ID=$(hook_jq_field sandbox-disposal "$EVENT" '.session_id // ""') || SESSION_ID=""
+    TRANSCRIPT_PATH=$(hook_jq_field sandbox-disposal "$EVENT" '.transcript_path // ""') || TRANSCRIPT_PATH=""
+    STOP_HOOK_ACTIVE=$(hook_jq_field sandbox-disposal "$EVENT" '.stop_hook_active // false') || STOP_HOOK_ACTIVE=""
   fi
 else
   hook_record_failopen sandbox-disposal jq-missing
@@ -65,9 +80,23 @@ fi
 
 # Scan-spec format: DIR|FILTER pairs separated by ASCII record separator (RS, \x1e).
 # FILTER: claudemd_only (system /tmp — only ^claudemd- prefix attributable)
-#         both          (~/.claude/tmp — both ^tmp\. and ^claudemd-).
+#         both          (~/.claude/tmp, /var/tmp — both ^tmp\. and ^claudemd-).
+#                       /var/tmp is not mktemp's default root, so a fresh
+#                       tmp.* there was placed deliberately (`mktemp -p`);
+#                       /tmp's tmp.* churn from vim/pip/cargo is why /tmp
+#                       stays claudemd_only.
+#         probe_session (~/.claude/projects — a project dir whose encoded
+#                       cwd is a temp dir: -tmp-, -var-tmp-, and macOS
+#                       -private-tmp- / -private-var-folders- / -var-folders-.
+#                       The dir holding this session's own transcript_path
+#                       is excluded: a session run from a temp cwd writes
+#                       subagent transcripts there, which moves its mtime.)
+# Depth 1 everywhere (platform_find_newer): §8 forbids descending ~/.claude/.
 # Override via CLAUDEMD_SCAN_SPECS_OVERRIDE for tests; production default below.
-DEFAULT_SCAN_SPECS=$(printf '/tmp|claudemd_only\x1e%s|both' "$HOME/.claude/tmp")
+DEFAULT_SCAN_SPECS=$(printf '/tmp|claudemd_only\x1e%s|both\x1e/var/tmp|both\x1e%s|probe_session' \
+  "$HOME/.claude/tmp" "$HOME/.claude/projects")
+OWN_PROJECT_DIR=""
+[[ -n "$TRANSCRIPT_PATH" ]] && OWN_PROJECT_DIR=$(dirname "$TRANSCRIPT_PATH")
 SCAN_SPECS="${CLAUDEMD_SCAN_SPECS_OVERRIDE:-$DEFAULT_SCAN_SPECS}"
 
 FOUND=""
@@ -86,6 +115,9 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
     case "$filter" in
       claudemd_only) [[ "$base" =~ ^claudemd- ]] || continue ;;
       both)          [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue ;;
+      probe_session)
+        [[ "$base" =~ ^-(private-)?(tmp|var-tmp|var-folders)- ]] || continue
+        [[ "$path" != "$OWN_PROJECT_DIR" ]] || continue ;;
       *)             continue ;;
     esac
     FOUND+="$path"$'\n'
@@ -94,8 +126,20 @@ done < <(printf '%s\x1e' "$SCAN_SPECS")
 
 if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
+  LIST=$(printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5)
+  # Block only on opt-in, only with jq (the verdict is built by jq), and never
+  # on the Stop that a block itself caused. The window stays open on a block
+  # so that Stop re-scans: a dir still there is reported, not forgotten.
+  if [[ "${SANDBOX_DISPOSAL_BLOCK:-0}" == "1" && "$STOP_HOOK_ACTIVE" != "true" ]] \
+     && command -v jq >/dev/null 2>&1; then
+    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s fresh temp directories this session. Remove the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$LIST")
+    if jq -nc --arg r "$REASON" '{decision:"block", reason:$r}' 2>/dev/null; then
+      hook_record sandbox-disposal block "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
+      exit 0
+    fi
+  fi
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT fresh temp directories this session." >&2
-  printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5 >&2
+  printf '%s\n' "$LIST" >&2
   hook_record sandbox-disposal warn "{\"count\":$COUNT}" '§8.V4' "$SESSION_ID"
 fi
 

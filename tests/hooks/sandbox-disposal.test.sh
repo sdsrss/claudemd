@@ -170,7 +170,111 @@ else
   FAIL=$((FAIL+1))
 fi
 
-TOTAL=11
+# Cases 12-19 (v0.97.0, spec v6.34.0 §8.V4 scope: /tmp, /var/tmp,
+# ~/.claude/projects/). Each case uses its own session_id so its window is
+# established by its own first Stop, never inherited from an earlier case.
+# stop_at SID [EXTRA_JSON_FIELDS] — run the hook as a Stop for SID; stderr is
+# folded into stdout so one capture sees both the warn and a block verdict.
+stop_at() {
+  local sid="$1" extra="${2:-}"
+  bash "$HOOK" <<<"{\"session_id\":\"$sid\"${extra:+,$extra}}" 2>&1
+}
+PROJ="$HOME/.claude/projects"
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$PROJ"
+
+# Case 12: the DEFAULT scan list covers ~/.claude/projects/: a project dir
+# created this session whose name encodes a temp-dir cwd (a headless
+# `claude -p` probe run from a scratchpad — the 2026-09-26 stopprobe leftover)
+# is flagged, on Linux (-tmp-) and macOS (-private-var-folders-) spellings.
+stop_at s12 >/dev/null; sleep 1
+mkdir "$PROJ/-tmp-claude-1000--home-x-scratchpad-stopprobe" "$PROJ/-private-var-folders-ab-T-probe"
+OUT=$(stop_at s12)
+if echo "$OUT" | grep -q -- "-tmp-claude-1000--home-x-scratchpad-stopprobe" \
+   && echo "$OUT" | grep -q -- "-private-var-folders-ab-T-probe"; then
+  echo "PASS: 12 temp-cwd probe project dirs flagged by the default scan"
+else
+  echo "FAIL: 12 probe project dirs not flagged (out: $OUT)"; FAIL=$((FAIL+1))
+fi
+
+# Case 13: a fresh project dir for an ordinary cwd is a real project, not
+# residue — never flagged.
+stop_at s13 >/dev/null; sleep 1
+mkdir "$PROJ/-home-ai-dev-newproject"
+OUT=$(stop_at s13)
+if echo "$OUT" | grep -q -- "-home-ai-dev-newproject"; then
+  echo "FAIL: 13 ordinary project dir flagged (out: $OUT)"; FAIL=$((FAIL+1))
+else
+  echo "PASS: 13 ordinary project dir not flagged"
+fi
+
+# Case 14: the session's OWN project dir (the one holding transcript_path) is
+# not residue even when its cwd is a temp dir — its mtime moves whenever the
+# session writes a subagent transcript.
+stop_at s14 >/dev/null; sleep 1
+mkdir "$PROJ/-tmp-own-session-cwd"
+OUT=$(stop_at s14 "\"transcript_path\":\"$PROJ/-tmp-own-session-cwd/s14.jsonl\"")
+if echo "$OUT" | grep -q -- "-tmp-own-session-cwd"; then
+  echo "FAIL: 14 own transcript dir flagged (out: $OUT)"; FAIL=$((FAIL+1))
+else
+  echo "PASS: 14 own transcript dir excluded"
+fi
+
+# Case 15: /var/tmp is in the DEFAULT scan list with the `both` filter. Real
+# /var/tmp, because the override would replace the list under test; the dir
+# is mktemp-named (so no collision) and removed right after. SKIP when
+# /var/tmp is not writable (sandboxed runner) — not a pass.
+if VT=$(mktemp -d /var/tmp/tmp.XXXXXXXXXX 2>/dev/null); then
+  rm -rf "$VT"
+  stop_at s15 >/dev/null; sleep 1
+  VT=$(mktemp -d /var/tmp/tmp.XXXXXXXXXX)
+  OUT=$(stop_at s15)
+  rm -rf "${VT:?}"
+  if echo "$OUT" | grep -qF "$VT"; then
+    echo "PASS: 15 fresh /var/tmp/tmp.* flagged by the default scan"
+  else
+    echo "FAIL: 15 /var/tmp residue not flagged (out: $OUT)"; FAIL=$((FAIL+1))
+  fi
+else
+  echo "SKIP: 15 /var/tmp not writable here"
+fi
+
+# Cases 16-19: SANDBOX_DISPOSAL_BLOCK=1 turns the warn into a Stop block.
+ISO="$HOME/.claude/tmp|both"
+# Case 16: residue + opt-in → {"decision":"block"} on stdout.
+stop_at s16 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.block_me"
+STDOUT=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s16"}' 2>/dev/null)
+if [[ "$(jq -r '.decision // empty' <<<"$STDOUT" 2>/dev/null)" == "block" ]] \
+   && jq -r '.reason' <<<"$STDOUT" | grep -q "tmp\.block_me"; then
+  echo "PASS: 16 opt-in block names the residue"
+else
+  echo "FAIL: 16 no block verdict (stdout: $STDOUT)"; FAIL=$((FAIL+1))
+fi
+# Case 17: a block must not advance the window — the Stop that follows still
+# sees what is left, so an uncleaned dir is reported again, not forgotten.
+# That Stop carries stop_hook_active=true: it warns but never blocks twice.
+STDOUT=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" \
+  <<<'{"session_id":"s16","stop_hook_active":true}' 2>"$TMP_HOME/s17.err")
+if [[ -z "$STDOUT" ]] && grep -q "tmp\.block_me" "$TMP_HOME/s17.err"; then
+  echo "PASS: 17 follow-up Stop warns again without a second block"
+else
+  echo "FAIL: 17 (stdout: $STDOUT; stderr: $(cat "$TMP_HOME/s17.err"))"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.block_me"
+# Case 18: opt-in with nothing left → no verdict at all.
+stop_at s18 >/dev/null; sleep 1
+STDOUT=$(SANDBOX_DISPOSAL_BLOCK=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s18"}' 2>/dev/null)
+[[ -z "$STDOUT" ]] && echo "PASS: 18 opt-in with no residue is silent" \
+  || { echo "FAIL: 18 (stdout: $STDOUT)"; FAIL=$((FAIL+1)); }
+# Case 19: default (no opt-in) never writes a verdict to stdout.
+stop_at s19 >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.default_warn"
+STDOUT=$(CLAUDEMD_SCAN_SPECS_OVERRIDE="$ISO" bash "$HOOK" <<<'{"session_id":"s19"}' 2>/dev/null)
+[[ -z "$STDOUT" ]] && echo "PASS: 19 default mode stays advisory" \
+  || { echo "FAIL: 19 (stdout: $STDOUT)"; FAIL=$((FAIL+1)); }
+
+TOTAL=19
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"; exit 1
 fi

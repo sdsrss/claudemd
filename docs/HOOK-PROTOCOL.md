@@ -35,7 +35,9 @@ author to re-derive it from another hook's source:
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
   PostToolUse. Read by `session-end-check.sh`,
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
-  `evidence-gate.sh`, `ledger-staleness.sh`, `reply-language-check.sh`. Treat it as
+  `evidence-gate.sh`, `ledger-staleness.sh`, `reply-language-check.sh`,
+  `sandbox-disposal-check.sh` (only its dirname, to exclude the session's own
+  project dir from the residue scan). Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
   It also does not contain everything the session did. As of Claude Code
   2.1.278 — observed there, still true at 2.1.280, no earlier bound established —
@@ -137,13 +139,15 @@ Emitters, derived from source and gated by
   deletes them. It deletes nothing. Silent when there is nothing to list.
 
 **Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
-context schema. One Stop hook prints stdout JSON of a different shape:
-`reply-language-check.sh` (opt-in) returns top-level
+context schema. Two Stop hooks print stdout JSON of a different shape, each
+only under its opt-in: `reply-language-check.sh` and
+`sandbox-disposal-check.sh` (`SANDBOX_DISPOSAL_BLOCK=1`) return top-level
 `{"decision":"block","reason":…}`, which Claude Code documents for Stop as
-"keep going" — the model receives `reason` and writes one more message. It
-lets the next Stop through when the event carries `stop_hook_active: true`, so
-it asks once per turn. The others with something to say write advisory text to
-`stderr` — `mem-audit.sh`, `residue-audit.sh`, `sandbox-disposal-check.sh`,
+"keep going" — the model receives `reason` and writes one more message. Both
+let the next Stop through when the event carries `stop_hook_active: true`, so
+each blocks at most once per turn. The others with something to say write
+advisory text to `stderr` — `mem-audit.sh`, `residue-audit.sh`,
+`sandbox-disposal-check.sh` (by default),
 `transcript-structure-scan.sh`, `evidence-gate.sh` and
 `ledger-staleness.sh` — and `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for

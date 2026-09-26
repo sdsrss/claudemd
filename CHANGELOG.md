@@ -8,6 +8,20 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.97.0] - 2026-09-26
+
+**`sandbox-disposal-check` scans the three places test and probe residue lands** (spec §8.V4). Until now it looked at `~/.claude/tmp` (`tmp.*`, `claudemd-*`) and `/tmp` (`claudemd-*` only). It now also scans:
+- `/var/tmp` for `tmp.*` and `claudemd-*`. `/var/tmp` is not `mktemp`'s default root, so a fresh `tmp.*` there was placed on purpose (`mktemp -p`); `/tmp` stays `claudemd-*`-only because of the `tmp.*` churn from other tools.
+- `~/.claude/projects/` for a project directory created this session whose encoded cwd is a temp dir (`-tmp-`, `-var-tmp-`, and the macOS `-private-tmp-`, `-private-var-folders-`, `-var-folders-`). That is what a headless `claude -p` probe leaves behind when it runs from a scratchpad. The directory holding the session's own `transcript_path` is excluded, because a session whose cwd is a temp dir writes its subagent transcripts there.
+
+Every scan stays at depth 1 (§8 forbids descending `~/.claude/`).
+
+**Opt-in block: `SANDBOX_DISPOSAL_BLOCK=1`** (default OFF, §EXT §13.3). When residue is found, the hook returns `{"decision":"block"}` naming the directories, so the turn continues and the session removes them before finishing. A block leaves the session window open: the Stop that follows re-scans, writes `warn` if anything is left, and never blocks a second time (`stop_hook_active`). New rule-hits event `block` (section `§8.V4`). `reply-language-check` is no longer the only claudemd hook that returns a Stop `decision`.
+
+**Test hygiene fix.** `tests/lib/env-hygiene.sh` did not scrub the non-prefixed opt-in knobs added since 0.90.0 (`CROSS_REPO_WRITE`, `REPLY_LANGUAGE_CHECK`, `EVIDENCE_GATE`, `LEDGER_STALENESS`, `REWORK_BREAKER` and their tunables). On a machine that sets them in `settings.json` env, the "default OFF" cases of `cross-repo-write.test.sh` (X0, X19) and `reply-language.test.sh` (L0) failed on a clean checkout. They are scrubbed now, along with `SANDBOX_DISPOSAL_BLOCK`.
+
+Tests: `tests/hooks/sandbox-disposal.test.sh` goes from 11 to 19 cases. Each of 7 single-rule mutations of the new code turns its own case red: dropping the own-transcript exclusion, widening the temp-cwd pattern to every directory, dropping the macOS spellings, dropping `/var/tmp`, blocking without the opt-in, blocking on `stop_hook_active`, and advancing the window on a block.
+
 ## [0.96.0] - 2026-09-25
 
 **Spec v6.33.0: §1 says whose language "user's language" is.** It is the language the human types in, fixed for the session. Task notifications, teammate messages, skill and command bodies, hook text and subagent reports never switch it. It binds every message the user reads, including wait/yield notes and relayed subagent findings. `docs/` prose of new docs now follows the user's language; an existing doc keeps its own, so an English doc gains English paragraphs and nothing is translated wholesale. Identifiers and table keys that a test parses stay English. README and subagent prompts are named English. Details in `spec/CLAUDE-changelog.md`.

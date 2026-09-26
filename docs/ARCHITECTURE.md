@@ -325,7 +325,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
-| Stop | `sandbox-disposal-check.sh` | mkdtemp residue advisory | `§8.V4` |
+| Stop | `sandbox-disposal-check.sh` | Test/probe residue created this session, depth 1: `claudemd-*` in `/tmp`; `tmp.*` / `claudemd-*` in `~/.claude/tmp` and `/var/tmp`; `~/.claude/projects/` dirs whose encoded cwd is a temp dir, minus the session's own transcript dir. Advisory; opt-in `SANDBOX_DISPOSAL_BLOCK=1` returns `{"decision":"block"}` once per turn (`stop_hook_active`) | `§8.V4` |
 | Stop | `mem-audit.sh` | MEMORY.md orphan/dangling advisory | `§11-EXT-mem-audit` |
 | Stop | `transcript-structure-scan.sh` | REPORT four-section structure scan | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (dynamic) |
 | Stop | `session-summary.sh` | session deny/bypass/warn aggregation | n/a (writes to state file, not jsonl) |
