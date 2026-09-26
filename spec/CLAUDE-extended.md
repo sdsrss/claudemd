@@ -496,7 +496,7 @@ The `aggressive` skip-list lives in core §5.1 (L0–L2 do not load this file); 
 
 ## §7-EXT-TMP TMP_RETENTION policy
 
-**`~/.claude/tmp/` retention**: harness SHOULD purge `mtime > 7d` at SessionStart (tool-exhaust, not WIP). Residue check ≥100 stale (>7d) + unconfigured harness → surface recommendation inline; no auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
+**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically: `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
 
 ## §11-EXT Session heuristics (advisory)
 
