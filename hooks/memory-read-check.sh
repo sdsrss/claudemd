@@ -171,9 +171,12 @@ sanitize_for_tagmatch() {
   # (tests Cases 59-61). The list is generic readers and shell plumbing, never a
   # tool that can itself ship (git / gh / npm / cargo / docker stay matchable).
   # Runs after the quote strip, so `echo "; tail"` cannot fake a segment start.
-  out=$(printf '%s' "$out" | sed -E -e ':a' \
-    -e 's/(^[[:space:]]*|[;&|(`][[:space:]]*)(sleep|tail|head|cat|echo|printf|grep|wc|sort|uniq|cut|tr|tee|xargs|timeout|cd|ls|true|false)([[:space:]]|$)/\1\3/' \
-    -e 'ta')
+  # One pass with `g`, not a `:a … ta` loop: sed does not rescan replaced text,
+  # so `; echo sleep` loses `echo` and keeps `sleep`. The loop re-read `; sleep`
+  # as a new segment start and dropped the argument too (0.100.0 pre-tag
+  # review, test Case 64).
+  out=$(printf '%s' "$out" | sed -E \
+    -e 's/(^[[:space:]]*|[;&|(`][[:space:]]*)(sleep|tail|head|cat|echo|printf|grep|wc|sort|uniq|cut|tr|tee|xargs|timeout|cd|ls|true|false)([[:space:]]|$)/\1\3/g')
   # vNEXT: strip filesystem-path / URL tokens (any unquoted run containing `/`).
   # A path segment is not a topic declaration — e.g. `~/.claude/projects/...`
   # would otherwise match a `projects` tag and deny an unrelated command.

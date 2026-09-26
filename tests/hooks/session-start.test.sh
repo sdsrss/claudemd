@@ -1327,6 +1327,15 @@ else
 fi
 rm -rf "$PZ_PROJ"
 
+# Case 46: every model-facing message names its off switch as the USER's
+# (0.100.0 pre-tag review: two banners still read "Disable this notice: …" and
+# "… disables the whole check", an option the agent could take for itself).
+# Source-level: each additionalContext / msg line that mentions a DISABLE_*=1
+# switch or SPEC_DRIFT_IGNORE must say "the user can" on the same line.
+C46_BAD=$(grep -nE '(additionalContext|msg\+?=).*(DISABLE_[A-Z_]+=1|SPEC_DRIFT_IGNORE)' "$HOOK" | grep -vi 'the user can' || true)
+[[ -z "$C46_BAD" ]] && echo "PASS: 46 model-facing kill switches are named as the user's" \
+  || { echo "FAIL: 46 lines still offer the switch to the agent:"; printf '%s\n' "$C46_BAD" | cut -c1-120; FAIL=$((FAIL+1)); }
+
 # Count SUCCESS-capable labels, suffixes included (2026-07-28 review). The old
 # regex stopped at [0-9]+, so 11b/11c/28b/28c/28d/28e collapsed into 11 and 28:
 # the suite ran 35 assertions and reported "29/29", and a run where every

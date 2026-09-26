@@ -1023,6 +1023,21 @@ OUT=$(s56 "$SESS" "gh release create v1.2.3 --notes-file n.md")
 [[ "$(s56dec "$OUT")" == "deny" ]] && echo "PASS: 63 a denied cat is not a read" \
   || { echo "FAIL: 63 (expected deny, got: ${OUT:-<silent>})"; FAIL=$((FAIL+1)); }
 
+# Case 64: only the COMMAND word of a segment is dropped. A looped strip took
+# `echo` off `; echo sleep`, saw `; sleep` as a new segment start and took the
+# argument too, turning four 0.99.0 denies into allows (0.100.0 pre-tag review).
+# Each shape keeps the tag word in argument position, so each must still deny.
+C64_N=0
+for c64 in "git push origin main; echo sleep" "git push origin main; ls tail" \
+           "echo tail && git push origin main" "xargs tail && git push origin main"; do
+  SESS="sess64"; echo '' > "$S56_DIR/$SESS.jsonl"
+  OUT=$(s56 "$SESS" "$c64")
+  if [[ "$(s56dec "$OUT")" == "deny" && "$OUT" == *feedback_pipe.md* ]]; then C64_N=$((C64_N+1))
+  else echo "  64 miss: $c64 -> ${OUT:-<silent>}"; fi
+done
+[[ "$C64_N" == 4 ]] && echo "PASS: 64 a plumbing word as an argument still matches (4/4 shapes)" \
+  || { echo "FAIL: 64 ($C64_N/4 shapes denied)"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

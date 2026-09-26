@@ -426,7 +426,7 @@ spec_drift_check() {
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (CLAUDE-extended.md per §2.2) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). Deleted it on purpose? SPEC_DRIFT_IGNORE=\"" + $files + "\" skips just these; DISABLE_SPEC_DRIFT_BANNER=1 disables the whole check.")
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (CLAUDE-extended.md per §2.2) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
       }
     }' 2>/dev/null || true
     return 0
@@ -442,7 +442,7 @@ spec_drift_check() {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/). Intentional local edit? SPEC_DRIFT_IGNORE=\"" + $files + "\" skips just these; DISABLE_SPEC_DRIFT_BANNER=1 disables the whole check.")
+      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/). If the local edit is intentional, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
     }
   }' 2>/dev/null || true
 }
@@ -535,7 +535,7 @@ emit_user_content_banner() {
   # says the move happened; whether its target still resolves is the user's
   # dotfiles business.
   if [[ -n "$backup_dir" && ! -e "$backup_dir/CLAUDE.md" && ! -L "$backup_dir/CLAUDE.md" ]]; then
-    msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. Disable this notice: DISABLE_USER_CONTENT_BANNER=1"
+    msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
     jq -cn --arg ctx "$msg" '{
       suppressOutput: true,
       hookSpecificOutput: {
@@ -554,7 +554,7 @@ emit_user_content_banner() {
   else
     msg+=" and moved to a ~/.claude/backup-<timestamp>/ directory"
   fi
-  msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back, run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand. Disable this notice: DISABLE_USER_CONTENT_BANNER=1"
+  msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back, run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand. The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
 
   jq -cn --arg ctx "$msg" '{
     suppressOutput: true,
