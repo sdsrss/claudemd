@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.34.0 — Core
+# AI-CODING-SPEC v6.35.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load on L3 / ship / Override / three-strike) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -99,7 +99,7 @@ Load `~/.claude/CLAUDE-extended.md` when:
 - Entering **HACK / EMERGENCY / AUTONOMOUS**
 - **L1-bugfix same signature 3×** (→ §EXT §6)
 
-**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill required; override form `manual ship because <reason>` in REPORT. Extended load owed to ship/release alone + runbook memory stamped `covers: §EXT §12 … @ v<current spec>` → Read runbook + stamped sections, not the full file; else full load. Rules: §EXT §12.
+**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Extended load owed to ship/release alone + runbook memory stamped `covers: §EXT §12 … @ v<current spec>` → Read runbook + stamped sections, not the full file; else full load. Rules: §EXT §12.
 
 **L0/L1/L2**: do NOT load extended (targeted Read of a core-referenced §EXT section: OK at any level); wanting the full file at L2 signals re-classify to L3 — re-classify, don't load-and-continue. **How**: Read whole file at task start, before ROUTE; no per-task re-read absent compaction; post-compaction on L3/Override/ship → re-Read.
 

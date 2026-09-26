@@ -6,6 +6,15 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.35.0 (minor, 2026-09-26) — `ship` if listed; worktree-relative spawn paths
+
+Two gaps from the 2026-09-26 transcript analysis (`docs/claude-session-analysis-2026-09-26.md` B6, 4.4), both user-authorized that day.
+
+- **Core §2.2 ship trigger** (relaxed wording): "`ship` skill required" → "`ship` skill if listed (else manual)". Nine `Skill` calls failed with `Unknown skill: ship` / `gstack:ship` between 09-06 and 09-21. On this machine gstack's ship workflow was on disk at `~/.claude/skills/gstack/ship/SKILL.md` — a sub-skill of the gstack router, which Claude Code does not register — so "required" sent the agent at a name that could not resolve. §EXT §12 Detection already said an unlisted skill is missing and takes the Fallback row (`manual ship because <reason>`); core now says the same instead of contradicting it. Plugin 0.98.0's `/claudemd-doctor` adds `routing:ship-skill` (advisory), which tells "not installed" from "installed but not registered". Core 24979 → 24994 bytes.
+- **§EXT §11-O Worktree spawn** (rule added): an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path. The harness rejected 75 such operations on four days (09-08, 09-11, 09-20, 09-25) across three projects; the prompts said `cd /home/ai/dev/<proj>`.
+
+Extended also moves the v6.34.0 Recent-changes entry here (this file already held it) — 49810 → 49479 bytes. No HARD rule added (§13.2).
+
 ## v6.34.0 (minor, 2026-09-26) — five operator-requested rules: tests, commits, lookup, residue, mature solutions
 
 The operator asked for five global rules on 2026-09-26. Two were absent, three were partly present:

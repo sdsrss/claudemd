@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.34.0 — Extended
+# AI-CODING-SPEC v6.35.0 — Extended
 
 Loaded on demand per §2.2 in `CLAUDE.md` — L3 / Override / ship / pre-ship review / orchestration. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-only, never Agent-loaded): `~/.claude/OPERATOR.md`.
 
@@ -322,6 +322,7 @@ Universal session rules live in core §11 SESSION — they bind whether this ext
 
 ### Subagent rules
 - **1 task = 1 subagent**. Research/explore offloaded by default.
+- **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those (75× in 4 days, 2026-09).
 - Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
 - **Report by file**: the harness cuts a teammate's reported result at 4000 chars (100 of 176 cut, measured 2026-09-22). Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
@@ -468,9 +469,9 @@ B.3–B.6 removed as illustrative duplicates of §10-R / §2-EXT EMERGENCY / §2
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.34.0 (minor, 2026-09-26)** — five rules the operator asked for; two were absent, three closed gaps in existing ones. §7 gains **Tests** (L1+ code, not L1-copy/comments: add or update a covering test, co-located stays L1; affected tests green at L1, full suite + smoke entry at L2+) and **Commit** (each VALIDATE-passed change → its own local commit; push only when asked; `AUTO_COMMIT: off` opts out); its L1 row reads `lint + typecheck + test`, and §2's L2 trigger exempts a co-located L1 test. §2.1 adds look-it-up-and-cite for unfamiliar or stale facts, replacing its Q&A docs-lookup clause. HARD §8.V4 names test/probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`; §7's residue list adds `/var/tmp/`. §12 Review-finding repair adds a mature-solution check. Paid for in core by deleting three restatements (§1 Honest-partial, §9's pointer, L1-copy's behaviour-comment sentence) and moving §5.1's autonomy advice to OPERATOR.md §13.1.
+**v6.35.0 (minor, 2026-09-26)** — two gaps from the 2026-09-26 transcript analysis. Core §2.2: the `ship` skill is used if listed, else manual ship; it said "required", and 9 calls failed `Unknown skill: ship` where gstack's ship sat unregistered under its router (§12 Detection already said absent-from-listing = missing). §11-O: a worktree-isolated spawn's prompt uses worktree-relative paths; main-checkout absolute paths drew 75 harness rejections in 4 days.
 
-**Sizing** (v6.34.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24821 → 24979 bytes (Δ +158: five rules in, three restatements and one move out); extended 49190 → 49810 bytes (Δ +620: the §12 check, this entry for v6.33.0's); OPERATOR.md 16017 → 16200 bytes (Δ +183: §5.1's autonomy advice). Size budget: core 24979/25000 (**21 bytes headroom**); extended 49810/50000 (**190 bytes headroom**).
+**Sizing** (v6.35.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24979 → 24994 bytes (Δ +15: §2.2's ship clause); extended 49810 → 49479 bytes (Δ -331: the §11-O worktree bullet in, v6.34.0's entry out to the changelog); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24994/25000 (**6 bytes headroom**); extended 49479/50000 (**521 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 
