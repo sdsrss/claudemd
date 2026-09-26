@@ -168,7 +168,7 @@ Chain: clarify → primary → secondary only if needed → ship. Do NOT flatten
 Example: "登录页又慢又报 500" → bug first (resolve 500), then perf only if slowness persists after fix.
 
 ### Skill invocation
-Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins — v6.31.0 removed the `sp` before `gs` rule, and it is not restated here.
+Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins.
 
 ### §4.FULL (L3 full path)
 
