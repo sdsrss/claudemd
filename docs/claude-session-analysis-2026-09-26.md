@@ -438,3 +438,13 @@ node ../../scripts/sampling-audit.js --global --days=30 --json | jq .behaviorMet
 | P1-3 / P1-5 规范 v6.35.0 | `3251326`(doctor `routing:ship-skill`)、`ef6ed69`(core §2.2 "`ship` skill if listed (else manual)"、§EXT §11-O Worktree spawn)。本机的根因:gstack 的 ship 在 `~/.claude/skills/gstack/ship/`,是路由下的子技能,没有注册 |
 
 独立评审(全新上下文子代理):0 Critical / 1 High / 6 Medium / 7 Low。§8 判定在 2,779 次新旧对比中没有变化。已修:H1(`e27bd5b`)、M1/M3/L5(`a44e476`)、M2(`e345b4b`)、M4 的 12 个存活变异(均已补测试并确认能杀掉)、M5(`e27bd5b`)、L1/L2/L3/L4/L6。未修:M6(CHANGELOG 与 0.98.0 版本号留给发版步骤)、L7(`session-end-check` 遇到字符串 content 的 assistant 行时整段 jq 失败,本分支之前就存在)。
+
+### 第二批(同日,0.98.0 之后)
+
+| 项 | 状态 | 提交 / 证据 |
+|---|---|---|
+| P0-1 的 rework-breaker | 完成 | `db5c262`。D#88 探针结论:CC 2.1.283 的 `bashEditDiffEnabled` 设置说明写明 PostToolUse Bash hook 在 `tool_response` 里拿到改动文件列表;默认只在 `auto` / `bypassPermissions` 权限模式下开启,`CLAUDE_CODE_BASH_EDIT_DIFF=1` 可强制开启,且只在 git 仓库里记录。headless `claude -p` 在 bypass 模式下仍然没有该字段,加上环境变量后出现 `tool_response.bashEditDiff = {files:[{filePath,hunks}], moreFiles, changedFiles}`。附 C 第一行"headless 转录里没有 `bashEditDiff`"的原因就是这个开关,不是 payload 不带。matcher 改为 `Edit\|Write\|Bash`,一条 Bash 命令对它列出的每个代码文件各计一次 |
+| `sampling-audit` 的 `bashEditCapableSessions` | 更正 | `49f5409`。只看 CLI 版本会把 default 模式与 headless 会话算成"能记录 Bash 修改";加上权限模式条件后本机 99 → 94。合并口径的返工数(94/166)不变 |
+| 评审 L7 | 完成 | `40de8bc`。本机现有转录里字符串 content 的 assistant 行为 0 条,缺陷未触发过 |
+| P1-4 开启 G1b/G2 计时 | 开关已设,计时未开始 | 2026-09-26T14:17:52Z 在 settings env 设 `EVIDENCE_GATE=1`、`REWORK_BREAKER=1`。预注册在 `tasks/g1b-g2-eval/PREREG.md`(本地):G2 的 T0 是 0.98.0 之后下一个版本的第一条遥测行,基线合并口径 94/166 = 56.6%,附功效表与截断规则 |
+| P2-6 技能清单瘦身 | 部分完成 | 22 天、8 个项目里模型调用与用户命令都是 0 次的 `claude-security`、`code-review`、`skill-creator` 在 user 范围关闭(`claude plugin details` 估算合计约 914 token/会话常驻)。`mattpocock-skills`(约 1,611 token)保留:09-21 的 G4 决定把它列为路由候选,关掉它等于结束那项观察,需要单独决定 |
