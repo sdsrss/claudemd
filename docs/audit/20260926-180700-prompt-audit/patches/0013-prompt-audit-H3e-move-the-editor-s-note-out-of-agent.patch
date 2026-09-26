@@ -1,7 +1,7 @@
-From d059d103a7b801f93019e074792d08ce675afa1c Mon Sep 17 00:00:00 2001
+From b6450ba78455b74101f5a3d0ad31f6ccedbbf872 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:08 +0000
-Subject: [PATCH 13/24] prompt-audit H3e: move the editor's note out of
+Subject: [PATCH 13/26] prompt-audit H3e: move the editor's note out of
  agent-loaded Appendix B
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

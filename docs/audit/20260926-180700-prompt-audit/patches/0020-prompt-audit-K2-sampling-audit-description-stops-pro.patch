@@ -1,7 +1,7 @@
-From 699da00edd8cbbd9527816a45a07e1c62eb37a41 Mon Sep 17 00:00:00 2001
+From d0565ad019e574da073e987b8dd150768e312bc7 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:55:10 +0000
-Subject: [PATCH 20/24] prompt-audit K2: sampling-audit description stops
+Subject: [PATCH 20/26] prompt-audit K2: sampling-audit description stops
  promising calibration the script cannot reach
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

@@ -1,7 +1,7 @@
-From 958ebb48067db6d2039ffdda9a5dff8436710354 Mon Sep 17 00:00:00 2001
+From 35a12d1ee4bbf7c09da10bdad354ee603b8ae7fe Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:55:10 +0000
-Subject: [PATCH 19/24] prompt-audit K1: sampling-audit forwards the flags its
+Subject: [PATCH 19/26] prompt-audit K1: sampling-audit forwards the flags its
  table documents
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

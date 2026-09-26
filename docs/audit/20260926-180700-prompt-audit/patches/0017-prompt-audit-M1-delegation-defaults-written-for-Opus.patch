@@ -1,7 +1,7 @@
-From 9ff04c2446f39fdd9f2591747d690e40f0e14fdf Mon Sep 17 00:00:00 2001
+From 89597845b1950e402d8c29900cef04956099a9a2 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:32 +0000
-Subject: [PATCH 17/24] prompt-audit M1: delegation defaults written for Opus
+Subject: [PATCH 17/26] prompt-audit M1: delegation defaults written for Opus
  4.x under-delegation become a cost test
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

@@ -58,7 +58,7 @@ index de5e280..f96e508 100644
  | Flag | Effect |
  |---|---|
 diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
-index 8304819..ba725fc 100644
+index 8304819..3ec0e62 100644
 --- a/spec/CLAUDE-extended.md
 +++ b/spec/CLAUDE-extended.md
 @@ -1,6 +1,6 @@
@@ -212,7 +212,7 @@ index 8304819..ba725fc 100644
  **v6.35.0 (minor, 2026-09-26)** — two gaps from the 2026-09-26 transcript analysis. Core §2.2: the `ship` skill is used if listed, else manual ship; it said "required", and 9 calls failed `Unknown skill: ship` where gstack's ship sat unregistered under its router (§12 Detection already said absent-from-listing = missing). §11-O: a worktree-isolated spawn's prompt uses worktree-relative paths; main-checkout absolute paths drew 75 harness rejections in 4 days.
  
 -**Sizing** (v6.35.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24979 → 24994 bytes (Δ +15: §2.2's ship clause); extended 49810 → 49479 bytes (Δ -331: the §11-O worktree bullet in, v6.34.0's entry out to the changelog); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24994/25000 (**6 bytes headroom**); extended 49479/50000 (**521 bytes headroom**).
-+**Sizing** (unreleased prompt-audit series, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24962 bytes (Δ -32: §0.1 to extended §13, matt prefix, gs router, plain-words rule); extended 49479 → 49281 bytes (Δ -198: history clauses and batch review out, §0.1 in); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24962/25000 (**38 bytes headroom**); extended 49281/50000 (**719 bytes headroom**).
++**Sizing** (unreleased prompt-audit series, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24989 bytes (Δ -5: §0.1 to extended §13, matt prefix, gs router, plain-words rule, language default); extended 49479 → 49319 bytes (Δ -160: history clauses and batch review out, §0.1 in); OPERATOR.md 16200 → 16744 bytes (Δ 544: size-cap decision). Size budget: core 24989/25000 (**11 bytes headroom**); extended 49319/50000 (**681 bytes headroom**).
  
  ## §1.5-EXT GLOSSARY
  
@@ -226,7 +226,7 @@ index 8304819..ba725fc 100644
  ## §11-EXT Session heuristics (advisory)
  
 diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
-index 1900e57..cac4f0f 100644
+index 1900e57..a1c6e12 100644
 --- a/spec/CLAUDE.md
 +++ b/spec/CLAUDE.md
 @@ -1,8 +1,8 @@
@@ -250,7 +250,15 @@ index 1900e57..cac4f0f 100644
  
  ### §0.2 Mid-task feedback
  
-@@ -44,7 +41,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
+@@ -37,14 +34,14 @@ Everything else = natural prose, no bracketed signals. Completion claims / level
+ 
+ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
+ 
+-**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
++**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
+ 
+ **Principles** (reference when ambiguous):
+ - **Evidence over intuition** — "should work" ≠ evidence; bugfix claims need prior reproduction (reproduce before claim-fixed).
  - **Search before write; reuse first** — grep/Read existing code/lib before edit or add (§8.V1 binds verification).
  - **Smallest diff wins** — fewest files, smallest blast radius. **Root cause over patch** — L2+: symptom-only fixes banned.
  - **Zero-assume** — unsure → ASK; reversible → state choice inline.
@@ -264,7 +272,7 @@ index 1900e57..cac4f0f 100644
  SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → §EXT §12 table. Full L3 / composite / specialized-clarify matrix → §EXT §4.
  
 -Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
-+Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__chrome` / computer-use, which drive the user's own browser and desktop; 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
++Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
  
  **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
  
@@ -310,6 +318,18 @@ index 1900e57..cac4f0f 100644
  
  Multi-task / subagent / cross-session → §EXT §11-O.
  
+diff --git a/spec/OPERATOR.md b/spec/OPERATOR.md
+index a0bf82d..56906ba 100644
+--- a/spec/OPERATOR.md
++++ b/spec/OPERATOR.md
+@@ -60,6 +60,7 @@ Operator bookkeeping formerly appended to each extended release entry; agent run
+ - **A4 measurement track CLOSED** (2026-07-24 full-population hand-labeling, pooled precision ≤0.17, record `tasks/sampling-detector-labeling-2026-07-24.md`) — do NOT re-open; self-enforced-rule compliance judgments require manual review, not detector rates.
+ - **Settled — banned-vocab deny-gate bypass rate**: carried here from 2026-07-25 (16/31 = 51.6%, 30d, 8 projects), **adjudicated 2026-08-24: no demote**. Record: `tasks/banned-vocab-demote-evaluation-2026-07-25.md`. Kept as a decision, not a queue item; re-open only on a codified demote-by-bypass-rate rule.
+ - **Settled — §4 Routing primaries `off` in `skillOverrides`**: carried from 2026-07-25 as "6 primaries, re-enable-vs-rewrite", re-queued 2026-09-01 after it appeared in no batch-review record — neither adjudicated nor re-carried, i.e. it fell off the loop silently. **Adjudicated 2026-09-01: no change to §4 or §12; the machine stays as configured and degrades through the fallback table.** Measured, not counted from the carry note: **8**, not 6 (`gs:/qa`, `/qa-only`, `/design-consultation`, `/benchmark`, `/office-hours`, `/freeze`, `/careful`, `/guard`), against 24 primaries total; across 81 transcripts since 2026-08-01 the Skill tool was invoked 12 times, 5 of them §4 primaries — and all 5 were *enabled* ones (`sp:systematic-debugging` ×2, `sp:dispatching-parallel-agents` ×2, `gs:/ship`). The eight disabled primaries account for **none** of the 12. That split, not the raw total, is the evidence: §4 routing is live and used, and the part of it that is switched off is the part nothing reaches for. The reason it is not a spec defect: all 8 already own §12 Fallback rows, and §12's Detection paragraph names `skillOverrides`-off as the case it handles — so the spec's answer is complete by design, and `spec/` is a *shipped* artifact whose §4 must keep naming the best tool for users who do have gstack installed. Rewriting it to match one machine's local disables would degrade it for everyone else. **Standing detector** (this is what was actually missing — the 2026-07-24 discovery was an accident during an unrelated `/doctor` run): `doctor`'s `routing:skills-enabled` reads the INSTALLED extended spec against `skillOverrides` every run and names the offenders. Re-open only if the fallback path proves insufficient in practice, or if the two sets diverge for a *new* reason the detector surfaces.
++- **Settled — the size cap stays in bytes** (2026-09-26, prompt-audit decision 5): measured through `claude -p` usage, core 24,994 B ≈ 10,360 tokens (2.41 B/token) and extended 49,479 B ≈ 20,048 tokens (2.47 B/token). The ratio differs by under 3% between the two files, so bytes already track tokens; a token cap would put an API credential into CI for no discriminating gain. What the cap should not do is decide wording — keep a rule's reason beside it and pay for it with a deletion elsewhere (`docs/audit/20260926-180700.md` F13).
+ - **Phase B of the v6.25.0 compression** (deeper cuts: IL2 example externalization, §10 quick-check removal, turn-yield Tell removal, batch re-AUTH detail): gated on ≥30d / ≥20 L2+ tasks post-v6.25.0 + manual violation review; per-clause record `tasks/spec-lean-cut-candidates-2026-08-09.md`.
+ 
+ ## §13.4 `tasks/` filename conventions (reference table)
 diff --git a/spec/hard-rules.json b/spec/hard-rules.json
 index 4cb19ff..e1c1edf 100644
 --- a/spec/hard-rules.json
@@ -324,7 +344,7 @@ index 4cb19ff..e1c1edf 100644
        "enforcement": "external",
        "rule_hits_section": null,
 diff --git a/tests/scripts/spec-structure.test.js b/tests/scripts/spec-structure.test.js
-index 038f841..30b5374 100644
+index 038f841..b5c5e35 100644
 --- a/tests/scripts/spec-structure.test.js
 +++ b/tests/scripts/spec-structure.test.js
 @@ -50,9 +50,10 @@ test('A15: MEMORY.md tag syntax described in §11 (core summary + §EXT detail)'
@@ -340,6 +360,15 @@ index 038f841..30b5374 100644
    assert.ok(text.includes('§2.1 ROUTE'));
    // v6.10.0: §2.3 TOOLS merged into §2.1; escalation block retains the substance.
    assert.match(text, /Tool escalation/);
+@@ -568,7 +569,7 @@ const PINS = [
+     file: CORE,
+     anchor: '**Language contract**:',
+     why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
+-    line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
++    line: "**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
+   },
+   {
+     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
 @@ -593,7 +594,7 @@ const PINS = [
      file: EXT,
      anchor: '- **Report by file**',
@@ -367,10 +396,10 @@ index 038f841..30b5374 100644
 -  { file: CORE, heading: '## §1 IDENTITY', sha256: 'ce901e0783a7dff8' },
 +  { file: CORE, heading: '', sha256: '4ea2616d722592ed' },
 +  { file: CORE, heading: '## §0 SPINE', sha256: '88a46346809ae648' },
-+  { file: CORE, heading: '## §1 IDENTITY', sha256: '046fe3b024df2f4c' },
++  { file: CORE, heading: '## §1 IDENTITY', sha256: '0cb6d9374d04be0c' },
    { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
 -  { file: CORE, heading: '## §2 LEVEL', sha256: '58770de22daa9671' },
-+  { file: CORE, heading: '## §2 LEVEL', sha256: 'e3da636cd2e7fab5' },
++  { file: CORE, heading: '## §2 LEVEL', sha256: 'ebbc31a92cfbb135' },
    { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
    { file: CORE, heading: '## §5 AUTH', sha256: '007498f2151b3c43' },
    { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: '418d3275ec9015cd' },
@@ -407,7 +436,7 @@ index 038f841..30b5374 100644
 -  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
 -  { file: EXT, heading: '## Recent changes', sha256: 'c3547648c74456ea' },
 +  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'c66f48b0dc11727c' },
-+  { file: EXT, heading: '## Recent changes', sha256: '922b3b9556389c3b' },
++  { file: EXT, heading: '## Recent changes', sha256: '2e45a74b56274a90' },
    { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
    {
      file: EXT,

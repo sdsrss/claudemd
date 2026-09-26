@@ -1,7 +1,7 @@
-From f24659a28e44424ba8d9266495b537c19f98b9ac Mon Sep 17 00:00:00 2001
+From e3ab149efb12420e91e0e28c8a97d4b17679e8ca Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:08 +0000
-Subject: [PATCH 11/24] prompt-audit H3c: keep the 4000-char contract, drop the
+Subject: [PATCH 11/26] prompt-audit H3c: keep the 4000-char contract, drop the
  measurement narrative
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

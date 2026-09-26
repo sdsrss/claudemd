@@ -1,7 +1,7 @@
-From ec05325085530b43e6768039b8abe9bb9fc26dca Mon Sep 17 00:00:00 2001
+From c76c3c000262169940e00d03f0dc996084e23d08 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:32 +0000
-Subject: [PATCH 16/24] =?UTF-8?q?prompt-audit=20H4:=20=C2=A74=20and=20?=
+Subject: [PATCH 16/26] =?UTF-8?q?prompt-audit=20H4:=20=C2=A74=20and=20?=
  =?UTF-8?q?=C2=A76=20stop=20naming=20a=20primary=20skill=20that=20=C2=A712?=
  =?UTF-8?q?=20says=20has=20no=20precedence?=
 MIME-Version: 1.0

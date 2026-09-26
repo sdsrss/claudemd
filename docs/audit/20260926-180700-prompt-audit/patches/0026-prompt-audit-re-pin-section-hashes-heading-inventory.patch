@@ -1,7 +1,7 @@
-From 6a486f4c07db2fc805871aa7bff5e5d020e2cc16 Mon Sep 17 00:00:00 2001
+From d8dbd785bc473a0aeb63ca5875dc6d0d1aa05a35 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
-Date: Sat, 26 Sep 2026 17:58:34 +0000
-Subject: [PATCH 24/24] prompt-audit: re-pin section hashes, heading inventory
+Date: Sat, 26 Sep 2026 18:48:51 +0000
+Subject: [PATCH 26/26] prompt-audit: re-pin section hashes, heading inventory
  and Sizing for the series
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
  2 files changed, 22 insertions(+), 22 deletions(-)
 
 diff --git a/spec/CLAUDE-extended.md b/spec/CLAUDE-extended.md
-index 8ecbbf7..ba725fc 100644
+index 8ecbbf7..3ec0e62 100644
 --- a/spec/CLAUDE-extended.md
 +++ b/spec/CLAUDE-extended.md
 @@ -472,7 +472,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
@@ -19,12 +19,12 @@ index 8ecbbf7..ba725fc 100644
  **v6.35.0 (minor, 2026-09-26)** — two gaps from the 2026-09-26 transcript analysis. Core §2.2: the `ship` skill is used if listed, else manual ship; it said "required", and 9 calls failed `Unknown skill: ship` where gstack's ship sat unregistered under its router (§12 Detection already said absent-from-listing = missing). §11-O: a worktree-isolated spawn's prompt uses worktree-relative paths; main-checkout absolute paths drew 75 harness rejections in 4 days.
  
 -**Sizing** (v6.35.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24979 → 24994 bytes (Δ +15: §2.2's ship clause); extended 49810 → 49479 bytes (Δ -331: the §11-O worktree bullet in, v6.34.0's entry out to the changelog); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24994/25000 (**6 bytes headroom**); extended 49479/50000 (**521 bytes headroom**).
-+**Sizing** (unreleased prompt-audit series, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24962 bytes (Δ -32: §0.1 to extended §13, matt prefix, gs router, plain-words rule); extended 49479 → 49281 bytes (Δ -198: history clauses and batch review out, §0.1 in); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24962/25000 (**38 bytes headroom**); extended 49281/50000 (**719 bytes headroom**).
++**Sizing** (unreleased prompt-audit series, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24989 bytes (Δ -5: §0.1 to extended §13, matt prefix, gs router, plain-words rule, language default); extended 49479 → 49319 bytes (Δ -160: history clauses and batch review out, §0.1 in); OPERATOR.md 16200 → 16744 bytes (Δ 544: size-cap decision). Size budget: core 24989/25000 (**11 bytes headroom**); extended 49319/50000 (**681 bytes headroom**).
  
  ## §1.5-EXT GLOSSARY
  
 diff --git a/tests/scripts/spec-structure.test.js b/tests/scripts/spec-structure.test.js
-index 19207c7..30b5374 100644
+index 61a239f..b5c5e35 100644
 --- a/tests/scripts/spec-structure.test.js
 +++ b/tests/scripts/spec-structure.test.js
 @@ -816,41 +816,41 @@ const PINS = [
@@ -36,10 +36,10 @@ index 19207c7..30b5374 100644
 -  { file: CORE, heading: '## §1 IDENTITY', sha256: 'ce901e0783a7dff8' },
 +  { file: CORE, heading: '', sha256: '4ea2616d722592ed' },
 +  { file: CORE, heading: '## §0 SPINE', sha256: '88a46346809ae648' },
-+  { file: CORE, heading: '## §1 IDENTITY', sha256: '046fe3b024df2f4c' },
++  { file: CORE, heading: '## §1 IDENTITY', sha256: '0cb6d9374d04be0c' },
    { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '0e4a90afbc822ddd' },
 -  { file: CORE, heading: '## §2 LEVEL', sha256: '58770de22daa9671' },
-+  { file: CORE, heading: '## §2 LEVEL', sha256: 'e3da636cd2e7fab5' },
++  { file: CORE, heading: '## §2 LEVEL', sha256: 'ebbc31a92cfbb135' },
    { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
    { file: CORE, heading: '## §5 AUTH', sha256: '007498f2151b3c43' },
    { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: '418d3275ec9015cd' },
@@ -76,7 +76,7 @@ index 19207c7..30b5374 100644
 -  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'd69094b8db17bfc3' },
 -  { file: EXT, heading: '## Recent changes', sha256: 'c3547648c74456ea' },
 +  { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'c66f48b0dc11727c' },
-+  { file: EXT, heading: '## Recent changes', sha256: '922b3b9556389c3b' },
++  { file: EXT, heading: '## Recent changes', sha256: '2e45a74b56274a90' },
    { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
    {
      file: EXT,

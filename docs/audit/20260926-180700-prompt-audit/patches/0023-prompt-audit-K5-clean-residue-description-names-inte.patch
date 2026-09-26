@@ -1,7 +1,7 @@
-From a418b58fe7b1c48759541878bdadb009b9ad7458 Mon Sep 17 00:00:00 2001
+From 90b6e920ae597b405aa4c8dbd206eb5f5e978fdf Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:55:10 +0000
-Subject: [PATCH 23/24] prompt-audit K5: clean-residue description names
+Subject: [PATCH 23/26] prompt-audit K5: clean-residue description names
  intent, the glob list stays in the body
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

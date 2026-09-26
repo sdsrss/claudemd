@@ -1,7 +1,7 @@
-From 2360e942ea23c68798a881de24aad3a2e7c33523 Mon Sep 17 00:00:00 2001
+From a27aa7af746eaf56e7c18730115a28d71b99a085 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:53:49 +0000
-Subject: [PATCH 04/24] prompt-audit M3: HARD label keeps its meaning; drop the
+Subject: [PATCH 04/26] prompt-audit M3: HARD label keeps its meaning; drop the
  caps and verdict words stacked inside HARD bullets
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
@@ -10,7 +10,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
  1 file changed, 5 insertions(+), 5 deletions(-)
 
 diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
-index aa59588..875638d 100644
+index c397fc9..9424439 100644
 --- a/spec/CLAUDE.md
 +++ b/spec/CLAUDE.md
 @@ -41,7 +41,7 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.

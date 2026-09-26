@@ -1,7 +1,7 @@
-From 164ac4a9c10f5455e08b84f1b31c24bb6127c46a Mon Sep 17 00:00:00 2001
+From cdb277162abe6f7c6b84bb30c58dfa57021aff63 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:55:10 +0000
-Subject: [PATCH 22/24] prompt-audit K4: audit.md points at where the demotion
+Subject: [PATCH 22/26] prompt-audit K4: audit.md points at where the demotion
  rule lives now
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

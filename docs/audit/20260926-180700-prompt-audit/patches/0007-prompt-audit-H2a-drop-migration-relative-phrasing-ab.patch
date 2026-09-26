@@ -1,7 +1,7 @@
-From afc2093df03af5e4faf55fb32afee259b54279b1 Mon Sep 17 00:00:00 2001
+From 62693410b3bc940545c3f01c644b96b23dd8734f Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:08 +0000
-Subject: [PATCH 07/24] prompt-audit H2a: drop migration-relative phrasing
+Subject: [PATCH 07/26] prompt-audit H2a: drop migration-relative phrasing
  about a removed rule
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

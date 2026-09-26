@@ -1,7 +1,7 @@
-From b2a8ef60fdcce7924be99d02f405b691c28d5fbc Mon Sep 17 00:00:00 2001
+From 515ffc7194367fe51c2ee456b55fd83f6a01e0a5 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:53:49 +0000
-Subject: [PATCH 06/24] =?UTF-8?q?prompt-audit=20M12:=20one=20extended-load?=
+Subject: [PATCH 06/26] =?UTF-8?q?prompt-audit=20M12:=20one=20extended-load?=
  =?UTF-8?q?=20trigger=20list=20(core=20=C2=A72.2);=20the=20other=20copies?=
  =?UTF-8?q?=20disagreed?=
 MIME-Version: 1.0
@@ -27,7 +27,7 @@ index afbcd92..b766b6f 100644
  ## §5-EXT Safe-paths whitelist (detail)
  
 diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
-index 6c943f5..cac4f0f 100644
+index 07cef26..1519f9c 100644
 --- a/spec/CLAUDE.md
 +++ b/spec/CLAUDE.md
 @@ -1,6 +1,6 @@

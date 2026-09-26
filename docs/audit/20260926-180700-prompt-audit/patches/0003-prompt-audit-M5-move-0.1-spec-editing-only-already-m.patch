@@ -1,7 +1,7 @@
-From ad2164ffc7b466e2f248b8bc8f78e116227b1bc1 Mon Sep 17 00:00:00 2001
+From 8bc16319bde9006acedece3de7dca6b79282187f Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:53:36 +0000
-Subject: [PATCH 03/24] =?UTF-8?q?prompt-audit=20M5:=20move=20=C2=A70.1=20(?=
+Subject: [PATCH 03/26] =?UTF-8?q?prompt-audit=20M5:=20move=20=C2=A70.1=20(?=
  =?UTF-8?q?spec-editing=20only,=20already=20mechanized)=20from=20every-ses?=
  =?UTF-8?q?sion=20core=20to=20extended=20=C2=A713?=
 MIME-Version: 1.0
@@ -32,7 +32,7 @@ index 8304819..afbcd92 100644
  
  Operator responsibilities live in `OPERATOR.md §13.1` — human-only, not Agent-loaded. The `§13.1` anchor persists in hook telemetry (`§13.1-extended-read`) as a stable label.
 diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
-index 88152b3..aa59588 100644
+index 7ceaa6b..c397fc9 100644
 --- a/spec/CLAUDE.md
 +++ b/spec/CLAUDE.md
 @@ -22,9 +22,6 @@ Everything else = natural prose, no bracketed signals. Completion claims / level

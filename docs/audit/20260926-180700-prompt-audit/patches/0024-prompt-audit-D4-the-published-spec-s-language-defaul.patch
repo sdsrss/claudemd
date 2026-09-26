@@ -1,0 +1,46 @@
+From bd8261490e9381fb405196629dafc6c428eac1b3 Mon Sep 17 00:00:00 2001
+From: "sds.rs" <sdsrss@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 18:48:20 +0000
+Subject: [PATCH 24/26] prompt-audit D4: the published spec's language default
+ is English unless a user rule names one
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"default 中文" was the maintainer's preference shipped to every installer. Claude Code loads user-level ~/.claude/rules/*.md every session (code.claude.com/docs/en/memory), so a personal default lives there; the spec keeps the rule that what the human types decides.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ spec/CLAUDE.md                       | 2 +-
+ tests/scripts/spec-structure.test.js | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
+index 1519f9c..a1c6e12 100644
+--- a/spec/CLAUDE.md
++++ b/spec/CLAUDE.md
+@@ -34,7 +34,7 @@ Everything else = natural prose, no bracketed signals. Completion claims / level
+ 
+ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
+ 
+-**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
++**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).
+ 
+ **Principles** (reference when ambiguous):
+ - **Evidence over intuition** — "should work" ≠ evidence; bugfix claims need prior reproduction (reproduce before claim-fixed).
+diff --git a/tests/scripts/spec-structure.test.js b/tests/scripts/spec-structure.test.js
+index 19207c7..61a239f 100644
+--- a/tests/scripts/spec-structure.test.js
++++ b/tests/scripts/spec-structure.test.js
+@@ -569,7 +569,7 @@ const PINS = [
+     file: CORE,
+     anchor: '**Language contract**:',
+     why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
+-    line: "**Language contract**: user's language = what the human types in (default 中文), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
++    line: "**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
+   },
+   {
+     what: 'core §11 Mid-SPINE turn-yield — the four triggers and the Tell (v6.27.0 wording)',
+-- 
+2.53.0
+

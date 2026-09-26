@@ -1,7 +1,7 @@
-From d498637e7ac21024c59f248f06dea8f5326ef58e Mon Sep 17 00:00:00 2001
+From a7f74c39d33643ee2e4b51796a986de08c31977e Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:55:10 +0000
-Subject: [PATCH 21/24] prompt-audit K3: rules.md states what null hits means
+Subject: [PATCH 21/26] prompt-audit K3: rules.md states what null hits means
  since 2026-07-25
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>

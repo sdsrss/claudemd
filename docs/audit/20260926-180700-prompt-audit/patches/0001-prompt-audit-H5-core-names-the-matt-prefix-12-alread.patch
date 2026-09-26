@@ -1,7 +1,7 @@
-From 4380dd67dce6e95e465bf512b186510b67bfa613 Mon Sep 17 00:00:00 2001
+From 6b93d04f0ba0449ebbd39be15d01c25a521a510c Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:53:36 +0000
-Subject: [PATCH 01/24] =?UTF-8?q?prompt-audit=20H5:=20core=20names=20the?=
+Subject: [PATCH 01/26] =?UTF-8?q?prompt-audit=20H5:=20core=20names=20the?=
  =?UTF-8?q?=20matt=20prefix=20=C2=A712=20already=20routes=20to?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

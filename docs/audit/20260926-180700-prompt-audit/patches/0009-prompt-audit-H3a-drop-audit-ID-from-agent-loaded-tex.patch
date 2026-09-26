@@ -1,7 +1,7 @@
-From 11943fa9d232461cf71f94130cb74d08dc462f07 Mon Sep 17 00:00:00 2001
+From 966991f392728317f087ca6a4f895d273f52f708 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:08 +0000
-Subject: [PATCH 09/24] prompt-audit H3a: drop audit ID from agent-loaded text
+Subject: [PATCH 09/26] prompt-audit H3a: drop audit ID from agent-loaded text
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---

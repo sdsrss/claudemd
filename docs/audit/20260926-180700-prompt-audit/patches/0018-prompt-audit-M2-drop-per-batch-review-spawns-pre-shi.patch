@@ -1,7 +1,7 @@
-From 208835393316ccc3e57db4fcc11dccd9afcda74b Mon Sep 17 00:00:00 2001
+From cc60979846d2a3e0bbb0550fe776c1e6be48f7e6 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:32 +0000
-Subject: [PATCH 18/24] =?UTF-8?q?prompt-audit=20M2:=20drop=20per-batch=20r?=
+Subject: [PATCH 18/26] =?UTF-8?q?prompt-audit=20M2:=20drop=20per-batch=20r?=
  =?UTF-8?q?eview=20spawns;=20pre-ship=20review=20(=C2=A712)=20stays?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

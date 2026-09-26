@@ -1,7 +1,7 @@
-From 473ceda49a6c627886c972aab94afe8abda20683 Mon Sep 17 00:00:00 2001
+From 0a833c689bfe24eb2993070fe41234439e3f6b01 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:54:08 +0000
-Subject: [PATCH 08/24] =?UTF-8?q?prompt-audit=20H2b:=20drop=20the=20'used?=
+Subject: [PATCH 08/26] =?UTF-8?q?prompt-audit=20H2b:=20drop=20the=20'used?=
  =?UTF-8?q?=20to=20grant=20L2'=20history=20from=20=C2=A710-R?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

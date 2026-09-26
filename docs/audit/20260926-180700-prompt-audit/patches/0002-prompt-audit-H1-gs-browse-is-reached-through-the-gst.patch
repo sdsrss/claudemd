@@ -1,8 +1,10 @@
-From 8ba7d9c755f7af250a7a8aa7e478118aeac821d2 Mon Sep 17 00:00:00 2001
+From 17737f960ff014ff2b78592405b9b59d39c8b988 Mon Sep 17 00:00:00 2001
 From: "sds.rs" <sdsrss@users.noreply.github.com>
 Date: Sat, 26 Sep 2026 17:53:36 +0000
-Subject: [PATCH 02/24] prompt-audit H1: gs:/browse is reached through the
- gstack router; the prohibition carries its reason
+Subject: [PATCH 02/26] prompt-audit H1: gs:/browse is reached through the
+ gstack router; the prohibition carries gstack's stated reason
+
+gstack's own README (install step) and CLAUDE.md give the reason: the claude-in-chrome MCP tools are slow and unreliable next to its headless daemon. The spec also named the tool wrongly (mcp__chrome).
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
@@ -10,7 +12,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/spec/CLAUDE.md b/spec/CLAUDE.md
-index 743af81..88152b3 100644
+index 743af81..7ceaa6b 100644
 --- a/spec/CLAUDE.md
 +++ b/spec/CLAUDE.md
 @@ -83,7 +83,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
@@ -18,7 +20,7 @@ index 743af81..88152b3 100644
  SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → §EXT §12 table. Full L3 / composite / specialized-clarify matrix → §EXT §4.
  
 -Non-skill defaults: UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
-+Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__chrome` / computer-use, which drive the user's own browser and desktop; 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
++Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
  
  **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
  
