@@ -514,8 +514,9 @@ export function byFailOpen(hits) {
 // v0.98.0 — `suppressed` splits `total` by whether the hatch actually avoided a
 // deny. The §8 rm hatch is matched on the raw command, so the token counts when it
 // only appears as data; since 0.98.0 its detector runs read-only under the token
-// and the row carries `suppressed: true|false`. Replaying 34 historical rows found
-// one real suppression (docs/claude-session-analysis-2026-09-26.md B3). `yes` is
+// and the row carries `suppressed: true|false`. Replaying the 34 §8 bypass rows
+// logged by 2026-09-26 through it found one real suppression (the token-removed
+// replay of the earlier 31 is in pre-bash-safety-check.sh beside the hatch). `yes` is
 // the number a demote decision reads; `unrecorded` is rows from hooks or versions
 // that do not emit the field, and must not be read as `no`.
 export function byBypass(hits) {

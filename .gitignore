@@ -45,6 +45,11 @@ docs/*
 #    tests/scripts/doc-check.test.js runs scripts/doc-check.mjs against it — a
 #    clone without the file dangles all three.)
 !docs/spec-optimization-roadmap-2026-09-21.md
+#  - docs/claude-session-analysis-2026-09-26.md (same provenance rule: hooks,
+#    scripts and tests changed in 0.98.0 cite it by section — B1/B3/B5/B7/B8 —
+#    as the source of their numbers; pre-tag review L3 found the citations
+#    dangling in a clone.)
+!docs/claude-session-analysis-2026-09-26.md
 #  - docs/audit/*.md (round reports + the metric baseline they compare against).
 #    Same provenance rule as the tasks/ audit-deferred files below: CHANGELOG
 #    entries from 0.68.0 on cite docs/audit/… by name, and the round that ran on

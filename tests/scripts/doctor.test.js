@@ -1307,6 +1307,34 @@ test('routing:ship-skill: nested under a router → says it is not registered an
   assert.match(c.detail, /not registered/);
 });
 
+test('routing:ship-skill: an installed plugin shipping skills/ship counts as registered', async () => {
+  const pluginRoot = path.join(box.home, 'fake-plugin');
+  fs.mkdirSync(path.join(pluginRoot, 'skills', 'ship'), { recursive: true });
+  fs.writeFileSync(path.join(pluginRoot, 'skills', 'ship', 'SKILL.md'), '---\nname: ship\n---\n');
+  fs.mkdirSync(path.join(box.home, '.claude/plugins'), { recursive: true });
+  fs.writeFileSync(
+    path.join(box.home, '.claude/plugins/installed_plugins.json'),
+    JSON.stringify({ version: 2, plugins: { 'fake@m': [{ installPath: pluginRoot, version: '1.0.0' }] } })
+  );
+  const c = shipCheck(await doctor({}));
+  assert.equal(c.ok, true, c.detail);
+  assert.ok(c.detail.includes(path.join(pluginRoot, 'skills', 'ship')));
+});
+
+test('routing:ship-skill: a project-level .claude/skills/ship counts as registered', async () => {
+  const proj = path.join(box.home, 'proj');
+  fs.mkdirSync(path.join(proj, '.claude/skills/ship'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude/skills/ship/SKILL.md'), '---\nname: ship\n---\n');
+  const prev = process.cwd();
+  process.chdir(proj);
+  try {
+    const c = shipCheck(await doctor({}));
+    assert.equal(c.ok, true, c.detail);
+  } finally {
+    process.chdir(prev);
+  }
+});
+
 test('routing:ship-skill: registered at ~/.claude/skills/ship → ok, and it wins over a nested copy', async () => {
   mkSkill('gstack/ship');
   const top = mkSkill('ship');

@@ -416,7 +416,8 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // `gstack:ship` failures (B6), and on that machine gstack's ship workflow was
   // on disk at ~/.claude/skills/gstack/ship/SKILL.md — a sub-skill of the
   // gstack router, which Claude Code does not register (only
-  // ~/.claude/skills/<name>/SKILL.md and a plugin's skills/<name>/SKILL.md are).
+  // ~/.claude/skills/<name>/SKILL.md, <cwd>/.claude/skills/<name>/SKILL.md and a
+  // plugin's skills/<name>/SKILL.md are; a plugin's is listed namespaced).
   // "Not installed" and "installed but not registered" need different actions,
   // so the check tells them apart. Advisory: the spec's own fallback for an
   // unlisted ship skill is a declared manual ship.
@@ -424,6 +425,9 @@ export async function doctor({ pruneBackups: prune } = {}) {
     const registered = [];
     if (fs.existsSync(claudeHome('skills', 'ship', 'SKILL.md')))
       registered.push(claudeHome('skills', 'ship'));
+    // Project-level skills register too (review L4): <cwd>/.claude/skills/<name>.
+    const projShip = path.join(process.cwd(), '.claude', 'skills', 'ship');
+    if (fs.existsSync(path.join(projShip, 'SKILL.md'))) registered.push(projShip);
     try {
       const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
       for (const entries of Object.values(ip.plugins || {})) {

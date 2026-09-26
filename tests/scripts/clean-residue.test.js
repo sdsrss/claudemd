@@ -16,6 +16,8 @@ import {
   cleanProbeProjects,
 } from '../../scripts/clean-residue.js';
 
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
+
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/clean-residue.js');
 
 let tmpDir;
@@ -293,12 +295,12 @@ let cliStateDir;
 let cliProjectsDir;
 // HOME too (review M1): with only the seam, deleting the seam line sent a
 // spawned `--apply` at the maintainer's real ~/.claude/projects before any
-// assertion could fail. A sandbox HOME makes the seam a second fence, not the
-// only one.
-let cliHome;
+// assertion could fail. The shared sandbox HOME makes the seam a second fence,
+// not the only one.
+const box = useHomeSandbox('cr', { patchProcessEnv: false });
 const cliEnv = (extra = {}) => ({
   ...process.env,
-  HOME: cliHome,
+  HOME: box.home,
   TMPDIR: tmpDir,
   CLAUDEMD_CLAUDE_TMP_DIR: claudeTmp,
   CLAUDEMD_STATE_DIR: cliStateDir,
@@ -310,7 +312,6 @@ beforeEach(() => {
   claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-test-'));
   cliStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cstate-test-'));
   cliProjectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-cproj-test-'));
-  cliHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-chome-test-'));
 });
 
 afterEach(() => {
@@ -318,7 +319,6 @@ afterEach(() => {
   fs.chmodSync(cliStateDir, 0o700);
   fs.rmSync(cliStateDir, { recursive: true, force: true });
   fs.rmSync(cliProjectsDir, { recursive: true, force: true });
-  fs.rmSync(cliHome, { recursive: true, force: true });
 });
 
 test('scanClaudeTmp lists stale depth-1 entries; descends into claude-<uid> instead of listing it', () => {

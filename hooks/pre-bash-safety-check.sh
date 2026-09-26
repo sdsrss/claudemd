@@ -826,10 +826,12 @@ REASONS=""
 # token present the detector below still runs, READ-ONLY: its hits are counted
 # and then discarded, and the provenance/validated allow rows it would write are
 # skipped, so the verdict is the unchanged allow and only this row learns
-# something. Until 0.98.0 the detector was skipped outright, and a replay of the
-# 31 historical rows with the token removed found 29 that would have been
-# allowed anyway (docs/claude-session-analysis-2026-09-26.md B3) — counting
-# every token as a bypass overstated this hatch's use by 29/31.
+# something. Until 0.98.0 the detector was skipped outright. Two replays measured
+# what that cost (docs/claude-session-analysis-2026-09-26.md B3): 31 historical
+# §8 bypass rows with the token REMOVED — 29 allowed, 2 denied, one of the two
+# by another pattern that denies with the token present too; and, on
+# 2026-09-26, 34 rows (the log had grown) through this read-only pass with the
+# token KEPT — suppressed:true 1, false 33. One real suppression, not 31.
 bypass_rm=0
 if echo "$CMD" | grep -qF '[allow-rm-rf-var]'; then
   bypass_rm=1

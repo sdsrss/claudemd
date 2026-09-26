@@ -193,21 +193,30 @@ paused_banner() {
   # shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
   files=$(ls -t "$dir"/tasks/*-paused.md 2>/dev/null)
   [[ -n "$files" ]] || return 0
-  local count list="" now mt age f n=0
+  local count list="" now mt age f n=0 odd=0 base
   count=$(printf '%s\n' "$files" | grep -c .)
   now=$(date +%s 2>/dev/null) || now=""
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
+    # The names come from whatever repo this session opened, and they land in
+    # context under a system-injected prefix (review L6): a name outside a
+    # plain filename charset is counted, never echoed.
+    base="${f##*/}"
+    if [[ ! "$base" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      odd=$((odd + 1))
+      continue
+    fi
     n=$((n + 1))
-    (( n <= 5 )) || break
+    (( n <= 5 )) || continue
     age="?"
     if [[ -n "$now" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
       mt=$(platform_stat_mtime "$f" 2>/dev/null) || mt=""
       [[ "$mt" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]] && age="$(((now - mt) / 86400))d"
     fi
-    list+="  - ${f##*/} (${age})"$'\n'
+    list+="  - ${base} (${age})"$'\n'
   done <<< "$files"
-  local shown=$(( count < 5 ? count : 5 ))
+  (( odd > 0 )) && list+="  ($odd more with unusual characters in the name, not listed)"$'\n'
+  local shown=$(( n < 5 ? n : 5 ))
   hook_record session-start paused-banner "{\"count\":$count}" '§11-session-exit' "$SESSION_ID" 2>/dev/null || true
   jq -cn --arg d "$dir/tasks" --arg l "$list" --argjson c "$count" --argjson s "$shown" '{
     suppressOutput: true,

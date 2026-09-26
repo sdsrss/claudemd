@@ -540,6 +540,8 @@ test('excludeTestSessions: an id-less pre-bash-safety decision row is a probe; a
       tool_use_id: null,
       hook_version: v,
     },
+    { hook: 'pre-bash-safety', event: 'rm-rf-allow-validated', session_id: null, hook_version: v },
+    { hook: 'pre-bash-safety', event: 'bypass-escape-hatch', session_id: null, hook_version: v },
     { hook: 'pre-bash-safety', event: 'deny', session_id: null, tool_use_id: 'toolu_01A', hook_version: v },
     { hook: 'pre-bash-safety', event: 'fail-open', session_id: null, hook_version: v },
     { hook: 'memory-read-check', event: 'fail-open', session_id: null, hook_version: v },

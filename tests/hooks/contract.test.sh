@@ -97,6 +97,24 @@ if jq -e 'select(.event=="bypass-escape-hatch" and .extra.vars=="" and .extra.su
 else
   ng "A.2f empty-vars bypass row lost its extra (log: $(cat "$LOG" 2>/dev/null))"
 fi
+# Review M4: the PROVENANCE allow arm is silenced under the hatch too (only the
+# validated arm was pinned). mktemp-assigned var → provenance allow without the
+# token; with it, no allow row at all and suppressed:false.
+rm -f "$LOG"
+drive_out 'D=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-c-XXXXXX") && rm -rf "$D" # [allow-rm-rf-var]' >/dev/null
+if jq -e 'select(.event=="bypass-escape-hatch" and .extra.suppressed==false)' "$LOG" >/dev/null 2>&1 \
+   && ! jq -e 'select(.event=="rm-rf-allow-provenance")' "$LOG" >/dev/null 2>&1; then
+  ok "A.2g provenance arm writes no allow row under the hatch"
+else
+  ng "A.2g provenance allow row written under the hatch (log: $(cat "$LOG" 2>/dev/null))"
+fi
+rm -f "$LOG"
+drive_out 'D=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-c-XXXXXX") && rm -rf "$D"' >/dev/null
+if jq -e 'select(.event=="rm-rf-allow-provenance")' "$LOG" >/dev/null 2>&1; then
+  ok "A.2h control — without the token the provenance row is still written"
+else
+  ng "A.2h provenance row missing without the token (log: $(cat "$LOG" 2>/dev/null))"
+fi
 # Control: the SAME guarded command without the token still writes its
 # validated-allow row, so A.2c's absence check is about the hatch.
 rm -f "$LOG"

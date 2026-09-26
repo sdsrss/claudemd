@@ -377,6 +377,19 @@ else
   echo "FAIL: 23b (second: $R2 | third: $R3)"; FAIL=$((FAIL+1))
 fi
 rm -rf "$HOME/.claude/tmp/tmp.busy"
+# Case 23c (review M4): the pending list is per session — session B's Stop
+# must not confirm (or consume) a dir session A first saw.
+dstop s23ca >/dev/null; dstop s23cb >/dev/null; sleep 1
+mkdir "$HOME/.claude/tmp/tmp.seen_by_a"
+dstop s23ca >/dev/null
+RB=$(dstop s23cb)
+RA=$(dstop s23ca)
+if ! echo "$RB" | grep -q "tmp\.seen_by_a" && echo "$RA" | grep -q "tmp\.seen_by_a"; then
+  echo "PASS: 23c default: the pending list is per session"
+else
+  echo "FAIL: 23c (B: $RB | A: $RA)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp/tmp.seen_by_a"
 # Case 24: block mode blocks at the CONFIRMING Stop, not at first sight; the
 # follow-up Stop (stop_hook_active) re-checks and only warns.
 dstop s24 >/dev/null; sleep 1
@@ -406,7 +419,7 @@ else
 fi
 rm -rf "$HOME/.claude/tmp/tmp.immediate"
 
-TOTAL=$((27 - ${SKIPPED:-0}))
+TOTAL=$((28 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi
