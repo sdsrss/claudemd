@@ -221,16 +221,16 @@ function removeOwnProjectsDir(cwd) {
   return !fs.existsSync(target);
 }
 
-function runOne(opts, id, rep) {
-  const task = TASKS[id];
-  const { sandbox, home, dir, ctx } = buildSandbox(opts.specDir, task);
-  const outDir = path.join(opts.out, opts.arm, `${id}-${rep}`);
-  fs.mkdirSync(outDir, { recursive: true });
-  const args = [
+/** claude -p arguments for one run. Without --include-hook-events the stream
+ *  carries no hook_response rows, so tier-2 injections go unrecorded (B7 A/B:
+ *  every B run read as injected=[] while the hook did inject). */
+export function claudeArgs(opts, prompt) {
+  return [
     '-p',
     '--output-format',
     'stream-json',
     '--verbose',
+    '--include-hook-events',
     '--model',
     opts.model,
     '--effort',
@@ -241,8 +241,16 @@ function runOne(opts, id, rep) {
     '--permission-mode',
     'bypassPermissions',
     '--',
-    task.prompt,
+    prompt,
   ];
+}
+
+function runOne(opts, id, rep) {
+  const task = TASKS[id];
+  const { sandbox, home, dir, ctx } = buildSandbox(opts.specDir, task);
+  const outDir = path.join(opts.out, opts.arm, `${id}-${rep}`);
+  fs.mkdirSync(outDir, { recursive: true });
+  const args = claudeArgs(opts, task.prompt);
   if (opts.dryRun) {
     console.log(`[dry-run] ${id}: cd ${dir} && claude ${args.map(a => JSON.stringify(a)).join(' ')}`);
     fs.rmSync(sandbox, { recursive: true, force: true });

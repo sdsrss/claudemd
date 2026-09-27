@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodeCwd, sandboxHooks, parseStream } from '../../scripts/offline-eval/run.mjs';
+import { encodeCwd, sandboxHooks, parseStream, claudeArgs } from '../../scripts/offline-eval/run.mjs';
 import { TASKS } from '../../scripts/offline-eval/tasks.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -110,4 +110,11 @@ test('offline-eval: parseStream counts tier-2 injections from UserPromptSubmit h
   assert.equal(r.injectedBytes, Buffer.byteLength(ctx));
   assert.equal(specBytes(r, '/sbx/home'), Buffer.byteLength(ctx), 'no file read: only the injection counts');
   assert.equal(r.moduleReads, 0);
+});
+
+test('offline-eval: claude -p is asked for hook events, or tier-2 injections go unrecorded', () => {
+  const args = claudeArgs({ model: 'm', effort: 'high' }, 'ship it');
+  assert.ok(args.includes('--include-hook-events'), args.join(' '));
+  assert.equal(args.at(-1), 'ship it');
+  assert.equal(args.at(-2), '--');
 });
