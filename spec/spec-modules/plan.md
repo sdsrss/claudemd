@@ -5,7 +5,7 @@ triggers: 架构|重构|规划|实施方案|设计方案|\brefactor\b|\bmigratio
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.0.0 — module: plan
+# AI-CODING-SPEC v7.1.0 — module: plan
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

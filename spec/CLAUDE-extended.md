@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v7.0.0 — Extended
+# AI-CODING-SPEC v7.1.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -476,9 +476,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.0.0 (major, 2026-09-27)** — per-phase modules. Marker lines assign this file's sections to 11 modules, built into `spec-modules/<name>.md` and installed under `~/.claude/spec-modules/`; this file stays their single source. Core §2.2 becomes the module index, and plugin hooks inject the module a prompt matches (tier 2) and log a release run without `ship.md` (tier 3). No rule changes meaning; every ID is kept. Text changed so a module stands alone: the Division of labor table is gone, "this file" / "load extended" now name the module, the ship Runbook fast-path became a runbook-cannot-waive rule, and `ship.md` gains Pre-tag review, which points at `review.md`.
+**v7.1.0 (minor, 2026-09-27)** — core room. Core points at modules by file name (`verify.md`) instead of `§EXT §N`. Removed from core: §9 Parallel-first (the harness system prompt carries it), the Ship triggers' skill/override half (it is in `ship.md`) and pointer-only lines. §11 Mid-SPINE turn-yield now names the stops it forbids (a progress summary, an announced next step not taken, "shall I continue?"); its triggers, Tell and HARD tag are unchanged. §2.1 reads `2+ sizeable disjoint tasks → Agent`, as §11-O does. `debug.md` no longer triggers on wording fixes. No HARD rule added or removed.
 
-**Sizing** (v7.0.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24989 → 24990 bytes (Δ +1); extended 49615 → 48622 bytes (Δ -993); OPERATOR.md 17463 → 17463 bytes (Δ +0). Size budget: core 24990/25000 (**10 bytes headroom**); extended 48622/50000 (**1378 bytes headroom**).
+**Sizing** (v7.1.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24990 → 24399 bytes (Δ -591); extended 48622 → 48558 bytes (Δ -64); OPERATOR.md 17463 → 17463 bytes (Δ +0). Size budget: core 24399/25000 (**601 bytes headroom**); extended 48558/50000 (**1442 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

@@ -5,7 +5,7 @@ triggers: 记住|记下来|\bremember (this|that)\b|\bmem_save\b
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.0.0 — module: memory
+# AI-CODING-SPEC v7.1.0 — module: memory
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

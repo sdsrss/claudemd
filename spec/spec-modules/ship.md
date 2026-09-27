@@ -5,7 +5,7 @@ triggers: 发版|发布(新)?版本|打\s*tag|\bship\b|\bcut a release\b|npm pub
 trigger-window: whole
 ---
 
-# AI-CODING-SPEC v7.0.0 — module: ship
+# AI-CODING-SPEC v7.1.0 — module: ship
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

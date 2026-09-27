@@ -5,7 +5,7 @@ triggers: 报错|修复(?!错别字|拼写|措辞|文案|格式|排版)|修一�
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.0.0 — module: debug
+# AI-CODING-SPEC v7.1.0 — module: debug
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
