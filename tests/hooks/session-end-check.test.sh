@@ -652,6 +652,83 @@ else
     || ng "Case 26d: rule-hits extra wrong ($(grep session-end-check "$LOG"))"
 fi
 
+# --- Case 27 (0.100.0 pre-tag review F6/F7, D#102): recognizer gaps. Each of
+# these runs a test suite, and each left a false checkpoint: option-taking
+# `timeout`, `env` / `nice` wrappers, a quoted assignment value, npm's own
+# options before the verb, `uv run`, and `bash -c '…'`, which 0.99.0 matched
+# before the command-position anchor went in.
+V_I=0
+for V_CMD in \
+  'timeout -k 5 120 npm test' \
+  'env CI=1 npm test' \
+  'nice -n 10 npm test' \
+  'FOO="a b" npm test' \
+  'npm --prefix pkg test' \
+  'npm -w pkg run test' \
+  'uv run pytest -q' \
+  "bash -c 'cd x && npm test'"; do
+  V_I=$((V_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case27-$V_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$V_CMD")" "$TR_OK"
+  run_hook "$T"
+  if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+    ok "Case 27.$V_I: '$V_CMD' validates"
+  else
+    ng "Case 27.$V_I: '$V_CMD' did not count as a validation"
+  fi
+done
+# Controls: a script whose NAME merely contains a keyword (publish:latest holds
+# "test"), and a `bash -c` whose inner command only mentions one.
+N_I=0
+for N_CMD in \
+  'npm run publish:latest' \
+  'pnpm run release-latest' \
+  "bash -c 'echo npm test'" \
+  'env FOO=1 npm run build'; do
+  N_I=$((N_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case27n-$N_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$N_CMD")" "$TR_OK"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    ok "Case 27n.$N_I: control '$N_CMD' is not a validation"
+  else
+    ng "Case 27n.$N_I: control '$N_CMD' read as a validation"
+  fi
+done
+
+# --- Case 28 (0.100.0 pre-tag review F8, D#102): root and path shape. With a
+# root of `/` every absolute path is in the project (the trailing-slash strip
+# made the root empty, so none was); a `..` walk out of the root is not in it.
+reset_cwd
+T="$TMP_HOME/case28a.jsonl"
+make_transcript "$T" "$USER_MSG" "$commit_call" "$TR_OK" "$(edit_at "/etc/claudemd-case28.conf")" "$TR_OK"
+CLAUDE_PROJECT_DIR="/" run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+  ok "Case 28a: with root /, an edit of /etc/… after the commit is a mutation"
+else
+  ng "Case 28a: root / counted no absolute path"
+fi
+reset_cwd
+T="$TMP_HOME/case28b.jsonl"
+make_transcript "$T" "$USER_MSG" "$commit_call" "$TR_OK" "$(edit_at "$TMP_CWD/../elsewhere/x.js")" "$TR_OK"
+run_hook "$T"
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+  ok "Case 28b: an edit of <root>/../elsewhere/x.js is outside the project"
+else
+  ng "Case 28b: a .. walk out of the root counted as a mutation"
+fi
+reset_cwd
+T="$TMP_HOME/case28c.jsonl"
+make_transcript "$T" "$USER_MSG" "$commit_call" "$TR_OK" "$(edit_at "$TMP_CWD/src/../src/x.js")" "$TR_OK"
+run_hook "$T"
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+  ok "Case 28c: control — a .. that stays inside the root is still a mutation"
+else
+  ng "Case 28c: normalising dropped an in-project edit"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

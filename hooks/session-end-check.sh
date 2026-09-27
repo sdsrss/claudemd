@@ -93,12 +93,19 @@ ROOTS_JSON=$(printf '%s\n' "${ROOTS[@]}" | jq -R . | jq -sc 'map(select(startswi
 # into the next one.
 _W='[^ \t\n;&|]'
 _OPT="([ \t]+-${_W}+([ \t]+[^- \t\n;&|]${_W}*)?)*"
-_SCRIPT="${_W}*(test|lint|typecheck|check|smoke|verify|validate)"
-VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?([A-Za-z_][A-Za-z0-9_]*=${_W}*[ \t]+)*"
-VALIDATE_RE+="(timeout([ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
-VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+)?"
-VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
-VALIDATE_RE+="|npm[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
+# A script counts when one of its [:._-]-separated name segments is a check
+# word: test:unit, lint:js, ci-test. A substring does not: publish:latest holds
+# "test" and ran as a validation until the 0.100.0 review (D#102).
+_SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]${_W}*)?([ \t\n;&|)<>]|\$)"
+# An assignment value may be quoted (FOO="a b"); quotes stop at a newline.
+_VAL="(\"[^\"\n]*\"|'[^'\n]*'|${_W}*)"
+VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?"
+VALIDATE_RE+="(env([ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
+VALIDATE_RE+="([A-Za-z_][A-Za-z0-9_]*=${_VAL}[ \t]+)*"
+VALIDATE_RE+="(timeout([ \t]+-[ks][ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
+VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+|(uv|poetry|pipenv)[ \t]+run[ \t]+)?"
+VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_OPT}[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
+VALIDATE_RE+="|npm${_OPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
 VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_W}*(test|lint|check)|bash tests/|tsc |vue-tsc|eslint"
 VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clippy|shellcheck|git commit|git push)"
@@ -124,11 +131,17 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   # even under a root, unless that root itself lies inside the same zone — a
   # session run from $HOME must not count memory edits, one whose project lives
   # under ~/.claude must keep counting its own.
-  def under($d): ($d | rtrimstr("/")) as $d | ($d | length) > 0 and (. == $d or startswith($d + "/"));
+  # A root of "/" holds every absolute path (rtrimstr left it empty, so it held
+  # none); `..` and `.` segments are resolved first, so <root>/../x is outside.
+  def norm: if startswith("/") then "/" + (split("/") | map(select(. != "" and . != "."))
+              | reduce .[] as $s ([]; if $s == ".." then .[:-1] else . + [$s] end) | join("/"))
+            else . end;
+  def under($d): if $d == "/" then startswith("/")
+                 else ($d | rtrimstr("/")) as $d | ($d | length) > 0 and (. == $d or startswith($d + "/")) end;
   def zone: if ($home | length) > 0 and under($home + "/.claude") then $home + "/.claude"
             else (capture("^(?<z>(/private)?/tmp/claude-[0-9]+)(/|$)") | .z) // null end;
   def in_project: if type != "string" or (startswith("/") | not) then true
-                  else . as $p | ($p | zone) as $z
+                  else norm as $p | ($p | zone) as $z
                     | any($roots[]; . as $r | ($p | under($r)) and ($z == null or ($r | under($z))))
                   end;
   split("\n") |
@@ -204,7 +217,11 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # `grep "npm test" file` counted as a validation and suppressed the
       # mid-SPINE paused.md checkpoint. A stricter anchor errs toward WRITING
       # the checkpoint (the safe side for this advisory safety-net).
-      if ($cmd | test($vre)) then
+      # `bash -c` / `sh -lc` with a quoted body: the body is a command line of its
+      # own, tested with the same anchored pattern (0.99.0 matched it only
+      # because it had no anchor at all).
+      if ($cmd | test($vre)) or ([$cmd | scan("(?:^|[;&|\n])[ \t(]*(?:bash|sh|zsh)[ \t]+-l?c[ \t]+(?:\u0027([^\u0027]*)\u0027|\"([^\"]*)\")")]
+            | map(.[] | select(. != null)) | any(test($vre))) then
         .validates += 1 | .open = 0 | .recent = []
       else . end
     else . end
