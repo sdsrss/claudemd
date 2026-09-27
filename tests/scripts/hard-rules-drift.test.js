@@ -178,6 +178,10 @@ const NON_RULE_SECTIONS = new Set([
   // instruction relaxes), so its rows must not enter any HARD rule's §13.1
   // demote accounting.
   '§1-language',
+  // Spec-module injection (v0.101.0). Core §2.2 MODULES is a loading
+  // mechanism, not a HARD rule; its rows must not enter a HARD rule's §13.1
+  // demote accounting.
+  '§2.2-modules',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

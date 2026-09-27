@@ -48,6 +48,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'spec-module-inject.sh',
+    displayName: 'spec-module-inject',
+    envVarSuffix: 'SPEC_MODULE_INJECT',
+    hookEvent: 'UserPromptSubmit',
+    matcher: '*',
+    timeout: 3,
+  },
+  {
     basename: 'pre-bash-safety-check.sh',
     displayName: 'pre-bash-safety',
     envVarSuffix: 'PRE_BASH_SAFETY',

@@ -127,6 +127,8 @@ Emitters, derived from source and gated by
 
 - `memory-prompt-hint.sh` — UserPromptSubmit; lists MEMORY.md files matching
   the prompt that have not been Read this session.
+- `spec-module-inject.sh` — UserPromptSubmit; the body of each spec module whose
+  `triggers:` regex the prompt matches, once per session, at most two per prompt.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
 - `rework-breaker.sh` — PostToolUse (`Edit|Write|Bash`); one line naming a LOWER
   BOUND on how many times this session has edited the file — the multiple of

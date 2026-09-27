@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# spec-module-inject.test.sh — tier-2 spec-module injection (core §2.2;
+# tasks/specs/spec-modules.md). Runs against the repo's built modules installed
+# into a sandbox HOME, so the triggers under test are the shipped ones.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
+
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$HERE/../.."
+HOOK="$REPO/hooks/spec-module-inject.sh"
+SSHOOK="$REPO/hooks/session-start-check.sh"
+TMP_HOME=$(mktemp -d -t claudemd-modinj-XXXXXX)
+trap 'rm -rf "$TMP_HOME"' EXIT
+export HOME="$TMP_HOME"
+mkdir -p "$HOME/.claude/spec-modules" "$HOME/.claude/logs"
+cp "$REPO"/spec/spec-modules/*.md "$HOME/.claude/spec-modules/"
+LOG="$HOME/.claude/logs/claudemd.jsonl"
+
+# shellcheck source=tests/lib/assert.sh
+source "$HERE/../lib/assert.sh"
+
+inject() { # PROMPT SESSION -> additionalContext ("" when silent)
+  jq -cn --arg p "$1" --arg s "$2" '{prompt:$p, session_id:$s, cwd:"/work/p", hook_event_name:"UserPromptSubmit"}' \
+    | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+mods() { grep -oE '<spec-module name="[a-z-]+">' <<<"$1" | sed -E 's/.*name="([a-z-]+)".*/\1/' | tr '\n' ' '; }
+
+# 1. a release prompt injects ship, wrapped, with the module's own rules.
+C1=$(inject 'Please ship v1.2.3 to npm today' s1)
+if [[ "$(mods "$C1")" == "ship " ]] && grep -q '^</spec-module>$' <<<"$C1" && grep -q 'Ship-pipeline hardening' <<<"$C1" \
+   && ! grep -q '^trigger-window:' <<<"$C1"; then
+  ok "1 a release prompt injects ship.md's body, wrapped, without its frontmatter"
+else ng "1 ship injection wrong: $(mods "$C1") / ${C1:0:200}"; fi
+
+# 2. once per session.
+C2=$(inject 'ship it again' s1)
+[[ -z "$C2" ]] && ok "2 the same module is not injected twice in one session" || ng "2 re-injected: $(mods "$C2")"
+
+# 3. an unrelated prompt injects nothing (control for 1).
+C3=$(inject 'hello, what does this function return?' s3)
+[[ -z "$C3" ]] && ok "3 an unrelated prompt injects nothing" || ng "3 unexpected: $(mods "$C3")"
+
+# 4. head window: a debug word in the first 300 characters counts, past them it does not.
+C4=$(inject 'fix the bug in parser.js please' s4)
+LONG=$(printf 'x%.0s' $(seq 1 320))
+C4B=$(inject "${LONG} fix the bug in parser.js" s4b)
+if [[ "$(mods "$C4")" == "debug " && -z "$C4B" ]]; then
+  ok "4 head-window modules match only the prompt's first 300 characters"
+else ng "4 head window wrong: early=$(mods "$C4") late=$(mods "$C4B")"; fi
+
+# 5. whole window: ship matches past 300 characters.
+C5=$(inject "${LONG} and then ship it" s5)
+[[ "$(mods "$C5")" == "ship " ]] && ok "5 ship reads the whole prompt" || ng "5 ship missed past 300 chars: $(mods "$C5")"
+
+# 6. at most two per prompt, ship first.
+C6=$(inject 'fix the bug, refactor the parser, then ship it' s6)
+M6=$(mods "$C6")
+if [[ "$M6" == "ship "* ]] && [[ $(wc -w <<<"$M6") -eq 2 ]]; then
+  ok "6 at most two modules per prompt, ship first ($M6)"
+else ng "6 cap/order wrong: $M6"; fi
+
+# 7. a module without triggers is never injected by prompt.
+C7=$(inject 'verify the tests and check the evidence ladder for this change' s7)
+grep -q 'name="verify"' <<<"$C7" && ng "7 verify (no triggers) was injected" || ok "7 a module with no triggers is reached through the index only"
+
+# 8. kill switch and machine-sent turns.
+C8=$(DISABLE_SPEC_MODULE_INJECT_HOOK=1 inject 'ship it' s8)
+C8B=$(inject '<task-notification>ship it</task-notification>' s8b)
+if [[ -z "$C8" && -z "$C8B" ]]; then ok "8 kill switch and machine-sent turns inject nothing"
+else ng "8 kill=${C8:0:40} notif=${C8B:0:40}"; fi
+
+# 9. telemetry row names the modules.
+if jq -e 'select(.hook=="spec-module-inject" and .event=="module-inject" and .spec_section=="§2.2-modules" and .extra.modules=="ship")' "$LOG" >/dev/null 2>&1; then
+  ok "9 a module-inject row carries the injected module names"
+else ng "9 no module-inject row ($(tail -2 "$LOG" 2>/dev/null))"; fi
+
+# 10. compaction forgets the session's injections, so ship can be injected again.
+jq -cn '{session_id:"s1", source:"compact", cwd:"/work/p"}' | bash "$SSHOOK" >/dev/null 2>&1
+C10=$(inject 'ship it once more' s1)
+[[ "$(mods "$C10")" == "ship " ]] && ok "10 after compaction the module is injected again" || ng "10 not re-injected after compact: $(mods "$C10")"
+
+# 11. no modules installed: silent (a plugin whose spec was not synced yet).
+mv "$HOME/.claude/spec-modules" "$HOME/.claude/spec-modules.off"
+C11=$(inject 'ship it' s11)
+mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
+[[ -z "$C11" ]] && ok "11 no installed modules, no output" || ng "11 output without modules"
+
+claudemd_assert_summary

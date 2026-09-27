@@ -163,6 +163,12 @@ const DECLARED = [
     "Claude Code's plugin registry, one JSON document (routing:ship-skill)",
   ],
   [
+    'scripts/lib/spec-modules.js',
+    "const registry = JSON.parse(fs.readFileSync(path.join(root, 'spec', 'spec-modules.json'), 'utf8')).modules;",
+    'not-a-row',
+    'the spec-module registry, one JSON document',
+  ],
+  [
     'scripts/baseline-metrics.js',
     "const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));",
     'not-a-row',

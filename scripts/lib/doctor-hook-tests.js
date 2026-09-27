@@ -347,6 +347,11 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
       ks: ksFor('memory-prompt-hint.sh'),
       event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
     },
+    {
+      hook: 'spec-module-inject.sh',
+      ks: ksFor('spec-module-inject.sh'),
+      event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
+    },
   ];
   for (const t of livenessTests) {
     const hookPath = path.join(PLUGIN_ROOT, 'hooks', t.hook);

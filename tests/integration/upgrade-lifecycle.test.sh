@@ -25,7 +25,7 @@ OLD_SPEC_VER="v6.10.1"
 # CURRENT version by definition, and a hand-updated pin turns every spec bump
 # into a test failure that says nothing about the upgrade path (2026-07-25).
 NEW_SPEC_VER="v$(sed -n '1s/.*AI-CODING-SPEC v\([0-9.]*\).*/\1/p' "$REPO/spec/CLAUDE.md")"
-NEW_RULE_NEEDLE="Memory routing"
+NEW_RULE_NEEDLE="### §2.2 MODULES"
 
 # macOS `mktemp -d` returns `/var/folders/...` which is a symlink to
 # `/private/var/folders/...`. node ESM realpaths `import.meta.url` while

@@ -31,7 +31,7 @@ working directory or its $TMPDIR (reported under \`protected\`). Under the Claud
 Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
 placed there sits inside the retention scope's target tree.
 
-State-dir scope: only ext-read-*, vocab-scan-*, rework-*, xrepo-*, failopen-*, mem-coverage-*,
+State-dir scope: only ext-read-*, vocab-scan-*, rework-*, xrepo-*, modinj-*, failopen-*, mem-coverage-*,
 session-start-<sid>.ref, sandbox-pending-<sid>.list, tmp-baseline-<sid>.txt, session-summary-<sid>.lastrun
 and the two legacy last-shown-* banner sentinels
 (last-session-summary.json.last-shown, bootstrap-failed.json.last-shown)
@@ -578,6 +578,9 @@ const STATE_EPHEMERAL = [
   // empty file per repo a session was told about by cross-repo-write-check.sh;
   // nothing reaps it on session end.
   { kind: 'xrepo', re: /^xrepo-.+-\d+-\d+$/ },
+  // Per-session list of spec modules already injected (spec-module-inject.sh,
+  // v0.101.0); session-start clears it on compaction, nothing on session end.
+  { kind: 'modinj', re: /^modinj-.+\.list$/ },
   // Per-session sandbox-disposal window ref (2026-08-16 audit F5). The
   // sid-less legacy `session-start.ref` (no dash) stays OUT of this pattern —
   // it is live singleton state for sessions whose event carries no session_id.

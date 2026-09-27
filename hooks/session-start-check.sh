@@ -256,6 +256,9 @@ if [[ "$SOURCE" == "compact" ]]; then
   # reminder down with the ledger (docs/HOOK-PROTOCOL.md).
   _lg_json=$(ledger_banner "$EVT_CWD")
   [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
+  # Spec modules injected before the compaction are gone from context; forget
+  # them so spec-module-inject.sh can inject them again (tasks/specs/spec-modules.md).
+  [[ "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]] && rm -f "$HOME/.claude/.claudemd-state/modinj-$SESSION_ID.list" 2>/dev/null
   merge_banners "$_cr_json" "$_lg_json"
   exit 0
 fi
