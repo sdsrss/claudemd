@@ -1,5 +1,13 @@
 # §8 mktemp-provenance residuals — eighteen false negatives, and the attempt that was dropped
 
+**Update 2026-09-27 (D#103)**: provenance condition (5) in
+`hooks/pre-bash-safety-check.sh` closed `S8-PROV1`, `S8-PROV3` and `S8-PROV18` (an
+assignment in a `( … )` group, a backgrounded one, a subshell function body); their
+corpus rows now say `CLOSED (D#103)` and deny. Fifteen of the eighteen remain, with
+PROV20. It met this file's bar: 0 verdicts moved on a replay of the 1,844 distinct
+transcript commands containing both mktemp and rm (2026-09-27, against v0.102.0).
+New child-shell shapes it does not see are pinned as `D#103 RESIDUAL` rows.
+
 **Status**: recorded, **not scheduled**. Corpus rows `S8-PROV1`..`S8-PROV20` pin
 the current behaviour, with two controls (`S8-PROV-CTL1`/`CTL2`) that fail if the
 gate ever stops judging this class at all. **Eighteen** of the twenty allow on
@@ -65,7 +73,8 @@ everything built on top of it:
 ## The residuals, by mechanism
 
 **The assignment never binds the parent shell** — `S8-PROV1`..`4`: a subshell
-`( S=… )`, an assignment behind `&&`, a backgrounded `S=… &`, and
+`( S=… )` (closed by D#103), an assignment behind `&&`, a backgrounded `S=… &`
+(closed by D#103), and
 `S=$(mktemp -d)\>&1` where the escaped `>` is a word character so bash backgrounds
 the whole thing.
 
@@ -78,7 +87,7 @@ runs *after* the rm still vouching for it.
 a `case` with no matching arm, `for` over an empty list, `until`, `select`.
 
 **A function body** — `S8-PROV15`, `16`, `18`: defined and not called (two
-spellings), and the `f() ( … )` subshell form, whose body cannot reach the parent
+spellings), and the `f() ( … )` subshell form (closed by D#103), whose body cannot reach the parent
 at all. `S8-PROV17` sits with them as the control described above.
 
 **A rebind the name-shaped scan cannot see** — `S8-PROV19`/`20`: `unset ${x-S}`,

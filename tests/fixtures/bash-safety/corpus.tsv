@@ -458,6 +458,22 @@ deny	D#103: assignment after a |& pipe	true |& D=$(mktemp -d); rm -rf "$D/x"
 deny	D#103: CJK text before the group (the cut counts bytes, not characters)	echo 中文中文中文; (D=$(mktemp -d)); rm -rf "$D/x"
 pass	D#103-fp: a later line's pipe is not the assignment's (newline is a separator)	D=$(mktemp -d)__NL__ls "$D" | cat__NL__rm -rf "$D"
 pass	D#103-fp: a case arm after the assignment ends a pattern, not a group	D=$(mktemp -d); case "$x" in a|b) echo;; esac; rm -rf "$D"
+deny	D#103: assignment inside a backtick substitution	x=`D=$(mktemp -d)`; rm -rf "$D/x"
+deny	D#103: assignment after a pipe that ends the previous line	true |__NL__D=$(mktemp -d); rm -rf "$D/x"
+pass	D#103-fp: a quoted ) after the assignment is not a group close (review L2)	D=$(mktemp -d); echo ")"; rm -rf "$D/x"
+pass	D#103-fp: a quoted smiley after the assignment	D=$(mktemp -d); echo ':)'; rm -rf "$D/x"
+pass	D#103-fp: quoted ( and ) around nothing	D=$(mktemp -d); echo "("; echo ")"; rm -rf "$D"
+pass	D#103-fp: a case inside a later substitution	D=$(mktemp -d); x=$( case a in a) echo;; esac ); rm -rf "$D/x"
+pass	D#103-fp: backslash-newline continues the assignment's command	D=$(mktemp -d) \__NL__  && rm -rf "$D"
+# Child-shell assignments condition (5) does not see (D#103 review L3): a
+# compound command piped or backgrounded, a while body fed by a pipe, coproc.
+# Each deletes /x as written. Recorded as shipped behaviour, not endorsed.
+pass	D#103 RESIDUAL: brace group piped	{ D=$(mktemp -d); } | cat; rm -rf "$D/x"
+pass	D#103 RESIDUAL: if body piped	if true; then D=$(mktemp -d); fi | cat; rm -rf "$D/x"
+pass	D#103 RESIDUAL: while body fed by a pipe	ls | while read f; do D=$(mktemp -d); done; rm -rf "$D/x"
+pass	D#103 RESIDUAL: for loop piped	for i in 1; do D=$(mktemp -d); done | cat; rm -rf "$D/x"
+pass	D#103 RESIDUAL: brace group backgrounded	{ D=$(mktemp -d); } & rm -rf "$D/x"
+pass	D#103 RESIDUAL: coproc	coproc D=$(mktemp -d); rm -rf "$D/x"
 
 # === D1 (2026-07-15): canon_cmd_words must not treat ${VAR} brace as a
 # command-position boundary. It set cmdpos=1 on `{`, so `rm -rf "${SP}/build"`
@@ -1280,8 +1296,9 @@ deny	S8-RES5 the control for RES1 — the same wrapper at a segment start denies
 # `deny` row in that change rather than deleting it, so the closure is pinned.
 #
 # D#103 (2026-09-27) closed PROV1, PROV3 and PROV18 (their label now says
-# CLOSED); the other fifteen still allow. A replay of the 1,811 transcript
-# commands with both mktemp and rm moved 0 verdicts.
+# CLOSED). Sixteen rows below still say RESIDUAL: fifteen of the eighteen
+# holes, plus PROV20. A replay of the transcript commands with both mktemp
+# and rm moved 0 verdicts.
 #
 # --- the assignment does not bind the parent shell at all ---
 deny	S8-PROV1 CLOSED (D#103): a subshell assignment never reaches the parent	( SP=$(mktemp -d /tmp/x.XXXXXX) ); rm -rf "$SP/build"
