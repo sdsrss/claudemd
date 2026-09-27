@@ -98,17 +98,22 @@ _OPT="([ \t]+-${_W}+([ \t]+[^- \t\n;&|]${_W}*)?)*"
 # "test" and ran as a validation until the 0.100.0 review (D#102).
 _SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]${_W}*)?([ \t\n;&|)<>]|\$)"
 # An assignment value may be quoted (FOO="a b"); quotes stop at a newline.
-# After `npm [opts] test` only an end, a separator, a redirect or another option
-# may follow: in `npm --prefix test install` the `test` is --prefix's value.
-# (B2 review F7.)
+# npm's own options: the ones that take a value always consume the next word
+# (in `npm --prefix test install` the `test` is --prefix's value), every other
+# option is a switch. The switch branch excludes the value-taking names, so a
+# backtrack cannot re-read `--prefix` as a switch and its value as the verb.
+# The pattern is only ever run by jq (Oniguruma), which has lookahead.
+# (B2 review F7 and its delta review M1/L2.)
+_NPMVAL='(-C|-w|--prefix|--workspace|--userconfig|--globalconfig|--cache|--registry|--tag|--otp|--loglevel|--scope|--include|--omit)'
+_NPMOPT="([ \t]+${_NPMVAL}(=${_W}*|[ \t]+${_W}+)|[ \t]+(?!${_NPMVAL}([= \t]|\$))-${_W}+)*"
 _VAL="(\"[^\"\n]*\"|'[^'\n]*'|${_W}*)"
 VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?"
 VALIDATE_RE+="(env([ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
 VALIDATE_RE+="([A-Za-z_][A-Za-z0-9_]*=${_VAL}[ \t]+)*"
 VALIDATE_RE+="(timeout([ \t]+-[ks][ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
 VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+|(uv|poetry|pipenv)[ \t]+run[ \t]+)?"
-VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_OPT}[ \t]+(test|t)([ \t]*([\n;&|)<>]|\$)|[ \t]+(-|[0-9]*[<>]))"
-VALIDATE_RE+="|npm${_OPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
+VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_NPMOPT}[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
+VALIDATE_RE+="|npm${_NPMOPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
 VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_W}*(test|lint|check)|bash tests/|tsc |vue-tsc|eslint"
 VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clippy|shellcheck|git commit|git push)"

@@ -666,7 +666,11 @@ for V_CMD in \
   'npm --prefix pkg test' \
   'npm -w pkg run test' \
   'uv run pytest -q' \
-  "bash -c 'cd x && npm test'"; do
+  "bash -c 'cd x && npm test'" \
+  'npm test tests/foo.test.js' \
+  'npm test "pattern"' \
+  'npm test # comment' \
+  'npm --silent test'; do
   V_I=$((V_I + 1))
   reset_cwd
   T="$TMP_HOME/case27-$V_I.jsonl"
@@ -689,7 +693,13 @@ for N_CMD in \
   'npm --prefix test install' \
   'npm -w test install' \
   'npm --workspace t ci' \
-  'npm -C test ls'; do
+  'npm -C test ls' \
+  'npm --prefix test --no-audit install' \
+  'npm -w test --if-present run build' \
+  'npm -C test -- install' \
+  'npm --prefix test 2>&1 install' \
+  'npm --prefix test|cat' \
+  'npm -w test && echo done'; do
   N_I=$((N_I + 1))
   reset_cwd
   T="$TMP_HOME/case27n-$N_I.jsonl"
