@@ -25,7 +25,7 @@ test('command-args: no command body uses the unsupported $ARGS placeholder', () 
     fs.readFileSync(path.join(DIR, f), 'utf8')
       .split('\n')
       .forEach((line, i) => {
-        if (/\$ARGS(?![A-Za-z0-9_])/.test(line))
+        if (/\$(ARGS(?![A-Za-z0-9_])|\{ARGS\b)/.test(line))
           offenders.push(`${f}:${i + 1}: ${line.trim().slice(0, 100)}`);
       });
   }
@@ -33,8 +33,9 @@ test('command-args: no command body uses the unsupported $ARGS placeholder', () 
 });
 
 test('command-args: the matcher sees a real $ARGS and ignores $ARGUMENTS (control)', () => {
-  const re = /\$ARGS(?![A-Za-z0-9_])/;
+  const re = /\$(ARGS(?![A-Za-z0-9_])|\{ARGS\b)/;
   assert.ok(re.test('node x.js $ARGS'));
   assert.ok(re.test('split `$ARGS` into'));
+  assert.ok(re.test('X=${ARGS:-30} node x.js'));
   assert.ok(!re.test('node x.js $ARGUMENTS'));
 });
