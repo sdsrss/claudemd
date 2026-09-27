@@ -575,7 +575,7 @@ const PINS = [
     what: 'core §11 Mid-SPINE turn-yield — the four triggers, the named bad stops and the Tell (v7.1.0 wording)',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken, "shall I continue?"; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
     what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v7.0.0 wording)',
@@ -827,7 +827,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'ef753966a18fb555' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '84e411afb73e08bc' },
-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'e81bedfaea4b7d7f' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'bf2daacd8206e731' },
   { file: EXT, heading: '', sha256: '9841611dea4975ae' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'bd136a33fd3dc7c9' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
@@ -843,7 +843,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: 'f3f6d07d148b5f3b' },
+  { file: EXT, heading: '## Recent changes', sha256: '8c887f48ed1bf701' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,

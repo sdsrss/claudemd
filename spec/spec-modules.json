@@ -1,5 +1,5 @@
 {
-  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; Oniguruma and JS compatible), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2.",
+  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2.",
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",

@@ -28,7 +28,7 @@
 //
 // Severity (Spec Kit borrowed):
 //   CRITICAL — drift that breaks the spec's own structural contract
-//              (unresolved §EXT ref).
+//              (unresolved §EXT ref, or a core pointer to an unregistered module).
 //   HIGH     — drift outside accepted tolerance with audit-discipline cost
 //              (Sizing line off by >20B).
 //   MEDIUM   — drift that bricks runtime behavior (MEMORY.md ref to

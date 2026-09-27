@@ -157,3 +157,18 @@ test('offline-eval: parseStream records the tools main was given', () => {
   const text = JSON.stringify({ type: 'system', subtype: 'init', tools: ['Task', 'Bash', 'Read'] });
   assert.deepEqual(parseStream(text, '/sbx/home').mainTools, ['Task', 'Bash', 'Read']);
 });
+
+test('trigger-calibrate: its TRIGGERS are the shipped spec-modules.json triggers, byte for byte', async () => {
+  // The calibration numbers in CHANGELOG come from this JS copy; a drift from the
+  // shipped registry would calibrate a trigger nobody runs (0.102.0 review L8).
+  const { TRIGGERS } = await import('../../scripts/offline-eval/trigger-calibrate.mjs');
+  const { readRegistry } = await import('../../scripts/lib/spec-modules.js');
+  const reg = readRegistry(path.join(REPO, 'spec'));
+  const shipped = Object.fromEntries(
+    Object.entries(reg)
+      .filter(([, m]) => m.triggers)
+      .map(([n, m]) => [n, m.triggers])
+  );
+  const calibrated = Object.fromEntries(Object.entries(TRIGGERS).map(([n, re]) => [n, re.source]));
+  assert.deepEqual(calibrated, shipped);
+});

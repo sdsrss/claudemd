@@ -99,18 +99,23 @@ mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
 
 # 13. a typo / spelling fix is L0, not debugging: "Fix the typo …", "Fix the
 # typos …", 修复错别字 and 修复一下错别字 inject nothing (B7 A/B: the typo task drew
-# debug.md in every B run). The positive rows match ONLY through the `fix the` /
-# 修复 arm, with a word right after it that also names code (link, formatting,
-# 格式化), so widening the exclusion past typo/spelling turns this red. Runs
-# through jq's regex engine, which is what the hook uses.
+# debug.md in every B run). The negative rows pin every excluded word (typo,
+# typos, spelling, 错别字, 一下错别字, 拼写); the positive rows match ONLY through
+# the `fix the` / 修复 arm, each with a next word that also names code (link,
+# formatting, comment, readme, docstring, wording, 格式化, 文案, 排版, 措辞) — the
+# words 0.102.0's first draft excluded — so dropping an excluded word or widening
+# to any of those turns this red. Runs through jq, the hook's regex engine.
 N13=0; BAD13=0
-for p in 'Fix the typo in README.md.' 'Fix the typos in README' '修复错别字：recieve 应为 receive' '修复一下错别字'; do
+for p in 'Fix the typo in README.md.' 'Fix the typos in README' 'Fix the spelling in the docs' '修复错别字：recieve 应为 receive' '修复一下错别字' '修复拼写'; do
   N13=$((N13+1)); [[ -z "$(inject "$p" "s13n$N13")" ]] || { ng "13 wording fix drew a module: $p"; BAD13=1; }
 done
 P13=0
-for p in 'Fix the link resolver, it returns null for relative paths' 'Fix the formatting function returning NaN' '修复格式化函数返回空值'; do
+for p in 'Fix the link resolver, it returns null for relative paths' 'Fix the formatting function returning NaN' \
+  'Fix the comment parser that throws on nested blocks' 'Fix the readme generator script, it skips files' \
+  'Fix the docstring extractor, it drops the first line' 'Fix the wording module, it returns null' \
+  '修复格式化函数返回空值' '修复文案接口返回500' '修复排版引擎的换行计算' '修复措辞校验，返回空值'; do
   P13=$((P13+1)); [[ "$(mods "$(inject "$p" "s13p$P13")")" == "debug " ]] || { ng "13 real fix missed debug: $p"; BAD13=1; }
 done
-[[ $BAD13 == 0 ]] && ok "13 typo/spelling fixes draw no debug.md; code fixes whose next word is link/formatting/格式化 still do"
+[[ $BAD13 == 0 ]] && ok "13 typo/spelling fixes draw no debug.md; code fixes whose next word also names code still do"
 
 claudemd_assert_summary
