@@ -316,18 +316,16 @@ One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>
 Universal session rules live in core §11 SESSION — they bind whether this extended spec is loaded or not. The rules below apply to orchestration contexts specifically.
 
 ### Defaults
-- **Parallel-preferred**: ≥2 tasks with disjoint scope + no shared mutable state → parallel `Agent` spawns (sp:dispatching-parallel-agents optional). File-scope overlap possible (grep-guessed edit surfaces intersect) → default serial, no justification needed.
-- **Fresh-context-first**: research/exploration/scan/isolated repro → fresh subagent.
+- **Delegate only large, independent work**: a subagent re-establishes context and main re-reads its report. Delegate ≥2 sizeable tasks with disjoint scope and no shared mutable state (in parallel), a wide multi-file investigation, or a review that needs an empty context (§12). Keep the rest in main, a whole small task included: a fix or change a handful of tool calls finishes is not handed to a worker, and no subagent re-checks your own work beyond the reviews §12 requires. One subagent where one suffices. File-scope overlap possible (grep-guessed edit surfaces intersect) → serial.
 - **Automate-first**: reversible + below AUTH-soft → execute with one-line reason.
 
 ### Subagent rules
-- **1 task = 1 subagent**. Research/explore offloaded by default.
+- **1 task = 1 subagent**, briefed fully the first time.
 - **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
-- Complex → more subagents, never longer main context. Subagent output uses §7 evidence format.
+- Subagent output uses §7 evidence format.
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
 - **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
-- **Batch review**: ≥3 tasks OR ≥2 including ≥1 L2+ → sp:requesting-code-review for cross-task drift (error/log format, shared types). Single-task → no batch review.
 - **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
 - L3 → sp:subagent-driven-development (built-in 2-stage review).
@@ -472,9 +470,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English. OPERATOR.md records the current `skillOverrides` state and all 8 sampling detectors.
+**v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English. OPERATOR.md records the current `skillOverrides` state and all 8 sampling detectors. Behaviour (batch B6): §11-O delegates only large, independent work and keeps a whole small task in main; the per-batch review spawn is gone; core §10 says rules in plain words to the user.
 
-**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24867 bytes (Δ -127); extended 49479 → 49424 bytes (Δ -55); OPERATOR.md 16200 → 17463 bytes (Δ +1263). Size budget: core 24867/25000 (**133 bytes headroom**); extended 49424/50000 (**576 bytes headroom**).
+**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24989 bytes (Δ -5); extended 49479 → 49615 bytes (Δ +136); OPERATOR.md 16200 → 17463 bytes (Δ +1263). Size budget: core 24989/25000 (**11 bytes headroom**); extended 49615/50000 (**385 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 
