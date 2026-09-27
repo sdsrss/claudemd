@@ -5,7 +5,7 @@ description: Run health checks on claudemd installation. Flags missing deps, spe
 
 Usage: `/claudemd-doctor` or `/claudemd-doctor --prune-backups=5`
 
-Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js $ARGS`
+Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js $ARGUMENTS`
 
 Surface the checks list with [✓] / [△] / [✗] prefixes based on the `ok` field. If `pruned` is non-empty, list the removed backup directories. If `pruneSkippedLegacy` is non-empty, say so separately: those are pre-0.68.3 spec-shaped dirs sitting in the personal backup namespace — the prune deliberately neither deleted them nor counted them toward N, and the `backup-namespace-legacy` check above explains why the user has to sort them by hand. Reporting only `pruned` hides the half of the story that needs a decision.
 

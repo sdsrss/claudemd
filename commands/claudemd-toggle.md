@@ -7,6 +7,6 @@ Usage: `/claudemd-toggle <hook-name>`
 
 Valid hook names: `session-start-check`, `version-sync`, `memory-prompt-hint`, `pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`, `session-extended-read`, `residue-audit`, `sandbox-disposal-check`, `mem-audit`, `session-summary`, `transcript-vocab-scan`, `rework-breaker`, `cross-repo-write`, `tmp-sweep`, `branch-prune`, `evidence-gate`, `ledger-staleness`, `reply-language`, `transcript-structure-scan`, `session-end-check`.
 
-Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/toggle.js $ARGS`
+Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/toggle.js $ARGUMENTS`
 
 Surface the new state (`enabled` or `disabled`) to the user.

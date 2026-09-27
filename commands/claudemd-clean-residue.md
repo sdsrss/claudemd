@@ -9,7 +9,7 @@ Default is dry-run — the user must opt into deletion explicitly. Flags:
 - `--age-days=N` — $TMPDIR staleness threshold (default 1). Applies only to the claudemd-* patterns.
 - `--retention-days=N` — ~/.claude/tmp and ~/.claude/.claudemd-state retention window, at least 1. Resolution: this flag > `TMP_RETENTION_DAYS:` in the project's CLAUDE.md > 7 (spec §EXT §7-EXT). Below 1 the flag is rejected (exit 1) and a CLAUDE.md value warns and falls back to 7: `~/.claude/tmp/claude-<uid>` holds every live session's scratchpad, so a zero-day window would delete running sessions' working directories (it did, on 2026-09-02).
 
-Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/clean-residue.js $ARGS`
+Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/clean-residue.js $ARGUMENTS`
 
 The ~/.claude/tmp pass purges depth-1 entries older than the retention window; for per-UID dirs (`claude-<uid>`) it purges their depth-1 children instead of the shell. Dirs carrying a `.keep` marker are exempt (§8.V4 deliberately-retained fixtures). An entry that contains the command's own working directory or `$TMPDIR` is never deleted, whatever its age — it is listed under `protected` and noted on stderr. Under the Claude Code sandbox `$TMPDIR` is itself a child of `claude-<uid>`, which is how the cleaner came to delete the tree it was running in.
 

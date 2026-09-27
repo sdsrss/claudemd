@@ -5,7 +5,7 @@ description: Read-only spec ↔ implementation coherence audit. Cross-references
 
 Usage: `/claudemd-analyze` (advisory) or `/claudemd-analyze --strict` (CI gate)
 
-Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-coherence-audit.js $ARGS`
+Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-coherence-audit.js $ARGUMENTS`
 
 Surface the per-check [✓]/[△]/[✗] block first, then the severity-grouped findings, then the one-line summary. Counter format: `C=<critical> H=<high> M=<medium> L=<low>`.
 

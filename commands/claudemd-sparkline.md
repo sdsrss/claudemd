@@ -6,7 +6,7 @@ description: Emit rule-usage trend sparkline (deny+warn+advisory+bypass per spec
 Usage: `/claudemd-sparkline` (default windows 30/60/90 days)
        `/claudemd-sparkline --days=7,14,28` (custom windows)
 
-Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/sparkline.js $ARGS`
+Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/sparkline.js $ARGUMENTS`
 
 Surfaces "which spec rules are active vs dying" via per-window cumulative counts of signal events (deny, warn, advisory, bypass-escape-hatch) grouped by `spec_section`. Trend arrow compares per-period rates so a rule firing at steady cadence reads as `≈`, a dying rule reads as `↘`, and a freshly-active rule reads as `↗ (newly active)`.
 
