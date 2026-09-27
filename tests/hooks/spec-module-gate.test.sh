@@ -73,4 +73,67 @@ OUT8C=$(run off 'npm publish' g8c)
 if [[ -z "$OUT8" && -z "$OUT8B" && -z "$OUT8C" ]]; then ok "8 no module / kill switch / mode off: silent"
 else ng "8 not silent: nomod=${OUT8:0:30} kill=${OUT8B:0:30} off=${OUT8C:0:30}"; fi
 
+# 9. release spellings the 0.101.0 regex missed (D#110 M4): tag flags, tag
+# names without v, pushes of tags by ref or keyword, git and npm global
+# options, and command prefixes.
+R9_BAD=""
+for c in 'git tag -f v2.0.0' 'git tag -am "release 2" v2.0.0' 'git tag --annotate -m x v2.0.0' \
+  'git tag -s -u KEY v2.0.0' 'git tag pkg@2.0.0' 'git tag cli-v2.0.0' 'git tag 2.0.0-rc.1' 'git tag -a -- v2.0.0' \
+  'git push --follow-tags' 'git push origin refs/tags/v2.0.0' 'git push origin tag v2.0.0' \
+  'git push origin v2.0.0-rc.1' 'git push origin +v2.0.0' 'git push origin tag cli-v2.0.0' 'git push origin refs/tags/pkg@2.0.0:refs/tags/pkg@2.0.0' \
+  'git --git-dir=.git tag v2.0.0' 'git -c user.name=x tag v2.0.0' 'git --no-pager push --tags' \
+  'git --work-tree w --git-dir g push --tags' \
+  'npm --prefix pkg publish' 'npm -w pkgs/a publish --access public' 'npm --registry=https://r.example publish' \
+  'env -u FOO npm publish' 'env -i PATH=/bin npm publish' 'FOO="a b" npm publish' 'sudo -E npm publish' \
+  'timeout 60 npm publish' 'timeout -k 5 60 git push --tags' 'nice -n 5 npm publish' 'nohup npm publish' \
+  '(cd pkg && npm publish)' 'x=$(git tag v2.0.0)' 'npm publish --dry-run && git push --tags' \
+  'npm publish --dry-run; npm publish'; do
+  [[ "$(decision "$(run deny "$c" g9)")" == deny ]] || R9_BAD+="[$c] "
+done
+[[ -z "$R9_BAD" ]] && ok "9 the spellings 0.101.0 missed are gated" || ng "9 missed: $R9_BAD"
+
+# 10. not releases, including the 0.101.0 false positives: a branch that looks
+# like a short version, a version word after a separator, tag listing,
+# deletion and verification, a dry run in its own segment only, and tags
+# without a version (fixture, probe and archive tags from the real-command replay).
+# `git tag x v1.2.3` tags commit v1.2.3 as x — read as a release, a miss the safe way.
+N10_BAD=""
+for c in 'git push origin v2' 'git push origin main; echo v1.2.3' 'git push origin main && ls v1.2.3' \
+  'git tag -d v1.0.0' 'git tag --delete v1.0.0' 'git tag -v v1.0.0' 'git tag -n' 'git tag --contains HEAD' \
+  'git tag --sort=-v:refname' 'git tag --points-at HEAD' 'git tag' 'git tag -l "v*" | head' \
+  'git push --dry-run --tags' 'git push -n origin v1.2.3' 'git push --delete origin v1.2.3' \
+  'git push origin :refs/tags/v1.2.3' 'git push origin main --tags-only-typo' 'npm run publish-docs' \
+  'npm view pkg version' 'npm publish --dry-run' 'npm pack' 'gh release view v1.2.3' 'gh release list' \
+  'git status; npm test' 'git tag -f qa-baseline HEAD' 'git tag vprobe-ruleset HEAD~1' \
+  'git tag -a archive/s8-scan f4a5736 -m ""' 'git push origin refs/tags/archive/s8-scan' 'git push --force origin vprobe-ruleset' \
+  'git tag release-2026' 'git push -u origin release/0.13.0' 'git push origin fix/0.10.1-audit' 'git push origin cli-v2.0.0'; do
+  [[ -z "$(run deny "$c" g10)" ]] || N10_BAD+="[$c] "
+done
+[[ -z "$N10_BAD" ]] && ok "10 non-release commands pass, including the 0.101.0 false positives" || ng "10 wrongly gated: $N10_BAD"
+
+# 11. advisory allows the command, so it must not tell the model to run it again.
+OUT11A=$(run advisory 'npm publish' g11)
+OUT11D=$(run deny 'npm publish' g11)
+if jq -e '.hookSpecificOutput.additionalContext | test("run the command again") | not' <<<"$OUT11A" >/dev/null 2>&1 \
+  && jq -e '.hookSpecificOutput.permissionDecisionReason | test("run the command again")' <<<"$OUT11D" >/dev/null 2>&1; then
+  ok "11 advisory text does not say to rerun an allowed command; deny text does"
+else ng "11 advisory/deny text wrong: advisory=${OUT11A:0:200}"; fi
+
+# 12. a Bash read of ship.md satisfies the gate (D#110 L14); a failed one does not.
+TR12="$HOME/t12.jsonl"
+{
+  jq -cn '{type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:"cat ~/.claude/spec-modules/ship.md"}}]}}'
+  jq -cn '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"b1",content:"ship rules"}]}}'
+} >"$TR12"
+TR12F="$HOME/t12f.jsonl"
+{
+  jq -cn '{type:"assistant",message:{content:[{type:"tool_use",id:"b2",name:"Bash",input:{command:"cat ~/.claude/spec-modules/ship.md"}}]}}'
+  jq -cn '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"b2",is_error:true,content:"denied"}]}}'
+} >"$TR12F"
+OUT12=$(run deny 'npm publish' g12 "$TR12")
+OUT12F=$(run deny 'npm publish' g12f "$TR12F")
+if [[ -z "$OUT12" && "$(decision "$OUT12F")" == deny ]]; then
+  ok "12 a Bash cat of ship.md satisfies the gate; an errored one does not"
+else ng "12 bash read: ok-run=$(decision "$OUT12") errored-run=$(decision "$OUT12F")"; fi
+
 claudemd_assert_summary
