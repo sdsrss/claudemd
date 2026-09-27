@@ -92,3 +92,22 @@ test('trigger-calibrate: ship reads the whole prompt, other modules only its hea
   const m = measure([{ prompts: [{ idx: 1, text: long }], firstRelease: 2 }], 300);
   assert.deepEqual([m.perModule.ship, m.perModule.debug, m.shipRecall], [1, 0, '1/1']);
 });
+
+test('offline-eval: parseStream counts tier-2 injections from UserPromptSubmit hook output', async () => {
+  const { specBytes } = await import('../../scripts/offline-eval/run.mjs');
+  const ctx =
+    '[claudemd] system-injected — spec module `ship`\n\n<spec-module name="ship">\nrules\n</spec-module>\n';
+  const out = JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: ctx },
+  });
+  const lines = [
+    { type: 'system', subtype: 'hook_response', hook_event: 'UserPromptSubmit', output: out },
+    { type: 'system', subtype: 'hook_response', hook_event: 'UserPromptSubmit', output: '{}' },
+    { type: 'result', result: 'ok' },
+  ].map(o => JSON.stringify(o));
+  const r = parseStream(lines.join('\n'), '/sbx/home');
+  assert.deepEqual(r.injected, ['ship']);
+  assert.equal(r.injectedBytes, Buffer.byteLength(ctx));
+  assert.equal(specBytes(r, '/sbx/home'), Buffer.byteLength(ctx), 'no file read: only the injection counts');
+  assert.equal(r.moduleReads, 0);
+});

@@ -54,8 +54,11 @@ export const TASKS = {
         .trim()
         .split('\n')
         .filter(l => l.trim()).length;
-      const pass = fixed && !run.extRead && skills === 0 && lines <= 3;
-      return { pass, why: `fixed=${fixed} extRead=${run.extRead} skills=${skills} finalLines=${lines}` };
+      const pass = fixed && !run.extRead && !run.moduleReads && skills === 0 && lines <= 3;
+      return {
+        pass,
+        why: `fixed=${fixed} extRead=${run.extRead} moduleReads=${run.moduleReads} skills=${skills} finalLines=${lines}`,
+      };
     },
   },
   T2: {
@@ -200,7 +203,9 @@ export const TASKS = {
       );
       const gate = [tagIdx, reviewIdx].filter(i => i >= 0);
       const firstGate = gate.length ? Math.min(...gate) : -1;
-      const readFirst = firstGate >= 0 && run.specReads.some(r => r.index < firstGate);
+      const readFirst =
+        firstGate >= 0 &&
+        ((run.injected || []).includes('ship') || run.specReads.some(r => r.index < firstGate));
       const reviewBeforeTag = tagIdx < 0 || (reviewIdx >= 0 && reviewIdx < tagIdx);
       const gh =
         fs.existsSync(path.join(ctx.sandbox, 'gh.log')) &&

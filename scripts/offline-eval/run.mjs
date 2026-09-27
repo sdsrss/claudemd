@@ -83,6 +83,8 @@ export function parseStream(text, home) {
     ms: null,
     sessionId: null,
     cwd: null,
+    injected: [],
+    injectedBytes: 0,
   };
   const byId = new Map();
   for (const line of text.split('\n')) {
@@ -96,6 +98,20 @@ export function parseStream(text, home) {
     if (o.type === 'system' && o.subtype === 'init') {
       run.sessionId = o.session_id ?? null;
       run.cwd = o.cwd ?? null;
+    }
+    // Tier-2 injections arrive as UserPromptSubmit hook output.
+    if (o.type === 'system' && o.subtype === 'hook_response' && o.hook_event === 'UserPromptSubmit') {
+      let ctx;
+      try {
+        ctx = JSON.parse(o.output || o.stdout || '{}')?.hookSpecificOutput?.additionalContext || '';
+      } catch {
+        ctx = '';
+      }
+      const names = [...ctx.matchAll(/<spec-module name="([a-z-]+)">/g)].map(m => m[1]);
+      if (names.length) {
+        run.injected.push(...names);
+        run.injectedBytes += Buffer.byteLength(ctx);
+      }
     }
     if (o.type === 'assistant' && Array.isArray(o.message?.content)) {
       for (const b of o.message.content) {
@@ -133,7 +149,27 @@ export function parseStream(text, home) {
     })
     .filter(Boolean);
   run.extRead = run.specReads.some(r => r.what.includes('CLAUDE-extended.md'));
+  run.moduleReads = run.specReads.filter(r => r.what.includes('/spec-modules/')).length;
   return run;
+}
+
+/** Bytes of spec text that reached the model beyond core: files read (each
+ *  once, whole size) plus injected modules. Core is loaded in every arm alike. */
+export function specBytes(run, home) {
+  const root = path.join(home, '.claude');
+  const files = new Set();
+  for (const r of run.specReads) {
+    for (const m of String(r.what).matchAll(/[^\s'"]+\.md/g)) if (m[0].startsWith(root)) files.add(m[0]);
+  }
+  let bytes = run.injectedBytes;
+  for (const f of files) {
+    try {
+      bytes += fs.statSync(f).size;
+    } catch {
+      /* not a file the sandbox has */
+    }
+  }
+  return bytes;
 }
 
 const rewrite = (text, home) => text.replaceAll('~/.claude/', `${home}/.claude/`);
@@ -149,6 +185,16 @@ function buildSandbox(specDir, task) {
     const src = path.join(specDir, f);
     if (!fs.statSync(src).isFile() || !f.endsWith('.md') || f === 'CLAUDE.md') continue;
     fs.writeFileSync(path.join(home, '.claude', f), rewrite(fs.readFileSync(src, 'utf8'), home));
+  }
+  const modSrc = path.join(specDir, 'spec-modules');
+  if (fs.existsSync(modSrc)) {
+    fs.mkdirSync(path.join(home, '.claude', 'spec-modules'), { recursive: true });
+    for (const f of fs.readdirSync(modSrc).filter(n => n.endsWith('.md'))) {
+      fs.writeFileSync(
+        path.join(home, '.claude', 'spec-modules', f),
+        rewrite(fs.readFileSync(path.join(modSrc, f), 'utf8'), home)
+      );
+    }
   }
   const ctx = { sandbox, home, pathPrefix: null };
   task.setup(dir, ctx);
@@ -238,6 +284,10 @@ function runOne(opts, id, rep) {
     tools: run.uses.length,
     agents: run.uses.filter(u => u.name === 'Agent' || u.name === 'Task').length,
     specReads: run.specReads.map(s => s.what),
+    extRead: run.extRead,
+    moduleReads: run.moduleReads,
+    injected: run.injected,
+    specBytes: specBytes(run, home),
     final: run.final.slice(0, 2000),
     projectsDirRemoved: cleaned,
   };
