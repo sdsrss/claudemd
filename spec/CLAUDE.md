@@ -49,6 +49,8 @@ Role: Architect + QA + Agent. Priority: Safety > Correctness > Efficiency.
 - **Task**: one SPINE cycle. New user request = new task unless explicit continuation.
 - **Contract / Δ-contract**: external-caller-visible interface (sig / return / status / CLI flag / config / schema / security); change to it = Δ-contract — additive (new flag/endpoint/optional/field) → L2, breaking (rename/remove/type-change/required-no-default) → L3.
 
+Extended-only terms (**Assumption**): `session.md` §1.5-EXT.
+
 ## §2 LEVEL
 
 ```
@@ -72,13 +74,13 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 ROUTE (unified)
 
-SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none; the table and the L3 / composite matrix are in `skills.md`.
+SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → the §12 table in `skills.md`. Full L3 path → `plan.md`; composite / specialized-clarify matrix → `skills.md`.
 
 Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ sizeable disjoint tasks → `Agent` (fork inherits context, general-purpose starts fresh); L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
 
 **Tool escalation**: literal/exact → Grep; concept → semantic; export-surface edit → impact-analysis first (feeds §5 AUTH); unfamiliar module → module-overview before 3+ Reads; "did we / why / past decisions" → memory tool first. Escalate cheap → expensive; don't fan out blindly (no parallel-dispatch of mem + code-graph on the same question).
 
-**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Ship-pipeline skills NOT soft (`ship.md`). A skill's own "MUST invoke" wording does not override that table at L0–L2 (§3).
+**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Ship-pipeline skills NOT soft (`ship.md`). A skill's own "MUST invoke" wording does not override §12 (`skills.md`, `ship.md`, `review.md`) at L0–L2 (§3).
 
 **Ambiguous trigger** → ASK per §0.
 
@@ -97,7 +99,7 @@ Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` rout
 - `modes.md` — HACK / EMERGENCY / AUTONOMOUS, cancel or switch (§2-EXT, §0.2-EXT)
 - `session.md` — long sessions (§11-EXT, §7-EXT-TMP, §1.5-EXT)
 
-**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory before the first step.
+**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Read `ship.md` and the project's ship-runbook memory first.
 
 ## §3 TRUST
 
@@ -211,12 +213,12 @@ Principle: extraordinary claims require fresh tool-call evidence.
 Binds every task; modules are not reliably in context post-compaction. Default strength: SHOULD at L0/L1, MUST at L2+; a bullet tagged HARD binds at every level.
 
 - **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read the plan (and any module this task used) before proceeding; core is harness-injected every turn, never re-Read it. Silent unless gap surfaces. User references artifact absent from context → assume compaction.
-- **Re-Read / Correction / Context pressure** (detail: `session.md`): don't re-Read a file you Read or Wrote unless it changed · repeated rejections of your auto-decisions → ASK first · context >75% → fresh subagent or `tasks/<slug>-paused.md`.
+- **Re-Read / Correction / Context pressure** (maintenance heuristics, full detail → `session.md`): skip files already Read/Written absent external-change signal · on repeated auto-decision rejection switch to ASK-first · at >75% window prefer fresh-subagent + consider `tasks/<slug>-paused.md`.
 - **Auto-memory triggers** (first match wins; full tree: `memory.md`):
   1. **Global-state hard** (MUST any level): `~/.claude/` writes across ≥2 files in one task → save project/feedback memory unless self-describing-artifact exempts.
   2. **L2+ retrospective** (MUST L2+): preventable-error pattern OR non-default decision / non-obvious sequencing.
   3. **Judgment** (L0/L1 + L2+ fallback): durable artifact whose insight would have changed a decision this session + ≥1 future-reuse probability.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
   - Optional tag syntax `- [Title](file.md) [tags] — desc`; match task keywords against tags before Read; untagged → decide per-line from title/desc.
-- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has run a tool inside an active SPINE cycle, keep working through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. Do not end the turn on a progress summary, on a next step you announce instead of taking, or on "shall I continue?". **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. A silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.
+- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken, "shall I continue?"; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → do not list those items under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".

@@ -7,6 +7,9 @@
 //      must resolve to a `##+ §<id>` heading in spec/CLAUDE-extended.md.
 //      Catches the "core cites §X-EXT but the section never landed" drift
 //      family that today only surfaces by reader catching it manually.
+//      Since v7.1.0 most core pointers name a module file instead
+//      (`verify.md`); each must be registered in spec/spec-modules.json.
+//      Whether that module holds the section meant is not checked.
 //
 //   2. Sizing line accuracy. The Sizing line in spec/CLAUDE-extended.md
 //      claims byte counts via `wc -c`. Verify actual size matches the
@@ -45,7 +48,7 @@ import { readRegistry } from './lib/spec-modules.js';
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
 
 Read-only audit of claudemd spec-ecosystem coherence:
-  - §EXT cross-refs resolve (core → extended)
+  - §EXT cross-refs resolve (core → extended); core's module pointers are registered
   - Sizing line matches actual wc -c (±20B tolerance)
   - MEMORY.md index ↔ memory files bidirectional
   - §10-V quick-check terms ↔ banned-vocab.patterns coverage

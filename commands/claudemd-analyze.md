@@ -10,7 +10,7 @@ Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-coherence-audit.js $ARGUMENTS`
 Surface the per-check [✓]/[△]/[✗] block first, then the severity-grouped findings, then the one-line summary. Counter format: `C=<critical> H=<high> M=<medium> L=<low>`.
 
 Severity meaning:
-- CRITICAL — breaks the spec's structural contract (unresolved §EXT ref)
+- CRITICAL — breaks the spec's structural contract (unresolved §EXT ref, or a core pointer to an unregistered module)
 - HIGH — drift outside accepted tolerance (Sizing line off by >20B — the ±20B self-rewrite envelope)
 - MEDIUM — runtime-binding drift (MEMORY.md references missing file; a §10 quick-check term no `banned-vocab.patterns` row can match)
 - LOW — non-binding drift (orphan memory file not in index)

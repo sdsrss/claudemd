@@ -476,9 +476,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.1.0 (minor, 2026-09-27)** — core room. Core points at modules by file name (`verify.md`) instead of `§EXT §N`. Removed from core: §9 Parallel-first (the harness system prompt carries it), the Ship triggers' skill/override half (it is in `ship.md`) and pointer-only lines. §11 Mid-SPINE turn-yield now names the stops it forbids (a progress summary, an announced next step not taken, "shall I continue?"); its triggers, Tell and HARD tag are unchanged. §2.1 reads `2+ sizeable disjoint tasks → Agent`, as §11-O does. `debug.md` no longer triggers on wording fixes. No HARD rule added or removed.
+**v7.1.0 (minor, 2026-09-27)** — core room. Core points at modules by file name (`verify.md`) instead of `§EXT §N`. Removed from core: §9 Parallel-first (the harness system prompt carries it) and pointer-only lines. §11 Mid-SPINE turn-yield now names stops that are not yields (a progress summary, a next step announced instead of taken, "shall I continue?") after its yield list, in place of "Natural-feeling" stop points; its triggers, Tell and HARD tag are unchanged. §2.1 reads `2+ sizeable disjoint tasks → Agent`, as §11-O does. `debug.md` no longer triggers on a typo or spelling fix. No HARD rule added or removed.
 
-**Sizing** (v7.1.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24990 → 24399 bytes (Δ -591); extended 48622 → 48558 bytes (Δ -64); OPERATOR.md 17463 → 17463 bytes (Δ +0). Size budget: core 24399/25000 (**601 bytes headroom**); extended 48558/50000 (**1442 bytes headroom**).
+**Sizing** (v7.1.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24990 → 24700 bytes (Δ -290); extended 48622 → 48583 bytes (Δ -39); OPERATOR.md 17463 → 17587 bytes (Δ +124). Size budget: core 24700/25000 (**300 bytes headroom**); extended 48583/50000 (**1417 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

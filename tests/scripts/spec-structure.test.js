@@ -92,7 +92,7 @@ test('§2.1 points at the §12 table, and that table still reaches sp:brainstorm
   const ext = fs.readFileSync(EXT, 'utf8');
   assert.match(
     core,
-    /Skill routing = fit criteria[^\n]*the table[^\n]*`skills\.md`/,
+    /Skill routing = fit criteria[^\n]*the §12 table in `skills\.md`/,
     'core §2.1 must point at the §12 table (in skills.md) for skill routing'
   );
   assert.doesNotMatch(
@@ -575,7 +575,7 @@ const PINS = [
     what: 'core §11 Mid-SPINE turn-yield — the four triggers, the named bad stops and the Tell (v7.1.0 wording)',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has run a tool inside an active SPINE cycle, keep working through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. Do not end the turn on a progress summary, on a next step you announce instead of taking, or on "shall I continue?". **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. A silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken, "shall I continue?"; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
     what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v7.0.0 wording)',
@@ -819,15 +819,15 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '', sha256: '0901cf55edc8b266' },
   { file: CORE, heading: '## §0 SPINE', sha256: 'b69effe5d47130fa' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: '7cfab4a7466f8e0b' },
-  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'ee3d18e5482695db' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: 'dbfb3b87e4da8df4' },
+  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '62c8e89441f6414b' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'f91ca48c2302cee5' },
   { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
   { file: CORE, heading: '## §5 AUTH', sha256: 'ddce4291ec0d5cfa' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'f4aac20c663432f6' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'ef753966a18fb555' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '84e411afb73e08bc' },
-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '2bd1c1a4dea34bc8' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'e81bedfaea4b7d7f' },
   { file: EXT, heading: '', sha256: '9841611dea4975ae' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'bd136a33fd3dc7c9' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
@@ -843,7 +843,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: 'c2634ce13a3278df' },
+  { file: EXT, heading: '## Recent changes', sha256: 'f3f6d07d148b5f3b' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,
