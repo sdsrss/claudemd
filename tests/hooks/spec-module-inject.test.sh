@@ -97,4 +97,16 @@ rmdir "$HOME/.claude/spec-modules"
 mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
 [[ "$RC12" == 0 && -z "$E12" ]] && ok "12 an empty module directory: exit 0, no stderr" || ng "12 empty module dir: rc=$RC12 stderr=$E12"
 
+# 13. a wording fix is L0, not debugging: "Fix the typo …" / 修复错别字 inject
+# nothing, while a real bug in the same shape still draws debug.md (B7 A/B: the
+# typo task drew debug.md in every B run). Runs through jq's regex engine, which
+# is what the hook uses — the lookahead must work there, not only in JS.
+C13A=$(inject 'Fix the typo in README.md.' s13a)
+C13B=$(inject '修复错别字：recieve 应为 receive' s13b)
+C13C=$(inject 'Fix the bug in README generator' s13c)
+C13D=$(inject '修复这个报错' s13d)
+if [[ -z "$C13A" && -z "$C13B" && "$(mods "$C13C")" == "debug " && "$(mods "$C13D")" == "debug " ]]; then
+  ok "13 wording fixes draw no debug.md; a bug fix in the same shape still does"
+else ng "13 typo=$(mods "$C13A") 错别字=$(mods "$C13B") bug=$(mods "$C13C") 报错=$(mods "$C13D")"; fi
+
 claudemd_assert_summary

@@ -29,7 +29,8 @@ Exit codes: 0 measured | 2 argv-shape error.`;
 export const TRIGGERS = {
   ship: /发版|发布(新)?版本|打\s*tag|\bship\b|\bcut a release\b|npm publish|gh release|\bdeploy\b|上线/i,
   review: /评审|审查|审核一下|code review|\breview (the|this|my|it)\b|\bPR review\b/i,
-  debug: /报错|修复|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b|\bfailing\b|stack ?trace|\bexception\b/i,
+  // Wording fixes ("Fix the typo …", 修复错别字) are L0, not debugging (B7 A/B: T1 drew debug.md).
+  debug: /报错|修复(?!错别字|拼写|措辞|文案|格式|排版)|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b(?! (typo|spelling|wording|grammar|formatting|indentation|comment|docstring|link|readme)\b)|\bfailing\b|stack ?trace|\bexception\b/i,
   plan: /架构|重构|规划|实施方案|设计方案|\brefactor\b|\bmigration\b|迁移|\bL3\b/i,
   memory: /记住|记下来|\bremember (this|that)\b|\bmem_save\b/i,
   orchestrate: /并行|子代理|\bsubagents?\b|\bin parallel\b|fan out/i,
