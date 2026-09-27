@@ -578,10 +578,10 @@ const PINS = [
     line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end, so the yield IS the delivery (sleeping or pinging an idle agent does not deliver it): name what is awaited; completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. "Natural-feeling" stop points are not yields; a silent mid-cycle yield followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
-    what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v6.27.0 wording)',
+    what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v7.0.0 wording)',
     file: EXT,
     anchor: '**Manual-ship atomicity (HARD, clarification)**',
-    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer per Author ≠ reviewer above, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
+    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
     what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v6.32.0 wording)',
@@ -816,7 +816,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'd4689c6b7d9c289d' },
+  { file: CORE, heading: '', sha256: 'f5bca0e9e3bcf385' },
   { file: CORE, heading: '## §0 SPINE', sha256: 'af03d0e8fad63ff1' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: '0cb6d9374d04be0c' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'c48d2df5f0a6bb17' },
@@ -828,7 +828,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '7d5b2e25114582f1' },
   { file: CORE, heading: '## §10 REPORT', sha256: '3b4e30e1c4958635' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: '2343e42ea93973ed' },
-  { file: EXT, heading: '', sha256: 'a705c18dfea9b878' },
+  { file: EXT, heading: '', sha256: '607dc68447e33f80' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'bd136a33fd3dc7c9' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '31a3b32ab333c2b7' },
@@ -838,12 +838,12 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: 'c2011ff35e824499' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '990d588d43ec05d1' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '390d36374f50570e' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '3f42c4f8a6a53195' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: '89e06446f31efdcb' },
+  { file: EXT, heading: '## Recent changes', sha256: '629dc91e4309634c' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,
@@ -900,8 +900,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 19, sha256: '616380ce6f24fb12' },
-  { file: EXT, count: 62, sha256: '9c392874a765baba' },
+  { file: CORE, count: 19, sha256: '05dc1d3316df115f' },
+  { file: EXT, count: 62, sha256: '7a9318646882b15d' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

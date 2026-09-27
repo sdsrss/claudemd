@@ -13,7 +13,7 @@ const REPO_ROOT = path.resolve(HERE, '../..');
 
 test('audit runs on real hooks and returns structured report', async () => {
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT });
-  assert.ok(r.spec_version.startsWith('v6.'), `spec_version sanity: ${r.spec_version}`);
+  assert.match(r.spec_version, /^v\d+\.\d+\.\d+$/, `spec_version sanity: ${r.spec_version}`);
   assert.ok(r.summary.hooksAudited >= 10, `expected ≥10 hooks audited, got ${r.summary.hooksAudited}`);
   assert.ok(Array.isArray(r.claimSites));
   assert.ok(Array.isArray(r.ruleEnforcement));

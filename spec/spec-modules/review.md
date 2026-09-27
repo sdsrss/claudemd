@@ -5,7 +5,7 @@ triggers: 评审|审查|审核一下|code review|\breview (the|this|my|it)\b|\bP
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v6.36.0 — module: review
+# AI-CODING-SPEC v7.0.0 — module: review
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

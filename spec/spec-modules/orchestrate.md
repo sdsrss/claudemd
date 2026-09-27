@@ -5,7 +5,7 @@ triggers: 并行|子代理|\bsubagents?\b|\bin parallel\b|fan out
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v6.36.0 — module: orchestrate
+# AI-CODING-SPEC v7.0.0 — module: orchestrate
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

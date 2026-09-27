@@ -5,7 +5,7 @@ triggers: 报错|修复|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b|
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v6.36.0 — module: debug
+# AI-CODING-SPEC v7.0.0 — module: debug
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

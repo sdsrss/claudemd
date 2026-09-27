@@ -32,7 +32,7 @@ afterEach(() => {
 // breakage in one shot.
 test('hardRulesAudit on real spec/hard-rules.json — byte-exact production fixture', async () => {
   const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
-  assert.ok(r.spec_version.startsWith('v6.'), `spec_version sanity: ${r.spec_version}`);
+  assert.match(r.spec_version, /^v\d+\.\d+\.\d+$/, `spec_version sanity: ${r.spec_version}`);
   assert.ok(r.totalRules >= 16, `expected ≥16 HARD rules, got ${r.totalRules}`);
   // Categories partition exactly — sum equals totalRules.
   const sum = r.byEnforcement.hook + r.byEnforcement.self + r.byEnforcement.external + r.byEnforcement.both;
