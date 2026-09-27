@@ -362,7 +362,7 @@ After the plugin upgrade, sync the shipped spec into `~/.claude/`:
 /claudemd-update
 ```
 
-The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the 4-file spec set (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md` + `~/.claude/OPERATOR.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
+The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the 4-file spec set (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. `apply-all` also syncs the `~/.claude/spec-modules/` mirror, which the diff summary does not list. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md` + `~/.claude/OPERATOR.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
 
 ---
 
@@ -385,7 +385,7 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 |---|---|---|
 | `keep` (default) | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
 | `restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. |
-| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`). |
+| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every `*.md` in `~/.claude/spec-modules/`. |
 
 `CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
 
