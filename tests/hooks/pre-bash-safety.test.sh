@@ -633,7 +633,8 @@ allow|D=$(mktemp -d /tmp/claudemd-test-XXXXXX); H=$(mktemp -d /tmp/claudemd-test
 allow|D=$(mktemp -d /tmp/claudemd-test-XXXXXX); rm -rf "$D"
 allow|rm -rf /tmp/work-dir
 deny|SP=/tmp/x; W="${SP:?}/x"; rm -rf "$W"
-deny|SP=/tmp/x; rm -rf "$SP/y"'
+deny|SP=/tmp/x; rm -rf "$SP/y"
+deny|D=$(mktemp -d /tmp/claudemd-test-XXXXXX); export D; rm -rf "$D"'
 while IFS='|' read -r ms_want ms_cmd; do
   [[ -n "$ms_cmd" ]] || continue
   ms_reason=$(reason_of "$ms_cmd")
@@ -655,6 +656,22 @@ if [[ "$m1_own" != "$m1_reason" && "$m1_guard" != "$m1_reason" && ${#m1_own} -lt
   echo "PASS: bare-\$TMPDIR deny puts follow-that-line before the guard advice"; PASS=$((PASS + 1))
 else
   echo "FAIL [msg-order]: bare-\$TMPDIR deny does not lead with follow-that-line"; FAIL=$((FAIL + 1))
+fi
+# D#102 (0.100.0 pre-tag review): the short text stated the mktemp credit
+# without what withdraws it, dropped the loop spelling, and a `git -C dir
+# commit` never got the commit-message line.
+m2_reason=$(reason_of 'rm -rf "$V"')
+if [[ "$m2_reason" == *export* && "$m2_reason" == *IFS=* && "$m2_reason" == *'for f in'* ]]; then
+  echo "PASS: rm deny names what withdraws the mktemp credit and the loop spelling"; PASS=$((PASS + 1))
+else
+  echo "FAIL [msg-mktemp]: rm deny omits the mktemp conditions or the loop spelling"; FAIL=$((FAIL + 1))
+fi
+m3_reason=$(reason_of 'git -C sub commit -m x; rm -rf "$V"')
+m3_ctl=$(reason_of 'ls; rm -rf "$V"')
+if [[ "$m3_reason" == *'-F FILE'* && "$m3_ctl" != *'-F FILE'* ]]; then
+  echo "PASS: git -C <dir> commit gets the commit-message line, a non-commit does not"; PASS=$((PASS + 1))
+else
+  echo "FAIL [msg-git-C]: commit-message line wrong for git -C (commit=${m3_reason:0:40}…)"; FAIL=$((FAIL + 1))
 fi
 # shellcheck disable=SC2016  # single quotes intentional: the inner shell expands
 if env -u SP bash -c 'W="$SP/x"; echo "${W:?}"' 2>/dev/null | grep -qx '/x' \

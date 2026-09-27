@@ -2242,14 +2242,14 @@ if (( _s8_rm_only == 1 )); then
 # with intent kept, 0/120 self-issued tokens, ~420 fewer input tokens per deny.
 # The commit-message line only rides along when the command is a commit/tag.
 _s8_about=""
-if [[ "$CMD" =~ git[[:space:]]+(commit|tag) ]]; then
+if [[ "$CMD" =~ git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|tag) ]]; then
   _s8_about="
 Writing about rm in a commit or tag message: put the text in a file (Write tool) and pass it with -F FILE."
 fi
 REASON_TEXT="§8 SAFETY: denied Bash invocation:${REASONS}
 
 rm -r/-f on a \$VAR that can expand empty is refused. The gate reads command text, so an assignment earlier in the line does not count as validation.
-Fix (no token needed): if a line above names its own fix (a .. walk, a bare \$HOME/\$TMPDIR/\$PWD, a find without a selection primary), follow that line and add no guard: \${HOME:?} proves the var is set, not that deleting it is bounded. Otherwise guard the var that can be empty, inside the target: rm -rf \"\${SP:?}/x\". A var built from another (W=\"\$SP/x\") is never empty, so guard the base where W is built and name W's guard on the target: W=\"\${SP:?}/x\"; rm -rf \"\${W:?}\". Several dirs: rm -rf \"\${D:?}\" \"\${H:?}\". A mktemp -d in the same command, or a literal path, also passes.${_s8_about}
+Fix (no token needed): if a line above names its own fix (a .. walk, a bare \$HOME/\$TMPDIR/\$PWD, a find without a selection primary), follow that line and add no guard: \${HOME:?} proves the var is set, not that deleting it is bounded. Otherwise guard the var that can be empty, inside the target: rm -rf \"\${SP:?}/x\". A var built from another (W=\"\$SP/x\") is never empty, so guard the base where W is built and name W's guard on the target: W=\"\${SP:?}/x\"; rm -rf \"\${W:?}\". Several dirs: rm -rf \"\${D:?}\" \"\${H:?}\". In a loop, guard both: for f in \"\${SP:?}\"/*; do rm -rf \"\${f:?}\"; done. A dir made by mktemp -d in the same command passes (D=\$(mktemp -d) … rm -rf \"\$D\") unless the command also exports or reassigns D, uses source/eval, or sets IFS=. A literal path passes.${_s8_about}
 The [allow-rm-rf-var] token and DISABLE_PRE_BASH_SAFETY_HOOK are the user's to grant, not yours."
 else
 REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
