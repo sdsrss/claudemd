@@ -443,7 +443,7 @@ spec_drift_check() {
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (the spec modules) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
       }
     }' 2>/dev/null || true
     return 0

@@ -968,8 +968,9 @@ cp "$HOME/CLAUDE.md.bak" "$HOME/.claude/CLAUDE.md"; rm -f "$HOME/CLAUDE.md.bak"
 
 # Case 39d (v0.84.0 pre-ship review, M3): the four files are not read the same
 # way, so one sentence cannot be true of all of them. Only ~/.claude/CLAUDE.md is
-# injected by the harness every session; CLAUDE-extended.md is read on demand per
-# §2.2, and OPERATOR.md / CLAUDE-changelog.md are not read by Claude Code at all.
+# injected by the harness every session; CLAUDE-extended.md (since spec v7.0.0 the
+# modules' build source) is read on demand at most, and OPERATOR.md /
+# CLAUDE-changelog.md are not read by Claude Code at all.
 # The banner claimed "the spec is not loaded this session" for whichever file
 # went missing, which is false for three of the four.
 cp "$HOME/.claude/OPERATOR.md" "$HOME/OPERATOR.md.bak"

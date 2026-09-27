@@ -101,7 +101,7 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 
 ### Execution order (PreToolUse:Bash)
 
-CC runs all configured PreToolUse hooks for `Bash` sequentially in declaration order. **First deny stops the rest** and the tool call is denied. The 5 Bash hooks fire in this order (declared in `hooks/hooks.json`):
+CC runs all configured PreToolUse hooks for `Bash` sequentially in declaration order. **First deny stops the rest** and the tool call is denied. The 5 hooks in the `Bash` matcher group fire in this order (declared in `hooks/hooks.json`; `cross-repo-write-check`, opt-in and advisory, runs on Bash from its own `Edit|Write|NotebookEdit|Bash` group):
 
 1. `pre-bash-safety-check` (§8 SAFETY immutable) — `rm -rf $VAR`, unpinned `npx <pkg>`. First so a §8 violation can never be overridden by a downstream hook.
 2. `spec-module-gate` (core §2.2) — a release command in a session without `ship.md`; logs by default, denies only under `SPEC_MODULE_GATE=deny`.
@@ -385,7 +385,7 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 |---|---|---|
 | `keep` (default) | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
 | `restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. |
-| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every `*.md` in `~/.claude/spec-modules/`. |
+| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every regular `*.md` file in `~/.claude/spec-modules/`. |
 
 `CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
 
