@@ -1,6 +1,6 @@
 ---
 name: claudemd-analyze
-description: Read-only spec ↔ implementation coherence audit. Cross-references core ↔ extended §EXT refs, Sizing line accuracy (±20B), §0.1 headroom caps, MEMORY.md ↔ files bidirectional integrity, and §10 quick-check terms ↔ banned-vocab.patterns coverage. Findings graded CRITICAL/HIGH/MEDIUM/LOW. Borrowed from github/spec-kit's /analyze pattern.
+description: Read-only audit of spec ↔ implementation coherence — cross-references, the Sizing line, size caps, MEMORY.md ↔ memory files, and banned-vocab coverage. Findings graded CRITICAL to LOW.
 ---
 
 Usage: `/claudemd-analyze` (advisory) or `/claudemd-analyze --strict` (CI gate)

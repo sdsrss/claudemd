@@ -1,6 +1,6 @@
 ---
 name: claudemd-uninstall
-description: Pre-uninstall cleanup. Run BEFORE `/plugin uninstall claudemd@claudemd` to clear the plugin manifest and legacy settings.json hook entries. Spec files in ~/.claude/ are kept by default, and so are the state dir + rule-hits log unless CLAUDEMD_PURGE=1 is passed. Required because Claude Code's marketplace lifecycle does not fire `preUninstall`, so without this step `/plugin uninstall` leaves orphan state behind.
+description: Clean up claudemd's manifest and legacy hook entries before `/plugin uninstall claudemd@claudemd`, which runs no pre-uninstall step of its own. Spec files, state and logs are kept unless CLAUDEMD_PURGE=1.
 ---
 
 Usage:

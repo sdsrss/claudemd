@@ -1,6 +1,6 @@
 ---
 name: claudemd-refresh
-description: Refresh the installed claudemd plugin to the latest released version in one shot (marketplace update → uninstall → install via the claude CLI). Use when the SessionStart banner reports a newer version, or /claudemd-doctor flags a stale plugin cache. Restart Claude Code afterwards — spec + manifest then sync automatically.
+description: Update the installed claudemd plugin to the latest release in one step (marketplace update, uninstall, install). Use when the SessionStart banner or /claudemd-doctor reports a newer version; restart Claude Code afterwards.
 ---
 
 Usage: `/claudemd-refresh`

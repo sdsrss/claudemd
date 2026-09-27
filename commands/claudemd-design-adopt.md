@@ -1,6 +1,6 @@
 ---
 name: claudemd-design-adopt
-description: Generate a thin, fact-based DESIGN.md from a UI project's real design-token sources and wire it into project CLAUDE.md. Use when (1) the user asks to configure design specs / 配置设计规范 / 设计规范 for agents, (2) UI sessions keep inventing colors or spacing instead of using the project's existing tokens, (3) a UI project (Vue/React/Svelte/Nuxt/Astro + a component lib or Tailwind/UnoCSS/SCSS) has design tokens but no DESIGN.md guiding agents. Modes - check (verify pointers), remove (unwire). Never invents design values - every generated line must trace to a detected file.
+description: Generate a fact-based DESIGN.md from a UI project's existing design tokens and wire it into project CLAUDE.md, so agents stop inventing colors and spacing. Use when the user asks to configure design specs for agents (配置设计规范 / 设计规范). Modes — check, remove.
 ---
 
 Usage: `/claudemd-design-adopt` | `/claudemd-design-adopt check` | `/claudemd-design-adopt remove`

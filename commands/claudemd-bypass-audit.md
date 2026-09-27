@@ -1,6 +1,6 @@
 ---
 name: claudemd-bypass-audit
-description: R3 Step 2 — lesson-bypass detector. Joins memory-prompt-hint `suggest` events with subsequent transcript activity to compute cite-recall (applied / (applied + bypassed)) across recent sessions. Makes the §11 MEMORY.md read-the-file effectiveness observable.
+description: Measure how often a memory that the prompt hint suggested was then applied or bypassed in recent sessions (cite-recall).
 ---
 
 Default window is 30 days. The script answers one question: when claudemd's `memory-prompt-hint` hook surfaced a relevant memory to the agent, did the agent actually read or cite it?

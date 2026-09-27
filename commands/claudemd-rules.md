@@ -1,6 +1,6 @@
 ---
 name: claudemd-rules
-description: Audit the HARD-rules manifest. Cross-references spec/hard-rules.json with rule-hits.jsonl bySection data over the last N days (default 30). Surfaces §13.1 demote candidates (hook-enforced rules with 0 hits in window) and stale-review entries.
+description: Audit the HARD-rules manifest against rule-hit telemetry over the last N days (default 30) — demote candidates and entries due for review.
 ---
 
 Default window is 30 days (per OPERATOR.md §13.1; set in spec v6.11.15 as core §0.1 and moved to OPERATOR.md in v6.15.1 — lowered from 90d because the 90d gate was structurally unreachable under typical rule-hits log retention; with 30d the audit can actually produce demote candidates instead of always reporting `insufficientData`).
