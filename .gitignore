@@ -5,10 +5,12 @@
 .gstack/
 
 # Claude Code workspace state (sessions, permission grants, local hooks) — user-specific + transient.
-# Exception: .claude/rules/ holds this repo's path-scoped rules for agents editing
-# spec/ and hooks/ (docs/audit/20260926-180700.md E6), which every contributor needs.
+# Exceptions every contributor needs: .claude/rules/ holds path-scoped rules for
+# agents editing spec/ and hooks/ (docs/audit/20260926-180700.md E6), and
+# .claude/agents/ the release-reviewer subagent definition (same doc, 9.6 D1).
 .claude/*
 !.claude/rules/
+!.claude/agents/
 
 # docs/ is local-only by default. Tracked + shipped exceptions (functional
 # reference docs that adopters / contributors need):
