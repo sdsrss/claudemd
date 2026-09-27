@@ -100,7 +100,7 @@ scripts/doctor.js ──► scripts/clean-residue.js, lib/{backup, hook-registry
 scripts/audit.js ──► scripts/sampling-audit.js, lib/{paths, rule-hits-parse, argv}
 scripts/sampling-audit.js ──► lib/{lint, paths, rule-hits-parse, transcript-user-turn, argv}
 scripts/{hard-rules-audit, lesson-bypass-audit, sparkline}.js ──► lib/{paths, rule-hits-parse, argv}
-scripts/spec-coherence-audit.js ──► lib/{lint, paths, argv}
+scripts/spec-coherence-audit.js ──► lib/{lint, paths, argv, spec-sizing, spec-modules}
 scripts/{safety-coverage-audit, clean-residue, version-cascade-check}.js ──► lib/{paths, argv}
 scripts/statusline-adopt.js ──► lib/{statusline, paths, argv}
 scripts/{design-detect, lint-argv}.js ──► lib/argv
