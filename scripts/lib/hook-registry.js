@@ -64,6 +64,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'spec-module-gate.sh',
+    displayName: 'spec-module-gate',
+    envVarSuffix: 'SPEC_MODULE_GATE',
+    hookEvent: 'PreToolUse',
+    matcher: 'Bash',
+    timeout: 3,
+  },
+  {
     basename: 'banned-vocab-check.sh',
     displayName: 'banned-vocab',
     envVarSuffix: 'BANNED_VOCAB',

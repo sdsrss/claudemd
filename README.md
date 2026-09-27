@@ -57,7 +57,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 23 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 24 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `spec-module-gate` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v6.36 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) |
@@ -190,6 +190,7 @@ export DISABLE_RESIDUE_AUDIT_HOOK=1              # or
 export DISABLE_MEMORY_READ_HOOK=1                # or
 export DISABLE_MEMORY_HINT_HOOK=1                # v0.11.0+ — UserPromptSubmit MEMORY.md tag pre-matcher (proactive §11 hint)
 export DISABLE_SPEC_MODULE_INJECT_HOOK=1         # v0.101.0+ — UserPromptSubmit spec-module injection (core §2.2)
+export DISABLE_SPEC_MODULE_GATE_HOOK=1           # v0.101.0+ — PreToolUse ship-module check before release commands (SPEC_MODULE_GATE=log|advisory|deny|off, default log)
 export DISABLE_SANDBOX_DISPOSAL_HOOK=1           # Stop §8.V4 residue scan (opt-in block: SANDBOX_DISPOSAL_BLOCK=1, v0.97.0+; first-sight timing: SANDBOX_DISPOSAL_IMMEDIATE=1, v0.98.0+)
 export DISABLE_SESSION_START_HOOK=1              # or
 export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary
@@ -434,7 +435,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 23 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
+├── hooks/                    # 24 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)

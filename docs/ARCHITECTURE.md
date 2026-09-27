@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 87 node suites, 36 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 87 node suites, 37 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -327,6 +327,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PostToolUse:Bash | `branch-prune.sh` | advisory: after git merge/pull/fetch/push or gh pr merge, lists local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it) with the `git branch -d` command; deletes nothing | n/a |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `spec-module-inject.sh` | injects the spec module(s) a prompt's triggers match (core §2.2) | `§2.2-modules` |
+| PreToolUse (Bash) | `spec-module-gate.sh` | before a release command, checks ship.md reached the session; `log` by default, `advisory` / `deny` opt-in | `§2.2-modules` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
 | Stop | `sandbox-disposal-check.sh` | Test/probe residue that appeared or changed since the session's previous Stop (mtime, not ownership), depth 1: `claudemd-*` in `/tmp`; `tmp.*` / `claudemd-*` in `~/.claude/tmp` and `/var/tmp`; `~/.claude/projects/` dirs whose encoded cwd is a temp dir and whose every direct entry is newer than that Stop, minus the session's own transcript dir. macOS `/tmp` (a symlink) is not descended. Reported at the session's next Stop if still present (v0.98.0; `SANDBOX_DISPOSAL_IMMEDIATE=1` = at first sight). Advisory; opt-in `SANDBOX_DISPOSAL_BLOCK=1` returns `{"decision":"block"}` once per turn (`stop_hook_active`) | `§8.V4` |

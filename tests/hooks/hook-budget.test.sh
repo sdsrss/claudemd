@@ -72,6 +72,8 @@ trap 'rm -rf "$SANDBOX"' EXIT
 FIX_HOME="$SANDBOX/home"
 CWD="$SANDBOX/proj"
 mkdir -p "$FIX_HOME/.claude/logs" "$CWD"
+# spec-module-gate reaches its transcript scan only when a ship module is installed.
+mkdir -p "$FIX_HOME/.claude/spec-modules" && printf -- '---\nmodule: ship\n---\n\n# ship\n' > "$FIX_HOME/.claude/spec-modules/ship.md"
 ENCODED=$(printf '%s' "$CWD" | tr -c 'a-zA-Z0-9-' '-')
 PROJ_DIR="$FIX_HOME/.claude/projects/$ENCODED"
 MEM_DIR="$PROJ_DIR/memory"
@@ -296,6 +298,12 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"UserPromptSubmit", session_id:$s, cwd:$c,
           prompt:"what did we learn about budgettag7 here"}' ;;
+    spec-module-gate)
+      # A release command with nothing having read ship.md: the gate greps the
+      # whole transcript for a Read of it, then (log mode) records the miss.
+      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
+        '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c, transcript_path:$t,
+          tool_use_id:"tu_probe", tool_input:{command:"gh release create v9.9.9"}}' ;;
     memory-read-check)
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c,
@@ -671,6 +679,8 @@ diff_exempt_reason() {
   case "$1" in
     banned-vocab-check)
       printf 'reads a transcript, but bounded at `tail -n 200` so its cost does not scale with transcript size; and its probe DENIES on the commit-message path before the transcript path runs, so the signature is identical under both fixtures either way (verified: removing this exemption fails it at 3837877947|4294967295|262|0|0)' ;;
+    spec-module-gate)
+      printf 'reads a transcript only to find one Read of ship.md; with no such Read its verdict (one module-unread row) is the same for a 5 MB transcript and an empty one, so the signature cannot move with data volume — the timing arm above still measures the full-transcript scan' ;;
     cross-repo-write-check)
       printf 'admitted by the `${TMPDIR` literal only: TMPDIR is a string prefix for the scratch exclusion and is never walked, and nothing else it reads is a directory listing or a log, so its cost scales with the command and path depth, not with any fixture this gate varies' ;;
     *) printf '' ;;

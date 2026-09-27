@@ -261,6 +261,8 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
     'pre-bash-safety-check.sh':
       'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
     'banned-vocab-check.sh': 'same blocking-gate shape; tests/hooks/banned-vocab.test.sh covers it',
+    'spec-module-gate.sh':
+      'a PreToolUse gate that stays silent unless the command is a release; tests/hooks/spec-module-gate.test.sh covers every mode',
     'tmp-sweep.sh':
       'spawns a deleting sweep against the REAL temp root — an isolated HOME does not isolate $TMPDIR or /tmp, so a health command must not trigger it; tests/hooks/tmp-sweep.test.sh covers it',
   };

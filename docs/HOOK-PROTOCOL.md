@@ -34,9 +34,12 @@ author to re-derive it from another hook's source:
   the derivation gate here matches on the spelling, which is why the
   distinction is written down rather than left to look like an omission.
 - `transcript_path` — the session's JSONL, present on Stop / SessionEnd /
-  PostToolUse. Read by `session-end-check.sh`,
+  PostToolUse, and on PreToolUse too (a 2026-09-26 `claude -p` probe on
+  2.1.283 received it there; with `--no-session-persistence` the path is given
+  but the file never exists). Read by `session-end-check.sh`,
   `transcript-structure-scan.sh`, `transcript-vocab-scan.sh`,
   `evidence-gate.sh`, `ledger-staleness.sh`, `reply-language-check.sh`,
+  `spec-module-gate.sh` (whether ship.md was read),
   `sandbox-disposal-check.sh` (only its dirname, to exclude the session's own
   project dir from the residue scan). Treat it as
   best-effort: it can be absent or point at a file that does not exist yet.
@@ -129,6 +132,8 @@ Emitters, derived from source and gated by
   the prompt that have not been Read this session.
 - `spec-module-inject.sh` — UserPromptSubmit; the body of each spec module whose
   `triggers:` regex the prompt matches, once per session, at most two per prompt.
+- `spec-module-gate.sh` — PreToolUse(Bash), only with `SPEC_MODULE_GATE=advisory`;
+  names the ship module to read before a release command.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
 - `rework-breaker.sh` — PostToolUse (`Edit|Write|Bash`); one line naming a LOWER
   BOUND on how many times this session has edited the file — the multiple of
