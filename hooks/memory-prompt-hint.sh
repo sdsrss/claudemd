@@ -16,7 +16,7 @@
 #   3. Match prompt against tagged MEMORY.md entries (same word-boundary +
 #      declension + meta-escape logic as memory-read-check.sh).
 #   4. For each matched file, check session transcript for prior Read.
-#   5. Non-human prompt sources (<agent-message>/<task-notification>/command
+#   5. Non-human prompt sources (<agent-message>/<teammate-message>/<task-notification>/command
 #      relays/system-reminders) never emit: log `suppress-source` with the
 #      un-Read match list and stop here (v0.35.0 R1; row moved BEFORE the
 #      dedupe in v0.36.0 so it fires even when every match was already
@@ -77,7 +77,7 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 SOURCE_FILTERED=0
 _PROMPT_HEAD="${PROMPT#"${PROMPT%%[![:space:]]*}"}"
 case "$_PROMPT_HEAD" in
-  '<agent-message'*|'<task-notification'*|'<local-command-caveat'*|'<command-name'*|'<local-command-stdout'*|'<system-reminder'*)
+  '<agent-message'*|'<teammate-message'*|'Another Claude session sent a message'*|'<task-notification'*|'<local-command-caveat'*|'<command-name'*|'<local-command-stdout'*|'<system-reminder'*)
     SOURCE_FILTERED=1 ;;
 esac
 

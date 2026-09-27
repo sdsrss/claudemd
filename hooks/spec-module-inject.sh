@@ -8,7 +8,8 @@
 # the rules arrive whether or not the model would have chosen to read them —
 # measured before this hook existed: a hint to read a file was followed in
 # 25/46 Opus 5.5 turns (docs/audit/20260926-180700.md §12.3). Calibrated on
-# 1,426 historical prompts: >= 2 modules matched on 4.3%.
+# 745 human prompts since 2026-09-05 (scripts/offline-eval/trigger-calibrate.mjs,
+# 2026-09-27; machine-sent turns excluded, as below): >= 2 modules on 6.7%.
 #
 # Bounded: each module once per session (the list lives in the state dir and
 # session-start clears it on compaction, when injected text is gone), at most
@@ -30,7 +31,8 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 # Machine-sent turns are not the user's request (same filter memory-prompt-hint uses).
 _head="${PROMPT#"${PROMPT%%[![:space:]]*}"}"
 case "$_head" in
-  '<agent-message'* | '<task-notification'* | '<local-command-caveat'* | '<command-name'* | '<local-command-stdout'* | '<system-reminder'*) exit 0 ;;
+  '<agent-message'* | '<teammate-message'* | 'Another Claude session sent a message'* | '<task-notification'* \
+    | '<local-command-caveat'* | '<command-name'* | '<local-command-stdout'* | '<system-reminder'*) exit 0 ;;
 esac
 
 MOD_DIR="$HOME/.claude/spec-modules"

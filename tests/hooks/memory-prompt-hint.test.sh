@@ -303,6 +303,14 @@ SESS="sess18"
 OUT=$(mkevent '<task-notification>background job touched macos path</task-notification>' "$SESS" | bash "$HOOK" 2>/dev/null)
 [[ -z "$OUT" ]] && ok "18 task-notification source → silent" || ng "18 (out: $OUT)"
 
+# Case 18b (D#110 L10): a teammate message arrives as a user turn that starts
+# "Another Claude session sent a message: <teammate-message …>"; 711 of them
+# since 2026-09-05 on this machine. Suppressed like <agent-message>.
+SESS="sess18b"
+OUT=$(mkevent 'Another Claude session sent a message: <teammate-message teammate_id="r1">the macos CI job failed</teammate-message>' "$SESS" | bash "$HOOK" 2>/dev/null)
+OUT_B=$(mkevent '<teammate-message teammate_id="r1">the macos CI job failed</teammate-message>' "sess18c" | bash "$HOOK" 2>/dev/null)
+[[ -z "$OUT" && -z "$OUT_B" ]] && ok "18b teammate-message sources → silent" || ng "18b (out: ${OUT:0:80} / ${OUT_B:0:80})"
+
 # Case 19 (v0.35.0 R1): per-session per-file dedupe. No transcript file exists
 # for the session (so the transcript-based implicit dedupe CANNOT fire — this
 # is the rapid-fire flush-lag shape from the 2026-07-11 audit); the second

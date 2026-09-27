@@ -45,7 +45,11 @@ const isHuman = o =>
   o.type === 'user' &&
   !o.isMeta &&
   typeof o.message?.content === 'string' &&
-  !/^<(command-|local-command|task-notification)/.test(o.message.content);
+  // The same machine-sent turns spec-module-inject.sh skips, so a count here is a
+  // prompt the hook would have judged.
+  !/^\s*(<(command-|local-command|task-notification|agent-message|teammate-message|system-reminder)|Another Claude session sent a message)/.test(
+    o.message.content
+  );
 
 export function sessionRows(file) {
   const prompts = [];

@@ -67,8 +67,11 @@ grep -q 'name="verify"' <<<"$C7" && ng "7 verify (no triggers) was injected" || 
 # 8. kill switch and machine-sent turns.
 C8=$(DISABLE_SPEC_MODULE_INJECT_HOOK=1 inject 'ship it' s8)
 C8B=$(inject '<task-notification>ship it</task-notification>' s8b)
-if [[ -z "$C8" && -z "$C8B" ]]; then ok "8 kill switch and machine-sent turns inject nothing"
-else ng "8 kill=${C8:0:40} notif=${C8B:0:40}"; fi
+# A teammate message (D#110 L10): 256 of 711 since 2026-09-05 matched a trigger.
+C8C=$(inject 'Another Claude session sent a message: <teammate-message teammate_id="r1">ready to ship</teammate-message>' s8c)
+C8D=$(inject '<teammate-message teammate_id="r1">ready to ship</teammate-message>' s8d)
+if [[ -z "$C8" && -z "$C8B" && -z "$C8C" && -z "$C8D" ]]; then ok "8 kill switch and machine-sent turns (task-notification, teammate) inject nothing"
+else ng "8 kill=${C8:0:40} notif=${C8B:0:40} teammate=${C8C:0:40} bare=${C8D:0:40}"; fi
 
 # 9. telemetry row names the modules.
 if jq -e 'select(.hook=="spec-module-inject" and .event=="module-inject" and .spec_section=="§2.2-modules" and .extra.modules=="ship")' "$LOG" >/dev/null 2>&1; then
