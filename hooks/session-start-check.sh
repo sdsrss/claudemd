@@ -76,17 +76,21 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 # byte-identical jq programs, which is one place to add a sixth banner and one
 # place to forget (2026-09-05 audit P2-2).
 merge_banners() {
+  # Two channels, merged separately into ONE object: additionalContext reaches
+  # the model, systemMessage reaches the human. A notice that asks the USER to
+  # act (run /claudemd-refresh, restart) belongs in systemMessage — sent as
+  # additionalContext with suppressOutput it reached only the model
+  # (docs/audit/20260926-180700.md F4).
   printf '%s\n' "$@" | jq -s -c '
-    map(select(type == "object" and (.hookSpecificOutput.additionalContext // "") != ""))
-    | if length == 0 then empty
-      elif length == 1 then .[0]
-      else {
-        suppressOutput: true,
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext: (map(.hookSpecificOutput.additionalContext) | join("\n\n"))
-        }
-      } end' 2>/dev/null || true
+    map(select(type == "object"))
+    | (map(.hookSpecificOutput.additionalContext // "") | map(select(. != ""))) as $ctx
+    | (map(.systemMessage // "") | map(select(. != ""))) as $sys
+    | if ($ctx | length) == 0 and ($sys | length) == 0 then empty
+      else {suppressOutput: true}
+        + (if ($sys | length) > 0 then {systemMessage: ($sys | join("\n"))} else {} end)
+        + (if ($ctx | length) > 0 then {hookSpecificOutput: {hookEventName: "SessionStart",
+             additionalContext: ($ctx | join("\n\n"))}} else {} end)
+      end' 2>/dev/null || true
 }
 
 # --- G7: the long-task ledger ------------------------------------------------
@@ -167,7 +171,7 @@ ledger_banner() {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — most recently modified long-task ledger " + $p + " (§11 / G7). Nothing here checks whether that task is still open: this is the newest ledger under this cwd, not a verified-active one, and `Verified-done` / `Open` — the sections that would say — are deliberately not carried. If the task is finished, ignore this. Otherwise: its Decisions were settled at task start and its Next is where it stands, so this turn does not have to re-derive them, and the ledger is updated before the next item rather than after. The user can turn this off with DISABLE_LEDGER_INJECT=1.\n\n" + $b)
+      additionalContext: ("[claudemd] system-injected — the most recently modified long-task ledger under this cwd is " + $p + ". Its Decisions and Next sections are quoted below as file content. Nothing checks whether that task is still open, and its Verified-done and Open sections are not included. If the task is finished, ignore this. If you are continuing it, use the recorded decisions and next step instead of re-deriving them, and update the ledger before starting the next item. The user can turn this off with DISABLE_LEDGER_INJECT=1.\n\n<ledger path=\"" + $p + "\">\n" + $b + "\n</ledger>")
     }
   }' 2>/dev/null
 }
@@ -225,7 +229,7 @@ paused_banner() {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — " + ($c|tostring) + " paused checkpoint(s) under " + $d + " from earlier sessions (" + (if $s == 0 then "none listed" else ($s|tostring) + " newest plainly named ones listed, age in days" end) + "). Each records work a session stopped before verifying: session-end-check writes session-end-<sid>-paused.md, and §11 sends unvalidated work to <slug>-paused.md. This lists files, not whether they are still open. Before related work, read the matching one; once its work is verified or abandoned, delete it. The user can turn this off with DISABLE_PAUSED_BANNER=1.\n" + $l)
+      additionalContext: ("[claudemd] system-injected — " + ($c|tostring) + " paused checkpoint(s) under " + $d + " from earlier sessions (" + (if $s == 0 then "none listed" else ($s|tostring) + " newest plainly named ones listed, age in days" end) + "). Each records work a session stopped before verifying: session-end-check writes session-end-<sid>-paused.md, and unvalidated work is also saved by hand as <slug>-paused.md. This lists files, not whether they are still open. Before related work, read the matching one; once its work is verified or abandoned, delete it. The user can turn this off with DISABLE_PAUSED_BANNER=1.\n" + $l)
     }
   }' 2>/dev/null
 }
@@ -237,7 +241,7 @@ if [[ "$SOURCE" == "compact" ]]; then
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "[claudemd] compaction detected — §11: before continuing L2+ work, re-read the active plan (and extended, if this task had loaded it). Core is injected every turn — do not re-read it. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
+        additionalContext: "[claudemd] compaction detected — before continuing multi-step work, re-read the active plan, and the extended spec if this task had loaded it. The core spec is still in context; it does not need re-reading. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
       }
     }' 2>/dev/null)
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
@@ -644,10 +648,7 @@ upstream_check() {
     --arg new "$remote_tag" \
     '{
       suppressOutput: true,
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] " + $new + " available (you have " + $cur + "). Run /claudemd-refresh, then restart Claude Code. The user can turn this notice off with DISABLE_UPSTREAM_CHECK=1")
-      }
+      systemMessage: ("[claudemd] " + $new + " available (you have " + $cur + "). Run /claudemd-refresh, then restart Claude Code. Disable: DISABLE_UPSTREAM_CHECK=1")
     }' 2>/dev/null
 
   hook_record session-start upstream-banner null '' "$SESSION_ID" 2>/dev/null || true
@@ -682,10 +683,7 @@ stale_cache_check() {
 
   jq -cn --arg run "v$PLUGIN_VER" --arg cache "v$local_max" '{
     suppressOutput: true,
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] stale plugin registration: hooks are running from " + $run + " but the marketplace cache holds " + $cache + ". Run /claudemd-refresh, then restart Claude Code. The user can turn this notice off with DISABLE_UPSTREAM_CHECK=1")
-    }
+    systemMessage: ("[claudemd] stale plugin registration: hooks are running from " + $run + " but the marketplace cache holds " + $cache + ". Run /claudemd-refresh, then restart Claude Code. Disable: DISABLE_UPSTREAM_CHECK=1")
   }' 2>/dev/null
 
   local stale_extra
@@ -783,10 +781,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
       # ledger silently (pre-ship review, behaviour M1).
       _stale_json=$(jq -cn --arg old "$PLUGIN_VER" --arg new "$INSTALLED_VER" '{
         suppressOutput: true,
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix: run /claudemd-refresh, then restart Claude Code.")
-        }
+        systemMessage: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix: run /claudemd-refresh, then restart Claude Code.")
       }' 2>/dev/null)
       merge_banners "$_stale_json" "$_lg_json"
       STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'

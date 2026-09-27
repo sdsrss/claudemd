@@ -137,7 +137,11 @@ OUT8=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-newer.sh" \
        CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
        DISABLE_UPSTREAM_CHECK=0 \
        bash "$HOOK" <<<'{}' 2>/dev/null)
-if echo "$OUT8" | grep -q '"additionalContext"' && echo "$OUT8" | grep -q 'v9.9.9' && echo "$OUT8" | grep -q '/claudemd-refresh'; then
+# Since 0.101.0 the notice asks the USER to act, so it rides systemMessage (shown
+# to the human) and stays out of the model's additionalContext.
+SYS8=$(jq -r '.systemMessage // ""' <<<"$OUT8" 2>/dev/null)
+CTX8=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT8" 2>/dev/null)
+if grep -q 'v9.9.9' <<<"$SYS8" && grep -q '/claudemd-refresh' <<<"$SYS8" && ! grep -q 'available' <<<"$CTX8"; then
   echo "PASS: 8 upstream-check banner emitted on newer remote tag"
 else
   echo "FAIL: 8 banner malformed or missing (out: $OUT8)"; FAIL=$((FAIL+1))
@@ -358,8 +362,8 @@ sleep 3
 OBJ18=$(printf '%s' "$OUT18" | jq -s 'length' 2>/dev/null)
 POST18=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null)
 if [[ "$OBJ18" == "1" && "$POST18" == "9.9.9" ]] \
-   && echo "$OUT18" | grep -q 'stale plugin registration' \
-   && echo "$OUT18" | grep -q '/claudemd-refresh' \
+   && jq -r '.systemMessage // ""' <<<"$OUT18" | grep -q 'stale plugin registration' \
+   && jq -r '.systemMessage // ""' <<<"$OUT18" | grep -q '/claudemd-refresh' \
    && grep -q 'stale plugin root' "$HOME/.claude/logs/claudemd-bootstrap.log" \
    && jq -e 'select(.hook=="session-start" and .event=="stale-root" and .extra.installed_version=="9.9.9")' "$RULE_LOG_18" >/dev/null 2>&1; then
   echo "PASS: 18 stale-root gate skips downgrade + emits refresh banner + telemetry"
@@ -494,9 +498,10 @@ OUT23=$(CLAUDEMD_LS_REMOTE_CMD="$TMP_HOME/mock-ls-remote-fail.sh" \
         CLAUDEMD_CACHE_PARENT="$TMP_HOME/cache" \
         DISABLE_UPSTREAM_CHECK=0 \
         bash "$HOOK" <<<'{}' 2>/dev/null)
-if echo "$OUT23" | grep -q 'stale plugin registration' \
-   && echo "$OUT23" | grep -q 'v9.9.9' \
-   && echo "$OUT23" | grep -q '/claudemd-refresh'; then
+SYS23=$(jq -r '.systemMessage // ""' <<<"$OUT23" 2>/dev/null)
+if grep -q 'stale plugin registration' <<<"$SYS23" \
+   && grep -q 'v9.9.9' <<<"$SYS23" \
+   && grep -q '/claudemd-refresh' <<<"$SYS23"; then
   echo "PASS: 23 stale-cache banner fires when cache max > running root (network-free)"
 else
   echo "FAIL: 23 stale-cache banner missing (out: $OUT23)"; FAIL=$((FAIL+1))
@@ -1052,6 +1057,19 @@ if [[ "$(jq -s 'length' <<<"$OUT41" 2>/dev/null)" == "1" ]] \
 else
   echo "FAIL: 41 ledger injection missing or split across objects (objs=$(jq -s 'length' <<<"$OUT41" 2>/dev/null), ctx=$CTX41)"; FAIL=$((FAIL+1))
 fi
+# Case 41w (prompt-audit F5): the ledger body is file content, quoted inside a
+# <ledger path=…> wrapper, and the hook's own sentence claims nothing it cannot
+# check — the old "Decisions were settled at task start" asserted a fact about
+# a file anyone can write. The Decisions text must sit INSIDE the wrapper.
+C41W_IN=$(awk '/^<ledger path=/{f=1;next} /^<\/ledger>/{f=0} f' <<<"$CTX41")
+if grep -qE '^<ledger path="[^"]*r?-?ledger\.md">$|^<ledger path="[^"]+">$' <<<"$CTX41" \
+   && grep -qF 'LEDGER-DECISION-TEXT' <<<"$C41W_IN" \
+   && grep -qx '</ledger>' <<<"$CTX41" \
+   && ! grep -qF 'were settled' <<<"$CTX41"; then
+  echo "PASS: 41w ledger body is quoted inside <ledger path=…>, with no unverified claim about it"
+else
+  echo "FAIL: 41w ledger wrapper missing or claim present (ctx=$CTX41)"; FAIL=$((FAIL+1))
+fi
 
 # Only those two sections. A banner that carried Verified-done would spend the
 # context the compaction was trying to recover, and Goal/Open are re-derivable
@@ -1219,9 +1237,11 @@ PLUGIN_SEMVER=$(jq -r '.version' "$PLUGIN_ROOT/package.json" 2>/dev/null)
 printf '{"version":"99.9.9"}\n' > "$RES_MANIFEST"
 OUT43B=$(bash "$HOOK" <<<"{\"session_id\":\"res\",\"source\":\"resume\",\"cwd\":\"$RES_PROJ\"}" 2>/dev/null)
 CTX43B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT43B" 2>/dev/null)
+SYS43B=$(jq -r '.systemMessage // ""' <<<"$OUT43B" 2>/dev/null)
 if [[ "$(jq -s 'length' <<<"$OUT43B" 2>/dev/null)" == "1" ]] \
    && grep -qF 'RESUME-DECISION-TEXT' <<<"$CTX43B" \
-   && grep -qF 'stale plugin registration' <<<"$CTX43B"; then
+   && grep -qF 'stale plugin registration' <<<"$SYS43B" \
+   && ! grep -qF 'stale plugin registration' <<<"$CTX43B"; then
   echo "PASS: 43b the stale-root resume carries BOTH its own banner and the ledger, in one object"
 else
   echo "FAIL: 43b stale-root resume lost a banner (objs=$(jq -s 'length' <<<"$OUT43B" 2>/dev/null) ctx=$CTX43B)"; FAIL=$((FAIL+1))

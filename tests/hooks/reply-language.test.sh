@@ -94,7 +94,7 @@ tx "$(human "$ZH")" "$(said "$ZH")"
 OUT=$(run "$(stop "$EN25")")
 expect_block "L1 English reply after a 中文 human prompt is blocked once" "$OUT"
 R=$(reason "$OUT")
-for want in '§1' '中文' 'same content' 'no tool calls' 'DISABLE_REPLY_LANGUAGE_HOOK=1' 'task notifications'; do
+for want in 'the language the human types in' '中文' 'same content' 'no tool calls' 'DISABLE_REPLY_LANGUAGE_HOOK=1' 'task notifications'; do
   assert_contains "L1 reason carries: $want" "$want" "$R"
 done
 assert_eq "L1 exactly one JSON object on stdout" 1 "$(printf '%s\n' "$OUT" | grep -c .)"

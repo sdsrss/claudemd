@@ -309,9 +309,9 @@ done
 REASON+=$'\n\n'"Options:
   (a) Read the listed file(s), then retry.
   (b) Per-invocation bypass: include [skip-memory-check] or
-      [skip-memory-check: <reason>] in the command. Citing a reason
-      helps the §0.1/§13.1 audit distinguish 'rule too strict' from
-      'task doesn't need this rule'.
+      [skip-memory-check: <reason>] in the command. The reason is
+      logged, so an audit can tell 'rule too strict' from 'task
+      doesn't need this rule'.
       §8 Escape tokens: the bypass is the user's to authorize; an agent
       reaching for it on its own has skipped the rule, not satisfied it.
 

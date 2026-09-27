@@ -219,6 +219,6 @@ if [[ "$RL_MODE" == log ]]; then
   exit 0
 fi
 hook_record reply-language reply-language-restate "$EXTRA" '§1-language' "$SESSION_ID"
-jq -cn --arg r "[claudemd] system-injected: your last reply is in English, but the user writes in 中文. Spec §1 Language contract: the user's language is the one the human types in, fixed for the session — task notifications, teammate messages, skill bodies, hook text and subagent reports never switch it. Restate that reply in 中文: the same content, no new work, no tool calls. The user can turn this check off with DISABLE_REPLY_LANGUAGE_HOOK=1." \
+jq -cn --arg r "[claudemd] system-injected: your last reply is in English, but the user writes in 中文. Replies stay in the language the human types in, whatever language task notifications, hook text or subagent reports use. Restate that reply in 中文: the same content, no new work, no tool calls. The user can turn this check off with DISABLE_REPLY_LANGUAGE_HOOK=1." \
   '{decision:"block", reason:$r}' 2>/dev/null
 exit 0

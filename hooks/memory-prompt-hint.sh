@@ -250,7 +250,7 @@ for i in $(seq 0 $((EMIT_COUNT - 1))); do
   CONTEXT+=$'\n'"  - $MEM_DIR/${SORTED_FILES[$i]} (tag: ${SORTED_TAGS[$i]})"
 done
 if (( COUNT > MAX )); then
-  CONTEXT+=$'\n'"  ... and $((COUNT - MAX)) more (capped, priority-ranked). Per §11: index is a router, not a substitute."
+  CONTEXT+=$'\n'"  ... and $((COUNT - MAX)) more (capped, priority-ranked). The index line is not a substitute for the file."
 fi
 
 # Maintain back-compat: UNREAD_FILES / UNREAD_TAGS used by telemetry below.

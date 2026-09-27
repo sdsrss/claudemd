@@ -440,7 +440,7 @@ if [[ "${CLAUDEMD_PATH2_DRY_RUN:-0}" == "1" ]]; then
   exit 0
 fi
 
-REASON_TEXT="§10-V prose scan (v0.21.0): ship-flow command blocked because the preceding assistant turn contains §10-V high-fire banned vocab:"
+REASON_TEXT="§10-V prose scan: ship-flow command blocked because the preceding assistant turn contains §10-V high-fire banned vocab:"
 for i in "${!PROSE_HITS[@]}"; do
   REASON_TEXT+=$'\n'"  - \"${PROSE_HITS[$i]}\"  (${PROSE_REASONS[$i]})"
 done

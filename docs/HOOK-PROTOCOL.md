@@ -95,6 +95,13 @@ A hook can also return text for the model to read instead of a decision. Same
   below, where the absence is a schema fact rather than an untested assumption.
 - `suppressOutput: true` keeps the text out of the transcript UI while the
   model still receives it. Every emitter here sets it.
+- `systemMessage` (top level, beside `suppressOutput`) is the opposite channel:
+  the human sees it and the model does not. Measured 2026-09-27 on Claude Code
+  2.1.283: an interactive session printed `SessionStart:startup says: <text>`
+  even with `suppressOutput: true`, and a `claude -p` probe asking the model for
+  the token found only the `additionalContext` one. `session-start-check.sh`
+  uses it for notices that ask the USER to act (a newer release, a stale plugin
+  registration); sent as `additionalContext` they had reached only the model.
 - **A hook must emit exactly one JSON object per run.** Two objects on stdout
   are not valid JSON and the whole payload is dropped silently — no error, no
   context. `session-start-check.sh` emits from TWO places, and which one runs
@@ -102,7 +109,8 @@ A hook can also return text for the model to read instead of a decision. Same
   banners ready in one run (stale-cache, upstream, session summary, spec drift,
   user-content) and the fresh/mismatch tail can have three (bootstrap-failed,
   session summary, user-content). Both call `merge_banners`, one `jq -s` that
-  drops the empties, passes a single survivor through and joins the rest — one
+  drops the empties and joins the rest into one object, `additionalContext` and
+  `systemMessage` each joined separately — one
   implementation since 2026-09-05, because a sixth banner added to one copy of
   two identical programs is a banner that appears on one branch only. A banner
   added with its own `jq -cn` alongside either call would disarm every banner in
