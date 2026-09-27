@@ -87,7 +87,8 @@ for c in 'git tag -f v2.0.0' 'git tag -am "release 2" v2.0.0' 'git tag --annotat
   'env -u FOO npm publish' 'env -i PATH=/bin npm publish' 'FOO="a b" npm publish' 'sudo -E npm publish' \
   'timeout 60 npm publish' 'timeout -k 5 60 git push --tags' 'nice -n 5 npm publish' 'nohup npm publish' \
   '(cd pkg && npm publish)' 'x=$(git tag v2.0.0)' 'npm publish --dry-run && git push --tags' \
-  'npm publish --dry-run; npm publish'; do
+  'npm publish --dry-run; npm publish' 'git tag -a v1.2.3 -Fnotes.md' 'gh release -R o/r create v1.0.0' \
+  'x=`git tag v2.0.0`'; do
   [[ "$(decision "$(run deny "$c" g9)")" == deny ]] || R9_BAD+="[$c] "
 done
 [[ -z "$R9_BAD" ]] && ok "9 the spellings 0.101.0 missed are gated" || ng "9 missed: $R9_BAD"
@@ -106,7 +107,8 @@ for c in 'git push origin v2' 'git push origin main; echo v1.2.3' 'git push orig
   'npm view pkg version' 'npm publish --dry-run' 'npm pack' 'gh release view v1.2.3' 'gh release list' \
   'git status; npm test' 'git tag -f qa-baseline HEAD' 'git tag vprobe-ruleset HEAD~1' \
   'git tag -a archive/s8-scan f4a5736 -m ""' 'git push origin refs/tags/archive/s8-scan' 'git push --force origin vprobe-ruleset' \
-  'git tag release-2026' 'git push -u origin release/0.13.0' 'git push origin fix/0.10.1-audit' 'git push origin cli-v2.0.0'; do
+  'git tag release-2026' 'git tag -am 2.0.0 notes-tag' 'git tag --message 1.2.3 notes-tag' 'git tag -ln v1.2.3' \
+  'git push -u origin release/0.13.0' 'git push origin fix/0.10.1-audit' 'git push origin cli-v2.0.0'; do
   [[ -z "$(run deny "$c" g10)" ]] || N10_BAD+="[$c] "
 done
 [[ -z "$N10_BAD" ]] && ok "10 non-release commands pass, including the 0.101.0 false positives" || ng "10 wrongly gated: $N10_BAD"

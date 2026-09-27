@@ -11,7 +11,7 @@
 #                                      version refspec, or a version tag named
 #                                      as refs/tags/<name> or `tag <name>`; not
 #                                      -n/--dry-run, -d/--delete, :<ref>
-# A version tag name ends in a dotted version, alone or after @ _ - :
+# A version tag name ends in a dotted version, alone or after @, _ or -:
 # v1.2, 2.0.0-rc.1, pkg@2.0.0, cli-v2.0.0. In a replay of the 4,692 distinct
 # transcript commands naming git/gh/npm and tag/push/release/publish, every
 # other tag name created was a fixture, probe or archive marker (10 commands),
@@ -78,19 +78,26 @@ _mg_skip_opts() {
 
 # _mg_git_tag — w[i..] are `git tag`'s arguments; 0 = it creates a tag.
 _mg_git_tag() {
-  local _a _hit=0
+  local _a _k _hit=0
   while (( i < n )); do
     _a="${w[i]}"; (( i++ ))
     case "$_a" in
       -l | --list | -d | --delete | -v | --verify | -n* | --contains* | --no-contains* | --points-at* \
         | --merged* | --no-merged* | --sort* | --format* | --column* | -i | --ignore-case) return 1 ;;
-      -m | -F | -u | --message | --file | --local-user | --cleanup | --trailer) (( i++ )) ;;
-      --) [[ "${w[i]:-}" =~ $_MG_VERSION_RE ]] && _hit=1; break ;;
+      --message | --file | --local-user | --cleanup | --trailer) (( i++ )) ;; # short forms: below
       --*) ;;
       -*)
-        # Bundled short options: -am MSG, -sm MSG, -ld.
-        [[ "$_a" =~ [ldvn] ]] && return 1
-        [[ "$_a" =~ [mFu]$ ]] && (( i++ ))
+        # Bundled short options (-am MSG, -sm MSG, -ld, -Fnotes.md): letters
+        # up to the first of m/F/u, which takes the rest of the word or, when
+        # it is the last letter, the next word.
+        _k=1
+        while (( _k < ${#_a} )); do
+          case "${_a:_k:1}" in
+            l | d | v | n) return 1 ;;
+            m | F | u) (( _k == ${#_a} - 1 )) && (( i++ )); break ;;
+          esac
+          (( _k++ ))
+        done
         ;;
       *) [[ "$_a" =~ $_MG_VERSION_RE ]] && _hit=1 ;; # the name, or the commit after it
     esac
@@ -100,21 +107,19 @@ _mg_git_tag() {
 
 # _mg_git_push — w[i..] are `git push`'s arguments; 0 = it pushes a tag.
 _mg_git_push() {
-  local _a _tags=0 _hit=0 _npos=0 _tagword=0
+  local _a _tags=0 _hit=0 _tagword=0
   while (( i < n )); do
     _a="${w[i]}"; (( i++ ))
     case "$_a" in
-      -n | --dry-run | -d | --delete) return 1 ;;
+      --dry-run | --delete) return 1 ;;
       --tags | --follow-tags) _tags=1 ;;
       --repo | -o | --push-option | --receive-pack | --exec) (( i++ )) ;;
       --*) ;;
-      -*) [[ "$_a" =~ [nd] ]] && return 1 ;;
+      -*) [[ "$_a" =~ [nd] ]] && return 1 ;; # -n, -d, bundled or alone
       *)
-        (( _npos++ ))
-        (( _npos == 1 )) && continue # the remote
+        # The remote and `:ref` (a delete) never look like a version: no skip needed.
         [[ "$_a" == tag ]] && { _tagword=1; continue; }
         _a="${_a#+}"
-        [[ "$_a" == :* ]] && { _tagword=0; continue; } # `:ref` deletes ref
         _a="${_a%%:*}"
         if (( _tagword )) || [[ "$_a" == refs/tags/* ]]; then
           [[ "${_a#refs/tags/}" =~ $_MG_VERSION_RE ]] && _hit=1
@@ -165,9 +170,8 @@ _mg_is_release() {
         *) return 1 ;;
       esac ;;
     gh)
-      _mg_skip_opts -R --repo
       [[ "${w[i]:-}" == release ]] || return 1
-      (( i++ )); _mg_skip_opts -R --repo
+      (( i++ )); _mg_skip_opts -R --repo # `gh release -R o/r create`
       [[ "${w[i]:-}" == create ]] ;;
     npm)
       _mg_skip_opts --prefix -C --workspace -w --registry --userconfig --globalconfig --cache --loglevel --otp --tag --access
@@ -183,7 +187,10 @@ while IFS= read -r _seg; do
   read -ra _words <<<"$_seg"
   (( ${#_words[@]} > 0 )) || continue
   _mg_is_release "${_words[@]}" && { IS_RELEASE=1; break; }
-done < <(printf '%s\n' "$VIEW" | sed -e 's/[;&|()`]/\n/g')
+done < <(printf '%s\n' "$VIEW" | sed -e 's/[;&|()`]/\n/g' \
+  | awk '/(^|[^[:alnum:]_.-])(git|gh|npm)([^[:alnum:]_-]|$)/ && /tag|push|release|publish/')
+# (The awk keeps only candidate commands: a 2,000-command line went from 37 to
+# 215 ms when every command went through the bash parser — review L7.)
 (( IS_RELEASE )) || exit 0
 
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
