@@ -1039,7 +1039,9 @@ def is_user_turn:
       and ((.message.content | map(select(type == "object" and .type == "text")) | length) > 0)
       and ((.message.content | any(type == "object" and .type == "tool_result")) | not)
       and ((.message.content
-            | map(select(type == "object" and .type == "text") | (.text // ""))
+            # A non-string .text (object, array) is '' as in the JS twin: join()
+            # threw on it and the caller lost its whole result (D#96).
+            | map(select(type == "object" and .type == "text") | (.text | if type == "string" then . else "" end))
             | join("\n")
             | startswith("<system-reminder")) | not))
   );

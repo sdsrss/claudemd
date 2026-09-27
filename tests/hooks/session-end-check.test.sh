@@ -488,6 +488,26 @@ for SHAPE in \
   fi
 done
 
+# --- Case 23b (D#96, 0.99.0 second review M3): the turn's own prompt is a text
+# block whose `text` is not a string. is_user_turn's join() threw on it, so the
+# hook wrote no checkpoint; 0 of 21,620 real text blocks have this shape, and the
+# JS twin (transcript-user-turn.js) already reads it as ''.
+SHAPE_I=0
+for SHAPE in \
+  '{"type":"user","message":{"content":[{"type":"text","text":{"a":1}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"text","text":["x"]}]}}'; do
+  SHAPE_I=$((SHAPE_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case23b-$SHAPE_I.jsonl"
+  make_transcript "$T" "$SHAPE" "$edit_call" "$TR_OK"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    ok "Case 23b.$SHAPE_I: checkpoint survives a non-string prompt text $SHAPE"
+  else
+    ng "Case 23b.$SHAPE_I: non-string prompt text $SHAPE suppressed the checkpoint"
+  fi
+done
+
 # --- Case 24 (claude-mem-lite session 8b475d66): real validation commands are
 # run through a runner prefix, an env assignment, `timeout`, or a subshell. The
 # command-position anchor used to require the tool name itself there, so

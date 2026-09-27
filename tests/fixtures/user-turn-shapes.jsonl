@@ -13,3 +13,5 @@
 {"_name":"message is a string, not an object","_expected":false,"type":"user","message":"hello"}
 {"_name":"message is an array, not an object","_expected":false,"type":"user","message":["x"]}
 {"_name":"message is null","_expected":false,"type":"user","message":null}
+{"_name":"text block whose text is an object (D#96: jq join threw, JS read it as '')","_expected":true,"type":"user","message":{"content":[{"type":"text","text":{"a":1}}]}}
+{"_name":"text block whose text is an array","_expected":true,"type":"user","message":{"content":[{"type":"text","text":["x"]}]}}
