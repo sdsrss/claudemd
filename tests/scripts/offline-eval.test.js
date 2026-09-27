@@ -7,7 +7,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodeCwd, sandboxHooks, parseStream, claudeArgs, childEnv } from '../../scripts/offline-eval/run.mjs';
+import {
+  encodeCwd,
+  sandboxHooks,
+  parseStream,
+  claudeArgs,
+  childEnv,
+} from '../../scripts/offline-eval/run.mjs';
 import { TASKS } from '../../scripts/offline-eval/tasks.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -126,7 +132,7 @@ test('offline-eval: runs never inherit coordinator mode or the calling session',
   const env = childEnv(
     {
       PATH: '/usr/bin',
-      HOME: '/home/u',
+      LANG: 'C',
       CLAUDE_CODE_COORDINATOR_MODE: '1',
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       CLAUDECODE: '1',
@@ -141,7 +147,7 @@ test('offline-eval: runs never inherit coordinator mode or the calling session',
     },
     '/sbx/bin'
   );
-  assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'HOME', 'PATH']);
+  assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'LANG', 'PATH']);
   assert.equal(env.PATH, '/sbx/bin:/usr/bin');
   assert.equal(childEnv({ PATH: '/usr/bin' }, null).PATH, '/usr/bin');
 });

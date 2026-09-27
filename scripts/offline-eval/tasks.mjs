@@ -285,8 +285,16 @@ export const TASKS = {
         'src/users.js',
         "const USERS = { 1: { id: 1, name: 'ada' } };\nexport function getUser(id) {\n  return USERS[id] ?? null;\n}\n"
       );
-      w(dir, 'src/greet.js', "import { getUser } from './users.js';\nexport const greet = id => `hi ${getUser(id)?.name ?? 'stranger'}`;\n");
-      w(dir, 'src/admin.js', "import { getUser } from './users.js';\nexport const isAdmin = id => getUser(id)?.name === 'root';\n");
+      w(
+        dir,
+        'src/greet.js',
+        "import { getUser } from './users.js';\nexport const greet = id => `hi ${getUser(id)?.name ?? 'stranger'}`;\n"
+      );
+      w(
+        dir,
+        'src/admin.js',
+        "import { getUser } from './users.js';\nexport const isAdmin = id => getUser(id)?.name === 'root';\n"
+      );
       w(
         dir,
         'test/users.test.js',
@@ -302,7 +310,13 @@ export const TASKS = {
     prompt:
       'Do all of these: rename getUser to fetchUser everywhere; add a test that fetchUser returns null for an unknown id; run the tests; commit the change with the message "rename getUser to fetchUser".',
     judge: run => {
-      const files = ['src/users.js', 'src/greet.js', 'src/admin.js', 'test/users.test.js', 'test/greet.test.js'];
+      const files = [
+        'src/users.js',
+        'src/greet.js',
+        'src/admin.js',
+        'test/users.test.js',
+        'test/greet.test.js',
+      ];
       const text = files.map(f => fs.readFileSync(path.join(run.dir, f), 'utf8')).join('\n');
       const renamed = !/\bgetUser\b/.test(text) && /export function fetchUser\b/.test(text);
       const nullTest = /fetchUser\([^)]*\)[^\n]*null|null[^\n]*fetchUser\(/.test(
@@ -310,7 +324,8 @@ export const TASKS = {
       );
       const green = nodeTestPasses(run.dir);
       const log = git(run.dir, 'log', '--format=%s');
-      const committed = /rename getUser to fetchUser/.test(log) && git(run.dir, 'status', '--porcelain').trim() === '';
+      const committed =
+        /rename getUser to fetchUser/.test(log) && git(run.dir, 'status', '--porcelain').trim() === '';
       return {
         pass: renamed && nullTest && green && committed,
         why: `renamed=${renamed} nullTest=${nullTest} green=${green} committed=${committed}`,
@@ -324,12 +339,20 @@ export const TASKS = {
       w(
         dir,
         'src/lib/contact.js',
-        "export function checkAddress(s) {\n  return /^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$/i.test(s);\n}\n"
+        'export function checkAddress(s) {\n  return /^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$/i.test(s);\n}\n'
       );
       w(dir, 'src/lib/money.js', 'export const cents = n => Math.round(n * 100);\n');
-      w(dir, 'src/signup.js', "import { checkAddress } from './lib/contact.js';\nexport const signup = f => (checkAddress(f.mail) ? { ok: true } : { ok: false });\n");
-      w(dir, 'src/invoice.js', "import { cents } from './lib/money.js';\nexport const total = xs => xs.reduce((s, x) => s + cents(x), 0);\n");
-      w(dir, 'src/report.js', "export const line = r => `${r.name}: ${r.total}`;\n");
+      w(
+        dir,
+        'src/signup.js',
+        "import { checkAddress } from './lib/contact.js';\nexport const signup = f => (checkAddress(f.mail) ? { ok: true } : { ok: false });\n"
+      );
+      w(
+        dir,
+        'src/invoice.js',
+        "import { cents } from './lib/money.js';\nexport const total = xs => xs.reduce((s, x) => s + cents(x), 0);\n"
+      );
+      w(dir, 'src/report.js', 'export const line = r => `${r.name}: ${r.total}`;\n');
       commitAll(dir, 'init');
     },
     prompt: 'Where does this repo validate email addresses? Name the file and the function.',
