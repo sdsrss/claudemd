@@ -246,7 +246,7 @@ if [[ "$SOURCE" == "compact" ]]; then
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "[claudemd] compaction detected — before continuing multi-step work, re-read the active plan, and the extended spec if this task had loaded it. The core spec is still in context; it does not need re-reading. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
+        additionalContext: "[claudemd] compaction detected — before continuing multi-step work, re-read the active plan, and any spec module (~/.claude/spec-modules/) this task had used. The core spec is still in context; it does not need re-reading. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
       }
     }' 2>/dev/null)
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
@@ -403,8 +403,9 @@ spec_drift_check() {
     installed="$HOME/.claude/$base"
     # Absent USED to be skipped outright, on the reading that install.js decides
     # which files ship to ~/.claude and one this version does not install must
-    # not raise a banner. That case is hypothetical — paths.js#SPEC_FILES is the
-    # install list and it is every .md this glob returns — while the case the
+    # not raise a banner. That case is hypothetical — paths.js#SPEC_FILES plus the
+    # spec-modules/ mirror is the install list and it is every .md this glob
+    # returns — while the case the
     # skip actually covered is real and worse than drift: the user's spec was
     # DELETED. CC reads ~/.claude/CLAUDE.md as user-global instructions, so its
     # absence silently unloads the whole spec, and an EDITED spec banners while a
@@ -429,7 +430,8 @@ spec_drift_check() {
     # The four files are NOT read the same way, and a banner that says they are
     # is wrong about three of them (v0.84.0 pre-ship review, M3). Only
     # ~/.claude/CLAUDE.md is injected by the harness every session;
-    # CLAUDE-extended.md is read on demand per §2.2, and OPERATOR.md and
+    # the spec modules are read on demand per core §2.2 (CLAUDE-extended.md is
+    # their build source), and OPERATOR.md and
     # CLAUDE-changelog.md are not read by Claude Code at all. Losing the first is
     # the severe case and earns the strong sentence; losing the others is worth
     # repairing without claiming the spec went unloaded. So the consequence
@@ -441,7 +443,7 @@ spec_drift_check() {
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (CLAUDE-extended.md per §2.2) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand (the spec modules) or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
       }
     }' 2>/dev/null || true
     return 0

@@ -324,6 +324,21 @@ else
   echo "PASS: 15b compact banner matches §11 (plan yes, spec/core no)"
 fi
 
+# Case 15c (0.101.0 pre-tag review M5): since spec v7.0.0 the extended spec is
+# the modules' build source and core §2.2 says not to read it whole; §11 says to
+# re-read the modules a task used. The banner still said "the extended spec if
+# this task had loaded it" — every compaction told the model to read the file
+# core forbids. Arm 3 pins the §11 clause, as 15b does.
+if echo "$OUT15" | grep -qi 'extended spec'; then
+  echo "FAIL: 15c banner still tells the model to re-read the extended spec (out: $OUT15)"; FAIL=$((FAIL+1))
+elif ! echo "$OUT15" | grep -q 'spec module'; then
+  echo "FAIL: 15c banner does not name the spec modules as the re-read target (out: $OUT15)"; FAIL=$((FAIL+1))
+elif ! printf '%s' "$SPEC_PC_LINE" | grep -q 'module'; then
+  echo "FAIL: 15c spec §11 no longer names modules — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
+else
+  echo "PASS: 15c compact banner names the modules, not the extended spec"
+fi
+
 # Case 16: DISABLE_COMPACT_REREAD_REMINDER=1 suppresses the banner; exit 0.
 OUT16=$(DISABLE_COMPACT_REREAD_REMINDER=1 bash "$HOOK" <<<'{"session_id":"t","source":"compact"}' 2>/dev/null); EC16=$?
 if [[ "$EC16" == "0" && -z "$OUT16" ]]; then
