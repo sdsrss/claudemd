@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). Release command = `git tag` creating a tag, `git push` of tags,
-# `gh release create`, `npm publish` (not --dry-run). Reached = injected by
+# tier 3). Release command = `git [-C dir] tag [-a|-s|-m X] v1.2.3`, `git push`
+# with --tags or a v1.2.3 argument, `gh release create`, `npm publish` (not
+# --dry-run); CHANGELOG 0.101.0 Known limits lists the spellings it misses.
+# Reached = injected by
 # spec-module-inject.sh this session, or Read (tool or Bash reader) — the
 # same read test the §11 memory gate uses (hook_memfile_was_read).
 #

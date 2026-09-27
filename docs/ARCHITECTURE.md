@@ -19,7 +19,7 @@ Module → responsibility → external interface. "External" means what a caller
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `hooks/*.sh` (18 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
+| `hooks/*.sh` (24 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
 | `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn, install-failure sentinel bookkeeping | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_memfile_was_read` / `hook_spawn_install` / `hook_install_sentinel_clear` / `hook_install_sentinel_write` |
 | `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
 | `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
@@ -137,8 +137,8 @@ on each run, so a citation that stops matching is a red build rather than a stal
 5. Failure leaves `bootstrap-failed.json`; the next SessionStart banner reports it. An inline run that failed or timed out also falls through to the detached spawn in the same session, so the sync path is never worse than the async one. The one inline outcome that does not spawn is a stand-down on a lock another process holds (exit 3), and deliberately: the retry would take the same lock decision. That branch records `bootstrap-stand-down`, leaves the failure sentinel alone, and writes no manifest, so the next SessionStart re-enters the fresh path.
 
 **2. Bash command gate (PreToolUse:Bash)**
-1. Four hooks run in order: `pre-bash-safety-check.sh`, `banned-vocab-check.sh`, `ship-baseline-check.sh`, `memory-read-check.sh`.
-2. Each calls `hook_read_bash_fields` (jq parse, heredoc-body strip, line-continuation flatten) and exits early when `hook_is_readonly_bash` classifies the command as read-only.
+1. Five hooks run in order: `pre-bash-safety-check.sh`, `spec-module-gate.sh`, `banned-vocab-check.sh`, `ship-baseline-check.sh`, `memory-read-check.sh`. `spec-module-gate.sh` is the exception to steps 2-4: it reads the event with `hook_read_event` and `hook_trigger_view`, matches release commands only, writes a `module-unread` row in its default `log` mode and builds its own JSON in `advisory` / `deny` mode.
+2. The other four each call `hook_read_bash_fields` (jq parse, heredoc-body strip, line-continuation flatten) and exit early when `hook_is_readonly_bash` classifies the command as read-only.
 3. The hook matches its own command shapes (rm -rf $VAR / unpinned npx / curl|sh; git commit -m prose; git push with red base-branch CI; ship verbs without a matched MEMORY.md Read).
 4. A hit emits one deny JSON object via `hook_deny` (or is downgraded to a bypass row by an in-command `[allow-*]` token); a miss emits nothing. Exit is always 0.
 5. `hook_record` appends the verdict to `~/.claude/logs/claudemd.jsonl` with `spec_section`.

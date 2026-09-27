@@ -558,7 +558,10 @@ export async function doctor({ pruneBackups: prune } = {}) {
       push(
         `spec-hash:${s.name}`,
         false,
-        `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync`
+        `installed ${s.installed.slice(0, 12)}… ≠ shipped ${s.shipped.slice(0, 12)}… — local edits or stale install; run /claudemd-update to sync` +
+          (s.name.startsWith('spec-modules/')
+            ? ' and choose apply-all: its preview compares the four spec files only, not the modules'
+            : '')
       );
     }
   }

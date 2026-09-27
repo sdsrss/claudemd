@@ -319,8 +319,9 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     for (const p of specHome()) {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }
-    // The per-phase modules go with the spec that points at them. Only the
-    // *.md files claudemd wrote there, then the directory if that left it empty.
+    // The per-phase modules go with the spec that points at them: every regular
+    // *.md in the directory (claudemd keeps no record of which ones it wrote),
+    // then the directory if that left it empty.
     const modDir = specModulesHome();
     if (fs.existsSync(modDir)) {
       for (const f of fs.readdirSync(modDir)) {

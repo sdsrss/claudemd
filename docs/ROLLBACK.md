@@ -67,6 +67,11 @@ and it breaks existing installs).
 `node scripts/install.js` refuses downgrades by design. Escape hatch:
 `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old tag.
 
+Order matters. While Claude Code still loads the newer plugin, its SessionStart installs
+the newer spec again at the next session start (and an older plugin over a newer spec
+banners a stale registration that sends the user to `/claudemd-refresh`). Make the plugin
+Claude Code loads the old version first, then run the downgrade install, then restart.
+
 From 0.101.0 (spec v7.0.0) back to 0.100.0: the older installer does not know
 `~/.claude/spec-modules/`, so it restores the v6.35.0 core and extended and leaves that
 directory in place. No 0.100.0 hook reads it and the v6.35.0 core does not name it; remove

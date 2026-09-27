@@ -13,9 +13,9 @@ Usage:
 
 - Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the most recent backup:
   `CLAUDEMD_SPEC_ACTION=restore node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
-  This restores; it does not remove. `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` — spec files claudemd added that you never had — are left in place, because removing spec files is `CLAUDEMD_SPEC_ACTION=delete` and that path is gated behind `CLAUDEMD_CONFIRM=1`. Claude Code does not auto-load those three, so they are inert; delete them by hand if you want them gone.
+  This restores; it does not remove. `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` — spec files claudemd added that you never had — are left in place, because removing spec files is `CLAUDEMD_SPEC_ACTION=delete` and that path is gated behind `CLAUDEMD_CONFIRM=1`. Claude Code does not auto-load those three, so they are inert; delete them by hand if you want them gone. `~/.claude/spec-modules/` is left in place too, and with the claudemd hooks gone nothing injects it.
 
-- Full removal (delete spec files; requires hard-AUTH confirm):
+- Full removal (delete spec files and every `*.md` in `~/.claude/spec-modules/`; requires hard-AUTH confirm):
   `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
 After this command finishes, run `/plugin uninstall claudemd@claudemd` to remove the plugin cache itself.
