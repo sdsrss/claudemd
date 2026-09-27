@@ -401,6 +401,22 @@ if [[ -n "$PAUSED_MD" ]] && grep -qF "Bash: $TMP_CWD/src/c.py" "$PAUSED_MD"; the
 else
   ng "Case 20: bashEditDiff mutation missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
 fi
+# Case 20c (D#96 L1): "Last mutation tool call(s)" keeps the LAST three files
+# in the order Claude Code recorded them. jq's `unique` sorted the paths, so a
+# command that changed z, a, m, b listed b, m, z (140 of 8,306 real windows).
+TR_BASH_ORDER='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tb","content":""}]},"toolUseResult":{"stdout":"","bashEditDiff":{"files":[{"filePath":"__ROOT__/z.py","hunks":[]}],"changedFiles":["__ROOT__/z.py","__ROOT__/a.py","__ROOT__/m.py","__ROOT__/b.py"]}}}'
+TR_BASH_ORDER=${TR_BASH_ORDER//__ROOT__/$TMP_CWD}
+reset_cwd
+T="$TMP_HOME/case20c.jsonl"
+make_transcript "$T" "$USER_MSG" "$bash_edit_call" "$TR_BASH_ORDER"
+run_hook "$T"
+PAUSED_MD=$(compgen -G "$TMP_CWD/tasks/*-paused.md" 2>/dev/null | head -1)
+LISTED=$(grep -oE "^- Bash: .*" "$PAUSED_MD" 2>/dev/null | sed "s|- Bash: $TMP_CWD/||" | tr '\n' ' ')
+if [[ "$LISTED" == "a.py m.py b.py " ]]; then
+  ok "Case 20c: the paused list keeps the recorded order (a m b), each file once"
+else
+  ng "Case 20c: paused list is '$LISTED', expected 'a.py m.py b.py '"
+fi
 # Control: the SAME Bash call whose result carries no bashEditDiff is not a
 # mutation, so Case 20 is about the recorded edit and not about Bash calls.
 reset_cwd

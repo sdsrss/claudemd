@@ -173,13 +173,16 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   # join puts the mutation BEFORE the validate test of the same command below:
   # `python3 - <<PY … PY && npm test` edits and then verifies. `changedFiles`
   # is the complete list; `files[]` holds at most 5 diffs and can be empty
-  # (0.99.0 pre-tag review M1), so both are read, once per path.
+  # (0.99.0 pre-tag review M1), so both are read, once per path. Deduped in
+  # first-seen order, not with `unique`, which sorts: `recent` keeps the last
+  # three, and sorted they were the alphabetically last (D#96 L1).
   (reduce (.[] | select(.toolUseResult | type == "object")
                 | [(.message.content // [] | if type == "array" then . else [] end
                     | map(select(.type == "tool_result") | .tool_use_id) | first),
                    ([.toolUseResult.bashEditDiff | objects
                      | ((.changedFiles | arrays | .[] | strings),
-                        (.files | arrays | .[] | objects | .filePath | strings))] | unique)]
+                        (.files | arrays | .[] | objects | .filePath | strings))]
+                    | reduce .[] as $f ([]; if index([$f]) then . else . + [$f] end))]
                 | select((.[0] | type) == "string" and (.[1] | length) > 0))
           as $p ({}; .[$p[0]] = $p[1])) as $bed |
   # String content (a plain-text assistant row) holds no tool_use; coerce it to
