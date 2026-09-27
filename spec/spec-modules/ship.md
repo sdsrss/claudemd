@@ -1,7 +1,7 @@
 ---
 module: ship
 loads-on: before tagging, releasing, publishing or deploying
-triggers: 发版|发布(新)?版本|发\s*v?\d+(\.\d+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|\bship\b|\bcut a release\b|\bcreate-release\b|\bmerge-and-push\b|\brelease\b.{0,40}\bto npm\b|npm publish|gh release|\bdeploy\b|上线
+triggers: 发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]+(\.[0-9]+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|\bship\b|\bcut a release\b|create-release|merge-and-push|release.{0,40}to npm|npm publish|gh release|\bdeploy\b|上线
 trigger-window: whole
 ---
 

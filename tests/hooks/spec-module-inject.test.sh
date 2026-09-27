@@ -126,14 +126,19 @@ done
 # later ran a release command; create-release / merge-and-push are core §2.2's
 # own ship triggers. Negative rows sit next to each new arm: 发 without a dotted
 # version, a version without 发, 发布 not after 推送/合并, and release not
-# followed by "to npm". Runs through jq, the hook's regex engine.
+# followed by "to npm". Runs through jq, the hook's regex engine. Batch review
+# (D#110 L8/L9): the English arms also match right after CJK text (no \b, which
+# jq reads differently there), 开发/触发 + a version is not a release, and
+# full-width digits do not count (jq's \d took them, JS's did not).
 BAD14=0; N14=0
 for p in '发 v6.17.0' '推送并发 0.99.0' '合 #13 再一起发 0.12' '提交 推送 合并 发布' \
-  'run create-release for 0.9' 'merge-and-push this branch' 'Release the CLI to npm'; do
+  'run create-release for 0.9' 'merge-and-push this branch' 'Release the CLI to npm' \
+  '跑一下create-release' '先merge-and-push' 'release这个包 to npm'; do
   N14=$((N14+1)); [[ "$(mods "$(inject "$p" "s14p$N14")")" == "ship "* ]] || { ng "14 release request missed ship: $p"; BAD14=1; }
 done
 N14=0
-for p in '发一下这个文件给我看看' '看看 v6.17.0 的 CHANGELOG' '文章发布在哪里' 'release notes look wrong' '合并这两个函数'; do
+for p in '发一下这个文件给我看看' '看看 v6.17.0 的 CHANGELOG' '文章发布在哪里' 'release notes look wrong' '合并这两个函数' \
+  '开发 2.0 版本的登录功能' '开发v2.0的功能' '触发 1.5 秒延迟' '发 ０.９９.０'; do
   N14=$((N14+1)); [[ -z "$(inject "$p" "s14n$N14")" ]] || { ng "14 non-release prompt drew a module: $p -> $(mods "$(inject "$p" "s14m$N14")")"; BAD14=1; }
 done
 [[ $BAD14 == 0 ]] && ok "14 发 <version>, 推送/合并…发布, create-release, merge-and-push and release…to npm inject ship; neighbours do not"
