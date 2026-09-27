@@ -70,8 +70,9 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 #
 # CC parses hook stdout with a strict single-value JSON.parse, so two objects on
 # stdout are invalid JSON and BOTH are dropped silently (docs/HOOK-PROTOCOL.md).
-# Empty candidates are skipped, one survivor is emitted as-is, several are
-# joined into one additionalContext. Both emit points call this: the
+# Empty candidates are skipped; the rest are rebuilt into one object whose
+# additionalContext and systemMessage are each joined across candidates. Both
+# emit points call this: the
 # version-match branch with five candidates, the tail with three. They were two
 # byte-identical jq programs, which is one place to add a sixth banner and one
 # place to forget (2026-09-05 audit P2-2).
@@ -166,7 +167,11 @@ ledger_banner() {
   [[ -n "${body//[[:space:]]/}" ]] || return 0
 
   jq -cn --arg p "$newest" --arg b "$body" --argjson max "$LEDGER_MAX_BYTES" '
-    ($b | if length > $max then .[0:$max] + "\n… (ledger truncated at " + ($max|tostring) + " characters)" else . end) as $b |
+    ($b | if length > $max then .[0:$max] + "\n… (ledger truncated at " + ($max|tostring) + " characters)" else . end
+        # The body is file content anyone can write: a literal closing tag in it
+        # would end the wrapper early and let the rest pass as the hook'"'"'s own
+        # text (B2 review F6).
+        | gsub("</ledger"; "<\\/ledger")) as $b |
     {
     suppressOutput: true,
     hookSpecificOutput: {
@@ -476,6 +481,7 @@ emit_bootstrap_failed_banner() {
 
   jq -cn --arg ctx "$msg" '{
     suppressOutput: true,
+    systemMessage: $ctx,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: $ctx
@@ -542,6 +548,7 @@ emit_user_content_banner() {
     msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
     jq -cn --arg ctx "$msg" '{
       suppressOutput: true,
+      systemMessage: $ctx,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
         additionalContext: $ctx
@@ -562,6 +569,7 @@ emit_user_content_banner() {
 
   jq -cn --arg ctx "$msg" '{
     suppressOutput: true,
+    systemMessage: $ctx,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: $ctx

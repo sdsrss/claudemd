@@ -1,6 +1,6 @@
 ---
 name: claudemd-doctor
-description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, rule usage, skill routing and memory hygiene. Supports --prune-backups=N.
+description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, rule usage, skill routing (primaries disabled via skillOverrides, gs primaries reachable through the gstack router) and memory hygiene. Supports --prune-backups=N.
 ---
 
 Usage: `/claudemd-doctor` or `/claudemd-doctor --prune-backups=5`

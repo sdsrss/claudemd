@@ -1,6 +1,6 @@
 ---
 name: claudemd-uninstall
-description: Clean up claudemd's manifest and legacy hook entries before `/plugin uninstall claudemd@claudemd`, which runs no pre-uninstall step of its own. Spec files, state and logs are kept unless CLAUDEMD_PURGE=1.
+description: Clean up claudemd's manifest and legacy hook entries before `/plugin uninstall claudemd@claudemd`, which runs no pre-uninstall step of its own. Spec files stay unless CLAUDEMD_SPEC_ACTION=delete (with CLAUDEMD_CONFIRM=1); the state dir and logs stay unless CLAUDEMD_PURGE=1.
 ---
 
 Usage:

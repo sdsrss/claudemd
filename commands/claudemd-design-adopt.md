@@ -1,6 +1,6 @@
 ---
 name: claudemd-design-adopt
-description: Generate a fact-based DESIGN.md from a UI project's existing design tokens and wire it into project CLAUDE.md, so agents stop inventing colors and spacing. Use when the user asks to configure design specs for agents (配置设计规范 / 设计规范). Modes — check, remove.
+description: Generate a fact-based DESIGN.md from a UI project's existing design tokens and wire it into project CLAUDE.md, so agents stop inventing colors and spacing. Use when the user asks to configure design specs for agents (配置设计规范 / 设计规范), or a UI project has design tokens but no DESIGN.md. Modes — check, remove.
 ---
 
 Usage: `/claudemd-design-adopt` | `/claudemd-design-adopt check` | `/claudemd-design-adopt remove`

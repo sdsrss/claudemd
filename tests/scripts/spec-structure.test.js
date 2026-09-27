@@ -843,7 +843,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '464a64ccee351665' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'c66f48b0dc11727c' },
-  { file: EXT, heading: '## Recent changes', sha256: 'c0e8c3f893b4c43d' },
+  { file: EXT, heading: '## Recent changes', sha256: '0b4ac40732bc5c67' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '1184fe7ddfcf0798' },
   {
     file: EXT,

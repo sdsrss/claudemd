@@ -5,16 +5,16 @@ description: Measure how often a memory that the prompt hint suggested was then 
 
 Default window is 30 days. The script answers one question: when claudemd's `memory-prompt-hint` hook surfaced a relevant memory to the agent, did the agent actually read or cite it?
 
-**$ARGUMENTS parsing**: same shape as `/claudemd-rules` — split `$ARGUMENTS` into a numeric day-count and an optional `--verbose` agent-presentation flag (NOT a script flag — the script ignores it):
+**Argument parsing** (the arguments are `$ARGUMENTS`): same shape as `/claudemd-rules` — split `$ARGUMENTS` into a numeric day-count and an optional `--verbose` agent-presentation flag (NOT a script flag — the script ignores it):
 
-| `$ARGUMENTS` value | `CLAUDEMD_BYPASS_DAYS` env | Agent output |
+| Argument value | `CLAUDEMD_BYPASS_DAYS` env | Agent output |
 |---|---|---|
 | (empty) | unset (script uses default 30) | summary only |
 | `7` | `7` | summary only |
 | `--verbose` | unset | summary + full `perMemory` + `perSession` |
 | `90 --verbose` | `90` | summary + full per-memory and per-session breakdown |
 
-Run: `CLAUDEMD_BYPASS_DAYS=<numeric-from-$ARGUMENTS-or-30> node ${CLAUDE_PLUGIN_ROOT}/scripts/lesson-bypass-audit.js --json`
+Run: `CLAUDEMD_BYPASS_DAYS=<numeric-from-the-arguments-or-30> node ${CLAUDE_PLUGIN_ROOT}/scripts/lesson-bypass-audit.js --json`
 
 (`--cwd` defaults to the current working directory, which is what you want when auditing the project the agent is running in.)
 
@@ -32,7 +32,7 @@ The JSON contains:
 | `perMemory` | per-filename `{applied, bypassed, missingTranscript}` |
 | `perSession` | per-session-id same shape, plus `transcriptMissing: bool` |
 
-Format: lead with `citeRecall`, `bypassRate`, and the top-5 bypassed memories. Suppress full `perMemory` / `perSession` arrays unless `$ARGUMENTS` contained `--verbose`.
+Format: lead with `citeRecall`, `bypassRate`, and the top-5 bypassed memories. Suppress full `perMemory` / `perSession` arrays unless the arguments contained `--verbose`.
 
 **Reading the signal**:
 - `citeRecall ≥ 60%` over 30d with ≥20 measurable events = R3 Step 2 working as designed; cite-#NN contract loop is observable.

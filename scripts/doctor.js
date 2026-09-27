@@ -502,7 +502,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
         push(
           'routing:gstack-reachable',
           true,
-          `all ${gs.length} gs primaries reachable${routers.length ? ` (router: ${routers[0]})` : ''}`
+          `all ${gs.length} gs primaries reachable${routers.length ? ` through the gstack router at ${routers[0]} (invoke the \`gstack\` skill; a bare Skill call by sub-skill name, e.g. \`ship\`, still fails unless it is registered on its own — see routing:ship-skill)` : ''}`
         );
       } else {
         push(

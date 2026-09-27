@@ -18,9 +18,9 @@ Batch B1 of `docs/audit/20260926-180700.md` (a prompt audit of the spec against 
 - **Emphasis inside HARD bullets (M3)**: caps and verdict words stacked inside rules already labelled HARD ("MUST", "= own honesty failure", "pure enumeration = abdication") become plain statements. The HARD label and what it binds are unchanged.
 - **Language default (D4)**: core §1 said "default 中文" in the published spec. It now reads "before prose: per a user-level rule, else English"; a personal default belongs in `~/.claude/rules/*.md`, which Claude Code loads every session.
 - **Commands and OPERATOR (K1–K5, D5)**: `/claudemd-sampling-audit` forwards the flags its table documents (it used an unsupported `$ARGS`); three command files stop stating what the scripts do not do; one description names intent instead of listing globs; OPERATOR records why the size cap stays in bytes (core ≈ 2.41 B/token, extended ≈ 2.47 B/token, measured).
-- **Later in the same version (batch B2)**: OPERATOR's companion-file line points at core §2.2; its settled `skillOverrides` item gains the 2026-09-27 state (no overrides, all 24 primaries enabled, gs primaries reached through the gstack router and checked by doctor's new `routing:gstack-reachable`); its tasks table lists all 8 sampling-audit detectors. `hard-rules.json`'s §0.1 note names the two scripts that enforce it.
+- **Later in the same version (batch B2)**: OPERATOR's companion-file line points at core §2.2; its settled `skillOverrides` item gains the 2026-09-27 state (no overrides, all 24 primaries enabled, gs primaries sitting under the gstack router, which doctor's new `routing:gstack-reachable` checks); its tasks table lists all 8 sampling-audit detectors. `hard-rules.json`'s §0.1 note names the two scripts that enforce it.
 
-Core 24994 → 24867 bytes, extended 49479 → 49424, OPERATOR.md 16200 → 17260.
+Core 24994 → 24867 bytes, extended 49479 → 49424, OPERATOR.md 16200 → 17463.
 
 ## v6.35.0 (minor, 2026-09-26) — `ship` if listed; worktree-relative spawn paths
 
