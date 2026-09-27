@@ -1,7 +1,7 @@
 ---
 module: debug
 loads-on: when a bug, a failing test or an error is the task
-triggers: 报错|修复(?!错别字|拼写|措辞|文案|格式|排版)|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b(?! (typo|spelling|wording|grammar|formatting|indentation|comment|docstring|link|readme)\b)|\bfailing\b|stack ?trace|\bexception\b
+triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b(?! (typos?|spelling)\b)|\bfailing\b|stack ?trace|\bexception\b
 trigger-window: head
 ---
 

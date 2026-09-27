@@ -97,16 +97,20 @@ rmdir "$HOME/.claude/spec-modules"
 mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
 [[ "$RC12" == 0 && -z "$E12" ]] && ok "12 an empty module directory: exit 0, no stderr" || ng "12 empty module dir: rc=$RC12 stderr=$E12"
 
-# 13. a wording fix is L0, not debugging: "Fix the typo …" / 修复错别字 inject
-# nothing, while a real bug in the same shape still draws debug.md (B7 A/B: the
-# typo task drew debug.md in every B run). Runs through jq's regex engine, which
-# is what the hook uses — the lookahead must work there, not only in JS.
-C13A=$(inject 'Fix the typo in README.md.' s13a)
-C13B=$(inject '修复错别字：recieve 应为 receive' s13b)
-C13C=$(inject 'Fix the bug in README generator' s13c)
-C13D=$(inject '修复这个报错' s13d)
-if [[ -z "$C13A" && -z "$C13B" && "$(mods "$C13C")" == "debug " && "$(mods "$C13D")" == "debug " ]]; then
-  ok "13 wording fixes draw no debug.md; a bug fix in the same shape still does"
-else ng "13 typo=$(mods "$C13A") 错别字=$(mods "$C13B") bug=$(mods "$C13C") 报错=$(mods "$C13D")"; fi
+# 13. a typo / spelling fix is L0, not debugging: "Fix the typo …", "Fix the
+# typos …", 修复错别字 and 修复一下错别字 inject nothing (B7 A/B: the typo task drew
+# debug.md in every B run). The positive rows match ONLY through the `fix the` /
+# 修复 arm, with a word right after it that also names code (link, formatting,
+# 格式化), so widening the exclusion past typo/spelling turns this red. Runs
+# through jq's regex engine, which is what the hook uses.
+N13=0; BAD13=0
+for p in 'Fix the typo in README.md.' 'Fix the typos in README' '修复错别字：recieve 应为 receive' '修复一下错别字'; do
+  N13=$((N13+1)); [[ -z "$(inject "$p" "s13n$N13")" ]] || { ng "13 wording fix drew a module: $p"; BAD13=1; }
+done
+P13=0
+for p in 'Fix the link resolver, it returns null for relative paths' 'Fix the formatting function returning NaN' '修复格式化函数返回空值'; do
+  P13=$((P13+1)); [[ "$(mods "$(inject "$p" "s13p$P13")")" == "debug " ]] || { ng "13 real fix missed debug: $p"; BAD13=1; }
+done
+[[ $BAD13 == 0 ]] && ok "13 typo/spelling fixes draw no debug.md; code fixes whose next word is link/formatting/格式化 still do"
 
 claudemd_assert_summary
