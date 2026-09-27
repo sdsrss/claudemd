@@ -91,9 +91,13 @@ export function buildModules(sourceText, registry) {
   );
 }
 
+/** The module registry (`modules` of spec-modules.json) in a spec directory. */
+export function readRegistry(specDir) {
+  return JSON.parse(fs.readFileSync(path.join(specDir, 'spec-modules.json'), 'utf8')).modules;
+}
+
 /** Read source + registry from a repo/plugin root and build. */
 export function buildFromRoot(root) {
   const src = fs.readFileSync(path.join(root, 'spec', 'CLAUDE-extended.md'), 'utf8');
-  const registry = JSON.parse(fs.readFileSync(path.join(root, 'spec', 'spec-modules.json'), 'utf8')).modules;
-  return buildModules(src, registry);
+  return buildModules(src, readRegistry(path.join(root, 'spec')));
 }

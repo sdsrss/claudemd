@@ -43,11 +43,35 @@ test('ext-cross-refs: every §EXT ref in shipped core resolves in extended', () 
   const check = r.checks.find(c => c.name === 'ext-cross-refs');
   assert.ok(check, 'ext-cross-refs check should exist');
   assert.equal(check.ok, true, `unresolved §EXT refs in shipped spec: ${JSON.stringify(check.findings)}`);
-  assert.ok(check.stats.refsFound >= 5, `expected ≥5 refs in core, got ${check.stats.refsFound}`);
+  // v7.1.0 moved core's pointers from `§EXT §N` to module file names, so most
+  // cross-refs are now `name.md` tokens resolved against spec-modules.json.
+  assert.ok(
+    check.stats.refsFound + check.stats.moduleRefsFound >= 5,
+    `expected ≥5 refs in core, got ${check.stats.refsFound} + ${check.stats.moduleRefsFound}`
+  );
+  assert.ok(check.stats.moduleRefsFound >= 5, `expected ≥5 module refs, got ${check.stats.moduleRefsFound}`);
   assert.ok(
     check.stats.sectionsFound >= 5,
     `expected ≥5 sections in extended, got ${check.stats.sectionsFound}`
   );
+});
+
+test('ext-cross-refs: a core pointer to a module that does not exist is CRITICAL', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-modref-'));
+  try {
+    fs.cpSync(path.join(REPO_ROOT, 'spec'), path.join(root, 'spec'), { recursive: true });
+    const core = path.join(root, 'spec', 'CLAUDE.md');
+    fs.writeFileSync(core, fs.readFileSync(core, 'utf8').replace('- `modes.md` —', '- `mode.md` —'));
+    const r = auditSpecCoherence({ pluginRoot: root, projectCwd: '/nonexistent-cwd-for-test' });
+    const check = r.checks.find(c => c.name === 'ext-cross-refs');
+    assert.equal(check.ok, false);
+    assert.ok(
+      check.findings.some(f => f.severity === 'CRITICAL' && f.detail.includes('mode.md')),
+      JSON.stringify(check.findings)
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('sizing-accuracy: shipped Sizing line within ±20B of actual wc -c', () => {

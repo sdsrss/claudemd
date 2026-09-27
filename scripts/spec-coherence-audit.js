@@ -40,6 +40,7 @@ import { encodeProjectCwd, projectDir, resolvePluginRoot } from './lib/paths.js'
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
+import { readRegistry } from './lib/spec-modules.js';
 
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
 
@@ -162,6 +163,21 @@ function checkExtCrossRefs(specDir) {
     severity: 'CRITICAL',
     detail: `core references §${id} but no matching ##+ §${id} heading in spec/CLAUDE-extended.md`,
   }));
+  // Since v7.1.0 core points at modules by file name (`verify.md`) rather than
+  // by `§EXT §N`. A lowercase backticked `name.md` is a module pointer
+  // (`CLAUDE.md`, `MEMORY.md` and `tasks/<slug>.md` paths do not match); each
+  // must name a module registered in spec/spec-modules.json.
+  const registryPath = path.join(specDir, 'spec-modules.json');
+  const modules = new Set(fs.existsSync(registryPath) ? Object.keys(readRegistry(specDir) || {}) : []);
+  const moduleRefs = new Set([...coreText.matchAll(/`([a-z][a-z0-9-]*)\.md`/g)].map(m => m[1]));
+  for (const name of [...moduleRefs].sort()) {
+    if (!modules.has(name)) {
+      findings.push({
+        severity: 'CRITICAL',
+        detail: `core points at \`${name}.md\` but spec/spec-modules.json registers no module "${name}"`,
+      });
+    }
+  }
   // Duplicate heading ids: resolution "succeeds" but the target is ambiguous.
   // HIGH (not CRITICAL): navigation trap, not a broken contract.
   for (const d of duplicates) {
@@ -181,6 +197,7 @@ function checkExtCrossRefs(specDir) {
     findings,
     stats: {
       refsFound: refs.size,
+      moduleRefsFound: moduleRefs.size,
       sectionsFound: sections.size,
       unresolvedCount: unresolved.length,
       duplicateHeadingCount: duplicates.length,

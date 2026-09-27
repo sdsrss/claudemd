@@ -164,7 +164,7 @@ const DECLARED = [
   ],
   [
     'scripts/lib/spec-modules.js',
-    "const registry = JSON.parse(fs.readFileSync(path.join(root, 'spec', 'spec-modules.json'), 'utf8')).modules;",
+    "return JSON.parse(fs.readFileSync(path.join(specDir, 'spec-modules.json'), 'utf8')).modules;",
     'not-a-row',
     'the spec-module registry, one JSON document',
   ],
