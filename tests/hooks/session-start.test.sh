@@ -1147,6 +1147,18 @@ else
 fi
 touch "$LEDGER_PROJ/tasks/demo-ledger.md"
 
+# The cap bounds the quoted ledger body, so that is what these cases measure:
+# the text between `<ledger path="…">` and `</ledger>`. The whole banner also
+# carries the reminder and the ledger path twice, and a macOS temp path is long
+# enough to push a correctly capped banner past a whole-banner threshold (0.101.0
+# CI, macOS leg: 2,659 chars with the body at the cap).
+ledger_body_len() {
+  local b="$1"
+  [[ "$b" == *'<ledger path="'* ]] || { echo 0; return; }
+  b=${b#*'<ledger path="'}; b=${b#*$'\n'}; b=${b%$'\n</ledger>'*}
+  echo "${#b}"
+}
+
 # Case 42 (pre-ship H4): the injected text is actually capped.
 # `cut -c1-N` is PER LINE, so the first version bounded each line and nothing
 # bounded the total — a 400-line ledger produced a 24,000-character banner, into
@@ -1171,11 +1183,11 @@ awk 'BEGIN {
 }' > "$BIG_PROJ/tasks/big-ledger.md"
 OUT42=$(bash "$HOOK" <<<"{\"session_id\":\"big\",\"source\":\"compact\",\"cwd\":\"$BIG_PROJ\"}" 2>/dev/null)
 CTX42=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT42" 2>/dev/null)
-CTX42_LEN=${#CTX42}
-if (( CTX42_LEN > 0 && CTX42_LEN < 2600 )); then
-  echo "PASS: 42 a 60-line ledger is capped (banner ${CTX42_LEN} chars: 1600 cap + the reminder)"
+CTX42_LEN=$(ledger_body_len "$CTX42")
+if (( CTX42_LEN > 0 && CTX42_LEN < 1700 )); then
+  echo "PASS: 42 a 60-line ledger is capped (quoted body ${CTX42_LEN} chars: 1600 cap + the truncation note)"
 else
-  echo "FAIL: 42 many-line ledger not capped (banner ${CTX42_LEN} chars)"; FAIL=$((FAIL+1))
+  echo "FAIL: 42 many-line ledger not capped (quoted body ${CTX42_LEN} chars)"; FAIL=$((FAIL+1))
 fi
 
 # One line, over the cap. This shape PASSED under the per-line `cut`, so it is
@@ -1281,9 +1293,10 @@ CAP_OK=1
 for bad in -5 abc 1e9 ""; do
   o=$(CLAUDEMD_LEDGER_MAX_BYTES="$bad" bash "$HOOK" <<<"{\"session_id\":\"cap\",\"source\":\"compact\",\"cwd\":\"$CAP_PROJ\"}" 2>/dev/null)
   c=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$o" 2>/dev/null)
-  if (( ${#c} >= 2600 )); then
+  n=$(ledger_body_len "$c")
+  if (( n == 0 || n >= 1700 )); then
     CAP_OK=0
-    echo "      cap defeated by CLAUDEMD_LEDGER_MAX_BYTES='$bad' (${#c} chars)"
+    echo "      cap defeated by CLAUDEMD_LEDGER_MAX_BYTES='$bad' (quoted body ${n} chars)"
   fi
 done
 if [[ "$CAP_OK" == "1" ]]; then
