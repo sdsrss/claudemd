@@ -48,6 +48,9 @@ for f in "$MOD_DIR"/*.md; do
   [[ -f "$f" && "$f" != "$MOD_DIR/ship.md" ]] && mods+=("$f")
 done
 
+# bash 3.2 (macOS) aborts on "${mods[@]}" of an empty array under set -u.
+(( ${#mods[@]} > 0 )) || exit 0
+
 picked=()
 for f in "${mods[@]}"; do
   (( ${#picked[@]} >= 2 )) && break

@@ -86,4 +86,15 @@ C11=$(inject 'ship it' s11)
 mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
 [[ -z "$C11" ]] && ok "11 no installed modules, no output" || ng "11 output without modules"
 
+# 12. an empty module directory (every file deleted by hand): silent, exit 0,
+# nothing on stderr. The loop over an empty array under `set -u` aborts on
+# bash 3.2 (macOS /bin/bash), which bash 5 does not show (0.101.0 pre-tag
+# review, NOT CHECKED item).
+mv "$HOME/.claude/spec-modules" "$HOME/.claude/spec-modules.off"
+mkdir "$HOME/.claude/spec-modules"
+E12=$(jq -cn '{session_id:"s12", prompt:"ship it", cwd:"/work/p"}' | bash "$HOOK" 2>&1 >/dev/null); RC12=$?
+rmdir "$HOME/.claude/spec-modules"
+mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
+[[ "$RC12" == 0 && -z "$E12" ]] && ok "12 an empty module directory: exit 0, no stderr" || ng "12 empty module dir: rc=$RC12 stderr=$E12"
+
 claudemd_assert_summary
