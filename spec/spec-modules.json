@@ -3,7 +3,7 @@
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",
-      "triggers": "发版|发布(新)?版本|打\\s*tag|\\bship\\b|\\bcut a release\\b|npm publish|gh release|\\bdeploy\\b|上线",
+      "triggers": "发版|发布(新)?版本|发\\s*v?\\d+(\\.\\d+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*tag|\\bship\\b|\\bcut a release\\b|\\bcreate-release\\b|\\bmerge-and-push\\b|\\brelease\\b.{0,40}\\bto npm\\b|npm publish|gh release|\\bdeploy\\b|上线",
       "window": "whole"
     },
     "review": {

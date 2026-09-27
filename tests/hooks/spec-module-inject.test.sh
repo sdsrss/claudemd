@@ -118,4 +118,21 @@ for p in 'Fix the link resolver, it returns null for relative paths' 'Fix the fo
 done
 [[ $BAD13 == 0 ]] && ok "13 typo/spelling fixes draw no debug.md; code fixes whose next word also names code still do"
 
+# 14. release requests the v0.102.0 ship trigger missed (D#110 L20): the
+# 发 <version> and 推送/合并 … 发布 prompts are the real misses from sessions that
+# later ran a release command; create-release / merge-and-push are core §2.2's
+# own ship triggers. Negative rows sit next to each new arm: 发 without a dotted
+# version, a version without 发, 发布 not after 推送/合并, and release not
+# followed by "to npm". Runs through jq, the hook's regex engine.
+BAD14=0; N14=0
+for p in '发 v6.17.0' '推送并发 0.99.0' '合 #13 再一起发 0.12' '提交 推送 合并 发布' \
+  'run create-release for 0.9' 'merge-and-push this branch' 'Release the CLI to npm'; do
+  N14=$((N14+1)); [[ "$(mods "$(inject "$p" "s14p$N14")")" == "ship "* ]] || { ng "14 release request missed ship: $p"; BAD14=1; }
+done
+N14=0
+for p in '发一下这个文件给我看看' '看看 v6.17.0 的 CHANGELOG' '文章发布在哪里' 'release notes look wrong' '合并这两个函数'; do
+  N14=$((N14+1)); [[ -z "$(inject "$p" "s14n$N14")" ]] || { ng "14 non-release prompt drew a module: $p -> $(mods "$(inject "$p" "s14m$N14")")"; BAD14=1; }
+done
+[[ $BAD14 == 0 ]] && ok "14 发 <version>, 推送/合并…发布, create-release, merge-and-push and release…to npm inject ship; neighbours do not"
+
 claudemd_assert_summary
