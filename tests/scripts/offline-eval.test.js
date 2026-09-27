@@ -1,0 +1,85 @@
+// offline-eval.test.js — the pure parts of scripts/offline-eval/run.mjs. The
+// harness itself calls claude -p and costs money; these pin the three things a
+// wrong run would silently get wrong: which projects dir it deletes, which hooks
+// it installs with which HOME, and what the judges read from a stream.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { encodeCwd, sandboxHooks, parseStream } from '../../scripts/offline-eval/run.mjs';
+import { TASKS } from '../../scripts/offline-eval/tasks.mjs';
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+test('offline-eval: projects-dir name matches what Claude Code wrote in the 12.4 probe', () => {
+  assert.equal(
+    encodeCwd('/tmp/claude-1000/-home-ai-dev-claudemd/2efe47ad/scratchpad/probe'),
+    '-tmp-claude-1000--home-ai-dev-claudemd-2efe47ad-scratchpad-probe'
+  );
+});
+
+test('offline-eval: hooks run from this repo with the sandbox HOME; install hooks are left out', () => {
+  const h = sandboxHooks(REPO, '/sbx/home');
+  const cmds = Object.values(h).flatMap(gs => gs.flatMap(g => g.hooks.map(x => x.command)));
+  assert.ok(cmds.length >= 15, `expected the plugin's hooks, got ${cmds.length}`);
+  for (const c of cmds) {
+    assert.ok(c.startsWith("HOME='/sbx/home' "), c);
+    assert.ok(!c.includes('${CLAUDE_PLUGIN_ROOT}'), c);
+    assert.ok(c.includes(`${REPO}/hooks/`), c);
+  }
+  assert.ok(!cmds.some(c => /session-start-check|version-sync/.test(c)));
+  assert.ok(
+    cmds.some(c => c.includes('pre-bash-safety-check.sh')),
+    'the §8 gate is installed'
+  );
+});
+
+test('offline-eval: parseStream pairs tool results, reads cost, and finds spec reads', () => {
+  const lines = [
+    { type: 'system', subtype: 'init', session_id: 's1', cwd: '/sbx/repo' },
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'hi' },
+          {
+            type: 'tool_use',
+            id: 'a',
+            name: 'Read',
+            input: { file_path: '/sbx/home/.claude/CLAUDE-extended.md' },
+          },
+        ],
+      },
+    },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: 'x' }] } },
+    {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'rm -rf "$OUT"' } }],
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 'b', content: '§8 SAFETY: denied', is_error: true }],
+      },
+    },
+    { type: 'result', result: 'done', total_cost_usd: 0.5, num_turns: 3, duration_ms: 1000 },
+  ].map(o => JSON.stringify(o));
+  const r = parseStream(lines.join('\n'), '/sbx/home');
+  assert.equal(r.uses.length, 2);
+  assert.equal(r.uses[1].isError, true);
+  assert.match(r.uses[1].resultText, /§8/);
+  assert.equal(r.extRead, true);
+  assert.deepEqual([r.cost, r.turns, r.final, r.cwd], [0.5, 3, 'done', '/sbx/repo']);
+});
+
+test('offline-eval: every task has a prompt, a setup and a judge', () => {
+  for (const [id, t] of Object.entries(TASKS)) {
+    assert.equal(typeof t.prompt, 'string', id);
+    assert.equal(typeof t.setup, 'function', id);
+    assert.equal(typeof t.judge, 'function', id);
+  }
+  assert.deepEqual(Object.keys(TASKS), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8']);
+});
