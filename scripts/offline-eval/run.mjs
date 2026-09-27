@@ -45,6 +45,22 @@ Options:
 
 Exit codes: 0 ran | 1 setup error | 2 argv-shape error.`;
 
+// Environment a run must not inherit. CLAUDE_CODE_COORDINATOR_MODE (exported by
+// this machine's ~/.bashrc) leaves main with no Read/Edit/Bash, so every task is
+// forced through a worker agent: B4-B7 all ran that way (tasks/specs/v7.1-core.md).
+// The rest tie the child to the session that launched the harness.
+const INHERITED_SESSION_ENV =
+  /^(CLAUDECODE|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_(COORDINATOR_MODE|CHILD_SESSION|SESSION_ID|SESSION_ATTENDED|ENTRYPOINT|EXECPATH|MESSAGING_[A-Z_]+))$/;
+
+/** The environment for one claude -p run: the caller's, minus coordinator mode
+ *  and session linkage, with the task's bin dir (if any) first on PATH. */
+export function childEnv(base, pathPrefix) {
+  const env = {};
+  for (const [k, v] of Object.entries(base)) if (!INHERITED_SESSION_ENV.test(k)) env[k] = v;
+  env.PATH = (pathPrefix ? `${pathPrefix}:` : '') + (base.PATH ?? '');
+  return env;
+}
+
 /** Claude Code's projects-dir name for a cwd. */
 export const encodeCwd = cwd => cwd.replace(/[^a-zA-Z0-9]/g, '-');
 
@@ -85,6 +101,7 @@ export function parseStream(text, home) {
     cwd: null,
     injected: [],
     injectedBytes: 0,
+    mainTools: null,
   };
   const byId = new Map();
   for (const line of text.split('\n')) {
@@ -98,6 +115,7 @@ export function parseStream(text, home) {
     if (o.type === 'system' && o.subtype === 'init') {
       run.sessionId = o.session_id ?? null;
       run.cwd = o.cwd ?? null;
+      run.mainTools = Array.isArray(o.tools) ? o.tools : null;
     }
     // Tier-2 injections arrive as UserPromptSubmit hook output.
     if (o.type === 'system' && o.subtype === 'hook_response' && o.hook_event === 'UserPromptSubmit') {
@@ -256,7 +274,7 @@ function runOne(opts, id, rep) {
     fs.rmSync(sandbox, { recursive: true, force: true });
     return null;
   }
-  const env = { ...process.env, PATH: (ctx.pathPrefix ? `${ctx.pathPrefix}:` : '') + process.env.PATH };
+  const env = childEnv(process.env, ctx.pathPrefix);
   const t0 = Date.now();
   const r = spawnSync('claude', args, {
     cwd: dir,
@@ -291,6 +309,7 @@ function runOne(opts, id, rep) {
     turns: run.turns,
     tools: run.uses.length,
     agents: run.uses.filter(u => u.name === 'Agent' || u.name === 'Task').length,
+    mainTools: run.mainTools,
     specReads: run.specReads.map(s => s.what),
     extRead: run.extRead,
     moduleReads: run.moduleReads,
@@ -340,6 +359,7 @@ if (invokedAsMain(import.meta.url)) {
       console.log(
         `${r.pass ? 'PASS' : 'FAIL'} ${id}#${rep} ${r.title} — ${r.why} | $${r.cost ?? '?'} ${r.turns ?? '?'} turns ${Math.round(r.wallMs / 1000)}s` +
           (r.timedOut ? ' TIMEOUT' : '') +
+          (r.mainTools && !r.mainTools.includes('Bash') ? ' [main had no Bash: coordinator mode?]' : '') +
           (r.projectsDirRemoved ? '' : ' [projects dir NOT removed]')
       );
     }

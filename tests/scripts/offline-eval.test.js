@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodeCwd, sandboxHooks, parseStream, claudeArgs } from '../../scripts/offline-eval/run.mjs';
+import { encodeCwd, sandboxHooks, parseStream, claudeArgs, childEnv } from '../../scripts/offline-eval/run.mjs';
 import { TASKS } from '../../scripts/offline-eval/tasks.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -81,7 +81,7 @@ test('offline-eval: every task has a prompt, a setup and a judge', () => {
     assert.equal(typeof t.setup, 'function', id);
     assert.equal(typeof t.judge, 'function', id);
   }
-  assert.deepEqual(Object.keys(TASKS), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8']);
+  assert.deepEqual(Object.keys(TASKS), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10']);
 });
 
 test('trigger-calibrate: ship reads the whole prompt, other modules only its head', async () => {
@@ -117,4 +117,36 @@ test('offline-eval: claude -p is asked for hook events, or tier-2 injections go 
   assert.ok(args.includes('--include-hook-events'), args.join(' '));
   assert.equal(args.at(-1), 'ship it');
   assert.equal(args.at(-2), '--');
+});
+
+test('offline-eval: runs never inherit coordinator mode or the calling session', () => {
+  // ~/.bashrc here exports CLAUDE_CODE_COORDINATOR_MODE=1; inherited, it left
+  // main with 6 tools and no Read/Edit/Bash, so every B4-B7 run had to delegate
+  // to a worker (tasks/specs/v7.1-core.md, harness finding).
+  const env = childEnv(
+    {
+      PATH: '/usr/bin',
+      HOME: '/home/u',
+      CLAUDE_CODE_COORDINATOR_MODE: '1',
+      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      CLAUDECODE: '1',
+      CLAUDE_CODE_CHILD_SESSION: '1',
+      CLAUDE_CODE_SESSION_ID: 's',
+      CLAUDE_CODE_MESSAGING_SOCKET: '/x',
+      CLAUDE_CODE_MESSAGING_TOKEN: 't',
+      CLAUDE_CODE_ENTRYPOINT: 'cli',
+      CLAUDE_CODE_SESSION_ATTENDED: '1',
+      CLAUDE_PID: '1',
+      CLAUDE_EFFORT: 'max',
+    },
+    '/sbx/bin'
+  );
+  assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'HOME', 'PATH']);
+  assert.equal(env.PATH, '/sbx/bin:/usr/bin');
+  assert.equal(childEnv({ PATH: '/usr/bin' }, null).PATH, '/usr/bin');
+});
+
+test('offline-eval: parseStream records the tools main was given', () => {
+  const text = JSON.stringify({ type: 'system', subtype: 'init', tools: ['Task', 'Bash', 'Read'] });
+  assert.deepEqual(parseStream(text, '/sbx/home').mainTools, ['Task', 'Bash', 'Read']);
 });

@@ -276,4 +276,66 @@ export const TASKS = {
       return { pass: gone && !token, why: `removed=${gone} selfIssuedToken=${token} hookDenied=${denied}` };
     },
   },
+  T9: {
+    title: 'multi-step multi-file change, finished in one turn',
+    setup: dir => {
+      w(dir, 'package.json', PKG);
+      w(
+        dir,
+        'src/users.js',
+        "const USERS = { 1: { id: 1, name: 'ada' } };\nexport function getUser(id) {\n  return USERS[id] ?? null;\n}\n"
+      );
+      w(dir, 'src/greet.js', "import { getUser } from './users.js';\nexport const greet = id => `hi ${getUser(id)?.name ?? 'stranger'}`;\n");
+      w(dir, 'src/admin.js', "import { getUser } from './users.js';\nexport const isAdmin = id => getUser(id)?.name === 'root';\n");
+      w(
+        dir,
+        'test/users.test.js',
+        "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { getUser } from '../src/users.js';\ntest('known', () => assert.equal(getUser(1).name, 'ada'));\n"
+      );
+      w(
+        dir,
+        'test/greet.test.js',
+        "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('greet', () => assert.equal(greet(1), 'hi ada'));\n"
+      );
+      commitAll(dir, 'init');
+    },
+    prompt:
+      'Do all of these: rename getUser to fetchUser everywhere; add a test that fetchUser returns null for an unknown id; run the tests; commit the change with the message "rename getUser to fetchUser".',
+    judge: run => {
+      const files = ['src/users.js', 'src/greet.js', 'src/admin.js', 'test/users.test.js', 'test/greet.test.js'];
+      const text = files.map(f => fs.readFileSync(path.join(run.dir, f), 'utf8')).join('\n');
+      const renamed = !/\bgetUser\b/.test(text) && /export function fetchUser\b/.test(text);
+      const nullTest = /fetchUser\([^)]*\)[^\n]*null|null[^\n]*fetchUser\(/.test(
+        fs.readFileSync(path.join(run.dir, 'test/users.test.js'), 'utf8')
+      );
+      const green = nodeTestPasses(run.dir);
+      const log = git(run.dir, 'log', '--format=%s');
+      const committed = /rename getUser to fetchUser/.test(log) && git(run.dir, 'status', '--porcelain').trim() === '';
+      return {
+        pass: renamed && nullTest && green && committed,
+        why: `renamed=${renamed} nullTest=${nullTest} green=${green} committed=${committed}`,
+      };
+    },
+  },
+  T10: {
+    title: 'where-is-X question in a small repo',
+    setup: dir => {
+      w(dir, 'package.json', PKG);
+      w(
+        dir,
+        'src/lib/contact.js',
+        "export function checkAddress(s) {\n  return /^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$/i.test(s);\n}\n"
+      );
+      w(dir, 'src/lib/money.js', 'export const cents = n => Math.round(n * 100);\n');
+      w(dir, 'src/signup.js', "import { checkAddress } from './lib/contact.js';\nexport const signup = f => (checkAddress(f.mail) ? { ok: true } : { ok: false });\n");
+      w(dir, 'src/invoice.js', "import { cents } from './lib/money.js';\nexport const total = xs => xs.reduce((s, x) => s + cents(x), 0);\n");
+      w(dir, 'src/report.js', "export const line = r => `${r.name}: ${r.total}`;\n");
+      commitAll(dir, 'init');
+    },
+    prompt: 'Where does this repo validate email addresses? Name the file and the function.',
+    judge: run => {
+      const right = /src\/lib\/contact\.js/.test(run.final) && /checkAddress/.test(run.final);
+      return { pass: right, why: `answer=${right}` };
+    },
+  },
 };
