@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.35.0 — Extended
+# AI-CODING-SPEC v6.36.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -151,7 +151,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 | QA on staging | gs:/qa (fix) or gs:/qa-only (report) | |
 | review | per-task: sp:requesting-code-review; pre-ship: gs:/review; from user: sp:receiving-code-review | One entry point per context |
 | 2nd-opinion (opt-in) | gs:/codex | User request only; never auto |
-| browser/web verify | gs:/browse ONLY | Never mcp__chrome or computer-use |
+| browser/web verify | gs:/browse, through the `gstack` router | Not `mcp__claude-in-chrome__*` or computer-use (gstack: slow, unreliable) |
 | design/UI | gs:/design-consultation → gs:/design-review | |
 | perf check | gs:/benchmark (before/after) | |
 | security audit | gs:/cso | |
@@ -472,9 +472,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.35.0 (minor, 2026-09-26)** — two gaps from the 2026-09-26 transcript analysis. Core §2.2: the `ship` skill is used if listed, else manual ship; it said "required", and 9 calls failed `Unknown skill: ship` where gstack's ship sat unregistered under its router (§12 Detection already said absent-from-listing = missing). §11-O: a worktree-isolated spawn's prompt uses worktree-relative paths; main-checkout absolute paths drew 75 harness rejections in 4 days.
+**v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English.
 
-**Sizing** (v6.35.0, 2026-09-26, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24979 → 24994 bytes (Δ +15: §2.2's ship clause); extended 49810 → 49479 bytes (Δ -331: the §11-O worktree bullet in, v6.34.0's entry out to the changelog); OPERATOR.md 16200 → 16200 bytes (Δ 0). Size budget: core 24994/25000 (**6 bytes headroom**); extended 49479/50000 (**521 bytes headroom**).
+**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24867 bytes (Δ -127); extended 49479 → 49339 bytes (Δ -140); OPERATOR.md 16200 → 16744 bytes (Δ +544). Size budget: core 24867/25000 (**133 bytes headroom**); extended 49339/50000 (**661 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

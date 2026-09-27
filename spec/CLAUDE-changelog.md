@@ -6,6 +6,21 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v6.36.0 (minor, 2026-09-27) — prompt-audit wording batch: stale facts, contradictions, one reachable route
+
+Batch B1 of `docs/audit/20260926-180700.md` (a prompt audit of the spec against Opus 5.5, user-authorized 2026-09-26). Twenty-two changes, one commit each (`prompt-audit <ID>`). One relaxes a rule, so the bump is minor; every other change keeps the rule's meaning. No HARD rule added (§13.2).
+
+- **Relaxed — core §2.1 browse (H1)**: "UI/visual verify → `gs:/browse` ONLY (never `mcp__chrome` / computer-use)" named a sub-skill Claude Code does not register (only the `gstack` router is listed) and a tool name that does not exist. It now reaches `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`, with gstack's own stated reason (slow, unreliable). §EXT §4's `browser/web verify` row, which carried the same old wording, now says the same.
+- **Contradictions removed**: §4 Routing's "Primary → Secondary" header and bold primaries, and §6's fixed `sp:systematic-debugging`, contradicted §12's "no precedence"; both now defer to §12 (H4). Four lists of when to load extended disagreed; core §2.2 is the one list and core line 3 and extended line 3 point at it (M12). Core now defines the `matt` prefix §12 routes to (H5).
+- **Stale facts corrected**: §7-EXT-TMP described a SessionStart purge no hook performs and a threshold of 100 where `residue-audit` uses 20 (H7); §13's `self` bullet said all self-enforced rules are observed by a Stop-time scan, while OPERATOR.md records most have no telemetry channel (H6).
+- **History removed from agent-loaded text**: migration-relative phrasing about removed rules (H2a, H2b), an audit ID, an incident count, a measurement narrative, another project's version numbers, and an editor's note (H3a–H3e). The rules they annotated are unchanged, including the 4000-character report contract.
+- **§0.1 moves to §EXT §13 META (M5)**: the byte cap only matters when editing the spec, and `spec-coherence-audit` CHECK 4 and `version-cascade-check` already enforce it mechanically. Anchor kept; `hard-rules.json` scope → extended.
+- **Emphasis inside HARD bullets (M3)**: caps and verdict words stacked inside rules already labelled HARD ("MUST", "= own honesty failure", "pure enumeration = abdication") become plain statements. The HARD label and what it binds are unchanged.
+- **Language default (D4)**: core §1 said "default 中文" in the published spec. It now reads "before prose: per a user-level rule, else English"; a personal default belongs in `~/.claude/rules/*.md`, which Claude Code loads every session.
+- **Commands and OPERATOR (K1–K5, D5)**: `/claudemd-sampling-audit` forwards the flags its table documents (it used an unsupported `$ARGS`); three command files stop stating what the scripts do not do; one description names intent instead of listing globs; OPERATOR records why the size cap stays in bytes (core ≈ 2.41 B/token, extended ≈ 2.47 B/token, measured).
+
+Core 24994 → 24867 bytes, extended 49479 → 49339, OPERATOR.md 16200 → 16744.
+
 ## v6.35.0 (minor, 2026-09-26) — `ship` if listed; worktree-relative spawn paths
 
 Two gaps from the 2026-09-26 transcript analysis (`docs/claude-session-analysis-2026-09-26.md` B6, 4.4), both user-authorized that day.

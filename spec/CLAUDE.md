@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v6.35.0 — Core
+# AI-CODING-SPEC v6.36.0 — Core
 
 Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load per §2.2) | History: `~/.claude/CLAUDE-changelog.md`.
 
@@ -21,7 +21,6 @@ CLASSIFY (§2) → AUTH (§5) → ROUTE (§2.1) → EXECUTE → VALIDATE (§7) �
 Everything else = natural prose, no bracketed signals. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).
 
 **Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.
-
 
 ### §0.2 Mid-task feedback
 
