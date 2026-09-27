@@ -131,6 +131,41 @@ run_case "memfile_was_read path inside a script body is not a read" "NO" \
 run_case "memfile_was_read cat of a longer sibling path is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_other.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
 
+# D#102 (0.100.0 pre-tag review): a reader word only counts at the start of a
+# REAL command segment. Splitting at ; & | and newlines without regard to quotes
+# let text inside a string, a heredoc body or a comment start a "segment", and a
+# read that prints nothing (>/dev/null, -n 0) showed the model nothing. Each of
+# these turned a §11 deny into an allow.
+mkbash "$MEMT/d_dq.jsonl"   d1 "echo \"note; cat $MEMFILE\""
+mkbash "$MEMT/d_sq.jsonl"   d2 "git commit -m 'docs | cat $MEMFILE'"
+mkbash "$MEMT/d_cmt.jsonl"  d3 "true # ; cat $MEMFILE"
+mkbash "$MEMT/d_hd.jsonl"   d4 "cat > notes.md <<'EOT'
+cat $MEMFILE
+EOT"
+mkbash "$MEMT/d_null.jsonl" d5 "cat $MEMFILE >/dev/null"
+mkbash "$MEMT/d_n0.jsonl"   d6 "tail -n 0 $MEMFILE"
+mkbash "$MEMT/d_c0.jsonl"   d7 "head -c 0 $MEMFILE"
+for c in "d_dq:double-quoted text" "d_sq:single-quoted text" "d_cmt:a comment" "d_hd:a heredoc body" \
+         "d_null:a read sent to /dev/null" "d_n0:tail -n 0" "d_c0:head -c 0"; do
+  run_case "memfile_was_read reader word in ${c#*:} is not a read" "NO" \
+    "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/${c%%:*}.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+done
+# Controls: real reads around the same shapes still count — a quoted path, a
+# read piped onward, a read after a heredoc closes, and a read after a quoted
+# string that holds a separator.
+mkbash "$MEMT/k_q.jsonl"    k1 "cat \"$MEMFILE\""
+mkbash "$MEMT/k_pipe.jsonl" k2 "cat $MEMFILE | head -40"
+mkbash "$MEMT/k_hd.jsonl"   k3 "cat > notes.md <<'EOT'
+x
+EOT
+cat $MEMFILE"
+mkbash "$MEMT/k_after.jsonl" k4 "echo \"a; b\"; sed -n '1,20p' $MEMFILE"
+for c in "k_q:a double-quoted path" "k_pipe:a read piped onward" "k_hd:a read after a heredoc closes" \
+         "k_after:a read after a quoted separator"; do
+  run_case "memfile_was_read control: ${c#*:} is a read" "YES" \
+    "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/${c%%:*}.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+done
+
 # Consumer gate. Extraction, not a list: any hook that resolves a path inside the
 # memory dir has to answer this question, and must answer it here. Without this
 # join the extraction fixes today's two copies and nothing holds the third

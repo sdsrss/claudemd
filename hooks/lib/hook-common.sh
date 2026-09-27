@@ -300,11 +300,12 @@ hook_memfile_was_read() {
 #   narrow, because every widening here turns a §11 deny into an allow:
 #     * the command must be an assistant `tool_use` of the Bash tool — a hint
 #       banner or a deny reason quoting the path is not a command (R10-01);
-#     * a `;` `&` `|` segment must START with a reader: cat, head, tail, less,
+#     * a command segment must START with a reader: cat, head, tail, less,
 #       more, bat, nl, or `sed -n`. `sed -i`, `grep`, `echo` and `ls` do not
-#       count. Known gap (0.100.0 review, D#102): the split also cuts inside
-#       quoted strings, heredoc bodies and comments, so a reader word there
-#       counts, and so does a read that prints nothing (`>/dev/null`);
+#       count. Segments are cut at ; & | and newlines outside quotes, after
+#       heredoc bodies and comments are dropped (D#102), so a reader word in
+#       a string, a heredoc or a comment is not a read; neither is a read that
+#       prints nothing (`>/dev/null`, `head -c 0`, `tail -n 0`);
 #     * the path must appear whole — absolute, `~/`, `$HOME/` or `${HOME}/` —
 #       and end there, so `x.md.bak` is not `x.md`. `cat "$F"` is not
 #       resolved: a miss keeps the deny, which is the safe direction;
@@ -315,8 +316,8 @@ hook_memfile_was_read() {
 #   Cost: one grep -F prefilter on the basename, then jq over the matched rows
 #   only, so a long transcript is not parsed whole inside the 3s budget.
 _hook_memfile_bash_read() {
-  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _hit
-  local -a _forms=("$_m")
+  local _f="$1" _m="$2" _rows _id _seg _w _p _rest _hit
+  local -a _forms=("$_m") _ids=()
   if [[ -n "${HOME:-}" && "$_m" == "$HOME/"* ]]; then
     _rest="${_m#"$HOME"/}"
     # Literal `~` and `$HOME` on purpose: these are spellings to find in a
@@ -325,36 +326,64 @@ _hook_memfile_bash_read() {
     _forms+=("~/$_rest" "\$HOME/$_rest" "\${HOME}/$_rest")
   fi
   _rows=$(grep -F -- "${_m##*/}" "$_f" 2>/dev/null) || return 1
-  while IFS=$'\t' read -r _id _cmd; do
+  while IFS=$'\t' read -r _id _seg; do
     [[ -n "$_id" ]] || continue
+    _seg="${_seg#"${_seg%%[![:space:](]*}"}"
+    _w="${_seg%%[[:space:]]*}"
+    case "$_w" in
+      cat|head|tail|less|more|bat|nl) ;;
+      sed) [[ "$_seg" =~ ^sed[[:space:]]+-n[[:space:]] ]] || continue ;;
+      *) continue ;;
+    esac
+    # A read that prints nothing shows the model nothing (D#102).
+    [[ "$_seg" =~ (^|[[:space:]])(1|\&)?\>[[:space:]]*/dev/null ]] && continue
+    [[ "$_w" == head || "$_w" == tail ]] \
+      && [[ "$_seg" =~ [[:space:]]-(n[[:space:]]*|c[[:space:]]*|)[+]?0+([[:space:]]|$) ]] && continue
     _hit=0
-    while IFS= read -r _seg; do
-      _seg="${_seg#"${_seg%%[![:space:](]*}"}"
-      _w="${_seg%%[[:space:]]*}"
-      case "$_w" in
-        cat|head|tail|less|more|bat|nl) ;;
-        sed) [[ "$_seg" =~ ^sed[[:space:]]+-n[[:space:]] ]] || continue ;;
-        *) continue ;;
-      esac
-      for _p in "${_forms[@]}"; do
-        _rest="$_seg"
-        while [[ "$_rest" == *"$_p"* ]]; do
-          _rest="${_rest#*"$_p"}"
-          case "${_rest:0:1}" in
-            ''|[[:space:]]|'"'|"'"|')') _hit=1; break 2 ;;
-          esac
-        done
+    for _p in "${_forms[@]}"; do
+      _rest="$_seg"
+      while [[ "$_rest" == *"$_p"* ]]; do
+        _rest="${_rest#*"$_p"}"
+        case "${_rest:0:1}" in
+          ''|[[:space:]]|'"'|"'"|')') _hit=1; break 2 ;;
+        esac
       done
-      (( _hit )) && break
-    done < <(printf '%s\n' "$_cmd" | tr ';&|' '\n\n\n')
-    (( _hit )) || continue
+    done
+    (( _hit )) && _ids+=("$_id")
+  done < <(printf '%s\n' "$_rows" | jq -r '
+      # Command segments as the shell sees them (0.100.0 review, D#102): heredoc
+      # bodies dropped, then a split at ; & | and newlines OUTSIDE quotes, with
+      # backslash escapes and unquoted `#` comments honoured. A reader word
+      # inside a string, a heredoc body or a comment no longer starts a segment.
+      def segs:
+        (split("\n") | reduce .[] as $l ({t: null, out: []};
+            if .t != null then (if ($l | sub("^[ \t]+"; "")) == .t then .t = null else . end)
+            else .out += [$l]
+              | ([$l | capture("<<-?[ \t]*[\"\u0027]?(?<w>[A-Za-z_][A-Za-z0-9_]*)[\"\u0027]?")][0].w // null) as $w
+              | (if $w != null then .t = $w else . end)
+            end) | .out | join("\n"))
+        | explode
+        | reduce .[] as $c ({q: null, esc: false, cmt: false, cur: [], out: [], prev: 10};
+            (if .cmt then (if $c == 10 then .cmt = false | .out += [.cur] | .cur = [] else . end)
+             elif .esc then .cur += [$c] | .esc = false
+             elif $c == 92 and .q != 39 then .cur += [$c] | .esc = true
+             elif .q != null then .cur += [$c] | (if $c == .q then .q = null else . end)
+             elif $c == 34 or $c == 39 then .cur += [$c] | .q = $c
+             elif $c == 35 and (.prev == 32 or .prev == 9 or .prev == 10 or .prev == 59 or .prev == 38 or .prev == 124) then .cmt = true
+             elif $c == 59 or $c == 38 or $c == 124 or $c == 10 then .out += [.cur] | .cur = []
+             else .cur += [$c] end) | .prev = $c)
+        | (.out + [.cur]) | map(implode) | map(select(test("[^ \t]")));
+      select(.type == "assistant")
+      | .message.content[]? | select(type == "object" and .type == "tool_use" and .name == "Bash")
+      | .id as $id | (.input.command // "" | if type == "string" then . else "" end) | segs[]
+      | [$id, .] | @tsv' 2>/dev/null)
+  # Each hit must also have run: a tool_result that exists and is not an error.
+  for _id in "${_ids[@]}"; do
     grep -F -- "\"tool_use_id\":\"$_id\"" "$_f" 2>/dev/null \
       | jq -e --arg id "$_id" 'select(.type == "user") | .message.content[]?
           | select(type == "object" and .tool_use_id == $id and .is_error != true)' \
         >/dev/null 2>&1 && return 0
-  done < <(printf '%s\n' "$_rows" | jq -r 'select(.type == "assistant")
-      | .message.content[]? | select(type == "object" and .type == "tool_use" and .name == "Bash")
-      | [.id, (.input.command // "" | gsub("\n"; ";"))] | @tsv' 2>/dev/null)
+  done
   return 1
 }
 
