@@ -350,7 +350,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 ## §12 PLUGINS
 
 ### Hard cooperation rules
-- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection below.
+- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection in `skills.md`.
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: per-task in sp:subagent-driven-development; pre-ship cross-cutting via gs:/review.
 - **Ship pipeline owned by gs**: sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist.
@@ -478,7 +478,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 
 **v7.0.0 (major, 2026-09-27)** — per-phase modules. Marker lines assign this file's sections to 11 modules, built into `spec-modules/<name>.md` and installed under `~/.claude/spec-modules/`; this file stays their single source. Core §2.2 becomes the module index, and plugin hooks inject the module a prompt matches (tier 2) and log a release run without `ship.md` (tier 3). No rule changes meaning; every ID is kept. Text changed so a module stands alone: the Division of labor table is gone, "this file" / "load extended" now name the module, the ship Runbook fast-path became a runbook-cannot-waive rule, and `ship.md` gains Pre-tag review, which points at `review.md`.
 
-**Sizing** (v7.0.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24991 → 24990 bytes (Δ -1); extended 48545 → 48612 bytes (Δ +67); OPERATOR.md 17463 → 17463 bytes (Δ +0). Size budget: core 24990/25000 (**10 bytes headroom**); extended 48612/50000 (**1388 bytes headroom**).
+**Sizing** (v7.0.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24989 → 24990 bytes (Δ +1); extended 49615 → 48622 bytes (Δ -993); OPERATOR.md 17463 → 17463 bytes (Δ +0). Size budget: core 24990/25000 (**10 bytes headroom**); extended 48622/50000 (**1378 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

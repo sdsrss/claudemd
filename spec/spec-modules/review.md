@@ -12,7 +12,7 @@ trigger-window: head
 ## §12 PLUGINS
 
 ### Hard cooperation rules
-- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection below.
+- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection in `skills.md`.
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: per-task in sp:subagent-driven-development; pre-ship cross-cutting via gs:/review.
 - **Ship pipeline owned by gs**: sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist.
