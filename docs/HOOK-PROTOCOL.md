@@ -100,15 +100,17 @@ A hook can also return text for the model to read instead of a decision. Same
   2.1.283: an interactive session printed `SessionStart:startup says: <text>`
   even with `suppressOutput: true`, and a `claude -p` probe asking the model for
   the token found only the `additionalContext` one. `session-start-check.sh`
-  uses it for notices that ask the USER to act (a newer release, a stale plugin
-  registration); sent as `additionalContext` they had reached only the model.
+  uses it for notices that ask the USER to act: a newer release and a stale
+  plugin registration go to the human only; a failed background install and
+  the two user-content notices (your own `~/.claude/CLAUDE.md` was moved aside)
+  go to both, because the model also needs to know. Sent as
+  `additionalContext` alone they had reached only the model.
 - **A hook must emit exactly one JSON object per run.** Two objects on stdout
   are not valid JSON and the whole payload is dropped silently — no error, no
-  context. `session-start-check.sh` emits from TWO places, and which one runs
-  depends on whether a manifest exists. The version-MATCH branch can have five
-  banners ready in one run (stale-cache, upstream, session summary, spec drift,
-  user-content) and the fresh/mismatch tail can have three (bootstrap-failed,
-  session summary, user-content). Both call `merge_banners`, one `jq -s` that
+  context. `session-start-check.sh` emits from several places depending on the
+  manifest state and the session source; the version-MATCH branch alone can
+  have six candidates ready in one run (stale-cache, upstream, session summary,
+  spec drift, user-content, ledger) and the fresh/mismatch tail four. Both call `merge_banners`, one `jq -s` that
   drops the empties and joins the rest into one object, `additionalContext` and
   `systemMessage` each joined separately — one
   implementation since 2026-09-05, because a sixth banner added to one copy of

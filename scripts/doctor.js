@@ -424,35 +424,48 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // Where Claude Code registers a skill of this bare name: the user skills dir,
   // <cwd>/.claude/skills/<name> (review L4), and each installed plugin's
   // skills/<name>. Shared by the ship and gstack checks below.
+  // Every installed plugin's root, from Claude Code's registry (one JSON
+  // document). Read once here for both routing checks.
+  const pluginRoots = (() => {
+    try {
+      const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
+      return Object.values(ip.plugins || {})
+        .flatMap(entries => (Array.isArray(entries) ? entries : []))
+        .filter(e => e && typeof e.installPath === 'string')
+        .map(e => e.installPath);
+    } catch {
+      return []; /* no plugin registry — only the user skills dir can answer */
+    }
+  })();
   const registeredSkillDirs = name => {
     const found = [];
     if (fs.existsSync(claudeHome('skills', name, 'SKILL.md'))) found.push(claudeHome('skills', name));
     const proj = path.join(process.cwd(), '.claude', 'skills', name);
     if (fs.existsSync(path.join(proj, 'SKILL.md'))) found.push(proj);
-    try {
-      const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
-      for (const entries of Object.values(ip.plugins || {})) {
-        for (const e of Array.isArray(entries) ? entries : []) {
-          const p = e && typeof e.installPath === 'string' ? path.join(e.installPath, 'skills', name) : null;
-          if (p && fs.existsSync(path.join(p, 'SKILL.md'))) found.push(p);
-        }
-      }
-    } catch {
-      /* no plugin registry — only the user skills dir can answer */
+    for (const root of pluginRoots) {
+      const p = path.join(root, 'skills', name);
+      if (fs.existsSync(path.join(p, 'SKILL.md'))) found.push(p);
     }
     return found;
   };
   {
     const registered = registeredSkillDirs('ship');
+    // Nested under a router: in the user skills dir, and in each installed
+    // plugin's skills/ (gstack installed as a plugin keeps its sub-skills there;
+    // B2 delta review M2 — only the first was scanned, so the two routing rows
+    // disagreed on a plugin install).
     const nested = [];
-    try {
-      for (const d of fs.readdirSync(claudeHome('skills'), { withFileTypes: true })) {
-        if (!d.isDirectory() || d.name === 'ship') continue;
-        const p = claudeHome('skills', d.name, 'ship');
-        if (fs.existsSync(path.join(p, 'SKILL.md'))) nested.push(p);
+    const skillRoots = [claudeHome('skills'), ...pluginRoots.map(r => path.join(r, 'skills'))];
+    for (const root of skillRoots) {
+      try {
+        for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+          if (!d.isDirectory() || d.name === 'ship') continue;
+          const p = path.join(root, d.name, 'ship');
+          if (fs.existsSync(path.join(p, 'SKILL.md'))) nested.push(p);
+        }
+      } catch {
+        /* root absent */
       }
-    } catch {
-      /* no user skills dir */
     }
     if (registered.length > 0) {
       push('routing:ship-skill', true, `\`ship\` skill registered: ${registered[0]}`);

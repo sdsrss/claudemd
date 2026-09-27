@@ -1322,6 +1322,30 @@ test('routing:ship-skill: an installed plugin shipping skills/ship counts as reg
   assert.ok(c.detail.includes(path.join(pluginRoot, 'skills', 'ship')));
 });
 
+test('routing:ship-skill: a ship nested under a PLUGIN router is found, and agrees with gstack-reachable', async () => {
+  // B2 delta review M2: with gstack installed as a plugin, ship-skill said "no
+  // ship skill on this machine" while gstack-reachable called gs/ship reachable.
+  const pluginRoot = path.join(box.home, 'gstack-plugin');
+  const mk = rel => {
+    fs.mkdirSync(path.join(pluginRoot, 'skills', rel), { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginRoot, 'skills', rel, 'SKILL.md'),
+      `---\nname: ${path.basename(rel)}\n---\n`
+    );
+  };
+  mk('gstack');
+  mk('gstack/ship');
+  fs.mkdirSync(path.join(box.home, '.claude/plugins'), { recursive: true });
+  fs.writeFileSync(
+    path.join(box.home, '.claude/plugins/installed_plugins.json'),
+    JSON.stringify({ version: 2, plugins: { 'gstack@m': [{ installPath: pluginRoot, version: '1.0.0' }] } })
+  );
+  const c = shipCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.ok(c.detail.includes(path.join(pluginRoot, 'skills', 'gstack', 'ship')), c.detail);
+  assert.match(c.detail, /not registered/);
+});
+
 test('routing:ship-skill: a project-level .claude/skills/ship counts as registered', async () => {
   const proj = path.join(box.home, 'proj');
   fs.mkdirSync(path.join(proj, '.claude/skills/ship'), { recursive: true });

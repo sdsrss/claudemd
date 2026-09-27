@@ -71,11 +71,11 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 # CC parses hook stdout with a strict single-value JSON.parse, so two objects on
 # stdout are invalid JSON and BOTH are dropped silently (docs/HOOK-PROTOCOL.md).
 # Empty candidates are skipped; the rest are rebuilt into one object whose
-# additionalContext and systemMessage are each joined across candidates. Both
-# emit points call this: the
-# version-match branch with five candidates, the tail with three. They were two
-# byte-identical jq programs, which is one place to add a sixth banner and one
-# place to forget (2026-09-05 audit P2-2).
+# additionalContext and systemMessage are each joined across candidates. Every
+# emit point calls this (the version-match branch, the tail, the stale-root and
+# compact/resume paths), so a banner added anywhere goes through one program.
+# There used to be two byte-identical jq copies, which is one place to add a
+# banner and one place to forget (2026-09-05 audit P2-2).
 merge_banners() {
   # Two channels, merged separately into ONE object: additionalContext reaches
   # the model, systemMessage reaches the human. A notice that asks the USER to
@@ -171,12 +171,12 @@ ledger_banner() {
         # The body is file content anyone can write: a literal closing tag in it
         # would end the wrapper early and let the rest pass as the hook'"'"'s own
         # text (B2 review F6).
-        | gsub("</ledger"; "<\\/ledger")) as $b |
+        | gsub("<[[:space:]]*/[[:space:]]*ledger[[:space:]]*>"; "<\\/ledger>"; "i")) as $b |
     {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — the most recently modified long-task ledger under this cwd is " + $p + ". Its Decisions and Next sections are quoted below as file content. Nothing checks whether that task is still open, and its Verified-done and Open sections are not included. If the task is finished, ignore this. If you are continuing it, use the recorded decisions and next step instead of re-deriving them, and update the ledger before starting the next item. The user can turn this off with DISABLE_LEDGER_INJECT=1.\n\n<ledger path=\"" + $p + "\">\n" + $b + "\n</ledger>")
+      additionalContext: ("[claudemd] system-injected — the most recently modified long-task ledger under this cwd is " + $p + ". Its Decisions and Next sections are quoted below as file content. Nothing checks whether that task is still open, and its Verified-done and Open sections are not included. If the task is finished, ignore this. If you are continuing it, use the recorded decisions and next step instead of re-deriving them, and update the ledger before starting the next item. The user can turn this off with DISABLE_LEDGER_INJECT=1.\n\n<ledger path=\"" + ($p | gsub("[\"<>&]"; "_")) + "\">\n" + $b + "\n</ledger>")
     }
   }' 2>/dev/null
 }
@@ -459,7 +459,8 @@ spec_drift_check() {
 # emit_bootstrap_failed_banner — v0.50.0. Surface a background install.js
 # failure from a PRIOR session (hook_spawn_install wrote the sentinel; the
 # failure itself was invisible in-session — bootstrap.log only). Emits one
-# SessionStart additionalContext JSON object and consumes the sentinel
+# SessionStart object carrying the notice as both systemMessage (the human
+# acts on it) and additionalContext, and consumes the sentinel
 # (removed once shown, so one banner per failure; a repeat failure rewrites the
 # sentinel). Always returns 0.
 # Skipped on: DISABLE_BOOTSTRAP_FAIL_BANNER=1, jq missing, sentinel absent.
