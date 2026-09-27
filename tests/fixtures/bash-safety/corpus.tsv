@@ -433,6 +433,32 @@ pass	F17-fp: unset of an unrelated var	S=$(mktemp -d); unset OTHER; rm -rf "$S"
 deny	F17: eval can rebind from an opaque string	S=$(mktemp -d); eval "$CODE"; rm -rf "$S/build"
 pass	F17-fp: two mktemp assignments (both classified)	S=$(mktemp -d); S=$(mktemp -d); rm -rf "$S"
 
+# === D#103 (2026-09-27): an assignment that binds only a subshell. `( … )`,
+# `$( … )`, a pipeline element and a backgrounded command each run in a child
+# shell, so `(D=$(mktemp -d)); rm -rf "$D/x"` runs `rm -rf /x` in the parent.
+# The mktemp credit is withdrawn when any assignment to the var sits in a group
+# that closes before the rm, or next to a single `|` / `|&` / trailing `&`.
+# Deny-only: the new condition can only turn a provenance allow into a deny.
+deny	D#103: mktemp assignment inside ( ) before the rm	(D=$(mktemp -d)); rm -rf "$D/x"
+deny	D#103: spaced ( ) group	( D=$(mktemp -d) ); rm -rf "$D"
+deny	D#103: assignment inside another command substitution	x=$(D=$(mktemp -d)); rm -rf "$D/x"
+deny	D#103: assignment piped into another command	D=$(mktemp -d) | cat; rm -rf "$D/x"
+deny	D#103: assignment as a later pipeline element	true | D=$(mktemp -d); rm -rf "$D/x"
+deny	D#103: assignment piped with |&	D=$(mktemp -d) |& cat; rm -rf "$D/x"
+deny	D#103: backgrounded assignment	D=$(mktemp -d) & wait; rm -rf "$D/x"
+pass	D#103-fp: assignment and rm in the same ( ) group	( D=$(mktemp -d); rm -rf "$D" )
+pass	D#103-fp: a ( ) group after the assignment	D=$(mktemp -d) && (cd "$D" && make); rm -rf "$D"
+pass	D#103-fp: a piped ( ) group after the assignment	D=$(mktemp -d); (cd "$D"; ls) | cat; rm -rf "$D"
+pass	D#103-fp: a backgrounded command before the assignment	sleep 1 & D=$(mktemp -d); rm -rf "$D"
+pass	D#103-fp: the rm itself backgrounded	D=$(mktemp -d); rm -rf "$D" &
+pass	D#103-fp: || after the assignment	D=$(mktemp -d) || exit 1; rm -rf "$D"
+pass	D#103-fp: 2>&1 redirection after the assignment	D=$(mktemp -d) 2>&1; rm -rf "$D"
+pass	D#103-fp: &> redirection after the assignment	D=$(mktemp -d) &>/dev/null; rm -rf "$D"
+deny	D#103: assignment after a |& pipe	true |& D=$(mktemp -d); rm -rf "$D/x"
+deny	D#103: CJK text before the group (the cut counts bytes, not characters)	echo 中文中文中文; (D=$(mktemp -d)); rm -rf "$D/x"
+pass	D#103-fp: a later line's pipe is not the assignment's (newline is a separator)	D=$(mktemp -d)__NL__ls "$D" | cat__NL__rm -rf "$D"
+pass	D#103-fp: a case arm after the assignment ends a pattern, not a group	D=$(mktemp -d); case "$x" in a|b) echo;; esac; rm -rf "$D"
+
 # === D1 (2026-07-15): canon_cmd_words must not treat ${VAR} brace as a
 # command-position boundary. It set cmdpos=1 on `{`, so `rm -rf "${SP}/build"`
 # had `SP}/build"` read as a command word and basenamed to `build"`, erasing
@@ -1253,10 +1279,14 @@ deny	S8-RES5 the control for RES1 — the same wrapper at a segment start denies
 # A row here going RED is good news: it means someone closed one. Move it to a
 # `deny` row in that change rather than deleting it, so the closure is pinned.
 #
+# D#103 (2026-09-27) closed PROV1, PROV3 and PROV18 (their label now says
+# CLOSED); the other fifteen still allow. A replay of the 1,811 transcript
+# commands with both mktemp and rm moved 0 verdicts.
+#
 # --- the assignment does not bind the parent shell at all ---
-pass	S8-PROV1 RESIDUAL: a subshell assignment never reaches the parent	( SP=$(mktemp -d /tmp/x.XXXXXX) ); rm -rf "$SP/build"
+deny	S8-PROV1 CLOSED (D#103): a subshell assignment never reaches the parent	( SP=$(mktemp -d /tmp/x.XXXXXX) ); rm -rf "$SP/build"
 pass	S8-PROV2 RESIDUAL: an assignment behind && may never run	false && SP=$(mktemp -d /tmp/x.XXXXXX); rm -rf "$SP/build"
-pass	S8-PROV3 RESIDUAL: a backgrounded assignment dies with its subshell	SP=$(mktemp -d /tmp/x.XXXXXX) & rm -rf "$SP/build"
+deny	S8-PROV3 CLOSED (D#103): a backgrounded assignment dies with its subshell	SP=$(mktemp -d /tmp/x.XXXXXX) & rm -rf "$SP/build"
 pass	S8-PROV4 RESIDUAL: an escaped > is a word char, so this backgrounds it	S=$(mktemp -d /tmp/x.XXXXXX)\>&1; rm -rf "$S/build"
 # --- the assignment is text the shell never executes as one ---
 pass	S8-PROV5 RESIDUAL: prose in a quoted word is scanned as an assignment	echo " SP=$(mktemp -d /tmp/x.XXXXXX) $HOME"; rm -rf "$SP/build"
@@ -1274,7 +1304,7 @@ pass	S8-PROV14 RESIDUAL: a select body	select o in a b; do__NL__S=$(mktemp -d /t
 pass	S8-PROV15 RESIDUAL: a function body, never called	f() {__NL__S=$(mktemp -d /tmp/x.XXXXXX)__NL__}__NL__rm -rf "$S/build"
 pass	S8-PROV16 RESIDUAL: the same on one line	f() { S=$(mktemp -d /tmp/x.XXXXXX); }__NL__rm -rf "$S/build"
 pass	S8-PROV17 CONTROL: a called function's body is not a subshell, so this allow is CORRECT	f() { S=$(mktemp -d /tmp/x.XXXXXX); }__NL__f__NL__rm -rf "$S/build"
-pass	S8-PROV18 RESIDUAL: a subshell function body cannot reach the parent	f() ( S=$(mktemp -d /tmp/x.XXXXXX) )__NL__f__NL__rm -rf "$S/build"
+deny	S8-PROV18 CLOSED (D#103): a subshell function body cannot reach the parent	f() ( S=$(mktemp -d /tmp/x.XXXXXX) )__NL__f__NL__rm -rf "$S/build"
 # --- a rebind the name-shaped scan cannot see ---
 pass	S8-PROV19 RESIDUAL: ${x-S} expands to the literal name and unsets it	S=$(mktemp -d /tmp/x.XXXXXX); unset ${x-S}; rm -rf "$S/build"
 pass	S8-PROV20 RESIDUAL: an opaque DEBUG trap runs before the rm — damage needs a hostile $CODE	S=$(mktemp -d /tmp/x.XXXXXX); trap "$CODE" DEBUG; rm -rf "$S/build"

@@ -1372,6 +1372,54 @@ if :; then
           case "/$rm_target/" in
             */../*|*'..'*) prov_safe=0 ;;
           esac
+          # (5) every assignment to varname must bind THIS shell (D#103, B2 delta
+          # review): `(D=$(mktemp -d)); rm -rf "$D/x"`, `x=$(D=$(mktemp -d))`,
+          # `D=$(mktemp -d) | cat`, `true | D=$(mktemp -d)` and `D=$(mktemp -d) &`
+          # each assign in a child shell, so the parent's D is empty and the rm
+          # runs on /x. Withdrawn when, from an assignment to the rm segment, a
+          # `)` closes a group the assignment is in, or the assignment's own
+          # command is joined by a single `|` / `|&` (either side) or ends in a
+          # background `&` (`2>&1`, `&>` are redirections). Deny-only: this can
+          # only clear prov_safe. Inside a `case … esac` that opens after the
+          # assignment, a `)` at depth 0 ends a pattern, not a group (three real
+          # commands in the replay); one enclosing the assignment is not tracked,
+          # so its pattern `)` reads as a close — a deny. Scanned on a copy where each newline is a
+          # `;` (the flat text made it a space, so a later line's `| grep` read
+          # as the assignment's pipe: 53 real commands in the replay); `tr` maps
+          # one byte to one, so the prefix's BYTE length carries over.
+          if (( prov_safe == 1 )) && ! printf '%s' "$SANITIZED_CMD" | tr '\n' ';' | head -c "$(printf '%s' "$prov_prefix" | wc -c)" | awk -v v="$varname" '
+            {
+              t = $0; n = length(t); lv = length(v)
+              for (p = 1; p <= n - lv; p++) {
+                if (substr(t, p, lv + 1) != v "=") continue
+                if (p > 1 && substr(t, p - 1, 1) !~ /[[:space:];&|`(]/) continue
+                q = p - 1
+                while (q >= 1 && substr(t, q, 1) ~ /[[:space:]]/) q--
+                if (q >= 1 && substr(t, q, 1) == "|" && (q == 1 || substr(t, q - 1, 1) != "|")) exit 1
+                if (q >= 2 && substr(t, q - 1, 2) == "|&") exit 1
+                d = 0; sep = 0; cs = 0
+                for (i = p + lv + 1; i <= n; i++) {
+                  c = substr(t, i, 1)
+                  bw = (substr(t, i - 1, 1) ~ /[[:space:];&|(]/)
+                  if (bw && substr(t, i, 5) ~ /^case[[:space:]]/) cs++
+                  else if (bw && cs > 0 && substr(t, i, 5) ~ /^esac([^A-Za-z0-9_]|$)/) cs--
+                  if (c == "(") d++
+                  else if (c == ")") { if (cs > 0 && d == 0) continue; d--; if (d < 0) exit 1 }
+                  else if (d == 0 && !sep) {
+                    nx = substr(t, i + 1, 1); pv = substr(t, i - 1, 1)
+                    if (c == ";") sep = 1
+                    else if (c == "|") { if (nx == "|") sep = 1; else exit 1 }
+                    else if (c == "&") {
+                      if (nx == "&") sep = 1
+                      else if (pv == ">" || pv == "<" || nx == ">") continue
+                      else exit 1
+                    }
+                  }
+                }
+              }
+            }'; then
+            prov_safe=0
+          fi
         fi
         if (( prov_safe == 1 )); then
           (( bypass_rm == 1 )) || hook_record pre-bash-safety rm-rf-allow-provenance "{\"var\":\"$varname\"}" '§8-rm-rf-var' "$SESSION_ID" "$TOOL_USE_ID"
