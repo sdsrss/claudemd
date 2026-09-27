@@ -685,7 +685,11 @@ for N_CMD in \
   'npm run publish:latest' \
   'pnpm run release-latest' \
   "bash -c 'echo npm test'" \
-  'env FOO=1 npm run build'; do
+  'env FOO=1 npm run build' \
+  'npm --prefix test install' \
+  'npm -w test install' \
+  'npm --workspace t ci' \
+  'npm -C test ls'; do
   N_I=$((N_I + 1))
   reset_cwd
   T="$TMP_HOME/case27n-$N_I.jsonl"

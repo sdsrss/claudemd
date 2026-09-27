@@ -98,13 +98,16 @@ _OPT="([ \t]+-${_W}+([ \t]+[^- \t\n;&|]${_W}*)?)*"
 # "test" and ran as a validation until the 0.100.0 review (D#102).
 _SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]${_W}*)?([ \t\n;&|)<>]|\$)"
 # An assignment value may be quoted (FOO="a b"); quotes stop at a newline.
+# After `npm [opts] test` only an end, a separator, a redirect or another option
+# may follow: in `npm --prefix test install` the `test` is --prefix's value.
+# (B2 review F7.)
 _VAL="(\"[^\"\n]*\"|'[^'\n]*'|${_W}*)"
 VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?"
 VALIDATE_RE+="(env([ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
 VALIDATE_RE+="([A-Za-z_][A-Za-z0-9_]*=${_VAL}[ \t]+)*"
 VALIDATE_RE+="(timeout([ \t]+-[ks][ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
 VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+|(uv|poetry|pipenv)[ \t]+run[ \t]+)?"
-VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_OPT}[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
+VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_OPT}[ \t]+(test|t)([ \t]*([\n;&|)<>]|\$)|[ \t]+(-|[0-9]*[<>]))"
 VALIDATE_RE+="|npm${_OPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
 VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_W}*(test|lint|check)|bash tests/|tsc |vue-tsc|eslint"
