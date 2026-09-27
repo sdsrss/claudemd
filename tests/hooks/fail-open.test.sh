@@ -551,6 +551,25 @@ for f in ${T20_SUBJECTS[@]+"${T20_SUBJECTS[@]}"}; do
   fi
 done
 
+# T22 (0.101.0 pre-tag review M0): pre-bash-safety's commit/tag-message line
+# expanded ${HOOK_GIT_GLOBAL_FLAGS} bare under `set -u`. A hook-common.sh cut off
+# before the variable's definition still sources with status 0, so the rm-only
+# deny path aborted with exit 1 before printing the deny: the command ran, where
+# 0.100.0 denied it. The three sibling hooks guard the variable for this reason.
+sandbox_new || exit 1
+TRUNC_HOOKS="$SANDBOX_OUT"
+cp -R "$HOOKS_DIR/." "$TRUNC_HOOKS/"
+T22_DEF=$(grep -n '^HOOK_GIT_GLOBAL_FLAGS=' "$HOOKS_DIR/lib/hook-common.sh" | head -n 1 | cut -d: -f1)
+head -n $((T22_DEF - 1)) "$HOOKS_DIR/lib/hook-common.sh" > "$TRUNC_HOOKS/lib/hook-common.sh"
+fresh_home
+T22_OUT=$(printf '%s\n' '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"rm -rf \"$V\""},"cwd":"/tmp"}' \
+  | bash "$TRUNC_HOOKS/pre-bash-safety-check.sh" 2>/dev/null)
+if [[ -n "$T22_DEF" ]] && jq -e '.hookSpecificOutput.permissionDecision == "deny"' <<<"$T22_OUT" >/dev/null 2>&1; then
+  ok "T22 pre-bash-safety still denies rm -rf \"\$V\" with hook-common.sh cut before HOOK_GIT_GLOBAL_FLAGS"
+else
+  ng "T22 pre-bash-safety lost the rm deny with a truncated hook-common.sh (def line=$T22_DEF, out: $T22_OUT)"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

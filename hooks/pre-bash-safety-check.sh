@@ -2242,7 +2242,7 @@ if (( _s8_rm_only == 1 )); then
 # with intent kept, 0/120 self-issued tokens, ~420 fewer input tokens per deny.
 # The commit-message line only rides along when the command is a commit/tag.
 _s8_about=""
-if [[ "$CMD" =~ git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|tag) ]]; then
+if [[ "$CMD" =~ git${HOOK_GIT_GLOBAL_FLAGS:-}[[:space:]]+(commit|tag) ]]; then
   _s8_about="
 Writing about rm in a commit or tag message: put the text in a file (Write tool) and pass it with -F FILE."
 fi
