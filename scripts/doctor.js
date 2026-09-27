@@ -56,7 +56,7 @@ const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 Run health checks on claudemd installation. Flags missing deps, spec drift,
 settings.json issues, hook drift, backup inventory, rule-usage health, §4
 Routing primaries disabled via skillOverrides, whether the \`ship\` skill core §2.2
-names is registered, and the review cadence of the project's tasks/
+names is registered, whether every gs: primary is reachable through the gstack router, and the review cadence of the project's tasks/
 deferred-work docs.
 
 Options:
@@ -189,7 +189,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
 // moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|routing:ship-skill|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|routing:ship-skill|routing:gstack-reachable|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 export async function doctor({ pruneBackups: prune } = {}) {
@@ -421,25 +421,29 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // "Not installed" and "installed but not registered" need different actions,
   // so the check tells them apart. Advisory: the spec's own fallback for an
   // unlisted ship skill is a declared manual ship.
-  {
-    const registered = [];
-    if (fs.existsSync(claudeHome('skills', 'ship', 'SKILL.md')))
-      registered.push(claudeHome('skills', 'ship'));
-    // Project-level skills register too (review L4): <cwd>/.claude/skills/<name>.
-    const projShip = path.join(process.cwd(), '.claude', 'skills', 'ship');
-    if (fs.existsSync(path.join(projShip, 'SKILL.md'))) registered.push(projShip);
+  // Where Claude Code registers a skill of this bare name: the user skills dir,
+  // <cwd>/.claude/skills/<name> (review L4), and each installed plugin's
+  // skills/<name>. Shared by the ship and gstack checks below.
+  const registeredSkillDirs = name => {
+    const found = [];
+    if (fs.existsSync(claudeHome('skills', name, 'SKILL.md'))) found.push(claudeHome('skills', name));
+    const proj = path.join(process.cwd(), '.claude', 'skills', name);
+    if (fs.existsSync(path.join(proj, 'SKILL.md'))) found.push(proj);
     try {
       const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
       for (const entries of Object.values(ip.plugins || {})) {
         for (const e of Array.isArray(entries) ? entries : []) {
-          const p =
-            e && typeof e.installPath === 'string' ? path.join(e.installPath, 'skills', 'ship') : null;
-          if (p && fs.existsSync(path.join(p, 'SKILL.md'))) registered.push(p);
+          const p = e && typeof e.installPath === 'string' ? path.join(e.installPath, 'skills', name) : null;
+          if (p && fs.existsSync(path.join(p, 'SKILL.md'))) found.push(p);
         }
       }
     } catch {
       /* no plugin registry — only the user skills dir can answer */
     }
+    return found;
+  };
+  {
+    const registered = registeredSkillDirs('ship');
     const nested = [];
     try {
       for (const d of fs.readdirSync(claudeHome('skills'), { withFileTypes: true })) {
@@ -468,6 +472,49 @@ export async function doctor({ pruneBackups: prune } = {}) {
         'no `ship` skill on this machine — core §2.2 ship triggers take the manual path ' +
           '(`manual ship because <reason>` in the report). Install gstack to get one.'
       );
+    }
+  }
+
+  // gs primaries (prompt-audit F14). Core §2.1 and §EXT §4 route work at
+  // `gs:/<name>`; Claude Code registers the `gstack` router, not its sub-skills,
+  // and the spec reaches them through the router. So a gs primary is reachable
+  // when it is registered on its own, or the router is registered and its
+  // directory holds <name>/SKILL.md. Read against the INSTALLED extended spec,
+  // like routing:skills-enabled. Advisory: an unreachable row degrades through
+  // §12's fallback column.
+  if (fs.existsSync(extSpec)) {
+    let gs;
+    try {
+      gs = [...routingPrimaries(fs.readFileSync(extSpec, 'utf8')).keys()]
+        .filter(k => k.startsWith('gs/'))
+        .map(k => k.slice(3));
+    } catch {
+      gs = [];
+    }
+    if (gs.length > 0) {
+      const routers = registeredSkillDirs('gstack');
+      const unreachable = gs.filter(
+        n =>
+          registeredSkillDirs(n).length === 0 &&
+          !routers.some(r => fs.existsSync(path.join(r, n, 'SKILL.md')))
+      );
+      if (unreachable.length === 0) {
+        push(
+          'routing:gstack-reachable',
+          true,
+          `all ${gs.length} gs primaries reachable${routers.length ? ` (router: ${routers[0]})` : ''}`
+        );
+      } else {
+        push(
+          'routing:gstack-reachable',
+          false,
+          `${unreachable.length} of ${gs.length} gs primaries unreachable: ${unreachable.map(n => `gs:/${n}`).join(', ')}. ` +
+            (routers.length
+              ? `The gstack router at ${routers[0]} does not hold them.`
+              : 'No `gstack` router skill is registered (~/.claude/skills/gstack/SKILL.md or a plugin).') +
+            ' Their §12 rows fall back to the last column.'
+        );
+      }
     }
   }
 

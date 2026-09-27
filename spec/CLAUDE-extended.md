@@ -472,9 +472,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English.
+**v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English. OPERATOR.md records the current `skillOverrides` state and all 8 sampling detectors.
 
-**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24867 bytes (Δ -127); extended 49479 → 49339 bytes (Δ -140); OPERATOR.md 16200 → 16744 bytes (Δ +544). Size budget: core 24867/25000 (**133 bytes headroom**); extended 49339/50000 (**661 bytes headroom**).
+**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24867 bytes (Δ -127); extended 49479 → 49424 bytes (Δ -55); OPERATOR.md 16200 → 17260 bytes (Δ +1060). Size budget: core 24867/25000 (**133 bytes headroom**); extended 49424/50000 (**576 bytes headroom**).
 
 ## §1.5-EXT GLOSSARY
 

@@ -38,7 +38,7 @@
       "added_version": "v6.7",
       "confidence": "medium",
       "last_demote_review": "2026-08-16",
-      "note": "Mechanical enforcement deferred to /claudemd-rules + R-N6 doctor signal (v0.7.x)"
+      "note": "Enforced mechanically for spec edits: spec-coherence-audit CHECK 4 (headroom) and version-cascade-check (Sizing drift). Lives in §EXT §13 META since v6.36.0 (spec-editing only)."
     },
     {
       "id": "§iron-law-2",

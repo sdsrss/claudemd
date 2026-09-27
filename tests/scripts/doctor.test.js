@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { doctor, isAdvisoryCheck } from '../../scripts/doctor.js';
 import { runningPluginRoot } from '../../scripts/lib/paths.js';
+import { routingPrimaries } from '../../scripts/lib/spec-routing.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
   cleanStateDir,
@@ -1346,6 +1347,69 @@ test('routing:ship-skill: registered at ~/.claude/skills/ship → ok, and it win
     true,
     'advisory: the spec fallback is a declared manual ship'
   );
+});
+
+// --- routing:gstack-reachable (prompt-audit F14) ----------------------------
+// Core §2.1 and §4 route UI verification, review, QA and more at `gs:/<name>`
+// sub-skills. Claude Code registers the `gstack` router, not its sub-skills, so
+// a gs primary is reachable when it is registered on its own OR the router is
+// registered and holds it. The ship check above answers one name; this one
+// answers every gs primary the installed §4 table names.
+const gsCheck = r => r.checks.find(x => x.name === 'routing:gstack-reachable');
+const stageSpecOnly = () =>
+  fs.writeFileSync(
+    path.join(box.home, '.claude/CLAUDE-extended.md'),
+    fs.readFileSync('spec/CLAUDE-extended.md', 'utf8')
+  );
+const gsNames = () =>
+  [...routingPrimaries(fs.readFileSync('spec/CLAUDE-extended.md', 'utf8')).keys()]
+    .filter(k => k.startsWith('gs/'))
+    .map(k => k.slice(3));
+const mkAt = rel => {
+  const d = path.join(box.home, '.claude/skills', rel);
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'SKILL.md'), `---\nname: ${path.basename(rel)}\n---\n`);
+};
+
+test('routing:gstack-reachable: router registered and every gs primary under it → ok', async () => {
+  stageSpecOnly();
+  mkAt('gstack');
+  for (const n of gsNames()) mkAt(`gstack/${n}`);
+  const c = gsCheck(await doctor({}));
+  assert.ok(c, 'check present when the installed spec names gs primaries');
+  assert.equal(c.ok, true, c.detail);
+  assert.ok(gsNames().length >= 10, `the fixture spec names ${gsNames().length} gs primaries`);
+});
+
+test('routing:gstack-reachable: a gs primary missing under the router is named', async () => {
+  stageSpecOnly();
+  mkAt('gstack');
+  for (const n of gsNames().filter(n => n !== 'browse')) mkAt(`gstack/${n}`);
+  const c = gsCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /gs:\/browse/);
+  assert.doesNotMatch(c.detail, /gs:\/review\b/, 'reachable ones are not listed');
+});
+
+test('routing:gstack-reachable: sub-skills without a registered router are unreachable', async () => {
+  stageSpecOnly();
+  for (const n of gsNames()) mkAt(`gstack/${n}`);
+  fs.rmSync(path.join(box.home, '.claude/skills/gstack/SKILL.md'), { force: true });
+  const c = gsCheck(await doctor({}));
+  assert.equal(c.ok, false);
+  assert.match(c.detail, new RegExp(`${gsNames().length} of ${gsNames().length}`));
+});
+
+test('routing:gstack-reachable: a gs primary registered on its own counts without the router', async () => {
+  stageSpecOnly();
+  for (const n of gsNames()) mkAt(n);
+  const c = gsCheck(await doctor({}));
+  assert.equal(c.ok, true, c.detail);
+  assert.equal(isAdvisoryCheck('routing:gstack-reachable'), true);
+});
+
+test('routing:gstack-reachable: no installed extended spec → no check', async () => {
+  assert.equal(gsCheck(await doctor({})), undefined);
 });
 
 // --- routing:skills-enabled (2026-09-01) -----------------------------------
