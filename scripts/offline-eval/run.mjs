@@ -236,6 +236,7 @@ function runOne(opts, id, rep) {
     cost: run.cost,
     turns: run.turns,
     tools: run.uses.length,
+    agents: run.uses.filter(u => u.name === 'Agent' || u.name === 'Task').length,
     specReads: run.specReads.map(s => s.what),
     final: run.final.slice(0, 2000),
     projectsDirRemoved: cleaned,
@@ -293,7 +294,7 @@ if (invokedAsMain(import.meta.url)) {
       runs: results.length,
       passed: results.filter(r => r.pass).length,
       costUsd: Number(results.reduce((s, r) => s + (r.cost || 0), 0).toFixed(4)),
-      results: results.map(({ task, rep, pass, why, cost, turns, wallMs }) => ({
+      results: results.map(({ task, rep, pass, why, cost, turns, wallMs, agents }) => ({
         task,
         rep,
         pass,
@@ -301,6 +302,7 @@ if (invokedAsMain(import.meta.url)) {
         cost,
         turns,
         wallMs,
+        agents,
       })),
     };
     fs.writeFileSync(
