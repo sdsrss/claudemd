@@ -448,6 +448,63 @@ else
   ng "E.8 session-start bootstrap section should be null (log: $(cat "$LOG" 2>/dev/null))"
 fi
 
+# --- D: every documented `extra` field is written by an emitter of that row ---
+#
+# docs/audit/20260926-180700.md 9.6 D3: field names in RULE-HITS-SCHEMA.md drifted
+# from what the hooks write, and only a reader noticed. Rows document fields as a
+# backticked brace list (`{mutations, open, paused}`); each key must appear as an
+# object key (`key:` or `"key":`) in a hook file that emits for one of the row's
+# emitters. Doc -> code only: a renamed or removed field fails here; a new
+# undocumented field is left to review.
+_d_key_written() { # KEY FILE... -> 0 when some file writes KEY as an object key
+  # Text first, match second: `grep | grep -q` under pipefail reports SIGPIPE
+  # (141) when the match comes early, i.e. "not found" for the best-written keys.
+  # Both spellings count: a jq object (`{key: $v}`) and hand-built JSON inside a
+  # bash string (`"{\"key\":$V}"`).
+  local _k="$1" _t; shift
+  _t=$(grep -hEv '^[[:space:]]*#' "$@" 2>/dev/null)
+  grep -qE "([{,][[:space:]]*|\\\\?\")${_k}(\\\\?\"[[:space:]]*:|[[:space:]]*:)" <<<"$_t"
+}
+_D_ROWS=0
+while IFS=$'\t' read -r _d_line _d_emitters _d_keys; do
+  [[ -n "$_d_keys" ]] || continue
+  _D_ROWS=$((_D_ROWS + 1))
+  _d_files=()
+  for _d_h in $_d_emitters; do
+    while IFS= read -r _d_f; do _d_files+=("$_d_f"); done \
+      < <(grep -lE "hook_record(_failopen)?[[:space:]]+${_d_h}([[:space:]]|$)" "$HOOKS_DIR"/*.sh "$HOOKS_DIR"/lib/*.sh 2>/dev/null)
+  done
+  if (( ${#_d_files[@]} == 0 )); then
+    ng "D schema line $_d_line: no hook file emits for ($_d_emitters)"
+    continue
+  fi
+  for _d_k in $_d_keys; do
+    if _d_key_written "$_d_k" "${_d_files[@]}"; then
+      ok "D schema line $_d_line: field '$_d_k' is written by $(basename "${_d_files[0]}")"
+    else
+      ng "D schema line $_d_line: documented field '$_d_k' is written by no emitter (${_d_emitters})"
+    fi
+  done
+done < <(awk -F'|' '
+  /^\|/ {
+    em=""; s=$3
+    while (match(s, /`[^`]+`/)) { em=em " " substr(s, RSTART+1, RLENGTH-2); s=substr(s, RSTART+RLENGTH) }
+    keys=""; t=$0
+    while (match(t, /`\{[a-z_][a-z_0-9]*(, *[a-z_][a-z_0-9]*)*\}`/)) {
+      k=substr(t, RSTART+2, RLENGTH-4); gsub(/, */, " ", k); keys=keys " " k; t=substr(t, RSTART+RLENGTH)
+    }
+    if (keys != "" && em != "") print NR "\t" em "\t" keys
+  }' "$SCHEMA")
+if (( _D_ROWS < 10 )); then
+  ng "D parsed only $_D_ROWS schema row(s) with documented fields — the table shape changed"
+fi
+# Liveness control: a key no hook writes must read as unwritten, or D proves nothing.
+if _d_key_written zz_not_a_rule_hits_field "$HOOKS_DIR"/*.sh; then
+  ng "D control: an invented field name read as written — the matcher accepts anything"
+else
+  ok "D control: an invented field name is not found"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
