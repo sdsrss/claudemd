@@ -67,6 +67,12 @@ and it breaks existing installs).
 `node scripts/install.js` refuses downgrades by design. Escape hatch:
 `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old tag.
 
+From 0.101.0 (spec v7.0.0) back to 0.100.0: the older installer does not know
+`~/.claude/spec-modules/`, so it restores the v6.35.0 core and extended and leaves that
+directory in place. No 0.100.0 hook reads it and the v6.35.0 core does not name it; remove
+it with `rm -r ~/.claude/spec-modules` if you want it gone. To keep 0.101.0 and only stop
+the injection, set `DISABLE_SPEC_MODULE_INJECT_HOOK=1` instead.
+
 ## Before any rollback action
 Run `node scripts/status.js` (and `node scripts/doctor.js` — the `hook-drift` and
 `spec-cache-drift` checks) to establish the REAL current installed/repo state first.
