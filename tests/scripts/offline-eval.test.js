@@ -83,3 +83,12 @@ test('offline-eval: every task has a prompt, a setup and a judge', () => {
   }
   assert.deepEqual(Object.keys(TASKS), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8']);
 });
+
+test('trigger-calibrate: ship reads the whole prompt, other modules only its head', async () => {
+  const { windowFor, measure } = await import('../../scripts/offline-eval/trigger-calibrate.mjs');
+  const long = 'x'.repeat(400) + ' please fix the bug and ship it';
+  assert.equal(windowFor('ship', long, 300), long);
+  assert.equal(windowFor('debug', long, 300).length, 300);
+  const m = measure([{ prompts: [{ idx: 1, text: long }], firstRelease: 2 }], 300);
+  assert.deepEqual([m.perModule.ship, m.perModule.debug, m.shipRecall], [1, 0, '1/1']);
+});
