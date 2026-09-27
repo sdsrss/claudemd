@@ -21,7 +21,9 @@ Options:
   --since=DATE   Transcripts modified on or after DATE (default 2026-09-05).
   --head=N       Also report matching on each prompt's first N characters (default 300).
   --json         Machine-readable output.
-  --help, -h     Print this message and exit.`;
+  --help, -h     Print this message and exit.
+
+Exit codes: 0 measured | 2 argv-shape error.`;
 
 /** Draft triggers per module. Modules with no prompt-level signal have none. */
 export const TRIGGERS = {

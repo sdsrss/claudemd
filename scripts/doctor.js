@@ -27,7 +27,7 @@ import {
   BACKUP_LABELS,
 } from './lib/backup.js';
 import { readSettings } from './lib/settings-merge.js';
-import { compareSpecs } from './lib/spec-hash.js';
+import { compareSpecs, compareSpecModules } from './lib/spec-hash.js';
 import { compareHooks } from './lib/install-drift.js';
 import { detect as detectStatusline } from './lib/statusline.js';
 import {
@@ -537,7 +537,8 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // plugin updated but the user hasn't run /claudemd-update yet. Does NOT
   // cover supply-chain integrity — the marketplace/npm signature is the
   // right layer for that.
-  const drift = compareSpecs(PLUGIN_ROOT);
+  // Spec files and the per-phase modules core §2.2 points at, one row each.
+  const drift = [...compareSpecs(PLUGIN_ROOT), ...compareSpecModules(PLUGIN_ROOT)];
   for (const s of drift) {
     if (s.shipped === null) {
       push(`spec-hash:${s.name}`, false, `shipped spec missing at ${path.join(PLUGIN_ROOT, 'spec', s.name)}`);

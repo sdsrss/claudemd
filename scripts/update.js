@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homeSpec, resolvePluginRoot, SPEC_FILES } from './lib/paths.js';
 import { diffSpec } from './lib/spec-diff.js';
-import { copySpecFiles } from './lib/spec-hash.js';
+import { copySpecFiles, syncSpecModules } from './lib/spec-hash.js';
 import {
   createBackup,
   pruneBackups,
@@ -77,6 +77,12 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   const targets = SPEC_FILES.filter(n => diffs.find(d => d.file === n && (d.added > 0 || d.removed > 0)));
 
   if (targets.length === 0) {
+    // The spec files match, but the modules are mirrored on their own and can
+    // still differ (a release that only rebuilt a module, or a hand edit).
+    const modules = syncSpecModules(pluginRoot);
+    if (modules.written.length + modules.removed.length > 0) {
+      return { applied: true, diffs, targets, modules };
+    }
     return { applied: false, diffs, reason: 'no changes to apply' };
   }
 
@@ -113,8 +119,9 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   // createBackup already renamed the originals away, restores all of them from
   // the backup dir on any failure rather than leaving a half-written spec.
   copySpecFiles(pluginRoot, targets, { backupDir });
+  const modules = syncSpecModules(pluginRoot);
 
-  return { applied: true, backupDir, diffs, targets };
+  return { applied: true, backupDir, diffs, targets, modules };
 }
 
 if (invokedAsMain(import.meta.url)) {

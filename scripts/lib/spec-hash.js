@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { homeSpec, SPEC_FILES } from './paths.js';
+import { homeSpec, SPEC_FILES, SPEC_MODULE_DIR, specModulesHome } from './paths.js';
 
 // Spec files shipped under <pluginRoot>/spec/ and installed at ~/.claude/<name>.
 // Imported from lib/paths.js (2026-08-29 audit R10-17b) — this used to be a
@@ -263,4 +263,69 @@ export function compareSpecs(pluginRoot) {
       missing: shipped === null || installed === null,
     };
   });
+}
+
+// Per-phase spec modules (tasks/specs/spec-modules.md): shipped as
+// <pluginRoot>/spec/spec-modules/*.md, installed to ~/.claude/spec-modules/.
+// The directory is claudemd's own — no user content is expected in it — so it
+// is mirrored rather than backed up: every shipped module is written through a
+// tmp file and renamed (the same integrity rule copySpecFiles applies), and a
+// *.md in the installed dir that the plugin no longer ships is removed. Nothing
+// outside that one directory is touched, and nothing recursive is ever removed.
+export function shippedSpecModules(pluginRoot) {
+  const dir = path.join(pluginRoot, 'spec', SPEC_MODULE_DIR);
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter(f => f.endsWith('.md'))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+export function syncSpecModules(pluginRoot) {
+  const names = shippedSpecModules(pluginRoot);
+  const destDir = specModulesHome();
+  const written = [];
+  const removed = [];
+  if (names.length === 0) return { written, removed };
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const n of names) {
+    const src = path.join(pluginRoot, 'spec', SPEC_MODULE_DIR, n);
+    const dest = path.join(destDir, n);
+    if (sha256File(src) === sha256File(dest)) continue;
+    const tmp = `${dest}.claudemd-tmp-${process.pid}`;
+    fs.copyFileSync(src, tmp);
+    if (sha256File(src) !== sha256File(tmp)) {
+      fs.rmSync(tmp, { force: true });
+      throw new Error(`spec module copy verification failed: ${n}`);
+    }
+    fs.renameSync(tmp, dest);
+    written.push(n);
+  }
+  for (const f of fs.readdirSync(destDir)) {
+    const p = path.join(destDir, f);
+    if (f.endsWith('.md') && !names.includes(f) && fs.lstatSync(p).isFile()) {
+      fs.rmSync(p, { force: true });
+      removed.push(f);
+    }
+  }
+  return { written, removed };
+}
+
+export function compareSpecModules(pluginRoot) {
+  const names = shippedSpecModules(pluginRoot);
+  const rows = names.map(n => {
+    const shipped = sha256File(path.join(pluginRoot, 'spec', SPEC_MODULE_DIR, n));
+    const installed = sha256File(path.join(specModulesHome(), n));
+    return {
+      name: `${SPEC_MODULE_DIR}/${n}`,
+      shipped,
+      installed,
+      match: shipped !== null && installed !== null && shipped === installed,
+      missing: shipped === null || installed === null,
+    };
+  });
+  return rows;
 }

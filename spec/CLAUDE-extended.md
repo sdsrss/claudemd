@@ -2,6 +2,7 @@
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
+<!-- module: auth -->
 ## §5-EXT Safe-paths whitelist (detail)
 
 Strict prefix match (NOT glob):
@@ -35,6 +36,7 @@ Strict prefix match (NOT glob):
 
 §3 names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
+<!-- module: modes -->
 ## §2-EXT Override modes
 
 Universal: Iron Law #2 + §8 SAFETY + §8 Anti-hallucination bind every mode. Per-task scope. Announce mode entry/exit inline ("entering HACK: prototyping in tmp/ — exits when promoted"). Modes cannot coexist.
@@ -97,6 +99,7 @@ Serves maintenance scripts (formatters, patch-bumps, doc sync) — NOT feature d
 ### Mode interactions
 [EMERGENCY] during [HACK] → EMERGENCY supersedes, HACK dropped. [HACK] during [EMERGENCY] → reject ("resolve incident first"). No mode coexistence.
 
+<!-- module: ship -->
 ### Released-artifact checklist (L3 hard upgrade, core §2)
 When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of LOC. Requirements before ship:
 - **SemVer non-patch bump** (minor for additive user-visible change, major for breaking).
@@ -106,6 +109,7 @@ When a change qualifies as "released-artifact user-visible default behavior chan
 
 Missing any item on a user-visible default change = incomplete ship; file as Uncertain in REPORT.
 
+<!-- module: plan -->
 ## §2.S SPEC ARTIFACT
 
 Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many plans.
@@ -134,6 +138,7 @@ During execution, if the plan's file map / naming / schema / signatures disagree
 
 Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
 
+<!-- module: skills -->
 ## §4 FLOW
 
 ### Routing
@@ -170,6 +175,7 @@ Example: "登录页又慢又报 500" → bug first (resolve 500), then perf only
 ### Skill invocation
 Routing keyword / task type / user names skill; WHICH skill is the §12 Skill routing table's question, answered by fit. No precedence among plugins.
 
+<!-- module: plan -->
 ### §4.FULL (L3 full path)
 
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
@@ -206,6 +212,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 
 **Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 as gs:/autoplan; add pre-ship gs:/cso if security surface appeared. Do NOT silently continue under lite.
 
+<!-- module: debug -->
 ## §6 DEBUG
 
 ```
@@ -228,6 +235,7 @@ Same error signature 3× → roll back the path that introduced it. Signature = 
 Append to plan: `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
 Session-scoped. Promote to `tasks/lessons.md` only on user request ("记住这个") or same-session recurrence.
 
+<!-- module: verify -->
 ## §7-EXT VALIDATE (L3)
 
 ```
@@ -235,7 +243,7 @@ L3  TDD + full suite + e2e                    → inline evidence with numbers+b
     (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7 (L2 does not load this file); this section carries the detail.
+L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -271,10 +279,12 @@ Falling to tier N requires stating why N-1 unfit.
 
 Order: project CI > defaults. No CI → build + smoke and report `[PARTIAL]`.
 
+<!-- module: ship -->
 ### Ship-baseline rationale (core §7)
 Core §7 defines the rule: before a push that fires CI/Release, check pushed-branch pipeline color; red → fix / annotate / ASK. Rationale in brief: stacking on red loses attribution for the next shipper; local green ≠ pipeline green (CI toolchain / lint-ruleset / env / platform drift); "I think CI is green" is not a check — state the concrete command run (`gh run list ...`) and cite the result.
 Override form: commit body line `known-red baseline: <one-line reason>` (e.g. `known-red baseline: flaky test_x.y quarantined in issue #N, fix landing in PR #M`). Absence of this line + red baseline = spec violation.
 
+<!-- module: verify -->
 ## §10-V Banned-vocab (reference list)
 
 Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the plugin's `hooks/banned-vocab.patterns` (deny/advisory on prose + commit text regardless of which spec files are loaded); the OK-shapes below are the fix recipes.
@@ -311,9 +321,10 @@ One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>
 - Read when a task's keywords match an entry; no session-start read — MEMORY.md and the recall plugin are the session-start layer (§11-EXT-MEM).
 - Format: `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`.
 
+<!-- module: orchestrate -->
 ## §11-O ORCHESTRATE
 
-Universal session rules live in core §11 SESSION — they bind whether this extended spec is loaded or not. The rules below apply to orchestration contexts specifically.
+Universal session rules live in core §11 SESSION — they bind whether or not this module is loaded. The rules below apply to orchestration contexts specifically.
 
 ### Defaults
 - **Delegate only large, independent work**: a subagent re-establishes context and main re-reads its report. Delegate ≥2 sizeable tasks with disjoint scope and no shared mutable state (in parallel), a wide multi-file investigation, or a review that needs an empty context (§12). Keep the rest in main, a whole small task included: a fix or change a handful of tool calls finishes is not handed to a worker, and no subagent re-checks your own work beyond the reviews §12 requires. One subagent where one suffices. File-scope overlap possible (grep-guessed edit surfaces intersect) → serial.
@@ -335,22 +346,8 @@ Universal session rules live in core §11 SESSION — they bind whether this ext
 User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <7d, confirm "你说的是 `<slug>`?"; ASK only if no match.
 **Multi-candidate**: ≥2 matches → list as `<slug> (<date>) — <goal>` and ASK; never guess.
 
+<!-- module: review -->
 ## §12 PLUGINS
-
-### Division of labor
-
-| sp = THINK + EXECUTE | gs = DECIDE + SHIP |
-|---|---|
-| brainstorming | office-hours (product/biz clarify) |
-| writing-plans | autoplan (3-view plan review) |
-| using-git-worktrees | review (pre-ship comprehensive) |
-| subagent-driven-development | ship → land-and-deploy |
-| test-driven-development | document-release (auto via /ship) |
-| systematic-debugging | investigate (env/staging bugs) |
-| requesting-code-review | qa, qa-only, browse |
-| receiving-code-review | design-consultation, design-review |
-| finishing-a-development-branch | cso, benchmark, codex |
-| dispatching-parallel-agents | freeze, careful, guard, retro |
 
 ### Hard cooperation rules
 - **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context. No self-review in costume. Subagent gated, not absent → Detection below.
@@ -358,15 +355,17 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 - **L3 two-tier review**: per-task in sp:subagent-driven-development; pre-ship cross-cutting via gs:/review.
 - **Ship pipeline owned by gs**: sp:finishing → gs:/review → gs:/ship → gs:/land-and-deploy → monitoring checklist.
 
+<!-- module: ship -->
 ### Ship-pipeline hardening (HARD)
-On `ship` / `deploy` / `create-release` / `merge-and-push`, after loading extended, invoke the `ship` skill. Manual ship allowed ONLY if stated in REPORT: `manual ship because <reason>` — absence = spec violation.
+On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this module, invoke the `ship` skill if listed. Manual ship allowed ONLY if stated in REPORT: `manual ship because <reason>` — absence = spec violation.
 
 Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voice, release notes, GitHub Release artifact vs. bare tag) that are silent-failure-prone by hand. Override form: REPORT Done first line `manual ship because <reason>`, so a reviewer can audit the manual diff against the skill's checklist.
 
 **Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer per Author ≠ reviewer above, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
 
-**Runbook fast-path (ship-trigger only)**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) MAY end with a coverage stamp: `covers: §EXT §12[, <other §EXT sections>] @ v<core-spec-version>`. At ship, stamp version == current core spec version (visible in core's title line) → Read the runbook + targeted-Read each stamped section; the full extended load for the ship trigger is waived. Bounds: (a) applies only when extended would load solely via ship/release — incl. L3 arising from the released-artifact rule alone; architecture / breaking-schema / migration / prod / infra L3, Override modes, and three-strike still full-load. (b) Stamp missing, version mismatch, or coverage in doubt → full load this ship, then refresh the stamp — each spec release costs exactly one full re-read (self-healing). (c) A stamp is valid only if the runbook inlines the §12 obligations it waives (ship-skill-or-override form + manual-ship atomicity); a stamped runbook lacking them = stamp void. (d) Post-compaction re-read repeats the same fast-path reads. This is an explicit skip-list per §3 stricter-reading scoping; every §12 HARD obligation binds unchanged — the fast-path changes what you read, not what you owe.
+**Runbook**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) is read together with this module. A runbook may repeat the obligations above, never waive them; where the two differ, this module wins, and every §12 HARD obligation binds unchanged.
 
+<!-- module: review -->
 ### Review-finding repair
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.
 - **Security (any severity)**: failing test must reproduce vulnerability (not just touch code path). No "added a check" without RED test.
@@ -375,6 +374,7 @@ Rationale: ship encapsulates mechanical checklists (manifest sync, CHANGELOG voi
 - **Resume**: re-run gs:/review on repair commit only (delta scope). Green → resume at gs:/ship. Depth limit 2; third miss → escalate with full context.
 - **Mature-solution check**: many findings in one round, a repair outgrowing the change it repairs, or immature tech underneath → before another patch round, search established open-source projects / libraries solving the same problem (web search / context7) and recommend adopt vs build, citing sources and trade-offs.
 
+<!-- module: skills -->
 ### Skill routing table
 
 Judgment by fit; no precedence among skills. Each candidate's criterion is taken from that skill's own `description` — the text the model already sees — so this table adds no second vocabulary. Two candidates both fitting → take the more specific criterion; one skill per stage, never stacked. Any subset of the three plugins absent → drop to the last column: no error, no ASK. Core §2.1 points here for skill routing.
@@ -409,6 +409,7 @@ Detection: first call fails → session flag → auto-degrade. Flag expires afte
 **Gated = missing**: capability listed and callable but blocked by a lower-precedence layer (harness `unless the user requested it`, tool switched off) — neither detector above fires. §3 ranks that layer below this spec, so the gate may not win SILENTLY: name it, then treat as missing → take the fallback. Where the fallback itself needs the gated capability (`sp:subagent-driven-development`, the review row) there is nothing to degrade to: ASK once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable, escalate. Rows carrying a written non-subagent degrade (`gs:/autoplan`, `gs:/codex`, `gs:/qa`) take it as written.
 **Batch confirmation**: ≥3 fallbacks needing user input → consolidate into ONE message.
 
+<!-- module: none -->
 ## §13 META (Agent-facing)
 
 - **Spec changes**: patch (wording / clarification, identical behavior) = L2; minor (rule added / relaxed) / major (protocol shift) = L3 per core §2 LLM-visible metadata. Proposal → diff → user ASK at all levels.
@@ -440,6 +441,7 @@ Promotion gates (≥3 repros + ≥20 L2+ tasks) and batch-review cadence are ope
 
 Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then advance OFF → default-ON advisory → `deny` through two operator-judged gates from `/claudemd-audit` data — gates + cadence: `OPERATOR.md §13.3`. Companion to §0.1: §0.1 promotes documentation; §13.3 promotes enforcement. META rule, not HARD — exempt from §13.2 ratchet.
 
+<!-- module: auth -->
 ## Appendix B — Canonical examples
 
 
@@ -451,6 +453,7 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 [AUTH REQUIRED op:migration-add-users-2fa-column scope:migrations/0042_users_2fa.sql,src/models/user.py risk:additive-column-default-null-but-concurrent-index-on-5M-rows]
 ```
 
+<!-- module: verify -->
 ### B.2 Valid vs invalid evidence
 
 **Valid** (bugfix, ties prior-failing anchor to fresh pass):
@@ -466,20 +469,23 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 **Valid — intermittent/concurrency** (tier-2 stress-repro as tier-1 proxy):
 > Done: closed double-charge race window with row-level lock. Checked: ./scripts/stress_race.sh --workers 20 --iterations 5000, pre-fix 47/5000 double-charges, post-fix 0/5000 across 3 runs. Intermittent: tier-2 stress-repro used as tier-1 proxy, reason concurrency-dependent.
 
+<!-- module: none -->
 ## Recent changes
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
 **v6.36.0 (minor, 2026-09-27)** — prompt-audit wording batch. Relaxed: core §2.1 and the §4 browse row reach `gs:/browse` through the `gstack` router and names `mcp__claude-in-chrome__*`. Otherwise same rules, corrected text: §4/§6 defer skill choice to §12; core §2.2 is the one extended-load list; stale facts in §7-EXT-TMP and §13 fixed; history and audit IDs removed; §0.1 moved into §13 META; emphasis inside HARD bullets reduced; core §1's language default is a user-level rule, else English. OPERATOR.md records the current `skillOverrides` state and all 8 sampling detectors. Behaviour (batch B6): §11-O delegates only large, independent work and keeps a whole small task in main; the per-batch review spawn is gone; core §10 says rules in plain words to the user.
 
-**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24989 bytes (Δ -5); extended 49479 → 49615 bytes (Δ +136); OPERATOR.md 16200 → 17463 bytes (Δ +1263). Size budget: core 24989/25000 (**11 bytes headroom**); extended 49615/50000 (**385 bytes headroom**).
+**Sizing** (v6.36.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24994 → 24991 bytes (Δ -3); extended 49479 → 48545 bytes (Δ -934); OPERATOR.md 16200 → 17463 bytes (Δ +1263). Size budget: core 24991/25000 (**9 bytes headroom**); extended 48545/50000 (**1455 bytes headroom**).
 
+<!-- module: session -->
 ## §1.5-EXT GLOSSARY
 
-Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Extended-only terms + clarifications:
+Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Terms core does not define, and clarifications:
 
 - **Assumption** — claim not verified this turn via Read/Grep/tool. Memory recall = assumption.
 
+<!-- module: auth -->
 ## §5.1-EXT AUTONOMY_LEVEL effects (full table)
 
 | Level | Effect on §5 table |
@@ -488,10 +494,11 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
-The `aggressive` skip-list lives in core §5.1 (L0–L2 do not load this file); its reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
+The `aggressive` skip-list lives in core §5.1 (read at every level); its reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
 
 **Published client** (defines "public API" for the §5 Hard row `Δ-contract on public API`, at every autonomy level): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 
+<!-- module: session -->
 ## §7-EXT-TMP TMP_RETENTION policy
 
 **`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically: `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
@@ -507,6 +514,7 @@ SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 - **Diagnose-before-pivot**: approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
 - **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. The harness's own default-to-no-new-comments guidance addresses *new* comments, not pruning old.
 
+<!-- module: memory -->
 ## §11-EXT-MEM Memory operations
 
 One home per fact — double-writing creates drift.
@@ -547,6 +555,7 @@ One home per fact — double-writing creates drift.
 - Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.
 - **Ship-runbook consolidation (SHOULD)**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook, holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; other ship-adjacent lessons keep their topical tags and get `[[links]]` from the runbook instead of own ship tags. Effect: §11 read-the-file at ship costs one predictable Read instead of tag fan-out.
 
+<!-- module: modes -->
 ## §0.2-EXT Mid-task feedback (continued)
 
 Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
@@ -555,6 +564,7 @@ Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
 - **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
 
+<!-- module: session -->
 ## §11-EXT-MAC macOS shell portability (cross-ref)
 
 Implementation discipline (BSD-vs-GNU `stat`, `wc -l` padding, missing `timeout`, `mktemp` symlink, exec-bit) is not a spec rule: hook scripts `source` the plugin's `hooks/lib/platform.sh` and call its wrappers — a `command -v` guard alone falls silently false.

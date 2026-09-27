@@ -1,0 +1,60 @@
+{
+  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; Oniguruma and JS compatible), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2.",
+  "modules": {
+    "ship": {
+      "loadsOn": "before tagging, releasing, publishing or deploying",
+      "triggers": "发版|发布(新)?版本|打\\s*tag|\\bship\\b|\\bcut a release\\b|npm publish|gh release|\\bdeploy\\b|上线",
+      "window": "whole"
+    },
+    "review": {
+      "loadsOn": "when reviewing work or spawning a reviewer, including the pre-ship review",
+      "triggers": "评审|审查|审核一下|code review|\\breview (the|this|my|it)\\b|\\bPR review\\b",
+      "window": "head"
+    },
+    "debug": {
+      "loadsOn": "when a bug, a failing test or an error is the task",
+      "triggers": "报错|修复|修一下|\\bbug\\b|崩溃|不工作|\\bfix (the|this|a)\\b|\\bfailing\\b|stack ?trace|\\bexception\\b",
+      "window": "head"
+    },
+    "verify": {
+      "loadsOn": "when validating an L2+ change: evidence tiers, test scope, report shape",
+      "triggers": "",
+      "window": "head"
+    },
+    "plan": {
+      "loadsOn": "for L3 work, specs and plans, or a change crossing modules",
+      "triggers": "架构|重构|规划|实施方案|设计方案|\\brefactor\\b|\\bmigration\\b|迁移|\\bL3\\b",
+      "window": "head"
+    },
+    "skills": {
+      "loadsOn": "when choosing which skill to invoke for a task",
+      "triggers": "",
+      "window": "head"
+    },
+    "orchestrate": {
+      "loadsOn": "before spawning subagents or running work in parallel",
+      "triggers": "并行|子代理|\\bsubagents?\\b|\\bin parallel\\b|fan out",
+      "window": "head"
+    },
+    "memory": {
+      "loadsOn": "when saving, recalling or tagging memory",
+      "triggers": "记住|记下来|\\bremember (this|that)\\b|\\bmem_save\\b",
+      "window": "head"
+    },
+    "auth": {
+      "loadsOn": "before deleting files, and for AUTONOMY_LEVEL or public-API questions",
+      "triggers": "",
+      "window": "head"
+    },
+    "modes": {
+      "loadsOn": "for HACK, EMERGENCY or AUTONOMOUS work, and when a task is cancelled or switched",
+      "triggers": "",
+      "window": "head"
+    },
+    "session": {
+      "loadsOn": "in long sessions: context pressure, re-reads, temp retention, macOS shells",
+      "triggers": "",
+      "window": "head"
+    }
+  }
+}

@@ -21,7 +21,7 @@ Batch B1 of `docs/audit/20260926-180700.md` (a prompt audit of the spec against 
 - **Later in the same version (batch B2)**: OPERATOR's companion-file line points at core §2.2; its settled `skillOverrides` item gains the 2026-09-27 state (no overrides, all 24 primaries enabled, gs primaries sitting under the gstack router, which doctor's new `routing:gstack-reachable` checks); its tasks table lists all 8 sampling-audit detectors. `hard-rules.json`'s §0.1 note names the two scripts that enforce it.
 - **Behaviour (batch B6)**: §EXT §11-O's defaults were written for Opus 4.x (2026-04-21) and pushed toward delegation ("Fresh-context-first", "Research/explore offloaded by default", "Complex → more subagents, never longer main context"). Anthropic's Opus 5 guidance says the model already delegates more readily and suggests restricting it to large, independent, parallelizable work; Claude Code's own system prompt carries a delegation instruction too. In an 8-task offline pilot on v6.36.0 the main session handed 5 whole tasks, small fixes included, to a worker subagent. The defaults now delegate only large independent work, keep a whole small task in main, and allow no self-check spawn beyond §12's reviews. The per-batch review spawn (≥3 tasks → sp:requesting-code-review) is removed; §12's pre-ship Author ≠ reviewer stays. Core §10 adds: state a rule in plain words to the user, cite its § number only when asked (final replies in four other projects carried § numbers in 20–35% of cases).
 
-Core 24994 → 24989 bytes, extended 49479 → 49615, OPERATOR.md 16200 → 17463.
+Core 24994 → 24991 bytes, extended 49479 → 48545, OPERATOR.md 16200 → 17463.
 
 ## v6.35.0 (minor, 2026-09-26) — `ship` if listed; worktree-relative spawn paths
 

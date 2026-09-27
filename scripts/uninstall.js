@@ -12,6 +12,7 @@ import {
   logsDir,
   settingsPath,
   specHome,
+  specModulesHome,
   backupRoot,
   readManifest,
   manifestPath,
@@ -317,6 +318,16 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   if (specAction === 'delete') {
     for (const p of specHome()) {
       if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    // The per-phase modules go with the spec that points at them. Only the
+    // *.md files claudemd wrote there, then the directory if that left it empty.
+    const modDir = specModulesHome();
+    if (fs.existsSync(modDir)) {
+      for (const f of fs.readdirSync(modDir)) {
+        const fp = path.join(modDir, f);
+        if (f.endsWith('.md') && fs.lstatSync(fp).isFile()) fs.unlinkSync(fp);
+      }
+      if (fs.readdirSync(modDir).length === 0) fs.rmdirSync(modDir);
     }
   } else if (specAction === 'restore') {
     restored = restoreBackup(restoreSource, backupRoot());

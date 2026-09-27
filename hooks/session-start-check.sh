@@ -390,9 +390,12 @@ spec_drift_check() {
   # than one file drifted (the report joins with ", ").
   local f base installed drifted="" missing="" ignore=",${SPEC_DRIFT_IGNORE:-},"
   ignore="${ignore// /}"
-  for f in "$PLUGIN_ROOT"/spec/*.md; do
+  # Spec files at ~/.claude/<name>, and the per-phase modules at
+  # ~/.claude/spec-modules/<name> (core §2.2 points at them), named relative to
+  # ~/.claude so a banner says which one.
+  for f in "$PLUGIN_ROOT"/spec/*.md "$PLUGIN_ROOT"/spec/spec-modules/*.md; do
     [[ -f "$f" ]] || continue
-    base=$(basename "$f")
+    base=${f#"$PLUGIN_ROOT"/spec/}
     case "$ignore" in *",$base,"*) continue ;; esac
     installed="$HOME/.claude/$base"
     # Absent USED to be skipped outright, on the reading that install.js decides

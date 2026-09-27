@@ -37,7 +37,7 @@ import {
   SPEC_FILES,
 } from './lib/paths.js';
 import { HOOK_BASENAMES } from './lib/hook-registry.js';
-import { copySpecFiles, sha256File } from './lib/spec-hash.js';
+import { copySpecFiles, sha256File, syncSpecModules } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
@@ -647,6 +647,9 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // content rather than a re-copyable shipped spec. It is null on the
   // overwrite-spec branch, which is the correct no-rollback case.
   copySpecFiles(pluginRoot, SPEC_FILES, { backupDir });
+  // The per-phase modules core §2.2 points at. Mirrored, not backed up: the
+  // directory is claudemd's own (spec-hash.js#syncSpecModules).
+  syncSpecModules(pluginRoot);
 
   // 2a. Migrate hand-installed banned-vocab hook files (pre-plugin v0 artifact).
   // settings.json entries that referenced this path are cleaned up in step 2b

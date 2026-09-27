@@ -77,6 +77,9 @@ export const backupRoot = () => path.join(home(), '.claude');
 // and backup.js both treat element 0 as the canonical user-facing file.
 export const SPEC_FILES = ['CLAUDE.md', 'CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md'];
 export const specHome = () => SPEC_FILES.map(n => path.join(home(), '.claude', n));
+// Per-phase spec modules: ~/.claude/spec-modules/<name>.md (tasks/specs/spec-modules.md).
+export const SPEC_MODULE_DIR = 'spec-modules';
+export const specModulesHome = () => path.join(home(), '.claude', SPEC_MODULE_DIR);
 // Address a single home-spec file by basename. Decoupled from backupRoot()
 // (which happens to share the same dir today) so that a future relocation
 // of backups does not silently break update.js's home-spec read path.

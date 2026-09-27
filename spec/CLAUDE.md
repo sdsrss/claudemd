@@ -1,6 +1,6 @@
 # AI-CODING-SPEC v6.36.0 — Core
 
-Canonical: `~/.claude/CLAUDE.md` | Extended: `~/.claude/CLAUDE-extended.md` (load per §2.2) | History: `~/.claude/CLAUDE-changelog.md`.
+Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`.
 
 Plugins: **sp** (superpowers) · **gs** (gstack) · **matt** (mattpocock-skills). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in §EXT §12.
 
@@ -52,7 +52,7 @@ Core-resident (L1/L2 routing references these):
 - **Task**: one SPINE cycle. New user request = new task unless explicit continuation.
 - **Contract / Δ-contract**: external-caller-visible interface (sig / return / status / CLI flag / config / schema / security); change to it = Δ-contract — additive (new flag/endpoint/optional/field) → L2, breaking (rename/remove/type-change/required-no-default) → L3.
 
-Extended-only terms (**Assumption** → §EXT §1.5-EXT) resolve on L3+ load; at L0–L2, targeted Read of the cited §EXT section per §2.2.
+Extended-only terms (**Assumption**): `session.md` §1.5-EXT.
 
 ## §2 LEVEL
 
@@ -69,7 +69,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 **Bugfix triage**: contract match → L1; contradicts → L2; unclear → L2 clarify first. **Provisional** (bugs only): start L1, re-classify in prose if scope expands.
 
-**Override modes** (§EXT §2-EXT): **HACK** (prototype) / **EMERGENCY** (incident) / **AUTONOMOUS** (scheduled). All: Iron Law #2 + §8 bind; per-task scope; load extended first, announce inline.
+**Override modes** (§EXT §2-EXT): **HACK** (prototype) / **EMERGENCY** (incident) / **AUTONOMOUS** (scheduled). All: Iron Law #2 + §8 bind; per-task scope; load `modes.md` first, announce inline.
 
 **Spec artifact** (`tasks/specs/<slug>.md`): mandatory at L3; at L2 propose one when cross-module (≥2 Modules) OR >50 LOC OR new dep — detail → §EXT §2.S.
 
@@ -87,17 +87,22 @@ Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` rout
 
 **Ambiguous trigger** → ASK per §0.
 
-### §2.2 EXT LOADING
+### §2.2 MODULES
 
-Load `~/.claude/CLAUDE-extended.md` when:
-- Classify = **L3** (architecture / migration / prod / infra)
-- User: **ship / deploy / PR / pre-ship review / benchmark / security audit**
-- Entering **HACK / EMERGENCY / AUTONOMOUS**
-- **L1-bugfix same signature 3×** (→ §EXT §6)
+`§EXT` sections live in per-phase modules under `~/.claude/spec-modules/`. A hook injects the module your prompt matches; otherwise Read the module listed here before the work it covers. `~/.claude/CLAUDE-extended.md` is their build source: do not read it whole.
+- `ship.md` — before tagging, releasing, publishing or deploying (§12 ship pipeline, §2-EXT release checklist)
+- `review.md` — reviewing, or spawning a reviewer (§12 Author ≠ reviewer, review repair)
+- `debug.md` — a bug, failing test or error; L1-bugfix same signature 3× (§6)
+- `verify.md` — validating L2+ work (§7-EXT, §10-R, §10-V, Appendix B.2)
+- `plan.md` — L3, specs, plans (§2.S, §4.FULL)
+- `skills.md` — choosing a skill (§4 routing, §12 table)
+- `orchestrate.md` — subagents, parallel work (§11-O)
+- `memory.md` — memory writes and recall (§11-EXT-MEM)
+- `auth.md` — deletes, AUTONOMY_LEVEL, public API (§5-EXT, §5.1-EXT)
+- `modes.md` — HACK / EMERGENCY / AUTONOMOUS, cancel or switch (§2-EXT, §0.2-EXT)
+- `session.md` — long sessions (§11-EXT, §7-EXT-TMP, §1.5-EXT)
 
-**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Extended load owed to ship/release alone + runbook memory stamped `covers: §EXT §12 … @ v<current spec>` → Read runbook + stamped sections, not the full file; else full load. Rules: §EXT §12.
-
-**L0/L1/L2**: do NOT load extended (targeted Read of a core-referenced §EXT section: OK at any level); wanting the full file at L2 signals re-classify to L3 — re-classify, don't load-and-continue. **How**: Read whole file at task start, before ROUTE; no per-task re-read absent compaction; post-compaction on L3/Override/ship → re-Read.
+**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Read `ship.md` and the project's ship-runbook memory first.
 
 ## §3 TRUST
 
@@ -211,17 +216,16 @@ Principle: extraordinary claims require fresh tool-call evidence.
 
 ## §11 SESSION (universal)
 
-Binds every task; extended not reliably loaded post-compaction. Default strength: SHOULD at L0/L1, MUST at L2+; a bullet tagged HARD binds at every level.
+Binds every task; modules are not reliably in context post-compaction. Default strength: SHOULD at L0/L1, MUST at L2+; a bullet tagged HARD binds at every level.
 
-- **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read the plan (and extended, if this task had loaded it) before proceeding; core is harness-injected every turn, never re-Read it. Silent unless gap surfaces. User references artifact absent from context → assume compaction.
+- **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read the plan (and any module this task used) before proceeding; core is harness-injected every turn, never re-Read it. Silent unless gap surfaces. User references artifact absent from context → assume compaction.
 - **Re-Read / Correction / Context pressure** (maintenance heuristics, full detail → §EXT §11-EXT): skip files already Read/Written absent external-change signal · on repeated auto-decision rejection switch to ASK-first · at >75% window prefer fresh-subagent + consider `tasks/<slug>-paused.md`.
-- **Memory routing** (durable layer vs time-sensitive recall layer; user-override filter): full → §EXT §11-EXT-MEM.
 - **Auto-memory triggers** (first match wins; full tree → §EXT §11-EXT-MEM):
   1. **Global-state hard** (MUST any level): `~/.claude/` writes across ≥2 files in one task → save project/feedback memory unless self-describing-artifact exempts.
   2. **L2+ retrospective** (MUST L2+): preventable-error pattern OR non-default decision / non-obvious sequencing.
   3. **Judgment** (L0/L1 + L2+ fallback): durable artifact whose insight would have changed a decision this session + ≥1 future-reuse probability.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
-  - Optional tag syntax `- [Title](file.md) [tags] — desc`; match task keywords against tags before Read; untagged → decide per-line from title/desc. Detail: §EXT §11-EXT-MEM.
+  - Optional tag syntax `- [Title](file.md) [tags] — desc`; match task keywords against tags before Read; untagged → decide per-line from title/desc.
 - **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report enters context only at turn end, so the yield IS the delivery (sleeping or pinging an idle agent does not deliver it): name what is awaited; completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. "Natural-feeling" stop points are not yields; a silent mid-cycle yield followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → do not list those items under "Completed". Un-VALIDATE'd items → `tasks/<slug>-paused.md` with exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
 
@@ -229,4 +233,4 @@ Multi-task / subagent / cross-session → §EXT §11-O.
 
 ---
 
-EXT loading rule → §2.2. Current entry + sizing → `CLAUDE-extended.md §Recent changes`.
+Modules → §2.2.
