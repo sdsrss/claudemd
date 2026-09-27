@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "claudemd marketplace: a personal AI-coding discipline harness (AI-CODING-SPEC v7.1 enforced as Claude Code hooks)",
-    "version": "0.101.0"
+    "version": "0.102.0"
   },
   "plugins": [
     {
       "name": "claudemd",
       "source": "./",
       "description": "Personal AI-coding discipline harness — one developer's opinionated AI-CODING-SPEC v7.1, enforced via Claude Code hooks + shipped with the plugin",
-      "version": "0.101.0",
+      "version": "0.102.0",
       "category": "development"
     }
   ]
