@@ -1170,9 +1170,21 @@ if :; then
           # otherwise sends them to edit their command to get past a gate
           # (v0.81.0 pre-tag review, MEDIUM-2).
           if (( S8_RM_IS_FIND == 0 )); then
+            # A subpath made only of expansions is empty in `residue`, so
+            # `"${PWD:?}/$arm"` lands here too. "No subpath" contradicts what
+            # was typed, and the generic advice misleads: `${arm:?}` is deleted
+            # like any other expansion, so guarding $arm still denies. Name the
+            # var and the fix that passes. Message only — the verdict is this
+            # arm's either way.
+            s8_subvar=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | sed -n 2p \
+              | sed -E 's/[${}"'"'"']//g; s/[^A-Za-z0-9_].*$//')
             # The verb the user typed, as every other rm line does (0.94.0
             # pre-tag review: this one line was still hard-coded as `rm -rf`).
-            REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+            if [[ -n "$s8_subvar" ]]; then
+              REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' whose only subpath is $'"$s8_subvar"$': the gate reads $'"$s8_subvar"$' as empty, which is bare $'"$varname"$', and a guard on $'"$s8_subvar"$' does not change that. Write the subpath literally.'
+            else
+              REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
+            fi
           else
             REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare $'"$varname"$' with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
           fi

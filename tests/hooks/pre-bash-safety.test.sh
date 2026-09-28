@@ -587,6 +587,33 @@ done <<EOF
 $VERB_CASES
 EOF
 
+# A subpath made only of expansions reads as empty — the residue deletes them —
+# so `"${PWD:?}/$arm"` takes the bare-var arm. Its line said "no subpath" about
+# a target that has one, and the generic advice (guard the var that can be
+# empty) does not pass there: `"$PWD/${arm:?}"` denies too. Seen in a real
+# 2026-09-28 session (`for arm in …; do rm -rf "${PWD:?}/$arm"; done`). The
+# line now names the var and the fix that passes. Every row is a deny before
+# and after; the last row is the control that a truly bare target keeps its
+# old wording.
+# <command>|<substring the reason MUST contain>|<substring it must NOT contain>
+SUBVAR_CASES='for arm in a b; do rm -rf "${PWD:?}/$arm"; done|rm -rf $PWD whose only subpath is $arm|with no subpath
+rm -rf "$PWD/${arm:?}"|rm -rf $PWD whose only subpath is $arm|with no subpath
+rm -f "$HOME/$X"|rm -f $HOME whose only subpath is $X|with no subpath
+rm -rf "$HOME"|rm -rf $HOME with no subpath|whose only subpath'
+while IFS='|' read -r sv_cmd sv_want sv_absent; do
+  [[ -n "$sv_cmd" ]] || continue
+  sv_reason=$(reason_of "$sv_cmd")
+  if [[ "$sv_reason" != *"$sv_want"* || "$sv_reason" == *"$sv_absent"* ]]; then
+    echo "FAIL [deny-subvar]: '$sv_cmd' reason should name '$sv_want' and not '$sv_absent', got: $(printf '%s' "$sv_reason" | head -2 | tr '\n' ' ')"
+    FAIL=$((FAIL + 1))
+  else
+    echo "PASS: deny reason for '$sv_cmd' names what makes the target bare"
+    PASS=$((PASS + 1))
+  fi
+done <<EOF
+$SUBVAR_CASES
+EOF
+
 # Deny MESSAGE is scoped to what fired (F42, 2026-09-25).
 #
 # §8-rm-rf-var was 89% of all hook denies (620/699), and every one carried the
