@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). Redirections are removed with their targets, then the command is
+# tier 3). <, > and >> redirections are removed with their targets, then the command is
 # cut into simple commands at ; & | ( ) and backticks (quoted bodies and
 # heredocs already emptied by hook_trigger_view),
 # prefixes (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ..., also
@@ -211,8 +211,9 @@ done < <(printf '%s\n' "$VIEW" \
     -e 's/(>>?|<)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
   | sed -e 's/[;&|()`]/\n/g' \
   | awk '/(^|[^[:alnum:]_.-])(git|gh|npm)([^[:alnum:]_-]|$)/ && /tag|push|release|publish/')
-# The first sed removes each redirection with its target (2>&1, >/dev/null,
-# `> log`, <in), wherever it sits: a redirection does not end a command, so
+# The first sed removes each <, >, >> redirection with its target (2>&1,
+# >/dev/null, `> log`, <in), wherever it sits; not &>, &>> or >| (their & and
+# | still split the command): a redirection does not end a command, so
 # splitting at < > (0.104.0's first build) dropped the words after one and hid
 # `git push 2>/dev/null origin v1.2.3` (pre-tag review M1). A digit run counts
 # as a descriptor only after a space, so v1.2.3>/dev/null keeps its 3.

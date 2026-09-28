@@ -148,7 +148,8 @@ done
 # 15. every English arm is bounded by (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]), not
 # \b (D#142 LOW-13, LOW-3): jq counts a CJK character as a word character, so
 # `\bbug\b` missed 这个bug怎么修 while the JS calibration copy matched it. One
-# positive row per converted arm with CJK on both sides; negative rows put _ or a
+# positive row per converted debug/plan/orchestrate/review/memory arm with CJK
+# on both sides (the ship arms' old bound already matched beside CJK); negative rows put _ or a
 # digit beside the word, which the old (?<![A-Za-z]) ship bound accepted.
 BAD15=0; N15=0
 for row in 'debug|这个bug怎么修' 'debug|测试failing了' 'debug|抛了个exception出来' 'debug|帮我fix the登录接口' \
