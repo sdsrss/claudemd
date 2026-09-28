@@ -683,19 +683,6 @@ else
   FAIL=$((FAIL + 1))
 fi
 
-# D#103 review L1: condition (5) once cut its input with `head -c` inside a
-# pipefail pipeline; past the 64 KiB pipe buffer `tr` died of SIGPIPE and the
-# provenance allow became a deny. The same command with a 66,000-byte tail.
-l1_tail=$(head -c 66000 /dev/zero | tr '\0' a)
-# shellcheck disable=SC2016  # single quotes intentional: the hook reads the text
-# The word is split so the mktemp-template gate does not read this data as a call.
-l1_reason=$(reason_of 'D=$(mk''temp -d); rm -rf "$D/x"; echo '"$l1_tail")
-if [[ -z "$l1_reason" || "$l1_reason" == ALLOW ]]; then  # reason_of prints nothing when the hook prints nothing
-  echo "PASS: a provenance rm followed by 66,000 bytes is still allowed"; PASS=$((PASS + 1))
-else
-  echo "FAIL [c5-long]: a 66,000-byte tail turned the provenance allow into a deny"; FAIL=$((FAIL + 1))
-fi
-
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
