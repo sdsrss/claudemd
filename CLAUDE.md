@@ -9,7 +9,7 @@ PreToolUse hooks already run `mem_recall` for past lessons before Read/Edit/Writ
 
 | When | Call |
 |------|------|
-| Before Edit/Write | hook already recalled; if a `#NN` lesson was injected, cite `#NN` next time you produce user-visible text (citing = adopting the feedback; uncited lessons decay) |
+| Before Edit/Write | hook already recalled; if an injected `#NN` lesson changed what you did, name `#NN` once where you say so (citing = adopting; uncited lessons decay; skip ones that did not apply) |
 | After fixing a non-trivial bug | `mem_save(type="bugfix", lesson_learned="<root cause + fix>", importance=2)` |
 | After a non-obvious architecture decision | `mem_save(type="decision", lesson_learned="<constraint + tradeoff>")` |
 | Deferring to a future session | `mem_defer({title, priority:1|2|3, detail})`; when fixed, add `closes_deferred=[N]` to `mem_save` |
