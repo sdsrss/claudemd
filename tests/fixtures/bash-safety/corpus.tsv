@@ -1524,3 +1524,14 @@ pass	S8-CQ8 control: mktemp provenance still credits after a comment apostrophe	
 pass	S8-CQ9 control: an apostrophe on a heredoc body line	cat <<'EOF2'__NL__# it's a heredoc__NL__EOF2__NL__echo 'a b'
 pass	S8-CQ10 control: a # inside quotes is not a comment	echo "# it's" 'x y'__NL__rm -rf "${D:?}/x"
 pass	S8-CQ11 control: nothing dangerous after the comment	# it's fine__NL__echo 'a b'
+
+# === 2026-09-29 S8-EQO: an escaped quote cannot open a single-token unquote ===
+# The single-token unquote sed could start a match AT an escaped `\"` and close
+# it on the real quote after it, leaving the real string unterminated for the
+# walker. Now `\\` and `\"` are swapped for control bytes while that sed runs.
+# Rows 1-2 flip on the previous hook (deny -> allow, allow -> deny).
+pass	S8-EQO1 escaped quotes inside a string no longer expose the single-quoted rm after it	echo "a \"c\"" 'x; rm -rf $f'
+deny	S8-EQO2 mirror: a string ending in an escaped quote no longer swallows the npx after it	echo "a \"" ; npx some-package ; echo "b c"
+pass	S8-EQO3 control: the single-quoted rm alone	echo 'x; rm -rf $f'
+pass	S8-EQO4 control: an escaped quote mid-body, guarded rm after	echo "a\"b" && rm -rf "${D:?}/x"
+deny	S8-EQO5 RESIDUAL: a backslash OUTSIDE quotes is still not modelled, so \" there opens a string	echo \"x\" 'y; rm -rf $f'

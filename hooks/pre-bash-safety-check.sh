@@ -582,10 +582,32 @@ fi
 # escape PAIR, so a trailing lone backslash cannot reach the closing quote.
 # Backslashes inside the body still unwrap (`"\rm"`, `"\npx"` — the alias-defeat
 # forms the F1 class depends on staying visible); measured on both.
+#
+# An escaped quote cannot OPEN a pair either (2026-09-29, corpus S8-EQO*). The
+# body class above stops `\"` from closing one, but the match could still start
+# at it: in `echo "a \"c\"" 'x; rm -rf $f'` the sed paired the escaped quote
+# before the real closing one, unwrapped that empty `""`, and left the real
+# string unterminated — so the walker exposed the single-quoted rm, and denied a
+# command that runs no rm. The mirror hid text: `echo "a \"" ; npx pkg ; echo
+# "b c"` allowed. Before the sed runs, each `\\` and then each `\"` becomes a
+# control byte, so an escaped quote is not a `"` to it at all; the bytes go back
+# after. `\\` → \002 keeps its old standing (an allowed escape pair in a body),
+# `\"` → \001 is excluded from the body exactly as the pair class excluded it,
+# so the one thing that changes is where a match may begin. A command already
+# carrying either byte skips the substitution and keeps the old reading.
 UNWRAPPED_CMD="$PROCESSED_CMD"
-PROCESSED_CMD=$(printf '%s' "$PROCESSED_CMD" \
-  | sed -E 's/"(([^"'"'"'[:space:];&|\]|\\[^"'"'"'[:space:];&|])*)"/\1/g' \
-  | sed -E "s/'([^'\"[:space:];&|]*)'/\1/g")
+_s8_eq=$'\001'; _s8_bs=$'\002'
+if [[ "$PROCESSED_CMD" == *\\* && "$PROCESSED_CMD" != *"$_s8_eq"* && "$PROCESSED_CMD" != *"$_s8_bs"* ]]; then
+  PROCESSED_CMD=$(printf '%s' "$PROCESSED_CMD" \
+    | sed -E "s/\\\\\\\\/$_s8_bs/g; s/\\\\\"/$_s8_eq/g" \
+    | sed -E 's/"(([^"'"'"'[:space:];&|'"$_s8_eq"'\]|\\[^"'"'"'[:space:];&|])*)"/\1/g' \
+    | sed -E "s/$_s8_eq/\\\\\"/g; s/$_s8_bs/\\\\\\\\/g" \
+    | sed -E "s/'([^'\"[:space:];&|]*)'/\1/g")
+else
+  PROCESSED_CMD=$(printf '%s' "$PROCESSED_CMD" \
+    | sed -E 's/"(([^"'"'"'[:space:];&|\]|\\[^"'"'"'[:space:];&|])*)"/\1/g' \
+    | sed -E "s/'([^'\"[:space:];&|]*)'/\1/g")
+fi
 # Dedicated view for the reverse-shell transports (3c). They need the OPPOSITE
 # trade from every other gate here: quoted prose must be invisible (so a commit
 # message naming /dev/tcp does not deny) but REDIRECTS must survive — and
