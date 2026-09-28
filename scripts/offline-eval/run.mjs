@@ -239,6 +239,29 @@ function removeOwnProjectsDir(cwd) {
   return !fs.existsSync(target);
 }
 
+/** Claude Code also keeps per-session task output under
+ *  <tmp>/claude-<uid>/<encoded cwd>/<session>/tasks/ — a symlink per background
+ *  task, pointing into the projects dir removed above. Nothing removed it, so
+ *  every run left one dir behind: 246 of them by 2026-09-29, each holding only
+ *  dangling links. <tmp> is os.tmpdir() here; /tmp is added for a TMPDIR the
+ *  claude binary does not share. */
+export function taskOutputDirs(cwd, tmp = os.tmpdir(), uid = process.getuid?.()) {
+  if (uid == null) return [];
+  const roots = [...new Set([tmp, '/tmp'])].map(t => path.join(t, `claude-${uid}`));
+  return roots.map(r => path.join(r, encodeCwd(cwd)));
+}
+
+export function removeOwnTaskOutputDirs(cwd, targets = taskOutputDirs(cwd)) {
+  let clean = true;
+  for (const target of targets) {
+    // Exact name derived from this run's own fixture path; never a glob.
+    if (!path.basename(target).includes('claudemd-test-oeval-')) continue;
+    fs.rmSync(target, { recursive: true, force: true });
+    if (fs.existsSync(target)) clean = false;
+  }
+  return clean;
+}
+
 /** claude -p arguments for one run. Without --include-hook-events the stream
  *  carries no hook_response rows, so tier-2 injections go unrecorded (B7 A/B:
  *  every B run read as injected=[] while the hook did inject). */
@@ -295,6 +318,7 @@ function runOne(opts, id, rep) {
     verdict = { pass: false, why: `judge error: ${e.message}` };
   }
   const cleaned = removeOwnProjectsDir(run.cwd || dir);
+  const taskDirsCleaned = removeOwnTaskOutputDirs(run.cwd || dir);
   const result = {
     arm: opts.arm,
     task: id,
@@ -317,6 +341,7 @@ function runOne(opts, id, rep) {
     specBytes: specBytes(run, home),
     final: run.final.slice(0, 2000),
     projectsDirRemoved: cleaned,
+    taskOutputDirsRemoved: taskDirsCleaned,
   };
   fs.writeFileSync(path.join(outDir, 'result.json'), JSON.stringify(result, null, 2));
   fs.rmSync(sandbox, { recursive: true, force: true });

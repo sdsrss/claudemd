@@ -5,6 +5,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -13,6 +15,8 @@ import {
   parseStream,
   claudeArgs,
   childEnv,
+  taskOutputDirs,
+  removeOwnTaskOutputDirs,
 } from '../../scripts/offline-eval/run.mjs';
 import { TASKS } from '../../scripts/offline-eval/tasks.mjs';
 
@@ -23,6 +27,39 @@ test('offline-eval: projects-dir name matches what Claude Code wrote in the 12.4
     encodeCwd('/tmp/claude-1000/-home-ai-dev-claudemd/2efe47ad/scratchpad/probe'),
     '-tmp-claude-1000--home-ai-dev-claudemd-2efe47ad-scratchpad-probe'
   );
+});
+
+test('offline-eval: task-output dirs are the names Claude Code wrote under /tmp/claude-<uid>', () => {
+  // 246 of these were found on 2026-09-29, e.g. /tmp/claude-1000/-tmp-claudemd-test-oeval-TZtrr1-repo.
+  assert.deepEqual(taskOutputDirs('/tmp/claudemd-test-oeval-TZtrr1/repo', '/tmp', 1000), [
+    '/tmp/claude-1000/-tmp-claudemd-test-oeval-TZtrr1-repo',
+  ]);
+  assert.deepEqual(taskOutputDirs('/x/claudemd-test-oeval-a/repo', '/var/t', 7), [
+    '/var/t/claude-7/-x-claudemd-test-oeval-a-repo',
+    '/tmp/claude-7/-x-claudemd-test-oeval-a-repo',
+  ]);
+  assert.deepEqual(taskOutputDirs('/x', '/tmp', null), []);
+});
+
+test('offline-eval: task-output cleanup removes its own dir only (sandbox)', () => {
+  const sbx = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-taskdirs-'));
+  try {
+    const cwd = '/x/claudemd-test-oeval-a/repo';
+    const [own] = taskOutputDirs(cwd, sbx, 7);
+    fs.mkdirSync(path.join(own, 'sid', 'tasks'), { recursive: true });
+    fs.symlinkSync('/nonexistent/agent.jsonl', path.join(own, 'sid', 'tasks', 'a.output'));
+    const sibling = path.join(sbx, 'claude-7', '-x-claudemd-test-oeval-b-repo');
+    const unmarked = path.join(sbx, 'claude-7', '-home-me-project');
+    fs.mkdirSync(sibling, { recursive: true });
+    fs.mkdirSync(unmarked, { recursive: true });
+    assert.equal(removeOwnTaskOutputDirs(cwd, [own]), true);
+    assert.equal(fs.existsSync(own), false);
+    assert.equal(fs.existsSync(sibling), true, 'a sibling run is not ours');
+    assert.equal(removeOwnTaskOutputDirs('/home/me/project', [unmarked]), true);
+    assert.equal(fs.existsSync(unmarked), true, 'a name without the fixture marker is never removed');
+  } finally {
+    fs.rmSync(sbx, { recursive: true, force: true });
+  }
 });
 
 test('offline-eval: hooks run from this repo with the sandbox HOME; install hooks are left out', () => {
