@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). The command is cut into simple commands at ; & | ( ) < > and
-# backticks (quoted bodies and heredocs already emptied by hook_trigger_view),
+# tier 3). Redirections are removed with their targets, then the command is
+# cut into simple commands at ; & | ( ) and backticks (quoted bodies and
+# heredocs already emptied by hook_trigger_view),
 # prefixes (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ..., also
 # path-qualified) are skipped, and
 # each one is a release step when it is:
@@ -149,11 +150,12 @@ _mg_git_push() {
 # _mg_is_release WORD... — 0 = this simple command is a release step.
 _mg_is_release() {
   local -a w=("$@")
-  local n=${#w[@]} i=0 _c _v
+  local n=${#w[@]} i=0 _c _b _v
   while (( i < n )); do
     _c="${w[i]}"
     if [[ "$_c" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then (( i++ )); continue; fi
-    case "${_c##*/}" in # /usr/bin/timeout is timeout
+    _b="$_c"; (( ${#_c} <= 256 )) && _b="${_c##*/}" # /usr/bin/timeout is timeout; a long word is not a prefix
+    case "$_b" in
       env)
         (( i++ ))
         while (( i < n )); do
@@ -203,8 +205,17 @@ while IFS= read -r _seg; do
   read -ra _words <<<"$_seg"
   (( ${#_words[@]} > 0 )) || continue
   _mg_is_release "${_words[@]}" && { IS_RELEASE=1; break; }
-done < <(printf '%s\n' "$VIEW" | sed -e 's/[;&|()`<>]/\n/g' \
+done < <(printf '%s\n' "$VIEW" \
+  | sed -E -e 's/^/ /' \
+    -e 's/[[:space:]][0-9]+(>>?|<)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
+    -e 's/(>>?|<)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
+  | sed -e 's/[;&|()`]/\n/g' \
   | awk '/(^|[^[:alnum:]_.-])(git|gh|npm)([^[:alnum:]_-]|$)/ && /tag|push|release|publish/')
+# The first sed removes each redirection with its target (2>&1, >/dev/null,
+# `> log`, <in), wherever it sits: a redirection does not end a command, so
+# splitting at < > (0.104.0's first build) dropped the words after one and hid
+# `git push 2>/dev/null origin v1.2.3` (pre-tag review M1). A digit run counts
+# as a descriptor only after a space, so v1.2.3>/dev/null keeps its 3.
 # (The awk keeps only candidate commands: a 2,000-command line went from 37 to
 # 215 ms when every command went through the bash parser — review L7.)
 (( IS_RELEASE )) || exit 0
