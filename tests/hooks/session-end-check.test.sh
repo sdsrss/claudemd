@@ -779,6 +779,47 @@ else
   ng "Case 28c: normalising dropped an in-project edit"
 fi
 
+# --- Case 29 (D#102 F7 remainder): `env -u NAME` takes a value, and a runner
+# called by its node_modules/.bin path is the runner. Real shape, ~7 times in
+# claude-mem-lite sessions: `env -u CLAUDE_MEM_DIR ./node_modules/.bin/vitest run`.
+V_I=0
+for V_CMD in \
+  'env -u CLAUDE_MEM_DIR ./node_modules/.bin/vitest run' \
+  'env -u A -u B bash tests/run-all.sh' \
+  'env --unset=FOO npm test' \
+  'node_modules/.bin/jest --ci'; do
+  V_I=$((V_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case29-$V_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$V_CMD")" "$TR_OK"
+  run_hook "$T"
+  if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]]; then
+    ok "Case 29.$V_I: '$V_CMD' validates"
+  else
+    ng "Case 29.$V_I: '$V_CMD' did not count as a validation"
+  fi
+done
+# Controls: env -u in front of a non-check command, a non-runner under
+# node_modules/.bin, and a commit in another repo (git -C), which validates
+# nothing in this project and stays unrecognised on purpose.
+N_I=0
+for N_CMD in \
+  'env -u FOO npm run build' \
+  'env -u test npm install' \
+  './node_modules/.bin/tsx build.ts' \
+  'git -C ../other commit -m x'; do
+  N_I=$((N_I + 1))
+  reset_cwd
+  T="$TMP_HOME/case29n-$N_I.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$N_CMD")" "$TR_OK"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    ok "Case 29n.$N_I: control '$N_CMD' is not a validation"
+  else
+    ng "Case 29n.$N_I: control '$N_CMD' read as a validation"
+  fi
+done
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

@@ -28,8 +28,8 @@
 #   bash tests/, tsc, vue-tsc, eslint, prettier --check, biome check,
 #   ruff, clippy, shellcheck                            — test/lint chain
 #   git commit, git push                                — finalization-as-validate
-#   each may follow `(`, `time`, VAR=value, `timeout N`, or a runner
-#   (npx, pnpm/yarn/npm exec, bunx, python -m)
+#   each may follow `(`, `time`, `env [-u NAME]`, VAR=value, `timeout N`, a
+#   runner (npx, pnpm/yarn/npm exec, bunx, python -m), or node_modules/.bin/
 #
 # Kill-switch: DISABLE_SESSION_END_CHECK_HOOK=1
 # Fail-open on any hiccup.
@@ -104,14 +104,18 @@ _SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]
 # backtrack cannot re-read `--prefix` as a switch and its value as the verb.
 # The pattern is only ever run by jq (Oniguruma), which has lookahead.
 # (B2 review F7 and its delta review M1/L2.)
+# `env -u NAME` consumes NAME, and a runner may be called by its
+# node_modules/.bin path (D#102 F7 remainder). `git -C <dir> commit` stays
+# unrecognised: a commit in another repo validates nothing here.
 _NPMVAL='(-C|-w|--prefix|--workspace|--userconfig|--globalconfig|--cache|--registry|--tag|--otp|--loglevel|--scope|--include|--omit)'
 _NPMOPT="([ \t]+${_NPMVAL}(=${_W}*|[ \t]+${_W}+)|[ \t]+(?!${_NPMVAL}([= \t]|\$))-${_W}+)*"
 _VAL="(\"[^\"\n]*\"|'[^'\n]*'|${_W}*)"
 VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?"
-VALIDATE_RE+="(env([ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
+VALIDATE_RE+="(env([ \t]+(-u|--unset)[ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
 VALIDATE_RE+="([A-Za-z_][A-Za-z0-9_]*=${_VAL}[ \t]+)*"
 VALIDATE_RE+="(timeout([ \t]+-[ks][ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
 VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+|(uv|poetry|pipenv)[ \t]+run[ \t]+)?"
+VALIDATE_RE+="((\./)?node_modules/\.bin/)?"
 VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_NPMOPT}[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
 VALIDATE_RE+="|npm${_NPMOPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
