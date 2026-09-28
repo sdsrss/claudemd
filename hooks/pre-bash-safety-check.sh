@@ -2214,7 +2214,78 @@ if (( _ncmd_hit == 1 )); then
   fi
 fi
 
+# Comment-quote pass (2026-09-29; tests/fixtures/bash-safety/corpus.tsv rows
+# S8-CQ*). sanitize_cmd pairs quotes BEFORE it strips comments, and it has to:
+# a `#` inside a quoted string is not a comment. The price is that a quote
+# character inside a real comment takes part in the pairing. `# the script's
+# layout` opened a single-quoted region at the apostrophe that ran to the next
+# `'` in the command, and every line in between was blanked as string content,
+# so
+#     # the script's layout
+#     rm -rf $SP/x
+#     echo 'foo'
+# was allowed. r1's replay of 6,138 real rm/find commands found 3 allowed for
+# this reason alone (docs/oss-benchmark-2026-09-28.md §3.3, local).
+#
+# Fixing the walker would move verdicts both ways — the mirror shape, a comment
+# apostrophe that EXPOSES a later quoted body, is a false deny today and would
+# flip to allow — and a text-parse change that can move deny→allow is what two
+# reverted fixes did (feedback: gate fixes deny-only by construction). So the
+# old analysis stays exactly as it was and this adds a second one: when the
+# command allowed and blanking the quote characters inside its comments changes
+# its text, the hook re-runs itself on that text, and a deny there is the
+# verdict. The union can only add denies. It costs one more run, on the rare
+# command that has a quote in a comment and was otherwise allowed (3% of real
+# commands; on those, p50 273 -> 283 ms and p99 774 -> 1,607 ms measured on 200).
+# If the two runs together outlast the 3 s hook timeout, Claude Code drops the
+# hook and the command proceeds, which is where it stood before this pass.
+#
+# Comment detection (s8_comment_quotes_blanked): the same rule the final sed in
+# sanitize_cmd uses — `#` at the start of a line or after a space or tab — but
+# only outside quotes, tracking '…', "…" with its backslash escapes, and a
+# backslash outside quotes. Inside a comment, ' " and ` become spaces. It does
+# not model heredoc bodies or $'…'; a misread there makes the second text
+# differ in ways bash would not, which can only produce an extra deny.
+# Prints the blanked text and succeeds only when it differs from the input.
+s8_comment_quotes_blanked() {
+  printf '%s' "$1" | awk '
+    BEGIN { RS = "\004"; changed = 0 }
+    {
+      n = length($0); st = 0; out = ""; prev = "\n"
+      for (i = 1; i <= n; i++) {
+        ch = substr($0, i, 1)
+        if (st == 0) {
+          if (ch == "\\") { out = out ch substr($0, i+1, 1); i++; prev = "x"; continue }
+          if (ch == "\047") st = 1
+          else if (ch == "\"") st = 2
+          else if (ch == "#" && (prev == "\n" || prev == " " || prev == "\t")) st = 3
+        } else if (st == 1) {
+          if (ch == "\047") st = 0
+        } else if (st == 2) {
+          if (ch == "\\") { out = out ch substr($0, i+1, 1); i++; prev = "x"; continue }
+          if (ch == "\"") st = 0
+        } else {
+          if (ch == "\n") st = 0
+          else if (ch == "\047" || ch == "\"" || ch == "`") { ch = " "; changed = 1 }
+        }
+        out = out ch; prev = ch
+      }
+      if (changed) printf "%s", out
+    }
+    END { exit (changed ? 0 : 1) }'
+}
+
 if (( ${#HITS[@]} == 0 )); then
+  if [[ "${CLAUDEMD_S8_COMMENT_PASS:-}" != 1 && "$CMD" == *'#'* ]]; then
+    if _cq_cmd=$(s8_comment_quotes_blanked "$CMD") && [[ -n "$_cq_cmd" ]]; then
+      _cq_out=$(printf '%s' "$EVENT" | jq -c --arg c "$_cq_cmd" '.tool_input.command = $c' 2>/dev/null \
+        | CLAUDEMD_S8_COMMENT_PASS=1 bash "${BASH_SOURCE[0]}" 2>/dev/null)
+      if [[ "$(printf '%s' "$_cq_out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" == deny ]]; then
+        printf '%s\n' "$_cq_out"
+        exit 0
+      fi
+    fi
+  fi
   exit 0
 fi
 
@@ -2327,7 +2398,13 @@ record_section_deny() {  # $1=section  $2=newline-delimited hits blob
   [[ -n "$2" ]] || return 0
   local hj
   hj=$(printf '%s' "$2" | sed '/^$/d' | jq -R . | jq -s .)
-  hook_record pre-bash-safety deny "{\"matched\":$hj}" "$1" "$SESSION_ID" "$TOOL_USE_ID"
+  # A deny from the comment-quote pass (above) says so, so its rows can be
+  # counted apart from the first analysis's.
+  if [[ "${CLAUDEMD_S8_COMMENT_PASS:-}" == 1 ]]; then
+    hook_record pre-bash-safety deny "{\"matched\":$hj,\"comment_pass\":true}" "$1" "$SESSION_ID" "$TOOL_USE_ID"
+  else
+    hook_record pre-bash-safety deny "{\"matched\":$hj}" "$1" "$SESSION_ID" "$TOOL_USE_ID"
+  fi
 }
 record_section_deny '§8-rm-rf-var' "$_rmrf_hits"
 record_section_deny '§8-npx'       "$_npx_hits"
