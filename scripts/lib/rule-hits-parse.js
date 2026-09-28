@@ -320,10 +320,11 @@ export function isBlockingDeny(event) {
   return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
 }
 
-// The non-deny half of the signal set: events that mean the spec spoke, without
-// blocking. Kept as an explicit set because there is no prefix that describes
-// them, unlike the deny family.
-const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch']);
+// The non-deny half of the signal set: events that mean the spec spoke, outside
+// the PreToolUse deny family. Kept as an explicit set because there is no prefix
+// that describes them. `block` is sandbox-disposal's opt-in Stop block, the
+// stronger form of its `warn` (D#77).
+const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch', 'block']);
 
 // isSignalEvent(event) — everything a usage trend should count.
 //

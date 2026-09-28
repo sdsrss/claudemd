@@ -246,8 +246,30 @@ else
   ng "Case 11: sid-less Stop wrote no sentinel — the fallback path is broken"
 fi
 
+# --- Case 12: every blocking event counts as a deny (D#77) --------------------
+# ship-baseline writes `deny-repeat`, banned-vocab `deny-prose`, sandbox-disposal
+# `block` (a Stop block); each blocked the model, so the banner counted 1 of
+# these 4 when it matched the literal `deny`. `deny-prose-dry-run` exits 0 and
+# stays out, as in rule-hits-parse.js isBlockingDeny.
+rm -f "$SUMMARY" "$REF"
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+{
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"ship-baseline\",\"event\":\"deny-repeat\",\"spec_section\":\"§7-ship-baseline\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny-prose\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"sandbox-disposal\",\"event\":\"block\",\"spec_section\":\"§8.V4\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny-prose-dry-run\",\"spec_section\":\"§10-V\",\"extra\":null}"
+} > "$LOG"
+echo "$EVENT" | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+D12=$(jq -r '.denies' "$SUMMARY" 2>/dev/null); T12=$(jq -r '.top_section' "$SUMMARY" 2>/dev/null)
+if [[ "$D12" == "4" && "$T12" == "§10-V" ]]; then
+  ok "Case 12: deny, deny-repeat, deny-prose and block count as denies; the dry run does not"
+else
+  ng "Case 12: expected denies=4 top=§10-V, got denies='$D12' top='$T12'"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"
+  echo "Tests: $((12 - FAIL))/12 passed"
   exit 1
 fi
-echo "Tests: 11/11 passed"
+echo "Tests: 12/12 passed"

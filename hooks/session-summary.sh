@@ -111,14 +111,20 @@ fi
 # they dominated whenever a session had >50 ops events vs ≤50 rule events,
 # making the banner always read `top: (unset)` regardless of actual rule
 # activity. (v0.9.12 fix.)
+# `denies` is every event that blocked the model: the deny family as
+# scripts/lib/rule-hits-parse.js isBlockingDeny reads it (deny, deny-repeat,
+# deny-prose; not deny-prose-dry-run, which exits 0) plus sandbox-disposal's
+# Stop `block` (D#77; the literal "deny" counted 1 of those 4).
 SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
   | jq -s -c --arg since "$SINCE_TS" '
+      def blocking: (.event | type == "string")
+        and ((.event | startswith("deny")) and .event != "deny-prose-dry-run" or .event == "block");
       map(select(.ts >= $since))
       | (length) as $total
-      | (map(select(.event == "deny")) | length) as $denies
+      | (map(select(blocking)) | length) as $denies
       | (map(select(.event == "bypass-escape-hatch")) | length) as $bypasses
       | (map(select(.event == "warn")) | length) as $warns
-      | (map(select(.event == "deny" or .event == "bypass-escape-hatch" or .event == "warn") | select(.spec_section != null))
+      | (map(select(blocking or .event == "bypass-escape-hatch" or .event == "warn") | select(.spec_section != null))
          | group_by(.spec_section)
          | map({section: .[0].spec_section, n: length})
          | sort_by(-.n)

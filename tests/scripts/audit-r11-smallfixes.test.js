@@ -200,6 +200,9 @@ test('R11-13b: the trend event set derives its deny half from isBlockingDeny', (
     'a new deny-* event must reach the trend without anyone editing a second list'
   );
   assert.equal(isBlockingDeny('deny-future-shape'), true);
+  // sandbox-disposal's Stop `block` is the stronger form of its counted `warn`
+  // (D#77): a trend that counts the warn must count the block.
+  assert.equal(isSignalEvent('block'), true, 'block');
   // And non-signal events stay out.
   for (const e of ['fail-open', 'suggest', 'rm-rf-allow-provenance', '', null]) {
     assert.equal(isSignalEvent(e), false, String(e));
