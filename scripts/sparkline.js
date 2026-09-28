@@ -2,7 +2,7 @@
 // version-discipline accounting.
 //
 // Reads `~/.claude/logs/claudemd.jsonl`, counts signal events
-// (deny + warn + advisory + bypass-escape-hatch) per `spec_section` across
+// (deny family + warn + advisory + bypass-escape-hatch + block) per `spec_section` across
 // 3 cumulative windows (default 30 / 60 / 90 days), and emits a markdown
 // block suitable for pasting into the CHANGELOG header before a release.
 //
@@ -37,7 +37,7 @@ import { printHelpAndExit, resolveDaysListFlag, invokedAsMain, parseStrictOrExit
 const USAGE = `Usage: node scripts/sparkline.js [--days=W1,W2,W3]
 
 Emit rule-usage trend sparkline as a markdown block (deny+warn+advisory+
-bypass per spec_section across multiple windows).
+bypass+block per spec_section across multiple windows).
 
 Options:
   --days=W1,...  Comma-separated positive integers (default 30,60,90).

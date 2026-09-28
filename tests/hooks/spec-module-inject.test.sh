@@ -160,7 +160,7 @@ for row in 'debug|这个bug怎么修' 'debug|测试failing了' 'debug|抛了个e
 done
 N15=0
 for p in 'ship_date 字段为空时' 'deploy_utils.py 在哪' 'ship2 是哪个分支' 'bug_id 列的索引' 'L30 行的注释' \
-  'subagents_dir 配置项' 'refactor_log 表'; do
+  'subagents_dir 配置项' 'refactor_log 表' 'cut a release2 branch' 'release_v2 to npm 的脚本'; do
   N15=$((N15+1)); [[ -z "$(inject "$p" "s15n$N15")" ]] || { ng "15 _/digit-glued word drew a module: $p -> $(mods "$(inject "$p" "s15m$N15")")"; BAD15=1; }
 done
 [[ $BAD15 == 0 ]] && ok "15 English arms match next to CJK and not next to _ or a digit"

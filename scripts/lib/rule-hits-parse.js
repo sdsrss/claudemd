@@ -332,7 +332,7 @@ const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch', 'blo
 // half of it is a PREFIX rule here, so a new `deny-*` event would be counted by
 // isBlockingDeny and silently dropped from the release-header trend — one side a
 // rule, the other a list, with no join (2026-09-02 audit R11-13b). The deny half
-// is now derived; only the three non-deny names are written down.
+// is now derived; only the non-deny names are written down (SIGNAL_NON_DENY).
 export function isSignalEvent(event) {
   return isBlockingDeny(event) || SIGNAL_NON_DENY.has(event);
 }

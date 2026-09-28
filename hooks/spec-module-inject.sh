@@ -8,8 +8,9 @@
 # the rules arrive whether or not the model would have chosen to read them —
 # measured before this hook existed: a hint to read a file was followed in
 # 25/46 Opus 5.5 turns (docs/audit/20260926-180700.md §12.3). Calibrated on
-# 745 human prompts since 2026-09-05 (scripts/offline-eval/trigger-calibrate.mjs,
-# 2026-09-27; machine-sent turns excluded, as below): >= 2 modules on 6.7%.
+# 757 human prompts since 2026-09-05 (scripts/offline-eval/trigger-calibrate.mjs's
+# filter, 2026-09-28, 0.104.0 triggers; machine-sent turns excluded, as below):
+# >= 2 modules on 51 (6.7%).
 #
 # Bounded: each module once per session (the list lives in the state dir and
 # session-start clears it on compaction, when injected text is gone), at most

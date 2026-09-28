@@ -1,6 +1,6 @@
 ---
 name: claudemd-sparkline
-description: Emit rule-usage trend sparkline (deny+warn+advisory+bypass per spec_section across 3 windows). Markdown block suitable for CHANGELOG header.
+description: Emit rule-usage trend sparkline (deny+warn+advisory+bypass+block per spec_section across 3 windows). Markdown block suitable for CHANGELOG header.
 ---
 
 Usage: `/claudemd-sparkline` (default windows 30/60/90 days)
