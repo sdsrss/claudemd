@@ -436,8 +436,9 @@ test('R11-21(b): the ghost-flag join is capable of failing (mutation control)', 
 // nothing else, while two hooks return context through a different envelope on
 // three different events. The audit that found this counted five emitters by
 // `grep -l additionalContext hooks/` — three of those five only MENTION the
-// field in a header comment, and two of them say the opposite ("stderr only —
-// Stop has no additionalContext schema"). Hence the comment stripping here:
+// field in a header comment, and two of them said the opposite ("stderr only —
+// Stop has no additionalContext schema", itself stale since Claude Code
+// 2.1.163 and corrected 2026-09-29). Hence the comment stripping here:
 // counting prose as code is what produced the wrong number in the first place.
 const HOOK_DOC = path.join(ROOT, 'docs/HOOK-PROTOCOL.md');
 

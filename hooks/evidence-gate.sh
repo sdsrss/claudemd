@@ -43,8 +43,10 @@
 #     not lag; the EVIDENCE is older than the claim by construction, so the lag
 #     costs at most the most recent command. Registered as an FP source.
 #
-# Channel: stderr with exit 0, so the HUMAN reads it and the model does not
-# (Stop has no additionalContext; docs/HOOK-PROTOCOL.md). That is deliberate
+# Channel: stderr with exit 0, so the HUMAN reads it and the model does not.
+# Stop does accept additionalContext (Claude Code 2.1.163+), but there it
+# continues the turn: every firing buys one more model reply
+# (docs/HOOK-PROTOCOL.md). That is deliberate
 # until the verdict is precise enough to interrupt a model: a 2026-09-26
 # replay over 1,747 historical turn ends fired 21 times and at most 3 were a
 # code completion claim without verification (reports, questions and

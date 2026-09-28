@@ -94,8 +94,10 @@ A hook can also return text for the model to read instead of a decision. Same
   as a closed set of the first three, which was this file asserting a limit it
   had never tested: on 2026-09-21 a probe registered a PostToolUse hook emitting
   a unique token and the model quoted the token back, on Claude Code 2.1.278
-  (`rework-breaker.sh` ships on that path). `Stop` genuinely does not — see
-  below, where the absence is a schema fact rather than an untested assumption.
+  (`rework-breaker.sh` ships on that path). `Stop` and `SubagentStop` accept it
+  too, since Claude Code 2.1.163, but on those two events it is not a passive
+  channel: the turn keeps going so the model can respond — see below. This
+  file said the opposite until 2026-09-29, which was the same mistake again.
 - `suppressOutput: true` keeps the text out of the transcript UI while the
   model still receives it. Every emitter here sets it.
 - `systemMessage` (top level, beside `suppressOutput`) is the opposite channel:
@@ -163,8 +165,17 @@ Emitters, derived from source and gated by
   branches that are safe to delete, with the `git branch -d` command that
   deletes them. It deletes nothing. Silent when there is nothing to list.
 
-**Stop hooks emit no `hookSpecificOutput` at all.** The Stop event has no
-context schema. Two Stop hooks print stdout JSON of a different shape, each
+**No Stop hook here emits `hookSpecificOutput`, and that is a choice, not the
+schema.** Claude Code 2.1.163 added `hookSpecificOutput.additionalContext` to
+Stop and SubagentStop, documented as "non-error feedback that continues the
+conversation": the model reads it at the end of the turn and responds, under the
+same `stop_hook_active` loop guard as `decision: "block"`, and under `claude -p`
+that extra reply becomes the final result. So on Stop it costs one more model
+turn per firing, exactly as a block does, just without the error label. An
+advisory whose precision is low — `evidence-gate.sh` fired 21 times over 1,747
+historical turn ends and at most 3 were right — would buy one extra turn per
+false alarm, which is why the advisories below stay on `stderr`.
+Two Stop hooks print stdout JSON of a different shape, each
 only under its opt-in: `reply-language-check.sh` and
 `sandbox-disposal-check.sh` (`SANDBOX_DISPOSAL_BLOCK=1`) return top-level
 `{"decision":"block","reason":…}`, which Claude Code documents for Stop as
@@ -177,7 +188,8 @@ advisory text to `stderr` — `mem-audit.sh`, `residue-audit.sh`,
 `ledger-staleness.sh` — and `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for
 `session-start-check.sh` to turn into a banner at the START of the next
-session. That indirection is the schema's doing, not a design preference.
+session. Before 2.1.163 that indirection was forced by the schema; it is now
+the cheaper of two channels, kept because the other one costs a turn.
 
 Injected text lands next to user messages, so it has to carry its own origin
 framing (`[claudemd] …`, plus an explicit "system-injected" marker on anything

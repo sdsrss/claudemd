@@ -7,10 +7,11 @@
 # in v0.18.0 / spec v6.12.0 (§11-EXT) — incident-log pattern is fact-only
 # by nature; see hook source comment + spec note.
 #
-# Output: stderr only (no JSON to stdout) — Stop event has no
-# hookSpecificOutput.additionalContext schema. Mirrors residue-audit.sh.
-# CC harness surfaces stderr to the user as advisory; never blocks
-# (Stop cannot block by design).
+# Output: stderr only (no JSON to stdout). Stop does accept
+# hookSpecificOutput.additionalContext since Claude Code 2.1.163, but there it
+# continues the turn (one more model reply per firing), which a memory-hygiene
+# notice for the human does not warrant. Mirrors residue-audit.sh. CC surfaces
+# stderr to the user as advisory; this hook never blocks.
 #
 # Independence: this hook audits CC built-in auto-memory under
 # ~/.claude/projects/<encoded-cwd>/memory/ ONLY. It does NOT depend on
