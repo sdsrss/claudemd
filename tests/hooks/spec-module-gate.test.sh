@@ -144,14 +144,18 @@ else ng "12 bash read: ok-run=$(decision "$OUT12") errored-run=$(decision "$OUT1
 # to the version (0.102.0 caught `git tag v1.2.3>/dev/null`), a version tag on the
 # DESTINATION side of a refspec, --mirror (pushes every tag), and a
 # path-qualified command prefix. A redirection in the middle of the command
-# does not end it (0.104.0 pre-tag review M1: splitting at < > hid the words after).
+# does not end it (0.104.0 pre-tag review M1: splitting at < > hid the words after),
+# nor does &>, &>>, >| or <>, and a descriptor glued to ; or ( is one (D#148).
 R13_BAD=""
 for c in 'git tag v1.2.3>/dev/null' 'git push origin v1.2.3>/dev/null' 'git tag -a v1.2.3 -m x</dev/null' \
   'git push origin HEAD:refs/tags/v1.2.3' 'git push origin +main:refs/tags/v2.0.0' 'git push --mirror origin' \
   '/usr/bin/timeout 60 npm publish' '/usr/bin/env FOO=1 npm publish' '/usr/bin/sudo npm publish' \
   'git push origin >/dev/null v1.2.3' 'git push 2>/dev/null origin v1.2.3' 'git push 2>/dev/null --tags' \
   'git push >/dev/null origin --tags' 'git tag >/dev/null v1.2.3' 'git tag -a -m msg 2>/dev/null v1.2.3' \
-  'git push origin v1.2.3 2>&1 | tee log' 'git push origin v1.2.3 >> log 2>&1'; do
+  'git push origin v1.2.3 2>&1 | tee log' 'git push origin v1.2.3 >> log 2>&1' \
+  'git push origin &>/dev/null v1.2.3' 'git push &>>log origin v1.2.3' 'git push >|log origin v1.2.3' \
+  'git push 2>|log origin v1.2.3' 'git tag &>/dev/null v1.2.3' 'git push <>f origin v1.2.3' \
+  'echo a;2>/dev/null git push --tags' '(2>/dev/null git push --tags)'; do
   [[ "$(decision "$(run deny "$c" g13)")" == deny ]] || R13_BAD+="[$c] "
 done
 [[ -z "$R13_BAD" ]] && ok "13 glued redirections, destination-side version tags, --mirror and path-qualified prefixes are gated" || ng "13 missed: $R13_BAD"
@@ -159,14 +163,17 @@ done
 # 14. their neighbours are not releases: a tag deleted by an empty source, a
 # version-named BRANCH as destination, a dry-run mirror, a redirection into a
 # file named like a version, a --dry-run / -n / -d / --help AFTER a redirection
-# (the redirection is removed, not treated as a separator: pre-tag review M1),
+# (the redirection is removed, not treated as a separator: pre-tag review M1;
+# &>, &>> and >| too: D#148),
 # and a redirection whose target is named git or npm.
 N14_BAD=""
 for c in 'git push origin :refs/tags/v1.2.3' 'git push origin HEAD:refs/heads/v1.2.3' 'git push origin HEAD:release/1.2' \
   'git push --mirror --dry-run origin' 'git push -n --mirror origin' 'git log >v1.2.3' 'git push origin main 2>v1.2.3.log' \
   'npm publish >/dev/null --dry-run' 'git push --tags >log --dry-run' 'git push origin v1.2.3 2>/dev/null -n' \
   'git tag v1.2.3 >/dev/null -d' 'gh release create v1.2.3 >/dev/null --help' 'echo foo > git push origin v1.2.3' \
-  'echo notes > npm publish' 'cat < git tag v1.2.3'; do
+  'echo notes > npm publish' 'cat < git tag v1.2.3' \
+  'npm publish>|log --dry-run' 'npm publish >|log --dry-run' 'npm publish &>log --dry-run' \
+  'git push --tags &>>log -n' 'git push origin v1.2.3 >|x --dry-run' 'gh release create v1 &>/dev/null --help'; do
   [[ -z "$(run deny "$c" g14)" ]] || N14_BAD+="[$c] "
 done
 [[ -z "$N14_BAD" ]] && ok "14 tag deletion, version-named branches, dry-run mirrors and version-named log files pass" || ng "14 wrongly gated: $N14_BAD"
@@ -175,12 +182,23 @@ done
 # inside the 3 s hook budget (D#142 LOW-1: the letter loop was quadratic and a
 # killed hook allows). Scan cost is capped, so 2 s is a wide margin; 40,000
 # letters keep the uncapped loop far above it on a fast machine. Timed with
-# bash's `time` (TIMEFORMAT=%R), not `date +%s%N`, which BSD date lacks.
+# bash's `time` (TIMEFORMAT=%R), not `date +%s%N`, which BSD date lacks; under
+# LC_ALL=C, since a comma-decimal locale prints 0,111 (D#148).
 LONG15="git tag -$(printf 'a%.0s' $(seq 1 40000)) v1.2.3"
-E15=$( { TIMEFORMAT=%R; time run deny "$LONG15" g15 >"$HOME/out15"; } 2>&1 )
+E15=$( { LC_ALL=C; TIMEFORMAT=%R; time run deny "$LONG15" g15 >"$HOME/out15"; } 2>&1 )
 OUT15=$(cat "$HOME/out15" 2>/dev/null)
 if [[ "$(decision "$OUT15")" == deny ]] && [[ "$E15" =~ ^[0-9]+\.[0-9]+$ ]] && (( ${E15%%.*} < 2 )); then
   ok "15 a 40,000-letter bundled option is parsed in ${E15} s and still gated"
 else ng "15 long bundled option: decision=$(decision "$OUT15") elapsed=${E15} s"; fi
+
+# 16. a first word of 100,000 characters is read inside the same 2 s: stripping a
+# path from it with ${w##*/} was quadratic and took 2.9 s (D#148). The command
+# is not a release, so the verdict is silence.
+LONG16="$(printf 'a%.0s' $(seq 1 100000)) git push --tags"
+E16=$( { LC_ALL=C; TIMEFORMAT=%R; time run deny "$LONG16" g16 >"$HOME/out16"; } 2>&1 )
+OUT16=$(cat "$HOME/out16" 2>/dev/null)
+if [[ -z "$OUT16" ]] && [[ "$E16" =~ ^[0-9]+\.[0-9]+$ ]] && (( ${E16%%.*} < 2 )); then
+  ok "16 a 100,000-character first word is read in ${E16} s"
+else ng "16 long first word: out=${OUT16:0:60} elapsed=${E16} s"; fi
 
 claudemd_assert_summary

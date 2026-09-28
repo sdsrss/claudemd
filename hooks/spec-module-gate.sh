@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). <, > and >> redirections are removed with their targets, then the command is
+# tier 3). Redirections are removed with their targets, then the command is
 # cut into simple commands at ; & | ( ) and backticks (quoted bodies and
 # heredocs already emptied by hook_trigger_view),
 # prefixes (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ..., also
@@ -173,7 +173,9 @@ _mg_is_release() {
     esac
   done
   (( i < n )) || return 1
-  _c="${w[i]##*/}"; (( i++ ))
+  # ${x##*/} on a word with no / costs time quadratic in its length: 2.9 s for
+  # a 100,000-character first word, near the 3 s hook timeout (D#148).
+  _c="${w[i]}"; [[ "$_c" == */* ]] && _c="${_c##*/}"; (( i++ ))
   case "$_c" in
     git)
       _mg_skip_opts -C -c --git-dir --work-tree --namespace --super-prefix --config-env --exec-path
@@ -207,16 +209,19 @@ while IFS= read -r _seg; do
   _mg_is_release "${_words[@]}" && { IS_RELEASE=1; break; }
 done < <(printf '%s\n' "$VIEW" \
   | sed -E -e 's/^/ /' \
-    -e 's/[[:space:]][0-9]+(>>?|<)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
-    -e 's/(>>?|<)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
+    -e 's/&>>?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
+    -e 's/([[:space:];&|()`])[0-9]+(>>?|>\||<>?)&?[[:space:]]*[^[:space:];&|()`<>]*/\1 /g' \
+    -e 's/(>>?|>\||<>?)&?[[:space:]]*[^[:space:];&|()`<>]*/ /g' \
   | sed -e 's/[;&|()`]/\n/g' \
   | awk '/(^|[^[:alnum:]_.-])(git|gh|npm)([^[:alnum:]_-]|$)/ && /tag|push|release|publish/')
-# The first sed removes each <, >, >> redirection with its target (2>&1,
-# >/dev/null, `> log`, <in), wherever it sits; not &>, &>> or >| (their & and
-# | still split the command): a redirection does not end a command, so
-# splitting at < > (0.104.0's first build) dropped the words after one and hid
-# `git push 2>/dev/null origin v1.2.3` (pre-tag review M1). A digit run counts
-# as a descriptor only after a space, so v1.2.3>/dev/null keeps its 3.
+# The first sed removes each redirection with its target (2>&1, >/dev/null,
+# `> log`, <in, &>log, &>>log, >|log, <>f), wherever it sits: a redirection
+# does not end a command, so splitting at < > (0.104.0's first build) dropped
+# the words after one and hid `git push 2>/dev/null origin v1.2.3` (pre-tag
+# review M1), and leaving the & of &> or the | of >| split it the same way
+# (D#148). &> and &>> go first, before > alone can leave their & behind. A
+# digit run counts as a descriptor only after a space or a separator
+# (true;2>/dev/null git push), so v1.2.3>/dev/null keeps its 3.
 # (The awk keeps only candidate commands: a 2,000-command line went from 37 to
 # 215 ms when every command went through the bash parser — review L7.)
 (( IS_RELEASE )) || exit 0
