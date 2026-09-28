@@ -107,7 +107,7 @@ _mg_git_tag() {
 
 # _mg_git_push — w[i..] are `git push`'s arguments; 0 = it pushes a tag.
 _mg_git_push() {
-  local _a _tags=0 _hit=0 _tagword=0
+  local _a _tags=0 _hit=0 _tagword=0 _remote=0
   while (( i < n )); do
     _a="${w[i]}"; (( i++ ))
     case "$_a" in
@@ -117,7 +117,10 @@ _mg_git_push() {
       --*) ;;
       -*) [[ "$_a" =~ [nd] ]] && return 1 ;; # -n, -d, bundled or alone
       *)
-        # The remote and `:ref` (a delete) never look like a version: no skip needed.
+        # The first word is the repository, even after --repo (git: the argument
+        # wins). An scp-style `192.168.1.10:repo.git` would read as version
+        # 192.168.1.10.
+        (( _remote )) || { _remote=1; continue; }
         [[ "$_a" == tag ]] && { _tagword=1; continue; }
         _a="${_a#+}"
         _a="${_a%%:*}"
@@ -170,13 +173,16 @@ _mg_is_release() {
         *) return 1 ;;
       esac ;;
     gh)
+      _mg_skip_opts -R --repo # gh takes -R before the command too: `gh -R o/r release create`
       [[ "${w[i]:-}" == release ]] || return 1
       (( i++ )); _mg_skip_opts -R --repo # `gh release -R o/r create`
-      [[ "${w[i]:-}" == create ]] ;;
+      [[ "${w[i]:-}" == create ]] || return 1
+      for _v in "${w[@]}"; do [[ "$_v" == --help || "$_v" == -h ]] && return 1; done
+      return 0 ;;
     npm)
       _mg_skip_opts --prefix -C --workspace -w --registry --userconfig --globalconfig --cache --loglevel --otp --tag --access
       [[ "${w[i]:-}" == publish ]] || return 1
-      for _v in "${w[@]}"; do [[ "$_v" == --dry-run || "$_v" == --dry-run=true ]] && return 1; done
+      for _v in "${w[@]}"; do [[ "$_v" == --dry-run || "$_v" == --dry-run=true || "$_v" == --help || "$_v" == -h ]] && return 1; done
       return 0 ;;
     *) return 1 ;;
   esac

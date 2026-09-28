@@ -27,7 +27,7 @@ Exit codes: 0 measured | 2 argv-shape error.`;
 
 /** Draft triggers per module. Modules with no prompt-level signal have none. */
 export const TRIGGERS = {
-  ship: /发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]+(\.[0-9]+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|\bship\b|\bcut a release\b|create-release|merge-and-push|release.{0,40}to npm|npm publish|gh release|\bdeploy\b|上线/i,
+  ship: /发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]+(\.[0-9]+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|(?<![A-Za-z])ship(?![A-Za-z])|(?<![A-Za-z])cut a release(?![A-Za-z])|create-release|merge-and-push|(?<![A-Za-z])release(?![A-Za-z]).{0,40}(?<![A-Za-z])to npm(?![A-Za-z])|npm publish|gh release|(?<![A-Za-z])deploy(?![A-Za-z])|上线/i,
   review: /评审|审查|审核一下|code review|\breview (the|this|my|it)\b|\bPR review\b/i,
   // A typo or spelling fix ("Fix the typo …", 修复错别字) is L0, not debugging (B7 A/B: T1
   // drew debug.md). Only those words: formatting, link, comment … also name code.

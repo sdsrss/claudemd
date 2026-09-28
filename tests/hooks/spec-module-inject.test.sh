@@ -133,12 +133,14 @@ done
 BAD14=0; N14=0
 for p in '发 v6.17.0' '推送并发 0.99.0' '合 #13 再一起发 0.12' '提交 推送 合并 发布' \
   'run create-release for 0.9' 'merge-and-push this branch' 'Release the CLI to npm' \
-  '跑一下create-release' '先merge-and-push' 'release这个包 to npm'; do
+  '跑一下create-release' '先merge-and-push' 'release这个包 to npm' 'ship一下' '帮我deploy一下' '先cut a release吧'; do
   N14=$((N14+1)); [[ "$(mods "$(inject "$p" "s14p$N14")")" == "ship "* ]] || { ng "14 release request missed ship: $p"; BAD14=1; }
 done
 N14=0
 for p in '发一下这个文件给我看看' '看看 v6.17.0 的 CHANGELOG' '文章发布在哪里' 'release notes look wrong' '合并这两个函数' \
-  '开发 2.0 版本的登录功能' '开发v2.0的功能' '触发 1.5 秒延迟' '发 ０.９９.０'; do
+  '开发 2.0 版本的登录功能' '开发v2.0的功能' '触发 1.5 秒延迟' '发 ０.９９.０' '研发 2.0 进度' '出发 1.5 小时后' \
+  '批发 3.0 折' '激发 1.2 倍' '散发 0.5 秒' '引发 1.0 错误' 'The release notes link to npmjs.com' \
+  'prerelease builds go to npm later' 'relationship status' 'redeployment plan'; do
   N14=$((N14+1)); [[ -z "$(inject "$p" "s14n$N14")" ]] || { ng "14 non-release prompt drew a module: $p -> $(mods "$(inject "$p" "s14m$N14")")"; BAD14=1; }
 done
 [[ $BAD14 == 0 ]] && ok "14 发 <version>, 推送/合并…发布, create-release, merge-and-push and release…to npm inject ship; neighbours do not"

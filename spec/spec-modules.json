@@ -1,9 +1,9 @@
 {
-  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits: write [0-9], and keep \\b off words a CJK character may touch), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2.",
+  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits; these are the two that matter for the triggers, not a complete list: write [0-9], and bound an English word with (?<![A-Za-z]) … (?![A-Za-z]) instead of \\b), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2.",
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",
-      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*tag|\\bship\\b|\\bcut a release\\b|create-release|merge-and-push|release.{0,40}to npm|npm publish|gh release|\\bdeploy\\b|上线",
+      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*tag|(?<![A-Za-z])ship(?![A-Za-z])|(?<![A-Za-z])cut a release(?![A-Za-z])|create-release|merge-and-push|(?<![A-Za-z])release(?![A-Za-z]).{0,40}(?<![A-Za-z])to npm(?![A-Za-z])|npm publish|gh release|(?<![A-Za-z])deploy(?![A-Za-z])|上线",
       "window": "whole"
     },
     "review": {
