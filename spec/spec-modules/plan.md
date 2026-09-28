@@ -1,7 +1,7 @@
 ---
 module: plan
 loads-on: for L3 work, specs and plans, or a change crossing modules
-triggers: 架构|重构|规划|实施方案|设计方案|\brefactor\b|\bmigration\b|迁移|\bL3\b
+triggers: 架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refactor(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])migration(?![A-Za-z0-9_])|迁移|(?<![A-Za-z0-9_])L3(?![A-Za-z0-9_])
 trigger-window: head
 ---
 

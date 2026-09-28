@@ -1,7 +1,7 @@
 ---
 module: orchestrate
 loads-on: before spawning subagents or running work in parallel
-triggers: 并行|子代理|\bsubagents?\b|\bin parallel\b|fan out
+triggers: 并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])in parallel(?![A-Za-z0-9_])|fan out
 trigger-window: head
 ---
 

@@ -1,19 +1,19 @@
 {
-  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits; these are the two that matter for the triggers, not a complete list: write [0-9], and bound an English word with (?<![A-Za-z]) … (?![A-Za-z]) instead of \\b; that bound, unlike \\b, accepts _ and digits beside the word), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2, whose prompt counts r6 corrects. The review, debug, plan, orchestrate and memory triggers still use \\b, so they miss an English word glued to CJK in jq.",
+  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits; these are the two that matter for the triggers, not a complete list: write [0-9], and bound an English word with (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]) instead of \\b, which is JS's ASCII \\b written out, so both engines agree next to CJK, _ and digits), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2, whose prompt counts r6 corrects.",
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",
-      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*tag|(?<![A-Za-z])ship(?![A-Za-z])|(?<![A-Za-z])cut a release(?![A-Za-z])|create-release|merge-and-push|(?<![A-Za-z])release(?![A-Za-z]).{0,40}(?<![A-Za-z])to npm(?![A-Za-z])|npm publish|gh release|(?<![A-Za-z])deploy(?![A-Za-z])|上线",
+      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*tag|(?<![A-Za-z0-9_])ship(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])cut a release(?![A-Za-z0-9_])|create-release|merge-and-push|(?<![A-Za-z0-9_])release(?![A-Za-z0-9_]).{0,40}(?<![A-Za-z0-9_])to npm(?![A-Za-z0-9_])|npm publish|gh release|(?<![A-Za-z0-9_])deploy(?![A-Za-z0-9_])|上线",
       "window": "whole"
     },
     "review": {
       "loadsOn": "when reviewing work or spawning a reviewer, including the pre-ship review",
-      "triggers": "评审|审查|审核一下|code review|\\breview (the|this|my|it)\\b|\\bPR review\\b",
+      "triggers": "评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|this|my|it)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])PR review(?![A-Za-z0-9_])",
       "window": "head"
     },
     "debug": {
       "loadsOn": "when a bug, a failing test or an error is the task",
-      "triggers": "报错|修复(?!(一下)?(错别字|拼写))|修一下|\\bbug\\b|崩溃|不工作|\\bfix (the|this|a)\\b(?! (typos?|spelling)\\b)|\\bfailing\\b|stack ?trace|\\bexception\\b",
+      "triggers": "报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])",
       "window": "head"
     },
     "verify": {
@@ -23,7 +23,7 @@
     },
     "plan": {
       "loadsOn": "for L3 work, specs and plans, or a change crossing modules",
-      "triggers": "架构|重构|规划|实施方案|设计方案|\\brefactor\\b|\\bmigration\\b|迁移|\\bL3\\b",
+      "triggers": "架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refactor(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])migration(?![A-Za-z0-9_])|迁移|(?<![A-Za-z0-9_])L3(?![A-Za-z0-9_])",
       "window": "head"
     },
     "skills": {
@@ -33,12 +33,12 @@
     },
     "orchestrate": {
       "loadsOn": "before spawning subagents or running work in parallel",
-      "triggers": "并行|子代理|\\bsubagents?\\b|\\bin parallel\\b|fan out",
+      "triggers": "并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])in parallel(?![A-Za-z0-9_])|fan out",
       "window": "head"
     },
     "memory": {
       "loadsOn": "when saving, recalling or tagging memory",
-      "triggers": "记住|记下来|\\bremember (this|that)\\b|\\bmem_save\\b",
+      "triggers": "记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])mem_save(?![A-Za-z0-9_])",
       "window": "head"
     },
     "auth": {

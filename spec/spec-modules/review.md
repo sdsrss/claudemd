@@ -1,7 +1,7 @@
 ---
 module: review
 loads-on: when reviewing work or spawning a reviewer, including the pre-ship review
-triggers: 评审|审查|审核一下|code review|\breview (the|this|my|it)\b|\bPR review\b
+triggers: 评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|this|my|it)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])PR review(?![A-Za-z0-9_])
 trigger-window: head
 ---
 

@@ -27,15 +27,18 @@ Exit codes: 0 measured | 2 argv-shape error.`;
 
 /** Draft triggers per module. Modules with no prompt-level signal have none. */
 export const TRIGGERS = {
-  ship: /发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]+(\.[0-9]+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|(?<![A-Za-z])ship(?![A-Za-z])|(?<![A-Za-z])cut a release(?![A-Za-z])|create-release|merge-and-push|(?<![A-Za-z])release(?![A-Za-z]).{0,40}(?<![A-Za-z])to npm(?![A-Za-z])|npm publish|gh release|(?<![A-Za-z])deploy(?![A-Za-z])|上线/i,
-  review: /评审|审查|审核一下|code review|\breview (the|this|my|it)\b|\bPR review\b/i,
+  ship: /发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]+(\.[0-9]+)+|(推送|合并)\S{0,4}\s*发布|打\s*tag|(?<![A-Za-z0-9_])ship(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])cut a release(?![A-Za-z0-9_])|create-release|merge-and-push|(?<![A-Za-z0-9_])release(?![A-Za-z0-9_]).{0,40}(?<![A-Za-z0-9_])to npm(?![A-Za-z0-9_])|npm publish|gh release|(?<![A-Za-z0-9_])deploy(?![A-Za-z0-9_])|上线/i,
+  review:
+    /评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|this|my|it)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])PR review(?![A-Za-z0-9_])/i,
   // A typo or spelling fix ("Fix the typo …", 修复错别字) is L0, not debugging (B7 A/B: T1
   // drew debug.md). Only those words: formatting, link, comment … also name code.
   debug:
-    /报错|修复(?!(一下)?(错别字|拼写))|修一下|\bbug\b|崩溃|不工作|\bfix (the|this|a)\b(?! (typos?|spelling)\b)|\bfailing\b|stack ?trace|\bexception\b/i,
-  plan: /架构|重构|规划|实施方案|设计方案|\brefactor\b|\bmigration\b|迁移|\bL3\b/i,
-  memory: /记住|记下来|\bremember (this|that)\b|\bmem_save\b/i,
-  orchestrate: /并行|子代理|\bsubagents?\b|\bin parallel\b|fan out/i,
+    /报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])/i,
+  plan: /架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refactor(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])migration(?![A-Za-z0-9_])|迁移|(?<![A-Za-z0-9_])L3(?![A-Za-z0-9_])/i,
+  memory:
+    /记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])mem_save(?![A-Za-z0-9_])/i,
+  orchestrate:
+    /并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])in parallel(?![A-Za-z0-9_])|fan out/i,
 };
 
 const RELEASE_CMD =

@@ -1,7 +1,7 @@
 ---
 module: memory
 loads-on: when saving, recalling or tagging memory
-triggers: 记住|记下来|\bremember (this|that)\b|\bmem_save\b
+triggers: 记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])mem_save(?![A-Za-z0-9_])
 trigger-window: head
 ---
 

@@ -145,4 +145,24 @@ for p in '发一下这个文件给我看看' '看看 v6.17.0 的 CHANGELOG' '文
 done
 [[ $BAD14 == 0 ]] && ok "14 发 <version>, 推送/合并…发布, create-release, merge-and-push and release…to npm inject ship; neighbours do not"
 
+# 15. every English arm is bounded by (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]), not
+# \b (D#142 LOW-13, LOW-3): jq counts a CJK character as a word character, so
+# `\bbug\b` missed 这个bug怎么修 while the JS calibration copy matched it. One
+# positive row per converted arm with CJK on both sides; negative rows put _ or a
+# digit beside the word, which the old (?<![A-Za-z]) ship bound accepted.
+BAD15=0; N15=0
+for row in 'debug|这个bug怎么修' 'debug|测试failing了' 'debug|抛了个exception出来' 'debug|帮我fix the登录接口' \
+  'plan|依次完成三个l3事项' 'plan|做一次refactor吧' 'plan|数据库migration脚本' \
+  'orchestrate|开几个subagent一起查' 'orchestrate|这三件事in parallel做' \
+  'review|帮我review the改动' 'review|做个PR review吧' 'memory|把这条remember this下来' 'memory|调用mem_save存一下'; do
+  N15=$((N15+1)); want="${row%%|*}"; p="${row#*|}"
+  [[ "$(mods "$(inject "$p" "s15p$N15")")" == "$want " ]] || { ng "15 CJK-glued arm missed $want: $p"; BAD15=1; }
+done
+N15=0
+for p in 'ship_date 字段为空时' 'deploy_utils.py 在哪' 'ship2 是哪个分支' 'bug_id 列的索引' 'L30 行的注释' \
+  'subagents_dir 配置项' 'refactor_log 表'; do
+  N15=$((N15+1)); [[ -z "$(inject "$p" "s15n$N15")" ]] || { ng "15 _/digit-glued word drew a module: $p -> $(mods "$(inject "$p" "s15m$N15")")"; BAD15=1; }
+done
+[[ $BAD15 == 0 ]] && ok "15 English arms match next to CJK and not next to _ or a digit"
+
 claudemd_assert_summary
