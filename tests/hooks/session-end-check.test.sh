@@ -786,7 +786,7 @@ V_I=0
 for V_CMD in \
   'env -u CLAUDE_MEM_DIR ./node_modules/.bin/vitest run' \
   'env -u A -u B bash tests/run-all.sh' \
-  'env --unset=FOO npm test' \
+  'env --unset FOO npm test' \
   'node_modules/.bin/jest --ci'; do
   V_I=$((V_I + 1))
   reset_cwd
@@ -799,13 +799,17 @@ for V_CMD in \
     ng "Case 29.$V_I: '$V_CMD' did not count as a validation"
   fi
 done
-# Controls: env -u in front of a non-check command, a non-runner under
-# node_modules/.bin, and a commit in another repo (git -C), which validates
-# nothing in this project and stays unrecognised on purpose.
+# Controls: NAME after `env -u` / `--unset` is a variable name even when it
+# spells a runner, env's first non-option word is the command (so `env echo
+# npm test` runs echo), a non-runner under node_modules/.bin, and a commit in
+# another repo (git -C), which validates nothing in this project and stays
+# unrecognised on purpose. The first three fail if env's arm swallows any word.
 N_I=0
 for N_CMD in \
+  'env -u vitest npm install' \
+  'env --unset jest ls' \
+  'env -u FOO echo npm test' \
   'env -u FOO npm run build' \
-  'env -u test npm install' \
   './node_modules/.bin/tsx build.ts' \
   'git -C ../other commit -m x'; do
   N_I=$((N_I + 1))

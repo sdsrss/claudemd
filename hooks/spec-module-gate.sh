@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). Redirections are removed with their targets, then the command is
-# cut into simple commands at ; & | ( ) and backticks (quoted bodies and
+# tier 3). Redirections (<, >, >>, &>, &>>, >|, <>, with or without a
+# descriptor; not a named {fd}>) are removed with their targets, then the
+# command is cut into simple commands at ; & | ( ) and backticks (quoted bodies and
 # heredocs already emptied by hook_trigger_view),
 # prefixes (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ..., also
 # path-qualified) are skipped, and

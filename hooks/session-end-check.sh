@@ -104,14 +104,16 @@ _SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]
 # backtrack cannot re-read `--prefix` as a switch and its value as the verb.
 # The pattern is only ever run by jq (Oniguruma), which has lookahead.
 # (B2 review F7 and its delta review M1/L2.)
-# `env -u NAME` consumes NAME, and a runner may be called by its
-# node_modules/.bin path (D#102 F7 remainder). `git -C <dir> commit` stays
+# `env -u NAME` consumes NAME (the switch branch excludes -u/--unset so a
+# backtrack cannot re-read NAME as the command), and a runner may be called
+# as ./node_modules/.bin/<runner> or node_modules/.bin/<runner> (D#102 F7
+# remainder; ../ and absolute paths are not recognised). `git -C <dir> commit` stays
 # unrecognised: a commit in another repo validates nothing here.
 _NPMVAL='(-C|-w|--prefix|--workspace|--userconfig|--globalconfig|--cache|--registry|--tag|--otp|--loglevel|--scope|--include|--omit)'
 _NPMOPT="([ \t]+${_NPMVAL}(=${_W}*|[ \t]+${_W}+)|[ \t]+(?!${_NPMVAL}([= \t]|\$))-${_W}+)*"
 _VAL="(\"[^\"\n]*\"|'[^'\n]*'|${_W}*)"
 VALIDATE_RE="(^|[;&|\n]+)[ \t(]*(time[ \t]+)?"
-VALIDATE_RE+="(env([ \t]+(-u|--unset)[ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
+VALIDATE_RE+="(env([ \t]+(-u|--unset)[ \t]+${_W}+|[ \t]+(?!(-u|--unset)([ \t]|\$))-${_W}+)*[ \t]+)?(nice([ \t]+-n[ \t]+-?[0-9]+|[ \t]+-${_W}+)*[ \t]+)?"
 VALIDATE_RE+="([A-Za-z_][A-Za-z0-9_]*=${_VAL}[ \t]+)*"
 VALIDATE_RE+="(timeout([ \t]+-[ks][ \t]+${_W}+|[ \t]+-${_W}+)*[ \t]+[0-9.]+[smhd]?[ \t]+)?"
 VALIDATE_RE+="(npx([ \t]+-${_W}+)*[ \t]+|(pnpm|yarn|npm)[ \t]+exec[ \t]+|bunx[ \t]+|python3?[ \t]+-m[ \t]+|(uv|poetry|pipenv)[ \t]+run[ \t]+)?"
