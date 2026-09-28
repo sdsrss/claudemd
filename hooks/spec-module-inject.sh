@@ -17,6 +17,16 @@
 # two modules per prompt (ship first). Modules with no triggers are reached
 # through the core index only.
 #
+# Size (tasks/specs/spec-modules.md r7): Claude Code caps one additionalContext
+# string at 10,000 characters and replaces anything longer with a file path and
+# a 2,000-character preview it does not ask the model to read. memory + plan, one
+# natural pair ("记住这个架构决定"), came to 9,929. So the body goes in without
+# its build comment (a maintainer note, 108 characters a module), and a second
+# module that would push the total past BUDGET is not dropped but deferred: its
+# name is kept as a `pending:` line and it is injected on the next prompt,
+# trigger or not. BUDGET sits below the cap because jq counts code points and the
+# cap counts UTF-16 units, which differ on characters outside the BMP.
+#
 # Kill switch: DISABLE_SPEC_MODULE_INJECT_HOOK=1.
 set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
@@ -54,12 +64,16 @@ done
 # bash 3.2 (macOS) aborts on "${mods[@]}" of an empty array under set -u.
 (( ${#mods[@]} > 0 )) || exit 0
 
+BUDGET=9800
 picked=()
 for f in "${mods[@]}"; do
   (( ${#picked[@]} >= 2 )) && break
   name=$(basename "$f" .md)
   [[ "$name" =~ ^[a-z][a-z0-9-]*$ ]] || continue
   grep -qx "$name" "$SEEN" 2>/dev/null && continue
+  # A module deferred by the budget on an earlier prompt goes in now, whatever
+  # this prompt says.
+  if grep -qx "pending:$name" "$SEEN" 2>/dev/null; then picked+=("$f"); continue; fi
   # Frontmatter is the file's first block between two `---` lines.
   re=$(awk 'NR==1 && $0!="---"{exit} NR>1 && $0=="---"{exit} /^triggers: /{sub(/^triggers: /,""); print; exit}' "$f")
   [[ -n "$re" ]] || continue
@@ -73,14 +87,27 @@ done
 
 ctx=""
 names=""
+deferred=""
 for f in "${picked[@]}"; do
   name=$(basename "$f" .md)
-  body=$(awk 'NR==1 && $0=="---"{fm=1; next} fm && $0=="---"{fm=0; next} !fm' "$f")
-  ctx+="[claudemd] system-injected — spec module \`$name\` (~/.claude/spec-modules/$name.md), matched by the user's prompt. Its rules apply to this task as if read from the file."$'\n\n'"<spec-module name=\"$name\">"$'\n'"$body"$'\n'"</spec-module>"$'\n\n'
+  body=$(awk 'NR==1 && $0=="---"{fm=1; next} fm && $0=="---"{fm=0; next} fm {next} /^<!-- generated from .* -->$/ {next} {print}' "$f")
+  entry="[claudemd] system-injected — spec module \`$name\` (~/.claude/spec-modules/$name.md), matched by the user's prompt. Its rules apply to this task as if read from the file."$'\n\n'"<spec-module name=\"$name\">"$'\n'"$body"$'\n'"</spec-module>"$'\n\n'
+  # The first module always goes in (none is near the budget alone, and
+  # tests/scripts/spec-modules.test.js keeps it that way); a later one only if
+  # the total stays inside it.
+  if [[ -n "$ctx" ]]; then
+    total=$(jq -n --arg c "$ctx$entry" '$c | length' 2>/dev/null) || total=$BUDGET
+    if (( total > BUDGET )); then
+      grep -qx "pending:$name" "$SEEN" 2>/dev/null || printf 'pending:%s\n' "$name" >>"$SEEN" 2>/dev/null || true
+      deferred+="${deferred:+,}$name"
+      continue
+    fi
+  fi
+  ctx+="$entry"
   names+="${names:+,}$name"
   printf '%s\n' "$name" >>"$SEEN" 2>/dev/null || true
 done
 
-hook_record spec-module-inject module-inject "$(jq -cn --arg m "$names" '{modules: $m}' 2>/dev/null || echo 'null')" '§2.2-modules' "$SESSION_ID" 2>/dev/null || true
+hook_record spec-module-inject module-inject "$(jq -cn --arg m "$names" --arg d "$deferred" '{modules: $m} + (if $d == "" then {} else {deferred: $d} end)' 2>/dev/null || echo 'null')" '§2.2-modules' "$SESSION_ID" 2>/dev/null || true
 jq -cn --arg c "$ctx" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $c}}'
 exit 0

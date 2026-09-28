@@ -64,6 +64,32 @@ test('spec-modules: each module <= 9 KB and all together <= 50 KB', () => {
   assert.ok(total <= 50 * 1024, `modules total ${total} bytes`);
 });
 
+// spec-module-inject.sh puts the first matched module in whatever its size and
+// defers a second one that would cross BUDGET (tasks/specs/spec-modules.md r7).
+// That is only safe while every module fits alone: Claude Code replaces an
+// additionalContext string over 10,000 characters with a path and a preview.
+// The entry is rebuilt the way the hook builds it; tests/hooks/
+// spec-module-inject.test.sh case 16 measures the hook's real output.
+test('spec-modules: every module fits the injection budget alone, and the budget sits under the cap', () => {
+  const hook = fs.readFileSync(path.join(REPO, 'hooks', 'spec-module-inject.sh'), 'utf8');
+  const budget = Number((hook.match(/^BUDGET=(\d+)$/m) || [])[1]);
+  assert.ok(budget > 0 && budget <= 10000 - 200, `BUDGET=${budget} leaves no margin under 10,000`);
+  for (const f of fs.readdirSync(MOD_DIR)) {
+    const name = f.replace(/\.md$/, '');
+    const lines = fs.readFileSync(path.join(MOD_DIR, f), 'utf8').replace(/\n$/, '').split('\n');
+    const end = lines.indexOf('---', 1);
+    const body = lines
+      .slice(end + 1)
+      .filter(l => !/^<!-- generated from .* -->$/.test(l))
+      .join('\n');
+    const entry =
+      `[claudemd] system-injected — spec module \`${name}\` (~/.claude/spec-modules/${name}.md), ` +
+      `matched by the user's prompt. Its rules apply to this task as if read from the file.\n\n` +
+      `<spec-module name="${name}">\n${body}\n</spec-module>\n\n`;
+    assert.ok(entry.length <= budget, `${name} injects ${entry.length} characters, over BUDGET=${budget}`);
+  }
+});
+
 test('spec-modules: core §2.2 lists every registered module once, and each named § ID is in its module', () => {
   const core = fs.readFileSync(path.join(REPO, 'spec', 'CLAUDE.md'), 'utf8');
   const sec = core.slice(core.indexOf('### §2.2 MODULES'), core.indexOf('\n## §3 TRUST'));

@@ -166,4 +166,37 @@ for p in 'ship_date 字段为空时' 'deploy_utils.py 在哪' 'ship2 是哪个�
 done
 [[ $BAD15 == 0 ]] && ok "15 English arms match next to CJK and not next to _ or a digit"
 
+# 16. size (tasks/specs/spec-modules.md r7). Claude Code swaps an
+# additionalContext string over 10,000 characters for a file path and a preview.
+# memory + plan is the longest pair a natural prompt draws (9,929 before r7):
+# both still go in, without the build comment, under the 9,800 budget.
+C16=$(inject '记住这个架构决定' s16)
+L16=$(jq -n --arg c "$C16" '$c | length')
+if [[ "$(mods "$C16")" == "memory plan " ]] && (( L16 <= 9800 )) && ! grep -q '<!-- generated from' <<<"$C16"; then
+  ok "16 memory + plan inject together in $L16 characters, build comment stripped"
+else ng "16 pair wrong: mods=$(mods "$C16") len=$L16 comment=$(grep -c '<!-- generated from' <<<"$C16")"; fi
+
+# 17. a second module that would cross the budget is deferred, not dropped: it is
+# recorded as pending, named in telemetry, and injected on the next human prompt
+# even though that prompt matches nothing. Synthetic modules in their own HOME,
+# each alone under the budget, together over it.
+H17=$(mktemp -d -t claudemd-modinj17-XXXXXX)
+mkdir -p "$H17/.claude/spec-modules" "$H17/.claude/logs"
+for m in aaa bbb; do
+  { printf -- '---\nmodule: %s\ntriggers: zzq%s\ntrigger-window: head\n---\n\n# %s\n\n' "$m" "$m" "$m"
+    printf '<!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->\n'
+    for _ in $(seq 1 60); do printf 'rule line of module %s, padding padding padding padding padding padding padding.\n' "$m"; done
+  } >"$H17/.claude/spec-modules/$m.md"
+done
+inject17() { jq -cn --arg p "$1" '{prompt:$p, session_id:"s17", cwd:"/work/p"}' | HOME="$H17" bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""'; }
+A17=$(inject17 'zzqaaa and zzqbbb')
+B17=$(inject17 'hello again')
+D17=$(inject17 'zzqbbb once more')
+LIST17=$(cat "$H17/.claude/.claudemd-state/modinj-s17.list" 2>/dev/null | tr '\n' ' ')
+ROW17=$(jq -r 'select(.hook=="spec-module-inject") | .extra.deferred // empty' "$H17/.claude/logs/claudemd.jsonl" 2>/dev/null | head -1)
+rm -rf "${H17:?}"
+if [[ "$(mods "$A17")" == "aaa " && "$(mods "$B17")" == "bbb " && -z "$D17" && "$LIST17" == "aaa pending:bbb bbb " && "$ROW17" == bbb ]]; then
+  ok "17 over budget: the second module waits for the next prompt, then goes in once"
+else ng "17 deferral wrong: first=$(mods "$A17") next=$(mods "$B17") again=$(mods "$D17") list=[$LIST17] deferred=[$ROW17]"; fi
+
 claudemd_assert_summary

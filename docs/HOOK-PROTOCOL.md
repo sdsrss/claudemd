@@ -134,6 +134,9 @@ Emitters, derived from source and gated by
   the prompt that have not been Read this session.
 - `spec-module-inject.sh` — UserPromptSubmit; the body of each spec module whose
   `triggers:` regex the prompt matches, once per session, at most two per prompt.
+  Claude Code replaces a context string over 10,000 characters with a file path
+  and a preview, so the hook strips each body's build comment and holds a second
+  module that would cross 9,800 characters for the next prompt.
 - `spec-module-gate.sh` — PreToolUse(Bash), only with `SPEC_MODULE_GATE=advisory`;
   names the ship module to read before a release command.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
