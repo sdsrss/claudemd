@@ -8,6 +8,28 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.104.0] - 2026-09-28
+
+**Upgrade notes — module triggers match English words next to Chinese text; core, extended, every module body and the §8 gates are unchanged (spec still v7.1.0; only the `triggers:` frontmatter line of six modules changes).** (1) `spec-module-inject` now injects `debug`, `plan`, `review`, `orchestrate` and `memory` when their English trigger word sits directly beside CJK text (`这个bug怎么修`, `测试failing了`, `三个l3事项`), and no longer injects `ship` for `ship_date`, `deploy_utils` or `ship2`. (2) `spec-module-gate` (default `SPEC_MODULE_GATE=log`: a telemetry row, no visible effect) recognises a few more release command spellings. (3) The SessionStart summary banner's `denies` count now includes every blocking event, so it can read higher than before for the same activity. To turn injection off: `DISABLE_SPEC_MODULE_INJECT_HOOK=1`. To go back to 0.103.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Module triggers: English words are bounded the same way in jq and JS (D#142 LOW-13, LOW-3).** jq, the hook's regex engine, counts a CJK character as a word character, so `\bbug\b` never matched `bug` glued to Chinese, while the JS copy used for calibration did; and 0.103.0's `(?<![A-Za-z])` bound on the `ship` arms accepted `_` and digits beside the word. Every English arm of the six triggered modules is now written `(?<![A-Za-z0-9_])word(?![A-Za-z0-9_])`, the same text in both engines.
+- On the 755 interactive human prompts on the maintainer's machine since 2026-09-05: jq/JS disagreements 8 → 0; prompts matching `debug` 130 → 137 and `plan` 83 → 84; `ship`, `review`, `orchestrate` and `memory` unchanged; no prompt lost a match; prompts drawing two or more modules 50 → 51 (6.6% → 6.8%).
+
+**`spec-module-gate` reads more release spellings (D#142 LOW-1, LOW-5, LOW-6).**
+- A redirection glued to the version (`git tag v1.2.3>/dev/null`), which 0.102.0 recognised and 0.103.0 did not: commands are now also split at `<` and `>`.
+- A version tag on the destination side of a refspec (`git push origin HEAD:refs/tags/v1.2.3`) is a tag push; an empty source (`:refs/tags/v1.2.3`) is still a deletion. `git push --mirror` counts like `--tags`. Command prefixes are matched by basename, so `/usr/bin/timeout`, `/usr/bin/env` and `/usr/bin/sudo` are skipped like their bare forms.
+- The bundled-short-option scan stops at 64 letters. A 20,000-letter option took 2,975 ms against the 3 s hook timeout; it now takes 82 ms.
+- A replay of the 3,223 distinct transcript commands on the maintainer's machine that name git/gh/npm and tag/push/release/publish gives the same verdict for every command as 0.103.0 (261 release, 2,962 not): these spellings did not occur there.
+
+**The summary banner and the rule-usage trend count every blocking event (D#77).** The banner's `denies` matched the literal event `deny`, so ship-baseline's `deny-repeat`, banned-vocab's `deny-prose` and sandbox-disposal's opt-in Stop `block` were left out; it now counts the deny family as `scripts/lib/rule-hits-parse.js` does (`deny-prose-dry-run`, which does not block, stays out) plus `block`. `block` is also counted by the sparkline trend, which already counted the same hook's `warn`.
+
+**Correction to 0.102.0's notes.** "1,450 human prompts" counted about 711 teammate messages; the human prompts in that window were 745.
+
+**Known limits.**
+- `spec-module-gate` still does not see quoted tag names or `bash -c '…'` bodies, and reads `git tag x v1.2.3` (a tag on a commit named like a version) as a release. The `发 <version>` arm still fires after 分 转 下 头 并, `(推送|合并)…发布` on 推送通知发布, and `release … to npm` on "added to npm docs".
+- `reply-language-check`'s `reply-language-restate` is a Stop block too, and neither the banner nor the trend counts it.
+- Carried from 0.103.0 unchanged: `session-end-check`'s validate recognition gaps, `~/.claude/spec-modules` as a symlink or a regular file, a foreign `*.md` with `triggers:` in that directory being injected, `/claudemd-update`'s preview not comparing modules, and the §8 rm gate crediting a `mktemp -d` that ran in a child shell (D#140).
+
 ## [0.103.0] - 2026-09-28
 
 **Upgrade notes — three hooks change what they match; the §8 gates, core, extended and every module body are unchanged (spec still v7.1.0; only `ship.md`'s `triggers:` frontmatter line changes).** (1) `spec-module-gate` (default `SPEC_MODULE_GATE=log`, so a telemetry row and no visible effect) recognises a different set of release commands; `module-unread` rows before and after this version are not comparable counts (`docs/RULE-HITS-SCHEMA.md`). (2) `spec-module-inject` injects `ship.md` for more release wordings, and neither it nor `memory-prompt-hint` reacts to teammate messages any more. Opt-outs: `DISABLE_SPEC_MODULE_INJECT_HOOK=1`, `DISABLE_SPEC_MODULE_GATE_HOOK=1`, `DISABLE_MEMORY_HINT_HOOK=1`. To go back to 0.102.0: `docs/ROLLBACK.md`, "Local machine needs the previous version back".
