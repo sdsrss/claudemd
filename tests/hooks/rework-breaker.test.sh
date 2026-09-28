@@ -471,24 +471,36 @@ fi
 # limit and the second exceeds it (EFBIG / SIGXFSZ in the append subshell).
 # The rule-hits log stays far below the limit. Reverting `break` to `exit 0`
 # leaves this case with no output.
-reset_state
-for _ in 1 2 3 4 5 6 7; do fire_bash sT /p/src/x.go >/dev/null; done
-L28="$HOME/.claude/.claudemd-state/rework-sT.counts"
-K28=$(printf '%s' /p/src/x.go | cksum | awk '{print $1"-"$2}')
-LIM28=8192
-PAD28=$(( LIM28 - $(wc -c <"$L28") - ${#K28} - 1 - 1 ))
-{ printf '#%.0s' $(seq 1 "$PAD28"); printf '\n'; } >>"$L28"
-: >"$HOME/.claude/logs/claudemd.jsonl"
-OUT28=$(jq -cn --args '{session_id:"sT",tool_name:"Bash",tool_use_id:"toolu_b",
-    tool_input:{command:"python3 - <<PY"},
-    tool_response:{stdout:"",bashEditDiff:{files:($ARGS.positional | map({filePath:., hunks:[]})),moreFiles:0}}}' \
-    /p/src/x.go /p/src/y.rs | bash -c "ulimit -f $((LIM28 / 1024)); exec bash '$HOOK'" 2>/dev/null)
-L28_SIZE=$(wc -c <"$L28" | tr -d ' ')
-if [[ "$L28_SIZE" == "$LIM28" && "$OUT28" == *"/p/src/x.go at least 8"* && "$OUT28" != *"y.rs"* ]] \
-    && jq -e 'select(.hook=="rework-breaker" and .event=="fail-open")' "$HOME/.claude/logs/claudemd.jsonl" >/dev/null 2>&1; then
-  ok "28: a failed second append still announces the first file's claimed multiple"
+# Liveness probe for the mechanism itself: on the macOS CI leg an append past
+# the `ulimit -f` boundary succeeded (ledger 8,206 bytes), so there the case
+# cannot fail the append it needs. Skip where the probe shows that; on a Linux
+# CI leg a skip is a failure, so the case is always exercised somewhere.
+P28="$HOME/fsize-probe"
+head -c 8190 /dev/zero >"$P28"
+P28_RC=$(bash -c "ulimit -f 8; (printf 'abcd' >>'$P28') 2>/dev/null; echo \$?" 2>/dev/null)
+if [[ "$P28_RC" == 0 ]]; then
+  echo "SKIP: 28 — an append past ulimit -f succeeded on this host ($(uname -s)); the failure path cannot be staged"
+  if [[ -n "${CI:-}" && "$(uname -s)" == Linux ]]; then ng "28: the ulimit -f probe did not fail on a Linux CI host"; fi
 else
-  ng "28: ledger=$L28_SIZE (want $LIM28) out=${OUT28:0:160} rows=$(jq -r 'select(.hook=="rework-breaker") | .event' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | tr '\n' ',')"
+  reset_state
+  for _ in 1 2 3 4 5 6 7; do fire_bash sT /p/src/x.go >/dev/null; done
+  L28="$HOME/.claude/.claudemd-state/rework-sT.counts"
+  K28=$(printf '%s' /p/src/x.go | cksum | awk '{print $1"-"$2}')
+  LIM28=8192
+  PAD28=$(( LIM28 - $(wc -c <"$L28") - ${#K28} - 1 - 1 ))
+  { printf '#%.0s' $(seq 1 "$PAD28"); printf '\n'; } >>"$L28"
+  : >"$HOME/.claude/logs/claudemd.jsonl"
+  OUT28=$(jq -cn --args '{session_id:"sT",tool_name:"Bash",tool_use_id:"toolu_b",
+      tool_input:{command:"python3 - <<PY"},
+      tool_response:{stdout:"",bashEditDiff:{files:($ARGS.positional | map({filePath:., hunks:[]})),moreFiles:0}}}' \
+      /p/src/x.go /p/src/y.rs | bash -c "ulimit -f $((LIM28 / 1024)); exec bash '$HOOK'" 2>/dev/null)
+  L28_SIZE=$(wc -c <"$L28" | tr -d ' ')
+  if [[ "$L28_SIZE" == "$LIM28" && "$OUT28" == *"/p/src/x.go at least 8"* && "$OUT28" != *"y.rs"* ]] \
+      && jq -e 'select(.hook=="rework-breaker" and .event=="fail-open")' "$HOME/.claude/logs/claudemd.jsonl" >/dev/null 2>&1; then
+    ok "28: a failed second append still announces the first file's claimed multiple"
+  else
+    ng "28: ledger=$L28_SIZE (want $LIM28) out=${OUT28:0:160} rows=$(jq -r 'select(.hook=="rework-breaker") | .event' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | tr '\n' ',')"
+  fi
 fi
 
 echo
