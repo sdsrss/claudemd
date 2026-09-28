@@ -23,7 +23,7 @@ if [[ ! -f "$CORPUS" ]]; then
   echo "FAIL: corpus missing at $CORPUS"; exit 1
 fi
 
-PASS=0; FAIL=0
+PASS=0; FAIL=0; XFN=0; XFP=0
 
 run_case() {
   local label="$1" note="$2" cmd="$3" env="$4"
@@ -107,6 +107,28 @@ run_case() {
         PASS=$((PASS + 1))
       else
         echo "FAIL [deny]: $note (expected deny, got: $out)"
+        FAIL=$((FAIL + 1))
+      fi
+      ;;
+    # Known residuals, asserted strictly (the dcg `known_failing` shape). A row
+    # labelled xfn is a false negative the gate is known to ALLOW; xfp a false
+    # positive it is known to DENY. Each asserts today's verdict, so fixing one
+    # turns this red with the relabel spelled out — before, residuals sat under
+    # `pass`/`deny` and a repaired one looked exactly like a regression.
+    xfn)
+      if [[ -z "$out" ]]; then
+        PASS=$((PASS + 1)); XFN=$((XFN + 1))
+      else
+        echo "FAIL [xfn]: $note — this known false negative now DENIES; relabel it deny"
+        FAIL=$((FAIL + 1))
+      fi
+      ;;
+    xfp)
+      decision=$(echo "$out" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+      if [[ "$decision" == "deny" ]]; then
+        PASS=$((PASS + 1)); XFP=$((XFP + 1))
+      else
+        echo "FAIL [xfp]: $note — this known false positive now ALLOWS; relabel it pass"
         FAIL=$((FAIL + 1))
       fi
       ;;
@@ -710,6 +732,9 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# Residual counts come from the labels, never from prose (R1(a)): quote this
+# line, not a number typed into a release note.
+echo "Residuals: xfn=$XFN xfp=$XFP (known false negatives / false positives, each asserted)"
 TOTAL=$((PASS + FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
