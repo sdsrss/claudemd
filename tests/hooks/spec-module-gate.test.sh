@@ -140,4 +140,37 @@ if [[ -z "$OUT12" && "$(decision "$OUT12F")" == deny ]]; then
   ok "12 a Bash cat of ship.md satisfies the gate; an errored one does not"
 else ng "12 bash read: ok-run=$(decision "$OUT12") errored-run=$(decision "$OUT12F")"; fi
 
+# 13. release spellings 0.103.0 missed (D#142 LOW-5, LOW-6): a redirection glued
+# to the version (0.102.0 caught `git tag v1.2.3>/dev/null`), a version tag on the
+# DESTINATION side of a refspec, --mirror (pushes every tag), and a
+# path-qualified command prefix.
+R13_BAD=""
+for c in 'git tag v1.2.3>/dev/null' 'git push origin v1.2.3>/dev/null' 'git tag -a v1.2.3 -m x</dev/null' \
+  'git push origin HEAD:refs/tags/v1.2.3' 'git push origin +main:refs/tags/v2.0.0' 'git push --mirror origin' \
+  '/usr/bin/timeout 60 npm publish' '/usr/bin/env FOO=1 npm publish' '/usr/bin/sudo npm publish'; do
+  [[ "$(decision "$(run deny "$c" g13)")" == deny ]] || R13_BAD+="[$c] "
+done
+[[ -z "$R13_BAD" ]] && ok "13 glued redirections, destination-side version tags, --mirror and path-qualified prefixes are gated" || ng "13 missed: $R13_BAD"
+
+# 14. their neighbours are not releases: a tag deleted by an empty source, a
+# version-named BRANCH as destination, a dry-run mirror, and a redirection into
+# a file named like a version.
+N14_BAD=""
+for c in 'git push origin :refs/tags/v1.2.3' 'git push origin HEAD:refs/heads/v1.2.3' 'git push origin HEAD:release/1.2' \
+  'git push --mirror --dry-run origin' 'git push -n --mirror origin' 'git log >v1.2.3' 'git push origin main 2>v1.2.3.log'; do
+  [[ -z "$(run deny "$c" g14)" ]] || N14_BAD+="[$c] "
+done
+[[ -z "$N14_BAD" ]] && ok "14 tag deletion, version-named branches, dry-run mirrors and version-named log files pass" || ng "14 wrongly gated: $N14_BAD"
+
+# 15. a bundled short option tens of thousands of characters long finishes well
+# inside the 3 s hook budget (D#142 LOW-1: the letter loop was quadratic and a
+# killed hook allows). Scan cost is capped, so 2 s is a wide margin.
+LONG15="git tag -$(printf 'a%.0s' $(seq 1 20000)) v1.2.3"
+S15=$(date +%s%N 2>/dev/null || echo 0)
+OUT15=$(run deny "$LONG15" g15)
+E15=$(( ($(date +%s%N 2>/dev/null || echo 0) - S15) / 1000000 ))
+if [[ "$(decision "$OUT15")" == deny ]] && (( E15 < 2000 )); then
+  ok "15 a 20,000-letter bundled option is parsed in ${E15} ms and still gated"
+else ng "15 long bundled option: decision=$(decision "$OUT15") elapsed=${E15} ms"; fi
+
 claudemd_assert_summary

@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # spec-module-gate — PreToolUse(Bash): before a release command, check that
 # the `ship` spec module reached this session (tasks/specs/spec-modules.md,
-# tier 3). The command is cut into simple commands at ; & | ( ) and backticks
-# (quoted bodies and heredocs already emptied by hook_trigger_view), prefixes
-# (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ...) are skipped, and
+# tier 3). The command is cut into simple commands at ; & | ( ) < > and
+# backticks (quoted bodies and heredocs already emptied by hook_trigger_view),
+# prefixes (VAR=x, env, sudo, timeout, nice, nohup, if/then/do, ..., also
+# path-qualified) are skipped, and
 # each one is a release step when it is:
 #   git [global opts] tag ... <name>   creating a version tag; not -l/-d/-v,
 #                                      -n, --contains and the other list forms
-#   git [global opts] push ...         with --tags / --follow-tags, a bare
-#                                      version refspec, or a version tag named
-#                                      as refs/tags/<name> or `tag <name>` on
-#                                      the SOURCE side of a refspec (a
-#                                      `HEAD:refs/tags/v1` destination is not
-#                                      seen); not -n/--dry-run, -d/--delete,
-#                                      :<ref>
+#   git [global opts] push ...         with --tags / --follow-tags / --mirror,
+#                                      a bare version refspec, or a version tag
+#                                      named as refs/tags/<name> or `tag <name>`
+#                                      on the source side of a refspec, or as
+#                                      refs/tags/<name> on its destination side
+#                                      (HEAD:refs/tags/v1.2.3); not -n/--dry-run,
+#                                      -d/--delete, :<ref>
 # A version tag name ends in a dotted version, alone or after @, _ or -:
 # v1.2, 2.0.0-rc.1, pkg@2.0.0, cli-v2.0.0. In the first replay (4,692
 # distinct transcript commands naming git/gh/npm and tag/push/release/publish)
@@ -94,9 +95,10 @@ _mg_git_tag() {
       -*)
         # Bundled short options (-am MSG, -sm MSG, -ld, -Fnotes.md): letters
         # up to the first of m/F/u, which takes the rest of the word or, when
-        # it is the last letter, the next word.
+        # it is the last letter, the next word. The scan stops at 64 letters:
+        # ${_a:_k:1} is not O(1), and a 20,000-letter word took 3 s (D#142 LOW-1).
         _k=1
-        while (( _k < ${#_a} )); do
+        while (( _k < ${#_a} && _k < 64 )); do
           case "${_a:_k:1}" in
             l | d | v | n) return 1 ;;
             m | F | u) (( _k == ${#_a} - 1 )) && (( i++ )); break ;;
@@ -117,7 +119,7 @@ _mg_git_push() {
     _a="${w[i]}"; (( i++ ))
     case "$_a" in
       --dry-run | --delete) return 1 ;;
-      --tags | --follow-tags) _tags=1 ;;
+      --tags | --follow-tags | --mirror) _tags=1 ;;
       --repo | -o | --push-option | --receive-pack | --exec) (( i++ )) ;;
       --*) ;;
       -*) [[ "$_a" =~ [nd] ]] && return 1 ;; # -n, -d, bundled or alone
@@ -128,6 +130,9 @@ _mg_git_push() {
         (( _remote )) || { _remote=1; continue; }
         [[ "$_a" == tag ]] && { _tagword=1; continue; }
         _a="${_a#+}"
+        # A version tag as the destination (HEAD:refs/tags/v1.2.3) is pushed
+        # too; an empty source (:refs/tags/v1) deletes it.
+        [[ "$_a" == ?*:refs/tags/* && "${_a#*:refs/tags/}" =~ $_MG_VERSION_RE ]] && _hit=1
         _a="${_a%%:*}"
         if (( _tagword )) || [[ "$_a" == refs/tags/* ]]; then
           [[ "${_a#refs/tags/}" =~ $_MG_VERSION_RE ]] && _hit=1
@@ -148,7 +153,7 @@ _mg_is_release() {
   while (( i < n )); do
     _c="${w[i]}"
     if [[ "$_c" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then (( i++ )); continue; fi
-    case "$_c" in
+    case "${_c##*/}" in # /usr/bin/timeout is timeout
       env)
         (( i++ ))
         while (( i < n )); do
@@ -198,7 +203,7 @@ while IFS= read -r _seg; do
   read -ra _words <<<"$_seg"
   (( ${#_words[@]} > 0 )) || continue
   _mg_is_release "${_words[@]}" && { IS_RELEASE=1; break; }
-done < <(printf '%s\n' "$VIEW" | sed -e 's/[;&|()`]/\n/g' \
+done < <(printf '%s\n' "$VIEW" | sed -e 's/[;&|()`<>]/\n/g' \
   | awk '/(^|[^[:alnum:]_.-])(git|gh|npm)([^[:alnum:]_-]|$)/ && /tag|push|release|publish/')
 # (The awk keeps only candidate commands: a 2,000-command line went from 37 to
 # 215 ms when every command went through the bash parser — review L7.)
