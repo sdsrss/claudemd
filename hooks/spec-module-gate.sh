@@ -9,16 +9,21 @@
 #                                      -n, --contains and the other list forms
 #   git [global opts] push ...         with --tags / --follow-tags, a bare
 #                                      version refspec, or a version tag named
-#                                      as refs/tags/<name> or `tag <name>`; not
-#                                      -n/--dry-run, -d/--delete, :<ref>
+#                                      as refs/tags/<name> or `tag <name>` on
+#                                      the SOURCE side of a refspec (a
+#                                      `HEAD:refs/tags/v1` destination is not
+#                                      seen); not -n/--dry-run, -d/--delete,
+#                                      :<ref>
 # A version tag name ends in a dotted version, alone or after @, _ or -:
-# v1.2, 2.0.0-rc.1, pkg@2.0.0, cli-v2.0.0. In a replay of the 4,692 distinct
-# transcript commands naming git/gh/npm and tag/push/release/publish, every
-# other tag name created was a fixture, probe or archive marker (10 commands),
-# and a version after `/` was a branch (release/0.13.0, fix/0.10.1-audit:
-# 21 commands), so a bare refspec must be the version alone.
-#   gh release create
-#   npm [global opts] publish          without --dry-run in the same command
+# v1.2, 2.0.0-rc.1, pkg@2.0.0, cli-v2.0.0. In the first replay (4,692
+# distinct transcript commands naming git/gh/npm and tag/push/release/publish)
+# every other tag name created was a fixture, probe or archive marker (10
+# commands), and a version after `/` was a branch (release/0.13.0,
+# fix/0.10.1-audit: 21 commands), so a bare refspec must be the version alone.
+# The 0.103.0 release replay (4,853 commands) moved 27 verdicts against 0.102.0.
+#   gh release create                  not with --help / -h
+#   npm [global opts] publish          without --dry-run, --help or -h in the
+#                                      same command
 # A bare `v2` pushed is taken for a branch. `bash -c '...'` bodies are quoted,
 # so they are not seen. (D#110 replaced 0.101.0's single regex, which matched
 # across separators and missed tag flags, non-v names, global options and
