@@ -4,7 +4,7 @@ For full design rationale, see `docs/superpowers/specs/2026-04-21-claudemd-plugi
 
 ## Four layers
 
-1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`, `memory-tags.sh`).
+1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`, `memory-tags.sh`, `spec-module.sh`, `verify-cmd.sh`, `wtree.sh`).
 2. **L2 Management scripts** (`scripts/*.js`) — Node.js ≥20, handle install/uninstall/update/status/audit/toggle/doctor/hard-rules-audit/clean-residue/sampling-audit/…. Share a `scripts/lib/` module set (acyclic, rooted at `paths.js`).
 3. **L3 Slash commands** (`commands/*.md`) — markdown stubs that tell the agent which L2 script to invoke.
 4. **Standalone CLI** (`bin/claudemd-lint.js`) — the npm-published `claudemd-cli` (`lint` + `audit` for §10-V banned-vocab / transcript scanning in git hooks, CI, or other agents). Imports `scripts/lib/lint.js` (downward dependency only — no duplication of the matcher).
@@ -24,6 +24,9 @@ Module → responsibility → external interface. "External" means what a caller
 | `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
 | `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
 | `memory-tags.sh` | MEMORY.md `[tag]` index parsing + prompt matching in one awk pass | `memtags_match` / `memtags_failopen`; spills past the 128 KiB env cliff to `$TMPDIR/claudemd-memtags-hay-*` |
+| `spec-module.sh` | The injected text of one spec module, for both hooks that inject one | `specmod_body` (frontmatter and build comment dropped) / `specmod_entry` |
+| `verify-cmd.sh` | What counts as verification: T1/T2 command and output patterns, and the failure-output pattern | `T1_CMD_RE` / `T2_CMD_RE` / `T2_OUT_RE` (evidence-gate, verify-log) / `FAIL_OUT_RE` (verify-log only) |
+| `wtree.sh` | Working-tree content fingerprint through a temporary index; the real index is never written | `wtree_hash DIR`; temp file `$TMPDIR/claudemd-wtree-*` |
 | `hooks/banned-vocab.patterns` | §10-V pattern list — the single source for the bash hook and the JS engine | One pattern per line; read by `banned-vocab-check.sh`, `transcript-vocab-scan.sh` and `scripts/lib/lint.js` |
 
 **L2 — management scripts (Node ≥20, ESM)**
@@ -116,6 +119,8 @@ hooks/<every hook>.sh ──► hooks/lib/hook-common.sh ──► hooks/lib/rul
 hooks/{mem-audit, memory-prompt-hint, sandbox-disposal-check, session-start-check, session-summary,
        ship-baseline-check, version-sync}.sh ──► hooks/lib/platform.sh
 hooks/{memory-prompt-hint, memory-read-check}.sh ──► hooks/lib/memory-tags.sh
+hooks/{spec-module-inject, test-failure-debug}.sh ──► hooks/lib/spec-module.sh
+hooks/{evidence-gate, verify-log}.sh ──► hooks/lib/{verify-cmd, wtree, platform}.sh
 scripts/perf-baseline.sh ──► hooks/lib/rule-hits.sh
 ```
 
@@ -303,7 +308,7 @@ second is unverified on the trigger that matters.
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
 - `$TMPDIR/claudemd-sync-<scope>` — `version-sync.sh` once-per-session sentinel. `<scope>` = `CLAUDE_SESSION_ID` if exported, else `.session_id` read off the hook's own stdin event, else the CC process PPID. The stdin leg was added in v0.71.4: CC does not export `CLAUDE_SESSION_ID` to hooks, so the PPID fallback was the *only* live path and "once per session" was in practice once per prompt. Self-GC'd past 24h by the hook itself; `/claudemd-clean-residue` reaps the rest.
 - `$TMPDIR/claudemd-memtags-hay-<rand>` — `hooks/lib/memory-tags.sh` haystack spill past the 128 KiB env-argument cliff (audit-2026-08-22 P1-5). Removed by a trap installed before the mktemp; a SIGKILL at the hooks.json timeout still strands one, which `/claudemd-clean-residue` reaps.
-- `$TMPDIR/claudemd-wtree-<rand>` — the temporary git index `hooks/lib/wtree.sh` stages the working tree into (opt-in `EVIDENCE_WTREE=1`: `verify-log.sh`, and `evidence-gate.sh` at a claim). Removed before the function returns; a SIGKILL at the 2 s bound strands one.
+- `$TMPDIR/claudemd-wtree-<rand>` — the temporary git index `hooks/lib/wtree.sh` stages the working tree into (opt-in `EVIDENCE_WTREE=1`: `verify-log.sh`, and `evidence-gate.sh` at a claim). Removed before the function returns, and by a TERM/INT trap when the 2 s bound stops it (`platform_timeout` sends SIGTERM); only a SIGKILL would strand one.
 - `$TMPDIR/claudemd-test-<rand>` — every sandbox the shell test suites create. Bare `mktemp -d` used to be the norm here, which produces `tmp.XXXXXXXXXX` and so matched NO prefix `/claudemd-clean-residue` looks for: the project's own recycler was blind to the largest residue class the project's own tests produced (2026-09-02 audit R11-38 — 2.6 GB across 524 directories, 150-250 stray directories a day). `tests/lib/mktemp-template.sh` now fails any tracked `.sh` whose `mktemp` call carries no template, and reports how many call sites it judged so a broken matcher cannot pass as "clean". The already-accumulated `tmp.XXXXXXXXXX` entries are counted and sized on every `/claudemd-clean-residue` run and never deleted by it, because nothing can prove they were ours; where they actually accumulate (`~/.claude/tmp/claude-<uid>`, the sandbox's `$TMPDIR`) the retention pass already reaps them by age. Invariants of that pass since 0.72.0: the window is never below one day, and an entry containing the process's own cwd or `$TMPDIR` is never deleted.
 
 The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gated by `tests/scripts/architecture-drift.test.js`, which extracts state paths from `hooks/**/*.sh` and `scripts/**/*.js` (the `logs/` and `backup-` paths match neither shape and are not gated). Before that gate existed (2026-07-28 audit M1) this list documented 6 of the 15 kinds actually written — the same "doc declares itself source-of-truth with nothing checking it" failure the hook-taxonomy table below had, in the same file. Its first draft then missed `vocab-scan-*` because it keyed on the variable name `$STATE_DIR` while that hook uses `$VS_STATE_DIR`; the extractor now matches any variable whose name ends in `STATE_DIR`. All three matchers still keyed on the state DIRECTORY, so the `$TMPDIR/claudemd-*` sentinel family — `claudemd-sync-*` since v0.3.1, `claudemd-memtags-hay-*` since v0.68.2 — was structurally invisible to a gate written to catch undocumented state; audit-2026-08-22 条目 15 added the prefix-keyed matcher that finds it.

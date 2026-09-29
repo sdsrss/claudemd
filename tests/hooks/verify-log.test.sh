@@ -91,6 +91,35 @@ if [[ "$TIERS" == "T2 T1 T2-output " ]] && [[ "$(runs | jq -r '.wtree' | sort -u
   ok "7 runner, smoke entry and runner output are logged with the tree they ran on; ls, a non-repo and the kill switch are not"
 else ng "7 tiers=[$TIERS] wtrees=$(runs | jq -r '.wtree' | sort -u | tr '\n' ' ')"; fi
 
+# A runner piped into tail exits with tail's status, so PostToolUse sees a
+# success even when the suite failed: 1,974 of 7,080 such logged runs in the
+# maintainer's transcripts printed failures (0.105.0 pre-tag review M1).
+N9=$(runs | wc -l | tr -d ' ')
+post 'npx vitest run 2>&1 | tail -5' ' Test Files  1 failed (1)' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'node --test 2>&1 | tail -3' $'\xe2\x84\xb9 pass 7\n\xe2\x84\xb9 fail 2' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npx eslint . 2>&1 | head' $'\xe2\x9c\x96 2 problems (2 errors, 0 warnings)' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'bash tests/run.sh | tail -2' $'FAIL [deny]: case 3\nTests: 9/10 passed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+N9b=$(runs | wc -l | tr -d ' ')
+post 'node --test 2>&1 | tail -3' $'\xe2\x84\xb9 pass 9\n\xe2\x84\xb9 fail 0' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npx vitest run | tail -3' ' Tests  12 passed (12)' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+N9c=$(runs | wc -l | tr -d ' ')
+if [[ "$N9b" == "$N9" && "$N9c" == $((N9 + 2)) ]]; then
+  ok "9 a run whose output reports failures is not logged, whatever its exit status; a passing one is"
+else ng "9 before=$N9 after-failing=$N9b after-passing=$N9c"; fi
+
+# The 2 s bound stops a slow fingerprint with SIGTERM; the temp index must not
+# outlive it (0.105.0 pre-tag review M3). A git whose `add` stalls stands in
+# for a huge work tree.
+FAKE="$TMP_HOME/fakebin"; mkdir -p "$FAKE"
+REALGIT=$(command -v git)
+printf '#!/usr/bin/env bash\n[[ " $* " == *" add "* ]] && sleep 5\nexec %q "$@"\n' "$REALGIT" >"$FAKE/git"
+chmod +x "$FAKE/git"
+find "$TMPDIR" -name 'claudemd-wtree-*' -delete 2>/dev/null
+post 'npm test' 'ok' | PATH="$FAKE:$PATH" EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+sleep 4
+LEFT10=$(find "$TMPDIR" -name 'claudemd-wtree-*' | wc -l | tr -d ' ')
+[[ "$LEFT10" == 0 ]] && ok "10 a fingerprint stopped at the 2 s bound leaves no temp index" || ng "10 $LEFT10 temp index file(s) left"
+
 # --- evidence-gate claim-wtree ------------------------------------------------
 TR="$HOME/.claude/projects/p/s.jsonl"
 {

@@ -7,7 +7,7 @@
 
 # specmod_body FILE -> the module body on stdout: the frontmatter (the file's
 # first block between two `---` lines) and the build comment dropped. The
-# comment is a maintainer note, 108 characters a module, and hook-injected text
+# comment is a maintainer note, 112 characters a module (111 and its newline), and hook-injected text
 # is not stripped of HTML comments the way CLAUDE.md is
 # (tasks/specs/spec-modules.md r7).
 specmod_body() {

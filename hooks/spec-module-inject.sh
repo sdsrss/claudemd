@@ -21,10 +21,11 @@
 # string at 10,000 characters and replaces anything longer with a file path and
 # a 2,000-character preview it does not ask the model to read. memory + plan, one
 # natural pair ("记住这个架构决定"), came to 9,929. So the body goes in without
-# its build comment (a maintainer note, 108 characters a module), and a second
+# its build comment (a maintainer note, 112 characters a module), and a second
 # module that would push the total past BUDGET is not dropped but deferred: its
-# name is kept as a `pending:` line and it is injected on the next prompt,
-# trigger or not. BUDGET sits below the cap because jq counts code points and the
+# name is kept as a `pending:` line and it is injected on a later prompt,
+# trigger or not: the next one, unless two modules ahead of it in the order
+# below take both of that prompt's slots. BUDGET sits below the cap because jq counts code points and the
 # cap counts UTF-16 units, which differ on characters outside the BMP.
 #
 # Kill switch: DISABLE_SPEC_MODULE_INJECT_HOOK=1.

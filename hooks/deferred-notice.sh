@@ -15,8 +15,8 @@
 # Writers today: evidence-gate.sh (opt-in twice: EVIDENCE_GATE=1 and
 # EVIDENCE_GATE_DELIVER=1). A notice is
 # delivered once — the file is renamed before it is read, so two prompts
-# arriving together cannot both deliver it — and at most 2,000 characters of
-# it. A notice nobody collects (the session ended) is reaped by
+# arriving together cannot both deliver it — and at most 2,000 bytes of it
+# (`head -c`, so a multi-byte character at the cut becomes U+FFFD). A notice nobody collects (the session ended) is reaped by
 # /claudemd-clean-residue past the retention window.
 #
 # Cost when there is nothing to deliver: one glob, before anything is sourced;

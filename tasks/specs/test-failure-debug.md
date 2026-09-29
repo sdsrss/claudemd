@@ -23,7 +23,7 @@ revision: 1
 2. opt-in `DEBUG_ON_TEST_FAILURE=1`，默认关闭（行为层 hook，§EXT §13.3）。kill switch 为 `DISABLE_TEST_FAILURE_DEBUG_HOOK=1`。
 3. 每个会话只注入一次，并且与第 2 层共用：同一个 `modinj-<sid>.list`，两个方向都生效。
 4. 两个注入 hook 共用一份包装逻辑：`hooks/lib/spec-module.sh`（去掉 frontmatter 和构建注释的正文，加上带理由的 `[claudemd] system-injected` 说明）。
-5. 只认测试运行器（不含 lint、typecheck），并且要在命令位置上；与测触达时用的是同一组。
+5. 只认测试运行器（不含 lint、typecheck），并且要在命令位置上。运行器名单沿用测触达时的那组，但测触达的正则更宽（前面任何空白都算，所以连 `grep -r pytest src` 也计为一次测试运行）；按 hook 的正则重算，缺口是 42/66 = 0.636，决定不变（0.105.0 预发评审 L6）。
 6. 中断（`is_interrupt: true`）不算失败。
 
 ## success-criteria

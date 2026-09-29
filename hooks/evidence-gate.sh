@@ -295,8 +295,9 @@ esac
 # the turn going — one more model reply per firing — and this verdict is right
 # at most 3 times in 21 (header). So the observation waits in a notice file and
 # `deferred-notice.sh` adds it to the model's context with the NEXT prompt: no
-# extra turn, and nothing when the conversation does not continue. A headless
-# run (entrypoint sdk-*) has no next prompt a person wrote, so it gets none.
+# extra turn, and nothing when the conversation does not continue. It rides
+# the session's next prompt whatever sent it (a person, a task notification, a
+# teammate). A headless run (entrypoint sdk-*) gets none: nobody reads its turns.
 #
 # Its own opt-in, EVIDENCE_GATE_DELIVER=1, on top of EVIDENCE_GATE=1: the G1b
 # pre-registration (tasks/g1b-g2-eval/PREREG.md, 2026-09-26 revision) holds any
@@ -306,7 +307,9 @@ esac
 # pre-registered A/B (tasks/r5-deferred/PREREG.md) before the gate is met.
 EG_EP=$(tail -n 50 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r 'select(.entrypoint? != null) | .entrypoint' 2>/dev/null | tail -n 1)
 EG_QUEUED=0
-if [[ "${EVIDENCE_GATE_DELIVER:-0}" == 1 && "$EG_EP" != sdk-* && "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+# The delivery hook's own kill switch counts here too: a notice nothing will
+# read must not be queued, nor promised to the human below.
+if [[ "${EVIDENCE_GATE_DELIVER:-0}" == 1 && "${DISABLE_DEFERRED_NOTICE_HOOK:-0}" != 1 && "$EG_EP" != sdk-* && "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
   EG_STATE="$HOME/.claude/.claudemd-state"
   if mkdir -p "$EG_STATE" 2>/dev/null \
     && printf '[claudemd] system-injected — an observation from the end of your previous turn (%s), by evidence-gate, which the user turned on: that reply read as a completion claim after code edits, and %s If the claim stands, its verification is still outstanding; if it was not a completion claim, disregard this. The user can turn this off with DISABLE_EVIDENCE_GATE_HOOK=1.\n' \

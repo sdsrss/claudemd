@@ -13,7 +13,12 @@
 # PostToolUse. Measured on Claude Code 2.1.284 (2026-09-29): `ls /nonexistent`
 # under a hook registered for both events fired PostToolUseFailure only, with
 # `error` = "Exit code 2\n<stderr>", and the model quoted back a token from its
-# additionalContext.
+# additionalContext. The other side of that: a runner piped into `tail` or
+# `grep` exits with the last command's status, so its failure arrives as a
+# PostToolUse success and this hook never sees it. On the maintainer's
+# transcripts that was the only kind of failure in 120 of the 186 sessions with
+# a failing runner (0.105.0 pre-tag review M2); the 70-session reach count
+# above measured exit-code failures only, the ones this hook can see.
 #
 # Once per session, shared with tier 2: the same modinj-<sid>.list, so a module
 # tier 2 already injected is not injected again, a module injected here is not
@@ -50,10 +55,14 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # A test RUNNER at command position, not any verifier: a failed lint or
 # typecheck is not the red-green loop debug.md is about, and `grep pytest src`
-# is not a test run. The runner set is the one tasks/specs/test-failure-debug.md
-# counted the reach with; command position is the start of the text or of a
-# line, or after ; & | ( or a backtick, past any of npx / bunx / pnpm|yarn exec /
-# uv|poetry run / timeout N / env / NAME=value.
+# is not a test run. The runner names follow the reach count in
+# tasks/specs/test-failure-debug.md, whose pattern was looser (any preceding
+# whitespace, so it also counted `grep -r pytest src`). Command position is the
+# start of the text or of a line, or after ; & | ( or a backtick, past any of
+# npx / bunx / pnpm|yarn exec / uv|poetry run / timeout N / env / NAME=value.
+# Quotes are not parsed, so a separator inside a quoted string counts too
+# (`grep -E 'jest|vitest' package.json` failing fires it); sudo, nice, time,
+# `env -u X` and ./node_modules/.bin/<runner> are not recognised as prefixes.
 _nl=$'\n'
 TEST_CMD_RE="(^|[;&|(\`${_nl}])[[:space:]]*((npx|bunx|env|(pnpm|yarn)[[:space:]]+exec|(uv|poetry)[[:space:]]+run|timeout[[:space:]]+[0-9.]+[smh]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*((npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test[[:alnum:]:_-]*|pytest|python3?[[:space:]]+-m[[:space:]]+(pytest|unittest)|jest|vitest|mocha|node[[:space:]]+--test|cargo[[:space:]]+test|go[[:space:]]+test|make[[:space:]]+test|rspec|ctest|(gradle|mvn|dotnet)[[:space:]]+test|bash[[:space:]]+[^[:space:]]*tests/[^[:space:]]+|[^[:space:]]*run-all\.sh)([[:space:];&|)]|\$)"
 [[ "$CMD" =~ $TEST_CMD_RE ]] || exit 0

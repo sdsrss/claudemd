@@ -181,6 +181,18 @@ test('offline-eval T11: the fixture test catches the off-by-one, and the fix tur
   });
 });
 
+// The judges' own `green` (T2, T3, T9, T11) spawns the fixture suite too. It
+// must read red as red under this runner (no inherited NODE_TEST_CONTEXT) and
+// on Node 22/24 (no positional `test/`, which they read as an empty glob).
+test('offline-eval judges: green is false on the red fixture and true once fixed', () => {
+  withFixture('T11', dir => {
+    const green = () => /green=true/.test(TASKS.T11.judge({ uses: [], texts: [], final: 'done', dir }).why);
+    assert.equal(green(), false, 'the unfixed off-by-one is red');
+    fixPaginate(dir);
+    assert.equal(green(), true, 'the fixed fixture is green');
+  });
+});
+
 test('offline-eval T11 judge: a test run must come before the first git commit, and a commit must land', () => {
   withFixture('T11', dir => {
     const judge = uses => TASKS.T11.judge({ uses, texts: [], final: 'done', dir });

@@ -11,17 +11,19 @@
 # edits, and a file rewritten through a Bash heredoc is only visible to it when
 # Claude Code records bashEditDiff (64-83% of Opus 5.5 edits go through Bash).
 #
-# PostToolUse fires only when the call succeeded (a non-zero exit fires
-# PostToolUseFailure instead), so every row here is a passing run. What counts
-# as verification is evidence-gate's own T1/T2 (hooks/lib/verify-cmd.sh): the
-# command names a smoke entry or a runner, or its output carries a runner
-# verdict.
+# PostToolUse fires only when the call exited 0 (a non-zero exit fires
+# PostToolUseFailure instead). That is not the same as a passing run: a runner
+# piped into `tail` exits with tail's status. So a run whose output reports
+# failures (FAIL_OUT_RE) is not logged either. What counts as verification is
+# evidence-gate's own T1/T2 (hooks/lib/verify-cmd.sh): the command names a smoke
+# entry or a runner, or its output carries a runner verdict.
 #
 # Nothing here decides anything. Rows go to the claudemd log as `verify-run`.
 #
 # Opt-in: EVIDENCE_WTREE=1 (default OFF). Side effect of the fingerprint,
-# disclosed in wtree.sh: untracked, non-ignored file contents enter
-# .git/objects as unreachable objects until `git gc`.
+# disclosed in wtree.sh: modified and untracked, non-ignored file contents (and
+# tree objects) enter .git/objects as unreachable objects until `git gc` prunes
+# them, by default after two weeks.
 #
 # Kill-switches:
 #   DISABLE_VERIFY_LOG_HOOK=1 — disable after opt-in
@@ -49,16 +51,19 @@ IFS=$'\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD <<<"$FIELDS"
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
+OUT=$(printf '%s' "$EVENT" | jq -r '(.tool_response.stdout // "") | .[0:20000]' 2>/dev/null)
 TIER=""
 if [[ "$CMD" =~ $T1_CMD_RE ]]; then
   TIER=T1
 elif [[ "$CMD" =~ $T2_CMD_RE ]]; then
   TIER=T2
 else
-  OUT=$(printf '%s' "$EVENT" | jq -r '(.tool_response.stdout // "") | .[0:20000]' 2>/dev/null)
   printf '%s' "$OUT" | grep -Eq "$T2_OUT_RE" && TIER=T2-output
 fi
 [[ -n "$TIER" ]] || exit 0
+# Exit 0 is not a pass (header): skip a run whose output reports failures.
+ERR=$(printf '%s' "$EVENT" | jq -r '(.tool_response.stderr // "") | .[0:20000]' 2>/dev/null)
+printf '%s\n%s' "$OUT" "$ERR" | grep -Eq "$FAIL_OUT_RE" && exit 0
 
 WTREE=$(platform_timeout 2 bash -c 'source "$1/wtree.sh" && wtree_hash "$2"' _ "$LIB_DIR" "$CWD" 2>/dev/null) || WTREE=""
 [[ -n "$WTREE" ]] || exit 0

@@ -16,8 +16,10 @@
 # the edit channel Edit/Write-keyed instruments cannot see.
 #
 # Side effect, disclosed: `git add -A` into the temp index writes the blobs of
-# untracked, non-ignored files into .git/objects, where they stay unreachable
-# until `git gc` (the same property `git stash -u` has). Opt-in callers only.
+# modified and untracked, non-ignored files into .git/objects, and write-tree
+# writes tree objects; they stay there unreachable until a `git gc` prunes them
+# (by default once they are older than gc.pruneExpire, two weeks) — the same
+# property `git stash -u` has. Opt-in callers only.
 
 # wtree_hash DIR -> prints the tree hash; returns 1 outside a git work tree, in
 # a repo with no commit, or on any git failure. Callers treat that as "no
@@ -32,11 +34,18 @@ wtree_hash() {
     *) real="$top/$real" ;;
   esac
   tmpidx=$(mktemp "${TMPDIR:-/tmp}/claudemd-wtree-XXXXXX") || return 1
+  # The callers bound this at 2 s with platform_timeout, which stops the shell
+  # with SIGTERM (GNU timeout and the bash watchdog alike). Without a trap the
+  # temp index outlived every such stop (0.105.0 pre-tag review M3). Bash runs
+  # the trap once the git child it waits on has exited. The trap is dropped
+  # again before returning, so a caller's own shell keeps its handlers.
+  _wtree_tmp=$tmpidx
+  trap 'rm -f -- "$_wtree_tmp" "$_wtree_tmp.lock"; exit 143' TERM INT
   if [[ -n "$real" && -f "$real" ]] && cp "$real" "$tmpidx" 2>/dev/null && touch -r "$real" "$tmpidx" 2>/dev/null; then
     :
   else
     rm -f "$tmpidx"
-    GIT_INDEX_FILE="$tmpidx" git -C "$top" read-tree HEAD 2>/dev/null || { rm -f "$tmpidx"; return 1; }
+    GIT_INDEX_FILE="$tmpidx" git -C "$top" read-tree HEAD 2>/dev/null || { rm -f "$tmpidx"; trap - TERM INT; return 1; }
   fi
   if GIT_INDEX_FILE="$tmpidx" git -C "$top" add -A 2>/dev/null \
     && hash=$(GIT_INDEX_FILE="$tmpidx" git -C "$top" write-tree 2>/dev/null) && [[ -n "$hash" ]]; then
@@ -44,6 +53,7 @@ wtree_hash() {
     rc=0
   fi
   rm -f "$tmpidx"
+  trap - TERM INT
   return "$rc"
 }
 

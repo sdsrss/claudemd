@@ -86,6 +86,14 @@ if [[ ! -e "$ST/notice-s7b.evidence-gate" ]] && grep -q 'reaches you, not the ag
   ok "7b EVIDENCE_GATE=1 without EVIDENCE_GATE_DELIVER=1: nothing queued"
 else ng "7b queued=$([[ -e "$ST/notice-s7b.evidence-gate" ]] && echo y) stderr=${E7B:0:100}"; fi
 
+# 7c. With the delivery hook switched off, a queued notice would never be read,
+# and the human line would promise a delivery that cannot happen (0.105.0
+# pre-tag review L12): queue nothing and say it reaches only the human.
+E7C=$(DISABLE_DEFERRED_NOTICE_HOOK=1 eg_stop s7c cli 1)
+if [[ ! -e "$ST/notice-s7c.evidence-gate" ]] && grep -q 'reaches you, not the agent' <<<"$E7C"; then
+  ok "7c DISABLE_DEFERRED_NOTICE_HOOK=1: nothing queued, and the human note says so"
+else ng "7c queued=$([[ -e "$ST/notice-s7c.evidence-gate" ]] && echo y) stderr=${E7C:0:100}"; fi
+
 # 8. the advisory row records whether it queued.
 if jq -e 'select(.hook=="evidence-gate" and .session_id=="s6" and .extra.queued==true)' "$LOG" >/dev/null 2>&1 \
    && jq -e 'select(.hook=="evidence-gate" and .session_id=="s7" and .extra.queued==false)' "$LOG" >/dev/null 2>&1; then
