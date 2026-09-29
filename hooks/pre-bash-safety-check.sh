@@ -56,12 +56,18 @@ if [[ "${1:-}" == --s8-comment-pass ]]; then
   # bypass-escape-hatch) repeats one the first run already wrote for the same
   # tool_use_id; /claudemd-audit then reads them as double fires (0.106.0
   # pre-tag review M2). Only its deny row is its own.
-  hook_record() {
+  # Defined through eval, so its text is parsed only on this branch: bash 3.2
+  # records a function's source file when it PARSES a definition, by name, so
+  # a `hook_record() {…}` anywhere in this file — even in a branch that never
+  # runs — made hook-common.sh's own hook_record read this file as its
+  # ${BASH_SOURCE[0]}, look for rule-hits.sh beside it and write no row at all
+  # (macOS /bin/bash; CI's bash 3.2 leg on 4fe8704).
+  # shellcheck disable=SC2016
+  eval 'hook_record() {
     [[ "${2:-}" == deny ]] || return 0
-    # shellcheck source=/dev/null
     source "$LIB_DIR/rule-hits.sh" 2>/dev/null || return 0
     rule_hits_append "$@"
-  }
+  }'
 fi
 
 hook_kill_switch PRE_BASH_SAFETY || exit 0
