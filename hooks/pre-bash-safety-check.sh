@@ -1027,8 +1027,12 @@ if :; then
     # every pre-F22 `continue` in the body already had exactly that meaning for
     # the single target it analyzed.
     for rm_target in "${rm_targets[@]}"; do
-    echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' || continue
-    varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
+    # A positional parameter is a variable too: `rm -rf "$1/build"` is `/build`
+    # when the function runs without an argument, exactly as `$D/build` is.
+    # The class skipped digits while `${1}` was denied (R2 shadow A1, 2026-09-29:
+    # 7 of 6,138 real rm commands, all in function bodies).
+    echo "$rm_target" | grep -qE '\$[[:alpha:]_0-9]|\$\{[^}]+\}' || continue
+    varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*|\$[0-9]' | head -n1 \
       | sed -E 's/[${}"'"'"']//g')
     # Strip ALL var expansions + quotes from the target — what remains is the
     # literal-path residue. A whitelisted var (HOME/PWD/OLDPWD/TMPDIR) is only
@@ -1038,7 +1042,7 @@ if :; then
     # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
     # The whitelist only certifies the var is shell-typed, not that the
     # target is bounded. Require ≥1 non-`/` character in the residue.
-    residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/["'"'"']//g; s/[(){}]//g')
+    residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/\$[0-9]//g; s/["'"'"']//g; s/[(){}]//g')
     # A `..` COMPONENT in that residue walks out of whatever the var names, so
     # nothing the arms below certify can bound the target: the whitelist says
     # $HOME is shell-typed, `${VAR:?}` says VAR is set and non-empty, and
@@ -1198,7 +1202,7 @@ if :; then
             # like any other expansion, so guarding $arm still denies. Name the
             # var and the fix that passes. Message only — the verdict is this
             # arm's either way.
-            s8_subvar=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | sed -n 2p \
+            s8_subvar=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*|\$[0-9]' | sed -n 2p \
               | sed -E 's/[${}"'"'"']//g; s/[^A-Za-z0-9_].*$//')
             # The verb the user typed, as every other rm line does (0.94.0
             # pre-tag review: this one line was still hard-coded as `rm -rf`).
@@ -1394,7 +1398,7 @@ if :; then
           # scan predates F20 and leaked through the mktemp class too.
           if (( prov_safe == 1 )); then
             prov_other=$(printf '%s' "$args_only" \
-              | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' \
+              | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*|\$[0-9]' \
               | sed -E 's/[${}"'"'"']//g' | grep -vxF "$varname" | head -n1)
             [[ -n "$prov_other" ]] && prov_safe=0
           fi

@@ -1543,3 +1543,27 @@ deny	S8-EQO2 mirror: a string ending in an escaped quote no longer swallows the 
 pass	S8-EQO3 control: the single-quoted rm alone	echo 'x; rm -rf $f'
 pass	S8-EQO4 control: an escaped quote mid-body, guarded rm after	echo "a\"b" && rm -rf "${D:?}/x"
 xfp	S8-EQO5 RESIDUAL: a backslash OUTSIDE quotes is still not modelled, so \" there opens a string	echo \"x\" 'y; rm -rf $f'
+
+# === 2026-09-29 S8-POS: a positional parameter is a variable (R2 shadow adjudication A1) ===
+# The target class was $[[:alpha:]_], so `rm -rf "$1/build"` was skipped while `${1}` was
+# denied. $1 is empty when a function runs without an argument, and "$1/build" is then
+# /build. Real-command replay over 75,152 commands: 8 allow->deny, every one an rm on
+# $1/$2 inside a function body; 0 deny->allow.
+deny	S8-POS1 a positional parameter with a subpath	rm -rf "$1/build"
+deny	S8-POS2 the field shape: cleanup of the argument inside a function body	mk () { rm -rf "$1"; mkdir -p "$1/home"; }; mk /tmp/x
+deny	S8-POS3 a whitelisted var whose only subpath is a positional parameter	rm -rf "$HOME/$1"
+deny	S8-POS4 find on a positional parameter	find "$1" -name x -delete
+pass	S8-POS5 control: a guarded positional parameter	rm -rf "${1:?}/build"
+pass	S8-POS6 control: $1 inside a command substitution is data, as $FOO is	rm -f $(awk '{print $1}' list.txt)
+pass	S8-POS7 control: a single-quoted $1 is a literal	echo '$1' && rm -rf ./build
+
+# === 2026-09-29 S8 field residuals the gate cannot see (R2 shadow adjudication A2) ===
+# Each appeared once in 6,138 real rm/find commands; each is denied once the hiding
+# structure is removed (the controls). Root cause is text tokenizing, so they wait for the
+# R2 parser instead of a text patch (docs/S8-RESIDUALS.md F7, F8; F1 for the third).
+xfn	S8-FGRP1 RESIDUAL: an escaped \( splits the find segment, so -exec rm lands in another	find "$S" -maxdepth 1 -type d \( -name a -o -name b \) -exec rm -rf {} +
+deny	S8-FGRP2 control: the same find without the group	find "$S" -maxdepth 1 -type d -name a -exec rm -rf {} +
+xfn	S8-MLBC1 RESIDUAL: a bash -c string that spans lines is not unwrapped	bash -c 'for d in /tmp/x.*; do__NL__rm -rf -- "$d"; done'
+deny	S8-MLBC2 control: the same string on one line	bash -c 'for d in /tmp/x.*; do rm -rf -- "$d"; done'
+xfn	S8-PROV21 RESIDUAL: & backgrounds the whole && chain, so the mktemp assignment never reaches the parent	H=$(mktemp -d) && mkdir -p "$H/x" & sleep 1; rm -rf "$H"
+pass	S8-PROV22 control: the same chain in the foreground	H=$(mktemp -d) && mkdir -p "$H/x"; sleep 1; rm -rf "$H"

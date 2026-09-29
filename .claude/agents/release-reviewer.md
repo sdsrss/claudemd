@@ -34,7 +34,7 @@ A §8 false negative is a command the gate allows that it should deny. For each 
 
 - Write `Provenance: field evidence` (the shape occurs in a real session or a real-command replay) or `Provenance: reviewer-constructed` (you built it to test the gate).
 - A reviewer-constructed shape that falls inside a family registered in `docs/S8-RESIDUALS.md` is a non-blocking note: name the family and grade it Low.
-- A field-evidence false negative blocks, whether or not its family is registered.
+- A field-evidence false negative blocks, whether or not its family is registered, unless that family's `真实命中` (field hits) cell in `docs/S8-RESIDUALS.md` already counts this shape: then it was adjudicated with its field evidence known, and it is a non-blocking note like the one above.
 - If the range is itself a repair of an earlier §8 review and you find a NEW family of false negatives, say so in the verdict: the registry's round budget (one repair pass, one confirmation review) is spent, and the next step is to classify the family, not to patch it.
 
 ## Report
