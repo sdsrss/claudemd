@@ -28,6 +28,15 @@ The spawn prompt names the range as SHAs, the contract, and the claims to falsif
 - For gates (hooks that deny): any input the new code allows that the old code denied. For advisories: inputs that newly fire or newly stay silent.
 - Tests: does each new test fail on the old code and pass on the new? A test that passes on both checks nothing.
 
+## §8 findings
+
+A §8 false negative is a command the gate allows that it should deny. For each one:
+
+- Write `Provenance: field evidence` (the shape occurs in a real session or a real-command replay) or `Provenance: reviewer-constructed` (you built it to test the gate).
+- A reviewer-constructed shape that falls inside a family registered in `docs/S8-RESIDUALS.md` is a non-blocking note: name the family and grade it Low.
+- A field-evidence false negative blocks, whether or not its family is registered.
+- If the range is itself a repair of an earlier §8 review and you find a NEW family of false negatives, say so in the verdict: the registry's round budget (one repair pass, one confirmation review) is spent, and the next step is to classify the family, not to patch it.
+
 ## Report
 
 Write the full report to the absolute path the prompt gives. Each finding: severity, `file:line`, what is wrong, and a reproducing command or quoted evidence. Under `NOT CHECKED`, list what you did not examine. End with a message of at most 1500 characters: the verdict, the count per severity, one line per Critical or High finding, and the report path.

@@ -58,6 +58,11 @@ docs/*
 #    as the source of their numbers; pre-tag review L3 found the citations
 #    dangling in a clone.)
 !docs/claude-session-analysis-2026-09-26.md
+#  - docs/S8-RESIDUALS.md (the registry of accepted §8 residual families). Read by
+#    the release-reviewer agent (.claude/agents/release-reviewer.md), whose
+#    worktree is a clone of the tracked tree; an ignored registry would not be
+#    there to read.
+!docs/S8-RESIDUALS.md
 #  - docs/audit/*.md (round reports + the metric baseline they compare against).
 #    Same provenance rule as the tasks/ audit-deferred files below: CHANGELOG
 #    entries from 0.68.0 on cite docs/audit/… by name, and the round that ran on
