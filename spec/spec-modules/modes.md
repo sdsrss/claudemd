@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: modes
+# AI-CODING-SPEC v7.2.0 — module: modes
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -73,8 +73,10 @@ Serves maintenance scripts (formatters, patch-bumps, doc sync) — NOT feature d
 
 ## §0.2-EXT Mid-task feedback (continued)
 
-Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
+Core §0.2 keeps the one-line defaults; the rest:
 
+- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge; ambiguous vs scope-expansion → ASK once.
+- **Scope-expansion**: cross-level → serial; same-level → inline.
 - **Continuation** (e.g. "继续/next"): same SPINE.
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
 - **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.

@@ -1,13 +1,17 @@
 ---
 module: auth
-loads-on: before deleting files, and for AUTONOMY_LEVEL or public-API questions
+loads-on: before deleting files, and for AUTONOMY_LEVEL, public-API or user-relaxation questions
 triggers: 
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: auth
+# AI-CODING-SPEC v7.2.0 — module: auth
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
+
+## §3-EXT User relaxation (detail)
+
+The §3 Order resolves conflicts, not permissions; where the user has not spoken about a clause, the stricter reading governs. HARD rules and §5 AUTH gates move only through §5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:` and §8.V3's on-real-repo exception. Neither a default nor a HARD rule / AUTH gate: recommend and proceed, reading stated in one line.
 
 ## §5-EXT Safe-paths whitelist (detail)
 

@@ -6,6 +6,20 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v7.2.0 (minor, 2026-09-29) — core trim with meaning kept; the context-pressure yield goes, because the harness compacts context itself
+
+Plan and evidence: `docs/spec-optimization-plan-2026-09-29.md`; design record `tasks/specs/v7.2-core.md`. Minor, because one §11 yield condition is removed (the rule gets stricter). No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: a 224-session scan (interactive sessions since 2026-09-05) found the core's frequent rules in use (level statements in 67% of sessions, four-section reports in 87.5%, `[AUTH REQUIRED]` in 21%) and its rare ones small (override modes, the quality slider, cancel/switch, AUTONOMY_LEVEL and NPX: 0 true prompt triggers each). So the trim targets repetition, text the Claude Code 2.1.285 system prompt already carries, maintainer asides and one contradiction with that prompt, not frequent rules.
+- **Deduplicated**: the AUTH signal format (§0 only), the Task definition (§0), the evidence principle's restatements (§1), the release-checklist pointer (§2.2 only), the aggressive skip-list's restatement of Never-downgrade (§5.1).
+- **Dropped as harness text**: Agent fork / general-purpose semantics (§2.1), "Read vs memory conflict → trust Read, update memory" (§3), the re-read and context-pressure heuristics (§11; detail stays in `session.md`). §2.1 Tool escalation is one line; §11 Auto-memory's three triggers are one sentence with the same MUST cases.
+- **Maintainer text**: the Escape-token and four-section asides go; the header line and the §1.5 Assumption pointer become block HTML comments, which Claude Code strips before injection (checked on this repo's CLAUDE.md: 4 `<!--` lines on disk, 0 in the delivered copy). File bytes and model-visible bytes now differ: core 23,170 B on disk, 22,968 B visible (`python3 -c "import re;print(len(re.sub(r'(?m)^<!--.*?-->\\n?','',open('spec/CLAUDE.md').read()).encode()))"`).
+- **Kept after review**: both `(subagent → §5)` pointers in §0 stay. The one in §0 Signals qualifies the signal it defines for a subagent (a v6.29.0 repair), so it is not a duplicate of §5. §1's `(§8.V1 binds verification)` stays too: the tracked roadmap cites §8.V1 and `doc-check` resolves it only here.
+- **Moved**: §0.2 keeps one-line defaults and its merge thresholds go to `modes.md` (§0.2-EXT); §3 User relaxation keeps its operative sentence and its named channels go to `auth.md` (new §3-EXT; the §2.2 index line and `auth`'s `loadsOn` say so); §8.V2 loses its examples.
+- **Changed — §11 Mid-SPINE turn-yield**: "context pressure (→ `tasks/<slug>-paused.md`)" is no longer a yield. The harness system prompt says context is summarized and there is no need to wrap up early; the two contradicted each other, and 4 of 224 sessions wrote a paused file. `session.md` still allows a paused checkpoint under pressure, without stopping. `OPERATOR.md`'s paused-file table now names §11-EXT for it.
+- **Offline A/B** (Opus 5.5 high, 5 runs per task, T1–T5 and T8–T12): this build 50/50, $10.28; v7.1.0's recorded runs 49/50, $10.27. AUTH, the §8 rm gate and the multi-step task were 5/5. A was recorded on 2026-09-27/29 with claude 2.1.283/284, B on 2.1.285, so the pair is not simultaneous; the tasks do not exercise the moved clauses.
+- **Sizing**: see the Sizing line in extended's Recent changes.
+
 ## v7.1.0 (minor, 2026-09-27) — core room, the mid-turn stop clause names the stops that are not yields
 
 Design record `tasks/specs/v7.1-core.md`; follow-up to the v7.0.0 notes in `docs/audit/20260926-180700.md` 11.6. Minor, because one §9 bullet is removed and one §2.1 clause is narrowed. No HARD rule added or removed; every remaining rule keeps its ID.

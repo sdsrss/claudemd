@@ -5,7 +5,7 @@ triggers: 记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: memory
+# AI-CODING-SPEC v7.2.0 — module: memory
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

@@ -5,7 +5,7 @@ triggers: 发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]
 trigger-window: whole
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: ship
+# AI-CODING-SPEC v7.2.0 — module: ship
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

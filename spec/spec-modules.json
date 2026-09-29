@@ -42,7 +42,7 @@
       "window": "head"
     },
     "auth": {
-      "loadsOn": "before deleting files, and for AUTONOMY_LEVEL or public-API questions",
+      "loadsOn": "before deleting files, and for AUTONOMY_LEVEL, public-API or user-relaxation questions",
       "triggers": "",
       "window": "head"
     },

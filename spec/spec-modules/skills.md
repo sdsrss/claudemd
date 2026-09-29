@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: skills
+# AI-CODING-SPEC v7.2.0 — module: skills
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

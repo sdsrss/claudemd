@@ -572,10 +572,10 @@ const PINS = [
     line: "**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
   },
   {
-    what: 'core §11 Mid-SPINE turn-yield — the four triggers, the named bad stops and the Tell (v7.1.0 wording)',
+    what: 'core §11 Mid-SPINE turn-yield — the three triggers, the named bad stops and the Tell (v7.2.0 wording)',
     file: CORE,
     anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, context pressure (→ `tasks/<slug>-paused.md`), or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
     what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v7.0.0 wording)',
@@ -610,22 +610,29 @@ const PINS = [
     line: '**Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).',
   },
   {
-    what: 'core §8 Escape tokens — token and switch routes are both AUTH artifacts (v6.28.0 wording)',
+    what: 'core §8 Escape tokens — token and switch routes are both AUTH artifacts (v7.2.0 wording)',
     file: CORE,
     anchor: '**Escape tokens** (the `[allow-…]`',
-    line: "**Escape tokens** (the `[allow-…]` / `[skip-…]` literals a hook deny advertises, plus every `DISABLE_*` kill switch and hook feature flag — the switch route is the wider one and records nothing): AUTH artifacts. A deny naming one names the USER's exit, not yours. Take one only on explicit user authorization for that command, this task; self-issuing one to clear your own deny is a §5 breach, on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.",
+    line: "**Escape tokens** (the `[allow-…]` / `[skip-…]` literals a hook deny advertises, plus every `DISABLE_*` kill switch and hook feature flag): AUTH artifacts. A deny naming one names the USER's exit, not yours. Take one only on explicit user authorization for that command, this task; self-issuing one to clear your own deny is a §5 breach, on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.",
   },
   {
-    what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v6.28.0 wording)',
+    what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v7.2.0 wording; channels in §3-EXT)',
     file: CORE,
-    anchor: '**User relaxation**: the Order resolves',
-    line: "**User relaxation**: the Order resolves *conflicts*, not permissions. Spec **defaults** — §1 language contract, §2.1 routing, ceremony in §5.1's skip-list sense — yield to an explicit user instruction, per-task, stated back in one line; stricter-reading governs where the user has not spoken about that clause. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (§5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:`, §8.V3's on-real-repo exception), and §8 never. Outside both sets: recommend and proceed, reading stated in one line.",
+    anchor: '**User relaxation**: an explicit user instruction',
+    line: '**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (`auth.md`), and §8 never.',
+  },
+  {
+    what: '§EXT §3-EXT — the only channels through which HARD rules and §5 AUTH gates move (v7.2.0)',
+    file: EXT,
+    anchor: 'The §3 Order resolves conflicts, not permissions',
+    why: 'Moved out of core §3 in v7.2.0. Add a channel here and a project file or a user sentence can relax an AUTH gate while the core line stays green.',
+    line: "The §3 Order resolves conflicts, not permissions; where the user has not spoken about a clause, the stricter reading governs. HARD rules and §5 AUTH gates move only through §5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:` and §8.V3's on-real-repo exception. Neither a default nor a HARD rule / AUTH gate: recommend and proceed, reading stated in one line.",
   },
   {
     what: '§EXT §5-EXT SAFE_DELETE_PATHS ceiling — a project entry covering a NEVER item is ignored, not honoured (v6.30.0)',
     file: EXT,
     anchor: '- an entry covering a NEVER-covers item',
-    why: 'core §3 names SAFE_DELETE_PATHS one of three channels that move a §5 AUTH gate. Without this clause the channel has no ceiling and a project file can widen delete-soft over anything. The clause was cited by core from the first spec commit and had no content until v6.30.0.',
+    why: '§3-EXT (auth.md; core §3 until v7.2.0) names SAFE_DELETE_PATHS one of three channels that move a §5 AUTH gate. Without this clause the channel has no ceiling and a project file can widen delete-soft over anything. The clause was cited by core from the first spec commit and had no content until v6.30.0.',
     line: '- an entry covering a NEVER-covers item is ignored, not honoured — the project file extends the list, it cannot raise its ceiling',
   },
   {
@@ -719,18 +726,18 @@ const PINS = [
     line: '`§EXT` sections live in per-phase modules under `~/.claude/spec-modules/`. A hook injects the module your prompt matches; otherwise Read the module listed here before the work it covers. `~/.claude/CLAUDE-extended.md` is their build source: do not read it whole.',
   },
   {
-    what: 'core §10 — the four-section order (v6.29.0 wording)',
+    what: 'core §10 — the four-section order (v7.2.0 wording)',
     file: CORE,
     anchor: '**Four-section order (HARD)**',
     why: 'hard-rules-1 pins the ANCHOR string, not the rule body, so the body could be inverted while the manifest stayed green; the L1/L2/L3 report pins are all bounded by this order.',
-    line: '**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural; self-enforced — the Stop scan is advisory and opt-in). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.',
+    line: '**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.',
   },
   {
-    what: "core §5 AUTH — the signal, its scope, and the subagent's in-scope non-hard bound (v7.1.0 wording)",
+    what: "core §5 AUTH — the signal, its scope, and the subagent's in-scope non-hard bound (v7.2.0 wording)",
     file: CORE,
-    anchor: '`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms',
+    anchor: '`[AUTH REQUIRED]` (§0) blocks until user confirms',
     why: "`in-scope non-hard` carries BOTH bounds: drop `in-scope` and the same sentence's `files outside grant → re-AUTH` is contradicted; drop `non-hard` and a subagent may run a §5 Hard op.",
-    line: '`[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the in-scope non-hard part, report `[PARTIAL: <op> needs AUTH]`, never self-authorize (`orchestrate.md`).',
+    line: '`[AUTH REQUIRED]` (§0) blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the in-scope non-hard part, report `[PARTIAL: <op> needs AUTH]`, never self-authorize (`orchestrate.md`).',
   },
   {
     what: "core §10 — the L1-bugfix report condition, on the L1 row's threshold and §1.5's file count (v6.29.0 wording)",
@@ -816,19 +823,20 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '0901cf55edc8b266' },
-  { file: CORE, heading: '## §0 SPINE', sha256: 'b69effe5d47130fa' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: '7cfab4a7466f8e0b' },
-  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '62c8e89441f6414b' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: 'f91ca48c2302cee5' },
-  { file: CORE, heading: '## §3 TRUST', sha256: '82c66cea81fb5a86' },
-  { file: CORE, heading: '## §5 AUTH', sha256: 'ddce4291ec0d5cfa' },
-  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'f4aac20c663432f6' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'ef753966a18fb555' },
+  { file: CORE, heading: '', sha256: 'db10c651c2294dc8' },
+  { file: CORE, heading: '## §0 SPINE', sha256: 'ab3debb5f1682cc6' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: 'cc7e873976d67dad' },
+  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'f1cddbf8d959693e' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'dc1b268f3c451d5c' },
+  { file: CORE, heading: '## §3 TRUST', sha256: 'c80603dcaaeaf790' },
+  { file: CORE, heading: '## §5 AUTH', sha256: 'ac0a775abd3a1b60' },
+  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c70daab3a3686a6f' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
-  { file: CORE, heading: '## §10 REPORT', sha256: '84e411afb73e08bc' },
-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'bf2daacd8206e731' },
-  { file: EXT, heading: '', sha256: '9841611dea4975ae' },
+  { file: CORE, heading: '## §10 REPORT', sha256: '2536fc5bd40f03db' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '46df136151cd4a99' },
+  { file: EXT, heading: '', sha256: 'd932e8e251e88285' },
+  { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'bd136a33fd3dc7c9' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '31a3b32ab333c2b7' },
@@ -843,7 +851,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: '8c887f48ed1bf701' },
+  { file: EXT, heading: '## Recent changes', sha256: 'ada57bd44ffd4707' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,
@@ -853,7 +861,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
   { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '184761b726c5269a' },
   { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '9889fd63301a3c82' },
-  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: '753f1580afceab31' },
+  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: '89b63850cac22b03' },
   {
     file: EXT,
     heading: '## §11-EXT-MAC macOS shell portability (cross-ref)',
@@ -900,8 +908,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 19, sha256: '4671f7a7b6e6d213' },
-  { file: EXT, count: 62, sha256: '241c05c61c38e9c8' },
+  { file: CORE, count: 19, sha256: '4a04390cd49a952a' },
+  { file: EXT, count: 63, sha256: 'e8da4bb613914aed' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

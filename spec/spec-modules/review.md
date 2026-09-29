@@ -5,7 +5,7 @@ triggers: 评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|th
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: review
+# AI-CODING-SPEC v7.2.0 — module: review
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

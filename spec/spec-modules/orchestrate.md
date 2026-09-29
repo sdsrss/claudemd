@@ -5,7 +5,7 @@ triggers: 并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.1.0 — module: orchestrate
+# AI-CODING-SPEC v7.2.0 — module: orchestrate
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

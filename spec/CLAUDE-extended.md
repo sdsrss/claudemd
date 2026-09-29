@@ -1,8 +1,12 @@
-# AI-CODING-SPEC v7.1.0 — Extended
+# AI-CODING-SPEC v7.2.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
 <!-- module: auth -->
+## §3-EXT User relaxation (detail)
+
+The §3 Order resolves conflicts, not permissions; where the user has not spoken about a clause, the stricter reading governs. HARD rules and §5 AUTH gates move only through §5.1 `AUTONOMY_LEVEL`, `SAFE_DELETE_PATHS:` and §8.V3's on-real-repo exception. Neither a default nor a HARD rule / AUTH gate: recommend and proceed, reading stated in one line.
+
 ## §5-EXT Safe-paths whitelist (detail)
 
 Strict prefix match (NOT glob):
@@ -476,9 +480,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.1.0 (minor, 2026-09-27)** — core room. Core points at modules by file name (`verify.md`) instead of `§EXT §N`. Removed from core: §9 Parallel-first (the harness system prompt carries it) and three pointer-only lines. §11 Mid-SPINE turn-yield now names, after its yield list, two stops that are not yields (a progress summary, a next step announced instead of taken), in place of "Natural-feeling" stop points; its triggers, Tell and HARD tag are unchanged. §2.1 reads `2+ sizeable disjoint tasks → Agent`, as §11-O does. `debug.md` no longer triggers when typo(s) / spelling / 错别字 / 拼写 directly follows `fix the` or 修复. No HARD rule added or removed.
+**v7.2.0 (minor, 2026-09-29)** — core trim, one harness conflict removed; plan and evidence in `docs/spec-optimization-plan-2026-09-29.md`. Core states each repeated rule once, drops what the Claude Code system prompt already says and maintainer asides, and moves its header into a block HTML comment, which Claude Code strips before injection (model-visible core 22968 bytes). §11 no longer lists context pressure as a yield. §0.2 merge thresholds → `modes.md`; §3 User relaxation channels → `auth.md` (§3-EXT). No HARD rule added or removed.
 
-**Sizing** (v7.1.0, 2026-09-27, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24990 → 24740 bytes (Δ -250); extended 48622 → 48629 bytes (Δ +7); OPERATOR.md 17463 → 17587 bytes (Δ +124). Size budget: core 24740/25000 (**260 bytes headroom**); extended 48629/50000 (**1371 bytes headroom**).
+**Sizing** (v7.2.0, 2026-09-29, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24740 → 23170 bytes (Δ -1570); extended 48629 → 49084 bytes (Δ +455); OPERATOR.md 17587 → 17664 bytes (Δ +77). Size budget: core 23170/25000 (**1830 bytes headroom**); extended 49084/50000 (**916 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
@@ -560,8 +564,10 @@ One home per fact — double-writing creates drift.
 <!-- module: modes -->
 ## §0.2-EXT Mid-task feedback (continued)
 
-Core §0.2 keeps Refinement / Quality slider / Scope-expansion; the rest:
+Core §0.2 keeps the one-line defaults; the rest:
 
+- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge; ambiguous vs scope-expansion → ASK once.
+- **Scope-expansion**: cross-level → serial; same-level → inline.
 - **Continuation** (e.g. "继续/next"): same SPINE.
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
 - **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
