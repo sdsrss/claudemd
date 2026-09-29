@@ -19,7 +19,7 @@ Module → responsibility → external interface. "External" means what a caller
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `hooks/*.sh` (25 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
+| `hooks/*.sh` (26 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
 | `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn, install-failure sentinel bookkeeping | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_memfile_was_read` / `hook_spawn_install` / `hook_install_sentinel_clear` / `hook_install_sentinel_write` |
 | `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
 | `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 87 node suites, 38 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 87 node suites, 39 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -294,6 +294,7 @@ second is unverified on the trigger that matters.
 - `~/.claude/.claudemd-state/rework-<sid>.counts` — per-session append-only edit tally, one `cksum` key per code-file Edit/Write and per code file a Bash command changed, commands changing more than 20 code files skipped as bulk (`rework-breaker.sh`). One short line per edit, so a long session's file is the size of its edit count; nothing reaps it on session end, `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/xrepo-<sid>-<key>` — the claim that this session has already been told about target repo `<key>` (`cksum` of the repo's physical `.git` path; `cross-repo-write-check.sh`). Empty, created with `set -o noclobber` so concurrent Edits announce a repo once; `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/modinj-<sid>.list` — the spec modules `spec-module-inject.sh` has already injected this session, one name per line, plus a `pending:<name>` line for a module deferred by the size budget until the next prompt; `session-start-check.sh` deletes it on compaction (the injected text is gone), `/claudemd-clean-residue` reaps it past the retention window.
+- `~/.claude/.claudemd-state/notice-<sid>.<source>` — an observation a Stop hook queued for the model (`evidence-gate.sh` writes `notice-<sid>.evidence-gate` when it fires in an interactive session); `deferred-notice.sh` renames it to `….delivering.<pid>`, reads it and deletes it on the session's next prompt. One nobody collects (the session ended) is reaped by `/claudemd-clean-residue` past the retention window.
 - `~/.claude/.claudemd-state/tmp-sweep.stamp` — `tmp-sweep.sh` rate-limit stamp; its mtime is the last sweep. One file, rewritten in place, never grows.
 - `~/.claude/.claudemd-state/tmp-sweep.lock` — `tmp-sweep.sh`'s atomic claim (a directory, created with `mkdir`) held only between reading and rewriting the stamp, so parallel Bash calls spawn one sweep, not several. One left by a killed hook is cleared once it is older than 60 s.
 - `~/.claude/.claudemd-state/tmp-sweep.last.json` — the detached sweep's JSON result (`scripts/housekeeping.js tmp --apply`), overwritten on each run, so the last sweep's targets, deletions and errors can be read after the fact.
@@ -328,6 +329,7 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PostToolUse:Bash | `branch-prune.sh` | advisory: after git merge/pull/fetch/push or gh pr merge, lists local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it) with the `git branch -d` command; deletes nothing | n/a |
 | UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `spec-module-inject.sh` | injects the spec module(s) a prompt's triggers match (core §2.2) | `§2.2-modules` |
+| UserPromptSubmit | `deferred-notice.sh` | R5 plan B: delivers, once, the observation a Stop hook queued in `notice-<sid>.<source>` (today `evidence-gate.sh`) with the session's next prompt — no extra model turn, which a Stop-channel note would cost | `§iron-law-2` |
 | PreToolUse (Bash) | `spec-module-gate.sh` | before a release command, checks ship.md reached the session; `log` by default, `advisory` / `deny` opt-in | `§2.2-modules` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
 | Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |

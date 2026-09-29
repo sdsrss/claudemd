@@ -43,10 +43,11 @@
 #     not lag; the EVIDENCE is older than the claim by construction, so the lag
 #     costs at most the most recent command. Registered as an FP source.
 #
-# Channel: stderr with exit 0, so the HUMAN reads it and the model does not.
-# Stop does accept additionalContext (Claude Code 2.1.163+), but there it
-# continues the turn: every firing buys one more model reply
-# (docs/HOOK-PROTOCOL.md). That is deliberate
+# Channel: stderr with exit 0 for the HUMAN, now; and a notice file that
+# deferred-notice.sh hands the MODEL with the next prompt (see below). Stop does
+# accept additionalContext (Claude Code 2.1.163+), but there it continues the
+# turn: every firing buys one more model reply (docs/HOOK-PROTOCOL.md). Not
+# interrupting is deliberate
 # until the verdict is precise enough to interrupt a model: a 2026-09-26
 # replay over 1,747 historical turn ends fired 21 times and at most 3 were a
 # code completion claim without verification (reports, questions and
@@ -285,12 +286,34 @@ case "$VERDICT" in
     ;;
 esac
 
-EXTRA=$(jq -cn --arg v "$VERDICT" --argjson w "$EG_WINDOW" '{verdict:$v, window:$w}' 2>/dev/null) || EXTRA='null'
+# Deferred delivery to the model (R5 plan B; tasks/specs/evidence-gate-deferred.md).
+# Stop CAN hand text to the model since Claude Code 2.1.163, but there it keeps
+# the turn going — one more model reply per firing — and this verdict is right
+# at most 3 times in 21 (header). So the observation waits in a notice file and
+# `deferred-notice.sh` adds it to the model's context with the NEXT prompt: no
+# extra turn, and nothing when the conversation does not continue. A headless
+# run (entrypoint sdk-*) has no next prompt a person wrote, so it gets none.
+EG_EP=$(tail -n 50 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r 'select(.entrypoint? != null) | .entrypoint' 2>/dev/null | tail -n 1)
+EG_QUEUED=0
+if [[ "$EG_EP" != sdk-* && "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  EG_STATE="$HOME/.claude/.claudemd-state"
+  if mkdir -p "$EG_STATE" 2>/dev/null \
+    && printf '[claudemd] system-injected — an observation from the end of your previous turn (%s), by evidence-gate, which the user turned on: that reply read as a completion claim after code edits, and %s If the claim stands, its verification is still outstanding; if it was not a completion claim, disregard this. The user can turn this off with DISABLE_EVIDENCE_GATE_HOOK=1.\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DETAIL" >"$EG_STATE/notice-$SESSION_ID.evidence-gate" 2>/dev/null; then
+    EG_QUEUED=1
+  fi
+fi
+
+EXTRA=$(jq -cn --arg v "$VERDICT" --argjson w "$EG_WINDOW" --argjson q "$EG_QUEUED" '{verdict:$v, window:$w, queued:($q == 1)}' 2>/dev/null) || EXTRA='null'
 hook_record evidence-gate evidence-advisory "$EXTRA" '§iron-law-2' "$SESSION_ID"
 
 printf '[claudemd] §7 Iron Law #2 — a completion claim this session has no verification output behind it.\n' >&2
 printf '  This session edited code files, the last assistant message makes a Done claim, and %s\n' "$DETAIL" >&2
-printf '  This note reaches you, not the agent (a Stop hook has no channel into the model). If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
+if (( EG_QUEUED )); then
+  printf '  The agent is not interrupted now; a short version of this note reaches it with your next message. If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
+else
+  printf '  This note reaches you, not the agent. If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
+fi
 printf '  Checked the transcript, not the wording: the last %s rows, for a non-error Bash result after the last code edit.\n' "$EG_WINDOW" >&2
 printf '  Advisory. Disable: EVIDENCE_GATE=0 or DISABLE_EVIDENCE_GATE_HOOK=1.\n' >&2
 

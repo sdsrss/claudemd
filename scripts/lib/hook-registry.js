@@ -64,6 +64,14 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
+    basename: 'deferred-notice.sh',
+    displayName: 'deferred-notice',
+    envVarSuffix: 'DEFERRED_NOTICE',
+    hookEvent: 'UserPromptSubmit',
+    matcher: '*',
+    timeout: 2,
+  },
+  {
     basename: 'spec-module-gate.sh',
     displayName: 'spec-module-gate',
     envVarSuffix: 'SPEC_MODULE_GATE',

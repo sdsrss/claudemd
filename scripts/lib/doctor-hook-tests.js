@@ -321,6 +321,12 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
       },
     },
+    // With no notice queued it exits at its first glob, before sourcing anything.
+    {
+      hook: 'deferred-notice.sh',
+      ks: ksFor('deferred-notice.sh'),
+      event: { session_id: 'doctor-selftest', prompt: 'doctor self-test' },
+    },
     // Default OFF, so the probe reaches the opt-in exit; opted in, `true` is not
     // a test runner. Either way the liveness question is exit 0, nothing said.
     {

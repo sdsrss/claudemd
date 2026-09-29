@@ -140,6 +140,9 @@ Emitters, derived from source and gated by
   Claude Code replaces a context string over 10,000 characters with a file path
   and a preview, so the hook strips each body's build comment and holds a second
   module that would cross 9,800 characters for the next prompt.
+- `deferred-notice.sh` — UserPromptSubmit; the observation a Stop hook queued
+  in `~/.claude/.claudemd-state/notice-<sid>.<source>` at the end of the
+  previous turn (today `evidence-gate.sh`), once, at most 2,000 characters.
 - `spec-module-gate.sh` — PreToolUse(Bash), only with `SPEC_MODULE_GATE=advisory`;
   names the ship module to read before a release command.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
@@ -195,7 +198,9 @@ each blocks at most once per turn. The others with something to say write
 advisory text to `stderr` — `mem-audit.sh`, `residue-audit.sh`,
 `sandbox-disposal-check.sh` (by default),
 `transcript-structure-scan.sh`, `evidence-gate.sh` and
-`ledger-staleness.sh` — and `session-summary.sh` writes
+`ledger-staleness.sh` — and `evidence-gate.sh`, in an interactive session, also
+queues a short observation that `deferred-notice.sh` hands the model with the
+next prompt, which costs no extra turn. `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for
 `session-start-check.sh` to turn into a banner at the START of the next
 session. Before 2.1.163 that indirection was forced by the schema; it is now

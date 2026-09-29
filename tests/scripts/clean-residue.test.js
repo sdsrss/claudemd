@@ -617,6 +617,30 @@ test('scanStateDir reaps vocab-scan sentinels', () => {
   );
 });
 
+test('scanStateDir reaps stale deferred notices and their delivering claims, nothing else', () => {
+  // evidence-gate.sh queues notice-<sid>.evidence-gate for deferred-notice.sh,
+  // which renames it to ….delivering.<pid> before reading. A session that never
+  // sends another prompt leaves the first; a deliverer killed between mv and rm
+  // leaves the second.
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  for (const f of [
+    'notice-s1.evidence-gate',
+    'notice-s2.evidence-gate.delivering.4242',
+    'notice-s3.Bad_Name',
+    'notices.json',
+  ]) {
+    const p = path.join(stateDir, f);
+    fs.writeFileSync(p, 'x');
+    setMtime(p, 30);
+  }
+  const { candidates } = scanStateDir({ stateDir });
+  assert.deepEqual(candidates.map(c => path.basename(c.path)).sort(), [
+    'notice-s1.evidence-gate',
+    'notice-s2.evidence-gate.delivering.4242',
+  ]);
+});
+
 test('scanStateDir reaps the legacy .last-shown banner sentinels', () => {
   // Both SessionStart banners renamed their sentinel to `.last-shown` instead of
   // deleting it, and no pattern here matched the result — the R10-21e leak. The

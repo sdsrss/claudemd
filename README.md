@@ -57,7 +57,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 25 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `spec-module-gate` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `test-failure-debug` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
+| 26 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `deferred-notice` · `spec-module-gate` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `test-failure-debug` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
 | Spec v7.1 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) · `spec-modules/*.md` (mirrored from the plugin) |
@@ -87,6 +87,7 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | New session start with a `~/.claude/CLAUDE*.md` / `OPERATOR.md` that is edited, or **missing** | `session-start-check` (v0.84.0+ for the missing half) | Two banners, because the fixes differ: an edited file says `/claudemd-update`, a deleted one says `/claudemd-install`. A deleted spec is the louder case — Claude Code reads these as your user-global instructions, so its absence silently unloads the spec. Silence both with `DISABLE_SPEC_DRIFT_BANNER=1`. |
 | New session start with a `~/.claude/.claudemd-manifest.json` that exists but does not parse | `session-start-check` (v0.84.0+) | Re-runs the bootstrap, which rewrites the manifest atomically. Previously this state exited silently on every session, forever. |
 | `UserPromptSubmit` whose text matches a spec module's `triggers:` (a module not yet injected this session) | `spec-module-inject` (v0.101.0+) | Adds the module's body from `~/.claude/spec-modules/` as context: at most two modules per prompt, `ship` first, each once per session and again after a compaction. A second module that would take the text past Claude Code's 10,000-character context cap waits for the next prompt. On by default; `DISABLE_SPEC_MODULE_INJECT_HOOK=1` turns it off. |
+| `UserPromptSubmit` when a Stop hook left an observation for this session (today only `evidence-gate`) | `deferred-notice` (unreleased) | Adds the observation to the model's context with the next prompt, once, capped at 2,000 characters. Delivering at the next prompt instead of from the Stop hook costs no extra model turn. Nothing to do unless a notice is queued, and only opt-in hooks queue one. |
 | Bash release command (`git tag v1.2.3`, `git push --tags`, `gh release create`, `npm publish`) in a session that never received `ship.md` | `spec-module-gate` (v0.101.0+) | Default `log`: one `module-unread` rule-hits row, no output. `SPEC_MODULE_GATE=advisory` adds a note; `deny` refuses the command; `off` or `DISABLE_SPEC_MODULE_GATE_HOOK=1` silences it. |
 | First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
 | Session stop with a completion claim in the last assistant message and no verification output behind it | `evidence-gate` (v0.90.0+) | Stop advisory — judges the TRANSCRIPT (is there a non-error Bash result after the last code edit whose command names a runner, or whose output looks like one) rather than the prose, which is what the prose-reading detector closed in the 2026-07-24 labeling pass, one of six closed there at a pooled precision bound of 0.17 were doing. Opt-in (`EVIDENCE_GATE=1`, default OFF) for FP signal collection. |
@@ -201,6 +202,7 @@ export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing
 export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
 export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
 export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write|Bash G2 rework advisory (§1 root-cause; opt-in REWORK_BREAKER=1)
+export DISABLE_DEFERRED_NOTICE_HOOK=1            # unreleased — UserPromptSubmit delivery of observations a Stop hook queued (evidence-gate under EVIDENCE_GATE=1)
 export DISABLE_TEST_FAILURE_DEBUG_HOOK=1         # unreleased — PostToolUseFailure:Bash debug.md on a failing test run (opt-in DEBUG_ON_TEST_FAILURE=1)
 export DISABLE_CROSS_REPO_WRITE_HOOK=1           # v0.95.0+ — PreToolUse cross-repo write advisory (§5 scope; opt-in CROSS_REPO_WRITE=1)
 export DISABLE_TMP_SWEEP_HOOK=1                  # v0.93.0+ — PostToolUse:Bash vitest tmp-dir sweep + temp-root pressure advisory
@@ -440,7 +442,7 @@ claudemd/
 ├── .claude-plugin/
 │   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
 │   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 25 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags, spec-module)
+├── hooks/                    # 26 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags, spec-module)
 │   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
