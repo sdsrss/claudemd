@@ -37,12 +37,32 @@
 #     Bypass tokens (a) survive unwrap so an authorized indirect call still
 #     works with `[allow-rm-rf-var]` / `[allow-npx-unpinned]` inside the
 #     inner string.
+#
+# Internal argument (not a switch): `--s8-comment-pass` marks the second run the
+# comment-quote pass starts on its own blanked text (see s8_comment_quotes_blanked).
+# Claude Code runs hooks with no arguments, so nothing outside this file sets it.
 
 set -uo pipefail
 
 LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
+
+S8_COMMENT_PASS=0
+if [[ "${1:-}" == --s8-comment-pass ]]; then
+  S8_COMMENT_PASS=1
+  # The second run re-analyses the whole command, so every allow-side row it
+  # would write (rm-rf-allow-validated, -provenance, npx-allow-*, the hatch's
+  # bypass-escape-hatch) repeats one the first run already wrote for the same
+  # tool_use_id; /claudemd-audit then reads them as double fires (0.106.0
+  # pre-tag review M2). Only its deny row is its own.
+  hook_record() {
+    [[ "${2:-}" == deny ]] || return 0
+    # shellcheck source=/dev/null
+    source "$LIB_DIR/rule-hits.sh" 2>/dev/null || return 0
+    rule_hits_append "$@"
+  }
+fi
 
 hook_kill_switch PRE_BASH_SAFETY || exit 0
 # Record fail-open on missing prereqs (roadmap OBS-1): a jq-less / malformed-stdin
@@ -1027,12 +1047,32 @@ if :; then
     # every pre-F22 `continue` in the body already had exactly that meaning for
     # the single target it analyzed.
     for rm_target in "${rm_targets[@]}"; do
-    # A positional parameter is a variable too: `rm -rf "$1/build"` is `/build`
-    # when the function runs without an argument, exactly as `$D/build` is.
-    # The class skipped digits while `${1}` was denied (R2 shadow A1, 2026-09-29:
-    # 7 of 6,138 real rm commands, all in function bodies).
-    echo "$rm_target" | grep -qE '\$[[:alpha:]_0-9]|\$\{[^}]+\}' || continue
-    varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*|\$[0-9]' | head -n1 \
+    # A positional or special parameter ($1..$9, $@, $*) that leads the target:
+    # `rm -rf "$1/build"` is /build when a function runs without an argument,
+    # `"$@"/*` is /*, and `find $1 -delete` runs on the current directory. The
+    # var analysis below never judged these (its class has no digits, @ or *).
+    # The first fix put digits into that class, which let `$1` become the first
+    # var: a `${1:?}` anywhere in the text then passed the guard arm and the
+    # next var (`"$1/$D"`) went unjudged, deny -> allow (0.106.0 pre-tag review
+    # H1). So the analysis below stays as 0.105.0 had it, and this check stands
+    # apart and only adds a deny: the parameter is the first component and a `/`
+    # follows it, or a find's whole starting point is the parameter. For rm a
+    # bare parameter deletes nothing when empty (`rm -rf ""` fails, `rm -rf` with
+    # no operand does nothing); a find with none starts at `.`. The tokens here
+    # are already unquoted, so `find "$1"` and `find $1` read alike and both
+    # deny. $0 is never empty. `${1:?}` does not match here, and the analysis
+    # below credits it as it always has.
+    if [[ "$rm_target" =~ ^\"?\$(\{[1-9@*]\}|[1-9@*])\"?/ ]] \
+       || { (( S8_RM_IS_FIND == 1 )) && [[ "$rm_target" =~ ^\"?\$(\{[1-9@*]\}|[1-9@*])\"?$ ]]; }; then
+      s8_pos="${BASH_REMATCH[1]}"; s8_pos="${s8_pos#\{}"; s8_pos="${s8_pos%\}}"
+      s8_pos_msg="$S8_RM_VERB on \$$s8_pos as the target's first component: with no arguments it is empty, so the path starts at / (or a find starts at .). Guard it as \${$s8_pos:?}, or check the argument count first"
+      HITS+=("$s8_pos_msg")
+      HIT_SECTIONS+=('§8-rm-rf-var')
+      REASONS+=$'\n  - '"$s8_pos_msg"
+      continue
+    fi
+    echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' || continue
+    varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
       | sed -E 's/[${}"'"'"']//g')
     # Strip ALL var expansions + quotes from the target — what remains is the
     # literal-path residue. A whitelisted var (HOME/PWD/OLDPWD/TMPDIR) is only
@@ -1042,6 +1082,9 @@ if :; then
     # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
     # The whitelist only certifies the var is shell-typed, not that the
     # target is bounded. Require ≥1 non-`/` character in the residue.
+    # `$1`..`$9` are expansions here too, so a whitelisted var whose only subpath
+    # is `$1` reads as bare (`"$HOME/$1"`, S8-POS3). Deleting more text from the
+    # residue can only make the checks below deny more, never less.
     residue=$(echo "$rm_target" | sed -E 's/\$\{[^}]+\}//g; s/\$[[:alpha:]_][[:alnum:]_]*//g; s/\$[0-9]//g; s/["'"'"']//g; s/[(){}]//g')
     # A `..` COMPONENT in that residue walks out of whatever the var names, so
     # nothing the arms below certify can bound the target: the whitelist says
@@ -1397,6 +1440,7 @@ if :; then
           # $D's provenance while $EVIL stayed unvalidated — the first-target
           # scan predates F20 and leaked through the mktemp class too.
           if (( prov_safe == 1 )); then
+            # A positional parameter in another target withdraws the credit too.
             prov_other=$(printf '%s' "$args_only" \
               | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*|\$[0-9]' \
               | sed -E 's/[${}"'"'"']//g' | grep -vxF "$varname" | head -n1)
@@ -2260,15 +2304,22 @@ fi
 # old analysis stays exactly as it was and this adds a second one: when the
 # command allowed and blanking the quote characters inside its comments changes
 # its text, the hook re-runs itself on that text, and a deny there is the
-# verdict. The union can only add denies. It costs one more run, on the rare
-# command that has a quote in a comment and was otherwise allowed (3% of real
-# commands; on those, p50 273 -> 283 ms and p99 774 -> 1,607 ms measured on 200).
+# verdict. The union can only add denies. It costs one more run, on the command
+# that has a quote in a comment and was otherwise allowed: 1,033 of 78,189
+# distinct real Bash commands (1.3%) have such a comment. On those it about
+# doubles the hook's time — 100 of them, sequential, load 5-6, 2026-09-29:
+# p50 146 -> 301 ms, p90 291 -> 571 ms, max 957 -> 1,873 ms. (0.106.0's first
+# build said p50 +10 ms here; the pre-tag review measured the doubling, L4.)
+# The second run writes only its deny row (see the --s8-comment-pass block at
+# the top), so the first run's allow-side rows are not written twice.
 # If the two runs together outlast the 3 s hook timeout, Claude Code drops the
 # hook and the command proceeds, which is where it stood before this pass.
 #
-# Comment detection (s8_comment_quotes_blanked): the same rule the final sed in
-# sanitize_cmd uses — `#` at the start of a line or after a space or tab — but
-# only outside quotes, tracking '…', "…" with its backslash escapes, and a
+# Comment detection (s8_comment_quotes_blanked): `#` at the start of a line or
+# after a space, a tab or one of ; & | ( ) < > — bash starts a comment at any
+# word start, and the final sed in sanitize_cmd, which accepts only the first
+# three, left `true;# it's` hiding the lines below (0.106.0 pre-tag review M4).
+# Only outside quotes, tracking '…', "…" with its backslash escapes, and a
 # backslash outside quotes. Inside a comment, ' " and ` become spaces. It does
 # not model heredoc bodies or $'…'; a misread there makes the second text
 # differ in ways bash would not, which can only produce an extra deny.
@@ -2284,7 +2335,7 @@ s8_comment_quotes_blanked() {
           if (ch == "\\") { out = out ch substr($0, i+1, 1); i++; prev = "x"; continue }
           if (ch == "\047") st = 1
           else if (ch == "\"") st = 2
-          else if (ch == "#" && (prev == "\n" || prev == " " || prev == "\t")) st = 3
+          else if (ch == "#" && index("\n \t;&|()<>", prev) > 0) st = 3
         } else if (st == 1) {
           if (ch == "\047") st = 0
         } else if (st == 2) {
@@ -2302,10 +2353,10 @@ s8_comment_quotes_blanked() {
 }
 
 if (( ${#HITS[@]} == 0 )); then
-  if [[ "${CLAUDEMD_S8_COMMENT_PASS:-}" != 1 && "$CMD" == *'#'* ]]; then
+  if (( S8_COMMENT_PASS == 0 )) && [[ "$CMD" == *'#'* ]]; then
     if _cq_cmd=$(s8_comment_quotes_blanked "$CMD") && [[ -n "$_cq_cmd" ]]; then
       _cq_out=$(printf '%s' "$EVENT" | jq -c --arg c "$_cq_cmd" '.tool_input.command = $c' 2>/dev/null \
-        | CLAUDEMD_S8_COMMENT_PASS=1 bash "${BASH_SOURCE[0]}" 2>/dev/null)
+        | bash "${BASH_SOURCE[0]}" --s8-comment-pass 2>/dev/null)
       if [[ "$(printf '%s' "$_cq_out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" == deny ]]; then
         printf '%s\n' "$_cq_out"
         exit 0
@@ -2426,7 +2477,7 @@ record_section_deny() {  # $1=section  $2=newline-delimited hits blob
   hj=$(printf '%s' "$2" | sed '/^$/d' | jq -R . | jq -s .)
   # A deny from the comment-quote pass (above) says so, so its rows can be
   # counted apart from the first analysis's.
-  if [[ "${CLAUDEMD_S8_COMMENT_PASS:-}" == 1 ]]; then
+  if (( S8_COMMENT_PASS == 1 )); then
     hook_record pre-bash-safety deny "{\"matched\":$hj,\"comment_pass\":true}" "$1" "$SESSION_ID" "$TOOL_USE_ID"
   else
     hook_record pre-bash-safety deny "{\"matched\":$hj}" "$1" "$SESSION_ID" "$TOOL_USE_ID"

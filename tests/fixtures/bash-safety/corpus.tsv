@@ -1532,6 +1532,14 @@ pass	S8-CQ8 control: mktemp provenance still credits after a comment apostrophe	
 pass	S8-CQ9 control: an apostrophe on a heredoc body line	cat <<'EOF2'__NL__# it's a heredoc__NL__EOF2__NL__echo 'a b'
 pass	S8-CQ10 control: a # inside quotes is not a comment	echo "# it's" 'x y'__NL__rm -rf "${D:?}/x"
 pass	S8-CQ11 control: nothing dangerous after the comment	# it's fine__NL__echo 'a b'
+# A comment starts at any word start, so also after ; & | ( ) < > (0.106.0 pre-tag review
+# M4; bash confirms each). The blanking pass now accepts those before `#`.
+deny	S8-CQ12 comment after ;	true;# it's__NL__rm -rf $SP/x__NL__echo 'a b'
+deny	S8-CQ13 comment after &&	true&&# it's__NL__rm -rf $SP/x__NL__echo 'a b'
+deny	S8-CQ14 comment after (	(# it's__NL__rm -rf $SP/x__NL__)__NL__echo 'a b'
+deny	S8-CQ15 comment after |	true|# it's__NL__cat__NL__rm -rf $SP/x__NL__echo 'a b'
+pass	S8-CQ16 control: $# and ${#x} are not comments	echo $# ${#x} 'a b'__NL__rm -rf "${D:?}/x"
+xfn	S8-CQ17 RESIDUAL: a comment after a backslash-newline continuation (F6)	echo a \__NL__# it's__NL__rm -rf $SP/x__NL__echo 'b c'
 
 # === 2026-09-29 S8-EQO: an escaped quote cannot open a single-token unquote ===
 # The single-token unquote sed could start a match AT an escaped `\"` and close
@@ -1544,18 +1552,38 @@ pass	S8-EQO3 control: the single-quoted rm alone	echo 'x; rm -rf $f'
 pass	S8-EQO4 control: an escaped quote mid-body, guarded rm after	echo "a\"b" && rm -rf "${D:?}/x"
 xfp	S8-EQO5 RESIDUAL: a backslash OUTSIDE quotes is still not modelled, so \" there opens a string	echo \"x\" 'y; rm -rf $f'
 
-# === 2026-09-29 S8-POS: a positional parameter is a variable (R2 shadow adjudication A1) ===
-# The target class was $[[:alpha:]_], so `rm -rf "$1/build"` was skipped while `${1}` was
-# denied. $1 is empty when a function runs without an argument, and "$1/build" is then
-# /build. Real-command replay over 75,152 commands: 8 allow->deny, every one an rm on
-# $1/$2 inside a function body; 0 deny->allow.
+# === 2026-09-29 S8-POS: a positional or special parameter that empties into a root path ===
+# 0.105.0 skipped $1..$9, $@ and $* in rm/find targets: `rm -rf "$1/build"` is /build when a
+# function runs without an argument, and `"$@"/*` is /*. The first fix (7c19217) put digits
+# into the var class, which let `$1` become the first var: a `${1:?}` anywhere in the text
+# then passed the guard arm and the second var went unjudged (`"$1/$D"`), deny -> allow
+# (0.106.0 pre-tag review H1). The var analysis is back to 0.105.0's; a separate check adds a
+# deny where an empty value changes what is deleted: the parameter is the target's first
+# component and a / follows it, or a find starts at the parameter (find with no starting
+# point runs on the current directory). A bare "$1" for rm deletes nothing when empty, and
+# $0 is never empty; those stay allowed, as in 0.105.0. The residue strip still drops $N, so a
+# whitelisted var whose only subpath is $N is bare (POS3).
 deny	S8-POS1 a positional parameter with a subpath	rm -rf "$1/build"
-deny	S8-POS2 the field shape: cleanup of the argument inside a function body	mk () { rm -rf "$1"; mkdir -p "$1/home"; }; mk /tmp/x
+pass	S8-POS2 control: the field shape, a quoted bare "$1", empties to "" and deletes nothing	mk () { rm -rf "$1"; mkdir -p "$1/home"; }; mk /tmp/x
 deny	S8-POS3 a whitelisted var whose only subpath is a positional parameter	rm -rf "$HOME/$1"
-deny	S8-POS4 find on a positional parameter	find "$1" -name x -delete
+deny	S8-POS4 find on a bare "$1": unquoted and empty it starts at .; the gate sees tokens unquoted, so the quoted spelling denies too	find "$1" -name x -delete
 pass	S8-POS5 control: a guarded positional parameter	rm -rf "${1:?}/build"
 pass	S8-POS6 control: $1 inside a command substitution is data, as $FOO is	rm -f $(awk '{print $1}' list.txt)
 pass	S8-POS7 control: a single-quoted $1 is a literal	echo '$1' && rm -rf ./build
+deny	S8-POS8 H1: a guard on $1 elsewhere does not vouch for the target, and $D stays judged	usage() { : "${1:?}"; }; clean() { rm -rf "$1/$D"/*; }; clean
+deny	S8-POS9 H1: a single-quoted guard text does not vouch either	echo '${1:?}'; rm -rf "$1/$D"
+deny	S8-POS10 H1: the find verb	f(){ : ${1:?}; find "$1/$D" -delete; }
+deny	S8-POS11 H1: unquoted, two levels	f(){ : ${1:?}; rm -rf $1/$TARGET/*; }
+deny	S8-POS12 H1: quoted pieces	g() { x=${1:?}; rm -rf "$1"/"$SUB"; }
+deny	S8-POS13 "$@"/* with no arguments is /*	clean() { rm -rf "$@"/*; }; clean
+deny	S8-POS14 "$*"/* with no arguments is /*	clean() { rm -rf "$*"/*; }; clean
+deny	S8-POS15 $@ inside a quoted target	rm -rf "$@/build"
+deny	S8-POS16 braces make no difference	rm -rf "${2}/build"
+deny	S8-POS17 find on an unquoted bare parameter runs on . when it is empty	f(){ find $1 -delete; }
+pass	S8-POS21 control: rm on an unquoted bare parameter deletes nothing when it is empty	f(){ rm -rf $1; }
+pass	S8-POS18 control: $0 is never empty	rm -f "$0.lock"
+pass	S8-POS19 control: a parameter that is not the first component	rm -rf /tmp/claude-1000/outer_$1
+pass	S8-POS20 control: a parameter with a literal suffix, no slash	rm -f "$1.bak"
 
 # === 2026-09-29 S8 field residuals the gate cannot see (R2 shadow adjudication A2) ===
 # Each appeared once in 6,138 real rm/find commands; each is denied once the hiding
@@ -1571,3 +1599,11 @@ pass	S8-PROV22 control: the same chain in the foreground	H=$(mktemp -d) && mkdir
 # var's own directory (0.105.0 pre-tag review L18, reviewer-constructed; 0 of 75,152
 # real commands). docs/S8-RESIDUALS.md F9.
 xfn	S8-SUBST1 RESIDUAL: a substitution-only subpath of a whitelisted var	rm -rf "$PWD/$(echo x)"
+# Found in the 0.106.0 pre-tag review (L13, L14), reviewer-constructed. Field check, 2026-09-29:
+# the 9,043 distinct real rm/find commands with the hiding structure rewritten away and
+# replayed — no verdict changed for F10 (967 candidates) or F6 (90); for F11 one of 13 did,
+# and its rm is a quoted argument nothing runs. docs/S8-RESIDUALS.md F10, F11, F6.
+xfn	S8-HASH1 RESIDUAL: a single-token quoted # is unquoted, then eats the rest of its line as a comment (F10)	tr -d '#' < a > b; rm -rf $D/x
+xfn	S8-HASH2 RESIDUAL: same, npx arm (F10)	echo '#'; npx cowsay
+xfn	S8-ANSIC1 RESIDUAL: $'...' quoting is not modelled, so its escaped quote hides later lines (F11)	echo $'it\'s'__NL__rm -rf $SP/x__NL__echo 'a b'
+xfn	S8-BSEOL1 RESIDUAL: an escaped backslash at the end of a line reads as a continuation (F6)	echo \\__NL__rm -rf $f/x

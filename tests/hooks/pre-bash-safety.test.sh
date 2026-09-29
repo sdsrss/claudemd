@@ -486,6 +486,42 @@ else
 fi
 rm -rf "${esc_home:?}"
 
+# 0.106.0 pre-tag review M2 + L5. The comment-quote pass runs the hook a second
+# time on the blanked text. That run must write only its own deny row: every
+# allow-side row it repeated doubled a row the first run had already written for
+# the same tool_use_id, which /claudemd-audit reads as a real double fire. And
+# the pass is started by an argument, so a CLAUDEMD_S8_COMMENT_PASS=1 in the
+# session's environment can neither switch it off nor relabel a first-run deny.
+cp_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$cp_home/.claude/logs"
+cp_log="$cp_home/.claude/logs/claudemd.jsonl"
+cp_n=0
+for cp_cmd in $'D=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); rm -rf "$D/x"\n# it\'s done' \
+              $'rm -rf "${X:?}/y"\n# user\'s ok' \
+              $'rm -rf $X/y # [allow-rm-rf-var]\n# user\'s ok'; do
+  cp_n=$((cp_n + 1))
+  jq -cn --arg c "$cp_cmd" --arg id "cp$cp_n" '{session_id:"cp",tool_use_id:$id,tool_name:"Bash",tool_input:{command:$c}}' \
+    | HOME="$cp_home" bash "$HOOK" >/dev/null 2>&1
+done
+cp_rows=$(jq -r 'select(.tool_use_id|test("^cp[0-9]$"))|.tool_use_id' "$cp_log" 2>/dev/null | wc -l | tr -d ' ')
+cp_dups=$(jq -r 'select(.tool_use_id|test("^cp[0-9]$"))|.tool_use_id' "$cp_log" 2>/dev/null | sort | uniq -d | wc -l | tr -d ' ')
+if [[ "$cp_rows" == 3 && "$cp_dups" == 0 ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [comment-pass-telemetry]: want 3 rows, one per tool_use_id; got rows=$cp_rows duplicated_ids=$cp_dups: $(jq -rc 'select(.tool_use_id|test("^cp[0-9]$"))|[.tool_use_id,.event]' "$cp_log" 2>/dev/null | tr '\n' ' ')"
+  FAIL=$((FAIL + 1))
+fi
+cp_out=$(jq -cn --arg c $'# the script\'s layout\nrm -rf $SP/x\necho \'foo x\'' '{session_id:"cp",tool_use_id:"cq1",tool_name:"Bash",tool_input:{command:$c}}' \
+  | HOME="$cp_home" CLAUDEMD_S8_COMMENT_PASS=1 bash "$HOOK" 2>/dev/null)
+cp_deny=$(jq -rc 'select(.tool_use_id=="cq1" and .event=="deny")|.extra.comment_pass' "$cp_log" 2>/dev/null | tr '\n' ' ')
+if [[ "$(printf '%s' "$cp_out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" == deny && "$cp_deny" == "true " ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [comment-pass-argv]: with CLAUDEMD_S8_COMMENT_PASS=1 in the environment the second pass must still deny, with one comment_pass row; got decision='$(printf '%s' "$cp_out" | jq -r '.hookSpecificOutput.permissionDecision // "allow"' 2>/dev/null)' comment_pass rows='$cp_deny'"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "${cp_home:?}"
+
 # --- v0.51.0 curl-sh wrapper-set parity ---
 # Every wrapper the curl-sh regex accepts must exist in the shared taxonomy
 # (S8_WRAP_ARGLESS ∪ S8_WRAP_FLAGGED), so the single-source arrays and the regex
