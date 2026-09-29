@@ -1,6 +1,7 @@
 ---
 name: claudemd-statusline
 description: Register, check or remove claudemd's statusLine (user@host:dir, branch, model, and context / 5h / weekly quota used %) in ~/.claude/settings.json, idempotently and never over another provider's slot without --force. Use when the user asks to add or set up a status line, or wants claudemd's segment beside or instead of another one.
+disable-model-invocation: true
 ---
 
 Usage: `/claudemd-statusline` | `/claudemd-statusline --force` | `/claudemd-statusline check` | `/claudemd-statusline remove`

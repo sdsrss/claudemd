@@ -1,6 +1,7 @@
 ---
 name: claudemd-clean-residue
 description: Find and remove claudemd leftovers — test sentinels and sandboxes in $TMPDIR, tool-exhaust in ~/.claude/tmp older than TMP_RETENTION_DAYS (default 7), orphaned per-session state files, and headless-probe project dirs. Dry-run by default; `--apply` deletes.
+disable-model-invocation: true
 ---
 
 Default is dry-run — the user must opt into deletion explicitly. Flags:

@@ -1,6 +1,7 @@
 ---
 name: claudemd-analyze
 description: Read-only audit of spec ↔ implementation coherence — cross-references, the Sizing line, size caps, MEMORY.md ↔ memory files, and banned-vocab coverage. Findings graded CRITICAL to LOW.
+disable-model-invocation: true
 ---
 
 Usage: `/claudemd-analyze` (advisory) or `/claudemd-analyze --strict` (CI gate)

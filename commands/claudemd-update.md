@@ -1,6 +1,7 @@
 ---
 name: claudemd-update
 description: Sync ~/.claude/CLAUDE*.md with the plugin-cache shipped spec. Shows diff summary; user chooses apply-all or cancel.
+disable-model-invocation: true
 ---
 
 Usage: `/claudemd-update`

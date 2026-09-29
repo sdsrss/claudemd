@@ -1,6 +1,7 @@
 ---
 name: claudemd-audit
 description: Aggregate claudemd rule-hits over the last N days. Shows top banned patterns, hook deny counts, per-spec-section heatmap, and bypass-escape-hatch usage.
+disable-model-invocation: true
 ---
 
 Default window is 30 days. The command's argument (`$ARGUMENTS`) is an optional day count; pass it as `--days=N`.

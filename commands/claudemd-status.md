@@ -1,6 +1,7 @@
 ---
 name: claudemd-status
 description: Show claudemd plugin version, installed spec version, kill-switch state, and rule-hits summary. Pass --verbose for full kill-switch + escape-token reference.
+disable-model-invocation: true
 ---
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/status.js` (no flag) for the default summary, or `node ${CLAUDE_PLUGIN_ROOT}/scripts/status.js --verbose` when the user wants the full kill-switch + escape-token table.

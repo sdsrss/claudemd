@@ -1,6 +1,7 @@
 ---
 name: claudemd-toggle
 description: Enable or disable a specific claudemd hook (stored as DISABLE_*_HOOK in settings.json env).
+disable-model-invocation: true
 ---
 
 Usage: `/claudemd-toggle <hook-name>`

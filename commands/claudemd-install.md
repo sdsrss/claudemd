@@ -1,6 +1,7 @@
 ---
 name: claudemd-install
 description: Bootstrap claudemd in the CURRENT Claude Code session (copy spec into ~/.claude/, install hook manifest, evict legacy entries). Use right after `/plugin install claudemd@claudemd` to skip the wait-for-next-session restart.
+disable-model-invocation: true
 ---
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/install.js`

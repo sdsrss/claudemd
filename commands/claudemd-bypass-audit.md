@@ -1,6 +1,7 @@
 ---
 name: claudemd-bypass-audit
 description: Measure how often a memory that the prompt hint suggested was then applied or bypassed in recent sessions (cite-recall).
+disable-model-invocation: true
 ---
 
 Default window is 30 days. The script answers one question: when claudemd's `memory-prompt-hint` hook surfaced a relevant memory to the agent, did the agent actually read or cite it?
