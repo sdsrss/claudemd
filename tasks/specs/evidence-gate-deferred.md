@@ -19,7 +19,7 @@ evidence-gate 触发时（改了代码、声称完成、之后没有验证输出
 
 ## constraints
 
-1. Stop 写 `~/.claude/.claudemd-state/notice-<sid>.evidence-gate`；新的 UserPromptSubmit hook `deferred-notice.sh` 在该会话的下一条提示时，把它作为 `additionalContext` 送达。只送一次：先改名再读，两条并发提示不会都送。上限 2,000 字符。
+1. Stop 写 `~/.claude/.claudemd-state/notice-<sid>.evidence-gate`；新的 UserPromptSubmit hook `deferred-notice.sh` 在该会话的下一条提示时，把它作为 `additionalContext` 送达。只送一次：先改名再读，两条并发提示不会都送。上限 2,000 字节。
 2. 无头运行不送：转录里最后一个 `entrypoint` 以 `sdk-` 开头时，不排队。
 3. 文字写成观察，带来源标记，不写成指令（`docs/HOOK-PROTOCOL.md`：注入文字要自带来源说明），并写明使用者的 kill switch。
 4. 没有待送内容时，对每个用户的代价是一次 glob，在加载任何库之前完成。
@@ -29,7 +29,7 @@ evidence-gate 触发时（改了代码、声称完成、之后没有验证输出
 
 ## success-criteria
 
-1. `tests/hooks/deferred-notice.test.sh`（9 个用例）：无待送内容时静默；只送一次、只送给自己的会话；kill switch；上限与来源名过滤；遥测；与 evidence-gate 端到端：交互会话（排队，下一条提示送达），无头会话和没有 `EVIDENCE_GATE_DELIVER=1` 的会话（都不排队）。
+1. `tests/hooks/deferred-notice.test.sh`（10 个用例）：无待送内容时静默；只送一次、只送给自己的会话；kill switch；上限与来源名过滤；遥测；与 evidence-gate 端到端：交互会话（排队，下一条提示送达），无头会话和没有 `EVIDENCE_GATE_DELIVER=1` 的会话（都不排队）。
 2. `tests/hooks/evidence-gate.test.sh` 不改动且全绿；`npm run check` 全绿。
 3. 行为（预注册在 `tasks/r5-deferred/PREREG.md`，本地）：两回合配对回放中，有通知一臂的第二回合出现验证调用的比例，高于无通知一臂；已经验证过的回合不因通知多出工具调用。尚未运行。
 

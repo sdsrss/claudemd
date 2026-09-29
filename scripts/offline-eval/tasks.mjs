@@ -37,7 +37,10 @@ const bashEdits = re => u => u.name === 'Bash' && writesInto(String(u.input?.com
 // The fixture suite as a top-level run: no positional `test/` (Node 22 and 24
 // read it as a glob that matches no file and exit 1), and no inherited
 // NODE_TEST_CONTEXT (under a node:test parent the child reports to it and
-// exits 0 even when its tests fail).
+// exits 0 even when its tests fail). Without `test/` the default patterns also
+// pick up a root-level test-*.js, test.js or *_test.js the agent leaves behind,
+// as the fixture's own `npm test` does; baselines measured before 0.105.0 ran
+// test/ only.
 const nodeTestPasses = dir => {
   const { NODE_TEST_CONTEXT: _, ...env } = process.env;
   return spawnSync('node', ['--test'], { cwd: dir, env, encoding: 'utf8' }).status === 0;

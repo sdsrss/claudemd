@@ -38,11 +38,11 @@ else ng "2 wrong: first=${O2:0:80} second=${O2B:0:40} s3-kept=$([[ -f "$ST/notic
 O3=$(jq -cn '{prompt:"x", session_id:"s3"}' | DISABLE_DEFERRED_NOTICE_HOOK=1 bash "$HOOK" 2>/dev/null)
 [[ -z "$O3" && -f "$ST/notice-s3.evidence-gate" ]] && ok "3 kill switch: silent, notice kept" || ng "3 kill switch ignored"
 
-# 4. a notice is capped at 2,000 characters; a source name outside [a-z0-9-] is ignored.
+# 4. a notice is capped at 2,000 bytes; a source name outside [a-z0-9-] is ignored.
 head -c 5000 /dev/zero | tr '\0' 'x' >"$ST/notice-s4.evidence-gate"
 printf 'EVIL\n' >"$ST/notice-s4.Bad_Name"
 C4=$(prompt s4 | ctx)
-if (( ${#C4} <= 2001 && ${#C4} >= 1990 )) && ! grep -q EVIL <<<"$C4"; then ok "4 capped at 2,000 characters; malformed source ignored"
+if (( ${#C4} <= 2001 && ${#C4} >= 1990 )) && ! grep -q EVIL <<<"$C4"; then ok "4 capped at 2,000 bytes; malformed source ignored"
 else ng "4 len=${#C4} evil=$(grep -c EVIL <<<"$C4")"; fi
 
 # 5. telemetry: one notice-delivered row naming the source, under Iron Law #2.

@@ -23,7 +23,8 @@
 # this runs on every prompt of every session.
 #
 # Kill-switches:
-#   DISABLE_DEFERRED_NOTICE_HOOK=1 — stop delivering (writers still write)
+#   DISABLE_DEFERRED_NOTICE_HOOK=1 — stop delivering (evidence-gate then queues
+#                                    nothing: it reads this switch too)
 #   DISABLE_CLAUDEMD_HOOKS=1       — global
 
 set -uo pipefail

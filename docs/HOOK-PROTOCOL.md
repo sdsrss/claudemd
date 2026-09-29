@@ -139,8 +139,8 @@ Emitters, derived from source and gated by
   `triggers:` regex the prompt matches, once per session, at most two per prompt.
   Claude Code replaces a context string over 10,000 characters with a file path
   and a preview, so the hook strips each body's build comment and holds a second
-  module that would cross 9,800 characters for a later prompt (the next one
-  unless two modules ahead of it fill that prompt's two slots).
+  module that would cross 9,800 characters for a later prompt from a person
+  (the first one whose own modules leave it a slot and room under the budget).
 - `deferred-notice.sh` — UserPromptSubmit; the observation a Stop hook queued
   in `~/.claude/.claudemd-state/notice-<sid>.<source>` at the end of the
   previous turn (today `evidence-gate.sh`), once, at most 2,000 bytes.
@@ -199,8 +199,9 @@ each blocks at most once per turn. The others with something to say write
 advisory text to `stderr` — `mem-audit.sh`, `residue-audit.sh`,
 `sandbox-disposal-check.sh` (by default),
 `transcript-structure-scan.sh`, `evidence-gate.sh` and
-`ledger-staleness.sh` — and `evidence-gate.sh`, in an interactive session and
-only with its second opt-in `EVIDENCE_GATE_DELIVER=1`, also queues a short
+`ledger-staleness.sh` — and `evidence-gate.sh`, in an interactive session,
+only with its second opt-in `EVIDENCE_GATE_DELIVER=1` and with
+`DISABLE_DEFERRED_NOTICE_HOOK` unset, also queues a short
 observation that `deferred-notice.sh` hands the model with the next prompt,
 which costs no extra turn. `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for

@@ -107,6 +107,21 @@ if [[ "$N9b" == "$N9" && "$N9c" == $((N9 + 2)) ]]; then
   ok "9 a run whose output reports failures is not logged, whatever its exit status; a passing one is"
 else ng "9 before=$N9 after-failing=$N9b after-passing=$N9c"; fi
 
+# 9b. Each FAIL_OUT_RE branch on its own, and stderr (a runner that prints its
+# verdict there): none of these is logged (0.105.0 delta review D-L4).
+post_err() { # COMMAND STDOUT STDERR
+  jq -cn --arg c "$1" --arg o "$2" --arg e "$3" --arg d "$R" \
+    '{hook_event_name:"PostToolUse", session_id:"v1", tool_use_id:"tu9", cwd:$d, tool_name:"Bash", tool_input:{command:$c}, tool_response:{stdout:$o, stderr:$e, interrupted:false}}'
+}
+N9d=$(runs | wc -l | tr -d ' ')
+post_err 'npx vitest run' ' Tests  12 passed (12)' ' Test Files  1 failed (1)' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npm test | tail' 'not ok 3 - handles empty input' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'cargo test | tail -3' 'test result: FAILED. 0 passed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npx tsc --noEmit | head' 'src/a.ts(3,5): error TS2345: Argument' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npx eslint . | tail -1' $'\xe2\x9c\x96 1 problem' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+N9e=$(runs | wc -l | tr -d ' ')
+[[ "$N9e" == "$N9d" ]] && ok "9b every failure-pattern branch, and a failure on stderr, keeps a run out of the log" || ng "9b before=$N9d after=$N9e"
+
 # The 2 s bound stops a slow fingerprint with SIGTERM; the temp index must not
 # outlive it (0.105.0 pre-tag review M3). A git whose `add` stalls stands in
 # for a huge work tree.

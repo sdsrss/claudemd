@@ -116,8 +116,9 @@ scripts/lib/{argv, lint, rule-hits-parse, memory-tags, spec-routing, spec-diff, 
              runbook-review-check, transcript-user-turn}.js ──► (leaf: node: builtins only)
 
 hooks/<every hook>.sh ──► hooks/lib/hook-common.sh ──► hooks/lib/rule-hits.sh
-hooks/{mem-audit, memory-prompt-hint, sandbox-disposal-check, session-start-check, session-summary,
-       ship-baseline-check, version-sync}.sh ──► hooks/lib/platform.sh
+hooks/{branch-prune, ledger-staleness, mem-audit, memory-prompt-hint, sandbox-disposal-check,
+       session-start-check, session-summary, ship-baseline-check, spec-module-gate, spec-module-inject,
+       tmp-sweep, version-sync}.sh ──► hooks/lib/platform.sh
 hooks/{memory-prompt-hint, memory-read-check}.sh ──► hooks/lib/memory-tags.sh
 hooks/{spec-module-inject, test-failure-debug}.sh ──► hooks/lib/spec-module.sh
 hooks/{evidence-gate, verify-log}.sh ──► hooks/lib/{verify-cmd, wtree, platform}.sh
@@ -298,8 +299,8 @@ second is unverified on the trigger that matters.
 - `~/.claude/.claudemd-state/rework-<sid>.fired-<key>-<n>` — the claim that the advisory for multiple `<n>` of file `<key>` has already been emitted this session (`rework-breaker.sh`). Created with `set -o noclobber`, i.e. `O_CREAT|O_EXCL`, so exactly one process wins each multiple when several Edit hooks run concurrently; the tally file beside it cannot carry that, because appending and then re-reading it is a race.
 - `~/.claude/.claudemd-state/rework-<sid>.counts` — per-session append-only edit tally, one `cksum` key per code-file Edit/Write and per code file a Bash command changed, commands changing more than 20 code files skipped as bulk (`rework-breaker.sh`). One short line per edit, so a long session's file is the size of its edit count; nothing reaps it on session end, `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/xrepo-<sid>-<key>` — the claim that this session has already been told about target repo `<key>` (`cksum` of the repo's physical `.git` path; `cross-repo-write-check.sh`). Empty, created with `set -o noclobber` so concurrent Edits announce a repo once; `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/modinj-<sid>.list` — the spec modules `spec-module-inject.sh` has already injected this session, one name per line, plus a `pending:<name>` line for a module deferred by the size budget until the next prompt; `session-start-check.sh` deletes it on compaction (the injected text is gone), `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/notice-<sid>.<source>` — an observation a Stop hook queued for the model (`evidence-gate.sh` writes `notice-<sid>.evidence-gate` when it fires in an interactive session with `EVIDENCE_GATE_DELIVER=1`); `deferred-notice.sh` renames it to `….delivering.<pid>`, reads it and deletes it on the session's next prompt. One nobody collects (the session ended) is reaped by `/claudemd-clean-residue` past the retention window.
+- `~/.claude/.claudemd-state/modinj-<sid>.list` — the spec modules `spec-module-inject.sh` has already injected this session, one name per line, plus a `pending:<name>` line for a module deferred by the size budget to a later prompt from a person; `session-start-check.sh` deletes it on compaction (the injected text is gone), `/claudemd-clean-residue` reaps it past the retention window.
+- `~/.claude/.claudemd-state/notice-<sid>.<source>` — an observation a Stop hook queued for the model (`evidence-gate.sh` writes `notice-<sid>.evidence-gate` when it fires in an interactive session with `EVIDENCE_GATE_DELIVER=1` and `DISABLE_DEFERRED_NOTICE_HOOK` unset); `deferred-notice.sh` renames it to `….delivering.<pid>`, reads it and deletes it on the session's next prompt. One nobody collects (the session ended) is reaped by `/claudemd-clean-residue` past the retention window.
 - `~/.claude/.claudemd-state/tmp-sweep.stamp` — `tmp-sweep.sh` rate-limit stamp; its mtime is the last sweep. One file, rewritten in place, never grows.
 - `~/.claude/.claudemd-state/tmp-sweep.lock` — `tmp-sweep.sh`'s atomic claim (a directory, created with `mkdir`) held only between reading and rewriting the stamp, so parallel Bash calls spawn one sweep, not several. One left by a killed hook is cleared once it is older than 60 s.
 - `~/.claude/.claudemd-state/tmp-sweep.last.json` — the detached sweep's JSON result (`scripts/housekeeping.js tmp --apply`), overwritten on each run, so the last sweep's targets, deletions and errors can be read after the fact.

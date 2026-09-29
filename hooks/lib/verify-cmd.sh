@@ -29,10 +29,14 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 
 # Output that reports failures, for verify-log only (evidence-gate's verdict
 # does not read it). A runner piped into `tail` exits with tail's status, so a
-# failed suite still arrives as a PostToolUse success: 1,974 of 7,080 such runs
-# in the maintainer's transcripts printed failures (0.105.0 pre-tag review M1).
+# failed suite still arrives as a PostToolUse success. The pre-tag review found
+# 1,974 of the 7,080 exit-0 T1/T2 runs in the maintainer's transcripts printing
+# failures, 1,908 of them piped into tail/head/grep/tee (0.105.0 review M1).
 # A count of 1+ failed/failing/failures/errors, node's `fail N`, eslint's
 # `✖ N`, TAP `not ok N`, a `FAIL` word, cargo's `FAILED`, tsc's `error TSnnnn`.
-# Zero counts do not match. A passing test NAMED "... 3 failed attempts" does,
-# and is then not logged: the direction that under-counts verification.
+# A zero count does not match the count branches, but the `FAIL` word branch
+# ignores what follows it. Passing runs it drops, the direction that
+# under-counts verification: `FAIL: 0`, a label such as `_FAIL_BANNER`, a test
+# name with `failed` in it, eslint's `✖ 3 problems (0 errors, 3 warnings)`,
+# a TAP `not ok N … # TODO`.
 FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+'

@@ -17,8 +17,9 @@
 # `grep` exits with the last command's status, so its failure arrives as a
 # PostToolUse success and this hook never sees it. On the maintainer's
 # transcripts that was the only kind of failure in 120 of the 186 sessions with
-# a failing runner (0.105.0 pre-tag review M2); the 70-session reach count
-# above measured exit-code failures only, the ones this hook can see.
+# a failing runner (0.105.0 pre-tag review M2). The 70-session reach count
+# above counted exit-code failures only, with a looser runner pattern; with
+# this hook's own pattern it is 42 of 66 sessions (0.636).
 #
 # Once per session, shared with tier 2: the same modinj-<sid>.list, so a module
 # tier 2 already injected is not injected again, a module injected here is not
@@ -61,7 +62,7 @@ CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # start of the text or of a line, or after ; & | ( or a backtick, past any of
 # npx / bunx / pnpm|yarn exec / uv|poetry run / timeout N / env / NAME=value.
 # Quotes are not parsed, so a separator inside a quoted string counts too
-# (`grep -E 'jest|vitest' package.json` failing fires it); sudo, nice, time,
+# (`grep -E 'jest|vitest|mocha' package.json` failing fires it); sudo, nice, time,
 # `env -u X` and ./node_modules/.bin/<runner> are not recognised as prefixes.
 _nl=$'\n'
 TEST_CMD_RE="(^|[;&|(\`${_nl}])[[:space:]]*((npx|bunx|env|(pnpm|yarn)[[:space:]]+exec|(uv|poetry)[[:space:]]+run|timeout[[:space:]]+[0-9.]+[smh]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*((npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test[[:alnum:]:_-]*|pytest|python3?[[:space:]]+-m[[:space:]]+(pytest|unittest)|jest|vitest|mocha|node[[:space:]]+--test|cargo[[:space:]]+test|go[[:space:]]+test|make[[:space:]]+test|rspec|ctest|(gradle|mvn|dotnet)[[:space:]]+test|bash[[:space:]]+[^[:space:]]*tests/[^[:space:]]+|[^[:space:]]*run-all\.sh)([[:space:];&|)]|\$)"

@@ -37,8 +37,9 @@ wtree_hash() {
   # The callers bound this at 2 s with platform_timeout, which stops the shell
   # with SIGTERM (GNU timeout and the bash watchdog alike). Without a trap the
   # temp index outlived every such stop (0.105.0 pre-tag review M3). Bash runs
-  # the trap once the git child it waits on has exited. The trap is dropped
-  # again before returning, so a caller's own shell keeps its handlers.
+  # the trap once the git child it waits on has exited. Before returning the
+  # trap is reset to the default, not to whatever the caller had, and
+  # _wtree_tmp stays set: both shipped callers run this in a fresh `bash -c`.
   _wtree_tmp=$tmpidx
   trap 'rm -f -- "$_wtree_tmp" "$_wtree_tmp.lock"; exit 143' TERM INT
   if [[ -n "$real" && -f "$real" ]] && cp "$real" "$tmpidx" 2>/dev/null && touch -r "$real" "$tmpidx" 2>/dev/null; then
