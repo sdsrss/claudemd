@@ -158,10 +158,13 @@ const withFixture = (id, fn) => {
 const bash = command => ({ name: 'Bash', input: { command }, id: 'x', isError: false, resultText: '' });
 // A node --test child inherits NODE_TEST_CONTEXT from this runner and then
 // reports to it instead of exiting non-zero on a failure; run the fixture's
-// suite as a top-level run.
+// suite as a top-level run. No positional argument, as in the fixture's own
+// `npm test`: Node 22 and 24 read `test/` as a glob that matches no file and
+// exit 1 (CI on 8548c5a); the default pattern set finds test/*.test.js on
+// Node 20 through 26.
 const nodeTest = dir => {
   const { NODE_TEST_CONTEXT: _, ...env } = process.env;
-  return spawnSync('node', ['--test', 'test/'], { cwd: dir, env, encoding: 'utf8' }).status;
+  return spawnSync('node', ['--test'], { cwd: dir, env, encoding: 'utf8' }).status;
 };
 const fixPaginate = dir => {
   const f = path.join(dir, 'src/paginate.js');

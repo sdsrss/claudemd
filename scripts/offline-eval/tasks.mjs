@@ -37,7 +37,7 @@ const bashEdits = re => u => u.name === 'Bash' && writesInto(String(u.input?.com
 const nodeTestPasses = dir =>
   spawnSync('node', ['--test', 'test/'], { cwd: dir, encoding: 'utf8' }).status === 0;
 const PKG =
-  '{\n  "name": "fixture",\n  "version": "1.0.0",\n  "type": "module",\n  "scripts": { "test": "node --test test/" }\n}\n';
+  '{\n  "name": "fixture",\n  "version": "1.0.0",\n  "type": "module",\n  "scripts": { "test": "node --test" }\n}\n';
 
 // A shell command as the simple commands it runs, each with its offset in the
 // text; leading `VAR=x`, `timeout N`, `time`, `command` and `exec` are dropped.
@@ -459,7 +459,7 @@ export const TASKS = {
       w(
         dir,
         'package.json',
-        '{\n  "name": "shoplist",\n  "version": "1.0.0",\n  "type": "module",\n  "bin": { "shoplist": "bin/shoplist.js" },\n  "scripts": { "test": "node --test test/" }\n}\n'
+        '{\n  "name": "shoplist",\n  "version": "1.0.0",\n  "type": "module",\n  "bin": { "shoplist": "bin/shoplist.js" },\n  "scripts": { "test": "node --test" }\n}\n'
       );
       w(
         dir,
