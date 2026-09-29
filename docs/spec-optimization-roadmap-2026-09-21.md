@@ -304,9 +304,12 @@ G3 撤回 · G6 不做
 
 - **与 core §2.1 现有"sp before gs"一行的关系**:该行是顺序规则,与上表的"无顺序、按判据"冲突。G4-A 已裁定执行,该子句随 §2.1 表一起删除(附 C)。
 - **实验分支 B**(可选,先预登记判据:"技能被调用的会话其返工率低于未调用会话,分层后方向一致"):**B1 零 hook**——本地 skill 加 `paths` / `when_to_use`,对第三方 skill 写薄包装指向;**B2 hook 注入**——`skill-hint.sh`(UserPromptSubmit,同 `hooks/memory-prompt-hint.sh` 形态)按已装清单与关键词注入 1–3 行,未命中零字节。
+  - **2026-09-29 修正(同类项目对标 §5,本地文档 docs/oss-benchmark-2026-09-28.md):B2 暂停。** 唯一有对照的外部数据(Spence,22 个提示各跑 2 次)是:无 hook 55%/50%,被动关键词提示 59%/50%,逐技能 YES/NO 承诺 100%/100%;本机 7 个会话的技能列表里 81–82 条描述都完整,模型看得到技能,只是不选。先用陷阱用例(`scripts/offline-eval/tasks.mjs` T11/T12 的形式)测"调用技能是否改变结果";会改变,再做只在 L2+ 任务类触发的条件式承诺,不做被动提示。
 - **G4-A(已裁定执行,2026-09-21)**:把 core §2.1 的路由表(实测 8 行数据 + 表头分隔 = 923B)压成一句指针,其余 §2.1 内容(工具升级阶梯、歧义触发 → ASK)保留;表中**不是 skill 路由**的三条信息(UI 验证只准 `gs:/browse`、2+ 独立任务 → `Agent`、Q&A 直接回答)以两行短句留在 core——它们在 L0–L2 也必须可见,extended 在那两级不加载(§3 取严格读法)。替换前后全文与逐项字节核算见 **附 C**,预计 core 净减约 700B。它触及 07-10 不做清单的"不 demote core 任何段落"(2026-06-03 判定:core 段落零遥测 = 基础性,不得裁);重议依据三条:(i) 真正的路由判据已搬进 extended §12,core 表若保留就是同一事实两个家,违反仓库自己的 one-home-per-fact;(ii) 06-03 的依据是"零遥测",0.2% 是行为测量,前提不同;(iii) core 余量 60B,G1c / D1 将来都要 core 字节,这是唯一体量足够的 paired-deletion 来源。风险:被替代的只是 skill 路由行,其行为已测得 0.2%,指针保证可达。级别 L3(LLM-visible spec 文本),走 §13 META。
 
 ### G5 — 写/验分离【依赖 G1b】
+
+- **2026-09-29 补充(同类项目对标 §5,本地):** 机械形式可以借 gstack 的做法:评审结论盖上工作树指纹(`hooks/lib/wtree.sh`),之后的修复提交让旧评审显式变成 STALE。
 
 - **证据现状**:仅推理 + 返工形状。G1b 落地后"完成声明是否含验证输出"成为可计数指标,G5 才有定量论据。
 - **机制**(官方能力已核实):验证 subagent 用 `skills` 字段**预加载**一份"只读实现、只跑命令、只报输出"的验证 skill(不依赖模型自选);`SubagentStop` hook 核其输出含 tool_result 级证据;主会话不得以 subagent 的"我已测试"为证据。Agent 调用已是既有模式(393 次)。
@@ -317,6 +320,8 @@ G3 撤回 · G6 不做
 3.2% 基率;原提案全量禁止会挡 804 次合法加强抓 51 次可疑。若将来做,窄化为"断言数下降 / 用例删除",挂 G2 同一 PostToolUse 条目。登记待复查。
 
 ### G7 — 长任务:账本 + compaction 保全【依赖 G1b】
+
+- **2026-09-29 补充(同类项目对标 §5,本地):** `Verified-done` 的证据指针可以写成 `{cmd, exit, wtree}`:R3 的 `verify-log.sh`(opt-in `EVIDENCE_WTREE=1`)已把每次通过的验证命令连同工作树内容指纹记进日志,脚本可以直接查,不必读散文。
 
 - **问题**:4.5。长任务发散的三个来源——决策散落到中途、done 未经验证累积、compaction 后状态丢失。
 - **现有基础**(不新建 orchestrator):`.converge/` 已有 INTENT / DECISIONS / BACKLOG / LOG / METRICS 五件套;§11 已有 `tasks/<slug>-paused.md` 约定;`gsd:start/resume`、`sp:executing-plans`、`converge`、harness `Workflow` 均为可用编排面(前两者语料中 0 调用)。**G7 不选编排器,只定义所有编排器共同读写的账本与其 hook 级保全。**
