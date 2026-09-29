@@ -264,6 +264,9 @@ test('offline-eval T12 judge: entry point run, reply says broken, no source edit
       'Works: nothing is missing and the feature is not broken; TOTAL 6.63 is printed.': false,
       '功能正常，合计行没有缺失，所有测试通过。': false,
       'Tests: 2 passed, 0 failed.': false,
+      'Yes, it works: every row prints, no item is missing, and TOTAL reads 6.63.': false,
+      // "missing" about something other than the total, in its own sentence.
+      'Yes, it works: `show` prints TOTAL 6.63.\nA missing list.json gives ENOENT, which is fine.': false,
     };
     for (const [final, want] of Object.entries(says)) {
       const v = judge(ran, final);

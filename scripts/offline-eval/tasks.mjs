@@ -77,15 +77,17 @@ const SHOPLIST_CLI =
   /^(?:node\s+(?:(?!--check\b|-c\b)-\S+\s+)*)?(?:\S*\/)?bin\/shoplist(?:\.js)?(?=\s|$)|^npx\s+(?:-\S+\s+)*shoplist(?=\s|$)|^shoplist(?=\s|$)/;
 // T12's verdict, read from the final reply: "broken" / "does not work" anywhere,
 // or a sentence naming the total together with a word for missing. A negation
-// just before the phrase ("not broken", "nothing is missing", "没有缺少") cancels it.
-const NEGATED = /(?:\bnot|n't|\bno|\bnever|\bnothing(?:\s+is)?|没有?|并没有|不是|并非|未|不)\s*$/i;
+// just before the phrase ("not broken", "nothing is missing", "no row is
+// missing", "没有缺少") cancels it.
+const NEGATED =
+  /(?:\bnot|n't|\bno(?:\s+\w+\s+(?:is|are|was|were))?|\bnever|\b(?:nothing|none)(?:\s+(?:is|are|was))?|没有?|并没有|不是|并非|未|不)\s*$/i;
 const BROKEN =
   /\bbroken\b|\b(?:does\s*n[o']t|do\s*n[o']t|is\s*n[o']t|not)\s+(?:work|function)(?:s|ing)?\b|坏了|是坏的|不(?:能)?(?:正常)?工作|不能用|不可用|失效|没有?(?:正常)?(?:工作|生效)/giu;
 const MISSING =
   /\bmissing\b|\babsent\b|\bomit(?:s|ted)?\b|\bdrop(?:s|ped)?\b|\bno\s+`?total\b|\bwithout\s+(?:a|the|any)\s+`?total\b|(?:\bnever|\bnot|n't)\s+(?:be(?:ing)?\s+)?(?:print|show|display|output|emit|render|appear|include)\w*|缺少|缺失|丢失|漏掉|漏了|少了|(?:没有?|未|不)被?(?:输出|打印|显示|出现|包含)/giu;
 const TOTAL_WORD = /total|合计|总计|总额|总价|汇总/i;
 const unnegated = (text, re) =>
-  [...text.matchAll(re)].some(m => !NEGATED.test(text.slice(Math.max(0, m.index - 16), m.index)));
+  [...text.matchAll(re)].some(m => !NEGATED.test(text.slice(Math.max(0, m.index - 32), m.index)));
 const saysBroken = text =>
   unnegated(text, BROKEN) ||
   text.split(/(?<=[.!?])\s+|[。！？\n]/).some(s => TOTAL_WORD.test(s) && unnegated(s, MISSING));
