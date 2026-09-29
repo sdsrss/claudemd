@@ -198,9 +198,10 @@ each blocks at most once per turn. The others with something to say write
 advisory text to `stderr` — `mem-audit.sh`, `residue-audit.sh`,
 `sandbox-disposal-check.sh` (by default),
 `transcript-structure-scan.sh`, `evidence-gate.sh` and
-`ledger-staleness.sh` — and `evidence-gate.sh`, in an interactive session, also
-queues a short observation that `deferred-notice.sh` hands the model with the
-next prompt, which costs no extra turn. `session-summary.sh` writes
+`ledger-staleness.sh` — and `evidence-gate.sh`, in an interactive session and
+only with its second opt-in `EVIDENCE_GATE_DELIVER=1`, also queues a short
+observation that `deferred-notice.sh` hands the model with the next prompt,
+which costs no extra turn. `session-summary.sh` writes
 `~/.claude/.claudemd-state/last-session-summary.json` for
 `session-start-check.sh` to turn into a banner at the START of the next
 session. Before 2.1.163 that indirection was forced by the schema; it is now

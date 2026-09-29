@@ -52,7 +52,7 @@ else ng "5 no row: $(tail -1 "$LOG" 2>/dev/null)"; fi
 
 # --- end to end with evidence-gate ------------------------------------------
 TR="$HOME/.claude/projects/p/s.jsonl"
-eg_stop() { # SESSION ENTRYPOINT
+eg_stop() { # SESSION ENTRYPOINT [DELIVER]
   {
     jq -cn --arg e "$2" '{type:"user",entrypoint:$e,message:{content:"fix it"}}'
     jq -cn '{type:"assistant",message:{content:[{type:"tool_use",id:"tu_e",name:"Edit",input:{file_path:"/p/src/a.js"}}]}}'
@@ -61,7 +61,7 @@ eg_stop() { # SESSION ENTRYPOINT
   # stderr (the human's note) captured, stdout dropped — the order is the point.
   # shellcheck disable=SC2069
   jq -cn --arg s "$1" --arg t "$TR" '{hook_event_name:"Stop", session_id:$s, last_assistant_message:"Done: rewrote the parser.", transcript_path:$t}' \
-    | EVIDENCE_GATE=1 bash "$EG" 2>&1 >/dev/null
+    | EVIDENCE_GATE=1 EVIDENCE_GATE_DELIVER="${3:-1}" bash "$EG" 2>&1 >/dev/null
 }
 
 # 6. an interactive session: evidence-gate queues the observation, the human's
@@ -78,6 +78,13 @@ E7=$(eg_stop s7 sdk-cli)
 if [[ ! -e "$ST/notice-s7.evidence-gate" ]] && grep -q 'reaches you, not the agent' <<<"$E7"; then
   ok "7 headless: nothing queued"
 else ng "7 queued=$([[ -e "$ST/notice-s7.evidence-gate" ]] && echo y) stderr=${E7:0:100}"; fi
+
+# 7b. EVIDENCE_GATE=1 alone keeps the advisory human-only: the delivery channel
+# has its own opt-in until the verdict passes the 0.8 precision gate.
+E7B=$(eg_stop s7b cli 0)
+if [[ ! -e "$ST/notice-s7b.evidence-gate" ]] && grep -q 'reaches you, not the agent' <<<"$E7B"; then
+  ok "7b EVIDENCE_GATE=1 without EVIDENCE_GATE_DELIVER=1: nothing queued"
+else ng "7b queued=$([[ -e "$ST/notice-s7b.evidence-gate" ]] && echo y) stderr=${E7B:0:100}"; fi
 
 # 8. the advisory row records whether it queued.
 if jq -e 'select(.hook=="evidence-gate" and .session_id=="s6" and .extra.queued==true)' "$LOG" >/dev/null 2>&1 \

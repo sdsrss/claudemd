@@ -12,7 +12,8 @@
 # with the next prompt of the same session: no extra turn, and nothing at all
 # if the conversation ends there.
 #
-# Writers today: evidence-gate.sh (opt-in EVIDENCE_GATE=1). A notice is
+# Writers today: evidence-gate.sh (opt-in twice: EVIDENCE_GATE=1 and
+# EVIDENCE_GATE_DELIVER=1). A notice is
 # delivered once — the file is renamed before it is read, so two prompts
 # arriving together cannot both deliver it — and at most 2,000 characters of
 # it. A notice nobody collects (the session ended) is reaped by

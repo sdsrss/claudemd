@@ -53,7 +53,8 @@
 # code completion claim without verification (reports, questions and
 # waiting-on-CI messages read as Done claims). docs/audit/20260926-180700.md.
 #
-# Opt-in: EVIDENCE_GATE=1 (default OFF). §EXT §13.3: behaviour-layer hooks ship
+# Opt-in: EVIDENCE_GATE=1 (default OFF); delivery to the model with the next
+# prompt needs EVIDENCE_GATE_DELIVER=1 as well (below). §EXT §13.3: behaviour-layer hooks ship
 # default-OFF for >=30d of FP signal collection before default-ON advisory, and
 # only then is a `deny` form even on the table.
 #
@@ -296,9 +297,16 @@ esac
 # `deferred-notice.sh` adds it to the model's context with the NEXT prompt: no
 # extra turn, and nothing when the conversation does not continue. A headless
 # run (entrypoint sdk-*) has no next prompt a person wrote, so it gets none.
+#
+# Its own opt-in, EVIDENCE_GATE_DELIVER=1, on top of EVIDENCE_GATE=1: the G1b
+# pre-registration (tasks/g1b-g2-eval/PREREG.md, 2026-09-26 revision) holds any
+# channel into the model — a UserPromptSubmit injection included — until this
+# verdict reaches 0.8 precision on the same replay. Someone who opted into the
+# human-only advisory has not opted into that; the switch is how to run the
+# pre-registered A/B (tasks/r5-deferred/PREREG.md) before the gate is met.
 EG_EP=$(tail -n 50 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r 'select(.entrypoint? != null) | .entrypoint' 2>/dev/null | tail -n 1)
 EG_QUEUED=0
-if [[ "$EG_EP" != sdk-* && "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+if [[ "${EVIDENCE_GATE_DELIVER:-0}" == 1 && "$EG_EP" != sdk-* && "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
   EG_STATE="$HOME/.claude/.claudemd-state"
   if mkdir -p "$EG_STATE" 2>/dev/null \
     && printf '[claudemd] system-injected — an observation from the end of your previous turn (%s), by evidence-gate, which the user turned on: that reply read as a completion claim after code edits, and %s If the claim stands, its verification is still outstanding; if it was not a completion claim, disregard this. The user can turn this off with DISABLE_EVIDENCE_GATE_HOOK=1.\n' \
