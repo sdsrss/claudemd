@@ -58,6 +58,10 @@ docs/*
 #    as the source of their numbers; pre-tag review L3 found the citations
 #    dangling in a clone.)
 !docs/claude-session-analysis-2026-09-26.md
+#  - docs/spec-optimization-plan-2026-09-29.md (same provenance rule: the 0.107.0
+#    CHANGELOG entry and tasks/specs/v7.2-core.md cite it as the evidence and plan
+#    behind spec v7.2.0; the release-reviewer's worktree reads it as the contract.)
+!docs/spec-optimization-plan-2026-09-29.md
 #  - docs/S8-RESIDUALS.md (the registry of accepted §8 residual families). Read by
 #    the release-reviewer agent (.claude/agents/release-reviewer.md), whose
 #    worktree is a clone of the tracked tree; an ignored registry would not be
