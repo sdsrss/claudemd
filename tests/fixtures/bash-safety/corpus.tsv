@@ -1538,7 +1538,11 @@ deny	S8-CQ12 comment after ;	true;# it's__NL__rm -rf $SP/x__NL__echo 'a b'
 deny	S8-CQ13 comment after &&	true&&# it's__NL__rm -rf $SP/x__NL__echo 'a b'
 deny	S8-CQ14 comment after (	(# it's__NL__rm -rf $SP/x__NL__)__NL__echo 'a b'
 deny	S8-CQ15 comment after |	true|# it's__NL__cat__NL__rm -rf $SP/x__NL__echo 'a b'
-pass	S8-CQ16 control: $# and ${#x} are not comments	echo $# ${#x} 'a b'__NL__rm -rf "${D:?}/x"
+pass	S8-CQ16 control: $# is not a comment start, so the quoted rm stays data	echo $#'; rm -rf $X/y'
+pass	S8-CQ18 control: ${#x} is not a comment start either	echo ${#x}'; rm -rf $X/y'
+deny	S8-CQ19 comment after a subshell's )	(true)# it's__NL__rm -rf $SP/x__NL__echo 'a b'
+xfp	S8-CQ20 RESIDUAL: the ) of $(...) is read as a word end, so its # starts a "comment" bash does not see (F13)	echo $(echo w)#'; rm -rf $X/y'
+xfp	S8-CQ21 RESIDUAL: same for $((...)), npx arm (F13)	echo $((1+2))#'; npx cowsay'
 xfn	S8-CQ17 RESIDUAL: a comment after a backslash-newline continuation (F6)	echo a \__NL__# it's__NL__rm -rf $SP/x__NL__echo 'b c'
 
 # === 2026-09-29 S8-EQO: an escaped quote cannot open a single-token unquote ===
@@ -1558,9 +1562,11 @@ xfp	S8-EQO5 RESIDUAL: a backslash OUTSIDE quotes is still not modelled, so \" th
 # into the var class, which let `$1` become the first var: a `${1:?}` anywhere in the text
 # then passed the guard arm and the second var went unjudged (`"$1/$D"`), deny -> allow
 # (0.106.0 pre-tag review H1). The var analysis is back to 0.105.0's; a separate check adds a
-# deny where an empty value changes what is deleted: the parameter is the target's first
-# component and a / follows it, or a find starts at the parameter (find with no starting
-# point runs on the current directory). A bare "$1" for rm deletes nothing when empty, and
+# deny where an empty value turns the target into a root path: the parameter is the target's
+# first component and a / follows it, or a find starts at the parameter (an unquoted empty
+# one runs on the current directory; the quoted spelling is denied too because the tokens
+# are unquoted by then). Other shapes that an empty parameter changes (~/"$1", "$1"*) are
+# registered residual F12 (rows S8-POS23-27). A bare "$1" for rm deletes nothing when empty, and
 # $0 is never empty; those stay allowed, as in 0.105.0. The residue strip still drops $N, so a
 # whitelisted var whose only subpath is $N is bare (POS3).
 deny	S8-POS1 a positional parameter with a subpath	rm -rf "$1/build"
@@ -1581,6 +1587,14 @@ deny	S8-POS15 $@ inside a quoted target	rm -rf "$@/build"
 deny	S8-POS16 braces make no difference	rm -rf "${2}/build"
 deny	S8-POS17 find on an unquoted bare parameter runs on . when it is empty	f(){ find $1 -delete; }
 pass	S8-POS21 control: rm on an unquoted bare parameter deletes nothing when it is empty	f(){ rm -rf $1; }
+deny	S8-POS22 the braced spelling with a guard elsewhere: only the leading-parameter check sees it	usage(){ : "${2:?}"; }; rm -rf "${2}/$D"
+# A parameter that empties the target without leading it is not judged (0.106.0 delta review
+# M1, reviewer-constructed): registered as F12 in docs/S8-RESIDUALS.md.
+xfn	S8-POS23 RESIDUAL: ~/"$1" is the home directory when $1 is empty (F12)	f(){ rm -rf ~/"$1"; }; f
+xfn	S8-POS24 RESIDUAL: a literal parent then "$1" (F12)	f(){ rm -rf /srv/data/"$1"; }; f
+xfn	S8-POS25 RESIDUAL: "$1"* is every file in the cwd when $1 is empty (F12)	f(){ rm -rf "$1"*; }; f
+xfn	S8-POS26 RESIDUAL: same with "$@"* (F12)	f(){ rm -rf "$@"*; }; f
+xfn	S8-POS27 RESIDUAL: two parameters before the slash (F12)	rm -rf "$1$2/x"
 pass	S8-POS18 control: $0 is never empty	rm -f "$0.lock"
 pass	S8-POS19 control: a parameter that is not the first component	rm -rf /tmp/claude-1000/outer_$1
 pass	S8-POS20 control: a parameter with a literal suffix, no slash	rm -f "$1.bak"

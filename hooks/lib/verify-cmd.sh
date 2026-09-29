@@ -40,10 +40,12 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # name with `failed` in it, eslint's `✖ 3 problems (0 errors, 3 warnings)`,
 # a TAP `not ok N … # TODO`. Counted again 2026-09-29, apart from the 7,080
 # above, over top-level and subagent transcripts: of 14,052 exit-0
-# T1/T2 runs it drops 3,765, of which 3,176 print a nonzero failure count;
-# 73 carry a zero-failure summary and no failing one, an upper bound of 0.7%
-# of the 10,876 runs with no nonzero failure summary; eslint warnings-only at
-# most 11. Narrowing a branch would buy that back
+# T1/T2 runs it drops 3,765, of which 3,176 print a nonzero failure count.
+# Of the rest, a hand-built classifier reads 58 to 95 as passing runs (a
+# pass summary such as `ℹ fail 0` or "all suites passed" and no failing
+# one), 0.5-0.9% of the 10,876 runs with no nonzero failure summary: an
+# estimate that moves with the classifier, not a bound. eslint warnings-only
+# is at most 11. Narrowing a branch would buy that back
 # by logging failed runs as verification, the error R3 cannot absorb, so the
 # pattern stays as it is.
 FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+'

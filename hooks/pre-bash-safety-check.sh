@@ -1060,12 +1060,15 @@ if :; then
     # bare parameter deletes nothing when empty (`rm -rf ""` fails, `rm -rf` with
     # no operand does nothing); a find with none starts at `.`. The tokens here
     # are already unquoted, so `find "$1"` and `find $1` read alike and both
-    # deny. $0 is never empty. `${1:?}` does not match here, and the analysis
-    # below credits it as it always has.
+    # deny. $0 is never empty and is not matched here (the residue strip and
+    # the provenance scan below still count it). `${1:?}` does not match here,
+    # and the analysis below credits it as it always has. A parameter that
+    # empties a target without leading it (`~/"$1"`, `/srv/"$1"`, `"$1"*`,
+    # `"$1$2/x"`) is not judged: registered residual F12 (docs/S8-RESIDUALS.md).
     if [[ "$rm_target" =~ ^\"?\$(\{[1-9@*]\}|[1-9@*])\"?/ ]] \
        || { (( S8_RM_IS_FIND == 1 )) && [[ "$rm_target" =~ ^\"?\$(\{[1-9@*]\}|[1-9@*])\"?$ ]]; }; then
       s8_pos="${BASH_REMATCH[1]}"; s8_pos="${s8_pos#\{}"; s8_pos="${s8_pos%\}}"
-      s8_pos_msg="$S8_RM_VERB on \$$s8_pos as the target's first component: with no arguments it is empty, so the path starts at / (or a find starts at .). Guard it as \${$s8_pos:?}, or check the argument count first"
+      s8_pos_msg="$S8_RM_VERB on \$$s8_pos as the target's first component: with no arguments it is empty, so the path starts at / (an unquoted find starts at . instead). Guard it inside the target as \${$s8_pos:?}: a check written elsewhere, such as an argument count, does not pass this gate"
       HITS+=("$s8_pos_msg")
       HIT_SECTIONS+=('§8-rm-rf-var')
       REASONS+=$'\n  - '"$s8_pos_msg"

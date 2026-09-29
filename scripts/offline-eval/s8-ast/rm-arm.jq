@@ -39,8 +39,10 @@
 #     variable, and the target holds no `..`.
 # Not modelled: xargs stdin targets, literal-assignment provenance (the gate
 # does not credit it either), `..` supplied by another variable's value.
-# Positional parameters ($1 …) are judged like any variable; the gate skips
-# `$1` and judges `${1}` — an open question, tasks/s8-ast-shadow/adjudication.md.
+# Positional parameters ($1 …) are judged like any variable. Since 0.106.0 the
+# gate judges them only where one leads a target and a `/` follows, or is a
+# find's starting point (docs/S8-RESIDUALS.md F12 for the rest), so the two
+# disagree on the S8-POS corpus rows.
 #
 # Research knob, `ablate` (jq --argjson, via S8_AST_ABLATE in ast-rm.sh): a list
 # of pieces to switch back to the r1 prototype-v6 behaviour, to measure what
