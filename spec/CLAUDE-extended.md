@@ -480,9 +480,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.2.0 (minor, 2026-09-29)** — core trim, one harness conflict removed; plan and evidence in `docs/spec-optimization-plan-2026-09-29.md`. Core states each repeated rule once, drops what the Claude Code system prompt already says and maintainer asides, and moves its header into a block HTML comment, which Claude Code strips before injection (model-visible core 23259 bytes). §11 no longer lists context pressure as a yield. §0.2 merge thresholds → `modes.md`; §3 User relaxation channels → `auth.md` (§3-EXT). No HARD rule added or removed.
+**v7.2.0 (minor, 2026-09-29)** — core trim, one harness conflict removed; plan and evidence in `docs/spec-optimization-plan-2026-09-29.md`. Core states each repeated rule once, drops what the Claude Code system prompt already says and maintainer asides, and moves its header into a block HTML comment, which Claude Code strips before injection (model-visible core 23320 bytes). §11 no longer lists context pressure as a yield. §0.2 merge thresholds → `modes.md`; §3 User relaxation channels → `auth.md` (§3-EXT). No HARD rule added or removed.
 
-**Sizing** (v7.2.0, 2026-09-29, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24740 → 23461 bytes (Δ -1279); extended 48629 → 49046 bytes (Δ +417); OPERATOR.md 17587 → 17783 bytes (Δ +196). Size budget: core 23461/25000 (**1539 bytes headroom**); extended 49046/50000 (**954 bytes headroom**).
+**Sizing** (v7.2.0, 2026-09-29, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24740 → 23522 bytes (Δ -1218); extended 48629 → 49046 bytes (Δ +417); OPERATOR.md 17587 → 17769 bytes (Δ +182). Size budget: core 23522/25000 (**1478 bytes headroom**); extended 49046/50000 (**954 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

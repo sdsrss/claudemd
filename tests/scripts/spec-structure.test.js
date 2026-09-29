@@ -576,7 +576,7 @@ const PINS = [
     file: CORE,
     anchor: '- **Specificity (HARD)**',
     why: 'The tie-break exists nowhere else: core §3 stricter-reading covers only safety/AUTH ambiguity. Dropped as a why-clause in the 0.107.0 draft and caught at pre-tag review.',
-    line: '- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.',
+    line: "- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.",
   },
   {
     what: 'core §1 Language contract — whose language, what never switches it, docs/ prose (v6.33.0)',
@@ -847,7 +847,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c70daab3a3686a6f' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
-  { file: CORE, heading: '## §10 REPORT', sha256: 'fe08b1493977099d' },
+  { file: CORE, heading: '## §10 REPORT', sha256: '851c5c86a7a463ae' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'ce09e67e46637511' },
   { file: EXT, heading: '', sha256: 'd932e8e251e88285' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
@@ -865,7 +865,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: '691bcbb5c0f1de29' },
+  { file: EXT, heading: '## Recent changes', sha256: 'edc11e3752ccca29' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,

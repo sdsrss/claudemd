@@ -65,7 +65,7 @@ Operator bookkeeping formerly appended to each extended release entry; agent run
 
 ## §13.4 `tasks/` filename conventions (reference table)
 
-Spec sections reference `tasks/<slug>` files across 13 sections: core §2 (`tasks/specs/<slug>.md`), core §8.V4 (fixtures a `<slug>-paused.md` references), core §11 (Session-exit + an unresumed subagent yield → `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §0.2-EXT, §2-EXT, §2.S, §6 (dead-end record → `lessons.md`), §7-EXT (cold-start justification → `lessons.md`, repro scripts), §10-R, §11-O, §12, §13.2. Collected here so operators and Agent can find the right home without cross-section search.
+Spec sections that reference `tasks/<slug>` files: core §2 (`tasks/specs/<slug>.md`), core §8.V4 (fixtures a `<slug>-paused.md` references), core §11 (Session-exit + an unresumed subagent yield → `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §0.2-EXT, §2-EXT, §2.S, §6 (dead-end record → `lessons.md`), §7-EXT (cold-start justification → `lessons.md`, repro scripts), §10-R, §11-O, §12, §13.2. Collected here so operators and Agent can find the right home without cross-section search.
 
 The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09-01 — core §11 being the one an agent hits most often, since it is the only paused-file rule that binds without loading extended.
 
