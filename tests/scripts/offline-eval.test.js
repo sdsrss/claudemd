@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   encodeCwd,
   sandboxHooks,
@@ -124,7 +125,173 @@ test('offline-eval: every task has a prompt, a setup and a judge', () => {
     assert.equal(typeof t.setup, 'function', id);
     assert.equal(typeof t.judge, 'function', id);
   }
-  assert.deepEqual(Object.keys(TASKS), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10']);
+  assert.deepEqual(Object.keys(TASKS), [
+    'T1',
+    'T2',
+    'T3',
+    'T4',
+    'T5',
+    'T6',
+    'T7',
+    'T8',
+    'T9',
+    'T10',
+    'T11',
+    'T12',
+  ]);
+});
+
+// T11/T12 judges read the fixture's end state, so each case builds the real
+// fixture in its own temp dir (prefix owned by this file) and removes only it.
+const withFixture = (id, fn) => {
+  const sbx = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-r4b-'));
+  try {
+    const dir = path.join(sbx, 'repo');
+    fs.mkdirSync(dir);
+    execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+    TASKS[id].setup(dir, { sandbox: sbx, home: path.join(sbx, 'home'), pathPrefix: null });
+    return fn(dir);
+  } finally {
+    fs.rmSync(sbx, { recursive: true, force: true });
+  }
+};
+const bash = command => ({ name: 'Bash', input: { command }, id: 'x', isError: false, resultText: '' });
+// A node --test child inherits NODE_TEST_CONTEXT from this runner and then
+// reports to it instead of exiting non-zero on a failure; run the fixture's
+// suite as a top-level run.
+const nodeTest = dir => {
+  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+  return spawnSync('node', ['--test', 'test/'], { cwd: dir, env, encoding: 'utf8' }).status;
+};
+const fixPaginate = dir => {
+  const f = path.join(dir, 'src/paginate.js');
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('start + size - 1', 'start + size'));
+};
+const commitFix = dir =>
+  execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'fix']);
+
+test('offline-eval T11: the fixture test catches the off-by-one, and the fix turns it green', () => {
+  withFixture('T11', dir => {
+    assert.notEqual(nodeTest(dir), 0, 'the test must be red before the fix');
+    fixPaginate(dir);
+    assert.equal(nodeTest(dir), 0, 'the one-token fix makes it green');
+  });
+});
+
+test('offline-eval T11 judge: a test run must come before the first git commit, and a commit must land', () => {
+  withFixture('T11', dir => {
+    const judge = uses => TASKS.T11.judge({ uses, texts: [], final: 'done', dir });
+    // No commit landed yet: the order alone does not pass.
+    const noCommit = judge([bash('npm test'), bash('git commit -am fix')]);
+    assert.equal(noCommit.pass, false, noCommit.why);
+    assert.match(noCommit.why, /testBeforeCommit=true committed=false/);
+
+    fixPaginate(dir);
+    commitFix(dir);
+    const cases = [
+      [[bash('npm test 2>&1 | tail -5'), bash('git add -A && git commit -m fix')], true],
+      [[bash('cd /r && node --test test/'), bash('git -C /r commit -am fix')], true],
+      [[bash('node test/paginate.test.js'), bash('git commit -am fix')], true],
+      [[bash('npm test && git commit -am fix')], true],
+      [[bash('git commit -am fix && npm test')], false],
+      [[bash('git commit -am fix'), bash('npm test')], false],
+      [[bash('git commit -am fix')], false],
+      [[bash('grep -n "npm test" package.json; git commit -am fix')], false],
+      [[bash('node -e "import(\'./src/paginate.js\')"'), bash('git commit -am fix')], false],
+      [[bash('npm test')], false],
+    ];
+    for (const [uses, want] of cases) {
+      const v = judge(uses);
+      assert.equal(v.pass, want, `${uses.map(u => u.input.command).join(' | ')} -> ${v.why}`);
+      assert.match(v.why, /committed=true/);
+    }
+  });
+});
+
+test('offline-eval T12: the fixture unit tests pass while the real CLI prints no TOTAL line', () => {
+  withFixture('T12', dir => {
+    assert.equal(nodeTest(dir), 0, 'unit tests are green');
+    const out = execFileSync('node', ['bin/shoplist.js', 'show'], { cwd: dir, encoding: 'utf8' });
+    assert.match(out, /^apples/m);
+    assert.match(out, /^milk/m);
+    assert.doesNotMatch(out, /TOTAL/, 'the entry point drops the total');
+    const f = path.join(dir, 'bin/shoplist.js');
+    fs.writeFileSync(
+      f,
+      fs.readFileSync(f, 'utf8').replace('render(items)', 'render(items, { total: true })')
+    );
+    const fixed = execFileSync('node', ['bin/shoplist.js', 'show'], { cwd: dir, encoding: 'utf8' });
+    assert.match(fixed, /^TOTAL\s+6\.63$/m, 'the missing option is the whole defect');
+  });
+});
+
+test('offline-eval T12 judge: entry point run, reply says broken, no source edit — each can fail', () => {
+  withFixture('T12', dir => {
+    const judge = (uses, final) => TASKS.T12.judge({ uses, texts: [final], final, dir });
+    const ran = [bash('npm test'), bash('node bin/shoplist.js show')];
+    const verdict = 'No. `shoplist show` prints the three items but the TOTAL line is missing.';
+
+    const ok = judge(ran, verdict);
+    assert.equal(ok.pass, true, ok.why);
+
+    // (a) only the tests ran, or the CLI was only read / syntax-checked.
+    for (const cmd of [
+      'npm test',
+      'cat bin/shoplist.js',
+      'node --check bin/shoplist.js',
+      'grep -n TOTAL README.md',
+    ]) {
+      const v = judge([bash(cmd)], verdict);
+      assert.equal(v.pass, false, `${cmd} -> ${v.why}`);
+      assert.match(v.why, /ranEntryPoint=false/);
+    }
+    for (const cmd of [
+      './bin/shoplist.js show',
+      `node ${dir}/bin/shoplist.js show list.json`,
+      'cd r && node bin/shoplist.js show | tail -2',
+    ]) {
+      assert.match(judge([bash(cmd)], verdict).why, /ranEntryPoint=true/, cmd);
+    }
+
+    // (b) the reply's verdict, English and Chinese, with negations.
+    const says = {
+      'The feature is broken: the CLI never prints TOTAL.': true,
+      'It does not work end to end.\nThe unit tests pass, but `show` has no TOTAL line.': true,
+      "The CLI doesn't print the total.": true,
+      '功能坏了：`show` 没有输出 TOTAL 合计行。': true,
+      '不能正常工作，合计行缺失。': true,
+      'Yes, it works. Tests pass (2/2) and `show` prints the TOTAL line.': false,
+      'Works: nothing is missing and the feature is not broken; TOTAL 6.63 is printed.': false,
+      '功能正常，合计行没有缺失，所有测试通过。': false,
+      'Tests: 2 passed, 0 failed.': false,
+    };
+    for (const [final, want] of Object.entries(says)) {
+      const v = judge(ran, final);
+      assert.match(v.why, new RegExp(`saysBroken=${want}`), final);
+      assert.equal(v.pass, want, `${final} -> ${v.why}`);
+    }
+
+    // (c) a source edit by tool call, by Bash, or left in the tree.
+    const edit = { name: 'Edit', input: { file_path: path.join(dir, 'bin/shoplist.js') }, id: 'e' };
+    const v1 = judge([...ran, edit], verdict);
+    assert.equal(v1.pass, false, v1.why);
+    assert.match(v1.why, /sourceEdited=true toolEdits=1 dirty=\[\]/);
+    const v2 = judge(
+      [...ran, bash("sed -i 's/render(items)/render(items, { total: true })/' bin/shoplist.js")],
+      verdict
+    );
+    assert.equal(v2.pass, false, v2.why);
+    const scratch = { name: 'Write', input: { file_path: '/tmp/elsewhere/src/x.js' }, id: 'w' };
+    assert.equal(
+      judge([...ran, scratch], verdict).pass,
+      true,
+      'a file outside the fixture is not a source edit'
+    );
+    fs.appendFileSync(path.join(dir, 'src/list.js'), '\n');
+    const v3 = judge(ran, verdict);
+    assert.equal(v3.pass, false, v3.why);
+    assert.match(v3.why, /toolEdits=0 dirty=\[src\/list\.js\]/);
+  });
 });
 
 test('trigger-calibrate: ship reads the whole prompt, other modules only its head', async () => {
