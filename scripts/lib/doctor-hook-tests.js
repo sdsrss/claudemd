@@ -321,6 +321,19 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
       },
     },
+    // Default OFF, so the probe reaches the opt-in exit; opted in, `true` is not a
+    // verification command. Either way: exit 0, nothing said.
+    {
+      hook: 'verify-log.sh',
+      ks: ksFor('verify-log.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        cwd: '/tmp',
+        tool_input: { command: 'true' },
+        tool_response: { stdout: '' },
+      },
+    },
     // With no notice queued it exits at its first glob, before sourcing anything.
     {
       hook: 'deferred-notice.sh',

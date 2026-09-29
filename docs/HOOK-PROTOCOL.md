@@ -25,7 +25,7 @@ author to re-derive it from another hook's source:
   `memory-read-check.sh`, `pre-bash-safety-check.sh`,
   `session-extended-read.sh`, `ship-baseline-check.sh`,
   `transcript-vocab-scan.sh`, `rework-breaker.sh`, `branch-prune.sh`,
-  `cross-repo-write-check.sh`.
+  `cross-repo-write-check.sh`, `verify-log.sh`.
   Two readers of the NAME are not readers of this field: `evidence-gate.sh`
   (Stop) and `session-end-check.sh` (SessionEnd) get no `tool_use_id` in their
   envelope at all — they read the `tool_use_id` that each `tool_result` in the

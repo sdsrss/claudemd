@@ -208,6 +208,14 @@ export const HOOK_REGISTRY = [
     timeout: 10,
   },
   {
+    basename: 'verify-log.sh',
+    displayName: 'verify-log',
+    envVarSuffix: 'VERIFY_LOG',
+    hookEvent: 'PostToolUse',
+    matcher: 'Bash',
+    timeout: 3,
+  },
+  {
     basename: 'test-failure-debug.sh',
     displayName: 'test-failure-debug',
     envVarSuffix: 'TEST_FAILURE_DEBUG',

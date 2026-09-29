@@ -208,23 +208,10 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
   | .[]' 2>/dev/null)
 [[ -n "$STREAM" ]] || exit 0
 
-# A smoke entry point, per the G1a anchor. Recognised from the COMMAND rather
-# than the output: `npm run smoke` prints whatever the project's suites print,
-# and there is no output shape common to every project's smoke entry.
-T1_CMD_RE='(^|[;&|[:space:]])((npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+smoke|make[[:space:]]+smoke|\.?/?scripts?/smoke)([[:space:]]|$)'
-# T2 has two halves, and the split is the whole point. The runner's NAME lives
-# in the command; its VERDICT lives in the output. The first draft matched names
-# against the output, where they do not appear, so every silent-success verifier
-# read as no-evidence — `tsc --noEmit` and `eslint .` print nothing at all when
-# clean, and §7's L1 row is literally "lint + typecheck". The hook fired on
-# exactly the evidence the spec asks for. Found in pre-ship review.
-T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test|check)|(npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+(test|check|lint|typecheck|types|build|verify)|(npx[[:space:]]+)?(tsc|eslint|prettier|jest|vitest|mocha|ava|biome|ruff|mypy|shellcheck)|pytest|python[[:space:]]+-m[[:space:]]+(pytest|unittest)|node[[:space:]]+--test|cargo[[:space:]]+clippy|make[[:space:]]+(test|check|lint)|ctest|gradle[[:space:]]+test|mvn[[:space:]]+test|dotnet[[:space:]]+test|rspec|bundle[[:space:]]+exec[[:space:]]+rspec)([[:space:]]|$)'
-# Output verdicts, for runners the command pattern does not name: a
-# digit-plus-verdict, a label-colon, a tick/cross, a TAP `ok N`, or go test's
-# `ok <pkg> <time>`. Plain prose containing the word "failed" does not match —
-# a loose pattern here buys silence, and silence is this hook saying "evidence
-# exists".
-T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*[:：]|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
+# T1_CMD_RE / T2_CMD_RE / T2_OUT_RE: the tiers' command and output patterns,
+# shared with verify-log.sh.
+# shellcheck source=/dev/null
+source "$LIB_DIR/verify-cmd.sh" || exit 0
 
 # The last code edit splits the stream: evidence produced BEFORE it cannot be
 # evidence about it. Bash commands are indexed so a tool_result can be joined
@@ -266,6 +253,22 @@ VERDICT=$(printf '%s\n' "$STREAM" | awk -F'\t' -v t1="$T1_CMD_RE" -v t2c="$T2_CM
     else if (selfonly) print "edit-output-only"
     else print "no-command-output"
   }' 2>/dev/null)
+
+# R3, log only (tasks/specs/wtree-evidence.md): with EVIDENCE_WTREE=1 too, the
+# working-tree fingerprint at the claim goes in the log beside this hook's own
+# verdict, whatever it is, so an offline pass can ask the other question — was
+# a verification run recorded (verify-log.sh) on exactly this content? — and
+# compare the two. Nothing here changes the verdict. Bounded at 2 s: the
+# fingerprint runs `git add -A` into a temp index.
+if [[ "${EVIDENCE_WTREE:-0}" == 1 && -n "$VERDICT" ]]; then
+  EG_CWD=$(printf '%s' "$EVENT" | jq -r '.cwd // ""' 2>/dev/null)
+  if [[ -n "$EG_CWD" && -d "$EG_CWD" ]]; then
+    # shellcheck source=/dev/null
+    source "$LIB_DIR/platform.sh" 2>/dev/null || true
+    EG_WTREE=$(platform_timeout 2 bash -c 'source "$1/wtree.sh" && wtree_hash "$2"' _ "$LIB_DIR" "$EG_CWD" 2>/dev/null) || EG_WTREE=""
+    hook_record evidence-gate claim-wtree "$(jq -cn --arg v "$VERDICT" --arg w "$EG_WTREE" '{verdict:$v, wtree:(if $w == "" then null else $w end)}' 2>/dev/null || echo null)" '§iron-law-2' "$SESSION_ID" 2>/dev/null || true
+  fi
+fi
 
 case "$VERDICT" in
   verified | no-code-edit | '') exit 0 ;;
