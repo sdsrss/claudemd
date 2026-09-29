@@ -1567,3 +1567,7 @@ xfn	S8-MLBC1 RESIDUAL: a bash -c string that spans lines is not unwrapped	bash -
 deny	S8-MLBC2 control: the same string on one line	bash -c 'for d in /tmp/x.*; do rm -rf -- "$d"; done'
 xfn	S8-PROV21 RESIDUAL: & backgrounds the whole && chain, so the mktemp assignment never reaches the parent	H=$(mktemp -d) && mkdir -p "$H/x" & sleep 1; rm -rf "$H"
 pass	S8-PROV22 control: the same chain in the foreground	H=$(mktemp -d) && mkdir -p "$H/x"; sleep 1; rm -rf "$H"
+# A subpath made only of a command substitution: empty output leaves the whitelisted
+# var's own directory (0.105.0 pre-tag review L18, reviewer-constructed; 0 of 75,152
+# real commands). docs/S8-RESIDUALS.md F9.
+xfn	S8-SUBST1 RESIDUAL: a substitution-only subpath of a whitelisted var	rm -rf "$PWD/$(echo x)"
