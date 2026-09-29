@@ -1,0 +1,17 @@
+[
+  { "name": "unguarded", "cmd": "rm -rf \"$D\"" },
+  { "name": "guarded", "cmd": "rm -rf \"${D:?}/x\"" },
+  { "name": "question-guard", "cmd": "rm -rf \"${D?}/x\"" },
+  { "name": "whitelist-bare", "cmd": "rm -rf \"$HOME\" \"$HOME/cache\"" },
+  { "name": "dotdot", "cmd": "rm -rf \"${D:?}/../x\"" },
+  { "name": "first-var", "cmd": "rm -rf \"${D:?}/$f\" \"$(dirname \"$R\")/x\"" },
+  { "name": "mktemp-dominates", "cmd": "D=\"$(mktemp -d)\" && rm -rf \"$D\"" },
+  { "name": "mktemp-subshell", "cmd": "( D=$(mktemp -d) ); rm -rf \"$D\"" },
+  { "name": "mktemp-exported", "cmd": "D=$(mktemp -d); export D; rm -rf \"$D\"" },
+  { "name": "mktemp-unset", "cmd": "D=$(mktemp -d); unset D; rm -rf \"$D/x\"" },
+  { "name": "mktemp-nameref", "cmd": "D=$(mktemp -d); declare -n r=D; r=/; rm -rf \"$D\"" },
+  { "name": "find", "cmd": "find \"$HOME\" -delete; find \"$B\" -name '*.o' -exec rm {} +" },
+  { "name": "wrappers", "cmd": "sudo -u svc timeout -s KILL 5 rm${IFS}-rf${IFS}$X" },
+  { "name": "inner", "cmd": "bash -lc 'rm -rf $X' && eval rm -rf \"\\$Y\"" },
+  { "name": "quoted-data", "cmd": "echo \"a \\\"c\\\"\" 'x; rm -rf $f'" }
+]

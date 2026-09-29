@@ -1,0 +1,519 @@
+{
+	"Type": "File",
+	"Pos": {
+		"Offset": 0,
+		"Line": 1,
+		"Col": 1
+	},
+	"End": {
+		"Offset": 37,
+		"Line": 1,
+		"Col": 38
+	},
+	"Stmts": [
+		{
+			"Pos": {
+				"Offset": 0,
+				"Line": 1,
+				"Col": 1
+			},
+			"End": {
+				"Offset": 15,
+				"Line": 1,
+				"Col": 16
+			},
+			"Cmd": {
+				"Type": "CallExpr",
+				"Pos": {
+					"Offset": 0,
+					"Line": 1,
+					"Col": 1
+				},
+				"End": {
+					"Offset": 14,
+					"Line": 1,
+					"Col": 15
+				},
+				"Assigns": [
+					{
+						"Pos": {
+							"Offset": 0,
+							"Line": 1,
+							"Col": 1
+						},
+						"End": {
+							"Offset": 14,
+							"Line": 1,
+							"Col": 15
+						},
+						"Name": {
+							"Pos": {
+								"Offset": 0,
+								"Line": 1,
+								"Col": 1
+							},
+							"End": {
+								"Offset": 1,
+								"Line": 1,
+								"Col": 2
+							},
+							"ValuePos": {
+								"Offset": 0,
+								"Line": 1,
+								"Col": 1
+							},
+							"ValueEnd": {
+								"Offset": 1,
+								"Line": 1,
+								"Col": 2
+							},
+							"Value": "D"
+						},
+						"Value": {
+							"Pos": {
+								"Offset": 2,
+								"Line": 1,
+								"Col": 3
+							},
+							"End": {
+								"Offset": 14,
+								"Line": 1,
+								"Col": 15
+							},
+							"Parts": [
+								{
+									"Type": "CmdSubst",
+									"Pos": {
+										"Offset": 2,
+										"Line": 1,
+										"Col": 3
+									},
+									"End": {
+										"Offset": 14,
+										"Line": 1,
+										"Col": 15
+									},
+									"Left": {
+										"Offset": 2,
+										"Line": 1,
+										"Col": 3
+									},
+									"Right": {
+										"Offset": 13,
+										"Line": 1,
+										"Col": 14
+									},
+									"Stmts": [
+										{
+											"Pos": {
+												"Offset": 4,
+												"Line": 1,
+												"Col": 5
+											},
+											"End": {
+												"Offset": 13,
+												"Line": 1,
+												"Col": 14
+											},
+											"Cmd": {
+												"Type": "CallExpr",
+												"Pos": {
+													"Offset": 4,
+													"Line": 1,
+													"Col": 5
+												},
+												"End": {
+													"Offset": 13,
+													"Line": 1,
+													"Col": 14
+												},
+												"Args": [
+													{
+														"Pos": {
+															"Offset": 4,
+															"Line": 1,
+															"Col": 5
+														},
+														"End": {
+															"Offset": 10,
+															"Line": 1,
+															"Col": 11
+														},
+														"Parts": [
+															{
+																"Type": "Lit",
+																"Pos": {
+																	"Offset": 4,
+																	"Line": 1,
+																	"Col": 5
+																},
+																"End": {
+																	"Offset": 10,
+																	"Line": 1,
+																	"Col": 11
+																},
+																"ValuePos": {
+																	"Offset": 4,
+																	"Line": 1,
+																	"Col": 5
+																},
+																"ValueEnd": {
+																	"Offset": 10,
+																	"Line": 1,
+																	"Col": 11
+																},
+																"Value": "mktemp"
+															}
+														]
+													},
+													{
+														"Pos": {
+															"Offset": 11,
+															"Line": 1,
+															"Col": 12
+														},
+														"End": {
+															"Offset": 13,
+															"Line": 1,
+															"Col": 14
+														},
+														"Parts": [
+															{
+																"Type": "Lit",
+																"Pos": {
+																	"Offset": 11,
+																	"Line": 1,
+																	"Col": 12
+																},
+																"End": {
+																	"Offset": 13,
+																	"Line": 1,
+																	"Col": 14
+																},
+																"ValuePos": {
+																	"Offset": 11,
+																	"Line": 1,
+																	"Col": 12
+																},
+																"ValueEnd": {
+																	"Offset": 13,
+																	"Line": 1,
+																	"Col": 14
+																},
+																"Value": "-d"
+															}
+														]
+													}
+												]
+											},
+											"Position": {
+												"Offset": 4,
+												"Line": 1,
+												"Col": 5
+											}
+										}
+									]
+								}
+							]
+						}
+					}
+				]
+			},
+			"Position": {
+				"Offset": 0,
+				"Line": 1,
+				"Col": 1
+			},
+			"Semicolon": {
+				"Offset": 14,
+				"Line": 1,
+				"Col": 15
+			}
+		},
+		{
+			"Pos": {
+				"Offset": 16,
+				"Line": 1,
+				"Col": 17
+			},
+			"End": {
+				"Offset": 25,
+				"Line": 1,
+				"Col": 26
+			},
+			"Cmd": {
+				"Type": "DeclClause",
+				"Pos": {
+					"Offset": 16,
+					"Line": 1,
+					"Col": 17
+				},
+				"End": {
+					"Offset": 24,
+					"Line": 1,
+					"Col": 25
+				},
+				"Variant": {
+					"Pos": {
+						"Offset": 16,
+						"Line": 1,
+						"Col": 17
+					},
+					"End": {
+						"Offset": 22,
+						"Line": 1,
+						"Col": 23
+					},
+					"ValuePos": {
+						"Offset": 16,
+						"Line": 1,
+						"Col": 17
+					},
+					"ValueEnd": {
+						"Offset": 22,
+						"Line": 1,
+						"Col": 23
+					},
+					"Value": "export"
+				},
+				"Args": [
+					{
+						"Pos": {
+							"Offset": 23,
+							"Line": 1,
+							"Col": 24
+						},
+						"End": {
+							"Offset": 24,
+							"Line": 1,
+							"Col": 25
+						},
+						"Naked": true,
+						"Name": {
+							"Pos": {
+								"Offset": 23,
+								"Line": 1,
+								"Col": 24
+							},
+							"End": {
+								"Offset": 24,
+								"Line": 1,
+								"Col": 25
+							},
+							"ValuePos": {
+								"Offset": 23,
+								"Line": 1,
+								"Col": 24
+							},
+							"ValueEnd": {
+								"Offset": 24,
+								"Line": 1,
+								"Col": 25
+							},
+							"Value": "D"
+						}
+					}
+				]
+			},
+			"Position": {
+				"Offset": 16,
+				"Line": 1,
+				"Col": 17
+			},
+			"Semicolon": {
+				"Offset": 24,
+				"Line": 1,
+				"Col": 25
+			}
+		},
+		{
+			"Pos": {
+				"Offset": 26,
+				"Line": 1,
+				"Col": 27
+			},
+			"End": {
+				"Offset": 37,
+				"Line": 1,
+				"Col": 38
+			},
+			"Cmd": {
+				"Type": "CallExpr",
+				"Pos": {
+					"Offset": 26,
+					"Line": 1,
+					"Col": 27
+				},
+				"End": {
+					"Offset": 37,
+					"Line": 1,
+					"Col": 38
+				},
+				"Args": [
+					{
+						"Pos": {
+							"Offset": 26,
+							"Line": 1,
+							"Col": 27
+						},
+						"End": {
+							"Offset": 28,
+							"Line": 1,
+							"Col": 29
+						},
+						"Parts": [
+							{
+								"Type": "Lit",
+								"Pos": {
+									"Offset": 26,
+									"Line": 1,
+									"Col": 27
+								},
+								"End": {
+									"Offset": 28,
+									"Line": 1,
+									"Col": 29
+								},
+								"ValuePos": {
+									"Offset": 26,
+									"Line": 1,
+									"Col": 27
+								},
+								"ValueEnd": {
+									"Offset": 28,
+									"Line": 1,
+									"Col": 29
+								},
+								"Value": "rm"
+							}
+						]
+					},
+					{
+						"Pos": {
+							"Offset": 29,
+							"Line": 1,
+							"Col": 30
+						},
+						"End": {
+							"Offset": 32,
+							"Line": 1,
+							"Col": 33
+						},
+						"Parts": [
+							{
+								"Type": "Lit",
+								"Pos": {
+									"Offset": 29,
+									"Line": 1,
+									"Col": 30
+								},
+								"End": {
+									"Offset": 32,
+									"Line": 1,
+									"Col": 33
+								},
+								"ValuePos": {
+									"Offset": 29,
+									"Line": 1,
+									"Col": 30
+								},
+								"ValueEnd": {
+									"Offset": 32,
+									"Line": 1,
+									"Col": 33
+								},
+								"Value": "-rf"
+							}
+						]
+					},
+					{
+						"Pos": {
+							"Offset": 33,
+							"Line": 1,
+							"Col": 34
+						},
+						"End": {
+							"Offset": 37,
+							"Line": 1,
+							"Col": 38
+						},
+						"Parts": [
+							{
+								"Type": "DblQuoted",
+								"Pos": {
+									"Offset": 33,
+									"Line": 1,
+									"Col": 34
+								},
+								"End": {
+									"Offset": 37,
+									"Line": 1,
+									"Col": 38
+								},
+								"Left": {
+									"Offset": 33,
+									"Line": 1,
+									"Col": 34
+								},
+								"Right": {
+									"Offset": 36,
+									"Line": 1,
+									"Col": 37
+								},
+								"Parts": [
+									{
+										"Type": "ParamExp",
+										"Pos": {
+											"Offset": 34,
+											"Line": 1,
+											"Col": 35
+										},
+										"End": {
+											"Offset": 36,
+											"Line": 1,
+											"Col": 37
+										},
+										"Dollar": {
+											"Offset": 34,
+											"Line": 1,
+											"Col": 35
+										},
+										"Short": true,
+										"Param": {
+											"Pos": {
+												"Offset": 35,
+												"Line": 1,
+												"Col": 36
+											},
+											"End": {
+												"Offset": 36,
+												"Line": 1,
+												"Col": 37
+											},
+											"ValuePos": {
+												"Offset": 35,
+												"Line": 1,
+												"Col": 36
+											},
+											"ValueEnd": {
+												"Offset": 36,
+												"Line": 1,
+												"Col": 37
+											},
+											"Value": "D"
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			},
+			"Position": {
+				"Offset": 26,
+				"Line": 1,
+				"Col": 27
+			}
+		}
+	]
+}
