@@ -68,7 +68,7 @@ test('spec-modules: each module <= 9 KB and all together <= 50 KB', () => {
 // defers a second one that would cross BUDGET (tasks/specs/spec-modules.md r7).
 // That is only safe while every module fits alone: Claude Code replaces an
 // additionalContext string over 10,000 characters with a path and a preview.
-// The entry is rebuilt the way the hook builds it; tests/hooks/
+// The entry is rebuilt the way hooks/lib/spec-module.sh builds it; tests/hooks/
 // spec-module-inject.test.sh case 16 measures the hook's real output.
 test('spec-modules: every module fits the injection budget alone, and the budget sits under the cap', () => {
   const hook = fs.readFileSync(path.join(REPO, 'hooks', 'spec-module-inject.sh'), 'utf8');

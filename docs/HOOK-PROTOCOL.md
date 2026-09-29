@@ -90,7 +90,10 @@ A hook can also return text for the model to read instead of a decision. Same
 - `hookEventName` must match the event the hook is registered for. This
   envelope is how a hook speaks to the model; `stderr` is how it speaks to the
   human. The events this repo has CONFIRMED deliver it are `PreToolUse`,
-  `UserPromptSubmit`, `SessionStart` and `PostToolUse`. That list used to read
+  `UserPromptSubmit`, `SessionStart`, `PostToolUse` and `PostToolUseFailure`
+  (2026-09-29, Claude Code 2.1.284: a Bash call exiting non-zero fired
+  `PostToolUseFailure` and not `PostToolUse`, and the model quoted back a token
+  from its `additionalContext`). That list used to read
   as a closed set of the first three, which was this file asserting a limit it
   had never tested: on 2026-09-21 a probe registered a PostToolUse hook emitting
   a unique token and the model quoted the token back, on Claude Code 2.1.278
@@ -140,6 +143,10 @@ Emitters, derived from source and gated by
 - `spec-module-gate.sh` — PreToolUse(Bash), only with `SPEC_MODULE_GATE=advisory`;
   names the ship module to read before a release command.
 - `session-start-check.sh` — SessionStart; the merged banner described above.
+- `test-failure-debug.sh` — PostToolUseFailure (`Bash`), only with
+  `DEBUG_ON_TEST_FAILURE=1`; the `debug` spec module, wrapped the way
+  `spec-module-inject.sh` wraps one (`hooks/lib/spec-module.sh`), when a test
+  runner exits non-zero and the module is not yet in this session.
 - `rework-breaker.sh` — PostToolUse (`Edit|Write|Bash`); one line naming a LOWER
   BOUND on how many times this session has edited the file — the multiple of
   the G2 threshold this process won, not the tally it read, because concurrent

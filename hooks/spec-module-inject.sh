@@ -32,6 +32,7 @@ set -uo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 source "$LIB_DIR/hook-common.sh" || exit 0
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
+source "$LIB_DIR/spec-module.sh" || exit 0
 hook_kill_switch SPEC_MODULE_INJECT || exit 0
 hook_require_jq || { hook_record_failopen spec-module-inject jq-missing; exit 0; }
 
@@ -90,8 +91,8 @@ names=""
 deferred=""
 for f in "${picked[@]}"; do
   name=$(basename "$f" .md)
-  body=$(awk 'NR==1 && $0=="---"{fm=1; next} fm && $0=="---"{fm=0; next} fm {next} /^<!-- generated from .* -->$/ {next} {print}' "$f")
-  entry="[claudemd] system-injected — spec module \`$name\` (~/.claude/spec-modules/$name.md), matched by the user's prompt. Its rules apply to this task as if read from the file."$'\n\n'"<spec-module name=\"$name\">"$'\n'"$body"$'\n'"</spec-module>"$'\n\n'
+  specmod_entry "$name" "$(specmod_body "$f")" "matched by the user's prompt"
+  entry="$SPECMOD_ENTRY"
   # The first module always goes in (none is near the budget alone, and
   # tests/scripts/spec-modules.test.js keeps it that way); a later one only if
   # the total stays inside it.

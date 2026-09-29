@@ -321,6 +321,19 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
       },
     },
+    // Default OFF, so the probe reaches the opt-in exit; opted in, `true` is not
+    // a test runner. Either way the liveness question is exit 0, nothing said.
+    {
+      hook: 'test-failure-debug.sh',
+      ks: ksFor('test-failure-debug.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        tool_name: 'Bash',
+        tool_input: { command: 'true' },
+        error: 'Exit code 1',
+        is_interrupt: false,
+      },
+    },
     {
       hook: 'branch-prune.sh',
       ks: ksFor('branch-prune.sh'),

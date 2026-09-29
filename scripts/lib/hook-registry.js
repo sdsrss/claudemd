@@ -200,6 +200,14 @@ export const HOOK_REGISTRY = [
     timeout: 10,
   },
   {
+    basename: 'test-failure-debug.sh',
+    displayName: 'test-failure-debug',
+    envVarSuffix: 'TEST_FAILURE_DEBUG',
+    hookEvent: 'PostToolUseFailure',
+    matcher: 'Bash',
+    timeout: 3,
+  },
+  {
     basename: 'transcript-structure-scan.sh',
     displayName: 'transcript-structure-scan',
     envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN',
