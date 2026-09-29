@@ -641,6 +641,14 @@ if grep -qF 'MISSING' <<<"$CTX29" && ! grep -qF 'differs from the shipped spec' 
 else
   echo "FAIL: 29 absent file mis-classified (out: $OUT29)"; FAIL=$((FAIL+1))
 fi
+# Case 29b (0.107.0): /claudemd-install is user-invoked only, so the fix goes to
+# the human (systemMessage) and the model is told to ask for it, not to run it.
+SYS29=$(jq -r '.systemMessage // ""' <<<"$OUT29" 2>/dev/null)
+if grep -qF '/claudemd-install' <<<"$SYS29" && grep -qF 'ask the user to run /claudemd-install' <<<"$CTX29"; then
+  echo "PASS: 29b missing-spec fix reaches the user; the model is told to ask for it"
+else
+  echo "FAIL: 29b missing-spec fix not in systemMessage or model not told to ask (out: $OUT29)"; FAIL=$((FAIL+1))
+fi
 cp "$PLUGIN_ROOT/spec/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
 
 # --- v0.75.0 sync fresh-install bootstrap ---
@@ -1015,6 +1023,13 @@ if grep -qF 'differs from the shipped spec' <<<"$CTX39C" && grep -qF 'OPERATOR.m
   echo "PASS: 39c an edited spec still reports as drift, not as missing"
 else
   echo "FAIL: 39c drift banner lost to the missing-spec branch (ctx=$CTX39C)"; FAIL=$((FAIL+1))
+fi
+# Case 39f (0.107.0): same channel rule for the drift fix, /claudemd-update.
+SYS39C=$(jq -r '.systemMessage // ""' <<<"$OUT39C" 2>/dev/null)
+if grep -qF '/claudemd-update' <<<"$SYS39C" && grep -qF 'ask the user to run /claudemd-update' <<<"$CTX39C"; then
+  echo "PASS: 39f drift fix reaches the user; the model is told to ask for it"
+else
+  echo "FAIL: 39f drift fix not in systemMessage or model not told to ask (out: $OUT39C)"; FAIL=$((FAIL+1))
 fi
 cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
 

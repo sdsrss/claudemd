@@ -9,7 +9,7 @@
 
 ## 0. 结论
 
-1. **核心已接近下限。** 不改含义的删减最多约 7.6%（模型可见 24,740 → 22,869 B）。核心里高频规则都在被使用：等级声明出现在 67% 的会话，四段报告出现在 87.5%，`[AUTH REQUIRED]` 出现在 21%。几乎不触发的条款合计不到 2 KB。
+1. **核心已接近下限。** 草稿估计不改含义的删减约 7.6%（24,740 → 22,869 B）；评审发现其中 8 处"重复"其实是别处没有的规则或指针，恢复后实施版为 6.0%（→ 23,259 B）。核心里高频规则都在被使用：等级声明出现在 67% 的会话，四段报告出现在 87.5%，`[AUTH REQUIRED]` 出现在 21%。几乎不触发的条款合计不到 2 KB。
 2. **冲突比长度更要紧。** 研究显示，指令叠加后遵循率的下降主要来自两两冲突，不是条数本身。本次找到一处核心与 harness 的直接冲突（"上下文压力"算作可中途停下的理由），予以删除。
 3. **不做符号压缩。** 符号只占核心 4.1% 字节，替换最多省几百 token。没有研究表明符号化的规则更容易被遵守；官方文档反而说提示词风格会渗进输出。
 4. **核心之外有更大的一项，而且本插件能直接改：** claudemd 自己 16 个命令的描述每个会话占 3,955 B，是核心精简量的两倍。模型在 248 个会话里只主动调用过它们 8 次。
@@ -91,7 +91,7 @@
 | 来源 | 字节 |
 |---|---|
 | instructions（核心 24,740 B 文件、本项目 MEMORY.md 15,125 B、项目 CLAUDE.md、rules） | 42,847（JSON） |
-| 技能清单 | 24,595，其中 claudemd 3,955（15.8%） |
+| 技能清单 | 24,985，其中 claudemd 3,955（15.8%） |
 | SessionStart hook 注入（superpowers 引导约 4 KB + mem 仪表盘） | 7,002 |
 
 核心约占可配置常驻上下文的三成。缓存命中价只有标准输入价的 5%，所以精简的理由是注意力和遵循率，不是费用。
@@ -131,7 +131,7 @@
 
 - 做什么：`edits.py` 的 E01–E19。重复的信号格式、子代理指针、Task 定义并入 §0；删 harness 已说过的内容；Tool escalation 压成一行；Auto-memory 三级触发压成一句；删维护者从句（保留有动机作用的 "under bypassPermissions nothing else stands there"）。
 - 依据：官方"逐行问会不会犯错"、单一事实来源、上下文干扰项研究。
-- 效果：−1,188 B。
+- 效果：−1,188 B（草稿）。实施版撤回或部分撤回其中 7 处：E01、E02、E04、E09、E10、E12、E16。原因见 §9。
 - 验证：A/B 行为判据；`hard-rules-drift`。
 
 ### R2 删除与 harness 冲突的"上下文压力"停止条件（B03，含义改变）
@@ -171,7 +171,7 @@
   - 有副作用的命令（install / uninstall / refresh / update / toggle / statusline / clean-residue）按官方建议本就该由用户触发。
 - 效果：技能清单约 −3.5 KB / 会话（3,955 B → design-adopt 一条）。约为 R1–R4 的两倍。
 - 用户可见变化：模型不再自行调用这些命令，用户照常可以键入 `/claudemd-…`。
-- 回退路径：钉住 0.106.0（插件技能不受 `skillOverrides` 影响，只能换版本）。
+- 回退路径：没有逐命令的开关（插件技能不受 `skillOverrides` 影响）。要回退整个版本，按 `docs/ROLLBACK.md`「Local machine needs the previous version back」：先让 Claude Code 加载 0.106.0 插件，再在 `v0.106.0` 的检出里运行 `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js`，然后重启。只换插件版本，v7.2.0 规范仍留在本机，SessionStart 还会提示去 `/claudemd-refresh`。
 - 发版要求：按"已发布产物默认行为改变"清单，写 CHANGELOG 迁移说明和 release note 提示。
 - 验证：发版前用 `claude -p --plugin-dir` 在临时目录跑一次，读转录里的 `skill_listing` 附件，确认只剩 design-adopt。
 
@@ -233,7 +233,7 @@
 
 | 指标 | 基线 | 预期 | 脚本 |
 |---|---|---|---|
-| 每会话常驻字节：核心可见字节 + claudemd 技能描述 | 24,740 + 3,955 | ≈ 22,869 + ~450 | 读转录 `instructions` / `skill_listing` 附件 |
+| 每会话常驻字节：核心可见字节 + claudemd 技能描述 | 24,740 + 3,955 | 23,259 + 364（实施版） | 读转录 `instructions` / `skill_listing` 附件 |
 | 工具回合后"继续 / next"类催促率（R2 守护） | Opus 5.5 1/153（v7.1 记录口径） | 不高于基线 | v7.1 口径的转录扫描 |
 | paused.md 写入会话数 | 4/224 | 下降，而且没有"停下交接"的回合 | `usage-scripts/q2b_extra.py` |
 | 等级声明率、四段报告率、`[AUTH REQUIRED]` 率 | 67% / 87.5% / 21% | 各自不低于基线 −5 个百分点 | `q2_engagement.py` |
@@ -248,16 +248,26 @@
 
 - **R2**：若长会话出现"压缩后丢失计划"的失败，恢复这一条即可（单行）。
 - **R5**：若用户反馈"模型不会帮我装、刷新插件"，对具体命令去掉该字段即可（逐个命令可逆）。
-- **整体**：回退到 0.106.0（`claude plugin install claudemd@claudemd` 指定版本），或 `git revert` 本次提交后重新发版。
+- **整体**：按 `docs/ROLLBACK.md`「Local machine needs the previous version back」回退到 0.106.0（顺序：先换插件版本，再降级安装规范，最后重启），或 `git revert` 本次提交后重新发版。
 
 ---
 
 ## 9. 实施记录（2026-09-29，规范 v7.2.0 / 插件 0.107.0）
 
-- **核心**：模型可见 24,740 → 22,968 B（−1,772，−7.2%），盘上 23,170 B；可见行数 226 → 217。比草稿多 99 B，原因：
+- **核心**：模型可见 24,740 → 23,259 B（−1,481，−6.0%），盘上 23,461 B；可见行数 226 → 217。比草稿多 390 B，原因：
   - 复核中撤回三处去重：§0 两处 `(subagent → §5)` 是 v6.29.0 的评审修复（告诉子代理不要发信号后干等），不是重复；§1 的 `(§8.V1 binds verification)` 是已跟踪 roadmap 引用 §8.V1 的唯一解析点。
   - §11 的 Correction 行按 `session.md` 原文写成 "≥2 auto-decisions in one task"，没有另起措辞。
-- **extended**：48,629 → 49,084 B（+455，98.2%）。移入模块的文字和 Recent changes 条目都已缩短。
+- **extended**：48,629 → 49,046 B（+417，98.1%）。移入模块的文字和 Recent changes 条目都已缩短。
 - **R5**：15 个命令加 `disable-model-invocation: true`。真实会话技能清单实测每会话少 3,591 B；无 hook 探针显示技能数 29 → 14。
 - **测试**：`spec-structure` 更新 14 个段落哈希、2 个标题清单、5 条整行钉，新增 §3-EXT 段落登记和它的整行钉。新钉做了变异检验：在通道列表里加一项，钉和段落哈希都会失败。
 - **顺带修正**：`OPERATOR.md` 的 paused 文件表改指 §11-EXT（原文说 core §11 的 context pressure 会产生 paused 文件，本次已删除该条）。
+- **发版前评审（fresh-subagent，1 High / 3 Medium / 13 Low）后的修复**：
+  - H1：§5.1 `aggressive` 的 "§8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind" 恢复。Never-downgrade 不含五类 §5 Hard，`auth.md` 引用这句话；新增整行钉。
+  - M1：Specificity 的 "Ambiguous → strict" 恢复。§3 的 stricter reading 只管安全/AUTH；新增整行钉。
+  - M2：回退路径改为 `docs/ROLLBACK.md` 的实际步骤。
+  - M3：`session-start-check.sh` 两条只给模型看的提示（spec 缺失、spec 漂移）加上 `systemMessage`，并让模型"请用户运行"命令；先写失败用例（29b、39f）再改。
+  - Low：
+    - 恢复 §3 "Read vs memory conflict"、§2.1 "unfamiliar module → module overview"、§0.2 ASK-once；
+    - §3 / §0.2 指针和 `modes` 的 `loadsOn` 补全；Correction pressure 标 SHOULD；
+    - OPERATOR 的 `tasks/<slug>` 段落数改为 13；新增 `command-invocation` 测试守住 15/1 划分（两个方向的变异都会失败）；
+    - 本文与设计记录中过期的数字已更正。

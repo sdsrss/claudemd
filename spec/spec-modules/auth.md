@@ -44,7 +44,7 @@ Strict prefix match (NOT glob):
 - an entry covering a NEVER-covers item is ignored, not honoured — the project file extends the list, it cannot raise its ceiling
 - effective only for the project declaring it
 
-§3 names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
+§3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
 ## Appendix B — Canonical examples
 

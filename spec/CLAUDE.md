@@ -22,7 +22,7 @@ Everything else = natural prose, no bracketed signals. Completion claims / level
 
 ### §0.2 Mid-task feedback
 
-Wording/style → apply inline. "更严 / make rigorous" → re-validate the current scope stricter per §7, add no features. New scope → re-plan; announce a level shift in one prose line. Merge thresholds and continuation / cancel / switch → `modes.md`.
+Wording/style → apply inline. "更严 / make rigorous" → re-validate the current scope stricter per §7, add no features; unclear whether it is that or new scope → ASK once. New scope → re-plan; announce a level shift in one prose line. Merge thresholds and continuation / cancel / switch → `modes.md`.
 
 ## §1 IDENTITY
 
@@ -74,7 +74,7 @@ SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool
 
 Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ sizeable disjoint tasks → `Agent`; L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
 
-**Tool escalation** (cheap → expensive; not memory + code-graph in parallel on one question): exact → Grep; concept → semantic search; export-surface edit → impact analysis first (feeds §5 AUTH); "did we / why" → memory first.
+**Tool escalation** (cheap → expensive; not memory + code-graph in parallel on one question): exact → Grep; concept → semantic search; export-surface edit → impact analysis first (feeds §5 AUTH); unfamiliar module → module overview before 3+ Reads; "did we / why" → memory first.
 
 **Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Ship-pipeline skills NOT soft (`ship.md`). A skill's own "MUST invoke" wording does not override §12 (`skills.md`, `ship.md`, `review.md`) at L0–L2 (§3).
 
@@ -92,7 +92,7 @@ Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` rout
 - `orchestrate.md` — subagents, parallel work (§11-O)
 - `memory.md` — memory writes and recall (§11-EXT-MEM)
 - `auth.md` — deletes, AUTONOMY_LEVEL, public API, user relaxation (§3-EXT, §5-EXT, §5.1-EXT)
-- `modes.md` — HACK / EMERGENCY / AUTONOMOUS, cancel or switch (§2-EXT, §0.2-EXT)
+- `modes.md` — HACK / EMERGENCY / AUTONOMOUS, mid-task merge thresholds, cancel or switch (§2-EXT, §0.2-EXT)
 - `session.md` — long sessions (§11-EXT, §7-EXT-TMP, §1.5-EXT)
 
 **Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Read `ship.md` and the project's ship-runbook memory first.
@@ -102,8 +102,8 @@ Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` rout
 Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/skip-lists stay effective) — two readings → pick stricter/safer. "Spec does not forbid" ≠ permission.
 Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > harness + MCP + skill instructions > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
-**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (`auth.md`), and §8 never.
-**Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale).
+**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels, and §8 never. The channels and the unspoken-clause rule → `auth.md`.
+**Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
 **Canonical artifact > derived prose**: code / diff / CI output > commit msg / PR / issue / Slack / wiki / docstring. Canonical = *behavior*; prose = *intent*. Behavior conflict → trust canonical, flag prose stale. Intent conflict → ASK or verify with author.
 
@@ -121,7 +121,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 ### §5.1 AUTONOMY_LEVEL
 
-Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; Never-downgrade still binds): skill soft-trigger announcement optional; a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.
+Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): skill soft-trigger announcement optional; a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.
 
 **Never-downgrade** (override irrelevant): §8 SAFETY, Iron Law #2, §8 Verify-before-claim (V1–V4), Session-exit, User-global-state audit, `.env`/secrets, migration, auth/payment/crypto, `~/.claude/settings.json` / user-global hooks / MCP config, `L3 enter`.
 
@@ -200,7 +200,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
 - "Did this work?" → yes/no first, evidence second.
 - **No evaluative framing** in Not done/Failed/Uncertain ("minor/optional/cosmetic" is the user's call).
-- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.
+- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.
 - **User-facing text**: state what a rule requires in plain words; cite its § number only when the user asks which rule.
 - **Banned-vocab quick-check** (top-5 EN): `should work / robust / significantly / N× faster (no baseline) / comprehensive`. 中文 quick-check: `显著提升 / 应该可以 / 基本可用`. Full enumeration → plugin `banned-vocab.patterns` (mechanical gate); `verify.md` keeps OK-shapes + fix recipes. Fix = strip + cite case with number.
 
@@ -209,7 +209,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 Binds every task; modules are not reliably in context post-compaction. Default strength: SHOULD at L0/L1, MUST at L2+; a bullet tagged HARD binds at every level.
 
 - **Post-compaction** (L2+: MUST): resume / `<session-handoff>` / `/clear` / suspected compaction → Re-Read the plan (and any module this task used) before proceeding; core is harness-injected every turn, never re-Read it. Silent unless gap surfaces. User references artifact absent from context → assume compaction.
-- **Correction pressure**: user rejects ≥2 auto-decisions in one task → ASK-first for the remaining sub-decisions (re-read and context-pressure heuristics: `session.md`).
+- **Correction pressure** (SHOULD): user rejects ≥2 auto-decisions in one task → ASK-first for the remaining sub-decisions (re-read and context-pressure heuristics: `session.md`).
 - **Auto-memory** (full tree: `memory.md`): MUST save when a task writes ≥2 files under `~/.claude/` (unless the artifact describes itself), and at L2+ after a preventable-error pattern or a non-default decision / non-obvious sequencing; otherwise save only an insight that would have changed a decision this session and is likely to recur.
 - **MEMORY.md read-the-file** (HARD at ship/release/destructive-path/L3): task keywords match any MEMORY.md index entry → MUST Read the file before proceeding. Index is a router, not a substitute. Ambiguous match → Read.
   - Optional tag syntax `- [Title](file.md) [tags] — desc`; match task keywords against tags before Read; untagged → decide per-line from title/desc.

@@ -565,6 +565,20 @@ test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields 
 // out of the name entirely. Each pin's `what` records when its wording was set.
 const PINS = [
   {
+    what: 'core §5.1 — the aggressive skip-list leaves §8, Iron Law #2 and every §5 Hard-AUTH category binding (v7.2.0 repair)',
+    file: CORE,
+    anchor: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL:',
+    why: 'Never-downgrade omits five §5 Hard categories (delete, CI/deploy config, prod deps, cross-module refactor, public-API Δ-contract), so it is not a restatement of this clause; auth.md §5.1-EXT keeps two of them HARD under aggressive by citing this sentence. Removed as a duplicate in the 0.107.0 draft and caught at pre-tag review; the third time this contradiction was repaired.',
+    line: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): skill soft-trigger announcement optional; a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.',
+  },
+  {
+    what: 'core §10 Specificity — ambiguous claims take the strict reading (v7.2.0 repair)',
+    file: CORE,
+    anchor: '- **Specificity (HARD)**',
+    why: 'The tie-break exists nowhere else: core §3 stricter-reading covers only safety/AUTH ambiguity. Dropped as a why-clause in the 0.107.0 draft and caught at pre-tag review.',
+    line: '- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.',
+  },
+  {
     what: 'core §1 Language contract — whose language, what never switches it, docs/ prose (v6.33.0)',
     file: CORE,
     anchor: '**Language contract**:',
@@ -619,7 +633,7 @@ const PINS = [
     what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v7.2.0 wording; channels in §3-EXT)',
     file: CORE,
     anchor: '**User relaxation**: an explicit user instruction',
-    line: '**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels (`auth.md`), and §8 never.',
+    line: '**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels, and §8 never. The channels and the unspoken-clause rule → `auth.md`.',
   },
   {
     what: '§EXT §3-EXT — the only channels through which HARD rules and §5 AUTH gates move (v7.2.0)',
@@ -824,20 +838,20 @@ const PINS = [
 // `## ` heading.
 const PINNED_BLOCKS = [
   { file: CORE, heading: '', sha256: 'db10c651c2294dc8' },
-  { file: CORE, heading: '## §0 SPINE', sha256: 'ab3debb5f1682cc6' },
+  { file: CORE, heading: '## §0 SPINE', sha256: 'd0ae8d59d7a30113' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'cc7e873976d67dad' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'f1cddbf8d959693e' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: 'dc1b268f3c451d5c' },
-  { file: CORE, heading: '## §3 TRUST', sha256: 'c80603dcaaeaf790' },
-  { file: CORE, heading: '## §5 AUTH', sha256: 'ac0a775abd3a1b60' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '4fee8e40d6b9d0fc' },
+  { file: CORE, heading: '## §3 TRUST', sha256: '98d6d9102d90cad0' },
+  { file: CORE, heading: '## §5 AUTH', sha256: 'a0f7a798f21b93fe' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c70daab3a3686a6f' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
-  { file: CORE, heading: '## §10 REPORT', sha256: '2536fc5bd40f03db' },
-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: '46df136151cd4a99' },
+  { file: CORE, heading: '## §10 REPORT', sha256: 'fe08b1493977099d' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'ce09e67e46637511' },
   { file: EXT, heading: '', sha256: 'd932e8e251e88285' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
-  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'bd136a33fd3dc7c9' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7252abe194ead69d' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '31a3b32ab333c2b7' },
   { file: EXT, heading: '## §4 FLOW', sha256: '9d0f1e1165672d60' },
@@ -851,7 +865,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: 'ada57bd44ffd4707' },
+  { file: EXT, heading: '## Recent changes', sha256: '691bcbb5c0f1de29' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,
@@ -861,7 +875,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
   { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '184761b726c5269a' },
   { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '9889fd63301a3c82' },
-  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: '89b63850cac22b03' },
+  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: '6d0a3744c7cfe5de' },
   {
     file: EXT,
     heading: '## §11-EXT-MAC macOS shell portability (cross-ref)',

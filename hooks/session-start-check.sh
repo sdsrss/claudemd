@@ -441,9 +441,10 @@ spec_drift_check() {
 
     jq -cn --arg files "$missing" --arg drifted "$drifted" --argjson core "$core_gone" '{
       suppressOutput: true,
+      systemMessage: ("[claudemd] installed spec file(s) missing from ~/.claude/: " + $files + ". Run /claudemd-install to recopy the shipped spec" + (if $core == 1 then " (the core spec is not loaded this session)." else "." end)),
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand or by you, not injected every session — the core spec is still loaded." end) + " Fix: /claudemd-install (recopies the shipped spec). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
+        additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand or by you, not injected every session — the core spec is still loaded." end) + " Fix: ask the user to run /claudemd-install (recopies the shipped spec; it is user-invoked, so you cannot run it). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
       }
     }' 2>/dev/null || true
     return 0
@@ -457,9 +458,10 @@ spec_drift_check() {
 
   jq -cn --arg files "$drifted" '{
     suppressOutput: true,
+    systemMessage: ("[claudemd] installed spec differs from the shipped spec: " + $files + ". Run /claudemd-update to restore it, or set SPEC_DRIFT_IGNORE to keep a deliberate local edit."),
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: /claudemd-update (spec edits belong in the plugin, not in ~/.claude/). If the local edit is intentional, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
+      additionalContext: ("[claudemd] installed spec differs from the shipped spec at the same version: " + $files + ". Someone edited ~/.claude/ directly, or a copy was interrupted. Fix: ask the user to run /claudemd-update (spec edits belong in the plugin, not in ~/.claude/; it is user-invoked, so you cannot run it). If the local edit is intentional, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
     }
   }' 2>/dev/null || true
 }

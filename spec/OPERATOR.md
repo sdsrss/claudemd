@@ -65,7 +65,7 @@ Operator bookkeeping formerly appended to each extended release entry; agent run
 
 ## §13.4 `tasks/` filename conventions (reference table)
 
-Spec sections reference `tasks/<slug>` files across 11 sections: core §11 (Session-exit + an unresumed subagent yield → `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §0.2-EXT, §2-EXT, §2.S, §6 (dead-end record → `lessons.md`), §7-EXT (cold-start justification → `lessons.md`, repro scripts), §10-R, §11-O, §12, §13.2. Collected here so operators and Agent can find the right home without cross-section search.
+Spec sections reference `tasks/<slug>` files across 13 sections: core §2 (`tasks/specs/<slug>.md`), core §8.V4 (fixtures a `<slug>-paused.md` references), core §11 (Session-exit + an unresumed subagent yield → `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §0.2-EXT, §2-EXT, §2.S, §6 (dead-end record → `lessons.md`), §7-EXT (cold-start justification → `lessons.md`, repro scripts), §10-R, §11-O, §12, §13.2. Collected here so operators and Agent can find the right home without cross-section search.
 
 The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09-01 — core §11 being the one an agent hits most often, since it is the only paused-file rule that binds without loading extended.
 
@@ -76,7 +76,7 @@ The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09
 | `tasks/lessons.md` | §10-R Lessons file | Agent | Project-wide pattern lessons | cap 30, newest-first, drop-oldest |
 | `tasks/rule-candidates-<YYYY-MM>.md` | §13.2 HARD-rule budget | Agent | Candidate HARD rules pending §13.2 promotion gates | merged + pruned on §13.2 batch-review cadence |
 | `tasks/sampling-audit-<YYYY-MM-DD>.md` | `/claudemd-sampling-audit` | `scripts/sampling-audit.js` | Retrospective scan output (8 detectors: §10-V / §iron-law-2 / §10-four-section-order / §10-honesty / §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth) | manual prune |
-| `tasks/<slug>-paused.md` | §11 Session-exit / unresumed yield; §11-EXT Context pressure | Agent | Resume context + exact verify command for un-VALIDATE'd work | until resumed and deleted |
+| `tasks/<slug>-paused.md` | §11 Session-exit / unresumed yield; §11-EXT Context pressure; §0.2-EXT Cancel / Switch | Agent | Resume context + exact verify command for un-VALIDATE'd work | until resumed and deleted |
 | `tasks/autonomous-run-<date>.md` | §2-EXT AUTONOMOUS exit ritual | Agent | Ran / blocked / failed / pending-auth summary | manual prune |
 | `tasks/pending-auth-<date>.md` | §2-EXT AUTONOMOUS hard ops | Agent | Op + scope + risk + recommendation, deferred for interactive AUTH | until next interactive session resolves |
 | `tasks/auto-approved.md` | §2-EXT AUTONOMOUS whitelist | Operator | One per line, e.g. `op:deps-bump-patch` | hand-curated |

@@ -1,6 +1,6 @@
 ---
 module: modes
-loads-on: for HACK, EMERGENCY or AUTONOMOUS work, and when a task is cancelled or switched
+loads-on: for HACK, EMERGENCY or AUTONOMOUS work, mid-task merge thresholds, and when a task is cancelled or switched
 triggers: 
 trigger-window: head
 ---
@@ -75,7 +75,7 @@ Serves maintenance scripts (formatters, patch-bumps, doc sync) — NOT feature d
 
 Core §0.2 keeps the one-line defaults; the rest:
 
-- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge; ambiguous vs scope-expansion → ASK once.
+- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge.
 - **Scope-expansion**: cross-level → serial; same-level → inline.
 - **Continuation** (e.g. "继续/next"): same SPINE.
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.

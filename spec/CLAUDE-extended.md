@@ -38,7 +38,7 @@ Strict prefix match (NOT glob):
 - an entry covering a NEVER-covers item is ignored, not honoured — the project file extends the list, it cannot raise its ceiling
 - effective only for the project declaring it
 
-§3 names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
+§3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
 <!-- module: modes -->
 ## §2-EXT Override modes
@@ -480,9 +480,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.2.0 (minor, 2026-09-29)** — core trim, one harness conflict removed; plan and evidence in `docs/spec-optimization-plan-2026-09-29.md`. Core states each repeated rule once, drops what the Claude Code system prompt already says and maintainer asides, and moves its header into a block HTML comment, which Claude Code strips before injection (model-visible core 22968 bytes). §11 no longer lists context pressure as a yield. §0.2 merge thresholds → `modes.md`; §3 User relaxation channels → `auth.md` (§3-EXT). No HARD rule added or removed.
+**v7.2.0 (minor, 2026-09-29)** — core trim, one harness conflict removed; plan and evidence in `docs/spec-optimization-plan-2026-09-29.md`. Core states each repeated rule once, drops what the Claude Code system prompt already says and maintainer asides, and moves its header into a block HTML comment, which Claude Code strips before injection (model-visible core 23259 bytes). §11 no longer lists context pressure as a yield. §0.2 merge thresholds → `modes.md`; §3 User relaxation channels → `auth.md` (§3-EXT). No HARD rule added or removed.
 
-**Sizing** (v7.2.0, 2026-09-29, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24740 → 23170 bytes (Δ -1570); extended 48629 → 49084 bytes (Δ +455); OPERATOR.md 17587 → 17664 bytes (Δ +77). Size budget: core 23170/25000 (**1830 bytes headroom**); extended 49084/50000 (**916 bytes headroom**).
+**Sizing** (v7.2.0, 2026-09-29, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24740 → 23461 bytes (Δ -1279); extended 48629 → 49046 bytes (Δ +417); OPERATOR.md 17587 → 17783 bytes (Δ +196). Size budget: core 23461/25000 (**1539 bytes headroom**); extended 49046/50000 (**954 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
@@ -566,7 +566,7 @@ One home per fact — double-writing creates drift.
 
 Core §0.2 keeps the one-line defaults; the rest:
 
-- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge; ambiguous vs scope-expansion → ASK once.
+- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge.
 - **Scope-expansion**: cross-level → serial; same-level → inline.
 - **Continuation** (e.g. "继续/next"): same SPINE.
 - **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.

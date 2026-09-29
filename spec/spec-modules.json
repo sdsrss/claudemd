@@ -47,7 +47,7 @@
       "window": "head"
     },
     "modes": {
-      "loadsOn": "for HACK, EMERGENCY or AUTONOMOUS work, and when a task is cancelled or switched",
+      "loadsOn": "for HACK, EMERGENCY or AUTONOMOUS work, mid-task merge thresholds, and when a task is cancelled or switched",
       "triggers": "",
       "window": "head"
     },
