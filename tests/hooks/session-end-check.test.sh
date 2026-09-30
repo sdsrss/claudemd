@@ -824,6 +824,32 @@ for N_CMD in \
   fi
 done
 
+# --- Case 30 (converge round 14): tasks/ exists but cannot be written -------
+# The write of paused.md was never checked: stderr still announced
+# "paused.md → <path>", bash's own "Permission denied" leaked beside it, and
+# the rule-hits row named a file that did not exist.
+if [[ $(id -u) -eq 0 ]]; then
+  ok "Case 30: unwritable tasks/ (skipped — root writes through mode 555)"
+else
+  reset_cwd
+  chmod 555 "$TMP_CWD/tasks"
+  echo -n '' > "$LOG"
+  T="$TMP_HOME/case30.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
+  run_hook "$T"
+  chmod 755 "$TMP_CWD/tasks"
+  ERR30=$(cat "$TMP_HOME/stderr")
+  ROW30=$(grep '"hook":"session-end-check"' "$LOG" | tail -1)
+  if ! compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null \
+     && [[ "$ERR30" != *"paused.md →"* && "$ERR30" != *"Permission denied"* ]] \
+     && [[ "$ERR30" == *"mid-SPINE session-exit: 1 unvalidated change(s)"* && "$ERR30" == *"could not write"* ]] \
+     && jq -e '.extra.paused == null and .extra.open == 1' <<<"$ROW30" >/dev/null 2>&1; then
+    ok "Case 30: an unwritable tasks/ is reported as unwritten, not as a checkpoint"
+  else
+    ng "Case 30: (stderr=$ERR30; row=$ROW30)"
+  fi
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
