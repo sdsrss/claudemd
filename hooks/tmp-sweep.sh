@@ -86,6 +86,7 @@ else
   hook_record_failopen tmp-sweep jq-missing
 fi
 
+SWEEP_NOTE="The vitest per-run dirs are swept automatically once idle 60 min"
 if command -v node >/dev/null 2>&1; then
   SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/housekeeping.js"
   # Detached: stdin from /dev/null and both streams to the result file, so the
@@ -94,6 +95,9 @@ if command -v node >/dev/null 2>&1; then
   disown 2>/dev/null || true
 else
   hook_record_failopen tmp-sweep prereq-missing
+  # The advisory below must not promise a sweep that was never spawned: a
+  # node managed by nvm is often not on a hook's non-interactive PATH.
+  SWEEP_NOTE="No sweep runs from here: node is not on this hook's PATH, so the vitest per-run dirs are not being reclaimed either"
 fi
 
 # Pressure advisory. Only the capacity column of POSIX `df -P`; a temp root
@@ -117,7 +121,7 @@ if ((HAVE_JQ)) && [[ "$PCT" =~ ^[0-9]+$ ]] && ((PCT >= THRESHOLD)); then
   FSTYPE=$(stat -f -c %T "$TMP_ROOT" 2>/dev/null)
   NOTE=""
   [[ "$FSTYPE" == "tmpfs" ]] && NOTE=" It is a tmpfs, so every byte there is RAM (or swap)."
-  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} The vitest per-run dirs are swept automatically once idle 60 min; anything else there is not attributable, so list the largest entries (\`du -sh $TMP_ROOT/* | sort -rh | head\`); what this session created is yours to clean up, anything else is the user's call. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
+  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} ${SWEEP_NOTE}; anything else there is not attributable, so list the largest entries (\`du -sh $TMP_ROOT/* | sort -rh | head\`); what this session created is yours to clean up, anything else is the user's call. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
   hook_record tmp-sweep tmp-pressure-advisory "{\"pct\":$PCT,\"threshold\":$THRESHOLD}" '§8.V4' "$SESSION_ID"
   jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 fi

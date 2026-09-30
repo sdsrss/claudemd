@@ -128,4 +128,27 @@ sleep 0.3
 N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
 assert_eq "7 non-empty stale lock cleared, next call sweeps" "1" "${N:-0}"
 
+# Case 8 (converge round 14): with no node on the hook's PATH no sweep is
+# spawned, and the advisory used to say the dirs "are swept automatically"
+# anyway. It must say the sweep cannot run, and the node case must keep
+# saying it does (4a's run had node).
+rm -f "$STAMP"
+OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
+CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
+[[ "$CTX" == *"are swept automatically once idle"* ]] && ok "8a with node: the sweep is announced" ||
+  ng "8a (ctx: $CTX)"
+NODELESS_PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin"
+if PATH="$NODELESS_PATH" command -v node >/dev/null 2>&1; then
+  ok "8b node-absent advisory (skipped — node reachable from a stripped PATH here)"
+else
+  rm -f "$STAMP"
+  OUT=$(PATH="$NODELESS_PATH" CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
+  CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
+  if [[ "$CTX" == *"% full"* && "$CTX" != *"swept automatically"* && "$CTX" == *"node is not on this hook's PATH"* ]]; then
+    ok "8b without node: the advisory says no sweep runs"
+  else
+    ng "8b (ctx: $CTX)"
+  fi
+fi
+
 claudemd_assert_summary
