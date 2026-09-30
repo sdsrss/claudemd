@@ -672,8 +672,10 @@ fi
 # {EF, BC, 9A} and every full-width mark sharing its lead bytes — `（` `，`
 # `）` — counted as a verdict after `test` / `smoke` / `pass`. evidence-gate
 # (awk) then fell silent where verify-log (grep) did not: 8 of 55,184 real
-# tool results on 2026-09-30. `Tests：3 passed` is the control that must stay
-# a verdict.
+# tool results on 2026-09-30. `test：ok` is the control that must stay a
+# verdict: it has no digit count, so only the full-width-colon arm can match
+# it (the first control, `Tests：3 passed`, matched through `3 passed` and
+# stayed green with that arm deleted — 0.107.1 pre-tag review M2).
 N26=0
 for OUT26 in 'a1b2c3 修复 test（边界情况）' 'smoke，然后再跑' 'pass（pending）'; do
   N26=$((N26 + 1))
@@ -694,18 +696,18 @@ done
 {
   row_edit /p/src/a.js
   row_bash tu_b26 "./run-checks"
-  row_result tu_b26 "Tests：3 passed"
+  row_result tu_b26 "test：ok"
   row_text "$DONE_CLAIM"
 } > "$TRANSCRIPT"
 reset_log
 OUT=$(run_hook "$DONE_CLAIM")
-[[ -z "$OUT" ]] && ok "26c: a full-width colon after Tests is still a verdict (control)" ||
-  ng "26c: 'Tests：3 passed' lost its verdict: $OUT"
+[[ -z "$OUT" ]] && ok "26c: a full-width colon after test is still a verdict (control)" ||
+  ng "26c: 'test：ok' lost its verdict: $OUT"
 # The pattern itself, byte-wise in both engines, whatever this platform's awk is.
 # shellcheck source=../../hooks/lib/verify-cmd.sh
 source "$HERE/../../hooks/lib/verify-cmd.sh"
 P26=""
-for S26 in 'x test（y' 'smoke，y' 'pass）y' 'Tests：3 passed'; do
+for S26 in 'x test（y' 'smoke，y' 'pass）y' 'test：ok'; do
   A26=$(printf '%s\n' "$S26" | LC_ALL=C awk -v t2="$T2_OUT_RE" '{ print ($0 ~ t2) ? 1 : 0 }')
   G26=$(printf '%s\n' "$S26" | LC_ALL=C grep -cE "$T2_OUT_RE")
   P26+="$A26$G26 "
