@@ -140,6 +140,11 @@ test('claim-drift CLI: end to end on a scratch repository', () => {
       ['README.md:1'],
       'the README line is listed, the changed hook line is not'
     );
+    // converge round 14: from a subdirectory, `git ls-files` printed paths
+    // relative to it, so no prose file matched and the list came back empty.
+    const sub = spawnSync('node', [SCRIPT, '--json'], { cwd: path.join(d, 'hooks'), encoding: 'utf8' });
+    assert.equal(sub.status, 0, sub.stderr);
+    assert.deepEqual(JSON.parse(sub.stdout).mentions, j.mentions, 'a subdirectory reads the same repository');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }

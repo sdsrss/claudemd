@@ -147,8 +147,8 @@ export function findMentions(names, files, changed, read) {
   return res;
 }
 
-function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function git(args, cwd) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
 function main(p) {
@@ -160,15 +160,17 @@ function main(p) {
     );
     process.exit(2);
   }
-  let diff, tracked;
+  // Every git call runs from the top level: from a subdirectory `ls-files`
+  // lists only that subtree, relative to it, and no prose file matched.
+  let diff, tracked, root;
   try {
-    diff = git(['diff', '-U0', '--no-color', range]);
-    tracked = git(['ls-files']).split('\n').filter(Boolean);
+    root = git(['rev-parse', '--show-toplevel']).trim();
+    diff = git(['diff', '-U0', '--no-color', range], root);
+    tracked = git(['ls-files'], root).split('\n').filter(Boolean);
   } catch (e) {
     console.error(`claim-drift: git failed: ${e.message.split('\n')[0]}`);
     process.exit(1);
   }
-  const root = git(['rev-parse', '--show-toplevel']).trim();
   const names = extractNames(diff);
   const found = findMentions(names, proseFiles(tracked), changedLines(diff), f =>
     fs.readFileSync(path.join(root, f), 'utf8')
