@@ -127,11 +127,14 @@ export function findMentions(names, files, changed, read) {
     const skip = changed.get(f) || new Set();
     const isHook = f.endsWith('.sh');
     // A changelog's older entries record what shipped then; only its top entry
-    // (the one being written) can still be made untrue.
+    // (the one being written) can still be made untrue. An entry heading
+    // STARTS with its version (`## [0.107.0] - …`, `## v7.2.0 (…)`): a version
+    // anywhere in the line also matched `## Versioning policy (set in v0.2.1)`
+    // above the first entry, and the search stopped before reading it.
     const lines = text.split('\n');
     let stop = lines.length;
     if (/(^|\/)(CHANGELOG\.md|CLAUDE-changelog\.md)$/.test(f)) {
-      const heads = lines.flatMap((l, i) => (/^## /.test(l) && /\d+\.\d+/.test(l) ? [i] : []));
+      const heads = lines.flatMap((l, i) => (/^## \[?v?\d+\.\d+\.\d+/.test(l) ? [i] : []));
       if (heads.length > 1) stop = heads[1];
     }
     lines.slice(0, stop).forEach((line, i) => {

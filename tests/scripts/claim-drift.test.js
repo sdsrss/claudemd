@@ -79,6 +79,27 @@ test('claim-drift: mentions skip the diff lines and hook code lines, keep hook c
   assert.deepEqual(got, ['README.md:2', 'hooks/foo-check.sh:2']);
 });
 
+test('claim-drift: a changelog is searched through its top entry, whatever headings precede it', () => {
+  // converge round 14: CHANGELOG.md opens with `## Versioning policy (set in
+  // v0.2.1)`, which the "any ## with a version number" rule took for an entry,
+  // so the search stopped at the real top entry and never read it.
+  const files = {
+    'CHANGELOG.md':
+      '# Changelog\n\n## Versioning policy (set in v0.2.1)\n\n- policy\n\n' +
+      '## [1.1.0] - 2026-09-29\n\nSet FOO_LIMIT to tune it.\n\n' +
+      '## [1.0.0] - 2026-09-01\n\nFOO_LIMIT was added.\n',
+    'spec/CLAUDE-changelog.md':
+      '# Spec changelog\n\n## v2.1.0 (minor, 2026-09-29) — x\n\nFOO_LIMIT now caps it.\n\n' +
+      '## v2.0.0 (major, 2026-09-01) — y\n\nFOO_LIMIT first.\n',
+  };
+  const m = findMentions(new Set(['FOO_LIMIT']), Object.keys(files), new Map(), f => files[f]);
+  assert.deepEqual(
+    m.get('FOO_LIMIT').map(x => `${x.file}:${x.line}`),
+    ['CHANGELOG.md:9', 'spec/CLAUDE-changelog.md:5'],
+    'the top entry is searched, older entries are not'
+  );
+});
+
 test('claim-drift: a name matches whole, not inside a longer one (control)', () => {
   const m = findMentions(
     new Set(['foo-check']),
