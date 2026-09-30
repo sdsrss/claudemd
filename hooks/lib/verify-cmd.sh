@@ -25,7 +25,11 @@ T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test
 # `ok <pkg> <time>`. Plain prose containing the word "failed" does not match —
 # a loose pattern here buys silence, and silence is this hook saying "evidence
 # exists".
-T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*[:：]|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
+# The colon is `(:|：)`, not the bracket `[:：]`: awk reads a bracket byte by
+# byte (mawk always, any awk under LC_ALL=C), which turned `：` into the bytes
+# EF BC 9A and let `（` `，` `）` after a runner word pass as a verdict in
+# evidence-gate while verify-log's grep disagreed (converge round 14).
+T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*(:|：)|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
 
 # Output that reports failures, for verify-log only (evidence-gate's verdict
 # does not read it). A runner piped into `tail` exits with tail's status, so a
