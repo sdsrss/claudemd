@@ -97,7 +97,7 @@ else
   hook_record_failopen tmp-sweep prereq-missing
   # The advisory below must not promise a sweep that was never spawned: a
   # node managed by nvm is often not on a hook's non-interactive PATH.
-  SWEEP_NOTE="No sweep runs from here: node is not on this hook's PATH, so the vitest per-run dirs are not being reclaimed either"
+  SWEEP_NOTE="No sweep runs from here: node is not on this hook's PATH, so nothing is reclaiming the vitest per-run dirs"
 fi
 
 # Pressure advisory. Only the capacity column of POSIX `df -P`; a temp root
