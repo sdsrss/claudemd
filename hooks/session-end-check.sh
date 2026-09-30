@@ -266,8 +266,12 @@ if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
 
   # The write is checked: an unwritable or full tasks/ used to leave stderr
   # announcing a checkpoint, and the rule-hits row naming it, when none
-  # existed (converge round 14). A partial file from a failed write goes too.
+  # existed (converge round 14). A partial file from a failed write goes too,
+  # but only one this run created: the path is fixed per session, and a file
+  # already there (the user's edited, read-only copy) is left as it was.
   WROTE=1
+  EXISTED=0
+  [[ -e "$PAUSED" ]] && EXISTED=1
   { cat > "$PAUSED" <<EOF
 # Paused — mid-SPINE session exit detected
 
@@ -304,7 +308,10 @@ Run the project's verify command (e.g. \`bash tests/run-all.sh\`,
 green) or convert it to a real \`tasks/<slug>-paused.md\` with the
 specific verify command and remaining work.
 EOF
-  } 2>/dev/null || { WROTE=0; rm -f "$PAUSED" 2>/dev/null; }
+  } 2>/dev/null || {
+    WROTE=0
+    ((EXISTED)) || rm -f "$PAUSED" 2>/dev/null
+  }
 
   if ((WROTE)); then
     printf '[claudemd] mid-SPINE session-exit: %d unvalidated change(s) after the last validation (%d in this turn); paused.md → %s\n' \

@@ -848,6 +848,25 @@ else
   else
     ng "Case 30: (stderr=$ERR30; row=$ROW30)"
   fi
+  # 30b (0.107.1 pre-tag review M1): the checkpoint path is fixed per session,
+  # so a resumed session's second SessionEnd targets the file the first one
+  # wrote — which the user may have edited and made read-only. A write that
+  # fails to open it must leave it alone; the cleanup is for a file this run
+  # created, not for one it found.
+  reset_cwd
+  P30="$TMP_CWD/tasks/session-end-x-paused.md"
+  printf 'USER NOTES: remaining work, verify with npm test\n' > "$P30"
+  chmod 444 "$P30"
+  T="$TMP_HOME/case30b.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
+  run_hook "$T"
+  if [[ "$(cat "$P30" 2>/dev/null)" == "USER NOTES: remaining work, verify with npm test" ]] \
+     && [[ "$(cat "$TMP_HOME/stderr")" == *"could not write"* ]]; then
+    ok "Case 30b: an existing checkpoint that cannot be overwritten is kept"
+  else
+    ng "Case 30b: existing read-only checkpoint lost (exists=$([[ -e "$P30" ]] && echo y || echo n); stderr=$(cat "$TMP_HOME/stderr"))"
+  fi
+  chmod 644 "$P30" 2>/dev/null || true
 fi
 
 echo ""
