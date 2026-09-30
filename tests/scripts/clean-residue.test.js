@@ -1315,3 +1315,32 @@ test('scanProbeProjects: no top-level transcript, or a transcript that is headle
   assert.equal(kept['-tmp-no-main-transcript'], 'no-transcript');
   assert.equal(kept['-tmp-resumed'], 'not-headless');
 });
+
+test('scanProbeProjects: an interactive row past the first 64 KiB still keeps the dir', () => {
+  // converge round 14: the judge read only the head of each transcript, so a
+  // headless run that wrote more than 64 KiB before it was resumed
+  // interactively was reaped with the session the user had resumed.
+  const row = ep => JSON.stringify({ type: 'user', entrypoint: ep, p: 'x'.repeat(2000) }) + '\n';
+  const resumed = mkProj('-tmp-resumed-long', 30);
+  const f = path.join(resumed, 'a1b2c3d4-0000.jsonl');
+  fs.writeFileSync(f, row('sdk-cli').repeat(40) + row('cli'));
+  assert.ok(fs.statSync(f).size > 65536);
+  // The same token straddling a read-chunk boundary (1 MiB, the size the
+  // reader uses): a split `"entrypoint":"cli"` must still be seen.
+  const straddles = [1, 8, 15].map(k => {
+    const d = mkProj(`-tmp-straddle-${k}`, 30);
+    const head = `{"type":"user","entrypoint":"sdk-cli","p":"`;
+    const tail = JSON.stringify({ type: 'user', entrypoint: 'cli' });
+    // tail's `"entrypoint":"` starts 15 bytes in, so the row starts 15 + k
+    // bytes before the boundary and the token begins k bytes before it.
+    const pad = (1 << 20) - (15 + k) - head.length - 3;
+    fs.writeFileSync(path.join(d, 'a1b2c3d4-0000.jsonl'), head + 'x'.repeat(pad) + '"}\n' + tail + '\n');
+    setMtime(d, 30);
+    return d;
+  });
+  setMtime(resumed, 30);
+  const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
+  assert.deepEqual(r.targets, []);
+  const kept = Object.fromEntries(r.kept.map(k => [k.path, k.reason]));
+  for (const d of [resumed, ...straddles]) assert.equal(kept[d], 'not-headless', d);
+});

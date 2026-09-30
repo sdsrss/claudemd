@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { StringDecoder } from 'node:string_decoder';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { stateDir, projectsRoot, encodeProjectCwd } from './lib/paths.js';
 
@@ -437,8 +438,35 @@ const PROBE_PROJECT_PATTERN = /^-(private-)?(tmp|var-tmp|var-folders)(-|$)/;
 // records how each session was started on its rows (`entrypoint`: `sdk-cli`
 // for a headless `claude -p`, `cli` for an interactive one), so a dir is a
 // probe only when it holds at least one transcript and every entrypoint in
-// each says `sdk-cli`. A transcript with no
-// entrypoint in its first 64 KiB (an older CLI) is not judged: kept.
+// each says `sdk-cli`. A transcript with no entrypoint anywhere (an older CLI)
+// is not judged: kept. The whole file is read, in chunks: the resumed rows
+// come after the headless ones, and a judge that stopped at the first 64 KiB
+// reaped a session resumed after a long headless run (converge round 14).
+const EP_CHUNK = 1 << 20;
+const EP_RE = /"entrypoint":"([^"]*)"/g;
+function fileEntrypoint(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(EP_CHUNK);
+    const dec = new StringDecoder('utf8');
+    let carry = '';
+    let seen = false;
+    for (let n; (n = fs.readSync(fd, buf, 0, buf.length, null)) > 0;) {
+      // The tail of the previous chunk is re-scanned, so a token split across
+      // the boundary is read whole; one seen twice changes nothing.
+      const text = carry + dec.write(buf.subarray(0, n));
+      for (const m of text.matchAll(EP_RE)) {
+        if (m[1] !== 'sdk-cli') return 'not-headless';
+        seen = true;
+      }
+      carry = text.slice(-256);
+    }
+    return seen ? 'headless' : 'unknown-entrypoint';
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function transcriptEntrypoints(dir) {
   let names;
   try {
@@ -447,23 +475,15 @@ function transcriptEntrypoints(dir) {
     return 'unknown-entrypoint';
   }
   for (const n of names) {
-    let head;
+    // Every entrypoint, not the first: a headless run later resumed
+    // interactively starts with sdk-cli (re-review L5).
+    let verdict;
     try {
-      const fd = fs.openSync(path.join(dir, n), 'r');
-      try {
-        const buf = Buffer.alloc(65536);
-        head = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0));
-      } finally {
-        fs.closeSync(fd);
-      }
+      verdict = fileEntrypoint(path.join(dir, n));
     } catch {
       return 'unknown-entrypoint';
     }
-    // Every entrypoint in the window, not the first: a headless run later
-    // resumed interactively starts with sdk-cli (re-review L5).
-    const eps = [...head.matchAll(/"entrypoint":"([^"]*)"/g)].map(m => m[1]);
-    if (eps.length === 0) return 'unknown-entrypoint';
-    if (eps.some(e => e !== 'sdk-cli')) return 'not-headless';
+    if (verdict !== 'headless') return verdict;
   }
   // No top-level transcript at all is not evidence of a headless run (L5).
   return names.length === 0 ? 'no-transcript' : 'headless';
