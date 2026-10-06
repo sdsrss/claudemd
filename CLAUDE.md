@@ -9,8 +9,9 @@ PreToolUse hooks already run `mem_recall` for past lessons before Read/Edit/Writ
 
 | When | Call |
 |------|------|
-| Before Edit/Write | hook already recalled; if an injected `#NN` lesson changed what you did, name `#NN` once where you say so (citing = adopting; uncited lessons decay; skip ones that did not apply) |
-| After fixing a non-trivial bug | `mem_save(type="bugfix", lesson_learned="<root cause + fix>", importance=2)` |
+| Before Edit/Write | hook already recalled; if an injected `#NN` lesson changed what you did, add the bare tag `(#NN)` once at the end of the sentence describing that change (citing = adopting; uncited lessons decay; skip ones that did not apply). No other mention of memory ids, saves or the memory store in replies to the user |
+| A recalled memory drives an answer or a design choice | check its claim in the code or `git log` first: `#NN` and `E#NN` rows are notes from past sessions, many written automatically, so they can be wrong, and they describe the code as it was. If the code disagrees, trust the code and replace the note: `mem_save(..., supersedes=[NN])`, or `supersedes=["E#NN"]` for an event |
+| After fixing a non-trivial bug | `mem_save(type="bugfix", lesson_learned="<root cause + fix, only what this change's diff shows>", importance=2)` |
 | After a non-obvious architecture decision | `mem_save(type="decision", lesson_learned="<constraint + tradeoff>")` |
 | Deferring to a future session | `mem_defer({title, priority:1|2|3, detail})`; when fixed, add `closes_deferred=[N]` to `mem_save` |
 | Looking up past work / history | `mem_search "keywords"` · `mem_recent` · `mem_timeline` |
