@@ -875,24 +875,31 @@ fi
 # --- Case 31 (round-14 delta review M1/L6): a write that fails part-way ------
 # `cat > "$PAUSED"` truncated an existing checkpoint before writing, so a write
 # that failed part-way (ENOSPC / EDQUOT / EFBIG) left half a new file where the
-# user's bytes were, while stderr said no checkpoint lists the changes. The
-# generated checkpoint is ~1.3 KB, so `ulimit -f 1` (1 KiB) stands in for a full
-# disk. Bash 5.1+ sends a here-doc this size through a pipe, so the limit hits
-# the checkpoint write and not the hook's own here-doc.
+# user's bytes were, while stderr said no checkpoint lists the changes. A
+# file-size limit stands in for a full disk, and it has to hit the checkpoint
+# write and nothing before it. bash 3.2 (macOS /bin/bash, and the CI runtime
+# gate) writes every here-doc to a temp file, including the two hook-common.sh
+# programs read at source time (~1.4 KB each), so `ulimit -f 1` stopped the
+# hook there. The limit is 4 KiB, and three edits with ~3,000-character
+# targets make the checkpoint ~10 KB, so under bash 3.2 its own here-doc temp
+# file fails and under 5.x the `cat` writing it does: either way, part-way.
+LONG31=$(printf 'd%.0s' $(seq 1 3000))
+big_edit31() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t%s","name":"Edit","input":{"file_path":"src/%s%s.js","old_string":"x","new_string":"y"}}]}}' "$1" "$LONG31" "$1"; }
+TR31='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'
 reset_cwd
 P31="$TMP_CWD/tasks/session-end-x-paused.md"
 printf 'USER NOTES: remaining work, verify with npm test\n' > "$P31"
 echo -n '' > "$LOG"
-T="$TMP_HOME/case31.jsonl"
-make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
-( ulimit -f 1; run_hook "$T" )
+T31="$TMP_HOME/case31.jsonl"
+make_transcript "$T31" "$USER_MSG" "$(big_edit31 1)" "$TR31" "$(big_edit31 2)" "$TR31" "$(big_edit31 3)" "$TR31"
+( ulimit -f 4; run_hook "$T31" )
 ERR31=$(cat "$TMP_HOME/stderr")
 ROW31=$(grep '"hook":"session-end-check"' "$LOG" | tail -1)
 LEFT31=$(ls -A "$TMP_CWD/tasks")
 if [[ "$(cat "$P31")" == "USER NOTES: remaining work, verify with npm test" ]] \
    && [[ "$LEFT31" == "session-end-x-paused.md" ]] \
    && [[ "$ERR31" == *"could not write"* && "$ERR31" != *"paused.md →"* ]] \
-   && jq -e '.extra.paused == null and .extra.open == 1' <<<"$ROW31" >/dev/null 2>&1; then
+   && jq -e '.extra.paused == null and .extra.open == 3' <<<"$ROW31" >/dev/null 2>&1; then
   ok "Case 31: a write that fails part-way leaves the existing checkpoint's bytes"
 else
   ng "Case 31: (content=$(head -c 60 "$P31"); tasks=$LEFT31; stderr=$ERR31; row=$ROW31)"
@@ -904,6 +911,8 @@ fi
 # under the same umask, not mktemp's 600.
 reset_cwd
 printf 'OLD CHECKPOINT\n' > "$P31"
+T="$TMP_HOME/case31b.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
 run_hook "$T"
 : > "$TMP_HOME/mode-ref"
 MODE31=$(ls -l "$P31" | cut -c1-10)
@@ -923,7 +932,7 @@ fi
 # neither.
 reset_cwd
 ln -s "$TMP_CWD/link-target" "$P31"
-( ulimit -f 1; run_hook "$T" )
+( ulimit -f 4; run_hook "$T31" )
 if [[ -L "$P31" && ! -e "$TMP_CWD/link-target" ]] \
    && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]]; then
   ok "Case 31c: a failed write leaves a dangling symlink at the path, and its target, alone"
