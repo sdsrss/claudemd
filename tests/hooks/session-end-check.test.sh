@@ -907,14 +907,15 @@ fi
 
 # 31b: the same existing checkpoint, a write that succeeds — it is replaced
 # (a resumed session's second SessionEnd rewrites its own file) and nothing
-# else is left in tasks/. Its mode is the one a plain `cat >` would give it
-# under the same umask, not mktemp's 600.
+# else is left in tasks/. Its mode is the one a newly created file gets under
+# the umask, not mktemp's 600. The umask is pinned to 022: under 077 both
+# would be 600, and a hook that skipped the chmod would pass.
 reset_cwd
 printf 'OLD CHECKPOINT\n' > "$P31"
 T="$TMP_HOME/case31b.jsonl"
 make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
-run_hook "$T"
-: > "$TMP_HOME/mode-ref"
+rm -f "$TMP_HOME/mode-ref"
+( umask 022; run_hook "$T"; : > "$TMP_HOME/mode-ref" )
 MODE31=$(ls -l "$P31" | cut -c1-10)
 MODE_REF=$(ls -l "$TMP_HOME/mode-ref" | cut -c1-10)
 if grep -q '^# Paused — mid-SPINE session exit detected' "$P31" \
@@ -929,15 +930,17 @@ fi
 # 31c (delta review L6): `[[ -e ]]` is false for a dangling symlink, so the old
 # failure path took the link for a file this run created and removed it, after
 # writing half a checkpoint into the link's target. A failed write touches
-# neither.
+# neither. The stderr check is the reach assertion: a hook that stopped before
+# the write would leave the link alone too.
 reset_cwd
 ln -s "$TMP_CWD/link-target" "$P31"
 ( ulimit -f 4; run_hook "$T31" )
 if [[ -L "$P31" && ! -e "$TMP_CWD/link-target" ]] \
-   && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]]; then
+   && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]] \
+   && [[ "$(cat "$TMP_HOME/stderr")" == *"could not write $P31"* ]]; then
   ok "Case 31c: a failed write leaves a dangling symlink at the path, and its target, alone"
 else
-  ng "Case 31c: (link=$([[ -L "$P31" ]] && echo kept || echo removed); target=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent))"
+  ng "Case 31c: (link=$([[ -L "$P31" ]] && echo kept || echo removed); target=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent); stderr=$(cat "$TMP_HOME/stderr"))"
 fi
 rm -f "$TMP_CWD/link-target"
 

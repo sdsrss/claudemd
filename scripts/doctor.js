@@ -193,7 +193,7 @@ const ADVISORY =
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
-// call doctor() in-process ~80 times, the 22 hook spawns were ~88% of each
+// call doctor() in-process ~80 times, the 25 hook spawns were ~88% of each
 // call, and none of those cases read a self-test row. The CLI never passes it.
 export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {}) {
   const checks = [];

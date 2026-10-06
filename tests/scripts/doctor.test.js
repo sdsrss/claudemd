@@ -22,9 +22,9 @@ const DOCTOR_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // the state-dir tests below read that directory.
 const box = useHomeSandbox('dr');
 
-// `doctor` here skips the 22 hook self-test spawns. They were ~88% of every
+// `doctor` here skips the 25 hook self-test spawns. They were ~88% of every
 // in-process call and none of the cases using this name reads a self-test or
-// liveness row; with them on, this file ran 112-140 s on the macOS CI legs
+// liveness row; with them on, this file ran 112-140 s on the node 20/22 macOS legs
 // against node --test's 180 s per-file cap (D#158). Cases that DO read those
 // rows call `doctorFull`, and a row they look for that is missing fails their
 // `assert.ok(row)` rather than passing. The CLI path is pinned to the full run
@@ -508,7 +508,10 @@ test('hookSelfTests: false drops exactly the hook self-test rows, and the CLI ru
   const full = (await doctorFull({})).checks.map(c => c.name);
   const fast = (await doctor({})).checks.map(c => c.name);
   const dropped = full.filter(n => !fast.includes(n));
-  assert.ok(dropped.length >= 20, `expected the ~22 hook rows to be dropped, got ${dropped.length}`);
+  assert.ok(
+    dropped.length >= 20,
+    `expected the hook self-test and liveness rows to be dropped, got ${dropped.length}`
+  );
   assert.deepEqual(
     dropped.filter(n => !hookRow.test(n)),
     [],
