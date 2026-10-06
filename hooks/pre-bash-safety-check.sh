@@ -149,8 +149,15 @@ sanitize_cmd() {
   local heredoc_dash=""
 
   # Read into an array so the heredoc test can look ahead for a terminator.
+  # Fed by process substitution, not `<<< "$raw"` (D#214): bash 3.2–5.0 writes
+  # every here-string to a temp file, and 5.1+ any one larger than a pipe buffer.
+  # When that file cannot be written (full disk, a file-size limit, no writable
+  # temp directory) the loop reads NOTHING, and the gate analysed an empty
+  # command: `rm -rf $X/y`, `npx some-pkg` and `curl … | sh` got no decision.
+  # `printf '%s\n'` appends the one newline the here-string did, so the loop sees
+  # the same bytes. The rm, npx and reverse-shell segment loops use the same form.
   local -a lines=()
-  while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done <<< "$raw"
+  while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < <(printf '%s\n' "$raw")
   n=${#lines[@]}
 
   local i
@@ -1479,7 +1486,7 @@ if :; then
         ;;
     esac
     done  # F22 per-target loop
-  done <<< "$RM_SEGMENTS"
+  done < <(printf '%s\n' "$RM_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 fi
 
 if (( bypass_rm == 1 )); then
@@ -1556,7 +1563,7 @@ while IFS= read -r nseg; do
     npx_seg="$seg_canon"
     break
   fi
-done <<< "$NPX_SEGMENTS"
+done < <(printf '%s\n' "$NPX_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 
 if [[ -n "$runner" ]]; then
   bypass_npx=0
@@ -2272,7 +2279,7 @@ if (( _ncmd_hit == 0 )) && [[ -n "$_revsh_candidates" ]]; then
       _ncmd_rule='interpreter-net-exec'
       break
     fi
-  done <<< "$_revsh_candidates"
+  done < <(printf '%s\n' "$_revsh_candidates")  # not a here-string: see sanitize_cmd (D#214)
 fi
 
 # One bucket, one escape token. These four patterns are the same §8 clause
