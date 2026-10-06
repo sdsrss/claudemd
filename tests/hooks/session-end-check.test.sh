@@ -857,16 +857,93 @@ else
   P30="$TMP_CWD/tasks/session-end-x-paused.md"
   printf 'USER NOTES: remaining work, verify with npm test\n' > "$P30"
   chmod 444 "$P30"
+  echo -n '' > "$LOG"
   T="$TMP_HOME/case30b.jsonl"
   make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
   run_hook "$T"
+  ERR30B=$(cat "$TMP_HOME/stderr")
   if [[ "$(cat "$P30" 2>/dev/null)" == "USER NOTES: remaining work, verify with npm test" ]] \
-     && [[ "$(cat "$TMP_HOME/stderr")" == *"could not write"* ]]; then
+     && [[ "$ERR30B" == *"could not write"* && "$ERR30B" != *"paused.md →"* ]] \
+     && jq -e '.extra.paused == null' <<<"$(grep '"hook":"session-end-check"' "$LOG" | tail -1)" >/dev/null 2>&1; then
     ok "Case 30b: an existing checkpoint that cannot be overwritten is kept"
   else
     ng "Case 30b: existing read-only checkpoint lost (exists=$([[ -e "$P30" ]] && echo y || echo n); stderr=$(cat "$TMP_HOME/stderr"))"
   fi
   chmod 644 "$P30" 2>/dev/null || true
+fi
+
+# --- Case 31 (round-14 delta review M1/L6): a write that fails part-way ------
+# `cat > "$PAUSED"` truncated an existing checkpoint before writing, so a write
+# that failed part-way (ENOSPC / EDQUOT / EFBIG) left half a new file where the
+# user's bytes were, while stderr said no checkpoint lists the changes. The
+# generated checkpoint is ~1.3 KB, so `ulimit -f 1` (1 KiB) stands in for a full
+# disk. Bash 5.1+ sends a here-doc this size through a pipe, so the limit hits
+# the checkpoint write and not the hook's own here-doc.
+reset_cwd
+P31="$TMP_CWD/tasks/session-end-x-paused.md"
+printf 'USER NOTES: remaining work, verify with npm test\n' > "$P31"
+echo -n '' > "$LOG"
+T="$TMP_HOME/case31.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
+( ulimit -f 1; run_hook "$T" )
+ERR31=$(cat "$TMP_HOME/stderr")
+ROW31=$(grep '"hook":"session-end-check"' "$LOG" | tail -1)
+LEFT31=$(ls -A "$TMP_CWD/tasks")
+if [[ "$(cat "$P31")" == "USER NOTES: remaining work, verify with npm test" ]] \
+   && [[ "$LEFT31" == "session-end-x-paused.md" ]] \
+   && [[ "$ERR31" == *"could not write"* && "$ERR31" != *"paused.md →"* ]] \
+   && jq -e '.extra.paused == null and .extra.open == 1' <<<"$ROW31" >/dev/null 2>&1; then
+  ok "Case 31: a write that fails part-way leaves the existing checkpoint's bytes"
+else
+  ng "Case 31: (content=$(head -c 60 "$P31"); tasks=$LEFT31; stderr=$ERR31; row=$ROW31)"
+fi
+
+# 31b: the same existing checkpoint, a write that succeeds — it is replaced
+# (a resumed session's second SessionEnd rewrites its own file) and nothing
+# else is left in tasks/. Its mode is the one a plain `cat >` would give it
+# under the same umask, not mktemp's 600.
+reset_cwd
+printf 'OLD CHECKPOINT\n' > "$P31"
+run_hook "$T"
+: > "$TMP_HOME/mode-ref"
+MODE31=$(ls -l "$P31" | cut -c1-10)
+MODE_REF=$(ls -l "$TMP_HOME/mode-ref" | cut -c1-10)
+if grep -q '^# Paused — mid-SPINE session exit detected' "$P31" \
+   && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]] \
+   && [[ "$(cat "$TMP_HOME/stderr")" == *"paused.md → $P31"* ]] \
+   && [[ "$MODE31" == "$MODE_REF" ]]; then
+  ok "Case 31b: a successful write replaces the existing checkpoint, leaving nothing beside it"
+else
+  ng "Case 31b: (content=$(head -c 60 "$P31"); tasks=$(ls -A "$TMP_CWD/tasks"); mode=$MODE31 vs $MODE_REF; stderr=$(cat "$TMP_HOME/stderr"))"
+fi
+
+# 31c (delta review L6): `[[ -e ]]` is false for a dangling symlink, so the old
+# failure path took the link for a file this run created and removed it, after
+# writing half a checkpoint into the link's target. A failed write touches
+# neither.
+reset_cwd
+ln -s "$TMP_CWD/link-target" "$P31"
+( ulimit -f 1; run_hook "$T" )
+if [[ -L "$P31" && ! -e "$TMP_CWD/link-target" ]] \
+   && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]]; then
+  ok "Case 31c: a failed write leaves a dangling symlink at the path, and its target, alone"
+else
+  ng "Case 31c: (link=$([[ -L "$P31" ]] && echo kept || echo removed); target=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent))"
+fi
+rm -f "$TMP_CWD/link-target"
+
+# 31d: a DIRECTORY at the checkpoint path cannot be written. A rename onto it
+# would move the new file inside it instead, and report a checkpoint at a
+# path that is a directory.
+reset_cwd
+mkdir "$P31"
+run_hook "$T"
+if [[ -z "$(ls -A "$P31")" ]] \
+   && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]] \
+   && [[ "$(cat "$TMP_HOME/stderr")" == *"could not write"* ]]; then
+  ok "Case 31d: a directory at the checkpoint path is reported as unwritten and left empty"
+else
+  ng "Case 31d: (dir=$(ls -A "$P31"); tasks=$(ls -A "$TMP_CWD/tasks"); stderr=$(cat "$TMP_HOME/stderr"))"
 fi
 
 echo ""
