@@ -275,7 +275,7 @@ if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
   # the user kept, and would move the file INTO a directory of that name, so
   # both count as unwritable. The temp name does not end in -paused.md, which
   # is what session-start's paused banner counts. mktemp creates mode 600; the
-  # chmod gives the checkpoint the mode `cat >` gave it, from the umask.
+  # chmod gives the checkpoint the mode a newly created file gets under the umask.
   WROTE=0
   if [[ -d "$PAUSED" || ( -e "$PAUSED" && ! -w "$PAUSED" ) ]]; then
     :
