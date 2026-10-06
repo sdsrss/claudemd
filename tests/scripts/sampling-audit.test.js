@@ -1136,6 +1136,13 @@ test('L-3: the by-class line renders every populated class, and sums to pooled',
 // against the wrong denominator or the wrong predicate.
 // ============================================================================
 
+// The three fixtures below are the only ones stamped (every row at
+// 2026-09-06T12:00:00Z). A `days: 30` window anchored at Date.now() dropped all
+// of their rows from 2026-10-06 12:00Z on, and the detectors then counted 0
+// opportunities. Their window is anchored at the fixture instead, the way a
+// pre-registered `--until` run anchors it.
+const STAMPED_FIXTURE_UNTIL_MS = Date.parse('2026-09-07T00:00:00Z');
+
 test('ALG-H2: a single-line `Done:` report closes the cycle, so `next` is not a tell', async () => {
   // §10's short form IS the prescribed L1 report ("Failed+Uncertain empty →
   // `Done: <what>.`"), and L1-bugfix defaults to a single `Done:` line. The
@@ -1143,7 +1150,12 @@ test('ALG-H2: a single-line `Done:` report closes the cycle, so `next` is not a 
   // prescribes scored a §11 violation the moment the user typed anything.
   const dir = stageFixture('turn-yield-done-line');
   try {
-    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const r = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: STAMPED_FIXTURE_UNTIL_MS,
+    });
     assert.equal(r.byRule['§11-turn-yield'].opportunities, 1, 'the turn used tools, so it is an opportunity');
     assert.equal(r.byRule['§11-turn-yield'].violations, 0);
   } finally {
@@ -1168,7 +1180,12 @@ test('ALG-M3: an AUTH signal with no user turn after it is not coverage', async 
   // same turn scored 0 violations out of 1 opportunity.
   const dir = stageFixture('hard-auth-same-turn');
   try {
-    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const r = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: STAMPED_FIXTURE_UNTIL_MS,
+    });
     assert.equal(r.byRule['§5-hard-auth'].opportunities, 1);
     assert.equal(r.byRule['§5-hard-auth'].violations, 1);
   } finally {
@@ -1183,7 +1200,12 @@ test('ALG-M3: isHardOp reaches the force-push and migration shapes an agent type
   // at all. Under-reporting is the direction that makes a detector look clean.
   const dir = stageFixture('hard-auth-shapes');
   try {
-    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    const r = await samplingAudit({
+      projectsDir: dir,
+      days: 30,
+      pluginRoot: REPO_ROOT,
+      untilMs: STAMPED_FIXTURE_UNTIL_MS,
+    });
     assert.equal(r.byRule['§5-hard-auth'].opportunities, 5, 'five hard ops, five opportunities');
     assert.equal(r.byRule['§5-hard-auth'].violations, 5, 'none of them carried an AUTH signal');
   } finally {
