@@ -76,26 +76,52 @@ const PROBES = [
 // grep no hook invokes, which is how the mixed-script divergence below stayed
 // green: `\b` is locale-aware in GNU grep and ASCII-only in JS. The consumer
 // test at the bottom of this file is what keeps the two spellings together.
-function grepMatches(regex, probe) {
-  const r = spawnSync('grep', ['-iE', '--', regex], {
-    input: probe,
+//
+// ONE grep per pattern, every probe on its own line, `-n` naming the lines that
+// matched. grep judges each line on its own, so this is the same verdict the
+// old one-spawn-per-(pattern, probe) loop read (27 spawns instead of 999 when
+// this changed). This file hung once on the macOS node-20 leg (run 36657069698,
+// SHA edce063): it normally takes ~3.8 s there, sat at the 180 s file cap while
+// all 1,485 other tests finished, and passed on a re-run of the same SHA. The
+// timeout turns a hung spawn into a failure that names its pattern, instead of
+// a file-level `test timed out` that names nothing. `-a` keeps grep printing
+// lines; a "Binary file matches" summary would read as zero hits.
+function grepMatchingProbes(regex, probes) {
+  const r = spawnSync('grep', ['-naiE', '--', regex], {
+    input: probes.join('\n') + '\n',
     encoding: 'utf8',
     env: { ...process.env, LC_ALL: 'C' },
+    timeout: 30_000,
   });
-  // grep exit: 0 = match, 1 = no match, 2 = error. Treat 2/spawn-error as a
-  // hard failure — a silently-broken grep would fake agreement.
+  // grep exit: 0 = match, 1 = no match, 2 = error. Treat 2/spawn-error (the
+  // timeout included) as a hard failure — a silently-broken grep would fake
+  // agreement.
   if (r.error || r.status === 2) {
     throw new Error(`grep failed for /${regex}/: ${r.error ? r.error.message : r.stderr}`);
   }
-  return r.status === 0;
+  const hitLines = new Set(
+    r.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map(l => Number(l.slice(0, l.indexOf(':'))))
+  );
+  return probes.map((_, i) => hitLines.has(i + 1));
 }
 
 test('§10-V: grep -iE and JS RegExp return the same verdict for every (pattern, probe)', () => {
+  // A probe holding a newline would become two grep lines and shift every
+  // line number after it.
+  assert.deepEqual(
+    PROBES.filter(p => p.includes('\n')),
+    [],
+    'a probe must be one line — grep reads them one per line'
+  );
   const divergences = [];
   for (const p of patterns) {
-    for (const probe of PROBES) {
+    const grepHits = grepMatchingProbes(p.regex, PROBES);
+    for (const [i, probe] of PROBES.entries()) {
       const jsHit = scan(probe, { patterns: [p] }).length > 0;
-      const grepHit = grepMatches(p.regex, probe);
+      const grepHit = grepHits[i];
       if (jsHit !== grepHit) {
         divergences.push(`/${p.regex}/ vs "${probe}": js=${jsHit} grep=${grepHit}`);
       }
