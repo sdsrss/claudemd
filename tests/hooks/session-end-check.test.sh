@@ -787,6 +787,7 @@ for V_CMD in \
   'env -u CLAUDE_MEM_DIR ./node_modules/.bin/vitest run' \
   'env -u A -u B bash tests/run-all.sh' \
   'env --unset FOO npm test' \
+  'env --unset=FOO npm test' \
   'node_modules/.bin/jest --ci'; do
   V_I=$((V_I + 1))
   reset_cwd
@@ -808,6 +809,7 @@ N_I=0
 for N_CMD in \
   'env -u vitest npm install' \
   'env --unset jest ls' \
+  'env --unset=vitest npm install' \
   'env -u FOO echo npm test' \
   'env -u FOO npm run build' \
   './node_modules/.bin/tsx build.ts' \
@@ -942,6 +944,32 @@ if [[ -L "$P31" && ! -e "$TMP_CWD/link-target" ]] \
 else
   ng "Case 31c: (link=$([[ -L "$P31" ]] && echo kept || echo removed); target=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent); stderr=$(cat "$TMP_HOME/stderr"))"
 fi
+rm -f "$TMP_CWD/link-target"
+
+# 31e (0.107.2 delta review L1): a SUCCESSFUL write over a symlink replaces the
+# link with a regular file and writes nothing through it, whether the link
+# dangles or points at a writable file (the 0.107.2 notes say so). 31c alone
+# passed a hook that sent every symlink to the unwritable branch: no write, the
+# link kept, and the same "could not write" line.
+for L31 in dangling writable; do
+  reset_cwd
+  rm -f "$TMP_CWD/link-target"
+  [[ "$L31" == writable ]] && printf 'KEEP\n' > "$TMP_CWD/link-target"
+  ln -s "$TMP_CWD/link-target" "$P31"
+  T="$TMP_HOME/case31e.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
+  run_hook "$T"
+  if [[ "$L31" == dangling ]]; then TGT31=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent)
+  else TGT31=$(cat "$TMP_CWD/link-target"); fi
+  if [[ -f "$P31" && ! -L "$P31" ]] \
+     && grep -q '^# Paused — mid-SPINE session exit detected' "$P31" \
+     && [[ "$TGT31" == "$([[ "$L31" == dangling ]] && echo absent || echo KEEP)" ]] \
+     && [[ "$(cat "$TMP_HOME/stderr")" == *"paused.md → $P31"* ]]; then
+    ok "Case 31e: a $L31 symlink at the path becomes a regular checkpoint; its target is untouched"
+  else
+    ng "Case 31e ($L31): (link=$([[ -L "$P31" ]] && echo kept || echo replaced); target=$TGT31; stderr=$(cat "$TMP_HOME/stderr"))"
+  fi
+done
 rm -f "$TMP_CWD/link-target"
 
 # 31d: a DIRECTORY at the checkpoint path cannot be written. A rename onto it
