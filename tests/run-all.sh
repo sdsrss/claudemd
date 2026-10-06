@@ -118,8 +118,10 @@ echo "== Node.js script tests =="
 # blew the cap, no assertion failed. A real deadlock hangs FOREVER, so 180s catches it
 # exactly as well as 60s; the only cost is 2 extra minutes to report a hang that
 # already means someone is debugging. This keeps the TEST-1 guard while giving macOS
-# the same ~4x margin Linux had. Fixing the cause (cutting doctor.test.js's spawn
-# count) stays open — see the deferred item.
+# the same ~4x margin Linux had. By 0.107.1 the file had grown to 112-140 s on the
+# macOS legs (D#158); its in-process cases now skip the 22 hook self-test spawns
+# they never read (doctor({ hookSelfTests: false })): local CPU time went from
+# ~122 s to 26-41 s over four runs. The cap stays at 180s for the reason above.
 # The node leg runs against an ISOLATED TMPDIR so its sandbox disposal can be
 # measured (2026-08-16 user-journey E2E). Every `npm test` was leaking 4 mkdtemp
 # dirs into the user's real TMPDIR — 2 in sampling-audit.test.js (no rmSync at

@@ -192,7 +192,10 @@ const ADVISORY =
   /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|routing:ship-skill|routing:gstack-reachable|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
-export async function doctor({ pruneBackups: prune } = {}) {
+// `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
+// call doctor() in-process ~80 times, the 22 hook spawns were ~88% of each
+// call, and none of those cases read a self-test row. The CLI never passes it.
+export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
 
@@ -982,7 +985,7 @@ export async function doctor({ pruneBackups: prune } = {}) {
   // The two synthetic-event tables live in lib/doctor-hook-tests.js. They are a
   // source-text subject of two gates (subject-set-drift's liveness partition and
   // spec-structure's retired-vocabulary list), both of which name that path.
-  runHookSelfTests({ push, which, pluginRoot: PLUGIN_ROOT });
+  if (hookSelfTests) runHookSelfTests({ push, which, pluginRoot: PLUGIN_ROOT });
 
   // v0.7.1 R-N6 — bypass:deny ratio per spec section. Surfaces §0.1
   // demotion candidates from v0.7.0's `byBypass` data. Sections firing < 3

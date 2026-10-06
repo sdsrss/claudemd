@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { doctor, isAdvisoryCheck } from '../../scripts/doctor.js';
+import { doctor as doctorFull, isAdvisoryCheck } from '../../scripts/doctor.js';
 import { runningPluginRoot } from '../../scripts/lib/paths.js';
 import { routingPrimaries } from '../../scripts/lib/spec-routing.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
@@ -21,6 +21,15 @@ const DOCTOR_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // while the ambient environment happened not to export CLAUDEMD_STATE_DIR — and
 // the state-dir tests below read that directory.
 const box = useHomeSandbox('dr');
+
+// `doctor` here skips the 22 hook self-test spawns. They were ~88% of every
+// in-process call and none of the cases using this name reads a self-test or
+// liveness row; with them on, this file ran 112-140 s on the macOS CI legs
+// against node --test's 180 s per-file cap (D#158). Cases that DO read those
+// rows call `doctorFull`, and a row they look for that is missing fails their
+// `assert.ok(row)` rather than passing. The CLI path is pinned to the full run
+// by the `hookSelfTests` case below.
+const doctor = (opts = {}) => doctorFull({ hookSelfTests: false, ...opts });
 
 beforeEach(() => {
   fs.mkdirSync(box.claude('logs'), { recursive: true });
@@ -356,7 +365,7 @@ test('doctor runs banned-vocab self-test and reports pass when hook denies synth
   // Requires jq + bash on PATH; CI installs both. Skip assertion if absent.
   const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
-  const r = await doctor({});
+  const r = await doctorFull({});
   const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
   assert.ok(selftest, 'self-test check must exist');
   assert.equal(selftest.ok, true, `self-test must pass on a clean tree; detail="${selftest.detail}"`);
@@ -387,7 +396,7 @@ test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a cle
     'transcript-structure-scan',
     'memory-prompt-hint',
   ];
-  const r = await doctor({});
+  const r = await doctorFull({});
   for (const h of EXPECTED) {
     const c = r.checks.find(x => x.name === `${h} liveness`);
     assert.ok(c, `liveness check for ${h} must exist`);
@@ -405,7 +414,7 @@ test('doctor self-test detail notes kill-switch when user has disabled the hook 
     path.join(box.home, '.claude/settings.json'),
     JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
   );
-  const r = await doctor({});
+  const r = await doctorFull({});
   const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
   assert.ok(selftest);
   assert.equal(selftest.ok, true, 'hook code still denies synthetic trigger regardless of kill-switch');
@@ -416,7 +425,7 @@ test('doctor self-test detail notes kill-switch when user has disabled the hook 
 test('doctor pre-bash-safety self-test:rm-rf-var passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
   const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
-  const r = await doctor({});
+  const r = await doctorFull({});
   const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
   assert.ok(t, 'pre-bash-safety self-test:rm-rf-var check must exist');
   assert.equal(t.ok, true, `rm-rf-var self-test must pass on a clean tree; detail="${t.detail}"`);
@@ -427,7 +436,7 @@ test('doctor pre-bash-safety self-test:rm-rf-var passes when hook denies synthet
 test('doctor pre-bash-safety self-test:npx-unpinned passes when hook denies synthetic trigger (v0.19.1 A2)', async () => {
   const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
-  const r = await doctor({});
+  const r = await doctorFull({});
   const t = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
   assert.ok(t, 'pre-bash-safety self-test:npx-unpinned check must exist');
   assert.equal(t.ok, true, `npx-unpinned self-test must pass on a clean tree; detail="${t.detail}"`);
@@ -443,7 +452,7 @@ test('doctor runs banned-vocab self-test:prose-scan and passes when Path 2 denie
   // high-fire token, then drives the hook with `git push`. Must deny.
   const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
-  const r = await doctor({});
+  const r = await doctorFull({});
   const t = r.checks.find(c => c.name === 'banned-vocab self-test:prose-scan');
   assert.ok(t, 'banned-vocab self-test:prose-scan check must exist');
   assert.equal(t.ok, true, `Path 2 self-test must pass on a clean tree; detail="${t.detail}"`);
@@ -461,7 +470,7 @@ test('doctor pre-bash-safety self-test detail notes per-hook kill-switch from se
     path.join(box.home, '.claude/settings.json'),
     JSON.stringify({ env: { DISABLE_PRE_BASH_SAFETY_HOOK: '1' } })
   );
-  const r = await doctor({});
+  const r = await doctorFull({});
   const rmrf = r.checks.find(c => c.name === 'pre-bash-safety self-test:rm-rf-var');
   const npx = r.checks.find(c => c.name === 'pre-bash-safety self-test:npx-unpinned');
   const banned = r.checks.find(c => c.name === 'banned-vocab self-test');
@@ -481,7 +490,7 @@ test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in
   const saved = process.env.DISABLE_CLAUDEMD_HOOKS;
   process.env.DISABLE_CLAUDEMD_HOOKS = '1';
   try {
-    const r = await doctor({});
+    const r = await doctorFull({});
     const selftest = r.checks.find(c => c.name === 'banned-vocab self-test');
     assert.ok(selftest);
     assert.equal(selftest.ok, true);
@@ -490,6 +499,32 @@ test('doctor self-test detail notes kill-switch when DISABLE_CLAUDEMD_HOOKS=1 in
     if (saved === undefined) delete process.env.DISABLE_CLAUDEMD_HOOKS;
     else process.env.DISABLE_CLAUDEMD_HOOKS = saved;
   }
+});
+
+test('hookSelfTests: false drops exactly the hook self-test rows, and the CLI runs them', async () => {
+  const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
+  if (!have('jq') || !have('bash')) return;
+  const hookRow = /self-test|liveness/;
+  const full = (await doctorFull({})).checks.map(c => c.name);
+  const fast = (await doctor({})).checks.map(c => c.name);
+  const dropped = full.filter(n => !fast.includes(n));
+  assert.ok(dropped.length >= 20, `expected the ~22 hook rows to be dropped, got ${dropped.length}`);
+  assert.deepEqual(
+    dropped.filter(n => !hookRow.test(n)),
+    [],
+    'the option must drop hook self-test rows and nothing else'
+  );
+  assert.deepEqual(
+    fast.filter(n => hookRow.test(n)),
+    [],
+    'a hook row survived — the option no longer skips the spawns this file was sped up by'
+  );
+  const cli = spawnSync(process.execPath, [DOCTOR_JS], { env: box.env(), encoding: 'utf8' });
+  const cliNames = JSON.parse(cli.stdout).checks.map(c => c.name);
+  assert.ok(
+    cliNames.includes('banned-vocab self-test'),
+    `the CLI must run the hook self-tests; its rows were: ${cliNames.join(', ')}`
+  );
 });
 
 test('D8: orphan manifest detected when manifest.pluginRoot path is absent', async () => {
