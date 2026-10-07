@@ -857,6 +857,43 @@ bigarg_pad="echo $(printf '%0140000d' 0)"
 run_bigarg_case "S8-CQ1 behind 140 KB of padding" "${bigarg_pad}"$'\n# the script\'s layout\nrm -rf $SP/x\necho \'foo x\''
 run_bigarg_case "npx with a 131,000-character package name" "npx some-unknown-pkg-$(printf '%0131000d' 0)"
 
+# Gate time on a command with many segments (E3). Every ; & | ( ) and backtick
+# starts a segment, and the rm, npx and remote-runner checks each forked once
+# per segment (the runner check twice): the slowest of 79,647 real commands,
+# 12.8 KB with 422 such characters, took 2.8-3.5 s against the 3 s timeout in
+# hooks.json, and a killed hook passes. This command has 400 lines of four
+# segments each and an unguarded rm on the last line, whose deny shows that
+# every segment was read. The limit is the timeout hooks.json declares for this
+# hook; the best of three runs counts, as in hook-budget.test.sh.
+seg_limit=$(jq -r '[.hooks.PreToolUse[].hooks[] | select(.command | test("pre-bash-safety-check")) | .timeout][0] // empty' "$HERE/../../hooks/hooks.json")
+seg_cmd=""
+for ((i = 0; i < 400; i++)); do seg_cmd+="echo \`date\` step $i; true"$'\n'; done
+seg_cmd+='rm -rf $X/y'
+seg_fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+printf '%s' "$seg_cmd" | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.}}' > "$seg_fix"
+seg_best=""
+for _try in 1 2 3; do
+  TIMEFORMAT='%R'
+  seg_secs=$( { time bash "$HOOK" < "$seg_fix" > "$seg_fix.out" 2>/dev/null; } 2>&1 )
+  [[ "$seg_secs" =~ ^[0-9]+\.[0-9]+$ ]] || continue
+  if [[ -z "$seg_best" ]] || awk -v a="$seg_secs" -v b="$seg_best" 'BEGIN { exit !(a < b) }'; then seg_best="$seg_secs"; fi
+  awk -v a="$seg_best" -v l="${seg_limit:-0}" 'BEGIN { exit !(a < l) }' && break
+done
+seg_decision=$(jq -r .hookSpecificOutput.permissionDecision < "$seg_fix.out" 2>/dev/null)
+rm -f "$seg_fix" "$seg_fix.out"
+if [[ "$seg_decision" != deny ]]; then
+  echo "FAIL [segment-time]: the rm on line 401 was not denied (got '${seg_decision}'), so the timing below measured an early exit"
+  FAIL=$((FAIL + 1))
+elif [[ -z "$seg_limit" || -z "$seg_best" ]]; then
+  echo "FAIL [segment-time]: could not read the hooks.json timeout ('${seg_limit}') or the elapsed time ('${seg_best}')"
+  FAIL=$((FAIL + 1))
+elif awk -v a="$seg_best" -v l="$seg_limit" 'BEGIN { exit !(a < l) }'; then
+  echo "PASS: 1,600 segments decided in ${seg_best} s, inside the ${seg_limit} s hook timeout"; PASS=$((PASS + 1))
+else
+  echo "FAIL [segment-time]: 1,600 segments took ${seg_best} s (best of 3); hooks.json kills this hook at ${seg_limit} s and a killed hook passes"
+  FAIL=$((FAIL + 1))
+fi
+
 # Residual counts come from the labels, never from prose (R1(a)): quote this
 # line, not a number typed into a release note.
 echo "Residuals: xfn=$XFN xfp=$XFP (known false negatives / false positives, each asserted)"

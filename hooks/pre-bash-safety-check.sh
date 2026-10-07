@@ -777,6 +777,12 @@ s8_split_segments() {
 # npx calls it AFTER — that difference makes `{ env rm` a (latent) miss and `{ env npx`
 # a catch. Both behaviours predate this extraction and must be preserved; the
 # differential corpus scan proves no verdict moved.
+# The result goes to S8_STRIPPED, not stdout (E3 in docs/S8-RESIDUALS.md): the
+# four loops called it as `x=$(s8_strip_wrappers "$x")`, one fork per segment
+# per loop, and on a command with hundreds of segments the forks outran the
+# hook's 3 s timeout. The body uses only locals and builtins, so running it in
+# the current shell changes nothing, and every caller passes a line read by
+# `read -r`, so there was no trailing newline for `$(…)` to remove.
 s8_strip_wrappers() {
   local seg="$1" first w rest wrap durations
   while [[ -n "$seg" ]]; do
@@ -825,7 +831,7 @@ s8_strip_wrappers() {
       else break; fi
     done
   done
-  printf '%s' "$seg"
+  S8_STRIPPED="$seg"
 }
 
 declare -a HITS=()
@@ -919,7 +925,7 @@ if :; then
     # this runs BEFORE the `${trimmed#[({]}` opener-strip below — load-bearing, do not
     # reorder (see s8_strip_wrappers header). Residual (unchanged): `xargs rm`.
     # [allow-rm-rf-var] escapes.
-    trimmed=$(s8_strip_wrappers "$trimmed")
+    s8_strip_wrappers "$trimmed"; trimmed="$S8_STRIPPED"
     # Segment must start with an `rm` token. Canonicalize the command word to
     # its basename and strip a leading backslash so path-prefixed (`/bin/rm`,
     # `./rm`) and alias-defeating (`\rm`) forms are recognized as rm — matching
@@ -931,7 +937,13 @@ if :; then
     trimmed="${trimmed#[({]}"
     trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
     rm_word="${trimmed%%[[:space:]]*}"
-    rm_canon="${rm_word#\\}"; rm_canon="${rm_canon##*/}"
+    # rm_canon is only ever compared with `rm` and `find`, so the basename is
+    # taken only where it can be one of them (E3): on a long word, ${x##*/}
+    # takes time quadratic in the length after the last `/`, and ${x#\\} on a
+    # word that does not start with a backslash is quadratic too.
+    rm_canon="$rm_word"
+    case "$rm_canon" in \\*) rm_canon="${rm_canon#\\}" ;; esac
+    case "$rm_canon" in */rm|*/find) rm_canon="${rm_canon##*/}" ;; esac
     # `find "$VAR" -delete` and `find "$VAR" -exec rm -rf {} +` delete a tree
     # rooted at an unvalidated variable exactly as `rm -rf "$VAR"` does, and
     # neither reached the check below: the segment's command word is `find`, so
@@ -1553,11 +1565,25 @@ while IFS= read -r nseg; do
   # same set as the rm gate). Order: this runs AFTER the `${nseg#[({]}` opener-strip
   # above (the rm gate runs its strip BEFORE — that asymmetry is load-bearing and
   # preserved; see s8_strip_wrappers header).
-  nseg=$(s8_strip_wrappers "$nseg")
+  s8_strip_wrappers "$nseg"; nseg="$S8_STRIPPED"
   # Canonicalize the command word (basename + strip a leading backslash) so
   # `\npx` / `/usr/bin/npx` at command position match what the shell EXECs.
-  ncmd="${nseg%%[[:space:]]*}"; ncmd="${ncmd#\\}"; ncmd="${ncmd##*/}"
-  seg_canon="$ncmd${nseg#"${nseg%%[[:space:]]*}"}"
+  # NPX_CMD_REGEX needs whitespace or the end right after the runner name, so
+  # it matches only when ncmd is exactly npx, bunx, npm, pnpm, yarn or bun; the
+  # basename is taken only where it can be one of those, as in the rm gate (E3).
+  ncmd="${nseg%%[[:space:]]*}"
+  case "$ncmd" in \\*) ncmd="${ncmd#\\}" ;; esac
+  case "$ncmd" in */npx|*/bunx|*/npm|*/pnpm|*/yarn|*/bun) ncmd="${ncmd##*/}" ;; esac
+  # With no whitespace in the segment the second half is empty; skipping it
+  # avoids a prefix removal whose time is quadratic in the first word (E3).
+  case "$nseg" in
+    *[[:space:]]*) seg_canon="$ncmd${nseg#"${nseg%%[[:space:]]*}"}" ;;
+    *) seg_canon="$ncmd" ;;
+  esac
+  # Every branch of NPX_CMD_REGEX starts at `^` with npx, bunx, npm, pnpm, yarn
+  # or bun, so a segment starting with none of them cannot match; skipping the
+  # grep there saves two processes per segment and decides nothing (E3).
+  case "$seg_canon" in npx*|npm*|pnpm*|yarn*|bun*) ;; *) continue ;; esac
   if printf '%s' "$seg_canon" | grep -qE "$NPX_CMD_REGEX"; then
     runner=$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')
     npx_seg="$seg_canon"
@@ -1715,7 +1741,17 @@ while IFS= read -r rseg; do
   # than before, with that segment's reason.)
   rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   rseg="${rseg#[({]}"; rseg="${rseg#"${rseg%%[![:space:]]*}"}"
-  rseg=$(s8_strip_wrappers "$rseg")
+  s8_strip_wrappers "$rseg"; rseg="$S8_STRIPPED"
+  # Skip the awk process when the case below cannot match (E3). canon_cmd_words
+  # only deletes characters, each deletion at the start of a word it
+  # canonicalizes, and such a word follows a space, a tab or one of ; & | ( `
+  # { in its output. Every pattern below is letters plus at most one trailing
+  # whitespace character, so the text it matches at the start of the output
+  # holds no deletion point and is a substring of the input.
+  case "$rseg" in
+    *deno*|*pip*|*python*|*uv[[:space:]]*|*cargo*|*go[[:space:]]*|*nix*) ;;
+    *) continue ;;
+  esac
   rseg=$(canon_cmd_words "$rseg")
   rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   case "$rseg" in
@@ -1973,7 +2009,7 @@ while IFS= read -r cseg; do
     cseg="${cseg#?}"; cseg="${cseg#"${cseg%%[![:space:]]*}"}"
   done
   _cseg_pre="$cseg"
-  cseg=$(s8_strip_wrappers "$cseg")
+  s8_strip_wrappers "$cseg"; cseg="$S8_STRIPPED"
   # F19: re-canonicalize command-position words after the wrapper strip — the
   # global :478 canon ran while the wrapper still held command position, so a
   # path/backslash-prefixed fetch binary behind `sudo `/`env ` kept its prefix
