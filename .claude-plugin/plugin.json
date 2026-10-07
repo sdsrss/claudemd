@@ -1,7 +1,7 @@
 {
   "$schema": "https://claude.ai/plugin-schema.json",
   "name": "claudemd",
-  "version": "0.107.4",
+  "version": "0.107.5",
   "description": "Personal AI-coding discipline harness — one developer's opinionated AI-CODING-SPEC v7.2, enforced via Claude Code hooks + shipped with the plugin",
   "author": {
     "name": "sds"
