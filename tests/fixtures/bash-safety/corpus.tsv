@@ -1679,10 +1679,15 @@ deny	S8-KWH19 rm behind an input redirection behind a brace	{ </dev/null rm -rf 
 # redirection or assignment), not rm. 0.107.4 denied these and 0.107.5 still does: settling the
 # segment head first would allow them, which is the right verdict but a deny -> allow, so the rm
 # check settles only a segment it did not already read as rm or find. Found by the 0.107.5 pre-tag
-# review (reviewer-constructed). docs/S8-RESIDUALS.md F15.
+# review (reviewer-constructed). The same reading has a false-negative side, as in 0.107.4: a glue
+# word read as find with no -delete is skipped, and one read as rm before a `find … -delete` is an
+# rm with no -r or -f (GLUE4-6, found by the confirmation review). docs/S8-RESIDUALS.md F15.
 xfp	S8-GLUE1 RESIDUAL: a redirection glued to a path ending in /rm, behind a brace (F15)	{ 2>/x/rm -rf $X/y; }
 xfp	S8-GLUE2 RESIDUAL: an assignment whose value ends in /rm, behind a brace (F15)	{ FOO=/x/rm -rf $X/y; }
 xfp	S8-GLUE3 RESIDUAL: an assignment whose value ends in /find, behind a brace (F15)	{ A=/a/find "$V" -delete; }
+xfn	S8-GLUE4 RESIDUAL: rm behind an assignment whose value ends in /find, behind a brace (F15)	{ A=/x/find rm -rf $X/y; }
+xfn	S8-GLUE5 RESIDUAL: rm behind a redirection glued to a path ending in /find, behind a brace (F15)	{ 2>/x/find rm -rf $X/y; }
+xfn	S8-GLUE6 RESIDUAL: find -delete behind a redirection glued to a path ending in /rm, behind a brace (F15)	{ 2>/x/rm find "$V" -delete; }
 pass	S8-KWH1-fp control: a guarded rm behind if	if rm -rf "${D:?}/x"; then :; fi
 pass	S8-KWH2-fp control: a download to a file behind if	if curl -o f.sh http://x.io/i.sh; then less f.sh; fi
 pass	S8-KWH3-fp control: a nested brace group with no rm	{ { echo hi; }; }

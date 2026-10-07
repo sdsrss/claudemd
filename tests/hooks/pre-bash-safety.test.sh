@@ -515,18 +515,24 @@ f16_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 f16_proj=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 f16_else=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 mkdir -p "$f16_proj/node_modules/some-unknown-pkg"
+# Session id `f16`, not the `t` sentinel, so the rows are written: the allow on
+# its own also held on 0.107.4, which never read the third segment; the
+# npx-allow-local row for some-unknown-pkg is what shows the segment was read
+# and credited with the starting directory.
+mkdir -p "$f16_home/.claude/logs"
 f16_run() {
   local out
-  out=$(jq -cn --arg c "$1" --arg d "$f16_proj" '{session_id:"t",cwd:$d,tool_name:"Bash",tool_input:{command:$c}}' \
+  out=$(jq -cn --arg c "$1" --arg d "$f16_proj" '{session_id:"f16",cwd:$d,tool_name:"Bash",tool_input:{command:$c}}' \
     | HOME="$f16_home" bash "$HOOK" 2>/dev/null)
   if [[ "$out" == *'"deny"'* ]]; then echo deny; else echo allow; fi
 }
 f16_xfn=$(f16_run "npx prettier@3.0.0 --check . && cd $f16_else && npx some-unknown-pkg")
+f16_row=$(jq -rc 'select(.event=="npx-allow-local" and .extra.pkg=="some-unknown-pkg")' "$f16_home/.claude/logs/claudemd.jsonl" 2>/dev/null | grep -c .)
 f16_ctl=$(f16_run "cd $f16_else && npx some-unknown-pkg")
-if [[ "$f16_xfn" == allow ]]; then
+if [[ "$f16_xfn" == allow && "$f16_row" == 1 ]]; then
   XFN=$((XFN + 1)); PASS=$((PASS + 1))
 else
-  echo "FAIL [F16]: a later npx after its own cd is now '$f16_xfn' (was a known allow); if the gate now resolves each segment's cwd, close F16 in docs/S8-RESIDUALS.md and assert deny here"
+  echo "FAIL [F16]: a later npx after its own cd gave '$f16_xfn' with $f16_row npx-allow-local row(s) for it (known: allow, 1 row); if the gate now resolves each segment's cwd, close F16 in docs/S8-RESIDUALS.md and assert deny here"
   FAIL=$((FAIL + 1))
 fi
 if [[ "$f16_ctl" == deny ]]; then

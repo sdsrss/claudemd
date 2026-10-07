@@ -522,11 +522,14 @@ npx_pkg_locally_resolved() {
 #   (resolves relative / absolute / `..` against the real filesystem).
 #
 #   Safety: only ALLOWS when a real local install exists at the composed path.
-#   For the first npx of a command that is the intended allow. Since 0.107.5 the
-#   npx check examines every runner segment and all of them use this one cwd,
-#   so a later npx after its own `cd` is resolved against the wrong directory:
-#   `npx prettier@3.0.0 --check . && cd /elsewhere && npx pkg` credits a pkg
-#   installed where the command started (F16 in docs/S8-RESIDUALS.md). Targets with
+#   The cd's it follows are those before the first literal `npx ` (a command
+#   with only bunx, `pnpm dlx` and the like has none, so every cd counts, even
+#   one after the runner). Since 0.107.5 the npx check examines every runner
+#   segment and all of them use this one cwd, so a later npx after its own `cd`,
+#   or after a first npx that ran in a `(cd dir && …)` subshell, is resolved
+#   against the wrong directory: `npx prettier@3.0.0 --check . && cd /elsewhere
+#   && npx pkg` credits a pkg installed where the command started (F16 in
+#   docs/S8-RESIDUALS.md). Targets with
 #   shell expansion (`$VAR` / backtick / glob / `~`) or a failed `cd` are
 #   unresolvable, so we bail to BASE (keeping the conservative deny).
 #
@@ -783,9 +786,9 @@ s8_split_segments() {
 # added s8_wrap_optarg. [allow-*] is the escape.
 # CALL-SITE ORDER IS LOAD-BEARING: rm calls this BEFORE its `${x#[({]}` opener-strip,
 # npx calls it AFTER — that difference made `{ env rm` a miss and `{ env npx` a catch.
-# Both orders are kept as they were; s8_head_settle, which every check now runs
-# after its own steps, is what reads `{ env rm` (corpus rows S8-KWH*), and it
-# changes nothing on a segment whose head was already a command word.
+# Both orders are kept as they were; s8_head_settle, which each check now runs
+# after its own steps (the rm check only on a word it does not already read as
+# rm or find), is what reads `{ env rm` (corpus rows S8-KWH*).
 # The result goes to S8_STRIPPED, not stdout (E3 in docs/S8-RESIDUALS.md): the
 # four loops called it as `x=$(s8_strip_wrappers "$x")`, one fork per segment
 # per loop, and on a command with hundreds of segments the forks outran the
@@ -866,9 +869,12 @@ s8_rm_canon() {
 # check, at a wrapper behind a brace (`{ env rm …`), so the command behind them
 # was never read. Each check calls this AFTER its own steps, unchanged: it drops
 # leading ( and { and runs s8_strip_wrappers with the keywords, until the head is
-# not an opener. On a segment whose head was already a command word that no step
-# strips (every segment a check acted on before), it changes nothing, so a check
-# reads those segments exactly as it did and can only gain segments to act on.
+# not an opener. On a segment whose head is a command word that no step strips,
+# it changes nothing. That covers every segment the npx and runner checks acted
+# on before; the rm check also acted on a head that a step strips, a
+# redirection or assignment ending in /rm or /find (`{ 2>/x/rm -rf …`), so it
+# calls this only on a word it does not already read as rm or find (S8-GLUE*).
+# The curl check keeps the result as an extra view (see there).
 s8_head_settle() {
   local x="$1" h
   # Fast path for the common head, a plain command word: the loop below would
@@ -1673,7 +1679,7 @@ _npx_i=0
 _npx_bypass_rows=0
 _npx_seen=$'\n'
 # The escape-token test and the cwd depend on the whole command only, so they
-# run once, not once per runner segment: 200 npx lines took 3.7 s that way
+# run once, not once per runner segment: 200 npx lines took 2.0-3.7 s that way
 # (0.107.5 pre-tag review L3). As before, the cwd is not computed when the
 # token is present.
 _npx_bypass_cmd=0
