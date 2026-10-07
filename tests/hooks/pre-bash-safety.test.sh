@@ -486,6 +486,25 @@ else
 fi
 rm -rf "${esc_home:?}"
 
+# The npx check examines every runner segment (S8-NPXM rows), so a command that
+# names one package twice must still write one row for it: two byte-identical
+# rows under one tool_use_id are what /claudemd-audit reads as a double fire.
+# A different package in between is still examined and recorded.
+dup_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$dup_home/.claude/logs"
+dup_log="$dup_home/.claude/logs/claudemd.jsonl"
+jq -cn '{session_id:"dup",tool_use_id:"toolu_dup",cwd:"/tmp",tool_name:"Bash",tool_input:{command:"npx --no-install pkg-a run x && npx --no-install pkg-b && npx --no-install pkg-a run y"}}' \
+  | HOME="$dup_home" bash "$HOOK" >/dev/null 2>&1
+dup_a=$(jq -rc 'select(.event=="npx-allow-no-install" and .extra.pkg=="pkg-a")' "$dup_log" 2>/dev/null | grep -c .)
+dup_b=$(jq -rc 'select(.event=="npx-allow-no-install" and .extra.pkg=="pkg-b")' "$dup_log" 2>/dev/null | grep -c .)
+if [[ "$dup_a" == 1 && "$dup_b" == 1 ]]; then
+  echo "PASS: one npx-allow-no-install row per package across three npx segments"; PASS=$((PASS + 1))
+else
+  echo "FAIL [npx-dup-rows]: pkg-a rows=$dup_a (want 1), pkg-b rows=$dup_b (want 1): $(cat "$dup_log" 2>/dev/null)"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "${dup_home:?}"
+
 # 0.106.0 pre-tag review M2 + L5. The comment-quote pass runs the hook a second
 # time on the blanked text. That run must write only its own deny row: every
 # allow-side row it repeated doubled a row the first run had already written for

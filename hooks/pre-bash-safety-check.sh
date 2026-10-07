@@ -698,6 +698,11 @@ SANITIZED_CMD_FLAT=$(printf '%s' "$SANITIZED_CMD" | tr '\n' ' ')
 # only the bare-numeric DURATION consumption stays FLAGGED-only (`timeout 5 rm`).
 S8_WRAP_ARGLESS=(env command exec nohup setsid time busybox)
 S8_WRAP_FLAGGED=(timeout nice stdbuf ionice chrt sudo doas)
+# Both lists as one space-delimited string, for s8_head_settle's fast path:
+# `[[ "$S8_WRAP_WORDS" == *" $w "* ]]` is s8_in_list over both lists without a
+# function call (no list word holds a space, and the string has no double one).
+S8_WRAP_WORDS=" "
+for _s8w in "${S8_WRAP_ARGLESS[@]}" "${S8_WRAP_FLAGGED[@]}"; do S8_WRAP_WORDS+="$_s8w "; done
 
 # s8_in_list WORD ELEM... → returns 0 if WORD equals any ELEM.
 s8_in_list() {
@@ -774,17 +779,20 @@ s8_split_segments() {
 # wrapper forms (`sudo -u svc rm`, `timeout -s KILL 5 rm`) were residuals until F24
 # added s8_wrap_optarg. [allow-*] is the escape.
 # CALL-SITE ORDER IS LOAD-BEARING: rm calls this BEFORE its `${x#[({]}` opener-strip,
-# npx calls it AFTER — that difference makes `{ env rm` a (latent) miss and `{ env npx`
-# a catch. Both behaviours predate this extraction and must be preserved; the
-# differential corpus scan proves no verdict moved.
+# npx calls it AFTER — that difference made `{ env rm` a miss and `{ env npx` a catch.
+# Both orders are kept as they were; s8_head_settle, which every check now runs
+# after its own steps, is what reads `{ env rm` (corpus rows S8-KWH*), and it
+# changes nothing on a segment whose head was already a command word.
 # The result goes to S8_STRIPPED, not stdout (E3 in docs/S8-RESIDUALS.md): the
 # four loops called it as `x=$(s8_strip_wrappers "$x")`, one fork per segment
 # per loop, and on a command with hundreds of segments the forks outran the
 # hook's 3 s timeout. The body uses only locals and builtins, so running it in
 # the current shell changes nothing, and every caller passes a line read by
 # `read -r`, so there was no trailing newline for `$(…)` to remove.
+# A second argument `kw` also strips the keywords if, elif, while, until and
+# coproc; only s8_head_settle passes it (S8-KWH*).
 s8_strip_wrappers() {
-  local seg="$1" first w rest wrap durations
+  local seg="$1" kw="${2:-}" first w rest wrap durations
   while [[ -n "$seg" ]]; do
     first="${seg%%[[:space:]]*}"
     # F25: a redirection may precede the command word (`>/tmp/log rm -rf $VAR`,
@@ -804,7 +812,9 @@ s8_strip_wrappers() {
     if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
        || [[ "$first" == 'do' || "$first" == 'then' || "$first" == 'else' \
           || "$first" == '!' \
-          || "$first" == /usr/bin/env || "$first" == /bin/env ]]; then
+          || "$first" == /usr/bin/env || "$first" == /bin/env ]] \
+       || { [[ -n "$kw" ]] && [[ "$first" == 'if' || "$first" == 'elif' \
+          || "$first" == 'while' || "$first" == 'until' || "$first" == 'coproc' ]]; }; then
       rest="${seg#"$first"}"; seg="${rest#"${rest%%[![:space:]]*}"}"
       continue
     fi
@@ -832,6 +842,41 @@ s8_strip_wrappers() {
     done
   done
   S8_STRIPPED="$seg"
+}
+
+# s8_head_settle SEGMENT → S8_HEAD (S8-KWH*). Each check reads the command word at
+# the head of a segment after its own trim / opener / wrapper steps, and those
+# steps stopped at a compound-command keyword (`if rm -rf $X/y; then …`, `echo;
+# until npx pkg; do …`), at a second brace (`{ { rm …; }; }`) and, in the rm
+# check, at a wrapper behind a brace (`{ env rm …`), so the command behind them
+# was never read. Each check calls this AFTER its own steps, unchanged: it drops
+# leading ( and { and runs s8_strip_wrappers with the keywords, until the head is
+# not an opener. On a segment whose head was already a command word that no step
+# strips (every segment a check acted on before), it changes nothing, so a check
+# reads those segments exactly as it did and can only gain segments to act on.
+s8_head_settle() {
+  local x="$1" h
+  # Fast path for the common head, a plain command word: the loop below would
+  # return it unchanged, and running it costs a second s8_strip_wrappers per
+  # segment per check, which doubled the gate's time on many-segment commands.
+  # The pattern is a superset of what the loop acts on: an opener, a keyword,
+  # do/then/else/!, a path-form env, a wrapper, and any word holding `=`
+  # (assignments) or `<`/`>` (redirections).
+  # Both expansions take superlinear time on a long word, so each runs only
+  # when it can change something (the callers pass trimmed text).
+  case "$x" in [[:space:]]*) x="${x#"${x%%[![:space:]]*}"}" ;; esac
+  case "$x" in *[[:space:]]*) h="${x%%[[:space:]]*}" ;; *) h="$x" ;; esac
+  case "$h" in
+    '('*|'{'*|*=*|*'<'*|*'>'*|if|elif|while|until|coproc|do|then|else|'!'|/usr/bin/env|/bin/env) ;;
+    *) [[ "$S8_WRAP_WORDS" == *" $h "* ]] || { S8_HEAD="$x"; return 0; } ;;
+  esac
+  while :; do
+    x="${x#"${x%%[![:space:]]*}"}"
+    case "$x" in '('*|'{'*) x="${x#?}"; continue ;; esac
+    s8_strip_wrappers "$x" kw; x="$S8_STRIPPED"
+    case "$x" in '('*|'{'*) ;; *) break ;; esac
+  done
+  S8_HEAD="$x"
 }
 
 declare -a HITS=()
@@ -936,6 +981,9 @@ if :; then
     # (command inside (...) / { ...; } / $(...)) is seen as rm.
     trimmed="${trimmed#[({]}"
     trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+    # Keywords, a second opener and a wrapper behind an opener (S8-KWH*; see
+    # s8_head_settle). Only segments that did not start with rm or find change.
+    s8_head_settle "$trimmed"; trimmed="$S8_HEAD"
     rm_word="${trimmed%%[[:space:]]*}"
     # rm_canon is only ever compared with `rm` and `find`, so the basename is
     # taken only where it can be one of them (E3): on a long word, ${x##*/}
@@ -1556,6 +1604,15 @@ NPX_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space
 NPX_CMD_REGEX="^(npx|bunx|npm${NPX_GLOBAL_FLAGS}[[:space:]]+exec|pnpm${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|yarn${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|bun${NPX_GLOBAL_FLAGS}[[:space:]]+x)([[:space:]]|$)"
 runner=""
 npx_seg=""
+# Every runner segment is examined, not only the first. The loop used to stop
+# at the first segment that matched, so `npx prettier@3.0.0 --check . && npx
+# some-unknown-pkg` was allowed while `npx some-unknown-pkg` alone was denied,
+# and stripping keywords (S8-KWH*) could make an earlier segment the first one and
+# hide a later segment that had been denied. The block below now runs once per
+# runner segment and only adds denies: the segment that was examined before is
+# examined as before, or skipped as a repeat of an earlier segment with the same
+# runner, package and --no-install flag, which gets the same verdict.
+NPX_RUNNERS=(); NPX_SEGS=()
 NPX_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
 while IFS= read -r nseg; do
   nseg="${nseg#"${nseg%%[![:space:]]*}"}"; nseg="${nseg%"${nseg##*[![:space:]]}"}"
@@ -1566,6 +1623,7 @@ while IFS= read -r nseg; do
   # above (the rm gate runs its strip BEFORE — that asymmetry is load-bearing and
   # preserved; see s8_strip_wrappers header).
   s8_strip_wrappers "$nseg"; nseg="$S8_STRIPPED"
+  s8_head_settle "$nseg"; nseg="$S8_HEAD"   # S8-KWH*
   # Canonicalize the command word (basename + strip a leading backslash) so
   # `\npx` / `/usr/bin/npx` at command position match what the shell EXECs.
   # NPX_CMD_REGEX needs whitespace or the end right after the runner name, so
@@ -1585,12 +1643,16 @@ while IFS= read -r nseg; do
   # grep there saves two processes per segment and decides nothing (E3).
   case "$seg_canon" in npx*|npm*|pnpm*|yarn*|bun*) ;; *) continue ;; esac
   if printf '%s' "$seg_canon" | grep -qE "$NPX_CMD_REGEX"; then
-    runner=$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')
-    npx_seg="$seg_canon"
-    break
+    NPX_RUNNERS+=("$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')")
+    NPX_SEGS+=("$seg_canon")
   fi
 done < <(printf '%s\n' "$NPX_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 
+_npx_i=0
+_npx_bypass_rows=0
+_npx_seen=$'\n'
+while (( _npx_i < ${#NPX_SEGS[@]} )); do
+runner="${NPX_RUNNERS[$_npx_i]}"; npx_seg="${NPX_SEGS[$_npx_i]}"; _npx_i=$((_npx_i + 1))
 if [[ -n "$runner" ]]; then
   bypass_npx=0
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
@@ -1599,9 +1661,11 @@ if [[ -n "$runner" ]]; then
     # so the record can name WHICH ecosystem's hatch was used. The package token
     # is not yet extracted at this point and is deliberately not recomputed —
     # a second extraction would be a duplicate of the one below and free to drift.
-    hook_record pre-bash-safety bypass-escape-hatch \
+    # One row per command, however many runner segments it has.
+    (( _npx_bypass_rows == 0 )) && hook_record pre-bash-safety bypass-escape-hatch \
       "{\"token\":\"allow-npx-unpinned\",\"runner\":$(printf '%s' "$runner" | jq -R .)}" \
       '§8-npx' "$SESSION_ID" "$TOOL_USE_ID"
+    _npx_bypass_rows=1
     # One overridden tool call must produce ONE row per token+section. Pattern 2b
     # records the same token and section, and a compound command can trip both
     # (`npx pkg && cargo install --git …` emitted two, verified) — which inflates
@@ -1640,6 +1704,14 @@ if [[ -n "$runner" ]]; then
       esac
     done
     set +f
+    # The same runner, package and --no-install flag give the same verdict and
+    # the same record, so a later segment naming them again is skipped: `npx
+    # vitest run a; npx vitest run b` would otherwise list one deny twice, or
+    # write two identical npx-allow-local rows for one call, which
+    # scripts/audit.js counts as a double fire.
+    _npx_key="$runner"$'\t'"$no_install"$'\t'"$pkg_token"
+    case "$_npx_seen" in *$'\n'"$_npx_key"$'\n'*) pkg_token="" ;; esac
+    _npx_seen+="$_npx_key"$'\n'
     # `pkg_token` comes from the user's command line and lands inside a
     # hand-built JSON fragment, so it goes through the same escape the row
     # builder uses (round-16 M-4 / round-17 HK-M1). One backslash — `npx a\b` —
@@ -1683,6 +1755,7 @@ if [[ -n "$runner" ]]; then
     fi
   fi
 fi
+done
 
 # Pattern 2b (F40, 2026-07-28): package runners whose ARGUMENT is the remote
 # thing. Same §8 clause as Pattern 2 and the same escape token — the NPX rule's
@@ -1742,6 +1815,7 @@ while IFS= read -r rseg; do
   rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   rseg="${rseg#[({]}"; rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   s8_strip_wrappers "$rseg"; rseg="$S8_STRIPPED"
+  s8_head_settle "$rseg"; rseg="$S8_HEAD"   # S8-KWH*
   # Skip the awk process when the case below cannot match (E3). canon_cmd_words
   # only deletes characters, each deletion at the start of a word it
   # canonicalizes, and such a word follows a space, a tab or one of ; & | ( `
@@ -2010,6 +2084,14 @@ while IFS= read -r cseg; do
   done
   _cseg_pre="$cseg"
   s8_strip_wrappers "$cseg"; cseg="$S8_STRIPPED"
+  # S8-KWH*: the segment with keywords and openers settled, kept as a third view
+  # and read only when the two views below miss. Unlike the rm, npx and runner
+  # checks this one is not applied in place: the pipe regex also matches after
+  # a ( or backtick inside the segment, and settling can strip the assignment
+  # word that holds one (`if A=$(curl … | sh)` matches in place and would not
+  # after settling), so it may only add a view.
+  s8_head_settle "$cseg"; _cseg_kw="$S8_HEAD"
+  [[ "$_cseg_kw" == "$cseg" ]] && _cseg_kw=""
   # F19: re-canonicalize command-position words after the wrapper strip — the
   # global :478 canon ran while the wrapper still held command position, so a
   # path/backslash-prefixed fetch binary behind `sudo `/`env ` kept its prefix
@@ -2048,6 +2130,11 @@ while IFS= read -r cseg; do
     # Only when the primary view missed, so the src/sink fields below are read
     # from whichever view actually matched.
     _curlsh_view=1; cseg="$cseg_rhs"
+  elif [[ -n "$_cseg_kw" ]]; then
+    _cseg_kw=$(canon_cmd_words "$_cseg_kw")
+    if echo "$_cseg_kw" | grep -qE "$CURLSH_PIPE" || echo "$_cseg_kw" | grep -qE "$CURLSH_PROCSUB"; then
+      _curlsh_view=1; cseg="$_cseg_kw"
+    fi
   fi
   if (( _curlsh_view )); then
     curlsh_hit=1
