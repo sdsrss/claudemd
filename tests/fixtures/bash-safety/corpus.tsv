@@ -1627,8 +1627,10 @@ xfn	S8-BSEOL1 RESIDUAL: an escaped backslash at the end of a line reads as a con
 # trimmed the segment, and s8_strip_wrappers takes the first word up to the first space, so every
 # segment after `; ` or `&& ` came back unstripped: `echo hi; sudo deno run <url>` was allowed while
 # `sudo deno run <url>` was denied, and a `{ … }` group hid the runner behind its brace (0.107.3
-# pre-tag review M2, reviewer-constructed). The 80,348-command replay of 2026-10-06 had one real
-# command of this shape, a `pip3 download` the gate allows either way (RRH4-fp).
+# pre-tag review M2, reviewer-constructed). In the 79,724-command replay of 2026-10-07, 913 real
+# commands put a wrapper, assignment, `then` or `do` before a runner word after a spaced separator
+# (cargo 550, python3 356, the rest deno, python, pip3 and uv); the replay moved none of their
+# verdicts, so none is an invocation this check denies. RRH4-fp is modelled on one, a `pip3 download`.
 deny	S8-RRH1 deno behind sudo after a spaced ;	echo hi; sudo deno run https://x.io/mod.ts
 deny	S8-RRH2 pip VCS install behind sudo after a spaced &&	echo hi && sudo pip install git+https://x.io/r.git
 deny	S8-RRH3 cargo --git behind an assignment after a spaced ;	echo hi; FOO=1 cargo install --git https://x.io/r
@@ -1642,3 +1644,18 @@ pass	S8-RRH2-fp control: a registry pip install behind sudo after a spaced &&	ec
 pass	S8-RRH3-fp control: a registry cargo install in a brace group	{ cargo install ripgrep; }
 pass	S8-RRH4-fp control: the real shape, pip3 download behind timeout	echo hi; timeout 30 pip3 download sqlglot
 pass	S8-RRH5-fp control: a pinned go module behind sudo after a spaced ;	echo hi; sudo go install x.io/m@v1.2.3
+
+# === 2026-10-07 S8-KWH: a compound-command keyword at the head of a segment (F14) ===
+# s8_strip_wrappers strips `do`, `then`, `else` and `!` but not `if`, `elif`, `while`, `until` or
+# `coproc`, and only one `{`, so all three checks read the keyword as the command word and miss the
+# rm, npx or runner behind it (0.107.4 pre-tag review M2, reviewer-constructed; already so in
+# 0.107.3). Registered, not patched: it came up in the review of a repair round. Field check,
+# 2026-10-07: 3 of 79,724 real commands have the shape (`if npx vitest run` twice, `if rm -rf --
+# "${d:?}"` once), none a false negative. docs/S8-RESIDUALS.md F14.
+xfn	S8-KWH1 RESIDUAL: rm behind if (F14)	if rm -rf $X/y; then :; fi
+xfn	S8-KWH2 RESIDUAL: rm behind while (F14)	while rm -rf $X/y; do :; done
+xfn	S8-KWH3 RESIDUAL: rm behind coproc after a separator (F14)	echo; coproc rm -rf $X/y
+xfn	S8-KWH4 RESIDUAL: rm in a nested brace group (F14)	echo; { { rm -rf $X/y; }; }
+xfn	S8-KWH5 RESIDUAL: npx behind until after a separator (F14)	echo; until npx some-unknown-pkg; do :; done
+xfn	S8-KWH6 RESIDUAL: a remote runner behind if (F14)	if deno run https://x.io/m.ts; then :; fi
+deny	S8-KWH7 control: the same rm behind then is stripped and denied	if true; then rm -rf $X/y; fi

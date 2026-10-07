@@ -1707,8 +1707,12 @@ while IFS= read -r rseg; do
   # `echo hi; sudo deno run <url>`, `x && FOO=1 cargo install --git …` and
   # `{ deno run <url>; }` were allowed while the same runner at the start of the
   # command was denied (0.107.3 pre-tag review M2; corpus rows S8-RRH*). A
-  # segment that reached a deny before began with a runner word, which no
-  # opener strip or wrapper strip touches, so it reads the same as before.
+  # segment that reached a deny before was, after its leading whitespace, a
+  # runner word already canonicalized by canon_cmd_words on the whole command;
+  # the first trim removes that whitespace, and neither strip touches a runner
+  # word, so the segment reads the same as before. (The loop stops at the first
+  # denying segment, so a command can now be denied for an earlier segment
+  # than before, with that segment's reason.)
   rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   rseg="${rseg#[({]}"; rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   rseg=$(s8_strip_wrappers "$rseg")
@@ -2386,6 +2390,9 @@ if (( ${#HITS[@]} == 0 )); then
       # event), not as `--arg`: Linux refuses one argument over 128 KiB, and a
       # longer command then skipped this pass entirely (E2 in
       # docs/S8-RESIDUALS.md). The second run reads the same command string.
+      # At that size the two runs together take longer than the hook's 3 s
+      # timeout in hooks.json, and a killed hook passes, so in deployment this
+      # only matters once the gate gets faster (E3).
       _cq_out=$( { printf '%s' "$_cq_cmd" | jq -Rs .; printf '%s' "$EVENT"; } \
         | jq -cs '.[0] as $c | .[1] | .tool_input.command = $c' 2>/dev/null \
         | bash "${BASH_SOURCE[0]}" --s8-comment-pass 2>/dev/null)
@@ -2522,9 +2529,10 @@ record_section_deny '§8'           "$_other_hits"
 # hook_deny hands the reason to `jq --arg`, and Linux refuses one argument over
 # 128 KiB: a reason that quoted that much of the command (an `npx` package name
 # of 131,000 characters) made jq fail, the hook printed nothing, and the command
-# ran (E2 in docs/S8-RESIDUALS.md). 30,000 characters is at most 120,000 bytes
-# in UTF-8. The longest reason over the 79,724 real commands replayed on
-# 2026-10-07 was 2,343 characters.
+# ran (E2 in docs/S8-RESIDUALS.md). The cut keeps 30,000 characters and adds a
+# 34-character line: at most 120,034 bytes in UTF-8. The longest reason over the
+# 79,724 real commands replayed on 2026-10-07 without a cwd was 2,343
+# characters; the npx reason quotes the cwd, so a real one adds its length.
 if (( ${#REASON_TEXT} > 30000 )); then
   REASON_TEXT="${REASON_TEXT:0:30000}"$'\n[reason cut at 30,000 characters]'
 fi
