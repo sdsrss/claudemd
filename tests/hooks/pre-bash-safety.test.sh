@@ -926,8 +926,8 @@ run_bigarg_case "npx with a 131,000-character package name" "npx some-unknown-pk
 # size 0.107.5 allowed the source and backtick rows 15 times in 15 and the $(…)
 # row 8 times in 8 (at 74 KB it depended on the load: 12 and 3 times in 20 in
 # one measurement, 18 and 1 in another). The rows run with no time limit; run
-# alone, two of them finish inside the 3 s hook timeout, so on 0.107.5 a
-# command this size could pass in deployment.
+# alone, each took 1.8-3.1 s in the two 0.107.6 pre-tag reviews, mostly inside
+# the 3 s hook timeout, so on 0.107.5 a command this size could pass.
 run_sigpipe_case() {
   local note="$1" cmd="$2" fix out decision
   fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
@@ -987,8 +987,9 @@ rm -f "$e4_fix"
 # match can only grant an allow (an escape token, a bounded find, a ${VAR:?}
 # guard, mktemp provenance) and a lost match therefore denies. A new check that
 # can deny reads from `< <(printf …)`, where only grep's status reaches the `if`.
-# This check reads the one-line spelling `echo|printf … | grep -<letters>q`
-# only: a pipeline split across two lines, or spelled `grep -E -q`, passes it.
+# This check matches the one-line spelling `echo|printf … | grep -<letters>q`
+# line by line: a pipeline split across two lines, spelled `grep -E -q` or
+# `grep -m1`, or written on a line holding an allowed fingerprint passes it.
 # shellcheck disable=SC2016  # fingerprints of the gate's source text, not expansions
 sigpipe_allowed=("grep -qF '[allow-rm-rf-var]'" "grep -qF '[allow-npx-unpinned]'" "grep -qF '[allow-curl-sh]'"
   '-(i?name|i?path|i?regex|' '"$prov_prefix" | grep -qE' '"$prov_rhs" | grep -qE' '| grep -qE "$guard_re"')
