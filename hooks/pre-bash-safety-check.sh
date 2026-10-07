@@ -521,9 +521,12 @@ npx_pkg_locally_resolved() {
 #   first `npx ` token and apply each to a running cwd via subshell `cd`
 #   (resolves relative / absolute / `..` against the real filesystem).
 #
-#   Safety: only ALLOWS when a real local install exists at the composed path,
-#   so this can never weaken the gate — at worst it allows an npx whose package
-#   is genuinely installed in the cd'd dir (the intended allow). Targets with
+#   Safety: only ALLOWS when a real local install exists at the composed path.
+#   For the first npx of a command that is the intended allow. Since 0.107.5 the
+#   npx check examines every runner segment and all of them use this one cwd,
+#   so a later npx after its own `cd` is resolved against the wrong directory:
+#   `npx prettier@3.0.0 --check . && cd /elsewhere && npx pkg` credits a pkg
+#   installed where the command started (F16 in docs/S8-RESIDUALS.md). Targets with
 #   shell expansion (`$VAR` / backtick / glob / `~`) or a failed `cd` are
 #   unresolvable, so we bail to BASE (keeping the conservative deny).
 #
@@ -844,6 +847,18 @@ s8_strip_wrappers() {
   S8_STRIPPED="$seg"
 }
 
+# s8_rm_canon WORD → S8_RM_CANON, the rm check's command word as it compares
+# it. Only `rm` and `find` are ever compared, so the basename is taken only
+# where it can be one of them (E3): on a long word, ${x##*/} takes time
+# quadratic in the length after the last `/`, and ${x#\\} on a word that does
+# not start with a backslash is quadratic too.
+s8_rm_canon() {
+  local w="$1"
+  case "$w" in \\*) w="${w#\\}" ;; esac
+  case "$w" in */rm|*/find) w="${w##*/}" ;; esac
+  S8_RM_CANON="$w"
+}
+
 # s8_head_settle SEGMENT → S8_HEAD (S8-KWH*). Each check reads the command word at
 # the head of a segment after its own trim / opener / wrapper steps, and those
 # steps stopped at a compound-command keyword (`if rm -rf $X/y; then …`, `echo;
@@ -981,17 +996,23 @@ if :; then
     # (command inside (...) / { ...; } / $(...)) is seen as rm.
     trimmed="${trimmed#[({]}"
     trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
-    # Keywords, a second opener and a wrapper behind an opener (S8-KWH*; see
-    # s8_head_settle). Only segments that did not start with rm or find change.
-    s8_head_settle "$trimmed"; trimmed="$S8_HEAD"
     rm_word="${trimmed%%[[:space:]]*}"
-    # rm_canon is only ever compared with `rm` and `find`, so the basename is
-    # taken only where it can be one of them (E3): on a long word, ${x##*/}
-    # takes time quadratic in the length after the last `/`, and ${x#\\} on a
-    # word that does not start with a backslash is quadratic too.
-    rm_canon="$rm_word"
-    case "$rm_canon" in \\*) rm_canon="${rm_canon#\\}" ;; esac
-    case "$rm_canon" in */rm|*/find) rm_canon="${rm_canon##*/}" ;; esac
+    s8_rm_canon "$rm_word"; rm_canon="$S8_RM_CANON"
+    # Keywords, a second opener, and a wrapper, assignment, redirection or ! behind
+    # an opener (S8-KWH*; see s8_head_settle). Settled only when the word is not
+    # already read as rm or find, so every segment this check analysed before is
+    # analysed exactly as before. Settling first would strip the redirection in
+    # `{ 2>/x/rm -rf $X/y; }`, which is read as rm here, and allow it (S8-GLUE*).
+    case "$rm_canon" in
+      rm|find) ;;
+      *)
+        s8_head_settle "$trimmed"
+        if [[ "$S8_HEAD" != "$trimmed" ]]; then
+          trimmed="$S8_HEAD"; rm_word="${trimmed%%[[:space:]]*}"
+          s8_rm_canon "$rm_word"; rm_canon="$S8_RM_CANON"
+        fi
+        ;;
+    esac
     # `find "$VAR" -delete` and `find "$VAR" -exec rm -rf {} +` delete a tree
     # rooted at an unvalidated variable exactly as `rm -rf "$VAR"` does, and
     # neither reached the check below: the segment's command word is `find`, so
@@ -1651,11 +1672,22 @@ done < <(printf '%s\n' "$NPX_SEGMENTS")  # not a here-string: see sanitize_cmd (
 _npx_i=0
 _npx_bypass_rows=0
 _npx_seen=$'\n'
+# The escape-token test and the cwd depend on the whole command only, so they
+# run once, not once per runner segment: 200 npx lines took 3.7 s that way
+# (0.107.5 pre-tag review L3). As before, the cwd is not computed when the
+# token is present.
+_npx_bypass_cmd=0
+NPX_EFFECTIVE_CWD=""
+if (( ${#NPX_SEGS[@]} > 0 )); then
+  echo "$CMD" | grep -qF '[allow-npx-unpinned]' && _npx_bypass_cmd=1
+  # Resolve the cwd npx will actually run in (follows leading `cd <dir>`).
+  (( _npx_bypass_cmd == 1 )) || NPX_EFFECTIVE_CWD=$(effective_npx_cwd "$EVENT_CWD" "$SANITIZED_CMD_FLAT")
+fi
 while (( _npx_i < ${#NPX_SEGS[@]} )); do
 runner="${NPX_RUNNERS[$_npx_i]}"; npx_seg="${NPX_SEGS[$_npx_i]}"; _npx_i=$((_npx_i + 1))
 if [[ -n "$runner" ]]; then
   bypass_npx=0
-  if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then
+  if (( _npx_bypass_cmd == 1 )); then
     bypass_npx=1
     # `runner` is already resolved here (npx / bunx / `bun x` / `npm exec` / …),
     # so the record can name WHICH ecosystem's hatch was used. The package token
@@ -1675,8 +1707,6 @@ if [[ -n "$runner" ]]; then
   fi
 
   if (( bypass_npx == 0 )); then
-    # Resolve the cwd npx will actually run in (follows leading `cd <dir>`).
-    NPX_EFFECTIVE_CWD=$(effective_npx_cwd "$EVENT_CWD" "$SANITIZED_CMD_FLAT")
     # Take everything after the first `npx ` up to a command terminator.
     npx_tail="${npx_seg#"$runner"}"; npx_tail="${npx_tail#"${npx_tail%%[![:space:]]*}"}"
     pkg_token=""

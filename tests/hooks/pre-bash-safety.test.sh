@@ -505,6 +505,38 @@ else
 fi
 rm -rf "${dup_home:?}"
 
+# F16 (docs/S8-RESIDUALS.md): every npx segment is resolved against the cwd
+# computed from the cd's before the FIRST npx, so a later npx after its own cd
+# is credited with a package installed where the command started. Asserted as a
+# known false negative; the control is the same npx with the cd before the first
+# npx, which is followed. The corpus cannot carry these: they need a cwd with a
+# node_modules entry.
+f16_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+f16_proj=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+f16_else=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$f16_proj/node_modules/some-unknown-pkg"
+f16_run() {
+  local out
+  out=$(jq -cn --arg c "$1" --arg d "$f16_proj" '{session_id:"t",cwd:$d,tool_name:"Bash",tool_input:{command:$c}}' \
+    | HOME="$f16_home" bash "$HOOK" 2>/dev/null)
+  if [[ "$out" == *'"deny"'* ]]; then echo deny; else echo allow; fi
+}
+f16_xfn=$(f16_run "npx prettier@3.0.0 --check . && cd $f16_else && npx some-unknown-pkg")
+f16_ctl=$(f16_run "cd $f16_else && npx some-unknown-pkg")
+if [[ "$f16_xfn" == allow ]]; then
+  XFN=$((XFN + 1)); PASS=$((PASS + 1))
+else
+  echo "FAIL [F16]: a later npx after its own cd is now '$f16_xfn' (was a known allow); if the gate now resolves each segment's cwd, close F16 in docs/S8-RESIDUALS.md and assert deny here"
+  FAIL=$((FAIL + 1))
+fi
+if [[ "$f16_ctl" == deny ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [F16 control]: the same npx after a leading cd should be denied, got '$f16_ctl'"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "${f16_home:?}" "${f16_proj:?}" "${f16_else:?}"
+
 # 0.106.0 pre-tag review M2 + L5. The comment-quote pass runs the hook a second
 # time on the blanked text. That run must write only its own deny row: every
 # allow-side row it repeated doubled a row the first run had already written for

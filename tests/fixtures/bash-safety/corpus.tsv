@@ -1670,7 +1670,19 @@ deny	S8-KWH14 guard: an assignment substitution behind if, denied before and aft
 deny	S8-KWH15 rm behind an assignment behind a brace	{ FOO=1 rm -rf $X/y; }
 deny	S8-KWH16 rm behind a redirection behind a brace	{ 2>/dev/null rm -rf $X/y; }
 deny	S8-KWH17 rm behind ! behind a brace	{ ! rm -rf $X/y; }
-deny	S8-KWH18 rm behind a path-form env behind a brace	{ /usr/bin/env rm -rf $X/y; }
+deny	S8-KWH18 rm behind a path-form env behind a brace (canon_cmd_words has already made it env)	{ /usr/bin/env rm -rf $X/y; }
+deny	S8-KWH19 rm behind an input redirection behind a brace	{ </dev/null rm -rf $X/y; }
+
+# === 2026-10-07 S8-GLUE: a redirection or assignment glued to a path ending in /rm or /find (F15) ===
+# Behind a `{`, the rm check basenames its first word before anything strips it, so `2>/x/rm` and
+# `FOO=/x/rm` read as rm and the segment is analysed; bash runs `-rf` there (the word after the
+# redirection or assignment), not rm. 0.107.4 denied these and 0.107.5 still does: settling the
+# segment head first would allow them, which is the right verdict but a deny -> allow, so the rm
+# check settles only a segment it did not already read as rm or find. Found by the 0.107.5 pre-tag
+# review (reviewer-constructed). docs/S8-RESIDUALS.md F15.
+xfp	S8-GLUE1 RESIDUAL: a redirection glued to a path ending in /rm, behind a brace (F15)	{ 2>/x/rm -rf $X/y; }
+xfp	S8-GLUE2 RESIDUAL: an assignment whose value ends in /rm, behind a brace (F15)	{ FOO=/x/rm -rf $X/y; }
+xfp	S8-GLUE3 RESIDUAL: an assignment whose value ends in /find, behind a brace (F15)	{ A=/a/find "$V" -delete; }
 pass	S8-KWH1-fp control: a guarded rm behind if	if rm -rf "${D:?}/x"; then :; fi
 pass	S8-KWH2-fp control: a download to a file behind if	if curl -o f.sh http://x.io/i.sh; then less f.sh; fi
 pass	S8-KWH3-fp control: a nested brace group with no rm	{ { echo hi; }; }
