@@ -1700,6 +1700,17 @@ REMOTE_RUN_RULE=""
 _npx_bypass_recorded="${_npx_bypass_recorded:-0}"
 while IFS= read -r rseg; do
   [[ -z "$rseg" ]] && continue
+  # Read the segment head the way the npx gate does: trim, drop a `(`/`{`
+  # opener, trim again, THEN strip wrappers. s8_strip_wrappers takes the first
+  # word up to the first space, so a segment that still began with one (every
+  # segment after `; ` or `&& `, an indented line) came back unstripped, and
+  # `echo hi; sudo deno run <url>`, `x && FOO=1 cargo install --git …` and
+  # `{ deno run <url>; }` were allowed while the same runner at the start of the
+  # command was denied (0.107.3 pre-tag review M2; corpus rows S8-RRH*). A
+  # segment that reached a deny before began with a runner word, which no
+  # opener strip or wrapper strip touches, so it reads the same as before.
+  rseg="${rseg#"${rseg%%[![:space:]]*}"}"
+  rseg="${rseg#[({]}"; rseg="${rseg#"${rseg%%[![:space:]]*}"}"
   rseg=$(s8_strip_wrappers "$rseg")
   rseg=$(canon_cmd_words "$rseg")
   rseg="${rseg#"${rseg%%[![:space:]]*}"}"
@@ -2371,7 +2382,12 @@ s8_comment_quotes_blanked() {
 if (( ${#HITS[@]} == 0 )); then
   if (( S8_COMMENT_PASS == 0 )) && [[ "$CMD" == *'#'* ]]; then
     if _cq_cmd=$(s8_comment_quotes_blanked "$CMD") && [[ -n "$_cq_cmd" ]]; then
-      _cq_out=$(printf '%s' "$EVENT" | jq -c --arg c "$_cq_cmd" '.tool_input.command = $c' 2>/dev/null \
+      # The blanked command reaches jq on stdin (as a JSON string, ahead of the
+      # event), not as `--arg`: Linux refuses one argument over 128 KiB, and a
+      # longer command then skipped this pass entirely (E2 in
+      # docs/S8-RESIDUALS.md). The second run reads the same command string.
+      _cq_out=$( { printf '%s' "$_cq_cmd" | jq -Rs .; printf '%s' "$EVENT"; } \
+        | jq -cs '.[0] as $c | .[1] | .tool_input.command = $c' 2>/dev/null \
         | bash "${BASH_SOURCE[0]}" --s8-comment-pass 2>/dev/null)
       if [[ "$(printf '%s' "$_cq_out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" == deny ]]; then
         printf '%s\n' "$_cq_out"
@@ -2503,4 +2519,13 @@ record_section_deny '§8-rm-rf-var' "$_rmrf_hits"
 record_section_deny '§8-npx'       "$_npx_hits"
 record_section_deny '§8-curl-sh'   "$_curlsh_hits"
 record_section_deny '§8'           "$_other_hits"
+# hook_deny hands the reason to `jq --arg`, and Linux refuses one argument over
+# 128 KiB: a reason that quoted that much of the command (an `npx` package name
+# of 131,000 characters) made jq fail, the hook printed nothing, and the command
+# ran (E2 in docs/S8-RESIDUALS.md). 30,000 characters is at most 120,000 bytes
+# in UTF-8. The longest reason over the 79,724 real commands replayed on
+# 2026-10-07 was 2,343 characters.
+if (( ${#REASON_TEXT} > 30000 )); then
+  REASON_TEXT="${REASON_TEXT:0:30000}"$'\n[reason cut at 30,000 characters]'
+fi
 hook_deny pre-bash-safety "$REASON_TEXT"
