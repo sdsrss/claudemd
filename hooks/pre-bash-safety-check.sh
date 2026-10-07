@@ -43,6 +43,15 @@
 # Claude Code runs hooks with no arguments, so nothing outside this file sets it.
 
 set -uo pipefail
+# pipefail has a cost here: in `printf '%s' "$x" | grep -q RE`, grep exits at
+# its first matching line, printf dies of SIGPIPE if it is still writing, and
+# the `if` reads the match as no match. bash line-buffers its stdout, so printf
+# writes once per line and any line after the match can lose this race; load
+# makes it likelier, and with more than two 64 KiB pipe buffers after the match
+# it is lost every time. So a check that can deny is written
+# `grep -q RE < <(printf '%s' "$x")`, where only grep's status reaches the `if`.
+# The 8 pipelines left can only grant an allow, so a lost match denies
+# (tests/hooks/pre-bash-safety.test.sh lists them; E4 in docs/S8-RESIDUALS.md).
 
 LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null
@@ -1045,8 +1054,8 @@ if :; then
     S8_FIND_BOUNDED=0
     if [[ "$rm_canon" == find ]]; then
       find_args="${trimmed#"$rm_word"}"
-      if printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-delete([[:space:]]|$)' \
-        || printf '%s' "$find_args" | grep -qE '(^|[[:space:]])-(exec|execdir)[[:space:]]+([^[:space:]]*/)?\\?rm([[:space:]]|$)'; then
+      if grep -qE '(^|[[:space:]])-delete([[:space:]]|$)' < <(printf '%s' "$find_args") \
+        || grep -qE '(^|[[:space:]])-(exec|execdir)[[:space:]]+([^[:space:]]*/)?\\?rm([[:space:]]|$)' < <(printf '%s' "$find_args"); then
         # find's GLOBAL options come BEFORE the path operands (`find -L "$D"
         # -delete`), so the first `-`-prefixed token is not necessarily where the
         # expression starts. Breaking on it left `find_paths` empty and the whole
@@ -1174,7 +1183,7 @@ if :; then
       REASONS+=$'\n  - '"$s8_pos_msg"
       continue
     fi
-    echo "$rm_target" | grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' || continue
+    grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' < <(echo "$rm_target") || continue
     varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
       | sed -E 's/[${}"'"'"']//g')
     # Strip ALL var expansions + quotes from the target — what remains is the
@@ -1466,11 +1475,11 @@ if :; then
         # splitting, so provenance is simply withdrawn whenever the command binds
         # IFS — deny-direction, and quoting the target is the fix.
         if (( prov_eligible == 1 )) \
-           && printf '%s' "$SANITIZED_CMD_FLAT" | grep -qE '(^|[[:space:];&|`(])IFS\+?='; then
+           && grep -qE '(^|[[:space:];&|`(])IFS\+?=' < <(printf '%s' "$SANITIZED_CMD_FLAT"); then
           prov_eligible=0
         fi
         if (( prov_eligible == 1 )) \
-           && printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]'; then
+           && grep -qE '(^|[[:space:];&|`(])(source|\.|eval)[[:space:]]' < <(printf '%s' "$NORMALIZED_CMD"); then
           prov_eligible=0
         fi
         prov_prefix="${SANITIZED_CMD_FLAT%%"$segment"*}"
@@ -1669,7 +1678,7 @@ while IFS= read -r nseg; do
   # or bun, so a segment starting with none of them cannot match; skipping the
   # grep there saves two processes per segment and decides nothing (E3).
   case "$seg_canon" in npx*|npm*|pnpm*|yarn*|bun*) ;; *) continue ;; esac
-  if printf '%s' "$seg_canon" | grep -qE "$NPX_CMD_REGEX"; then
+  if grep -qE "$NPX_CMD_REGEX" < <(printf '%s' "$seg_canon"); then
     NPX_RUNNERS+=("$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')")
     NPX_SEGS+=("$seg_canon")
   fi
@@ -1868,18 +1877,18 @@ while IFS= read -r rseg; do
     deno*|pip*|python*|uv[[:space:]]*|cargo*|go[[:space:]]*|nix*) ;;
     *) continue ;;
   esac
-  if printf '%s' "$rseg" | grep -qE '^deno[[:space:]]+(run|install|eval|bundle|compile|cache)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(https?://|npm:|jsr:)'; then
+  if grep -qE '^deno[[:space:]]+(run|install|eval|bundle|compile|cache)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(https?://|npm:|jsr:)' < <(printf '%s' "$rseg"); then
     REMOTE_RUN_DENY="deno runs a remote module specifier"; REMOTE_RUN_RULE="deno-remote-specifier"
-  elif printf '%s' "$rseg" | grep -qE '^(pip3?|python3?[[:space:]]+-m[[:space:]]+pip|uv[[:space:]]+pip)[[:space:]]+install([[:space:]]|$)' \
-       && printf '%s' "$rseg" | grep -qE '([[:space:]]|=)((git|hg|svn|bzr)\+[^[:space:]]+|https?://[^[:space:]]*\.(tar\.gz|tgz|zip|whl))([[:space:]]|$)'; then
+  elif grep -qE '^(pip3?|python3?[[:space:]]+-m[[:space:]]+pip|uv[[:space:]]+pip)[[:space:]]+install([[:space:]]|$)' < <(printf '%s' "$rseg") \
+       && grep -qE '([[:space:]]|=)((git|hg|svn|bzr)\+[^[:space:]]+|https?://[^[:space:]]*\.(tar\.gz|tgz|zip|whl))([[:space:]]|$)' < <(printf '%s' "$rseg"); then
     REMOTE_RUN_DENY="pip installs from a VCS or artifact URL (runs setup code from an unpinned source)"; REMOTE_RUN_RULE="pip-vcs-or-artifact-url"
-  elif printf '%s' "$rseg" | grep -qE '^cargo[[:space:]]+install([[:space:]]|$)' \
-       && printf '%s' "$rseg" | grep -qE '[[:space:]]--git([[:space:]]|=)'; then
+  elif grep -qE '^cargo[[:space:]]+install([[:space:]]|$)' < <(printf '%s' "$rseg") \
+       && grep -qE '[[:space:]]--git([[:space:]]|=)' < <(printf '%s' "$rseg"); then
     REMOTE_RUN_DENY="cargo install --git builds and installs from a remote repository"; REMOTE_RUN_RULE="cargo-install-git"
-  elif printf '%s' "$rseg" | grep -qE '^go[[:space:]]+(run|install|get)([[:space:]]|$)' \
-       && printf '%s' "$rseg" | grep -qE '[[:space:]][^[:space:]]+\.[a-z]{2,}/[^[:space:]]*@(latest|master|main|HEAD|upgrade|patch)([[:space:]]|$)'; then
+  elif grep -qE '^go[[:space:]]+(run|install|get)([[:space:]]|$)' < <(printf '%s' "$rseg") \
+       && grep -qE '[[:space:]][^[:space:]]+\.[a-z]{2,}/[^[:space:]]*@(latest|master|main|HEAD|upgrade|patch)([[:space:]]|$)' < <(printf '%s' "$rseg"); then
     REMOTE_RUN_DENY="go run/install of an UNPINNED remote module (@latest/@main)"; REMOTE_RUN_RULE="go-unpinned-remote-module"
-  elif printf '%s' "$rseg" | grep -qE '^nix[[:space:]]+(run|shell|develop|build|profile)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(github|gitlab|sourcehut|flake|tarball|git\+https?|https?):'; then
+  elif grep -qE '^nix[[:space:]]+(run|shell|develop|build|profile)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(github|gitlab|sourcehut|flake|tarball|git\+https?|https?):' < <(printf '%s' "$rseg"); then
     REMOTE_RUN_DENY="nix runs a remote flake reference"; REMOTE_RUN_RULE="nix-remote-flakeref"
   fi
   [[ -n "$REMOTE_RUN_DENY" ]] && break
@@ -2159,16 +2168,16 @@ while IFS= read -r cseg; do
       ;;
   esac
   _curlsh_view=0
-  if echo "$cseg" | grep -qE "$CURLSH_PIPE" || echo "$cseg" | grep -qE "$CURLSH_PROCSUB"; then
+  if grep -qE "$CURLSH_PIPE" < <(echo "$cseg") || grep -qE "$CURLSH_PROCSUB" < <(echo "$cseg"); then
     _curlsh_view=1
   elif [[ -n "$cseg_rhs" ]] \
-       && { echo "$cseg_rhs" | grep -qE "$CURLSH_PIPE" || echo "$cseg_rhs" | grep -qE "$CURLSH_PROCSUB"; }; then
+       && { grep -qE "$CURLSH_PIPE" < <(echo "$cseg_rhs") || grep -qE "$CURLSH_PROCSUB" < <(echo "$cseg_rhs"); }; then
     # Only when the primary view missed, so the src/sink fields below are read
     # from whichever view actually matched.
     _curlsh_view=1; cseg="$cseg_rhs"
   elif [[ -n "$_cseg_kw" ]]; then
     _cseg_kw=$(canon_cmd_words "$_cseg_kw")
-    if echo "$_cseg_kw" | grep -qE "$CURLSH_PIPE" || echo "$_cseg_kw" | grep -qE "$CURLSH_PROCSUB"; then
+    if grep -qE "$CURLSH_PIPE" < <(echo "$_cseg_kw") || grep -qE "$CURLSH_PROCSUB" < <(echo "$_cseg_kw"); then
       _curlsh_view=1; cseg="$_cseg_kw"
     fi
   fi
@@ -2232,8 +2241,8 @@ _ncmd_rule=""
 CURLSH_RUNNERC="(${CURLSH_SHSINK}([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*|eval|source|\.)"
 CURLSH_CMDSUB="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\\\$\\([[:space:]]*${CURLSH_SRC}[[:space:]]"
 CURLSH_CMDSUB_BT="(^|[|;&({\`])[[:space:]]*${CURLSH_WRAPSEQ}${CURLSH_SINKPFX}${CURLSH_RUNNERC}[[:space:]]+[\"']?\`[[:space:]]*${CURLSH_SRC}[[:space:]]"
-if printf '%s' "$NORMALIZED_CMD" | grep -qE "$CURLSH_CMDSUB" \
-   || printf '%s' "$NORMALIZED_CMD" | grep -qE "$CURLSH_CMDSUB_BT"; then
+if grep -qE "$CURLSH_CMDSUB" < <(printf '%s' "$NORMALIZED_CMD") \
+   || grep -qE "$CURLSH_CMDSUB_BT" < <(printf '%s' "$NORMALIZED_CMD"); then
   _ncmd_hit=1
   _ncmd_reason='a shell runs the OUTPUT of a fetch as its command string (sh -c "$(curl …)")'
   _ncmd_rule='runner-cmdsubst'
@@ -2258,7 +2267,7 @@ fi
 REVSH_SOCAT='socat[^|;&]*(TCP|TCP4|TCP6|UDP|OPENSSL|SSL)[^|;&]*(EXEC|SYSTEM):'
 REVSH_DEVNET='/dev/(tcp|udp)/[^[:space:]/]+/[0-9]+'
 if (( _ncmd_hit == 0 )); then
-  if printf '%s' "$REVSH_VIEW" | grep -qE "$REVSH_SOCAT"; then
+  if grep -qE "$REVSH_SOCAT" < <(printf '%s' "$REVSH_VIEW"); then
     _ncmd_hit=1; _ncmd_reason='socat wires a network address directly to EXEC:/SYSTEM: (reverse shell)'; _ncmd_rule='socat-exec'
   else
     # Loopback is exempt: `cat < /dev/tcp/localhost/5432` is the standard
@@ -2441,13 +2450,13 @@ if (( _ncmd_hit == 0 )) && [[ -n "$_revsh_candidates" ]]; then
   while IFS= read -r _cand; do
     [[ -z "$_cand" ]] && continue
     _cand_exec=0
-    if printf '%s' "$_cand" | grep -qE "$REVSH_EXEC"; then _cand_exec=1
-    elif printf '%s' "$_cand" | grep -qE "$REVSH_EXEC_IMPORT" && printf '%s' "$_cand" | grep -qE "$REVSH_EXEC_IMPORTED"; then _cand_exec=1
+    if grep -qE "$REVSH_EXEC" < <(printf '%s' "$_cand"); then _cand_exec=1
+    elif grep -qE "$REVSH_EXEC_IMPORT" < <(printf '%s' "$_cand") && grep -qE "$REVSH_EXEC_IMPORTED" < <(printf '%s' "$_cand"); then _cand_exec=1
     else
       _cand_alias=$(printf '%s' "$_cand" | grep -oE "$REVSH_ALIAS_RE" | head -n1 | sed -E 's/.*[[:space:]]//')
-      if [[ -n "$_cand_alias" ]] && printf '%s' "$_cand" | grep -qE "(^|[^A-Za-z0-9_])${_cand_alias}\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\("; then _cand_exec=1; fi
+      if [[ -n "$_cand_alias" ]] && grep -qE "(^|[^A-Za-z0-9_])${_cand_alias}\.(call|run|Popen|check_call|check_output|getoutput|getstatusoutput)[[:space:]]*\(" < <(printf '%s' "$_cand"); then _cand_exec=1; fi
     fi
-    if (( _cand_exec )) && printf '%s' "$_cand" | grep -qE "$REVSH_NET"; then
+    if (( _cand_exec )) && grep -qE "$REVSH_NET" < <(printf '%s' "$_cand"); then
       _ncmd_hit=1
       _ncmd_reason='an interpreter one-liner opens a network connection AND executes (reverse shell / download-execute)'
       _ncmd_rule='interpreter-net-exec'
