@@ -21,6 +21,22 @@ const frontmatter = file => {
   return m[1];
 };
 
+// Every `disable-model-invocation:` line in a frontmatter block, in order. A key
+// written twice (true, then false) used to pass: the test found the `true` line,
+// while a YAML reader that keeps the last value would load the command into the
+// model's listing (0.107.0 delta review, D#201). The value only counts when
+// the key appears once.
+const invocationKeys = fm => [...fm.matchAll(/^disable-model-invocation:\s*(.*?)\s*$/gm)].map(m => m[1]);
+
+test('a duplicated disable-model-invocation key is caught, not read as its first value', () => {
+  assert.deepEqual(
+    invocationKeys('name: x\ndisable-model-invocation: true\ndisable-model-invocation: false'),
+    ['true', 'false']
+  );
+  assert.deepEqual(invocationKeys('name: x\ndisable-model-invocation: true'), ['true']);
+  assert.deepEqual(invocationKeys('name: x'), []);
+});
+
 test('every command except the description-routed ones is user-invoked only', () => {
   const names = fs
     .readdirSync(COMMANDS)
@@ -28,8 +44,12 @@ test('every command except the description-routed ones is user-invoked only', ()
     .map(f => f.slice(0, -3));
   assert.ok(names.length >= 16, `expected at least 16 commands, found ${names.length}`);
   for (const name of names) {
-    const fm = frontmatter(path.join(COMMANDS, `${name}.md`));
-    const userOnly = /^disable-model-invocation:\s*true\s*$/m.test(fm);
+    const keys = invocationKeys(frontmatter(path.join(COMMANDS, `${name}.md`)));
+    assert.ok(
+      keys.length <= 1,
+      `${name} sets disable-model-invocation ${keys.length} times (${keys.join(', ')})`
+    );
+    const userOnly = keys[0] === 'true';
     if (MODEL_INVOKED.has(name)) {
       assert.equal(userOnly, false, `${name} is routed by its description and must stay model-invocable`);
     } else {
