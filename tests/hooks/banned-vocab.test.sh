@@ -592,6 +592,11 @@ rm -f "$TMP_FIX"
 # (15/15 on 0.107.6). An -F here-doc commit has no -m, so the whole command is
 # the message. The padding is checked first: a shorter one loses the race only
 # sometimes, and this row would then pass on the old code too.
+#
+# The verdict is read from stdout alone. Where SIGPIPE is ignored, as on GitHub's
+# runners, the writer is not killed: it gets EPIPE and bash reports `echo: write
+# error: Broken pipe` on stderr, which assert_deny's 2>&1 fed to jq (CI run
+# 37733359017). The old code loses the match there too (exit 1 instead of 141).
 pad50=$(printf 'padding line %06d of the commit body\n' $(seq 1 4000))
 TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 printf '%s' "git commit -F - <<'EOF'"$'\n'"fix: robust retry"$'\n'"${pad50}EOF" \
@@ -600,7 +605,13 @@ if (( ${#pad50} <= 131072 )); then
   echo "FAIL: 50: only ${#pad50} bytes follow the match, not more than two 64 KiB pipe buffers, so this row proves nothing"
   FAIL=$((FAIL + 1))
 else
-  assert_deny "50: banned word on line 2 of a ${#pad50}-byte -F commit → deny (a lost grep -q race allowed it)" "$TMP_FIX"
+  dec50=$(bash "$HOOK" < "$TMP_FIX" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [[ "$dec50" == deny ]]; then
+    echo "PASS: 50: banned word on line 2 of a ${#pad50}-byte -F commit → deny (a lost grep -q race allowed it)"
+  else
+    echo "FAIL: 50: banned word on line 2 of a ${#pad50}-byte -F commit → expected deny, got '${dec50:-allow}'"
+    FAIL=$((FAIL + 1))
+  fi
 fi
 rm -f "$TMP_FIX"
 
