@@ -607,9 +607,9 @@ if (( ${#pad50} <= 131072 )); then
 else
   dec50=$(bash "$HOOK" < "$TMP_FIX" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
   if [[ "$dec50" == deny ]]; then
-    echo "PASS: 50: banned word with ${#pad50} bytes after it in an -F here-doc commit → deny (a lost grep -q race allowed it)"
+    echo "PASS: 50: banned word followed by ${#pad50} bytes of padding in an -F here-doc commit → deny (a lost grep -q race allowed it)"
   else
-    echo "FAIL: 50: banned word with ${#pad50} bytes after it in an -F here-doc commit → expected deny, got '${dec50:-allow}'"
+    echo "FAIL: 50: banned word followed by ${#pad50} bytes of padding in an -F here-doc commit → expected deny, got '${dec50:-allow}'"
     FAIL=$((FAIL + 1))
   fi
 fi

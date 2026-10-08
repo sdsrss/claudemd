@@ -26,21 +26,27 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // banned-vocab-check.sh that decide its denies, because they read through the
 // hook_vocab_grep wrapper. What this recognizer sees:
 //   • every top-level `|` or `|&` (not `||`) on a line followed by `head`,
-//     `read`, or any command whose name contains `grep` (wrappers included)
-//     carrying -q/-m/-l/-L or their long forms anywhere in its words;
+//     `read`, or any command whose name contains `grep` (wrappers and `\grep`
+//     included) carrying -q/-m/-l/-L, or their long forms in any abbreviation
+//     grep accepts, anywhere in its words;
 //   • through `{`, `(`, `!`, redirections, assignments, and the wrappers
-//     command, builtin, exec, nohup, env, stdbuf, nice, timeout, gtimeout;
+//     command, builtin, exec, nohup, env, stdbuf, nice, time, timeout and
+//     gtimeout, with their options and the arguments those options take;
 //   • pipelines split across lines (`|`, `||`, `&&` or `\` at line end), and
-//     '…', $'…' (backslash escapes the quote), "…", ${…}, $(…) and here-docs.
+//     '…', $'…' (backslash escapes the quote), "…", ${…} (quotes inside it
+//     included), $(…), and here-docs with any delimiter (`EOF`, `\EOF`,
+//     `'END-X'`, `"a.b"`).
 // What it does not see, by construction: readers inside `$( )`, `<( )` or
 // backticks (their status reaches a condition only through an assignment such
 // as `if x=$(a | grep -m1 b)`; 0 of those in hooks/ when this was written),
 // `sed …q` and `awk …exit` (their scripts sit in quotes, which are blanked), a
-// reader whose name does not say so (a function wrapping head under another
-// name, a name built from a variable), and a subshell written `(a|head)` at the
-// start of a line (read as a case arm's pattern list). Where its quote state
-// goes wrong it fails instead of reading on: a line that is exactly fi, done or
-// esac inside a quote, or a here-doc with no delimiter, is reported.
+// reader whose name or flags it cannot read (a function wrapping head under
+// another name, a name built from a variable, `"grep"`, `grep -"q"`,
+// `grep "$q"`), and a subshell written `(a|head)` at the start of a line (read
+// as a case arm's pattern list). If it misreads a quote, it notices only when
+// the span it takes for quoted text holds a line that is exactly fi, done or
+// esac (reported, as is a here-doc with no delimiter); a misread that ends
+// before such a line goes unreported.
 
 const KEPT = [
   // hooks/pre-bash-safety-check.sh — the eight E4 kept in 0.107.6.
@@ -210,7 +216,8 @@ function scan(s) {
       continue;
     }
     if (c === '\\') {
-      if (!top) out += '__';
+      // `\grep` runs grep; `\|` is no pipe. Keep a word character, blank the rest.
+      if (!top) out += /\w/.test(s[i + 1] || '') ? s[i + 1] : '__';
       i++;
       continue;
     }
@@ -227,8 +234,16 @@ function scan(s) {
     if (top === 'br') {
       // Only `${` nests here: the `{` in `${x#[({]}` is a bracket-expression
       // character, and counting it left the expansion open for 11 KB.
+      // Quotes inside it protect a brace too, in or out of "…": bash reads
+      // `${x:-'}'}` as one expansion (0.107.7 delta review, M2).
       if (c === '}') stack.pop();
       else if (c === '$' && (s[i + 1] === '{' || s[i + 1] === '(')) stack.push(s[++i] === '{' ? 'br' : 'sub');
+      else if (c === '$' && s[i + 1] === "'") {
+        stack.push('ansi');
+        i++;
+      } else if (c === "'") stack.push('sq');
+      else if (c === '"') stack.push('dq');
+      else if (c === '`') stack.push('bt');
       continue;
     }
     // At the top level, or inside $( ) / <( ) / >( ).
@@ -239,10 +254,15 @@ function scan(s) {
       continue;
     }
     if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<' && s[i - 1] !== '<') {
-      const m = /^<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(s.slice(i));
-      if (m) {
-        heredocs.push({ dash: m[1] === '-', tag: m[3] });
-        if (!top) out += `<<${m[3]}`;
+      // Delimiters: \WORD, 'any text', "any text", or a bare word. Only the bare
+      // word was read before, so `<<\EOF` bodies were scanned as code.
+      const m = /^<<(-?)\s*(?:\\([^\s;&|<>()'"]+)|'([^']*)'|"([^"]*)"|([A-Za-z_][^\s;&|<>()'"]*))/.exec(
+        s.slice(i)
+      );
+      const tag = m && (m[2] ?? m[3] ?? m[4] ?? m[5]);
+      if (m && tag) {
+        heredocs.push({ dash: m[1] === '-', tag });
+        if (!top) out += `<<${tag}`;
         i += m[0].length - 1;
         continue;
       }
@@ -331,12 +351,26 @@ function logicalLines(src) {
   return { lines: out, unterminated, swallowed };
 }
 
-const QUIET_LONG = /^--(quiet|silent|max-count|files-with-matches|files-without-match)\b/;
+// Long options GNU grep accepts in any unambiguous abbreviation (`--qui`, `--max=1`).
+const EARLY_LONG = ['quiet', 'silent', 'max-count', 'files-with-matches', 'files-without-match'];
+const earlyLong = w => {
+  const m = /^--([a-z-]{2,})(=|$)/.exec(w);
+  return Boolean(m) && EARLY_LONG.some(n => n.startsWith(m[1]));
+};
 
 // Words that can stand before the reader in a pipeline element without being
 // it: `{`, `(`, `!`, a redirection, assignments, and wrappers that run their
-// arguments as the command (timeout's duration and options are skipped too).
+// arguments as the command. A wrapper's options are skipped, with the argument
+// of those that take one; timeout's duration too.
 const PASS_THROUGH = new Set(['{', '(', '!', 'command', 'builtin', 'exec', 'nohup']);
+const WRAPPER_ARG_OPTS = {
+  env: ['-u', '-C', '-S', '--unset', '--chdir', '--split-string'],
+  stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
+  nice: ['-n', '--adjustment'],
+  time: [],
+  timeout: ['-s', '-k', '--signal', '--kill-after'],
+  gtimeout: ['-s', '-k', '--signal', '--kill-after'],
+};
 
 function earlyReader(words) {
   let k = 0;
@@ -344,19 +378,16 @@ function earlyReader(words) {
     const w = words[k];
     if (w === undefined) return false;
     if (PASS_THROUGH.has(w) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || /^\d*[<>]/.test(w)) k++;
-    else if (w === 'env' || w === 'stdbuf' || w === 'nice') {
+    else if (Object.hasOwn(WRAPPER_ARG_OPTS, w)) {
       k++;
-      while (/^-/.test(words[k] || '')) k += words[k] === '-n' || words[k] === '-u' ? 2 : 1;
-    } else if (w === 'timeout' || w === 'gtimeout') {
-      k++;
-      while (/^-/.test(words[k] || '')) k += /^(-s|-k|--signal|--kill-after)$/.test(words[k]) ? 2 : 1;
-      k++;
+      while (/^-/.test(words[k] || '')) k += WRAPPER_ARG_OPTS[w].includes(words[k]) ? 2 : 1;
+      if (w === 'timeout' || w === 'gtimeout') k++;
     } else break;
   }
   const name = words[k];
   if (name === 'head' || name === 'read') return true;
   if (!/grep/.test(name)) return false;
-  return words.slice(k + 1).some(w => /^-[A-Za-z0-9]*[qmlL]/.test(w) || QUIET_LONG.test(w));
+  return words.slice(k + 1).some(w => /^-[A-Za-z0-9]*[qmlL]/.test(w) || earlyLong(w));
 }
 
 // {sites: [{line, text}] for each top-level pipe into an early-exit reader —
@@ -477,17 +508,46 @@ test('recognizer: shapes the 0.107.7 pre-tag review found it missed', () => {
   assert.equal(findSites('echo "$x" | grep -q a && echo "$y" | grep -q b && z=1').sites.length, 2);
 });
 
-test('recognizer: a lost quote state is reported, not read past', () => {
-  // bash reads `${x:-"a}b"}` as one expansion; this scanner ends it at the
-  // quoted `}` and opens a quote at the second `"`. The fi below is then
-  // inside that quote, and must be reported rather than skipped.
-  const src = 'y=${x:-"a}b"}\nif true; then\n  echo "$x" | grep -q y && exit 0\nfi\n';
-  const { swallowed } = findSites(src);
+test('recognizer: a line that is exactly fi inside a quote is reported', () => {
+  // The tripwire for a lost quote state. It fires on a quoted span that holds
+  // such a line, whether the span is a misread or a real string like this one;
+  // a misread whose span ends before any such line goes unreported.
+  const src = 'x=\'a\nfi\n\'\necho "$x" | grep -q y && exit 0\n';
   assert.deepEqual(
-    swallowed.map(w => w.text),
-    ['fi'],
-    'the tripwire did not fire on a known misread'
+    findSites(src).swallowed.map(w => w.text),
+    ['fi']
   );
+});
+
+test('recognizer: shapes the 0.107.7 delta review found it missed', () => {
+  const must = [
+    // M2: quotes inside ${…} protect a brace; here-doc delimiters other than a bare word.
+    "y=${x:-'}'}\necho \"$x\" | grep -q y && exit 0\nz='c'",
+    'y=${x:-"a}b"}\necho "$x" | grep -q y && exit 0',
+    "cat <<\\EOF\ndon't\nEOF\necho \"$x\" | grep -q y && exit 0\nz='a'",
+    "cat <<'END-X'\ndon't\nEND-X\necho \"$x\" | grep -q y && exit 0\nz='a'",
+    'cat <<"a.b"\ndon\'t\na.b\necho "$x" | grep -q y && exit 0\nz=\'a\'',
+    // L2, L3: an escaped name, abbreviated long options, and each wrapper arm.
+    'echo "$x" | \\grep -q y && exit 0',
+    'echo "$x" | grep --qui y && exit 0',
+    'echo "$x" | grep --max=1 y && exit 0',
+    'echo "$x" | ( grep -q y ) && exit 0',
+    'echo "$x" | command grep -q y && exit 0',
+    'echo "$x" | env -C / grep -q y && exit 0',
+    'echo "$x" | env -u FOO LC_ALL=C grep -q y && exit 0',
+    'echo "$x" | stdbuf -o 0 grep -q y && exit 0',
+    'echo "$x" | stdbuf -oL grep -q y && exit 0',
+    'echo "$x" | nice -n 5 grep -q y && exit 0',
+    'echo "$x" | time -p grep -q y && exit 0',
+  ];
+  for (const src of must)
+    assert.equal(findSites(src).sites.length, 1, `not reported: ${JSON.stringify(src)}`);
+  const mustNot = [
+    'echo "$x" | grep --color=auto y',
+    'echo "$x" | grep --line-buffered y',
+    'echo "$x" | \\| grep -q y',
+  ];
+  for (const src of mustNot) assert.deepEqual(findSites(src).sites, [], `reported: ${JSON.stringify(src)}`);
 });
 
 test('recognizer: shapes it must not report', () => {
@@ -514,7 +574,10 @@ test('recognizer: shapes it must not report', () => {
 function mutated(rel, from, to) {
   const src = readReal(rel);
   assert.equal(src.split(from).length - 1, 1, `mutation anchor not unique in ${rel}: ${from}`);
-  return r => (r === rel ? src.replace(from, to) : readReal(r));
+  // split/join, not replace(): a replacement string expands `$'`, and the M1 row's
+  // does contain one (0.107.7 delta review, M1).
+  const out = src.split(from).join(to);
+  return r => (r === rel ? out : readReal(r));
 }
 
 const MUTATIONS = [
@@ -523,66 +586,82 @@ const MUTATIONS = [
     'hooks/pre-bash-safety-check.sh',
     "    REASONS+=$'\\n  - a fetch/transport command\\'s output is executed by a shell or interpreter — unknown-origin code'\n  fi\n",
     '    REASONS+=$\'\\n  - a fetch/transport command\\\'s output is executed by a shell or interpreter — unknown-origin code\'\n    echo "$CMD" | grep -qE "curl" && exit 0\n  fi\n',
+    /^hooks\/pre-bash-safety-check\.sh:2220: a pipeline into an early-exit reader/,
   ],
   [
     'a second pipeline on a line that holds a KEPT site (pre-tag review M2)',
     'hooks/ship-baseline-check.sh',
     `echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0\n`,
     `echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0; echo "$CMD_FLAT" | grep -qE 'refs/tags' || exit 0\n`,
+    /^KEPT entry for hooks\/ship-baseline-check\.sh matched 2 site/,
   ],
   [
     '§8 npx check back on a pipe',
     'hooks/pre-bash-safety-check.sh',
     `if grep -qE "$NPX_CMD_REGEX" < <(printf '%s' "$seg_canon"); then`,
     `if printf '%s' "$seg_canon" | grep -qE "$NPX_CMD_REGEX"; then`,
+    /^hooks\/pre-bash-safety-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     '§8 source/./eval check back on a pipe',
     'hooks/pre-bash-safety-check.sh',
     `&& grep -qE '(^|[[:space:];&|\`(])(source|\\.|eval)[[:space:]]' < <(printf '%s' "$NORMALIZED_CMD"); then`,
     `&& printf '%s' "$NORMALIZED_CMD" | grep -qE '(^|[[:space:];&|\`(])(source|\\.|eval)[[:space:]]'; then`,
+    /^hooks\/pre-bash-safety-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     '§8 kept escape-token check converted without updating KEPT',
     'hooks/pre-bash-safety-check.sh',
     `if echo "$CMD" | grep -qF '[allow-curl-sh]'; then bypass_curlsh=1; fi`,
     `if grep -qF '[allow-curl-sh]' < <(echo "$CMD"); then bypass_curlsh=1; fi`,
+    /^KEPT entry for hooks\/pre-bash-safety-check\.sh matched 0 site/,
   ],
   [
     '§8 npx check on a pipe split over two lines, grep -E -q',
     'hooks/pre-bash-safety-check.sh',
     `if grep -qE "$NPX_CMD_REGEX" < <(printf '%s' "$seg_canon"); then`,
     `if printf '%s' "$seg_canon" |\n    grep -E -q "$NPX_CMD_REGEX"; then`,
+    /^hooks\/pre-bash-safety-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     'banned-vocab Path 1 scan back on a pipe',
     'hooks/banned-vocab-check.sh',
     `  if hook_vocab_grep -qiE "$local_regex" < <(echo "$MSG_TEXT"); then`,
     `  if echo "$MSG_TEXT" | hook_vocab_grep -qiE "$local_regex"; then`,
+    /^hooks\/banned-vocab-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     'banned-vocab Path 2 scan back on a pipe',
     'hooks/banned-vocab-check.sh',
     `  if hook_vocab_grep -qiE "$local_regex" < <(echo "$LAST_TEXT"); then`,
     `  if echo "$LAST_TEXT" | hook_vocab_grep -qiE "$local_regex"; then`,
+    /^hooks\/banned-vocab-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     'ship-baseline trigger back on a pipe',
     'hooks/ship-baseline-check.sh',
     `grep -qE "$TRIGGER_RE" < <(echo "$CMD_FLAT") || exit 0`,
     `echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0`,
+    /^hooks\/ship-baseline-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [
     'memory-read trigger back on a pipe, grep -m1',
     'hooks/memory-read-check.sh',
     `grep -qE "$TRIGGER_RE" < <(echo "$CMD_TRIG") || exit 0`,
     `echo "$CMD_TRIG" | grep -m1 -E "$TRIGGER_RE" >/dev/null || exit 0`,
+    /^hooks\/memory-read-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
 ];
 
-for (const [name, rel, from, to] of MUTATIONS) {
+// Each row names the problem it must produce: a row that goes red for another
+// reason proves nothing about its own shape (the M1 row once went red only
+// because the tripwire fired on a garbled file).
+for (const [name, rel, from, to, expect] of MUTATIONS) {
   test(`mutation goes red: ${name}`, () => {
     const { problems } = checkTree(mutated(rel, from, to));
-    assert.ok(problems.length > 0, `${name}: the check stayed green`);
+    assert.ok(
+      problems.some(p => expect.test(p)),
+      `${name}: no problem matched ${expect}; got:\n      ${problems.join('\n      ') || '(none)'}`
+    );
   });
 }
