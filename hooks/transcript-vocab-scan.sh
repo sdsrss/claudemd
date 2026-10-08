@@ -130,7 +130,7 @@ while IFS= read -r line; do
   local_regex="${line%|*}"
   local_reason="${line##*|}"
   [[ "$local_reason" == "@ratio "* ]] && continue
-  if echo "$LAST_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
+  if hook_vocab_grep -qiE "$local_regex" < <(echo "$LAST_TEXT"); then
     match=$(echo "$LAST_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     HITS+=("$match")
     REASONS+=("$local_reason")

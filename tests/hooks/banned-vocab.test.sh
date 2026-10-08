@@ -585,8 +585,27 @@ TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); printf '%s' "$EVENT_49
 assert_pass "49: closed fence still hides the word inside it" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# Case 50 (D#277): Path 1 scanned with `echo "$MSG_TEXT" | hook_vocab_grep -qiE`
+# under pipefail. grep -q exits at its first match; with more than two 64 KiB
+# pipe buffers still to write after it, echo dies of SIGPIPE every time, the
+# pipeline returns 141, the `if` reads the hit as a miss, and the commit passed
+# (15/15 on 0.107.6). An -F here-doc commit has no -m, so the whole command is
+# the message. The padding is checked first: a shorter one loses the race only
+# sometimes, and this row would then pass on the old code too.
+pad50=$(printf 'padding line %06d of the commit body\n' $(seq 1 4000))
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+printf '%s' "git commit -F - <<'EOF'"$'\n'"fix: robust retry"$'\n'"${pad50}EOF" \
+  | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.},cwd:"/tmp"}' > "$TMP_FIX"
+if (( ${#pad50} <= 131072 )); then
+  echo "FAIL: 50: only ${#pad50} bytes follow the match, not more than two 64 KiB pipe buffers, so this row proves nothing"
+  FAIL=$((FAIL + 1))
+else
+  assert_deny "50: banned word on line 2 of a ${#pad50}-byte -F commit → deny (a lost grep -q race allowed it)" "$TMP_FIX"
+fi
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((50 - FAIL))/50 passed"
+  echo "Tests: $((51 - FAIL))/51 passed"
   exit 1
 fi
-echo "Tests: 50/50 passed"
+echo "Tests: 51/51 passed"

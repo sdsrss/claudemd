@@ -110,7 +110,7 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # (0.70.0 pre-tag review, HIGH-1). Not `[^a-zA-Z]` (memory-read-check's spelling):
 # that would newly match `git push-notes`.
 TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|[;&|]|\$)"
-echo "$CMD_FLAT" | grep -qE "$TRIGGER_RE" || exit 0
+grep -qE "$TRIGGER_RE" < <(echo "$CMD_FLAT") || exit 0
 
 # Telemetry fields — below the TRIGGER exit, not merely below the fast-path exit
 # (audit-2026-08-22 条目 12 fixed the fast-path layer; this is the same

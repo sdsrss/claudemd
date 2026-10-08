@@ -106,7 +106,7 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 CMD_TRIG=$(printf '%s' "$CMD_FLAT" | sed -E -e ':a' \
   -e 's/(^[[:space:]]*|[;&|][[:space:]]*)gh[[:space:]]+(release|pr)[[:space:]]+(list|view|status|checks|diff)([^a-zA-Z0-9_-]|$)/\1gh-query\4/' \
   -e 'ta')
-echo "$CMD_TRIG" | grep -qE "$TRIGGER_RE" || exit 0
+grep -qE "$TRIGGER_RE" < <(echo "$CMD_TRIG") || exit 0
 
 # vNEXT: tag-match sanitize. v0.9.28 anchored the TRIGGER regex at command-
 # segment-start so `release` inside `git commit -m "release notes"` no longer

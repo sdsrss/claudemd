@@ -987,27 +987,9 @@ rm -f "$e4_fix"
 # match can only grant an allow (an escape token, a bounded find, a ${VAR:?}
 # guard, mktemp provenance) and a lost match therefore denies. A new check that
 # can deny reads from `< <(printf …)`, where only grep's status reaches the `if`.
-# This check matches the one-line spelling `echo|printf … | grep -<letters>q`
-# line by line: a pipeline split across two lines, spelled `grep -E -q` or
-# `grep -m1`, or written on a line holding an allowed fingerprint passes it.
-# shellcheck disable=SC2016  # fingerprints of the gate's source text, not expansions
-sigpipe_allowed=("grep -qF '[allow-rm-rf-var]'" "grep -qF '[allow-npx-unpinned]'" "grep -qF '[allow-curl-sh]'"
-  '-(i?name|i?path|i?regex|' '"$prov_prefix" | grep -qE' '"$prov_rhs" | grep -qE' '| grep -qE "$guard_re"')
-sigpipe_bad=0; sigpipe_seen=0
-while IFS= read -r _line; do
-  [[ -z "$_line" ]] && continue
-  sigpipe_seen=$((sigpipe_seen + 1)); _ok=0
-  for _fp in "${sigpipe_allowed[@]}"; do [[ "$_line" == *"$_fp"* ]] && _ok=1; done
-  (( _ok )) || { echo "FAIL [sigpipe-source]: a pipeline into grep -q decides a check that can deny: ${_line:0:160}"; sigpipe_bad=1; }
-done < <(grep -nE '(echo|printf)[^|]*\|[[:space:]]*grep -[A-Za-z]*q' "$HOOK" | grep -vE '^[0-9]+:[[:space:]]*#')
-if (( sigpipe_bad == 0 && sigpipe_seen == 8 )); then
-  echo "PASS: the 8 pipelines into grep -q left in the gate can only grant an allow"; PASS=$((PASS + 1))
-elif (( sigpipe_bad == 0 )); then
-  echo "FAIL [sigpipe-source]: expected the 8 allow-side pipelines into grep -q, found $sigpipe_seen (update the list if one was converted)"
-  FAIL=$((FAIL + 1))
-else
-  FAIL=$((FAIL + 1))
-fi
+# tests/scripts/hook-sigpipe-source.test.js holds that rule for every hook (from
+# 0.107.7; it replaced a one-spelling check here that missed wrapper functions,
+# split lines, `grep -E -q` and `grep -m1`) and lists the 8 kept here by name.
 
 # Gate time on a command with many segments (E3). Every ; & | ( ) and backtick
 # starts a segment, and the rm, npx and remote-runner checks each forked once

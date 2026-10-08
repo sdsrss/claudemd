@@ -51,7 +51,8 @@ set -uo pipefail
 # it is lost every time. So a check that can deny is written
 # `grep -q RE < <(printf '%s' "$x")`, where only grep's status reaches the `if`.
 # The 8 pipelines left can only grant an allow, so a lost match denies
-# (tests/hooks/pre-bash-safety.test.sh lists them; E4 in docs/S8-RESIDUALS.md).
+# (tests/scripts/hook-sigpipe-source.test.js lists them with every other hook's;
+# E4 in docs/S8-RESIDUALS.md).
 
 LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || cd .; pwd)/lib"
 # shellcheck source=/dev/null

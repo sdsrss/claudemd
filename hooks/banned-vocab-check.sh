@@ -95,8 +95,8 @@ SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:s
 
 IS_GIT_COMMIT=0
 IS_SHIP_VERB=0
-echo "$CMD_FLAT" | grep -qE "$GIT_COMMIT_RE" && IS_GIT_COMMIT=1
-echo "$CMD_FLAT" | grep -qE "$SHIP_VERB_RE" && IS_SHIP_VERB=1
+grep -qE "$GIT_COMMIT_RE" < <(echo "$CMD_FLAT") && IS_GIT_COMMIT=1
+grep -qE "$SHIP_VERB_RE" < <(echo "$CMD_FLAT") && IS_SHIP_VERB=1
 (( IS_GIT_COMMIT == 0 && IS_SHIP_VERB == 0 )) && exit 0
 
 # Telemetry fields, extracted below the TRIGGER exit above — not merely below
@@ -227,7 +227,7 @@ while IFS= read -r line; do
     is_ratio=1
     local_reason="${local_reason#@ratio }"
   fi
-  if echo "$MSG_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
+  if hook_vocab_grep -qiE "$local_regex" < <(echo "$MSG_TEXT"); then
     if (( is_ratio == 1 && BASELINE_EXEMPT == 1 )); then
       continue
     fi
@@ -419,7 +419,7 @@ while IFS= read -r line; do
   # in prose scan (chat prose has different conventions than commit msgs;
   # the baseline-context exemption in Path 1 doesn't transfer cleanly).
   [[ "$local_reason" == "@ratio "* ]] && continue
-  if echo "$LAST_TEXT" | hook_vocab_grep -qiE "$local_regex"; then
+  if hook_vocab_grep -qiE "$local_regex" < <(echo "$LAST_TEXT"); then
     match=$(echo "$LAST_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     PROSE_HITS+=("$match")
     PROSE_REASONS+=("$local_reason")
