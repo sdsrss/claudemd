@@ -267,6 +267,24 @@ jobs:
           BASH32_BIN: ${{ steps.bash32.outputs.bin }}
           CLAUDEMD_BASH32_REQUIRED: '1'
         run: bash tests/lib/bash32-runtime.sh
+      - name: The macOS legs run the hooks under Apple's bash 3.2 (interpreter pin)
+        # A macOS user without Homebrew bash runs the hooks under Apple's
+        # /bin/bash: 3.2.57 with Apple's patches, on BSD libc and Darwin. On the
+        # macos-latest image `bash` on PATH is that same 3.2.57 (CI run
+        # 37766707238 printed `3.2.57(1)-release (arm64-apple-darwin25)` for
+        # both), so "Run test suite" below already executes every hook suite
+        # under it. Nothing said so, and an image that put a newer bash first on
+        # PATH would move these legs off 3.2 with every test still green. This
+        # check pins it. It replaced a first try that re-ran bash32-runtime.sh
+        # with BASH32_BIN=/bin/bash: the same suites again, 880 s on one leg.
+        if: runner.os == 'macOS'
+        run: |
+          echo "bash on PATH: $(command -v bash): $(bash --version | head -1)"
+          echo "/bin/bash: $(/bin/bash --version | head -1)"
+          bash -c 'case "$BASH_VERSION" in
+            3.2.*) echo "OK: bash on PATH is $BASH_VERSION" ;;
+            *) echo "::error::bash on PATH is $BASH_VERSION, not 3.2: the macOS legs no longer run the hooks under the bash macOS users have"; exit 1 ;;
+          esac'
       - name: Spec edits require a version bump (post-tag drift gate)
         if: runner.os == 'Linux' && matrix.node == 20
         run: |
