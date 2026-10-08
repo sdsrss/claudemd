@@ -599,7 +599,7 @@ rm -f "$TMP_FIX"
 # 37733359017). The old code loses the match there too (exit 1 instead of 141).
 pad50=$(printf 'padding line %06d of the commit body\n' $(seq 1 4000))
 TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
-printf '%s' "git commit -F - <<'EOF'"$'\n'"fix: robust retry"$'\n'"${pad50}EOF" \
+printf '%s' "git commit -F - <<'EOF'"$'\n'"fix: robust retry"$'\n'"${pad50}"$'\n'"EOF" \
   | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.},cwd:"/tmp"}' > "$TMP_FIX"
 if (( ${#pad50} <= 131072 )); then
   echo "FAIL: 50: only ${#pad50} bytes follow the match, not more than two 64 KiB pipe buffers, so this row proves nothing"
@@ -607,9 +607,9 @@ if (( ${#pad50} <= 131072 )); then
 else
   dec50=$(bash "$HOOK" < "$TMP_FIX" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
   if [[ "$dec50" == deny ]]; then
-    echo "PASS: 50: banned word on line 2 of a ${#pad50}-byte -F commit → deny (a lost grep -q race allowed it)"
+    echo "PASS: 50: banned word with ${#pad50} bytes after it in an -F here-doc commit → deny (a lost grep -q race allowed it)"
   else
-    echo "FAIL: 50: banned word on line 2 of a ${#pad50}-byte -F commit → expected deny, got '${dec50:-allow}'"
+    echo "FAIL: 50: banned word with ${#pad50} bytes after it in an -F here-doc commit → expected deny, got '${dec50:-allow}'"
     FAIL=$((FAIL + 1))
   fi
 fi

@@ -25,17 +25,22 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // file. Counting sites with it for D#277 missed the two pattern scans in
 // banned-vocab-check.sh that decide its denies, because they read through the
 // hook_vocab_grep wrapper. What this recognizer sees:
-//   • a top-level `|` (not `||`, not `|&`) followed by any command whose name
-//     contains `grep` (wrappers included) carrying -q/-m/-l/-L or their long
-//     forms, or by `head`;
-//   • pipelines split across lines (`|`, `||`, `&&` or `\` at line end);
-//   • options anywhere in the reader's words (`grep -E -q`, `grep RE -m1`).
-// What it does not see, by construction: a subshell written `(a|head)` at the
-// start of a line (read as a case arm's pattern list); readers inside `$( )`, `<( )` or
+//   • every top-level `|` or `|&` (not `||`) on a line followed by `head`,
+//     `read`, or any command whose name contains `grep` (wrappers included)
+//     carrying -q/-m/-l/-L or their long forms anywhere in its words;
+//   • through `{`, `(`, `!`, redirections, assignments, and the wrappers
+//     command, builtin, exec, nohup, env, stdbuf, nice, timeout, gtimeout;
+//   • pipelines split across lines (`|`, `||`, `&&` or `\` at line end), and
+//     '…', $'…' (backslash escapes the quote), "…", ${…}, $(…) and here-docs.
+// What it does not see, by construction: readers inside `$( )`, `<( )` or
 // backticks (their status reaches a condition only through an assignment such
 // as `if x=$(a | grep -m1 b)`; 0 of those in hooks/ when this was written),
-// `sed …q` and `awk …exit` (their scripts sit in quotes, which are blanked),
-// and pipelines whose reader name is built from a variable.
+// `sed …q` and `awk …exit` (their scripts sit in quotes, which are blanked), a
+// reader whose name does not say so (a function wrapping head under another
+// name, a name built from a variable), and a subshell written `(a|head)` at the
+// start of a line (read as a case arm's pattern list). Where its quote state
+// goes wrong it fails instead of reading on: a line that is exactly fi, done or
+// esac inside a quote, or a here-doc with no delimiter, is reported.
 
 const KEPT = [
   // hooks/pre-bash-safety-check.sh — the eight E4 kept in 0.107.6.
@@ -159,17 +164,17 @@ const KEPT = [
   {
     file: 'hooks/verify-log.sh',
     has: `printf '%s\\n%s' "$OUT" "$ERR" | grep -Eq "$FAIL_OUT_RE" && exit 0`,
-    why: 'DEFERRED D#277: a lost match records a failed run as a pass',
+    why: 'DEFERRED D#288: a lost match records a failed run as a pass',
   },
   {
     file: 'hooks/evidence-gate.sh',
     has: `if ! printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE"; then`,
-    why: 'DEFERRED D#277: a lost match can skip the Done check',
+    why: 'DEFERRED D#288: a lost match can skip the Done check',
   },
   {
     file: 'hooks/evidence-gate.sh',
     has: `printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_TAIL_RE" || exit 0`,
-    why: 'DEFERRED D#277: a lost match skips the Done check',
+    why: 'DEFERRED D#288: a lost match skips the Done check',
   },
   {
     file: 'hooks/evidence-gate.sh',
@@ -194,6 +199,14 @@ function scan(s) {
     const top = stack[stack.length - 1];
     if (top === 'sq') {
       if (c === "'") stack.pop();
+      continue;
+    }
+    // $'…': unlike '…', a backslash escapes the next character, `\'` included.
+    // Read as '…', `$'a\'s'` closed early and its last quote stayed open for 20
+    // lines of pre-bash-safety-check.sh (0.107.7 pre-tag review, M1).
+    if (top === 'ansi') {
+      if (c === '\\') i++;
+      else if (c === "'") stack.pop();
       continue;
     }
     if (c === '\\') {
@@ -234,7 +247,11 @@ function scan(s) {
         continue;
       }
     }
-    if (c === "'") {
+    if (c === '$' && s[i + 1] === "'") {
+      if (!top) out += "''";
+      stack.push('ansi');
+      i++;
+    } else if (c === "'") {
       if (!top) out += "''";
       stack.push('sq');
     } else if (c === '"') {
@@ -259,7 +276,12 @@ function scan(s) {
       out += c === '\n' ? ' ' : c;
     }
   }
-  return { top: out, open: stack.length > 0, heredocs };
+  return {
+    top: out,
+    open: stack.length > 0,
+    inQuote: ['sq', 'dq', 'ansi', 'bt'].includes(stack[stack.length - 1]),
+    heredocs,
+  };
 }
 
 // Physical lines -> logical lines {line, text, top}. A logical line runs on
@@ -272,6 +294,8 @@ function logicalLines(src) {
   const raw = src.split('\n');
   const out = [];
   const unterminated = [];
+  const swallowed = [];
+  let inQuote = false;
   let buf = null;
   let start = 0;
   let seen = 0;
@@ -283,9 +307,13 @@ function logicalLines(src) {
       start = i + 1;
       seen = 0;
     } else {
+      // A line that is exactly fi / done / esac inside a quote is shell, not
+      // text: the quote state was lost somewhere above. Reported, not read past.
+      if (inQuote && /^\s*(fi|done|esac)\s*$/.test(l)) swallowed.push({ line: i + 1, text: l.trim() });
       buf += `\n${l}`;
     }
     const r = scan(buf);
+    inQuote = r.inQuote;
     for (const hd of r.heredocs.slice(seen)) {
       const opened = i + 1;
       while (i + 1 < raw.length && (hd.dash ? raw[i + 1].replace(/^\t+/, '') : raw[i + 1]) !== hd.tag) i++;
@@ -295,49 +323,62 @@ function logicalLines(src) {
     seen = r.heredocs.length;
     const backslashes = (l.match(/\\+$/) || [''])[0].length;
     if (r.open || backslashes % 2 === 1 || /(\||&&)\s*$/.test(r.top)) continue;
+    inQuote = false;
     out.push({ line: start, text: buf.replace(/\\\n/g, ' ').replace(/\n/g, ' ').trim(), top: r.top });
     buf = null;
   }
   if (buf !== null) out.push({ line: start, text: buf.trim(), top: scan(buf).top });
-  return { lines: out, unterminated };
+  return { lines: out, unterminated, swallowed };
 }
 
 const QUIET_LONG = /^--(quiet|silent|max-count|files-with-matches|files-without-match)\b/;
 
+// Words that can stand before the reader in a pipeline element without being
+// it: `{`, `(`, `!`, a redirection, assignments, and wrappers that run their
+// arguments as the command (timeout's duration and options are skipped too).
+const PASS_THROUGH = new Set(['{', '(', '!', 'command', 'builtin', 'exec', 'nohup']);
+
 function earlyReader(words) {
   let k = 0;
-  while (
-    k < words.length &&
-    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k]) || words[k] === 'command' || words[k] === 'env')
-  )
-    k++;
-  const name = words[k] || '';
-  if (name === 'head') return true;
+  for (;;) {
+    const w = words[k];
+    if (w === undefined) return false;
+    if (PASS_THROUGH.has(w) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || /^\d*[<>]/.test(w)) k++;
+    else if (w === 'env' || w === 'stdbuf' || w === 'nice') {
+      k++;
+      while (/^-/.test(words[k] || '')) k += words[k] === '-n' || words[k] === '-u' ? 2 : 1;
+    } else if (w === 'timeout' || w === 'gtimeout') {
+      k++;
+      while (/^-/.test(words[k] || '')) k += /^(-s|-k|--signal|--kill-after)$/.test(words[k]) ? 2 : 1;
+      k++;
+    } else break;
+  }
+  const name = words[k];
+  if (name === 'head' || name === 'read') return true;
   if (!/grep/.test(name)) return false;
   return words.slice(k + 1).some(w => /^-[A-Za-z0-9]*[qmlL]/.test(w) || QUIET_LONG.test(w));
 }
 
-// {sites: [{line, text}] for each top-level pipe into an early-exit reader,
-//  unterminated: here-docs whose delimiter line never comes}.
+// {sites: [{line, text}] for each top-level pipe into an early-exit reader —
+//  every one on a line, so a new pipeline beside a KEPT one makes that entry
+//  match twice (0.107.7 pre-tag review, M2) — unterminated: here-docs whose
+//  delimiter line never comes, swallowed: shell lines read as quoted text}.
 function findSites(src) {
   const sites = [];
-  const { lines, unterminated } = logicalLines(src);
+  const { lines, unterminated, swallowed } = logicalLines(src);
   for (const { line, text, top: full } of lines) {
     // A case arm's pattern list (`cat|head|tail)`) is not a pipeline. The cost:
     // a subshell `(a|head)` at the start of a line reads as one too.
     const top = full.replace(/^(\s*case\s+\S+\s+in)?\s*\(?[^\s()|;&]+(\|[^\s()|;&]+)*\)/, ' ');
-    const re = /(?<![|>])\|(?![|&])/g;
+    const re = /(?<![|>])\|(?!\|)/g;
     let m;
     while ((m = re.exec(top)) !== null) {
-      const rest = top.slice(m.index + 1);
-      const seg = rest.split(/\|\||&&|[|;&)]/)[0];
-      if (earlyReader(seg.trim().split(/\s+/))) {
-        sites.push({ line, text });
-        break;
-      }
+      const rest = top.slice(m.index + 1).replace(/^&/, '');
+      const seg = rest.split(/\|\||&&|\||;|(?<![<>])&|\)/)[0];
+      if (earlyReader(seg.trim().split(/\s+/))) sites.push({ line, text });
     }
   }
-  return { sites, unterminated };
+  return { sites, unterminated, swallowed };
 }
 
 const HOOKS_DIR = path.join(REPO_ROOT, 'hooks');
@@ -358,7 +399,12 @@ function checkTree(read) {
   const used = new Map(KEPT.map(k => [k, 0]));
   let total = 0;
   for (const rel of hookFiles()) {
-    const { sites, unterminated } = findSites(read(rel));
+    const { sites, unterminated, swallowed } = findSites(read(rel));
+    for (const w of swallowed) {
+      problems.push(
+        `${rel}:${w.line}: \`${w.text}\` sits inside what the recognizer reads as a quote, so it lost the quote state above and the lines between went unread — fix the recognizer`
+      );
+    }
     for (const u of unterminated) {
       problems.push(
         `${rel}:${u.line}: here-doc ${u.tag} has no delimiter line, so the rest of the file went unread — fix the recognizer`
@@ -414,6 +460,36 @@ test('recognizer: shapes it must report', () => {
     assert.equal(findSites(src).sites.length, 1, `not reported: ${JSON.stringify(src)}`);
 });
 
+test('recognizer: shapes the 0.107.7 pre-tag review found it missed', () => {
+  const must = [
+    // M1: in $'…' a backslash escapes the quote.
+    "msg=$'it\\'s'\nif true; then\n  echo \"$x\" | grep -q y && exit 0\nfi",
+    // L1: braces, a redirection, a wrapper, |& and read before the reader.
+    'echo "$x" | { grep -q y; } && exit 0',
+    'echo "$x" | 2>/dev/null grep -q y && exit 0',
+    'echo "$x" | timeout 1 grep -q y && exit 0',
+    'echo "$x" |& grep -q y && exit 0',
+    'if echo "$x" | read -r first; then :; fi',
+  ];
+  for (const src of must)
+    assert.equal(findSites(src).sites.length, 1, `not reported: ${JSON.stringify(src)}`);
+  // M2: every site on a line counts, not the first.
+  assert.equal(findSites('echo "$x" | grep -q a && echo "$y" | grep -q b && z=1').sites.length, 2);
+});
+
+test('recognizer: a lost quote state is reported, not read past', () => {
+  // bash reads `${x:-"a}b"}` as one expansion; this scanner ends it at the
+  // quoted `}` and opens a quote at the second `"`. The fi below is then
+  // inside that quote, and must be reported rather than skipped.
+  const src = 'y=${x:-"a}b"}\nif true; then\n  echo "$x" | grep -q y && exit 0\nfi\n';
+  const { swallowed } = findSites(src);
+  assert.deepEqual(
+    swallowed.map(w => w.text),
+    ['fi'],
+    'the tripwire did not fire on a known misread'
+  );
+});
+
 test('recognizer: shapes it must not report', () => {
   const mustNot = [
     'if grep -qE re < <(printf \'%s\' "$x"); then :; fi',
@@ -442,6 +518,18 @@ function mutated(rel, from, to) {
 }
 
 const MUTATIONS = [
+  [
+    "a pipeline after a $'…\\'…' string (pre-tag review M1)",
+    'hooks/pre-bash-safety-check.sh',
+    "    REASONS+=$'\\n  - a fetch/transport command\\'s output is executed by a shell or interpreter — unknown-origin code'\n  fi\n",
+    '    REASONS+=$\'\\n  - a fetch/transport command\\\'s output is executed by a shell or interpreter — unknown-origin code\'\n    echo "$CMD" | grep -qE "curl" && exit 0\n  fi\n',
+  ],
+  [
+    'a second pipeline on a line that holds a KEPT site (pre-tag review M2)',
+    'hooks/ship-baseline-check.sh',
+    `echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0\n`,
+    `echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0; echo "$CMD_FLAT" | grep -qE 'refs/tags' || exit 0\n`,
+  ],
   [
     '§8 npx check back on a pipe',
     'hooks/pre-bash-safety-check.sh',
