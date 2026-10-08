@@ -885,6 +885,11 @@ fi
 # hook there. The limit is 4 KiB, and three edits with ~3,000-character
 # targets make the checkpoint ~10 KB, so under bash 3.2 its own here-doc temp
 # file fails and under 5.x the `cat` writing it does: either way, part-way.
+# SIGXFSZ is ignored so that write fails with EFBIG instead of killing the
+# writer. A killed bash 3.2 never unlinked its here-doc temp file, and 3.2 puts
+# those in /tmp whatever TMPDIR says: every bash 3.2 run of this suite left two
+# 4 KiB `sh-thd-*` files there holding the checkpoint text (D#281). On EFBIG
+# bash 3.2 unlinks the file itself; the hook sees the same failed write.
 LONG31=$(printf 'd%.0s' $(seq 1 3000))
 big_edit31() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t%s","name":"Edit","input":{"file_path":"src/%s%s.js","old_string":"x","new_string":"y"}}]}}' "$1" "$LONG31" "$1"; }
 TR31='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'
@@ -894,7 +899,7 @@ printf 'USER NOTES: remaining work, verify with npm test\n' > "$P31"
 echo -n '' > "$LOG"
 T31="$TMP_HOME/case31.jsonl"
 make_transcript "$T31" "$USER_MSG" "$(big_edit31 1)" "$TR31" "$(big_edit31 2)" "$TR31" "$(big_edit31 3)" "$TR31"
-( ulimit -f 4; run_hook "$T31" )
+( trap '' XFSZ; ulimit -f 4; run_hook "$T31" )
 ERR31=$(cat "$TMP_HOME/stderr")
 ROW31=$(grep '"hook":"session-end-check"' "$LOG" | tail -1)
 LEFT31=$(ls -A "$TMP_CWD/tasks")
@@ -936,7 +941,7 @@ fi
 # the write would leave the link alone too.
 reset_cwd
 ln -s "$TMP_CWD/link-target" "$P31"
-( ulimit -f 4; run_hook "$T31" )
+( trap '' XFSZ; ulimit -f 4; run_hook "$T31" )
 if [[ -L "$P31" && ! -e "$TMP_CWD/link-target" ]] \
    && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]] \
    && [[ "$(cat "$TMP_HOME/stderr")" == *"could not write $P31"* ]]; then
