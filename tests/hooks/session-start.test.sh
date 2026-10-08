@@ -649,7 +649,32 @@ if grep -qF '/claudemd-install' <<<"$SYS29" && grep -qF 'ask the user to run /cl
 else
   echo "FAIL: 29b missing-spec fix not in systemMessage or model not told to ask (out: $OUT29)"; FAIL=$((FAIL+1))
 fi
+# Case 29c (D#201): the human also learns how to stop the notice. The model's
+# text names SPEC_DRIFT_IGNORE and DISABLE_SPEC_DRIFT_BANNER as the user's; the
+# systemMessage, the only text the user reads, named neither, so a user who
+# deleted the file on purpose saw the banner every session with no way out.
+if grep -qF 'SPEC_DRIFT_IGNORE' <<<"$SYS29" && grep -qF 'DISABLE_SPEC_DRIFT_BANNER=1' <<<"$SYS29"; then
+  echo "PASS: 29c missing-spec systemMessage names both off switches"
+else
+  echo "FAIL: 29c missing-spec systemMessage lacks SPEC_DRIFT_IGNORE or DISABLE_SPEC_DRIFT_BANNER (sys: $SYS29)"; FAIL=$((FAIL+1))
+fi
 cp "$PLUGIN_ROOT/spec/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+# Case 29d (D#201): the same for the other branch, a missing file that is not
+# the core spec. 29b and 29c run only with CLAUDE.md gone.
+rm -f "$HOME/.claude/OPERATOR.md"
+OUT29D=$(DISABLE_UPSTREAM_CHECK=1 bash "$HOOK" <<<'{}' 2>/dev/null)
+SYS29D=$(jq -r '.systemMessage // ""' <<<"$OUT29D" 2>/dev/null)
+CTX29D=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT29D" 2>/dev/null)
+if grep -qF 'OPERATOR.md' <<<"$SYS29D" && grep -qF '/claudemd-install' <<<"$SYS29D" \
+   && grep -qF 'SPEC_DRIFT_IGNORE' <<<"$SYS29D" && grep -qF 'DISABLE_SPEC_DRIFT_BANNER=1' <<<"$SYS29D" \
+   && ! grep -qF 'not loaded this session' <<<"$SYS29D" \
+   && grep -qF 'ask the user to run /claudemd-install' <<<"$CTX29D" \
+   && grep -qF 'the core spec is still loaded' <<<"$CTX29D"; then
+  echo "PASS: 29d a missing non-core file gets the fix and both off switches, core still loaded"
+else
+  echo "FAIL: 29d non-core missing-spec notice (out: $OUT29D)"; FAIL=$((FAIL+1))
+fi
+cp "$PLUGIN_ROOT/spec/OPERATOR.md" "$HOME/.claude/OPERATOR.md"
 
 # --- v0.75.0 sync fresh-install bootstrap ---
 # The three cases below pin WHICH path each state takes, read off the bootstrap
@@ -1426,6 +1451,31 @@ for c47 in "33:OUT33:CLAUDEMD_SPEC_ACTION=restore" "36b:OUT36B:an install was in
     echo "PASS: 47.$c47_id user-content notice reaches both the human and the model"
   else
     echo "FAIL: 47.$c47_id notice missing from systemMessage or additionalContext"; FAIL=$((FAIL+1))
+  fi
+done
+
+# Case 47b (D#201): the claudemd commands are user-invoked only since 0.107.0
+# (disable-model-invocation), so a notice must not tell the MODEL to run one.
+# Same rule Cases 29b and 39f hold for the spec banners: the human is told to
+# run the command, the model to ask the user for it. Each row: case id, output
+# variable, the instruction the model must get.
+for c47b in "20:OUT20:ask the user to run /claudemd-refresh" \
+            "33:OUT33:ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`" \
+            "36b:OUT36B:ask the user to re-run /claudemd-install" \
+            "36c:OUT36C:ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`"; do
+  c47b_id=${c47b%%:*}; c47b_rest=${c47b#*:}; c47b_var=${c47b_rest%%:*}; c47b_want=${c47b_rest#*:}
+  c47b_out=${!c47b_var}
+  c47b_ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$c47b_out" 2>/dev/null)
+  c47b_sys=$(jq -r '.systemMessage // ""' <<<"$c47b_out" 2>/dev/null)
+  # What is left once every "ask the user to (re-)run" is removed must not tell
+  # anyone to run a claudemd command; the human's text still must.
+  c47b_left=$(sed -E 's/ask the user to (re-)?run//g' <<<"$c47b_ctx")
+  if grep -qF "$c47b_want" <<<"$c47b_ctx" \
+     && ! grep -qE '(^|[^a-z])(re-)?run `?(/claudemd-|CLAUDEMD_)' <<<"$c47b_left" \
+     && grep -qE '(^|[^a-z])(re-)?run `?(/claudemd-|CLAUDEMD_)' <<<"$c47b_sys"; then
+    echo "PASS: 47b.$c47b_id the model is told to ask the user to run the command, the human to run it"
+  else
+    echo "FAIL: 47b.$c47b_id (ctx: $c47b_ctx | sys: $c47b_sys)"; FAIL=$((FAIL+1))
   fi
 done
 

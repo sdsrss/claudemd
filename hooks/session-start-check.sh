@@ -441,7 +441,7 @@ spec_drift_check() {
 
     jq -cn --arg files "$missing" --arg drifted "$drifted" --argjson core "$core_gone" '{
       suppressOutput: true,
-      systemMessage: ("[claudemd] installed spec file(s) missing from ~/.claude/: " + $files + ". Run /claudemd-install to recopy the shipped spec" + (if $core == 1 then " (the core spec is not loaded this session)." else "." end)),
+      systemMessage: ("[claudemd] installed spec file(s) missing from ~/.claude/: " + $files + ". Run /claudemd-install to recopy the shipped spec" + (if $core == 1 then " (the core spec is not loaded this session)." else "." end) + " If you removed them on purpose, SPEC_DRIFT_IGNORE=\"" + $files + "\" skips just these. Disable: DISABLE_SPEC_DRIFT_BANNER=1"),
       hookSpecificOutput: {
         hookEventName: "SessionStart",
         additionalContext: ("[claudemd] installed spec file(s) MISSING from ~/.claude/: " + $files + (if $drifted == "" then "" else " (and drifted: " + $drifted + ")" end) + ". " + (if $core == 1 then "CLAUDE.md is the one Claude Code injects as your user-global instructions, so the core spec is not loaded this session." else "These are read on demand or by you, not injected every session — the core spec is still loaded." end) + " Fix: ask the user to run /claudemd-install (recopies the shipped spec; it is user-invoked, so you cannot run it). If the user deleted it on purpose, the user can skip just these with SPEC_DRIFT_IGNORE=\"" + $files + "\", or turn the whole check off with DISABLE_SPEC_DRIFT_BANNER=1.")
@@ -488,11 +488,15 @@ emit_bootstrap_failed_banner() {
   local msg="[claudemd] background upgrade failed"
   [[ -n "$ts" ]] && msg+=" at $ts"
   [[ -n "$from" && -n "$to" ]] && msg+=" (manifest $from → plugin $to)"
-  msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs, run /claudemd-refresh and restart Claude Code. The user can turn this notice off with DISABLE_BOOTSTRAP_FAIL_BANNER=1"
+  msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs,"
+  local off_msg=" The user can turn this notice off with DISABLE_BOOTSTRAP_FAIL_BANNER=1"
 
-  jq -cn --arg ctx "$msg" '{
+  # The human runs the command; the model can only ask for it, because every
+  # claudemd command is user-invoked (disable-model-invocation, 0.107.0).
+  jq -cn --arg sys "$msg run /claudemd-refresh and restart Claude Code.$off_msg" \
+    --arg ctx "$msg ask the user to run /claudemd-refresh and restart Claude Code (it is user-invoked, so you cannot run it).$off_msg" '{
     suppressOutput: true,
-    systemMessage: $ctx,
+    systemMessage: $sys,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: $ctx
@@ -545,7 +549,9 @@ emit_user_content_banner() {
   # happened, so this banner reports what is ON DISK rather than what the
   # sentinel implies. Both states are worth telling the user about; they are
   # different states and used to read identically.
-  local msg
+  # Each banner goes out twice: the human is told to run the command, the model
+  # to ask for it, because every claudemd command is user-invoked (0.107.0).
+  local msg off_msg=" The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
   # `-e` follows the link and `-L` does not (v0.81.0 pre-tag review, MEDIUM-1).
   # createBackup deliberately RE-POINTS a symlinked spec into the backup dir
   # rather than copying its bytes, and install classifies an unreadable
@@ -556,10 +562,11 @@ emit_user_content_banner() {
   # says the move happened; whether its target still resolves is the user's
   # dotfiles business.
   if [[ -n "$backup_dir" && ! -e "$backup_dir/CLAUDE.md" && ! -L "$backup_dir/CLAUDE.md" ]]; then
-    msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then re-run /claudemd-install. The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
-    jq -cn --arg ctx "$msg" '{
+    msg="[claudemd] an install was interrupted while it was replacing your ~/.claude/CLAUDE.md: it recorded $backup_dir as the place your own user-global instructions were going, and that directory does not hold them. Check both $backup_dir and ~/.claude/CLAUDE.md before assuming anything was lost, then"
+    jq -cn --arg sys "$msg re-run /claudemd-install.$off_msg" \
+      --arg ctx "$msg ask the user to re-run /claudemd-install (it is user-invoked, so you cannot run it).$off_msg" '{
       suppressOutput: true,
-      systemMessage: $ctx,
+      systemMessage: $sys,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
         additionalContext: $ctx
@@ -576,11 +583,12 @@ emit_user_content_banner() {
   else
     msg+=" and moved to a ~/.claude/backup-<timestamp>/ directory"
   fi
-  msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back, run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand. The user can turn this notice off with DISABLE_USER_CONTENT_BANNER=1."
+  msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back,"
 
-  jq -cn --arg ctx "$msg" '{
+  jq -cn --arg sys "$msg run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand.$off_msg" \
+    --arg ctx "$msg ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\` (it is user-invoked, so you cannot run it) or to merge the two files by hand.$off_msg" '{
     suppressOutput: true,
-    systemMessage: $ctx,
+    systemMessage: $sys,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: $ctx
