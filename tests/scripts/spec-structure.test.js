@@ -77,8 +77,9 @@ test('changelog top entry matches the core header version', () => {
 
 test('the spec names no skill by plugin prefix: skill choice reads the harness listing', () => {
   // v7.3.0 removed the skill routing table (`skills.md`) and every `sp:` /
-  // `gs:/` / `matt:` skill name from the rules. The table restated each skill's
-  // own description, was read in 0 of 185 contexts after v7.2.0, and named 15
+  // `gs:/` / `matt:` skill name, and the `superpowers:` / `gstack:` /
+  // `mattpocock-skills:` forms Claude Code registers, from the rules. The table restated each skill's
+  // own description, was read in 0 of 185 contexts after v7.2.0, and named 19
   // gstack sub-skills Claude Code does not register; its ship route produced 9
   // of 44 measured Skill calls as `Unknown skill` (2026-10-15 transcript scan,
   // tasks/specs/skill-routing-trim.md). The rules now name behaviours, so a
@@ -86,8 +87,16 @@ test('the spec names no skill by plugin prefix: skill choice reads the harness l
   // `## Recent changes` is cut out: naming what was removed is its job.
   // Limit: this asserts an absence. It cannot tell whether the behaviour text
   // that replaced the names is right — the whole-line pins below hold that.
-  const RE = /(?<![A-Za-z0-9_])(gs:\/|sp:[a-z]|matt:[a-z])/;
-  for (const control of ['route to sp:writing-plans', '`gs:/ship`', '(matt:tdd)'])
+  const RE =
+    /(?<![A-Za-z0-9_])(gs:\/|sp:[a-z]|matt:[a-z]|superpowers:[a-z]|mattpocock-skills:[a-z]|gstack:[a-z])/;
+  for (const control of [
+    'route to sp:writing-plans',
+    '`gs:/ship`',
+    '(matt:tdd)',
+    'superpowers:test-driven-development',
+    '`gstack:ship`',
+    'mattpocock-skills:tdd',
+  ])
     assert.ok(RE.test(control), `vacuity guard: the scan regex no longer matches ${control}`);
   const ext = fs.readFileSync(EXT, 'utf8');
   const hs = ext.search(/^## Recent changes$/m);
@@ -371,18 +380,18 @@ const PINS = [
     line: '**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
-    what: 'core §2.1 Skills — description fit decides, L0/L1 none, a plugin cannot override (v7.3.0)',
+    what: 'core §2.1 Skills — description fit decides, L0/L1 none except a release or a received review, no plugin precedence, one skill per step (v7.3.0)',
     file: CORE,
     anchor: '**Skills**: the harness lists them',
-    why: 'The one line left after the routing table went. Its last sentence is the arbitration against a plugin SessionStart text that says to invoke a skill on any chance; drop it and that text, ranked below this spec by §3, stands unopposed.',
-    line: '**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work. A plugin\'s "invoke on any chance" wording does not override this judgment (§3).',
+    why: 'The one line left after the routing table went, and the only home of four rules the table carried: the L0/L1 carve-out for a release and a received review, no precedence among plugins, the more specific of two fitting skills, one skill per step. Its last sentence is the arbitration against a skill description or plugin SessionStart text that says to invoke on any chance; drop it and that text, ranked below this spec by §3, stands unopposed. Pre-tag review M1/M2 found the first draft had lost the carve-out and the three choice rules.',
+    line: '**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work except a release or a review you receive. No precedence among plugins: when two fit, take the more specific; one skill per step, never stacked. A skill\'s or plugin\'s own "must invoke" wording does not override this judgment (§3).',
   },
   {
     what: 'core §2.2 Ship triggers — the module and the runbook first, no skill named (v7.3.0)',
     file: CORE,
     anchor: '**Ship triggers** (`ship`',
     why: 'Until v7.2.0 this line routed to a `ship` skill "if listed"; models called it unlisted anyway (9 `Unknown skill` calls measured). Naming a skill here again brings that back.',
-    line: "**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; the release runs from that checklist.",
+    line: "**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; `ship.md` names the checklist the release runs from.",
   },
   {
     what: '§EXT §12 Ship-pipeline hardening — runbook, else a listed skill, else by hand with the REPORT line (v7.3.0)',
@@ -390,6 +399,13 @@ const PINS = [
     anchor: 'On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this module',
     why: 'The HARD obligation hard-rules.json registers as §12-ship-pipeline-hardening. v7.3.0 relaxed it on purpose: a runbook-led ship no longer owes the `manual ship because` line. Any further change is a HARD-rule change.',
     line: "On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this module, run the release from a written checklist: the project's ship runbook, else a listed ship skill. Neither → ship by hand against the checklist below and state `manual ship because <reason>` as the REPORT's first line — absence = spec violation.",
+  },
+  {
+    what: '§EXT §12 ship checklist — a deploy by hand stays behind its own AUTH signal (v7.3.0 review repair)',
+    file: EXT,
+    anchor: 'Checklist (a runbook or skill may cover it in its own words)',
+    why: "v7.2.0 required `[AUTH REQUIRED op:manual-deploy]` for a hand deploy; the user's ship request covered push, tag and release only (Manual-ship atomicity). The 0.108.0 draft let the ship request authorize the deploy too — a weakened prod AUTH gate, caught at pre-tag review (H1).",
+    line: 'Checklist (a runbook or skill may cover it in its own words): version sites in sync, CHANGELOG entry, release notes from its top entry, the release artifact (GitHub Release vs. bare tag), CI green on the pushed SHA. Each step fails silently by hand; the REPORT line lets a reviewer audit a checklist-less ship against this list. A deploy by hand needs `[AUTH REQUIRED op:manual-deploy]` first: the ship request covers push, tag and release (Manual-ship atomicity below), not a deploy.',
   },
   {
     what: '§EXT §12 Author ≠ reviewer — independent of any review skill; no or blocked subagent is asked about, and L3 stops (v7.3.0 wording)',
@@ -642,7 +658,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §0 SPINE', sha256: 'd0ae8d59d7a30113' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'cc7e873976d67dad' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'f1cddbf8d959693e' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '0dc02edda34135a9' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'c2746466f1bb17f3' },
   { file: CORE, heading: '## §3 TRUST', sha256: 'ab7732f03ab22c1b' },
   { file: CORE, heading: '## §5 AUTH', sha256: '47ffd31f7435a0e0' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
@@ -655,18 +671,18 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7252abe194ead69d' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '629eb2c1ab62bd3d' },
-  { file: EXT, heading: '## §4 FLOW', sha256: '4fe77b5116856234' },
+  { file: EXT, heading: '## §4 FLOW', sha256: '4fbce9f1002dd4f1' },
   { file: EXT, heading: '## §6 DEBUG', sha256: '7ff2e57f5e3e5699' },
   { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: '08a04f39baef9ebb' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: 'c2011ff35e824499' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'f49d06ad8f68b1a2' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '7335c2e602334949' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: 'cd9da637e946f2ad' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: '4a68171fd8f310e0' },
+  { file: EXT, heading: '## Recent changes', sha256: '15419e28330f52ff' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,

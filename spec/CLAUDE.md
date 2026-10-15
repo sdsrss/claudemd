@@ -74,7 +74,7 @@ Non-skill defaults: UI/visual verify → gstack's `browse`, through the `gstack`
 
 **Tool escalation** (cheap → expensive; not memory + code-graph in parallel on one question): exact → Grep; concept → semantic search; export-surface edit → impact analysis first (feeds §5 AUTH); unfamiliar module → module overview before 3+ Reads; "did we / why" → memory first.
 
-**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work. A plugin's "invoke on any chance" wording does not override this judgment (§3).
+**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work except a release or a review you receive. No precedence among plugins: when two fit, take the more specific; one skill per step, never stacked. A skill's or plugin's own "must invoke" wording does not override this judgment (§3).
 
 **Ambiguous trigger** → ASK per §0.
 
@@ -92,7 +92,7 @@ Non-skill defaults: UI/visual verify → gstack's `browse`, through the `gstack`
 - `modes.md` — HACK / EMERGENCY / AUTONOMOUS, mid-task merge thresholds, cancel or switch (§2-EXT, §0.2-EXT)
 - `session.md` — long sessions (§11-EXT, §7-EXT-TMP, §1.5-EXT)
 
-**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; the release runs from that checklist.
+**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; `ship.md` names the checklist the release runs from.
 
 ## §3 TRUST
 

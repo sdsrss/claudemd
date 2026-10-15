@@ -73,4 +73,4 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 9. Deploy: as FULL.11.
 10. Monitor: declarative checklist.
 
-**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 as FULL.3; add the security pass if security surface appeared. Do NOT silently continue under lite.
+**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 on the widened scope; add the security pass if security surface appeared. Do NOT silently continue under lite.

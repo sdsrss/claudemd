@@ -81,7 +81,7 @@ The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09
 | `tasks/pending-auth-<date>.md` | §2-EXT AUTONOMOUS hard ops | Agent | Op + scope + risk + recommendation, deferred for interactive AUTH | until next interactive session resolves |
 | `tasks/auto-approved.md` | §2-EXT AUTONOMOUS whitelist | Operator | One per line, e.g. `op:deps-bump-patch` | hand-curated |
 | `tasks/specs/<slug>.md` | §2.S SPEC ARTIFACT | Agent | L3 mandatory / L2 minimal spec (goal / non-goals / constraints / success-criteria / open-questions) | persists with feature |
-| `tasks/<n>.md` | §4.FULL step 2 written plan | Agent | L3 plan file, unless the project names another place | until feature complete |
+| `tasks/<n>.md` | §4.FULL step 2 written plan | Agent | L3 plan file | until feature complete |
 
 **Override**: project `CLAUDE.md` MAY set `SPEC_DIR:` to relocate `tasks/specs/` only (§2.S Spec file). Other filename patterns are not overridable in current spec.
 

@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 3
+revision: 4
 ---
 
 # v7.3 — 技能路由下放给 description，规范只写行为
@@ -56,3 +56,8 @@ revision: 3
   - C 组（无规范）：先复现 4/10，先红 2/10；L2 新增任务上无规范也是 0/10 调用，所以不在 L2 放松裁决句。
   - A 组也没有复现 `Unknown skill`，K3 的依据仍是转录数据。
   - 费用 $33.45。剩发版前独立评审。
+- r4（2026-10-15）：发版前独立评审，结果为 1 High、2 Medium、10 Low，已全部修复。
+  - H1：首稿让"发版请求"授权了手动部署。已恢复为部署前必须发 `[AUTH REQUIRED op:manual-deploy]`，并加了整行钉。
+  - M1、M2：首稿丢了两样东西：L0/L1 对"发版、接收评审"的例外，以及三条选技能规则（插件之间不分优先级、两个都合适时选更具体的、每步一个技能）。这些都已放回核心 Skills 行。裁决句恢复为覆盖"技能自身的 must 措辞"。
+  - Low：前缀扫描加上 Claude Code 实际注册的命名空间写法；sampling-audit 命令文档的残留引用已改；lite 升级的措辞已改；gs 子技能数改为 19（提交 9103bec 的信息里写的 15 未改写历史，在 CHANGELOG 中注明）；"四个联结测试"改为"五个"；changelog 补写了硬化规则和 Author ≠ reviewer 的变化；两份 Dropped 清单已对齐；OPERATOR 的例外与 plan.md 已对齐；核心 Ship triggers 的指代改清楚；CHANGELOG 不再指向未入库的来源。
+  - 每处修复都先写钉子、先变红，再改文字。变异检验扩到 18 例，每例都由预期的测试抓到。
