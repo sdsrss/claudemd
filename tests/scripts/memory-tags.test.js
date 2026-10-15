@@ -10,6 +10,7 @@ import {
   scanMemoryIndexSizes,
   readIndexBudget,
   MEMORY_INDEX_BUDGET_BYTES,
+  MEMORY_INDEX_LINE_MAX_CHARS,
   INDEX_BUDGET_MAX_MULTIPLE,
 } from '../../scripts/lib/memory-tags.js';
 
@@ -277,6 +278,34 @@ test('scanMemoryIndexSizes: reports bytes + entry count, sorted bytes-desc', () 
     assert.equal(indexes[0].bytes, Buffer.byteLength(big, 'utf8'));
     assert.equal(indexes[1].entries, 1);
     assert.equal(indexes[1].bytes, Buffer.byteLength(small, 'utf8'));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('scanMemoryIndexSizes: counts index lines over the line limit, in characters', () => {
+  // Spec v8.0.0 memory.md: an index line is a title, tags and a one-line hook,
+  // ≤150 characters. Characters, not bytes: a 中文 hook of 100 characters is
+  // ~300 bytes and still a short line.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-idxlines-'));
+  try {
+    const proj = path.join(tmp, '-proj-lines', 'memory');
+    fs.mkdirSync(proj, { recursive: true });
+    const head = '- [T](f.md) — ';
+    const at = n => head + 'x'.repeat(n - [...head].length);
+    const cjk = `- [中](f.md) — ${'记'.repeat(100)}`;
+    const content =
+      ['# Memory index', at(150), at(151), cjk, `not an entry ${'z'.repeat(300)}`].join('\n') + '\n';
+    fs.writeFileSync(path.join(proj, 'MEMORY.md'), content);
+    const [i] = scanMemoryIndexSizes({ rootDir: tmp }).indexes;
+    assert.equal(MEMORY_INDEX_LINE_MAX_CHARS, 150);
+    assert.equal(i.entries, 3);
+    assert.equal(
+      i.longLines,
+      1,
+      'only the 151-character entry is over; the CJK line is over in bytes, not characters'
+    );
+    assert.equal(i.longestLine, 151);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

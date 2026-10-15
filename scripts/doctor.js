@@ -36,7 +36,12 @@ import {
   UNEVALUABLE_FAILOPEN_REASONS,
   IMMUTABLE_SECTION_RE,
 } from './lib/rule-hits-parse.js';
-import { scanMemoryTags, scanMemoryIndexSizes, MEMORY_INDEX_BUDGET_BYTES } from './lib/memory-tags.js';
+import {
+  scanMemoryTags,
+  scanMemoryIndexSizes,
+  MEMORY_INDEX_BUDGET_BYTES,
+  MEMORY_INDEX_LINE_MAX_CHARS,
+} from './lib/memory-tags.js';
 import {
   memoryMaintenance,
   CITE_MIN,
@@ -179,7 +184,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
 // moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-index-lines|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
@@ -1133,6 +1138,29 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {})
         `\`<!-- index-budget: NNKB -->\` line in the index (operator's call, no auto-trim; spec-audit 2026-07-11 R2).`
     );
   }
+
+  // v0.109.0 — index line length (advisory, spec v8.0.0 memory.md). Separate
+  // from the byte budget above: a 12KB index of 150-character lines is 80
+  // entries, a 19KB one of 640-character lines is 30, and the second is the
+  // shape that puts memory CONTENT into every session.
+  const longIdx = idx.indexes.filter(i => i.longLines > 0);
+  push(
+    'memory-index-lines',
+    longIdx.length === 0,
+    longIdx.length === 0
+      ? `${idx.scannedFiles} MEMORY.md file(s): every index line ≤${MEMORY_INDEX_LINE_MAX_CHARS} characters`
+      : `${longIdx.length}/${idx.scannedFiles} MEMORY.md file(s) have index lines over ${MEMORY_INDEX_LINE_MAX_CHARS} characters: ` +
+          longIdx
+            .slice(0, 3)
+            .map(
+              i =>
+                `${path.basename(path.dirname(i.memDir))}/MEMORY.md ${i.longLines}/${i.entries} (longest ${i.longestLine})`
+            )
+            .join(', ') +
+          (longIdx.length > 3 ? ` +${longIdx.length - 3} more` : '') +
+          '. Keep a title, tags and a one-line hook in the index and move the rest into the memory file ' +
+          "(operator's call, no auto-trim)."
+  );
 
   // v0.61.0 — ship-runbook review-step presence (advisory). Origin: the
   // 2026-07-27 v0.60.0 incident sweep found ALL SIX projects' ship runbooks

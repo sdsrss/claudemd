@@ -1957,6 +1957,24 @@ test('with no hook record at all, hook-drift reads exactly as it did before', as
 });
 
 // ── v0.84.0 pre-ship review, M2 · reopened by plan hook-root-ground-truth ──
+test('memory-index-lines: an index line over 150 characters is reported, as an advisory', async () => {
+  const mem = box.claude('projects', '-idx-lines', 'memory');
+  fs.mkdirSync(mem, { recursive: true });
+  fs.writeFileSync(
+    path.join(mem, 'MEMORY.md'),
+    `# Memory index\n- [Short](a.md) — fine\n- [Long](b.md) — ${'x'.repeat(200)}\n`
+  );
+  const r = await doctor({});
+  const c = r.checks.find(x => x.name === 'memory-index-lines');
+  assert.ok(c, 'doctor must report a memory-index-lines row');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /-idx-lines\/MEMORY\.md 1\/2 \(longest \d+\)/);
+  assert.equal(isAdvisoryCheck('memory-index-lines'), true, 'a long index line must not move the exit code');
+  fs.writeFileSync(path.join(mem, 'MEMORY.md'), '# Memory index\n- [Short](a.md) — fine\n');
+  const r2 = await doctor({});
+  assert.equal(r2.checks.find(x => x.name === 'memory-index-lines').ok, true);
+});
+
 test('hook-drift:upstream is advisory; hook-drift and statusline are not', () => {
   // The clone tracks `main`, not the released tag, and of the last 60 commits 19
   // touch hooks/*.sh with 18 carrying no version bump — so for a user who has

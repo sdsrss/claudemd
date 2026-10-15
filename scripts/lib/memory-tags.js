@@ -251,6 +251,13 @@ export function parseMemoryIndex(content) {
 // (closed-loop project_* entries first — index edits are §5-scoped writes).
 export const MEMORY_INDEX_BUDGET_BYTES = 12 * 1024;
 
+// Spec v8.0.0 §11 Memory / memory.md: an index line is a title, tags and a
+// one-line hook, ≤150 characters; the detail belongs in the memory file. The
+// harness says the same ("one line per memory … never put memory content
+// there") without a number. Counted in characters, not bytes, so a 中文 hook is
+// not penalised three times over.
+export const MEMORY_INDEX_LINE_MAX_CHARS = 150;
+
 // v0.74.2 — a per-index budget the index itself declares:
 //
 //     <!-- index-budget: 28KB -->
@@ -372,12 +379,18 @@ export function scanMemoryIndexSizes({ rootDir } = {}) {
       continue;
     }
     scannedFiles++;
-    const entries = content.split('\n').filter(l => /^- \[/.test(l)).length;
+    const entryLines = content.split('\n').filter(l => /^- \[/.test(l));
+    const entries = entryLines.length;
+    const lengths = entryLines.map(l => [...l].length);
+    const longLines = lengths.filter(n => n > MEMORY_INDEX_LINE_MAX_CHARS).length;
+    const longestLine = lengths.length ? Math.max(...lengths) : 0;
     const budget = readIndexBudget(content);
     indexes.push({
       memDir: path.dirname(memIdx),
       bytes: Buffer.byteLength(content, 'utf8'),
       entries,
+      longLines,
+      longestLine,
       budgetBytes: budget.bytes,
       budgetDeclared: budget.declared,
       budgetError: budget.error,
