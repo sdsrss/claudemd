@@ -160,7 +160,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 
 **Report shape (HARD)**: a task that changed files or ran checks closes with a `## 汇报` heading (`## Report` for an English-speaking user; headings and verdicts follow the user's language) and up to three parts in this order, empty ones left out:
 - **变更** (Changes): what changed, which files, the commit and branch, the spec path if there is one.
-- **验证** (Verification): each command with one verdict — 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run); failures that predate the task on a separate line from regressions you introduced.
+- **验证** (Verification): one line per check, `<command or check>` → exactly one of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run), then the numbers or the reason — a check you could not confirm is 无法运行, not a new word; failures that predate the task on a separate line from regressions you introduced.
 - **遗留** (Open items): unfinished work, risks, decisions the user must make — options, cost, your pick.
 
 A trivial change reports in one sentence that names its check. This shape overrides any harness rule against headings in short messages.
