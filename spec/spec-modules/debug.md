@@ -5,7 +5,7 @@ triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: debug
+# AI-CODING-SPEC v8.0.0 — module: debug
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -28,5 +28,5 @@ Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Sympt
 Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user repeat-failure feedback (e.g. "又失败 / 又挂 / again") counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.
 
 ### Dead-end record
-Append to plan: `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
-Session-scoped. Promote to `tasks/lessons.md` only on user request ("记住这个") or same-session recurrence.
+Append to the spec file's decisions section (else the report's open items): `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
+Save it as a feedback memory only on user request ("记住这个") or same-session recurrence.

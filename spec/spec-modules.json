@@ -41,11 +41,6 @@
       "triggers": "",
       "window": "head"
     },
-    "modes": {
-      "loadsOn": "for HACK, EMERGENCY or AUTONOMOUS work, mid-task merge thresholds, and when a task is cancelled or switched",
-      "triggers": "",
-      "window": "head"
-    },
     "session": {
       "loadsOn": "in long sessions: context pressure, re-reads, temp retention, macOS shells",
       "triggers": "",

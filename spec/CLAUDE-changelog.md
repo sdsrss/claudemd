@@ -6,6 +6,22 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.0.0 (major, 2026-10-15) — three-part report, decide-and-record on low-risk ambiguity, harness duplicates dropped
+
+Analysis `docs/spec-optimization-plan-2026-10-15.md`; design record `tasks/specs/spec-v8.md`. Major, because the report protocol changes (four sections and `[PARTIAL]` → `## 汇报` with three parts) and §0's ASK default changes. No HARD rule added or removed; every rule keeps its ID; two HARD rules are rewritten.
+
+- **Why**: in 211 Opus 5.5 turn-final replies (2026-09-30 → 10-15, 48 sessions) the four-section labels appeared in 25%, a level statement in 6%, `[PARTIAL]` and `Checked:` in none. The user asked for a three-part report, for low-risk reversible ambiguity to be decided and recorded, and for a spec that neither repeats nor fights the harness. A headless Opus 5.5 probe (bypass mode) showed which harness passages are in both models' system prompts; only those were dropped.
+- **Report (core §10)**: `## 汇报` (`## Report`), then 变更 / 验证 / 遗留 (Changes / Verification / Open items), empty parts left out, every verification line one verdict of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run), pre-existing failures apart from regressions; a trivial change reports in one sentence; the shape overrides any harness rule against headings. HARD under the old ID `§10-four-section-order`, anchor `**Report shape (HARD)**`. Honesty and Specificity stay; their `[PARTIAL]` fallbacks now go under open items.
+- **§0**: one signal, `[AUTH REQUIRED]`. **Ambiguity**: a low-risk, cheap-to-undo pick is made, written down (spec file, else open items) and the work continues; a costly or irreversible pick, or a hard-AUTH boundary, is asked after everything independent is done, with options, cost and a pick. The H4 measure (sampling-audit, 30 days, 197 transcripts) counted 183 answered asks of which 4 were bare assent, so asks stay where a wrong pick is costly rather than being dropped. **Hard-AUTH override** (HARD): an adjacent defect goes under open items instead of into the diff unless the authorized fix is blocked without it. Correction pressure moves here from §11.
+- **§1**: the user's six principles (think first, simple first, precise edits, evidence before claims, fix at the root with change-approach-after-two-failures, never weaken checks). Recommend-first and the Role line are dropped: both the Opus 5.5 and the Fable 5.1 harness say "give a recommendation, not an exhaustive survey". The language clause names the user's list of English artifacts.
+- **§1.5 / §2**: LOC and Local-Δ go; levels are defined by risk and reversibility with the hard-upgrade list unchanged; the Fast-Path is the L0 row; Depth triggers become one clause.
+- **§5**: **No user present** keeps AUTONOMOUS's one rule (no unauthorized §5 Hard op; write it down and finish the rest). §5.1 drops the aggressive skip-list, whose two items are the default now; Never-downgrade lists every §5 Hard category.
+- **§7 Git**: per-change commits; branching per project convention, else the current branch; push / tag / release only when asked; both override the harness's commit-only-when-asked and branch-first defaults.
+- **§8.V4**: temporary files go in the harness's session scratchpad; anything elsewhere is removed by the creating task.
+- **§11**: post-compaction re-reads the spec file; an unresumed yield or a session exit writes the spec file first (else `tasks/<slug>-paused.md`); Memory is one bullet with a ≤150-character index line.
+- **Extended**: `modes` removed (HACK / EMERGENCY / §0.2-EXT; AUTONOMOUS's rule moved to core §5); §2-EXT keeps only the released-artifact checklist; §2.S is the user's template (状态 草稿 / 进行中 / 已完成); `tasks/lessons.md` is retired (dead-ends go to the spec file, lessons to memory); §10-R shows the new report; the memory decision tree becomes save triggers; orchestrate drops "delegate only large work"; every `[PARTIAL: …]` becomes a could-not-run verdict.
+- **Hooks**: `transcript-structure-scan`, `sampling-audit` and `evidence-gate` read the three-part report and keep reading the four-section one.
+
 ## v7.3.0 (minor, 2026-10-15) — skill choice is left to the harness listing; rules name behaviours, not skills
 
 Design record `tasks/specs/skill-routing-trim.md` (the transcript scan and the A/B runs behind its figures are kept locally). Minor, because one HARD obligation is relaxed (the `manual ship because` REPORT line) and a module is removed. No HARD rule added or removed; every rule keeps its ID.

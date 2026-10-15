@@ -5,7 +5,7 @@ triggers: 架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refact
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: plan
+# AI-CODING-SPEC v8.0.0 — module: plan
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -14,25 +14,42 @@ trigger-window: head
 Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many plans.
 
 ### Spec file
-- Path: `tasks/specs/<slug>.md` (project CLAUDE.md may override via `SPEC_DIR:`). Auto-create, no AUTH.
-- Frontmatter: `status: draft | approved | implemented | deprecated` + `revision: <n>`.
-- Body: `goal / non-goals / constraints / success-criteria / open-questions / # Change log`.
-- **Worktrees**: independent `tasks/`; merge `lessons.md` to main on worktree-finish.
+- Path: `tasks/specs/<slug>.md` (project CLAUDE.md may override via `SPEC_DIR:`). Auto-create, no AUTH. One file per task, kept current: it is the hand-over, so someone with no context must be able to continue from it. Body in the user's language (core §1).
+- Template (indented two spaces here only so its `#` lines are not read as this file's headings; headings in the user's language, 中文 shown, English in parentheses):
+
+```
+  # <feature or task name>
+  状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)
+
+  ## 背景与目标 (Background and goal)
+  ## 范围 (Scope)
+  - 做： (In:)
+  - 不做： (Out:)
+  ## 验收标准 (Acceptance criteria)
+  - [ ] AC1：<observable behaviour> — 验证：`<command or steps>`
+  ## 方案 (Design)
+  <key design, interface and data changes, trade-offs and why, research findings>
+  ## 计划 (Plan)
+  - [ ] S1：<slice> — 覆盖 AC1 — 依赖：无 — 执行：主会话 | <agent>
+  ## 决策与进展 (Decisions and progress)
+  - <decision and why / where the work stands / blockers / awaiting the user>
+  ## 验证记录 (Verification record)
+  - `<command>` → <verdict>
+```
 
 ### When required
-- **L3**: mandatory. Initial draft: `goal` + `success-criteria` + `constraints`; rest fills during §4.FULL steps 1-3. All 6 complete before AUTH (step 4).
-- **L2**: NOT default. Agent proposes when cross-module (≥2 Modules) OR >50 LOC OR new dep. User "yes/skip". Bugfix restoring documented behavior → no spec.
-- **L2 minimal**: only `goal` + `success-criteria` required.
+- **L3**: mandatory, written before AUTH (§4.FULL step 4) with background, scope, acceptance criteria and design filled.
+- **L2**: when the change crosses ≥2 Modules, runs past ~50 changed lines or adds a dependency (core §2). Bugfix restoring documented behavior → no spec file.
 
 ### Spec changes mid-work
-- `goal / non-goals / success-criteria` change → contract shift → user ASK.
-- `constraints / open-questions` tightening → auto-decide if reversible.
-- Every change bumps `revision`, appends to `# Change log`. Re-classify in prose if level shifts.
+- Goal, scope or acceptance criteria change → contract shift → ASK the user.
+- Design or plan tightening → decide if reversible; record it under decisions and progress.
+- Tick plan items and acceptance criteria as they are verified; set the status to done only when every criterion has a passing verification record. Re-classify in prose if the level shifts.
 
 ### Plan drift threshold (mid-implementation)
 During execution, if the plan's file map / naming / schema / signatures disagree with the actual code:
-- **1 mismatch**: fix inline, note in report under Uncertain.
-- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain.
+- **1 mismatch**: fix inline, note it under the report's open items.
+- **≥2 mismatches in one task**: list each under the report's open items as file:line before/after. Not a bracketed signal — core §0 has exactly one, and a second token shaped like it is one the reader has to learn for no gain.
 - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
 
 Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
@@ -44,7 +61,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in `tasks/<n>.md`, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching).

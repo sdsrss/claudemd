@@ -5,14 +5,14 @@ triggers: 评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|th
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: review
+# AI-CODING-SPEC v8.0.0 — module: review
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
 ## §12 PLUGINS
 
 ### Hard cooperation rules
-- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2 `[PARTIAL: no independent review]`, L3 not executable: escalate.
+- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: a fresh-subagent review per sub-task, then one pre-ship review across the whole change.
 - **Ship order**: branch finished → pre-ship review → ship → deploy → monitoring checklist.

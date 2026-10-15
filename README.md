@@ -1,12 +1,12 @@
 # claudemd
 
-> A **personal AI-coding discipline harness**: one developer's opinionated **AI-CODING-SPEC v7.3**, encoded as Claude Code shell hooks and shipped with the plugin. Built and dogfooded on my own repos — fork and adapt, don't adopt wholesale.
+> A **personal AI-coding discipline harness**: one developer's opinionated **AI-CODING-SPEC v8.0**, encoded as Claude Code shell hooks and shipped with the plugin. Built and dogfooded on my own repos — fork and adapt, don't adopt wholesale.
 
 [![CI](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/claudemd-cli.svg)](https://www.npmjs.com/package/claudemd-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v7.3 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (`OPERATOR.md` is the human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
+claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v8.0 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (`OPERATOR.md` is the human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
 
 A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git pre-commit hooks, GitHub Actions, and other agents that don't run inside Claude Code.
 
@@ -60,7 +60,7 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 | 27 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `deferred-notice` · `spec-module-gate` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `test-failure-debug` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `verify-log` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
 | 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
-| Spec v7.3 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) · `spec-modules/*.md` (mirrored from the plugin) |
+| Spec v8.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) · `spec-modules/*.md` (mirrored from the plugin) |
 | StatusLine (opt-out) | PS1-style line — `user@host:dir (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (`dir` = cwd basename; context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
 
 Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): no directory in that namespace ever has the spec as its `CLAUDE.md`, so `restore` can never return a stale spec instead. (The user-content sweep does move `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` along beside your own file, so the directory is not literally yours alone — the `CLAUDE.md` in it is.) It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
@@ -100,7 +100,7 @@ Once installed, hooks run silently in the background. Verbose log: `~/.claude/lo
 | `PostToolUse` on any `Bash` call, at most once per 10 min | `tmp-sweep` (v0.93.0+) | Deletes, detached, the per-run dirs vitest leaves in the temp root and never removes (`<tmp>/<21-char id>/ssr/<sha1>`, 13-45 MB each; on a tmpfs `/tmp` that is RAM). Only the exact vitest signature, only when idle 60 min (24 h while a vitest watcher runs), across `$TMPDIR`, `/tmp` and `~/.cache/tmp`. Also injects one line when the temp root (`$TMPDIR`, else `/tmp`) is ≥ 80% full. Parallel Bash calls claim the slot atomically, so one sweep runs (a few can overlap only while a lock left by a killed hook is being cleared). **On by default.** |
 | `PostToolUse` after `git merge` / `pull` / `fetch` / `push` or `gh pr merge` | `branch-prune` (v0.93.0+) | Advisory. Lists the local branches whose remote branch was deleted (`[gone]`) and whose tip is on the default branch, plus `worktree-agent-*` branches on it, with the `git branch -d` command that deletes them; git re-checks merged-ness and use at the moment of deletion. Never lists the default branch, a worktree checkout or a symbolic ref, nor (`worktree-agent-*` aside) a branch whose upstream still exists or one with no upstream. Deletes nothing. Local git only. **On by default.** |
 | `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
-| Session end with last assistant turn carrying §10 four-section out of order, `Done:` lines lacking evidence fingerprints, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
+| Session end with last assistant turn carrying a §10 report out of order (spec v8 `## 汇报` parts 变更 / 验证 / 遗留, or the v7 four sections), a verification line without a verdict or a v7 `Done:` line without an evidence fingerprint, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
 
 ### Execution order (PreToolUse:Bash)
 
@@ -212,7 +212,7 @@ export DISABLE_BRANCH_PRUNE_HOOK=1               # v0.93.0+ — PostToolUse:Bash
 export DISABLE_EVIDENCE_GATE_HOOK=1              # v0.90.0+ — Stop G1b Iron Law #2 evidence-existence advisory (opt-in EVIDENCE_GATE=1)
 export DISABLE_LEDGER_STALENESS_HOOK=1           # v0.91.0+ — Stop G7 long-task ledger staleness advisory (opt-in LEDGER_STALENESS=1)
 export DISABLE_REPLY_LANGUAGE_HOOK=1            # v0.96.0+ — Stop 中文 restatement of an English reply (§1 language; opt-in REPLY_LANGUAGE_CHECK=1|log)
-export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 four-section advisory
+export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 report-shape advisory
 export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
 export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd §11-session-exit mid-SPINE check
 export DISABLE_SESSION_EXTENDED_READ_HOOK=1      # v0.10.1+ — PreToolUse:Read §13.1-extended-read denominator signal
@@ -449,7 +449,7 @@ claudemd/
 ├── commands/                 # 16 slash-command markdown files
 ├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
 ├── scripts/                  # 22 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v7.3 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
+├── spec/                     # shipped v8.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
 ├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
 ├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
 └── .github/workflows/        # ci.yml (ubuntu+macOS × node 20/22/24) + npm-publish.yml (tag-triggered)

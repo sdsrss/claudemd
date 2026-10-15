@@ -2,7 +2,7 @@
 # reply-language-check.sh — Stop hook (opt-in): an English reply to a 中文 user
 # is sent back once for a 中文 restatement.
 #
-# Spec §1 Language contract: the user's language is the one the HUMAN types
+# Spec §1 Language: the user's language is the one the HUMAN types
 # in, fixed for the session. Measured 2026-09-25 over 1448 final messages in
 # 158 interactive sessions of a 中文-writing user: 93 came out English, and 70
 # of them ended turns started by a machine message in the user's role —

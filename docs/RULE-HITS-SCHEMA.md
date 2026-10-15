@@ -114,7 +114,7 @@ bootstrap / upstream-banner / user-prompt-submit version-sync) emit `null`.
 | `reply-language` | `reply-language-logged` | `§1-language` |
 | `tmp-sweep` | `tmp-pressure-advisory` | `§8.V4` |
 | `branch-prune` | `branch-prune-advisory` | `null` |
-| `transcript-structure-scan` | `structure-advisory` | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (one row per §-section detected) |
+| `transcript-structure-scan` | `structure-advisory` | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (one row per §-section detected; since spec v8 `§10-four-section-order` is the ID of the report-shape rule, and its rows cover both the three-part and the four-section form) |
 | `mem-audit` | `warn` | `§11-EXT-mem-audit` |
 | `session-end-check` | `warn` | `§11-session-exit` |
 | `session-end-check` | `batch-cadence-advisory` | `§13.2-batch-review` |

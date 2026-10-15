@@ -859,6 +859,13 @@ function scanOverCeremony(events) {
 // ASK_ASSENT_THRESHOLD flips core §0's default to (b) — state the reading
 // inline — leaving ASK mandatory only where §5 AUTH already requires it.
 // Below either bar, the default stands. Do not move these to fit the data.
+//
+// Spec v8.0.0 (2026-10-15) split the clause on the user's own instruction, not
+// on this measure: a low-risk, cheap-to-undo pick is now decided and recorded,
+// and only a costly or irreversible one is asked. The measure read 4 assents
+// in 183 answered asks over 30 days (197 transcripts) when the split was made,
+// so the costly half kept its ASK; this disposition now governs that half —
+// crossing the bar would drop the costly-pick ask too.
 export const ASK_ASSENT_THRESHOLD = 0.5;
 // Hand-labeled precision of the ask predicate. `null` = never labeled, which is
 // what gates the disposition in the renderer. Setting this to a number is a
@@ -1930,7 +1937,7 @@ export function formatMarkdown(r) {
       `> H4 pre-registered disposition (audit 20260906-231957 §7.2): with ≥ ${ASK_DECISION_MIN_ANSWERS} answered`
     );
     out.push(
-      `> asks, assent rate ≥ ${ASK_ASSENT_THRESHOLD * 100}% flips core §0 Initial-prompt ambiguity to default (b) —`
+      `> asks, assent rate ≥ ${ASK_ASSENT_THRESHOLD * 100}% drops core §0 Ambiguity's ask for costly picks too —`
     );
     out.push('> state the reading inline — leaving ASK where §5 AUTH already requires it. Thresholds');
     out.push('> fixed before data collection.');

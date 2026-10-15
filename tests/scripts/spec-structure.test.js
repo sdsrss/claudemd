@@ -48,9 +48,12 @@ test('core contains §2.1; §0.1 lives with the other spec-editing rules in exte
   const text = fs.readFileSync(CORE, 'utf8');
   assert.ok(fs.readFileSync(EXT, 'utf8').includes('§0.1 Core growth discipline'));
   assert.ok(!text.includes('§0.1 Core growth discipline'));
-  assert.ok(text.includes('§2.1 ROUTE'));
-  // v6.10.0: §2.3 TOOLS merged into §2.1; escalation block retains the substance.
-  assert.match(text, /Tool escalation/);
+  assert.ok(text.includes('§2.1 TOOLS'));
+  // v6.10.0: §2.3 TOOLS merged into §2.1; v8.0.0 renamed §2.1 back to TOOLS
+  // when the routing table it was named for had gone. The escalation clauses
+  // keep their substance: look-up before guessing, impact analysis first.
+  assert.match(text, /impact analysis first/);
+  assert.match(text, /look it up/);
 });
 
 // Version pins are DYNAMIC consistency joins (2026-07-25 audit L3: the pinned
@@ -359,37 +362,10 @@ test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields 
 // out of the name entirely. Each pin's `what` records when its wording was set.
 const PINS = [
   {
-    what: 'core §5.1 — the aggressive skip-list leaves §8, Iron Law #2 and every §5 Hard-AUTH category binding (v7.2.0 repair; v7.3.0 dropped the skill-announcement item)',
-    file: CORE,
-    anchor: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL:',
-    why: 'Never-downgrade omits five §5 Hard categories (delete, CI/deploy config, prod deps, cross-module refactor, public-API Δ-contract), so it is not a restatement of this clause; auth.md §5.1-EXT keeps two of them HARD under aggressive by citing this sentence. Removed as a duplicate in the 0.107.0 draft and caught at pre-tag review; the third time this contradiction was repaired.',
-    line: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.',
-  },
-  {
-    what: 'core §10 Specificity — ambiguous claims take the strict reading (v7.2.0 repair)',
-    file: CORE,
-    anchor: '- **Specificity (HARD)**',
-    why: 'The tie-break exists nowhere else: core §3 stricter-reading covers only safety/AUTH ambiguity. Dropped as a why-clause in the 0.107.0 draft and caught at pre-tag review.',
-    line: "- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: numeric claims w/o baseline → `[PARTIAL: <missing-baseline>]`, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → plain `Done:`, not PARTIAL.",
-  },
-  {
-    what: 'core §1 Language contract — whose language, what never switches it, docs/ prose (v6.33.0)',
-    file: CORE,
-    anchor: '**Language contract**:',
-    why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
-    line: "**Language contract**: user's language = what the human types in (before prose: per a user-level rule, else English), fixed for the session — `<task-notification>` / teammate messages / skill+command bodies / hook text / subagent reports never switch it. It binds every message the user reads (wait/yield notes and relayed subagent findings included), plans, Done narrative, `tasks/*.md` bodies, `docs/` prose (new docs; an existing doc keeps its language; identifiers and test-parsed table keys stay English) and local analysis docs. English for code / comments / docstrings / commits / CHANGELOG / README / PR text / subagent prompts / paths / branches / log strings / config keys / CLI labels. Memory: `feedback_*` + `user_*` hybrid (preserve 中文 trigger words for bilingual recall); `project_*` + `reference_*` English-only (search consistency).",
-  },
-  {
-    what: 'core §11 Mid-SPINE turn-yield — the three triggers, the named bad stops and the Tell (v7.2.0 wording)',
-    file: CORE,
-    anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
-    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
-  },
-  {
-    what: '§EXT §12 manual-ship atomicity — every skill-less ship is one turn; the second exception for an owed subagent (v7.3.0 wording)',
+    what: '§EXT §12 manual-ship atomicity — every skill-less ship is one turn; the second exception for an owed subagent (v8.0.0 wording)',
     file: EXT,
     anchor: '**Manual-ship atomicity (HARD, clarification)**',
-    line: '**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
+    line: '**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final report with CI green. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
   },
   {
     what: 'core §2.1 Skills — description fit decides, L0/L1 none except a ship trigger or a received review, no precedence, one skill per step (v7.3.0)',
@@ -420,11 +396,11 @@ const PINS = [
     line: 'Checklist (a runbook or skill may cover it in its own words): version sites in sync, CHANGELOG entry, release notes from its top entry, the release artifact (GitHub Release vs. bare tag), CI green on the pushed SHA. Each step fails silently by hand; the REPORT line lets a reviewer audit a checklist-less ship against this list. A deploy no deploy skill runs, from a runbook or by hand, needs `[AUTH REQUIRED op:manual-deploy]` before the atomic run below starts: the ship request covers push, tag and release, not a deploy.',
   },
   {
-    what: '§EXT §12 Author ≠ reviewer — independent of any review skill; no or blocked subagent is asked about, and L3 stops (v7.3.0 wording)',
+    what: '§EXT §12 Author ≠ reviewer — independent of any review skill; no or blocked subagent is asked about, L2 reports the review as could not run, and L3 stops (v8.0.0 wording)',
     file: EXT,
     anchor: '- **Author ≠ reviewer (HARD)**',
     why: 'Both branches lived only in the removed skill routing table: its "Gated = missing" paragraph and the L3 cell "No subagent at all → L3 not executable, escalate (HARD)". Without them a missing or gated subagent reads as permission to self-review.',
-    line: '- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2 `[PARTIAL: no independent review]`, L3 not executable: escalate.',
+    line: '- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.',
   },
   {
     what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v6.32.0 wording)',
@@ -459,10 +435,10 @@ const PINS = [
     line: "**Escape tokens** (the `[allow-…]` / `[skip-…]` literals a hook deny advertises, plus every `DISABLE_*` kill switch and hook feature flag): AUTH artifacts. A deny naming one names the USER's exit, not yours. Take one only on explicit user authorization for that command, this task; self-issuing one to clear your own deny is a §5 breach, on a §8 pattern a §8 one — under `bypassPermissions` nothing else stands there.",
   },
   {
-    what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v7.2.0 wording; channels in §3-EXT)',
+    what: 'core §3 User relaxation — defaults yield to the user, HARD rules and §5 AUTH gates do not (v8.0.0 wording; channels in §3-EXT)',
     file: CORE,
     anchor: '**User relaxation**: an explicit user instruction',
-    line: '**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels, and §8 never. The channels and the unspoken-clause rule → `auth.md`.',
+    line: '**User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language, §2.1 tools, §7 commits) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels, and §8 never. The channels and the unspoken-clause rule → `auth.md`.',
   },
   {
     what: '§EXT §3-EXT — the only channels through which HARD rules and §5 AUTH gates move (v7.2.0)',
@@ -485,83 +461,6 @@ const PINS = [
     line: '- **Drift check**: project `CLAUDE.md` ranks with current-turn user per §3 TRUST order — where the spec explicitly delegates (§5.1 AUTONOMY_LEVEL, `SAFE_DELETE_PATHS:`, `TMP_RETENTION_DAYS:`) the project file wins; §8/HARD never yield. Flag obvious contradictions only (conflicting AUTH levels, opposing TDD policy, signal-format overrides) in first reply — no full diff.',
   },
   {
-    what: 'core §2 LEVEL — the L2 row, qualified by the same pairing rule as L1 (v6.29.0 wording)',
-    file: CORE,
-    anchor: 'L2  contract-Δ / >2 files after §1.5 pairing',
-    why: 'Drop `after §1.5 pairing` and two paired files read as L1 by one row and L2 by the other — SPEC-M1 relocated rather than closed.',
-    line: 'L2  contract-Δ / >2 files after §1.5 pairing / new test surface (new file/suite — not a co-located L1 test, §1.5) / additive-schema → §7 L2 + §9',
-  },
-  {
-    what: 'core §0 Fast-Path — the L0 whitelist under the user-facing floor above it (v6.29.0 wording)',
-    file: CORE,
-    anchor: '**Fast-Path (L0 only)**',
-    why: '`internal` is what separates a log line nobody reads from a CLI error line the user does; without it a user-facing string routes to L0.',
-    line: '**Fast-Path (L0 only)**: single-line report; user-facing text → L1 min. Whitelist: typo / formatting / internal log-string / direct plugin cmd. Comments/docstrings: pure wording → §7 L1-copy; behavior-describing → L1 (Read to confirm). Hidden risk → full SPINE.',
-  },
-  {
-    what: 'core §0 — ambiguity resolution, including the subagent default (v6.29.0 wording)',
-    file: CORE,
-    anchor: '**Initial-prompt ambiguity**',
-    why: 'The subagent half is the core-side home of §EXT §11-O; extended is not loaded at L0-L2, so deleting it here leaves a subagent no reachable rule.',
-    line: '**Initial-prompt ambiguity**: multiple readings / action-vs-advice unclear / missing scope → (a) ASK once with candidates, or (b) state the chosen reading inline. Silent assumption banned. Default (a) when reversibility >10min or AUTH-relevant; (b) otherwise — and (b) always in a subagent, which has nobody to ask.',
-  },
-  {
-    what: 'core §10 — the L1 short-report condition (v6.29.0 wording)',
-    file: CORE,
-    anchor: '- **L1**: Not done+Failed+Uncertain empty',
-    why: 'Dropping `Not done` lets a one-line report swallow a section the four-section order exists to protect.',
-    line: '- **L1**: Not done+Failed+Uncertain empty → `Done: <what>.` Else four-section.',
-  },
-  {
-    what: 'core §10 — the L2/L3 report shape the L1 rows are bounded by (v7.1.0 wording)',
-    file: CORE,
-    anchor: '- **L2/L3**: four-section;',
-    why: 'Unpinned, this line could be rewritten to grant L2 the one-line form, reversing the L1 pins above without touching them.',
-    line: '- **L2/L3**: four-section; L3 zero-issue → single `Done:` paragraph. Format detail + auto-decisions + lessons file → `verify.md`.',
-  },
-  {
-    what: 'core §1.5 — Local-Δ, the definition the L1 row now defers to (v6.29.0 wording)',
-    file: CORE,
-    anchor: '- **Local-Δ**:',
-    why: "The L1 row points here for its file count, so widening `≤2 files` here moves L1's boundary with the pinned row untouched.",
-    line: '- **Local-Δ**: ≤2 files (source + co-located test = one; co-located = test path mirrors source path); no exported-symbol / import-surface / config / schema change.',
-  },
-  {
-    what: '§EXT §10-R — four-section applies at L2 and L3, deferring to core (v6.29.0 wording)',
-    file: EXT,
-    anchor: '### Full four-section',
-    why: 'This heading used to grant L2 a shortcut core §10 does not; reverting it re-opens a core/extended contradiction L2 can never see.',
-    line: '### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)',
-  },
-  {
-    what: '§EXT §10-R — the zero-issue short form is L3 only (v6.29.0 wording)',
-    file: EXT,
-    anchor: '**L3 zero-issue short**',
-    why: 'The other half of the same repair: re-granting L2 the short form here contradicts core §10 from a file L2 does not load.',
-    line: '**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.',
-  },
-  {
-    what: 'core §2 LEVEL — the L1 row, whose file count lives in §1.5 Local-Δ (v6.29.0 wording)',
-    file: CORE,
-    anchor: 'L1  LOC <80, Local-Δ only',
-    why: 'If this row regains a number, §1.5 Local-Δ stops being the single place the file count lives — the SPEC-M1 overlap returning.',
-    line: 'L1  LOC <80, Local-Δ only (which bounds the file count)   → §7.L1',
-  },
-  {
-    what: "core §0 — the two signals, including what [PARTIAL] means and §5's subagent pointer (v6.29.0 wording)",
-    file: CORE,
-    anchor: '- `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` — pre-exec on §5 hard',
-    why: "This bullet DEFINES the signal §5's subagent clause redirects; unqualified, §3's stricter reading resolves back to emit-and-block, which is the behaviour the clause removes.",
-    line: '- `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` — pre-exec on §5 hard; blocks until user confirms (subagent → §5).',
-  },
-  {
-    what: "core §0 — the [PARTIAL] signal, which §5's subagent clause substitutes (v6.29.0 wording)",
-    file: CORE,
-    anchor: '- `[PARTIAL: <what-missing>]`',
-    why: 'At L0-L2 this is the only definition of the signal a subagent is told to report instead of blocking.',
-    line: '- `[PARTIAL: <what-missing>]` — end-of-task when evidence covers part; name the uncovered piece.',
-  },
-  {
     what: 'core §2.2 — where §EXT sections live and how a module reaches context (v7.0.0 wording)',
     file: CORE,
     anchor: '`§EXT` sections live in per-phase modules',
@@ -569,53 +468,136 @@ const PINS = [
     line: '`§EXT` sections live in per-phase modules under `~/.claude/spec-modules/`. A hook injects the module your prompt matches; otherwise Read the module listed here before the work it covers. `~/.claude/CLAUDE-extended.md` is their build source: do not read it whole.',
   },
   {
-    what: 'core §10 — the four-section order (v7.2.0 wording)',
-    file: CORE,
-    anchor: '**Four-section order (HARD)**',
-    why: 'hard-rules-1 pins the ANCHOR string, not the rule body, so the body could be inverted while the manifest stayed green; the L1/L2/L3 report pins are all bounded by this order.',
-    line: '**Four-section order (HARD)**: Done → Not done → Failed → Uncertain (structural). Prose emphasis goes to incomplete sections — Done stays terse with inline evidence.',
-  },
-  {
-    what: "core §5 AUTH — the signal, its scope, and the subagent's in-scope non-hard bound (v7.2.0 wording)",
-    file: CORE,
-    anchor: '`[AUTH REQUIRED]` (§0) blocks until user confirms',
-    why: "`in-scope non-hard` carries BOTH bounds: drop `in-scope` and the same sentence's `files outside grant → re-AUTH` is contradicted; drop `non-hard` and a subagent may run a §5 Hard op.",
-    line: '`[AUTH REQUIRED]` (§0) blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the in-scope non-hard part, report `[PARTIAL: <op> needs AUTH]`, never self-authorize (`orchestrate.md`).',
-  },
-  {
-    what: "core §10 — the L1-bugfix report condition, on the L1 row's threshold and §1.5's file count (v6.29.0 wording)",
-    file: CORE,
-    anchor: '- **L1-bugfix**: single-line `Done:`',
-    why: "Two bounds: the same threshold as the L1 row three lines up, and `(§1.5)` on the file count — read raw, source plus its co-located RED test is 2 files and this row's own default becomes unreachable.",
-    line: '- **L1-bugfix**: single-line `Done:` with bugfix anchor by default; four-section when Not done/Failed/Uncertain non-empty OR scope ≥2 files (§1.5).',
-  },
-  {
-    what: '§EXT §11-O — a subagent has nobody to ASK, on the same bound core §5 states (v6.29.0 wording)',
-    file: EXT,
-    anchor: '- **A subagent has nobody to ASK**',
-    why: "This is the detail behind core §0 and §5; `in-scope non-hard` must match core §5 word for word or the two layers state the bound differently, which is this release's own named defect class.",
-    line: "- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.",
-  },
-  {
-    what: 'core §0 — the signal enumeration is CLOSED at two (v6.29.0 wording)',
-    file: CORE,
-    anchor: '**Signals (only 2)**:',
-    why: "The two signal bullets are pinned as members; this line is the closure. Without it a third bracketed signal can be added byte-neutrally, which is exactly the property §EXT §5-EXT's plan-drift repair bought this release.",
-    line: '**Signals (only 2)**:',
-  },
-  {
-    what: 'core §0 — everything outside the two signals is prose (v6.29.0 wording)',
-    file: CORE,
-    anchor: 'Everything else = natural prose, no bracketed signals',
-    why: 'The other half of the closure: flipping this clause admits new bracketed tokens while both member pins stay green.',
-    line: 'Everything else = natural prose, no bracketed signals. Completion claims / level shifts / mode entry go in prose (§10 Specificity binds).',
-  },
-  {
     what: 'core §2.2 — the three-strike trigger now names the debug module (v7.0.0 wording)',
     file: CORE,
     anchor: '- `debug.md` —',
     why: 'The one L1 entry that sends work to a module: an L1 bugfix failing with the same signature three times escalates to §6, which lives in debug.md.',
     line: '- `debug.md` — a bug, failing test or error; L1-bugfix same signature 3× (§6)',
+  },
+  {
+    what: '§EXT §11-O — a subagent has nobody to ASK, on the same bound core §5 states (v8.0.0 wording)',
+    file: EXT,
+    anchor: '- **A subagent has nobody to ASK**',
+    why: "This is the detail behind core §0 and §5; `in-scope non-hard` must match core §5 word for word or the two layers state the bound differently, which is this release's own named defect class.",
+    line: "- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: pick a reading per §0 and state it in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, list the boundary under open items as `<op> needs AUTH`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.",
+  },
+  {
+    what: "core §5 AUTH — the signal, its scope, and the subagent's in-scope non-hard bound (v8.0.0 wording)",
+    file: CORE,
+    anchor: '`[AUTH REQUIRED]` (§0) blocks until user confirms',
+    why: "`in-scope non-hard` carries BOTH bounds: drop `in-scope` and the same sentence's `files outside grant → re-AUTH` is contradicted; drop `non-hard` and a subagent may run a §5 Hard op.",
+    line: '`[AUTH REQUIRED]` (§0) blocks until user confirms. **Soft AUTH**: proceed, surface diff/plan inline first. Per-task, per-scope. Files outside grant → re-AUTH. **Subagent**: nobody to confirm — do the in-scope non-hard part, list the rest under open items as `<op> needs AUTH`, never self-authorize (`orchestrate.md`).',
+  },
+  {
+    what: 'core §11 Mid-SPINE turn-yield — the three triggers, the named bad stops and the Tell (v8.0.0 wording)',
+    file: CORE,
+    anchor: '**Mid-SPINE turn-yield** (HARD, all levels)',
+    line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has run a tool inside an active task, continue through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, a question §0 allows, or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes an update of the spec file (without one, `tasks/<slug>-paused.md`). Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, reported (§10) nor named an awaited subagent = confirmed premature stop.',
+  },
+  {
+    what: 'core §10 Specificity — ambiguous claims take the strict reading; no baseline goes under open items (v8.0.0 wording)',
+    file: CORE,
+    anchor: '- **Specificity (HARD)**',
+    why: 'The tie-break exists nowhere else: core §3 stricter-reading covers only safety/AUTH ambiguity. Dropped as a why-clause in the 0.107.0 draft and caught at pre-tag review.',
+    line: "- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: a numeric claim without a baseline says so under open items, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → a plain statement.",
+  },
+  {
+    what: 'core §5.1 — AUTONOMY_LEVEL reaches only the Soft and None rows (v8.0.0 wording)',
+    file: CORE,
+    anchor: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL:',
+    why: 'v8.0.0 dropped the aggressive skip-list: its two items (a single obvious option without preamble, a clear-scope bugfix without a proposal) are the default for every level now. What the line must keep is the reach: the auth.md table may move the Soft and None rows and nothing above them, which the Never-downgrade pin below states.',
+    line: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`); its effect on the Soft and None rows → `auth.md`.',
+  },
+  {
+    what: 'core §5.1 Never-downgrade — every §5 Hard category, not a subset (v8.0.0)',
+    file: CORE,
+    anchor: '**Never-downgrade** (no level',
+    why: 'v7 listed ten items and left five §5 Hard categories out, which auth.md had to patch for `aggressive` by citing the skip-list v8 removed. Listing every §5 Hard category here is what keeps a level, a project file or a user sentence from relaxing one.',
+    line: '**Never-downgrade** (no level, project file or user instruction relaxes these): §8 SAFETY incl. Verify-before-claim (V1–V4), Iron Law #2, §11 Session-exit, the §7 user-global-state check, every §5 Hard category, `L3 enter`.',
+  },
+  {
+    what: 'core §0 — the one bracketed signal, its definition and the closure (v8.0.0)',
+    file: CORE,
+    anchor: '**Signal (only 1)**:',
+    why: 'v8 removed `[PARTIAL]`: a not-run verdict in the report says it. The closure (`Everything else = natural prose`) is in the same line, so a second bracketed token cannot be added without failing this pin; `(subagent → §5)` keeps a subagent from emitting and blocking.',
+    line: '**Signal (only 1)**: `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` — pre-exec on §5 hard; blocks until user confirms (subagent → §5). Everything else = natural prose, no bracketed signals.',
+  },
+  {
+    what: 'core §0 Ambiguity — decide and record a low-risk pick, ask a costly one after the independent work, a subagent never asks (v8.0.0)',
+    file: CORE,
+    anchor: '**Ambiguity**:',
+    why: 'The user asked for low-risk, reversible ambiguity to be decided and written down. The ask half stays because sampling-audit H4 counted only 4 bare assents in 183 answered asks over 30 days; drop the cost condition and those asks go too. The subagent half is the core-side home of §EXT §11-O.',
+    line: "**Ambiguity**: readings differ and a wrong pick is low-risk and cheap to undo → pick one, write the choice and the reason down (the spec file's decisions section, else the report's open items) and continue. A wrong pick that would waste substantial work, cannot be undone, or meets a §5 hard-AUTH boundary → ask, but first finish everything that does not depend on the answer, then put the questions at the end of the report with options, cost and your pick. A subagent never asks: it states its reading and stops at hard AUTH (§5).",
+  },
+  {
+    what: 'core §0 Hard-AUTH override — a §5 Hard sub-decision asks again; an adjacent defect is reported, not fixed (v8.0.0 wording)',
+    file: CORE,
+    anchor: '**Hard-AUTH override (HARD)**:',
+    why: 'The HARD rule hard-rules.json registers as §0-hard-auth-override. v8 changed its second half from re-ASK to report-don\'t-fix, the user\'s "precise edits" principle; the exception for a fix that is literally blocked is what keeps an authorized task completable.',
+    line: '**Hard-AUTH override (HARD)**: an AUTH covers the op and scope it names. Inside it, a §5 Hard sub-decision asks again: one ASK per hard category for in-scope items, one per item for out-of-scope discoveries (subagent → §5). A defect found next to the task goes under open items, not into the diff; exception: the authorized fix is literally blocked without it → fix it and report it as a scope extension.',
+  },
+  {
+    what: 'core §1 Language — whose language, what never switches it, what is always English (v8.0.0 wording)',
+    file: CORE,
+    anchor: '**Language**:',
+    why: '70 of 93 English finals in a 中文 user\'s interactive sessions ended turns started by a teammate message or task-notification; drop the never-switch list and "user\'s language" again reads as whoever spoke last.',
+    line: "**Language**: the user's language is the one the human types in, or the one a user-level rule fixes (neither yet: English); it holds for the session. Task notifications, teammate messages, skill and command bodies, hook text and subagent reports never change it. It binds every message the user reads, questions, plans, spec files, reports, and new documents under `docs/` (an existing document keeps its language; identifiers and test-parsed keys stay English). Everything else is English: code, comments, identifiers, test names, commit messages, log text, skill and agent files, todo items, subagent prompts. Exceptions: UI copy and commit messages follow the project's existing convention. Memory: `feedback_*` / `user_*` keep the user's trigger words; `project_*` / `reference_*` are English.",
+  },
+  {
+    what: 'core §2 L0 — the user-facing floor that used to be the Fast-Path line (v8.0.0)',
+    file: CORE,
+    anchor: '- **L0** wording only',
+    why: '`internal log text` and `User-facing text is L1 at least` are what keep a CLI error string or a UI label out of the one-line path.',
+    line: '- **L0** wording only — docs, comments, style, internal log text → do it, one-line report. User-facing text is L1 at least.',
+  },
+  {
+    what: 'core §2 L1 — one or two files with the co-located-test pairing, no exported or config change (v8.0.0)',
+    file: CORE,
+    anchor: '- **L1** small and local',
+    why: 'v8 dropped LOC and Local-Δ; this bullet is now the only place the L1 boundary lives. Drop the pairing clause and a source plus its RED test reads as two files on the L2 side.',
+    line: '- **L1** small and local — one or two files (a source and its co-located test count as one), no exported symbol, import surface, config or schema change → a test for the change, affected tests green.',
+  },
+  {
+    what: 'core §5 No user present — a scheduled or looped run does not run an unauthorized §5 Hard op (v8.0.0, from §2-EXT AUTONOMOUS)',
+    file: CORE,
+    anchor: '**No user present**',
+    why: 'The one rule kept from the removed AUTONOMOUS mode. Without it the Ambiguity line\'s "ask" has no answer in an unattended run and the op either blocks the run or gets self-authorized.',
+    line: '**No user present** (a scheduled or looped run — cron, `/loop`, a remote trigger — with no one to answer): a §5 Hard op is never run; write it as its `[AUTH REQUIRED …]` line with your recommendation into the report or `tasks/pending-auth-<date>.md`, and finish the rest.',
+  },
+  {
+    what: 'core §7 Git — per-change commits, the current branch unless the project says otherwise, both stated as overriding the harness (v8.0.0)',
+    file: CORE,
+    anchor: '**Git** (git repo, any level)',
+    why: "Both the Opus 5.5 and the Fable 5.1 harness say commit only when asked and branch first. This user's repositories commit on main (517–955 commits on main in 60 days, no merges), and the release flow assumes one commit per change; drop the override clause and the harness default wins silently.",
+    line: "**Git** (git repo, any level): each verified change is its own local commit (one logical change). Branching follows the project's convention; none stated → commit on the current branch. Push, tag and release only when asked. Both override the harness's commit-only-when-asked and branch-first defaults; project `AUTO_COMMIT: off` opts out.",
+  },
+  {
+    what: 'core §10 Report shape — when a report is owed, its heading and the three parts in order (v8.0.0; HARD ID §10-four-section-order)',
+    file: CORE,
+    anchor: '**Report shape (HARD)**',
+    why: 'hard-rules-1 pins the anchor only, so the body could be rewritten while the manifest stayed green. transcript-structure-scan and sampling-audit parse the heading and the part names.',
+    line: "**Report shape (HARD)**: a task that changed files or ran checks closes with a `## 汇报` heading (`## Report` for an English-speaking user; headings and verdicts follow the user's language) and up to three parts in this order, empty ones left out:",
+  },
+  {
+    what: 'core §10 Report shape — the four verdicts and the pre-existing/regression split (v8.0.0)',
+    file: CORE,
+    anchor: '- **验证** (Verification)',
+    why: 'evidence-gate suppresses on the not-run verdicts and both structure scanners require one verdict per verification line; a fifth verdict word or a reworded one breaks all three silently.',
+    line: '- **验证** (Verification): each command with one verdict — 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run); failures that predate the task on a separate line from regressions you introduced.',
+  },
+  {
+    what: 'core §10 Report shape — the one-sentence form and the override of the harness heading rule (v8.0.0)',
+    file: CORE,
+    anchor: 'A trivial change reports in one sentence',
+    why: 'Without the override clause, the Fable 5.1 harness\'s "no headers in a message under about 500 words" decides most reports.',
+    line: 'A trivial change reports in one sentence that names its check. This shape overrides any harness rule against headings in short messages.',
+  },
+  {
+    what: '§EXT §2.S spec template — the status line the spec-status test parses (v8.0.0)',
+    file: EXT,
+    anchor: '状态：草稿 | 进行中 | 已完成',
+    why: 'tests/scripts/spec-status-drift.test.js maps 草稿 / 进行中 / 已完成 to draft / open / done; a fourth word or a renamed one leaves a spec unjudged.',
+    line: '  状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)',
   },
 ];
 
@@ -666,50 +648,46 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'c38935bd000dc7e8' },
-  { file: CORE, heading: '## §0 SPINE', sha256: 'd0ae8d59d7a30113' },
-  { file: CORE, heading: '## §1 IDENTITY', sha256: 'cc7e873976d67dad' },
-  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'f1cddbf8d959693e' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '01e76d81f92811c7' },
-  { file: CORE, heading: '## §3 TRUST', sha256: 'ab7732f03ab22c1b' },
-  { file: CORE, heading: '## §5 AUTH', sha256: '47ffd31f7435a0e0' },
-  { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c70daab3a3686a6f' },
+  { file: CORE, heading: '', sha256: '02c4f59066b3fb07' },
+  { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
+  { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
+  { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: 'dc841dc719f34936' },
+  { file: CORE, heading: '## §3 TRUST', sha256: '4dbd6259a8286f62' },
+  { file: CORE, heading: '## §5 AUTH', sha256: '510d74a2fb554caa' },
+  { file: CORE, heading: '## §7 VALIDATE', sha256: '41a1b9e64026256f' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '6a86f6dbf0763c51' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
-  { file: CORE, heading: '## §10 REPORT', sha256: '851c5c86a7a463ae' },
-  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'ce09e67e46637511' },
-  { file: EXT, heading: '', sha256: '87ae53819d88d871' },
+  { file: CORE, heading: '## §10 REPORT', sha256: '1ac691e2e7cf54ed' },
+  { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
+  { file: EXT, heading: '', sha256: '6886ab61c20010dc' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
-  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7252abe194ead69d' },
-  { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
-  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '629eb2c1ab62bd3d' },
-  { file: EXT, heading: '## §4 FLOW', sha256: '4fbce9f1002dd4f1' },
-  { file: EXT, heading: '## §6 DEBUG', sha256: '7ff2e57f5e3e5699' },
-  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: '08a04f39baef9ebb' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7bf311f5bc8f6813' },
+  {
+    file: EXT,
+    heading: '## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)',
+    sha256: '325dfb31f8782722',
+  },
+  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '8e461fa93acb1d8a' },
+  { file: EXT, heading: '## §4 FLOW', sha256: 'efd8fcd718f0f6c9' },
+  { file: EXT, heading: '## §6 DEBUG', sha256: '391eae2db46150b7' },
+  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'dfdda87c00e9f42a' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
-  { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: 'c2011ff35e824499' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'f49d06ad8f68b1a2' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '4abc553280178df9' },
+  { file: EXT, heading: '## §10-R COMPLETE', sha256: '023253b216dcd619' },
+  { file: EXT, heading: '## 汇报', sha256: 'f46384510714a963' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '020c43b225ae2b7d' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '5b4156dad9e546e3' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: 'b9068317bbca5d78' },
-  { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
-  {
-    file: EXT,
-    heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)',
-    sha256: 'c4d84ecc5071ffa5',
-  },
+  { file: EXT, heading: '## Recent changes', sha256: '8899f3ece088198f' },
+  { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
+  { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
-  { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '184761b726c5269a' },
-  { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '9889fd63301a3c82' },
-  { file: EXT, heading: '## §0.2-EXT Mid-task feedback (continued)', sha256: '6d0a3744c7cfe5de' },
-  {
-    file: EXT,
-    heading: '## §11-EXT-MAC macOS shell portability (cross-ref)',
-    sha256: 'db65bc3272ec5aeb',
-  },
+  { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '6033d7f946da6b92' },
+  { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '38be35b515c7c56d' },
+  { file: EXT, heading: '## §11-EXT-MAC macOS shell portability (cross-ref)', sha256: 'db65bc3272ec5aeb' },
 ];
 
 const headingLevel = line => {
@@ -751,8 +729,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 19, sha256: 'cde09a4112971d1d' },
-  { file: EXT, count: 59, sha256: '3659033911b50e46' },
+  { file: CORE, count: 18, sha256: '74d4ea15a4572724' },
+  { file: EXT, count: 53, sha256: '7ea59c59fcc97530' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v7.3.0 — Extended
+# AI-CODING-SPEC v8.0.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -40,78 +40,16 @@ Strict prefix match (NOT glob):
 
 §3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
-<!-- module: modes -->
-## §2-EXT Override modes
-
-Universal: Iron Law #2 + §8 SAFETY + §8 Anti-hallucination bind every mode. Per-task scope. Announce mode entry/exit inline ("entering HACK: prototyping in tmp/ — exits when promoted"). Modes cannot coexist.
-
-**Mode entry**:
-- **[HACK]** (e.g. "try / benchmark / spike / explore / 试试 / 探索" + scope clearly `tmp/` or `scripts/`): silent enter.
-- **[EMERGENCY]** (e.g. "prod / incident / outage / 500 / rollback / 故障 / 回滚 / 挂了" + user ack): silent enter.
-- **[AUTONOMOUS]** (ScheduleWakeup / CronCreate / RemoteTrigger / no interactive user): silent enter.
-- **Weak/ambiguous** trigger: ASK once. "No" → normal flow.
-
-### [HACK] — prototype/explore
-
-| Aspect | Behavior |
-|---|---|
-| §5 AUTH | deps in `tmp/`/`scripts/` → soft; others hard |
-| §4 ceremony | normal |
-| §7 Iron Law #1 | SKIPPED |
-| Output scope | `tmp/` or `scripts/` ONLY |
-| Allowed ops | read any source; call pure/read-only prod; NO import/invoke of side-effectful prod (DB writes, external API, email/SMS, FS writes outside `tmp/`, queue publishes) |
-| Bench against prod | prefer read replicas; if primary only, state risk + kill-switch condition (abort trigger) before execution; off-peak preferred |
-
-**Artifact hygiene**: [HACK] output must NOT become prod code. To promote, exit HACK first, then run L2/L3.
-
-### [EMERGENCY] — prod incident
-
-| Aspect | Behavior |
-|---|---|
-| §5 AUTH | within allowed-ops → natural-language confirm; outside → full `[AUTH REQUIRED]` |
-| §4 ceremony | skip FULL / brainstorming / planning / TDD |
-| §7 Iron Law #1 | SKIPPED during incident; follow-up task restores discipline |
-| Output scope | incident scope only |
-
-**Allowed ops** (each: state current → target → recovery condition before execution):
-- Revert SHA / commit revert
-- Feature flag toggle
-- Scale / restart / pod bounce
-- Rollback deploy (previous green)
-- Hotfix with revert plan
-- Partial-rollback script (idempotent, §8, user "go")
-- Cache invalidation / CDN purge — record keys
-- Pause cron / queue — record TTL + resume
-- Rate-limit / WAF rule — record TTL + rollback
-- Read-only mode toggle — resume checklist
-
-**Intervention priority**: (1) strongest causal evidence → (2) smallest blast radius → (3) fastest reversibility. Ties → prefer lower-blast. State chosen option + (1)/(2)/(3) reasoning before executing.
-
-**Exit ritual**: incident report (Timeline / Root-cause / Rollback / Follow-ups) in prose; file L2/L3 follow-up task. Closure of incident ≠ closure of bug.
-
-### [AUTONOMOUS] — scheduled / no interactive user
-
-| Aspect | Behavior |
-|---|---|
-| §5 hard ops | Do NOT execute. Write to `tasks/pending-auth-<date>.md` with op + scope + risk + recommendation; defer until next interactive session. |
-| Allowed execution | L0/L1 + items in `tasks/auto-approved.md` (one per line, e.g. `op:deps-bump-patch`). Whitelist must exist before this mode runs. |
-| L2+ | Write `blocked: needs-interactive-AUTH — <reason>` to the task file; skip execution. |
-| Exit ritual | Write `tasks/autonomous-run-<date>.md`: ran / blocked / failed / pending-auth. |
-
-Serves maintenance scripts (formatters, patch-bumps, doc sync) — NOT feature development.
-
-### Mode interactions
-[EMERGENCY] during [HACK] → EMERGENCY supersedes, HACK dropped. [HACK] during [EMERGENCY] → reject ("resolve incident first"). No mode coexistence.
-
 <!-- module: ship -->
-### Released-artifact checklist (L3 hard upgrade, core §2)
+## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
+
 When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of LOC. Requirements before ship:
 - **SemVer non-patch bump** (minor for additive user-visible change, major for breaking).
 - **CHANGELOG migration note at top**: what changes, what action users must take.
 - **Explicit opt-out or revert path**: env flag, config key, prior-version pin instructions, or rollback command.
 - **One-time discoverability signal**: stderr banner / first-run log / release-note callout — so users who don't read CHANGELOG still notice.
 
-Missing any item on a user-visible default change = incomplete ship; file as Uncertain in REPORT.
+Missing any item on a user-visible default change = incomplete ship; list it under the report's open items.
 
 <!-- module: plan -->
 ## §2.S SPEC ARTIFACT
@@ -119,25 +57,42 @@ Missing any item on a user-visible default change = incomplete ship; file as Unc
 Spec = what & why (stable); plan = how & when (volatile). A spec outlasts many plans.
 
 ### Spec file
-- Path: `tasks/specs/<slug>.md` (project CLAUDE.md may override via `SPEC_DIR:`). Auto-create, no AUTH.
-- Frontmatter: `status: draft | approved | implemented | deprecated` + `revision: <n>`.
-- Body: `goal / non-goals / constraints / success-criteria / open-questions / # Change log`.
-- **Worktrees**: independent `tasks/`; merge `lessons.md` to main on worktree-finish.
+- Path: `tasks/specs/<slug>.md` (project CLAUDE.md may override via `SPEC_DIR:`). Auto-create, no AUTH. One file per task, kept current: it is the hand-over, so someone with no context must be able to continue from it. Body in the user's language (core §1).
+- Template (indented two spaces here only so its `#` lines are not read as this file's headings; headings in the user's language, 中文 shown, English in parentheses):
+
+```
+  # <feature or task name>
+  状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)
+
+  ## 背景与目标 (Background and goal)
+  ## 范围 (Scope)
+  - 做： (In:)
+  - 不做： (Out:)
+  ## 验收标准 (Acceptance criteria)
+  - [ ] AC1：<observable behaviour> — 验证：`<command or steps>`
+  ## 方案 (Design)
+  <key design, interface and data changes, trade-offs and why, research findings>
+  ## 计划 (Plan)
+  - [ ] S1：<slice> — 覆盖 AC1 — 依赖：无 — 执行：主会话 | <agent>
+  ## 决策与进展 (Decisions and progress)
+  - <decision and why / where the work stands / blockers / awaiting the user>
+  ## 验证记录 (Verification record)
+  - `<command>` → <verdict>
+```
 
 ### When required
-- **L3**: mandatory. Initial draft: `goal` + `success-criteria` + `constraints`; rest fills during §4.FULL steps 1-3. All 6 complete before AUTH (step 4).
-- **L2**: NOT default. Agent proposes when cross-module (≥2 Modules) OR >50 LOC OR new dep. User "yes/skip". Bugfix restoring documented behavior → no spec.
-- **L2 minimal**: only `goal` + `success-criteria` required.
+- **L3**: mandatory, written before AUTH (§4.FULL step 4) with background, scope, acceptance criteria and design filled.
+- **L2**: when the change crosses ≥2 Modules, runs past ~50 changed lines or adds a dependency (core §2). Bugfix restoring documented behavior → no spec file.
 
 ### Spec changes mid-work
-- `goal / non-goals / success-criteria` change → contract shift → user ASK.
-- `constraints / open-questions` tightening → auto-decide if reversible.
-- Every change bumps `revision`, appends to `# Change log`. Re-classify in prose if level shifts.
+- Goal, scope or acceptance criteria change → contract shift → ASK the user.
+- Design or plan tightening → decide if reversible; record it under decisions and progress.
+- Tick plan items and acceptance criteria as they are verified; set the status to done only when every criterion has a passing verification record. Re-classify in prose if the level shifts.
 
 ### Plan drift threshold (mid-implementation)
 During execution, if the plan's file map / naming / schema / signatures disagree with the actual code:
-- **1 mismatch**: fix inline, note in report under Uncertain.
-- **≥2 mismatches in one task**: report them under Not done and Uncertain per §10, listing each deviation as file:line before/after. Not a bracketed signal — core §0 has exactly two, and a third token shaped like them is one the reader has to learn for no gain.
+- **1 mismatch**: fix inline, note it under the report's open items.
+- **≥2 mismatches in one task**: list each under the report's open items as file:line before/after. Not a bracketed signal — core §0 has exactly one, and a second token shaped like it is one the reader has to learn for no gain.
 - **≥5 mismatches across a task OR any cross-task contradiction**: pause and escalate to re-planning in prose. Do NOT silently rewrite plan intent.
 
 Common drift source: plan sketches (type lists / table fields / filesystem shapes / test import paths) written without Reading the real artifact — verify against code, not the sketch.
@@ -150,7 +105,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in `tasks/<n>.md`, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching).
@@ -201,15 +156,15 @@ Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Sympt
 Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user repeat-failure feedback (e.g. "又失败 / 又挂 / again") counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.
 
 ### Dead-end record
-Append to plan: `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
-Session-scoped. Promote to `tasks/lessons.md` only on user request ("记住这个") or same-session recurrence.
+Append to the spec file's decisions section (else the report's open items): `dead-end: <approach> — <why failed> — DO NOT RETRY this task`.
+Save it as a feedback memory only on user request ("记住这个") or same-session recurrence.
 
 <!-- module: verify -->
 ## §7-EXT VALIDATE (L3)
 
 ```
 L3  TDD + full suite + e2e                    → inline evidence with numbers+baseline
-    (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
+    (no e2e infra: integration + smoke, e2e reported as could not run, follow-up filed)
 ```
 
 L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
@@ -218,7 +173,6 @@ L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier 
 
 **Additive exception**: no prior failing path (new field validation / new branch / new endpoint / new optional param / additive schema) → TDD RED-first: write test covering new behavior, confirm fails, implement to green. Log: "additive: new-test-first, no prior failing path". Does NOT apply to bugfix — bugfix always needs prior reproduction.
 
-[HACK] skips Iron Law #1 entirely.
 
 ### Evidence ladder (L2+, prefer highest tier)
 
@@ -232,23 +186,23 @@ Falling to tier N requires stating why N-1 unfit.
 
 **Intermittent**: tier-2 stress script forcing race window counts as tier-1 proxy. State: "intermittent: tier-2 stress-repro used as tier-1 proxy, reason: <timing/concurrency/external>". Must reproduce ≥1 failure in documented run-count.
 
-**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or browser screenshot). No snapshot infra → `[PARTIAL: visual-not-verified]` + file follow-up.
+**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or browser screenshot). No snapshot infra → report the visual check as could not run + file follow-up.
 
-**Web-visible behaviour** to verify: a browser pass over the changed user-facing surface, reported as §7 L2 evidence. No browser reachable → ask the user for a screenshot or log; neither → `[PARTIAL: no-browser]`.
+**Web-visible behaviour** to verify: a browser pass over the changed user-facing surface, reported as §7 L2 evidence. No browser reachable → ask the user for a screenshot or log; neither → report it as could not run (no browser).
 
 ### Cold-start (no test framework)
-- Justify once in `tasks/lessons.md` (`no test framework, cold-start mode — reason: <…>`).
+- Justify once in the spec file or the report (`no test framework, cold-start mode — reason: <…>`).
 - L2+ → tier-2 repro script committed under `tests/repro/<slug>.sh`.
-- Close with `[PARTIAL: no-test-infra]` + follow-up "bootstrap test framework".
+- Report the test suite as could not run (no test infra) + follow-up "bootstrap test framework".
 - Exit: once framework lands, clause stops applying to new tasks.
 
 ### Evidence validity (HARD)
 - **Semantic linkage**: the claim ("fixed X") must follow from the observation ("test Y went from FAILING to PASS"). Existence (`grep`/`ls`/`cat`/`git status`) ≠ behavior — auxiliary context only.
 - **Valid evidence types**: test-runner output, executable script output, runtime log, HTTP response (status+body), DOM assertion, benchmark output.
-- **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note scope limit in Uncertain.
-- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare "Done" claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
+- **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note the scope limit under open items.
+- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
 
-Order: project CI > defaults. No CI → build + smoke and report `[PARTIAL]`.
+Order: project CI > defaults. No CI → build + smoke, and report CI as could not run.
 
 <!-- module: ship -->
 ### Ship-baseline rationale (core §7)
@@ -268,29 +222,23 @@ Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the 
 
 When banned, fix = strip the hedge, state the specific case with absolute or baseline-anchored number.
 
-## §10-R COMPLETE (L3)
+## §10-R COMPLETE
 
-### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)
+### Report shape (core §10)
 ```
-Done:      <items, each with inline evidence (test/run output + numbers+baseline)>
-Not done:  <deferred, with reason>
-Failed:    <blocked, with cause>
-Uncertain: <not sure about, stated as "uncertain because <X>">
+## 汇报
+
+**变更**：<what changed, files, commit and branch, spec path>
+**验证**：
+- `<command>` → 通过（<numbers with baseline>）
+- `<command>` → 未运行（<why>）
+**遗留**：<unfinished work, risks, decisions: options / cost / your pick>
 ```
 
-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.
-
-**Multi-task**: each task writes its own block. Do NOT merge.
-
-**EMERGENCY mode adds**: incident report (Timeline / Root-cause / Rollback / Follow-ups); file follow-up task.
+**Multi-task**: each task writes its own report. Do NOT merge.
 
 ### Auto-decisions (post-AUTH ambiguity)
-One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>) if wrong." No bracketed form.
-
-### Lessons file (SHOULD)
-- Path: `tasks/lessons.md`. Cap 30 entries, newest first. Prepend on user correction. Drop oldest when full.
-- Read when a task's keywords match an entry; no session-start read — MEMORY.md and the recall plugin are the session-start layer (§11-EXT-MEM).
-- Format: `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`.
+One prose line in the spec file's decisions section (else the report's open items): "chose <X> over <Y> because <rationale>; reversible (cost: <est>) if wrong." No bracketed form.
 
 <!-- module: orchestrate -->
 ## §11-O ORCHESTRATE
@@ -298,8 +246,7 @@ One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>
 Universal session rules live in core §11 SESSION — they bind whether or not this module is loaded. The rules below apply to orchestration contexts specifically.
 
 ### Defaults
-- **Delegate only large, independent work**: a subagent re-establishes context and main re-reads its report. Delegate ≥2 sizeable tasks with disjoint scope and no shared mutable state (in parallel), a wide multi-file investigation, or a review that needs an empty context (§12). Keep the rest in main, a whole small task included: a fix or change a handful of tool calls finishes is not handed to a worker, and no subagent re-checks your own work beyond the reviews §12 requires. One subagent where one suffices. File-scope overlap possible (grep-guessed edit surfaces intersect) → serial.
-- **Automate-first**: reversible + below AUTH-soft → execute with one-line reason.
+- **Overlapping edits run serially**: two subagents whose edit surfaces may intersect (grep-guessed files overlap) are not run in parallel.
 
 ### Subagent rules
 - **1 task = 1 subagent**, briefed fully the first time.
@@ -308,7 +255,7 @@ Universal session rules live in core §11 SESSION — they bind whether or not t
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
 - **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
-- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: take §0's option (b), state the chosen reading in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, report the boundary as `[PARTIAL: <op> needs AUTH]`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
+- **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: pick a reading per §0 and state it in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, list the boundary under open items as `<op> needs AUTH`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
 - L3 build: `plan.md` §4.FULL step 6.
 - Impact analysis before structural modifications; module overview before changes to unfamiliar code.
@@ -321,7 +268,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 ## §12 PLUGINS
 
 ### Hard cooperation rules
-- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2 `[PARTIAL: no independent review]`, L3 not executable: escalate.
+- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: a fresh-subagent review per sub-task, then one pre-ship review across the whole change.
 - **Ship order**: branch finished → pre-ship review → ship → deploy → monitoring checklist.
@@ -334,7 +281,7 @@ On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this m
 
 Checklist (a runbook or skill may cover it in its own words): version sites in sync, CHANGELOG entry, release notes from its top entry, the release artifact (GitHub Release vs. bare tag), CI green on the pushed SHA. Each step fails silently by hand; the REPORT line lets a reviewer audit a checklist-less ship against this list. A deploy no deploy skill runs, from a runbook or by hand, needs `[AUTH REQUIRED op:manual-deploy]` before the atomic run below starts: the ship request covers push, tag and release, not a deploy.
 
-**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
+**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final report with CI green. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
 
 **Runbook**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) is read together with this module. A runbook may repeat the obligations above, never waive them; where the two differ, this module wins, and every §12 HARD obligation binds unchanged.
 
@@ -413,14 +360,14 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v7.3.0 (minor, 2026-10-15)** — skill choice is left to the harness listing; rules name behaviours, not skills. Design record `tasks/specs/skill-routing-trim.md`. The `skills` module (§4 Routing, Composite requests, §12 Skill routing table) is gone: it restated each skill's own description and was read in 0 of 185 contexts after v7.2.0. Core §2.1 keeps one **Skills** line: description fit; none at L0/L1 except a ship trigger or a received review; no precedence among skills or plugins, the more specific of two, one skill per step; a skill's or plugin's "must invoke" wording does not override that line, `ship.md` or `review.md`. Ship, the L3 flow, review, debug and evidence text name no `sp:` / `gs:` / `matt:` skill. Rules that lived only in the table moved: no or blocked subagent → ASK, then L2 `[PARTIAL]` / L3 not executable, now in `review.md`'s Author ≠ reviewer, with receiving a review; `[PARTIAL: no-browser]` → `verify.md`; the release checklist, and `[AUTH REQUIRED op:manual-deploy]` before any deploy no deploy skill runs → `ship.md`. Dropped as never loaded and covered elsewhere: the bootstrap row, Composite requests, the design self-ask, the second-opinion note, utility fallbacks. The HARD ship-pipeline hardening runs from the project runbook, else a listed ship skill; `manual ship because <reason>` is owed only when neither exists. No HARD rule added or removed.
+**v8.0.0 (major, 2026-10-15)** — the report is `## 汇报` with three parts and `[PARTIAL]` is gone; a low-risk, reversible ambiguity is decided and written down instead of asked; text both the Opus 5.5 and the Fable 5.1 harness already give is dropped. Design record `tasks/specs/spec-v8.md`; analysis `docs/spec-optimization-plan-2026-10-15.md`. Core §10 **Report shape**, a HARD rule that keeps the ID `§10-four-section-order`, replaces the four sections and the per-level report variants: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line one of 通过 / 失败 / 未运行 / 无法运行; a not-run verdict says what `[PARTIAL]` said, and the hooks read both shapes. §0: one signal; **Ambiguity** replaces Initial-prompt ambiguity — asks stay where a wrong pick is costly, since only 4 of 183 answered asks in 30 days drew a bare assent (sampling-audit H4); Hard-AUTH override reports an adjacent defect instead of fixing it; Fast-Path is the L0 row. §1: the user's six principles; Recommend-first and the Role line go (both harnesses say it). §1.5 loses LOC and Local-Δ: §2 levels go by risk and reversibility. §5 gains **No user present** (from AUTONOMOUS); §5.1 loses the aggressive skip-list (its ceremony is the default now) and Never-downgrade covers every §5 Hard category. §7 **Git**: per-change commits and committing on the current branch override the harness defaults. §8.V4 names the harness scratchpad. §11: an unresumed yield or a session exit writes to the spec file first; Auto-memory shrinks to one bullet; Correction pressure moves to §0. Extended: the `modes` module is removed (HACK / EMERGENCY / §0.2-EXT: 0 prompt triggers in 224 sessions); §2.S takes the user's spec template; `tasks/lessons.md` is retired; the memory decision tree becomes three save triggers and an index-line limit; orchestrate drops "delegate only large work" (both harnesses ask for delegation). No HARD rule added or removed; two rewritten (Report shape, Hard-AUTH override).
 
-**Sizing** (v7.3.0, 2026-10-15, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23522 → 23182 bytes (Δ -340); extended 49046 → 42751 bytes (Δ -6295); OPERATOR.md 17769 → 15652 bytes (Δ -2117). Size budget: core 23182/25000 (**1818 bytes headroom**); extended 42751/50000 (**7249 bytes headroom**).
+**Sizing** (v8.0.0, 2026-10-15, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23182 → 22946 bytes (Δ -236); extended 42751 → 37844 bytes (Δ -4907); OPERATOR.md 15652 → 15335 bytes (Δ -317). Size budget: core 22946/25000 (**2054 bytes headroom**); extended 37844/50000 (**12156 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
 
-Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Terms core does not define, and clarifications:
+Core §1.5 inlines `Module / Evidence / Contract / Δ-contract` (used at L1/L2). Terms core does not define, and clarifications:
 
 - **Assumption** — claim not verified this turn via Read/Grep/tool. Memory recall = assumption.
 
@@ -429,11 +376,11 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1's skip-list says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
+| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
-The `aggressive` skip-list lives in core §5.1 (read at every level); its reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
+No level touches the core §5.1 Never-downgrade set.
 
 **Published client** (defines "public API" for the §5 Hard row `Δ-contract on public API`, at every autonomy level): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).
 
@@ -447,9 +394,8 @@ The `aggressive` skip-list lives in core §5.1 (read at every level); its reduct
 SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 
 - **Redundant Re-Read**: files Read or Written this session don't need re-Read absent external-change signal (user says "pull latest" / commit appears / mtime newer / structural test failure). Unsure → re-read; a third Read on unchanged content is wasted context.
-- **Correction pressure**: user rejects ≥2 auto-decisions in one task → switch to ASK-first for remaining sub-decisions. Rejection signals inferred defaults are drifting.
-- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before next long tool call.
-- **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
+- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) bring the spec file (without one, `tasks/<slug>-paused.md`) up to date before the next long tool call.
+- **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Simple first covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
 - **Diagnose-before-pivot**: approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
 - **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. The harness's own default-to-no-new-comments guidance addresses *new* comments, not pruning old.
 
@@ -473,37 +419,20 @@ One home per fact — double-writing creates drift.
 
 **Body-structure scope**: `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — the incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; the hook does not warn when authors omit Why/How there.
 
-**User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that.
+### Save triggers (core §11 Memory)
 
-### Auto-memory decision tree (top-down, first match wins)
-
-**Step 1 — Global-state hard** (MUST any level, skip judgment): `~/.claude/` writes across ≥2 files in one task (plugin install/uninstall / settings migration / marketplace edits / statusline / hook / MCP config) → save `project`/`feedback` memory naming what + why. **Self-describing artifact exemption**: edit produces durable in-artifact "what + why" a future session can grep without loading memory (versioned spec with `## Recent changes` / `CHANGELOG.md` / migration comment) → skip `mem_save`. Test: opaque state (plugin / marketplace JSON / hook / MCP) fails the test, still save.
-
-**Step 2 — L2+ retrospective** (MUST L2+, overrides Step 3): (a) preventable-error pattern (>2 wasted tool iterations OR hypothesis falsified in a reusable way), OR (b) non-default decision / non-obvious sequencing (spec-skill conflict resolved with non-default tradeoff, OR ship/release/env step not derivable from docs). Body: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
-
-**Step 3 — Judgment** (L0/L1, and L2+ when Steps 1-2 miss): durable project artifact (overview / phase / plan / retrospective / completion) whose insight would have changed a decision this session AND has ≥1 future-reuse probability → save; else skip.
-
-**Always skip regardless of step**: `git log`-recoverable, code invariant (→ inline comment), session-local (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
-
+- **Global state** (MUST, any level): a task writes ≥2 files under `~/.claude/` (plugin install / settings / marketplace / statusline / hook / MCP config) → save what + why. Exempt only when the edit leaves a greppable what + why in the artifact itself (a versioned spec's `## Recent changes`, `CHANGELOG.md`, a migration comment); opaque state (plugin / marketplace JSON / hook / MCP config) is never exempt.
+- **Lesson body**: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
+- **Never**: what `git log` recovers, a code invariant (→ a comment), task-local state (→ the spec file), a clean-root-cause bug (→ the recall plugin's bugfix type).
 
 ### MEMORY.md tag syntax
 
 - Optional `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before Read.
+- **Index line ≤150 characters**: title, tags, one-line hook. `MEMORY.md` loads every session; the detail belongs in the file, and `/claudemd-doctor` flags longer lines.
 - **Untagged lines** = agent-driven full content scan from title/description; hook does NOT auto-block.
 - **Tag specificity (SHOULD)**: tags ≥4 chars AND specific to the topic. Avoid generic single-word EN tags (`hook` / `plugin` / `test` / `cli` / `audit` / `done` / `spec` / `ship` when memory not actually about ship-flow) that substring-match incidental occurrences. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter`). The hook applies word-boundary matching with 0-2 char declension tolerance (`hook` → `hooks` / `hooked`; `cli` ≠ inside `clippy`); generic exact-word tags still fire — fix at authoring time.
 - Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.
 - **Ship-runbook consolidation (SHOULD)**: per project, ship-trigger tags (`ship / release / deploy / 发布 / 发版 / 打tag`) belong to exactly ONE memory file — the project's ship runbook, holding the full release flow (pre-ship checks → atomic steps → post-ship). Flow changes edit that file; other ship-adjacent lessons keep their topical tags and get `[[links]]` from the runbook instead of own ship tags. Effect: §11 read-the-file at ship costs one predictable Read instead of tag fan-out.
-
-<!-- module: modes -->
-## §0.2-EXT Mid-task feedback (continued)
-
-Core §0.2 keeps the one-line defaults; the rest:
-
-- **Quality slider** ("更严 / make rigorous"): <30% LOC + explicit direction → inline merge.
-- **Scope-expansion**: cross-level → serial; same-level → inline.
-- **Continuation** (e.g. "继续/next"): same SPINE.
-- **Cancel** (e.g. "停/算了"): close; snapshot `tasks/<slug>-paused.md` if non-trivial.
-- **Switch** (e.g. "先做X再做Y"): new SPINE; `paused.md` only under context pressure or non-trivial.
 
 <!-- module: session -->
 ## §11-EXT-MAC macOS shell portability (cross-ref)

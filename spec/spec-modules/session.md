@@ -5,13 +5,13 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: session
+# AI-CODING-SPEC v8.0.0 — module: session
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
 ## §1.5-EXT GLOSSARY
 
-Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-contract` (used at L1/L2). Terms core does not define, and clarifications:
+Core §1.5 inlines `Module / Evidence / Contract / Δ-contract` (used at L1/L2). Terms core does not define, and clarifications:
 
 - **Assumption** — claim not verified this turn via Read/Grep/tool. Memory recall = assumption.
 
@@ -24,9 +24,8 @@ Core §1.5 inlines `LOC / Local-Δ / Module / Evidence / Task / Contract / Δ-co
 SHOULD-level guardrails — apply when condition fires, not Iron Law gates.
 
 - **Redundant Re-Read**: files Read or Written this session don't need re-Read absent external-change signal (user says "pull latest" / commit appears / mtime newer / structural test failure). Unsure → re-read; a third Read on unchanged content is wasted context.
-- **Correction pressure**: user rejects ≥2 auto-decisions in one task → switch to ASK-first for remaining sub-decisions. Rejection signals inferred defaults are drifting.
-- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) consider `tasks/<slug>-paused.md` checkpoint before next long tool call.
-- **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Search-before-write covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
+- **Context pressure** (>75% window OR compaction-imminent): (a) prefer fresh-subagent for exploration not requiring main-thread state; (b) compact prose, drop evidential blocks already inline-cited; (c) defer non-critical Re-Read; (d) bring the spec file (without one, `tasks/<slug>-paused.md`) up to date before the next long tool call.
+- **Read-before-propose**: don't propose changes to code you haven't Read or Grep'd this session. §1 Simple first covers writes; this covers AUTH-eligible proposals — a `[AUTH REQUIRED]` citing unread code is a false-claim incident.
 - **Diagnose-before-pivot**: approach failed once → diagnose (read error, check assumption, focused fix); §6 Three-strike is the upper bound, not the trigger — pivoting too early on a viable approach burns context.
 - **Existing-comment protection**: don't remove old comments unless removing the code they describe OR verified them wrong this session. The harness's own default-to-no-new-comments guidance addresses *new* comments, not pruning old.
 

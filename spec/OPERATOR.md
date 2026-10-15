@@ -12,7 +12,7 @@ Companion files:
 
 These govern the human maintaining the spec. Separated from Agent rules so Agent attention is not allocated to directives it cannot execute.
 
-- **Self-audit cadence**: every ~50 L2+ tasks OR 4 weeks, whichever first — review `tasks/lessons.md`, count rule invocations where captured, prune never-used rules, promote frequently-repeated lessons.
+- **Self-audit cadence**: every ~50 L2+ tasks OR 4 weeks, whichever first — review the feedback memories and the spec files' decisions sections, count rule invocations where captured, prune never-used rules, promote frequently-repeated lessons.
 - **Drift monitoring**: watch for silent spec violations — Agent claiming "Done" without inline evidence tying the claim to tool output, or using §10 banned vocabulary. Each instance signals a rule misunderstood or too burdensome.
 - **Version discipline**: let a minor version run through ≥20 real L2+ tasks before the next. Adding rules without invocation data is how specs bloat.
 - **Tier promotion/demotion thresholds** (moved from core §0.1 in v6.15.1; v6.17.0 C5 further shrank core §0.1 to Tier-2-default + hard cap + net-delete + pointer — tier definitions now live ONLY in the Rationale table below): Tier 2 → Tier 1 when the same trigger fires ≥3 sessions in 30d; Tier 1 → Tier 0 (core) only after rule-hits ≥5 sessions in 30d where the rule fired AND its elaboration wasn't consulted; `/claudemd-rules` recommends demotion for core entries with 0 hits in 30d. Promotion/demotion is an operator decision made from audit data, not an Agent runtime action. Tier-2 anchor filename patterns: `feedback_*.md` / `recall_*.md` / `reference_*.md` / `project_*.md`, keyword-loaded via MEMORY.md tags.
@@ -65,7 +65,7 @@ Operator bookkeeping formerly appended to each extended release entry; agent run
 
 ## §13.4 `tasks/` filename conventions (reference table)
 
-Spec sections that reference `tasks/<slug>` files: core §2 (`tasks/specs/<slug>.md`), core §8.V4 (fixtures a `<slug>-paused.md` references), core §11 (Session-exit + an unresumed subagent yield → `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §0.2-EXT, §2-EXT, §2.S, §6 (dead-end record → `lessons.md`), §7-EXT (cold-start justification → `lessons.md`, repro scripts), §10-R, §11-O, §4 (written plan), §13.2. Collected here so operators and Agent can find the right home without cross-section search.
+Spec sections that reference `tasks/<slug>` files: core §2 (`tasks/specs/<slug>.md`), core §5 (No user present → `pending-auth-<date>.md`), core §8.V4 (fixtures a spec file or `<slug>-paused.md` references), core §11 (Session-exit + an unresumed subagent yield → the spec file, else `<slug>-paused.md`), §11-EXT (context-pressure checkpoint), §2.S, §6 (dead-end record → the spec file), §7-EXT (cold-start justification → the spec file, repro scripts), §10-R, §11-O, §4 (plan in the spec file), §13.2. Collected here so operators and Agent can find the right home without cross-section search.
 
 The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09-01 — core §11 being the one an agent hits most often, since it is the only paused-file rule that binds without loading extended.
 
@@ -73,19 +73,13 @@ The count read "7 sections" and omitted core §11, §6 and §7-EXT until 2026-09
 
 | Filename pattern | Spec section | Who writes | Purpose | Retention |
 |---|---|---|---|---|
-| `tasks/lessons.md` | §10-R Lessons file | Agent | Project-wide pattern lessons | cap 30, newest-first, drop-oldest |
 | `tasks/rule-candidates-<YYYY-MM>.md` | §13.2 HARD-rule budget | Agent | Candidate HARD rules pending §13.2 promotion gates | merged + pruned on §13.2 batch-review cadence |
 | `tasks/sampling-audit-<YYYY-MM-DD>.md` | `/claudemd-sampling-audit` | `scripts/sampling-audit.js` | Retrospective scan output (8 detectors: §10-V / §iron-law-2 / §10-four-section-order / §10-honesty / §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth) | manual prune |
-| `tasks/<slug>-paused.md` | §11 Session-exit / unresumed yield; §11-EXT Context pressure; §0.2-EXT Cancel / Switch | Agent | Resume context + exact verify command for un-VALIDATE'd work | until resumed and deleted |
-| `tasks/autonomous-run-<date>.md` | §2-EXT AUTONOMOUS exit ritual | Agent | Ran / blocked / failed / pending-auth summary | manual prune |
-| `tasks/pending-auth-<date>.md` | §2-EXT AUTONOMOUS hard ops | Agent | Op + scope + risk + recommendation, deferred for interactive AUTH | until next interactive session resolves |
-| `tasks/auto-approved.md` | §2-EXT AUTONOMOUS whitelist | Operator | One per line, e.g. `op:deps-bump-patch` | hand-curated |
-| `tasks/specs/<slug>.md` | §2.S SPEC ARTIFACT | Agent | L3 mandatory / L2 minimal spec (goal / non-goals / constraints / success-criteria / open-questions) | persists with feature |
-| `tasks/<n>.md` | §4.FULL step 2 written plan | Agent | L3 plan file | until feature complete |
+| `tasks/<slug>-paused.md` | §11 Session-exit / unresumed yield and §11-EXT Context pressure, for a task with no spec file; also written by the `session-end-check` hook | Agent / hook | Resume context + exact verify command for un-VALIDATE'd work | until resumed and deleted |
+| `tasks/pending-auth-<date>.md` | core §5 No user present | Agent | Op + scope + risk + recommendation, deferred for interactive AUTH | until next interactive session resolves |
+| `tasks/specs/<slug>.md` | §2.S SPEC ARTIFACT | Agent | The task's one hand-over document: status, background and goal, scope, acceptance criteria, design, plan, decisions and progress, verification record | persists with feature |
 
 **Override**: project `CLAUDE.md` MAY set `SPEC_DIR:` to relocate `tasks/specs/` only (§2.S Spec file). Other filename patterns are not overridable in current spec.
-
-**Worktree note** (§2.S Worktrees): each worktree has its own `tasks/`; on worktree-finish, merge `lessons.md` to main.
 
 ## Rationale
 
@@ -94,7 +88,7 @@ Three-tier separation (v6.13.0):
 | Tier | File | Loaded by Agent? | Content |
 |---|---|---|---|
 | 0 (always) | `CLAUDE.md` | every turn | per-turn gates (SPINE, AUTH, VALIDATE, SAFETY) |
-| 1 (triggered) | `CLAUDE-extended.md` | L3 / ship / Override / review | conditional rules (FLOW, evidence ladder, plugin fallback) |
+| 1 (triggered) | `CLAUDE-extended.md` (built into `spec-modules/`) | per-phase module on a prompt match or before the work it covers | conditional rules (FLOW, evidence ladder, plugin fallback) |
 | 2 (keyword) | `MEMORY.md` + `*.md` anchors | on keyword/path match | recall-on-demand (`feedback_*.md` / `project_*.md` / `reference_*.md`) |
 | operator | `OPERATOR.md` (this file) | **never auto-loaded** | human spec-maintenance rules |
 

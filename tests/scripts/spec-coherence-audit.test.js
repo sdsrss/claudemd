@@ -61,12 +61,12 @@ test('ext-cross-refs: a core pointer to a module that does not exist is CRITICAL
   try {
     fs.cpSync(path.join(REPO_ROOT, 'spec'), path.join(root, 'spec'), { recursive: true });
     const core = path.join(root, 'spec', 'CLAUDE.md');
-    fs.writeFileSync(core, fs.readFileSync(core, 'utf8').replace('- `modes.md` —', '- `mode.md` —'));
+    fs.writeFileSync(core, fs.readFileSync(core, 'utf8').replace('- `session.md` —', '- `sesion.md` —'));
     const r = auditSpecCoherence({ pluginRoot: root, projectCwd: '/nonexistent-cwd-for-test' });
     const check = r.checks.find(c => c.name === 'ext-cross-refs');
     assert.equal(check.ok, false);
     assert.ok(
-      check.findings.some(f => f.severity === 'CRITICAL' && f.detail.includes('mode.md')),
+      check.findings.some(f => f.severity === 'CRITICAL' && f.detail.includes('sesion.md')),
       JSON.stringify(check.findings)
     );
   } finally {

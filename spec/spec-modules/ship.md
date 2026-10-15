@@ -5,20 +5,19 @@ triggers: 发版|发布(新)?版本|(?<![开触研出批激散引])发\s*v?[0-9]
 trigger-window: whole
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: ship
+# AI-CODING-SPEC v8.0.0 — module: ship
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
-## §2-EXT Override modes
+## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
 
-### Released-artifact checklist (L3 hard upgrade, core §2)
 When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of LOC. Requirements before ship:
 - **SemVer non-patch bump** (minor for additive user-visible change, major for breaking).
 - **CHANGELOG migration note at top**: what changes, what action users must take.
 - **Explicit opt-out or revert path**: env flag, config key, prior-version pin instructions, or rollback command.
 - **One-time discoverability signal**: stderr banner / first-run log / release-note callout — so users who don't read CHANGELOG still notice.
 
-Missing any item on a user-visible default change = incomplete ship; file as Uncertain in REPORT.
+Missing any item on a user-visible default change = incomplete ship; list it under the report's open items.
 
 ## §7-EXT VALIDATE (L3)
 
@@ -35,6 +34,6 @@ On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this m
 
 Checklist (a runbook or skill may cover it in its own words): version sites in sync, CHANGELOG entry, release notes from its top entry, the release artifact (GitHub Release vs. bare tag), CI green on the pushed SHA. Each step fails silently by hand; the REPORT line lets a reviewer audit a checklist-less ship against this list. A deploy no deploy skill runs, from a runbook or by hand, needs `[AUTH REQUIRED op:manual-deploy]` before the atomic run below starts: the ship request covers push, tag and release, not a deploy.
 
-**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
+**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final report with CI green. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user's single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.
 
 **Runbook**: a project's ship-runbook memory (§11-EXT-MEM Ship-runbook consolidation) is read together with this module. A runbook may repeat the obligations above, never waive them; where the two differ, this module wins, and every §12 HARD obligation binds unchanged.

@@ -5,7 +5,7 @@ triggers: 记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: memory
+# AI-CODING-SPEC v8.0.0 — module: memory
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -28,22 +28,16 @@ One home per fact — double-writing creates drift.
 
 **Body-structure scope**: `mem-audit` Stop hook scans `feedback_*.md` only for `**Why:**` / `**How to apply:**` body markers. `project_*.md` exempt — the incident-log pattern (`project_<topic>_<date>.md`) is fact-only by nature; the hook does not warn when authors omit Why/How there.
 
-**User-override filter** (extends CC built-in `## What NOT to save`): WHAT-NOT-TO-SAVE list (`git log`-recoverable / code invariant / session-local / clean-root-cause bug) applies even when user says "save / 记一下 / remember this". Activity logs, PR rundowns, step lists, deploy walkthroughs lower signal density. Compliance = ASK what was *surprising* or *non-obvious*, save only that.
+### Save triggers (core §11 Memory)
 
-### Auto-memory decision tree (top-down, first match wins)
-
-**Step 1 — Global-state hard** (MUST any level, skip judgment): `~/.claude/` writes across ≥2 files in one task (plugin install/uninstall / settings migration / marketplace edits / statusline / hook / MCP config) → save `project`/`feedback` memory naming what + why. **Self-describing artifact exemption**: edit produces durable in-artifact "what + why" a future session can grep without loading memory (versioned spec with `## Recent changes` / `CHANGELOG.md` / migration comment) → skip `mem_save`. Test: opaque state (plugin / marketplace JSON / hook / MCP) fails the test, still save.
-
-**Step 2 — L2+ retrospective** (MUST L2+, overrides Step 3): (a) preventable-error pattern (>2 wasted tool iterations OR hypothesis falsified in a reusable way), OR (b) non-default decision / non-obvious sequencing (spec-skill conflict resolved with non-default tradeoff, OR ship/release/env step not derivable from docs). Body: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
-
-**Step 3 — Judgment** (L0/L1, and L2+ when Steps 1-2 miss): durable project artifact (overview / phase / plan / retrospective / completion) whose insight would have changed a decision this session AND has ≥1 future-reuse probability → save; else skip.
-
-**Always skip regardless of step**: `git log`-recoverable, code invariant (→ inline comment), session-local (→ `tasks/`), clean-root-cause bug (→ `mem_save` bugfix type, not this tree).
-
+- **Global state** (MUST, any level): a task writes ≥2 files under `~/.claude/` (plugin install / settings / marketplace / statusline / hook / MCP config) → save what + why. Exempt only when the edit leaves a greppable what + why in the artifact itself (a versioned spec's `## Recent changes`, `CHANGELOG.md`, a migration comment); opaque state (plugin / marketplace JSON / hook / MCP config) is never exempt.
+- **Lesson body**: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
+- **Never**: what `git log` recovers, a code invariant (→ a comment), task-local state (→ the spec file), a clean-root-cause bug (→ the recall plugin's bugfix type).
 
 ### MEMORY.md tag syntax
 
 - Optional `- [Title](file.md) [tag1, tag2] — description`. Agent matches task keywords against tags before Read.
+- **Index line ≤150 characters**: title, tags, one-line hook. `MEMORY.md` loads every session; the detail belongs in the file, and `/claudemd-doctor` flags longer lines.
 - **Untagged lines** = agent-driven full content scan from title/description; hook does NOT auto-block.
 - **Tag specificity (SHOULD)**: tags ≥4 chars AND specific to the topic. Avoid generic single-word EN tags (`hook` / `plugin` / `test` / `cli` / `audit` / `done` / `spec` / `ship` when memory not actually about ship-flow) that substring-match incidental occurrences. Prefer multi-word phrases (`hook-fail-open` / `cli-flag-shape` / `audit-pipeline-filter`). The hook applies word-boundary matching with 0-2 char declension tolerance (`hook` → `hooks` / `hooked`; `cli` ≠ inside `clippy`); generic exact-word tags still fire — fix at authoring time.
 - Rule of thumb: if removing the tag wouldn't change agent's decision quality on a typical command match, the tag is too generic.

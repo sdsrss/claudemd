@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: auth
+# AI-CODING-SPEC v8.0.0 — module: auth
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -61,10 +61,10 @@ Strict prefix match (NOT glob):
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1's skip-list says §5 Hard-AUTH still binds, and two passages cannot both be followed (§3 stricter-reading). |
+| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
-The `aggressive` skip-list lives in core §5.1 (read at every level); its reductions are ceremony-only and never touch the §5.1 Never-downgrade set.
+No level touches the core §5.1 Never-downgrade set.
 
 **Published client** (defines "public API" for the §5 Hard row `Δ-contract on public API`, at every autonomy level): any consumer outside this repo — external SDK user, npm-install consumer, MCP client (incl. Claude Code reading a server's tool schema), CLI end-user via `npx` / `cargo install` / release binary. **Internal** = same-repo module-to-module only. Uncertainty → treat as published (hard).

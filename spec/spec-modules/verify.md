@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.3.0 — module: verify
+# AI-CODING-SPEC v8.0.0 — module: verify
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -13,7 +13,7 @@ trigger-window: head
 
 ```
 L3  TDD + full suite + e2e                    → inline evidence with numbers+baseline
-    (no e2e infra: integration + smoke → [PARTIAL: no-e2e-infra], follow-up filed)
+    (no e2e infra: integration + smoke, e2e reported as could not run, follow-up filed)
 ```
 
 L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
@@ -22,7 +22,6 @@ L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier 
 
 **Additive exception**: no prior failing path (new field validation / new branch / new endpoint / new optional param / additive schema) → TDD RED-first: write test covering new behavior, confirm fails, implement to green. Log: "additive: new-test-first, no prior failing path". Does NOT apply to bugfix — bugfix always needs prior reproduction.
 
-[HACK] skips Iron Law #1 entirely.
 
 ### Evidence ladder (L2+, prefer highest tier)
 
@@ -36,23 +35,23 @@ Falling to tier N requires stating why N-1 unfit.
 
 **Intermittent**: tier-2 stress script forcing race window counts as tier-1 proxy. State: "intermittent: tier-2 stress-repro used as tier-1 proxy, reason: <timing/concurrency/external>". Must reproduce ≥1 failure in documented run-count.
 
-**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or browser screenshot). No snapshot infra → `[PARTIAL: visual-not-verified]` + file follow-up.
+**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or browser screenshot). No snapshot infra → report the visual check as could not run + file follow-up.
 
-**Web-visible behaviour** to verify: a browser pass over the changed user-facing surface, reported as §7 L2 evidence. No browser reachable → ask the user for a screenshot or log; neither → `[PARTIAL: no-browser]`.
+**Web-visible behaviour** to verify: a browser pass over the changed user-facing surface, reported as §7 L2 evidence. No browser reachable → ask the user for a screenshot or log; neither → report it as could not run (no browser).
 
 ### Cold-start (no test framework)
-- Justify once in `tasks/lessons.md` (`no test framework, cold-start mode — reason: <…>`).
+- Justify once in the spec file or the report (`no test framework, cold-start mode — reason: <…>`).
 - L2+ → tier-2 repro script committed under `tests/repro/<slug>.sh`.
-- Close with `[PARTIAL: no-test-infra]` + follow-up "bootstrap test framework".
+- Report the test suite as could not run (no test infra) + follow-up "bootstrap test framework".
 - Exit: once framework lands, clause stops applying to new tasks.
 
 ### Evidence validity (HARD)
 - **Semantic linkage**: the claim ("fixed X") must follow from the observation ("test Y went from FAILING to PASS"). Existence (`grep`/`ls`/`cat`/`git status`) ≠ behavior — auxiliary context only.
 - **Valid evidence types**: test-runner output, executable script output, runtime log, HTTP response (status+body), DOM assertion, benchmark output.
-- **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note scope limit in Uncertain.
-- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare "Done" claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
+- **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note the scope limit under open items.
+- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
 
-Order: project CI > defaults. No CI → build + smoke and report `[PARTIAL]`.
+Order: project CI > defaults. No CI → build + smoke, and report CI as could not run.
 
 ## §10-V Banned-vocab (reference list)
 
@@ -66,29 +65,23 @@ Core §10 keeps the quick-check (top-5 EN + 中文). The mechanical gate is the 
 
 When banned, fix = strip the hedge, state the specific case with absolute or baseline-anchored number.
 
-## §10-R COMPLETE (L3)
+## §10-R COMPLETE
 
-### Full four-section (L2 and L3 always — core §10, which is the layer that binds at L2)
+### Report shape (core §10)
 ```
-Done:      <items, each with inline evidence (test/run output + numbers+baseline)>
-Not done:  <deferred, with reason>
-Failed:    <blocked, with cause>
-Uncertain: <not sure about, stated as "uncertain because <X>">
+## 汇报
+
+**变更**：<what changed, files, commit and branch, spec path>
+**验证**：
+- `<command>` → 通过（<numbers with baseline>）
+- `<command>` → 未运行（<why>）
+**遗留**：<unfinished work, risks, decisions: options / cost / your pick>
 ```
 
-**L3 zero-issue short** (Not done=∅, Failed=∅, Uncertain=∅): single `Done:` paragraph with evidence inline, no four-section scaffolding needed. L3 only; L2 follows core §10.
-
-**Multi-task**: each task writes its own block. Do NOT merge.
-
-**EMERGENCY mode adds**: incident report (Timeline / Root-cause / Rollback / Follow-ups); file follow-up task.
+**Multi-task**: each task writes its own report. Do NOT merge.
 
 ### Auto-decisions (post-AUTH ambiguity)
-One prose line: "chose <X> over <Y> because <rationale>; reversible (cost: <est>) if wrong." No bracketed form.
-
-### Lessons file (SHOULD)
-- Path: `tasks/lessons.md`. Cap 30 entries, newest first. Prepend on user correction. Drop oldest when full.
-- Read when a task's keywords match an entry; no session-start read — MEMORY.md and the recall plugin are the session-start layer (§11-EXT-MEM).
-- Format: `- <YYYY-MM-DD> [pattern]: <wrong> → <rule>`.
+One prose line in the spec file's decisions section (else the report's open items): "chose <X> over <Y> because <rationale>; reversible (cost: <est>) if wrong." No bracketed form.
 
 ## Appendix B — Canonical examples
 
