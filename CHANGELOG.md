@@ -10,7 +10,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 ## [0.108.0] - 2026-10-15
 
-**Upgrade notes — spec v7.3.0: skill choice is left to Claude Code's skill listing, and the spec's rules name behaviours instead of skills. Nothing to do on upgrade.** The `skills` spec module (the §4 / §12 skill routing table) is removed. Core keeps one line with what v7.2.0 meant: invoke a skill when its description fits the task; none for L0/L1 work except a release or a received review; no precedence among plugins, the more specific of two fitting skills, one skill per step; and a skill's or plugin's own "must invoke" wording does not override that judgment. Ship, the L3 flow, review, debug and evidence rules no longer name `sp:` / `gs:` / `matt:` skills. Your installed `~/.claude/spec-modules/skills.md` is removed the next time the modules sync (`/claudemd-update` apply-all, or the install that runs on upgrade). To go back, pin 0.107.7 as `docs/ROLLBACK.md` "Local machine needs the previous version back" describes.
+**Upgrade notes — spec v7.3.0: skill choice is left to Claude Code's skill listing, and the spec's rules name behaviours instead of skills. Nothing to do on upgrade.** The `skills` spec module (the §4 / §12 skill routing table) is removed. Core keeps one line with what v7.2.0 meant: invoke a skill when its description fits the task; none for L0/L1 work except a ship trigger or a received review; no precedence among skills or plugins, the more specific of two fitting skills, one skill per step; and a skill's or plugin's own "must invoke" wording does not override that line, `ship.md` or `review.md`. Ship, the L3 flow, review, debug and evidence rules no longer name `sp:` / `gs:` / `matt:` skills. Your installed `~/.claude/spec-modules/skills.md` is removed the next time the modules sync (`/claudemd-update` apply-all, or the install that runs on upgrade). To go back, pin 0.107.7 as `docs/ROLLBACK.md` "Local machine needs the previous version back" describes.
 
 **Why.** A scan of this machine's transcripts (2026-09-05 to 2026-10-15; 184 interactive sessions, 850 subagents) found the routing table doing no work:
 - After v7.2.0, `skills.md` was read in 0 of 185 contexts (42 sessions, 143 subagents).
@@ -21,45 +21,45 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 The table also restated each skill's own description, the shape Anthropic's prompt-audit rules list as a duplicate to delete. Design record: `tasks/specs/skill-routing-trim.md`; the transcript scan and the A/B runs behind its figures are kept locally.
 
 **What changes for you.**
-- **Ship (HARD hardening, relaxed)**: a release runs from the project's ship runbook, else a listed ship skill. Only when neither exists is it shipped by hand against `ship.md`'s checklist, with `manual ship because <reason>` as the report's first line. Before, a listed `ship` skill was mandatory, and every ship without one owed that line, runbook or not.
+- **Ship (HARD hardening, relaxed)**: a release runs from the project's ship runbook, else a listed ship skill. Only when neither exists is it shipped by hand against `ship.md`'s checklist, with `manual ship because <reason>` as the report's first line. Before, a listed `ship` skill was the default, and every ship without one owed that line, runbook or not.
 - **Review independence (HARD, stricter)**: Author ≠ reviewer now also says what to do when no subagent can be spawned or a setting blocks it: name it and ask once; refused → L2 `[PARTIAL: no independent review]`, L3 not executable.
 - **Moved, meaning kept**: the rules that lived only in the table.
   - `review.md`: a review is verified finding by finding before it is applied.
   - `verify.md`: a web-visible check with no browser ends `[PARTIAL: no-browser]`.
-  - `ship.md`: a deploy by hand still needs `[AUTH REQUIRED op:manual-deploy]`; the ship request covers push, tag and release.
+  - `ship.md`: any deploy no deploy skill runs, from a runbook or by hand, still needs `[AUTH REQUIRED op:manual-deploy]`, now asked before the atomic ship run starts; the ship request covers push, tag and release.
 - **Dropped**: rules the table alone carried that other text already decides — bootstrap as L2, Composite requests, the design self-ask, the second-opinion note, the utility fallbacks. Listed in the spec changelog.
 - **`/claudemd-doctor`**: the `routing:skills-enabled`, `routing:ship-skill` and `routing:gstack-reachable` rows are gone with the table they read. `scripts/lib/spec-routing.js` and its consumer gate are removed.
 - **Session-start notices (D#201)**: the three notices that told the model to run a claudemd command (background-upgrade failure, interrupted and completed user-content moves) now go out twice. The human is told to run the command; the model is told to ask the user to run it, because since 0.107.0 the model cannot invoke those commands. The missing-spec notice the user reads names `SPEC_DRIFT_IGNORE="<files>"` and `DISABLE_SPEC_DRIFT_BANNER=1`.
 
-**Sizes.** Core 23,522 → 23,137 B on disk (23,320 → 22,935 B model-visible). Extended 49,046 → 42,650 B. `memory.md` + `plan.md`, the longest module pair a prompt draws, still inject together: 9,776 of the 9,800-character budget.
+**Sizes.** Core 23,522 → 23,182 B on disk (23,320 → 22,980 B model-visible). Extended 49,046 → 42,751 B. `memory.md` + `plan.md`, the longest module pair a prompt draws, still inject together: 9,776 of the 9,800-character budget.
 
-**Offline A/B before release** (plugins loaded through `--plugin-dir`, so the 60-skill listing and superpowers' SessionStart text are present; Opus 5.5 high, 10 runs per cell, $33.45). Arm A is v7.2.0 and arm B is this spec:
+**Offline A/B before release** (plugins loaded through `--plugin-dir`, so the 60-skill listing and superpowers' SessionStart text are present; Opus 5.5 high, 10 runs per cell, $48.85 in all). Arm A is v7.2.0. Arm B ran the pre-review draft (d3e5112); arm B2 ran the text this release ships, after both reviews, on Claude Code 2.1.301 where A and B had 2.1.300:
 
-| | A | B |
-|---|---|---|
-| Overall | 48/50 | 50/50 |
-| Skill calls on L0 / L1 tasks | 0 of 20 | 0 of 20 |
-| `Unknown skill` | 0 | 0 |
-| Review before tag | 10/10 | 10/10 |
-| Reproduce-first | 10/10 | 10/10 |
-| Red-first | 10/10 | 10/10 |
+| | A | B | B2 |
+|---|---|---|---|
+| Overall | 48/50 | 50/50 | 49/50 |
+| Skill calls on L0 / L1 tasks | 0 of 20 | 0 of 20 | 0 of 20 |
+| `Unknown skill` | 0 | 0 | 0 |
+| Review before tag | 10/10 | 10/10 | 10/10 |
+| Reproduce-first | 10/10 | 10/10 | 10/10 |
+| Red-first | 10/10 | 10/10 | 10/10 |
 
-- A's two misses were uncited answers.
+- Every miss (A's two, B2's one) was a correct answer to the look-up task that cited no source.
 - With no spec at all (plugins still loaded): reproduce-first 4/10 and red-first 2/10. On the L1 bug, 3 of 10 such runs invoked `systematic-debugging`, and those 3 all reproduced first. On the L2 feature, 0 of 10 invoked a skill even without the spec. So the spec suppresses no L2 skill call there; its own rules carry the behaviour the skills were routed for.
 - Arm A did not reproduce the `Unknown skill` failure in this single-turn fixture. The case for the ship change rests on the transcripts.
 
 **Tests.**
-- `spec-structure` drops the five routing-table tests (the four §4↔§12 joins and the `matt:` roadmap join). In their place:
-  - a scan that no rule (core, extended outside Recent changes, any module) names a skill by plugin prefix, in the spec's short forms or the `superpowers:` / `gstack:` / `mattpocock-skills:` forms Claude Code registers;
+- `spec-structure` drops the five routing-table tests (joins between core §2.1, §4 Routing, §12, the rest of the spec and the roadmap). In their place:
+  - a whole-line scan that no rule (core, extended outside Recent changes, any module) names a skill by plugin prefix, in the spec's short forms or the `superpowers:` / `gstack:` / `mattpocock-skills:` forms Claude Code registers, with or without a slash, and a control that a name past column 120 is found;
   - five whole-line pins: core Skills, core Ship triggers, the hardening's opening, the ship checklist with the deploy AUTH, Author ≠ reviewer.
 
-  An 18-case mutation battery made the intended test fail in each case.
+  A 22-case mutation battery made the intended test fail in each case.
 - `hard-rules-drift` no longer needs an exemption line.
 - `command-invocation` (D#201): a frontmatter that sets `disable-model-invocation` twice now fails.
 - `session-start` (D#201): cases 29c, 29d and 47b.
 - `npm run check` exit 0; `npm run smoke` 2/2.
 
-**Pre-tag review** (fresh subagent): 1 High, 2 Medium, 10 Low, all fixed before the tag. The High: the first draft let the ship request authorize a deploy by hand, which v7.2.0 kept behind `[AUTH REQUIRED op:manual-deploy]`; restored and pinned. The Mediums: the draft dropped the L0/L1 carve-out for a release or a received review, and three skill-choice rules (no precedence among plugins, the more specific of two, one skill per step); all four are back in the core Skills line, which also covers a skill's own "must invoke" wording again. Each repair's pin failed before its text changed. Commit 9103bec's message says the spec named 15 gstack sub-skills; it named 19.
+**Pre-tag review** (fresh subagent): 1 High, 2 Medium, 10 Low, all fixed before the tag. The High: the first draft let the ship request authorize a deploy by hand, which v7.2.0 kept behind `[AUTH REQUIRED op:manual-deploy]`; restored and pinned. The Mediums: the draft dropped the L0/L1 carve-out for a release or a received review, and three skill-choice rules (no precedence among plugins, the more specific of two, one skill per step); all four are back in the core Skills line, which also covers a skill's own "must invoke" wording again. Each repair's pin failed before its text changed. A delta review of those repairs (fresh subagent): 0 High, 3 Medium, 8 Low, all fixed. The restored AUTH covered only a deploy "by hand", which `ship.md` defines to exclude a runbook; it now covers any deploy no deploy skill runs and is asked before the atomic run. The L0/L1 carve-out now names all four ship triggers. The prefix scan had tested only the first 120 characters of each line; it reads whole lines now, with a control. The A/B above was re-run on the final text (arm B2). Commit 9103bec's message says the spec named 15 gstack sub-skills; it named 19.
 
 ## [0.107.7] - 2026-10-08
 
