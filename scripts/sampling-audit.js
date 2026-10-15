@@ -471,11 +471,89 @@ function locateLabels(text) {
 const EVIDENCE_FINGERPRINT =
   /\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9][^\s]{0,64}\s*(→|->|=>)\s*[0-9]|Checked:|baseline|known-red|证据[:：]/;
 
+// Spec v8's report: `## 汇报` (`## Report`) and up to three parts, 变更 / 验证 /
+// 遗留 (Changes / Verification / Open items), each verification line carrying
+// one of four verdicts. Mirrors the awk program in
+// hooks/transcript-structure-scan.sh line for line — same normaliser, same
+// regexes, same table handling — and tests/scripts/structure-scan-parity.test.js
+// holds the two to one verdict. The anchor is the LAST report heading; only the
+// parts after it count. reportBlock = a report whose order could be judged (two
+// or more parts), the order-check denominator; ironLaw2Opps = verification lines
+// judged, plus one for a Changes part with no Verification part.
+const V8_PART = [
+  /^(变更|Changes)([ \t]*([:：]|—|-)|[ \t]*$)/,
+  /^(验证|Verification)([ \t]*([:：]|—|-)|[ \t]*$)/,
+  /^(遗留|Open items)([ \t]*([:：]|—|-)|[ \t]*$)/,
+];
+const V8_ANCHOR = /^(汇报|Report)[ \t]*[:：]?[ \t]*$/;
+const V8_VERDICT_CJK = /通过|失败|未运行|无法运行/;
+const V8_VERDICT_EN = /(^|[^a-z])(passed|failed|not run)([^a-z]|$)/;
+const V8_SEP = /^[ \t]*\|[ \t:|-]+\|[ \t]*$/;
+
+function normV8(s) {
+  return s
+    .replace(/^[ \t]*[-*+][ \t]+/, '')
+    .replace(/^[ \t]*#+[ \t]+/, '')
+    .replace(/\*\*/g, '')
+    .replace(/^[ \t]+/, '');
+}
+const v8Part = s => {
+  const k = V8_PART.findIndex(re => re.test(s));
+  return k + 1;
+};
+const v8Verdict = s => V8_VERDICT_CJK.test(s) || V8_VERDICT_EN.test(s.toLowerCase());
+
+export function scanReportV8(text) {
+  const out = { ironLaw2: 0, ironLaw2Opps: 0, orderViolation: 0, reportBlock: 0 };
+  const raw = text.split('\n');
+  const nl = raw.map(normV8);
+  let anchor = -1;
+  for (let i = 0; i < nl.length; i++) if (V8_ANCHOR.test(nl[i])) anchor = i;
+  if (anchor < 0) return out;
+  const pos = [0, 0, 0];
+  for (let i = anchor + 1; i < nl.length; i++) {
+    const k = v8Part(nl[i]);
+    if (k && !pos[k - 1]) pos[k - 1] = i + 1;
+  }
+  const [p1, p2, p3] = pos;
+  if (pos.filter(Boolean).length >= 2) {
+    out.reportBlock = 1;
+    if ((p1 && p2 && p1 > p2) || (p1 && p3 && p1 > p3) || (p2 && p3 && p2 > p3)) out.orderViolation = 1;
+  }
+  if (p1 && !p2) {
+    out.ironLaw2Opps += 1;
+    out.ironLaw2 += 1;
+  }
+  if (!p2) return out;
+  const rest = nl[p2 - 1].replace(/^(验证|Verification)[ \t]*([:：]|—|-)?[ \t]*/, '');
+  if (rest !== '') {
+    out.ironLaw2Opps += 1;
+    if (!v8Verdict(rest)) out.ironLaw2 += 1;
+  }
+  for (let i = p2; i < raw.length; i++) {
+    if (v8Part(nl[i]) || /^[ \t]*#/.test(raw[i])) break;
+    if (/^[ \t]*$/.test(raw[i]) || V8_SEP.test(raw[i])) continue;
+    if (/^[ \t]*\|/.test(raw[i])) {
+      let j = i + 1;
+      while (j < raw.length && /^[ \t]*$/.test(raw[j])) j++;
+      if (j < raw.length && V8_SEP.test(raw[j])) continue;
+    }
+    out.ironLaw2Opps += 1;
+    if (!v8Verdict(raw[i])) out.ironLaw2 += 1;
+  }
+  return out;
+}
+
 // ironLaw2Opps counts Done lines that were actually examined (the per-rule
 // opportunity denominator); fourSection flags a complete 4-label block (the
 // order-check denominator).
 export function scanStructure(text) {
   const out = { ironLaw2: 0, ironLaw2Opps: 0, orderViolation: 0, fourSection: 0 };
+  const v8 = scanReportV8(text);
+  out.ironLaw2 += v8.ironLaw2;
+  out.ironLaw2Opps += v8.ironLaw2Opps;
+  out.orderViolation += v8.orderViolation;
+  out.fourSection += v8.reportBlock;
   const { d, nd, f, u, lines } = locateLabels(text);
   if (!(d > 0 && nd > 0 && f > 0 && u > 0)) return out;
   const positions = [d, nd, f, u];
@@ -483,8 +561,8 @@ export function scanStructure(text) {
   const maxLn = Math.max(...positions);
   if (maxLn - minLn > 50) return out;
 
-  out.fourSection = 1;
-  if (d >= nd || nd >= f || f >= u) out.orderViolation = 1;
+  out.fourSection += 1;
+  if (d >= nd || nd >= f || f >= u) out.orderViolation += 1;
 
   const labelLines = [nd, f, u].sort((a, b) => a - b);
   for (let i = minLn - 1; i < maxLn; i++) {
@@ -580,6 +658,9 @@ const YIELD_ASK_RE =
 // CLOSED: a turn carrying the §10 four-section tail has completed its cycle;
 // the next typed message starts a new task (§1.5), it is not a nudge.
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
+// Spec v8 closes a task with a `## 汇报` / `## Report` heading instead of the
+// four-section tail; a turn carrying one has completed its cycle the same way.
+const YIELD_REPORT_V8_RE = /^#{1,4}[ \t]*(?:汇报|Report)[ \t]*$/m;
 const YIELD_ASK_WINDOW = 260;
 // …and so has a turn carrying the §10 SHORT report, which is the one §10
 // actually prescribes for the common case: "L1: Failed+Uncertain empty →
@@ -638,6 +719,7 @@ export function yieldTellSuppressed(priorText) {
   // or an API error) — the stop is not attributable to the agent.
   if (!priorText || !priorText.trim()) return true;
   if (YIELD_CLOSED_RE.test(priorText)) return true;
+  if (YIELD_REPORT_V8_RE.test(priorText)) return true;
   if (YIELD_DONE_RE.test(priorText.slice(-YIELD_CLOSE_WINDOW))) return true;
   return YIELD_ASK_RE.test(priorText.slice(-YIELD_ASK_WINDOW));
 }

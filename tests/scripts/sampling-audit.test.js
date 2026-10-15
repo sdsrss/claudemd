@@ -525,6 +525,28 @@ test('yieldTellSuppressed: bare 么 inside 什么/这么 is not an ask (2 reprod
   assert.equal(yieldTellSuppressed('要继续吗？'), true);
 });
 
+test('yieldTellSuppressed: a spec v8 report closes the turn like the four-section tail', () => {
+  // `继续` after a turn that ended in a `## 汇报` report starts a new task; it is
+  // not the user nudging a premature stop.
+  assert.equal(
+    yieldTellSuppressed('改好了。\n\n## 汇报\n\n**变更**：a.js\n\n**验证**：`npm test` → 通过'),
+    true
+  );
+  assert.equal(yieldTellSuppressed('Done.\n\n## Report\n\n**Changes**: a.js'), true);
+  // Control: the word in running prose is not a report heading.
+  assert.equal(yieldTellSuppressed('我先把汇报里的数字核对一遍，再改 a.js。'), false);
+});
+
+test('scanStructure: a v8 report registers as a judged block; four-section history still does', () => {
+  const v8 = '## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过\n\n**遗留**：无';
+  assert.equal(scanStructure(v8).fourSection, 1);
+  assert.equal(scanStructure(v8).ironLaw2, 0);
+  const v7 = 'Done: x (3 tests passed)\nNot done: y\nFailed: z\nUncertain: w because v';
+  assert.equal(scanStructure(v7).fourSection, 1);
+  // Both shapes in one message are two judged blocks, counted separately.
+  assert.equal(scanStructure(`${v7}\n\n${v8}`).fourSection, 2);
+});
+
 test('parity: node scanVocab and the bash transcript-vocab hook agree (real claim)', () => {
   const dir = stageFixture('vocab-hit');
   try {

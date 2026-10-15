@@ -72,6 +72,23 @@ const CORPUS = {
     'Done: refactored the parser\nDone: renamed the flag\nNot done: x\nFailed: y\nUncertain: z because reasons',
   'iron-law-2 + honesty in one report':
     'Done: refactored the parser\nNot done: x\nFailed: y\nUncertain: maybe',
+  // Spec v8's three-part report (`## 汇报` / `## Report`). Both engines judge
+  // only the parts after the LAST report heading.
+  'v8: in order, every verification line has a verdict':
+    '## 汇报\n\n**变更**：改了 a.js\n\n**验证**\n- `npm test` → 通过\n- 冒烟 → 未运行（缺库）\n\n**遗留**：无',
+  'v8: English labels and verdicts':
+    '## Report\n\n**Changes**: x\n\n**Verification**: `npm test` → passed (12/12); smoke → could not run',
+  'v8: labels without a report heading are not a report': '**变更**：x\n**验证**：跑了',
+  'v8: table header and separator are not judged':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n\n| 命令 | 结果 |\n|---|---|\n| npm test | 通过 |\n',
+  'v8: parts out of order': '## 汇报\n\n**遗留**：无\n\n**变更**：改了 a.js\n\n**验证**：`npm test` → 通过',
+  'v8: a verification line with no verdict':
+    '## 汇报\n\n**变更**：改了 a.js\n\n**验证**\n- `npm test` 跑了\n- `npm run lint` → 通过',
+  'v8: Changes with no Verification part': '## Report\n\n**Changes**: edited a.js\n\n**Open items**: none',
+  'v8: a table row with no verdict':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n\n| 命令 | 结果 |\n|---|---|\n| npm test | 通过 |\n| smoke | 结果不明 |\n',
+  'v8: only the last report heading is judged':
+    '## 汇报\n\n**遗留**：无\n\n**变更**：x\n\n## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过',
 };
 
 /** Drive the real hook over `text` and count the rule labels it emits. */

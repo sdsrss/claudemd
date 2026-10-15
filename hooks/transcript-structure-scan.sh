@@ -24,6 +24,9 @@
 #   3. uncertain-hedge — `^Uncertain:` lines that are <80 chars total AND
 #      don't contain `because`|`since`|`reason:`|`因为` AND don't end with
 #      `(none)`|`(无)`|`none`|`N/A`|`-` → flag.
+#   4-5. spec v8's three-part report (`## 汇报`, 变更 / 验证 / 遗留): part
+#      order, and a verdict on every verification line — see the block above
+#      the HITS check. 1-3 stay for reports written under spec v7.
 #
 # All advisory (Stop event cannot block). Records to rule-hits log via new
 # event `structure-advisory`; one row per distinct §-section detected.
@@ -217,6 +220,82 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     sub(/^##[[:space:]]+/, "", l)
   }
   l ~ /^Uncertain([[:space:]]+—|:|[[:space:]]*$)/ { print NR }
+')
+
+# --- Detections 4-5: spec v8's three-part report ----------------------------
+# Spec v8 replaced the four sections with `## 汇报` (`## Report`) and up to
+# three parts — 变更 / 验证 / 遗留 (Changes / Verification / Open items) — and
+# each verification line carries one of four verdicts. The four-section checks
+# above stay: sampling-audit reads 30 days of history written under v7.
+#   4. order (§10-four-section-order, the same rule id: the rule is "the report
+#      shape", v8 rewrote its content) — after the LAST report heading, the
+#      parts that appear must appear in spec order.
+#   5. verdict (§iron-law-2) — every non-empty line of the verification part
+#      names 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could
+#      not run); a Changes part with no Verification part after the heading is
+#      one miss too. Table separator and header rows are not lines to judge.
+# One awk program, no `printf | grep -q` (feedback_pipefail_grep_q_race). The
+# normaliser and every regex here are mirrored by scanReportV8 in
+# scripts/sampling-audit.js; tests/scripts/structure-scan-parity.test.js holds
+# the two to one verdict.
+while IFS= read -r v8hit; do
+  [[ -n "$v8hit" ]] && HITS+=("$v8hit")
+done < <(printf '%s\n' "$LAST_TEXT" | awk '
+  function norm(s) {
+    sub(/^[ \t]*[-*+][ \t]+/, "", s)
+    sub(/^[ \t]*#+[ \t]+/, "", s)
+    gsub(/\*\*/, "", s)
+    sub(/^[ \t]+/, "", s)
+    return s
+  }
+  function part(s) {
+    if (s ~ /^(变更|Changes)([ \t]*([:：]|—|-)|[ \t]*$)/) return 1
+    if (s ~ /^(验证|Verification)([ \t]*([:：]|—|-)|[ \t]*$)/) return 2
+    if (s ~ /^(遗留|Open items)([ \t]*([:：]|—|-)|[ \t]*$)/) return 3
+    return 0
+  }
+  function verdict(s,   lo) {
+    if (s ~ /通过|失败|未运行|无法运行/) return 1
+    lo = tolower(s)
+    return (lo ~ /(^|[^a-z])(passed|failed|not run)([^a-z]|$)/) ? 1 : 0
+  }
+  function issep(s) { return s ~ /^[ \t]*\|[ \t:|-]+\|[ \t]*$/ }
+  { raw[NR] = $0; nl[NR] = norm($0) }
+  END {
+    anchor = 0
+    for (i = 1; i <= NR; i++) if (nl[i] ~ /^(汇报|Report)[ \t]*[:：]?[ \t]*$/) anchor = i
+    if (!anchor) exit
+    p1 = p2 = p3 = 0
+    for (i = anchor + 1; i <= NR; i++) {
+      k = part(nl[i])
+      if (k == 1 && !p1) p1 = i
+      if (k == 2 && !p2) p2 = i
+      if (k == 3 && !p3) p3 = i
+    }
+    n = (p1 > 0) + (p2 > 0) + (p3 > 0)
+    if (n >= 2) {
+      bad = 0
+      if (p1 && p2 && p1 > p2) bad = 1
+      if (p1 && p3 && p1 > p3) bad = 1
+      if (p2 && p3 && p2 > p3) bad = 1
+      if (bad) printf "§10-four-section-order|report parts out of order: 变更@L%d, 验证@L%d, 遗留@L%d (spec: 变更<验证<遗留, 0 = absent)\n", p1, p2, p3
+    }
+    if (p1 && !p2) printf "§iron-law-2|Changes@L%d reported with no Verification part\n", p1
+    if (!p2) exit
+    rest = nl[p2]
+    sub(/^(验证|Verification)[ \t]*([:：]|—|-)?[ \t]*/, "", rest)
+    if (rest != "" && !verdict(rest)) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", p2, substr(rest, 1, 60)
+    for (i = p2 + 1; i <= NR; i++) {
+      if (part(nl[i]) || raw[i] ~ /^[ \t]*#/) break
+      if (raw[i] ~ /^[ \t]*$/ || issep(raw[i])) continue
+      if (raw[i] ~ /^[ \t]*\|/) {
+        j = i + 1
+        while (j <= NR && raw[j] ~ /^[ \t]*$/) j++
+        if (j <= NR && issep(raw[j])) continue
+      }
+      if (!verdict(raw[i])) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", i, substr(raw[i], 1, 60)
+    }
+  }
 ')
 
 (( ${#HITS[@]} == 0 )) && exit 0

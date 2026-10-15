@@ -3,7 +3,8 @@
 # matches run-all.sh behavior (which scrubs once for the whole suite pass).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 # transcript-structure-scan.test.sh — v0.9.10 P1.2 hook coverage.
-# Verifies opt-in gate, three detections, FP mitigations, kill-switches.
+# Verifies opt-in gate, the v7 four-section and v8 three-part detections,
+# FP mitigations, kill-switches.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -348,6 +349,50 @@ else
   echo "FAIL: 14 missed real out-of-order in last turn"; FAIL=$((FAIL+1))
 fi
 rm -f "$TX14" "$FIX14"
+
+# --------------------------------------------------------------------------
+# Cases 19-22: spec v8's three-part report (`## 汇报`).
+# --------------------------------------------------------------------------
+export TRANSCRIPT_STRUCTURE_SCAN=1
+rm -f "$HOME/.claude/logs/claudemd.jsonl"
+TX=$(seed_transcript $'## 汇报\n\n**变更**：改了 a.js\n\n**验证**\n- `npm test` → 通过\n- 冒烟 → 未运行（缺库）\n\n**遗留**：无')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 19 v8 report in order, every verification line has a verdict → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 19 flagged a compliant v8 report: $STDERR"; FAIL=$((FAIL+1))
+fi
+
+TX=$(seed_transcript $'## 汇报\n\n**遗留**：无\n\n**变更**：改了 a.js\n\n**验证**：`npm test` → 通过')
+drive "$TX"
+if [[ "$STDERR" == *"§10-four-section-order"*"report parts out of order"* ]]; then
+  echo "PASS: 20 v8 parts out of order → §10-four-section-order"; PASS=$((PASS+1))
+else
+  echo "FAIL: 20 missed v8 order violation: $STDERR"; FAIL=$((FAIL+1))
+fi
+
+TX=$(seed_transcript $'## Report\n\n**Changes**: edited a.js\n\n**Verification**\n- `npm test` ran\n\n**Open items**: none')
+drive "$TX"
+if [[ "$STDERR" == *"§iron-law-2"*"has no verdict"* ]]; then
+  echo "PASS: 21 v8 verification line without a verdict → §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 21 missed a verdict-less verification line: $STDERR"; FAIL=$((FAIL+1))
+fi
+ROW=$(jq -r 'select(.hook=="transcript-structure-scan") | "\(.event) \(.spec_section)"' "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | tail -n1)
+if [[ "$ROW" == "structure-advisory §iron-law-2" ]]; then
+  echo "PASS: 21b the v8 miss lands as a structure-advisory row under §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 21b unexpected row: '$ROW'"; FAIL=$((FAIL+1))
+fi
+
+TX=$(seed_transcript $'## 汇报\n\n**变更**：改了 a.js\n\n**遗留**：无')
+drive "$TX"
+if [[ "$STDERR" == *"reported with no Verification part"* ]]; then
+  echo "PASS: 22 v8 Changes with no Verification part → §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 22 missed Changes without Verification: $STDERR"; FAIL=$((FAIL+1))
+fi
+unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------
 # Result

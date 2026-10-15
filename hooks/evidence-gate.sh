@@ -30,7 +30,8 @@
 #
 # False-positive control, in the order it matters:
 #   - no completion claim in the last assistant message  -> never fires
-#   - the claim carries `[PARTIAL`                       -> never fires
+#   - the claim carries `[PARTIAL`, or a verification verdict of
+#     not run / could not run (未运行 / 无法运行)          -> never fires
 #   - no code-file Edit/Write in the window              -> never fires,
 #     which is what keeps L0 / L1-copy / docs work out of it entirely
 #
@@ -79,11 +80,14 @@ LAST_MSG=$(hook_jq_field evidence-gate "$EVENT" '.last_assistant_message // ""')
 [[ -n "$LAST_MSG" ]] || exit 0
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
-# A `[PARTIAL` claim is the spec-sanctioned way to say the evidence does not
-# cover everything. Checked first: it suppresses regardless of what else the
-# message says, so an honest partial never earns a nag.
+# A `[PARTIAL` claim (spec <= v7) or a `not run` / `could not run` verdict in
+# the report's verification part (spec v8: 未运行 / 无法运行) is the
+# spec-sanctioned way to say the evidence does not cover everything. Checked
+# first: it suppresses regardless of what else the message says, so an honest
+# partial never earns a nag. Both spellings stay: the hook ships beside the spec
+# it reads, but a machine can run a v7 spec with these hooks for a while.
 case "$LAST_MSG" in
-  *'[PARTIAL'*) exit 0 ;;
+  *'[PARTIAL'* | *'not run'* | *'Not run'* | *'未运行'* | *'无法运行'*) exit 0 ;;
 esac
 
 # Completion-claim shapes. Wider than scripts/sampling-audit.js's, deliberately
@@ -94,8 +98,10 @@ esac
 # which makes the §13.3 promotion decision uninterpretable rather than safe.
 #
 # Two patterns. DONE_RE is the labelled form — `Done:` / `## Done` / `**Done**`
-# / `### Done` / `- **Done:**` / `Shipped:`. DONE_TAIL_RE is what the replay
-# actually found: 中文 completion reads as a verb compound, not a label
+# / `### Done` / `- **Done:**` / `Shipped:`, and spec v8's report part
+# `**变更**` / `**Changes**` (a report that lists changes claims them made).
+# DONE_TAIL_RE is what the replay actually found: 中文 completion reads as a
+# verb compound, not a label
 # (`发布完成。`, `清理完成。`, `审核完成,报告已生成`, `**v0.78.0 已发布。**`).
 # The character class excludes 没 / 未 / 不 before 完成, so "还没完成" — the
 # negation, which is the opposite claim — does not match.
@@ -104,7 +110,7 @@ esac
 # a nag. All three FP controls still gate every shape added: a code edit must
 # have happened, `[PARTIAL` suppresses, and the evidence lookup still has to
 # come up empty.
-DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
+DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成|变更|Changes)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
 DONE_TAIL_RE='[^[:space:]]完成|已(发布|上线|实现|修复|生成|完成)'
 # Round-17 ALG-M2. The exclusion used to live inside the class as
 # `[^[:space:]没未不]完成`, which only rejected a negation sitting IMMEDIATELY

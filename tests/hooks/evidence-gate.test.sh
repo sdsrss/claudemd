@@ -714,5 +714,62 @@ for S26 in 'x test（y' 'smoke，y' 'pass）y' 'test：ok'; do
 done
 assert_eq "26d: awk and grep agree byte-wise (3 non-verdicts, 1 verdict)" "00 00 00 11 " "$P26"
 
+
+# --- Case 27: spec v8's three-part report is a completion claim --------------
+# `**变更**` / `**Changes**` replaced `Done:` as the place a report says what
+# changed, so a v8 report over an unverified code edit must reach the evidence
+# lookup exactly like a `Done:` line does.
+V8_REPORT=$'## 汇报\n\n**变更**：重写了解析器 `src/a.js`，提交在 release 分支。\n\n**遗留**：无。'
+V8_REPORT_EN=$'## Report\n\n**Changes**: rewrote the parser in `src/a.js`.\n\n**Open items**: none.'
+for N27 in a b; do
+  {
+    row_edit /p/src/a.js
+    row_text "x"
+  } > "$TRANSCRIPT"
+  reset_log
+  if [[ "$N27" == a ]]; then M27="$V8_REPORT"; else M27="$V8_REPORT_EN"; fi
+  OUT=$(run_hook "$M27")
+  if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+    ok "27$N27: a v8 report's Changes part over an unverified code edit → advisory"
+  else
+    ng "27$N27: v8 report not read as a claim: $OUT (rows $(log_rows))"
+  fi
+done
+
+# --- Case 28 (FP control): a not-run verdict is v8's [PARTIAL] ---------------
+N28=0
+for M28 in $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：`npm test` → 未运行（这个项目没有测试）。' \
+  $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：冒烟入口 → 无法运行（缺数据库）。' \
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: `npm test` → not run (no test suite).' \
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: smoke entry → could not run (no database).'; do
+  N28=$((N28 + 1))
+  {
+    row_edit /p/src/a.js
+    row_text "x"
+  } > "$TRANSCRIPT"
+  reset_log
+  OUT=$(run_hook "$M28")
+  if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+    ok "28.$N28: a not-run verdict is the honest partial and earns no nag"
+  else
+    ng "28.$N28: fired on a not-run verdict: $OUT"
+  fi
+done
+
+# --- Case 29 (control for 28): a passed verdict in prose is not evidence ----
+# The suppression must come from the not-run words, not from the report having
+# a verification part: writing 通过 with nothing run is the claim this hook is for.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：`npm test` → 通过。')
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "29: a passed verdict with nothing run still fires (28 keys on not-run words only)"
+else
+  ng "29: a passed verdict with nothing run went silent: $OUT"
+fi
+
 echo
 claudemd_assert_summary
