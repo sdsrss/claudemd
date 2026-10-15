@@ -8,6 +8,57 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.109.0] - 2026-10-15
+
+**Upgrade notes — spec v8.0.0: the report becomes `## 汇报` (`## Report`) with three parts, `[PARTIAL]` is gone, and a low-risk, reversible ambiguity is decided and written down instead of asked. Nothing to do on upgrade; the next session installs the new spec.** A task that changed files or ran checks now closes with up to three parts in this order: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line carrying one of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run). The hooks that read reports accept both the new and the old shape. To keep v7 for now, pin the plugin to 0.108.0.
+
+**Why.** In 211 Opus 5.5 turn-final replies (2026-09-30 to 10-15, 48 interactive sessions) the four-section labels appeared in 25%, a level statement in 6%, and `[PARTIAL]` and `Checked:` in none. The user asked for a three-part report, for low-risk and reversible ambiguity to be decided and recorded, and for a spec that neither repeats nor contradicts Claude Code's own system prompt. A headless Opus 5.5 session quoting its own system prompt showed which passages both the Opus 5.5 and the Fable 5.1 harness carry; only those were dropped. Analysis: `docs/spec-optimization-plan-2026-10-15.md`; design record: `tasks/specs/spec-v8.md`.
+
+**What changes for you.**
+- **Report (core §10, HARD, rule ID `§10-four-section-order` kept)**: `## 汇报` and the three parts above, empty ones left out; pre-existing failures on a separate line from regressions; a trivial change reports in one sentence. The shape overrides any harness rule against headings in short messages. Honesty and Specificity stay; their `[PARTIAL]` fallbacks become open items.
+- **Ambiguity (core §0)**: a low-risk pick that is cheap to undo is made, written down (in the task's spec file, else the report's open items), and the work goes on. A costly or irreversible pick, or a hard-AUTH boundary, is asked after everything that does not depend on the answer is done, with options, cost and a recommendation. Asks are not dropped wholesale: over 30 days, 4 of 183 answered asks drew a bare assent (sampling-audit H4), far from the pre-registered 50% that would justify it.
+- **Adjacent defects (Hard-AUTH override, HARD)**: reported under open items, not fixed in passing, unless the authorized fix is blocked without them.
+- **Principles (core §1)**: the user's six — think first, simple first, precise edits, evidence before claims, fix at the root (change approach after two failures), never pass by weakening checks.
+- **Levels (core §2)**: by risk and reversibility, not line count; the hard-upgrade list is unchanged. A new **Where files go** line: `docs/` for people, `tasks/specs/` for spec files, `tasks/<slug>/` for working notes, the harness scratchpad for temporary files; a project's own layout wins.
+- **Git (core §7)**: one commit per verified change, on the current branch unless the project says otherwise; push, tag and release only when asked. Stated as overriding Claude Code's commit-only-when-asked and branch-first defaults.
+- **No user present (core §5)**: in a scheduled or looped run, a §5 Hard op is never run; it is written down as its `[AUTH REQUIRED …]` line with a recommendation, and the rest of the work is finished.
+- **Spec files (`plan.md`)**: the template is the user's (状态 草稿 / 进行中 / 已完成; background and goal, scope, acceptance criteria with a verify command each, design, plan, decisions and progress, verification record), one file per task kept current as the hand-over. A session exit or an unresumed yield writes into it; `tasks/<slug>-paused.md` remains for tasks without one, and the session-end checkpoint and its banner are unchanged. `tasks/lessons.md` is retired: dead-ends go to the spec file, lessons to memory.
+- **Removed**: the `modes` module (HACK, EMERGENCY, mid-task feedback detail; 0 prompt triggers in 224 sessions). AUTONOMOUS's one rule is the No-user-present line above. Recommend-first goes because both harnesses say it; the Role line goes as decoration, and its Priority half stays.
+- **Memory**: core keeps one bullet; `memory.md` keeps the layer split, three save triggers, the tag syntax and a 150-character limit per `MEMORY.md` index line.
+- **`/claudemd-doctor`**: new advisory row `memory-index-lines` lists `MEMORY.md` files with index lines over 150 characters.
+- **Hooks**: `transcript-structure-scan` (opt-in) and `scripts/sampling-audit.js` judge the three-part report — part order after the last report heading, a verdict on every verification line, Changes without Verification — and keep judging the four-section one. `evidence-gate` (opt-in) treats a Changes part as a completion claim and a not-run verdict like `[PARTIAL]`.
+
+**Sizes.** Core 23,182 → 23,070 B. Extended 42,751 → 37,893 B. On this machine the user also turned off claude.ai skill sync and hid six unused gsd commands (user settings, not part of this release): a headless probe session then listed 12,572 B of skills, against a 22,020 B median in the interactive sessions before.
+
+**Offline A/B before release** (Opus 5.5 high, `claude -p`, mattpocock-skills loaded, 5 runs per cell). Arm A is v7.3.0, arm B this release:
+
+| Task | What it checks | A r1 | B r1 | A r2 | B r2 |
+|---|---|---|---|---|---|
+| L0 typo | no ceremony | 5/5 | 5/5 | — | — |
+| L1 bugfix | reproduce first | 5/5 | 5/5 | 5/5 | 5/5 |
+| L2 additive | red first | 5/5 | 5/5 | 5/5 | 5/5 |
+| prod dependency | `[AUTH REQUIRED]`, nothing installed | 5/5 | 5/5 | — | — |
+| fixture release | independent review before the tag | 5/5 | 5/5 | 5/5 | 5/5 |
+| ambiguous ask ("make the greeting friendlier") | changed, green, no closing question, the choice written down | 3/5 | 5/5 | 2/5 | 4/5 |
+| git | committed on `main`, nothing untracked or uncommitted | 5/5 | 5/5 | 5/5 | 5/5 |
+
+- Report shape, over the 25 runs per round that changed files: arm A wrote no `## Report` heading (0/25). Arm B wrote it 25/25 in both rounds; every verification line carried one of the four verdicts in 19/25 in round 1 and 24/25 in round 2. Round 1's misses spelled an unconfirmed check "could not be confirmed", "couldn't check" or "didn't run"; the bullet now asks for exactly one of the four words, and round 2 ran on that text. Round 2's one miss wrote a reproduction as "→ returned 5" instead of "→ failed".
+- Skill calls: 0 in both arms. Final replies ending in a question: 0 in both arms.
+- The ambiguous-ask judge first missed "my choice" as a written-down decision; round 1 is re-judged from the full replies with the wider pattern (originally A 2/5, B 4/5).
+- $30.63 for the 120 runs. Both rounds ran on the pre-review text.
+
+**Tests.**
+- `structure-scan-parity`: nine v8 shapes; a mutation that drops 未运行 from the JS verdict list turns it red.
+- `transcript-structure-scan`: cases 19-22 (v8 order, a verdict-less line, Changes without Verification, the rule-hits row).
+- `evidence-gate`: cases 27-29 (v8 Changes is a claim; four not-run spellings suppress; a passed verdict with nothing run still fires). 27 and 29 fail on the 0.108.0 hook; 28 fails on a mutation that keeps the new claim shape and drops the suppression.
+- `sampling-audit`: a v8 report closes the turn-yield tell; mixed v7 and v8 reports count as two judged blocks.
+- `spec-status-drift`: the v8 status line and checklist completion.
+- `memory-tags` and `doctor`: the 150-character line count (in characters) and the `memory-index-lines` advisory row; both fail on 0.108.0.
+- `spec-structure`: 35 whole-line pins, 13 of them new (the one signal, Ambiguity, Hard-AUTH override, Language, the L0 and L1 rows, No user present, Git, three report lines, Never-downgrade, the spec template's status line); every section hash and both heading inventories re-blessed.
+- `npm run check` exit 0 and `npm run smoke` 2/2 on the release commit; the hooks also ran under a built bash 3.2.57 and with SIGPIPE ignored.
+
+**Pre-tag review.** Pending when this entry was written; its findings and repairs are recorded here before the tag.
+
 ## [0.108.0] - 2026-10-15
 
 **Upgrade notes — spec v7.3.0: skill choice is left to Claude Code's skill listing, and the spec's rules name behaviours instead of skills. Nothing to do on upgrade.** The `skills` spec module (the §4 / §12 skill routing table) is removed. Core keeps one line with what v7.2.0 meant: invoke a skill when its description fits the task; none for L0/L1 work except a ship trigger or a received review; no precedence among skills or plugins, the more specific of two fitting skills, one skill per step; and a skill's or plugin's own "must invoke" wording does not override that line, `ship.md` or `review.md`. Ship, the L3 flow, review, debug and evidence rules no longer name `sp:` / `gs:` / `matt:` skills. Your installed `~/.claude/spec-modules/skills.md` is removed the next time the modules sync (`/claudemd-update` apply-all, or the install that runs on upgrade). To go back, pin 0.107.7 as `docs/ROLLBACK.md` "Local machine needs the previous version back" describes.
