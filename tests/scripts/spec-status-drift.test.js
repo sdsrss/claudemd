@@ -32,7 +32,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // CI (v0.71.2 pre-tag review). `rejected` is the reverse mismatch: the tree uses
 // it (tasks/specs/s8-literal-provenance.md) and §2.S does not define it. Both
 // stay accepted; reconciling the two lists is a spec edit, not a test edit.
-const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected', 'deprecated'];
+const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected', 'deprecated', 'in-progress', 'done'];
 
 // Statuses that assert the work is NOT done yet, and so can be contradicted by
 // the tree. `draft` is in the set because of the second instance, found by hand
@@ -54,7 +54,7 @@ const KNOWN_STATUSES = ['draft', 'approved', 'implemented', 'rejected', 'depreca
 // declare and must either declare them anyway or not sit in an open status. If
 // that trade turns out wrong, the part worth keeping is the count in the
 // diagnostic, not this assertion.
-const OPEN_STATUSES = ['approved', 'draft'];
+const OPEN_STATUSES = ['approved', 'draft', 'in-progress'];
 
 // Floor over the whole spec set, not over the open subset. Zero open specs is
 // the correct steady state — every commitment met — so an empty subset must be
@@ -69,7 +69,37 @@ function trackedSpecs() {
     .filter(Boolean);
 }
 
-const statusOf = text => (text.match(/^status:[ \t]*(\S+)/m) || [])[1];
+// Spec v8.0.0 §2.S replaced the frontmatter (`status: draft | approved |
+// implemented | deprecated`) with the user's template, whose second line is
+// `状态：草稿 | 进行中 | 已完成` (`Status: draft | in progress | done` for an
+// English-speaking user). Both shapes are read: the 24 specs written before v8
+// keep their frontmatter. The template words map onto this file's vocabulary so
+// the open/closed split below stays one list.
+const V8_STATUS = {
+  草稿: 'draft',
+  进行中: 'in-progress',
+  已完成: 'done',
+  draft: 'draft',
+  'in progress': 'in-progress',
+  done: 'done',
+};
+export function statusOf(text) {
+  const legacy = text.match(/^status:[ \t]*(\S+)/m);
+  if (legacy) return legacy[1];
+  const v8 = text.match(/^(?:状态：|Status:)[ \t]*(草稿|进行中|已完成|draft|in progress|done)[ \t]*$/m);
+  return v8 ? V8_STATUS[v8[1]] : undefined;
+}
+
+// A v8 spec declares no `- Produces:` artifacts; its completion is its own
+// checklist. Acceptance criteria and plan slices are `- [ ]` / `- [x]` lines,
+// and §2.S says the status flips to done only when every criterion has a
+// passing verification record, so an open spec with every box ticked is the
+// same drift a fully-produced `approved` spec is.
+export function checklistOf(text) {
+  const boxes = [...text.matchAll(/^[ \t]*- \[( |x|X)\] /gm)].map(m => m[1] !== ' ');
+  return { total: boxes.length, ticked: boxes.filter(Boolean).length };
+}
+const isV8Spec = text => !/^status:/m.test(text) && /^(?:状态：|Status:)/m.test(text);
 
 // Only a backtick token IMMEDIATELY after the marker counts as a declared
 // artifact. `- Produces: a test asserting … \`CURLSH_WRAP\` …` names a symbol it
@@ -251,6 +281,17 @@ test('no open spec has already been fully implemented', t => {
     const text = fs.readFileSync(path.join(ROOT, s), 'utf8');
     const status = statusOf(text);
     if (!OPEN_STATUSES.includes(status)) continue;
+    if (isV8Spec(text)) {
+      const { total, ticked } = checklistOf(text);
+      if (total === 0) {
+        unevaluable.push(`${s} — status: ${status}, a v8 spec with no \`- [ ]\` checklist item`);
+        continue;
+      }
+      judged++;
+      if (ticked === total) stale.push(`${s} — every one of its ${total} checklist items is ticked`);
+      else partial.push(`${s} — ${ticked}/${total} checklist items ticked`);
+      continue;
+    }
     const artifacts = declaredArtifacts(text);
     // Two or more, so a single generic name cannot condemn a spec by collision.
     if (artifacts.length < 2) {
@@ -298,7 +339,7 @@ test('no open spec has already been fully implemented', t => {
     `a spec still marked open — i.e. an unmet commitment — has every artifact it plans ` +
       'already in the tree:\n      ' +
       stale.join('\n      ') +
-      '\n      Flip it to `status: implemented` and record the commit that landed it. If the ' +
+      '\n      Flip it to `status: implemented` (a v8 spec: `状态：已完成`) and record the commit that landed it. If the ' +
       'work really is outstanding, the names collided and the spec should say so.'
   );
 
@@ -457,4 +498,27 @@ test('a definition inside a JS block comment is not a definition', () => {
     present: ['keep_me'],
     missing: [],
   });
+});
+
+test('a v8 spec: the status line maps onto the open/closed vocabulary, and the legacy frontmatter wins', () => {
+  assert.equal(statusOf('# x\n状态：进行中\n'), 'in-progress');
+  assert.equal(statusOf('# x\n状态：草稿\n'), 'draft');
+  assert.equal(statusOf('# x\n状态：已完成\n'), 'done');
+  assert.equal(statusOf('# x\nStatus: in progress\n'), 'in-progress');
+  // The template's own line lists all three words; it is not a status.
+  assert.equal(
+    statusOf('  状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)\n'),
+    undefined
+  );
+  assert.equal(statusOf('---\nstatus: implemented\n---\n状态：进行中\n'), 'implemented');
+  assert.ok(OPEN_STATUSES.includes(statusOf('状态：进行中')), 'in progress must be an open status');
+  assert.ok(!OPEN_STATUSES.includes(statusOf('状态：已完成')), 'done must be a closed status');
+});
+
+test('a v8 spec: completion is read from its checklist', () => {
+  assert.deepEqual(checklistOf('- [ ] AC1：x\n- [x] AC2：y\n  - [X] S1：z\n- not a box\n'), {
+    total: 3,
+    ticked: 2,
+  });
+  assert.deepEqual(checklistOf('no boxes here'), { total: 0, ticked: 0 });
 });
