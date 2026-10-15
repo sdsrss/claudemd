@@ -8,6 +8,56 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.108.0] - 2026-10-15
+
+**Upgrade notes — spec v7.3.0: skill choice is left to Claude Code's skill listing, and the spec's rules name behaviours instead of skills. Nothing to do on upgrade.** The `skills` spec module (the §4 / §12 skill routing table) is removed. Core keeps one line: invoke a skill when its description fits the task, none for L0/L1 work, and a plugin's "invoke on any chance" wording does not override that judgment, which is what v7.2.0 meant. Ship, the L3 flow, review, debug and evidence rules no longer name `sp:` / `gs:` / `matt:` skills. Your installed `~/.claude/spec-modules/skills.md` is removed the next time the modules sync (`/claudemd-update` apply-all, or the install that runs on upgrade). To go back, pin 0.107.7 as `docs/ROLLBACK.md` "Local machine needs the previous version back" describes.
+
+**Why.** A scan of this machine's transcripts (2026-09-05 to 2026-10-15; 184 interactive sessions, 850 subagents) found the routing table doing no work:
+- After v7.2.0, `skills.md` was read in 0 of 185 contexts (42 sessions, 143 subagents).
+- Core's "name the skill at task entry" rule showed in 1 of 42 sessions.
+- The 16 skill calls the model chose on its own all came from sessions that never read the table.
+- The one route that ran, the ship trigger, produced 9 of 44 Skill calls as `Unknown skill` (`ship` 6, `gstack:ship` 3): the spec named 15 gstack sub-skills, and Claude Code registers only the `gstack` router.
+
+The table also restated each skill's own description, the shape Anthropic's prompt-audit rules list as a duplicate to delete. Analysis and sources: `tasks/specs/skill-routing-trim.md` and the spec changelog.
+
+**What changes for you.**
+- **Ship (HARD hardening, relaxed)**: a release runs from the project's ship runbook, else a listed ship skill. Only when neither exists is it shipped by hand against `ship.md`'s checklist, with `manual ship because <reason>` as the report's first line. Before, every ship without a listed `ship` skill owed that line, runbook or not.
+- **Moved, meaning kept**: the rules that lived only in the table.
+  - `review.md`: a missing or blocked subagent is named and asked about once; refused or impossible → L2 `[PARTIAL: no independent review]`, L3 not executable. A review is verified finding by finding before it is applied.
+  - `verify.md`: a web-visible check with no browser ends `[PARTIAL: no-browser]`.
+  - `ship.md`: the AUTH for a push or deploy by hand.
+- **Dropped**: rules the table alone carried that other text already decides — bootstrap as L2, Composite requests, the design self-ask, the utility fallbacks. Listed in the spec changelog.
+- **`/claudemd-doctor`**: the `routing:skills-enabled`, `routing:ship-skill` and `routing:gstack-reachable` rows are gone with the table they read. `scripts/lib/spec-routing.js` and its consumer gate are removed.
+- **Session-start notices (D#201)**: the three notices that told the model to run a claudemd command (background-upgrade failure, interrupted and completed user-content moves) now go out twice. The human is told to run the command; the model is told to ask the user to run it, because since 0.107.0 the model cannot invoke those commands. The missing-spec notice the user reads names `SPEC_DRIFT_IGNORE="<files>"` and `DISABLE_SPEC_DRIFT_BANNER=1`.
+
+**Sizes.** Core 23,522 → 22,973 B on disk (23,320 → 22,771 B model-visible). Extended 49,046 → 42,436 B. `memory.md` + `plan.md`, the longest module pair a prompt draws, still inject together: 9,765 of the 9,800-character budget.
+
+**Offline A/B before release** (plugins loaded through `--plugin-dir`, so the 60-skill listing and superpowers' SessionStart text are present; Opus 5.5 high, 10 runs per cell, $33.45). Arm A is v7.2.0 and arm B is this spec:
+
+| | A | B |
+|---|---|---|
+| Overall | 48/50 | 50/50 |
+| Skill calls on L0 / L1 tasks | 0 of 20 | 0 of 20 |
+| `Unknown skill` | 0 | 0 |
+| Review before tag | 10/10 | 10/10 |
+| Reproduce-first | 10/10 | 10/10 |
+| Red-first | 10/10 | 10/10 |
+
+- A's two misses were uncited answers.
+- With no spec at all (plugins still loaded): reproduce-first 4/10 and red-first 2/10. On the L1 bug, 3 of 10 such runs invoked `systematic-debugging`, and those 3 all reproduced first. On the L2 feature, 0 of 10 invoked a skill even without the spec. So the spec suppresses no L2 skill call there; its own rules carry the behaviour the skills were routed for.
+- Arm A did not reproduce the `Unknown skill` failure in this single-turn fixture. The case for the ship change rests on the transcripts.
+
+**Tests.**
+- `spec-structure` drops the four §4↔§12 joins. In their place:
+  - a scan that no rule (core, extended outside Recent changes, any module) names a skill by plugin prefix;
+  - four whole-line pins: core Skills, core Ship triggers, the hardening's opening, Author ≠ reviewer.
+
+  A 13-case mutation battery made the intended test fail in each case.
+- `hard-rules-drift` no longer needs an exemption line.
+- `command-invocation` (D#201): a frontmatter that sets `disable-model-invocation` twice now fails.
+- `session-start` (D#201): cases 29c, 29d and 47b.
+- `npm run check` exit 0; `npm run smoke` 2/2.
+
 ## [0.107.7] - 2026-10-08
 
 **Upgrade notes — four more hooks no longer lose a match to the `grep -q` race that 0.107.6 fixed in the §8 gate, and the bash 3.2 test run stops leaving files in /tmp; every verdict is the old one or a new deny, and the spec and every module are unchanged (spec still v7.2.0).** `banned-vocab-check`, `ship-baseline-check`, `memory-read-check` and `transcript-vocab-scan` run under `set -o pipefail` and decided seven conditions with `echo "$x" | grep -q RE`, four of them through the `hook_vocab_grep` wrapper. `grep -q` exits at its first matching line; when `echo` still has a line to write, it dies of SIGPIPE and the pipeline returns 141 (where SIGPIPE is ignored, as on GitHub's runners, `echo` fails with a write error and the pipeline returns 1), and the condition reads the match as no match. Those seven now read `grep -q RE < <(echo "$x")`: grep gets the same bytes and only its status reaches the condition. The npm package (`claudemd-cli`, the lint CLI) has no code change; only its version moves. Each hook keeps its own switch: `DISABLE_BANNED_VOCAB_HOOK=1`, `DISABLE_SHIP_BASELINE_HOOK=1`, `DISABLE_MEMORY_READ_HOOK=1`, `DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1`. To go back to 0.107.6, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").

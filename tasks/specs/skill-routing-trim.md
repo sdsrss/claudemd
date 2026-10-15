@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 2
+revision: 3
 ---
 
 # v7.3 — 技能路由下放给 description，规范只写行为
@@ -50,3 +50,9 @@ revision: 2
   - `plan.md` 首稿超出模块注入预算（memory + plan 合计超过 9,800 字符，`spec-module-inject` case 16 变红）。为此把"无子代理 → L3 不可执行"并进 `review.md` 的 Author ≠ reviewer（HARD 锚点覆盖，`hard-rules-drift` 不再需要豁免行）；删掉 bootstrap/scaffold 一行（核心 §2 的文件数规则已经把它判为 L2）。这样两者合计 9,765 字符。
   - 另外删掉了几条只存在于表里、别处已有规定的条目：Composite requests、设计自问、第二意见的"说明"、低频工具的降级文件。changelog 的"Dropped"一条逐项列出。
   - 待验证（发版关卡，结果追加在这里）：离线 A/B（插件启用）、发版前独立评审。
+- r3（2026-10-15）：离线 A/B（插件启用，Opus 5.5 high，每格 10 次，`tasks/skill-ab/RESULT.md`，本地）通过。
+  - A（v7.2.0）48/50，B（v7.3.0）50/50。
+  - L0/L1 技能调用两组都是 0/20；`Unknown skill` 两组都是 0；打 tag 前评审两组都是 10/10；先复现、先红两组都是 10/10。
+  - C 组（无规范）：先复现 4/10，先红 2/10；L2 新增任务上无规范也是 0/10 调用，所以不在 L2 放松裁决句。
+  - A 组也没有复现 `Unknown skill`，K3 的依据仍是转录数据。
+  - 费用 $33.45。剩发版前独立评审。
