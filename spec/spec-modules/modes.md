@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.2.0 — module: modes
+# AI-CODING-SPEC v7.3.0 — module: modes
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 

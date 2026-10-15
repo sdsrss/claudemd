@@ -51,7 +51,6 @@ const LEGACY_OWN_HOME = [
   'sparkline.test.js',
   'spec-coherence-audit.test.js',
   'spec-hash.test.js',
-  'spec-routing-consumers.test.js',
   'status.test.js',
   'statusline-adopt.test.js',
   'statusline-cli.test.js',

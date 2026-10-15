@@ -702,8 +702,9 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // …or when there is no settings.json yet. Skipping the write outright meant a
   // fresh machine never got the file created, and `doctor.js:140` reports a
   // MISSING settings.json as a failing check (exit 3) — `/claudemd-doctor` was
-  // red out of the box, and doctor's §4 routing check, guarded on the file
-  // existing, was skipped as well. Caught by the 0.71.4 pre-tag review.
+  // red out of the box, and doctor's §4 routing check (removed in 0.108.0),
+  // guarded on the file existing, was skipped as well. Caught by the 0.71.4
+  // pre-tag review.
   if (evicted.removed > 0 || !fs.existsSync(settingsPath())) writeSettings(settings);
 
   // Manifest entries mirror the plugin's hooks/hooks.json so status/uninstall

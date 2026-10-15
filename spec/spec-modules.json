@@ -26,11 +26,6 @@
       "triggers": "架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refactor(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])migration(?![A-Za-z0-9_])|迁移|(?<![A-Za-z0-9_])L3(?![A-Za-z0-9_])",
       "window": "head"
     },
-    "skills": {
-      "loadsOn": "when choosing which skill to invoke for a task",
-      "triggers": "",
-      "window": "head"
-    },
     "orchestrate": {
       "loadsOn": "before spawning subagents or running work in parallel",
       "triggers": "并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])in parallel(?![A-Za-z0-9_])|fan out",

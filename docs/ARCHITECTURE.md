@@ -37,7 +37,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `scripts/uninstall.js` | Reverse of install: evict hook entries, clear manifest, optional purge of state (`CLAUDEMD_PURGE=1`) | `node scripts/uninstall.js` (no flags — env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
 | `scripts/update.js` | Diff installed `~/.claude/CLAUDE*.md` against the shipped spec; apply on request | `node scripts/update.js`; env `CLAUDEMD_UPDATE_CHOICE=apply-all` |
 | `scripts/status.js` | Plugin / spec / kill-switch / log status | `node scripts/status.js [--verbose]` → JSON |
-| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, routing primaries, memory layers | `node scripts/doctor.js [--prune-backups=N]` |
+| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, memory layers | `node scripts/doctor.js [--prune-backups=N]` |
 | `scripts/toggle.js` | Flip one hook's `DISABLE_*` env in `settings.json` | `node scripts/toggle.js <hook-name>` |
 | `scripts/audit.js` | Aggregate rule-hits over a window | `node scripts/audit.js [--days=N]` → JSON |
 | `scripts/hard-rules-audit.js` | Join `spec/hard-rules.json` with rule-hits → demote candidates | `node scripts/hard-rules-audit.js [--days=N]` |
@@ -70,7 +70,6 @@ Module → responsibility → external interface. "External" means what a caller
 | `rule-hits-parse.js` | JSONL reader + every aggregation the audit scripts use | `readHits` `groupBySection` `groupByHook` `topPatterns` `byBypass` `byFailOpen` `byTrend` `blockingDenyCount` … |
 | `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget | `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `MEMORY_INDEX_BUDGET_BYTES` |
 | `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
-| `spec-routing.js` | §2.1 routing-table parser | `routingPrimaries` `tableRows` `skillTokens` `SKILL_ALIASES` |
 | `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
 | `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |
 | `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`) | `pruneCache` |
@@ -83,7 +82,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 93 node suites, 40 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 92 node suites, 40 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -99,7 +98,7 @@ scripts/status.js ──► lib/{hook-registry, paths, settings-merge, spec-hash
 scripts/toggle.js ──► lib/{hook-registry, settings-merge, argv}
 scripts/doctor.js ──► scripts/clean-residue.js, lib/{backup, hook-registry, install-drift, memory-maintenance,
                       memory-tags, paths, rule-hits-parse, runbook-review-check, settings-merge, spec-hash,
-                      spec-routing, argv}
+                      argv}
 scripts/audit.js ──► scripts/sampling-audit.js, lib/{paths, rule-hits-parse, argv}
 scripts/sampling-audit.js ──► lib/{lint, paths, rule-hits-parse, transcript-user-turn, argv}
 scripts/{hard-rules-audit, lesson-bypass-audit, sparkline}.js ──► lib/{paths, rule-hits-parse, argv}
@@ -112,7 +111,7 @@ scripts/baseline-metrics.js ──► lib/argv
 scripts/lib/statusline.js ──► lib/{backup, settings-merge, statusline-hosts, paths}
 scripts/lib/install-drift.js ──► lib/spec-hash ──► lib/paths
 scripts/lib/{backup, cache-prune, memory-maintenance, settings-merge, statusline-hosts}.js ──► lib/paths
-scripts/lib/{argv, lint, rule-hits-parse, memory-tags, spec-routing, spec-diff, hook-registry,
+scripts/lib/{argv, lint, rule-hits-parse, memory-tags, spec-diff, hook-registry,
              runbook-review-check, transcript-user-turn}.js ──► (leaf: node: builtins only)
 
 hooks/<every hook>.sh ──► hooks/lib/hook-common.sh ──► hooks/lib/rule-hits.sh

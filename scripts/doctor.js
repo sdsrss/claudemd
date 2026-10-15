@@ -6,7 +6,6 @@ import {
   logsDir,
   settingsPath,
   specHome,
-  homeSpec,
   readManifest,
   activePluginRoot,
   runningPluginRoot,
@@ -18,7 +17,6 @@ import {
   semverCmp,
   stateDir,
 } from './lib/paths.js';
-import { routingPrimaries } from './lib/spec-routing.js';
 import {
   listBackups,
   pruneBackups,
@@ -54,10 +52,8 @@ import { printHelpAndExit, parsePositiveInt, invokedAsMain, parseStrictOrExit } 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
-settings.json issues, hook drift, backup inventory, rule-usage health, §4
-Routing primaries disabled via skillOverrides, whether the \`ship\` skill core §2.2
-names is registered, whether every gs: primary is reachable through the gstack router, and the review cadence of the project's tasks/
-deferred-work docs.
+settings.json issues, hook drift, backup inventory, rule-usage health, and
+the review cadence of the project's tasks/ deferred-work docs.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
@@ -114,18 +110,12 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // `/claudemd-doctor` report failure on a healthy install every time, which is
 // how an exit code stops carrying information.
 //
-// `routing:skills-enabled` joined the list in 0.71.1, on the release that added
-// it. Its steady state is non-zero BY ADJUDICATION: spec v6.25.4 settles that
-// §4 keeps naming skills an operator may reasonably have switched off, and that
-// the degradation path is §12's fallback table. Without this entry the check
-// would have made `/claudemd-doctor` exit 3 forever on any machine that disabled
-// a routed skill — the exact failure the paragraph above describes, shipped in
-// the same release that describes the check as advisory. Caught by the pre-tag
-// review; the regex was the half of "advisory" that had not been written down.
-//
 // Exported (rather than inlined at the CLI exit-code site, where it lived until
 // 0.71.1) so a test can assert the real predicate instead of reading this
 // comment — a gate that reads prose is the failure this repo keeps closing.
+// The three `routing:*` rows it listed from 0.71.1 to 0.107.x went with the
+// spec's skill routing table in 0.108.0: the spec no longer names skills, so
+// there is no routed skill left to find disabled or unregistered.
 // `hook-drift:upstream` joined the list in 0.84.0, on the release that added it,
 // and for the reason the paragraph above gives rather than because the row is
 // unreliable — it is true when it fires. The marketplace clone tracks `main`,
@@ -189,7 +179,7 @@ const RULE_USAGE_MIN_TOTAL = 3;
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
 // moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|routing:skills-enabled|routing:ship-skill|routing:gstack-reachable|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
@@ -355,183 +345,6 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {})
   } catch (e) {
     // Never let a statusline read take doctor down — it is one advisory row.
     push('statusline', true, `skipped (${e.code || e.name})`);
-  }
-
-  // §4 Routing primaries that this machine has switched off.
-  //
-  // The spec routes work at named skills; `skillOverrides` in settings.json can
-  // turn any of them off; nothing related the two. The 2026-07-10 /doctor cleanup
-  // disabled 49 zero-use skills and deliberately kept the ones CORE §2.1 routes —
-  // but §EXT §4 is a SECOND routing table, and eight of its primaries went off
-  // with it. The gap surfaced once, by accident, during an unrelated /doctor run
-  // in July; it was carried to a governance review, appeared in no review record,
-  // and fell off the loop silently. An accident is not a detector, so this is one.
-  //
-  // Read against the INSTALLED spec, not the repo's: what the agent loads at
-  // runtime is ~/.claude/CLAUDE-extended.md, and a machine can sit on an older
-  // copy (that drift has its own check above). Advisory — a routed-but-disabled
-  // skill degrades through the §12 fallback table rather than breaking anything,
-  // which is exactly why it can stay wrong for months without a complaint.
-  const extSpec = homeSpec('CLAUDE-extended.md');
-  if (fs.existsSync(extSpec) && fs.existsSync(settingsPath())) {
-    let overrides = null;
-    try {
-      overrides = readSettings().skillOverrides || {};
-    } catch {
-      /* unparseable settings.json is already its own failing check */
-    }
-    if (overrides) {
-      let primaries;
-      try {
-        primaries = routingPrimaries(fs.readFileSync(extSpec, 'utf8'));
-      } catch {
-        primaries = new Map();
-      }
-      const isOff = n => overrides[n] === 'off' || overrides[n] === false;
-      const off = [...primaries.keys()].filter(tok => isOff(tok.split('/')[1]));
-      // A floor, for the same reason the §12 join in spec-structure.test.js has
-      // one: an installed spec whose §4 table moved would resolve zero primaries,
-      // find zero disabled ones, and report a clean routing surface having read
-      // nothing. Below the floor the honest answer is "could not evaluate".
-      if (primaries.size < 15) {
-        push(
-          'routing:skills-enabled',
-          false,
-          `resolved only ${primaries.size} §4 Routing primary skill(s) from ${extSpec} — the table moved or the spec is truncated; cannot evaluate whether routed skills are enabled.`
-        );
-      } else if (off.length > 0) {
-        push(
-          'routing:skills-enabled',
-          false,
-          `${off.length} of ${primaries.size} §4 Routing primaries are "off" in skillOverrides: ${off.join(', ')}. ` +
-            'The spec routes work at skills this machine cannot invoke. Fix either side: re-enable them in ' +
-            '~/.claude/settings.json, or drop the rows from §4 Routing (and their §12 Fallback rows) so the ' +
-            'table describes what is actually reachable.'
-        );
-      } else {
-        push('routing:skills-enabled', true, `all ${primaries.size} §4 Routing primaries are enabled`);
-      }
-    }
-  }
-
-  // Core §2.2 names one skill by bare name: `ship`, for the ship triggers. The
-  // 2026-09-26 transcript analysis counted 9 `Unknown skill: ship` /
-  // `gstack:ship` failures (B6), and on that machine gstack's ship workflow was
-  // on disk at ~/.claude/skills/gstack/ship/SKILL.md — a sub-skill of the
-  // gstack router, which Claude Code does not register (only
-  // ~/.claude/skills/<name>/SKILL.md, <cwd>/.claude/skills/<name>/SKILL.md and a
-  // plugin's skills/<name>/SKILL.md are; a plugin's is listed namespaced).
-  // "Not installed" and "installed but not registered" need different actions,
-  // so the check tells them apart. Advisory: the spec's own fallback for an
-  // unlisted ship skill is a declared manual ship.
-  // Where Claude Code registers a skill of this bare name: the user skills dir,
-  // <cwd>/.claude/skills/<name> (review L4), and each installed plugin's
-  // skills/<name>. Shared by the ship and gstack checks below.
-  // Every installed plugin's root, from Claude Code's registry (one JSON
-  // document). Read once here for both routing checks.
-  const pluginRoots = (() => {
-    try {
-      const ip = JSON.parse(fs.readFileSync(claudeHome('plugins', 'installed_plugins.json'), 'utf8'));
-      return Object.values(ip.plugins || {})
-        .flatMap(entries => (Array.isArray(entries) ? entries : []))
-        .filter(e => e && typeof e.installPath === 'string')
-        .map(e => e.installPath);
-    } catch {
-      return []; /* no plugin registry — only the user skills dir can answer */
-    }
-  })();
-  const registeredSkillDirs = name => {
-    const found = [];
-    if (fs.existsSync(claudeHome('skills', name, 'SKILL.md'))) found.push(claudeHome('skills', name));
-    const proj = path.join(process.cwd(), '.claude', 'skills', name);
-    if (fs.existsSync(path.join(proj, 'SKILL.md'))) found.push(proj);
-    for (const root of pluginRoots) {
-      const p = path.join(root, 'skills', name);
-      if (fs.existsSync(path.join(p, 'SKILL.md'))) found.push(p);
-    }
-    return found;
-  };
-  {
-    const registered = registeredSkillDirs('ship');
-    // Nested under a router: in the user skills dir, and in each installed
-    // plugin's skills/ (gstack installed as a plugin keeps its sub-skills there;
-    // B2 delta review M2 — only the first was scanned, so the two routing rows
-    // disagreed on a plugin install).
-    const nested = [];
-    const skillRoots = [claudeHome('skills'), ...pluginRoots.map(r => path.join(r, 'skills'))];
-    for (const root of skillRoots) {
-      try {
-        for (const d of fs.readdirSync(root, { withFileTypes: true })) {
-          if (!d.isDirectory() || d.name === 'ship') continue;
-          const p = path.join(root, d.name, 'ship');
-          if (fs.existsSync(path.join(p, 'SKILL.md'))) nested.push(p);
-        }
-      } catch {
-        /* root absent */
-      }
-    }
-    if (registered.length > 0) {
-      push('routing:ship-skill', true, `\`ship\` skill registered: ${registered[0]}`);
-    } else if (nested.length > 0) {
-      push(
-        'routing:ship-skill',
-        false,
-        `a \`ship\` skill exists at ${nested[0]} but is not registered — Claude Code only loads ` +
-          '~/.claude/skills/<name>/SKILL.md, <cwd>/.claude/skills/<name>/SKILL.md and plugin skills/<name>/SKILL.md, so invoking `ship` fails with ' +
-          '"Unknown skill". Link it (e.g. ~/.claude/skills/ship -> that dir; gstack\'s own setup does this), ' +
-          'or leave it: core §2.2 then means a declared manual ship.'
-      );
-    } else {
-      push(
-        'routing:ship-skill',
-        false,
-        'no `ship` skill on this machine — core §2.2 ship triggers take the manual path ' +
-          '(`manual ship because <reason>` in the report). Install gstack to get one.'
-      );
-    }
-  }
-
-  // gs primaries (prompt-audit F14). Core §2.1 and §EXT §4 route work at
-  // `gs:/<name>`; Claude Code registers the `gstack` router, not its sub-skills,
-  // and the spec reaches them through the router. So a gs primary is reachable
-  // when it is registered on its own, or the router is registered and its
-  // directory holds <name>/SKILL.md. Read against the INSTALLED extended spec,
-  // like routing:skills-enabled. Advisory: an unreachable row degrades through
-  // §12's fallback column.
-  if (fs.existsSync(extSpec)) {
-    let gs;
-    try {
-      gs = [...routingPrimaries(fs.readFileSync(extSpec, 'utf8')).keys()]
-        .filter(k => k.startsWith('gs/'))
-        .map(k => k.slice(3));
-    } catch {
-      gs = [];
-    }
-    if (gs.length > 0) {
-      const routers = registeredSkillDirs('gstack');
-      const unreachable = gs.filter(
-        n =>
-          registeredSkillDirs(n).length === 0 &&
-          !routers.some(r => fs.existsSync(path.join(r, n, 'SKILL.md')))
-      );
-      if (unreachable.length === 0) {
-        push(
-          'routing:gstack-reachable',
-          true,
-          `all ${gs.length} gs primaries reachable${routers.length ? ` through the gstack router at ${routers[0]} (invoke the \`gstack\` skill; a bare Skill call by sub-skill name, e.g. \`ship\`, still fails unless it is registered on its own — see routing:ship-skill)` : ''}`
-        );
-      } else {
-        push(
-          'routing:gstack-reachable',
-          false,
-          `${unreachable.length} of ${gs.length} gs primaries unreachable: ${unreachable.map(n => `gs:/${n}`).join(', ')}. ` +
-            (routers.length
-              ? `The gstack router at ${routers[0]} does not hold them.`
-              : 'No `gstack` router skill is registered (~/.claude/skills/gstack/SKILL.md or a plugin).') +
-            ' Their §12 rows fall back to the last column.'
-        );
-      }
-    }
   }
 
   // v0.6.0: SHA-256 drift detection. Compares installed ~/.claude/<spec>

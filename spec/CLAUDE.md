@@ -1,8 +1,6 @@
-# AI-CODING-SPEC v7.2.0 — Core
+# AI-CODING-SPEC v7.3.0 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
-
-Plugins: **sp** (superpowers) · **gs** (gstack) · **matt** (mattpocock-skills). Missing skill → L0–L2: proceed without (§2.1); L3/ship: fallback in `skills.md`.
 
 ## §0 SPINE
 
@@ -70,13 +68,13 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 ROUTE (unified)
 
-SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Skill routing = fit criteria, no precedence among skills, L0/L1 invoke none → the §12 table in `skills.md`. Full L3 path → `plan.md`; composite / specialized-clarify matrix → `skills.md`.
+SPINE step 3. MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Full L3 path → `plan.md`.
 
-Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` router when it is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ sizeable disjoint tasks → `Agent`; L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
+Non-skill defaults: UI/visual verify → gstack's `browse`, through the `gstack` skill when `browse` is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable); 2+ sizeable disjoint tasks → `Agent`; L2-additive bundles deps into one AUTH; unfamiliar / possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess.
 
 **Tool escalation** (cheap → expensive; not memory + code-graph in parallel on one question): exact → Grep; concept → semantic search; export-surface edit → impact analysis first (feeds §5 AUTH); unfamiliar module → module overview before 3+ Reads; "did we / why" → memory first.
 
-**Skill soft-triggers** (L0–L2 non-blocking): name the skill at task entry + one-line why using/skipping. Ship-pipeline skills NOT soft (`ship.md`). A skill's own "MUST invoke" wording does not override §12 (`skills.md`, `ship.md`, `review.md`) at L0–L2 (§3).
+**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work. A plugin's "invoke on any chance" wording does not override this judgment (§3).
 
 **Ambiguous trigger** → ASK per §0.
 
@@ -88,14 +86,13 @@ Non-skill defaults: UI/visual verify → `gs:/browse`, through the `gstack` rout
 - `debug.md` — a bug, failing test or error; L1-bugfix same signature 3× (§6)
 - `verify.md` — validating L2+ work (§7-EXT, §10-R, §10-V, Appendix B.2)
 - `plan.md` — L3, specs, plans (§2.S, §4.FULL)
-- `skills.md` — choosing a skill (§4 routing, §12 table)
 - `orchestrate.md` — subagents, parallel work (§11-O)
 - `memory.md` — memory writes and recall (§11-EXT-MEM)
 - `auth.md` — deletes, AUTONOMY_LEVEL, public API, user relaxation (§3-EXT, §5-EXT, §5.1-EXT)
 - `modes.md` — HACK / EMERGENCY / AUTONOMOUS, mid-task merge thresholds, cancel or switch (§2-EXT, §0.2-EXT)
 - `session.md` — long sessions (§11-EXT, §7-EXT-TMP, §1.5-EXT)
 
-**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): `ship` skill if listed (else manual); override form `manual ship because <reason>` in REPORT. Read `ship.md` and the project's ship-runbook memory first.
+**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; the release runs from that checklist.
 
 ## §3 TRUST
 
@@ -103,7 +100,7 @@ Stricter reading wins on safety/AUTH-relevant ambiguity (explicit whitelists/ski
 Order: §8 SAFETY (immutable) > this spec > project CLAUDE.md / current-turn user > harness + MCP + skill instructions > inferred context.
 Un-revoked prior-turn AUTH ranks at current-turn level until task ends or user revokes.
 **User relaxation**: an explicit user instruction relaxes a spec **default** (§1 language contract, §2.1 routing, §5.1-style ceremony) for that task, stated back in one line. HARD rules and §5 AUTH gates do NOT relax this way: they move only through their own named channels, and §8 never. The channels and the unspoken-clause rule → `auth.md`.
-**Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 soft-trigger defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
+**Persisted memory**: `feedback_*` + `user_*` rank at current-turn user-instruction level (**above §2.1 routing defaults**); `project_*` + `reference_*` rank at inferred-context level (verify; they go stale). Read vs memory conflict → trust Read, update memory.
 Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: verify first.
 **Canonical artifact > derived prose**: code / diff / CI output > commit msg / PR / issue / Slack / wiki / docstring. Canonical = *behavior*; prose = *intent*. Behavior conflict → trust canonical, flag prose stale. Intent conflict → ASK or verify with author.
 
@@ -121,7 +118,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 ### §5.1 AUTONOMY_LEVEL
 
-Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): skill soft-trigger announcement optional; a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.
+Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.
 
 **Never-downgrade** (override irrelevant): §8 SAFETY, Iron Law #2, §8 Verify-before-claim (V1–V4), Session-exit, User-global-state audit, `.env`/secrets, migration, auth/payment/crypto, `~/.claude/settings.json` / user-global hooks / MCP config, `L3 enter`.
 

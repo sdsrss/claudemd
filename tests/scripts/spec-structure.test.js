@@ -2,12 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-// Tokenizer moved to scripts/lib/spec-routing.js when doctor.js needed the same
-// §4 read against the INSTALLED spec. Two copies of this regex is the shape a
-// dozen gates in this repo exist to prevent, so it has exactly one home now; the
-// rules it encodes (bold-strip, list-boundary anchoring, target column only)
-// live in that file's header with the orphan artefacts they were written for.
-import { skillTokens, tableRows as sharedTableRows } from '../../scripts/lib/spec-routing.js';
 
 const CORE = 'spec/CLAUDE.md';
 const EXT = 'spec/CLAUDE-extended.md';
@@ -81,181 +75,42 @@ test('changelog top entry matches the core header version', () => {
   assert.equal(first[1], core[1]);
 });
 
-test('§2.1 points at the §12 table, and that table still reaches sp:brainstorming', () => {
-  // Until v6.31.0 this asserted core §2.1 mentioned `sp:brainstorming` directly,
-  // because core carried the routing table. G4-A moved skill routing to §EXT §12
-  // and left core a pointer, so the property worth holding is the one the old
-  // assertion was a proxy for: the skill is still REACHABLE, and core still says
-  // where to look. Asserting the literal in core would now pass only by
-  // re-introducing the table this version deleted.
-  const core = fs.readFileSync(CORE, 'utf8');
+test('the spec names no skill by plugin prefix: skill choice reads the harness listing', () => {
+  // v7.3.0 removed the skill routing table (`skills.md`) and every `sp:` /
+  // `gs:/` / `matt:` skill name from the rules. The table restated each skill's
+  // own description, was read in 0 of 185 contexts after v7.2.0, and named 15
+  // gstack sub-skills Claude Code does not register; its ship route produced 9
+  // of 44 measured Skill calls as `Unknown skill` (2026-10-15 transcript scan,
+  // tasks/specs/skill-routing-trim.md). The rules now name behaviours, so a
+  // plugin that is absent, renamed or nested leaves no dangling reference.
+  // `## Recent changes` is cut out: naming what was removed is its job.
+  // Limit: this asserts an absence. It cannot tell whether the behaviour text
+  // that replaced the names is right — the whole-line pins below hold that.
+  const RE = /(?<![A-Za-z0-9_])(gs:\/|sp:[a-z]|matt:[a-z])/;
+  for (const control of ['route to sp:writing-plans', '`gs:/ship`', '(matt:tdd)'])
+    assert.ok(RE.test(control), `vacuity guard: the scan regex no longer matches ${control}`);
   const ext = fs.readFileSync(EXT, 'utf8');
-  assert.match(
-    core,
-    /Skill routing = fit criteria[^\n]*the §12 table in `skills\.md`/,
-    'core §2.1 must point at the §12 table (in skills.md) for skill routing'
-  );
-  assert.doesNotMatch(
-    core,
-    /^\| Trigger \| Primary \| Note \|$/m,
-    'the §2.1 routing table is back in core — G4-A removed it and §0.1 has no room for it'
-  );
-  const routingRows = tableRows(ext, '### Skill routing table', 'Detection: first call fails');
+  const hs = ext.search(/^## Recent changes$/m);
+  assert.ok(hs > 0, 'the `## Recent changes` heading is gone — this scan has nothing to cut');
+  const he = ext.indexOf('<!-- module:', hs);
   assert.ok(
-    routingRows.flatMap(cols => skillTokens(cols[1])).includes('sp/brainstorming'),
-    '§12 must still reach sp:brainstorming — core now delegates that routing entirely'
+    he > hs,
+    'no module marker after `## Recent changes` — the cut would swallow the rest of extended'
   );
-});
-
-// v6.21.0: every §4 Routing primary must own a §12 Fallback-table row. `gs:/qa`
-// had none since both tables landed in 52b65db, while §4's `ship L2` row routes
-// user-facing ships at it — the gap only surfaced when a /doctor run noticed the
-// skill was disabled via skillOverrides.
-// Same drift class as hard-rules-9 (§13 prose counts): a table that must stay in
-// sync with another table, with nothing asserting the join.
-// `skillTokens` and the row reader now live in scripts/lib/spec-routing.js —
-// doctor.js asks the same question of the INSTALLED spec, and a second copy of
-// that regex is the drift this file's own §12 join exists to catch, one level up.
-// The shared reader reports a missing heading through a callback so a non-test
-// caller can degrade instead of throwing; here a missing heading must fail the
-// test loudly, which is all this wrapper restores.
-const tableRows = (text, startHeading, endMarker) =>
-  sharedTableRows(text, startHeading, endMarker, msg => assert.fail(msg));
-
-test('§12: every §4 Routing primary has a §12 Fallback-table row', () => {
-  const text = fs.readFileSync(EXT, 'utf8');
-
-  // v6.31.0: §12's table became task-class → candidates → all-missing. The
-  // candidates moved from column 0 to column 1; column 0 is now the task class
-  // and column 2 the degradation. Reading column 0 here would resolve zero
-  // skills and the join would go vacuously green, which is the failure its own
-  // floor below exists to catch.
-  const covered = tableRows(text, '### Skill routing table', 'Detection: first call fails')
-    .flatMap(cols => skillTokens(cols[1]))
-    // `/design-*` and `sp:*-code-review` are globs over a skill family
-    .map(tok => new RegExp(`^${tok.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9-]*')}$`));
-
-  const routed = new Set(
-    tableRows(text, '### Routing', '### Composite requests').flatMap(cols => skillTokens(cols[1])) // Primary column only; Notes are advisory
+  const texts = { [CORE]: fs.readFileSync(CORE, 'utf8'), [EXT]: ext.slice(0, hs) + ext.slice(he) };
+  for (const f of fs.readdirSync('spec/spec-modules'))
+    texts[`spec/spec-modules/${f}`] = fs.readFileSync(`spec/spec-modules/${f}`, 'utf8');
+  const hits = Object.entries(texts).flatMap(([f, text]) =>
+    text
+      .split('\n')
+      .map((l, i) => `${f}:${i + 1}: ${l.slice(0, 120)}`)
+      .filter(l => RE.test(l.slice(l.indexOf(': ') + 2)))
   );
-
-  // Floors on BOTH sides, added 2026-09-01 when the tokenizer moved to
-  // scripts/lib/spec-routing.js. The reach mutation for that extraction — make
-  // skillTokens return nothing — left this test at 15/15 green, because "no
-  // routed primary lacks a fallback row" is trivially true of an empty routed
-  // set. The join had no floor, so a tokenizer that silently stopped matching
-  // (a heading rename, a regex edit, a table reformat) would have reported a
-  // clean join over zero skills. Counts are 24 routed / 27 covered today
-  // (recounted at the 0.71.1 pre-tag review — the first draft of this comment
-  // said 25, in a release whose thesis is that recounts beat carried numbers);
-  // the floors sit well below that to catch a layer vanishing, not table churn.
-  assert.ok(
-    routed.size >= 15,
-    `§4 Routing resolved only ${routed.size} primary skill(s) — the table moved or the tokenizer ` +
-      'stopped matching. Refusing to report a clean §12 join over a set that short.'
-  );
-  assert.ok(
-    covered.length >= 15,
-    `§12 Fallback table resolved only ${covered.length} row token(s) — same failure, other side.`
-  );
-
-  const orphans = [...routed].filter(s => !covered.some(re => re.test(s)));
-  assert.deepEqual(
-    orphans,
-    [],
-    `§4 Routing primaries with no §12 Fallback row: ${orphans.join(', ')} — add a row to the Fallback table ` +
-      'or drop the skill from §4 Routing. A routed-but-uncovered skill leaves the agent with no documented ' +
-      'degradation path when it is disabled via skillOverrides or not installed.'
-  );
-});
-
-// --- audit-2026-08-29 R10-15: the reverse direction, and one window ---------
-
-test('§12: every §12 Fallback row names a skill the spec mentions elsewhere', () => {
-  // The mirror of the test above, and the direction that was missing: the
-  // fallback table carried a `gs:/canary` row for a skill no §4 row routes to
-  // and no other passage names. A fallback for something unreachable is a
-  // degradation path for a decision the agent never makes — 99 bytes of
-  // instruction that can only mislead. Removed in v6.25.3; this keeps the next
-  // one from settling in.
-  //
-  // The bar is "mentioned elsewhere in core or extended", not "is a §4 Routing
-  // primary": `sp:test-driven-development`, `context7` and `gs:/document-release`
-  // are legitimately reached from §2.1, §4.FULL steps and prose rather than from
-  // the Routing table.
-  const ext = fs.readFileSync(EXT, 'utf8');
-  const core = fs.readFileSync(CORE, 'utf8');
-  const rows = tableRows(ext, '### Skill routing table', 'Detection: first call fails');
-  assert.ok(
-    rows.length >= 15,
-    `vacuity guard: parsed ${rows.length} fallback rows — the table anchor moved and this gate is checking nothing`
-  );
-
-  const FALLBACK_START = ext.indexOf('### Skill routing table');
-  const FALLBACK_END = ext.indexOf('Detection: first call fails');
-  // `Recent changes` is excluded along with the table itself. It is a
-  // historical record, and a release entry NAMING the row just removed
-  // ("§12's Fallback table carried a `gs:/canary` row …") counts as a mention
-  // and disarms this gate. That is not hypothetical: the v6.25.3 entry did
-  // exactly that, so the control run before the entry was written passed and
-  // the same control against the tagged tree would have gone green — caught by
-  // the pre-tag review of this release. Same line the sibling demote-window
-  // test draws when it excludes the changelog from its live-text scan.
-  // Anchored at a line start, not `indexOf`. §11-EXT-MEM's prose contains the
-  // literal `## Recent changes` inside a sentence, so a plain indexOf has a
-  // SECOND landing spot: rename the real heading and the cut silently jumps to
-  // that mention, `HISTORY_START > FALLBACK_END` still holds, the assert below
-  // still passes, and the release entry is back inside `elsewhere` — the exact
-  // HIGH this exclusion was added to close, resurrected by a rename. Deleting
-  // the heading already failed closed (indexOf → -1); renaming it did not.
-  // Found by the delta re-review of this release.
-  const historyMatch = ext.match(/^## Recent changes$/m);
-  assert.ok(
-    historyMatch,
-    'the `## Recent changes` heading is gone from extended — this exclusion has nothing to cut'
-  );
-  const HISTORY_START = historyMatch.index;
-  assert.ok(
-    HISTORY_START > FALLBACK_END,
-    'the `## Recent changes` heading moved above the Fallback table — this exclusion no longer cuts what it means to cut'
-  );
-  const elsewhere = core + ext.slice(0, FALLBACK_START) + ext.slice(FALLBACK_END, HISTORY_START);
-  // Compare in `skillTokens`' normalised form on BOTH sides. The first version
-  // compared a normalised `gs/canary` against raw spec prose that spells it
-  // `gs:/canary`, so every row looked orphaned — 25 false positives, which is
-  // the shape of a gate that would have been "fixed" by loosening it.
-  // "Mentioned elsewhere in the spec" was a proxy for "this skill is real", and
-  // it held while every candidate was also a §4 Routing primary. v6.31.0 broke
-  // that: §12 is now the routing authority and is the ONLY place in the spec
-  // naming the nine `matt:` skills and `sp:executing-plans`. Requiring a second
-  // spec mention would fail all ten for sitting exactly where they belong, and
-  // exempting them by prefix would exempt the release's headline addition from
-  // its own gate. So the corpus gains the document that introduced them — the
-  // roadmap's G4 table is tracked, and it carries each skill with the fit
-  // criterion §12 quotes. A skill in neither place is still an orphan, which is
-  // the `gs:/canary` case this test exists for (pre-ship review R2, H1/M3).
-  const roadmapG4 = fs.readFileSync('docs/spec-optimization-roadmap-2026-09-21.md', 'utf8');
-  const mentioned = new Set([...skillTokens(elsewhere), ...skillTokens(roadmapG4)]);
-
-  // v6.31.0: candidates moved to column 1 with the table's new shape. The
-  // FORWARD join was repointed and this one was not, so it resolved zero tokens
-  // and returned [] for every possible table content — the exact vacuity its
-  // sibling's comment warns about, one test away. The `rows.length >= 15` floor
-  // below counts ROWS, not resolved tokens, so it cannot catch this; the
-  // mutation control at the end of this file is what does.
-  const orphans = [
-    ...new Set(
-      rows
-        .flatMap(cols => skillTokens(cols[1]))
-        .filter(tok => !tok.includes('*')) // globs are families, checked by the sibling test
-        .filter(tok => !mentioned.has(tok))
-    ),
-  ];
-  assert.deepEqual(
-    orphans,
-    [],
-    `§12 Fallback rows for skills named nowhere else in the spec: ${orphans.join(', ')} — ` +
-      'either the skill lost its routing row (restore it) or the fallback row outlived what it covered (drop it).'
+  assert.deepEqual(hits, [], 'a rule names a skill by plugin prefix again — name the behaviour instead');
+  assert.equal(
+    fs.existsSync('spec/spec-modules/skills.md'),
+    false,
+    'spec/spec-modules/skills.md is back — the routing table v7.3.0 removed'
   );
 });
 
@@ -326,88 +181,6 @@ test('§EXT: every phrase extended quotes as a core § clause exists in core', (
     `extended attributes these phrases to a core § that does not contain them: ${missing.map(m => JSON.stringify(m)).join(', ')}. ` +
       'Restore the clause in core, re-attribute it to its real (external) source, or drop the quotation — ' +
       'a §-attributed quote the reader cannot verify is the §8.V1 failure the spec forbids elsewhere.'
-  );
-});
-
-test('§12 ↔ §4: the routing table must not mandate a skill §4 tells L2-additive to skip', () => {
-  // core §2.1 routed L2-additive at `sp:test-driven-development RED-first` while
-  // §4's feat row said `skip full sp:TDD ceremony` for the same case. L0-L2 load
-  // core ONLY, so the highest-frequency routing path had two tables giving
-  // opposite instructions and no join asserting either way — the §12 join above
-  // runs §4→§12 only, and nothing ran core→§4.
-  const core = fs.readFileSync(CORE, 'utf8');
-  const ext = fs.readFileSync(EXT, 'utf8');
-
-  const featRow = tableRows(ext, '### Routing', '### Composite requests').find(
-    cols => cols[0].replace(/\*/g, '').trim() === 'feat'
-  );
-  assert.ok(featRow, '§4 Routing must carry a `feat` row');
-  const skipped = [
-    ...featRow.join(' | ').matchAll(/skip\s+(?:the\s+)?(?:full\s+)?(sp:[A-Za-z:-]+|gs:\/?[A-Za-z-]+)/gi),
-  ].flatMap(m => skillTokens(m[1]));
-  assert.ok(
-    skipped.length > 0,
-    'vacuity guard: §4 feat row must still name a skill it skips, or this join tests nothing'
-  );
-
-  // v6.31.0: the additive row moved from core §2.1 to §12's routing table, so
-  // the join moves with it. It also gets STRONGER rather than weaker — core no
-  // longer carries any skill routing, so the conflict class it guards can only
-  // exist between these two extended tables, and both are now in scope.
-  const additiveRow = ext.split('\n').find(l => l.startsWith('|') && /L2 feature \(additive\)/.test(l));
-  assert.ok(additiveRow, '§12 routing table must carry the `L2 feature (additive)` row');
-  const routedTokens = skillTokens(additiveRow.split('|').slice(1, -1)[1] || '');
-  assert.ok(
-    routedTokens.length > 0,
-    'vacuity guard: the additive row must resolve at least one candidate, or this join tests nothing'
-  );
-
-  for (const s of skipped) {
-    if (!routedTokens.includes(s)) continue;
-    assert.match(
-      additiveRow,
-      /optional|not required|ordinary/i,
-      `§4 tells L2-additive to skip ${s} while §12 routes it there with no optionality marker. ` +
-        'The two tables would read as opposite instructions on the most-travelled path. ' +
-        'Align the wording in whichever one is wrong.'
-    );
-  }
-  // core is read above for the §4 side; assert it stays out of this routing
-  // decision entirely, which is what makes the two-table join sufficient.
-  assert.doesNotMatch(
-    core,
-    /feat L2 \(additive\)/,
-    'core §2.1 carries an additive-feature routing row again — this join no longer covers the conflict'
-  );
-});
-
-test('§12: every `matt:` candidate is one the roadmap that introduced them names', () => {
-  // The reverse join above cannot judge these — §12 is the only place in the
-  // SPEC that names a mattpocock skill. The join that can is against the
-  // document the rows came from: docs/spec-optimization-roadmap-2026-09-21.md's
-  // G4 table, which is tracked, and which lists each skill with the fit
-  // criterion §12 quotes. A typo in a `matt:` name breaks this; before
-  // v6.31.0's pre-ship review, nothing in `npm run check` saw those rows at all.
-  const ext = fs.readFileSync(EXT, 'utf8');
-  const roadmap = fs.readFileSync('docs/spec-optimization-roadmap-2026-09-21.md', 'utf8');
-  const inTable = [
-    ...new Set(
-      tableRows(ext, '### Skill routing table', 'Detection: first call fails')
-        .flatMap(cols => skillTokens(cols[1]))
-        .filter(tok => tok.startsWith('matt/'))
-    ),
-  ];
-  assert.ok(
-    inTable.length >= 6,
-    `vacuity guard: resolved ${inTable.length} matt: candidate(s) from §12 — the tokenizer or the ` +
-      'table moved, and this join would pass over nothing'
-  );
-  const missing = inTable.filter(tok => !roadmap.includes(tok.replace('matt/', 'matt:')));
-  assert.deepEqual(
-    missing,
-    [],
-    `§12 names mattpocock skill(s) the roadmap's G4 table does not: ${missing.join(', ')} — ` +
-      'a typo, or a row added without the analysis behind it.'
   );
 });
 
@@ -565,11 +338,11 @@ test('§3 ↔ §EXT §13: core and extended agree on whether a HARD rule yields 
 // out of the name entirely. Each pin's `what` records when its wording was set.
 const PINS = [
   {
-    what: 'core §5.1 — the aggressive skip-list leaves §8, Iron Law #2 and every §5 Hard-AUTH category binding (v7.2.0 repair)',
+    what: 'core §5.1 — the aggressive skip-list leaves §8, Iron Law #2 and every §5 Hard-AUTH category binding (v7.2.0 repair; v7.3.0 dropped the skill-announcement item)',
     file: CORE,
     anchor: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL:',
     why: 'Never-downgrade omits five §5 Hard categories (delete, CI/deploy config, prod deps, cross-module refactor, public-API Δ-contract), so it is not a restatement of this clause; auth.md §5.1-EXT keeps two of them HARD under aggressive by citing this sentence. Removed as a duplicate in the 0.107.0 draft and caught at pre-tag review; the third time this contradiction was repaired.',
-    line: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): skill soft-trigger announcement optional; a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.',
+    line: 'Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`). **`aggressive` skip-list** (ceremony only; §8 SAFETY + Iron Law #2 + §5 Hard-AUTH still bind): a single obvious option executes without preamble; a clear-scope bugfix goes fix → test without a proposal. Per-level §5 effect table → `auth.md`.',
   },
   {
     what: 'core §10 Specificity — ambiguous claims take the strict reading (v7.2.0 repair)',
@@ -592,10 +365,38 @@ const PINS = [
     line: '- **Mid-SPINE turn-yield** (HARD, all levels): once a turn has executed ≥1 tool call inside an active SPINE cycle, continue planned steps through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, direction actually ambiguous, or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes `tasks/<slug>-paused.md`. Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, closed (§10 format), nor named an awaited subagent = confirmed prior yield.',
   },
   {
-    what: '§EXT §12 manual-ship atomicity — the second exception for an owed subagent (v7.0.0 wording)',
+    what: '§EXT §12 manual-ship atomicity — every skill-less ship is one turn; the second exception for an owed subagent (v7.3.0 wording)',
     file: EXT,
     anchor: '**Manual-ship atomicity (HARD, clarification)**',
-    line: '**Manual-ship atomicity (HARD, clarification)**: when override applies, the manual path is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
+    line: '**Manual-ship atomicity (HARD, clarification)**: a ship run without a ship skill — from a runbook or by hand — is still **one atomic turn**. Upon entering it, (1) enumerate every remaining step inline (typically commit → push → pre-tag review → tag → release-artifact → CI verify) as a visible plan, and (2) execute them back-to-back within the same turn. No turn-ending between commit and the final Done-with-CI-green report. Green CI (or equivalent release-gate signal) is the Iron Law #2 evidence; intermediate tool exits are not stopping points. Exception: a hard failure (push rejected, tag collision, CI red) — stop at the failure with full context, not at a clean green step. **Second exception**: awaiting any subagent whose report this ship needs (the pre-tag reviewer, a repair or repro spawn), whenever it was spawned — yield per core §11 naming it; its completion re-invokes the cycle, which resumes at the next step. The user\'s single ship-AUTH — per §5 "per-task, per-scope" — covers push/tag/release; do not re-litigate it one manual step at a time.',
+  },
+  {
+    what: 'core §2.1 Skills — description fit decides, L0/L1 none, a plugin cannot override (v7.3.0)',
+    file: CORE,
+    anchor: '**Skills**: the harness lists them',
+    why: 'The one line left after the routing table went. Its last sentence is the arbitration against a plugin SessionStart text that says to invoke a skill on any chance; drop it and that text, ranked below this spec by §3, stands unopposed.',
+    line: '**Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work. A plugin\'s "invoke on any chance" wording does not override this judgment (§3).',
+  },
+  {
+    what: 'core §2.2 Ship triggers — the module and the runbook first, no skill named (v7.3.0)',
+    file: CORE,
+    anchor: '**Ship triggers** (`ship`',
+    why: 'Until v7.2.0 this line routed to a `ship` skill "if listed"; models called it unlisted anyway (9 `Unknown skill` calls measured). Naming a skill here again brings that back.',
+    line: "**Ship triggers** (`ship` / `deploy` / `create-release` / `merge-and-push`): Read `ship.md` and the project's ship-runbook memory first; the release runs from that checklist.",
+  },
+  {
+    what: '§EXT §12 Ship-pipeline hardening — runbook, else a listed skill, else by hand with the REPORT line (v7.3.0)',
+    file: EXT,
+    anchor: 'On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this module',
+    why: 'The HARD obligation hard-rules.json registers as §12-ship-pipeline-hardening. v7.3.0 relaxed it on purpose: a runbook-led ship no longer owes the `manual ship because` line. Any further change is a HARD-rule change.',
+    line: "On `ship` / `deploy` / `create-release` / `merge-and-push`, after reading this module, run the release from a written checklist: the project's ship runbook, else a listed ship skill. Neither → ship by hand against the checklist below and state `manual ship because <reason>` as the REPORT's first line — absence = spec violation.",
+  },
+  {
+    what: '§EXT §12 Author ≠ reviewer — independent of any review skill; no or blocked subagent is asked about, and L3 stops (v7.3.0 wording)',
+    file: EXT,
+    anchor: '- **Author ≠ reviewer (HARD)**',
+    why: 'Both branches lived only in the removed skill routing table: its "Gated = missing" paragraph and the L3 cell "No subagent at all → L3 not executable, escalate (HARD)". Without them a missing or gated subagent reads as permission to self-review.',
+    line: '- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2 `[PARTIAL: no independent review]`, L3 not executable: escalate.',
   },
   {
     what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v6.32.0 wording)',
@@ -837,35 +638,35 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'db10c651c2294dc8' },
+  { file: CORE, heading: '', sha256: 'c38935bd000dc7e8' },
   { file: CORE, heading: '## §0 SPINE', sha256: 'd0ae8d59d7a30113' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'cc7e873976d67dad' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: 'f1cddbf8d959693e' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '4fee8e40d6b9d0fc' },
-  { file: CORE, heading: '## §3 TRUST', sha256: '98d6d9102d90cad0' },
-  { file: CORE, heading: '## §5 AUTH', sha256: 'a0f7a798f21b93fe' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '0dc02edda34135a9' },
+  { file: CORE, heading: '## §3 TRUST', sha256: 'ab7732f03ab22c1b' },
+  { file: CORE, heading: '## §5 AUTH', sha256: '47ffd31f7435a0e0' },
   { file: CORE, heading: '## §7 VALIDATE (L0/L1/L2)', sha256: 'd7574b1ba160cddd' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'c70daab3a3686a6f' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '851c5c86a7a463ae' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'ce09e67e46637511' },
-  { file: EXT, heading: '', sha256: 'd932e8e251e88285' },
+  { file: EXT, heading: '', sha256: '87ae53819d88d871' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7252abe194ead69d' },
   { file: EXT, heading: '## §2-EXT Override modes', sha256: 'aac51e3052054cb8' },
-  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '31a3b32ab333c2b7' },
-  { file: EXT, heading: '## §4 FLOW', sha256: '9d0f1e1165672d60' },
-  { file: EXT, heading: '## §6 DEBUG', sha256: '3afdd83f0f895d68' },
-  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: '241c5dfec0b781fe' },
+  { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '629eb2c1ab62bd3d' },
+  { file: EXT, heading: '## §4 FLOW', sha256: '4fe77b5116856234' },
+  { file: EXT, heading: '## §6 DEBUG', sha256: '7ff2e57f5e3e5699' },
+  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: '08a04f39baef9ebb' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE (L3)', sha256: 'c2011ff35e824499' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '990d588d43ec05d1' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '7d4f947bebf5ca1e' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: 'f49d06ad8f68b1a2' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '7335c2e602334949' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'e6155861ad7768af' },
-  { file: EXT, heading: '## Recent changes', sha256: 'edc11e3752ccca29' },
+  { file: EXT, heading: '## Recent changes', sha256: '4a68171fd8f310e0' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: 'df1cdbc5c4e0dffc' },
   {
     file: EXT,
@@ -922,8 +723,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 19, sha256: '4a04390cd49a952a' },
-  { file: EXT, count: 63, sha256: 'e8da4bb613914aed' },
+  { file: CORE, count: 19, sha256: 'cde09a4112971d1d' },
+  { file: EXT, count: 59, sha256: '3659033911b50e46' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

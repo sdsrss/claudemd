@@ -710,7 +710,7 @@ function countLines(s) {
 // is L0/L1-shaped when it edited ≥1 file, ≤2 distinct files, and the summed
 // old+new line estimate stays under 80 — the mechanical proxy for §2 L1.
 // Q&A / design segments (0 edits) are NOT opportunities: ceremony there can
-// be correct routing (§2.1 sends arch clarify to brainstorming).
+// be correct (§4.FULL's clarify step may reach for a design skill).
 function scanOverCeremony(events) {
   const main = events.filter(e => !e.sidechain);
   const segments = [];
@@ -1820,7 +1820,7 @@ export function formatMarkdown(r) {
     out.push(`Ceremony invocations (all segments): ${inv}`);
     out.push('');
     out.push('> C2 pre-registered disposition (plan P3): after 30d collection, rate < 5% → keep');
-    out.push('> superpowers, close P3; ≥ 5% → evaluate uninstall (EXT §12 fallback table) / fork /');
+    out.push('> superpowers, close P3; ≥ 5% → evaluate uninstall / fork /');
     out.push('> hook-level disable. Threshold fixed before data collection.');
     out.push('');
   }

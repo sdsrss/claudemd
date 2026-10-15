@@ -5,7 +5,7 @@ triggers: 架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refact
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.2.0 — module: plan
+# AI-CODING-SPEC v7.3.0 — module: plan
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -43,34 +43,34 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
-1. **Clarify**: sp:brainstorming (or gs:/office-hours if product-fuzzy).
-2. **Plan**: sp:writing-plans. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
-3. **Plan review** (optional): gs:/autoplan — on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
+1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
+2. **Plan**: in `tasks/<n>.md`, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
 4. **AUTH**: §5 hard. User confirms plan and risk.
-5. **Worktree**: sp:using-git-worktrees.
-6. **Build**: sp:subagent-driven-development, TDD per task. 2-stage review fires only on §5-hard sub-tasks.
-7. **Branch finish**: sp:finishing-a-development-branch.
-8. **Pre-ship review**: gs:/review.
-9. **Optional** (user request only): gs:/codex for 2nd opinion.
-10. **Ship**: gs:/ship (auto /document-release).
-11. **Deploy**: gs:/land-and-deploy.
+5. **Isolate**: worktree or branch (stash before switching).
+6. **Build**: TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones.
+7. **Branch finish**: rebase / squash, changelog, clean tree.
+8. **Pre-ship review**: fresh subagent, whole change (`review.md`).
+9. **Optional** (user request only): a second opinion (another model or tool).
+10. **Ship**: per `ship.md`.
+11. **Deploy**: project deploy path; by hand → `ship.md`.
 12. **Monitor** (declarative): emit checklist (metrics / thresholds / rollback trigger / command). User monitors; agent does NOT hold session.
 
-**Auto-trigger**: gs:/cso on L3 + auth/payment/crypto/permissions.
+**Security pass**: L3 on auth/payment/crypto/permissions → STRIDE review before ship.
 
 ### §4.FULL-lite (L3 reduced path)
 
 **Eligible**: L3 AND no auth/payment/crypto AND ≤3 Modules AND no prod data-migration. Fits: non-security architecture refactor, CI/infra reshape, deps major bump, framework upgrade, non-breaking schema reorg.
 
-1. Clarify: sp:brainstorming if scope fuzzy; else skip.
-2. Plan: sp:writing-plans (same shape as FULL.2).
-3. Plan self-critique: inline 3-view (CEO / design / eng) — no gs:/autoplan.
+1. Clarify: as FULL.1 if scope fuzzy; else skip.
+2. Plan: as FULL.2.
+3. Plan self-critique: inline 3-view (CEO / design / eng).
 4. AUTH: §5 hard.
-5. Worktree: sp:using-git-worktrees.
-6. Build: sp:subagent-driven-development, TDD. Per-task review collapsed into step 7.
-7. Pre-ship review: gs:/review (single pass, covers per-task drift + cross-cutting).
-8. Ship: gs:/ship.
-9. Deploy: gs:/land-and-deploy.
+5. Isolate: as FULL.5.
+6. Build: TDD. Per-task review collapsed into step 7.
+7. Pre-ship review: one fresh-subagent pass (per-task drift + cross-cutting).
+8. Ship: per `ship.md`.
+9. Deploy: as FULL.11.
 10. Monitor: declarative checklist.
 
-**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 as gs:/autoplan; add pre-ship gs:/cso if security surface appeared. Do NOT silently continue under lite.
+**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 as FULL.3; add the security pass if security surface appeared. Do NOT silently continue under lite.

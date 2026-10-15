@@ -56,29 +56,24 @@ const KNOWN_HOOK_SECTIONS = (() => {
 })();
 
 // HARD spec annotations whose containing line cannot be matched by any
-// manifest entry's `section_anchor` substring. There's exactly ONE such
-// line in the current spec: the §12 fallback table cross-ref to the
-// `sp:subagent-driven-development` skill, which mentions "(HARD)" but
-// is a pointer to a HARD rule documented elsewhere — not a new rule.
+// manifest entry's `section_anchor` substring: lines carrying `(HARD)` that
+// POINT at a HARD rule documented elsewhere rather than declaring one. Each
+// entry is a substring of the exempted line. There are none since v7.3.0.
 //
-// All other (HARD)-bearing lines ARE covered by anchor matching:
+// All (HARD)-bearing lines ARE covered by anchor matching:
 //   • §8 V1-V4 sub-rules → parent `§8-verify-before-claim` anchor matches
 //     the heading "Verify-before-claim (HARD, 4 sub-rules)" line.
 //   • Iron Law #1 / #2 — each has its own manifest entry.
 //   • Manual-ship atomicity — its own entry.
 //   • Each top-level (HARD) section heading or bold-tagged rule — own entry.
-// Lines carrying `(HARD)` that POINT at a HARD rule documented elsewhere rather
-// than declaring one. Each entry is a substring of the exempted line; an entry
-// that stops matching fails this gate rather than silently widening it.
-const SPEC_HARD_LINE_EXEMPTIONS = new Set([
-  // v6.31.0 rewrote §12's table from `Missing | Fallback` to task-class rows, so
-  // this clause moved into the `plan / execute (L3)` row's last column. Same
-  // rule, same pointer: the HARD obligation is `sp:subagent-driven-development`'s
-  // own (main + fresh-subagent review per sub-task), which §12's `Hard
-  // cooperation rules` and §11-O both carry. The old substring was
-  // 'sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD)'.
-  'No subagent at all → L3 not executable, escalate (HARD)',
-]);
+//
+// History of the one entry this set held: the §12 fallback table's L3 cell,
+// 'sp:subagent-driven-development | main + fresh-subagent review per sub-task (HARD)',
+// became 'No subagent at all → L3 not executable, escalate (HARD)' when v6.31.0
+// reshaped the table. v7.3.0 removed the table and folded the clause into
+// §12 Author ≠ reviewer, whose own anchor covers the line, so it needs no
+// exemption and carries no separate `(HARD)`.
+const SPEC_HARD_LINE_EXEMPTIONS = new Set([]);
 
 function loadManifest() {
   return JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));

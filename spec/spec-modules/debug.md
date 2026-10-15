@@ -5,7 +5,7 @@ triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.2.0 — module: debug
+# AI-CODING-SPEC v7.3.0 — module: debug
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -15,9 +15,9 @@ trigger-window: head
 env/dep/config    → fix + 1 retry → pause, surface blocker in prose
 syntax            → auto-fix ≤2 attempts
 L1 code bug       → §7.L1-bugfix (core)
-L2+ code/logic    → §12 L2 bug row (root cause first)
-env/staging/deploy → gs:/investigate
-UI/visual         → gs:/browse → route per cause
+L2+ code/logic    → Iron Law #3 below (root cause first)
+env/staging/deploy → investigate there first (logs / config / deploy diff); code cause → row above
+UI/visual         → browser capture (core §2.1) → route per cause
 sideways          → STOP + stash → re-plan (note pivot reason)
 ```
 

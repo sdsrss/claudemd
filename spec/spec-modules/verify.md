@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v7.2.0 — module: verify
+# AI-CODING-SPEC v7.3.0 — module: verify
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -26,9 +26,9 @@ L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier 
 
 ### Evidence ladder (L2+, prefer highest tier)
 
-1. **Failing unit/integration test → fix → green.** (sp:TDD enforces.)
+1. **Failing unit/integration test → fix → green.**
 2. **Executable repro script** (shell/python). When test infra absent.
-3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → `gs:/browse` capture.
+3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → browser capture (core §2.1).
 4. **Minimal harness in `tmp/`.** Legacy / glue code.
 5. **Last resort**: state "no reproducer — <structural reason>". Valid reasons only: unmockable hardware / prod-scale race / third-party side channel.
 
@@ -36,7 +36,9 @@ Falling to tier N requires stating why N-1 unfit.
 
 **Intermittent**: tier-2 stress script forcing race window counts as tier-1 proxy. State: "intermittent: tier-2 stress-repro used as tier-1 proxy, reason: <timing/concurrency/external>". Must reproduce ≥1 failure in documented run-count.
 
-**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or gs:/browse screenshot). No snapshot infra → `[PARTIAL: visual-not-verified]` + file follow-up.
+**UI copy / user-facing text**: text-only → L1-copy (core spec). Text + layout/logic → tier-3 (snapshot or browser screenshot). No snapshot infra → `[PARTIAL: visual-not-verified]` + file follow-up.
+
+**Web-visible behaviour** to verify: a browser pass over the changed user-facing surface, reported as §7 L2 evidence. No browser reachable → ask the user for a screenshot or log; neither → `[PARTIAL: no-browser]`.
 
 ### Cold-start (no test framework)
 - Justify once in `tasks/lessons.md` (`no test framework, cold-start mode — reason: <…>`).
