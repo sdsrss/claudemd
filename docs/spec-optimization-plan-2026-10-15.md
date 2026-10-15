@@ -348,7 +348,7 @@ On the default branch, branch first. Each validated change is its own commit wit
 
 ### 7.2 离线 A/B（实施前的关卡）
 
-- **模型**：Fable 5.1。本机 09-30 以来的 211 条回复全部是 Opus 5.5，还没有 Fable 5.1 的会话数据，所以这次 A/B 同时是新模型上的第一次基线。
+- **模型**：Opus 5.5，用户日常用的模型；本机 09-30 以来的 211 条回复也全部是 Opus 5.5。本文写作时临时用的是 Fable 5.1，它的系统提示词差异见第 9 节。
 - **环境**：`claude -p`，`--setting-sources project`，临时 HOME 装同样的插件；多回合任务要持久化会话并 `env -u CLAUDE_CODE_COORDINATOR_MODE`（`feedback_measure_offline_before_waiting_for_windows`）。
 - **臂**：A 为 v7.3.0；B 为 v8.0.0 草案。
 - **任务**：
@@ -381,23 +381,22 @@ On the default branch, branch first. Each validated change is its own commit wit
 
 ---
 
-## 8. 需要用户拍板的事
+## 8. 用户的决定（2026-10-15）
 
-| # | 事项 | 选项 | 我的建议 |
-|---|---|---|---|
-| 1 | 发版时机 | (a) 分支上做完，10-26 后合入；(b) 现在发，两份 PREREG 窗口作废 | (a)。两个窗口只剩 11 天，作废的代价是 D#72、D#172 两项评估重来 |
-| 2 | 汇报格式换成三段式 | (a) 换，三个解析脚本随之改；(b) 保留四段 | (a)。四段标签 25% 遵循，`[PARTIAL]` 0 |
-| 3 | 提交约定 | (a) 逐改动提交，明示覆盖 harness 默认；(b) 跟 harness，只在用户要求时提交 | (a)。本仓库的发版流程和 `branch-prune` 都建立在它上面 |
-| 4 | `-paused.md` 和 `lessons.md` 退役 | (a) 退役，交接进 spec；(b) 保留 | (a)。用户要求只维护一份 |
-| 5 | spec 文件正文语言 | (a) 中文（用户模板原样）；(b) 英文 | (a)。它是给用户审阅和交接的，不是代码 |
-| 6 | 技能清单 | 停用 anthropic-skills 等 40 天 0 调用的插件 | 建议停用，但这是使用习惯 |
-| 7 | claude-mem-lite 召回去重 | 在兄弟仓库开一个任务 | 建议做，收益是本文最大的单项 |
-
----
+| # | 事项 | 决定 |
+|---|---|---|
+| 1 | 发版时机 | 在 `release/0.109.0` 分支上做完、评审完，10-26 两个评估窗口关闭后再合入 `main` 并打 tag |
+| 2 | 汇报格式 | 交给作者定：换成三段式。理由：四段标签 25% 遵循、`[PARTIAL]` 0 次；合入在 10-26 之后，G1b 窗口 09-26 已作废，`evidence-gate` 的判定可以改，通道不改 |
+| 3 | 提交约定 | 逐改动提交，规范里写明它覆盖 harness 的"用户没要求不提交" |
+| 4 | 交接文件 | 交给作者定：有 spec 的任务只在 spec 文件里交接（"决策与进展"写到哪了、下一步，"验证记录"写未运行的命令）；没有 spec 的任务保留 `tasks/<slug>-paused.md`，`session-end-check.sh` 自动写的检查点和开场横幅都保留（机械兜底，16 天横幅 20 次）；`tasks/lessons.md` 退役，教训进记忆。R5 按此执行，横幅不改 |
+| 5 | spec 文件正文语言 | 中文 |
+| 6 | 技能清单 | 已停用（2026-10-15，用户级设置）：`syncClaudeAiSkills: false` 停掉 claude.ai 同步技能（docx / pptx / xlsx / pdf / docs / converge，40 天 0 次调用）；`skillOverrides` 把 6 个 gsd 命令设为仅用户可调用（40 天 0 次，gsd 的 hook、MCP 和代理不动）。一次无头探针会话的技能清单为 12,572 B，交互会话中位数是 22,020 B。改回：把前者设回 true、删掉后者 |
+| 7 | claude-mem-lite 召回 | 提示词在 `tasks/spec-v8-2026-10-15/mem-lite-prompt.md`，由用户发到那个仓库 |
+| 8 | A/B 用哪个模型 | 用户日常用 Opus 5.5（本文写作时临时用了 Fable 5.1），A/B 用 Opus 5.5 |
 
 ## 9. 局限
 
-- **没有 Fable 5.1 的本机数据**。§3 的 211 条回复全部来自 Opus 5.5；本文对 Fable 5.1 的判断来自官方指南和本会话的系统提示词，7.2 的 A/B 是第一次实测。
+- **系统提示词取自 Fable 5.1 会话**。用户日常用 Opus 5.5，本机 211 条回复也都来自 Opus 5.5；第 2 节的 harness 原文是在 Fable 5.1 会话里读的，Opus 5.5 会话的系统提示词可能有出入。A/B 用 Opus 5.5，删除"harness 已写"的段落前要在 Opus 5.5 会话里再核对一次原文。
 - **系统提示词只读了一种模式**。§2 的原文取自 `bypassPermissions` 的 CLI 主会话；"自主推进"一段和"用 Bash 编辑"一段可能只在这个模式下出现，SDK 和 `--system-prompt` 用户看不到它们。规范仍要跨模式成立，所以 R2 写的是规则，不是"harness 已说过所以删"。
 - **回合末回复的正则**只认英文标签和中文"汇报"字样，可能漏掉其他写法；6% 的"以问号结尾"是粗指标。
 - **16 天、48 个会话、一台机器、一个使用者**。
