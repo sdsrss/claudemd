@@ -50,16 +50,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - $30.63 for the 120 runs. Both rounds ran on the pre-review text.
 
 **Tests.**
-- `structure-scan-parity`: nine v8 shapes; a mutation that drops 未运行 from the JS verdict list turns it red.
-- `transcript-structure-scan`: cases 19-22 (v8 order, a verdict-less line, Changes without Verification, the rule-hits row).
-- `evidence-gate`: cases 27-29 (v8 Changes is a claim; four not-run spellings suppress; a passed verdict with nothing run still fires). 27 and 29 fail on the 0.108.0 hook; 28 fails on a mutation that keeps the new claim shape and drops the suppression.
-- `sampling-audit`: a v8 report closes the turn-yield tell; mixed v7 and v8 reports count as two judged blocks.
-- `spec-status-drift`: the v8 status line and checklist completion.
+- `structure-scan-parity`: sixteen v8 shapes; a mutation that drops 未运行 from the JS verdict list turns it red. The three full-width-colon rows disagreed before the review repair (hook 1 / 1 / 0, sampling-audit 0 / 0 / 1 under mawk).
+- `transcript-structure-scan`: cases 19-23b (v8 order, a verdict-less line, Changes without Verification, the rule-hits row; a continuation line, a nested bullet and a closing sentence stay silent, while a verdict-less paragraph line is still flagged). Case 23 printed 3 hits before the review repair.
+- `evidence-gate`: cases 27-30 (v8 Changes is a claim; five not-run spellings suppress; a passed verdict with nothing run still fires; `not running` in prose does not suppress; the advice asks for a not-run line, not `[PARTIAL]`). 27 and 29 fail on the 0.108.0 hook; 28 fails on a mutation that keeps the new claim shape and drops the suppression; 29b and 30 failed before the review repair.
+- `sampling-audit`: a v8 report closes the turn-yield tell; mixed v7 and v8 reports count as two judged blocks; only check lines of the verification part are judged (removing any one of the three new rules, or the guard on the closing-sentence break, fails it).
+- `spec-status-drift`: the v8 status line and checklist completion; the template-line control is flush left, and fails when the status pattern loses its end anchor.
+- `session-start`: case 15b requires the compaction reminder and core §11 to name the task's spec file (82/83 before the change).
 - `memory-tags` and `doctor`: the 150-character line count (in characters) and the `memory-index-lines` advisory row; both fail on 0.108.0.
 - `spec-structure`: 35 whole-line pins, 13 of them new (the one signal, Ambiguity, Hard-AUTH override, Language, the L0 and L1 rows, No user present, Git, three report lines, Never-downgrade, the spec template's status line); every section hash and both heading inventories re-blessed.
-- `npm run check` exit 0 and `npm run smoke` 2/2 on the release commit; the hooks also ran under a built bash 3.2.57 and with SIGPIPE ignored.
+- On 9252f40, the last change before this entry: `npm run check` exit 0 with a built bash 3.2.57 (node 1,494 of 1,495 passed, 1 skipped because `SHFMT` is not set; all 44 hook suites also executed under bash 3.2); exit 0 again with SIGPIPE ignored; `npm run smoke` 2/2.
+- Before that, `tmp-sweep` case 6 (eight concurrent calls, expected one sweep, got two) failed in two full-suite runs: a bash 5.x run during development and the bash 3.2 run on the release commit 869ee1e, whose exit 0 then came only from the run with SIGPIPE ignored. The hook, its test and `hooks/lib/` are unchanged since 0.108.0, and the pre-tag reviewer reproduced the failure once in 60 runs on both 0.108.0 and 869ee1e under four parallel workers, so it predates this release; its cause is not established.
 
-**Pre-tag review.** Pending when this entry was written; its findings and repairs are recorded here before the tag.
+**Pre-tag review.** Round 1 (independent release-reviewer, 243212d..869ee1e) found 2 High, 7 Medium and 11 Low.
+- High: `transcript-structure-scan` read the full-width colon `：` byte by byte under mawk and flagged the spec's own report template (fixed); a tag before 2026-10-26 would contradict the decision to ship after the evaluation windows close (no change: the release waits, and this entry's date becomes the tag date).
+- Medium, all repaired: the H4 reading cited as evidence; AUTONOMOUS's replacement described as unchanged when it relaxes; `verify.md` teaching the old report; Never-downgrade contradicting safe-path deletes; four HARD rules with changed requirements left uncounted; the red bash 3.2 run left out of this entry; `[PARTIAL]` in evidence-gate's advice.
+- Low: eight repaired (judging non-check lines, the `not run` substring, a control that could not fail, "regardless of LOC" and the unannounced L2 spec-file change, `memory.md`'s orphaned lesson body, unnamed deletions and the isolate-vs-Git precedence, the compaction reminder, the tmp-sweep wording). Not repaired: new hits on a v7 report under a `## Report` heading (none in 189 real transcripts), an overstatement in the claims list given to the reviewer (not in this entry), and commit 13210af's message, which keeps a claim that f42194c corrected.
+- Delta review of the repair commits: pending.
 
 ## [0.108.0] - 2026-10-15
 
