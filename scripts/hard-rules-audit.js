@@ -19,6 +19,7 @@ import {
   logFirstTs,
   excludeTestSessions,
   blockingDenyCount,
+  isFiredEvent,
   isImmutableSection,
 } from './lib/rule-hits-parse.js';
 import { printHelpAndExit, resolveDaysFlag, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
@@ -84,6 +85,10 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
     // surface at all and reports null (see below).
     const sectionHits = r.rule_hits_section ? bySection[r.rule_hits_section] : null;
     const total = sectionHits?.total || 0;
+    // Demotion reads `fired`, not `total`: see isFiredEvent.
+    const fired = Object.entries(sectionHits?.byEvent || {})
+      .filter(([e]) => isFiredEvent(e))
+      .reduce((n, [, c]) => n + c, 0);
     const deny = blockingDenyCount(sectionHits?.byEvent); // deny + deny-repeat + deny-prose, not just literal `deny`
     const bypass = sectionHits?.byEvent?.['bypass-escape-hatch'] || 0;
     const warn = sectionHits?.byEvent?.warn || 0;
@@ -102,7 +107,7 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
       // `enforcement` made those report null, i.e. "no signal", so §13.1 demote
       // review could never see them. null now means exactly one thing: the rule
       // has no telemetry surface to read.
-      hits: r.rule_hits_section ? { total, deny, bypass, warn } : null,
+      hits: r.rule_hits_section ? { total, fired, deny, bypass, warn } : null,
     };
   });
 
@@ -136,10 +141,10 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   // question for the FN matrix, not a demotion question).
   const isSafetyClass = r => isImmutableSection(r.id);
   const safetyClassExempt = hookEnforced
-    .filter(r => isSafetyClass(r) && r.hits && r.hits.total === 0)
+    .filter(r => isSafetyClass(r) && r.hits && r.hits.fired === 0)
     .map(r => r.id);
   const wouldBeDemoteCandidates = hookEnforced
-    .filter(r => !isSafetyClass(r) && r.hits && r.hits.total === 0)
+    .filter(r => !isSafetyClass(r) && r.hits && r.hits.fired === 0)
     .map(r => r.id);
   const demoteCandidates = insufficientData ? [] : wouldBeDemoteCandidates;
   const demoteSuppressed = insufficientData

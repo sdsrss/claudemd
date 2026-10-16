@@ -351,6 +351,21 @@ export function isSignalEvent(event) {
   );
 }
 
+// Rows where a gate found the condition its rule governs and the agent had
+// already satisfied the rule: ship-baseline on a red baseline whose commit or
+// command carries the `known-red baseline:` marker. Nothing was said to the
+// agent, so they are not signal; but the rule did its work.
+const COMPLIANCE_EVENTS = new Set(['pass-known-red', 'pass-known-red-incmd']);
+
+// isFiredEvent(event) — what §13.1 demote review counts as the rule firing.
+// A check that found nothing (`pass`, `pending-no-baseline`, `npx-allow-local`)
+// and a banner repeating an earlier checkpoint (`paused-banner`) do not count:
+// counting them kept §7-ship-baseline and §11-session-exit out of the demote
+// loop for as long as pushes or banners continued (converge D9).
+export function isFiredEvent(event) {
+  return isSignalEvent(event) || COMPLIANCE_EVENTS.has(event);
+}
+
 // blockingDenyCount(byEvent) — sum every blocking-deny-family event in a
 // groupBySection `byEvent` map (deny + deny-repeat + deny-prose, excluding the
 // advisory deny-prose-dry-run). Callers that hardcoded `byEvent.deny` undercount

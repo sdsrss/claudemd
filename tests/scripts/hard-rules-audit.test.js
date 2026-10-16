@@ -176,6 +176,58 @@ test('demoteCandidates list hook-rules with zero hits (sufficient log span)', as
   }
 });
 
+// D9 (converge R15 item 7): `hits.total` counted every row, so a gate that logs
+// each check it passes (§7-ship-baseline writes `pass` on every push with a green
+// baseline) or a banner that repeats a checkpoint (§11-session-exit's
+// `paused-banner`) could never go silent, and OPERATOR.md's demote loop could not
+// reach them. Demotion now reads `hits.fired`: signal events plus the rows where
+// the gate found its condition and the agent satisfied the rule.
+test('demote review counts fired rows, not checks that found nothing', async () => {
+  const log = path.join(tmpHome, '.claude/logs/claudemd.jsonl');
+  const old = new Date(Date.now() - 31 * 86400 * 1000).toISOString();
+  const now = new Date().toISOString();
+  const row = (hook, event, section) =>
+    `{"ts":"${now}","hook":"${hook}","event":"${event}","spec_section":"${section}","session_id":"7ef1bd7c-60a4-4ec3-bde3-7d273876e6a3","extra":null}\n`;
+  fs.writeFileSync(
+    log,
+    `{"ts":"${old}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":null}\n` +
+      row('ship-baseline', 'pass', '§7-ship-baseline').repeat(5) +
+      row('ship-baseline', 'pending-no-baseline', '§7-ship-baseline') +
+      row('session-start', 'paused-banner', '§11-session-exit').repeat(3) +
+      row('pre-bash-safety', 'npx-allow-local', '§8-npx')
+  );
+  const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
+  const ship = r.rules.find(rl => rl.id === '§7-ship-baseline');
+  assert.equal(ship.hits.total, 6, 'total keeps counting every row');
+  assert.equal(ship.hits.fired, 0, 'pass and pending-no-baseline are checks that found nothing');
+  assert.ok(r.demoteCandidates.includes('§7-ship-baseline'), JSON.stringify(r.demoteCandidates));
+  assert.ok(
+    r.demoteCandidates.includes('§11-session-exit'),
+    'a banner repeats a checkpoint; it is not a firing'
+  );
+  assert.ok(r.safetyClassExempt.includes('§8-npx'), 'an allow-only §8 gate is listed as never fired');
+
+  // Controls: the agent satisfying the rule on a red baseline is a firing, and
+  // so is a deny / warn.
+  for (const [hook, event, section, id] of [
+    ['ship-baseline', 'pass-known-red', '§7-ship-baseline', '§7-ship-baseline'],
+    ['ship-baseline', 'pass-known-red-incmd', '§7-ship-baseline', '§7-ship-baseline'],
+    ['ship-baseline', 'deny', '§7-ship-baseline', '§7-ship-baseline'],
+    ['session-end-check', 'warn', '§11-session-exit', '§11-session-exit'],
+    ['pre-bash-safety', 'deny', '§8-npx', '§8-npx'],
+  ]) {
+    fs.appendFileSync(log, row(hook, event, section));
+    const r2 = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
+    assert.ok(
+      !r2.demoteCandidates.includes(id) && !r2.safetyClassExempt.includes(id),
+      `${event} under ${section} must count as fired`
+    );
+    assert.equal(r2.rules.find(rl => rl.id === id).hits.fired, 1, `${event}: fired`);
+    // Back to the fixture without the control row for the next control.
+    fs.writeFileSync(log, fs.readFileSync(log, 'utf8').split('\n').slice(0, -2).join('\n') + '\n');
+  }
+});
+
 // Bug surfaced v0.9.20 in dogfood session: log span 17d < requested 90d window
 // → demoteCandidates included §11-memory-read, which had been silently no-op'd
 // in projects with `_` in the cwd path until v0.9.15 fixed it. The rule wasn't

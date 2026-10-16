@@ -158,7 +158,7 @@ on each run, so a citation that stops matching is a red build rather than a stal
 **4. Audit loop (rule-hits → `/claudemd-audit` → `/claudemd-doctor`)**
 1. Every hook verdict lands in `claudemd.jsonl` (flow 2, step 5).
 2. `scripts/audit.js` reads the window with `readHits`, aggregates `groupBySection` / `topPatterns` / `byBypass`, and appends the sampling-audit self-compliance section.
-3. `scripts/hard-rules-audit.js` joins the same rows with `spec/hard-rules.json` to list rules with zero hits.
+3. `scripts/hard-rules-audit.js` joins the same rows with `spec/hard-rules.json` to list rules with zero fired rows (`hits.fired`: a check that found nothing is not a firing).
 4. `scripts/doctor.js` surfaces those as demote candidates alongside spec drift, hook drift and backup inventory.
 5. A spec edit that follows goes through `spec/` + version bump + ship, never `~/.claude/` directly.
 
