@@ -497,6 +497,37 @@ test('R15: a missing home CLAUDE.md does not put the spec siblings in the person
   );
 });
 
+test('R18 M3: a hand-written sibling with no CLAUDE.md still gets a personal backup', async () => {
+  // The R15 branch treated every sibling as claudemd's. A user's own
+  // OPERATOR.md was then overwritten with its copy only in spec-backup-, where
+  // restore does not look.
+  fs.writeFileSync(path.join(tmpHome, '.claude/OPERATOR.md'), '# My operator notes\n');
+  const r = await install({ pluginRoot });
+  assert.equal(r.spec, 'backup-and-overwrite');
+  assert.equal(fs.readFileSync(path.join(r.backupDir, 'OPERATOR.md'), 'utf8'), '# My operator notes\n');
+});
+
+test('R18 M3: siblings that match the shipped bytes write no spec-backup when CLAUDE.md is gone', async () => {
+  // homeSpecMatchesShipped answered false whenever CLAUDE.md was missing, so
+  // each such install copied three byte-identical siblings into a new
+  // spec-backup- dir, and the sixth pruned the one holding the user's notes.
+  await install({ pluginRoot });
+  fs.appendFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '\nmy notes\n');
+  await install({ pluginRoot }); // spec + notes → one spec-backup holding the notes
+  const specBackups = () =>
+    fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('spec-backup-'));
+  assert.equal(specBackups().length, 1);
+  for (let i = 0; i < 6; i++) {
+    fs.rmSync(path.join(tmpHome, '.claude/CLAUDE.md'));
+    await install({ pluginRoot });
+  }
+  assert.equal(specBackups().length, 1, 'no new spec-backup for unchanged siblings');
+  assert.match(
+    fs.readFileSync(path.join(tmpHome, '.claude', specBackups()[0], 'CLAUDE.md'), 'utf8'),
+    /my notes/
+  );
+});
+
 test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.userContentDetected, false);

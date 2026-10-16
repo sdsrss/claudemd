@@ -115,7 +115,12 @@ function homeSpecMatchesShipped(pluginRoot) {
   return SPEC_FILES.every(name => {
     const home = homeSpec(name);
     const shipped = path.join(pluginRoot, 'spec', name);
-    if (!fs.existsSync(home) || !fs.existsSync(shipped)) return false;
+    // A home file that is not there holds nothing to lose (R18 M3). Answering
+    // "differs" for it made every install with CLAUDE.md missing copy the
+    // unchanged siblings into a new spec-backup-, and the sixth pruned the
+    // one that held the user's notes.
+    if (!fs.existsSync(home)) return true;
+    if (!fs.existsSync(shipped)) return false;
     try {
       return sha256File(home) === sha256File(shipped);
     } catch {
@@ -394,11 +399,24 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // them up.
   const claudeMdIsSpec = existing.includes(claudeMdPath) && !userContentDetected;
   // No home CLAUDE.md but spec siblings present (a dotfiles tool or a manual
-  // reset removed it): the siblings are claudemd's own files, so they take the
-  // spec branch too. In the personal branch each such install made a `backup-`
-  // dir with no CLAUDE.md; restore returned it, and five of them pruned the
-  // user's real backup away (R15, 2026-10-16).
-  const onlySpecSiblings = existing.length > 0 && !existing.includes(claudeMdPath);
+  // reset removed it): siblings that are claudemd's own take the spec branch
+  // too. In the personal branch each such install made a `backup-` dir with no
+  // CLAUDE.md; restore returned it, and five of them pruned the user's real
+  // backup away (R15, 2026-10-16). "Claudemd's own" is checked per file, not
+  // assumed from the name (R18 M3): a hand-written ~/.claude/OPERATOR.md is the
+  // user's, and in the spec branch it lost its restore path. Unreadable reads
+  // as the user's, the side that keeps a personal backup.
+  const isClaudemdSibling = p => {
+    try {
+      const text = fs.readFileSync(p, 'utf8');
+      const shipped = path.join(pluginRoot, 'spec', path.basename(p));
+      return looksLikeSpec(text) || (fs.existsSync(shipped) && text === fs.readFileSync(shipped, 'utf8'));
+    } catch {
+      return false;
+    }
+  };
+  const onlySpecSiblings =
+    existing.length > 0 && !existing.includes(claudeMdPath) && existing.every(isClaudemdSibling);
 
   // SCRIPT-1 (2026-07-12 audit): validate the shipped spec is COMPLETE *before*
   // the backup branch below moves the user's ~/.claude/CLAUDE.md (createBackup
