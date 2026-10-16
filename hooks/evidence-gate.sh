@@ -31,7 +31,8 @@
 # False-positive control, in the order it matters:
 #   - no completion claim in the last assistant message  -> never fires
 #   - the claim carries `[PARTIAL`, or a verification verdict of
-#     not run / could not run (未运行 / 无法运行)          -> never fires
+#     not run / could not run (未运行 / 无法运行) — the English
+#     words only as a phrase, not inside `not running`  -> never fires
 #   - no code-file Edit/Write in the window              -> never fires,
 #     which is what keeps L0 / L1-copy / docs work out of it entirely
 #
@@ -85,9 +86,12 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 # spec-sanctioned way to say the evidence does not cover everything. Checked
 # first: it suppresses regardless of what else the message says, so an honest
 # partial never earns a nag. Both spellings stay: the hook ships beside the spec
-# it reads, but a machine can run a v7 spec with these hooks for a while.
+# it reads, but a machine can run a v7 spec with these hooks for a while. The
+# English phrase must end there: `is not running anymore` is prose, not a
+# verdict (0.109.0 pre-tag review L3).
 case "$LAST_MSG" in
-  *'[PARTIAL'* | *'not run'* | *'Not run'* | *'未运行'* | *'无法运行'*) exit 0 ;;
+  *'[PARTIAL'* | *'未运行'* | *'无法运行'*) exit 0 ;;
+  *[Nn]'ot run' | *[Nn]'ot run'[![:alpha:]]*) exit 0 ;;
 esac
 
 # Completion-claim shapes. Wider than scripts/sampling-audit.js's, deliberately
@@ -330,9 +334,9 @@ hook_record evidence-gate evidence-advisory "$EXTRA" '§iron-law-2' "$SESSION_ID
 printf '[claudemd] §7 Iron Law #2 — a completion claim this session has no verification output behind it.\n' >&2
 printf '  This session edited code files, the last assistant message makes a Done claim, and %s\n' "$DETAIL" >&2
 if (( EG_QUEUED )); then
-  printf '  The agent is not interrupted now; a short version of this note reaches it with your next message. If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
+  printf '  The agent is not interrupted now; a short version of this note reaches it with your next message. If the claim matters, ask it for the verification output, or to list the check as not run (未运行) with the reason.\n' >&2
 else
-  printf '  This note reaches you, not the agent. If the claim matters, ask it for the verification output or a [PARTIAL: <what is unverified>] restatement.\n' >&2
+  printf '  This note reaches you, not the agent. If the claim matters, ask it for the verification output, or to list the check as not run (未运行) with the reason.\n' >&2
 fi
 printf '  Checked the transcript, not the wording: the last %s rows, for a non-error Bash result after the last code edit.\n' "$EG_WINDOW" >&2
 printf '  Advisory. Disable: EVIDENCE_GATE=0 or DISABLE_EVIDENCE_GATE_HOOK=1.\n' >&2

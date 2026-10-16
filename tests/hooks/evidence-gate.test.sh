@@ -741,7 +741,8 @@ N28=0
 for M28 in $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：`npm test` → 未运行（这个项目没有测试）。' \
   $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：冒烟入口 → 无法运行（缺数据库）。' \
   $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: `npm test` → not run (no test suite).' \
-  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: smoke entry → could not run (no database).'; do
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: smoke entry → could not run (no database).' \
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**\n- smoke entry → Not run (no database)'; do
   N28=$((N28 + 1))
   {
     row_edit /p/src/a.js
@@ -769,6 +770,34 @@ if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
   ok "29: a passed verdict with nothing run still fires (28 keys on not-run words only)"
 else
   ng "29: a passed verdict with nothing run went silent: $OUT"
+fi
+
+# --- Case 29b (control for 28): "not run" inside a longer word suppresses nothing
+# The exemption is a verdict, so `not running` in a Changes sentence must not
+# silence the gate (0.109.0 pre-tag review L3).
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook $'## Report\n\n**Changes**: the old watcher is not running anymore; rewrote the parser.\n\n**Verification**: `npm test` → passed.')
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "29b: 'not running' in prose is not a not-run verdict"
+else
+  ng "29b: 'not running' silenced the gate: $OUT"
+fi
+
+# --- Case 30: the human-facing advice names v8's report, not [PARTIAL] -------
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook $'## 汇报\n\n**变更**：重写了解析器。')
+if [[ "$OUT" == *"Iron Law #2"* && "$OUT" != *"[PARTIAL"* && "$OUT" == *"not run"* ]]; then
+  ok "30: the advisory asks for the output or a not-run verdict, not a [PARTIAL] restatement"
+else
+  ng "30: advisory text: $OUT"
 fi
 
 echo
