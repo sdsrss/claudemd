@@ -21,10 +21,22 @@ beforeEach(async () => {
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
   delete process.env.CLAUDEMD_NO_STATUSLINE;
   fs.mkdirSync(path.join(pluginRoot, 'spec'), { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), 'plugin\n');
-  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-extended.md'), 'plugin-ext\n');
-  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE-changelog.md'), 'plugin-cl\n');
-  fs.writeFileSync(path.join(pluginRoot, 'spec/OPERATOR.md'), 'plugin-op\n');
+  // Each opens with the `# AI-CODING-SPEC` H1, like every shipped spec file:
+  // uninstall reads ownership from it (R20 M1/M2), so a fixture without it is
+  // a plugin shape that does not exist.
+  fs.writeFileSync(path.join(pluginRoot, 'spec/CLAUDE.md'), '# AI-CODING-SPEC v0 — Core\nplugin\n');
+  fs.writeFileSync(
+    path.join(pluginRoot, 'spec/CLAUDE-extended.md'),
+    '# AI-CODING-SPEC v0 — Extended\nplugin-ext\n'
+  );
+  fs.writeFileSync(
+    path.join(pluginRoot, 'spec/CLAUDE-changelog.md'),
+    '# AI-CODING-SPEC — Version history\nplugin-cl\n'
+  );
+  fs.writeFileSync(
+    path.join(pluginRoot, 'spec/OPERATOR.md'),
+    '# AI-CODING-SPEC — Operator handbook\nplugin-op\n'
+  );
   fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
   // Registry-derived, not a hand-picked 5 (audit-2026-08-22 条目 8): uninstall's
   // eviction predicate is built from HOOK_BASENAMES, so a fixture holding a
@@ -174,20 +186,52 @@ test('R15: restore still works after a default uninstall removed the manifest', 
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'prior-version\n');
 });
 
-test('R18 M2: with no manifest a delete stays a no-op, so a restored personal file survives it', async () => {
+test("R18 M2 / R20 M1: with no manifest a delete removes the spec files and keeps the user's", async () => {
   // restore → (edit) → delete is the order the restore docs lead to. Without a
-  // manifest nothing says the home CLAUDE.md is claudemd's: after a restore it
-  // is the user's own, and an unconditional delete removed it with the edits
-  // made since. Only the restore half of the R15 change stays.
+  // manifest, ownership is read from the file: claudemd's spec files open with
+  // the `# AI-CODING-SPEC` H1, a restored personal file does not. An
+  // unconditional delete removed the user's file (R18 M2); a no-op left the
+  // spec in place after a confirmed delete and reported it as done (R20 M1).
   const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
   fs.mkdirSync(bkDir);
   fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'prior-version\n');
+  for (const n of ['CLAUDE-extended.md', 'CLAUDE-changelog.md', 'OPERATOR.md']) {
+    fs.writeFileSync(path.join(tmpHome, '.claude', n), `# AI-CODING-SPEC — ${n}\n`);
+  }
   const restored = await uninstall({ specAction: 'restore' });
   assert.equal(restored.warning, undefined, 'a restore that put files back carries no warning');
   fs.appendFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'edited after restore\n');
   const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
-  assert.equal(res.specAction, 'noop');
-  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(res.specAction, 'delete');
+  assert.deepEqual(res.kept, [path.join(tmpHome, '.claude/CLAUDE.md')]);
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    'prior-version\nedited after restore\n'
+  );
+  assert.equal(
+    fs.existsSync(path.join(tmpHome, '.claude/OPERATOR.md')),
+    false,
+    'the spec-shaped sibling is gone'
+  );
+});
+
+test('R20 M1: with no manifest a confirmed delete removes a spec-shaped CLAUDE.md', async () => {
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# AI-CODING-SPEC v9 — Core\n');
+  await uninstall({ specAction: 'keep' });
+  const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.equal(res.specAction, 'delete');
+  assert.equal(res.warning, undefined);
+  assert.equal(fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')), false);
+});
+
+test("R20 M2: a second restore does not overwrite the user's edits to the first one", async () => {
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'prior-version\n');
+  await uninstall({ specAction: 'restore' });
+  fs.appendFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'edited after restore\n');
+  const again = await uninstall({ specAction: 'restore' });
+  assert.deepEqual(again.kept, [path.join(tmpHome, '.claude/CLAUDE.md')]);
   assert.equal(
     fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
     'prior-version\nedited after restore\n'

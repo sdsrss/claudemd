@@ -6,7 +6,7 @@ import {
   unmergeHook,
   isClaudemdLegacyHookCommand,
 } from './lib/settings-merge.js';
-import { listBackups, restoreBackup } from './lib/backup.js';
+import { listBackups, restoreBackup, looksLikeSpec } from './lib/backup.js';
 import {
   stateDir,
   logsDir,
@@ -74,7 +74,10 @@ const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 Remove claudemd hooks from ~/.claude/settings.json + clear the install
 manifest. Spec files in ~/.claude/CLAUDE*.md are kept by default. Idempotent
 (re-run after success returns warning: already-uninstalled), except that a
-restore runs again whenever it is asked for: it needs no manifest.
+restore or delete runs whenever it is asked for: neither needs the manifest.
+Without one, a delete removes only files that open with the "# AI-CODING-SPEC"
+H1; anything else is listed in \`kept\`. A restore never overwrites a home file
+that is not the spec and differs from the backup (also listed in \`kept\`).
 
 No flags. Behavior is read from the following env vars:
   CLAUDEMD_SPEC_ACTION  keep (default) | delete | restore
@@ -192,9 +195,34 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
   }
 }
 
+// Is this home file claudemd's? Every spec file opens with the
+// `# AI-CODING-SPEC` H1 (install decides the same way, backup.js#looksLikeSpec);
+// a restored personal CLAUDE.md does not. Unreadable reads as the user's.
+const isSpecFile = p => {
+  try {
+    return looksLikeSpec(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return false;
+  }
+};
+const sameBytes = (a, b) => {
+  try {
+    return fs.readFileSync(a).equals(fs.readFileSync(b));
+  } catch {
+    return false;
+  }
+};
+
 // Spec file disposition. Shared by the manifest and the no-manifest paths:
-// neither restore nor delete reads the manifest.
-function disposeSpec(specAction, restoreSource) {
+// neither restore nor delete reads the manifest. Returns {restored, kept}:
+// `kept` lists home files left alone because they are the user's own.
+//   delete, ownedOnly (no manifest, R20 M1): only spec-shaped files go. Without
+//     a manifest nothing else says a file is claudemd's, and after a restore
+//     the home CLAUDE.md is the user's (R18 M2).
+//   restore (R20 M2): a home file that is not the spec and differs from the
+//     backup is the user's — an earlier restore they have since edited — and
+//     copying over it lost those edits with no copy anywhere.
+function disposeSpec(specAction, restoreSource, { ownedOnly = false } = {}) {
   // What the restore actually put back. `null` = this run was not a restore;
   // `[]` = a restore that copied nothing. The two were indistinguishable in the
   // output until 2026-09-05 (audit ENG-01): restoreBackup has always returned
@@ -205,9 +233,12 @@ function disposeSpec(specAction, restoreSource) {
   // false success here is the last thing standing between them and their
   // personal instructions.
   let restored = null;
+  const kept = [];
   if (specAction === 'delete') {
     for (const p of specHome()) {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
+      if (!fs.existsSync(p)) continue;
+      if (ownedOnly && !isSpecFile(p)) kept.push(p);
+      else fs.unlinkSync(p);
     }
     // The per-phase modules go with the spec that points at them: every regular
     // *.md in the directory (claudemd keeps no record of which ones it wrote),
@@ -221,8 +252,14 @@ function disposeSpec(specAction, restoreSource) {
       if (fs.readdirSync(modDir).length === 0) fs.rmdirSync(modDir);
     }
   } else if (specAction === 'restore') {
-    restored = restoreBackup(restoreSource, backupRoot());
-    if (restored.length === 0) {
+    restored = restoreBackup(restoreSource, backupRoot(), {
+      skip: (src, dest) => {
+        const mine = fs.existsSync(dest) && !isSpecFile(dest) && !sameBytes(src, dest);
+        if (mine) kept.push(dest);
+        return mine;
+      },
+    });
+    if (restored.length === 0 && kept.length === 0) {
       process.stderr.write(
         `[claudemd] WARN: restore read no files from ${restoreSource} — your ~/.claude spec ` +
           `files are UNCHANGED. Entries that cannot be opened (a backed-up symlink whose ` +
@@ -230,7 +267,13 @@ function disposeSpec(specAction, restoreSource) {
       );
     }
   }
-  return restored;
+  if (kept.length > 0) {
+    process.stderr.write(
+      `[claudemd] kept ${kept.length} file(s) that are not the claudemd spec: ${kept.join(', ')}. ` +
+        `Move them aside first if you want them ${specAction === 'delete' ? 'deleted' : 'replaced by the backup'}.\n`
+    );
+  }
+  return { restored, kept };
 }
 
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
@@ -331,17 +374,22 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       purgeStateAndLogs(m.path || manifestPath(), legacyManifestPath());
       purged = true;
     }
-    // A restore does not need one either (R15): the natural order is a default
-    // uninstall first, then asking for the personal CLAUDE.md back, and that
-    // was answered `noop` with the backup still on disk. A delete stays a no-op
-    // (R18 M2): with no manifest nothing says the home CLAUDE.md is claudemd's,
-    // and after a restore it is the user's own.
-    const restored = specAction === 'restore' ? disposeSpec(specAction, restoreSource) : null;
+    // Restore and delete do not need one either (R15): the natural order is a
+    // default uninstall first, then asking for the personal CLAUDE.md back, and
+    // that was answered `noop` with the backup still on disk. Here ownership
+    // comes from the files themselves (ownedOnly): a delete removes the
+    // spec-shaped ones and keeps the user's (R18 M2, R20 M1).
+    const acted = specAction === 'restore' || specAction === 'delete';
+    const { restored, kept } = acted
+      ? disposeSpec(specAction, restoreSource, { ownedOnly: true })
+      : { restored: null, kept: [] };
     let warning = 'already-uninstalled';
-    if (restored) warning = restored.length === 0 ? 'restore-empty' : undefined;
+    if (restored) warning = restored.length === 0 && kept.length === 0 ? 'restore-empty' : undefined;
+    if (specAction === 'delete') warning = undefined;
     return {
-      specAction: restored ? 'restore' : 'noop',
+      specAction: acted ? specAction : 'noop',
       restored,
+      ...(kept.length > 0 ? { kept } : {}),
       ...(warning ? { warning } : {}),
       settingsRemoved,
       settingsWarning,
@@ -353,7 +401,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   const legacyPath = legacyManifestPath();
 
   // 2. Spec file disposition
-  const restored = disposeSpec(specAction, restoreSource);
+  const { restored, kept } = disposeSpec(specAction, restoreSource);
   const outcome = specAction === 'delete' || specAction === 'restore' ? specAction : 'keep';
 
   // 3. Clean state + logs (per purge flag). Always unlink both the current
@@ -370,6 +418,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   const result = {
     specAction: outcome,
     restored,
+    ...(kept.length > 0 ? { kept } : {}),
     settingsRemoved,
     settingsWarning,
     statusline,
@@ -378,7 +427,7 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   // Same reasoning as the `warning: 'already-uninstalled'` return above: the
   // exit code and specAction say the requested disposition ran, and only this
   // field distinguishes "put your files back" from "found nothing to put back".
-  if (restored && restored.length === 0) result.warning = 'restore-empty';
+  if (restored && restored.length === 0 && kept.length === 0) result.warning = 'restore-empty';
   return result;
 }
 

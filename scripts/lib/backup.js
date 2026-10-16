@@ -382,7 +382,9 @@ export function findLegacySpecBackups() {
   return found;
 }
 
-export function restoreBackup(backupDir, targetRoot) {
+// `skip(src, dest)` → true leaves that entry alone (uninstall keeps a home file
+// that is the user's own; R20 M2).
+export function restoreBackup(backupDir, targetRoot, { skip } = {}) {
   const restored = [];
   for (const name of fs.readdirSync(backupDir)) {
     const src = path.join(backupDir, name);
@@ -402,6 +404,7 @@ export function restoreBackup(backupDir, targetRoot) {
       continue;
     }
     if (isFile) {
+      if (skip && skip(src, dest)) continue;
       fs.copyFileSync(src, dest);
       restored.push(dest);
     }
