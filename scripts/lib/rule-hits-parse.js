@@ -324,7 +324,17 @@ export function isBlockingDeny(event) {
 // the PreToolUse deny family. Kept as an explicit set because there is no prefix
 // that describes them. `block` is sandbox-disposal's opt-in Stop block, the
 // stronger form of its `warn` (D#77).
-const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch', 'block']);
+// `reply-language-restate` is reply-language-check's Stop block. Hooks name
+// their own advisories `<x>-advisory` (evidence, rework, ledger-stale, …); those
+// are matched by suffix in isSignalEvent, because the exact set left all eight
+// out of the trend (R15).
+const SIGNAL_NON_DENY = new Set([
+  'warn',
+  'advisory',
+  'bypass-escape-hatch',
+  'block',
+  'reply-language-restate',
+]);
 
 // isSignalEvent(event) — everything a usage trend should count.
 //
@@ -334,7 +344,11 @@ const SIGNAL_NON_DENY = new Set(['warn', 'advisory', 'bypass-escape-hatch', 'blo
 // rule, the other a list, with no join (2026-09-02 audit R11-13b). The deny half
 // is now derived; only the non-deny names are written down (SIGNAL_NON_DENY).
 export function isSignalEvent(event) {
-  return isBlockingDeny(event) || SIGNAL_NON_DENY.has(event);
+  return (
+    isBlockingDeny(event) ||
+    SIGNAL_NON_DENY.has(event) ||
+    (typeof event === 'string' && event.endsWith('-advisory'))
+  );
 }
 
 // blockingDenyCount(byEvent) — sum every blocking-deny-family event in a

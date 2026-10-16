@@ -209,6 +209,64 @@ test('R11-13b: the trend event set derives its deny half from isBlockingDeny', (
   }
 });
 
+test('R15: every event a hook records is classified, and the per-hook advisories count', () => {
+  // The non-deny half was an exact-name set, so eight `*-advisory` events and
+  // reply-language's Stop block (`reply-language-restate`) — all carrying a
+  // spec_section — never reached the trend: 230 rework-advisory rows in 30 days
+  // were invisible. The emitted set is derived from the hook sources; an event
+  // nobody has classified yet is red here.
+  const NOT_SIGNAL = new Set([
+    'bootstrap',
+    'bootstrap-fail-banner',
+    'bootstrap-stand-down',
+    'bootstrap-sync',
+    'claim-wtree',
+    'compact-reminder',
+    'deny-prose-dry-run',
+    'ledger-inject',
+    'module-inject',
+    'module-unread',
+    'notice-delivered',
+    'npx-allow-local',
+    'npx-allow-no-install',
+    'pass',
+    'pass-known-red',
+    'pass-known-red-incmd',
+    'paused-banner',
+    'pending-no-baseline',
+    'read',
+    'reply-language-logged',
+    'rm-rf-allow-provenance',
+    'rm-rf-allow-validated',
+    'spec-drift',
+    'spec-missing',
+    'stale-root',
+    'suggest',
+    'suppress-source',
+    'upstream-banner',
+    'user-content-banner',
+    'user-content-banner-interrupted',
+    'verify-run',
+    'version-sync',
+  ]);
+  const hooksDir = path.join(REPO_ROOT, 'hooks');
+  const emitted = new Set();
+  for (const f of fs.readdirSync(hooksDir).filter(n => n.endsWith('.sh'))) {
+    for (const m of fs
+      .readFileSync(path.join(hooksDir, f), 'utf8')
+      .matchAll(/^\s*hook_record [a-z-]+ ([a-z][a-z0-9-]*) /gm)) {
+      emitted.add(m[1]);
+    }
+  }
+  assert.ok(
+    emitted.has('rework-advisory') && emitted.has('deny'),
+    'control: the derivation finds known events'
+  );
+  for (const e of emitted) {
+    assert.equal(isSignalEvent(e), !NOT_SIGNAL.has(e), `${e}: classify it as signal or add it to NOT_SIGNAL`);
+  }
+});
+
 test('R11-13b: sparkline holds no private copy of the event set', () => {
   const src = codeOf('scripts/sparkline.js');
   assert.match(src, /isSignalEvent/, 'sparkline must use the shared predicate');
