@@ -537,6 +537,25 @@ test('R15: a malformed content block is skipped and counted, not a V8 stack read
   }
 });
 
+test('R15: audit given two paths is a usage error, not a scan of the first one only', () => {
+  // `audit dir/*.jsonl` in CI expanded to several paths; every one after the
+  // first was dropped, so a hit in the second file passed as exit 0.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-r15b-'));
+  const clean = path.join(tmp, 'a.jsonl');
+  const dirty = path.join(tmp, 'b.jsonl');
+  const row = t => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
+  fs.writeFileSync(clean, row('clean reply') + '\n');
+  fs.writeFileSync(dirty, row('this is significantly better') + '\n');
+  try {
+    assert.equal(run(['audit', dirty]).status, 1, 'control: the second file alone has a hit');
+    const r = run(['audit', clean, dirty]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /one <jsonl-path>/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');

@@ -403,6 +403,14 @@ function auditCmd(rawArgs) {
     process.stderr.write('audit: <jsonl-path> required\n');
     process.exit(2);
   }
+  // A shell glob (`audit dir/*.jsonl`) hands over several paths; scanning only
+  // the first let a hit in any later file pass as exit 0 (R15).
+  if (positional.length > 1) {
+    process.stderr.write(
+      `audit: takes one <jsonl-path>, got ${positional.length} — run it once per transcript\n`
+    );
+    process.exit(2);
+  }
   if (!fs.existsSync(transcriptPath)) {
     process.stderr.write(`audit: file not found: ${transcriptPath}\n`);
     process.exit(2);
