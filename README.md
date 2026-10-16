@@ -385,15 +385,15 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 
 ### Spec disposition
 
-`/claudemd-uninstall` defaults to `keep` (leaves `~/.claude/CLAUDE*.md` in place). Override via env vars before the slash command:
+`/claudemd-uninstall` defaults to `keep` (leaves `~/.claude/CLAUDE*.md` in place). A slash command takes no env vars, so pick another option by typing it (`/claudemd-uninstall restore`) or by asking for it in the same prompt; the command runs `scripts/uninstall.js` with the env vars below (the same ones work when you run the script directly):
 
-| Option | Env vars | Behavior |
-|---|---|---|
-| `keep` (default) | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
-| `restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. |
-| `delete` | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every regular `*.md` file in `~/.claude/spec-modules/`. |
+| Option | Type / ask for | Env vars the script reads | Behavior |
+|---|---|---|---|
+| `keep` (default) | `/claudemd-uninstall` | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
+| `restore` | `/claudemd-uninstall restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`, except over a home file that is not the spec and differs from the backup (listed in `kept`). Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. Then run `/plugin uninstall claudemd@claudemd`: while the plugin stays installed, the next session start installs the spec over the restored file again. |
+| `delete` | ask for a full removal | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every regular `*.md` file in `~/.claude/spec-modules/`. After a default uninstall (no manifest left), only files that open with the `# AI-CODING-SPEC` H1 go; the rest are listed in `kept`. |
 
-`CLAUDEMD_PURGE=1` (env var) on `/claudemd-uninstall` also drops `~/.claude/.claudemd-state/` and your rule-hits log.
+Asking for a purge (`CLAUDEMD_PURGE=1`) also drops `~/.claude/.claudemd-state/` and your rule-hits log.
 
 **What `--purge` deliberately leaves**: `~/.claude/settings.json.claudemd-backup-<ISO>` — the copy of your `settings.json` taken before install rewrote it, and `~/.claude/backup-<ISO>/` / `spec-backup-<ISO>/`. Purge removes claudemd's own state; it does not remove your data, and these files are the copies that exist so `restore` has something to restore from. Delete them by hand once you are sure you no longer want them.
 
