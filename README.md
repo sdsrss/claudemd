@@ -161,7 +161,7 @@ node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
 | `--comment-char <c>` | (`lint`) git `core.commentChar`. Default `#`. |
 | `--version` / `--help` | Standard. |
 
-**Pre-commit example (`.git/hooks/commit-msg`)**:
+**Commit-message hook example (`.git/hooks/commit-msg`)** — a `commit-msg` hook, not `pre-commit`: git hands `commit-msg` the message file as `$1` and gives `pre-commit` no arguments (an empty `lint ""` exits 2 rather than passing):
 
 ```bash
 #!/usr/bin/env bash

@@ -62,7 +62,7 @@ Flags:
 Notes:
   A bare \`lint <arg>\` whose only positional is an existing regular file
   is auto-treated as \`--file <arg>\` so \`claudemd-cli lint .git/COMMIT_EDITMSG\`
-  works as expected in pre-commit hooks. Pass --stdin or quote literal
+  works as expected in a commit-msg hook. Pass --stdin or quote literal
   text to opt out.
 
   A commit-msg hook is handed the RAW message file, which still holds git's
@@ -325,6 +325,17 @@ function lintCmd(rawArgs) {
       }
     }
     if (text === undefined) text = positional.join(' ');
+    // An empty positional is a missing one (R15). Its live shape is
+    // `lint "$1"` installed as a pre-commit hook, which git calls with no
+    // arguments: the scan of "" passed every commit unscanned.
+    if (sourcePath === null && text.trim() === '') {
+      process.stderr.write(
+        'lint: the text is empty, so there is nothing to scan. In a git hook this usually means it ' +
+          'is installed as pre-commit, which gets no arguments; use a commit-msg hook, which gets the ' +
+          'message file as $1.\n'
+      );
+      process.exit(2);
+    }
   } else {
     process.stderr.write('lint: text required (positional arg, --file PATH, or --stdin)\n');
     process.exit(2);

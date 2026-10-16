@@ -155,6 +155,17 @@ test('CLI: lint with no positional arg + no --stdin → exit 2 usage error', () 
   assert.match(r.stderr, /text required/);
 });
 
+test('R15: lint with an empty or blank positional is a usage error, not a clean pass', () => {
+  // README's recipe `claudemd-cli lint "$1"` installed as a pre-commit hook
+  // (which gets no arguments) ran `lint ""`: "OK: no hits", exit 0, and every
+  // commit passed unscanned.
+  for (const arg of ['', '   ']) {
+    const r = run(['lint', arg]);
+    assert.equal(r.status, 2, `lint ${JSON.stringify(arg)}`);
+    assert.match(r.stderr, /empty.*commit-msg/s);
+  }
+});
+
 test('CLI: audit clean transcript → exit 0', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
