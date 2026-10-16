@@ -874,7 +874,7 @@ function scanOverCeremony(events) {
 //
 // DISPOSITION IS PRE-REGISTERED, and fixed before any data exists: with at
 // least ASK_DECISION_MIN_ANSWERS observed asks, an assent rate at or above
-// ASK_ASSENT_THRESHOLD flips core §0's default to (b) — state the reading
+// ASK_ASSENT_THRESHOLD flipped core §0's v7 default to (b) — state the reading
 // inline — leaving ASK mandatory only where §5 AUTH already requires it.
 // Below either bar, the default stands. Do not move these to fit the data.
 //

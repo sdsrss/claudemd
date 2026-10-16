@@ -30,12 +30,12 @@
 ## 验收标准
 
 - [x] AC1：核心不大于 v7.3.0（23,182 B），且不含 `[PARTIAL`、`Four-section`、`HACK`、`EMERGENCY`、`modes.md` — 验证：`wc -c spec/CLAUDE.md; grep -c -E '\[PARTIAL|Four-section|HACK|EMERGENCY|modes\.md' spec/CLAUDE.md`
-- [ ] AC2：26 条 HARD 规则全部还在，锚点都能在规范里找到 — 验证：`node --test tests/scripts/hard-rules-drift.test.js`
-- [ ] AC3：全套检查绿 — 验证：`npm run check`、`npm run smoke`
-- [ ] AC4：三段式汇报被 `transcript-structure-scan` 和 `sampling-audit` 同样判定，四段式仍被识别 — 验证：`node --test tests/scripts/structure-scan-parity.test.js`、`bash tests/hooks/transcript-structure-scan.test.sh`
-- [ ] AC5：`evidence-gate` 把"变更"段当作完成声明，"未运行 / 无法运行"豁免 — 验证：`bash tests/hooks/evidence-gate.test.sh`
+- [x] AC2：26 条 HARD 规则全部还在，锚点都能在规范里找到 — 验证：`node --test tests/scripts/hard-rules-drift.test.js`
+- [x] AC3：全套检查绿 — 验证：`npm run check`、`npm run smoke`
+- [x] AC4：三段式汇报被 `transcript-structure-scan` 和 `sampling-audit` 同样判定，四段式仍被识别 — 验证：`node --test tests/scripts/structure-scan-parity.test.js`、`bash tests/hooks/transcript-structure-scan.test.sh`
+- [x] AC5：`evidence-gate` 把"变更"段当作完成声明，"未运行 / 无法运行"豁免 — 验证：`bash tests/hooks/evidence-gate.test.sh`
 - [ ] AC6：A/B（Opus 5.5，每格 10 次）B 臂：L0/L1 技能调用 0；先复现、先红、打 tag 前评审都不低于 A 臂减 1；三段式汇报 ≥ 9/10；歧义任务中途提问 0/10 且写下决定 ≥ 9/10 — 验证：`tasks/v8-ab/RESULT.md`
-- [ ] AC7：打 tag 前独立评审无未修的 Critical / High — 验证：评审报告路径记在验证记录里
+- [x] AC7：打 tag 前独立评审无未修的 Critical / High — 验证：评审报告路径记在验证记录里
 - [ ] AC8：10-26 之后合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
 
 ## 方案
@@ -65,8 +65,8 @@
 - [x] S4：`doctor` 的索引行长度提示 — 覆盖 AC3 — 依赖：无 — 执行：主会话
 - [x] S5：README、项目 CLAUDE.md、OPERATOR.md、ARCHITECTURE、RULE-HITS-SCHEMA 同步 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
 - [ ] S6：A/B — 覆盖 AC6 — 依赖：S2 — 执行：主会话驱动脚本
-- [ ] S7：发版提交（插件 0.109.0）、推分支、草稿 PR、CI 绿 — 覆盖 AC3 — 依赖：S1–S6 — 执行：主会话
-- [ ] S8：打 tag 前独立评审与修复 — 覆盖 AC7 — 依赖：S7 — 执行：release-reviewer
+- [x] S7：发版提交（插件 0.109.0）、推分支、草稿 PR、CI 绿 — 覆盖 AC3 — 依赖：S1–S6 — 执行：主会话
+- [x] S8：打 tag 前独立评审与修复 — 覆盖 AC7 — 依赖：S7 — 执行：release-reviewer
 - [ ] S9：10-26 之后合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8，且两个评估窗口已关 — 执行：主会话，需用户发话
 
 ## 决策与进展
@@ -89,7 +89,8 @@
 - 2026-10-16：不修的 Low：L1（v7 报告带 `## Report` 标题时的新命中，189 份真实转录里 0 次）、L4（说的是给评审的声明清单，不在发布文字里）、L8（13210af 提交信息里已被 f42194c 更正的说法，不改写已推送的历史）。
 - 2026-10-16：计划 R7 的实际瘦身补做：本项目 `MEMORY.md` 19,727 → 7,877 B，50 行全部 ≤150 字符（原来 50/50 超长，最长 676）。只改索引行，记忆正文不动；备份在会话 scratchpad 的 `MEMORY.md.bak-20261016`。用 508 条真实提示和发版命令（git push / git tag / gh release / npm publish）新旧对比：发版手册的匹配全部保留；丢掉的主要是泛用标签带来的误匹配（scratchpad 143 次、gate 106 次、TMPDIR 18 次），这些在发版拦截里会造成误拦。其他项目的 `MEMORY.md` 不在本任务范围，`/claudemd-doctor` 会提示。
 - 2026-10-16：计划第 4 节第 14 项“核心删掉中文禁用语”不做：`spec-coherence-audit` 显示 §7 列的 7 个禁用说法里有 6 个没有任何 hook 模式匹配（有意不机械化，见该审计的说明），核心是它们唯一的出处，删掉等于取消这条规则。
-- 当前进行到：S8（评审修复完，待增量评审）。
+- 2026-10-16：评审第 2 轮（新的 release-reviewer，只看 869ee1e..2f1071f）：0 Critical、0 High、1 Medium、10 Low。Medium 是 CHANGELOG 的 Sizes 行还是第 1 轮之前的数字，已改。Low 里修了：两个所有测试都杀不死的变异（补了测试）、三处过时注释、本文件的验证记录。没修的 4 条都是 opt-in hook 或离线扫描器的代码改动（空行后的标签行让后面的检查项不再被判、分组列表、not run 豁免的 locale 依赖和 "does not run"、turn-yield 不认 `## 汇报：`），按评审规则 Low 默认不修；再改代码就要第 3 轮评审，超过深度上限 2，所以登记为延期项，发版后处理。B.2 示例缺 `## Report` 标题不改：它只示范验证段，完整汇报在 §10-R。
+- 当前进行到：S8 完成；S6 待在冻结的最终文本上补跑 B 臂；S9 等 10-26 之后。
 
 ## 验证记录
 
@@ -100,3 +101,8 @@
 - `node --test tests/scripts/structure-scan-parity.test.js` → 通过；去掉 JS 侧"未运行"的变异上失败
 - `node scripts/spec-coherence-audit.js --strict` → 通过（0 发现）
 - `node scripts/version-cascade-check.js` → 通过
+- 评审报告以消息送达本会话（评审代理写报告文件被 harness 拒绝），原文在本会话转录里
+- 打 tag 前评审第 1 轮（release-reviewer，243212d..869ee1e）→ 失败：2 High、7 Medium、11 Low；修复见决策与进展 2026-10-16 各条
+- 9252f40 上 `BASH32_BIN=… CLAUDEMD_BASH32_REQUIRED=1 npm run check` → 通过（node 1,495 个，1,494 通过，1 个因未设 SHFMT 跳过；44 个 hook 套件在 bash 3.2.57 下执行）；忽略 SIGPIPE 再跑 → 通过；`npm run smoke` → 通过（2/2）
+- PR CI 38833174101（2f1071f）→ 通过（7/7）
+- 打 tag 前评审第 2 轮（新的 release-reviewer，869ee1e..2f1071f）→ 通过：0 Critical、0 High；1 Medium 已修

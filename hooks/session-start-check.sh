@@ -100,7 +100,7 @@ merge_banners() {
 # ledger"). Compaction destroys the two that are expensive to reconstruct:
 # `Decisions`, which is filled once at task start and is precisely what a later
 # turn cannot re-derive, and `Next`. Both are re-injected here rather than left
-# to the agent to remember to re-read — §11 already tells it to re-read the plan,
+# to the agent to remember to re-read — §11 already tells it to re-read the task's spec file,
 # and the 2026-09-21 measurement is that self-enforced reminders are the class
 # that does not hold.
 #
