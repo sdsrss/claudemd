@@ -503,11 +503,14 @@ emit_bootstrap_failed_banner() {
   # install.js said why (R15): its message carries the fix, and the install
   # retries at every session start, so the generic refresh advice — which
   # cannot repair, say, a settings.json claudemd does not own — is not given.
+  #
+  # The reason goes to the USER only (R18 M1): V8's JSON.parse error quotes
+  # ~10 characters of settings.json around the fault, which can be a fragment
+  # of a token in `env`. The model is told that a cause was shown, not what it is.
   local sys ctx
   if [[ -n "$reason" ]]; then
-    msg+=": $reason (details: ~/.claude/logs/claudemd-bootstrap.log). The install retries at every session start, so fixing that is enough."
-    sys="$msg$off_msg"
-    ctx="$msg Tell the user.$off_msg"
+    sys="$msg: $reason (details: ~/.claude/logs/claudemd-bootstrap.log). The install retries at every session start, so fixing that is enough.$off_msg"
+    ctx="$msg. The user's banner names the cause, which can quote ~/.claude/settings.json and is not repeated here; the install retries at every session start. Ask the user what it says if they want help fixing it.$off_msg"
   else
     msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs,"
     # The human runs the command; the model can only ask for it, because every

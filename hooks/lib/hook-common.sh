@@ -568,10 +568,12 @@ hook_install_sentinel_write() {
   # REASON is install.js's own "install failed:" text (R15): it names the
   # cause and its fix — an invalid settings.json, an incomplete plugin cache —
   # which the banner's generic /claudemd-refresh advice could not. Free text,
-  # so jq encodes it; without jq the sentinel keeps its reasonless shape.
+  # so jq encodes it; without jq the sentinel keeps its reasonless shape. The
+  # settings.json message runs ~450 characters with a typical HOME, so the cap
+  # is 800, marked with an ellipsis when it cuts (R18 L1).
   if [[ -n "$reason" ]] && command -v jq >/dev/null 2>&1; then
     jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
-      '{ts: $ts, from: $from, to: $to, reason: ($reason | .[0:400])}' \
+      '{ts: $ts, from: $from, to: $to, reason: ($reason | if length > 800 then .[0:800] + "…" else . end)}' \
       > "$state_dir/bootstrap-failed.json" 2>/dev/null || true
   else
     printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" \

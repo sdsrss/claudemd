@@ -481,6 +481,27 @@ else
   FAIL=$((FAIL+1))
 fi
 rm -f "$BOOT_SENTINEL" 2>/dev/null || true
+# Case 19d (R18 L1): a long reason is capped at 800 characters and says so.
+cat > "$TMP_HOME/fakebin/node" <<SHIM
+#!/usr/bin/env bash
+echo "install failed: $(printf 'x%.0s' $(seq 1 900))" >&2
+exit 1
+SHIM
+chmod +x "$TMP_HOME/fakebin/node"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$BOOT_SENTINEL" ]] && break
+  sleep 0.5
+done
+LEN19D=$(jq -r '.reason | length' "$BOOT_SENTINEL" 2>/dev/null)
+if [[ "$LEN19D" == "801" && "$(jq -r '.reason[-1:]' "$BOOT_SENTINEL" 2>/dev/null)" == "…" ]]; then
+  echo "PASS: 19d a long reason is cut at 800 characters with an ellipsis"
+else
+  echo "FAIL: 19d (length=$LEN19D)"
+  FAIL=$((FAIL+1))
+fi
+rm -f "$BOOT_SENTINEL" 2>/dev/null || true
 # Restore the exit-1 shim — every case below this one depends on it.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
 
@@ -507,7 +528,10 @@ else
   FAIL=$((FAIL+1))
 fi
 
-# Case 20b (R15): a sentinel that carries a reason shows it, says "install"
+# Case 20b (R15, R18 M1): a sentinel that carries a reason shows it TO THE
+# USER only. V8's JSON.parse error quotes ~10 characters of settings.json
+# around the error, which can be a fragment of a token, so the reason stays out
+# of additionalContext. The banner says "install"
 # when there was no installed version, and drops the /claudemd-refresh advice
 # (the reason names its own fix). Driven with the failing shim so the retry
 # does not heal the state mid-case.
@@ -519,9 +543,10 @@ CTX20B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT20B" 2>/dev
 if [[ "$(printf '%s' "$OUT20B" | jq -s 'length' 2>/dev/null)" == "1" ]] \
    && grep -qF 'background install failed' <<<"$SYS20B" \
    && grep -qF 'settings.json is not valid JSON (x). Fix the JSON, then re-run.' <<<"$SYS20B" \
-   && grep -qF 'settings.json is not valid JSON' <<<"$CTX20B" \
+   && grep -qF 'background install failed' <<<"$CTX20B" \
+   && ! grep -qF 'not valid JSON' <<<"$CTX20B" \
    && ! grep -qF '/claudemd-refresh' <<<"$SYS20B$CTX20B"; then
-  echo "PASS: 20b failure banner names the install's own cause instead of /claudemd-refresh"
+  echo "PASS: 20b failure banner names the install's own cause to the user, not to the model, instead of /claudemd-refresh"
 else
   echo "FAIL: 20b (out: $OUT20B)"
   FAIL=$((FAIL+1))
