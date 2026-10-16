@@ -480,21 +480,35 @@ emit_bootstrap_failed_banner() {
   [[ -f "$f" ]] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
-  local ts from to
+  local ts from to reason
   ts=$(jq -r '.ts // ""' "$f" 2>/dev/null) || ts=""
   from=$(jq -r '.from // ""' "$f" 2>/dev/null) || from=""
   to=$(jq -r '.to // ""' "$f" 2>/dev/null) || to=""
+  reason=$(jq -r '.reason // ""' "$f" 2>/dev/null) || reason=""
 
+  # No installed version = a first install, not an upgrade (R15).
   local msg="[claudemd] background upgrade failed"
+  [[ -z "$from" ]] && msg="[claudemd] background install failed"
   [[ -n "$ts" ]] && msg+=" at $ts"
   [[ -n "$from" && -n "$to" ]] && msg+=" (manifest $from → plugin $to)"
-  msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs,"
   local off_msg=" The user can turn this notice off with DISABLE_BOOTSTRAP_FAIL_BANNER=1"
 
-  # The human runs the command; the model can only ask for it, because every
-  # claudemd command is user-invoked (disable-model-invocation, 0.107.0).
-  jq -cn --arg sys "$msg run /claudemd-refresh and restart Claude Code.$off_msg" \
-    --arg ctx "$msg ask the user to run /claudemd-refresh and restart Claude Code (it is user-invoked, so you cannot run it).$off_msg" '{
+  # install.js said why (R15): its message carries the fix, and the install
+  # retries at every session start, so the generic refresh advice — which
+  # cannot repair, say, a settings.json claudemd does not own — is not given.
+  local sys ctx
+  if [[ -n "$reason" ]]; then
+    msg+=": $reason (details: ~/.claude/logs/claudemd-bootstrap.log). The install retries at every session start, so fixing that is enough."
+    sys="$msg$off_msg"
+    ctx="$msg Tell the user.$off_msg"
+  else
+    msg+=". Details: ~/.claude/logs/claudemd-bootstrap.log. Retrying this session; if this notice recurs,"
+    # The human runs the command; the model can only ask for it, because every
+    # claudemd command is user-invoked (disable-model-invocation, 0.107.0).
+    sys="$msg run /claudemd-refresh and restart Claude Code.$off_msg"
+    ctx="$msg ask the user to run /claudemd-refresh and restart Claude Code (it is user-invoked, so you cannot run it).$off_msg"
+  fi
+  jq -cn --arg sys "$sys" --arg ctx "$ctx" '{
     suppressOutput: true,
     systemMessage: $sys,
     hookSpecificOutput: {

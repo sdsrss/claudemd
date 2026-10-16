@@ -536,7 +536,7 @@ hook_is_readonly_bash() {
   return 1
 }
 
-# hook_install_sentinel_clear / hook_install_sentinel_write FROM_VER TO_VER
+# hook_install_sentinel_clear / hook_install_sentinel_write FROM_VER TO_VER [REASON]
 #
 # The bootstrap-failed sentinel's read/write contract, extracted from
 # hook_spawn_install in v0.75.0 when session-start-check.sh gained a SECOND
@@ -555,18 +555,28 @@ hook_install_sentinel_clear() {
 }
 
 hook_install_sentinel_write() {
-  local from="${1:-}" to="${2:-}"
+  local from="${1:-}" to="${2:-}" reason="${3:-}"
   [[ -n "$HOME" ]] || return 0
   local state_dir="$HOME/.claude/.claudemd-state"
   # Versions land in hand-built JSON — constrain to the semver-ish charset
   # (dev-mode roots can carry arbitrary package.json version strings).
   from=$(printf '%s' "$from" | tr -cd '0-9A-Za-z._-')
   to=$(printf '%s' "$to" | tr -cd '0-9A-Za-z._-')
-  mkdir -p "$state_dir" 2>/dev/null \
-    && printf '{"ts":"%s","from":"%s","to":"%s"}\n' \
-         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$from" "$to" \
-         > "$state_dir/bootstrap-failed.json" 2>/dev/null \
-    || true
+  local ts
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  # REASON is install.js's own "install failed:" text (R15): it names the
+  # cause and its fix — an invalid settings.json, an incomplete plugin cache —
+  # which the banner's generic /claudemd-refresh advice could not. Free text,
+  # so jq encodes it; without jq the sentinel keeps its reasonless shape.
+  if [[ -n "$reason" ]] && command -v jq >/dev/null 2>&1; then
+    jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
+      '{ts: $ts, from: $from, to: $to, reason: ($reason | .[0:400])}' \
+      > "$state_dir/bootstrap-failed.json" 2>/dev/null || true
+  else
+    printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" \
+      > "$state_dir/bootstrap-failed.json" 2>/dev/null || true
+  fi
 }
 
 # Records the root Claude Code actually loaded this plugin from.
@@ -651,12 +661,15 @@ hook_record_plugin_root() {
 # desired visible-failure behavior, not a silent skip.
 hook_spawn_install() {
   local plugin_root="$1" log="$2" header="$3" from="${4:-}" to="${5:-}"
-  local rc
+  local rc out
   (
     {
       echo "$header"
       rc=0
-      platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1 || rc=$?
+      # Captured, then printed, so the failure arm can keep install.js's own
+      # reason for the banner. The log receives the same text as before.
+      out=$(platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1) || rc=$?
+      [[ -n "$out" ]] && printf '%s\n' "$out"
       if [[ "$rc" -eq 0 ]]; then
         hook_install_sentinel_clear
       elif [[ "$rc" -eq 3 ]]; then
@@ -668,7 +681,8 @@ hook_spawn_install() {
         echo "[claudemd] bootstrap stood down — another install holds the lock"
       else
         echo "[claudemd] bootstrap exited non-zero or timed out"
-        hook_install_sentinel_write "$from" "$to"
+        hook_install_sentinel_write "$from" "$to" \
+          "$(printf '%s\n' "$out" | sed -n 's/^install failed: //p' | tail -n 1)"
       fi
     } >> "$log"
   ) </dev/null >/dev/null 2>&1 &

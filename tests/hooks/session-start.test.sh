@@ -453,6 +453,34 @@ else
   echo "FAIL: 19b (sentinel=$([[ -f $BOOT_SENTINEL ]] && echo yes || echo no) log=$LOG19B)"
   FAIL=$((FAIL+1))
 fi
+# Case 19c (R15): the sentinel keeps install.js's own "install failed:" line.
+# A fresh install refused for an invalid settings.json used to banner
+# "background upgrade failed … run /claudemd-refresh" every session, and
+# refresh cannot fix JSON in a file claudemd does not own; the cause and its
+# fix were in the bootstrap log only.
+rm -f "$BOOT_SENTINEL" "$BOOT_SENTINEL.last-shown" 2>/dev/null || true
+cat > "$TMP_HOME/fakebin/node" <<'SHIM'
+#!/usr/bin/env bash
+echo 'install failed: install: /h/.claude/settings.json is not valid JSON (Expected double-quoted property name). Fix the JSON, then re-run.' >&2
+exit 1
+SHIM
+chmod +x "$TMP_HOME/fakebin/node"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+: > "$HOME/.claude/logs/claudemd-bootstrap.log"
+PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$BOOT_SENTINEL" ]] && break
+  sleep 0.5
+done
+REASON19C=$(jq -r '.reason // ""' "$BOOT_SENTINEL" 2>/dev/null)
+if [[ "$REASON19C" == "install: /h/.claude/settings.json is not valid JSON (Expected double-quoted property name). Fix the JSON, then re-run." ]] \
+   && grep -qF 'install failed: install: /h/.claude/settings.json' "$HOME/.claude/logs/claudemd-bootstrap.log"; then
+  echo "PASS: 19c failure sentinel records install's own reason; the log keeps the output"
+else
+  echo "FAIL: 19c (reason=$REASON19C log=$(tail -3 "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null))"
+  FAIL=$((FAIL+1))
+fi
+rm -f "$BOOT_SENTINEL" 2>/dev/null || true
 # Restore the exit-1 shim — every case below this one depends on it.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
 
@@ -478,6 +506,31 @@ else
   echo "FAIL: 20 (objects=$OBJ20 sentinel=$([[ -f $BOOT_SENTINEL ]] && echo kept || echo gone) out: $OUT20)"
   FAIL=$((FAIL+1))
 fi
+
+# Case 20b (R15): a sentinel that carries a reason shows it, says "install"
+# when there was no installed version, and drops the /claudemd-refresh advice
+# (the reason names its own fix). Driven with the failing shim so the retry
+# does not heal the state mid-case.
+printf '{"ts":"2026-07-15T00:00:00Z","from":"","to":"%s","reason":"install: /h/.claude/settings.json is not valid JSON (x). Fix the JSON, then re-run."}\n' "$PLUGIN_VER_REAL" > "$BOOT_SENTINEL"
+rm -f "$HOME/.claude/.claudemd-manifest.json"
+OUT20B=$(PATH="$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' 2>/dev/null)
+SYS20B=$(jq -r '.systemMessage // ""' <<<"$OUT20B" 2>/dev/null)
+CTX20B=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT20B" 2>/dev/null)
+if [[ "$(printf '%s' "$OUT20B" | jq -s 'length' 2>/dev/null)" == "1" ]] \
+   && grep -qF 'background install failed' <<<"$SYS20B" \
+   && grep -qF 'settings.json is not valid JSON (x). Fix the JSON, then re-run.' <<<"$SYS20B" \
+   && grep -qF 'settings.json is not valid JSON' <<<"$CTX20B" \
+   && ! grep -qF '/claudemd-refresh' <<<"$SYS20B$CTX20B"; then
+  echo "PASS: 20b failure banner names the install's own cause instead of /claudemd-refresh"
+else
+  echo "FAIL: 20b (out: $OUT20B)"
+  FAIL=$((FAIL+1))
+fi
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$BOOT_SENTINEL" ]] && break
+  sleep 0.5
+done
+rm -f "$BOOT_SENTINEL" "$BOOT_SENTINEL.last-shown" 2>/dev/null || true
 
 # Case 21: sentinel present but versions MATCH (state self-healed, e.g. a
 # manual /claudemd-refresh succeeded) → no banner, sentinel silently removed.
