@@ -639,8 +639,9 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
         `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec ` +
           `(no "# AI-CODING-SPEC" H1 in first 256 bytes). It looks like personal user-global ` +
           `instructions and was backed up to ${backupDir}/CLAUDE.md before being overwritten ` +
-          `with the plugin spec. To bring your content back on uninstall, run ` +
-          `\`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`.\n`
+          `with the plugin spec. To bring your content back, run \`/claudemd-uninstall restore\` ` +
+          `and then \`/plugin uninstall claudemd@claudemd\` (while the plugin stays installed, the next ` +
+          `session start installs the spec again), or merge the two files by hand.\n`
       );
       // v0.75.0 — the stderr line above reaches a HUMAN only when install.js is
       // run in the foreground (`/claudemd-install`, or the manual `node

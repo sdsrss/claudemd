@@ -609,8 +609,12 @@ emit_user_content_banner() {
   fi
   msg+=" before the spec was installed over it. Those instructions are NO LONGER in effect. To bring them back,"
 
-  jq -cn --arg sys "$msg run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`, or merge the two files by hand.$off_msg" \
-    --arg ctx "$msg ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\` (it is user-invoked, so you cannot run it) or to merge the two files by hand.$off_msg" '{
+  # A command the user can type (R18): the old `CLAUDEMD_SPEC_ACTION=restore
+  # /claudemd-uninstall` does not start with `/`, so it was no slash command.
+  # And a restore alone does not last: while the plugin stays installed, the
+  # next SessionStart installs the spec over the restored file again.
+  jq -cn --arg sys "$msg run \`/claudemd-uninstall restore\`, then \`/plugin uninstall claudemd@claudemd\` (while the plugin stays installed, the next session start installs the spec over the restored file again), or merge the two files by hand.$off_msg" \
+    --arg ctx "$msg ask the user to run \`/claudemd-uninstall restore\` and then \`/plugin uninstall claudemd@claudemd\` (both are user-invoked, so you cannot run them; a restore alone is undone at the next session start while the plugin stays installed), or to merge the two files by hand.$off_msg" '{
     suppressOutput: true,
     systemMessage: $sys,
     hookSpecificOutput: {

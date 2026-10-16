@@ -4,6 +4,16 @@ description: Clean up claudemd's manifest and legacy hook entries before `/plugi
 disable-model-invocation: true
 ---
 
+**Arguments** (`$ARGUMENTS`) pick the variant below; this is what install's notice and the SessionStart banner tell the user to type:
+
+| Argument value | Run |
+|---|---|
+| (empty) | the default |
+| `restore` | the restore variant (`CLAUDEMD_SPEC_ACTION=restore`) |
+| anything else | nothing yet: list the variants below and ask which one |
+
+A restore only lasts once the plugin is gone: while it stays installed, the next session start installs the spec over the restored file again. After a restore, tell the user to run `/plugin uninstall claudemd@claudemd` (or to merge the two files by hand if they want to keep claudemd).
+
 Usage:
 
 - Default (keep spec, keep state + log):

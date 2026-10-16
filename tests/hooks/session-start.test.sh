@@ -911,7 +911,8 @@ CTX33=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT33" 2>/dev/n
 # stale one and tests something other than what the user was just told.
 UC_BK=$(grep -oE '/[^ ]*/\.claude/backup-[0-9]{8}T[0-9]{6}[0-9]*Z/CLAUDE\.md' <<<"$CTX33" | head -1)
 if [[ "$(jq -s 'length' <<<"$OUT33" 2>/dev/null)" == "1" ]] \
-   && grep -qF 'CLAUDEMD_SPEC_ACTION=restore' <<<"$CTX33" \
+   && grep -qF '/claudemd-uninstall restore' <<<"$CTX33" \
+   && grep -qF '/plugin uninstall claudemd@claudemd' <<<"$CTX33" \
    && [[ -n "$UC_BK" && -f "$UC_BK" ]] \
    && grep -qF 'My personal instructions' "$UC_BK"; then
   echo "PASS: 33 user-content overwrite is bannered in-session with the backup path"
@@ -993,7 +994,7 @@ jq -cn --arg d "$UC_LINKDIR" '{ts:"2026-09-07T00:00:00Z",backupDir:$d}' > "$UC_S
 OUT36C=$(bash "$HOOK" <<<'{}' 2>/dev/null)
 CTX36C=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT36C" 2>/dev/null || echo "")
 if grep -qF 'NO LONGER in effect' <<<"$CTX36C" \
-   && grep -qF 'CLAUDEMD_SPEC_ACTION=restore' <<<"$CTX36C" \
+   && grep -qF '/claudemd-uninstall restore' <<<"$CTX36C" \
    && ! grep -qF 'an install was interrupted' <<<"$CTX36C" \
    && [[ ! -f "$UC_SENTINEL" ]]; then
   echo "PASS: 36c a backed-up dangling symlink is a completed move, not an interrupted one"
@@ -1524,11 +1525,22 @@ C46_BAD=$(grep -nE '(additionalContext|msg\+?=).*(DISABLE_[A-Z_]+=1|SPEC_DRIFT_I
 [[ -z "$C46_BAD" ]] && echo "PASS: 46 model-facing kill switches are named as the user's" \
   || { echo "FAIL: 46 lines still offer the switch to the agent:"; printf '%s\n' "$C46_BAD" | cut -c1-120; FAIL=$((FAIL+1)); }
 
+# Case 33b (R18): the restore advice is something a user can type. It used to
+# be `CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall`, which does not start
+# with `/` and so is no slash command at all. The advised argument has to be
+# one commands/claudemd-uninstall.md actually maps.
+UNINSTALL_MD="$PLUGIN_ROOT/commands/claudemd-uninstall.md"
+if grep -qF '$ARGUMENTS' "$UNINSTALL_MD" && grep -qE '^\| *`restore` *\|' "$UNINSTALL_MD"; then
+  echo "PASS: 33b /claudemd-uninstall maps the restore argument the banner advises"
+else
+  echo "FAIL: 33b commands/claudemd-uninstall.md does not map a \`restore\` argument"; FAIL=$((FAIL+1))
+fi
+
 # Case 47 (B2 review F3): the notices that ask the USER to act reach the human
 # too. The user-content banners (Cases 33, 36b, 36c) keep additionalContext —
 # the model needs to know the user's own instructions are not loaded — and add
 # systemMessage with the same text.
-for c47 in "33:OUT33:CLAUDEMD_SPEC_ACTION=restore" "36b:OUT36B:an install was interrupted" "36c:OUT36C:NO LONGER in effect"; do
+for c47 in "33:OUT33:/claudemd-uninstall restore" "36b:OUT36B:an install was interrupted" "36c:OUT36C:NO LONGER in effect"; do
   c47_id=${c47%%:*}; c47_rest=${c47#*:}; c47_var=${c47_rest%%:*}; c47_want=${c47_rest#*:}
   c47_out=${!c47_var}
   if jq -r '.systemMessage // ""' <<<"$c47_out" 2>/dev/null | grep -qF "$c47_want" \
@@ -1545,9 +1557,9 @@ done
 # run the command, the model to ask the user for it. Each row: case id, output
 # variable, the instruction the model must get.
 for c47b in "20:OUT20:ask the user to run /claudemd-refresh" \
-            "33:OUT33:ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`" \
+            "33:OUT33:ask the user to run \`/claudemd-uninstall restore\` and then \`/plugin uninstall claudemd@claudemd\`" \
             "36b:OUT36B:ask the user to re-run /claudemd-install" \
-            "36c:OUT36C:ask the user to run \`CLAUDEMD_SPEC_ACTION=restore /claudemd-uninstall\`"; do
+            "36c:OUT36C:ask the user to run \`/claudemd-uninstall restore\` and then \`/plugin uninstall claudemd@claudemd\`"; do
   c47b_id=${c47b%%:*}; c47b_rest=${c47b#*:}; c47b_var=${c47b_rest%%:*}; c47b_want=${c47b_rest#*:}
   c47b_out=${!c47b_var}
   c47b_ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$c47b_out" 2>/dev/null)
