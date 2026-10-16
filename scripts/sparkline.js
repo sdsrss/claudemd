@@ -99,7 +99,7 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
   const rows = [];
   for (const section of sectionSet) {
     const counts = perWindow.map(w => w.grouped[section]?.total || 0);
-    const trend = computeTrend(counts, sortedWindows, { insufficientSpan });
+    const trend = computeTrend(counts, sortedWindows, { insufficientSpan, logSpanDays });
     rows.push({ section, counts, windows: sortedWindows, trend });
   }
   // Sort: most active in shortest window first; tie-break by total.
@@ -123,16 +123,28 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
 // shortest-first. Cumulative counts are converted to per-period rates so that
 // "rule still firing at the old steady-state rate" reads as ≈, not ↗ just
 // because the cumulative number grew with the window.
-function computeTrend(counts, windows, { insufficientSpan = false } = {}) {
-  if (counts.length < 2) return { arrow: '', annotation: null };
+function computeTrend(counts, windows, { insufficientSpan = false, logSpanDays = Infinity } = {}) {
+  // No arrow under insufficient span (R15): the log does not reach past the
+  // shortest window, so there is no older period to compare with. The banner
+  // already said "trend annotations suppressed" while the arrow read ↗.
+  if (counts.length < 2 || insufficientSpan) return { arrow: '', annotation: null };
   // Per-bucket counts: bucket i contains events in (windows[i-1], windows[i]] days ago.
   // bucket 0 = (0, windows[0]] = events 0 to windows[0] days ago = counts[0].
   const buckets = counts.map((c, i) => (i === 0 ? c : c - counts[i - 1]));
-  const bucketDays = windows.map((w, i) => (i === 0 ? w : w - windows[i - 1]));
-  const rates = buckets.map((b, i) => (bucketDays[i] === 0 ? 0 : b / bucketDays[i]));
+  // Rates over the days of each bucket the log actually COVERS (R15). A
+  // 41-day log under 30/60/90 has no rows in (60,90]; dividing that bucket's
+  // empty count by its 30 nominal days made it the baseline at rate 0, and
+  // every rule — falling ones included — read ↗.
+  const coveredDays = windows.map((w, i) =>
+    Math.max(0, Math.min(w, logSpanDays) - (i === 0 ? 0 : windows[i - 1]))
+  );
+  const rates = buckets.map((b, i) => (coveredDays[i] === 0 ? 0 : b / coveredDays[i]));
 
   const recent = rates[0];
-  const oldestRate = rates[rates.length - 1];
+  let base = rates.length - 1;
+  while (base > 0 && coveredDays[base] === 0) base--;
+  if (base === 0) return { arrow: '', annotation: null }; // no older day is covered
+  const oldestRate = rates[base];
 
   // newly active: recent has events AND every older bucket is empty
   //   (cumulative count never grew past the recent bucket).

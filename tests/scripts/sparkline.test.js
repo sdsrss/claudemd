@@ -134,6 +134,32 @@ test('insufficient log span suppresses newly-active annotation (Round-6 fix)', (
   assert.equal(row.trend.annotation, null, 'newly-active must be suppressed under insufficient span');
 });
 
+test('R15: a log shorter than the longest window compares against the bucket it covers', () => {
+  // 41-day log, windows 30/60/90: the (60,90] bucket holds no log at all, so
+  // its rate was 0 and every rule read ↗. This one fell from 9 hits in days
+  // 31-40 to 1 in the last 30.
+  writeRows([
+    { daysAgo: 5, section: '§8-curl-sh' },
+    ...[31, 32, 33, 34, 35, 36, 37, 38, 40].map(d => ({ daysAgo: d, section: '§8-curl-sh' })),
+    { daysAgo: 41, section: '§10-V' }, // span: the log starts here
+  ]);
+  const r = sparkline();
+  const row = r.rows.find(x => x.section === '§8-curl-sh');
+  assert.deepEqual(row.counts, [1, 10, 10]);
+  assert.equal(row.trend.arrow, '↘');
+});
+
+test('R15: under insufficient span there is no arrow either', () => {
+  // The banner says "trend annotations suppressed"; the arrow was still ↗.
+  writeRows([
+    { daysAgo: 1, section: '§10-V' },
+    { daysAgo: 2, section: '§10-V' },
+  ]);
+  const r = sparkline();
+  assert.equal(r.insufficientSpan, true);
+  assert.equal(r.rows.find(x => x.section === '§10-V').trend.arrow, '');
+});
+
 test('formatMarkdown emits insufficient-span banner', () => {
   writeRows([
     { daysAgo: 1, section: '§10-V' },
