@@ -8,7 +8,7 @@
 
 claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v8.1 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (`OPERATOR.md` is the human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
 
-A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git pre-commit hooks, GitHub Actions, and other agents that don't run inside Claude Code.
+A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git commit-msg hooks, GitHub Actions, and other agents that don't run inside Claude Code.
 
 > **Status & scope.** This is a single-maintainer tool that encodes one developer's working discipline — not a general-purpose product. It's exercised almost entirely on my own repositories, the spec is opinionated, and the defaults reflect my preferences rather than a consensus. If you install it, expect to fork `CLAUDE.md` and tune the rules to your own workflow. Treat it as a reference implementation of "spec-as-enforced-hooks," not a turnkey solution. Issues and PRs are welcome.
 
@@ -138,7 +138,7 @@ Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per 
 
 ## Standalone CLI
 
-The same `banned-vocab.patterns` source the in-CC hook uses is also exposed as a Node CLI for **git pre-commit hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw) — anywhere outside the Claude Code process.
+The same `banned-vocab.patterns` source the in-CC hook uses is also exposed as a Node CLI for **git commit-msg hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw) — anywhere outside the Claude Code process.
 
 ```bash
 # After npm publish (operator-driven, not part of plugin install):
