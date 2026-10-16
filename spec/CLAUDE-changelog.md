@@ -6,6 +6,14 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.1.0 (minor, 2026-10-16) — a branch you merged is deleted locally
+
+Design record `tasks/specs/merged-branch-cleanup.md`. Minor, because a rule is added. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: on 2026-10-16 two of the user's repositories kept local branches already merged into `main`: claudemd four (one whose remote branch was gone, three with no upstream), code-graph-mcp one, whose session reported "merged into main, I did not delete it". Nothing in the spec said to delete a merged branch, and the branch-prune hook's line said "If the user wants them removed", so both sessions left it to the user. The user asked that merged local branches be deleted.
+- **§7 Git**: after you merge a branch into the main line, delete the local branch with `git branch -d` (it refuses unmerged work), unless the project keeps it (claudemd keeps `next-release`). Remote branches are untouched: pushing stays a when-asked step.
+- **Hooks**: `branch-prune` now says "They are merged: delete them with `git branch -d …`"; what it lists, git's re-check and the kill switch are unchanged, and the hook still deletes nothing itself.
+
 ## v8.0.0 (major, 2026-10-16) — three-part report, decide-and-record on low-risk ambiguity, harness duplicates dropped
 
 Analysis `docs/spec-optimization-plan-2026-10-15.md`; design record `tasks/specs/spec-v8.md`. Major, because the report protocol changes (four sections and `[PARTIAL]` → `## 汇报` with three parts) and §0's ASK default changes. No HARD rule added or removed; every rule keeps its ID; two HARD rules are rewritten and four more change what they require (§8.V4, Mid-SPINE turn-yield, Session-exit, Specificity; see their bullets).

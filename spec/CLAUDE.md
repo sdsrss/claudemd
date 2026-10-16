@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.0.0 — Core
+# AI-CODING-SPEC v8.1.0 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
 
@@ -114,7 +114,7 @@ L2+       lint + typecheck + full suite + smoke entry (if any) green; numbers wi
 
 **Iron Law #1 (L2+): NO CHANGE WITHOUT FAILING EVIDENCE** — bugfix = prior repro; additive = RED-first (red → green → refactor). Exceptions, evidence ladder, cold-start and L3 evidence → `verify.md`.
 
-**Git** (git repo, any level): each verified change is its own local commit (one logical change). Branching follows the project's convention; none stated → commit on the current branch. Push, tag and release only when asked. Both override the harness's commit-only-when-asked and branch-first defaults; project `AUTO_COMMIT: off` opts out.
+**Git** (git repo, any level): each verified change is its own local commit (one logical change). Branching follows the project's convention; none stated → commit on the current branch. Push, tag and release only when asked. Both override the harness's commit-only-when-asked and branch-first defaults; project `AUTO_COMMIT: off` opts out. After you merge a branch into the main line, delete the local branch with `git branch -d` (it refuses unmerged work), unless the project keeps it.
 
 ### Iron Law #2: NO DONE WITHOUT FRESH EVIDENCE (always binds)
 
