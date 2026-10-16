@@ -615,8 +615,25 @@ else
 fi
 rm -f "$TMP_FIX"
 
+# Case 52 (R15): the prose scan finds the transcript under the session's
+# project ROOT. The event's cwd follows `cd`; from a subdirectory the encoded
+# cwd held no transcript and the scan failed open (`transcript-missing`, 142
+# rows on the maintainer's machine). Claude Code exports the root to hooks as
+# CLAUDE_PROJECT_DIR.
+mk_prose_transcript "/work/p52" "sess52" "The fix significantly improves throughput."
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mk_prose_event "git commit -m 'fix: throughput'" "/work/p52/backend" "sess52" > "$TMP_FIX"
+dec52=$(CLAUDE_PROJECT_DIR=/work/p52 bash "$HOOK" < "$TMP_FIX" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [[ "$dec52" == deny ]]; then
+  echo "PASS: 52: from a subdirectory cwd the prose scan reads the root's transcript → deny"
+else
+  echo "FAIL: 52: expected deny from a subdirectory cwd, got '${dec52:-allow}'"
+  FAIL=$((FAIL + 1))
+fi
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((51 - FAIL))/51 passed"
+  echo "Tests: $((52 - FAIL))/52 passed"
   exit 1
 fi
-echo "Tests: 51/51 passed"
+echo "Tests: 52/52 passed"

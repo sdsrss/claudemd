@@ -1038,6 +1038,24 @@ done
 [[ "$C64_N" == 4 ]] && echo "PASS: 64 a plumbing word as an argument still matches (4/4 shapes)" \
   || { echo "FAIL: 64 ($C64_N/4 shapes denied)"; FAIL=$((FAIL+1)); }
 
+# Case 65 (R15): the memory index is found from the session's project root,
+# not from the cwd. The event's cwd follows `cd`; once a session had moved into
+# a subdirectory, the encoded cwd held no MEMORY.md and the gate failed open
+# (47 `mem-index-missing` rows on the maintainer's machine, each from a project
+# whose root index existed). Claude Code sets CLAUDE_PROJECT_DIR for hooks.
+R15_ROOT="/work/r15proj"
+R15_PROJ="$HOME/.claude/projects/$(echo "$R15_ROOT" | tr '/' '-')"
+mkdir -p "$R15_PROJ/memory"
+printf '%s\n' '- [Ship lessons](feedback_ship.md) `[ship, release, push]` — baseline' > "$R15_PROJ/memory/MEMORY.md"
+touch "$R15_PROJ/memory/feedback_ship.md"
+echo '{"tool":"Read","path":"/unrelated"}' > "$R15_PROJ/sess65.jsonl"
+EVENT_65="{\"session_id\":\"sess65\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$R15_ROOT/backend\"}"
+DEC65=$(CLAUDE_PROJECT_DIR="$R15_ROOT" bash "$HOOK" <<<"$EVENT_65" 2>/dev/null | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+OUT65B=$(env -u CLAUDE_PROJECT_DIR bash "$HOOK" <<<"$EVENT_65" 2>/dev/null)
+[[ "$DEC65" == "deny" && -z "$OUT65B" ]] \
+  && echo "PASS: 65 a subdirectory cwd finds the root's MEMORY.md through CLAUDE_PROJECT_DIR" \
+  || { echo "FAIL: 65 (with project dir: '$DEC65'; without: '$OUT65B')"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

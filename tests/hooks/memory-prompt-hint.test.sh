@@ -421,8 +421,22 @@ else
   ng "25 (out: $OUT)"
 fi
 
+# Case 26 (R15): from a subdirectory cwd the hint still reads the project
+# root's MEMORY.md. The cwd follows `cd`; Claude Code keeps memory/ under the
+# root it exports to hooks as CLAUDE_PROJECT_DIR.
+SESS="sess26"
+EVENT_26=$(jq -cn --arg p "asking about macos" --arg s "$SESS" --arg c "$CWD/backend" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(CLAUDE_PROJECT_DIR="$CWD" bash "$HOOK" <<<"$EVENT_26" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if echo "$CTX" | grep -qF "feedback_macos.md"; then
+  ok "26 a subdirectory cwd reads the root's MEMORY.md through CLAUDE_PROJECT_DIR"
+else
+  ng "26 (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((25 - FAIL))/25 passed"
+  echo "Tests: $((26 - FAIL))/26 passed"
   exit 1
 fi
-echo "Tests: 25/25 passed"
+echo "Tests: 26/26 passed"

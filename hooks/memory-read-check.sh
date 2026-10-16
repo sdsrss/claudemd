@@ -245,7 +245,13 @@ fi
 # the locale caveat and the non-BMP residual all live in that function's header.
 # (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh, lib/rule-hits.sh
 # — all call the same single source.)
-ENCODED=$(hook_encode_project "$CWD")
+# The session's project ROOT, not the cwd (R15). Claude Code keeps the
+# transcript and memory/ under the root it was started in and exports it to
+# hooks as CLAUDE_PROJECT_DIR; the event's cwd follows `cd`. A session that had
+# moved into a subdirectory encoded a dir with no MEMORY.md and failed open —
+# 47 `mem-index-missing` rows on the maintainer's machine, every one from a
+# project whose root index existed. No project dir → the cwd, as before.
+ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$CWD}")
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"

@@ -302,7 +302,9 @@ if [[ -z "$EVENT_CWD" || -z "$SESSION_ID" ]]; then
   hook_record_failopen banned-vocab event-fields-missing
   exit 0
 fi
-ENCODED=$(hook_encode_project "$EVENT_CWD")
+# Root, not cwd: see memory-read-check.sh (R15) — 142 `transcript-missing`
+# rows here were sessions working in a subdirectory.
+ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$EVENT_CWD}")
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 if [[ ! -f "$TRANSCRIPT" ]]; then
   hook_record_failopen banned-vocab transcript-missing

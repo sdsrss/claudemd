@@ -84,7 +84,8 @@ esac
 # Project-dir encoding: convert EVERY non-`[a-zA-Z0-9-]` char to `-` (CC
 # convention; see memory-read-check.sh for the empirical derivation + why the
 # narrower `tr '/._'` mis-located the dir for cwds with other special chars).
-ENCODED=$(hook_encode_project "$CWD")
+# Root, not cwd: see memory-read-check.sh (R15).
+ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$CWD}")
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
