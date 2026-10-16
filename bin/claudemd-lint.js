@@ -491,7 +491,7 @@ function auditCmd(rawArgs) {
   if (integrity.badLines > 0) {
     process.stderr.write(
       `audit: warning: skipped ${integrity.badLines} of ${integrity.totalLines} non-empty line(s) ` +
-        `that did not parse as JSON — the turn count below covers only the rows that parsed.\n`
+        `that did not parse as JSON or are not transcript-shaped — the turn count below covers only the rows that parsed.\n`
     );
   }
   // QA ISSUE-002 (option c): string-shape assistant rows are outside the

@@ -463,10 +463,19 @@ export function parseTranscript(jsonlText, integrity = null) {
       continue;
     }
     if (row.type !== 'assistant') continue;
-    const content = row.message?.content || [];
+    const content = row.message?.content;
+    // Same defect one level down (R15): an object where the block array
+    // belongs threw "not iterable", a null block threw on `.type`. A string is
+    // a known shape, counted apart by countStringContentAssistantRows.
+    if (!Array.isArray(content)) {
+      if (content != null && typeof content !== 'string' && integrity) {
+        integrity.badLines = (integrity.badLines || 0) + 1;
+      }
+      continue;
+    }
     const texts = [];
     for (const b of content) {
-      if (b.type === 'text' && typeof b.text === 'string') texts.push(b.text);
+      if (b && b.type === 'text' && typeof b.text === 'string') texts.push(b.text);
     }
     if (texts.length === 0) continue;
     turns.push({ turnIndex, line: i + 1, text: texts.join(' ') });

@@ -515,6 +515,28 @@ test('R11-24: audit says how many lines it skipped, and keeps stdout pure under 
   }
 });
 
+test('R15: a malformed content block is skipped and counted, not a V8 stack read as "hits found"', () => {
+  // A null block inside the content array, and an object where the array
+  // belongs, both threw out of parseTranscript: exit 1 with a stack.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-r15-'));
+  const f = path.join(tmp, 's.jsonl');
+  const nullBlock = JSON.stringify({
+    type: 'assistant',
+    message: { content: [null, { type: 'text', text: 'clean reply' }] },
+  });
+  const objContent = JSON.stringify({ type: 'assistant', message: { content: { type: 'text', text: 'x' } } });
+  fs.writeFileSync(f, [nullBlock, objContent].join('\n') + '\n');
+  try {
+    const r = run(['audit', f]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stderr, /TypeError|at parseTranscript/);
+    assert.match(r.stdout, /across 1 assistant turn/, 'the null block does not hide its sibling text');
+    assert.match(r.stderr, /skipped 1 of 2 non-empty line\(s\)/, 'the object-content row is counted');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('CLI: audit --include-ratiox (typo flag) → exit 2', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-'));
   const transcript = path.join(tmp, 'session.jsonl');
