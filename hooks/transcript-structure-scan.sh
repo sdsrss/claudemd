@@ -233,9 +233,8 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
 #   5. verdict (§iron-law-2) — every check line of the verification part names
 #      通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not
 #      run); a Changes part with no Verification part after the heading is one
-#      miss too. Table separator and header rows, continuation lines, details
-#      nested under a check and label lines are not check lines (rules at the
-#      loop below).
+#      miss too. Table separator and header rows, continuation lines and nested
+#      items are not check lines (rules at the loop below).
 # One awk program, no `printf | grep -q` (feedback_pipefail_grep_q_race). The
 # normaliser and every regex here are mirrored by scanReportV8 in
 # scripts/sampling-audit.js; tests/scripts/structure-scan-parity.test.js holds
@@ -290,44 +289,27 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     rest = nl[p2]
     sub(/^(验证|Verification)[ \t]*(:|：|—|-)?[ \t]*/, "", rest)
     if (rest != "" && !verdict(rest)) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", p2, substr(rest, 1, 60)
-    # Only check lines are judged. Once the part has list items, a non-item
-    # line continues the item above it; the first item sets the check level, a
-    # shallower item lowers it, and a deeper item is a detail of a check. After
-    # a blank line, once a line was judged, a non-item line ends the part (a
-    # closing sentence or offer after a report with no open items). A label
-    # line (ends in a colon, no verdict, followed by an item that is not a part
-    # label; a list-item label must not itself be a detail, and its next item
-    # must be deeper) introduces checks and is not one; the items nested under
-    # a list-item label start a new check level.
+    # Only check lines are judged: once the part has list items, a non-item
+    # line continues the item above it and a deeper-indented item is a detail
+    # of it; after a blank line, a non-item line ends the part (a closing
+    # sentence after a report with no open items).
     judged = (rest != ""); sawItem = 0; itemInd = -1; blank = 0
     for (i = p2 + 1; i <= NR; i++) {
       if (part(nl[i]) || raw[i] ~ /^[ \t]*#/) break
       if (raw[i] ~ /^[ \t]*$/) { blank = 1; continue }
       if (issep(raw[i])) continue
       isItem = (raw[i] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ || raw[i] ~ /^[ \t]*\|/)
-      match(raw[i], /^[ \t]*/); ind = RLENGTH
       if (blank && !isItem && judged) break
       blank = 0
-      if (isItem && ind < itemInd) itemInd = ind
-      if (raw[i] ~ /(:|：)[ \t]*$/ && !verdict(raw[i]) && (!isItem || itemInd < 0 || ind <= itemInd)) {
-        j = i + 1
-        while (j <= NR && raw[j] ~ /^[ \t]*$/) j++
-        if (j <= NR && raw[j] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ && !part(nl[j])) {
-          match(raw[j], /^[ \t]*/)
-          if (!isItem || RLENGTH > ind) {
-            if (isItem) itemInd = -1
-            continue
-          }
-        }
-      }
       if (!isItem && sawItem) continue
-      if (isItem && itemInd >= 0 && ind > itemInd) continue
+      match(raw[i], /^[ \t]*/)
+      if (isItem && itemInd >= 0 && RLENGTH > itemInd) continue
       if (raw[i] ~ /^[ \t]*\|/) {
         j = i + 1
         while (j <= NR && raw[j] ~ /^[ \t]*$/) j++
         if (j <= NR && issep(raw[j])) continue
       }
-      if (isItem && itemInd < 0) itemInd = ind
+      if (isItem && itemInd < 0) itemInd = RLENGTH
       if (isItem) sawItem = 1
       judged = 1
       if (!verdict(raw[i])) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", i, substr(raw[i], 1, 60)

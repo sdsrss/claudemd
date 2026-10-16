@@ -421,26 +421,29 @@ if [[ -z "$STDERR" ]]; then
 else
   echo "FAIL: 23c judged a closing sentence after a paragraph-style part: $STDERR"; FAIL=$((FAIL+1))
 fi
-# Case 24 (0.109.1): a label line groups checks. Two of the first four real v8
-# reports wrote `- <label>：` with nested checks, and the label was flagged.
+# Case 24 (RESIDUAL pins, D#362): a label line is read as a check. Two of the
+# first four real v8 reports wrote `- <label>：` with nested checks; the label
+# is flagged and the nested checks are read as its details. 0.109.1 tried a
+# label rule and took it out after two review rounds; a label rule should turn
+# 24 silent and move 24b's hit to the nested line.
 TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 以下两项是旧问题：\n  - tmp-sweep 第 6 例 → 失败（1/60）\n  - 150 KB 行 → 失败（1/330）')
 drive "$TX"
-if [[ -z "$STDERR" ]]; then
-  echo "PASS: 24 v8 group label with judged nested checks → silent"; PASS=$((PASS+1))
+if [[ "$STDERR" == *"以下两项是旧问题"* && "$STDERR" != *"tmp-sweep"* ]]; then
+  echo "PASS: 24 RESIDUAL v8 group label flagged, nested checks not judged"; PASS=$((PASS+1))
 else
-  echo "FAIL: 24 flagged a group label or its checks: $STDERR"; FAIL=$((FAIL+1))
+  echo "FAIL: 24 RESIDUAL verdict moved (update the pin and D#362): $STDERR"; FAIL=$((FAIL+1))
 fi
 TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过')
 drive "$TX"
-if [[ "$STDERR" == *"写入扫描"* && "$STDERR" != *"只读探针"* ]]; then
-  echo "PASS: 24b the nested check without a verdict is flagged, the label is not"; PASS=$((PASS+1))
+if [[ "$STDERR" == *"只读探针"* && "$STDERR" != *"写入扫描"* ]]; then
+  echo "PASS: 24b RESIDUAL the label is the line flagged, not the nested check"; PASS=$((PASS+1))
 else
-  echo "FAIL: 24b wrong line flagged: $STDERR"; FAIL=$((FAIL+1))
+  echo "FAIL: 24b RESIDUAL verdict moved (update the pin and D#362): $STDERR"; FAIL=$((FAIL+1))
 fi
-# 0.109.1 pre-tag review: a colon item inside a check's details is a detail,
-# not a label; a colon paragraph after a blank line still ends the part (a
-# closing offer and its list); a list-form part label after a colon line does
-# not make that line a label.
+# Verdicts a label rule must keep (0.109.1 pre-tag review): a colon item inside
+# a check's details is a detail; a colon paragraph after a blank line still
+# ends the part (a closing offer and its list); a colon line before a list-form
+# part label is judged.
 TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过（47/47）\n  - 新增用例：\n    - 空输入\n  - 旧用例未改\n- `npm run lint` → 通过\n  - 2/2')
 drive "$TX"
 if [[ -z "$STDERR" ]]; then

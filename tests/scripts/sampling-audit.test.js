@@ -572,74 +572,79 @@ test('scanStructure: only check lines in a v8 verification part are judged', () 
   assert.equal(scanStructure(`${head}\`npm test\` → 通过\n\`npm run smoke\` 跑了`).ironLaw2, 1);
 });
 
-test('scanStructure: a label line in a v8 verification part introduces checks and is not one', () => {
+test('scanStructure: label lines in a v8 verification part (RESIDUAL pins, D#362)', () => {
   const head = '## 汇报\n\n**变更**：x\n\n**验证**\n';
-  // Real shapes from the first v8 reports (2 of 4 on 2026-10-16): a list item
-  // ending in a colon groups the checks nested under it. The label is not a
-  // check; the nested lines are, so they are judged.
+  // A label line (ends in a colon, no verdict, items under it) is read as a
+  // check with no verdict, and the items nested under a list-item label are
+  // read as its details. 0.109.1 tried a label rule and took it out after two
+  // review rounds found defects in it; these rows keep the verdicts the scanner
+  // gives today. `RESIDUAL` marks a verdict a label rule should change (the
+  // wanted count follows); the rest are verdicts it must keep.
+  // RESIDUAL (want 0): the label is flagged; the nested checks are not judged.
   assert.equal(
     scanStructure(
       `${head}- \`npm test\` → 通过\n- 以下两项是旧问题：\n  - tmp-sweep 第 6 例 → 失败（1/60）\n  - 150 KB 行 → 失败（1/330）\n- \`npm run smoke\` → 通过`
     ).ironLaw2,
-    0
+    1
   );
+  // RESIDUAL (want 1, but on the nested line): the label is the line flagged.
   assert.equal(
     scanStructure(`${head}- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过`).ironLaw2,
     1
   );
-  // A label paragraph before anything is judged introduces checks: the label is
-  // not judged, its items are.
-  assert.equal(scanStructure(`${head}单元测试：\n- \`npm test\` → 通过`).ironLaw2, 0);
-  assert.equal(scanStructure(`${head}\n单元测试：\n- \`npm test\` 跑了`).ironLaw2, 1);
-  // After a blank line, once a check was judged, a paragraph still ends the part
-  // even when it ends in a colon: a closing offer and its list are not checks
-  // (0.109.1 pre-tag review).
+  // RESIDUAL (want 0, then 1): a paragraph label before anything is judged is
+  // flagged.
+  assert.equal(scanStructure(`${head}单元测试：\n- \`npm test\` → 通过`).ironLaw2, 1);
+  assert.equal(scanStructure(`${head}\n单元测试：\n- \`npm test\` 跑了`).ironLaw2, 2);
+  // Keep: after a blank line, once a line was judged, a paragraph ends the part
+  // even when it ends in a colon, so a closing offer and its list are not checks.
   assert.equal(
     scanStructure(`${head}- \`npm test\` → 通过\n\n如需继续，我可以：\n- 补 README\n- 加一个用例`).ironLaw2,
     0
   );
-  // Controls: a check that ends in a colon but carries a verdict keeps its nested
-  // lines as details; a colon line with nothing nested under it is still judged.
+  // Keep: a check that ends in a colon but carries a verdict keeps its nested
+  // lines as details; a colon line with nothing nested under it is judged.
   assert.equal(
     scanStructure(`${head}- \`npm test\` → 失败，原因如下：\n  - case 6: expected 1, got 2`).ironLaw2,
     0
   );
   assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n- 另外：`).ironLaw2, 1);
-  // A colon item followed by a same-level item is a check, not a label.
+  // Keep: a colon item followed by a same-level item is a check.
   assert.equal(scanStructure(`${head}- 另外：\n- \`npm test\` → 通过`).ironLaw2, 1);
-  // A label after a check opens a new group: its nested lines are checks again.
+  // RESIDUAL (want 1, but on the nested line): a label after a check is flagged.
   assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n- 旧问题：\n  - a 跑了`).ironLaw2, 1);
-  // Leaving the group at a top-level check restores detail nesting under it.
+  // RESIDUAL (want 0): the label is flagged.
   assert.equal(
     scanStructure(`${head}- 旧问题：\n  - a → 失败\n- \`npm test\` → 通过\n  - 覆盖了空输入的情况`).ironLaw2,
-    0
+    1
   );
-  // A colon item that is itself a detail of a check is no label: it and its
-  // nested lines stay details, and the next check's details stay details too
-  // (0.109.1 pre-tag review).
+  // Keep: a colon item inside a check's details is a detail, and so are the
+  // lines under it and the next check's details.
   assert.equal(
     scanStructure(
       `${head}- \`npm test\` → 通过（47/47）\n  - 新增用例：\n    - 空输入\n    - 超长输入\n  - 旧用例未改\n- \`npm run lint\` → 通过\n  - 2/2`
     ).ironLaw2,
     0
   );
-  // Groups nest; leaving both restores detail nesting at the top level.
+  // RESIDUAL (want 0): the outer label is flagged.
   assert.equal(
     scanStructure(
       `${head}- 测试：\n  - 单元：\n    - a → 通过\n  - b → 通过\n- \`npm run lint\` → 通过\n  - 2/2`
     ).ironLaw2,
-    0
+    1
   );
-  // These three pin one condition each:
-  // a line with no colon is not a label, so a deeper line under it is a detail;
+  // Keep: a line with no colon is a check and a deeper line under it a detail;
+  // a colon line with no item after it is judged; a colon line followed by a
+  // part label in list form is judged.
   assert.equal(scanStructure(`${head}- \`npm test\` 跑了\n  - 47/47 通过`).ironLaw2, 1);
-  // a colon line with no item after it is judged;
   assert.equal(
     scanStructure(`${head}- \`npm test\` → 通过\n- 冒烟测试的结果如下：\n\n  输出为空`).ironLaw2,
     1
   );
-  // a colon line followed by a part label in list form is judged.
   assert.equal(scanStructure(`${head}\`npm test\` 跑完了：\n- **遗留**：无`).ironLaw2, 1);
+  // RESIDUAL (want 1, but on the nested line): a label with a blank line before
+  // its first item (0.109.1 review round 2) is the line flagged.
+  assert.equal(scanStructure(`${head}- 以下两项是旧问题：\n\n  - a 跑了`).ironLaw2, 1);
 });
 
 test('yieldTellSuppressed: a v8 report heading with a colon closes the turn too', () => {
