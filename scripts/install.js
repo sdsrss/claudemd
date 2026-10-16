@@ -393,6 +393,12 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // user content. There is nothing user-owned to preserve, so we do NOT back
   // them up.
   const claudeMdIsSpec = existing.includes(claudeMdPath) && !userContentDetected;
+  // No home CLAUDE.md but spec siblings present (a dotfiles tool or a manual
+  // reset removed it): the siblings are claudemd's own files, so they take the
+  // spec branch too. In the personal branch each such install made a `backup-`
+  // dir with no CLAUDE.md; restore returned it, and five of them pruned the
+  // user's real backup away (R15, 2026-10-16).
+  const onlySpecSiblings = existing.length > 0 && !existing.includes(claudeMdPath);
 
   // SCRIPT-1 (2026-07-12 audit): validate the shipped spec is COMPLETE *before*
   // the backup branch below moves the user's ~/.claude/CLAUDE.md (createBackup
@@ -500,7 +506,7 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     backupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
-  } else if (claudeMdIsSpec) {
+  } else if (claudeMdIsSpec || onlySpecSiblings) {
     // DATA-LOSS ROOT-CAUSE FIX (v0.23.11): never back up spec-on-spec — neither
     // a byte-identical re-install NOR a version upgrade. Pre-fix BOTH created a
     // backup of the spec itself; restore picks the NEWEST backup (uninstall.js)

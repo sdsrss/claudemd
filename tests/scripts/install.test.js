@@ -475,6 +475,28 @@ test('v0.23.11: a spec UPGRADE after a personal install still restores PERSONAL 
   );
 });
 
+test('R15: a missing home CLAUDE.md does not put the spec siblings in the personal namespace', async () => {
+  // The same eviction as the two tests above, by a third road: the home
+  // CLAUDE.md goes missing (a dotfiles tool, a manual reset) while the three
+  // spec siblings stay. Pre-fix each install then backed the siblings up into
+  // `backup-` — a personal dir with no CLAUDE.md — so restore returned the
+  // siblings and the sixth such install pruned the user's own file away.
+  fs.writeFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), '# My personal instructions\nReply in 中文.\n');
+  const first = await install({ pluginRoot });
+  assert.equal(first.spec, 'backup-and-overwrite');
+  for (let i = 0; i < 6; i++) {
+    fs.rmSync(path.join(tmpHome, '.claude/CLAUDE.md'));
+    const r = await install({ pluginRoot });
+    assert.equal(r.backupDir, null, `install #${i + 2} over spec siblings must not write a personal backup`);
+  }
+  const backupDirs = fs.readdirSync(path.join(tmpHome, '.claude')).filter(n => n.startsWith('backup-'));
+  assert.equal(backupDirs.length, 1, 'still only the personal-content backup');
+  assert.match(
+    fs.readFileSync(path.join(tmpHome, '.claude', backupDirs[0], 'CLAUDE.md'), 'utf8'),
+    /My personal instructions/
+  );
+});
+
 test('D7: fresh install (no existing CLAUDE.md) does not trip user-content flag', async () => {
   const res = await install({ pluginRoot });
   assert.equal(res.userContentDetected, false);
