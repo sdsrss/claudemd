@@ -759,11 +759,18 @@ test('Task 4: CLAUDEMD_PURGE=1 removes the hook-root record on BOTH purge paths'
     // STATE_IGNORE entry in the drift gate — so this case is the ONLY thing
     // holding it in the regex, and the drift join cannot notice if it leaves.
     'hook-root.json.4242': '{"root":"/somewhere"}\n',
+    // The same idiom's other temp (R22): `hook_install_sentinel_write` fills
+    // bootstrap-failed.json.$$ and renames it. Same STATE_IGNORE standing.
+    'bootstrap-failed.json.4242': '{"ts":"","from":"","to":""}\n',
   };
   // The anchor control the Round-14 audit (SCR-M6) paid for: the temp suffix is
   // a pid, so the arm takes DIGITS only. A user's own backup of the record must
   // survive a branch whose whole purpose is not to touch an unexpected directory.
-  const theirs = { 'hook-root.json.bak': 'my backup\n', 'hook-root.json.orig': 'mine\n' };
+  const theirs = {
+    'hook-root.json.bak': 'my backup\n',
+    'hook-root.json.orig': 'mine\n',
+    'bootstrap-failed.json.bak': 'mine\n',
+  };
   for (const [n, c] of Object.entries({ ...ours, ...theirs })) fs.writeFileSync(path.join(alien, n), c);
 
   const savedStateDir = process.env.CLAUDEMD_STATE_DIR;

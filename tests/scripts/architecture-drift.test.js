@@ -170,6 +170,11 @@ const STATE_IGNORE = new Map([
     'hook-root.json.$$',
     'atomic-write temp, alive only between the printf and the mv (hook_record_plugin_root)',
   ],
+  // Same idiom, same standing (R22); held in the regex by the same Task 4 case.
+  [
+    'bootstrap-failed.json.$$',
+    'atomic-write temp, alive only between the jq/printf and the mv (hook_install_sentinel_write)',
+  ],
 ]);
 
 test('ARCHITECTURE.md State locations lists every state path the source writes', () => {
@@ -509,7 +514,7 @@ test('R10-13: the join is capable of failing (mutation control)', () => {
   // now pins WHICH stem is unmatched, so a future omission fails here loudly
   // instead of quietly widening the control.
   const mutated =
-    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework|xrepo|modinj|notice)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9*-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|sandbox-pending(?:-[A-Za-z0-9_*-]+)?\.list|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|mem-audit\.lastrun|tmp-sweep\.(?:stamp|last\.json|lock)|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+    /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework|xrepo|modinj|notice)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9*-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|sandbox-pending(?:-[A-Za-z0-9_*-]+)?\.list|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown|\.[0-9]+)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|mem-audit\.lastrun|tmp-sweep\.(?:stamp|last\.json|lock)|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
   const stateOnly = [...statePathsInSource()]
     .filter(([, family]) => family === 'state')
     .map(([name]) => name)
