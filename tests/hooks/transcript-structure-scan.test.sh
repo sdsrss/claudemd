@@ -411,6 +411,16 @@ if [[ "$STDERR" == *"§iron-law-2"*"has no verdict"* ]]; then
 else
   echo "FAIL: 23b missed a paragraph-style verdict-less line: $STDERR"; FAIL=$((FAIL+1))
 fi
+# A paragraph-style verification part (no list items) still ends at a blank
+# line: the closing sentence is not a check. Kills the mutant that only counts
+# the label line's inline text as "judged" (0.109.0 delta review).
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n`npm test` → 通过\n\n需要的话我再改 README。')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 23c v8 closing sentence after a paragraph-style verification part → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 23c judged a closing sentence after a paragraph-style part: $STDERR"; FAIL=$((FAIL+1))
+fi
 unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------

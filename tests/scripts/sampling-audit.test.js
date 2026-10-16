@@ -562,6 +562,9 @@ test('scanStructure: only check lines in a v8 verification part are judged', () 
       .ironLaw2,
     0
   );
+  // A paragraph-style part ends at a blank line too (0.109.0 delta review: the
+  // in-loop `judged` was a surviving mutant).
+  assert.equal(scanStructure(`${head}\`npm test\` → 通过\n\n需要的话我再改 README。`).ironLaw2, 0);
   // Controls: a verdict-less check line still counts, as a paragraph line after
   // a blank, as a list item after a blank, and as a lazy line in a paragraph part.
   assert.equal(scanStructure(`${head}\n\`npm test\` 跑了\n\`npm run lint\` → 通过`).ironLaw2, 1);

@@ -742,7 +742,8 @@ for M28 in $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：`np
   $'## 汇报\n\n**变更**：重写了解析器。\n\n**验证**：冒烟入口 → 无法运行（缺数据库）。' \
   $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: `npm test` → not run (no test suite).' \
   $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: smoke entry → could not run (no database).' \
-  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**\n- smoke entry → Not run (no database)'; do
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**\n- smoke entry → Not run (no database)' \
+  $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: `npm test` → not run'; do
   N28=$((N28 + 1))
   {
     row_edit /p/src/a.js
