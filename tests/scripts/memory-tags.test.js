@@ -110,6 +110,15 @@ test('v0.9.38: design / brainstorm + 8 ship-prose words flagged', () => {
   }
 });
 
+test('R15: git remote and branch words are flagged — they sit in every push command', () => {
+  // A memory tagged `origin` denied `git push -q origin master` in two real
+  // sessions: memory-read-check matches tags against push ARGUMENTS on purpose
+  // (tests/hooks Cases 59-61), so the remedy is the tag, and doctor names it.
+  for (const tag of ['origin', 'upstream', 'master', 'remote']) {
+    assert.ok(classifyTag(tag).includes('generic-wordlist'), tag);
+  }
+});
+
 test('classifyTag: spec-compliant tags from MEMORY.md pass', () => {
   // Sample of multi-word + CJK tags currently in MEMORY.md — should all pass.
   for (const tag of [
