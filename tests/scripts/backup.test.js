@@ -454,3 +454,12 @@ test('M-2: a dangling RELATIVE link is absolutised like a live one', () => {
     path.join(fs.realpathSync(path.join(box.home, '.claude')), '../dotfiles/CLAUDE.md')
   );
 });
+
+test('R20 L5: looksLikeSpec reads past a UTF-8 byte-order mark', () => {
+  // An editor that saves with a BOM put \uFEFF before the `#`, the `^#` test
+  // failed, and install took a claudemd sibling for the user's file (a
+  // personal backup with no CLAUDE.md — the R15 shape); uninstall now reads
+  // ownership the same way.
+  assert.equal(looksLikeSpec('\uFEFF# AI-CODING-SPEC v8.1.0 — Core\n'), true);
+  assert.equal(looksLikeSpec('\uFEFFMy own notes\n'), false);
+});

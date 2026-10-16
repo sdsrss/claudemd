@@ -329,7 +329,12 @@ export function backupSettingsFile(retainCount = BACKUP_RETAIN_COUNT) {
 // the second caller would let that inference rot silently
 // (feedback_extraction_needs_consumer_gate).
 export function looksLikeSpec(text) {
-  return /^#\s*AI-CODING-SPEC\b/m.test(String(text || '').slice(0, 256));
+  // A leading UTF-8 byte-order mark is not part of the H1 (R20 L5).
+  return /^#\s*AI-CODING-SPEC\b/m.test(
+    String(text || '')
+      .replace(/^\uFEFF/, '')
+      .slice(0, 256)
+  );
 }
 
 // REPORT — never move — pre-0.68.3 spec backups sitting in the personal

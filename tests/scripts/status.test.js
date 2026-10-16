@@ -40,6 +40,15 @@ test('status reports plugin version + installed spec version', async () => {
   assert.equal(r.spec.installed, '6.10.0');
 });
 
+test('R20 L5: status reads the spec version past a UTF-8 byte-order mark', async () => {
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/CLAUDE.md'),
+    '\uFEFF# AI-CODING-SPEC v6.10.0 — Core\n\nBody.\n'
+  );
+  const r = await status();
+  assert.equal(r.spec.installed, '6.10.0');
+});
+
 test('status reports kill-switch state', async () => {
   const saved = process.env.DISABLE_CLAUDEMD_HOOKS;
   process.env.DISABLE_CLAUDEMD_HOOKS = '1';

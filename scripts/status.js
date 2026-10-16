@@ -223,7 +223,7 @@ export async function status({ verbose = false } = {}) {
   const coreSpec = homeSpec('CLAUDE.md');
   const specVersion = (() => {
     if (!fs.existsSync(coreSpec)) return '';
-    const text = fs.readFileSync(coreSpec, 'utf8');
+    const text = fs.readFileSync(coreSpec, 'utf8').replace(/^\uFEFF/, ''); // a BOM is not the H1 (R20 L5)
     const h1 = text.match(/^#\s*AI-CODING-SPEC\s+v([\d.]+)/m);
     if (h1) return h1[1];
     const legacy = text.match(/^Version:\s*(\S+)/m);
