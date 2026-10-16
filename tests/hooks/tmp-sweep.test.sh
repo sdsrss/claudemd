@@ -114,6 +114,40 @@ N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
 assert_eq "6 eight concurrent calls spawn exactly one sweep" "1" "${N:-0}"
 [[ ! -e "$HOME/.claude/.claudemd-state/tmp-sweep.lock" ]] && ok "6b lock released" || ng "6b lock left behind"
 
+# Case 6c: the claim must not rest on `mkdir` being atomic. uutils coreutils'
+# mkdir (Ubuntu 26.04's default) let more than one of 8 concurrent claims
+# succeed in 32 of 300 trials on the maintainer's host (GNU mkdir: 0 of 300),
+# which is what made case 6 flaky there. This shim is the worst case: every
+# claim succeeds, and all eight wait for each other before returning. A slow
+# `touch` keeps the first holder's stamp update from hiding the others, so the
+# old mkdir claim fails this case every time instead of most times.
+REAL_MKDIR=$(command -v mkdir)
+REAL_TOUCH=$(command -v touch)
+MK="$SANDBOX/mkshim"
+mkdir -p "$MK"
+cat >"$MK/mkdir" <<EOF
+#!/usr/bin/env bash
+"$REAL_MKDIR" "\$@" 2>/dev/null
+case " \$* " in *" -p "*) exit 0 ;; esac
+echo x >>"$SANDBOX/mkclaims"
+for _ in \$(seq 1 50); do [ "\$(wc -l <"$SANDBOX/mkclaims")" -ge 8 ] && break; sleep 0.05; done
+exit 0
+EOF
+chmod +x "$MK/mkdir"
+printf '#!/usr/bin/env bash\nsleep 0.3\nexec "%s" "$@"\n' "$REAL_TOUCH" >"$MK/touch"
+chmod +x "$MK/touch"
+rm -f "${SANDBOX:?}/spawns" "${SANDBOX:?}/mkclaims"
+rm -rf "${HOME:?}/.claude/.claudemd-state/tmp-sweep.lock"
+touch -d '20 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-20M +%Y%m%d%H%M)" "$STAMP"
+for _ in 1 2 3 4 5 6 7 8; do
+  PATH="$MK:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" >/dev/null 2>&1 &
+done
+wait
+sleep 0.5
+N=$(wc -l <"$SANDBOX/spawns" 2>/dev/null | tr -d ' ')
+assert_eq "6c a non-atomic mkdir on PATH still yields exactly one sweep" "1" "${N:-0}"
+rm -rf "${HOME:?}/.claude/.claudemd-state/tmp-sweep.lock"
+
 # Case 7 (re-review F5): a stale lock that is not an empty directory is
 # still cleared, so the sweep resumes on the call after.
 rm -rf "${HOME:?}/.claude/.claudemd-state/tmp-sweep.lock"

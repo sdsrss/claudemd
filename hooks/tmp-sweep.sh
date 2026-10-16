@@ -15,8 +15,8 @@
 # directory carrying the exact vitest signature (name, owner, children,
 # 40-hex file names, no symlinks) and idle past the floor. See its USAGE.
 #
-# Cost: every Bash call pays the hook preamble (sourcing two libs) plus two
-# mkdirs, an rmdir, two stats and a `date` — tens of milliseconds, measured at
+# Cost: every Bash call pays the hook preamble (sourcing two libs) plus a
+# `mkdir -p`, a noclobber open, an `rm`, two stats and a `date` — tens of milliseconds, measured at
 # 23 and 43 ms per call on this machine on 2026-09-22 depending on load. At most once per
 # CLAUDEMD_TMP_SWEEP_INTERVAL_MIN (default 10) it spawns the sweep DETACHED and
 # runs one `df`. The hook itself never waits on the sweep.
@@ -50,14 +50,20 @@ INTERVAL_MIN="${CLAUDEMD_TMP_SWEEP_INTERVAL_MIN:-10}"
 NOW=$(date +%s)
 # Check-then-touch of the stamp is two steps, so parallel Bash calls all read
 # the same stale stamp and each spawn a sweep (0.93.0 pre-tag review L1: 5 of 6
-# concurrent hooks did). `mkdir` is the atomic claim: one holder decides, the
-# rest skip. A lock older than 60 s is a hook killed while holding it; it is
-# cleared so the next call can claim, and this call skips. `rm -rf`, not
-# `rmdir`: anything else found at the path (a file, a non-empty dir) would
-# otherwise never clear and switch the sweep off for good (re-review F5).
-# Clearing races with other losers, so while a stale lock is recovered a few
-# sweeps can start together; each re-checks the signature before deleting.
-if ! mkdir "$LOCK" 2>/dev/null; then
+# concurrent hooks did). The claim is bash's noclobber redirection, an
+# O_CREAT|O_EXCL open: one holder decides, the rest skip. It was `mkdir`, which
+# is only atomic where coreutils makes it so: uutils mkdir, Ubuntu 26.04's
+# default, let more than one of 8 concurrent claims succeed in 32 of 300 trials
+# on the maintainer's host (GNU mkdir 0 of 300, noclobber 0 of 300 under bash
+# 5.3 and 3.2.57). A lock older than 60 s is a hook killed while holding it; it
+# is cleared so the next call can claim, and this call skips. `rm -rf`: anything
+# else found at the path (a directory left by a pre-0.109.1 hook, a non-empty
+# one) would otherwise never clear and switch the sweep off for good (re-review
+# F5); an older hook's `mkdir` and this claim also exclude each other, since
+# each fails on the other's entry. Clearing races with other losers, so while a
+# stale lock is recovered a few sweeps can start together; each re-checks the
+# signature before deleting.
+if ! (set -C; : >"$LOCK") 2>/dev/null; then
   held=$(platform_stat_mtime "$LOCK") || held=$NOW
   ((NOW - held > 60)) && rm -rf "${LOCK:?}" 2>/dev/null
   exit 0
@@ -65,12 +71,12 @@ fi
 if [[ -f "$STAMP" ]]; then
   last=$(platform_stat_mtime "$STAMP") || last=0
   if ((NOW - last < INTERVAL_MIN * 60)); then
-    rmdir "$LOCK" 2>/dev/null
+    rm -f "${LOCK:?}" 2>/dev/null
     exit 0
   fi
 fi
 touch "$STAMP" 2>/dev/null
-rmdir "$LOCK" 2>/dev/null
+rm -f "${LOCK:?}" 2>/dev/null
 
 EVENT=$(hook_read_event) || EVENT=""
 SESSION_ID=""
