@@ -170,11 +170,15 @@ const GENERIC_WORDLIST = new Set([
   // R15 (2026-10-16): git remote / branch words. memory-read-check matches tags
   // against push ARGUMENTS on purpose, so a memory tagged `origin` denied
   // `git push -q origin master` in two real sessions of another project.
-  // (`main` and `head` are already caught by short-single-word.)
+  // (`main` and `head` are already caught by short-single-word.) R18 L7: the
+  // usual branch names after them, `git push origin develop` and the like.
   'origin',
   'upstream',
   'master',
   'remote',
+  'develop',
+  'staging',
+  'production',
 ]);
 
 // classifyTag(tag) — returns array of reasons. Empty array = tag passes.

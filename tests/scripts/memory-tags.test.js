@@ -114,7 +114,7 @@ test('R15: git remote and branch words are flagged — they sit in every push co
   // A memory tagged `origin` denied `git push -q origin master` in two real
   // sessions: memory-read-check matches tags against push ARGUMENTS on purpose
   // (tests/hooks Cases 59-61), so the remedy is the tag, and doctor names it.
-  for (const tag of ['origin', 'upstream', 'master', 'remote']) {
+  for (const tag of ['origin', 'upstream', 'master', 'remote', 'develop', 'staging', 'production']) {
     assert.ok(classifyTag(tag).includes('generic-wordlist'), tag);
   }
 });
