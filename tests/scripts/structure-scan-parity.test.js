@@ -106,6 +106,23 @@ const CORPUS = {
     '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n\n- `npm run smoke` 跑了',
   'v8: verdict-less paragraph line after a blank line':
     '## 汇报\n\n**变更**：x\n\n**验证**\n\n`npm test` 跑了\n`npm run lint` → 通过',
+  // Label lines (0.109.1): a colon-ended item groups nested checks; a colon-ended
+  // paragraph after a blank line introduces items. Expected values live in
+  // sampling-audit.test.js and case 24 of the hook suite.
+  'v8: group label with nested checks':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过\n- `npm test` → 通过',
+  'v8: label paragraph after a blank line':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n\nSmoke:\n- `npm run smoke` 跑了',
+  'v8: a check ending in a colon keeps its details':
+    '## Report\n\n**Changes**: x\n\n**Verification**\n- `npm test` → failed, because:\n  - case 6: expected 1, got 2',
+  'v8: a colon line with nothing under it is judged':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 另外：',
+  'v8: colon item followed by a same-level item is a check':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- 另外：\n- `npm test` → 通过',
+  'v8: a label after a check opens a new group':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 旧问题：\n  - a 跑了',
+  'v8: leaving a group restores detail nesting':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- 旧问题：\n  - a → 失败\n- `npm test` → 通过\n  - 覆盖了空输入的情况',
   'v8: only the last report heading is judged':
     '## 汇报\n\n**遗留**：无\n\n**变更**：x\n\n## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过',
 };

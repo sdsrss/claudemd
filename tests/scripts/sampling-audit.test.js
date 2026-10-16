@@ -572,6 +572,53 @@ test('scanStructure: only check lines in a v8 verification part are judged', () 
   assert.equal(scanStructure(`${head}\`npm test\` → 通过\n\`npm run smoke\` 跑了`).ironLaw2, 1);
 });
 
+test('scanStructure: a label line in a v8 verification part introduces checks and is not one', () => {
+  const head = '## 汇报\n\n**变更**：x\n\n**验证**\n';
+  // Real shapes from the first v8 reports (2 of 4 on 2026-10-16): a list item
+  // ending in a colon groups the checks nested under it. The label is not a
+  // check; the nested lines are, so they are judged.
+  assert.equal(
+    scanStructure(
+      `${head}- \`npm test\` → 通过\n- 以下两项是旧问题：\n  - tmp-sweep 第 6 例 → 失败（1/60）\n  - 150 KB 行 → 失败（1/330）\n- \`npm run smoke\` → 通过`
+    ).ironLaw2,
+    0
+  );
+  assert.equal(
+    scanStructure(`${head}- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过`).ironLaw2,
+    1
+  );
+  // A label paragraph after a blank line does not end the part: its items are checks.
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n\nSmoke:\n- \`npm run smoke\` 跑了`).ironLaw2, 1);
+  assert.equal(
+    scanStructure(`${head}- \`npm test\` → 通过\n\nSmoke:\n- \`npm run smoke\` → 通过`).ironLaw2,
+    0
+  );
+  // Controls: a check that ends in a colon but carries a verdict keeps its nested
+  // lines as details; a colon line with nothing nested under it is still judged.
+  assert.equal(
+    scanStructure(`${head}- \`npm test\` → 失败，原因如下：\n  - case 6: expected 1, got 2`).ironLaw2,
+    0
+  );
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n- 另外：`).ironLaw2, 1);
+  // A colon item followed by a same-level item is a check, not a label.
+  assert.equal(scanStructure(`${head}- 另外：\n- \`npm test\` → 通过`).ironLaw2, 1);
+  // A label after a check opens a new group: its nested lines are checks again.
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n- 旧问题：\n  - a 跑了`).ironLaw2, 1);
+  // Leaving the group at a top-level check restores detail nesting under it.
+  assert.equal(
+    scanStructure(`${head}- 旧问题：\n  - a → 失败\n- \`npm test\` → 通过\n  - 覆盖了空输入的情况`).ironLaw2,
+    0
+  );
+});
+
+test('yieldTellSuppressed: a v8 report heading with a colon closes the turn too', () => {
+  assert.equal(
+    yieldTellSuppressed('改好了。\n\n## 汇报：\n\n**变更**：a.js\n\n**验证**：`npm test` → 通过'),
+    true
+  );
+  assert.equal(yieldTellSuppressed('Done.\n\n## Report:\n\n**Changes**: a.js'), true);
+});
+
 test('parity: node scanVocab and the bash transcript-vocab hook agree (real claim)', () => {
   const dir = stageFixture('vocab-hit');
   try {

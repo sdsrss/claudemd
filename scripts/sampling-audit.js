@@ -530,11 +530,13 @@ export function scanReportV8(text) {
     out.ironLaw2Opps += 1;
     if (!v8Verdict(rest)) out.ironLaw2 += 1;
   }
-  // Only check lines are judged; same rules as the hook's awk.
+  // Only check lines are judged; same rules as the hook's awk, label lines included.
   let judged = rest !== '';
   let sawItem = false;
   let itemInd = -1;
+  let labelInd = -1;
   let blank = false;
+  const V8_ITEM = /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/;
   for (let i = p2; i < raw.length; i++) {
     if (v8Part(nl[i]) || /^[ \t]*#/.test(raw[i])) break;
     if (/^[ \t]*$/.test(raw[i])) {
@@ -542,11 +544,27 @@ export function scanReportV8(text) {
       continue;
     }
     if (V8_SEP.test(raw[i])) continue;
-    const isItem = /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/.test(raw[i]) || /^[ \t]*\|/.test(raw[i]);
+    const isItem = V8_ITEM.test(raw[i]) || /^[ \t]*\|/.test(raw[i]);
+    const ind = raw[i].match(/^[ \t]*/)[0].length;
+    if (/[:：][ \t]*$/.test(raw[i]) && !v8Verdict(raw[i])) {
+      let j = i + 1;
+      while (j < raw.length && /^[ \t]*$/.test(raw[j])) j++;
+      if (j < raw.length && V8_ITEM.test(raw[j]) && (!isItem || raw[j].match(/^[ \t]*/)[0].length > ind)) {
+        blank = false;
+        if (isItem) {
+          labelInd = ind;
+          itemInd = -1;
+        }
+        continue;
+      }
+    }
     if (blank && !isItem && judged) break;
     blank = false;
     if (!isItem && sawItem) continue;
-    const ind = raw[i].match(/^[ \t]*/)[0].length;
+    if (isItem && labelInd >= 0 && ind <= labelInd) {
+      labelInd = -1;
+      itemInd = ind;
+    }
     if (isItem && itemInd >= 0 && ind > itemInd) continue;
     if (/^[ \t]*\|/.test(raw[i])) {
       let j = i + 1;
@@ -678,7 +696,7 @@ const YIELD_ASK_RE =
 const YIELD_CLOSED_RE = /^(?:##\s*)?(?:\*\*)?(?:Failed|Uncertain)\b/m;
 // Spec v8 closes a task with a `## 汇报` / `## Report` heading instead of the
 // four-section tail; a turn carrying one has completed its cycle the same way.
-const YIELD_REPORT_V8_RE = /^#{1,4}[ \t]*(?:汇报|Report)[ \t]*$/m;
+const YIELD_REPORT_V8_RE = /^#{1,4}[ \t]*(?:汇报|Report)[ \t]*[:：]?[ \t]*$/m;
 const YIELD_ASK_WINDOW = 260;
 // …and so has a turn carrying the §10 SHORT report, which is the one §10
 // actually prescribes for the common case: "L1: Failed+Uncertain empty →

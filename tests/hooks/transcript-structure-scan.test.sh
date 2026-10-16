@@ -421,6 +421,22 @@ if [[ -z "$STDERR" ]]; then
 else
   echo "FAIL: 23c judged a closing sentence after a paragraph-style part: $STDERR"; FAIL=$((FAIL+1))
 fi
+# Case 24 (0.109.1): a label line groups checks. Two of the first four real v8
+# reports wrote `- <label>：` with nested checks, and the label was flagged.
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 以下两项是旧问题：\n  - tmp-sweep 第 6 例 → 失败（1/60）\n  - 150 KB 行 → 失败（1/330）')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 24 v8 group label with judged nested checks → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 24 flagged a group label or its checks: $STDERR"; FAIL=$((FAIL+1))
+fi
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过')
+drive "$TX"
+if [[ "$STDERR" == *"写入扫描"* && "$STDERR" != *"只读探针"* ]]; then
+  echo "PASS: 24b the nested check without a verdict is flagged, the label is not"; PASS=$((PASS+1))
+else
+  echo "FAIL: 24b wrong line flagged: $STDERR"; FAIL=$((FAIL+1))
+fi
 unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------
