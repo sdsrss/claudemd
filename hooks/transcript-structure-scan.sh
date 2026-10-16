@@ -289,35 +289,37 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     rest = nl[p2]
     sub(/^(验证|Verification)[ \t]*(:|：|—|-)?[ \t]*/, "", rest)
     if (rest != "" && !verdict(rest)) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", p2, substr(rest, 1, 60)
-    # Only check lines are judged: once the part has list items, a non-item
-    # line continues the item above it and a deeper-indented item is a detail
-    # of it; after a blank line, a non-item line ends the part (a closing
-    # sentence after a report with no open items). A label line (ends in a
-    # colon, no verdict, an item follows: deeper for an item label) introduces
-    # checks and is not one; the items nested under an item label are checks.
-    judged = (rest != ""); sawItem = 0; itemInd = -1; labelInd = -1; blank = 0
+    # Only check lines are judged. Once the part has list items, a non-item
+    # line continues the item above it; the first item sets the check level, a
+    # shallower item lowers it, and a deeper item is a detail of a check. After
+    # a blank line, once a line was judged, a non-item line ends the part (a
+    # closing sentence or offer after a report with no open items). A label
+    # line (ends in a colon, no verdict, followed by an item that is not a part
+    # label; a list-item label must not itself be a detail, and its next item
+    # must be deeper) introduces checks and is not one; the items nested under
+    # a list-item label start a new check level.
+    judged = (rest != ""); sawItem = 0; itemInd = -1; blank = 0
     for (i = p2 + 1; i <= NR; i++) {
       if (part(nl[i]) || raw[i] ~ /^[ \t]*#/) break
       if (raw[i] ~ /^[ \t]*$/) { blank = 1; continue }
       if (issep(raw[i])) continue
       isItem = (raw[i] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ || raw[i] ~ /^[ \t]*\|/)
       match(raw[i], /^[ \t]*/); ind = RLENGTH
-      if (raw[i] ~ /(:|：)[ \t]*$/ && !verdict(raw[i])) {
+      if (blank && !isItem && judged) break
+      blank = 0
+      if (isItem && ind < itemInd) itemInd = ind
+      if (raw[i] ~ /(:|：)[ \t]*$/ && !verdict(raw[i]) && (!isItem || itemInd < 0 || ind <= itemInd)) {
         j = i + 1
         while (j <= NR && raw[j] ~ /^[ \t]*$/) j++
-        if (j <= NR && raw[j] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/) {
+        if (j <= NR && raw[j] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ && !part(nl[j])) {
           match(raw[j], /^[ \t]*/)
           if (!isItem || RLENGTH > ind) {
-            blank = 0
-            if (isItem) { labelInd = ind; itemInd = -1 }
+            if (isItem) itemInd = -1
             continue
           }
         }
       }
-      if (blank && !isItem && judged) break
-      blank = 0
       if (!isItem && sawItem) continue
-      if (isItem && labelInd >= 0 && ind <= labelInd) { labelInd = -1; itemInd = ind }
       if (isItem && itemInd >= 0 && ind > itemInd) continue
       if (raw[i] ~ /^[ \t]*\|/) {
         j = i + 1

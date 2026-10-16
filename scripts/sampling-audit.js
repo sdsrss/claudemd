@@ -534,7 +534,6 @@ export function scanReportV8(text) {
   let judged = rest !== '';
   let sawItem = false;
   let itemInd = -1;
-  let labelInd = -1;
   let blank = false;
   const V8_ITEM = /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/;
   for (let i = p2; i < raw.length; i++) {
@@ -546,25 +545,23 @@ export function scanReportV8(text) {
     if (V8_SEP.test(raw[i])) continue;
     const isItem = V8_ITEM.test(raw[i]) || /^[ \t]*\|/.test(raw[i]);
     const ind = raw[i].match(/^[ \t]*/)[0].length;
-    if (/[:：][ \t]*$/.test(raw[i]) && !v8Verdict(raw[i])) {
+    if (blank && !isItem && judged) break;
+    blank = false;
+    if (isItem && ind < itemInd) itemInd = ind;
+    if (/[:：][ \t]*$/.test(raw[i]) && !v8Verdict(raw[i]) && (!isItem || itemInd < 0 || ind <= itemInd)) {
       let j = i + 1;
       while (j < raw.length && /^[ \t]*$/.test(raw[j])) j++;
-      if (j < raw.length && V8_ITEM.test(raw[j]) && (!isItem || raw[j].match(/^[ \t]*/)[0].length > ind)) {
-        blank = false;
-        if (isItem) {
-          labelInd = ind;
-          itemInd = -1;
-        }
+      if (
+        j < raw.length &&
+        V8_ITEM.test(raw[j]) &&
+        !v8Part(nl[j]) &&
+        (!isItem || raw[j].match(/^[ \t]*/)[0].length > ind)
+      ) {
+        if (isItem) itemInd = -1;
         continue;
       }
     }
-    if (blank && !isItem && judged) break;
-    blank = false;
     if (!isItem && sawItem) continue;
-    if (isItem && labelInd >= 0 && ind <= labelInd) {
-      labelInd = -1;
-      itemInd = ind;
-    }
     if (isItem && itemInd >= 0 && ind > itemInd) continue;
     if (/^[ \t]*\|/.test(raw[i])) {
       let j = i + 1;

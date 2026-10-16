@@ -107,7 +107,7 @@ const CORPUS = {
   'v8: verdict-less paragraph line after a blank line':
     '## 汇报\n\n**变更**：x\n\n**验证**\n\n`npm test` 跑了\n`npm run lint` → 通过',
   // Label lines (0.109.1): a colon-ended item groups nested checks; a colon-ended
-  // paragraph after a blank line introduces items. Expected values live in
+  // paragraph before any judged line introduces items. Expected values live in
   // sampling-audit.test.js and case 24 of the hook suite.
   'v8: group label with nested checks':
     '## 汇报\n\n**变更**：x\n\n**验证**\n- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过\n- `npm test` → 通过',
@@ -123,6 +123,22 @@ const CORPUS = {
     '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 旧问题：\n  - a 跑了',
   'v8: leaving a group restores detail nesting':
     '## 汇报\n\n**变更**：x\n\n**验证**\n- 旧问题：\n  - a → 失败\n- `npm test` → 通过\n  - 覆盖了空输入的情况',
+  // 0.109.1 pre-tag review: a colon item inside a check's details, a closing
+  // offer after a blank line, nested groups, and a part label after a colon line.
+  'v8: a colon detail under a check is not a label':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过（47/47）\n  - 新增用例：\n    - 空输入\n  - 旧用例未改\n- `npm run lint` → 通过\n  - 2/2',
+  'v8: a closing offer after a blank line ends the part':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n\n如需继续，我可以：\n- 补 README',
+  'v8: nested groups':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- 测试：\n  - 单元：\n    - a → 通过\n  - b 跑了\n- `npm run lint` → 通过\n  - 2/2',
+  'v8: a label paragraph before any judged line':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n\n单元测试：\n- `npm test` 跑了',
+  'v8: a verdict-less check with a detail and no colon':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` 跑了\n  - 47/47 通过',
+  'v8: a colon check with a paragraph after it':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n- 冒烟测试的结果如下：\n\n  输出为空',
+  'v8: a colon line followed by a list-form part label is judged':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n`npm test` 跑完了：\n- **遗留**：无',
   'v8: only the last report heading is judged':
     '## 汇报\n\n**遗留**：无\n\n**变更**：x\n\n## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过',
 };

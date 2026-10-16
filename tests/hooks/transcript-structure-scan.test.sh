@@ -437,6 +437,31 @@ if [[ "$STDERR" == *"写入扫描"* && "$STDERR" != *"只读探针"* ]]; then
 else
   echo "FAIL: 24b wrong line flagged: $STDERR"; FAIL=$((FAIL+1))
 fi
+# 0.109.1 pre-tag review: a colon item inside a check's details is a detail,
+# not a label; a colon paragraph after a blank line still ends the part (a
+# closing offer and its list); a list-form part label after a colon line does
+# not make that line a label.
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过（47/47）\n  - 新增用例：\n    - 空输入\n  - 旧用例未改\n- `npm run lint` → 通过\n  - 2/2')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 24c v8 colon detail under a check stays a detail → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 24c judged a check's details: $STDERR"; FAIL=$((FAIL+1))
+fi
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n\n如需继续，我可以：\n- 补 README\n- 加一个用例')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 24d v8 closing offer with a list after a blank line → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 24d judged a closing offer's list: $STDERR"; FAIL=$((FAIL+1))
+fi
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n`npm test` 跑完了：\n- **遗留**：无')
+drive "$TX"
+if [[ "$STDERR" == *"§iron-law-2"*"跑完了"* ]]; then
+  echo "PASS: 24e v8 colon line before a list-form part label is judged → §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 24e missed a colon line before a list-form part label: $STDERR"; FAIL=$((FAIL+1))
+fi
 unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------

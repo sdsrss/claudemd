@@ -587,10 +587,15 @@ test('scanStructure: a label line in a v8 verification part introduces checks an
     scanStructure(`${head}- 4 个只读探针：\n  - 写入扫描 → 拦截 17 行\n  - 纠错分母 → 通过`).ironLaw2,
     1
   );
-  // A label paragraph after a blank line does not end the part: its items are checks.
-  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n\nSmoke:\n- \`npm run smoke\` 跑了`).ironLaw2, 1);
+  // A label paragraph before anything is judged introduces checks: the label is
+  // not judged, its items are.
+  assert.equal(scanStructure(`${head}单元测试：\n- \`npm test\` → 通过`).ironLaw2, 0);
+  assert.equal(scanStructure(`${head}\n单元测试：\n- \`npm test\` 跑了`).ironLaw2, 1);
+  // After a blank line, once a check was judged, a paragraph still ends the part
+  // even when it ends in a colon: a closing offer and its list are not checks
+  // (0.109.1 pre-tag review).
   assert.equal(
-    scanStructure(`${head}- \`npm test\` → 通过\n\nSmoke:\n- \`npm run smoke\` → 通过`).ironLaw2,
+    scanStructure(`${head}- \`npm test\` → 通过\n\n如需继续，我可以：\n- 补 README\n- 加一个用例`).ironLaw2,
     0
   );
   // Controls: a check that ends in a colon but carries a verdict keeps its nested
@@ -609,6 +614,32 @@ test('scanStructure: a label line in a v8 verification part introduces checks an
     scanStructure(`${head}- 旧问题：\n  - a → 失败\n- \`npm test\` → 通过\n  - 覆盖了空输入的情况`).ironLaw2,
     0
   );
+  // A colon item that is itself a detail of a check is no label: it and its
+  // nested lines stay details, and the next check's details stay details too
+  // (0.109.1 pre-tag review).
+  assert.equal(
+    scanStructure(
+      `${head}- \`npm test\` → 通过（47/47）\n  - 新增用例：\n    - 空输入\n    - 超长输入\n  - 旧用例未改\n- \`npm run lint\` → 通过\n  - 2/2`
+    ).ironLaw2,
+    0
+  );
+  // Groups nest; leaving both restores detail nesting at the top level.
+  assert.equal(
+    scanStructure(
+      `${head}- 测试：\n  - 单元：\n    - a → 通过\n  - b → 通过\n- \`npm run lint\` → 通过\n  - 2/2`
+    ).ironLaw2,
+    0
+  );
+  // These three pin one condition each:
+  // a line with no colon is not a label, so a deeper line under it is a detail;
+  assert.equal(scanStructure(`${head}- \`npm test\` 跑了\n  - 47/47 通过`).ironLaw2, 1);
+  // a colon line with no item after it is judged;
+  assert.equal(
+    scanStructure(`${head}- \`npm test\` → 通过\n- 冒烟测试的结果如下：\n\n  输出为空`).ironLaw2,
+    1
+  );
+  // a colon line followed by a part label in list form is judged.
+  assert.equal(scanStructure(`${head}\`npm test\` 跑完了：\n- **遗留**：无`).ironLaw2, 1);
 });
 
 test('yieldTellSuppressed: a v8 report heading with a colon closes the turn too', () => {
