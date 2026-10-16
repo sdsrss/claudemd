@@ -1,5 +1,5 @@
 # 合并后删除本地分支
-状态：草稿
+状态：进行中
 
 ## 背景与目标
 
@@ -33,9 +33,9 @@
 
 ## 验收标准
 
-- [ ] AC1：核心 §7 **Git** 含新句子，整行被钉住；改动后核心字节数、Sizing、级联全部一致 — 验证：`npm run check` 中的 spec-structure 与 `node scripts/spec-coherence-audit.js --strict`
-- [ ] AC2：branch-prune 的提示是删除指令，仍给出 `git branch -d` 命令、复核说明和关闭方式 — 验证：`bash tests/hooks/branch-prune.test.sh`，新用例在改前失败
-- [ ] AC3：离线对比 — 在沙箱仓库里用 `claude -p` 跑"把 feature 分支合并进 main 并收尾"，新规范下每次都删掉本地分支，旧规范的结果作基线 — 验证：每组 5 次，记录删除次数
+- [x] AC1：核心 §7 **Git** 含新句子，整行被钉住；改动后核心字节数、Sizing、级联全部一致 — 验证：`npm run check` 中的 spec-structure 与 `node scripts/spec-coherence-audit.js --strict`
+- [x] AC2：branch-prune 的提示是删除指令，仍给出 `git branch -d` 命令、复核说明和关闭方式 — 验证：`bash tests/hooks/branch-prune.test.sh`，新用例在改前失败
+- [x] AC3：离线对比 — 在沙箱仓库里用 `claude -p` 跑"把 feature 分支合并进 main 并收尾"，新规范下每次都删掉本地分支，旧规范的结果作基线 — 验证：每组 5 次，记录删除次数
 - [ ] AC4：`npm run check`（含 bash 3.2）、`npm run smoke`、PR CI 全绿；打 tag 前的独立评审通过 — 验证：发版手册第 4–10 步
 
 ## 方案
@@ -51,16 +51,23 @@
 
 ## 计划
 
-- [ ] S1：核心句子 + 钉、Sizing、级联 — 覆盖 AC1 — 依赖：用户授权 — 执行：主会话
-- [ ] S2：hook 提示 + 测试 — 覆盖 AC2 — 依赖：无 — 执行：主会话
-- [ ] S3：离线对比 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
+- [x] S1：核心句子 + 钉、Sizing、级联 — 覆盖 AC1 — 依赖：用户授权 — 执行：主会话
+- [x] S2：hook 提示 + 测试 — 覆盖 AC2 — 依赖：无 — 执行：主会话
+- [x] S3：离线对比 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
 - [ ] S4：按发版手册发布 0.110.0 — 覆盖 AC4 — 依赖：S1–S3 — 执行：主会话 + release-reviewer
 
 ## 决策与进展
 
 - 2026-10-16：用户要求删除后，已用 `git branch -d` 删掉 claudemd 的 4 个已合并分支；`next-release` 按项目约定保留。code-graph-mcp 的 `usage-audit` 查看时已不存在。
-- 等待用户授权进入实现（L3）。
+- 2026-10-16：用户授权整套实现（规范 + hook + 发布 0.110.0）。在 `release/v0.110.0` 分支上做（L3 的隔离步骤）。
+- 规范句子最终放在 §7 Git 段末尾（"Both override …" 之后），因为 "Both" 指前两句，插在中间会改变它的指代。
+- 进展：S1–S3 完成，S4 发版进行中。
 
 ## 验证记录
 
 - `git branch -d ci/macos-system-bash32 oss-benchmark-impl test-env-hygiene-optins v7.2-core` → 通过（4 个都已删除；`git branch` 只剩 `main`、`next-release`）
+- `bash tests/hooks/branch-prune.test.sh` → 通过（13/13；新用例 4c 在改动前失败，10/13）
+- `node --test tests/scripts/spec-structure.test.js` → 通过（89/89；§7 Git 整行钉在改规范前失败）
+- `node scripts/version-cascade-check.js` → 通过（v8.1 一致，Sizing 在 ±20B 内，插件 0.110.0 六处一致）
+- `node scripts/spec-coherence-audit.js --strict` → 通过（5/5，coreDelta=0，extendedDelta=0）
+- 离线对比 `tasks/merged-branch-ab/RESULT.md` → 通过（旧规范删除 0/5，新规范 5/5，都用 `git branch -d`）
