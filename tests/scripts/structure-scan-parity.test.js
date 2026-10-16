@@ -87,6 +87,15 @@ const CORPUS = {
   'v8: Changes with no Verification part': '## Report\n\n**Changes**: edited a.js\n\n**Open items**: none',
   'v8: a table row with no verdict':
     '## 汇报\n\n**变更**：x\n\n**验证**\n\n| 命令 | 结果 |\n|---|---|\n| npm test | 通过 |\n| smoke | 结果不明 |\n',
+  // A full-width colon at the end of a line (the verify.md template writes
+  // `**验证**：` with bullets below). mawk reads a bracket `[:：]` byte by byte,
+  // so the hook once matched one byte of `：` and left two behind (0.109.0
+  // pre-tag review H1). The silent rows are as much the point as the firing one.
+  'v8: `**验证**：` alone on its line, bullets below':
+    '## 汇报\n\n**变更**：改了 a.js\n**验证**：\n- `npm test` → 通过（12/12）\n**遗留**：无',
+  'v8: `**验证**：` with a trailing space': '## 汇报\n\n**变更**：x\n**验证**： \n- `npm test` → 通过',
+  'v8: `## 汇报：` heading anchors the report':
+    '## 汇报：\n\n**变更**：x\n\n**验证**\n- `npm test` 跑了',
   'v8: only the last report heading is judged':
     '## 汇报\n\n**遗留**：无\n\n**变更**：x\n\n## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过',
 };

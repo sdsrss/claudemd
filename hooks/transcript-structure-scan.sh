@@ -237,7 +237,10 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
 # One awk program, no `printf | grep -q` (feedback_pipefail_grep_q_race). The
 # normaliser and every regex here are mirrored by scanReportV8 in
 # scripts/sampling-audit.js; tests/scripts/structure-scan-parity.test.js holds
-# the two to one verdict.
+# the two to one verdict. The colon is `(:|：)`, never the bracket `[:：]`:
+# mawk reads a bracket byte by byte, so `**验证**：` alone on its line left two
+# stray bytes and read as a line with no verdict (hooks/lib/verify-cmd.sh has
+# the same note; 0.109.0 pre-tag review H1).
 while IFS= read -r v8hit; do
   [[ -n "$v8hit" ]] && HITS+=("$v8hit")
 done < <(printf '%s\n' "$LAST_TEXT" | awk '
@@ -249,9 +252,9 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     return s
   }
   function part(s) {
-    if (s ~ /^(变更|Changes)([ \t]*([:：]|—|-)|[ \t]*$)/) return 1
-    if (s ~ /^(验证|Verification)([ \t]*([:：]|—|-)|[ \t]*$)/) return 2
-    if (s ~ /^(遗留|Open items)([ \t]*([:：]|—|-)|[ \t]*$)/) return 3
+    if (s ~ /^(变更|Changes)([ \t]*(:|：|—|-)|[ \t]*$)/) return 1
+    if (s ~ /^(验证|Verification)([ \t]*(:|：|—|-)|[ \t]*$)/) return 2
+    if (s ~ /^(遗留|Open items)([ \t]*(:|：|—|-)|[ \t]*$)/) return 3
     return 0
   }
   function verdict(s,   lo) {
@@ -263,7 +266,7 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
   { raw[NR] = $0; nl[NR] = norm($0) }
   END {
     anchor = 0
-    for (i = 1; i <= NR; i++) if (nl[i] ~ /^(汇报|Report)[ \t]*[:：]?[ \t]*$/) anchor = i
+    for (i = 1; i <= NR; i++) if (nl[i] ~ /^(汇报|Report)[ \t]*(:|：)?[ \t]*$/) anchor = i
     if (!anchor) exit
     p1 = p2 = p3 = 0
     for (i = anchor + 1; i <= NR; i++) {
@@ -283,7 +286,7 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     if (p1 && !p2) printf "§iron-law-2|Changes@L%d reported with no Verification part\n", p1
     if (!p2) exit
     rest = nl[p2]
-    sub(/^(验证|Verification)[ \t]*([:：]|—|-)?[ \t]*/, "", rest)
+    sub(/^(验证|Verification)[ \t]*(:|：|—|-)?[ \t]*/, "", rest)
     if (rest != "" && !verdict(rest)) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", p2, substr(rest, 1, 60)
     for (i = p2 + 1; i <= NR; i++) {
       if (part(nl[i]) || raw[i] ~ /^[ \t]*#/) break
