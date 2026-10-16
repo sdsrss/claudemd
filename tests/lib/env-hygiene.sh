@@ -24,10 +24,7 @@ claudemd_reset_test_env() {
   while IFS= read -r v; do
     unset "$v"
   done < <(compgen -v | grep -E '^(DISABLE_[A-Z0-9_]+|CLAUDEMD_[A-Z0-9_]+)$')
-  # Non-prefixed knobs (opt-ins + thresholds) — explicit list. CLAUDE_PROJECT_DIR
-  # is the harness's, but it picks the memory index and transcript the §11 and
-  # §10-V gates read (R15), so an exported one would point the sandboxed suites
-  # at a project dir their HOME does not hold.
+  # Non-prefixed knobs (opt-ins + thresholds) — explicit list.
   unset TRANSCRIPT_VOCAB_SCAN TRANSCRIPT_STRUCTURE_SCAN \
         BANNED_VOCAB_PROSE_SCAN BASH_READONLY_FAST_PATH BASH_SAFETY_INDIRECT_CALL \
         SPEC_RESIDUE_THRESHOLD SPEC_DRIFT_IGNORE SANDBOX_DISPOSAL_BLOCK SANDBOX_DISPOSAL_IMMEDIATE \
@@ -35,6 +32,12 @@ claudemd_reset_test_env() {
         REPLY_LANGUAGE_MIN_WORDS REPLY_LANGUAGE_WINDOW EVIDENCE_GATE \
         EVIDENCE_GATE_WINDOW LEDGER_STALENESS LEDGER_STALENESS_WINDOW \
         REWORK_BREAKER EVIDENCE_GATE_DELIVER EVIDENCE_WTREE \
-        DEBUG_ON_TEST_FAILURE SPEC_MODULE_GATE CLAUDE_PROJECT_DIR 2>/dev/null || true
+        DEBUG_ON_TEST_FAILURE SPEC_MODULE_GATE 2>/dev/null || true
+  # Not a knob, so not in the list above (scripts/offline-eval/run.mjs holds
+  # that list equal to its HOOK_SWITCHES). CLAUDE_PROJECT_DIR is the harness's,
+  # but it picks the memory index and transcript the §11 and §10-V gates read
+  # (R15), so an exported one would point the sandboxed suites at a project
+  # dir their HOME does not hold.
+  unset CLAUDE_PROJECT_DIR
   return 0
 }
