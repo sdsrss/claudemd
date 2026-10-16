@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.110.0] - 2026-10-16
+
+**Upgrade notes — spec v8.1.0: a branch you merged is deleted locally. Nothing to do on upgrade; the next session installs the new spec.** Core §7 Git gains one sentence: after you merge a branch into the main line, delete the local branch with `git branch -d` (it refuses unmerged work), unless the project keeps it. The `branch-prune` hook's line now tells the session to delete the merged branches it lists, where it used to leave that to you. To keep merged branches: state it in the project's `CLAUDE.md` (a branch the project keeps is exempt), turn the hint off with `DISABLE_BRANCH_PRUNE_HOOK=1`, or pin the plugin to 0.109.1.
+
+**Why.** On 2026-10-16 two of the maintainer's repositories kept local branches already merged into `main`: claudemd four (one whose remote branch was gone, three with no upstream), code-graph-mcp one, whose session reported "merged into main, I did not delete it". Nothing in the spec said to delete a merged branch, and `branch-prune` said "If the user wants them removed", so both sessions left it to the user, who asked that merged local branches be deleted. Design record: `tasks/specs/merged-branch-cleanup.md`.
+
+**What changes for you.**
+- **Spec (core §7 Git)**: the sentence above. Remote branches are untouched; pushing stays a when-asked step. No HARD rule added or removed. Core 23,156 → 23,303 bytes; extended 39,317 → 36,710 (its Recent changes entry is now v8.1.0's).
+- **`branch-prune`** (on by default): "They are merged: delete them with `git branch -d …`" replaces "If the user wants them removed: …". What it lists, the command, git's re-check and the kill switch are unchanged, and the hook still deletes nothing itself.
+
+**Tests.**
+- `branch-prune` case 4c pins the new line and failed on 0.109.1; cases 4b and 7 run the command taken from the new wording. 13/13.
+- `spec-structure`: the §7 Git golden pin failed before the spec edit; six block hashes move: both files' preambles and heading inventories (the title lines), core §7 and extended Recent changes.
+- Offline A/B (`claude -p`, Opus 5.5, a fixture repo whose finished `feature/greet` branch the prompt asks to merge into `main`; no remote, so `branch-prune` lists nothing and only the spec differs): 0.109.1's spec merged 5 of 5 and deleted the branch in 0 of 5; v8.1.0 merged 5 of 5 and deleted it in 5 of 5, each time with `git branch -d`.
+
+**Pre-tag review.** Pending.
+
 ## [0.109.1] - 2026-10-16
 
 **Fixes; spec unchanged (v8.0.0). Nothing to do on upgrade.**
