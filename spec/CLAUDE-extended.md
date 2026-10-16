@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.1.0 (minor, 2026-10-16)** — core §7 **Git**: after you merge a branch into the main line, delete the local branch with `git branch -d` (it refuses unmerged work), unless the project keeps it. Asked for by the user after two repos kept merged local branches: nothing in the spec said to delete them, and the branch-prune hook's line left it to the user (it now says to delete them). Design record `tasks/specs/merged-branch-cleanup.md`. No HARD rule added or removed.
+**v8.1.0 (minor, 2026-10-16)** — core §7 **Git**: after you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it; if `-d` refuses, keep the branch and name it under open items, never `-D`. Asked for by the user after two repos kept merged local branches: nothing in the spec said to delete them, and the branch-prune hook's line left it to the user (it now says to delete them, leaving out any the project keeps). Design record `tasks/specs/merged-branch-cleanup.md`. No HARD rule added or removed.
 
-**Sizing** (v8.1.0, 2026-10-16, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23156 → 23303 bytes (Δ +147); extended 39317 → 36710 bytes (Δ -2607); OPERATOR.md 15335 → 15335 bytes (Δ 0). Size budget: core 23303/25000 (**1697 bytes headroom**); extended 36710/50000 (**13290 bytes headroom**).
+**Sizing** (v8.1.0, 2026-10-16, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23156 → 23351 bytes (Δ +195); extended 39317 → 36793 bytes (Δ -2524); OPERATOR.md 15335 → 15335 bytes (Δ 0). Size budget: core 23351/25000 (**1649 bytes headroom**); extended 36793/50000 (**13207 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

@@ -11,8 +11,8 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 Design record `tasks/specs/merged-branch-cleanup.md`. Minor, because a rule is added. No HARD rule added or removed; every rule keeps its ID.
 
 - **Why**: on 2026-10-16 two of the user's repositories kept local branches already merged into `main`: claudemd four (one whose remote branch was gone, three with no upstream), code-graph-mcp one, whose session reported "merged into main, I did not delete it". Nothing in the spec said to delete a merged branch, and the branch-prune hook's line said "If the user wants them removed", so both sessions left it to the user. The user asked that merged local branches be deleted.
-- **§7 Git**: after you merge a branch into the main line, delete the local branch with `git branch -d` (it refuses unmerged work), unless the project keeps it (claudemd keeps `next-release`). Remote branches are untouched: pushing stays a when-asked step.
-- **Hooks**: `branch-prune` now says "They are merged: delete them with `git branch -d …`"; what it lists, git's re-check and the kill switch are unchanged, and the hook still deletes nothing itself.
+- **§7 Git**: after you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it. `-d` also refuses some merged branches (a squash merge, an upstream behind the merged tip, a branch checked out in a worktree) and git's hint then suggests `-D`; the spec says to keep the branch and name it under open items instead. Remote branches are untouched: pushing stays a when-asked step.
+- **Hooks**: `branch-prune` now says "They are merged: delete them with `git branch -d …` (leave out any the project keeps)"; what it lists, git's re-check and the kill switch are unchanged, and the hook still deletes nothing itself.
 
 ## v8.0.0 (major, 2026-10-16) — three-part report, decide-and-record on low-risk ambiguity, harness duplicates dropped
 

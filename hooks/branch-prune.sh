@@ -2,8 +2,9 @@
 # branch-prune.sh — PostToolUse(Bash) hook, ADVISORY. After a command that can
 # land a branch on the default branch (git merge / pull / fetch / push, gh pr
 # merge), tells the session which local branches are merged and to delete them
-# with the `git branch -d` command it gives (spec v8.1.0 core §7 Git: a merged
-# local branch is deleted, not left as the user's call). It deletes nothing
+# with the `git branch -d` command it gives, leaving out any the project keeps.
+# Spec v8.1.0 core §7 Git asks a session to delete a branch it merged; this line
+# also covers merged branches left by earlier sessions. It deletes nothing
 # itself.
 #
 # Why: nothing ever reminded anyone. On 2026-09-22 two repos held 15 local
@@ -79,7 +80,7 @@ N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(", ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
 CMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" '"git -C \($cwd | @sh) branch -d -- \([.deletable[].name] | @sh)"')
-MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. They are merged: delete them with \`$CMD\`, run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
+MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

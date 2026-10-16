@@ -74,11 +74,12 @@ else
   ng "4 (ctx: $CTX; branches: $(git -C "$REPO" branch --format='%(refname:short)' | tr '\n' ' '))"
 fi
 
-# Case 4c: the line tells the session to delete the listed branches — a merged
-# local branch is deleted, not left as the user's call (spec v8.1.0 core §7
-# Git) — and keeps git's re-check and the kill switch.
+# Case 4c: the line tells the session to delete the listed branches, leaving
+# out any the project keeps — not to leave them as the user's call (spec v8.1.0
+# core §7 Git) — and keeps git's re-check and the kill switch.
 if [[ "$CTX" == *"They are merged: delete them with \`git -C "* && "$CTX" != *"If the user wants"* &&
-  "$CTX" == *"refuses otherwise"* && "$CTX" == *"DISABLE_BRANCH_PRUNE_HOOK=1"* ]]; then
+  "$CTX" == *"leave out any the project keeps"* && "$CTX" == *"refuses otherwise"* &&
+  "$CTX" == *"DISABLE_BRANCH_PRUNE_HOOK=1"* ]]; then
   ok "4c the line says to delete them, with the re-check and the kill switch"
 else
   ng "4c (ctx: $CTX)"
