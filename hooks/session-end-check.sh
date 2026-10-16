@@ -254,6 +254,10 @@ OPEN=$(printf '%s' "$RESULT" | jq -r '.open // 0' 2>/dev/null)
 # Trip condition: mutations > 0 AND validates == 0. Equivalent to OPEN > 0: a
 # mutation zeroes `validates`, a validate zeroes `open`, so at the end whichever
 # came last decides both. OPEN is what the user is told; MUTATIONS is context.
+# A session that changed only markdown trips too, on purpose: spec/CLAUDE.md,
+# SKILL.md and commands/*.md are model-visible text (core §2 makes them L3), so
+# skipping `*.md` would drop the edits this checkpoint matters most for
+# (converge D11).
 if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
   mkdir -p "$CWD/tasks" 2>/dev/null || exit 0
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || TS="unknown"
