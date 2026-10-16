@@ -562,6 +562,10 @@ test('R15: audit given two paths is a usage error, not a scan of the first one o
     const r = run(['audit', clean, dirty]);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /one <jsonl-path>/);
+    // R18 L9: an empty first path is still two paths, not a missing one.
+    const e = run(['audit', '', dirty]);
+    assert.equal(e.status, 2);
+    assert.match(e.stderr, /one <jsonl-path>, got 2/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

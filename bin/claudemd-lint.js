@@ -410,16 +410,17 @@ function auditCmd(rawArgs) {
   const positional = args.filter(a => !a.startsWith('--'));
   const transcriptPath = positional[0];
 
-  if (!transcriptPath) {
-    process.stderr.write('audit: <jsonl-path> required\n');
-    process.exit(2);
-  }
   // A shell glob (`audit dir/*.jsonl`) hands over several paths; scanning only
-  // the first let a hit in any later file pass as exit 0 (R15).
+  // the first let a hit in any later file pass as exit 0 (R15). Checked before
+  // the missing-path test so `audit '' b.jsonl` is not "required" (R18 L9).
   if (positional.length > 1) {
     process.stderr.write(
       `audit: takes one <jsonl-path>, got ${positional.length} — run it once per transcript\n`
     );
+    process.exit(2);
+  }
+  if (!transcriptPath) {
+    process.stderr.write('audit: <jsonl-path> required\n');
     process.exit(2);
   }
   if (!fs.existsSync(transcriptPath)) {
