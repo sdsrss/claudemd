@@ -801,5 +801,28 @@ else
   ng "30: advisory text: $OUT"
 fi
 
+# --- Case 31 (R15): `\n` in DONE_RE was a literal n ---------------------------
+# grep is line-oriented, so `(^|\n)` meant "line start, or the letter n": any
+# word ending in n before `Changes:` / `Done:` mid-sentence read as a report
+# label. A question about a CHANGELOG heading is not a completion claim.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook 'I edited src/foo.js. Before I run the suite, one question: should the new flag be listed under the CHANGELOG section Main Changes: or Fixes?')
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "31: 'Main Changes:' mid-sentence is not a completion claim"
+else
+  ng "31: read as a claim: $OUT (rows $(log_rows))"
+fi
+reset_log
+OUT=$(run_hook $'Edited the parser.\nChanges: rewrote src/a.js')
+if [[ "$OUT" == *"Iron Law #2"* ]]; then
+  ok "31b: control — a Changes: label at a line start is still a claim"
+else
+  ng "31b: line-start label no longer read as a claim: $OUT"
+fi
+
 echo
 claudemd_assert_summary

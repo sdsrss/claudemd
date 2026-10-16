@@ -110,11 +110,15 @@ esac
 # The character class excludes 没 / 未 / 不 before 完成, so "还没完成" — the
 # negation, which is the opposite claim — does not match.
 #
+# `^`, not `(^|\n)` (R15): grep matches line by line, so `^` already anchors
+# every line, and in an ERE `\n` is the letter n — "Main Changes: or Fixes?"
+# read as a report label.
+#
 # Widening a CLAIM detector buys false positives, and a false positive here is
 # a nag. All three FP controls still gate every shape added: a code edit must
 # have happened, `[PARTIAL` suppresses, and the evidence lookup still has to
 # come up empty.
-DONE_RE='(^|\n)[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成|变更|Changes)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
+DONE_RE='^[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成|变更|Changes)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
 DONE_TAIL_RE='[^[:space:]]完成|已(发布|上线|实现|修复|生成|完成)'
 # Round-17 ALG-M2. The exclusion used to live inside the class as
 # `[^[:space:]没未不]完成`, which only rejected a negation sitting IMMEDIATELY
