@@ -145,10 +145,21 @@ function computeTrend(counts, windows, { insufficientSpan = false, logSpanDays =
   // least half the bucket, capped at a week. A log spanning 30.2 days covers
   // (30,60] for 0.2 days, and an install-day burst of 3 there read as 15/day
   // against a steady 2/day.
-  const enough = i => coveredDays[i] >= Math.min(7, (windows[i] - windows[i - 1]) / 2);
+  // A zero-width bucket (a duplicated window, `--days=30,30,90`) is never a
+  // baseline: 0 >= min(7, 0) passed it at rate 0 (R20 L1).
+  const enough = i => {
+    const span = windows[i] - windows[i - 1];
+    return span > 0 && coveredDays[i] >= Math.min(7, span / 2);
+  };
   let base = rates.length - 1;
   while (base > 0 && !enough(base)) base--;
-  if (base === 0) return { arrow: '', annotation: null }; // no older bucket is covered enough
+  // `silenced` needs no baseline rate — the rule fired before and not since —
+  // so it survives the missing baseline (R20 L3); any other arrow does not.
+  if (base === 0) {
+    return counts[0] === 0 && counts[counts.length - 1] > 0
+      ? { arrow: '↘', annotation: 'silenced' }
+      : { arrow: '', annotation: null };
+  }
   const oldestRate = rates[base];
 
   // newly active: recent has events AND every older bucket is empty

@@ -161,6 +161,28 @@ test('R18 M4: a baseline bucket the log covers for a fraction of a day decides n
   assert.equal(row.trend.arrow, '');
 });
 
+test('R20 L1: a duplicated window is not a zero-width baseline', () => {
+  // --days=30,30,90 made bucket (30,30] zero days wide; 0 >= min(7, 0) counted
+  // it as covered and its rate 0 turned a steady rule into ↗.
+  writeRows(Array.from({ length: 66 }, (_, i) => ({ daysAgo: 0.25 + i / 2, section: '§S' })));
+  const row = sparkline({ windows: [30, 30, 90] }).rows.find(x => x.section === '§S');
+  assert.notEqual(row.trend.arrow, '↗');
+});
+
+test('R20 L3: a silenced rule keeps its annotation when no baseline is covered enough', () => {
+  // 12 hits 30-33 days ago, none since, a 33-day log: the early return for an
+  // uncovered baseline also dropped `silenced`, which needs no baseline rate.
+  writeRows(
+    [30.5, 31, 31.5, 32, 32.5, 32.9].flatMap(d => [
+      { daysAgo: d, section: '§Q' },
+      { daysAgo: d, section: '§Q' },
+    ])
+  );
+  const row = sparkline().rows.find(x => x.section === '§Q');
+  assert.equal(row.trend.annotation, 'silenced');
+  assert.equal(row.trend.arrow, '↘');
+});
+
 test('R15: under insufficient span there is no arrow either', () => {
   // The banner says "trend annotations suppressed"; the arrow was still ↗.
   writeRows([
