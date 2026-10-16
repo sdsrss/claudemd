@@ -26,7 +26,7 @@ import { TASKS } from './tasks.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const USAGE = `Usage: node scripts/offline-eval/run.mjs --arm=NAME [--spec-dir=DIR] [--tasks=T1,T2] [--reps=N]
-       [--model=ID] [--effort=LEVEL] [--timeout=SECONDS] [--out=DIR] [--dry-run]
+       [--model=ID] [--effort=LEVEL] [--timeout=SECONDS] [--out=DIR] [--env=LIST] [--dry-run]
 
 Run the offline evaluation tasks through claude -p with one spec arm.
 
@@ -40,6 +40,9 @@ Options:
   --effort=LEVEL    Effort (default high).
   --timeout=SEC     Per-run limit (default 900).
   --out=DIR         Output root (default tasks/offline-eval).
+  --env=LIST        claudemd hook switches for this arm, as NAME=value[,NAME=value]
+                    (e.g. REWORK_BREAKER=1). Every other claudemd switch in the
+                    caller's environment is dropped, so an unset one is off.
   --dry-run         Build one fixture per task, print the command, run nothing.
   --help, -h        Print this message and exit.
 
@@ -52,13 +55,93 @@ Exit codes: 0 ran | 1 setup error | 2 argv-shape error.`;
 const INHERITED_SESSION_ENV =
   /^(CLAUDECODE|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_(COORDINATOR_MODE|CHILD_SESSION|SESSION_ID|SESSION_ATTENDED|ENTRYPOINT|EXECPATH|MESSAGING_[A-Z_]+))$/;
 
-/** The environment for one claude -p run: the caller's, minus coordinator mode
- *  and session linkage, with the task's bin dir (if any) first on PATH. */
-export function childEnv(base, pathPrefix) {
+// claudemd's own hook switches, which a run must not inherit either. The test
+// suites scrub them (tests/lib/env-hygiene.sh); this harness did not, so this
+// machine's settings-env REWORK_BREAKER, EVIDENCE_GATE and EVIDENCE_WTREE ran in
+// every arm of every A/B, and R6(b)'s "breaker off" arm ran with the breaker on
+// (2026-10-16). An arm sets the switches it needs with --env. The names below are
+// env-hygiene.sh's explicit list (a test holds the two equal); every CLAUDEMD_*
+// name is claudemd's; of DISABLE_*, only the names this repo's hooks and scripts
+// read, because Claude Code has DISABLE_* switches of its own.
+export const HOOK_SWITCHES = new Set([
+  'TRANSCRIPT_VOCAB_SCAN',
+  'TRANSCRIPT_STRUCTURE_SCAN',
+  'BANNED_VOCAB_PROSE_SCAN',
+  'BASH_READONLY_FAST_PATH',
+  'BASH_SAFETY_INDIRECT_CALL',
+  'SPEC_RESIDUE_THRESHOLD',
+  'SPEC_DRIFT_IGNORE',
+  'SANDBOX_DISPOSAL_BLOCK',
+  'SANDBOX_DISPOSAL_IMMEDIATE',
+  'CROSS_REPO_WRITE',
+  'CROSS_REPO_WRITE_ALLOW',
+  'REPLY_LANGUAGE_CHECK',
+  'REPLY_LANGUAGE_MIN_WORDS',
+  'REPLY_LANGUAGE_WINDOW',
+  'EVIDENCE_GATE',
+  'EVIDENCE_GATE_WINDOW',
+  'LEDGER_STALENESS',
+  'LEDGER_STALENESS_WINDOW',
+  'REWORK_BREAKER',
+  'EVIDENCE_GATE_DELIVER',
+  'EVIDENCE_WTREE',
+  'DEBUG_ON_TEST_FAILURE',
+  'SPEC_MODULE_GATE',
+]);
+
+let disableSwitches = null;
+/** DISABLE_* names read by this repo's hooks/ and scripts/ (not this harness's own dir). */
+function claudemdDisableSwitches() {
+  if (disableSwitches) return disableSwitches;
+  disableSwitches = new Set();
+  const walk = dir => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (p !== path.join(REPO, 'scripts', 'offline-eval')) walk(p);
+      } else if (/\.(?:sh|js|mjs)$/.test(e.name)) {
+        for (const m of fs.readFileSync(p, 'utf8').matchAll(/\bDISABLE_[A-Z0-9_]+\b/g))
+          disableSwitches.add(m[0]);
+      }
+    }
+  };
+  for (const d of ['hooks', 'scripts']) walk(path.join(REPO, d));
+  return disableSwitches;
+}
+
+const isHookSwitch = k =>
+  HOOK_SWITCHES.has(k) || /^CLAUDEMD_[A-Z0-9_]+$/.test(k) || claudemdDisableSwitches().has(k);
+
+/** The claudemd hook switches set in an environment, sorted by name. */
+export const hookEnvOf = env =>
+  Object.fromEntries(
+    Object.entries(env)
+      .filter(([k]) => isHookSwitch(k))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  );
+
+/** --env value: comma-separated NAME=value pairs. */
+export function parseEnvList(list) {
+  const out = {};
+  for (const kv of String(list || '')
+    .split(',')
+    .filter(Boolean)) {
+    const m = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(kv);
+    if (!m) throw new Error(`--env: expected NAME=value, got "${kv}"`);
+    out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/** The environment for one claude -p run: the caller's, minus coordinator mode,
+ *  session linkage and claudemd's hook switches, plus the arm's own switches,
+ *  with the task's bin dir (if any) first on PATH. */
+export function childEnv(base, pathPrefix, hookEnv = {}) {
   const env = {};
-  for (const [k, v] of Object.entries(base)) if (!INHERITED_SESSION_ENV.test(k)) env[k] = v;
+  for (const [k, v] of Object.entries(base))
+    if (!INHERITED_SESSION_ENV.test(k) && !isHookSwitch(k)) env[k] = v;
   env.PATH = (pathPrefix ? `${pathPrefix}:` : '') + (base.PATH ?? '');
-  return env;
+  return Object.assign(env, hookEnv);
 }
 
 /** Claude Code's projects-dir name for a cwd. */
@@ -297,7 +380,7 @@ function runOne(opts, id, rep) {
     fs.rmSync(sandbox, { recursive: true, force: true });
     return null;
   }
-  const env = childEnv(process.env, ctx.pathPrefix);
+  const env = childEnv(process.env, ctx.pathPrefix, opts.env);
   const t0 = Date.now();
   const r = spawnSync('claude', args, {
     cwd: dir,
@@ -339,6 +422,7 @@ function runOne(opts, id, rep) {
     moduleReads: run.moduleReads,
     injected: run.injected,
     specBytes: specBytes(run, home),
+    hookEnv: hookEnvOf(env),
     final: run.final.slice(0, 2000),
     projectsDirRemoved: cleaned,
     taskOutputDirsRemoved: taskDirsCleaned,
@@ -352,7 +436,17 @@ if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
   const p = parseStrictOrExit(process.argv.slice(2), {
     bools: ['--dry-run'],
-    values: ['--arm', '--spec-dir', '--tasks', '--reps', '--model', '--effort', '--timeout', '--out'],
+    values: [
+      '--arm',
+      '--spec-dir',
+      '--tasks',
+      '--reps',
+      '--model',
+      '--effort',
+      '--timeout',
+      '--out',
+      '--env',
+    ],
   });
   const opts = {
     arm: p.values['--arm'],
@@ -364,8 +458,14 @@ if (invokedAsMain(import.meta.url)) {
     timeout: Number(p.values['--timeout'] || 900),
     out: path.resolve(p.values['--out'] || path.join(REPO, 'tasks/offline-eval')),
     dryRun: p.bools.has('--dry-run'),
+    env: {},
   };
   const bad = [];
+  try {
+    opts.env = parseEnvList(p.values['--env']);
+  } catch (e) {
+    bad.push(e.message);
+  }
   if (!opts.arm || !/^[A-Za-z0-9._-]+$/.test(opts.arm)) bad.push('--arm must be a plain name');
   if (!fs.existsSync(path.join(opts.specDir, 'CLAUDE.md'))) bad.push(`no CLAUDE.md in ${opts.specDir}`);
   for (const t of opts.tasks) if (!TASKS[t]) bad.push(`unknown task ${t}`);

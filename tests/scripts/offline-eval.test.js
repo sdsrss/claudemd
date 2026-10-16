@@ -16,6 +16,9 @@ import {
   parseStream,
   claudeArgs,
   childEnv,
+  HOOK_SWITCHES,
+  parseEnvList,
+  hookEnvOf,
   taskOutputDirs,
   removeOwnTaskOutputDirs,
 } from '../../scripts/offline-eval/run.mjs';
@@ -373,6 +376,55 @@ test('offline-eval: runs never inherit coordinator mode or the calling session',
   assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'LANG', 'PATH']);
   assert.equal(env.PATH, '/sbx/bin:/usr/bin');
   assert.equal(childEnv({ PATH: '/usr/bin' }, null).PATH, '/usr/bin');
+});
+
+test('offline-eval: runs do not inherit claudemd hook switches; an arm sets them explicitly', () => {
+  // This machine's ~/.claude/settings.json env turns on REWORK_BREAKER,
+  // EVIDENCE_GATE and EVIDENCE_WTREE. Inherited, they ran in every arm of every
+  // A/B, and R6(b)'s "breaker off" arm (2026-10-16) ran with the breaker on.
+  const base = {
+    PATH: '/usr/bin',
+    LANG: 'C',
+    REWORK_BREAKER: '1',
+    EVIDENCE_GATE: '1',
+    EVIDENCE_WTREE: '1',
+    TRANSCRIPT_STRUCTURE_SCAN: '1',
+    DISABLE_REWORK_BREAKER_HOOK: '1',
+    DISABLE_RULE_HITS_LOG: '1',
+    CLAUDEMD_LOG_MAX_MB: '9',
+    // Claude Code's own switch, not claudemd's: it must reach claude.
+    DISABLE_AUTOUPDATER: '1',
+  };
+  assert.deepEqual(Object.keys(childEnv(base, null)).sort(), ['DISABLE_AUTOUPDATER', 'LANG', 'PATH']);
+  const armed = childEnv(base, null, { REWORK_BREAKER: '0', EVIDENCE_GATE: '1' });
+  assert.equal(armed.REWORK_BREAKER, '0');
+  assert.equal(armed.EVIDENCE_GATE, '1');
+  assert.equal(armed.EVIDENCE_WTREE, undefined);
+  assert.deepEqual(hookEnvOf(armed), { EVIDENCE_GATE: '1', REWORK_BREAKER: '0' });
+});
+
+test("offline-eval: its hook-switch list is env-hygiene.sh's explicit list", () => {
+  // env-hygiene-coverage.test.js keeps that list complete for every knob a hook
+  // reads; holding this one equal to it carries the guarantee to the harness.
+  const sh = fs.readFileSync(path.join(REPO, 'tests/lib/env-hygiene.sh'), 'utf8');
+  const block = sh.match(/\n\s*unset ([A-Z0-9_ \\\n]+?)2>\/dev\/null/);
+  assert.ok(block, 'the explicit unset list was not found in tests/lib/env-hygiene.sh');
+  const names = block[1]
+    .split(/[\s\\]+/)
+    .filter(Boolean)
+    .sort();
+  assert.ok(names.length >= 20, `parsed only ${names.length} names`);
+  assert.deepEqual([...HOOK_SWITCHES].sort(), names);
+});
+
+test('offline-eval: --env takes NAME=value pairs and rejects anything else', () => {
+  assert.deepEqual(parseEnvList('REWORK_BREAKER=1,EVIDENCE_GATE=0'), {
+    REWORK_BREAKER: '1',
+    EVIDENCE_GATE: '0',
+  });
+  assert.deepEqual(parseEnvList(''), {});
+  assert.throws(() => parseEnvList('REWORK_BREAKER'), /NAME=value/);
+  assert.throws(() => parseEnvList('rework breaker=1'), /NAME=value/);
 });
 
 test('offline-eval: parseStream records the tools main was given', () => {
