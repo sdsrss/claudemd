@@ -246,7 +246,7 @@ if [[ "$SOURCE" == "compact" ]]; then
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "[claudemd] compaction detected — before continuing multi-step work, re-read the active plan, and any spec module (~/.claude/spec-modules/) this task had used. The core spec is still in context; it does not need re-reading. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
+        additionalContext: "[claudemd] compaction detected — before continuing multi-step work, re-read the task\u0027s spec file (or the active plan), and any spec module (~/.claude/spec-modules/) this task had used. The core spec is still in context; it does not need re-reading. The user can turn this off with DISABLE_COMPACT_REREAD_REMINDER=1"
       }
     }' 2>/dev/null)
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true

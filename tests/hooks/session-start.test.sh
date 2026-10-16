@@ -320,8 +320,15 @@ elif ! echo "$OUT15" | grep -q 'active plan'; then
   echo "FAIL: 15b banner no longer names the plan as the re-read target (out: $OUT15)"; FAIL=$((FAIL+1))
 elif ! printf '%s' "$SPEC_PC_LINE" | grep -q 'never re-Read it'; then
   echo "FAIL: 15b spec §11 no longer says core is never re-Read — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
+# Spec v8 made the task's spec file the hand-over, and §11 re-reads it after a
+# compaction; the banner named only "the active plan" (0.109.0 pre-tag review
+# L10). Same two-sided shape: banner arm, spec arm.
+elif ! echo "$OUT15" | grep -q "the task's spec file"; then
+  echo "FAIL: 15b banner does not name the task's spec file (out: $OUT15)"; FAIL=$((FAIL+1))
+elif ! printf '%s' "$SPEC_PC_LINE" | grep -q "re-read the task's spec file"; then
+  echo "FAIL: 15b spec §11 no longer re-reads the task's spec file — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
 else
-  echo "PASS: 15b compact banner matches §11 (plan yes, spec/core no)"
+  echo "PASS: 15b compact banner matches §11 (spec file and plan yes, core no)"
 fi
 
 # Case 15c (0.101.0 pre-tag review M5): since spec v7.0.0 the extended spec is
