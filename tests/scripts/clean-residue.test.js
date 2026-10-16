@@ -373,6 +373,27 @@ test('cleanClaudeTmp dry-run by default; apply deletes >= retentionDays and keep
   assert.ok(fs.existsSync(path.join(claudeTmp, 'claude-1000')), 'uid dir shell survives');
 });
 
+test('R15: cleanClaudeTmp does not descend a claude-<uid> shell that is a symlink', () => {
+  // The shell is never deleted, only its children. Reached through a link, its
+  // children live OUTSIDE ~/.claude/tmp, and pre-fix --apply deleted them there.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-outside-'));
+  try {
+    const keepFile = path.join(outside, 'b.txt');
+    const keepDir = path.join(outside, 'precious-dir');
+    fs.writeFileSync(keepFile, 'x');
+    fs.mkdirSync(keepDir);
+    fs.writeFileSync(path.join(keepDir, 'c.txt'), 'y');
+    setMtime(outside, 30);
+    fs.symlinkSync(outside, path.join(claudeTmp, 'claude-1001'));
+    const r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    assert.equal(r.deleted, 0);
+    assert.ok(fs.existsSync(keepFile) && fs.existsSync(path.join(keepDir, 'c.txt')), 'link target untouched');
+    assert.ok(fs.lstatSync(path.join(claudeTmp, 'claude-1001')).isSymbolicLink(), 'the shell link stays');
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('cleanClaudeTmp tolerates missing dir', () => {
   const r = cleanClaudeTmp({ claudeTmpDir: path.join(claudeTmp, 'nonexistent'), apply: true });
   assert.equal(r.deleted, 0);

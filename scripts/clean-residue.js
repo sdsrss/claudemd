@@ -347,6 +347,10 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
   }
   for (const entry of entries) {
     const full = path.join(claudeTmpDir, entry.name);
+    // A per-UID shell that is a symlink points outside ~/.claude/tmp: its
+    // children would be deleted through the link, in the target (R15). Like a
+    // real shell, the link itself is never a candidate either.
+    if (UID_DIR_PATTERN.test(entry.name) && entry.isSymbolicLink()) continue;
     let stat;
     try {
       stat = fs.statSync(full);
