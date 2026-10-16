@@ -571,14 +571,18 @@ hook_install_sentinel_write() {
   # so jq encodes it; without jq the sentinel keeps its reasonless shape. The
   # settings.json message runs ~450 characters with a typical HOME, so the cap
   # is 800, marked with an ellipsis when it cuts (R18 L1).
-  if [[ -n "$reason" ]] && command -v jq >/dev/null 2>&1; then
-    jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
-      '{ts: $ts, from: $from, to: $to, reason: ($reason | if length > 800 then .[0:800] + "…" else . end)}' \
-      > "$state_dir/bootstrap-failed.json" 2>/dev/null || true
-  else
-    printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" \
-      > "$state_dir/bootstrap-failed.json" 2>/dev/null || true
-  fi
+  # Written aside and renamed (R22): `jq … > sentinel` left the file empty
+  # until jq had started, and SessionStart reads then deletes what it finds.
+  # A jq that fails falls back to the reasonless shape: the failure still shows.
+  local f="$state_dir/bootstrap-failed.json" tmp="$state_dir/bootstrap-failed.json.$$"
+  if ! { [[ -n "$reason" ]] && command -v jq >/dev/null 2>&1 &&
+         jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
+           '{ts: $ts, from: $from, to: $to, reason: ($reason | if length > 800 then .[0:800] + "…" else . end)}' \
+           > "$tmp" 2>/dev/null; }; then
+    printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" > "$tmp" 2>/dev/null
+  fi && mv -f "$tmp" "$f" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
 }
 
 # Records the root Claude Code actually loaded this plugin from.

@@ -502,6 +502,33 @@ else
   FAIL=$((FAIL+1))
 fi
 rm -f "$BOOT_SENTINEL" 2>/dev/null || true
+# Case 19e (R22): the sentinel appears whole. `jq … > sentinel` created the
+# file empty and filled it once jq had started, so a reader in between — the
+# 4366da8 full run's case 19c, or a second session's SessionStart, which
+# consumes the file — got no reason. A jq shim slows only the sentinel write.
+mkdir -p "$TMP_HOME/slowjq"
+printf '#!/usr/bin/env bash\ncase "$*" in *"reason: (\\$reason"*) sleep 1.5 ;; esac\nexec "%s" "$@"\n' \
+  "$(command -v jq)" > "$TMP_HOME/slowjq/jq"
+chmod +x "$TMP_HOME/slowjq/jq"
+printf '#!/usr/bin/env bash\necho "install failed: settings.json is not valid JSON" >&2\nexit 1\n' > "$TMP_HOME/fakebin/node"
+echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
+PATH="$TMP_HOME/slowjq:$TMP_HOME/fakebin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+SEEN19E=""
+for _ in $(seq 1 100); do
+  if [[ -f "$BOOT_SENTINEL" ]]; then SEEN19E=$(cat "$BOOT_SENTINEL" 2>/dev/null); break; fi
+  sleep 0.05
+done
+if [[ "$(jq -r '.reason // ""' <<<"$SEEN19E" 2>/dev/null)" == "settings.json is not valid JSON" ]]; then
+  echo "PASS: 19e the failure sentinel is never seen half-written"
+else
+  echo "FAIL: 19e (first read of the sentinel: '${SEEN19E}')"
+  FAIL=$((FAIL+1))
+fi
+for _ in $(seq 1 40); do
+  ls "$HOME/.claude/.claudemd-state/"bootstrap-failed.json.* >/dev/null 2>&1 || break
+  sleep 0.1
+done
+rm -f "$BOOT_SENTINEL" 2>/dev/null || true
 # Restore the exit-1 shim — every case below this one depends on it.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
 
