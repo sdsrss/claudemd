@@ -668,10 +668,12 @@ hook_spawn_install() {
     {
       echo "$header"
       rc=0
-      # Captured, then printed, so the failure arm can keep install.js's own
-      # reason for the banner. The log receives the same text as before.
-      out=$(platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1) || rc=$?
-      [[ -n "$out" ]] && printf '%s\n' "$out"
+      # Captured so the failure arm can keep install.js's own reason for the
+      # banner, and tee'd so the log still receives it as it is written: a
+      # print after the run reached the log only once node had exited, after
+      # the manifest a reader waits on (R22). rc is install.js's, not tee's.
+      out=$(platform_timeout 10 node "$plugin_root/scripts/install.js" 2>&1 | tee -a "$log"
+            exit "${PIPESTATUS[0]}") || rc=$?
       if [[ "$rc" -eq 0 ]]; then
         hook_install_sentinel_clear
       elif [[ "$rc" -eq 3 ]]; then

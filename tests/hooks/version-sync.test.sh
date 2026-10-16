@@ -258,7 +258,42 @@ else
   FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((11 - FAIL))/11 passed"; exit 1
+# Case 12 (R22): install.js's output is in the log by the time install.js
+# exits, not only once the background wrapper finishes. 26b057d captured the
+# output and printed it afterwards, so a reader that saw the new manifest and
+# then truncated the log (cases 4 and 5, under suite load) got the previous
+# install's output after the truncation. Shim: the real node, a marker, then a
+# 2 s pause standing in for a slow exit. Own HOME (inside TMP_HOME, so the
+# trap reaps it) for case 8's reason: a straggler from an earlier case must
+# not be the install whose output this case finds.
+reset_state
+C12_HOME="$TMP_HOME/c12-home"
+mkdir -p "$C12_HOME/.claude/logs" "$C12_HOME/bin"
+printf '#!/usr/bin/env bash\n"%s" "$@"; rc=$?\n: > "%s/exited"\nsleep 2\n: > "%s/done"\nexit $rc\n' \
+  "$(command -v node)" "$C12_HOME" "$C12_HOME" > "$C12_HOME/bin/node"
+chmod +x "$C12_HOME/bin/node"
+jq -n '{version:"0.0.1",entries:[]}' > "$C12_HOME/.claude/.claudemd-manifest.json"
+HOME="$C12_HOME" PATH="$C12_HOME/bin:$PATH" bash "$HOOK" <<<'{}' >/dev/null 2>&1
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  [[ -f "$C12_HOME/exited" ]] && break
+  sleep 0.5
+done
+C12_SEEN=$(grep -c '"spec":' "$C12_HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
+# Let the wrapper finish inside the sandbox before the trap removes it.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f "$C12_HOME/done" ]] && break
+  sleep 0.5
+done
+sleep 0.5
+C12_FINAL=$(grep -c '"spec":' "$C12_HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
+if [[ -f "$C12_HOME/exited" && "$C12_SEEN" == "1" && "$C12_FINAL" == "1" ]]; then
+  echo "PASS: 12 install output is in the log when install.js exits, written once"
+else
+  echo "FAIL: 12 (exited=$([[ -f $C12_HOME/exited ]] && echo yes || echo no) at_exit=$C12_SEEN final=$C12_FINAL)"
+  FAIL=$((FAIL+1))
 fi
-echo "Tests: 11/11 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((12 - FAIL))/12 passed"; exit 1
+fi
+echo "Tests: 12/12 passed"
