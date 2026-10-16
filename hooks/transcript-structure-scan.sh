@@ -233,8 +233,9 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
 #   5. verdict (§iron-law-2) — every check line of the verification part names
 #      通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not
 #      run); a Changes part with no Verification part after the heading is one
-#      miss too. Table separator and header rows, continuation lines and nested
-#      items are not check lines (rules at the loop below).
+#      miss too. Table separator and header rows, continuation lines, details
+#      nested under a check and label lines are not check lines (rules at the
+#      loop below).
 # One awk program, no `printf | grep -q` (feedback_pipefail_grep_q_race). The
 # normaliser and every regex here are mirrored by scanReportV8 in
 # scripts/sampling-audit.js; tests/scripts/structure-scan-parity.test.js holds
