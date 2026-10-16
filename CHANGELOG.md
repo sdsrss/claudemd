@@ -17,6 +17,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **`sampling-audit`'s turn-yield tell** counts a `## 汇报：` / `## Report:` heading with a colon as a closed report, as the report scan already did.
 - **`rework-breaker`'s note** (opt-in) cited "Spec §1 Root cause over patch", a principle spec v8.0.0 renamed; it now cites "Fix at the root", and a test fails if either the note or core §1 changes the name again.
 
+**Tests.**
+- `tmp-sweep` case 6c: a worst-case `mkdir` on PATH (every claim succeeds, all eight callers wait for each other) and a slow `touch`. The 0.109.0 hook started 8 sweeps in 6 of 6 runs; this one starts 1 in 6 of 6 under bash 5 and 3 of 3 under bash 3.2.57. The suite passed 60 of 60 runs with four parallel workers.
+- `transcript-structure-scan` cases 24 and 24b, and two new `sampling-audit` tests (label lines; a `## 汇报：` heading closes the turn): all failed before the change. Removing any one of the label rule's five parts fails the JS test. `structure-scan-parity` gains six rows; a differential fuzz of 800 random reports found 0 disagreements between the awk and JS engines, and 20 in 400 with the awk label rule removed.
+- `rework-breaker` case 2-name: 35/36 before the change, 36/36 after.
+- On 33efa69: `npm run check` exit 0 with a built bash 3.2.57 (node 1,496 of 1,497 passed, 1 skipped because `SHFMT` is not set; all 44 hook suites also executed under bash 3.2); exit 0 again with SIGPIPE ignored; `npm run smoke` 2/2.
+
+**Pre-tag review.** Pending.
+
 ## [0.109.0] - 2026-10-16
 
 **Upgrade notes — spec v8.0.0: the report becomes `## 汇报` (`## Report`) with three parts, `[PARTIAL]` is gone, and a low-risk, reversible ambiguity is decided and written down instead of asked. Nothing to do on upgrade; the next session installs the new spec.** A task that changed files or ran checks now closes with up to three parts in this order: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line carrying one of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run). The hooks that read reports accept both the new and the old shape. To keep v7 for now, pin the plugin to 0.108.0.
