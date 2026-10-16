@@ -72,6 +72,11 @@ test('R15: an opt-in hook says it stays off until its opt-in variable is set', a
     s.env.EVIDENCE_GATE = 1;
     fs.writeFileSync(p, JSON.stringify(s));
     assert.equal((await toggle('evidence-gate')).note, undefined, 'a numeric 1 counts as opted in');
+
+    // R20 L7: reply-language opts in with 1 OR log; the note names both.
+    s.env.REPLY_LANGUAGE_CHECK = '2';
+    fs.writeFileSync(p, JSON.stringify(s));
+    assert.match((await toggle('reply-language')).note, /REPLY_LANGUAGE_CHECK is "2", not 1 or log/);
   } finally {
     if (saved === undefined) delete process.env.EVIDENCE_GATE;
     else process.env.EVIDENCE_GATE = saved;

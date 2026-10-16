@@ -90,7 +90,7 @@ export async function toggle(name) {
     const now =
       optValue == null
         ? `${optIn.env} is unset`
-        : `${optIn.env} is ${JSON.stringify(String(optValue))}, not 1`;
+        : `${optIn.env} is ${JSON.stringify(String(optValue))}, not ${optIn.values.join(' or ')}`;
     const note =
       newState === 'enabled'
         ? `${name} is opt-in: the kill switch is off, but the hook stays inactive until ${optIn.env}=${optIn.values[0]} ` +
