@@ -10,4 +10,4 @@ Valid hook names: `session-start-check`, `version-sync`, `memory-prompt-hint`, `
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/toggle.js $ARGUMENTS`
 
-Surface the new state (`enabled` or `disabled`) to the user.
+Surface the new state (`enabled` or `disabled`) to the user, and the `note` when the output has one: an opt-in hook stays inactive until its opt-in variable is set, whatever the toggle says.

@@ -25,6 +25,24 @@ test('registry has 27 entries (matches integration MCOUNT)', () => {
   assert.equal(HOOK_REGISTRY.length, 27);
 });
 
+test('R15: optIn names exactly the hooks whose source exits at an opt-in variable', () => {
+  // Derived from each hook's own gate line, so a new opt-in hook written in
+  // either existing form is red here until the registry (and so the toggle's
+  // note) knows it. Not covered: an opt-in spelled any other way.
+  const GATE = /^\[\[ "\$\{([A-Z_]+):-0\}" == "1" \]\] \|\| exit 0$|^case "\$\{([A-Z_]+):-0\}" in$/m;
+  const derived = {};
+  for (const r of HOOK_REGISTRY) {
+    const m = fs.readFileSync(path.join(REPO_ROOT, 'hooks', r.basename), 'utf8').match(GATE);
+    if (m) derived[r.displayName] = m[1] || m[2];
+  }
+  assert.equal(derived['evidence-gate'], 'EVIDENCE_GATE', 'control: a known opt-in hook is derived');
+  assert.equal(derived['reply-language'], 'REPLY_LANGUAGE_CHECK', 'control: the case form is derived');
+  const declared = Object.fromEntries(
+    HOOK_REGISTRY.filter(r => r.optIn).map(r => [r.displayName, r.optIn.env])
+  );
+  assert.deepEqual(declared, derived);
+});
+
 test('registry → hooks.json: every entry registered with same event/matcher/timeout', () => {
   const data = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'hooks/hooks.json'), 'utf8'));
   const flat = [];

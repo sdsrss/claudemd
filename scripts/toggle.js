@@ -1,5 +1,5 @@
 import { readSettings, writeSettings, settingsShapeError } from './lib/settings-merge.js';
-import { HOOK_NAME_TO_ENV } from './lib/hook-registry.js';
+import { HOOK_NAME_TO_ENV, HOOK_REGISTRY } from './lib/hook-registry.js';
 import { settingsPath } from './lib/paths.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
@@ -79,6 +79,19 @@ export async function toggle(name) {
     newState = 'disabled';
   }
   writeSettings(s);
+  // A default-OFF hook needs its opt-in variable as well as a clear kill
+  // switch; without one, "enabled" named a hook that still exited at its gate
+  // (R15). settings.json env is what the next session's hooks get; the
+  // current process env covers an opt-in exported in the user's shell.
+  const optIn = HOOK_REGISTRY.find(r => r.displayName === name)?.optIn;
+  if (optIn && !optIn.values.includes(s.env[optIn.env] ?? process.env[optIn.env])) {
+    const note =
+      newState === 'enabled'
+        ? `${name} is opt-in: the kill switch is off, but the hook stays inactive until ${optIn.env}=${optIn.values[0]} ` +
+          `is set (settings.json "env" or your shell).`
+        : `${name} is opt-in and was not active (${optIn.env} is unset); the kill switch is now set as well.`;
+    return { hook: name, newState, note };
+  }
   return { hook: name, newState };
 }
 

@@ -39,6 +39,36 @@ test('toggle re-enables banned-vocab (clears kill-switch)', async () => {
   assert.equal(r.newState, 'enabled');
 });
 
+test('R15: an opt-in hook says it stays off until its opt-in variable is set', async () => {
+  // evidence-gate runs only with EVIDENCE_GATE=1. The toggle flips the kill
+  // switch alone, so on a fresh install it answered "disabled" for a hook that
+  // was already off, then "enabled" for one that still exited at its gate.
+  const saved = process.env.EVIDENCE_GATE;
+  delete process.env.EVIDENCE_GATE;
+  try {
+    const off = await toggle('evidence-gate');
+    assert.equal(off.newState, 'disabled');
+    assert.match(off.note, /opt-in.*EVIDENCE_GATE/);
+    const on = await toggle('evidence-gate');
+    assert.equal(on.newState, 'enabled');
+    assert.match(on.note, /inactive until EVIDENCE_GATE=1/);
+
+    const p = path.join(tmpHome, '.claude/settings.json');
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'));
+    s.env.EVIDENCE_GATE = '1';
+    fs.writeFileSync(p, JSON.stringify(s));
+    assert.equal(
+      (await toggle('evidence-gate')).note,
+      undefined,
+      'opted in: the kill switch is the whole story'
+    );
+    assert.equal((await toggle('banned-vocab')).note, undefined, 'a default-on hook carries no note');
+  } finally {
+    if (saved === undefined) delete process.env.EVIDENCE_GATE;
+    else process.env.EVIDENCE_GATE = saved;
+  }
+});
+
 test('toggle unknown name → error', async () => {
   await assert.rejects(() => toggle('not-a-hook'), /unknown hook/i);
 });

@@ -21,6 +21,10 @@
 // hook = one entry here + the hooks.json command + the
 // commands/claudemd-toggle.md list; tests/scripts/hook-registry.test.js fails
 // loudly if membership/event/matcher/timeout drift.
+//
+// `optIn` marks a default-OFF hook: it exits at its first line unless `env`
+// holds one of `values`, whatever its DISABLE_* kill switch says. toggle.js
+// reads it to say so; the drift test derives the set from the hook sources.
 
 export const HOOK_REGISTRY = [
   {
@@ -150,6 +154,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PostToolUse',
     matcher: '*',
     timeout: 3,
+    optIn: { env: 'TRANSCRIPT_VOCAB_SCAN', values: ['1'] },
   },
   {
     basename: 'evidence-gate.sh',
@@ -158,6 +163,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'Stop',
     matcher: '*',
     timeout: 5,
+    optIn: { env: 'EVIDENCE_GATE', values: ['1'] },
   },
   {
     basename: 'ledger-staleness.sh',
@@ -166,6 +172,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'Stop',
     matcher: '*',
     timeout: 5,
+    optIn: { env: 'LEDGER_STALENESS', values: ['1'] },
   },
   {
     basename: 'reply-language-check.sh',
@@ -174,6 +181,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'Stop',
     matcher: '*',
     timeout: 3,
+    optIn: { env: 'REPLY_LANGUAGE_CHECK', values: ['1', 'log'] },
   },
   {
     basename: 'rework-breaker.sh',
@@ -182,6 +190,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PostToolUse',
     matcher: 'Edit|Write|Bash',
     timeout: 3,
+    optIn: { env: 'REWORK_BREAKER', values: ['1'] },
   },
   {
     basename: 'cross-repo-write-check.sh',
@@ -190,6 +199,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PreToolUse',
     matcher: 'Edit|Write|NotebookEdit|Bash',
     timeout: 3,
+    optIn: { env: 'CROSS_REPO_WRITE', values: ['1'] },
   },
   {
     basename: 'tmp-sweep.sh',
@@ -214,6 +224,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PostToolUse',
     matcher: 'Bash',
     timeout: 3,
+    optIn: { env: 'EVIDENCE_WTREE', values: ['1'] },
   },
   {
     basename: 'test-failure-debug.sh',
@@ -222,6 +233,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PostToolUseFailure',
     matcher: 'Bash',
     timeout: 3,
+    optIn: { env: 'DEBUG_ON_TEST_FAILURE', values: ['1'] },
   },
   {
     basename: 'transcript-structure-scan.sh',
@@ -230,6 +242,7 @@ export const HOOK_REGISTRY = [
     hookEvent: 'Stop',
     matcher: '*',
     timeout: 3,
+    optIn: { env: 'TRANSCRIPT_STRUCTURE_SCAN', values: ['1'] },
   },
   {
     basename: 'session-end-check.sh',
