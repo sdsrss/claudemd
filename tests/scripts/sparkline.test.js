@@ -149,6 +149,18 @@ test('R15: a log shorter than the longest window compares against the bucket it 
   assert.equal(row.trend.arrow, '↘');
 });
 
+test('R18 M4: a baseline bucket the log covers for a fraction of a day decides nothing', () => {
+  // Log spans 30.2 days: (30,60] is covered for 0.2 days, so an install-day
+  // burst of 3 read as 15/day against a steady 2/day and printed ↘.
+  writeRows([
+    ...[30.2, 30.18, 30.16].map(d => ({ daysAgo: d, section: '§X' })),
+    ...Array.from({ length: 60 }, (_, i) => ({ daysAgo: 0.25 + i / 2, section: '§X' })),
+  ]);
+  const row = sparkline().rows.find(x => x.section === '§X');
+  assert.deepEqual(row.counts, [60, 63, 63]);
+  assert.equal(row.trend.arrow, '');
+});
+
 test('R15: under insufficient span there is no arrow either', () => {
   // The banner says "trend annotations suppressed"; the arrow was still ↗.
   writeRows([

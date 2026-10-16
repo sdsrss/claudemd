@@ -141,9 +141,14 @@ function computeTrend(counts, windows, { insufficientSpan = false, logSpanDays =
   const rates = buckets.map((b, i) => (coveredDays[i] === 0 ? 0 : b / coveredDays[i]));
 
   const recent = rates[0];
+  // The baseline is the oldest bucket the log covers ENOUGH of (R18 M4): at
+  // least half the bucket, capped at a week. A log spanning 30.2 days covers
+  // (30,60] for 0.2 days, and an install-day burst of 3 there read as 15/day
+  // against a steady 2/day.
+  const enough = i => coveredDays[i] >= Math.min(7, (windows[i] - windows[i - 1]) / 2);
   let base = rates.length - 1;
-  while (base > 0 && coveredDays[base] === 0) base--;
-  if (base === 0) return { arrow: '', annotation: null }; // no older day is covered
+  while (base > 0 && !enough(base)) base--;
+  if (base === 0) return { arrow: '', annotation: null }; // no older bucket is covered enough
   const oldestRate = rates[base];
 
   // newly active: recent has events AND every older bucket is empty
