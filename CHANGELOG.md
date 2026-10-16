@@ -8,6 +8,14 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.109.1] - 2026-10-16
+
+**Fixes; spec unchanged (v8.0.0). Nothing to do on upgrade.**
+
+- **`tmp-sweep` claims its sweep with an O_EXCL file, not `mkdir`.** The claim was `mkdir "$LOCK"`, atomic only where coreutils makes it so. uutils coreutils, Ubuntu 26.04's default, is not: on the maintainer's machine 8 concurrent `mkdir` claims had more than one winner in 32 of 300 trials (GNU `mkdir`: 0 of 300), so parallel Bash calls could each start a sweep, and `tests/hooks/tmp-sweep.test.sh` case 6 failed about once in 60 runs under load. The claim is now bash's noclobber redirection, `(set -C; : >"$LOCK")`: 0 of 300 under bash 5.3.9 and under bash 3.2.57. A directory lock left by an older hook still excludes the new claim and is cleared by the same 60-second stale rule. Duplicate sweeps were harmless (each re-checks what it deletes); the visible effect was the flaky test. `rule-hits`' rotation lock still uses `mkdir`: it re-reads the log size inside the lock, so a second holder does nothing.
+- **The v8 report scan reads label lines** (`transcript-structure-scan`, opt-in, and `scripts/sampling-audit.js`). Two of the first four real v8 reports grouped checks under a list item ending in a colon (`- 以下两项是旧问题：` with nested items); both engines flagged the label as a check with no verdict and skipped the nested checks. A line that ends in a colon, carries no verdict and is followed by an item (deeper, for a list item) is now a label: it is not judged, it does not end the verification part after a blank line, and the items nested under it are judged as checks. A colon line with a verdict, or with nothing under it, is judged as before.
+- **`sampling-audit`'s turn-yield tell** counts a `## 汇报：` / `## Report:` heading with a colon as a closed report, as the report scan already did.
+
 ## [0.109.0] - 2026-10-16
 
 **Upgrade notes — spec v8.0.0: the report becomes `## 汇报` (`## Report`) with three parts, `[PARTIAL]` is gone, and a low-risk, reversible ambiguity is decided and written down instead of asked. Nothing to do on upgrade; the next session installs the new spec.** A task that changed files or ran checks now closes with up to three parts in this order: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line carrying one of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run). The hooks that read reports accept both the new and the old shape. To keep v7 for now, pin the plugin to 0.108.0.
