@@ -530,14 +530,32 @@ export function scanReportV8(text) {
     out.ironLaw2Opps += 1;
     if (!v8Verdict(rest)) out.ironLaw2 += 1;
   }
+  // Only check lines are judged; same rules as the hook's awk.
+  let judged = rest !== '';
+  let sawItem = false;
+  let itemInd = -1;
+  let blank = false;
   for (let i = p2; i < raw.length; i++) {
     if (v8Part(nl[i]) || /^[ \t]*#/.test(raw[i])) break;
-    if (/^[ \t]*$/.test(raw[i]) || V8_SEP.test(raw[i])) continue;
+    if (/^[ \t]*$/.test(raw[i])) {
+      blank = true;
+      continue;
+    }
+    if (V8_SEP.test(raw[i])) continue;
+    const isItem = /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/.test(raw[i]) || /^[ \t]*\|/.test(raw[i]);
+    if (blank && !isItem && judged) break;
+    blank = false;
+    if (!isItem && sawItem) continue;
+    const ind = raw[i].match(/^[ \t]*/)[0].length;
+    if (isItem && itemInd >= 0 && ind > itemInd) continue;
     if (/^[ \t]*\|/.test(raw[i])) {
       let j = i + 1;
       while (j < raw.length && /^[ \t]*$/.test(raw[j])) j++;
       if (j < raw.length && V8_SEP.test(raw[j])) continue;
     }
+    if (isItem && itemInd < 0) itemInd = ind;
+    if (isItem) sawItem = true;
+    judged = true;
     out.ironLaw2Opps += 1;
     if (!v8Verdict(raw[i])) out.ironLaw2 += 1;
   }

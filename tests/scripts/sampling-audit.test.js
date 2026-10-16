@@ -547,6 +547,21 @@ test('scanStructure: a v8 report registers as a judged block; four-section histo
   assert.equal(scanStructure(`${v7}\n\n${v8}`).fourSection, 2);
 });
 
+test('scanStructure: only check lines in a v8 verification part are judged', () => {
+  const head = '## 汇报\n\n**变更**：x\n\n**验证**\n';
+  // Continuation line, nested detail bullet, closing sentence: no check, no hit
+  // (0.109.0 pre-tag review L2).
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过（47/47）\n  覆盖了空输入`).ironLaw2, 0);
+  assert.equal(scanStructure(`${head}- \`npm test\` → 失败（46/47）\n  - case 6: expected 1, got 2`).ironLaw2, 0);
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n\n需要的话我再改 README。`).ironLaw2, 0);
+  assert.equal(scanStructure('## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过\n\n需要的话我再改 README。').ironLaw2, 0);
+  // Controls: a verdict-less check line still counts, as a paragraph line after
+  // a blank, as a list item after a blank, and as a lazy line in a paragraph part.
+  assert.equal(scanStructure(`${head}\n\`npm test\` 跑了\n\`npm run lint\` → 通过`).ironLaw2, 1);
+  assert.equal(scanStructure(`${head}- \`npm test\` → 通过\n\n- \`npm run smoke\` 跑了`).ironLaw2, 1);
+  assert.equal(scanStructure(`${head}\`npm test\` → 通过\n\`npm run smoke\` 跑了`).ironLaw2, 1);
+});
+
 test('parity: node scanVocab and the bash transcript-vocab hook agree (real claim)', () => {
   const dir = stageFixture('vocab-hit');
   try {

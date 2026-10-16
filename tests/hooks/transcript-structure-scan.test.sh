@@ -392,6 +392,25 @@ if [[ "$STDERR" == *"reported with no Verification part"* ]]; then
 else
   echo "FAIL: 22 missed Changes without Verification: $STDERR"; FAIL=$((FAIL+1))
 fi
+# A verification bullet's continuation line, a nested detail bullet, and a
+# closing sentence after a report with no open items belong to no check
+# (0.109.0 pre-tag review L2); a verdict-less line after a blank line, in a part
+# that has judged nothing yet, still is one.
+TX=$(seed_transcript $'## Report\n\n**Changes**: edited a.js\n\n**Verification**\n- `npm test` → failed (46/47)\n  case 6 is the pre-existing race\n  - expected 1, got 2\n\nLet me know if you want the README updated too.')
+drive "$TX"
+if [[ -z "$STDERR" ]]; then
+  echo "PASS: 23 v8 continuation, nested bullet and closing sentence are not verification lines → silent"; PASS=$((PASS+1))
+else
+  echo "FAIL: 23 judged a non-check line as a verification line: $STDERR"; FAIL=$((FAIL+1))
+fi
+
+TX=$(seed_transcript $'## 汇报\n\n**变更**：x\n\n**验证**\n\n`npm test` 跑了\n`npm run lint` → 通过')
+drive "$TX"
+if [[ "$STDERR" == *"§iron-law-2"*"has no verdict"* ]]; then
+  echo "PASS: 23b v8 paragraph-style verification line without a verdict → §iron-law-2"; PASS=$((PASS+1))
+else
+  echo "FAIL: 23b missed a paragraph-style verdict-less line: $STDERR"; FAIL=$((FAIL+1))
+fi
 unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------

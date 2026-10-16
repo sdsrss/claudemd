@@ -96,6 +96,17 @@ const CORPUS = {
   'v8: `**验证**：` with a trailing space': '## 汇报\n\n**变更**：x\n**验证**： \n- `npm test` → 通过',
   'v8: `## 汇报：` heading anchors the report':
     '## 汇报：\n\n**变更**：x\n\n**验证**\n- `npm test` 跑了',
+  // Lines inside the verification part that are not checks (0.109.0 pre-tag
+  // review L2). Expected values live in sampling-audit.test.js and case 23 of
+  // the hook suite; these rows hold the two engines together on them.
+  'v8: continuation line and nested bullet under a check':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 失败（46/47）\n  第 6 例是旧问题\n  - expected 1, got 2',
+  'v8: closing sentence after a report with no open items':
+    '## Report\n\n**Changes**: x\n\n**Verification**: `npm test` → passed\n\nLet me know if you want the README updated too.',
+  'v8: verdict-less list item after a blank line':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n- `npm test` → 通过\n\n- `npm run smoke` 跑了',
+  'v8: verdict-less paragraph line after a blank line':
+    '## 汇报\n\n**变更**：x\n\n**验证**\n\n`npm test` 跑了\n`npm run lint` → 通过',
   'v8: only the last report heading is judged':
     '## 汇报\n\n**遗留**：无\n\n**变更**：x\n\n## 汇报\n\n**变更**：x\n\n**验证**：`npm test` → 通过',
 };

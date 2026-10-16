@@ -288,14 +288,29 @@ done < <(printf '%s\n' "$LAST_TEXT" | awk '
     rest = nl[p2]
     sub(/^(验证|Verification)[ \t]*(:|：|—|-)?[ \t]*/, "", rest)
     if (rest != "" && !verdict(rest)) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", p2, substr(rest, 1, 60)
+    # Only check lines are judged: once the part has list items, a non-item
+    # line continues the item above it and a deeper-indented item is a detail
+    # of it; after a blank line, a non-item line ends the part (a closing
+    # sentence after a report with no open items).
+    judged = (rest != ""); sawItem = 0; itemInd = -1; blank = 0
     for (i = p2 + 1; i <= NR; i++) {
       if (part(nl[i]) || raw[i] ~ /^[ \t]*#/) break
-      if (raw[i] ~ /^[ \t]*$/ || issep(raw[i])) continue
+      if (raw[i] ~ /^[ \t]*$/) { blank = 1; continue }
+      if (issep(raw[i])) continue
+      isItem = (raw[i] ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ || raw[i] ~ /^[ \t]*\|/)
+      if (blank && !isItem && judged) break
+      blank = 0
+      if (!isItem && sawItem) continue
+      match(raw[i], /^[ \t]*/)
+      if (isItem && itemInd >= 0 && RLENGTH > itemInd) continue
       if (raw[i] ~ /^[ \t]*\|/) {
         j = i + 1
         while (j <= NR && raw[j] ~ /^[ \t]*$/) j++
         if (j <= NR && issep(raw[j])) continue
       }
+      if (isItem && itemInd < 0) itemInd = RLENGTH
+      if (isItem) sawItem = 1
+      judged = 1
       if (!verdict(raw[i])) printf "§iron-law-2|Verification@L%d has no verdict (通过/失败/未运行/无法运行): \"%s\"\n", i, substr(raw[i], 1, 60)
     }
   }
