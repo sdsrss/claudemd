@@ -81,7 +81,7 @@ deny	npx -p create-react-app foo	npx -p create-react-app foo
 # === pattern 2: pinned + local + flags + escape ===
 pass	npx prettier@3.0.0 (pinned)	npx prettier@3.0.0
 pass	npx @types/node@20 (scoped+pin)	npx @types/node@20
-pass	npx pkg@latest tag	npx pkg@latest
+xfn	S8-NPXTAG1 RESIDUAL: a dist-tag counts as pinned (F17)	npx pkg@latest
 pass	npx ./local.tgz path	npx ./local.tgz
 pass	npx /abs/path.tgz path	npx /abs/path.tgz
 pass	npx --help flag only	npx --help
