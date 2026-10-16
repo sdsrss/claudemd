@@ -94,8 +94,7 @@ const CORPUS = {
   'v8: `**验证**：` alone on its line, bullets below':
     '## 汇报\n\n**变更**：改了 a.js\n**验证**：\n- `npm test` → 通过（12/12）\n**遗留**：无',
   'v8: `**验证**：` with a trailing space': '## 汇报\n\n**变更**：x\n**验证**： \n- `npm test` → 通过',
-  'v8: `## 汇报：` heading anchors the report':
-    '## 汇报：\n\n**变更**：x\n\n**验证**\n- `npm test` 跑了',
+  'v8: `## 汇报：` heading anchors the report': '## 汇报：\n\n**变更**：x\n\n**验证**\n- `npm test` 跑了',
   // Lines inside the verification part that are not checks (0.109.0 pre-tag
   // review L2). Expected values live in sampling-audit.test.js and case 23 of
   // the hook suite; these rows hold the two engines together on them.
