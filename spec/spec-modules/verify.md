@@ -12,11 +12,11 @@ trigger-window: head
 ## §7-EXT VALIDATE (L3)
 
 ```
-L3  TDD + full suite + e2e                    → inline evidence with numbers+baseline
+L3  TDD + full suite + e2e                    → verification lines with numbers+baseline
     (no e2e infra: integration + smoke, e2e reported as could not run, follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
+L2 evidence rules → core §7 (numbers with their baseline, in the report's verification part). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -49,7 +49,7 @@ Falling to tier N requires stating why N-1 unfit.
 - **Semantic linkage**: the claim ("fixed X") must follow from the observation ("test Y went from FAILING to PASS"). Existence (`grep`/`ls`/`cat`/`git status`) ≠ behavior — auxiliary context only.
 - **Valid evidence types**: test-runner output, executable script output, runtime log, HTTP response (status+body), DOM assertion, benchmark output.
 - **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note the scope limit under open items.
-- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
+- **Enforcement**: completion claims must cite the tool-call output that grounds them — in the report's verification part, one line per check. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
 
 Order: project CI > defaults. No CI → build + smoke, and report CI as could not run.
 
@@ -88,14 +88,22 @@ One prose line in the spec file's decisions section (else the report's open item
 ### B.2 Valid vs invalid evidence
 
 **Valid** (bugfix, ties prior-failing anchor to fresh pass):
-> Done: fixed double-apply coupon bug. Checked: tests/orders/test_checkout.py::test_coupon_applies_once, pre-fix FAILED expected 90.00 got 100.00, post-fix PASSED; coupon now subtracts once.
+> **Changes**: fixed the double-apply coupon bug in `src/orders/checkout.py`.
+> **Verification**:
+> - `pytest tests/orders/test_checkout.py::test_coupon_applies_once` before the fix → failed (expected 90.00, got 100.00)
+> - the same test after the fix → passed; the coupon now subtracts once
 
 **Invalid — existence ≠ behavior**: `grep -n "def apply_coupon" src/orders/checkout.py → 127:def apply_coupon(…)` then claiming "fix works". ❌ Presence of the function is not proof it behaves.
 
 **Invalid — bugfix missing prior-failure anchor**: `pytest -q → 47 passed` then claiming "bug fixed". ❌ Need RED proof before GREEN — cite the failing run or test name that now passes.
 
 **Valid — additive new endpoint** (no prior-failing path; RED-first on new tests):
-> Done: added GET /users/{id}/preferences. Checked: tests/users/test_preferences.py 3 passed: unknown → 200+{}, known → dict, deleted → 404; contract matches spec success-criteria.
+> **Changes**: added GET /users/{id}/preferences.
+> **Verification**:
+> - `pytest tests/users/test_preferences.py` → passed (3/3: unknown → 200 + {}, known → dict, deleted → 404); the contract matches the spec file's acceptance criteria
 
 **Valid — intermittent/concurrency** (tier-2 stress-repro as tier-1 proxy):
-> Done: closed double-charge race window with row-level lock. Checked: ./scripts/stress_race.sh --workers 20 --iterations 5000, pre-fix 47/5000 double-charges, post-fix 0/5000 across 3 runs. Intermittent: tier-2 stress-repro used as tier-1 proxy, reason concurrency-dependent.
+> **Changes**: closed the double-charge race window with a row-level lock.
+> **Verification**:
+> - `./scripts/stress_race.sh --workers 20 --iterations 5000` before the fix → failed (47/5000 double charges)
+> - the same run after the fix, 3 runs → passed (0/5000 each); a tier-2 stress reproduction stands in for tier 1 because the bug depends on concurrency

@@ -64,7 +64,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
 4. **AUTH**: §5 hard. User confirms plan and risk.
-5. **Isolate**: worktree or branch (stash before switching).
+5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
 6. **Build**: TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones.
 7. **Branch finish**: rebase / squash, changelog, clean tree.
 8. **Pre-ship review**: fresh subagent, whole change (`review.md`).

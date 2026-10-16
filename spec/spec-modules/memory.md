@@ -31,7 +31,7 @@ One home per fact — double-writing creates drift.
 ### Save triggers (core §11 Memory)
 
 - **Global state** (MUST, any level): a task writes ≥2 files under `~/.claude/` (plugin install / settings / marketplace / statusline / hook / MCP config) → save what + why. Exempt only when the edit leaves a greppable what + why in the artifact itself (a versioned spec's `## Recent changes`, `CHANGELOG.md`, a migration comment); opaque state (plugin / marketplace JSON / hook / MCP config) is never exempt.
-- **Lesson body**: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
+- **Lesson body** (a `feedback_*` save): the harness's **Why:** and **How to apply:** lines plus the trigger words a later task would search for, ≤8 lines.
 - **Never**: what `git log` recovers, a code invariant (→ a comment), task-local state (→ the spec file), a clean-root-cause bug (→ the recall plugin's bugfix type).
 
 ### MEMORY.md tag syntax

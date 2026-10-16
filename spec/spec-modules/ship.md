@@ -11,7 +11,7 @@ trigger-window: whole
 
 ## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
 
-When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of LOC. Requirements before ship:
+When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of size. Requirements before ship:
 - **SemVer non-patch bump** (minor for additive user-visible change, major for breaking).
 - **CHANGELOG migration note at top**: what changes, what action users must take.
 - **Explicit opt-out or revert path**: env flag, config key, prior-version pin instructions, or rollback command.

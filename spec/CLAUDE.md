@@ -40,7 +40,7 @@ Priority: Safety > Correctness > Efficiency.
 
 Pick by risk and reversibility, not line count; upgrade the moment the scope grows and say so in one line. Words like 深入 / ultrathink ask for more thinking, not a higher level.
 
-- **L0** wording only — docs, comments, style, internal log text → do it, one-line report. User-facing text is L1 at least.
+- **L0** wording only — docs, comments, style, internal log text → do it, one-line report. User-facing text is L1 at least; a comment that states behaviour is checked against the code.
 - **L1** small and local — one or two files (a source and its co-located test count as one), no exported symbol, import surface, config or schema change → a test for the change, affected tests green.
 - **L2** crosses a Contract or a Module boundary, adds a test surface (new file or suite) or an optional schema element → failing test first, full suite and smoke entry green (§7), §9.
 - **L3** architecture, breaking schema, data migration, prod, infra → spec file first, hard AUTH before implementation (§5), `plan.md`.
@@ -100,7 +100,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`); its effect on the Soft and None rows → `auth.md`.
 
-**Never-downgrade** (no level, project file or user instruction relaxes these): §8 SAFETY incl. Verify-before-claim (V1–V4), Iron Law #2, §11 Session-exit, the §7 user-global-state check, every §5 Hard category, `L3 enter`.
+**Never-downgrade** (no level, project file or user instruction relaxes these): §8 SAFETY incl. Verify-before-claim (V1–V4), Iron Law #2, §11 Session-exit, the §7 user-global-state check, every §5 Hard category (safe-path deletes stay Soft, §5), `L3 enter`.
 
 ## §7 VALIDATE
 
@@ -108,7 +108,7 @@ Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (de
 L0        exists + syntax check
 L1        lint + typecheck + a test for the change; affected tests green
 L1-bugfix reproduce once → fix → re-run the reproduction → lint + typecheck (same signature 3× → `debug.md`)
-L1-copy   UI string / pure-wording comment: Read the changed file, confirm the text
+L1-copy   UI string: Read the changed file, confirm the text
 L2+       lint + typecheck + full suite + smoke entry (if any) green; numbers with their baseline
 ```
 
@@ -150,7 +150,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **8.V1 Anti-hallucination**: cited file path / function / API / config key / version / test-runner pass-fail count MUST be verified this turn via Read/Grep/tool output (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
 - **8.V2 Tool-noise vs ground-truth**: editor/IDE diagnostics are **advisory**; when they conflict with the project linter / typecheck or with grep/Read, trust the linter + evidence.
 - **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
-- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures, or ones a spec file or `tasks/<slug>-paused.md` references.
+- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures, or ones an in-progress spec file or `tasks/<slug>-paused.md` references.
 
 ## §9 QUALITY
 

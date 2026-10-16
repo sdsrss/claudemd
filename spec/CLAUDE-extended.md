@@ -43,7 +43,7 @@ Strict prefix match (NOT glob):
 <!-- module: ship -->
 ## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
 
-When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of LOC. Requirements before ship:
+When a change qualifies as "released-artifact user-visible default behavior change" (npm / crates.io / marketplace package where users feel the upgrade difference) — core §2 escalates it to L3 regardless of size. Requirements before ship:
 - **SemVer non-patch bump** (minor for additive user-visible change, major for breaking).
 - **CHANGELOG migration note at top**: what changes, what action users must take.
 - **Explicit opt-out or revert path**: env flag, config key, prior-version pin instructions, or rollback command.
@@ -108,7 +108,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
 4. **AUTH**: §5 hard. User confirms plan and risk.
-5. **Isolate**: worktree or branch (stash before switching).
+5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
 6. **Build**: TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones.
 7. **Branch finish**: rebase / squash, changelog, clean tree.
 8. **Pre-ship review**: fresh subagent, whole change (`review.md`).
@@ -163,11 +163,11 @@ Save it as a feedback memory only on user request ("记住这个") or same-sessi
 ## §7-EXT VALIDATE (L3)
 
 ```
-L3  TDD + full suite + e2e                    → inline evidence with numbers+baseline
+L3  TDD + full suite + e2e                    → verification lines with numbers+baseline
     (no e2e infra: integration + smoke, e2e reported as could not run, follow-up filed)
 ```
 
-L2 evidence rules → core §7 (inline prose with numbers+baseline). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
+L2 evidence rules → core §7 (numbers with their baseline, in the report's verification part). The 5-tier evidence ladder and cold-start handling below bind at **L2+**, not L3 only. Iron Law #1 below binds at L2+ — its one-line form lives in core §7; this section carries the detail.
 
 ### Iron Law #1: NO CHANGE WITHOUT FAILING EVIDENCE (L2+)
 
@@ -200,7 +200,7 @@ Falling to tier N requires stating why N-1 unfit.
 - **Semantic linkage**: the claim ("fixed X") must follow from the observation ("test Y went from FAILING to PASS"). Existence (`grep`/`ls`/`cat`/`git status`) ≠ behavior — auxiliary context only.
 - **Valid evidence types**: test-runner output, executable script output, runtime log, HTTP response (status+body), DOM assertion, benchmark output.
 - **Test scope (SHOULD)**: prefer tests covering modified files + direct importers. Transitive optional — no cheap graph tool OR full suite >5min → co-located + smoke on known direct consumers + note the scope limit under open items.
-- **Enforcement**: completion claims must cite the tool-call output that grounds them — inline, same sentence or next. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
+- **Enforcement**: completion claims must cite the tool-call output that grounds them — in the report's verification part, one line per check. §10 Specificity binds: no "significantly improved / robust / N× faster" without numbers + baseline. A bare completion claim or one preceded by banned adjectives = NOT DONE — rewrite with absolute numbers or ratios with baseline.
 
 Order: project CI > defaults. No CI → build + smoke, and report CI as could not run.
 
@@ -343,26 +343,34 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 ### B.2 Valid vs invalid evidence
 
 **Valid** (bugfix, ties prior-failing anchor to fresh pass):
-> Done: fixed double-apply coupon bug. Checked: tests/orders/test_checkout.py::test_coupon_applies_once, pre-fix FAILED expected 90.00 got 100.00, post-fix PASSED; coupon now subtracts once.
+> **Changes**: fixed the double-apply coupon bug in `src/orders/checkout.py`.
+> **Verification**:
+> - `pytest tests/orders/test_checkout.py::test_coupon_applies_once` before the fix → failed (expected 90.00, got 100.00)
+> - the same test after the fix → passed; the coupon now subtracts once
 
 **Invalid — existence ≠ behavior**: `grep -n "def apply_coupon" src/orders/checkout.py → 127:def apply_coupon(…)` then claiming "fix works". ❌ Presence of the function is not proof it behaves.
 
 **Invalid — bugfix missing prior-failure anchor**: `pytest -q → 47 passed` then claiming "bug fixed". ❌ Need RED proof before GREEN — cite the failing run or test name that now passes.
 
 **Valid — additive new endpoint** (no prior-failing path; RED-first on new tests):
-> Done: added GET /users/{id}/preferences. Checked: tests/users/test_preferences.py 3 passed: unknown → 200+{}, known → dict, deleted → 404; contract matches spec success-criteria.
+> **Changes**: added GET /users/{id}/preferences.
+> **Verification**:
+> - `pytest tests/users/test_preferences.py` → passed (3/3: unknown → 200 + {}, known → dict, deleted → 404); the contract matches the spec file's acceptance criteria
 
 **Valid — intermittent/concurrency** (tier-2 stress-repro as tier-1 proxy):
-> Done: closed double-charge race window with row-level lock. Checked: ./scripts/stress_race.sh --workers 20 --iterations 5000, pre-fix 47/5000 double-charges, post-fix 0/5000 across 3 runs. Intermittent: tier-2 stress-repro used as tier-1 proxy, reason concurrency-dependent.
+> **Changes**: closed the double-charge race window with a row-level lock.
+> **Verification**:
+> - `./scripts/stress_race.sh --workers 20 --iterations 5000` before the fix → failed (47/5000 double charges)
+> - the same run after the fix, 3 runs → passed (0/5000 each); a tier-2 stress reproduction stands in for tier 1 because the bug depends on concurrency
 
 <!-- module: none -->
 ## Recent changes
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.0.0 (major, 2026-10-15)** — the report is `## 汇报` with three parts and `[PARTIAL]` is gone; a low-risk, reversible ambiguity is decided and written down instead of asked; text both the Opus 5.5 and the Fable 5.1 harness already give is dropped. Design record `tasks/specs/spec-v8.md`; analysis `docs/spec-optimization-plan-2026-10-15.md`. Core §10 **Report shape**, a HARD rule that keeps the ID `§10-four-section-order`, replaces the four sections and the per-level report variants: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line one of 通过 / 失败 / 未运行 / 无法运行 and nothing else; a not-run verdict says what `[PARTIAL]` said, and the hooks read both shapes. §0: one signal; **Ambiguity** replaces Initial-prompt ambiguity — asks stay where a wrong pick is costly, since only 4 of 183 answered asks in 30 days drew a bare assent (sampling-audit H4); Hard-AUTH override reports an adjacent defect instead of fixing it; Fast-Path is the L0 row. §1: the user's six principles; Recommend-first goes (both harnesses say it), the Role line goes and its Priority half stays. §1.5 loses LOC and Local-Δ: §2 levels go by risk and reversibility. §5 gains **No user present** (from AUTONOMOUS); §5.1 loses the aggressive skip-list (its ceremony is the default now) and Never-downgrade covers every §5 Hard category. §7 **Git**: per-change commits and committing on the current branch override the harness defaults. §8.V4 names the harness scratchpad. §11: an unresumed yield or a session exit writes to the spec file first; Auto-memory shrinks to one bullet; Correction pressure moves to §0. Extended: the `modes` module is removed (HACK / EMERGENCY / §0.2-EXT: 0 prompt triggers in 224 sessions); §2.S takes the user's spec template; `tasks/lessons.md` is retired; the memory decision tree becomes three save triggers and an index-line limit; orchestrate drops "delegate only large work" (both harnesses ask for delegation). No HARD rule added or removed; two rewritten (Report shape, Hard-AUTH override).
+**v8.0.0 (major, 2026-10-15)** — the report is `## 汇报` with three parts and `[PARTIAL]` is gone; a low-risk, reversible ambiguity is decided and written down instead of asked; text both the Opus 5.5 and the Fable 5.1 harness already give is dropped. Design record `tasks/specs/spec-v8.md`; analysis `docs/spec-optimization-plan-2026-10-15.md`. Core §10 **Report shape**, a HARD rule that keeps the ID `§10-four-section-order`, replaces the four sections and the per-level report variants: 变更 / 验证 / 遗留 (Changes / Verification / Open items), every verification line one of 通过 / 失败 / 未运行 / 无法运行 and nothing else; a not-run verdict says what `[PARTIAL]` said, and the hooks read both shapes. §0: one signal; **Ambiguity** replaces Initial-prompt ambiguity — asks stay where a wrong pick is costly, on the user's instruction (the sampling-audit H4 reading is not yet readable and decided nothing); Hard-AUTH override reports an adjacent defect instead of fixing it; Fast-Path is the L0 row (its plugin-command entry and hidden-risk escalation go, as does Bugfix triage's unclear → L2). §1: the user's six principles; Recommend-first goes (both harnesses say it), the Role line goes and its Priority half stays. §1.5 loses LOC and Local-Δ: §2 levels go by risk and reversibility; a comment that states behaviour is checked against the code, L1-copy covers UI strings, and an L2 spec file is written, not proposed, when its triggers fire. §5 **No user present** replaces AUTONOMOUS and relaxes it (any level of work, never a §5 Hard op; the L0/L1 ceiling, the auto-approved whitelist and the run log go); §5.1 loses the aggressive skip-list (its ceremony is the default now) and Never-downgrade covers every §5 Hard category, safe-path deletes staying Soft. §7 **Git**: per-change commits and committing on the current branch override the harness defaults (at L3, §4.FULL's isolate step overrides the current-branch default). §8.V4 puts temporary files in the harness scratchpad, which the task no longer deletes, moves the deadline for other leftovers to before the report, keeps fixtures an in-progress spec file references and drops the carryover sentence. §11: Mid-SPINE turn-yield yields for a question only where §0 allows one; an unresumed yield or a session exit writes to the spec file first; Auto-memory shrinks to one bullet and loses the preventable-error trigger; Correction pressure moves to §0. Extended: the `modes` module is removed (HACK / EMERGENCY / §0.2-EXT: 0 prompt triggers in 224 sessions); §2.S takes the user's spec template; `tasks/lessons.md` is retired; the memory decision tree becomes the global-state save detail, the lesson-body shape, the never-save list and an index-line limit; `verify.md`'s B.2 examples use the three-part report; orchestrate drops "delegate only large work" (both harnesses ask for delegation). No HARD rule added or removed; two rewritten (Report shape, Hard-AUTH override), four with a changed requirement (§8.V4, Mid-SPINE turn-yield, Session-exit, Specificity).
 
-**Sizing** (v8.0.0, 2026-10-15, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23182 → 23070 bytes (Δ -112); extended 42751 → 37893 bytes (Δ -4858); OPERATOR.md 15652 → 15335 bytes (Δ -317). Size budget: core 23070/25000 (**1930 bytes headroom**); extended 37893/50000 (**12107 bytes headroom**).
+**Sizing** (v8.0.0, 2026-10-15, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23182 → 23156 bytes (Δ -26); extended 42751 → 39317 bytes (Δ -3434); OPERATOR.md 15652 → 15335 bytes (Δ -317). Size budget: core 23156/25000 (**1844 bytes headroom**); extended 39317/50000 (**10683 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
@@ -422,7 +430,7 @@ One home per fact — double-writing creates drift.
 ### Save triggers (core §11 Memory)
 
 - **Global state** (MUST, any level): a task writes ≥2 files under `~/.claude/` (plugin install / settings / marketplace / statusline / hook / MCP config) → save what + why. Exempt only when the edit leaves a greppable what + why in the artifact itself (a versioned spec's `## Recent changes`, `CHANGELOG.md`, a migration comment); opaque state (plugin / marketplace JSON / hook / MCP config) is never exempt.
-- **Lesson body**: `[context]` + `[what to do differently]` + `[trigger words]`, ≤8 lines.
+- **Lesson body** (a `feedback_*` save): the harness's **Why:** and **How to apply:** lines plus the trigger words a later task would search for, ≤8 lines.
 - **Never**: what `git log` recovers, a code invariant (→ a comment), task-local state (→ the spec file), a clean-root-cause bug (→ the recall plugin's bugfix type).
 
 ### MEMORY.md tag syntax

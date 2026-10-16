@@ -882,8 +882,10 @@ function scanOverCeremony(events) {
 // on this measure: a low-risk, cheap-to-undo pick is now decided and recorded,
 // and only a costly or irreversible one is asked. The measure read 4 assents
 // in 183 answered asks over 30 days (197 transcripts) when the split was made,
-// so the costly half kept its ASK; this disposition now governs that half —
-// crossing the bar would drop the costly-pick ask too.
+// which decided nothing: ASK_RATE_PRECISION is null, so the reading is not yet
+// readable. The costly half kept its ASK because the instruction covered only
+// the cheap half. Once readable, this disposition governs that half — crossing
+// the bar would drop the costly-pick ask too.
 export const ASK_ASSENT_THRESHOLD = 0.5;
 // Hand-labeled precision of the ask predicate. `null` = never labeled, which is
 // what gates the disposition in the renderer. Setting this to a number is a
