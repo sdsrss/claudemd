@@ -158,6 +158,28 @@ test('restore option: finds newest backup and copies back', async () => {
   assert.equal(res.warning, undefined, 'a restore that put files back carries no warning');
 });
 
+test('R15: restore still works after a default uninstall removed the manifest', async () => {
+  // The natural order: uninstall (default keep), then remember the personal
+  // file. Neither restore nor delete reads the manifest, yet the no-manifest
+  // early return made both a no-op `already-uninstalled`.
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'prior-version\n');
+  await uninstall({ specAction: 'keep' });
+
+  const res = await uninstall({ specAction: 'restore' });
+  assert.equal(res.specAction, 'restore');
+  assert.deepEqual(res.restored, [path.join(tmpHome, '.claude/CLAUDE.md')]);
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'prior-version\n');
+});
+
+test('R15: a confirmed delete still removes the spec after a default uninstall', async () => {
+  await uninstall({ specAction: 'keep' });
+  const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.equal(res.specAction, 'delete');
+  assert.equal(fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')), false);
+});
+
 test('ENG-01: a restore that puts nothing back says so instead of reporting success', async () => {
   // The live shape: install moved a stow-style relative symlink into the backup
   // dir, where it dangles. restoreBackup skips unstattable entries (R10-04), so

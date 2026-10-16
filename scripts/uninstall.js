@@ -191,6 +191,47 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
   }
 }
 
+// Spec file disposition. Shared by the manifest and the no-manifest paths:
+// neither restore nor delete reads the manifest.
+function disposeSpec(specAction, restoreSource) {
+  // What the restore actually put back. `null` = this run was not a restore;
+  // `[]` = a restore that copied nothing. The two were indistinguishable in the
+  // output until 2026-09-05 (audit ENG-01): restoreBackup has always returned
+  // the list and this line has always dropped it, so a backup dir holding only
+  // a dangling entry — which install itself produced for every stow-style
+  // relative symlink — printed `specAction: "restore"`, exited 0, and left the
+  // spec in place. The user reaches this command from install's own WARN, so a
+  // false success here is the last thing standing between them and their
+  // personal instructions.
+  let restored = null;
+  if (specAction === 'delete') {
+    for (const p of specHome()) {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    // The per-phase modules go with the spec that points at them: every regular
+    // *.md in the directory (claudemd keeps no record of which ones it wrote),
+    // then the directory if that left it empty.
+    const modDir = specModulesHome();
+    if (fs.existsSync(modDir)) {
+      for (const f of fs.readdirSync(modDir)) {
+        const fp = path.join(modDir, f);
+        if (f.endsWith('.md') && fs.lstatSync(fp).isFile()) fs.unlinkSync(fp);
+      }
+      if (fs.readdirSync(modDir).length === 0) fs.rmdirSync(modDir);
+    }
+  } else if (specAction === 'restore') {
+    restored = restoreBackup(restoreSource, backupRoot());
+    if (restored.length === 0) {
+      process.stderr.write(
+        `[claudemd] WARN: restore read no files from ${restoreSource} — your ~/.claude spec ` +
+          `files are UNCHANGED. Entries that cannot be opened (a backed-up symlink whose ` +
+          `target has moved) are skipped. Check \`ls -l ${restoreSource}\`.\n`
+      );
+    }
+  }
+  return restored;
+}
+
 export async function uninstall({ specAction = 'keep', confirmHardAuth = false, purge = false } = {}) {
   const m = readManifest();
 
@@ -273,10 +314,9 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
     );
   }
 
-  // No manifest = no path forward for state/log/spec disposition (you can't
-  // remove what you don't know about). settingsRemoved still surfaces the
-  // partial outcome so callers can see the eviction did happen. specAction
-  // is set to 'noop' (rather than omitted) so consumers can `.specAction`
+  // No manifest = nothing to unlink for it. settingsRemoved still surfaces the
+  // partial outcome so callers can see the eviction did happen. A keep reports
+  // specAction 'noop' (rather than omitting it) so consumers can `.specAction`
   // unconditionally without a missing-key branch — same shape as the success
   // paths returning {specAction: 'keep'|'delete'|'restore'|'abort'}.
   if (!m.exists || !m.data) {
@@ -290,10 +330,14 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       purgeStateAndLogs(m.path || manifestPath(), legacyManifestPath());
       purged = true;
     }
+    // Restore and delete do not need one either (R15). The natural order is a
+    // default uninstall first, then asking for the personal CLAUDE.md back;
+    // both requests were answered `noop` with the backup still on disk.
+    const restored = disposeSpec(specAction, restoreSource);
     return {
-      specAction: 'noop',
-      restored: null,
-      warning: 'already-uninstalled',
+      specAction: specAction === 'keep' ? 'noop' : specAction,
+      restored,
+      warning: restored && restored.length === 0 ? 'restore-empty' : 'already-uninstalled',
       settingsRemoved,
       settingsWarning,
       statusline,
@@ -304,44 +348,8 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
   const legacyPath = legacyManifestPath();
 
   // 2. Spec file disposition
-  let outcome = specAction;
-  // What the restore actually put back. `null` = this run was not a restore;
-  // `[]` = a restore that copied nothing. The two were indistinguishable in the
-  // output until 2026-09-05 (audit ENG-01): restoreBackup has always returned
-  // the list and this line has always dropped it, so a backup dir holding only
-  // a dangling entry — which install itself produced for every stow-style
-  // relative symlink — printed `specAction: "restore"`, exited 0, and left the
-  // spec in place. The user reaches this command from install's own WARN, so a
-  // false success here is the last thing standing between them and their
-  // personal instructions.
-  let restored = null;
-  if (specAction === 'delete') {
-    for (const p of specHome()) {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-    // The per-phase modules go with the spec that points at them: every regular
-    // *.md in the directory (claudemd keeps no record of which ones it wrote),
-    // then the directory if that left it empty.
-    const modDir = specModulesHome();
-    if (fs.existsSync(modDir)) {
-      for (const f of fs.readdirSync(modDir)) {
-        const fp = path.join(modDir, f);
-        if (f.endsWith('.md') && fs.lstatSync(fp).isFile()) fs.unlinkSync(fp);
-      }
-      if (fs.readdirSync(modDir).length === 0) fs.rmdirSync(modDir);
-    }
-  } else if (specAction === 'restore') {
-    restored = restoreBackup(restoreSource, backupRoot());
-    if (restored.length === 0) {
-      process.stderr.write(
-        `[claudemd] WARN: restore read no files from ${restoreSource} — your ~/.claude spec ` +
-          `files are UNCHANGED. Entries that cannot be opened (a backed-up symlink whose ` +
-          `target has moved) are skipped. Check \`ls -l ${restoreSource}\`.\n`
-      );
-    }
-  } else {
-    outcome = 'keep';
-  }
+  const restored = disposeSpec(specAction, restoreSource);
+  const outcome = specAction === 'delete' || specAction === 'restore' ? specAction : 'keep';
 
   // 3. Clean state + logs (per purge flag). Always unlink both the current
   // manifest path and any pre-0.1.9 legacy file — readManifest() migrated
