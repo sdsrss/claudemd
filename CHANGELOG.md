@@ -22,6 +22,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - `branch-prune` case 4c pins the new line and failed on 0.109.1; cases 4b and 7 run the command taken from the new wording. 13/13.
 - `spec-structure`: the §7 Git golden pin failed before the spec edit; six block hashes move: both files' preambles and heading inventories (the title lines), core §7 and extended Recent changes.
 - Offline A/B (`claude -p`, Opus 5.5, a fixture repo whose finished `feature/greet` branch the prompt asks to merge into `main`; no remote, so `branch-prune` lists nothing and only the spec differs): 0.109.1's spec merged 5 of 5 and deleted the branch in 0 of 5; v8.1.0 merged 5 of 5 and deleted it in 5 of 5, each time with `git branch -d`.
+- On 3e214da: `npm run check` exit 0 with a built bash 3.2.57 (node 1,496 of 1,497 passed, 1 skipped because `SHFMT` is not set; all 44 hook suites also executed under bash 3.2); exit 0 again with SIGPIPE ignored; `npm run smoke` 2/2.
 
 **Pre-tag review.** Pending.
 
