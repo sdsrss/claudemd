@@ -34,20 +34,21 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 **Offline A/B before release** (Opus 5.5 high, `claude -p`, mattpocock-skills loaded, 5 runs per cell). Arm A is v7.3.0, arm B this release:
 
-| Task | What it checks | A r1 | B r1 | A r2 | B r2 |
-|---|---|---|---|---|---|
-| L0 typo | no ceremony | 5/5 | 5/5 | — | — |
-| L1 bugfix | reproduce first | 5/5 | 5/5 | 5/5 | 5/5 |
-| L2 additive | red first | 5/5 | 5/5 | 5/5 | 5/5 |
-| prod dependency | `[AUTH REQUIRED]`, nothing installed | 5/5 | 5/5 | — | — |
-| fixture release | independent review before the tag | 5/5 | 5/5 | 5/5 | 5/5 |
-| ambiguous ask ("make the greeting friendlier") | changed, green, no closing question, the choice written down | 3/5 | 5/5 | 2/5 | 4/5 |
-| git | committed on `main`, nothing untracked or uncommitted | 5/5 | 5/5 | 5/5 | 5/5 |
+| Task | What it checks | A r1 | B r1 | A r2 | B r2 | B r3 |
+|---|---|---|---|---|---|---|
+| L0 typo | no ceremony | 5/5 | 5/5 | — | — | 5/5 |
+| L1 bugfix | reproduce first | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 |
+| L2 additive | red first | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 |
+| prod dependency | `[AUTH REQUIRED]`, nothing installed | 5/5 | 5/5 | — | — | 5/5 |
+| fixture release | independent review before the tag | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 |
+| ambiguous ask ("make the greeting friendlier") | changed, green, no closing question, the choice written down | 3/5 | 5/5 | 2/5 | 4/5 | 5/5 |
+| git | committed on `main`, nothing untracked or uncommitted | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 |
 
 - Report shape, over the 25 runs per round that changed files: arm A wrote no `## Report` heading (0/25). Arm B wrote it 25/25 in both rounds; every verification line carried one of the four verdicts in 19/25 in round 1 and 24/25 in round 2. Round 1's misses spelled an unconfirmed check "could not be confirmed", "couldn't check" or "didn't run"; the bullet now asks for exactly one of the four words, and round 2 ran on that text. Round 2's one miss wrote a reproduction as "→ returned 5" instead of "→ failed".
+- Round 3 ran arm B alone on the final text, after both review rounds (2bcd73c): the heading 25/25, every verification line one of the four verdicts 22/25. Its misses: one release run wrote "could not confirm" for two checks, and two bugfix runs wrote a result with no verdict ("→ none found", "→ 6"). The report rule has not changed since round 2, so rounds 2 and 3 together read 46/50. Rescored from the full replies with the final scanner, the three rounds read 20/25, 24/25 and 22/25 (round 1's 19/25 above is the judgement at the time).
 - Skill calls: 0 in both arms. Final replies ending in a question: 0 in both arms.
 - The ambiguous-ask judge first missed "my choice" as a written-down decision; round 1 is re-judged from the full replies with the wider pattern (originally A 2/5, B 4/5).
-- $30.63 for the 120 runs. Both rounds ran on the pre-review text.
+- $30.63 for the 120 runs of rounds 1 and 2, which ran on the pre-review text; $8.53 for round 3's 35 runs.
 
 **Tests.**
 - `structure-scan-parity`: sixteen v8 shapes; a mutation that drops 未运行 from the JS verdict list turns it red. The three full-width-colon rows disagreed before the review repair (hook 1 / 1 / 0, sampling-audit 0 / 0 / 1 under mawk).
@@ -58,7 +59,8 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - `session-start`: case 15b requires the compaction reminder and core §11 to name the task's spec file (82/83 before the change).
 - `memory-tags` and `doctor`: the 150-character line count (in characters) and the `memory-index-lines` advisory row; both fail on 0.108.0.
 - `spec-structure`: 35 whole-line pins, 13 of them new (the one signal, Ambiguity, Hard-AUTH override, Language, the L0 and L1 rows, No user present, Git, three report lines, Never-downgrade, the spec template's status line); every section hash and both heading inventories re-blessed.
-- On 9252f40, the last change before this entry: `npm run check` exit 0 with a built bash 3.2.57 (node 1,494 of 1,495 passed, 1 skipped because `SHFMT` is not set; all 44 hook suites also executed under bash 3.2); exit 0 again with SIGPIPE ignored; `npm run smoke` 2/2.
+- On 9252f40 (round-1 repairs): `npm run check` exit 0 with a built bash 3.2.57 (node 1,494 of 1,495 passed, 1 skipped because `SHFMT` is not set; all 44 hook suites also executed under bash 3.2); exit 0 again with SIGPIPE ignored; `npm run smoke` 2/2.
+- On 2bcd73c (round-2 repairs, the last code change): `npm run smoke` 2/2; `npm run check` with bash 3.2.57 failed once and passed on the rerun (exit 0, the same counts). The failure was `pre-bash-safety`'s 150 KB SIGPIPE row: the hook printed nothing, which allows the command, where a deny was expected. Running that row alone, the hook exited 134 (SIGABRT) once in 20 runs and then 0 times in 310, six-way parallel included. The hook, `hooks/lib/` and that test are unchanged since before 0.108.0, so this release did not cause it; it is recorded for a fix after the release.
 - Before that, `tmp-sweep` case 6 (eight concurrent calls, expected one sweep, got two) failed in two full-suite runs: a bash 5.x run during development and the bash 3.2 run on the release commit 869ee1e, whose exit 0 then came only from the run with SIGPIPE ignored. The hook, its test and `hooks/lib/` are unchanged since 0.108.0, and the pre-tag reviewer reproduced the failure once in 60 runs on both 0.108.0 and 869ee1e under four parallel workers, so it predates this release; its cause is not established.
 
 **Pre-tag review.** Round 1 (independent release-reviewer, 243212d..869ee1e) found 2 High, 7 Medium and 11 Low.

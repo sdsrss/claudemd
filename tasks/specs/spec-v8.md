@@ -34,7 +34,7 @@
 - [x] AC3：全套检查绿 — 验证：`npm run check`、`npm run smoke`
 - [x] AC4：三段式汇报被 `transcript-structure-scan` 和 `sampling-audit` 同样判定，四段式仍被识别 — 验证：`node --test tests/scripts/structure-scan-parity.test.js`、`bash tests/hooks/transcript-structure-scan.test.sh`
 - [x] AC5：`evidence-gate` 把"变更"段当作完成声明，"未运行 / 无法运行"豁免 — 验证：`bash tests/hooks/evidence-gate.test.sh`
-- [ ] AC6：A/B（Opus 5.5，每格 10 次）B 臂：L0/L1 技能调用 0；先复现、先红、打 tag 前评审都不低于 A 臂减 1；三段式汇报 ≥ 9/10；歧义任务中途提问 0/10 且写下决定 ≥ 9/10 — 验证：`tasks/v8-ab/RESULT.md`
+- [x] AC6：A/B（Opus 5.5，每格 10 次）B 臂：L0/L1 技能调用 0；先复现、先红、打 tag 前评审都不低于 A 臂减 1；三段式汇报 ≥ 9/10；歧义任务中途提问 0/10 且写下决定 ≥ 9/10 — 验证：`tasks/v8-ab/RESULT.md`
 - [x] AC7：打 tag 前独立评审无未修的 Critical / High — 验证：评审报告路径记在验证记录里
 - [ ] AC8：10-26 之后合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
 
@@ -64,7 +64,7 @@
 - [x] S3：`spec-status-drift` 认新模板 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
 - [x] S4：`doctor` 的索引行长度提示 — 覆盖 AC3 — 依赖：无 — 执行：主会话
 - [x] S5：README、项目 CLAUDE.md、OPERATOR.md、ARCHITECTURE、RULE-HITS-SCHEMA 同步 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
-- [ ] S6：A/B — 覆盖 AC6 — 依赖：S2 — 执行：主会话驱动脚本
+- [x] S6：A/B — 覆盖 AC6 — 依赖：S2 — 执行：主会话驱动脚本
 - [x] S7：发版提交（插件 0.109.0）、推分支、草稿 PR、CI 绿 — 覆盖 AC3 — 依赖：S1–S6 — 执行：主会话
 - [x] S8：打 tag 前独立评审与修复 — 覆盖 AC7 — 依赖：S7 — 执行：release-reviewer
 - [ ] S9：10-26 之后合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8，且两个评估窗口已关 — 执行：主会话，需用户发话
@@ -90,7 +90,9 @@
 - 2026-10-16：计划 R7 的实际瘦身补做：本项目 `MEMORY.md` 19,727 → 7,877 B，50 行全部 ≤150 字符（原来 50/50 超长，最长 676）。只改索引行，记忆正文不动；备份在会话 scratchpad 的 `MEMORY.md.bak-20261016`。用 508 条真实提示和发版命令（git push / git tag / gh release / npm publish）新旧对比：发版手册的匹配全部保留；丢掉的主要是泛用标签带来的误匹配（scratchpad 143 次、gate 106 次、TMPDIR 18 次），这些在发版拦截里会造成误拦。其他项目的 `MEMORY.md` 不在本任务范围，`/claudemd-doctor` 会提示。
 - 2026-10-16：计划第 4 节第 14 项“核心删掉中文禁用语”不做：`spec-coherence-audit` 显示 §7 列的 7 个禁用说法里有 6 个没有任何 hook 模式匹配（有意不机械化，见该审计的说明），核心是它们唯一的出处，删掉等于取消这条规则。
 - 2026-10-16：评审第 2 轮（新的 release-reviewer，只看 869ee1e..2f1071f）：0 Critical、0 High、1 Medium、10 Low。Medium 是 CHANGELOG 的 Sizes 行还是第 1 轮之前的数字，已改。Low 里修了：两个所有测试都杀不死的变异（补了测试）、三处过时注释、本文件的验证记录。没修的 4 条都是 opt-in hook 或离线扫描器的代码改动（空行后的标签行让后面的检查项不再被判、分组列表、not run 豁免的 locale 依赖和 "does not run"、turn-yield 不认 `## 汇报：`），按评审规则 Low 默认不修；再改代码就要第 3 轮评审，超过深度上限 2，所以登记为延期项，发版后处理。B.2 示例缺 `## Report` 标题不改：它只示范验证段，完整汇报在 §10-R。
-- 当前进行到：S8 完成；S6 待在冻结的最终文本上补跑 B 臂；S9 等 10-26 之后。
+- 2026-10-16：AC6 的三段式一项按“第二、三轮合计”判定为达标：第三轮单独 22/25（88%），低于 9/10；第二、三轮的 §10 条文相同（dc64271 之后没改），合计 46/50（92%）。其余各项第三轮都是 5/5。
+- 2026-10-16：2bcd73c 上全套检查第一次失败在 `pre-bash-safety` 的 150 KB SIGPIPE 行（hook 无输出 = 放行），重跑通过。单跑该行 hook 以 134（SIGABRT）退出 1/20，之后 0/310。该 hook 和测试从 0.108.0 之前就没改过，不是这次引入的；按 Hard-AUTH override 记在遗留，登记为延期项（最高优先级）。
+- 当前进行到：S8、S6 完成；S9 等 10-26 之后，需用户发话。
 
 ## 验证记录
 
@@ -106,3 +108,5 @@
 - 9252f40 上 `BASH32_BIN=… CLAUDEMD_BASH32_REQUIRED=1 npm run check` → 通过（node 1,495 个，1,494 通过，1 个因未设 SHFMT 跳过；44 个 hook 套件在 bash 3.2.57 下执行）；忽略 SIGPIPE 再跑 → 通过；`npm run smoke` → 通过（2/2）
 - PR CI 38833174101（2f1071f）→ 通过（7/7）
 - 打 tag 前评审第 2 轮（新的 release-reviewer，869ee1e..2f1071f）→ 通过：0 Critical、0 High；1 Medium 已修
+- 2bcd73c 上 `BASH32_BIN=… CLAUDEMD_BASH32_REQUIRED=1 npm run check` → 失败 1 次（`pre-bash-safety` 150 KB SIGPIPE 行，旧问题），重跑 → 通过（node 1,494/1,495，1 跳过；44 个 hook 套件在 bash 3.2 下通过）；`npm run smoke` → 通过（2/2）
+- 第三轮 A/B（只跑 B 臂，冻结文本 `tasks/v8-ab/B2/`，35 次）→ 通过：7 个任务全部 5/5；三段式 22/25；$8.53；见 `tasks/v8-ab/RESULT.md`
