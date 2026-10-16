@@ -63,6 +63,15 @@ test('R15: an opt-in hook says it stays off until its opt-in variable is set', a
       'opted in: the kill switch is the whole story'
     );
     assert.equal((await toggle('banned-vocab')).note, undefined, 'a default-on hook carries no note');
+
+    // R18 L3: a value that is SET but not "1" is not "unset", and a JSON number
+    // 1 opts in like the string does.
+    s.env.EVIDENCE_GATE = '0';
+    fs.writeFileSync(p, JSON.stringify(s));
+    assert.match((await toggle('evidence-gate')).note, /EVIDENCE_GATE is "0", not 1/);
+    s.env.EVIDENCE_GATE = 1;
+    fs.writeFileSync(p, JSON.stringify(s));
+    assert.equal((await toggle('evidence-gate')).note, undefined, 'a numeric 1 counts as opted in');
   } finally {
     if (saved === undefined) delete process.env.EVIDENCE_GATE;
     else process.env.EVIDENCE_GATE = saved;

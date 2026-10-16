@@ -84,12 +84,18 @@ export async function toggle(name) {
   // (R15). settings.json env is what the next session's hooks get; the
   // current process env covers an opt-in exported in the user's shell.
   const optIn = HOOK_REGISTRY.find(r => r.displayName === name)?.optIn;
-  if (optIn && !optIn.values.includes(s.env[optIn.env] ?? process.env[optIn.env])) {
+  // String(): a JSON number 1 in settings.json reaches the hook as "1" (R18 L3).
+  const optValue = s.env[optIn?.env] ?? process.env[optIn?.env];
+  if (optIn && !optIn.values.includes(optValue == null ? undefined : String(optValue))) {
+    const now =
+      optValue == null
+        ? `${optIn.env} is unset`
+        : `${optIn.env} is ${JSON.stringify(String(optValue))}, not 1`;
     const note =
       newState === 'enabled'
         ? `${name} is opt-in: the kill switch is off, but the hook stays inactive until ${optIn.env}=${optIn.values[0]} ` +
           `is set (settings.json "env" or your shell).`
-        : `${name} is opt-in and was not active (${optIn.env} is unset); the kill switch is now set as well.`;
+        : `${name} is opt-in and was not active (${now}); the kill switch is now set as well.`;
     return { hook: name, newState, note };
   }
   return { hook: name, newState };
