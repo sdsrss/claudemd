@@ -74,9 +74,19 @@ else
   ng "4 (ctx: $CTX; branches: $(git -C "$REPO" branch --format='%(refname:short)' | tr '\n' ' '))"
 fi
 
+# Case 4c: the line tells the session to delete the listed branches — a merged
+# local branch is deleted, not left as the user's call (spec v8.1.0 core §7
+# Git) — and keeps git's re-check and the kill switch.
+if [[ "$CTX" == *"They are merged: delete them with \`git -C "* && "$CTX" != *"If the user wants"* &&
+  "$CTX" == *"refuses otherwise"* && "$CTX" == *"DISABLE_BRANCH_PRUNE_HOOK=1"* ]]; then
+  ok "4c the line says to delete them, with the re-check and the kill switch"
+else
+  ng "4c (ctx: $CTX)"
+fi
+
 # Case 4b: the command the advisory hands over actually works on the default
 # branch — extracted from the message and run as-is.
-CMD=$(printf '%s' "$CTX" | sed -n 's/.*removed: `\(git -C .* branch -d [^`]*\)`.*/\1/p')
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*delete them with `\(git -C .* branch -d [^`]*\)`.*/\1/p')
 if [[ -n "$CMD" ]] && eval "$CMD" >/dev/null 2>&1 && ! has_branch feat && has_branch wip; then
   ok "4b suggested command deletes exactly the listed branch"
 else
@@ -119,7 +129,7 @@ git clone -q "$SANDBOX/remote.git" "$HOSTILE"
 )
 OUT=$(jq -cn --arg cwd "$HOSTILE" '{session_id:"branch-prune-test",tool_name:"Bash",tool_input:{command:"git pull"},cwd:$cwd}' | bash "$HOOK" 2>/dev/null)
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
-CMD=$(printf '%s' "$CTX" | sed -n 's/.*removed: `\(git -C .* branch -d [^`]*\)`.*/\1/p')
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*delete them with `\(git -C .* branch -d [^`]*\)`.*/\1/p')
 ( cd "$SANDBOX" && eval "$CMD" ) >/dev/null 2>&1
 LEFT=$(git -C "$HOSTILE" branch --format='%(refname:short)' | sort | tr '\n' ' ')
 if [[ -n "$CMD" && ! -e "$SANDBOX/PWNED_BR" && ! -e "$SANDBOX/PWNED_CWD" && ! -e "$HOSTILE/PWNED_BR" && "$LEFT" == "main wip " ]]; then

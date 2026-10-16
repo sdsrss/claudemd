@@ -176,8 +176,9 @@ Emitters, derived from source and gated by
   and, on a tmpfs, that the bytes are RAM. Rate-limited with the sweep itself
   to one run per `CLAUDEMD_TMP_SWEEP_INTERVAL_MIN` (default 10).
 - `branch-prune.sh` — PostToolUse (`Bash`); one line listing the local
-  branches that are safe to delete, with the `git branch -d` command that
-  deletes them. It deletes nothing. Silent when there is nothing to list.
+  branches that are merged and telling the session to delete them with the
+  `git branch -d` command it gives. The hook deletes nothing. Silent when
+  there is nothing to list.
 
 **No Stop hook here emits `hookSpecificOutput`, and that is a choice, not the
 schema.** Claude Code 2.1.163 added `hookSpecificOutput.additionalContext` to
