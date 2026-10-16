@@ -170,14 +170,28 @@ test('R15: restore still works after a default uninstall removed the manifest', 
   const res = await uninstall({ specAction: 'restore' });
   assert.equal(res.specAction, 'restore');
   assert.deepEqual(res.restored, [path.join(tmpHome, '.claude/CLAUDE.md')]);
+  assert.equal(res.warning, undefined, 'R18 L2: a restore that worked is not "already-uninstalled"');
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'prior-version\n');
 });
 
-test('R15: a confirmed delete still removes the spec after a default uninstall', async () => {
-  await uninstall({ specAction: 'keep' });
+test('R18 M2: with no manifest a delete stays a no-op, so a restored personal file survives it', async () => {
+  // restore → (edit) → delete is the order the restore docs lead to. Without a
+  // manifest nothing says the home CLAUDE.md is claudemd's: after a restore it
+  // is the user's own, and an unconditional delete removed it with the edits
+  // made since. Only the restore half of the R15 change stays.
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'prior-version\n');
+  const restored = await uninstall({ specAction: 'restore' });
+  assert.equal(restored.warning, undefined, 'a restore that put files back carries no warning');
+  fs.appendFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'edited after restore\n');
   const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
-  assert.equal(res.specAction, 'delete');
-  assert.equal(fs.existsSync(path.join(tmpHome, '.claude/CLAUDE.md')), false);
+  assert.equal(res.specAction, 'noop');
+  assert.equal(res.warning, 'already-uninstalled');
+  assert.equal(
+    fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+    'prior-version\nedited after restore\n'
+  );
 });
 
 test('ENG-01: a restore that puts nothing back says so instead of reporting success', async () => {

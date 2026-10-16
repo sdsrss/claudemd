@@ -73,7 +73,8 @@ const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 
 Remove claudemd hooks from ~/.claude/settings.json + clear the install
 manifest. Spec files in ~/.claude/CLAUDE*.md are kept by default. Idempotent
-(re-run after success returns warning: already-uninstalled).
+(re-run after success returns warning: already-uninstalled), except that a
+restore runs again whenever it is asked for: it needs no manifest.
 
 No flags. Behavior is read from the following env vars:
   CLAUDEMD_SPEC_ACTION  keep (default) | delete | restore
@@ -330,14 +331,18 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       purgeStateAndLogs(m.path || manifestPath(), legacyManifestPath());
       purged = true;
     }
-    // Restore and delete do not need one either (R15). The natural order is a
-    // default uninstall first, then asking for the personal CLAUDE.md back;
-    // both requests were answered `noop` with the backup still on disk.
-    const restored = disposeSpec(specAction, restoreSource);
+    // A restore does not need one either (R15): the natural order is a default
+    // uninstall first, then asking for the personal CLAUDE.md back, and that
+    // was answered `noop` with the backup still on disk. A delete stays a no-op
+    // (R18 M2): with no manifest nothing says the home CLAUDE.md is claudemd's,
+    // and after a restore it is the user's own.
+    const restored = specAction === 'restore' ? disposeSpec(specAction, restoreSource) : null;
+    let warning = 'already-uninstalled';
+    if (restored) warning = restored.length === 0 ? 'restore-empty' : undefined;
     return {
-      specAction: specAction === 'keep' ? 'noop' : specAction,
+      specAction: restored ? 'restore' : 'noop',
       restored,
-      warning: restored && restored.length === 0 ? 'restore-empty' : 'already-uninstalled',
+      ...(warning ? { warning } : {}),
       settingsRemoved,
       settingsWarning,
       statusline,
