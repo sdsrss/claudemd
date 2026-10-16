@@ -1,5 +1,5 @@
 # 合并后删除本地分支
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -36,7 +36,7 @@
 - [x] AC1：核心 §7 **Git** 含新句子，整行被钉住；改动后核心字节数、Sizing、级联全部一致 — 验证：`npm run check` 中的 spec-structure 与 `node scripts/spec-coherence-audit.js --strict`
 - [x] AC2：branch-prune 的提示是删除指令，仍给出 `git branch -d` 命令、复核说明和关闭方式 — 验证：`bash tests/hooks/branch-prune.test.sh`，新用例在改前失败
 - [x] AC3：离线对比 — 在沙箱仓库里用 `claude -p` 跑"把 feature 分支合并进 main 并收尾"，新规范下每次都删掉本地分支，旧规范的结果作基线 — 验证：每组 5 次，记录删除次数
-- [ ] AC4：`npm run check`（含 bash 3.2）、`npm run smoke`、PR CI 全绿；打 tag 前的独立评审通过 — 验证：发版手册第 4–10 步
+- [x] AC4：`npm run check`（含 bash 3.2）、`npm run smoke`、PR CI 全绿；打 tag 前的独立评审通过 — 验证：发版手册第 4–10 步
 
 ## 方案
 
@@ -54,7 +54,7 @@
 - [x] S1：核心句子 + 钉、Sizing、级联 — 覆盖 AC1 — 依赖：用户授权 — 执行：主会话
 - [x] S2：hook 提示 + 测试 — 覆盖 AC2 — 依赖：无 — 执行：主会话
 - [x] S3：离线对比 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
-- [ ] S4：按发版手册发布 0.110.0 — 覆盖 AC4 — 依赖：S1–S3 — 执行：主会话 + release-reviewer
+- [x] S4：按发版手册发布 0.110.0 — 覆盖 AC4 — 依赖：S1–S3 — 执行：主会话 + release-reviewer
 
 ## 决策与进展
 
@@ -64,7 +64,7 @@
 - 评审第 1 轮 M1 → 决定加"`-d` 被拒就保留分支、写进遗留项，不用 `-D`"：squash 合并、上游落后于合并点时 git 拒绝 `-d` 并提示 `-D`，删除指令加上这个提示会把模型推向强删；而保留分支的代价只是一个 ref，由用户决定。重跑对比确认 squash 时 5/5 保留、0/5 用 `-D`。
 - 评审第 1 轮 L1 → hook 提示加"(leave out any the project keeps)"，与规范的豁免一致。
 - 评审第 2 轮 L2 延期：hook 列出的分支在本地 main 落后于 origin/main 时也会被 `-d` 拒绝，规范的 `-D` 分句只管"你合并的分支"。改 hook 的模型可见文字需要第三轮评审；这种分支的提交都在 origin/main 上，强删不丢提交，所以留到以后的版本。
-- 进展：S1–S3 完成，两轮评审完成，S4 发版进行中。
+- 进展：全部完成，0.110.0 于 2026-10-16 发布（tag v0.110.0 在 e4ab560）。
 - 用户 2026-10-16：本任务发版完成后，再做下一项 R6(b)（用离线样例对比现在的 rework-breaker 提示和"换思路"版提示，约 $20–40）；不改变本任务的顺序。
 
 ## 验证记录
@@ -78,3 +78,8 @@
 - 打 tag 前评审第 1 轮（deaca4f..df0c7a0）→ 0 Critical / 0 High / 2 Medium / 4 Low；M1、M2、L1–L3 已修（56cf681 和 CHANGELOG），L4 由第二轮对比补证据。
 - 离线对比第二轮（最终文本 B2）→ 通过（普通合并删除 5/5，都用 `-d`；squash 合并保留 5/5、`-D` 0/5；旧规范 squash 保留 5/5、未尝试删除）
 - 打 tag 前评审第 2 轮（df0c7a0..8b0538d）→ 0 Critical / 0 High / 1 Medium / 4 Low；M1、L1、L3、L4 是文字修复（CHANGELOG、规范变更记录、pin 说明、本文件），做 claim-drift 自查；L2 延期（见决策）。PR CI 38916743440 → 通过（7/7）。
+- `npm run check`（e4ab560）→ 通过（1,496/1,497，1 个因未设 SHFMT 跳过）；bash 3.2 与忽略 SIGPIPE 两遍在 5bb8ee8 → 通过
+- PR CI 38920108965（e4ab560）→ 通过（7/7）
+- tag v0.110.0：`ci` 38922718070 → 通过（7/7）；`npm-publish` 38922718529 → 通过（6/6，含 publish）；`main` 推送 CI 38922712487 → 通过（7/7）
+- `npm view claudemd-cli dist-tags.latest` → 0.110.0
+- 合并后本地分支：`git branch -d release/v0.110.0` → 通过（已删；`next-release` 对齐 main）
