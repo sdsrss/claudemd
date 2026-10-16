@@ -394,6 +394,38 @@ test('R15: cleanClaudeTmp does not descend a claude-<uid> shell that is a symlin
   }
 });
 
+test('cleanClaudeTmp does not scan a ~/.claude/tmp that is itself a symlink', () => {
+  // Every stale depth-1 entry is a candidate, whatever its name. With the root
+  // linked to a shared directory, --apply deleted that directory's old files,
+  // which need not be Claude's (converge round 18 L8).
+  const shared = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-ctmp-shared-'));
+  const link = path.join(claudeTmp, 'linked-root');
+  try {
+    const someoneElses = path.join(shared, 'report.pdf');
+    fs.writeFileSync(someoneElses, 'x');
+    setMtime(someoneElses, 30);
+    fs.symlinkSync(shared, link);
+    const r = cleanClaudeTmp({ claudeTmpDir: link, apply: true, retentionDays: 7 });
+    assert.equal(r.deleted, 0);
+    assert.deepEqual(r.targets, []);
+    assert.equal(r.skipped, 'symlink');
+    assert.ok(fs.existsSync(someoneElses), 'the link target keeps its files');
+    // Control: the same directory, named directly, is scanned.
+    assert.equal(cleanClaudeTmp({ claudeTmpDir: shared }).targets.length, 1);
+    // The CLI says why nothing was scanned, in the JSON and to the human.
+    const r2 = spawnSync(process.execPath, [SCRIPT, '--apply'], {
+      env: cliEnv({ CLAUDEMD_CLAUDE_TMP_DIR: link }),
+      encoding: 'utf8',
+    });
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.equal(JSON.parse(r2.stdout).claudeTmp.skipped, 'symlink');
+    assert.match(r2.stderr, /is a symlink; not scanned/);
+    assert.ok(fs.existsSync(someoneElses), 'the CLI leaves the link target alone too');
+  } finally {
+    fs.rmSync(shared, { recursive: true, force: true });
+  }
+});
+
 test('cleanClaudeTmp tolerates missing dir', () => {
   const r = cleanClaudeTmp({ claudeTmpDir: path.join(claudeTmp, 'nonexistent'), apply: true });
   assert.equal(r.deleted, 0);

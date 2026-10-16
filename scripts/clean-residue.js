@@ -330,6 +330,15 @@ function newestMtimeMs(full, stat, now) {
 
 export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
   if (!claudeTmpDir || !fs.existsSync(claudeTmpDir)) return { candidates: [] };
+  // Every stale entry below is a candidate whatever its name, which is safe
+  // only inside a directory Claude Code owns. A root that is a symlink points
+  // somewhere shared (a common /tmp, a scratch volume): --apply deleted that
+  // directory's old files there (converge round 18 L8). Not scanned at all.
+  try {
+    if (fs.lstatSync(claudeTmpDir).isSymbolicLink()) return { candidates: [], skipped: 'symlink' };
+  } catch {
+    return { candidates: [] };
+  }
   const candidates = [];
   const pushCandidate = (full, stat) => {
     // §8.V4 exemption: a dir carrying a .keep marker is deliberately retained WIP,
@@ -399,7 +408,7 @@ export const DEFAULT_RETENTION_DAYS = 7;
 
 export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7, now = Date.now() } = {}) {
   const window = Math.max(MIN_RETENTION_DAYS, retentionDays);
-  const { candidates } = scanClaudeTmp({ claudeTmpDir, now });
+  const { candidates, skipped } = scanClaudeTmp({ claudeTmpDir, now });
   const { allowed: targets, protected: protectedTargets } = partitionProtected(
     candidates.filter(c => c.ageDays >= window)
   );
@@ -411,10 +420,19 @@ export function cleanClaudeTmp({ claudeTmpDir, apply = false, retentionDays = 7,
       deleted: 0,
       failures: [],
       retentionDays: window,
+      skipped,
     };
   }
   const { deleted, failures } = rmEach(targets, { recursive: true, force: true });
-  return { dryRun: false, targets, protected: protectedTargets, deleted, failures, retentionDays: window };
+  return {
+    dryRun: false,
+    targets,
+    protected: protectedTargets,
+    deleted,
+    failures,
+    retentionDays: window,
+    skipped,
+  };
 }
 
 // --- ~/.claude/projects probe dirs (spec §8.V4; analysis 2026-09-26 B8/P2-5) ---
@@ -805,6 +823,12 @@ if (invokedAsMain(import.meta.url)) {
         `contain${protectedPaths.length === 1 ? 's' : ''} this process's cwd or $TMPDIR (see \`protected\`).`
     );
   }
+  if (ctmp.skipped === 'symlink') {
+    console.error(
+      `${claudeTmpDir} is a symlink; not scanned. Its stale entries would be deleted in the link's ` +
+        "target, where they need not be Claude Code's."
+    );
+  }
   if (unreapable.length > 0) {
     console.error(
       `${unreapable.length} target(s) could not be removed:\n` +
@@ -834,6 +858,7 @@ if (invokedAsMain(import.meta.url)) {
           candidates: ctmp.targets.length,
           deleted: ctmp.deleted,
           paths: ctmp.targets.map(agePath),
+          ...(ctmp.skipped ? { skipped: ctmp.skipped } : {}),
         },
         probeProjects: {
           dir: projectsDirPath,
