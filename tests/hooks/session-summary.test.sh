@@ -268,8 +268,37 @@ else
   ng "Case 12: expected denies=4 top=§10-V, got denies='$D12' top='$T12'"
 fi
 
+# --- Case 13 (R15): the summary records which window it counted -------------
+# Case 12 ran with no per-session ref, i.e. the first Stop of a session, whose
+# window is the 24 h fallback over ALL sessions; Case 2 ran with a ref.
+W12=$(jq -r '.window // ""' "$SUMMARY" 2>/dev/null)
+rm -f "$SUMMARY"
+touch "$REF"
+sleep 1
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}" > "$LOG"
+echo "$EVENT" | bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+W13=$(jq -r '.window // ""' "$SUMMARY" 2>/dev/null)
+if [[ "$W12" == "24h" && "$W13" == "turn" ]]; then
+  ok "Case 13: window is 24h without a per-session ref and turn with one"
+else
+  ng "Case 13: expected 24h/turn, got '$W12'/'$W13'"
+fi
+
+# --- Case 14 (R15): the banner labels a 24 h window as such ----------------
+# The first Stop of every session counts 24 h of every session's rows; the
+# banner called that "since last turn" (34 denies for a session that had 0).
+rm -f "$SUMMARY" "$SUMMARY.last-shown"
+echo '{"ts":"2026-05-09T10:00:00Z","since":"2026-05-08T10:00:00Z","window":"24h","total":5,"denies":5,"bypasses":0,"warns":0,"top_section":"§8-rm-rf-var"}' > "$SUMMARY"
+OUT=$(echo '{"hook_event_name":"SessionStart"}' | DISABLE_UPSTREAM_CHECK=1 bash "$PLUGIN_ROOT_FAKE/hooks/session-start-check.sh" 2>/dev/null || true)
+if echo "$OUT" | grep -qF 'last 24 h, all sessions: 5 denies' && ! echo "$OUT" | grep -q 'since last turn'; then
+  ok "Case 14: a 24h-window summary is labelled as 24 h across sessions"
+else
+  ng "Case 14: label wrong (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((12 - FAIL))/12 passed"
+  echo "Tests: $((14 - FAIL))/14 passed"
   exit 1
 fi
-echo "Tests: 12/12 passed"
+echo "Tests: 14/14 passed"

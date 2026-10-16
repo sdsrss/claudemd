@@ -83,6 +83,9 @@ LOG_FILE="$HOME/.claude/logs/claudemd.jsonl"
 # Window: from SUMMARY_REF mtime (last session-summary touch) to now. First
 # run after install (no sentinel) or pruned state → 24h fallback.
 SINCE_TS=""
+# Which window was counted (R15): "turn" from this session's ref, "24h" from the
+# fallback, which is every session's rows. SessionStart labels the banner by it.
+WINDOW="turn"
 if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   smtime=$(platform_stat_mtime "$SUMMARY_REF" 2>/dev/null || true)
   if [[ -n "$smtime" ]]; then
@@ -92,6 +95,7 @@ if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; th
   fi
 fi
 if [[ -z "$SINCE_TS" ]]; then
+  WINDOW="24h"
   # GNU `date -d`, BSD `date -v`. Try GNU first; on failure fall back.
   SINCE_TS=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -v-1d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
@@ -116,7 +120,7 @@ fi
 # deny-prose; not deny-prose-dry-run, which exits 0) plus sandbox-disposal's
 # Stop `block` (D#77; the literal "deny" counted 1 of those 4).
 SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
-  | jq -s -c --arg since "$SINCE_TS" '
+  | jq -s -c --arg since "$SINCE_TS" --arg window "$WINDOW" '
       def blocking: (.event | type == "string")
         and ((.event | startswith("deny")) and .event != "deny-prose-dry-run" or .event == "block");
       map(select(.ts >= $since))
@@ -132,6 +136,7 @@ SUMMARY=$(jq -R 'try fromjson catch empty' "$LOG_FILE" 2>/dev/null \
       | {
           ts: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
           since: $since,
+          window: $window,
           total: $total,
           denies: $denies,
           bypasses: $bypasses,

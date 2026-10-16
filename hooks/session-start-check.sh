@@ -317,8 +317,9 @@ emit_session_summary_banner() {
   [[ -f "$f" ]] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
-  local denies bypasses warns top_section
+  local denies bypasses warns top_section window
   denies=$(jq -r '.denies // 0' "$f" 2>/dev/null) || return 0
+  window=$(jq -r '.window // ""' "$f" 2>/dev/null) || window=""
   bypasses=$(jq -r '.bypasses // 0' "$f" 2>/dev/null) || return 0
   warns=$(jq -r '.warns // 0' "$f" 2>/dev/null) || return 0
   top_section=$(jq -r '.top_section // ""' "$f" 2>/dev/null) || return 0
@@ -342,7 +343,13 @@ emit_session_summary_banner() {
   # Stop fires at every turn boundary — so what a fresh session sees here is the
   # PREVIOUS SESSION'S LAST TURN, not its whole run. The old label invited the
   # reader to treat one turn's denies as a session total.
-  local msg="[claudemd] since last turn: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
+  #
+  # A session's FIRST Stop has no per-session ref, so session-summary.sh counts
+  # its 24 h fallback over every session's rows (R15). Labelled "since last
+  # turn", that told the model a session with 0 rows had 34 denies.
+  local label="since last turn"
+  [[ "$window" == "24h" ]] && label="last 24 h, all sessions"
+  local msg="[claudemd] ${label}: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
   [[ -n "$top_section" && "$top_section" != "null" ]] && msg+=", top: ${top_section}"
   msg+=". The user can turn this off with DISABLE_SESSION_SUMMARY_BANNER=1"
 
