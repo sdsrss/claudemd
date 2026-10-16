@@ -62,6 +62,7 @@
 - 2026-10-16：用户授权整套实现（规范 + hook + 发布 0.110.0）。在 `release/v0.110.0` 分支上做（L3 的隔离步骤）。
 - 规范句子最终放在 §7 Git 段末尾（"Both override …" 之后），因为 "Both" 指前两句，插在中间会改变它的指代。
 - 进展：S1–S3 完成，S4 发版进行中。
+- 用户 2026-10-16：本任务发版完成后，再做下一项 R6(b)（用离线样例对比现在的 rework-breaker 提示和"换思路"版提示，约 $20–40）；不改变本任务的顺序。
 
 ## 验证记录
 
@@ -71,3 +72,5 @@
 - `node scripts/version-cascade-check.js` → 通过（v8.1 一致，Sizing 在 ±20B 内，插件 0.110.0 六处一致）
 - `node scripts/spec-coherence-audit.js --strict` → 通过（5/5，coreDelta=0，extendedDelta=0）
 - 离线对比 `tasks/merged-branch-ab/RESULT.md` → 通过（旧规范删除 0/5，新规范 5/5，都用 `git branch -d`）
+- 打 tag 前评审第 1 轮（deaca4f..df0c7a0）→ 0 Critical / 0 High / 2 Medium / 4 Low；M1、M2、L1–L3 已修（56cf681 和 CHANGELOG），L4 由第二轮对比补证据。
+- 离线对比第二轮（最终文本 B2）→ 通过（普通合并删除 5/5，都用 `-d`；squash 合并保留 5/5、`-D` 0/5；旧规范 squash 保留 5/5、未尝试删除）
