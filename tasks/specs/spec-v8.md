@@ -1,5 +1,5 @@
 # 规范 v8.0.0：对齐 Opus 5.5 / Claude Code 2.1.301，汇报改三段式，歧义自己决定
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -36,7 +36,7 @@
 - [x] AC5：`evidence-gate` 把"变更"段当作完成声明，"未运行 / 无法运行"豁免 — 验证：`bash tests/hooks/evidence-gate.test.sh`
 - [x] AC6：A/B（Opus 5.5，每格 10 次）B 臂：L0/L1 技能调用 0；先复现、先红、打 tag 前评审都不低于 A 臂减 1；三段式汇报 ≥ 9/10；歧义任务中途提问 0/10 且写下决定 ≥ 9/10 — 验证：`tasks/v8-ab/RESULT.md`
 - [x] AC7：打 tag 前独立评审无未修的 Critical / High — 验证：评审报告路径记在验证记录里
-- [ ] AC8：合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
+- [x] AC8：合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
 
 ## 方案
 
@@ -67,7 +67,7 @@
 - [x] S6：A/B — 覆盖 AC6 — 依赖：S2 — 执行：主会话驱动脚本
 - [x] S7：发版提交（插件 0.109.0）、推分支、草稿 PR、CI 绿 — 覆盖 AC3 — 依赖：S1–S6 — 执行：主会话
 - [x] S8：打 tag 前独立评审与修复 — 覆盖 AC7 — 依赖：S7 — 执行：release-reviewer
-- [ ] S9：合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8 — 执行：主会话，用户 2026-10-16 发话
+- [x] S9：合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8 — 执行：主会话，用户 2026-10-16 发话
 
 ## 决策与进展
 
@@ -93,7 +93,8 @@
 - 2026-10-16：AC6 的三段式一项按“第二、三轮合计”判定为达标：第三轮单独 22/25（88%），低于 9/10；第二、三轮的 §10 条文相同（dc64271 之后没改），合计 46/50（92%）。其余各项第三轮都是 5/5。
 - 2026-10-16：2bcd73c 上全套检查第一次失败在 `pre-bash-safety` 的 150 KB SIGPIPE 行（hook 无输出 = 放行），重跑通过。单跑该行 hook 以 134（SIGABRT）退出 1/20，之后 0/310。该 hook 和测试从 0.108.0 之前就没改过，不是这次引入的；按 Hard-AUTH override 记在遗留，登记为延期项（最高优先级）。
 - 2026-10-16：用户决定：无人值守的放宽按建议保留；删除 `tasks/lessons.md`（内容在 git 历史里，`.gitignore` 的例外一并去掉）；评审完即合入、打 tag、发布，不再等 10-26。代价：lang-drift 窗口内核心 §1 语言条款改写，G1b-G2 窗口内 `evidence-gate` 判定改变（G1b 已作废；`rework-breaker` 没改，G2 按截断规则不截断）。两份 PREREG 已追加附记，本机数据从 0.109.0 第一条日志行起另分一段，暴露时间在安装后补记。
-- 当前进行到：S9。
+- 2026-10-16：已发布。`main` 快进到 9ac0d1a，附注 tag `v0.109.0`，GitHub 发布已建，npm `claudemd-cli@0.109.0`。本机 08:37:13Z 起运行 0.109.0（两份 PREREG 已补记暴露时间）。
+- 当前进行到：全部完成。发版后的事：10-26 前后按 PREREG 读窗口；D#344（pre-bash-safety 150 KB 行的 SIGABRT）优先处理；D#340–D#343 排在之后。
 
 ## 验证记录
 
@@ -111,3 +112,6 @@
 - 打 tag 前评审第 2 轮（新的 release-reviewer，869ee1e..2f1071f）→ 通过：0 Critical、0 High；1 Medium 已修
 - 2bcd73c 上 `BASH32_BIN=… CLAUDEMD_BASH32_REQUIRED=1 npm run check` → 失败 1 次（`pre-bash-safety` 150 KB SIGPIPE 行，旧问题），重跑 → 通过（node 1,494/1,495，1 跳过；44 个 hook 套件在 bash 3.2 下通过）；`npm run smoke` → 通过（2/2）
 - 第三轮 A/B（只跑 B 臂，冻结文本 `tasks/v8-ab/B2/`，35 次）→ 通过：7 个任务全部 5/5；三段式 22/25；$8.53；见 `tasks/v8-ab/RESULT.md`
+- PR CI 38871035548（9ac0d1a）→ 通过（7/7）；9ac0d1a 上 `npm run check` → 通过（node 1,494/1,495，1 跳过）
+- tag `v0.109.0` 的 ci 38872881145 → 通过（7/7）；npm-publish 38872881162 → 通过（日志 `+ claudemd-cli@0.109.0`，registry `dist-tags.latest` = 0.109.0）；main 的 ci 38872876473 → 通过
+- 本机安装：`installed_plugins.json` 为 0.109.0，安装目录 `hooks/` 与标签 `diff -rq` 为空，`~/.claude/CLAUDE.md` 与标签的 `spec/CLAUDE.md` 相同 → 通过
