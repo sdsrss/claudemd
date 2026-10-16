@@ -24,7 +24,7 @@
   - 不删任何 HARD 规则（§13 META：删除要先挂 30 天宽限），只改写内容，编号不变；
   - 不改 `rework-breaker.sh`（G2 窗口到 10-26）、不改 `evidence-gate` 的通道（G1b 修订：任何给模型的通道要先过 0.8 精确率）；
   - 不改 `session-start-check.sh` 的检查点横幅、`session-end-check.sh` 的检查点写入（没有 spec 的任务仍用它）；
-  - 不在 10-26 之前合入 `main` 或打 tag；
+  - 原定不在 10-26 之前合入 `main` 或打 tag；2026-10-16 用户改为评审完即发布（见决策与进展）；
   - claude-mem-lite 的召回减量（提示词已给用户，在那个仓库做）。
 
 ## 验收标准
@@ -36,7 +36,7 @@
 - [x] AC5：`evidence-gate` 把"变更"段当作完成声明，"未运行 / 无法运行"豁免 — 验证：`bash tests/hooks/evidence-gate.test.sh`
 - [x] AC6：A/B（Opus 5.5，每格 10 次）B 臂：L0/L1 技能调用 0；先复现、先红、打 tag 前评审都不低于 A 臂减 1；三段式汇报 ≥ 9/10；歧义任务中途提问 0/10 且写下决定 ≥ 9/10 — 验证：`tasks/v8-ab/RESULT.md`
 - [x] AC7：打 tag 前独立评审无未修的 Critical / High — 验证：评审报告路径记在验证记录里
-- [ ] AC8：10-26 之后合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
+- [ ] AC8：合入 `main`、打 tag、发布，tag 的 ci 与 npm-publish 绿 — 验证：`gh run list -R sdsrss/claudemd --commit <sha>`
 
 ## 方案
 
@@ -67,7 +67,7 @@
 - [x] S6：A/B — 覆盖 AC6 — 依赖：S2 — 执行：主会话驱动脚本
 - [x] S7：发版提交（插件 0.109.0）、推分支、草稿 PR、CI 绿 — 覆盖 AC3 — 依赖：S1–S6 — 执行：主会话
 - [x] S8：打 tag 前独立评审与修复 — 覆盖 AC7 — 依赖：S7 — 执行：release-reviewer
-- [ ] S9：10-26 之后合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8，且两个评估窗口已关 — 执行：主会话，需用户发话
+- [ ] S9：合入、打 tag、发布 — 覆盖 AC8 — 依赖：S8 — 执行：主会话，用户 2026-10-16 发话
 
 ## 决策与进展
 
@@ -92,7 +92,8 @@
 - 2026-10-16：评审第 2 轮（新的 release-reviewer，只看 869ee1e..2f1071f）：0 Critical、0 High、1 Medium、10 Low。Medium 是 CHANGELOG 的 Sizes 行还是第 1 轮之前的数字，已改。Low 里修了：两个所有测试都杀不死的变异（补了测试）、三处过时注释、本文件的验证记录。没修的 4 条都是 opt-in hook 或离线扫描器的代码改动（空行后的标签行让后面的检查项不再被判、分组列表、not run 豁免的 locale 依赖和 "does not run"、turn-yield 不认 `## 汇报：`），按评审规则 Low 默认不修；再改代码就要第 3 轮评审，超过深度上限 2，所以登记为延期项，发版后处理。B.2 示例缺 `## Report` 标题不改：它只示范验证段，完整汇报在 §10-R。
 - 2026-10-16：AC6 的三段式一项按“第二、三轮合计”判定为达标：第三轮单独 22/25（88%），低于 9/10；第二、三轮的 §10 条文相同（dc64271 之后没改），合计 46/50（92%）。其余各项第三轮都是 5/5。
 - 2026-10-16：2bcd73c 上全套检查第一次失败在 `pre-bash-safety` 的 150 KB SIGPIPE 行（hook 无输出 = 放行），重跑通过。单跑该行 hook 以 134（SIGABRT）退出 1/20，之后 0/310。该 hook 和测试从 0.108.0 之前就没改过，不是这次引入的；按 Hard-AUTH override 记在遗留，登记为延期项（最高优先级）。
-- 当前进行到：S8、S6 完成；S9 等 10-26 之后，需用户发话。
+- 2026-10-16：用户决定：无人值守的放宽按建议保留；删除 `tasks/lessons.md`（内容在 git 历史里，`.gitignore` 的例外一并去掉）；评审完即合入、打 tag、发布，不再等 10-26。代价：lang-drift 窗口内核心 §1 语言条款改写，G1b-G2 窗口内 `evidence-gate` 判定改变（G1b 已作废；`rework-breaker` 没改，G2 按截断规则不截断）。两份 PREREG 已追加附记，本机数据从 0.109.0 第一条日志行起另分一段，暴露时间在安装后补记。
+- 当前进行到：S9。
 
 ## 验证记录
 

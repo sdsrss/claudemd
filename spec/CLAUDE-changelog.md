@@ -6,7 +6,7 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
-## v8.0.0 (major, 2026-10-15) — three-part report, decide-and-record on low-risk ambiguity, harness duplicates dropped
+## v8.0.0 (major, 2026-10-16) — three-part report, decide-and-record on low-risk ambiguity, harness duplicates dropped
 
 Analysis `docs/spec-optimization-plan-2026-10-15.md`; design record `tasks/specs/spec-v8.md`. Major, because the report protocol changes (four sections and `[PARTIAL]` → `## 汇报` with three parts) and §0's ASK default changes. No HARD rule added or removed; every rule keeps its ID; two HARD rules are rewritten and four more change what they require (§8.V4, Mid-SPINE turn-yield, Session-exit, Specificity; see their bullets).
 

@@ -90,14 +90,14 @@ docs/audit/*.json
 # convention files:
 #  - tasks/specs/ (§2.S SPEC ARTIFACT — persistent design record per feature)
 #  - tasks/s8-tokenizer/ (CHANGELOG equivalence-proof harness)
-#  - tasks/lessons.md, tasks/rule-candidates-2026-04.md (§10-R / §13.2 + hard-rules.json)
+#  - tasks/rule-candidates-2026-04.md (§13.2 + hard-rules.json); tasks/lessons.md was
+#    retired with spec v8.0.0 (0.109.0) and is in git history
 #  - the audit-deferred / evaluation / provenance files cited by spec CLAUDE-extended.md,
 #    hooks/scripts comments, or CHANGELOG.
 # NEW working docs stay local unless added here. Rule: feedback_docs_tasks_local_only.
 tasks/*
 !tasks/specs/
 !tasks/s8-tokenizer/
-!tasks/lessons.md
 !tasks/rule-candidates-2026-04.md
 !tasks/audit-2026-07-15-deferred.md
 !tasks/audit-2026-07-25-deferred.md
