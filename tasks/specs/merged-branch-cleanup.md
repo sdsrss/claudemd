@@ -40,11 +40,11 @@
 
 ## 方案
 
-- 核心 §7 **Git** 句子草案（英文，接在 "Push, tag and release only when asked." 之后）：
-  "A local branch whose work you merged into the main line is deleted with `git branch -d`, which refuses unmerged work; a branch the project keeps stays."
-  预计核心增加约 170 B（现为 23,156 B）。
-- branch-prune 提示草案：
-  "[claudemd] branch-prune: N local branch(es) are on main (or origin/main) and their remote branch was deleted, or are worktree-agent-* on it: NAMES. They are merged: delete them with `CMD`, run with main checked out — -d re-checks that each is merged … and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
+- 核心 §7 **Git** 最终句子（英文，放在段末 "… opts out." 之后）：
+  "After you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it; if `-d` refuses, keep the branch and name it under open items, never `-D`."
+  核心 23,156 → 23,351 B（草案时估计约 +170 B；评审第 1 轮加了 `-d` 被拒的分句）。
+- branch-prune 最终提示：
+  "[claudemd] branch-prune: N local branch(es) are on main (or origin/main) and their remote branch was deleted, or are worktree-agent-* on it: NAMES. They are merged: delete them with `CMD` (leave out any the project keeps), run with main checked out — -d re-checks that each is merged … and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
 - 取舍：
   - 规则只管"本任务合并的分支"，模型确切知道是哪几个，不会误删别人的备份分支；
   - 历史遗留的已合并分支，靠 hook 在下次合并、拉取、推送时列出；没有上游的旧分支仍需人工或下次任务处理。
@@ -58,10 +58,13 @@
 
 ## 决策与进展
 
-- 2026-10-16：用户要求删除后，已用 `git branch -d` 删掉 claudemd 的 4 个已合并分支；`next-release` 按项目约定保留。code-graph-mcp 的 `usage-audit` 查看时已不存在。
+- 2026-10-16：用户要求删除后，已用 `git branch -d` 删掉 claudemd 的 4 个已合并分支；`next-release` 没删：它是发版手册里常设的待发分支（发版后 `git branch -f next-release main`），但项目 CLAUDE.md 没有写明"保留"，所以规范变更记录里不再拿它举例。code-graph-mcp 的 `usage-audit` 查看时已不存在。
 - 2026-10-16：用户授权整套实现（规范 + hook + 发布 0.110.0）。在 `release/v0.110.0` 分支上做（L3 的隔离步骤）。
 - 规范句子最终放在 §7 Git 段末尾（"Both override …" 之后），因为 "Both" 指前两句，插在中间会改变它的指代。
-- 进展：S1–S3 完成，S4 发版进行中。
+- 评审第 1 轮 M1 → 决定加"`-d` 被拒就保留分支、写进遗留项，不用 `-D`"：squash 合并、上游落后于合并点时 git 拒绝 `-d` 并提示 `-D`，删除指令加上这个提示会把模型推向强删；而保留分支的代价只是一个 ref，由用户决定。重跑对比确认 squash 时 5/5 保留、0/5 用 `-D`。
+- 评审第 1 轮 L1 → hook 提示加"(leave out any the project keeps)"，与规范的豁免一致。
+- 评审第 2 轮 L2 延期：hook 列出的分支在本地 main 落后于 origin/main 时也会被 `-d` 拒绝，规范的 `-D` 分句只管"你合并的分支"。改 hook 的模型可见文字需要第三轮评审；这种分支的提交都在 origin/main 上，强删不丢提交，所以留到以后的版本。
+- 进展：S1–S3 完成，两轮评审完成，S4 发版进行中。
 - 用户 2026-10-16：本任务发版完成后，再做下一项 R6(b)（用离线样例对比现在的 rework-breaker 提示和"换思路"版提示，约 $20–40）；不改变本任务的顺序。
 
 ## 验证记录
@@ -74,3 +77,4 @@
 - 离线对比 `tasks/merged-branch-ab/RESULT.md` → 通过（旧规范删除 0/5，新规范 5/5，都用 `git branch -d`）
 - 打 tag 前评审第 1 轮（deaca4f..df0c7a0）→ 0 Critical / 0 High / 2 Medium / 4 Low；M1、M2、L1–L3 已修（56cf681 和 CHANGELOG），L4 由第二轮对比补证据。
 - 离线对比第二轮（最终文本 B2）→ 通过（普通合并删除 5/5，都用 `-d`；squash 合并保留 5/5、`-D` 0/5；旧规范 squash 保留 5/5、未尝试删除）
+- 打 tag 前评审第 2 轮（df0c7a0..8b0538d）→ 0 Critical / 0 High / 1 Medium / 4 Low；M1、L1、L3、L4 是文字修复（CHANGELOG、规范变更记录、pin 说明、本文件），做 claim-drift 自查；L2 延期（见决策）。PR CI 38916743440 → 通过（7/7）。
