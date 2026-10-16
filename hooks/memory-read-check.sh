@@ -246,11 +246,16 @@ fi
 # (Mirror sites: memory-prompt-hint.sh, banned-vocab-check.sh, lib/rule-hits.sh
 # — all call the same single source.)
 # The session's project ROOT, not the cwd (R15). Claude Code keeps the
-# transcript and memory/ under the root it was started in and exports it to
+# transcript under the directory the session started in and exports that to
 # hooks as CLAUDE_PROJECT_DIR; the event's cwd follows `cd`. A session that had
 # moved into a subdirectory encoded a dir with no MEMORY.md and failed open —
 # 47 `mem-index-missing` rows on the maintainer's machine, every one from a
 # project whose root index existed. No project dir → the cwd, as before.
+# Not covered (R18 review, reading the Claude Code 2.1.301 binary; no live
+# session checked): memory/ is keyed by the canonical git root, so a session
+# STARTED in a repo subdirectory or a linked worktree keeps MEMORY.md and the
+# transcript under different dirs and still fails open here. 0 such sessions
+# on the maintainer's machine (2026-10-16).
 ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$CWD}")
 MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
