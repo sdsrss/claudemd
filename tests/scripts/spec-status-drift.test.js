@@ -505,7 +505,11 @@ test('a v8 spec: the status line maps onto the open/closed vocabulary, and the l
   assert.equal(statusOf('# x\n状态：草稿\n'), 'draft');
   assert.equal(statusOf('# x\n状态：已完成\n'), 'done');
   assert.equal(statusOf('# x\nStatus: in progress\n'), 'in-progress');
-  // The template's own line lists all three words; it is not a status.
+  // The template's own line lists all three words; it is not a status. Flush
+  // left, so the end anchor is what rejects it: the indented copy in extended
+  // is rejected by the start anchor alone (0.109.0 pre-tag review L5).
+  assert.equal(statusOf('状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)\n'), undefined);
+  assert.equal(statusOf('Status: draft | in progress | done\n'), undefined);
   assert.equal(
     statusOf('  状态：草稿 | 进行中 | 已完成   (Status: draft | in progress | done)\n'),
     undefined
