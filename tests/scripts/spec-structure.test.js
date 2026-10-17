@@ -681,12 +681,12 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '007b123fbe83528e' },
+  { file: EXT, heading: '## Recent changes', sha256: 'ee7a2a4154c39a5c' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
   { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '6033d7f946da6b92' },
-  { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: '0cf5e32f68667de9' },
+  { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: 'f308d065ec44ba2e' },
   { file: EXT, heading: '## §11-EXT-MAC macOS shell portability (cross-ref)', sha256: 'db65bc3272ec5aeb' },
 ];
 

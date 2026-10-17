@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.2.0 (minor, 2026-10-17)** — from the 2026-10-17 prompt audit: core §2.1 no longer routes UI checks to gstack's `browse` (the user is removing gstack; the case against the Chrome tools was gstack's own) and drops the module-overview hint; §7's push-onto-red rule gains its reason; §8's deep-traversal reason names where tool output is saved now; §11-O **Long reports** replaces Report by file: a named spawn's report is cut at 4000 chars, an unnamed one's arrives whole, so reviews and audits are spawned unnamed and report in their final message. Design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. No HARD rule added or removed.
+**v8.2.0 (minor, 2026-10-17)** — from the 2026-10-17 prompt audit: core §2.1 no longer routes UI checks to gstack's `browse` (the user is removing gstack; the case against the Chrome tools was gstack's own) and drops the module-overview hint; §7's push-onto-red rule gains its reason; §8's deep-traversal reason names where tool output is saved now; §11-O **Long reports** replaces Report by file: a named spawn's report is cut at 4000 chars, an unnamed one's arrives whole, so reviews and audits are spawned unnamed and report in their final message; §11-EXT-MEM gives the memory path by git root. Design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. No HARD rule added or removed.
 
-**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36832 bytes (Δ +39); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36832/50000 (**13168 bytes headroom**).
+**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36885 bytes (Δ +92); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36885/50000 (**13115 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
@@ -418,7 +418,7 @@ One home per fact — double-writing creates drift.
 
 | Layer | Path | Time horizon | Use for |
 |---|---|---|---|
-| **Durable (CC built-in 4 types)** | `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` + `*.md` | session-spanning | user role / preference / cross-session lessons / project-permanent decisions |
+| **Durable (CC built-in 4 types)** | `~/.claude/projects/<encoded-git-root>/memory/MEMORY.md` + `*.md` | session-spanning | user role / preference / cross-session lessons / project-permanent decisions |
 | **Time-sensitive recall plugin** (e.g. `claude-mem-lite` FTS5 + timeline) | plugin-managed | days–weeks, rolls off | bugfix lessons / current-project state / recent activity |
 
 **Picking the home**: "will this be true 6 months from now?" Yes → durable. No → recall plugin. Conflict: durable wins; recall layer ages out.
