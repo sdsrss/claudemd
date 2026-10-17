@@ -58,6 +58,9 @@ PLUGIN_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
 hook_record_plugin_root "$PLUGIN_ROOT" "" 2>/dev/null || true
 
 hook_require_jq || { hook_record_failopen session-end-check jq-missing; exit 0; }
+# platform_timeout bounds the git calls that settle open changes (D#433).
+# shellcheck source=/dev/null
+source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 EVENT=$(hook_read_event) || exit 0
 TRANSCRIPT=$(hook_jq_field session-end-check "$EVENT" '.transcript_path // ""') || exit 0
@@ -77,7 +80,7 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 # only keeps counting them, the safe side for this checkpoint.
 ROOTS=("$CWD")
 _r=$(cd "$CWD" 2>/dev/null && pwd -P) && ROOTS+=("$_r")
-_r=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$_r")
+GIT_TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$GIT_TOP") || GIT_TOP=""
 [[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && ROOTS+=("$CLAUDE_PROJECT_DIR")
 ROOTS_JSON=$(printf '%s\n' "${ROOTS[@]}" | jq -R . | jq -sc 'map(select(startswith("/")))' 2>/dev/null) || ROOTS_JSON='[]'
 
@@ -171,6 +174,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
                              elif type == "string" then . else null end)) |
   (map(is_user_turn)) as $mask |
   ($mask | to_entries | map(select(.value)) | (last // {key: -1}) | .key) as $lastUser |
+  # The prompt'"'"'s time, for the stash test after this pass; null when unknown.
+  (if $lastUser >= 0 then .[$lastUser].timestamp else null end) as $since |
   .[$lastUser + 1:] |
   # Files each Bash command modified, keyed by its tool_use id. Claude Code
   # records them on the RESULT row (`toolUseResult.bashEditDiff`, CC >=2.1.278),
@@ -180,8 +185,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   # `python3 - <<PY … PY && npm test` edits and then verifies. `changedFiles`
   # is the complete list; `files[]` holds at most 5 diffs and can be empty
   # (0.99.0 pre-tag review M1), so both are read, once per path. Deduped in
-  # first-seen order, not with `unique`, which sorts: `recent` keeps the last
-  # three, and sorted they were the alphabetically last (D#96 L1).
+  # first-seen order, not with `unique`, which sorts: the checkpoint lists the
+  # last three, and sorted they were the alphabetically last (D#96 L1).
   (reduce (.[] | select(.toolUseResult | type == "object")
                 | [(.message.content // [] | if type == "array" then . else [] end
                     | map(select(.type == "tool_result") | .tool_use_id) | first),
@@ -198,9 +203,11 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   map(select(.type == "tool_use")) as $tools |
   $tools |
   reduce .[] as $t (
-    # `open` and `recent` cover only the changes made after the last validation:
+    # `open` and `opened` cover only the changes made after the last validation:
     # a validate clears both. `mutations` stays the count since the user prompt.
-    {mutations: 0, validates: 0, open: 0, recent: []};
+    # `opened` is complete, one entry per change, so the files settled below
+    # can be taken out of the count; `path` is the file, null when unknown.
+    {mutations: 0, validates: 0, open: 0, opened: []};
     # A non-string id or a non-object input must not throw (review M4).
     ($t.id | if type == "string" then . else "" end) as $tid |
     ($t.input | if type == "object" then . else {} end) as $in |
@@ -209,8 +216,7 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       .mutations += ($bf | length)
       | .open += ($bf | length)
       | .validates = 0
-      | .recent = ((.recent + ($bf | map({name: "Bash", target: .})))
-                   | (if length > 3 then .[length-3:] else . end))
+      | .opened += ($bf | map({name: "Bash", target: ., path: .}))
     else . end) |
     if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit")
        and (($in.file_path // $in.notebook_path) | in_project) then
@@ -225,7 +231,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # `!command` caveat row stopped being a boundary, correctly), which turned
       # the latent flaw into a live suppression on a common shape.
       | .validates = 0
-      | .recent = ((.recent + [{name: $t.name, target: ($in.file_path // $in.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
+      | .opened += [{name: $t.name, target: ($in.file_path // $in.notebook_path // "?"),
+                     path: ($in.file_path // $in.notebook_path | if type == "string" then . else null end)}]
     elif $t.name == "Bash" then
       ($in.command // "" | if type == "string" then . else "" end) as $cmd |
       # Anchor each validate verb to a command position — start of string or
@@ -239,10 +246,10 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # because it had no anchor at all).
       if ($cmd | test($vre)) or ([$cmd | scan("(?:^|[;&|\n])[ \t(]*(?:bash|sh|zsh)[ \t]+-l?c[ \t]+(?:\u0027([^\u0027]*)\u0027|\"([^\"]*)\")")]
             | map(.[] | select(. != null)) | any(test($vre))) then
-        .validates += 1 | .open = 0 | .recent = []
+        .validates += 1 | .open = 0 | .opened = []
       else . end
     else . end
-  )
+  ) | .since = $since
 ' 2>/dev/null)
 
 [[ -n "$RESULT" ]] || exit 0
@@ -250,22 +257,112 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
 MUTATIONS=$(printf '%s' "$RESULT" | jq -r '.mutations // 0' 2>/dev/null)
 VALIDATES=$(printf '%s' "$RESULT" | jq -r '.validates // 0' 2>/dev/null)
 OPEN=$(printf '%s' "$RESULT" | jq -r '.open // 0' 2>/dev/null)
+OPENED=$(printf '%s' "$RESULT" | jq -c '.opened // []' 2>/dev/null) || OPENED='[]'
 
-# Trip condition: mutations > 0 AND validates == 0. Equivalent to OPEN > 0: a
-# mutation zeroes `validates`, a validate zeroes `open`, so at the end whichever
-# came last decides both. OPEN is what the user is told; MUTATIONS is context.
+# D#433: a change whose file matches the commit at HEAD again by the end leaves
+# nothing to validate: a branch switch (session af7b7d07 committed on
+# next-release, ran `git checkout main`, and was checkpointed for the 17 files
+# the switch rewrote), a `git restore`, an edit undone. That content is a
+# commit's, and `git commit` counts as a validation above. Asked only when
+# something is open; any git failure or timeout drops nothing. The first
+# attempt (D#404, 8d88816) asked `git status` for the whole tree and kept what
+# it listed; the 0.113.0 pre-tag review found the shapes that dropped real
+# edits, and each now stays:
+#  - a stash made after the prompt, or with no prompt time to compare: the
+#    stashed work is unvalidated though the tree matches HEAD;
+#  - a file that is itself a symlink (the edit went to its target: AGENTS.md
+#    -> CLAUDE.md), or whose directory resolves outside the repo (`cd -P`);
+#  - anything git does not track with the plain `H` tag: untracked, ignored,
+#    under .git or a submodule, assume-unchanged, skip-worktree, unmerged, a
+#    path whose case differs from the index's on a case-insensitive disk;
+#  - anything `git status` lists as changed, staged, deleted or renamed.
+# Settled: not listed, and either tracked and present, or absent from the
+# tree and the index. Paths go to git as separate arguments and git's answers
+# reach jq on stdin (8d88816's --argjson failed past Linux's 128 KiB single-
+# argument cap); each call is bounded at 0.5 s, 1.5 s in all, inside the 3 s
+# SessionEnd budget. The watchdog without coreutils kills the process it
+# started, which for a direct git call is git itself. Past 1,000 open changes
+# nothing is asked: the per-path loop and git's pathspec matching grow with the
+# list. 12,530 paths took the hook from 2.3 s to 4.6 s, past the budget; 2,000
+# took it from 0.19 s to 0.67 s under bash 5.3 and to 1.05 s under bash 3.2,
+# which with the git bounds leaves too little of the 3 s (2026-10-17).
+if [[ "${OPEN:-0}" -gt 0 && "${OPEN:-0}" -le 1000 && "$GIT_TOP" == /* ]] \
+   && declare -f platform_timeout >/dev/null 2>&1; then
+  _settle=0
+  if _st=$(platform_timeout 0.5 git --no-optional-locks -C "$GIT_TOP" for-each-ref \
+        --format='%(committerdate:raw)' refs/stash 2>/dev/null); then
+    _settle=1
+    if [[ -n "$_st" ]]; then
+      _since=$(printf '%s' "$RESULT" | jq -r '.since | strings | sub("\\.[0-9]+"; "") | fromdateiso8601 | floor' 2>/dev/null) || _since=""
+      [[ "${_st%% *}" =~ ^[0-9]+$ && "$_since" =~ ^[0-9]+$ ]] && (( ${_st%% *} < _since )) || _settle=0
+    fi
+  fi
+  _top=$(cd "$GIT_TOP" 2>/dev/null && pwd -P) || _settle=0
+  if (( _settle )); then
+    # One record per opened entry, in order: "" = keep, "E:<rel>" = present,
+    # "A:<rel>" = absent; <rel> is the physical path under the top level.
+    _recs=(); _ask=(); _here=$PWD
+    while IFS= read -r -d '' _t; do
+      _rec=""
+      if [[ -n "$_t" ]]; then
+        [[ "$_t" == /* ]] || _t="$CWD/$_t"
+        _d=${_t%/*}; _b=${_t##*/}; [[ -n "$_d" ]] || _d=/
+        if [[ -n "$_b" && "$_b" != . && "$_b" != .. ]] && builtin cd -P -- "$_d" 2>/dev/null \
+           && [[ ! -L "$PWD/$_b" ]]; then
+          if [[ "$PWD" == "$_top" ]]; then _rec=$_b
+          elif [[ "$PWD" == "$_top"/* ]]; then _rec=${PWD#"$_top"/}/$_b
+          fi
+          if [[ -n "$_rec" ]]; then
+            _ask+=("$_rec")
+            if [[ -e "$PWD/$_b" ]]; then _rec="E:$_rec"; else _rec="A:$_rec"; fi
+          fi
+        fi
+      fi
+      _recs+=("$_rec")
+    done < <(printf '%s' "$OPENED" | jq -j '.[] | (.path | strings // "") + "\u0000"' 2>/dev/null)
+    builtin cd -- "$_here" 2>/dev/null || true
+    if (( ${#_ask[@]} > 0 )) \
+       && _lsf=$(platform_timeout 0.5 git --no-optional-locks --literal-pathspecs -C "$_top" \
+            ls-files -v -z -- "${_ask[@]}" 2>/dev/null \
+          | jq -R -s -c 'split("\u0000") | map(select(length > 1) | {key: .[2:], value: .[0:1]}) | from_entries' 2>/dev/null) \
+       && _sts=$(platform_timeout 0.5 git --no-optional-locks --literal-pathspecs -C "$_top" \
+            status --porcelain=v1 -z --untracked-files=no -- "${_ask[@]}" 2>/dev/null \
+          | jq -R -s -c 'split("\u0000") | map(select(length > 0))
+              | reduce .[] as $f ({paths: {}, src: false};
+                  if .src then .paths[$f] = true | .src = false
+                  else .paths[$f[3:]] = true | .src = ($f[0:2] | test("[RC]")) end)
+              | .paths' 2>/dev/null) \
+       && _kept=$( { printf '%s\n' "$OPENED"
+                     printf '%s\0' "${_recs[@]}" | jq -R -s -c 'split("\u0000")[:-1]'
+                     printf '%s\n%s\n' "$_lsf" "$_sts"; } \
+          | jq -s -c '.[0] as $o | .[1] as $r | .[2] as $tag | .[3] as $listed
+              | if ($r | length) != ($o | length) then $o
+                else [range(0; $o | length) as $i | $r[$i] as $x
+                      | select(($x | length) == 0 or $listed[$x[2:]]
+                               or (if $x[0:2] == "E:" then $tag[$x[2:]] != "H" else $tag[$x[2:]] != null end))
+                      | $o[$i]] end' 2>/dev/null) \
+       && _n=$(printf '%s' "$_kept" | jq 'length' 2>/dev/null) && [[ "$_n" =~ ^[0-9]+$ ]]; then
+      OPENED="$_kept"; OPEN="$_n"
+    fi
+  fi
+fi
+
+# Trip condition: open > 0 AND validates == 0. A mutation zeroes `validates`
+# and a validate zeroes `open`, so at the end whichever came last decides both;
+# open can then only drop, by the settled files above. OPEN is what the user is
+# told; MUTATIONS, the count since the prompt, is context.
 # A session that changed only markdown trips too, on purpose: spec/CLAUDE.md,
 # SKILL.md and commands/*.md are model-visible text (core §2 makes them L3), so
 # skipping `*.md` would drop the edits this checkpoint matters most for
 # (converge D11).
-if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
+if [[ "${OPEN:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
   mkdir -p "$CWD/tasks" 2>/dev/null || exit 0
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || TS="unknown"
   SLUG=$(printf 'session-end-%s' "${SESSION_ID:0:8}")
   PAUSED="$CWD/tasks/${SLUG}-paused.md"
 
-  RECENT_LIST=$(printf '%s' "$RESULT" | jq -r '
-    (.recent // []) | map("- \(.name): \(.target)") | join("\n")
+  RECENT_LIST=$(printf '%s' "$OPENED" | jq -r '
+    (if length > 3 then .[length-3:] else . end) | map("- \(.name): \(.target)") | join("\n")
   ' 2>/dev/null)
 
   # The write is checked: an unwritable or full tasks/ used to leave stderr
@@ -291,7 +388,8 @@ Generated by claudemd \`session-end-check.sh\` at $TS.
 
 Since the final user prompt the assistant made **$OPEN change(s) after the last validation**
 ($MUTATIONS in this turn; a change is one Edit / Write / NotebookEdit call, or one project
-file a Bash command modified) and there is **no VALIDATE signal after the last mutation**
+file a Bash command modified; the first number leaves out files that match the commit at
+HEAD again by the end) and there is **no VALIDATE signal after the last mutation**
 (test runner / lint / typecheck / git commit / git push).
 
 A validation earlier in the session does not count here, and this checkpoint is

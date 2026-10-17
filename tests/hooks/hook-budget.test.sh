@@ -796,8 +796,10 @@ for hook in ${NET_HOOKS[@]+"${NET_HOOKS[@]}"}; do
     fail "$hook has no timeout declared in hooks.json (or is not registered)"
     continue
   fi
-  WORST=$(grep -oE 'platform_timeout [0-9]+' "$HOOKS_DIR/$hook.sh" | awk '{ if ($2 > m) m = $2 } END { print m + 0 }')
-  if (( WORST > 0 && WORST < BUDGET )); then
+  # Fractional ceilings count (session-end-check bounds each git call at 0.5 s):
+  # an integer-only match read `platform_timeout 0.5` as 0 and failed it.
+  WORST=$(grep -oE 'platform_timeout [0-9]+(\.[0-9]+)?' "$HOOKS_DIR/$hook.sh" | awk '{ if ($2 + 0 > m) m = $2 + 0 } END { print m + 0 }')
+  if awk -v w="$WORST" -v b="$BUDGET" 'BEGIN { exit !(w > 0 && w < b) }'; then
     pass "$hook bounds its blocking call at ${WORST}s, inside its ${BUDGET}s hooks.json timeout"
   else
     fail "$hook wraps a blocking call at ${WORST}s against a ${BUDGET}s hooks.json timeout — the harness kills it first, and a killed hook emits nothing"

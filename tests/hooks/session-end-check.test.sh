@@ -991,6 +991,264 @@ else
   ng "Case 31d: (dir=$(ls -A "$P31"); tasks=$(ls -A "$TMP_CWD/tasks"); stderr=$(cat "$TMP_HOME/stderr"))"
 fi
 
+# --- Case 32 (D#404, D#433): a change whose file matches the commit at HEAD
+# again by the end left nothing to validate. Session af7b7d07 committed
+# everything on next-release, ran `git checkout main`, and its checkpoint
+# listed the 17 files the switch changed. A file still counts when git lists it
+# as changed, staged or deleted, when git does not track it (untracked,
+# ignored), or when a stash was made after the prompt.
+G32="$TMP_CWD/repo32"
+mkdir -p "$G32"
+git32() { git -C "$G32" -c user.email=t@t -c user.name=t -c init.defaultBranch=main "$@" >/dev/null 2>&1; }
+git32 init -q
+printf 'ign/\n' > "$G32/.gitignore"
+printf 'main\n' > "$G32/a.txt"; printf 'keep\n' > "$G32/b.txt"
+git32 add -A; git32 commit -qm init
+git32 checkout -qb feat
+printf 'feat\n' > "$G32/a.txt"; printf 'only on feat\n' > "$G32/f.txt"
+git32 add -A; git32 commit -qm feat
+git32 checkout -q main
+[[ "$(cat "$G32/a.txt")" == main && ! -e "$G32/f.txt" ]] \
+  || ng "Case 32 setup: repo32 is not on main's tree"
+checkout_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"git checkout main"}}]}}'
+# bash_result FILE... — the result row of `tb` listing FILE... as changedFiles.
+# Built on stdin: case 33e's list is past the 128 KiB a single argument holds.
+bash_result() {
+  printf '%s\n' "$@" | jq -R . | jq -sc '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"tb",content:""}]},toolUseResult:{stdout:"",bashEditDiff:{files:[],changedFiles:.}}}'
+}
+run_hook32() {
+  local event
+  rm -rf "${G32:?}/tasks"
+  event=$(printf '{"hook_event_name":"SessionEnd","session_id":"x","transcript_path":"%s","cwd":"%s"}' "$1" "${2:-$G32}")
+  printf '%s' "$event" | bash "$HOOK" 2>"$TMP_HOME/stderr"
+}
+P32="$G32/tasks/session-end-x-paused.md"
+opens32() { grep -o '\*\*[0-9]* change(s) after the last validation\*\*' "$P32" 2>/dev/null | tr -dc '0-9'; }
+T="$TMP_HOME/case32.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
+
+# 32a: both files match main again (f.txt is gone from the tree and from HEAD).
+run_hook32 "$T"
+if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]]; then
+  ok "Case 32a: a branch switch to a committed tree writes no checkpoint"
+else
+  ng "Case 32a: checkout of a committed tree read as unvalidated (stderr=$(cat "$TMP_HOME/stderr"))"
+fi
+
+# 32b: the same switch with a.txt changed in the work tree afterwards: only
+# a.txt is still open, and the count says so.
+printf 'edited\n' > "$G32/a.txt"
+run_hook32 "$T"
+if [[ -f "$P32" ]] && grep -qF -- "- Bash: $G32/a.txt" "$P32" \
+   && ! grep -qF "f.txt" "$P32" && [[ "$(opens32)" == 1 ]] \
+   && grep -qxF 'file a Bash command modified; the first number leaves out files that match the commit at' "$P32"; then
+  ok "Case 32b: a file that differs from HEAD stays on the checkpoint, a settled one leaves it"
+else
+  ng "Case 32b: (paused=$(grep -E '^- |change\(s\) after' "$P32" 2>/dev/null))"
+fi
+git32 checkout -q -- a.txt
+
+# 32c: untracked, ignored, deleted and staged files are still open.
+printf 'u\n' > "$G32/u.txt"
+mkdir -p "$G32/ign"; printf 'n\n' > "$G32/ign/n.md"
+rm -f "$G32/b.txt"
+printf 'staged\n' > "$G32/s.txt"; git32 add s.txt
+T="$TMP_HOME/case32c.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/u.txt" "$G32/ign/n.md" "$G32/b.txt" "$G32/s.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 4 ]]; then
+  ok "Case 32c: untracked, ignored, deleted and staged files keep the checkpoint"
+else
+  ng "Case 32c: $(opens32) of 4 kept (paused=$(grep -E '^- ' "$P32" 2>/dev/null))"
+fi
+git32 rm -q --cached s.txt; rm -rf "${G32:?}/ign" "$G32/u.txt" "$G32/s.txt"; git32 checkout -q -- b.txt
+
+# 32d: an Edit undone by a stash. The tree matches HEAD, the work sits in the
+# stash; a stash made after the prompt (or with no prompt time to compare)
+# keeps the checkpoint, one older than the prompt does not.
+edit32_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"a.txt","old_string":"main","new_string":"x"}}]}}'
+printf 'stashed\n' > "$G32/a.txt"; git32 stash push -q
+T="$TMP_HOME/case32d.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit32_call" "$TR_OK"
+run_hook32 "$T"
+D1=$([[ -f "$P32" ]] && echo kept || echo dropped)
+USER_MSG_LATER='{"type":"user","timestamp":"2099-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Do X"}]}}'
+make_transcript "$T" "$USER_MSG_LATER" "$edit32_call" "$TR_OK"
+run_hook32 "$T"
+D2=$([[ -f "$P32" ]] && echo kept || echo dropped)
+USER_MSG_EARLIER='{"type":"user","timestamp":"2000-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Do X"}]}}'
+make_transcript "$T" "$USER_MSG_EARLIER" "$edit32_call" "$TR_OK"
+run_hook32 "$T"
+D3=$([[ -f "$P32" ]] && echo kept || echo dropped)
+if [[ "$D1 $D2 $D3" == "kept dropped kept" ]]; then
+  ok "Case 32d: a stash after the prompt keeps the checkpoint; an older one does not"
+else
+  ng "Case 32d: no-time/older-stash/newer-stash gave '$D1 $D2 $D3', expected 'kept dropped kept'"
+fi
+git32 stash drop -q
+
+# 32e: git failing drops nothing. A git that fails `status` stands in for a
+# repo git cannot read.
+SHIM32="$TMP_HOME/shim32"
+mkdir -p "$SHIM32"
+REAL_GIT=$(command -v git)
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = status ] && exit 1; done\nexec "%s" "$@"\n' "$REAL_GIT" > "$SHIM32/git"
+chmod +x "$SHIM32/git"
+T="$TMP_HOME/case32.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
+PATH="$SHIM32:$PATH" run_hook32 "$T"
+if [[ "$(opens32)" == 2 ]]; then
+  ok "Case 32e: when git status fails, every change stays on the checkpoint"
+else
+  ng "Case 32e: $(opens32) of 2 kept"
+fi
+
+# 32f: a project file outside the repo (CLAUDE_PROJECT_DIR elsewhere) is not
+# git's to vouch for.
+O32="$TMP_CWD/other32"
+mkdir -p "$O32"; printf 'o\n' > "$O32/o.txt"
+T="$TMP_HOME/case32f.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$O32/o.txt")"
+CLAUDE_PROJECT_DIR="$O32" run_hook32 "$T"
+if [[ -f "$P32" ]] && grep -qF -- "- Bash: $O32/o.txt" "$P32" && ! grep -qF "$G32/a.txt" "$P32"; then
+  ok "Case 32f: a file outside the repo stays on the checkpoint"
+else
+  ng "Case 32f: (paused=$(grep -E '^- ' "$P32" 2>/dev/null))"
+fi
+
+# 32g: a staged rename. Porcelain gives the source in its own field; both the
+# old and the new path are still open.
+git32 mv b.txt c.txt
+T="$TMP_HOME/case32g.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/b.txt" "$G32/c.txt" "$G32/a.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 2 ]] && grep -qF -- "- Bash: $G32/b.txt" "$P32" && grep -qF -- "- Bash: $G32/c.txt" "$P32"; then
+  ok "Case 32g: both sides of a staged rename stay open"
+else
+  ng "Case 32g: (paused=$(grep -E '^- |change\(s\) after' "$P32" 2>/dev/null))"
+fi
+git32 mv c.txt b.txt
+
+# 32h: cwd and paths given through a symlink (macOS /tmp and /var are
+# symlinks); git reports the physical top level, and the settled files settle.
+L32="$TMP_CWD/link32"
+ln -s "$G32" "$L32"
+T="$TMP_HOME/case32h.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$L32/a.txt" "$L32/f.txt")"
+run_hook32 "$T" "$L32"
+if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]]; then
+  ok "Case 32h: a symlinked cwd maps onto git's top level"
+else
+  ng "Case 32h: (stderr=$(cat "$TMP_HOME/stderr"))"
+fi
+
+# --- Case 33 (D#433): the shapes the 0.113.0 pre-tag review found the first
+# attempt (8d88816) dropping or mishandling.
+# 33a (M): an edit through an in-repo symlink. AGENTS.md -> CLAUDE.md; git
+# lists CLAUDE.md as changed and the link as unchanged.
+printf 'c\n' > "$G32/CLAUDE.md"; ln -s CLAUDE.md "$G32/AGENTS.md"
+git32 add -A; git32 commit -qm links
+printf 'edited through the link\n' > "$G32/AGENTS.md"
+edit33_call='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"'"$G32"'/AGENTS.md","old_string":"c","new_string":"x"}}]}}'
+T="$TMP_HOME/case33a.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit33_call" "$TR_OK"
+run_hook32 "$T"
+if [[ "$(opens32)" == 1 ]] && grep -qF -- "- Edit: $G32/AGENTS.md" "$P32"; then
+  ok "Case 33a: an edit made through an in-repo symlink stays on the checkpoint"
+else
+  ng "Case 33a: (paused=$(grep -E '^- |change\(s\) after' "$P32" 2>/dev/null))"
+fi
+git32 checkout -q -- CLAUDE.md
+
+# 33b (M): a file under an in-repo directory symlink that points outside the
+# repo. git sees only the link; the file is not git's to vouch for.
+X33="$TMP_CWD/outside33"
+mkdir -p "$X33"; printf 'x\n' > "$X33/x.txt"
+ln -s "$X33" "$G32/ext"
+git32 add ext; git32 commit -qm ext
+T="$TMP_HOME/case33b.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/ext/x.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 1 ]]; then
+  ok "Case 33b: a file reached through a directory symlink out of the repo stays open"
+else
+  ng "Case 33b: $(opens32) of 1 kept"
+fi
+
+# 33c (L): assume-unchanged and skip-worktree files hide their changes from
+# `git status`, a deletion included; all three stay open.
+printf 'au\n' > "$G32/au.txt"; printf 'sw\n' > "$G32/sw.txt"; printf 'sd\n' > "$G32/sd.txt"
+git32 add au.txt sw.txt sd.txt; git32 commit -qm flags
+git32 update-index --assume-unchanged au.txt; git32 update-index --skip-worktree sw.txt sd.txt
+printf 'changed\n' > "$G32/au.txt"; printf 'changed\n' > "$G32/sw.txt"; rm -f "$G32/sd.txt"
+T="$TMP_HOME/case33c.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/au.txt" "$G32/sw.txt" "$G32/sd.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 3 ]]; then
+  ok "Case 33c: assume-unchanged and skip-worktree files stay open, deleted or changed"
+else
+  ng "Case 33c: $(opens32) of 3 kept"
+fi
+git32 update-index --no-assume-unchanged au.txt; git32 update-index --no-skip-worktree sw.txt sd.txt
+git32 checkout -q -- au.txt sw.txt sd.txt
+
+# 33d (L): a file under .git is not a tracked file, whatever git status says.
+T="$TMP_HOME/case33d.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/.git/info/exclude" "$G32/a.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 1 ]] && grep -qF -- "- Bash: $G32/.git/info/exclude" "$P32"; then
+  ok "Case 33d: an edit under .git stays open"
+else
+  ng "Case 33d: (paused=$(grep -E '^- |change\(s\) after' "$P32" 2>/dev/null))"
+fi
+
+# 33e (L): more paths than one 128 KiB argument holds. 8d88816 handed git's
+# whole answer to jq as one --argjson; past Linux's single-argument cap jq did
+# not start and nothing was filtered. 1,000 open paths of ~190 bytes, the most
+# the hook settles; one more and it asks git nothing, every change counted.
+mkdir -p "$G32/many"
+PAD33=$(printf '%0150d' 0)
+for i in $(seq 1 1000); do : > "$G32/many/file-$i-$PAD33.txt"; done
+git32 add many; git32 commit -qm many
+MANY33=("$G32"/many/*.txt)
+T="$TMP_HOME/case33e.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "${MANY33[@]:1}")"
+printf 'edited\n' > "$G32/a.txt"
+run_hook32 "$T"
+E1=$(opens32)
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "${MANY33[@]}")"
+run_hook32 "$T"
+E2=$(opens32)
+if [[ "$E1 $E2" == "1 1001" && $(bash_result "${MANY33[@]}" | wc -c) -gt 131072 ]]; then
+  ok "Case 33e: 1,000 open paths (one changed) leave the changed one; 1,001 are all counted"
+else
+  ng "Case 33e: kept '$E1' of 1,000 (want 1) and '$E2' of 1,001 (want 1001)"
+fi
+git32 checkout -q -- a.txt
+
+# 33f (L): a slow git, one call at a time. Every call is bounded, so the hook
+# still ends inside its 3 s SessionEnd budget, and an unanswered question drops
+# nothing. The shim execs sleep, so the process the bound kills is the one
+# that holds the pipe.
+SLOW33="$TMP_HOME/slow33"
+mkdir -p "$SLOW33"
+T="$TMP_HOME/case32.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
+R33=""
+for SUB in for-each-ref ls-files status; do
+  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = %s ] && exec sleep 5; done\nexec "%s" "$@"\n' "$SUB" "$REAL_GIT" > "$SLOW33/git"
+  chmod +x "$SLOW33/git"
+  SECONDS=0
+  PATH="$SLOW33:$PATH" run_hook32 "$T"
+  E33=$SECONDS
+  (( E33 < 3 )) && [[ "$(opens32)" == 2 ]] || R33+=" $SUB:${E33}s,$(opens32)-kept"
+done
+if [[ -z "$R33" ]]; then
+  ok "Case 33f: a slow for-each-ref, ls-files or status costs at most its bound and drops nothing"
+else
+  ng "Case 33f:$R33 (want <3s, 2 kept)"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
