@@ -39,7 +39,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { encodeProjectCwd, projectDir, resolvePluginRoot } from './lib/paths.js';
+import { encodeProjectCwd, memoryRoot, projectDir, resolvePluginRoot } from './lib/paths.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
@@ -330,7 +330,8 @@ function checkSizingHeadroom(specDir) {
 // CHECK 3 — MEMORY.md ↔ files bidirectional ----------------------------------
 
 function checkMemoryIndex(projectCwd) {
-  const encoded = encodeProjectCwd(projectCwd);
+  // memory/ is keyed by the git root, not the dir this runs in (D#401).
+  const encoded = encodeProjectCwd(memoryRoot(projectCwd));
   const memDir = path.join(projectDir({ encoded }), 'memory');
   const memIndex = path.join(memDir, 'MEMORY.md');
 

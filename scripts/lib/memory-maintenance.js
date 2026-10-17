@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { projectDir } from './paths.js';
+import { memoryRoot, projectDir } from './paths.js';
 import { logGenerations } from './rule-hits-parse.js';
 
 export const CITE_MIN = 3;
@@ -136,7 +136,8 @@ export async function memoryMaintenance({
   memLiteDbPath,
   memLiteProjectName,
 } = {}) {
-  if (!memDir) memDir = path.join(projectDir({ cwd, home: homeDir }), 'memory');
+  // memory/ is keyed by the git root, not the dir this runs in (D#401).
+  if (!memDir) memDir = path.join(projectDir({ cwd: memoryRoot(cwd), home: homeDir }), 'memory');
   if (!logPath) logPath = path.join(homeDir, '.claude/logs/claudemd.jsonl');
   if (!memLiteDbPath) memLiteDbPath = path.join(homeDir, '.claude-mem-lite/claude-mem-lite.db');
   if (!memLiteProjectName) memLiteProjectName = memLiteProject(cwd);

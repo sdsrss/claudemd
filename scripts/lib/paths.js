@@ -241,6 +241,75 @@ export function encodeProjectCwd(cwd) {
   return String(cwd).replace(/[^a-zA-Z0-9-]/g, '-');
 }
 
+// The directory whose encoded name holds `memory/` for a session that started
+// in `start`. Claude Code keys memory/ by the canonical git root, the
+// transcript by the start dir (D#391): it walks up to the nearest `.git`
+// (directory or file), and when that is a linked worktree's `gitdir:` file
+// whose admin dir agrees, takes the main repository. JS twin of
+// hook_memory_root (hooks/lib/hook-common.sh), whose header has the details;
+// tests/scripts/memory-root.test.js runs both over the same layouts. Paths are
+// resolved lexically like the bash `cd`; only the back-pointer check is
+// physical, as there.
+export function memoryRoot(start) {
+  if (typeof start !== 'string' || !start.startsWith('/')) return start;
+  let r = start;
+  while (r.endsWith('/') && r !== '/') r = r.slice(0, -1);
+  for (;;) {
+    const kind = gitEntryKind(path.join(r, '.git'));
+    if (kind === 'file') return worktreeMain(r) || r;
+    if (kind === 'dir') return r;
+    if (r === '/') return start;
+    r = path.dirname(r);
+  }
+}
+
+function gitEntryKind(p) {
+  try {
+    const st = fs.statSync(p);
+    return st.isDirectory() ? 'dir' : st.isFile() ? 'file' : null;
+  } catch {
+    return null;
+  }
+}
+
+// First line of a file, trimmed of [[:space:]]; '' when unreadable or blank.
+function firstLineTrimmed(p) {
+  let s;
+  try {
+    s = fs.readFileSync(p, 'utf8');
+  } catch {
+    return '';
+  }
+  const i = s.indexOf('\n');
+  return (i < 0 ? s : s.slice(0, i)).replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, '');
+}
+
+const isDir = p => gitEntryKind(p) === 'dir';
+
+function worktreeMain(root) {
+  const line = firstLineTrimmed(path.join(root, '.git'));
+  if (!line.startsWith('gitdir:')) return null;
+  const pointer = line.slice('gitdir:'.length).replace(/^[ \t\n\v\f\r]+/, '');
+  if (!pointer) return null;
+  const admin = path.resolve(root, pointer);
+  if (!isDir(admin)) return null;
+  const commonRaw = firstLineTrimmed(path.join(admin, 'commondir'));
+  if (!commonRaw) return null;
+  const common = path.resolve(admin, commonRaw);
+  if (!isDir(common) || path.dirname(admin) !== path.join(common, 'worktrees')) return null;
+  let back = firstLineTrimmed(path.join(admin, 'gitdir'));
+  if (!back.startsWith('/')) back = `${admin}/${back}`;
+  const cut = back.lastIndexOf('/');
+  if (back.slice(cut + 1) !== '.git') return null;
+  try {
+    if (fs.realpathSync(back.slice(0, cut) || '/') !== fs.realpathSync(root)) return null;
+  } catch {
+    return null;
+  }
+  if (path.basename(common) === '.git') return path.dirname(common);
+  return gitEntryKind(path.join(common, '.git')) ? null : common;
+}
+
 // Claude Code's per-project transcript root, and the per-project dir inside it.
 // The ENCODER was single-sourced by the 2026-07-15 audit; the DIRECTORY it feeds
 // was still rebuilt from a `.claude/projects` literal in five call sites
