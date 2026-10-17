@@ -873,7 +873,10 @@ test('hook manifest malformed JSON → install refuses with a named cause', asyn
 test('hook manifest declaring no hooks → install refuses', async () => {
   fs.writeFileSync(path.join(pluginRoot, 'hooks/hooks.json'), JSON.stringify({ hooks: {} }));
 
-  await assert.rejects(() => install({ pluginRoot }), /declares no hooks/);
+  await assert.rejects(
+    () => install({ pluginRoot }),
+    /declares no hooks.*\/plugin install claudemd@claudemd/s
+  );
   assert.ok(!fs.existsSync(path.join(tmpHome, '.claude/.claudemd-manifest.json')));
 });
 

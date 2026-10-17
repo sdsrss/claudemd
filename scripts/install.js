@@ -465,7 +465,8 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   if (hookSpecCount === 0) {
     throw new Error(
       `install: hook manifest at ${hooksFile} declares no hooks. Refusing to install a ` +
-        `hook-less claudemd — it would report success with enforcement disabled.`
+        `hook-less claudemd — it would report success with enforcement disabled. Re-run ` +
+        `\`/plugin install claudemd@claudemd\` or re-clone from https://github.com/sdsrss/claudemd.`
     );
   }
 
