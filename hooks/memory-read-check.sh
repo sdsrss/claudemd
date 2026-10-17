@@ -251,13 +251,16 @@ fi
 # moved into a subdirectory encoded a dir with no MEMORY.md and failed open —
 # 47 `mem-index-missing` rows on the maintainer's machine, every one from a
 # project whose root index existed. No project dir → the cwd, as before.
-# Not covered (R18 review, reading the Claude Code 2.1.301 binary; no live
-# session checked): memory/ is keyed by the canonical git root, so a session
-# STARTED in a repo subdirectory or a linked worktree keeps MEMORY.md and the
-# transcript under different dirs and still fails open here. 0 such sessions
-# on the maintainer's machine (2026-10-16).
-ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$CWD}")
-MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
+# memory/ is keyed by the canonical git root instead (D#391): a session STARTED
+# in a repo subdirectory or a linked worktree keeps MEMORY.md and the
+# transcript under different dirs, and found no index here. hook_memory_root
+# (lib/hook-common.sh) resolves that root the way Claude Code does.
+PROJECT_START="${CLAUDE_PROJECT_DIR:-$CWD}"
+ENCODED=$(hook_encode_project "$PROJECT_START")
+MEM_ROOT=$(hook_memory_root "$PROJECT_START")
+MEM_ENCODED="$ENCODED"
+[[ "$MEM_ROOT" == "$PROJECT_START" ]] || MEM_ENCODED=$(hook_encode_project "$MEM_ROOT")
+MEM_DIR="$HOME/.claude/projects/${MEM_ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 

@@ -435,8 +435,27 @@ else
   ng "26 (out: $OUT)"
 fi
 
+# Case 27 (D#391): a session STARTED in a repo subdirectory. Claude Code keys
+# memory/ by the git root and the transcript by the start dir, so the root's
+# MEMORY.md is the one to read; the start dir has none.
+R27="$TMP_HOME/repo27"
+git init -q "$R27" && mkdir -p "$R27/sub"
+ENC27=$(printf '%s' "$R27" | sed 's/[^a-zA-Z0-9-]/-/g')
+mkdir -p "$HOME/.claude/projects/$ENC27/memory"
+printf '%s\n' '- [macOS portability](feedback_macos.md) `[macos]` — CI breakages' \
+  > "$HOME/.claude/projects/$ENC27/memory/MEMORY.md"
+EVENT_27=$(jq -cn --arg p "asking about macos" --arg s "sess27" --arg c "$R27/sub" \
+  '{hook_event_name:"UserPromptSubmit", session_id:$s, prompt:$p, cwd:$c}')
+OUT=$(CLAUDE_PROJECT_DIR="$R27/sub" bash "$HOOK" <<<"$EVENT_27" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if echo "$CTX" | grep -qF "$HOME/.claude/projects/$ENC27/memory/feedback_macos.md"; then
+  ok "27 a session started in a subdirectory reads the git root's MEMORY.md"
+else
+  ng "27 (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((26 - FAIL))/26 passed"
+  echo "Tests: $((27 - FAIL))/27 passed"
   exit 1
 fi
-echo "Tests: 26/26 passed"
+echo "Tests: 27/27 passed"

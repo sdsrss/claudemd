@@ -12,7 +12,7 @@
 #
 # Behavior:
 #   1. Parse prompt, cwd, session_id from UserPromptSubmit event JSON.
-#   2. Encode ${CLAUDE_PROJECT_DIR:-cwd} → ~/.claude/projects/<encoded>/memory/MEMORY.md path.
+#   2. Encode the canonical git root of ${CLAUDE_PROJECT_DIR:-cwd} → ~/.claude/projects/<encoded>/memory/MEMORY.md path.
 #   3. Match prompt against tagged MEMORY.md entries (same word-boundary +
 #      declension + meta-escape logic as memory-read-check.sh).
 #   4. For each matched file, check session transcript for prior Read.
@@ -84,9 +84,14 @@ esac
 # Project-dir encoding: convert EVERY non-`[a-zA-Z0-9-]` char to `-` (CC
 # convention; see memory-read-check.sh for the empirical derivation + why the
 # narrower `tr '/._'` mis-located the dir for cwds with other special chars).
-# Root, not cwd: see memory-read-check.sh (R15).
-ENCODED=$(hook_encode_project "${CLAUDE_PROJECT_DIR:-$CWD}")
-MEM_DIR="$HOME/.claude/projects/${ENCODED}/memory"
+# Root, not cwd: see memory-read-check.sh (R15). memory/ under the canonical
+# git root, the transcript under the start dir (D#391, same as there).
+PROJECT_START="${CLAUDE_PROJECT_DIR:-$CWD}"
+ENCODED=$(hook_encode_project "$PROJECT_START")
+MEM_ROOT=$(hook_memory_root "$PROJECT_START")
+MEM_ENCODED="$ENCODED"
+[[ "$MEM_ROOT" == "$PROJECT_START" ]] || MEM_ENCODED=$(hook_encode_project "$MEM_ROOT")
+MEM_DIR="$HOME/.claude/projects/${MEM_ENCODED}/memory"
 MEM_INDEX="$MEM_DIR/MEMORY.md"
 TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 

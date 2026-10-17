@@ -223,6 +223,78 @@ hook_read_telemetry_ids() {
   return 0
 }
 
+# hook_memory_root START_DIR → stdout
+#   The directory whose encoded name holds `memory/` for a session that started
+#   in START_DIR (D#391). Transcripts stay under START_DIR; memory does not.
+#   Claude Code 2.1.302 (`defaultKey` → findCanonicalGitRoot, read from the
+#   binary) walks up from the project root to the nearest `.git`, directory or
+#   file, and when that `.git` is a linked worktree's `gitdir:` file whose admin
+#   dir agrees with it, takes the main repository: the parent of the common
+#   `.git`, or a bare repository itself. Anything else it does not recognise
+#   keeps the nearest root; outside git, START_DIR. The docs say the same in
+#   prose: "all worktrees and subdirectories within the same repo share one auto
+#   memory directory". A `.git` directory costs no fork; a worktree one subshell.
+hook_memory_root() {
+  local start="${1:-}" r canon
+  [[ "$start" == /* ]] || { printf '%s' "$start"; return 0; }
+  r="$start"
+  while [[ "$r" == */ && "$r" != / ]]; do r="${r%/}"; done
+  while [[ ! -d "$r/.git" && ! -f "$r/.git" ]]; do
+    [[ "$r" == / ]] && { printf '%s' "$start"; return 0; }
+    r="${r%/*}"
+    [[ -n "$r" ]] || r=/
+  done
+  if [[ -f "$r/.git" ]]; then
+    canon=$(_hook_worktree_main "$r") && [[ -n "$canon" ]] && r="$canon"
+  fi
+  printf '%s' "$r"
+}
+
+# _hook_worktree_main ROOT → stdout, status 0 when ROOT is a linked worktree.
+#   Run in a subshell (it cd's). The checks are Claude Code's: the admin dir
+#   sits in <common>/worktrees/, and its `gitdir` file names ROOT/.git (compared
+#   physically, as Claude Code realpaths both). Paths are otherwise resolved
+#   lexically, like Node's path.resolve, so a symlinked parent keeps its name.
+_hook_worktree_main() {
+  local root="$1" line="" common="" back="" admin bdir
+  IFS= read -r line < "$root/.git" || [[ -n "$line" ]] || return 1
+  [[ "$line" == gitdir:* ]] || return 1
+  line="${line#gitdir:}"
+  _hook_trim_into line
+  [[ -n "$line" ]] || return 1
+  [[ "$line" == /* ]] || line="$root/$line"
+  cd "$line" 2>/dev/null || return 1
+  admin="$PWD"
+  IFS= read -r common < commondir || [[ -n "$common" ]] || return 1
+  _hook_trim_into common
+  [[ -n "$common" ]] || return 1
+  [[ "$common" == /* ]] || common="$admin/$common"
+  cd "$common" 2>/dev/null || return 1
+  common="$PWD"
+  [[ "${admin%/*}" == "$common/worktrees" ]] || return 1
+  IFS= read -r back < "$admin/gitdir" || [[ -n "$back" ]] || return 1
+  _hook_trim_into back
+  [[ "$back" == /* ]] || back="$admin/$back"
+  [[ "${back##*/}" == .git ]] || return 1
+  cd -P "${back%/*}" 2>/dev/null || return 1
+  bdir="$PWD"
+  cd -P "$root" 2>/dev/null || return 1
+  [[ "$PWD" == "$bdir" ]] || return 1
+  if [[ "${common##*/}" == .git ]]; then
+    printf '%s' "${common%/*}"
+  else
+    [[ -d "$common/.git" || -f "$common/.git" ]] && return 1
+    printf '%s' "$common"
+  fi
+}
+
+# _hook_trim_into VAR — strip leading and trailing whitespace (a CR too) in place.
+_hook_trim_into() {
+  local _s="${!1}"
+  _s="${_s#"${_s%%[![:space:]]*}"}"
+  printf -v "$1" '%s' "${_s%"${_s##*[![:space:]]}"}"
+}
+
 # hook_memfile_was_read TRANSCRIPT MEMFILE
 #   0 = MEMFILE was opened this session, 1 = it was not (or cannot be known:
 #   no transcript, unreadable, missing arg — fail toward "not read").

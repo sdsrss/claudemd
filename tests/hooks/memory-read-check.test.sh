@@ -1056,6 +1056,43 @@ OUT65B=$(env -u CLAUDE_PROJECT_DIR bash "$HOOK" <<<"$EVENT_65" 2>/dev/null)
   && echo "PASS: 65 a subdirectory cwd finds the root's MEMORY.md through CLAUDE_PROJECT_DIR" \
   || { echo "FAIL: 65 (with project dir: '$DEC65'; without: '$OUT65B')"; FAIL=$((FAIL+1)); }
 
+# Case 66 (D#391): memory/ is keyed by the canonical git root, the transcript by
+# the directory the session started in. Claude Code (2.1.302 `defaultKey`)
+# walks up to the nearest `.git` and, for a linked worktree, follows its
+# `commondir` to the main repository; so a session STARTED in a subdirectory or
+# a worktree has the two under different dirs, and the gate found no MEMORY.md
+# and let the push through. A start-dir index of its own (from a Claude Code
+# that keyed by cwd) is not what Claude Code loads, so the root's wins.
+enc66() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9-]/-/g'; }
+R66="$TMP_HOME/repo66"
+git init -q "$R66" && git -C "$R66" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$R66" worktree add -q "$TMP_HOME/wt66" 2>/dev/null
+mkdir -p "$R66/sub" "$HOME/.claude/projects/$(enc66 "$R66")/memory"
+printf '%s\n' '- [Ship lessons](feedback_ship.md) `[ship, release, push]` — baseline' \
+  > "$HOME/.claude/projects/$(enc66 "$R66")/memory/MEMORY.md"
+for s66 in "$R66/sub" "$TMP_HOME/wt66"; do
+  mkdir -p "$HOME/.claude/projects/$(enc66 "$s66")"
+  echo '{"tool":"Read","path":"/unrelated"}' > "$HOME/.claude/projects/$(enc66 "$s66")/sess66.jsonl"
+done
+mkdir -p "$HOME/.claude/projects/$(enc66 "$R66/sub")/memory"
+printf '%s\n' '- [Old](old.md) `[legacy]` — from a cwd-keyed release' \
+  > "$HOME/.claude/projects/$(enc66 "$R66/sub")/memory/MEMORY.md"
+dec66() { # START_DIR
+  CLAUDE_PROJECT_DIR="$1" bash "$HOOK" \
+    <<<"{\"session_id\":\"sess66\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$1\"}" \
+    2>/dev/null | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null
+}
+D66A=$(dec66 "$R66/sub"); D66B=$(dec66 "$TMP_HOME/wt66")
+# Control: a worktree whose admin dir does not point back at it is not one;
+# Claude Code keys it by its own root, which has no index.
+cp -R "$TMP_HOME/wt66" "$TMP_HOME/fake66"
+mkdir -p "$HOME/.claude/projects/$(enc66 "$TMP_HOME/fake66")"
+echo '{"tool":"Read","path":"/unrelated"}' > "$HOME/.claude/projects/$(enc66 "$TMP_HOME/fake66")/sess66.jsonl"
+D66C=$(dec66 "$TMP_HOME/fake66")
+[[ "$D66A" == deny && "$D66B" == deny && -z "$D66C" ]] \
+  && echo "PASS: 66 a session started in a subdirectory or a linked worktree reads the git root's MEMORY.md" \
+  || { echo "FAIL: 66 (subdir: '$D66A'; worktree: '$D66B'; fake worktree: '$D66C')"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was
