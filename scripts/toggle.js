@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { readSettings, writeSettings, settingsShapeError } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV, HOOK_REGISTRY } from './lib/hook-registry.js';
 import { settingsPath } from './lib/paths.js';
@@ -79,26 +81,65 @@ export async function toggle(name) {
     newState = 'disabled';
   }
   writeSettings(s);
+  // What the hooks will see. Claude Code layers settings env: a project's
+  // .claude/settings.local.json over its .claude/settings.json over the user
+  // file this command writes, and any of them over the shell (docs, env-vars
+  // "Precedence"). So a project file that sets the same variable decides.
+  // String(): a JSON number 1 in settings.json reaches the hook as "1" (R18 L3).
+  const projectLayer = readProjectEnv(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const effective = k => {
+    const l = projectLayer(k);
+    const v = l ? l.env[k] : (s.env[k] ?? process.env[k]);
+    return v == null ? undefined : String(v);
+  };
+  const notes = [];
+  const ks = projectLayer(key);
+  if (ks && (String(ks.env[key]) === '1') !== (newState === 'disabled')) {
+    notes.push(
+      `${ks.file} sets ${key}=${JSON.stringify(String(ks.env[key]))}, which overrides ~/.claude/settings.json: ` +
+        `${name} stays ${String(ks.env[key]) === '1' ? 'disabled' : 'enabled'} in this project.`
+    );
+  }
+  if (newState === 'enabled' && effective('DISABLE_CLAUDEMD_HOOKS') === '1') {
+    notes.push('DISABLE_CLAUDEMD_HOOKS=1 is set, which turns every claudemd hook off.');
+  }
   // A default-OFF hook needs its opt-in variable as well as a clear kill
   // switch; without one, "enabled" named a hook that still exited at its gate
-  // (R15). settings.json env is what the next session's hooks get; the
-  // current process env covers an opt-in exported in the user's shell.
+  // (R15).
   const optIn = HOOK_REGISTRY.find(r => r.displayName === name)?.optIn;
-  // String(): a JSON number 1 in settings.json reaches the hook as "1" (R18 L3).
-  const optValue = s.env[optIn?.env] ?? process.env[optIn?.env];
-  if (optIn && !optIn.values.includes(optValue == null ? undefined : String(optValue))) {
+  const optValue = optIn && effective(optIn.env);
+  if (optIn && !optIn.values.includes(optValue)) {
     const now =
-      optValue == null
+      optValue === undefined
         ? `${optIn.env} is unset`
-        : `${optIn.env} is ${JSON.stringify(String(optValue))}, not ${optIn.values.join(' or ')}`;
-    const note =
+        : `${optIn.env} is ${JSON.stringify(optValue)}, not ${optIn.values.join(' or ')}`;
+    notes.push(
       newState === 'enabled'
         ? `${name} is opt-in: the kill switch is off, but the hook stays inactive until ${optIn.env}=${optIn.values[0]} ` +
-          `is set (settings.json "env" or your shell).`
-        : `${name} is opt-in and was not active (${now}); the kill switch is now set as well.`;
-    return { hook: name, newState, note };
+            `is set (settings.json "env" or your shell).`
+        : `${name} is opt-in and was not active (${now}); the kill switch is now set as well.`
+    );
   }
-  return { hook: name, newState };
+  return notes.length > 0 ? { hook: name, newState, note: notes.join(' ') } : { hook: name, newState };
+}
+
+// projectLayer(key) → { file, env } of the project settings file that sets
+// `key`, local first, or null. An absent or unreadable file sets nothing.
+function readProjectEnv(dir) {
+  const layers = [];
+  for (const f of ['settings.local.json', 'settings.json']) {
+    const p = path.join(dir, '.claude', f);
+    if (path.resolve(p) === path.resolve(settingsPath())) continue; // the user file, from $HOME
+    try {
+      let raw = fs.readFileSync(p, 'utf8');
+      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+      const env = JSON.parse(raw)?.env;
+      if (env && typeof env === 'object' && !Array.isArray(env)) layers.push({ file: `.claude/${f}`, env });
+    } catch {
+      /* absent or unreadable */
+    }
+  }
+  return k => layers.find(l => Object.hasOwn(l.env, k)) ?? null;
 }
 
 if (invokedAsMain(import.meta.url)) {

@@ -9,7 +9,7 @@ import { toggle } from '../../scripts/toggle.js';
 
 const TOGGLE_JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/toggle.js');
 
-let tmpHome, savedHome;
+let tmpHome, savedHome, proj, savedProj;
 
 beforeEach(() => {
   tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-tg-'));
@@ -17,11 +17,19 @@ beforeEach(() => {
   process.env.HOME = tmpHome;
   fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({ env: {} }));
+  // The project whose .claude/settings*.json the toggle reads; empty unless a
+  // test writes one, so a settings file in the cwd cannot leak in.
+  proj = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-tg-proj-'));
+  savedProj = process.env.CLAUDE_PROJECT_DIR;
+  process.env.CLAUDE_PROJECT_DIR = proj;
 });
 
 afterEach(() => {
   process.env.HOME = savedHome;
+  if (savedProj === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+  else process.env.CLAUDE_PROJECT_DIR = savedProj;
   fs.rmSync(tmpHome, { recursive: true, force: true });
+  fs.rmSync(proj, { recursive: true, force: true });
 });
 
 test('toggle enables banned-vocab kill-switch', async () => {
@@ -81,6 +89,59 @@ test('R15: an opt-in hook says it stays off until its opt-in variable is set', a
     if (saved === undefined) delete process.env.EVIDENCE_GATE;
     else process.env.EVIDENCE_GATE = saved;
   }
+});
+
+test('a project settings file decides over the user file, for the opt-in value and the kill switch', async () => {
+  // Claude Code layers settings env: .claude/settings.local.json over
+  // .claude/settings.json over ~/.claude/settings.json (docs, env-vars
+  // "Precedence"). The toggle read only the user file, so a user-level "0"
+  // under the project's EVIDENCE_GATE=1 drew "not active", and a project
+  // DISABLE_*_HOOK=1 kept the hook off while the toggle answered "enabled".
+  const saved = process.env.EVIDENCE_GATE;
+  delete process.env.EVIDENCE_GATE;
+  try {
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(
+      path.join(tmpHome, '.claude/settings.json'),
+      JSON.stringify({ env: { EVIDENCE_GATE: '0', DISABLE_EVIDENCE_GATE_HOOK: '1' } })
+    );
+    fs.writeFileSync(
+      path.join(proj, '.claude/settings.json'),
+      JSON.stringify({ env: { EVIDENCE_GATE: '1' } })
+    );
+    const on = await toggle('evidence-gate');
+    assert.equal(on.newState, 'enabled');
+    assert.equal(on.note, undefined, 'the project opts in');
+
+    fs.writeFileSync(
+      path.join(proj, '.claude/settings.local.json'),
+      JSON.stringify({ env: { DISABLE_EVIDENCE_GATE_HOOK: '1' } })
+    );
+    const off = await toggle('evidence-gate');
+    assert.equal(off.newState, 'disabled');
+    assert.equal(off.note, undefined, 'the local file agrees');
+    const onAgain = await toggle('evidence-gate');
+    assert.equal(onAgain.newState, 'enabled');
+    assert.match(
+      onAgain.note,
+      /\.claude\/settings\.local\.json sets DISABLE_EVIDENCE_GATE_HOOK="1".*stays disabled in this project/
+    );
+  } finally {
+    if (saved === undefined) delete process.env.EVIDENCE_GATE;
+    else process.env.EVIDENCE_GATE = saved;
+  }
+});
+
+test('DISABLE_CLAUDEMD_HOOKS=1 is named when the toggle enables one hook under it', async () => {
+  const p = path.join(tmpHome, '.claude/settings.json');
+  fs.writeFileSync(
+    p,
+    JSON.stringify({ env: { DISABLE_CLAUDEMD_HOOKS: '1', DISABLE_BANNED_VOCAB_HOOK: '1' } })
+  );
+  const on = await toggle('banned-vocab');
+  assert.equal(on.newState, 'enabled');
+  assert.match(on.note, /DISABLE_CLAUDEMD_HOOKS=1 .*every claudemd hook off/);
+  assert.equal((await toggle('banned-vocab')).note, undefined, 'disabling under it says nothing');
 });
 
 test('toggle unknown name → error', async () => {
