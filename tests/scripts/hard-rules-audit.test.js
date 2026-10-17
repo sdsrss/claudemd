@@ -213,6 +213,8 @@ test('demote review counts fired rows, not checks that found nothing', async () 
     ['ship-baseline', 'pass-known-red', '§7-ship-baseline', '§7-ship-baseline'],
     ['ship-baseline', 'pass-known-red-incmd', '§7-ship-baseline', '§7-ship-baseline'],
     ['ship-baseline', 'deny', '§7-ship-baseline', '§7-ship-baseline'],
+    ['pre-bash-safety', 'rm-rf-allow-validated', '§8-rm-rf-var', '§8-rm-rf-var'],
+    ['pre-bash-safety', 'rm-rf-allow-provenance', '§8-rm-rf-var', '§8-rm-rf-var'],
     ['session-end-check', 'warn', '§11-session-exit', '§11-session-exit'],
     ['pre-bash-safety', 'deny', '§8-npx', '§8-npx'],
   ]) {

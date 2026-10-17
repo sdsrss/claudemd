@@ -122,7 +122,8 @@ export async function hardRulesAudit({ days = DEFAULT_WINDOW_DAYS, pluginRoot } 
   const bothEnforced = rules.filter(r => r.enforcement === 'both');
   const hookEnforced = [...hookOnly, ...bothEnforced]; // union: rules whose denials reach rule-hits.jsonl
 
-  // Demotion candidates: hook-enforced rules with 0 hits in the audit window.
+  // Demotion candidates: hook-enforced rules with 0 fired rows (`hits.fired`,
+  // see isFiredEvent) in the audit window.
   // Self-enforced rules are excluded — their "hits" are agent-text patterns
   // not captured in rule-hits.jsonl (R-N8 transcript-side scan would fix
   // that; deferred to v0.8.1). When `insufficientData` is true (log span <

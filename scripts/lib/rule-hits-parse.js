@@ -353,9 +353,15 @@ export function isSignalEvent(event) {
 
 // Rows where a gate found the condition its rule governs and the agent had
 // already satisfied the rule: ship-baseline on a red baseline whose commit or
-// command carries the `known-red baseline:` marker. Nothing was said to the
-// agent, so they are not signal; but the rule did its work.
-const COMPLIANCE_EVENTS = new Set(['pass-known-red', 'pass-known-red-incmd']);
+// command carries the `known-red baseline:` marker, and an `rm -rf` on a var
+// the agent guarded or made with mktemp in the same command (R23 L4). Nothing
+// was said to the agent, so they are not signal; but the rule did its work.
+const COMPLIANCE_EVENTS = new Set([
+  'pass-known-red',
+  'pass-known-red-incmd',
+  'rm-rf-allow-validated',
+  'rm-rf-allow-provenance',
+]);
 
 // isFiredEvent(event) — what §13.1 demote review counts as the rule firing.
 // A check that found nothing (`pass`, `pending-no-baseline`, `npx-allow-local`)
