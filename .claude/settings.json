@@ -1,0 +1,6 @@
+{
+  "claudeMdExcludes": [
+    "**/spec/CLAUDE.md",
+    "**/tasks/**/CLAUDE.md"
+  ]
+}

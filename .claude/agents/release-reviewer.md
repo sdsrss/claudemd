@@ -1,6 +1,6 @@
 ---
 name: release-reviewer
-description: Independent reviewer for this repo's releases and batch ends. Use for the ship runbook's pre-tag review (step 7) and for a batch-end review in docs/audit/20260926-180700.md §11. Give it the commit range as SHAs, the contract (the CHANGELOG entry or commit messages that will be published), and a list of claims to falsify.
+description: Independent reviewer for this repo's releases and batch ends. Use for the ship runbook's pre-tag review (step 7) and for a batch-end review. Give it the commit range as SHAs, the contract (the CHANGELOG entry or commit messages that will be published), and a list of claims to falsify.
 model: claude-opus-5-5
 effort: high
 isolation: worktree
@@ -39,4 +39,4 @@ A §8 false negative is a command the gate allows that it should deny. For each 
 
 ## Report
 
-Write the full report to the absolute path the prompt gives. Each finding: severity, `file:line`, what is wrong, and a reproducing command or quoted evidence. Under `NOT CHECKED`, list what you did not examine. End with a message of at most 1500 characters: the verdict, the count per severity, one line per Critical or High finding, and the report path.
+Put the full report in your final message: each finding with severity, `file:line`, what is wrong, and a reproducing command or quoted evidence; then `NOT CHECKED`, listing what you did not examine; then the verdict and the count per severity. If the prompt also gives a report path and the write is allowed, write the same report there.
