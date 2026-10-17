@@ -1,7 +1,7 @@
 # 0.112.0 发版后的遗留项
 状态：已完成
 
-两处修复在 `next-release`，随下一次发版。
+三处修复（D#404、D#357、perf-baseline）和一处测试修复（D#405）在 `next-release`，随下一次发版。
 
 ## 背景与目标
 
@@ -62,10 +62,32 @@
 - **D#276：不修，已关闭。** 只读子代理在闸门副本上回放：本机 1,184 个转录文件、96,372 条去重 Bash 命令（09-19 到 10-17），候选 3,655 条，逐段推算实际目录。所有机制合计漏拦 0、误拒 0；91 条目录无法解析，1,383 条涉及的目录今天已删。只算 D#276 本身（后一个 runner 段的实际目录既不同于第一个 runner 段、也不同于闸门判断用的目录）28 条：包是 vitest 22、knip 4、prettier 2，都是评审或探针在兄弟检出、沙箱里跑项目自己的开发依赖。其中 13 条在同一会话里有给该目录链接或安装 `node_modules` 的记录，4 条在同一命令前面一步就放好了。漏拦 0、误拒 0，26 条目录已删，2 条无法解析，所以这 28 条都没法逐条判定。目录判错多出在第一个 runner 段（1,470 条：闸门遇到 `$VAR`、`~` 形式的 cd 后退回起始目录 602 条，目录今天已删 777 条），不是 D#276 的机制。修法要新写逐段的 `cd` 解析，再做全量回放和评审，换不来可见的收益。这个残留仍由 `docs/S8-RESIDUALS.md` 的 F16 和它的测试记录，这次把复核结果补进了 F16 的"真实命中"一栏。数据在会话 scratchpad 的 `d276/data/`。
 - 未关的延后项现在是 9 个：16 个里关了 7 个（4 个直接关、D#357 修好、D#362 和 D#276 测量后关）。
 
+## 第四轮（2026-10-17，剩下 9 项的去留）
+
+使用者："剩余的工作还有哪些需要做的，深入思考，给出科学准确的建议，并按你的建议执行。"
+
+- **`scripts/perf-baseline.sh` 的 `TMPDIR`：已修（59b64df）。** 脚本把 `TMPDIR` 也指到沙箱里，退出时随沙箱一起删掉。`perf-baseline-hermetic` 加了用例 7：让这次运行用一个专用的 `TMPDIR`，跑完必须为空。修复前失败，留下的是 `claudemd-sync-perf-baseline-session`；修复后 7/7。另外，以前 24 小时内跑第二次时，version-sync 的每次探测都会走提前退出；现在每次运行开始时都没有哨兵。真实 `/tmp` 里 10-16 20:22Z 留下的那一个没有删，version-sync 自己的清理会在它满 24 小时后的第一次提示时删掉。
+- **D#364：关闭。** 09-17 以来的会话记录里，"is not fully merged"共出现 13 次。其中 9 次是 claudemd 的评审或测试代理在沙箱里刻意构造的，3 次是 claude-mem-lite 里外部 PR 的评审分支，1 次是后来一个子代理把其中一次的记录又打印了一遍。那两个 claude-mem-lite 会话里，branch-prune 列出的只有 `worktree-agent-*` 分支，而且都在同一条命令里被 `-d` 删掉了。所以真实发生的 D#364 是 0 次。另外，hook 只列 tip 在 `<default>` 或 `origin/<default>` 上的分支，就算之后用了 `-D` 也不丢提交；本仓库发版是本地快进合并，本地 `main` 不会落后于一个 `[gone]` 分支。关闭时写的理由里说"9 次拒绝"，那是匹配到的文件数，以这里的 13 次为准。
+- **D#191：关闭。** 它只影响离线工具，近期没有 §8 闸门改动。这处分歧已经写在用到它的地方（`scripts/offline-eval/s8-ast/rm-arm.jq:42-45`），下一次 §8 改动用 s8-shadow 时再对齐。
+- **D#327：日期仍是 10-29，口径改了。** 中期数和修订写在 `docs/spec-model-capability-review-2026-10-15.md` §9.3。
+  - 中期数：v7.3.0 起 23 个交互会话，`Unknown skill` 0 次，技能调用 3 次，没有一次落在 L0/L1 的小改动上。
+  - `Unknown skill` 不再有效：`ship` 从 10-17 16:20:51Z 起出现在技能清单里（gstack 16:01 把子技能注册到了顶层），这个错误不会再出现了。样本量也不够：要排除 v7.2 期间 1/21 的比率，需要约 62 个发版会话，到 10-29 约有 40 个。
+  - 换成新指标：有 runbook 的项目发版时是否改用 `ship` 技能。
+  - §7.3 第 4 行不再可比：v8.0.0 改了汇报格式。
+  - 原来的 `skill_scan.py` 再跑一次会覆盖 P1/P2 的数据，所以复测改用 `tasks/model-capability-2026-10-15/skill_scan_p3.py`（本地文件）。
+- **D#328：日期仍是 10-29。** 它前提里写的"10-26 窗口"已经过时（窗口 10-16 已截止），日期不受影响。文档 §9.2 写的另一半依据是 `/doctor prompt-audit`，只能由使用者在交互会话里运行；10-29 之前要跑一次，届时两半依据才齐。
+- **其余 5 项继续延后，各自等的条件：**
+  - D#399：随下一次规范版本变更。它改的是只给人看的 `OPERATOR.md`，为它单独走一次规范版本级联不值得。
+  - D#417、D#421：等有人在 macOS 上遇到磁盘写满，或者专门做一轮 bash 3.2 清理时一次修全（理由见第一轮）。
+  - D#420：只剩追加写入（`>>`、`tee -a`）一种，上界 2/225。
+  - D#144：第 1 部分只影响 macOS，要用 CI 的 macOS 环境验证；第 2 部分只在 `~/.claude` 是符号链接或设了 `CLAUDE_CONFIG_DIR` 时出现，本机两者都不是。
+- **发版：仍等 10-29 之后。** 这几项都不是线上执行的回归，按 `OPERATOR.md` §13.1 的批量规则一起发。
+- 未关的延后项：9 → 7。
+
 ## 遗留
 
-- `scripts/perf-baseline.sh` 把 `HOME` 换成了夹具，却没有换 `TMPDIR`：每次运行都会在真实的 `/tmp` 留一个 0 字节哨兵。文件名固定，所以最多一个，24 小时内会被自动删掉。24 小时内跑过的话，version-sync 在每个探针上都走提前退出；否则只有第一个探针走完整路径，中位数不受影响。这次没有改。
-- 下一次发版：最可能在 10-29 复扫（D#327）之后；若改核心规范，D#399 一起带上。`next-release` 上到时要发的代码改动：D#404（8d88816）、D#357（731e858），外加 D#405 的测试修复（358d4af）。D#357 改的是所有 hook 共用的日志写入，发版前评审要覆盖它。
+- 下一次发版：最可能在 10-29 复扫（D#327）之后；若改核心规范，D#399 一起带上。`next-release` 上到时要发的代码改动：D#404（8d88816）、D#357（731e858）、perf-baseline（59b64df），外加 D#405 的测试修复（358d4af）。D#357 改的是所有 hook 共用的日志写入，发版前评审要覆盖它。
+- 10-29 之前：使用者在交互会话里运行一次 `/doctor prompt-audit`，作为 D#328 的另一半依据。
 
 ## 验证记录
 
@@ -74,3 +96,6 @@
 - 最终 `next-release` 头上的 `npm run check`：见本轮汇报。
 - 第二轮：安装目录 `~/.claude/plugins/cache/claudemd/claudemd/0.112.0` 的 `hooks/`、`spec/` 与 `git archive v0.112.0` 解出的内容 `diff -r` 无输出；`jq 'select(.hook_version==…)'` 查日志首行，结果见上；`gh run list --workflow ci.yml --limit 60` 和三次失败运行的 `gh run view --json jobs`；`git ls-files --others --exclude-standard --ignored tasks/` 共 2,219 个。
 - 731e858（D#357）：`bash tests/hooks/rule-hits.test.sh` → 修复前 ROT-8 失败（文件锁、目录锁两支各自单独跑都失败），修复后 ROT-1 到 ROT-9 全部通过；5 个变异（不释放、抢锁改回 mkdir、只清目录、清理不带 rmdir、清理不带 rm）各自让套件变红，未变异的对照组为绿；`npm run check` → exit 0（node 1545 通过、1 跳过、0 失败；OVERALL: all suites passed；404 秒）；`BASH32_BIN=… CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 44 个套件全部通过（436 秒），`/tmp` 下没有新增 `sh-thd` 文件。
+- 第四轮，59b64df：`bash tests/integration/perf-baseline-hermetic.test.sh` → 修复前用例 7 失败（留下 `claudemd-sync-perf-baseline-session`），修复后 7/7；`npm run lint` → exit 0；`shellcheck -S warning` 两个改动文件 → exit 0。
+- 第四轮的测量：D#364 用会话 scratchpad 的 `d364/scan.py` 扫 Bash 工具结果里的 `is not fully merged`，共 13 行；两份 claude-mem-lite 会话里 `branch-prune:` 提示列的分支名用 grep 核对。D#327 用 `skill_scan_p3.py` 和 `analyze_p3.py`，数字见文档 §9.3；`ship` 进入清单的时间取自各会话 `skill_listing` 附件里的技能名。
+- 第四轮最终工作树（59b64df 加两份文档改动）：`npm run check` → exit 0（node 1545 通过、1 跳过、0 失败；OVERALL: all suites passed；17:48:11 到 17:53:13）；跑完后 `/tmp` 下新增的 `claudemd-*` 条目 0 个。
