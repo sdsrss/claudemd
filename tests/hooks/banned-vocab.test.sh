@@ -228,6 +228,27 @@ mk_prose_transcript "$PCWD" "$PSID" "Implementation is robust under concurrent w
 EVENT_26=$(mk_prose_event "git push origin main" "$PCWD" "$PSID")
 TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); printf '%s' "$EVENT_26" > "$TMP_FIX"
 assert_deny "26: prior prose 'robust' + git push → deny" "$TMP_FIX"
+
+# Case 26n (D#213): the same push with no temp file writable. bash 3.2 (macOS
+# /bin/bash) writes every here-doc to a temp file, and hook-common.sh used to
+# read HOOK_USER_TURN_JQ from one at source time: unset, `set -u` emptied the
+# transcript scan and the push went through. A zero file-size limit with
+# SIGXFSZ ignored fails every temp-file write and leaves pipes alone. Under
+# bash 5.1+ a small here-doc goes through a pipe, so this row discriminates
+# only where the reach line below says so (bash32-runtime.sh, macOS CI).
+out=$( (trap '' XFSZ; ulimit -f 0; bash "$HOOK" < "$TMP_FIX" 2>/dev/null) )
+if [[ "$(printf '%s' "$out" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)" == deny ]]; then
+  echo "PASS: 26n: no temp file writable → the Path 2 push deny still fires"
+else
+  echo "FAIL: 26n: no temp file writable → expected deny, got: ${out:-<no output>}"
+  FAIL=$((FAIL + 1))
+fi
+if (trap '' XFSZ; ulimit -f 0; bash -c 'IFS= read -r q <<EOF
+x
+EOF
+[[ $q == x ]]') 2>/dev/null; then
+  echo "  (26n: a here-doc reads back under ulimit -f 0 in this bash, so 26n does not discriminate here)"
+fi
 rm -f "$TMP_FIX"
 
 # Case 27: prior-turn `comprehensive` + `gh release create` → deny

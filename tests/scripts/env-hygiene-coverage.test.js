@@ -93,7 +93,7 @@ test('the knob detector finds the known opt-ins and skips internal state', () =>
   for (const k of ['REWORK_BREAKER', 'REPLY_LANGUAGE_CHECK', 'EVIDENCE_WTREE', 'SPEC_MODULE_GATE']) {
     assert.ok(knobs.includes(k), `detector lost ${k}: ${knobs.join(' ')}`);
   }
-  // Awk programs read into a variable by `read -r -d ''` are state, not knobs.
+  // Awk programs held in a variable are state, not knobs.
   for (const k of ['HOOK_HEREDOC_AWK', 'MEMTAGS_AWK', 'SESSION_ID']) {
     assert.ok(!knobs.includes(k), `detector counted internal ${k} as a knob`);
   }

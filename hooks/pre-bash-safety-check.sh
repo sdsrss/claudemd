@@ -2378,8 +2378,10 @@ REVSH_ALIAS_RE='subprocess[[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'
 # missed banner; this is a DENY gate for §8's highest-severity shape, so the
 # opener is read with a quote state of its own, carried across lines. Fewer
 # openers → more text reaches the detectors → the deny side only.
-IFS= read -r -d '' REVSH_HEREDOC_AWK <<'AWKPROG' || true
-# `qwalk` returns the quote state after walking a span, and the state CARRIES
+# A single-quoted literal (each `'` inside written `'\''`), not a `read` from a
+# here-doc: bash 3.2 needs a temp file for a here-doc, and with none writable
+# the program stayed empty and this view fell back to passthrough (D#213).
+REVSH_HEREDOC_AWK='# `qwalk` returns the quote state after walking a span, and the state CARRIES
 # from line to line: a quote opened on one line is still open on the next
 # (delta review DH2 — a per-line reset let `echo "x` + `<<EOF"` read as an
 # opener and blank the command below it). Heredoc BODY lines are not parsed by
@@ -2387,7 +2389,7 @@ IFS= read -r -d '' REVSH_HEREDOC_AWK <<'AWKPROG' || true
 function qwalk(s, from, to, q,   i, c) {
   for (i = from; i < to; i++) {
     c = substr(s, i, 1)
-    if (q == "") { if (c == "'" || c == "\"") q = c; else if (c == "\\") i++ }
+    if (q == "") { if (c == "'\''" || c == "\"") q = c; else if (c == "\\") i++ }
     else if (q == "\"" && c == "\\") i++
     else if (c == q) q = ""
   }
@@ -2399,7 +2401,7 @@ END {
   for (i = 1; i <= n; i++) {
     if (blank[i]) { print ""; continue }
     line = lines[i]; start = 1; found = 0
-    while (match(substr(line, start), /<<-?[ \t]*['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/)) {
+    while (match(substr(line, start), /<<-?[ \t]*['\''"]?[A-Za-z_][A-Za-z0-9_]*['\''"]?/)) {
       abs = start + RSTART - 1
       # `<<<` is a here-string, not a heredoc: this regex lands on its second
       # `<` and the line BELOW is a command, not a body (delta review DH3).
@@ -2412,7 +2414,7 @@ END {
       dash = (substr(tok, 3, 1) == "-")
       tag = tok
       sub(/^<<-?[ \t]*/, "", tag)
-      gsub(/['"]/, "", tag)
+      gsub(/['\''"]/, "", tag)
       term = 0
       for (j = i + 1; j <= n; j++) {
         t = lines[j]
@@ -2426,7 +2428,7 @@ END {
     print line
   }
 }
-AWKPROG
+'
 revsh_heredoc_view() {
   if [[ -z "${REVSH_HEREDOC_AWK:-}" ]]; then cat; return; fi
   awk "$REVSH_HEREDOC_AWK"

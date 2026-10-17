@@ -35,11 +35,12 @@
 
 # bash 3.2 (macOS /bin/bash) cannot parse a heredoc nested inside `$( … )`
 # (feedback_bash32_nested_heredoc_cmdsubst), and this program is full of quotes
-# and parens. `read -r -d ''` assigns the same text without nesting; it returns
-# non-zero at EOF, hence `|| true`.
+# and parens. A single-quoted literal assigns the same text without nesting
+# (each `'` inside is written `'\''`), and without the temp file bash 3.2 needs
+# for a here-doc: with none writable the program stayed empty and every tag
+# match silently missed (D#213).
 # shellcheck disable=SC2034  # consumed by memtags_match below and by the hooks
-IFS= read -r -d '' MEMTAGS_AWK <<'AWKPROG' || true
-# Escape the regex metacharacters the old `sed 's|[][\\.*^$+?{}()|]|\\&|g'`
+MEMTAGS_AWK='# Escape the regex metacharacters the old `sed '\''s|[][\\.*^$+?{}()|]|\\&|g'\''`
 # escaped — same set, same order-independent effect.
 function memtags_esc(s,   out, i, c) {
   out = ""
@@ -51,7 +52,7 @@ function memtags_esc(s,   out, i, c) {
   return out
 }
 # Rightmost `(<something>.md)` on the line — the greedy `.*` of
-# `sed -n 's/.*(\([^)]*\.md\)).*/\1/p'`.
+# `sed -n '\''s/.*(\([^)]*\.md\)).*/\1/p'\''`.
 function memtags_file(line,   best, s, rest) {
   best = ""
   rest = line
@@ -85,7 +86,7 @@ function memtags_file(line,   best, s, rest) {
   #   - [A](x.md) `[tag1]` and (y.md) [tag2] — desc
   # the oracle yields `y.md tag1` (file = last link, tags = the backtick
   # block); the one-pass form yielded `y.md tag2` — a LOST deny for tag1 and a
-  # GAINED deny for tag2. Caught by the pre-tag review: the corpus's
+  # GAINED deny for tag2. Caught by the pre-tag review: the corpus'\''s
   # "second link in desc" line carries no bracketed token after the second
   # link, so it could not see this.
   #
@@ -137,7 +138,7 @@ function memtags_file(line,   best, s, rest) {
   }
   if (hit != "") print file "\t" hit
 }
-AWKPROG
+'
 
 # memtags_failopen REASON
 #   Record a fail-open row for the spill branch below. The two shipped callers

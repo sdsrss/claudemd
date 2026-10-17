@@ -251,6 +251,26 @@ assert_contains "hook_record_plugin_root: the same call records with the switch 
   '"sid":"sid-switched-off"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
 
 rm -rf "${HOOKROOT_SANDBOX:?}"
+
+# D#213: no program is read from a here-doc at source time. bash 3.2 (macOS
+# /bin/bash) writes every here-doc to a temp file; with none writable the
+# variable stayed unset, and its consumers under `set -u` died or went silent
+# (banned-vocab's Path 2 let the push through). The programs are single-quoted
+# literals now. Static half: no `read -r -d '' NAME <<` is left under hooks/.
+# Runtime half: under a zero file-size limit, sourcing the libraries leaves the
+# three library programs set and prints no temp-file error; it discriminates
+# only under bash ≤5.0 (bash32-runtime.sh, macOS CI), where 5.1+ uses a pipe.
+HOOKS_DIR="$(cd "$(dirname "$LIB")/.." && pwd)"
+LEFT_HD=$(grep -rnE "read -r -d '' [A-Za-z_]+ <<" "$HOOKS_DIR" --include='*.sh' || true)
+assert_eq "D#213: no source-time here-doc assignment left under hooks/" "" "$LEFT_HD"
+# shellcheck disable=SC2016  # the inner shell expands
+NOTMP_OUT=$( (trap '' XFSZ; ulimit -f 0; bash -c 'source "$1" && source "$2"
+  for v in HOOK_HEREDOC_AWK HOOK_USER_TURN_JQ MEMTAGS_AWK; do
+    [[ -n "${!v:-}" ]] && printf "%s=set " "$v" || printf "%s=EMPTY " "$v"
+  done' _ "$LIB" "$(dirname "$LIB")/memory-tags.sh") 2>&1)
+assert_eq "D#213: no temp file writable → the library programs are set, no error" \
+  "HOOK_HEREDOC_AWK=set HOOK_USER_TURN_JQ=set MEMTAGS_AWK=set " "$NOTMP_OUT"
+
 FAIL=$((FAIL + CLAUDEMD_ASSERT_FAIL))
 
 if (( FAIL > 0 )); then

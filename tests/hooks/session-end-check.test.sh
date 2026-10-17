@@ -880,9 +880,9 @@ fi
 # user's bytes were, while stderr said no checkpoint lists the changes. A
 # file-size limit stands in for a full disk, and it has to hit the checkpoint
 # write and nothing before it. bash 3.2 (macOS /bin/bash, and the CI runtime
-# gate) writes every here-doc to a temp file, including the two hook-common.sh
-# programs read at source time (~1.4 KB each), so `ulimit -f 1` stopped the
-# hook there. The limit is 4 KiB, and three edits with ~3,000-character
+# gate) writes every here-doc to a temp file; until D#213 that included the
+# two hook-common.sh programs read at source time (~1.4 KB each), so `ulimit
+# -f 1` stopped the hook there. The limit is 4 KiB, and three edits with ~3,000-character
 # targets make the checkpoint ~10 KB, so under bash 3.2 its own here-doc temp
 # file fails and under 5.x the `cat` writing it does: either way, part-way.
 # SIGXFSZ is ignored so that write fails with EFBIG instead of killing the

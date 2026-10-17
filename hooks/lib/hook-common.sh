@@ -790,21 +790,23 @@ hook_spawn_install() {
 # bash 3.2 (macOS /bin/bash) cannot parse a heredoc nested inside `$( … )`:
 # its command-substitution scanner counts the parens and quotes in the heredoc
 # BODY, and this awk program has plenty of both — the file then fails to source
-# at all, taking every hook with it. `read -r -d ''` assigns the same text
-# without nesting. It returns non-zero at EOF, hence the `|| true`.
-IFS= read -r -d '' HOOK_HEREDOC_AWK <<'AWKPROG' || true
-{ lines[NR] = $0 }
+# at all, taking every hook with it. A single-quoted literal assigns the same
+# text without nesting (each `'` inside is written `'\''`). It is not read from
+# a here-doc either: bash 3.2 writes every here-doc to a temp file, and with
+# none writable (full disk, no writable temp dir) the variable stayed unset, so
+# under `set -u` its consumers died or went silent (D#213).
+HOOK_HEREDOC_AWK='{ lines[NR] = $0 }
 END {
   n = NR
   for (i = 1; i <= n; i++) {
     if (blank[i]) { print ""; continue }
     line = lines[i]
-    if (match(line, /<<-?[ \t]*['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/)) {
+    if (match(line, /<<-?[ \t]*['\''"]?[A-Za-z_][A-Za-z0-9_]*['\''"]?/)) {
       tok = substr(line, RSTART, RLENGTH)
       dash = (substr(tok, 3, 1) == "-")
       tag = tok
       sub(/^<<-?[ \t]*/, "", tag)
-      gsub(/['"]/, "", tag)
+      gsub(/['\''"]/, "", tag)
       term = 0
       for (j = i + 1; j <= n; j++) {
         t = lines[j]
@@ -828,14 +830,14 @@ END {
     print line
   }
 }
-AWKPROG
+'
 
 hook_strip_heredoc_bodies() {
   # An empty program would make awk emit NOTHING, and every consuming gate would
   # then match against an empty command and allow everything — deaf, not loud,
   # the opposite of the hook_record_failopen posture used elsewhere here
-  # (2026-07-27 audit, L2). Defensive today: the `read -r -d ''` assignment above
-  # is unconditional. Degrade to passthrough, which costs heredoc-body FPs and
+  # (2026-07-27 audit, L2). Defensive today: the literal assignment above is
+  # unconditional. Degrade to passthrough, which costs heredoc-body FPs and
   # never costs a bypass.
   if [[ -z "${HOOK_HEREDOC_AWK:-}" ]]; then
     hook_record_failopen hook-common heredoc-awk-empty 2>/dev/null || true
@@ -1107,18 +1109,19 @@ HOOK_GIT_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:
 # banned-vocab did not count, leaving an interrupted turn's stale prose inside
 # the §10-V scan window (the v0.23.19 deny loop through a new content shape).
 #
-# `read -r -d ''` rather than `$(cat <<EOF)`: bash 3.2 cannot parse a heredoc
-# nested in a command substitution (feedback_bash32_nested_heredoc_cmdsubst).
+# A single-quoted literal, not `$(cat <<EOF)` (bash 3.2 cannot parse a heredoc
+# nested in a command substitution, feedback_bash32_nested_heredoc_cmdsubst) and
+# not a `read` from a here-doc (bash 3.2 needs a temp file for that; D#213, see
+# HOOK_HEREDOC_AWK above).
 # shellcheck disable=SC2034  # consumed by the hooks that source this file
 # (banned-vocab-check.sh, session-end-check.sh), which shellcheck cannot see when
 # it lints the library in isolation. HOOK_HEREDOC_AWK above escapes the warning
 # only because it also has an in-file consumer.
-IFS= read -r -d '' HOOK_USER_TURN_JQ <<'JQPROG' || true
-def is_user_turn:
+HOOK_USER_TURN_JQ='def is_user_turn:
   (.type? == "user")
   and (.isMeta? != true)
   # `.message` must be an OBJECT before `.message.content` is asked for: on a
-  # non-object (`"message": "hello"`) jq's `.message.content?` yields EMPTY
+  # non-object (`"message": "hello"`) jq'\''s `.message.content?` yields EMPTY
   # rather than false, so `map(is_user_turn)` returns a SHORTER array than its
   # input and every index after it shifts — the mask/slice arithmetic in
   # session-end-check.sh then reads the wrong boundary. Not a shape real CC
@@ -1133,10 +1136,10 @@ def is_user_turn:
       and ((.message.content | map(select(type == "object" and .type == "text")) | length) > 0)
       and ((.message.content | any(type == "object" and .type == "tool_result")) | not)
       and ((.message.content
-            # A non-string .text (object, array) is '' as in the JS twin: join()
+            # A non-string .text (object, array) is '\'''\'' as in the JS twin: join()
             # threw on it and the caller lost its whole result (D#96).
             | map(select(type == "object" and .type == "text") | (.text | if type == "string" then . else "" end))
             | join("\n")
             | startswith("<system-reminder")) | not))
   );
-JQPROG
+'
