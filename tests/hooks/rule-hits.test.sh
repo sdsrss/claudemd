@@ -588,4 +588,28 @@ run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
   || { echo "FAIL: ROT-9 stale lock file survived an append"; exit 1; }
 echo "PASS: ROT-9 a stale lock file is reaped like a stale lock directory"
 
+# Case ROT-10 (D#434; 0.113.0 pre-tag review, code L7): noclobber refuses only
+# an existing REGULAR file, so the claim opened a FIFO at the lock path for
+# writing and blocked until a reader came, i.e. until the hook's timeout killed
+# it, row unwritten. Anything at the path is a lock someone else holds.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+printf 'ARCHIVE-1\n' > "$LOG.1"
+mkfifo "$LOG.rotating"
+BEFORE_LINES=$(wc -l < "$LOG" | tr -d ' ')
+CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null' &
+ROT10_PID=$!
+for _ in $(seq 1 50); do kill -0 "$ROT10_PID" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$ROT10_PID" 2>/dev/null; then
+  cat "$LOG.rotating" >/dev/null   # a reader releases the blocked open
+  wait "$ROT10_PID" 2>/dev/null
+  echo "FAIL: ROT-10 the append blocked on a FIFO at the lock path"; exit 1
+fi
+wait "$ROT10_PID" 2>/dev/null
+AFTER_LINES=$(wc -l < "$LOG" | tr -d ' ')
+[[ "$AFTER_LINES" -eq $((BEFORE_LINES + 1)) && "$(cat "$LOG.1")" == "ARCHIVE-1" && -p "$LOG.rotating" ]] \
+  || { echo "FAIL: ROT-10 lines $BEFORE_LINES -> $AFTER_LINES, .1=$(cat "$LOG.1"), fifo kept: $([[ -p "$LOG.rotating" ]] && echo yes || echo no)"; exit 1; }
+rm -f "$LOG.rotating"
+echo "PASS: ROT-10 a FIFO at the lock path is a held lock, not a file to open"
+
 echo "rule-hits: all cases passed"

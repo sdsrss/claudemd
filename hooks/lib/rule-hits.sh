@@ -353,7 +353,10 @@ rule_hits_append() {
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max_bytes )); then
-      if (set -C; : >"$lock") 2>/dev/null; then
+      # Anything already at the path is a held lock (D#434). noclobber refuses
+      # only an existing regular file: it opened a FIFO there for writing and
+      # blocked until the hook's timeout killed it, row unwritten.
+      if [[ ! -e "$lock" && ! -L "$lock" ]] && (set -C; : >"$lock") 2>/dev/null; then
         # RE-READ the size INSIDE the mutex. The check above only decides
         # whether to try for the lock; this one decides whether to rotate, and
         # it has to be this one (2026-09-05 audit Q-01 qualification).
