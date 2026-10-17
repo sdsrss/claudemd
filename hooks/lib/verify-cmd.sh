@@ -41,9 +41,12 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # failures, 1,908 of them piped into tail/head/grep/tee (0.105.0 review M1).
 # A count of 1+ failed/failing/failures/errors, node's `fail N`, eslint's
 # `✖ N`, TAP `not ok N`, a `FAIL` word, cargo's `FAILED`, tsc's `error TSnnnn`,
-# and a suite count before `failed` (`OVERALL: 1 suite(s) failed`, `2 of 44
-# suite(s) failed`): the count-then-`suites?` branch of T2_OUT_RE read those
-# as verdicts, so 5 failing runs in the D#390 replay were logged as passes.
+# and run-all's / bash32-runtime's `OVERALL: 1 suite(s) failed` and `OVERALL:
+# 2 of 44 suite(s) failed`: the count-then-`suites?` branch of T2_OUT_RE read
+# those as verdicts, so 5 failing runs in the D#390 replay were logged as
+# passes. Only the `OVERALL:` line, and a nonzero count right after it: a bare
+# `N suites failed` arm also dropped `0 of 44 suite(s) failed` (it matched at
+# the 44) and `12 suites failed: 0` (0.112.0 pre-tag review).
 # A zero count does not match the count branches, but the `FAIL` word branch
 # ignores what follows it. Passing runs it drops, the direction that
 # under-counts verification: `FAIL: 0`, a label such as `_FAIL_BANNER`, a test
@@ -58,4 +61,4 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # is at most 11. Narrowing a branch would buy that back
 # by logging failed runs as verification, the error R3 cannot absorb, so the
 # pattern stays as it is.
-FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+|(^|[^0-9])[1-9][0-9]*[[:space:]]+(of[[:space:]]+[0-9]+[[:space:]]+)?(suites?|suite\(s\))[[:space:]]+failed'
+FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+|OVERALL:[[:space:]]*[1-9][0-9]*[[:space:]]+(of[[:space:]]+[0-9]+[[:space:]]+)?suite\(s\)[[:space:]]+failed'

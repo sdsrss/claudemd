@@ -145,9 +145,14 @@ post 'bash tests/hooks/x.test.sh' '' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 
 post 'tail -1 run.log' 'OVERALL: all suites passed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
 post 'bash tests/run-all.sh 2>&1 | tail -1' 'OVERALL: 1 suite(s) failed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
 post 'tail -1 b32.log' 'OVERALL: 2 of 44 suite(s) failed under bash 3.2' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+# Controls (0.112.0 pre-tag review): a zero count, and a count that is not the
+# failure count, are passing runs, logged as before. The suite-count arm reads
+# only run-all's and bash32-runtime's `OVERALL:` line.
+post 'tail -1 b32.log' 'OVERALL: 0 of 44 suite(s) failed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'tail -1 r.log' '12 suites failed: 0' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
 TIERS11=$(runs | tail -n +$((N11 + 1)) | jq -r '.tier' | tr '\n' ' ')
-[[ "$TIERS11" == "T2 T2-output " ]] && ok "11 bash tests/… is a runner, OVERALL: is a verdict, N suite(s) failed is a failure" \
-  || ng "11 tiers logged=[$TIERS11], expected [T2 T2-output ]"
+[[ "$TIERS11" == "T2 T2-output T2-output T2-output " ]] && ok "11 bash tests/… is a runner, OVERALL: is a verdict, OVERALL: N suite(s) failed is a failure" \
+  || ng "11 tiers logged=[$TIERS11], expected [T2 T2-output T2-output T2-output ]"
 
 # --- evidence-gate claim-wtree ------------------------------------------------
 TR="$HOME/.claude/projects/p/s.jsonl"
