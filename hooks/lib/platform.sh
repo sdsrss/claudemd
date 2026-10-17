@@ -61,11 +61,12 @@ platform_timeout() {
   # watchdog (D#434): it held every other fd the caller had open, and a reader
   # of an inherited fd 3 waited out the full ceiling. `wait` on a background
   # sleep returns as soon as the trapped TERM arrives; a foreground sleep would
-  # defer the trap until it ended.
-  ( _sleep_pid=""
-    trap '[[ -n "$_sleep_pid" ]] && kill -TERM "$_sleep_pid" 2>/dev/null; exit 0' TERM
-    sleep "$secs" 2>/dev/null & _sleep_pid=$!
-    wait "$_sleep_pid" 2>/dev/null && kill -TERM "$cmd_pid" 2>/dev/null
+  # defer the trap until it ended. The trap names the sleep by `jobs -p`, not by
+  # a variable: a TERM between the fork and `$!` found the variable empty and
+  # left the sleep running (52 of 300 calls under bash 5.3, 10 under 3.2).
+  ( trap 'kill -TERM $(jobs -p) 2>/dev/null; exit 0' TERM
+    sleep "$secs" 2>/dev/null &
+    wait "$!" 2>/dev/null && kill -TERM "$cmd_pid" 2>/dev/null
   ) >/dev/null 2>&1 &
   local watch_pid=$!
   local rc=0
