@@ -145,6 +145,37 @@ run_case "memfile_was_read cat > FILE (a write) is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_write.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
 run_case "memfile_was_read cat >> \"FILE\" (an append) is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_append.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+# 0.112.0 pre-tag review: `<>` opens the file for reading too, so `cat <>F`
+# reads it; only `>`, `>>` and `>|` make F a write target.
+mkbash "$MEMT/b_rw.jsonl" t12 "cat <>$MEMFILE"
+run_case "memfile_was_read cat <>FILE (read-write) is a read" "YES" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_rw.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+# Cost (same review): skipping write targets kept the loop going over every
+# occurrence, each step O(line length), so one 81 KB line repeating
+# `> F` took 6.2 s under bash 3.2 (0.111.0: 61 ms, it stopped at the first);
+# repeating an unterminated `Fx` was already 3.0 s there. The hook's limit
+# is 3 s, and a killed hook allows. At most 16 occurrences per segment are
+# examined now. Discriminates under bash 3.2 (bash32-runtime.sh, macOS CI);
+# bash 5.x took under 1 s either way.
+for shape in "> $MEMFILE " "${MEMFILE}x "; do
+  line="cat"
+  for ((i = 0; i < 81000 / ${#shape}; i++)); do line+=" $shape"; done
+  mkbash "$MEMT/b_long.jsonl" t13 "$line"
+  t0=$(date +%s%N 2>/dev/null)
+  bash -c "source $LIB; hook_memfile_was_read \"$MEMT/b_long.jsonl\" \"$MEMFILE\"" >/dev/null 2>&1
+  t1=$(date +%s%N 2>/dev/null)
+  if [[ "$t0" =~ ^[0-9]+$ && "$t1" =~ ^[0-9]+$ ]]; then
+    ms=$(((t1 - t0) / 1000000))
+    if ((ms < 2500)); then
+      echo "PASS: memfile_was_read 81 KB line of '${shape:0:2}…' in ${ms} ms (< 2500)"
+    else
+      echo "FAIL: memfile_was_read 81 KB line of '${shape:0:2}…' took ${ms} ms (limit 2500, hook timeout 3000)"
+      FAIL=$((FAIL + 1))
+    fi
+  else
+    echo "  (memfile_was_read timing: this date has no %N; skipped)"
+  fi
+done
 
 # Consumer gate. Extraction, not a list: any hook that resolves a path inside the
 # memory dir has to answer this question, and must answer it here. Without this

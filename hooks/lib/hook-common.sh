@@ -393,7 +393,7 @@ hook_memfile_was_read() {
 #   Cost: one grep -F prefilter on the basename, then jq over the matched rows
 #   only, so a long transcript is not parsed whole inside the 3s budget.
 _hook_memfile_bash_read() {
-  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _pre _n _hit
+  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _pre _n _k _hit
   local -a _forms=("$_m")
   if [[ -n "${HOME:-}" && "$_m" == "$HOME/"* ]]; then
     _rest="${_m#"$HOME"/}"
@@ -416,17 +416,27 @@ _hook_memfile_bash_read() {
       esac
       for _p in "${_forms[@]}"; do
         _rest="$_seg"
-        while [[ "$_rest" == *"$_p"* ]]; do
+        _k=0
+        # Each step costs O(line length), so at most 16 occurrences per
+        # segment: going on past skipped write targets made one 81 KB line
+        # repeating `> F` take 6.2 s under bash 3.2, over the 3 s hook limit
+        # (0.112.0 pre-tag review). Stopping early counts no read, the deny
+        # side.
+        while (( _k++ < 16 )) && [[ "$_rest" == *"$_p"* ]]; do
           _pre="$_rest"
           _rest="${_rest#*"$_p"}"
           # A redirect target is written, not read. Only the 64 characters
           # before the path are looked at, enough for `>> "`: trimming the
           # whole prefix was quadratic on a long line (60 KB: 1.5 s -> 19 s).
+          # `<>` opens it for reading as well, so `cat <>F` still reads.
           _n=$(( ${#_pre} - ${#_rest} - ${#_p} ))
           if (( _n > 64 )); then _pre="${_pre:_n-64:64}"; else _pre="${_pre:0:_n}"; fi
           _pre="${_pre%[\"\']}"
           _pre="${_pre%"${_pre##*[![:space:]]}"}"
-          [[ "$_pre" == *'>' || "$_pre" == *'>|' ]] && continue
+          case "$_pre" in
+            *'<>') ;;
+            *'>' | *'>|') continue ;;
+          esac
           case "${_rest:0:1}" in
             ''|[[:space:]]|'"'|"'"|')') _hit=1; break 2 ;;
           esac
