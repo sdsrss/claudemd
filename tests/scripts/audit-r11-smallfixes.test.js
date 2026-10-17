@@ -254,7 +254,10 @@ test('R15: every event a hook records is classified, and the per-hook advisories
   for (const f of fs.readdirSync(hooksDir).filter(n => n.endsWith('.sh'))) {
     for (const m of fs
       .readFileSync(path.join(hooksDir, f), 'utf8')
-      .matchAll(/^\s*hook_record [a-z-]+ ([a-z][a-z0-9-]*) /gm)) {
+      // A call after `&&`, `||`, `;`, `(`, `then`, `do` or `else` records too:
+      // `[[ … ]] && hook_record session-start ledger-inject …` was invisible to
+      // a line-start anchor, as were both rm-rf-allow-* rows.
+      .matchAll(/(?:^|[;&|(]|\bthen|\bdo|\belse)\s*hook_record [a-z-]+ ([a-z][a-z0-9-]*) /gm)) {
       emitted.add(m[1]);
     }
   }
@@ -262,6 +265,7 @@ test('R15: every event a hook records is classified, and the per-hook advisories
     emitted.has('rework-advisory') && emitted.has('deny'),
     'control: the derivation finds known events'
   );
+  assert.ok(emitted.has('ledger-inject'), 'control: a hook_record after && is found');
   for (const e of emitted) {
     assert.equal(isSignalEvent(e), !NOT_SIGNAL.has(e), `${e}: classify it as signal or add it to NOT_SIGNAL`);
   }
