@@ -80,6 +80,38 @@ test('status surfaces pendingKillSwitches when settings.json toggles ahead of pr
   assert.deepEqual(r.pendingKillSwitches.banned_vocab, { effective: false, persisted: true });
 });
 
+test('a kill switch the project settings file sets is persisted, not pending (D#402)', async () => {
+  // Claude Code layers settings env (.claude/settings.local.json over
+  // .claude/settings.json over ~/.claude/settings.json) and writes the result
+  // into the session's environment. status read only the user file, so a
+  // project DISABLE_*_HOOK=1 showed as {effective: true, persisted: false}: a
+  // flip "pending" that no launch would make.
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-st-proj-'));
+  const savedProj = process.env.CLAUDE_PROJECT_DIR;
+  const savedKey = process.env.DISABLE_BANNED_VOCAB_HOOK;
+  try {
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(
+      path.join(proj, '.claude/settings.json'),
+      JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: '1' } })
+    );
+    fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({ env: {} }));
+    process.env.CLAUDE_PROJECT_DIR = proj;
+    process.env.DISABLE_BANNED_VOCAB_HOOK = '1';
+    const r = await status({ verbose: true });
+    assert.equal(r.killSwitches.banned_vocab, true);
+    assert.equal(r.pendingKillSwitches.banned_vocab, undefined, JSON.stringify(r.pendingKillSwitches));
+    const bv = r.verbose.killSwitches.perHook.find(h => h.envVar === 'DISABLE_BANNED_VOCAB_HOOK');
+    assert.equal(bv.persisted, true);
+  } finally {
+    if (savedProj === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = savedProj;
+    if (savedKey === undefined) delete process.env.DISABLE_BANNED_VOCAB_HOOK;
+    else process.env.DISABLE_BANNED_VOCAB_HOOK = savedKey;
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+});
+
 test('status pendingKillSwitches is empty when env + settings agree', async () => {
   fs.writeFileSync(path.join(tmpHome, '.claude/settings.json'), JSON.stringify({ env: {} }));
   delete process.env.DISABLE_BANNED_VOCAB_HOOK;

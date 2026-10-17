@@ -132,6 +132,33 @@ test('a project settings file decides over the user file, for the opt-in value a
   }
 });
 
+test('re-enabling inside a session that has the kill switch names the relaunch (D#402)', async () => {
+  // code.claude.com/docs/en/env-vars: a running session applies new and changed
+  // settings values when the file is saved, but "Removing a variable from the
+  // file doesn't unset it in a running session; the removal takes effect the
+  // next time you launch claude". The toggle runs in that session, so its
+  // process.env is what the hooks see now; "enabled" alone named a hook that
+  // stayed off until the relaunch.
+  const saved = process.env.DISABLE_BANNED_VOCAB_HOOK;
+  try {
+    await toggle('banned-vocab');
+    process.env.DISABLE_BANNED_VOCAB_HOOK = '1'; // the session applied the save
+    const on = await toggle('banned-vocab');
+    assert.equal(on.newState, 'enabled');
+    assert.match(
+      on.note,
+      /DISABLE_BANNED_VOCAB_HOOK=1 stays set in this session until Claude Code is relaunched/
+    );
+    delete process.env.DISABLE_BANNED_VOCAB_HOOK; // a fresh launch
+    await toggle('banned-vocab');
+    const onFresh = await toggle('banned-vocab');
+    assert.equal(onFresh.note, undefined, 'nothing to wait for when the session never had it');
+  } finally {
+    if (saved === undefined) delete process.env.DISABLE_BANNED_VOCAB_HOOK;
+    else process.env.DISABLE_BANNED_VOCAB_HOOK = saved;
+  }
+});
+
 test('DISABLE_CLAUDEMD_HOOKS=1 is named when the toggle enables one hook under it', async () => {
   const p = path.join(tmpHome, '.claude/settings.json');
   fs.writeFileSync(

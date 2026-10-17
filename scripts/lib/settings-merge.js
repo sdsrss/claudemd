@@ -31,6 +31,28 @@ export function settingsShapeError(parsed) {
   return null;
 }
 
+// projectEnvLayer(dir)(key) → { file, env } of the project settings file that
+// sets `key`, local first, or null. An absent or unreadable file sets nothing.
+// Claude Code layers settings env: .claude/settings.local.json over
+// .claude/settings.json over ~/.claude/settings.json. Shared by toggle.js and
+// status.js so the two read the same layers (D#402).
+export function projectEnvLayer(dir) {
+  const layers = [];
+  for (const f of ['settings.local.json', 'settings.json']) {
+    const p = path.join(dir, '.claude', f);
+    if (path.resolve(p) === path.resolve(settingsPath())) continue; // the user file, from $HOME
+    try {
+      let raw = fs.readFileSync(p, 'utf8');
+      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+      const env = JSON.parse(raw)?.env;
+      if (env && typeof env === 'object' && !Array.isArray(env)) layers.push({ file: `.claude/${f}`, env });
+    } catch {
+      /* absent or unreadable */
+    }
+  }
+  return k => layers.find(l => Object.hasOwn(l.env, k)) ?? null;
+}
+
 // Mode + symlink preservation live in writeJsonAtomic (paths.js) — this file
 // used to own a second copy of the tmp+rename idiom that did neither.
 // The old `JSON.parse(JSON.stringify(obj))` self-check was dropped with it:

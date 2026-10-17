@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { readSettings, writeSettings, settingsShapeError } from './lib/settings-merge.js';
+import { readSettings, writeSettings, settingsShapeError, projectEnvLayer } from './lib/settings-merge.js';
 import { HOOK_NAME_TO_ENV, HOOK_REGISTRY } from './lib/hook-registry.js';
 import { settingsPath } from './lib/paths.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
@@ -86,7 +84,7 @@ export async function toggle(name) {
   // file this command writes, and any of them over the shell (docs, env-vars
   // "Precedence"). So a project file that sets the same variable decides.
   // String(): a JSON number 1 in settings.json reaches the hook as "1" (R18 L3).
-  const projectLayer = readProjectEnv(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const projectLayer = projectEnvLayer(process.env.CLAUDE_PROJECT_DIR || process.cwd());
   const effective = k => {
     const l = projectLayer(k);
     const v = l ? l.env[k] : (s.env[k] ?? process.env[k]);
@@ -98,6 +96,15 @@ export async function toggle(name) {
     notes.push(
       `${ks.file} sets ${key}=${JSON.stringify(String(ks.env[key]))}, which overrides ~/.claude/settings.json: ` +
         `${name} stays ${String(ks.env[key]) === '1' ? 'disabled' : 'enabled'} in this project.`
+    );
+  }
+  // A running session applies a saved value at once, but keeps a variable the
+  // file no longer sets until Claude Code is relaunched (docs, env-vars). This
+  // runs inside that session, so process.env is what its hooks see (D#402).
+  if (newState === 'enabled' && !ks && process.env[key] === '1') {
+    notes.push(
+      `${key}=1 stays set in this session until Claude Code is relaunched (a removed settings variable is not ` +
+        `unset in a running session), so ${name} stays disabled until then.`
     );
   }
   if (newState === 'enabled' && effective('DISABLE_CLAUDEMD_HOOKS') === '1') {
@@ -121,25 +128,6 @@ export async function toggle(name) {
     );
   }
   return notes.length > 0 ? { hook: name, newState, note: notes.join(' ') } : { hook: name, newState };
-}
-
-// projectLayer(key) → { file, env } of the project settings file that sets
-// `key`, local first, or null. An absent or unreadable file sets nothing.
-function readProjectEnv(dir) {
-  const layers = [];
-  for (const f of ['settings.local.json', 'settings.json']) {
-    const p = path.join(dir, '.claude', f);
-    if (path.resolve(p) === path.resolve(settingsPath())) continue; // the user file, from $HOME
-    try {
-      let raw = fs.readFileSync(p, 'utf8');
-      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-      const env = JSON.parse(raw)?.env;
-      if (env && typeof env === 'object' && !Array.isArray(env)) layers.push({ file: `.claude/${f}`, env });
-    } catch {
-      /* absent or unreadable */
-    }
-  }
-  return k => layers.find(l => Object.hasOwn(l.env, k)) ?? null;
 }
 
 if (invokedAsMain(import.meta.url)) {

@@ -13,7 +13,7 @@ import {
 import { compareSpecs } from './lib/spec-hash.js';
 import { HOOK_REGISTRY, HOOK_ENV_SUFFIXES } from './lib/hook-registry.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
-import { readSettings } from './lib/settings-merge.js';
+import { readSettings, projectEnvLayer } from './lib/settings-merge.js';
 
 const USAGE = `Usage: node scripts/status.js [--verbose]
 
@@ -233,10 +233,13 @@ export async function status({ verbose = false } = {}) {
   // killSwitches.<name> reflects this-process env (= "currently in effect").
   // Pre-fix it ignored ~/.claude/settings.json's persisted env block, so a
   // user running `node scripts/status.js` directly after `/claudemd-toggle X`
-  // saw `X: false` even though the toggle wrote DISABLE_X_HOOK=1 — toggle
-  // takes effect on next CC session start (when CC loads settings.env).
-  // We now also read settings.json's persisted env and surface a `pending`
-  // diff: keys that will flip on the next session. The boolean `effective`
+  // saw `X: false` even though the toggle wrote DISABLE_X_HOOK=1.
+  // We now also read the persisted env and surface a `pending` diff: keys a
+  // relaunch would change. A running Claude Code session applies a saved value
+  // at once but keeps a removed one until relaunch (docs, env-vars), so inside
+  // a session `pending` is mostly a re-enabled hook still off. `persisted` is
+  // the layered value: a project's .claude/settings.local.json, then its
+  // .claude/settings.json, then the user file (D#402). The boolean `effective`
   // remains the canonical "this session" value (back-compat).
   const persistedEnv = (() => {
     try {
@@ -259,7 +262,11 @@ export async function status({ verbose = false } = {}) {
     }
   })();
   const isOn = key => process.env[key] === '1';
-  const persistedOn = key => persistedEnv[key] === '1';
+  const projectLayer = projectEnvLayer(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const persistedOn = key => {
+    const l = projectLayer(key);
+    return (l ? l.env[key] : persistedEnv[key]) === '1';
+  };
 
   const killSwitches = { plugin: isOn('DISABLE_CLAUDEMD_HOOKS') };
   const pendingKillSwitches = {};
