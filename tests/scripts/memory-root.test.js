@@ -14,11 +14,14 @@ import { spawnSync } from 'node:child_process';
 import { memoryRoot, encodeProjectCwd } from '../../scripts/lib/paths.js';
 import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
 import { memoryMaintenance } from '../../scripts/lib/memory-maintenance.js';
+import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LIB = path.join(REPO, 'hooks/lib/hook-common.sh');
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-memroot-'));
 after(() => fs.rmSync(T, { recursive: true, force: true }));
+// HOME and the other path seams point into a fresh sandbox for every test.
+const box = useHomeSandbox('memroot');
 
 const git = (...a) => {
   const r = spawnSync('git', a, { encoding: 'utf8' });
@@ -75,26 +78,19 @@ for (const [name, start, want] of CASES) {
 
 test('spec-coherence-audit reads the root MEMORY.md from a subdirectory', () => {
   // checkMemoryIndex resolves the projects root from os.homedir(), which reads
-  // HOME; CLAUDEMD_PROJECTS_DIR does not reach it.
-  const home = path.join(T, 'home-sca');
-  const mem = path.join(home, '.claude/projects', encodeProjectCwd(repo), 'memory');
+  // the sandbox's HOME.
+  const mem = box.claude('projects', encodeProjectCwd(repo), 'memory');
   fs.mkdirSync(mem, { recursive: true });
   fs.writeFileSync(path.join(mem, 'MEMORY.md'), '- [A](a.md) — x\n');
   fs.writeFileSync(path.join(mem, 'a.md'), 'a\n');
-  const prev = process.env.HOME;
-  process.env.HOME = home;
-  try {
-    const r = auditSpecCoherence({ pluginRoot: REPO, projectCwd: path.join(repo, 'sub/deep') });
-    const c = r.checks.find(x => x.name === 'memory-index');
-    assert.notEqual(c.stats.status, 'no-index', JSON.stringify(c.stats));
-    assert.equal(c.stats.memDir, mem);
-  } finally {
-    process.env.HOME = prev;
-  }
+  const r = auditSpecCoherence({ pluginRoot: REPO, projectCwd: path.join(repo, 'sub/deep') });
+  const c = r.checks.find(x => x.name === 'memory-index');
+  assert.notEqual(c.stats.status, 'no-index', JSON.stringify(c.stats));
+  assert.equal(c.stats.memDir, mem);
 });
 
 test('memoryMaintenance looks in the root memory dir from a worktree', async () => {
-  const home = path.join(T, 'home');
+  const home = box.home;
   const r = await memoryMaintenance({
     cwd: path.join(T, 'wt/sub'),
     homeDir: home,
