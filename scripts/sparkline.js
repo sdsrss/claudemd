@@ -123,6 +123,26 @@ export function sparkline({ windows = DEFAULT_WINDOWS, logPath } = {}) {
 // shortest-first. Cumulative counts are converted to per-period rates so that
 // "rule still firing at the old steady-state rate" reads as ≈, not ↗ just
 // because the cumulative number grew with the window.
+// One tail of a two-sided 5% test.
+const TREND_ALPHA = 0.025;
+
+// P(X <= k) and P(X >= k) for X ~ Binomial(n, p), 0 < p < 1, summed in log
+// space so a rule with thousands of events does not underflow.
+function binomialTails(n, k, p) {
+  const lnp = Math.log(p);
+  const lnq = Math.log1p(-p);
+  let lnC = 0;
+  let le = 0;
+  let ge = 0;
+  for (let i = 0; i <= n; i++) {
+    if (i > 0) lnC += Math.log(n - i + 1) - Math.log(i);
+    const pmf = Math.exp(lnC + i * lnp + (n - i) * lnq);
+    if (i <= k) le += pmf;
+    if (i >= k) ge += pmf;
+  }
+  return { le: Math.min(1, le), ge: Math.min(1, ge) };
+}
+
 function computeTrend(counts, windows, { insufficientSpan = false, logSpanDays = Infinity } = {}) {
   // No arrow under insufficient span (R15): the log does not reach past the
   // shortest window, so there is no older period to compare with. The banner
@@ -177,9 +197,19 @@ function computeTrend(counts, windows, { insufficientSpan = false, logSpanDays =
   if (counts[0] > 0 && olderBuckets.every(b => b === 0) && !insufficientSpan) annotation = 'newly active';
   else if (counts[0] === 0 && counts[counts.length - 1] > 0) annotation = 'silenced';
 
+  // A direction needs a gap over 20% AND counts that equal rates would rarely
+  // split this way: exact conditional test for two Poisson rates (given n
+  // events, the recent bucket's share is Binomial(n, t_recent/(t_recent +
+  // t_base)) under equal rates), two-sided 5%. The bare 20% rule read 3
+  // events against 1 as ↗ and moved with the coverage floor above. Events
+  // cluster by session, which the Poisson model ignores, so the test still
+  // overstates confidence: it removes arrows the old rule drew, never adds one.
+  const a = buckets[0];
+  const n = a + buckets[base];
+  const tails = binomialTails(n, a, coveredDays[0] / (coveredDays[0] + coveredDays[base]));
   let arrow = '≈';
-  if (recent > oldestRate * 1.2) arrow = '↗';
-  else if (recent < oldestRate * 0.8) arrow = '↘';
+  if (recent > oldestRate * 1.2 && tails.ge < TREND_ALPHA) arrow = '↗';
+  else if (recent < oldestRate * 0.8 && tails.le < TREND_ALPHA) arrow = '↘';
   // Newly-active dominates direction; silenced too.
   if (annotation === 'newly active') arrow = '↗';
   if (annotation === 'silenced') arrow = '↘';

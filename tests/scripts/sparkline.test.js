@@ -52,44 +52,36 @@ test('empty log → no rows + (no signal events) message', () => {
 });
 
 test('single section, monotonic ↗: more events recently than long ago', () => {
-  // 0-30d: 5 events; 30-60d: 1 event; 60-90d: 1 event.
-  // Cumulative: 30d=5, 60d=6, 90d=7.
-  // Per-period rate: recent=5/30, mid=1/30, old=1/30 → recent > old*1.2 → ↗.
+  // 0-30d: 10 events; 30-60d: 1 event; 60-90d: 1 event, 88 days ago, where
+  // the log starts. Cumulative: 30d=10, 60d=11, 90d=12.
+  // Per-period rate: recent=10/30, old=1/28 → recent > old*1.2, and equal
+  // rates put 10 or more of 11 events in the recent 30 of 58 days with
+  // p = 0.008 < 0.025 → ↗.
   writeRows([
-    { daysAgo: 1, section: '§10-V' },
-    { daysAgo: 5, section: '§10-V' },
-    { daysAgo: 10, section: '§10-V' },
-    { daysAgo: 15, section: '§10-V' },
-    { daysAgo: 25, section: '§10-V' },
+    ...[1, 3, 5, 8, 10, 13, 15, 18, 22, 25].map(d => ({ daysAgo: d, section: '§10-V' })),
     { daysAgo: 45, section: '§10-V' },
-    { daysAgo: 75, section: '§10-V' },
+    { daysAgo: 88, section: '§10-V' },
   ]);
   const r = sparkline();
   const row = r.rows.find(x => x.section === '§10-V');
   assert.ok(row, 'must have §10-V row');
-  assert.deepEqual(row.counts, [5, 6, 7]);
+  assert.deepEqual(row.counts, [10, 11, 12]);
   assert.equal(row.trend.arrow, '↗');
 });
 
 test('monotonic ↘: rule dying — older periods had more events', () => {
-  // 0-30d: 1; 30-60d: 5; 60-90d: 5.
-  // Per-period rate: recent=1/30, mid=5/30, old=5/30 → recent < old*0.8 → ↘.
+  // 0-30d: 1; 30-60d: 5; 60-90d: 10.
+  // Per-period rate: recent=1/30, old=10/25 (the log starts 85 days back) →
+  // recent < old*0.8, and equal rates put 1 or fewer of 11 events in the
+  // recent 30 of 55 days with p = 0.002 < 0.025 → ↘.
   writeRows([
     { daysAgo: 15, section: '§7-ship-baseline' },
-    { daysAgo: 35, section: '§7-ship-baseline' },
-    { daysAgo: 40, section: '§7-ship-baseline' },
-    { daysAgo: 45, section: '§7-ship-baseline' },
-    { daysAgo: 50, section: '§7-ship-baseline' },
-    { daysAgo: 55, section: '§7-ship-baseline' },
-    { daysAgo: 65, section: '§7-ship-baseline' },
-    { daysAgo: 70, section: '§7-ship-baseline' },
-    { daysAgo: 75, section: '§7-ship-baseline' },
-    { daysAgo: 80, section: '§7-ship-baseline' },
-    { daysAgo: 85, section: '§7-ship-baseline' },
+    ...[35, 40, 45, 50, 55].map(d => ({ daysAgo: d, section: '§7-ship-baseline' })),
+    ...[62, 65, 68, 70, 73, 75, 78, 80, 83, 85].map(d => ({ daysAgo: d, section: '§7-ship-baseline' })),
   ]);
   const r = sparkline();
   const row = r.rows.find(x => x.section === '§7-ship-baseline');
-  assert.deepEqual(row.counts, [1, 6, 11]);
+  assert.deepEqual(row.counts, [1, 6, 16]);
   assert.equal(row.trend.arrow, '↘');
 });
 
@@ -181,6 +173,34 @@ test('R20 L3: a silenced rule keeps its annotation when no baseline is covered e
   const row = sparkline().rows.find(x => x.section === '§Q');
   assert.equal(row.trend.annotation, 'silenced');
   assert.equal(row.trend.arrow, '↘');
+});
+
+test('a rate gap the counts cannot tell from chance reads ≈, not a direction', () => {
+  // The arrow was a bare ±20% rate comparison: 3 events against 1 read ↗,
+  // though equal rates give a split at least that lopsided 33% of the time.
+  // A direction now also needs the exact two-sided 5% test on the counts.
+  writeRows([
+    ...[2, 9, 20].map(d => ({ daysAgo: d, section: '§10-V' })),
+    { daysAgo: 70, section: '§10-V' },
+    { daysAgo: 89, section: '§11-memory-read' }, // the log reaches the (60,90] bucket
+  ]);
+  const row = sparkline().rows.find(x => x.section === '§10-V');
+  assert.deepEqual(row.counts, [3, 3, 4]);
+  assert.equal(row.trend.arrow, '≈');
+});
+
+test('a few install-day events in a week-long baseline do not read ↘', () => {
+  // A steady 1/day over a 37.5-day log, plus 4 events on its first day: the
+  // (30,60] baseline covers 7.5 days and holds 12, so 1.6/day against 1.0/day
+  // read ↘. Equal rates give 30 or fewer of 42 in the recent bucket 12% of
+  // the time. Moving the coverage floor only moved where this happened.
+  writeRows([
+    ...Array.from({ length: 38 }, (_, i) => ({ daysAgo: i + 0.5, section: '§7-ship-baseline' })),
+    ...[37.4, 37.4, 37.4, 37.4].map(d => ({ daysAgo: d, section: '§7-ship-baseline' })),
+  ]);
+  const row = sparkline().rows.find(x => x.section === '§7-ship-baseline');
+  assert.deepEqual(row.counts, [30, 42, 42]);
+  assert.equal(row.trend.arrow, '≈');
 });
 
 test('R15: under insufficient span there is no arrow either', () => {
