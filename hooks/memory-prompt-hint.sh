@@ -12,7 +12,7 @@
 #
 # Behavior:
 #   1. Parse prompt, cwd, session_id from UserPromptSubmit event JSON.
-#   2. Encode cwd → ~/.claude/projects/<encoded>/memory/MEMORY.md path.
+#   2. Encode ${CLAUDE_PROJECT_DIR:-cwd} → ~/.claude/projects/<encoded>/memory/MEMORY.md path.
 #   3. Match prompt against tagged MEMORY.md entries (same word-boundary +
 #      declension + meta-escape logic as memory-read-check.sh).
 #   4. For each matched file, check session transcript for prior Read.

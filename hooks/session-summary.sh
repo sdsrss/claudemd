@@ -84,7 +84,8 @@ LOG_FILE="$HOME/.claude/logs/claudemd.jsonl"
 # run after install (no sentinel) or pruned state → 24h fallback.
 SINCE_TS=""
 # Which window was counted (R15): "turn" from this session's ref, "24h" from the
-# fallback, which is every session's rows. SessionStart labels the banner by it.
+# fallback. Neither filters by session: both count every session's rows since
+# the window start. SessionStart labels the banner by it.
 WINDOW="turn"
 if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   smtime=$(platform_stat_mtime "$SUMMARY_REF" 2>/dev/null || true)

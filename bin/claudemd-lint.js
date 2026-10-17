@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // claudemd-lint — CLI surface for §10-V banned-vocab + transcript scanning.
-// Built for use OUTSIDE Claude Code: git pre-commit hooks, GitHub Actions,
+// Built for use OUTSIDE Claude Code: git commit-msg hooks, GitHub Actions,
 // other agent integrations (Codex / Cursor / OpenClaw). Reuses the same
 // pattern file (hooks/banned-vocab.patterns) the in-CC bash hooks read,
 // so enforcement is consistent across surfaces.

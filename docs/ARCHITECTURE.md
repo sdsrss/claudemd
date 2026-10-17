@@ -80,7 +80,7 @@ Module → responsibility → external interface. "External" means what a caller
 | Module | Responsibility | External interface |
 |---|---|---|
 | `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
-| `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>`; exit 0 clean / 1 hits |
+| `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>` (one path); exit 0 clean / 1 hits / 2 bad arguments, including empty `lint` text |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
 | `tests/` | 92 node suites, 40 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
@@ -166,7 +166,7 @@ on each run, so a citation that stops matching is a red build rather than a stal
 1. `bin/claudemd-lint.js` validates argv with `validateAndExpandFlags` (space-form flags, auto `--file` for an existing path).
 2. `readPatterns` loads `hooks/banned-vocab.patterns`; commit-message mode strips git's `#` template and scissors block.
 3. `scan` runs the same matcher the hook uses and reports hits with pattern + context.
-4. Output is human-readable or `--json`; exit 1 on any hit so pre-commit hooks and CI can gate on it.
+4. Output is human-readable or `--json`; exit 1 on any hit so commit-msg hooks and CI can gate on it.
 
 **6. Memory hint and read enforcement**
 1. On UserPromptSubmit, `memory-prompt-hint.sh` runs `memtags_match` over the prompt against MEMORY.md `[tag]` entries.

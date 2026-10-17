@@ -1,6 +1,6 @@
 // v0.8.0 R-N2 — HARD-rules manifest audit.
 // Cross-references spec/hard-rules.json with ~/.claude/logs/claudemd.jsonl
-// to drive §13.1 demote review (rules with 0 hits in 30d) and surface
+// to drive §13.1 demote review (rules with 0 fired rows in 30d) and surface
 // hook-vs-self enforcement split. v0.13.1 lowered the default window from
 // 90d to 30d after audit data showed the 90d gate was structurally
 // unreachable (log span typically 18-25d → demoteSuppressed permanent).
