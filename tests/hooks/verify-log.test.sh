@@ -135,6 +135,20 @@ sleep 4
 LEFT10=$(find "$TMPDIR" -name 'claudemd-wtree-*' | wc -l | tr -d ' ')
 [[ "$LEFT10" == 0 ]] && ok "10 a fingerprint stopped at the 2 s bound leaves no temp index" || ng "10 $LEFT10 temp index file(s) left"
 
+# 11 (D#390). This repo's own runner shape: `bash tests/<file>` is a runner by
+# its command (the word session-end-check's VALIDATE_RE already accepts), and
+# run-all's verdict line is upper-case `OVERALL:`. Its failure line puts a noun
+# between the count and `failed`, so `OVERALL: 1 suite(s) failed` behind a tail
+# must keep the run out, like the other failure lines.
+N11=$(runs | wc -l | tr -d ' ')
+post 'bash tests/hooks/x.test.sh' '' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'tail -1 run.log' 'OVERALL: all suites passed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'bash tests/run-all.sh 2>&1 | tail -1' 'OVERALL: 1 suite(s) failed' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'tail -1 b32.log' 'OVERALL: 2 of 44 suite(s) failed under bash 3.2' | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+TIERS11=$(runs | tail -n +$((N11 + 1)) | jq -r '.tier' | tr '\n' ' ')
+[[ "$TIERS11" == "T2 T2-output " ]] && ok "11 bash tests/… is a runner, OVERALL: is a verdict, N suite(s) failed is a failure" \
+  || ng "11 tiers logged=[$TIERS11], expected [T2 T2-output ]"
+
 # --- evidence-gate claim-wtree ------------------------------------------------
 TR="$HOME/.claude/projects/p/s.jsonl"
 {

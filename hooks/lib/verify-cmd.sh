@@ -19,7 +19,9 @@ T1_CMD_RE='(^|[;&|[:space:]])((npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+smok
 # read as no-evidence — `tsc --noEmit` and `eslint .` print nothing at all when
 # clean, and §7's L1 row is literally "lint + typecheck". The hook fired on
 # exactly the evidence the spec asks for. Found in pre-ship review.
-T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test|check)|(npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+(test|check|lint|typecheck|types|build|verify)|(npx[[:space:]]+)?(tsc|eslint|prettier|jest|vitest|mocha|ava|biome|ruff|mypy|shellcheck)|pytest|python[[:space:]]+-m[[:space:]]+(pytest|unittest)|node[[:space:]]+--test|cargo[[:space:]]+clippy|make[[:space:]]+(test|check|lint)|ctest|gradle[[:space:]]+test|mvn[[:space:]]+test|dotnet[[:space:]]+test|rspec|bundle[[:space:]]+exec[[:space:]]+rspec)([[:space:]]|$)'
+# `bash tests/<file>` is the runner shape of shell-tested repos, this one
+# included (session-end-check's VALIDATE_RE accepts the same words; D#390).
+T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test|check)|(npm|pnpm|yarn|bun)[[:space:]]+run[[:space:]]+(test|check|lint|typecheck|types|build|verify)|(npx[[:space:]]+)?(tsc|eslint|prettier|jest|vitest|mocha|ava|biome|ruff|mypy|shellcheck)|pytest|python[[:space:]]+-m[[:space:]]+(pytest|unittest)|node[[:space:]]+--test|cargo[[:space:]]+clippy|make[[:space:]]+(test|check|lint)|ctest|gradle[[:space:]]+test|mvn[[:space:]]+test|dotnet[[:space:]]+test|rspec|bundle[[:space:]]+exec[[:space:]]+rspec|bash[[:space:]]+tests/[^[:space:]]*)([[:space:]]|$)'
 # Output verdicts, for runners the command pattern does not name: a
 # digit-plus-verdict, a label-colon, a tick/cross, a TAP `ok N`, or go test's
 # `ok <pkg> <time>`. Plain prose containing the word "failed" does not match —
@@ -29,7 +31,8 @@ T2_CMD_RE='(^|[;&|[:space:]])((cargo|go|npm|pnpm|yarn|bun|deno)[[:space:]]+(test
 # byte (mawk always, any awk under LC_ALL=C), which turned `：` into the bytes
 # EF BC 9A and let `（` `，` `）` after a runner word pass as a verdict in
 # evidence-gate while verify-log's grep disagreed (converge round 14).
-T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|smoke|suites?|pass|fail)[[:space:]]*(:|：)|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
+# `OVERALL:` is run-all's verdict line, upper-case (D#390).
+T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?)|(^|[^A-Za-z])(tests?|test result|overall|OVERALL|smoke|suites?|pass|fail)[[:space:]]*(:|：)|✓|✗|(^|[^A-Za-z])ok[[:space:]]+[0-9]+|(^|[^A-Za-z])ok[[:space:]]+[^[:space:]]+[[:space:]]+[0-9.]+m?s|no[[:space:]]+issues[[:space:]]+found|All[[:space:]]+matched[[:space:]]+files'
 
 # Output that reports failures, for verify-log only (evidence-gate's verdict
 # does not read it). A runner piped into `tail` exits with tail's status, so a
@@ -37,7 +40,10 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # 1,974 of the 7,080 exit-0 T1/T2 runs in the maintainer's transcripts printing
 # failures, 1,908 of them piped into tail/head/grep/tee (0.105.0 review M1).
 # A count of 1+ failed/failing/failures/errors, node's `fail N`, eslint's
-# `✖ N`, TAP `not ok N`, a `FAIL` word, cargo's `FAILED`, tsc's `error TSnnnn`.
+# `✖ N`, TAP `not ok N`, a `FAIL` word, cargo's `FAILED`, tsc's `error TSnnnn`,
+# and a suite count before `failed` (`OVERALL: 1 suite(s) failed`, `2 of 44
+# suite(s) failed`): the count-then-`suites?` branch of T2_OUT_RE read those
+# as verdicts, so 5 failing runs in the D#390 replay were logged as passes.
 # A zero count does not match the count branches, but the `FAIL` word branch
 # ignores what follows it. Passing runs it drops, the direction that
 # under-counts verification: `FAIL: 0`, a label such as `_FAIL_BANNER`, a test
@@ -52,4 +58,4 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # is at most 11. Narrowing a branch would buy that back
 # by logging failed runs as verification, the error R3 cannot absorb, so the
 # pattern stays as it is.
-FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+'
+FAIL_OUT_RE='(^|[^0-9])[1-9][0-9]*[[:space:]]+(failed|failing|failures?|errors?)([^A-Za-z]|$)|(^|[^A-Za-z])fail[[:space:]]+[1-9]|✖[[:space:]]*[1-9]|(^|[[:space:]])not ok[[:space:]]+[0-9]|(^|[^A-Za-z])FAIL([^A-Za-z]|$)|FAILED|error TS[0-9]+|(^|[^0-9])[1-9][0-9]*[[:space:]]+(of[[:space:]]+[0-9]+[[:space:]]+)?(suites?|suite\(s\))[[:space:]]+failed'

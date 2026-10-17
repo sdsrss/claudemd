@@ -867,5 +867,31 @@ for L in C ${U8:+"$U8"}; do
 done
 [[ -n "$U8" ]] || echo "  (33: no UTF-8 locale installed; only the C leg ran)"
 
+# --- Case 34 (D#390): `bash tests/…` and run-all's `OVERALL:` are evidence ---
+# The runner pattern named no `bash tests/` and the label arm read only a
+# lower-case `overall`, so a run-all piped into tail read as nothing run.
+{
+  row_edit /p/src/a.js
+  row_bash tu_ra 'bash tests/run-all.sh 2>&1 | tail -1'
+  row_result tu_ra 'OVERALL: all suites passed'
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "34: bash tests/run-all.sh | tail -1 → OVERALL: line is verification output"
+else
+  ng "34: fired after a run-all: ${OUT:0:200}"
+fi
+{
+  row_edit /p/src/a.js
+  row_bash tu_cat 'tail -1 run.log'
+  row_result tu_cat 'OVERALL: all suites passed'
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+[[ -z "$OUT" ]] && ok "34b: an upper-case OVERALL: verdict alone is output evidence" || ng "34b: fired: ${OUT:0:200}"
+
 echo
 claudemd_assert_summary
