@@ -256,3 +256,24 @@ test('REL-H1: the revert route names the three mechanisms that make a bare rever
     'ROLLBACK.md no longer states that a revert produces no tag'
   );
 });
+
+test('D#434: the local rollback pins the marketplace this repo publishes, whole lines', () => {
+  // ROLLBACK said "make the plugin Claude Code loads the old version first" and
+  // never said how. The recipe it gives now was run in a scratch HOME; this
+  // joins its command lines to the marketplace name and repository they must
+  // name, so a rename cannot leave a recipe that adds some other marketplace.
+  const mkt = JSON.parse(read('.claude-plugin/marketplace.json'));
+  const plugin = mkt.plugins[0].name;
+  const repo = pkg.repository.url.match(/github\.com\/([^/]+\/[^/.]+)(\.git)?$/)[1];
+  const section = read('docs/ROLLBACK.md').split('## Local machine needs the previous version back')[1];
+  assert.ok(section, 'ROLLBACK.md lost its local-rollback section');
+  const lines = section.split('\n').map(l => l.trim());
+  for (const want of [
+    `claude plugin marketplace remove ${mkt.name}`,
+    `claude plugin marketplace add ${repo}#vX.Y.Z`,
+    `claude plugin install ${plugin}@${mkt.name}`,
+    `\`CLAUDEMD_ALLOW_DOWNGRADE=1 node ~/.claude/plugins/cache/${mkt.name}/${plugin}/X.Y.Z/scripts/install.js\`.`,
+  ]) {
+    assert.ok(lines.includes(want), `ROLLBACK.md local rollback is missing the line: ${want}`);
+  }
+});

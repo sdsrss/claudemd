@@ -173,10 +173,10 @@ const RULE_USAGE_MIN_TOTAL = 3;
 //
 // No kill switch ships with the flip. After the skip above there is no ordinary
 // install left for it to reach, and a switch nobody can need is a switch that
-// rots; the revert path is the one `docs/ROLLBACK.md:59-61` documents,
-// `CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old
-// tag. Not a marketplace pin: earlier CHANGELOG entries pair one with this
-// command, but `docs/ROLLBACK.md` documents no pin step. Dropping the row
+// rots; the revert path is the one `docs/ROLLBACK.md` documents under "Local
+// machine needs the previous version back": pin the marketplace to the old tag
+// (documented there since D#434), then `CLAUDEMD_ALLOW_DOWNGRADE=1 node
+// scripts/install.js` from that version's plugin cache or checkout. Dropping the row
 // outright was considered once more and rejected again, on the 0.84.0 grounds:
 // it spends the maintainer's signal to save them one line.
 //

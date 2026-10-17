@@ -64,13 +64,36 @@ and ship a patch immediately. Never `npm unpublish` (unavailable outside the 72h
 and it breaks existing installs).
 
 ## Local machine needs the previous version back
-`node scripts/install.js` refuses downgrades by design. Escape hatch:
-`CLAUDEMD_ALLOW_DOWNGRADE=1 node scripts/install.js` from a checkout of the old tag.
+Two things go back, in this order: the plugin Claude Code loads, then the spec in
+`~/.claude`. While Claude Code still loads the newer plugin, its SessionStart installs the
+newer spec again at the next session start (and an older plugin over a newer spec banners
+a stale registration that sends the user to `/claudemd-refresh`).
 
-Order matters. While Claude Code still loads the newer plugin, its SessionStart installs
-the newer spec again at the next session start (and an older plugin over a newer spec
-banners a stale registration that sends the user to `/claudemd-refresh`). Make the plugin
-Claude Code loads the old version first, then run the downgrade install, then restart.
+1. Pin the marketplace to the old tag. A GitHub marketplace takes `#<tag>` after the
+   repository. Claude Code refuses to add `claudemd` again from a different source while
+   the old entry exists, so remove it first; removing it uninstalls the plugin. From a
+   shell:
+
+   ```
+   claude plugin marketplace remove claudemd
+   claude plugin marketplace add sdsrss/claudemd#vX.Y.Z
+   claude plugin install claudemd@claudemd
+   ```
+
+   A pinned marketplace stays on its tag: `/claudemd-refresh` reinstalls vX.Y.Z, not `main`.
+2. Install that version's spec over the newer one. `install.js` refuses downgrades by
+   design; the escape hatch is `CLAUDEMD_ALLOW_DOWNGRADE=1`, run from the plugin cache step 1
+   filled (or a checkout of the old tag):
+   `CLAUDEMD_ALLOW_DOWNGRADE=1 node ~/.claude/plugins/cache/claudemd/claudemd/X.Y.Z/scripts/install.js`.
+3. Restart Claude Code, and run `/reload-plugins` in any other open window.
+
+Back to the newest release: the same three `claude plugin` commands with
+`sdsrss/claudemd` and no tag, then restart; the next session start installs the newer spec
+itself, since that is an upgrade. All of this was run on Claude Code 2.1.302 with `HOME`
+pointed at a scratch directory (2026-10-17): v0.112.0 and then v0.111.0 installed from a
+pinned marketplace, the add without the remove was refused ("its source doesn't match its
+extraKnownMarketplaces entry"), the downgrade install exited 1 without the flag and 0 with
+it, and the unpinned add brought back the newest release.
 
 From 0.101.0 (spec v7.0.0) back to 0.100.0: the older installer does not know
 `~/.claude/spec-modules/`, so it restores the v6.35.0 core and extended and leaves that
