@@ -103,6 +103,13 @@ test('a kill switch the project settings file sets is persisted, not pending (D#
     assert.equal(r.pendingKillSwitches.banned_vocab, undefined, JSON.stringify(r.pendingKillSwitches));
     const bv = r.verbose.killSwitches.perHook.find(h => h.envVar === 'DISABLE_BANNED_VOCAB_HOOK');
     assert.equal(bv.persisted, true);
+    // A JSON number 1 reaches the hooks as "1" too (0.112.0 pre-tag review).
+    fs.writeFileSync(
+      path.join(proj, '.claude/settings.json'),
+      JSON.stringify({ env: { DISABLE_BANNED_VOCAB_HOOK: 1 } })
+    );
+    const n = await status();
+    assert.equal(n.pendingKillSwitches.banned_vocab, undefined, JSON.stringify(n.pendingKillSwitches));
   } finally {
     if (savedProj === undefined) delete process.env.CLAUDE_PROJECT_DIR;
     else process.env.CLAUDE_PROJECT_DIR = savedProj;

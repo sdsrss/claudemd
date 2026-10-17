@@ -263,9 +263,11 @@ export async function status({ verbose = false } = {}) {
   })();
   const isOn = key => process.env[key] === '1';
   const projectLayer = projectEnvLayer(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  // String(): a JSON number 1 in a settings file reaches the hooks as "1".
   const persistedOn = key => {
     const l = projectLayer(key);
-    return (l ? l.env[key] : persistedEnv[key]) === '1';
+    const v = l ? l.env[key] : persistedEnv[key];
+    return v != null && String(v) === '1';
   };
 
   const killSwitches = { plugin: isOn('DISABLE_CLAUDEMD_HOOKS') };
