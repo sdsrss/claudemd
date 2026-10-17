@@ -152,6 +152,13 @@ awk -v n=1500 'BEGIN {
   }
 }' > "$TRANSCRIPT"
 export HOME="$FIX_HOME"
+# TMPDIR too (2026-10-17): the probed hooks keep per-session state there, and
+# with the caller's TMPDIR every run left version-sync's
+# `claudemd-sync-perf-baseline-session` sentinel in the real /tmp. A sentinel
+# under 24 h old also sent every version-sync probe of the next run down its
+# early exit. Inside the sandbox it starts absent and goes with the trap.
+export TMPDIR="$SANDBOX/tmp"
+mkdir -p "$TMPDIR"
 
 cd "$SANDBOX" || exit 1
 

@@ -71,7 +71,11 @@ count_probe_rows() {
 LOG_BEFORE=$(count_probe_rows)
 
 PB_ERR="$SCRATCH/perf-baseline.stderr"
-(cd "$CALLER" && bash "$ROOT/scripts/perf-baseline.sh" --runs 1 >/dev/null 2>"$PB_ERR")
+# Case 7 reads this directory: the run gets a TMPDIR of its own, so anything the
+# probed hooks leave behind lands here instead of in the caller's temp dir.
+PB_TMP="$SCRATCH/tmp"
+mkdir -p "$PB_TMP"
+(cd "$CALLER" && TMPDIR="$PB_TMP" bash "$ROOT/scripts/perf-baseline.sh" --runs 1 >/dev/null 2>"$PB_ERR")
 
 AFTER=$(git -C "$CALLER" rev-list --count HEAD)
 DIRTY=$(git -C "$CALLER" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
@@ -163,7 +167,20 @@ else
   FAIL=$((FAIL+1))
 fi
 
-TOTAL=$(grep -cE '^  echo "PASS: [0-9]' "$0" 2>/dev/null || echo 6)
+# Case 7 (2026-10-17): the script swapped HOME for its fixture but not TMPDIR,
+# so the probed version-sync hook wrote its per-session sentinel
+# (`claudemd-sync-perf-baseline-session`) into the caller's real temp dir on
+# every run. The run above had a TMPDIR of its own; it must come back empty.
+PB_LEFT=$(find "$PB_TMP" -mindepth 1 -maxdepth 1 2>/dev/null)
+if [[ -z "$PB_LEFT" ]]; then
+  echo "PASS: 7 nothing left in the caller's TMPDIR"
+else
+  echo "FAIL: 7 perf-baseline left entries in the caller's TMPDIR:"
+  printf '%s\n' "$PB_LEFT" | sed "s|^$PB_TMP/|      |"
+  FAIL=$((FAIL+1))
+fi
+
+TOTAL=$(grep -cE '^  echo "PASS: [0-9]' "$0" 2>/dev/null || echo 7)
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed"
   exit 1
