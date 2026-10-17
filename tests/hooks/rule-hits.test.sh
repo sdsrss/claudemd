@@ -380,8 +380,8 @@ echo "$LAST" | jq -e --arg v "$PKG_VER" '.hook_version == $v' >/dev/null \
   || { echo "FAIL: ARCH-3 hook_version missing or wrong (want $PKG_VER, got: $LAST)"; exit 1; }
 
 
-# Case ROT-1 (2026-09-05 audit P1-1): the two-step rotation is under a mkdir
-# mutex, so a second process arriving mid-rotation leaves both archives alone.
+# Case ROT-1 (2026-09-05 audit P1-1): the two-step rotation is under a mutex,
+# so a second process arriving mid-rotation leaves both archives alone.
 # Pre-fix, P2's `mv .1 .2` moved P1's just-rotated live generation onto .2 and
 # both prior generations were lost. Deterministic stand-in for the interleave:
 # hold the lock, then call append over an oversized log and assert it did not
@@ -406,7 +406,7 @@ echo "PASS: ROT-1 rotation skipped while another process holds the lock"
 # reaps it, which is why the age branch exists.
 touch -t 200001010000 "$LOG.rotating"
 CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
-[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-2 stale lock survived"; exit 1; }
+[[ ! -e "$LOG.rotating" ]] || { echo "FAIL: ROT-2 stale lock survived"; exit 1; }
 [[ "$(cat "$LOG.2")" == "ARCHIVE-1" ]] \
   || { echo "FAIL: ROT-2 same call did not rotate after reaping the stale lock: $(cat "$LOG.2")"; exit 1; }
 echo "PASS: ROT-2 stale lock reaped and the same call rotates"
@@ -417,7 +417,7 @@ rm -rf "$TMP_HOME/.claude/logs"
 run 'rule_hits_append banned-vocab deny null'
 CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
 [[ -f "$LOG.1" ]] || { echo "FAIL: ROT-3 no rotation happened"; exit 1; }
-[[ ! -d "$LOG.rotating" ]] || { echo "FAIL: ROT-3 lock left behind after a completed rotation"; exit 1; }
+[[ ! -e "$LOG.rotating" ]] || { echo "FAIL: ROT-3 lock left behind after a completed rotation"; exit 1; }
 echo "PASS: ROT-3 lock released after a completed rotation"
 
 
@@ -455,16 +455,16 @@ run 'rule_hits_append banned-vocab deny null'
 mkdir "$LOG.rotating"
 touch -t 200001010000 "$LOG.rotating"
 run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
-[[ ! -d "$LOG.rotating" ]] \
+[[ ! -e "$LOG.rotating" ]] \
   || { echo "FAIL: ROT-5 orphan lock survived an append under the size cap"; exit 1; }
 echo "PASS: ROT-5 orphan lock reaped even when the log is under the cap"
 
 # Case ROT-6 (2026-09-05 audit, Q-01 qualification): the size check that
 # AUTHORIZES a rotation must be re-read inside the mutex.
 #
-# ROT-1 above covers the arm where `mkdir` fails. The arm that actually loses
+# ROT-1 above covers the arm where the claim fails. The arm that actually loses
 # data is the one where it SUCCEEDS a moment too late: P2 reads the size while
-# the log is still over the cap, P1 rotates and releases, and P2's `mkdir` then
+# the log is still over the cap, P1 rotates and releases, and P2's claim then
 # wins an uncontested lock and re-runs the two-step move on a log that is
 # already rotated — `mv .1 .2` carrying P1's fresh archive onto .2 and `mv log
 # .1` failing silently. Both prior generations gone, under the mutex added to
@@ -501,7 +501,7 @@ SHIM_COUNT="$TMP_HOME/statshim.count" PATH="$STATSHIM:$PATH" \
   || { echo "FAIL: ROT-6 .1 rotated on a stale size reading: $(cat "$LOG.1" 2>&1)"; exit 1; }
 [[ "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
   || { echo "FAIL: ROT-6 .2 clobbered on a stale size reading: $(cat "$LOG.2" 2>&1)"; exit 1; }
-[[ ! -d "$LOG.rotating" ]] \
+[[ ! -e "$LOG.rotating" ]] \
   || { echo "FAIL: ROT-6 lock left behind by the no-op branch"; exit 1; }
 echo "PASS: ROT-6 a stale over-cap size reading does not rotate an already-rotated log"
 
@@ -550,5 +550,42 @@ AFTER_LINES=$(wc -l < "$LOG" | tr -d ' ')
 [[ "$AFTER_LINES" == "$((BEFORE_LINES + 1))" ]] \
   || { echo "FAIL: ROT-7 row not written ($BEFORE_LINES -> $AFTER_LINES)"; exit 1; }
 echo "PASS: ROT-7 a non-numeric stat fallback cannot abort the append"
+
+# Case ROT-8 (D#357): a held lock blocks rotation even where `mkdir` does not
+# refuse a path that exists. uutils coreutils mkdir 0.10.0 let two or more of
+# four racing processes create the same directory in 750 of 1,000 trials on
+# tmpfs and 780 of 1,000 on ext4 (GNU mkdir 0 of 1,000 on both; 2026-10-17).
+# The shim answers success whatever it is asked, the worst case of that race.
+# Both lock forms must hold: a file (this version's claim) and a directory (a
+# hook from before it, still running in another window).
+MKSHIM="$TMP_HOME/mkdirshim"
+mkdir -p "$MKSHIM"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$MKSHIM/mkdir"
+chmod +x "$MKSHIM/mkdir"
+for HELD in file dir; do
+  rm -rf "$TMP_HOME/.claude/logs"
+  run 'rule_hits_append banned-vocab deny null'
+  printf 'ARCHIVE-1\n' > "$LOG.1"
+  printf 'ARCHIVE-2\n' > "$LOG.2"
+  if [[ "$HELD" == file ]]; then : > "$LOG.rotating"; else mkdir "$LOG.rotating"; fi
+  PATH="$MKSHIM:$PATH" CLAUDEMD_LOG_MAX_MB=0 run 'rule_hits_append banned-vocab deny null'
+  [[ "$(cat "$LOG.1")" == "ARCHIVE-1" && "$(cat "$LOG.2")" == "ARCHIVE-2" ]] \
+    || { echo "FAIL: ROT-8 ($HELD lock) rotated while the lock was held: .1=$(cat "$LOG.1") .2=$(cat "$LOG.2")"; exit 1; }
+  [[ -e "$LOG.rotating" ]] || { echo "FAIL: ROT-8 ($HELD lock) a fresh lock was removed"; exit 1; }
+  rm -f "$LOG.rotating" 2>/dev/null || rmdir "$LOG.rotating"
+done
+echo "PASS: ROT-8 a held lock blocks rotation even when mkdir never refuses"
+
+# Case ROT-9 (D#357): ROT-2 and ROT-5 reap a stale DIRECTORY, the lock an older
+# hook leaves. A holder of this version killed mid-rotation leaves a FILE; the
+# reap must take that too, or rotation stops for good.
+rm -rf "$TMP_HOME/.claude/logs"
+run 'rule_hits_append banned-vocab deny null'
+: > "$LOG.rotating"
+touch -t 200001010000 "$LOG.rotating"
+run 'rule_hits_append banned-vocab deny null'   # default 5 MB cap: no rotation
+[[ ! -e "$LOG.rotating" ]] \
+  || { echo "FAIL: ROT-9 stale lock file survived an append"; exit 1; }
+echo "PASS: ROT-9 a stale lock file is reaped like a stale lock directory"
 
 echo "rule-hits: all cases passed"

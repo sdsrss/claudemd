@@ -268,12 +268,20 @@ rule_hits_append() {
   # primary, so all three are analysis input and the race costs roughly 380
   # days of hit data at the log's measured ~26 KB/day.
   #
-  # The exclusion is a `mkdir` — atomic on every filesystem this runs on, no
-  # flock dependency on a fail-open path, and nothing to reap: the loser skips
-  # rotation (the winner is already doing it) and the next append re-checks the
-  # size, while a lock left behind by a killed holder is removed by the first
-  # append that finds it older than a minute. Both branches stay silent; a
-  # rotation that does not happen this call is not an error.
+  # The exclusion is a noclobber file claim, `(set -C; : >"$lock")`: bash
+  # creates the file itself, so no coreutils binary decides who holds it, and
+  # there is no flock dependency on a fail-open path. It was a `mkdir` until
+  # D#357: uutils coreutils mkdir 0.10.0 let two or more of four racing
+  # processes create one directory in 750 of 1,000 trials on tmpfs and 780 of
+  # 1,000 on ext4, where GNU mkdir and this claim each had 0 of 1,000
+  # (2026-10-17), so on uutils hosts the mutex admitted several holders.
+  # tmp-sweep made the same move in 0.109.1. A directory at the path is a lock
+  # an older hook took in another window: this claim fails on it, as that
+  # hook's `mkdir` fails on a file. The loser skips rotation (the winner is
+  # already doing it) and the next append re-checks the size, while a lock left
+  # behind by a killed holder is removed by the first append that finds it
+  # older than a minute. Both branches stay silent; a rotation that does not
+  # happen this call is not an error.
   local max_mb="${CLAUDEMD_LOG_MAX_MB:-5}"
   # Numeric-guard: a non-integer env value (user typo) would make
   # `$((max_mb * ...))` an unbound-variable crash under `set -u`, and because
@@ -287,12 +295,14 @@ rule_hits_append() {
   # and therefore UNDER the cap, so a reap branch nested inside the size check
   # can never run and the lock is permanent (2026-09-05 post-ship review,
   # finding 3 — a decade-old lock survived 10 appends with the live log at
-  # 1,960 bytes against a 5 MB cap). `[[ -d ]]` is a shell builtin, so the path
+  # 1,960 bytes against a 5 MB cap). `[[ -e ]]` is a shell builtin, so the path
   # where no lock exists — every append but a handful — costs no process.
-  # Reaping here also lets the same call go on to acquire and rotate.
+  # Reaping here also lets the same call go on to acquire and rotate. `rm -f`
+  # takes this version's file; `rmdir` an older hook's directory, which is
+  # always empty, so nothing here removes recursively.
   #
   # NON-ATOMIC BY CONSTRUCTION, accepted for now (2026-09-05 audit Q-01).
-  # Age-check and `rmdir` are two steps, so a reaper that decided "stale" can
+  # Age-check and removal are two steps, so a reaper that decided "stale" can
   # delete a lock a DIFFERENT process acquired in between, letting two holders
   # into the critical section. Demonstrated directly: with a 0.2 s window
   # injected between the two steps, the reaper removed the fresh lock's inode.
@@ -307,7 +317,7 @@ rule_hits_append() {
   # shapes with an atomic `mkdir` shim and saw the in-mutex size re-read below
   # take both arms to zero, which suggests most of what was attributed here
   # belonged to the mutex. Anyone quoting a number for this race should measure
-  # it on a host with GNU coreutils first.
+  # it with the noclobber claim, which no longer depends on the host's mkdir.
   #
   # The recipe the audit proposed — `mv "$lock" "$lock.reap.$$" && rmdir` — is
   # still rejected, but on the structure rather than on those numbers: rename(2)
@@ -316,14 +326,12 @@ rule_hits_append() {
   #
   # What would actually close it: claim the live generation with a single
   # rename (`mv "$log_file" "$log_file.rotating.$$"`) and archive from there, so
-  # only one process can ever own the generation being rotated — and, unlike
-  # everything above, that does not depend on `mkdir` being atomic, which makes
-  # it the fix for the uutils exposure too. Deferred, not rejected: it
-  # introduces a new orphan class (`*.rotating.<pid>` after a kill mid-rotation)
-  # needing its own reaper. The residual costs archived telemetry, never a gate
-  # decision or user data.
-  if [[ -d "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
-    rmdir "$lock" 2>/dev/null
+  # only one process can ever own the generation being rotated. Deferred, not
+  # rejected: it introduces a new orphan class (`*.rotating.<pid>` after a kill
+  # mid-rotation) needing its own reaper. The residual costs archived
+  # telemetry, never a gate decision or user data.
+  if [[ -e "$lock" ]] && (( $(_rule_hits_lock_age_seconds "$lock") >= 60 )); then
+    rm -f "$lock" 2>/dev/null || rmdir "$lock" 2>/dev/null
   fi
 
   if [[ -f "$log_file" ]]; then
@@ -345,16 +353,16 @@ rule_hits_append() {
     size=$(stat -c %s "$log_file" 2>/dev/null || stat -f %z "$log_file" 2>/dev/null || echo 0)
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max_bytes )); then
-      if mkdir "$lock" 2>/dev/null; then
+      if (set -C; : >"$lock") 2>/dev/null; then
         # RE-READ the size INSIDE the mutex. The check above only decides
         # whether to try for the lock; this one decides whether to rotate, and
         # it has to be this one (2026-09-05 audit Q-01 qualification).
         #
         # P1-1 put the two `mv`s under a mkdir mutex and was adjudicated closed
         # on a test that holds the lock across the second append — which only
-        # ever exercises the arm where `mkdir` FAILS. The arm that loses the race
-        # by a hair is the live one: P2 reads the size while the log is still
-        # over the cap, P1 rotates and releases, and P2's `mkdir` then SUCCEEDS.
+        # ever exercises the arm where the claim FAILS. The arm that loses the
+        # race by a hair is the live one: P2 reads the size while the log is still
+        # over the cap, P1 rotates and releases, and P2's claim then SUCCEEDS.
         # P2 re-runs the two-step move on a log that is already rotated: `mv .1
         # .2` carries P1's just-archived live generation onto .2 and `mv log .1`
         # silently fails because there is no log left. End state {gone, gone,
@@ -382,7 +390,7 @@ rule_hits_append() {
           [[ -f "$log_file.1" ]] && mv -f "$log_file.1" "$log_file.2" 2>/dev/null
           mv -f "$log_file" "$log_file.1" 2>/dev/null
         fi
-        rmdir "$lock" 2>/dev/null
+        rm -f "$lock" 2>/dev/null
       fi
       # No else. A lock we did not get is a rotation another process is running;
       # skipping is the correct answer and the next append re-checks the size.

@@ -171,7 +171,8 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
     ) {
       try {
         // A directory can carry one of these names: `claudemd.jsonl.rotating`
-        // is the rotation mutex (hooks/lib/rule-hits.sh). `unlinkSync` throws
+        // is the rotation mutex (hooks/lib/rule-hits.sh), a file since D#357
+        // and a directory when a hook older than that took it. `unlinkSync` throws
         // EISDIR on it, the catch swallowed that, and the emptiness check
         // below then failed — so purge left both the lock and ~/.claude/logs
         // standing, the residue class this loop exists to close (2026-09-05
