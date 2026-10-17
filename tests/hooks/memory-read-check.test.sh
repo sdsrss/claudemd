@@ -1064,13 +1064,18 @@ OUT65B=$(env -u CLAUDE_PROJECT_DIR bash "$HOOK" <<<"$EVENT_65" 2>/dev/null)
 # and let the push through. A start-dir index of its own (from a Claude Code
 # that keyed by cwd) is not what Claude Code loads, so the root's wins.
 enc66() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9-]/-/g'; }
-R66="$TMP_HOME/repo66"
+# Physical paths, as a real session's start dir is (it comes from getcwd).
+# git writes a worktree's pointers physically, so under a symlinked TMPDIR
+# (macOS's /var -> /private/var) a logical fixture put MEMORY.md under a name
+# the worktree never resolves to: red on the macOS CI legs of 0.112.0's PR.
+T66=$(cd -P "$TMP_HOME" && pwd)
+R66="$T66/repo66"
 git init -q "$R66" && git -C "$R66" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-git -C "$R66" worktree add -q "$TMP_HOME/wt66" 2>/dev/null
+git -C "$R66" worktree add -q "$T66/wt66" 2>/dev/null
 mkdir -p "$R66/sub" "$HOME/.claude/projects/$(enc66 "$R66")/memory"
 printf '%s\n' '- [Ship lessons](feedback_ship.md) `[ship, release, push]` — baseline' \
   > "$HOME/.claude/projects/$(enc66 "$R66")/memory/MEMORY.md"
-for s66 in "$R66/sub" "$TMP_HOME/wt66"; do
+for s66 in "$R66/sub" "$T66/wt66"; do
   mkdir -p "$HOME/.claude/projects/$(enc66 "$s66")"
   echo '{"tool":"Read","path":"/unrelated"}' > "$HOME/.claude/projects/$(enc66 "$s66")/sess66.jsonl"
 done
@@ -1082,13 +1087,13 @@ dec66() { # START_DIR
     <<<"{\"session_id\":\"sess66\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$1\"}" \
     2>/dev/null | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null
 }
-D66A=$(dec66 "$R66/sub"); D66B=$(dec66 "$TMP_HOME/wt66")
+D66A=$(dec66 "$R66/sub"); D66B=$(dec66 "$T66/wt66")
 # Control: a worktree whose admin dir does not point back at it is not one;
 # Claude Code keys it by its own root, which has no index.
-cp -R "$TMP_HOME/wt66" "$TMP_HOME/fake66"
-mkdir -p "$HOME/.claude/projects/$(enc66 "$TMP_HOME/fake66")"
-echo '{"tool":"Read","path":"/unrelated"}' > "$HOME/.claude/projects/$(enc66 "$TMP_HOME/fake66")/sess66.jsonl"
-D66C=$(dec66 "$TMP_HOME/fake66")
+cp -R "$T66/wt66" "$T66/fake66"
+mkdir -p "$HOME/.claude/projects/$(enc66 "$T66/fake66")"
+echo '{"tool":"Read","path":"/unrelated"}' > "$HOME/.claude/projects/$(enc66 "$T66/fake66")/sess66.jsonl"
+D66C=$(dec66 "$T66/fake66")
 [[ "$D66A" == deny && "$D66B" == deny && -z "$D66C" ]] \
   && echo "PASS: 66 a session started in a subdirectory or a linked worktree reads the git root's MEMORY.md" \
   || { echo "FAIL: 66 (subdir: '$D66A'; worktree: '$D66B'; fake worktree: '$D66C')"; FAIL=$((FAIL+1)); }

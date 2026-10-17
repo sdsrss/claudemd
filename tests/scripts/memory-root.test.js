@@ -18,7 +18,10 @@ import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LIB = path.join(REPO, 'hooks/lib/hook-common.sh');
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-memroot-'));
+// Physical, as a real session's start dir is (getcwd): git writes a worktree's
+// pointers physically, so a logical T under a symlinked TMPDIR (macOS's /var)
+// would expect a spelling the worktree cases never resolve to.
+const T = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-memroot-')));
 after(() => fs.rmSync(T, { recursive: true, force: true }));
 // HOME and the other path seams point into a fresh sandbox for every test.
 const box = useHomeSandbox('memroot');
