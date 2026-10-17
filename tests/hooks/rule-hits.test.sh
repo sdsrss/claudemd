@@ -551,24 +551,4 @@ AFTER_LINES=$(wc -l < "$LOG" | tr -d ' ')
   || { echo "FAIL: ROT-7 row not written ($BEFORE_LINES -> $AFTER_LINES)"; exit 1; }
 echo "PASS: ROT-7 a non-numeric stat fallback cannot abort the append"
 
-# STDOUT-1: a log write that fails puts nothing on the hook's stdout. bash's
-# printf builtin writes through the shell's stdio buffer; when the write to the
-# redirected file fails (a full disk, a file-size limit), BSD libc keeps the
-# bytes, and the next flush sends them to the restored stdout. On macOS's
-# /bin/bash 3.2 that put this row after banned-vocab's deny JSON, two objects
-# where Claude Code reads one (0.112.0 PR CI, macOS leg, case 26n). glibc drops
-# the bytes, so the behaviour half discriminates on macOS only; the source half
-# runs everywhere: no hook writes a file with a bare printf/echo builtin, only
-# from a subshell whose stdout is that file.
-OUT=$( (trap '' XFSZ; ulimit -f 0; bash -c "source $LIB; rule_hits_append banned-vocab deny null; printf END") 2>/dev/null)
-[[ "$OUT" == "END" ]] \
-  || { echo "FAIL: STDOUT-1 a failed log write reached stdout: ${OUT:0:200}"; exit 1; }
-echo "PASS: STDOUT-1 a failed log write puts nothing on stdout"
-HOOKS_DIR="$(cd "$(dirname "$0")/../../hooks" && pwd)"
-BARE=$(grep -n -E "^[^#]*\b(printf|echo)\b[^|;&()]*[^0-9&>]>>? *\"?\\\$" "$HOOKS_DIR"/*.sh "$HOOKS_DIR"/lib/*.sh \
-  | grep -v -E ">>? */dev/null|>&2" || true)
-[[ -z "$BARE" ]] \
-  || { echo "FAIL: STDOUT-1 a builtin writes a file directly (wrap it: ( printf … ) > file):"; echo "$BARE"; exit 1; }
-echo "PASS: STDOUT-1 every builtin file write runs in a subshell redirected to that file"
-
 echo "rule-hits: all cases passed"

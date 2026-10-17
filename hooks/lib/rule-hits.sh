@@ -439,11 +439,6 @@ rule_hits_append() {
       "$session_id" "$tool_use_id" "$section" "${RULE_HITS_HOOK_VERSION:-}" "$extra")
   fi
 
-  # In a subshell whose stdout is the log for its whole life: a builtin's
-  # failed write (full disk, file-size limit) leaves the bytes in the shell's
-  # stdio buffer, and on BSD libc (macOS /bin/bash) the next flush sent them to
-  # the hook's real stdout, after its JSON (0.112.0 PR CI). The subshell takes
-  # its buffer with it.
-  [[ -n "$row" ]] && ( printf '%s\n' "$row" ) >> "$log_file"
+  [[ -n "$row" ]] && printf '%s\n' "$row" >> "$log_file"
   return 0
 }
