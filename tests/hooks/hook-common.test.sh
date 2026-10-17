@@ -130,6 +130,21 @@ run_case "memfile_was_read path inside a script body is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_node.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
 run_case "memfile_was_read cat of a longer sibling path is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_other.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+# D#301 follow-up: `cat > FILE <<EOF` / `cat >> FILE <<EOF` WRITE the memory
+# file, and the reader word in front made them count as reads. The one shape of
+# this family the transcripts on disk hold (43 such segments in 714 Bash
+# commands naming a memory file, 2026-10-17); the heredoc-body and >/dev/null
+# shapes D#301 named had 0.
+mkbash "$MEMT/b_write.jsonl"  t10 "cat > $MEMFILE <<'EOF'
+new text
+EOF"
+mkbash "$MEMT/b_append.jsonl" t11 "cat >> \"$MEMFILE\" <<'EOF'
+more text
+EOF"
+run_case "memfile_was_read cat > FILE (a write) is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_write.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
+run_case "memfile_was_read cat >> \"FILE\" (an append) is not a read" "NO" \
+  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_append.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
 
 # Consumer gate. Extraction, not a list: any hook that resolves a path inside the
 # memory dir has to answer this question, and must answer it here. Without this
