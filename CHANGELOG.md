@@ -23,7 +23,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 **Tests.**
 - 29bd8ef (D#433): `session-end-check` cases 32a–h and 33a–f. On 0.113.0's hook, 32a, 32b, 32d, 32f, 32g, 32h, 33d and 33e fail (32d: 'kept kept kept' for 'kept dropped kept'; 33e: 1,000 kept of 1); the rest are the keep-side cases, and eleven mutants of the new check each turn one of them red. PASS under bash 5.3 and 3.2.57, with and without `timeout` on PATH. Hook time on a 1,000-file switch: 0.11 s → 0.37 s (bash 5.3), 0.55 s (bash 3.2). `hook-budget` now reads a fractional time limit (it read `platform_timeout 0.5` as 0).
 - d08a0e4: `rule-hits` ROT-10 red before (the append blocked on the FIFO), green after. 33eb8ee: `platform` case 14 red before (a reader of fd 3 blocked the full 5 s), 14/14 after, also under bash 3.2.57. a1395d1: `contributing-rollback-drift` joins the recipe's command lines to `marketplace.json` and `package.json`, red on the old text, 11/11 after.
-- @@CHECK@@
+- On 8648a48 (the release commit; code as in 29bd8ef): `npm run check` with SIGPIPE ignored, exit 0 (node 1,546 of 1,547 passed, 1 skipped because `SHFMT` is not set; every shell suite passed; shellcheck clean on 94 files); `npm run smoke` 2/2; the bash 3.2 runtime step, all 44 suites with the hooks run under bash 3.2.57.
 
 **Not changed, and why.**
 - The session-end hook's `git rev-parse --show-toplevel`, there since before 0.113.0, still has no time limit. With one, a slow git would drop the repository's top level from the project roots, and a missed root stops counting real edits.
