@@ -38,14 +38,33 @@
 
 ## 发版
 
-- 不现在发。D#305 已定下一版 = `next-release` + 10-26 之后的批次（D#213、D#288、D#301，现加 D#390）；这批修复没有一条是紧急的（真实发生次数见上表各提交说明），现在发会在两个 PREREG 窗口内再切一段。
+- ~~不现在发，等 10-26 之后。~~ 2026-10-17 第二轮改判：这条的前提已经不成立。两份 PREREG 在 2026-10-16T09:04Z 的修订里已把分析段截止在 0.109.0 暴露时刻并读完（`tasks/g1b-g2-eval/RESULT-2026-10-16.md`、`tasks/lang-drift/RESULT-2026-10-16.md`），0.109.1、0.111.0 的附记也写明之后的版本不进入已截止的分析段；D#57 的窗口同样已结束（`RESULT.md`）；其余 PREREG（r4a/r4c/r5/r6a/r6b）都是离线回放，没有在跑的窗口。所以原定"10-26 之后"的批次（D#213、D#288、D#301、D#390，加同一闸门的 D#342）现在就做，和本文件上表的六项一起发 0.112.0。
 - 下一版 PREREG 修订要写：`git diff v0.111.0..<头> -- hooks/lib/hook-common.sh` 只新增 `hook_memory_root`、`_hook_worktree_main`、`_hook_trim_into` 三个函数（+72 行），调用方只有 `memory-read-check.sh`、`memory-prompt-hint.sh`；`evidence-gate`、`rework-breaker`、`reply-language-check`、`cross-repo-write-check`、`verify-cmd.sh`、`sampling-audit.js`、`spec/` 未变。
 - CHANGELOG 要写的用户可见变化：卸载无清单时归属判断更窄（只会多保留文件）；子目录 / worktree 启动的会话开始受记忆闸门约束（放行 → 拦截方向）；sparkline 箭头更少；toggle 多两种提示；busybox 上摘要计数正确。
 
+## 第二轮（2026-10-17，`release/v0.112.0`）
+
+| 项 | 提交 | 改前的失败 |
+|---|---|---|
+| D#288 evidence-gate 两处 DONE 检查、verify-log 失败检查改为进程替换 | d9d9e7c | 用例 32：Done 标签后跟 175,690 字节，默认与忽略 SIGPIPE 下都静默 |
+| D#342 "not run" 豁免与 locale 无关 | 17f35a8 | 用例 33：UTF-8 locale 下 `→ not run原因` 触发 |
+| D#390 verify-cmd 认 `bash tests/`、`OVERALL:`、"N suite(s) failed" | 5c82c90 | verify-log 11：两条失败行记成通过；evidence-gate 34/34b 触发 |
+| D#213 源码加载时的四段程序改为单引号字面量 | 529325b | bash 3.2 + 不可写临时文件：banned-vocab 26n 放行 |
+| D#301 `cat > F` / `cat >> F` 不算读 | 7a85cfa | 两个新用例读成 YES |
+| D#401 doctor / analyze 按 git 根找 MEMORY.md | 569aa08 | 子目录下 no-index |
+| D#402 toggle 重新启用时提示需重启；status 读项目层 | 0efe721 | 两个新用例 |
+
+决定：
+- **D#301 只修写入目标一类。** 714 条点名记忆文件的 Bash 命令里，D#301 点名的两种（heredoc 正文、`>/dev/null`）0 次，读后重定向到别处 0 次，写入目标 43 段。回看窗口限 64 个字符：整段前缀去尾空白是 O(n·k)，60 KB 一行 1.5 s → 18.9 s。
+- **D#342 只修 locale 一半。** 1,967 个轮末里 9 处英文 "not run" 都是讨论本钩子或诚实的部分说明，不要求判定形状。
+- **D#403 并入 D#349。** E4 行 300 次：298 次拒，2 次 rc=134、stderr `*** stack smashing detected ***`，是 bash 5.3.9 自身中止，不是该行要测的管道竞态。
+- **D#213 的 §8 闸门部分**：`REVSH_HEREDOC_AWK` 取值 sha256 不变；另对 15,518 条带 `<<` 的真实命令做了 main 对发布分支的回放（结果见验证记录）。
+- 新增延后 D#404：分支切换的 `git checkout` 被 session-end-check 当成 17 处未验证的修改（本任务上一会话的检查点就是这样来的）。
+- 仍延后：D#399（规范文本，随下一次规范发版）。
+
 ## 遗留
 
-- JS 侧同一类路径：`doctor` 的记忆维护（`memoryMaintenance()` 用 `process.cwd()`）与 `/claudemd-analyze`（`spec-coherence-audit --project` 默认 cwd）从子目录运行时找不到 MEMORY.md，只会报 "no-index" 跳过。
-- `/claudemd-status` 不读项目级 settings；"toggle 下个会话生效"的说法与文档不完全一致。
+- ~~JS 侧同一类路径（D#401）~~、~~`/claudemd-status` 不读项目级 settings（D#402）~~：第二轮已修，见上表。
 - `autoMemoryDirectory` 设置会改 Claude Code 的记忆目录，两个记忆闸门不读它（与改动前相同）。
 
 ## 验收
@@ -54,7 +73,7 @@
 - [x] AC2：`npm run check` exit 0，`BASH32_BIN` 指向构建的 bash 3.2.57
 - [x] AC3：`( trap '' PIPE; npm run check )` exit 0
 - [x] AC4：`npm run smoke` 通过
-- [ ] AC5：下一版（2026-10-26 之后）发版：PREREG 修订、CHANGELOG 条目、预发评审
+- [ ] AC5：0.112.0 发版：PREREG 附记（已写，两份）、CHANGELOG 条目（已写）、预发评审、tag、GitHub 发布、npm
 
 ## 验证记录
 
