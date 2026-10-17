@@ -50,12 +50,12 @@
 | D#342 "not run" 豁免与 locale 无关 | 17f35a8 | 用例 33：UTF-8 locale 下 `→ not run原因` 触发 |
 | D#390 verify-cmd 认 `bash tests/`、`OVERALL:`、"N suite(s) failed" | 5c82c90 | verify-log 11：两条失败行记成通过；evidence-gate 34/34b 触发 |
 | D#213 源码加载时的四段程序改为单引号字面量 | 529325b | bash 3.2 + 不可写临时文件：banned-vocab 26n 放行 |
-| D#301 `cat > F` / `cat >> F` 不算读 | 7a85cfa | 两个新用例读成 YES |
+| ~~D#301 `cat > F` / `cat >> F` 不算读~~ 已退回（5f2ef5e），重开为 D#420 | 7a85cfa | 两个新用例读成 YES |
 | D#401 doctor / analyze 按 git 根找 MEMORY.md | 569aa08 | 子目录下 no-index |
 | D#402 toggle 重新启用时提示需重启；status 读项目层 | 0efe721 | 两个新用例 |
 
 决定：
-- **D#301 只修写入目标一类。** 714 条点名记忆文件的 Bash 命令里，D#301 点名的两种（heredoc 正文、`>/dev/null`）0 次，读后重定向到别处 0 次，写入目标 43 段。回看窗口限 64 个字符：整段前缀去尾空白是 O(n·k)，60 KB 一行 1.5 s → 18.9 s。
+- ~~**D#301 只修写入目标一类。**~~ 发版前评审两轮在这一组件上共 6 条发现（第 2 轮 M1：构造的 81 KB 命令、3 个记忆文件，bash 3.2 下 3.4–4.2 s，超过 3 s 时限即放行；0.111.0 为 1.9 s），整组退回到 0.111.0 的字节（5f2ef5e），写入目标两行改为断言今天行为的 RESIDUAL，D#420 跟进。原记录： 714 条点名记忆文件的 Bash 命令里，D#301 点名的两种（heredoc 正文、`>/dev/null`）0 次，读后重定向到别处 0 次，写入目标 43 段。回看窗口限 64 个字符：整段前缀去尾空白是 O(n·k)，60 KB 一行 1.5 s → 18.9 s。
 - **D#342 只修 locale 一半。** 1,967 个轮末里 9 处英文 "not run" 都是讨论本钩子或诚实的部分说明，不要求判定形状。
 - **D#403 并入 D#349。** E4 行 300 次：298 次拒，2 次 rc=134、stderr `*** stack smashing detected ***`，是 bash 5.3.9 自身中止，不是该行要测的管道竞态。
 - **D#213 的 §8 闸门部分**：`REVSH_HEREDOC_AWK` 取值 sha256 不变；另对 15,518 条带 `<<` 的真实命令做了 main 对发布分支的回放：两版都是 13,963 放行、1,555 拒绝，判定翻转 0，输出字节差异 0。
@@ -86,3 +86,6 @@
   - 555480f 加版本号与 CHANGELOG：`BASH32_BIN=<3.2.57> CLAUDEMD_BASH32_REQUIRED=1 npm run check` → exit 0（node 1,546 条中 1,545 通过、1 跳过；bash 2,374/2,374；44 个 shell 套件，40 个 hook、4 个集成，在 bash 3.2 下全部通过；shellcheck 94 个文件无告警）；忽略 SIGPIPE 同样 exit 0；`npm run smoke` 2/2。第一次全量失败 3 条 node 用例，都由新的 memory-root.test.js 引起，555480f 已修。
   - PR CI 第一次（run 39029952035）macOS 两处红：banned-vocab 26n（内建命令写文件失败后字节漏到 stdout，e0f5c5a）、memory-read-check 66（夹具逻辑路径对 git 的物理路径，eeb3cc5）。f4fb752：本地全量 exit 0，CI run 39031306082 七个任务全绿。
   - 打 tag 前评审第 1 轮（两位，范围 1a2ab6c..f26a672）：0 Critical、0 High、2 Medium、24 Low；修复与说明见各提交与 CHANGELOG。
+  - 第 1 轮修复后（e0f5c5a 起）：e0f5c5a 的子 shell 写入只改了约 21 处中的 5 处，源码检查漏掉带 `2>/dev/null` 的行（第 2 轮 High）；整组退回（7244239），泄漏记为 D#421，26n 改为不写日志。
+  - 打 tag 前评审第 2 轮（一位，范围 f26a672..c047dcb）：0 Critical、1 High、1 Medium、7 Low。High 与 Medium 所在的两个组件退回到 0.111.0 的字节；其余为文字。
+  - 150 KB 行上 bash 5.3.9 的 "stack smashing" 中止（D#349）：0.111.0 树 2/600，c047dcb 21/1200；c047dcb 换回旧 rule-hits.sh 6/600 对原样 7/600，子 shell 不是原因。其余对照见 CHANGELOG。

@@ -43,7 +43,7 @@ T2_OUT_RE='[0-9]+[[:space:]]+(passed|failed|pass|fail|tests?|assertions?|suites?
 # `✖ N`, TAP `not ok N`, a `FAIL` word, cargo's `FAILED`, tsc's `error TSnnnn`,
 # and run-all's / bash32-runtime's `OVERALL: 1 suite(s) failed` and `OVERALL:
 # 2 of 44 suite(s) failed`: the count-then-`suites?` branch of T2_OUT_RE read
-# those as verdicts, so 5 failing runs in the D#390 replay were logged as
+# those as verdicts, so 6 failing runs in the D#390 replay were logged as
 # passes. Only the `OVERALL:` line, and a nonzero count right after it: a bare
 # `N suites failed` arm also dropped `0 of 44 suite(s) failed` (it matched at
 # the 44) and `12 suites failed: 0` (0.112.0 pre-tag review).
