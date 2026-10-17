@@ -8,7 +8,8 @@
 # files inside the project count, never ~/.claude/ or the session
 # scratchpad — and count VALIDATE signals (Bash with test-runner / lint /
 # typecheck / git commit / git push patterns) after the last mutation.
-# If mutations > 0 AND validates == 0:
+# If changes are still open after the last validation, less the files git
+# reports unchanged from HEAD by the end (D#433, below):
 # write a `<cwd>/tasks/<slug>-paused.md` checkpoint, stderr a one-line
 # warn, and append a `warn` row to rule-hits.jsonl under §11-session-exit.
 #
@@ -250,6 +251,10 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       else . end
     else . end
   ) | .since = $since
+  | .recent = (.opened | if length > 3 then .[length-3:] else . end)
+  # The settle check below reads the list only up to 1,000 entries; past that
+  # it is dropped here, so the rest of the hook passes a small object around.
+  | if (.opened | length) > 1000 then del(.opened) else . end
 ' 2>/dev/null)
 
 [[ -n "$RESULT" ]] || exit 0
@@ -257,40 +262,52 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
 MUTATIONS=$(printf '%s' "$RESULT" | jq -r '.mutations // 0' 2>/dev/null)
 VALIDATES=$(printf '%s' "$RESULT" | jq -r '.validates // 0' 2>/dev/null)
 OPEN=$(printf '%s' "$RESULT" | jq -r '.open // 0' 2>/dev/null)
-OPENED=$(printf '%s' "$RESULT" | jq -c '.opened // []' 2>/dev/null) || OPENED='[]'
+RECENT=$(printf '%s' "$RESULT" | jq -c '.recent // []' 2>/dev/null) || RECENT='[]'
+SETTLE_NOTE=""
 
-# D#433: a change whose file matches the commit at HEAD again by the end leaves
-# nothing to validate: a branch switch (session af7b7d07 committed on
-# next-release, ran `git checkout main`, and was checkpointed for the 17 files
-# the switch rewrote), a `git restore`, an edit undone. That content is a
-# commit's, and `git commit` counts as a validation above. Asked only when
-# something is open; any git failure or timeout drops nothing. The first
-# attempt (D#404, 8d88816) asked `git status` for the whole tree and kept what
-# it listed; the 0.113.0 pre-tag review found the shapes that dropped real
-# edits, and each now stays:
-#  - a stash made after the prompt, or with no prompt time to compare: the
-#    stashed work is unvalidated though the tree matches HEAD;
-#  - a file that is itself a symlink (the edit went to its target: AGENTS.md
-#    -> CLAUDE.md), or whose directory resolves outside the repo (`cd -P`);
-#  - anything git does not track with the plain `H` tag: untracked, ignored,
-#    under .git or a submodule, assume-unchanged, skip-worktree, unmerged, a
-#    path whose case differs from the index's on a case-insensitive disk;
-#  - anything `git status` lists as changed, staged, deleted or renamed.
-# Settled: not listed, and either tracked and present, or absent from the
-# tree and the index. Paths go to git as separate arguments and git's answers
-# reach jq on stdin (8d88816's --argjson failed past Linux's 128 KiB single-
-# argument cap); each call is bounded at 0.5 s, 1.5 s in all, inside the 3 s
-# SessionEnd budget. The watchdog without coreutils kills the process it
-# started, which for a direct git call is git itself. Past 1,000 open changes
-# nothing is asked: the per-path loop and git's pathspec matching grow with the
-# list. 12,530 paths took the hook from 2.3 s to 4.6 s, past the budget; 2,000
-# took it from 0.19 s to 0.67 s under bash 5.3 and to 1.05 s under bash 3.2,
-# which with the git bounds leaves too little of the 3 s (2026-10-17).
-if [[ "${OPEN:-0}" -gt 0 && "${OPEN:-0}" -le 1000 && "$GIT_TOP" == /* ]] \
-   && declare -f platform_timeout >/dev/null 2>&1; then
+# D#433: a change whose file git reports unchanged from the commit at HEAD by
+# the end leaves nothing to validate: a branch switch (session af7b7d07
+# committed on next-release, ran `git checkout main`, and was checkpointed for
+# the 17 files the switch rewrote), a `git restore`, an edit undone. That
+# content is a commit's, and `git commit` counts as a validation above. Asked
+# only when something is open; any git failure or timeout drops nothing. A
+# change is settled only when its file is not a symlink, resolves (`cd -P`) to
+# a path under the top level, is tracked with the plain `H` tag of
+# `ls-files -v`, and `status` does not list it. Everything else stays: a
+# symlink (an edit through AGENTS.md -> CLAUDE.md changes the target), a file
+# reached through a directory link out of the repo, an absent file (git cannot
+# tell a file a switch removed from a deleted untracked or ignored file, or one
+# in a submodule or under .git), anything untracked, ignored, assume-unchanged,
+# skip-worktree or unmerged, anything status lists as changed, staged, deleted
+# or renamed. The check is off while a rebase, merge, cherry-pick or revert is
+# stopped (an autostash lives in the git dir, not refs/stash), and when a stash
+# was made after the prompt or there is no prompt time to compare: the stashed
+# work is unvalidated though the tree matches HEAD. The first attempt (D#404,
+# 8d88816) and the first build of this one dropped some of these; the 0.113.0
+# and 0.113.1 pre-tag reviews found them.
+#
+# Paths go to git as separate arguments and git's answers reach jq on stdin
+# (8d88816's --argjson failed past Linux's 128 KiB single-argument cap). Each
+# git call is bounded at 0.5 s, and none starts once the hook has run for
+# 2 s (SECONDS counts whole seconds), so the last one ends before 2.5 s of the
+# 3 s SessionEnd budget. The fallback watchdog without coreutils kills the
+# process it started, which for a direct git call is git itself; a git that is
+# a wrapper script outlives it. Past 1,000 open changes nothing is asked (the
+# jq pass above drops the list): 12,530 paths took the hook from
+# 2.3 s to 4.6 s, past the budget, and 2,000 from 0.19 s to 1.05 s under bash
+# 3.2 (2026-10-17).
+_git_settle() {
+  (( SECONDS <= 1 )) || return 1
+  platform_timeout 0.5 git --no-optional-locks "$@"
+}
+if [[ "${OPEN:-0}" -gt 0 && "$GIT_TOP" == /* ]] \
+   && declare -f platform_timeout >/dev/null 2>&1 \
+   && OPENED=$(printf '%s' "$RESULT" | jq -c '.opened | arrays' 2>/dev/null) && [[ -n "$OPENED" ]]; then
   _settle=0
-  if _st=$(platform_timeout 0.5 git --no-optional-locks -C "$GIT_TOP" for-each-ref \
-        --format='%(committerdate:raw)' refs/stash 2>/dev/null); then
+  if _gd=$(_git_settle -C "$GIT_TOP" rev-parse --absolute-git-dir 2>/dev/null) && [[ "$_gd" == /* ]] \
+     && [[ ! -e "$_gd/rebase-merge" && ! -e "$_gd/rebase-apply" && ! -e "$_gd/MERGE_HEAD" \
+           && ! -e "$_gd/MERGE_AUTOSTASH" && ! -e "$_gd/CHERRY_PICK_HEAD" && ! -e "$_gd/REVERT_HEAD" ]] \
+     && _st=$(_git_settle -C "$GIT_TOP" for-each-ref --format='%(committerdate:raw)' refs/stash 2>/dev/null); then
     _settle=1
     if [[ -n "$_st" ]]; then
       _since=$(printf '%s' "$RESULT" | jq -r '.since | strings | sub("\\.[0-9]+"; "") | fromdateiso8601 | floor' 2>/dev/null) || _since=""
@@ -299,8 +316,8 @@ if [[ "${OPEN:-0}" -gt 0 && "${OPEN:-0}" -le 1000 && "$GIT_TOP" == /* ]] \
   fi
   _top=$(cd "$GIT_TOP" 2>/dev/null && pwd -P) || _settle=0
   if (( _settle )); then
-    # One record per opened entry, in order: "" = keep, "E:<rel>" = present,
-    # "A:<rel>" = absent; <rel> is the physical path under the top level.
+    # One record per opened entry, in order: the file's physical path under
+    # the top level when git may vouch for it, "" when it stays regardless.
     _recs=(); _ask=(); _here=$PWD
     while IFS= read -r -d '' _t; do
       _rec=""
@@ -312,21 +329,17 @@ if [[ "${OPEN:-0}" -gt 0 && "${OPEN:-0}" -le 1000 && "$GIT_TOP" == /* ]] \
           if [[ "$PWD" == "$_top" ]]; then _rec=$_b
           elif [[ "$PWD" == "$_top"/* ]]; then _rec=${PWD#"$_top"/}/$_b
           fi
-          if [[ -n "$_rec" ]]; then
-            _ask+=("$_rec")
-            if [[ -e "$PWD/$_b" ]]; then _rec="E:$_rec"; else _rec="A:$_rec"; fi
-          fi
+          [[ -n "$_rec" ]] && _ask+=("$_rec")
         fi
       fi
       _recs+=("$_rec")
     done < <(printf '%s' "$OPENED" | jq -j '.[] | (.path | strings // "") + "\u0000"' 2>/dev/null)
     builtin cd -- "$_here" 2>/dev/null || true
     if (( ${#_ask[@]} > 0 )) \
-       && _lsf=$(platform_timeout 0.5 git --no-optional-locks --literal-pathspecs -C "$_top" \
-            ls-files -v -z -- "${_ask[@]}" 2>/dev/null \
+       && _lsf=$(_git_settle --literal-pathspecs -C "$_top" ls-files -v -z -- "${_ask[@]}" 2>/dev/null \
           | jq -R -s -c 'split("\u0000") | map(select(length > 1) | {key: .[2:], value: .[0:1]}) | from_entries' 2>/dev/null) \
-       && _sts=$(platform_timeout 0.5 git --no-optional-locks --literal-pathspecs -C "$_top" \
-            status --porcelain=v1 -z --untracked-files=no -- "${_ask[@]}" 2>/dev/null \
+       && _sts=$(_git_settle --literal-pathspecs -C "$_top" status --porcelain=v1 -z --untracked-files=no \
+            -- "${_ask[@]}" 2>/dev/null \
           | jq -R -s -c 'split("\u0000") | map(select(length > 0))
               | reduce .[] as $f ({paths: {}, src: false};
                   if .src then .paths[$f] = true | .src = false
@@ -338,11 +351,11 @@ if [[ "${OPEN:-0}" -gt 0 && "${OPEN:-0}" -le 1000 && "$GIT_TOP" == /* ]] \
           | jq -s -c '.[0] as $o | .[1] as $r | .[2] as $tag | .[3] as $listed
               | if ($r | length) != ($o | length) then $o
                 else [range(0; $o | length) as $i | $r[$i] as $x
-                      | select(($x | length) == 0 or $listed[$x[2:]]
-                               or (if $x[0:2] == "E:" then $tag[$x[2:]] != "H" else $tag[$x[2:]] != null end))
-                      | $o[$i]] end' 2>/dev/null) \
+                      | select(($x | length) == 0 or $listed[$x] or $tag[$x] != "H") | $o[$i]] end' 2>/dev/null) \
        && _n=$(printf '%s' "$_kept" | jq 'length' 2>/dev/null) && [[ "$_n" =~ ^[0-9]+$ ]]; then
-      OPENED="$_kept"; OPEN="$_n"
+      OPEN="$_n"
+      RECENT=$(printf '%s' "$_kept" | jq -c 'if length > 3 then .[length-3:] else . end' 2>/dev/null) || RECENT='[]'
+      SETTLE_NOTE=$'\nChanges to files that match the commit at HEAD again by the end are not counted.\n'
     fi
   fi
 fi
@@ -361,9 +374,7 @@ if [[ "${OPEN:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
   SLUG=$(printf 'session-end-%s' "${SESSION_ID:0:8}")
   PAUSED="$CWD/tasks/${SLUG}-paused.md"
 
-  RECENT_LIST=$(printf '%s' "$OPENED" | jq -r '
-    (if length > 3 then .[length-3:] else . end) | map("- \(.name): \(.target)") | join("\n")
-  ' 2>/dev/null)
+  RECENT_LIST=$(printf '%s' "$RECENT" | jq -r 'map("- \(.name): \(.target)") | join("\n")' 2>/dev/null)
 
   # The write is checked: an unwritable or full tasks/ used to leave stderr
   # announcing a checkpoint, and the rule-hits row naming it, when none
@@ -388,10 +399,9 @@ Generated by claudemd \`session-end-check.sh\` at $TS.
 
 Since the final user prompt the assistant made **$OPEN change(s) after the last validation**
 ($MUTATIONS in this turn; a change is one Edit / Write / NotebookEdit call, or one project
-file a Bash command modified; the first number leaves out files that match the commit at
-HEAD again by the end) and there is **no VALIDATE signal after the last mutation**
+file a Bash command modified) and there is **no VALIDATE signal after the last mutation**
 (test runner / lint / typecheck / git commit / git push).
-
+$SETTLE_NOTE
 A validation earlier in the session does not count here, and this checkpoint is
 written even if you ran one: it could not have covered a change made after it.
 

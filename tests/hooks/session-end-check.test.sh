@@ -8,8 +8,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && 
 # Detection: between the last `user` transcript entry and the end of the
 # transcript, count mutation tool_use (Edit/Write/NotebookEdit) and
 # validate signals (Bash matching test-runner / lint / `git commit` /
-# `git push` patterns). Mutations > 0 AND validates == 0 → write
-# tasks/<slug>-paused.md + stderr warn + rule-hits row.
+# `git push` patterns). Changes still open after the last validation, less
+# the files that match HEAD again (case 32) → write tasks/<slug>-paused.md +
+# stderr warn + rule-hits row.
 
 set -uo pipefail
 
@@ -1024,24 +1025,32 @@ run_hook32() {
 }
 P32="$G32/tasks/session-end-x-paused.md"
 opens32() { grep -o '\*\*[0-9]* change(s) after the last validation\*\*' "$P32" 2>/dev/null | tr -dc '0-9'; }
+T="$TMP_HOME/case32a.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt")"
+
+# 32a: a.txt matches main again: no checkpoint. f.txt, which the switch
+# removed, still counts: an absent file git does not know cannot be told from
+# a deleted untracked or ignored file, or one in a submodule or under .git.
+run_hook32 "$T"
+A1=$([[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]] && echo none || echo "$(opens32)")
 T="$TMP_HOME/case32.jsonl"
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
-
-# 32a: both files match main again (f.txt is gone from the tree and from HEAD).
 run_hook32 "$T"
-if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]]; then
-  ok "Case 32a: a branch switch to a committed tree writes no checkpoint"
+if [[ "$A1" == none && "$(opens32)" == 1 ]] && grep -qF -- "- Bash: $G32/f.txt" "$P32"; then
+  ok "Case 32a: a branch switch to a committed tree drops the file that matches HEAD, keeps the removed one"
 else
-  ng "Case 32a: checkout of a committed tree read as unvalidated (stderr=$(cat "$TMP_HOME/stderr"))"
+  ng "Case 32a: a.txt alone gave '$A1' (want none); with f.txt $(opens32) kept (want 1, f.txt)"
 fi
 
-# 32b: the same switch with a.txt changed in the work tree afterwards: only
-# a.txt is still open, and the count says so.
+# 32b: a switch that rewrote a.txt and b.txt, with a.txt changed in the work
+# tree afterwards: only a.txt is still open, and the count says so.
 printf 'edited\n' > "$G32/a.txt"
+T="$TMP_HOME/case32b.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/b.txt")"
 run_hook32 "$T"
 if [[ -f "$P32" ]] && grep -qF -- "- Bash: $G32/a.txt" "$P32" \
-   && ! grep -qF "f.txt" "$P32" && [[ "$(opens32)" == 1 ]] \
-   && grep -qxF 'file a Bash command modified; the first number leaves out files that match the commit at' "$P32"; then
+   && ! grep -qF "b.txt" "$P32" && [[ "$(opens32)" == 1 ]] \
+   && grep -qxF 'Changes to files that match the commit at HEAD again by the end are not counted.' "$P32"; then
   ok "Case 32b: a file that differs from HEAD stays on the checkpoint, a settled one leaves it"
 else
   ng "Case 32b: (paused=$(grep -E '^- |change\(s\) after' "$P32" 2>/dev/null))"
@@ -1097,10 +1106,10 @@ chmod +x "$SHIM32/git"
 T="$TMP_HOME/case32.jsonl"
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
 PATH="$SHIM32:$PATH" run_hook32 "$T"
-if [[ "$(opens32)" == 2 ]]; then
-  ok "Case 32e: when git status fails, every change stays on the checkpoint"
+if [[ "$(opens32)" == 2 ]] && ! grep -qF 'match the commit at' "$P32"; then
+  ok "Case 32e: when git status fails, every change stays on the checkpoint, which claims no filtering"
 else
-  ng "Case 32e: $(opens32) of 2 kept"
+  ng "Case 32e: $(opens32) of 2 kept; note: $(grep -F 'match the commit at' "$P32" 2>/dev/null)"
 fi
 
 # 32f: a project file outside the repo (CLAUDE_PROJECT_DIR elsewhere) is not
@@ -1134,7 +1143,7 @@ git32 mv c.txt b.txt
 L32="$TMP_CWD/link32"
 ln -s "$G32" "$L32"
 T="$TMP_HOME/case32h.jsonl"
-make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$L32/a.txt" "$L32/f.txt")"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$L32/a.txt")"
 run_hook32 "$T" "$L32"
 if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]]; then
   ok "Case 32h: a symlinked cwd maps onto git's top level"
@@ -1161,7 +1170,9 @@ fi
 git32 checkout -q -- CLAUDE.md
 
 # 33b (M): a file under an in-repo directory symlink that points outside the
-# repo. git sees only the link; the file is not git's to vouch for.
+# repo. git sees only the link; the file is not git's to vouch for. A keep-side
+# control: the `cd -P` boundary and the tag rule each keep it, so no single
+# mutant turns it red; 32h is the case that needs the physical resolution.
 X33="$TMP_CWD/outside33"
 mkdir -p "$X33"; printf 'x\n' > "$X33/x.txt"
 ln -s "$X33" "$G32/ext"
@@ -1248,6 +1259,52 @@ if [[ -z "$R33" ]]; then
 else
   ng "Case 33f:$R33 (want <3s, 2 kept)"
 fi
+
+# 33g (0.113.1 review round 1, contract M1): an absent file stays, whatever git
+# says about the path. A file deleted in a submodule, under .git, in an
+# ignored directory, or untracked is unknown to the superproject's index and
+# status, and the first 0.113.1 build dropped all four.
+SUBSRC33="$TMP_CWD/subsrc33"
+git -C "$TMP_CWD" -c init.defaultBranch=main init -q subsrc33
+printf 's\n' > "$SUBSRC33/s.txt"
+git -C "$SUBSRC33" -c user.email=t@t -c user.name=t add s.txt
+git -C "$SUBSRC33" -c user.email=t@t -c user.name=t commit -qm s
+git32 -c protocol.file.allow=always submodule add -q "$SUBSRC33" sub; git32 commit -qm sub
+printf 'h\n' > "$G32/.git/hooks/pre-push"
+mkdir -p "$G32/ign"; printf 'e\n' > "$G32/ign/gone.env"; printf 'u\n' > "$G32/gone-untracked.txt"
+[[ -f "$G32/sub/s.txt" ]] || ng "Case 33g setup: no submodule checkout"
+rm -f "$G32/sub/s.txt" "$G32/.git/hooks/pre-push" "$G32/ign/gone.env" "$G32/gone-untracked.txt"
+T="$TMP_HOME/case33g.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" \
+  "$(bash_result "$G32/sub/s.txt" "$G32/.git/hooks/pre-push" "$G32/ign/gone.env" "$G32/gone-untracked.txt" "$G32/a.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 4 ]] && ! grep -qF -- "- Bash: $G32/a.txt" "$P32"; then
+  ok "Case 33g: files deleted in a submodule, under .git, ignored or untracked stay open"
+else
+  ng "Case 33g: $(opens32) of 4 kept (paused=$(grep -E '^- ' "$P32" 2>/dev/null))"
+fi
+git -C "$G32/sub" checkout -q -- s.txt; rm -rf "${G32:?}/ign"
+
+# 33h (review round 1, code M1): a rebase stopped with an autostash. git keeps
+# the stash in .git/rebase-merge/autostash, not refs/stash, and the edited file
+# matches HEAD meanwhile. While a rebase, merge, cherry-pick or revert is in
+# progress the check is off.
+git32 checkout -qb rb33
+printf 'r1\n' > "$G32/r.txt"; git32 add r.txt; git32 commit -qm r1
+printf 'r2\n' > "$G32/r.txt"; git32 commit -qam r2
+printf 'agent edit\n' > "$G32/a.txt"
+GIT_SEQUENCE_EDITOR="sed -i.bak s/^pick/edit/" git32 -c rebase.autoStash=true rebase -i HEAD~1
+[[ -d "$G32/.git/rebase-merge" && "$(cat "$G32/a.txt")" == main ]] \
+  || ng "Case 33h setup: no stopped rebase with a.txt stashed (a.txt=$(cat "$G32/a.txt"))"
+T="$TMP_HOME/case33h.jsonl"
+make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt")"
+run_hook32 "$T"
+if [[ "$(opens32)" == 1 ]]; then
+  ok "Case 33h: an edit autostashed by a stopped rebase stays open"
+else
+  ng "Case 33h: $(opens32) of 1 kept"
+fi
+git32 rebase --abort; git32 checkout -q -- a.txt; git32 checkout -q main
 
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
