@@ -57,7 +57,16 @@ platform_timeout() {
   # redirect, 0/30 at 8–20ms. The wrapped command keeps the caller's fds, so its
   # own output and stderr are untouched; `disown` was tried and changes nothing,
   # because the orphan holds the fd whether or not the shell tracks it.
-  ( sleep "$secs" 2>/dev/null; kill -TERM "$cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
+  # The redirect covers fds 1 and 2 only, so the sleep is also killed with the
+  # watchdog (D#434): it held every other fd the caller had open, and a reader
+  # of an inherited fd 3 waited out the full ceiling. `wait` on a background
+  # sleep returns as soon as the trapped TERM arrives; a foreground sleep would
+  # defer the trap until it ended.
+  ( _sleep_pid=""
+    trap '[[ -n "$_sleep_pid" ]] && kill -TERM "$_sleep_pid" 2>/dev/null; exit 0' TERM
+    sleep "$secs" 2>/dev/null & _sleep_pid=$!
+    wait "$_sleep_pid" 2>/dev/null && kill -TERM "$cmd_pid" 2>/dev/null
+  ) >/dev/null 2>&1 &
   local watch_pid=$!
   local rc=0
   # PRESERVE the real exit code. `wait` returns the command's own status when it

@@ -82,9 +82,8 @@ CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeo
 # `date +%s%N` because BSD date has no %N and this suite runs on the macOS leg;
 # one-second granularity is ample across a 5000ms-to-8ms gap.
 #
-# What this does NOT assert: that the orphan `sleep` is gone. It still lives
-# out the ceiling holding /dev/null -- harmless to the caller, and killing it
-# would need new control flow in a bash-3.2-safe function.
+# The orphan `sleep` this case left alone (it held only /dev/null on fds 1-2)
+# is killed with the watchdog since D#434; case 14 covers the fds it kept.
 SECONDS=0
 OUT=$(CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeout 5 /bin/echo pipe" 2>/dev/null)
 ELAPSED=$SECONDS
@@ -94,7 +93,22 @@ else
   echo "FAIL: 13 command substitution blocked ${ELAPSED}s of a 5s ceiling (out '$OUT')"; FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((13 - FAIL))/13 passed"; exit 1
+# Case 14 (D#434): the watchdog's sleep must not outlive the call. Case 13's
+# redirect covers fds 1 and 2 only; the orphan `sleep` still held every other
+# fd the caller had open. session-start.test.sh waits on fd 3 for the hook's
+# detached install (`3>&1`), and on a PATH without timeout/gtimeout each such
+# wait lasted the install's full 4 s or 10 s ceiling: suite 58 s against 16 s
+# (2026-10-17). Same measurement as case 13, with the pipe on fd 3.
+SECONDS=0
+OUT=$(CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "set -uo pipefail; source $LIB; platform_timeout 5 /bin/echo fd3 >&2" 2>/dev/null 3>&1)
+ELAPSED=$SECONDS
+if (( ELAPSED < 4 )); then
+  echo "PASS: 14 watchdog sleep does not hold an inherited fd 3 open (${ELAPSED}s of a 5s ceiling)"
+else
+  echo "FAIL: 14 a reader of fd 3 blocked ${ELAPSED}s of a 5s ceiling"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 13/13 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
+fi
+echo "Tests: 14/14 passed"
