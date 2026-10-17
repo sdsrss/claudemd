@@ -15,7 +15,7 @@
   - 项目文件：P01 `.claude/settings.json`（claudeMdExcludes，要实测是否生效），P04/P05 `release-reviewer.md`，P10 `CLAUDE.md`。
   - 用户级：U03 `~/.claude/rules/reply-language.md`，S-M10/S-M11 `~/.claude/skills/converge/SKILL.md`，发版 runbook 记忆里报告渠道的说法。
   - gsd-lite 提示词（冲突 ii、iii 写进去）。
-  - 发版 0.113.0：连同 next-release 上已有的 D#404、D#357、perf-baseline、D#405。
+  - 发版 0.113.0：连同 next-release 上已有的 D#357、perf-baseline、D#405。D#404 原本也在其中，发版前评审后撤回（见决策与进展）。
 - 不做：
   - C09（§11 不要提前停）：按原建议先进 D#328 消融（10-29 复扫时决定），这次不合入。
   - gstack 卸载（使用者自己做）；冲突 iv（gstack 文案）随卸载作废。
@@ -51,6 +51,7 @@
 - 2026-10-17：converge 的 L8（描述改写）只是建议、没出补丁；gstack 卸载后技能清单的构成会变，这次不改。
 - 2026-10-17：本地 A/B 脚本 `tasks/{skill-ab,v8-ab,merged-branch-ab,r6b}/run-ab.mjs` 会复制 `~/.claude/skills/gstack/SKILL.md`，gstack 卸载后会报错；D#328 的消融脚本要去掉这一步。
 - 2026-10-17：发版前评审第 1 轮（两个不带名的评审并行）：契约侧 0C/1H/0M/12L，代码侧 0C/0H/2M/9L。H1 与 M1 是同一处：CHANGELOG 把 D#404 的内部列表完整误写成检查点列出全部，已改文字。D#404（8d88816）一个组件占 1M（经仓库内符号链接的编辑被误丢）+ 5L，修的是噪声、引入的是漏报，按"整块撤回组件"的做法撤回到 0.112.0 字节（4d73f7b），D#404 带着评审证据重新延后。契约侧 L1–L12 中改了 L3、L4、L5、L6、L8–L12；L2、L1 随 D#404 撤回作废；L7（ROLLBACK.md 没说怎么让 Claude Code 先加载旧版）早于本次，留作遗留。代码侧 L7（锁路径上的 FIFO）写进 CHANGELOG 的 Not changed；L8 不是本次引入；L9（无 timeout 的 PATH 上 session-start 套件慢 38 秒）只影响测试，留作遗留。
+- 2026-10-17：第 2 轮（一个不带名的新评审，只看 58a1599..2c6732b）：0C/0H/1M/7L，全是文字：CHANGELOG 的验证行引用的是撤回前的树（M1），另有"local"、设计记录里 D#404 的旧说法、"No hook's default output changes" 对 spec-module-inject 不准、规范改动没列全、Tests 行少写、D#404 条目多写、4064 与 4000 两个数。已到深度上限 2，纯文字修复不再派第三轮，用 `scripts/claim-drift.js` 自查。extended 的 Recent changes 段是摘要，没有补 Blind brief 指针（规范 changelog 里有）。
 - 提交：e556f41（规范 v8.2.0）、f85c1a3（命令 B8/B9）、d8f0441（项目文件）、c9df0e9（记忆路径）。
 
 ## 验证记录
