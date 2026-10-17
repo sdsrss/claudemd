@@ -1,5 +1,5 @@
 # 0.111.0 发版后的遗留项
-状态：进行中
+状态：已完成
 
 代码部分已在 `next-release` 完成；发版等 2026-10-26 之后与延后批次一起。
 
@@ -73,7 +73,7 @@
 - [x] AC2：`npm run check` exit 0，`BASH32_BIN` 指向构建的 bash 3.2.57
 - [x] AC3：`( trap '' PIPE; npm run check )` exit 0
 - [x] AC4：`npm run smoke` 通过
-- [ ] AC5：0.112.0 发版：PREREG 附记（已写，两份）、CHANGELOG 条目（已写）、预发评审、tag、GitHub 发布、npm
+- [x] AC5：0.112.0 发版：PREREG 附记（两份，标签上复核）、CHANGELOG 条目、预发评审两轮、附注 tag v0.112.0（161ad76）、GitHub 发布、npm `claudemd-cli@0.112.0`（15:11:54Z）；tag 的 ci 7/7、npm-publish 含 publish 全绿
 
 ## 验证记录
 
