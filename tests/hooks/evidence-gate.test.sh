@@ -824,5 +824,28 @@ else
   ng "31b: line-start label no longer read as a claim: $OUT"
 fi
 
+# --- Case 32 (D#288): a claim on line 1 of a long message still fires --------
+# `printf | grep -Eq` under pipefail: grep -q exits at the first match, printf
+# dies writing the rest (SIGPIPE, or EPIPE where SIGPIPE is ignored), and the
+# pipeline's 141/1 read as "no Done label". The tail check then found nothing
+# and the hook exited silent. Over two 64 KiB pipe buffers after the match the
+# write always loses. The event goes in on stdin: one 150 KB argument is over
+# Linux's 128 KiB per-argument limit.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+PAD32=""
+for ((i = 0; i < 2600; i++)); do PAD32+="line $i of the appendix: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"$'\n'; done
+OUT=$(printf '%s' "$DONE_CLAIM"$'\n'"$PAD32" \
+  | jq -Rsc --arg t "$TRANSCRIPT" '{hook_event_name:"Stop",session_id:"eg",last_assistant_message:.,transcript_path:$t}' \
+  | bash "$HOOK" 2>&1)
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "32: a Done label followed by ${#PAD32} bytes is still a claim"
+else
+  ng "32: the long message went silent: ${OUT:0:300} (rows $(log_rows))"
+fi
+
 echo
 claudemd_assert_summary

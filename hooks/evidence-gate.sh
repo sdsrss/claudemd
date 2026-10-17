@@ -140,8 +140,8 @@ DONE_TAIL_RE='[^[:space:]]完成|已(发布|上线|实现|修复|生成|完成)'
 # suppressed — the conservative direction for an advisory whose cost is a nag,
 # and the structural `Done:` form above is checked first and is not vetoed.
 DONE_NEG_RE='(不|没|未|无法|尚未|还没|难以)(.{0,9})?完成'
-if ! printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE"; then
-  printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_TAIL_RE" || exit 0
+if ! grep -Eq "$DONE_RE" < <(printf '%s' "$LAST_MSG"); then
+  LC_ALL=C grep -Eq "$DONE_TAIL_RE" < <(printf '%s' "$LAST_MSG") || exit 0
   printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_NEG_RE" && exit 0
 fi
 

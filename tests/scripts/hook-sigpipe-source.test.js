@@ -164,24 +164,7 @@ const KEPT = [
     has: `printf '%s' "$OUT" | grep -Eq "$T2_OUT_RE" && TIER=T2-output`,
     why: 'a lost match records no run, so evidence-gate warns more',
   },
-  // Deferred, not kept: a lost match here suppresses an evidence-gate advisory.
-  // evidence-gate.sh is in the file list both PREREGs check for a zero diff
-  // until their windows end (~2026-10-26); verify-log feeds the same verdict.
-  {
-    file: 'hooks/verify-log.sh',
-    has: `printf '%s\\n%s' "$OUT" "$ERR" | grep -Eq "$FAIL_OUT_RE" && exit 0`,
-    why: 'DEFERRED D#288: a lost match records a failed run as a pass',
-  },
-  {
-    file: 'hooks/evidence-gate.sh',
-    has: `if ! printf '%s' "$LAST_MSG" | grep -Eq "$DONE_RE"; then`,
-    why: 'DEFERRED D#288: a lost match can skip the Done check',
-  },
-  {
-    file: 'hooks/evidence-gate.sh',
-    has: `printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_TAIL_RE" || exit 0`,
-    why: 'DEFERRED D#288: a lost match skips the Done check',
-  },
+  // hooks/evidence-gate.sh (EVIDENCE_GATE=1, opt-in)
   {
     file: 'hooks/evidence-gate.sh',
     has: `printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_NEG_RE" && exit 0`,

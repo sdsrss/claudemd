@@ -63,7 +63,7 @@ fi
 [[ -n "$TIER" ]] || exit 0
 # Exit 0 is not a pass (header): skip a run whose output reports failures.
 ERR=$(printf '%s' "$EVENT" | jq -r '(.tool_response.stderr // "") | .[0:20000]' 2>/dev/null)
-printf '%s\n%s' "$OUT" "$ERR" | grep -Eq "$FAIL_OUT_RE" && exit 0
+grep -Eq "$FAIL_OUT_RE" < <(printf '%s\n%s' "$OUT" "$ERR") && exit 0
 
 WTREE=$(platform_timeout 2 bash -c 'source "$1/wtree.sh" && wtree_hash "$2"' _ "$LIB_DIR" "$CWD" 2>/dev/null) || WTREE=""
 [[ -n "$WTREE" ]] || exit 0
