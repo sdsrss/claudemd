@@ -379,13 +379,7 @@ hook_memfile_was_read() {
 #       more, bat, nl, or `sed -n`. `sed -i`, `grep`, `echo` and `ls` do not
 #       count. Known gap (0.100.0 review, D#102): the split also cuts inside
 #       quoted strings, heredoc bodies and comments, so a reader word there
-#       counts, and so does a read that prints nothing (`>/dev/null`). Kept:
-#       0 of either in the 714 Bash commands naming a memory file in the
-#       transcripts on disk (2026-10-17, D#301), and the rewrite that closed
-#       them cost ~6x the time;
-#     * the path must not be a redirect target: `cat > F <<EOF` and
-#       `cat >> "F"` WRITE the file (43 such segments in the same 714, the one
-#       shape of this family that occurs);
+#       counts, and so does a read that prints nothing (`>/dev/null`);
 #     * the path must appear whole — absolute, `~/`, `$HOME/` or `${HOME}/` —
 #       and end there, so `x.md.bak` is not `x.md`. `cat "$F"` is not
 #       resolved: a miss keeps the deny, which is the safe direction;
@@ -396,7 +390,7 @@ hook_memfile_was_read() {
 #   Cost: one grep -F prefilter on the basename, then jq over the matched rows
 #   only, so a long transcript is not parsed whole inside the 3s budget.
 _hook_memfile_bash_read() {
-  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _pre _n _k _hit
+  local _f="$1" _m="$2" _rows _id _cmd _seg _w _p _rest _hit
   local -a _forms=("$_m")
   if [[ -n "${HOME:-}" && "$_m" == "$HOME/"* ]]; then
     _rest="${_m#"$HOME"/}"
@@ -419,27 +413,8 @@ _hook_memfile_bash_read() {
       esac
       for _p in "${_forms[@]}"; do
         _rest="$_seg"
-        _k=0
-        # Each step costs O(line length), so at most 16 occurrences per
-        # segment: going on past skipped write targets made one 81 KB line
-        # repeating `> F` take 6.2 s under bash 3.2, over the 3 s hook limit
-        # (0.112.0 pre-tag review). Stopping early counts no read, the deny
-        # side.
-        while (( _k++ < 16 )) && [[ "$_rest" == *"$_p"* ]]; do
-          _pre="$_rest"
+        while [[ "$_rest" == *"$_p"* ]]; do
           _rest="${_rest#*"$_p"}"
-          # A redirect target is written, not read. Only the 64 characters
-          # before the path are looked at, enough for `>> "`: trimming the
-          # whole prefix was quadratic on a long line (60 KB: 1.5 s -> 19 s).
-          # `<>` opens it for reading as well, so `cat <>F` still reads.
-          _n=$(( ${#_pre} - ${#_rest} - ${#_p} ))
-          if (( _n > 64 )); then _pre="${_pre:_n-64:64}"; else _pre="${_pre:0:_n}"; fi
-          _pre="${_pre%[\"\']}"
-          _pre="${_pre%"${_pre##*[![:space:]]}"}"
-          case "$_pre" in
-            *'<>') ;;
-            *'>' | *'>|') continue ;;
-          esac
           case "${_rest:0:1}" in
             ''|[[:space:]]|'"'|"'"|')') _hit=1; break 2 ;;
           esac

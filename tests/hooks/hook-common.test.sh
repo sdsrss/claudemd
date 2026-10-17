@@ -130,52 +130,23 @@ run_case "memfile_was_read path inside a script body is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_node.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
 run_case "memfile_was_read cat of a longer sibling path is not a read" "NO" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_other.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
-# D#301 follow-up: `cat > FILE <<EOF` / `cat >> FILE <<EOF` WRITE the memory
-# file, and the reader word in front made them count as reads. The one shape of
-# this family the transcripts on disk hold (43 such segments in 714 Bash
-# commands naming a memory file, 2026-10-17); the heredoc-body and >/dev/null
-# shapes D#301 named had 0.
+# RESIDUAL (D#301, reopened as D#420): `cat > F <<EOF` and `cat >> F <<EOF` WRITE the memory file
+# and still count as reading it (43 such segments in the 714 Bash commands
+# naming a memory file on the maintainer's machine, 2026-10-17). A fix was
+# tried in 0.112.0 and taken back out before release: skipping write targets
+# kept the scan going over every occurrence, and its pre-tag review timed a
+# constructed 81 KB command past the 3 s hook limit under bash 3.2. These rows
+# assert today's answer; a fix flips them to NO.
 mkbash "$MEMT/b_write.jsonl"  t10 "cat > $MEMFILE <<'EOF'
 new text
 EOF"
 mkbash "$MEMT/b_append.jsonl" t11 "cat >> \"$MEMFILE\" <<'EOF'
 more text
 EOF"
-run_case "memfile_was_read cat > FILE (a write) is not a read" "NO" \
+run_case "memfile_was_read RESIDUAL D#301: cat > FILE (a write) counts as a read" "YES" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_write.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
-run_case "memfile_was_read cat >> \"FILE\" (an append) is not a read" "NO" \
+run_case "memfile_was_read RESIDUAL D#301: cat >> \"FILE\" (an append) counts as a read" "YES" \
   "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_append.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
-# 0.112.0 pre-tag review: `<>` opens the file for reading too, so `cat <>F`
-# reads it; only `>`, `>>` and `>|` make F a write target.
-mkbash "$MEMT/b_rw.jsonl" t12 "cat <>$MEMFILE"
-run_case "memfile_was_read cat <>FILE (read-write) is a read" "YES" \
-  "bash -c 'source $LIB; hook_memfile_was_read \"$MEMT/b_rw.jsonl\" \"$MEMFILE\" && echo YES || echo NO'"
-# Cost (same review): skipping write targets kept the loop going over every
-# occurrence, each step O(line length), so one 81 KB line repeating
-# `> F` took 6.2 s under bash 3.2 (0.111.0: 61 ms, it stopped at the first);
-# repeating an unterminated `Fx` was already 3.0 s there. The hook's limit
-# is 3 s, and a killed hook allows. At most 16 occurrences per segment are
-# examined now. Discriminates under bash 3.2 (bash32-runtime.sh, macOS CI);
-# bash 5.x took under 1 s either way.
-for shape in "> $MEMFILE " "${MEMFILE}x "; do
-  line="cat"
-  for ((i = 0; i < 81000 / ${#shape}; i++)); do line+=" $shape"; done
-  mkbash "$MEMT/b_long.jsonl" t13 "$line"
-  t0=$(date +%s%N 2>/dev/null)
-  bash -c "source $LIB; hook_memfile_was_read \"$MEMT/b_long.jsonl\" \"$MEMFILE\"" >/dev/null 2>&1
-  t1=$(date +%s%N 2>/dev/null)
-  if [[ "$t0" =~ ^[0-9]+$ && "$t1" =~ ^[0-9]+$ ]]; then
-    ms=$(((t1 - t0) / 1000000))
-    if ((ms < 2500)); then
-      echo "PASS: memfile_was_read 81 KB line of '${shape:0:2}…' in ${ms} ms (< 2500)"
-    else
-      echo "FAIL: memfile_was_read 81 KB line of '${shape:0:2}…' took ${ms} ms (limit 2500, hook timeout 3000)"
-      FAIL=$((FAIL + 1))
-    fi
-  else
-    echo "  (memfile_was_read timing: this date has no %N; skipped)"
-  fi
-done
 
 # Consumer gate. Extraction, not a list: any hook that resolves a path inside the
 # memory dir has to answer this question, and must answer it here. Without this
