@@ -178,7 +178,7 @@ export function parseStrictOrExit(argv, spec = {}) {
 // being converged. It is not merged into parseStrict because the two contracts
 // genuinely differ and the difference is published: parseStrict rejects the
 // `--key value` space form and positional arguments, both of which
-// `claudemd-cli lint <path> --comment-char ';'` documents and users' pre-commit
+// `claudemd-cli lint <path> --comment-char ';'` documents and users' commit-msg
 // hooks depend on.
 //
 // Strict-validate flag-shaped args + normalize `--key=value` → `--key value`

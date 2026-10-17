@@ -154,7 +154,7 @@ node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
 
 | Subcommand | Purpose |
 |---|---|
-| `lint <text>` / `--file` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits / 2 bad arguments, including empty or blank text. |
+| `lint <text>` / `--file` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits / 2 bad arguments, including an empty or blank text argument (`--stdin` or `--file` with empty input still exits 0). |
 | `audit <jsonl-path>` | Scan all assistant-text turns in one Claude Code transcript jsonl (more than one path exits 2; run it once per file). Skips `@ratio` patterns by default (chat prose has different baseline conventions); pass `--include-ratio` to include them. |
 | `--json` | JSON output (machine-readable for CI). |
 | `--commit-msg` / `--no-commit-msg` | (`lint`) Force git commit-message cleanup on/off. Auto-ON for `COMMIT_EDITMSG` / `MERGE_MSG` / `SQUASH_MSG` / `TAG_EDITMSG` / `NOTES_EDITMSG`. |
@@ -401,8 +401,6 @@ Asking for a purge (`CLAUDEMD_PURGE=1`) also drops `~/.claude/.claudemd-state/` 
 
 If `/claudemd-uninstall` is unavailable (you already ran `/plugin uninstall` first and want to clean up by reaching into the cache before it gets pruned, or you need to script the uninstall outside CC):
 
-Once the cache is gone too, restore your own `CLAUDE.md` by hand: copy `~/.claude/backup-<ISO>/CLAUDE.md` (the newest one) to `~/.claude/CLAUDE.md`.
-
 ```bash
 CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
 CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
@@ -410,6 +408,8 @@ CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/clau
 ```
 
 The slash command and the script are equivalent — the slash command just supplies `${CLAUDE_PLUGIN_ROOT}` for you.
+
+Once the cache is gone too, restore your own `CLAUDE.md` by hand: copy `CLAUDE.md` from the newest `~/.claude/backup-<ISO>/` that holds one to `~/.claude/CLAUDE.md`.
 
 ---
 

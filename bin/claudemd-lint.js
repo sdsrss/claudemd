@@ -276,7 +276,7 @@ function lintCmd(rawArgs) {
   } else if (positional.length > 0) {
     // Auto-detect: a bare single positional that is an existing regular file
     // is overwhelmingly the user's intent (they're piping a commit-msg path
-    // from a git pre-commit hook). Without this, `claudemd-cli lint message.txt`
+    // from a git commit-msg hook). Without this, `claudemd-cli lint message.txt`
     // silently scans the LITERAL STRING "message.txt" → exits 0 even when
     // the file contents would deny.
     //
@@ -294,7 +294,7 @@ function lintCmd(rawArgs) {
     // a single literal word, not a typo'd path. `lint message.txt` (no slash,
     // missing file) stays text — it's ambiguous between "literal text" and
     // "filename in cwd"; pre-existing-file behavior wins to preserve the
-    // pre-commit-hook ergonomic where `--file` is explicit.
+    // commit-msg-hook ergonomic where `--file` is explicit.
     if (positional.length === 1) {
       const arg = positional[0];
       // Path-shape heuristic: contains `/`, or is `.`/`..`. Whitespace disqualifies
@@ -360,7 +360,7 @@ function lintCmd(rawArgs) {
   }
 
   // Per-commit escape hatch — mirrors hooks/banned-vocab-check.sh:36. Without
-  // this, `claudemd-cli lint --file=.git/COMMIT_EDITMSG` in a git pre-commit
+  // this, `claudemd-cli lint --file=.git/COMMIT_EDITMSG` in a git commit-msg
   // hook silently disagreed with the in-CC bash hook: the same commit message
   // with `[allow-banned-vocab]` would pass the bash gate (exit 0) but the CLI
   // would still exit 1 and block the commit. Same input → different verdict =
@@ -387,7 +387,7 @@ function lintCmd(rawArgs) {
   // rescans the tail — quadratic, 710ms on a 20k digit run, and this runs on
   // the RAW file before scan(), so lint.js:150-157's sanitizer fix for the same
   // family never covered it. A digit-dense lockfile or hash dump hung the
-  // pre-commit hook. 64 is far past any real anchor (`p99 580ms→140ms` is 15).
+  // commit-msg hook. 64 is far past any real anchor (`p99 580ms→140ms` is 15).
   const HAS_NUMERIC_ARROW = /\d\S{0,64}\s*(?:→|->|=>)\s*\d/;
   const HAS_BASELINE = /baseline/i;
   const baselineExempt = HAS_NUMERIC_ARROW.test(text) || HAS_BASELINE.test(text);
@@ -446,7 +446,7 @@ function auditCmd(rawArgs) {
   // Mirrors the `lint --file` read path above (R11-11). The existsSync/statSync
   // guards a few lines up both PASS on a mode-000 file, so an unreadable
   // transcript reached this line and exited 1 with a V8 stack — colliding with
-  // the documented `1 = hits found`, which is what CI and pre-commit gate on.
+  // the documented `1 = hits found`, which is what CI and commit-msg hooks gate on.
   let jsonl;
   try {
     jsonl = fs.readFileSync(transcriptPath, 'utf8');

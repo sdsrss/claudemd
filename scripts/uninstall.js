@@ -78,8 +78,8 @@ manifest. Spec files in ~/.claude/CLAUDE*.md are kept by default. Idempotent
 restore or delete runs whenever it is asked for: neither needs the manifest.
 Without one, a delete removes only spec files whose first line is the
 "# AI-CODING-SPEC" H1 and only the spec-modules/*.md files claudemd generated
-(their "# AI-CODING-SPEC … — module: <name>" heading); anything else is listed
-in \`kept\`. A restore never overwrites a home file that is not the spec (by
+(their "# AI-CODING-SPEC … — module: <name>" heading); any other regular file
+is listed in \`kept\` (a symlink is left in place and not listed). A restore never overwrites a home file that is not the spec (by
 the same first-line test) and differs from the backup (also listed in \`kept\`).
 
 No flags. Behavior is read from the following env vars:

@@ -390,7 +390,7 @@ function templateComments(templateLines, c) {
 // had them stripped before the scan, muting any §10-V violation inside. Same
 // violation at 2 trailing `#` lines denied, at 3 it exited 0 — a silent miss
 // that grew MORE likely the longer the commented block got, on the shipped
-// pre-commit/CI entry point.
+// commit-msg/CI entry point.
 //
 // That removal was shipped with the claim that no git shape needs the signal.
 // The 0.68.3 pre-tag review refuted it: the six-shape table measured

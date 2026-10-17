@@ -278,8 +278,9 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   [[ -f "$C12_HOME/exited" ]] && break
   sleep 0.5
 done
-# tee is its own process: give it up to 1 s after the exit to write node's
-# last line (pre-tag review L9). Still well inside the shim's 2 s pause, so
+# tee is its own process: give it four more reads, 0.25 s apart, to write
+# node's last line (pre-tag review L9). With the 0.5 s poll above, the last
+# read lands at most ~1.25 s after the exit, inside the shim's 2 s pause, so
 # output printed only once the wrapper finishes (26b057d) stays red.
 for _ in 1 2 3 4; do
   C12_SEEN=$(grep -c '"spec":' "$C12_HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
