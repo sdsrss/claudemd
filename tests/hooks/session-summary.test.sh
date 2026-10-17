@@ -297,8 +297,36 @@ else
   ng "Case 14: label wrong (out: $OUT)"
 fi
 
+# --- Case 15: the window does not depend on GNU or BSD `date` --------------
+# busybox `date` takes neither `-d '24 hours ago'` nor `-v-1d`, and neither
+# `-d @<epoch>` nor `-r <epoch>` with a ref, so the window start fell back to
+# 1970: the whole log was counted under "last 24 h". A `date` that fails stands
+# in for it; jq, which the hook requires anyway, computes the times.
+mkdir -p "$TMP_HOME/nodate"
+printf '#!/bin/sh\nexit 1\n' > "$TMP_HOME/nodate/date"
+chmod +x "$TMP_HOME/nodate/date"
+OLD_TS=$(jq -nr 'now - 259200 | todate')
+NOW_TS=$(jq -nr 'now | todate')
+{
+  echo "{\"ts\":\"$OLD_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+  echo "{\"ts\":\"$NOW_TS\",\"hook\":\"banned-vocab\",\"event\":\"deny\",\"spec_section\":\"§10-V\",\"extra\":null}"
+} > "$LOG"
+rm -f "$SUMMARY" "$REF"
+echo "$EVENT" | PATH="$TMP_HOME/nodate:$PATH" bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+D15A=$(jq -r '"\(.window) \(.denies)"' "$SUMMARY" 2>/dev/null)
+# With a ref an hour old: the turn window, not 24 h from 1970.
+rm -f "$SUMMARY"
+touch -t "$(jq -nr 'now - 3600 | strftime("%Y%m%d%H%M.%S")')" "$REF"
+echo "$EVENT" | PATH="$TMP_HOME/nodate:$PATH" bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
+D15B=$(jq -r '"\(.window) \(.denies)"' "$SUMMARY" 2>/dev/null)
+if [[ "$D15A" == "24h 1" && "$D15B" == "turn 1" ]]; then
+  ok "Case 15: without a working date the window is still 24 h or the turn"
+else
+  ng "Case 15: expected '24h 1' / 'turn 1', got '$D15A' / '$D15B'"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"
+  echo "Tests: $((15 - FAIL))/15 passed"
   exit 1
 fi
-echo "Tests: 14/14 passed"
+echo "Tests: 15/15 passed"

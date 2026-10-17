@@ -89,18 +89,15 @@ SINCE_TS=""
 WINDOW="turn"
 if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   smtime=$(platform_stat_mtime "$SUMMARY_REF" 2>/dev/null || true)
-  if [[ -n "$smtime" ]]; then
-    SINCE_TS=$(date -u -d "@$smtime" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-      || date -u -r "$smtime" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-      || true)
+  # jq, not date: busybox `date` takes neither GNU `-d @N` nor BSD `-r N`, and
+  # the 24 h start below fell back to 1970 there, counting the whole log.
+  if [[ "$smtime" =~ ^[0-9]+$ ]]; then
+    SINCE_TS=$(jq -nr --argjson t "$smtime" '$t | todate' 2>/dev/null || true)
   fi
 fi
 if [[ -z "$SINCE_TS" ]]; then
   WINDOW="24h"
-  # GNU `date -d`, BSD `date -v`. Try GNU first; on failure fall back.
-  SINCE_TS=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-    || date -u -v-1d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-    || echo "1970-01-01T00:00:00Z")
+  SINCE_TS=$(jq -nr 'now - 86400 | todate' 2>/dev/null) || exit 0
 fi
 
 # Aggregate session-window rows. Two-stage pipe: outer `jq -R 'try fromjson
