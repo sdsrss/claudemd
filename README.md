@@ -221,9 +221,9 @@ export DISABLE_SESSION_EXTENDED_READ_HOOK=1      # v0.10.1+ — PreToolUse:Read 
 **2a. Per-sub-feature** (v0.4.0+). Sub-flags inside an enabled hook, named without the `_HOOK` suffix:
 
 ```bash
-export DISABLE_UPSTREAM_CHECK=1            # only the upstream-tag-check sub-feature
-                                           # of session-start-check; bootstrap-on-mismatch
-                                           # behavior remains active.
+export DISABLE_UPSTREAM_CHECK=1            # the upstream-tag check and the stale-
+                                           # registration banner of session-start-check;
+                                           # bootstrap-on-mismatch behavior remains active.
 
 export DISABLE_SESSION_SUMMARY_BANNER=1    # v0.8.0+ — only the SessionStart banner-emit
                                            # half of session-summary; the Stop-side write

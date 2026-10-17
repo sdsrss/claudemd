@@ -46,7 +46,7 @@ const SUB_FEATURE_TOGGLES = [
   {
     envVar: 'DISABLE_UPSTREAM_CHECK',
     partOf: 'session-start-check.sh',
-    disables: 'the upstream-tag check only; bootstrap-on-mismatch still runs',
+    disables: 'the upstream-tag check and the stale-registration banner; bootstrap-on-mismatch still runs',
   },
   {
     envVar: 'DISABLE_SPEC_DRIFT_BANNER',

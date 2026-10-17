@@ -281,8 +281,8 @@ SETTLE_NOTE=""
 # skip-worktree or unmerged, anything status lists as changed, staged, deleted
 # or renamed. The check is off while a rebase, merge, cherry-pick or revert is
 # stopped (an autostash lives in the git dir, not refs/stash), and when a stash
-# was made after the prompt or there is no prompt time to compare: the stashed
-# work is unvalidated though the tree matches HEAD. The first attempt (D#404,
+# exists that is newer than the prompt, or a stash exists and the prompt has no
+# time to compare: the stashed work is unvalidated though the tree matches HEAD. The first attempt (D#404,
 # 8d88816) and the first build of this one dropped some of these; the 0.113.0
 # and 0.113.1 pre-tag reviews found them.
 #
@@ -292,10 +292,11 @@ SETTLE_NOTE=""
 # 2 s (SECONDS counts whole seconds), so the last one ends before 2.5 s of the
 # 3 s SessionEnd budget. The fallback watchdog without coreutils kills the
 # process it started, which for a direct git call is git itself; a git that is
-# a wrapper script outlives it. Past 1,000 open changes nothing is asked (the
-# jq pass above drops the list): 12,530 paths took the hook from
-# 2.3 s to 4.6 s, past the budget, and 2,000 from 0.19 s to 1.05 s under bash
-# 3.2 (2026-10-17).
+# a wrapper script outlives it. Past 1,000 open changes nothing is asked and
+# the jq pass above drops the list, so the hook costs what 0.113.0's did. The
+# cap comes from measurement (2026-10-17): asking git about 12,530 paths took
+# the hook from 2.3 s to 4.6 s, past the budget, and 2,000 from 0.19 s to
+# 1.05 s under bash 3.2.
 _git_settle() {
   (( SECONDS <= 1 )) || return 1
   platform_timeout 0.5 git --no-optional-locks "$@"

@@ -90,12 +90,13 @@ prompt installs the newer spec again.
    `CLAUDEMD_ALLOW_DOWNGRADE=1 node ~/.claude/plugins/cache/claudemd/claudemd/X.Y.Z/scripts/install.js`.
 3. Restart Claude Code.
 
-While the marketplace is pinned, a session start can show two banners that both say to run
-`/claudemd-refresh`: "stale plugin registration … the marketplace cache holds vNEWER" (the
-newer version's cache directory stays on disk, marked orphaned, until Claude Code removes
-it) and, once a day, "vNEWER available". `/claudemd-refresh` reinstalls the pinned version,
-so it clears neither. `DISABLE_UPSTREAM_CHECK=1` in the `env` block of
-`~/.claude/settings.json` turns both off; take it out when you go back.
+While the marketplace is pinned, a session start shows a banner that says to run
+`/claudemd-refresh`: "stale plugin registration … the marketplace cache holds vNEWER" at
+every session start while the newer version's cache directory stays on disk (Claude Code
+marks it orphaned and removes it later), then "vNEWER available" once a day.
+`/claudemd-refresh` reinstalls the pinned version, so it clears neither.
+`DISABLE_UPSTREAM_CHECK=1` in the `env` block of `~/.claude/settings.json` turns both off;
+take it out when you go back.
 
 Back to the newest release: the same three `claude plugin` commands with
 `sdsrss/claudemd` and no tag, then restart; the next session start installs the newer spec
