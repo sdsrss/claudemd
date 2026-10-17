@@ -229,7 +229,7 @@ memtags_match() {
       memtags_failopen memtags-spill-mktemp
       exit 0
     }
-    printf '%s' "$hay" > "$hayfile" || {
+    ( printf '%s' "$hay" ) > "$hayfile" || {
       memtags_failopen memtags-spill-write
       exit 0
     }
