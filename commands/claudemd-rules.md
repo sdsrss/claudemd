@@ -4,7 +4,7 @@ description: Audit the HARD-rules manifest against rule-hit telemetry over the l
 disable-model-invocation: true
 ---
 
-Default window is 30 days (per OPERATOR.md §13.1; set in spec v6.11.15 as core §0.1 and moved to OPERATOR.md in v6.15.1 — lowered from 90d because the 90d gate was structurally unreachable under typical rule-hits log retention; with 30d the audit can actually produce demote candidates instead of always reporting `insufficientData`).
+Default window is 30 days (OPERATOR.md §13.1). When the log spans less than the window, the audit reports `insufficientData` and lists no demote candidates; a 90-day window did that permanently.
 
 **Argument parsing** (the arguments are `$ARGUMENTS`): split `$ARGUMENTS` into a numeric day-count and a `--verbose` agent-presentation flag (NOT a script flag — the script ignores it):
 
