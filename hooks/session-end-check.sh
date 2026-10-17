@@ -58,9 +58,6 @@ PLUGIN_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
 hook_record_plugin_root "$PLUGIN_ROOT" "" 2>/dev/null || true
 
 hook_require_jq || { hook_record_failopen session-end-check jq-missing; exit 0; }
-# platform_timeout bounds the `git status` below (D#404).
-# shellcheck source=/dev/null
-source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
 EVENT=$(hook_read_event) || exit 0
 TRANSCRIPT=$(hook_jq_field session-end-check "$EVENT" '.transcript_path // ""') || exit 0
@@ -80,7 +77,7 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null
 # only keeps counting them, the safe side for this checkpoint.
 ROOTS=("$CWD")
 _r=$(cd "$CWD" 2>/dev/null && pwd -P) && ROOTS+=("$_r")
-GIT_TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$GIT_TOP") || GIT_TOP=""
+_r=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$_r")
 [[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && ROOTS+=("$CLAUDE_PROJECT_DIR")
 ROOTS_JSON=$(printf '%s\n' "${ROOTS[@]}" | jq -R . | jq -sc 'map(select(startswith("/")))' 2>/dev/null) || ROOTS_JSON='[]'
 
@@ -140,13 +137,8 @@ VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clipp
 # is_user_turn branches on content type before iterating, so a string never
 # reaches an array operator (jq "Cannot iterate over string" errored the whole
 # filter under 2>/dev/null and the hook exited 0 silently).
-# `..` and `.` segments resolved lexically; shared by both jq programs below.
-_NORM_JQ='def norm: if startswith("/") then "/" + (split("/") | map(select(. != "" and . != "."))
-              | reduce .[] as $s ([]; if $s == ".." then .[:-1] else . + [$s] end) | join("/"))
-            else . end;
-'
 RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_RE" \
-  --argjson roots "$ROOTS_JSON" --arg home "${HOME:-}" "$HOOK_USER_TURN_JQ$_NORM_JQ"'
+  --argjson roots "$ROOTS_JSON" --arg home "${HOME:-}" "$HOOK_USER_TURN_JQ"'
   # A path is in the project when it sits under a root. Relative or missing
   # paths count (they resolve against cwd; unknown errs toward the checkpoint).
   # ~/.claude/ and Claude Code'"'"'s /tmp/claude-<uid>/ scratch root are excluded
@@ -154,7 +146,10 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   # session run from $HOME must not count memory edits, one whose project lives
   # under ~/.claude must keep counting its own.
   # A root of "/" holds every absolute path (rtrimstr left it empty, so it held
-  # none); `..` and `.` segments are resolved first (norm), so <root>/../x is outside.
+  # none); `..` and `.` segments are resolved first, so <root>/../x is outside.
+  def norm: if startswith("/") then "/" + (split("/") | map(select(. != "" and . != "."))
+              | reduce .[] as $s ([]; if $s == ".." then .[:-1] else . + [$s] end) | join("/"))
+            else . end;
   def under($d): if $d == "/" then startswith("/")
                  else ($d | rtrimstr("/")) as $d | ($d | length) > 0 and (. == $d or startswith($d + "/")) end;
   def zone: if ($home | length) > 0 and under($home + "/.claude") then $home + "/.claude"
@@ -176,8 +171,6 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
                              elif type == "string" then . else null end)) |
   (map(is_user_turn)) as $mask |
   ($mask | to_entries | map(select(.value)) | (last // {key: -1}) | .key) as $lastUser |
-  # The prompt'"'"'s time, for the stash test after this pass; null when unknown.
-  (if $lastUser >= 0 then .[$lastUser].timestamp else null end) as $since |
   .[$lastUser + 1:] |
   # Files each Bash command modified, keyed by its tool_use id. Claude Code
   # records them on the RESULT row (`toolUseResult.bashEditDiff`, CC >=2.1.278),
@@ -187,8 +180,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   # `python3 - <<PY … PY && npm test` edits and then verifies. `changedFiles`
   # is the complete list; `files[]` holds at most 5 diffs and can be empty
   # (0.99.0 pre-tag review M1), so both are read, once per path. Deduped in
-  # first-seen order, not with `unique`, which sorts: the checkpoint lists the
-  # last three, and sorted they were the alphabetically last (D#96 L1).
+  # first-seen order, not with `unique`, which sorts: `recent` keeps the last
+  # three, and sorted they were the alphabetically last (D#96 L1).
   (reduce (.[] | select(.toolUseResult | type == "object")
                 | [(.message.content // [] | if type == "array" then . else [] end
                     | map(select(.type == "tool_result") | .tool_use_id) | first),
@@ -205,9 +198,9 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
   map(select(.type == "tool_use")) as $tools |
   $tools |
   reduce .[] as $t (
-    # `open` and `opened` cover only the changes made after the last validation:
+    # `open` and `recent` cover only the changes made after the last validation:
     # a validate clears both. `mutations` stays the count since the user prompt.
-    {mutations: 0, validates: 0, open: 0, opened: []};
+    {mutations: 0, validates: 0, open: 0, recent: []};
     # A non-string id or a non-object input must not throw (review M4).
     ($t.id | if type == "string" then . else "" end) as $tid |
     ($t.input | if type == "object" then . else {} end) as $in |
@@ -216,7 +209,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       .mutations += ($bf | length)
       | .open += ($bf | length)
       | .validates = 0
-      | .opened += ($bf | map({name: "Bash", target: .}))
+      | .recent = ((.recent + ($bf | map({name: "Bash", target: .})))
+                   | (if length > 3 then .[length-3:] else . end))
     else . end) |
     if ($t.name == "Edit" or $t.name == "Write" or $t.name == "NotebookEdit")
        and (($in.file_path // $in.notebook_path) | in_project) then
@@ -231,7 +225,7 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # `!command` caveat row stopped being a boundary, correctly), which turned
       # the latent flaw into a live suppression on a common shape.
       | .validates = 0
-      | .opened += [{name: $t.name, target: ($in.file_path // $in.notebook_path)}]
+      | .recent = ((.recent + [{name: $t.name, target: ($in.file_path // $in.notebook_path // "?")}]) | (if length > 3 then .[length-3:] else . end))
     elif $t.name == "Bash" then
       ($in.command // "" | if type == "string" then . else "" end) as $cmd |
       # Anchor each validate verb to a command position — start of string or
@@ -245,10 +239,10 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # because it had no anchor at all).
       if ($cmd | test($vre)) or ([$cmd | scan("(?:^|[;&|\n])[ \t(]*(?:bash|sh|zsh)[ \t]+-l?c[ \t]+(?:\u0027([^\u0027]*)\u0027|\"([^\"]*)\")")]
             | map(.[] | select(. != null)) | any(test($vre))) then
-        .validates += 1 | .open = 0 | .opened = []
+        .validates += 1 | .open = 0 | .recent = []
       else . end
     else . end
-  ) | .since = $since
+  )
 ' 2>/dev/null)
 
 [[ -n "$RESULT" ]] || exit 0
@@ -256,68 +250,22 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
 MUTATIONS=$(printf '%s' "$RESULT" | jq -r '.mutations // 0' 2>/dev/null)
 VALIDATES=$(printf '%s' "$RESULT" | jq -r '.validates // 0' 2>/dev/null)
 OPEN=$(printf '%s' "$RESULT" | jq -r '.open // 0' 2>/dev/null)
-OPENED=$(printf '%s' "$RESULT" | jq -c '.opened // []' 2>/dev/null) || OPENED='[]'
 
-# D#404: a change whose file matches the commit at HEAD again by the end leaves
-# nothing to validate: a branch switch (session af7b7d07 committed on
-# next-release, ran `git checkout main`, and was checkpointed for the 17 files
-# the switch changed), a `git restore`, an edit undone. That content is a
-# commit's, and `git commit` counts as a validation above. A file stays open
-# when git lists it as changed, staged, deleted or untracked, when it is
-# ignored (working notes under an ignored tasks/ keep the checkpoint), when it
-# lies outside this repo, or when a stash was made after the prompt or with no
-# prompt time to compare (the stashed work is still unvalidated). Asked only
-# when something is open; any git failure or timeout drops nothing.
-if [[ "${OPEN:-0}" -gt 0 && "$GIT_TOP" == /* ]] && declare -f platform_timeout >/dev/null 2>&1; then
-  _settle=1
-  if _st=$(git -C "$GIT_TOP" rev-parse -q --verify refs/stash 2>/dev/null); then
-    _st_ct=$(git -C "$GIT_TOP" log -1 --format=%ct "$_st" 2>/dev/null) || _st_ct=""
-    _since=$(printf '%s' "$RESULT" | jq -r '.since | strings | sub("\\.[0-9]+"; "") | fromdateiso8601 | floor' 2>/dev/null) || _since=""
-    [[ "$_st_ct" =~ ^[0-9]+$ && "$_since" =~ ^[0-9]+$ ]] && (( _st_ct < _since )) || _settle=0
-  fi
-  # Porcelain v1 paths are relative to the top level; a rename or copy puts
-  # its source in the next field. Collapsed directories end in "/".
-  if (( _settle )) && _changed=$(platform_timeout 1 git --no-optional-locks -C "$GIT_TOP" status \
-        --porcelain=v1 -z --untracked-files=normal --ignored=traditional 2>/dev/null \
-      | jq -R -s -c 'split("\u0000") | map(select(length > 0))
-          | reduce .[] as $f ({paths: [], src: false};
-              if .src then .paths += [$f] | .src = false
-              else .paths += [$f[3:]] | .src = ($f[0:2] | test("[RC]")) end)
-          | .paths' 2>/dev/null); then
-    _cwdp=$(cd "$CWD" 2>/dev/null && pwd -P) || _cwdp="$CWD"
-    _kept=$(printf '%s' "$OPENED" | jq -c --argjson changed "$_changed" --arg top "$GIT_TOP" \
-        --arg l "$CWD" --arg p "$_cwdp" "$_NORM_JQ"'
-      ($l | norm) as $l | ($changed | map($top + "/" + .)) as $c |
-      def phys: (if startswith("/") then . else $l + "/" + . end) | norm
-                | if $l != $p and startswith($l + "/") then $p + .[($l | length):] else . end;
-      def settled: (.target | type) == "string"
-        and ((.target | phys) as $t
-             | ($t | startswith($top + "/"))
-               and (any($c[]; . as $d | $t == $d
-                      or ($t | startswith(if ($d | endswith("/")) then $d else $d + "/" end))) | not));
-      map(select(settled | not))' 2>/dev/null) \
-      && _n=$(printf '%s' "$_kept" | jq 'length' 2>/dev/null) && [[ "$_n" =~ ^[0-9]+$ ]] \
-      && OPENED="$_kept" && OPEN="$_n"
-  fi
-fi
-
-# Trip condition: mutations > 0 AND validates == 0, and something still open.
-# Before D#404 the first two were equivalent to OPEN > 0: a mutation zeroes
-# `validates`, a validate zeroes `open`, so at the end whichever came last
-# decides both; settled files can now take OPEN to 0 on their own. OPEN is
-# what the user is told; MUTATIONS is context.
+# Trip condition: mutations > 0 AND validates == 0. Equivalent to OPEN > 0: a
+# mutation zeroes `validates`, a validate zeroes `open`, so at the end whichever
+# came last decides both. OPEN is what the user is told; MUTATIONS is context.
 # A session that changed only markdown trips too, on purpose: spec/CLAUDE.md,
 # SKILL.md and commands/*.md are model-visible text (core §2 makes them L3), so
 # skipping `*.md` would drop the edits this checkpoint matters most for
 # (converge D11).
-if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 && "${OPEN:-0}" -gt 0 ]]; then
+if [[ "${MUTATIONS:-0}" -gt 0 && "${VALIDATES:-0}" -eq 0 ]]; then
   mkdir -p "$CWD/tasks" 2>/dev/null || exit 0
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || TS="unknown"
   SLUG=$(printf 'session-end-%s' "${SESSION_ID:0:8}")
   PAUSED="$CWD/tasks/${SLUG}-paused.md"
 
-  RECENT_LIST=$(printf '%s' "$OPENED" | jq -r '
-    .[-3:] | map("- \(.name): \(.target // "?")") | join("\n")
+  RECENT_LIST=$(printf '%s' "$RESULT" | jq -r '
+    (.recent // []) | map("- \(.name): \(.target)") | join("\n")
   ' 2>/dev/null)
 
   # The write is checked: an unwritable or full tasks/ used to leave stderr
