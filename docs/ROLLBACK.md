@@ -67,12 +67,15 @@ and it breaks existing installs).
 Two things go back, in this order: the plugin Claude Code loads, then the spec in
 `~/.claude`. While Claude Code still loads the newer plugin, its SessionStart installs the
 newer spec again at the next session start (and an older plugin over a newer spec banners
-a stale registration that sends the user to `/claudemd-refresh`).
+a stale registration that sends the user to `/claudemd-refresh`). Close every other Claude
+Code window before you start: a window still open runs the newer hooks, and its next
+prompt installs the newer spec again.
 
 1. Pin the marketplace to the old tag. A GitHub marketplace takes `#<tag>` after the
-   repository. Claude Code refuses to add `claudemd` again from a different source while
-   the old entry exists, so remove it first; removing it uninstalls the plugin. From a
-   shell:
+   repository. Remove the old entry first: Claude Code can refuse to add `claudemd` again
+   from a different source while it exists ("its source doesn't match its
+   extraKnownMarketplaces entry" for the GitHub entry), and removing it uninstalls the
+   plugin. From a shell:
 
    ```
    claude plugin marketplace remove claudemd
@@ -85,7 +88,14 @@ a stale registration that sends the user to `/claudemd-refresh`).
    design; the escape hatch is `CLAUDEMD_ALLOW_DOWNGRADE=1`, run from the plugin cache step 1
    filled (or a checkout of the old tag):
    `CLAUDEMD_ALLOW_DOWNGRADE=1 node ~/.claude/plugins/cache/claudemd/claudemd/X.Y.Z/scripts/install.js`.
-3. Restart Claude Code, and run `/reload-plugins` in any other open window.
+3. Restart Claude Code.
+
+While the marketplace is pinned, a session start can show two banners that both say to run
+`/claudemd-refresh`: "stale plugin registration … the marketplace cache holds vNEWER" (the
+newer version's cache directory stays on disk, marked orphaned, until Claude Code removes
+it) and, once a day, "vNEWER available". `/claudemd-refresh` reinstalls the pinned version,
+so it clears neither. `DISABLE_UPSTREAM_CHECK=1` in the `env` block of
+`~/.claude/settings.json` turns both off; take it out when you go back.
 
 Back to the newest release: the same three `claude plugin` commands with
 `sdsrss/claudemd` and no tag, then restart; the next session start installs the newer spec
