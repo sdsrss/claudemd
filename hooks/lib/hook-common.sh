@@ -251,13 +251,15 @@ hook_memory_root() {
 }
 
 # _hook_worktree_main ROOT → stdout, status 0 when ROOT is a linked worktree.
-#   Run in a subshell (it cd's). The checks are Claude Code's: the admin dir
+#   Run in a subshell (it cd's). `2>/dev/null` comes before each `<`, so an
+#   unreadable pointer is a quiet "not a worktree" rather than a shell error
+#   on the user's screen. The checks are Claude Code's: the admin dir
 #   sits in <common>/worktrees/, and its `gitdir` file names ROOT/.git (compared
 #   physically, as Claude Code realpaths both). Paths are otherwise resolved
 #   lexically, like Node's path.resolve, so a symlinked parent keeps its name.
 _hook_worktree_main() {
   local root="$1" line="" common="" back="" admin bdir
-  IFS= read -r line < "$root/.git" || [[ -n "$line" ]] || return 1
+  IFS= read -r line 2>/dev/null < "$root/.git" || [[ -n "$line" ]] || return 1
   [[ "$line" == gitdir:* ]] || return 1
   line="${line#gitdir:}"
   _hook_trim_into line
@@ -265,14 +267,14 @@ _hook_worktree_main() {
   [[ "$line" == /* ]] || line="$root/$line"
   cd "$line" 2>/dev/null || return 1
   admin="$PWD"
-  IFS= read -r common < commondir || [[ -n "$common" ]] || return 1
+  IFS= read -r common 2>/dev/null < commondir || [[ -n "$common" ]] || return 1
   _hook_trim_into common
   [[ -n "$common" ]] || return 1
   [[ "$common" == /* ]] || common="$admin/$common"
   cd "$common" 2>/dev/null || return 1
   common="$PWD"
   [[ "${admin%/*}" == "$common/worktrees" ]] || return 1
-  IFS= read -r back < "$admin/gitdir" || [[ -n "$back" ]] || return 1
+  IFS= read -r back 2>/dev/null < "$admin/gitdir" || [[ -n "$back" ]] || return 1
   _hook_trim_into back
   [[ "$back" == /* ]] || back="$admin/$back"
   [[ "${back##*/}" == .git ]] || return 1

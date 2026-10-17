@@ -298,6 +298,19 @@ assert_contains "hook_record_plugin_root: the same call records with the switch 
 
 rm -rf "${HOOKROOT_SANDBOX:?}"
 
+# hook_memory_root on a `.git` file it cannot read (0.112.0 pre-tag review):
+# the dir holding it is the root, and nothing reaches stderr, which a hook
+# shows the user.
+UNR=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$UNR/wt/sub" && printf 'gitdir: /nowhere\n' >"$UNR/wt/.git" && chmod 000 "$UNR/wt/.git"
+UNR_ERR=$(bash -c 'source "$1"; hook_memory_root "$2" >/dev/null' _ "$LIB" "$UNR/wt/sub" 2>&1)
+UNR_OUT=$(bash -c 'source "$1"; hook_memory_root "$2"' _ "$LIB" "$UNR/wt/sub" 2>/dev/null)
+chmod 600 "$UNR/wt/.git"; rm -rf "${UNR:?}"
+if [[ "$(id -u)" != 0 ]]; then # root reads a mode-000 file
+  assert_eq "hook_memory_root: an unreadable .git prints nothing on stderr" "" "$UNR_ERR"
+fi
+assert_eq "hook_memory_root: an unreadable .git keeps its own dir as the root" "${UNR}/wt" "$UNR_OUT"
+
 # D#213: no program is read from a here-doc at source time. bash 3.2 (macOS
 # /bin/bash) writes every here-doc to a temp file; with none writable the
 # variable stayed unset, and its consumers under `set -u` died or went silent
