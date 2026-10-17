@@ -204,8 +204,10 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
 // Stricter than install's backup.js#looksLikeSpec, which takes the H1 on any
 // line of the first 256 characters: a wrong yes here deletes or overwrites the
 // user's file with no copy, so a personal file quoting the H1 further down
-// stays theirs (R23 M1). Unreadable reads as the user's.
-const SPEC_FIRST_LINE_RE = /^\uFEFF?#\s*AI-CODING-SPEC\b/;
+// stays theirs (R23 M1). Unreadable reads as the user's. A space must follow
+// both `#` and the token, as in every shipped spec file: `\s*` crossed a
+// newline and `\b` took `AI-CODING-SPEC-like` (D#392).
+const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
 const isSpecFile = p => {
   try {
     return SPEC_FIRST_LINE_RE.test(fs.readFileSync(p, 'utf8').slice(0, 256));
@@ -216,7 +218,9 @@ const isSpecFile = p => {
 // A per-phase module claudemd generated: frontmatter, then the
 // `# AI-CODING-SPEC <version> — module: <name>` heading (every module since
 // v7.0.0). Used only where no manifest says what claudemd wrote (R23 M2).
-const MODULE_H1_RE = /^# AI-CODING-SPEC\b[^\n]*— module: [a-z-]+[ \t]*$/m;
+// The heading must be the second line after the closing fence, where the
+// generator puts it, not any early line of a file quoting it (D#392).
+const MODULE_H1_RE = /^---\n(?:[^\n]*\n)*?---\n\n# AI-CODING-SPEC [^\n]*— module: [a-z-]+[ \t]*\n/;
 const isSpecModule = p => {
   try {
     return MODULE_H1_RE.test(fs.readFileSync(p, 'utf8').slice(0, 2048));

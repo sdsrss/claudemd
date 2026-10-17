@@ -264,6 +264,51 @@ test('R23 M1: without a manifest only a file whose FIRST line is the H1 counts a
   assert.equal(fs.existsSync(home), false);
 });
 
+test('D#392: the first-line test wants `# AI-CODING-SPEC ` itself, not a newline or a longer word after `#`', async () => {
+  // `#\s*AI-CODING-SPEC\b` crossed the newline after a bare `#` and took
+  // `#AI-CODING-SPEC` and `# AI-CODING-SPEC-like`; every shipped spec file's
+  // first line is `# AI-CODING-SPEC ` (all tags through v0.111.0).
+  await uninstall({ specAction: 'keep' }); // a default uninstall removes the manifest
+  const home = path.join(tmpHome, '.claude/CLAUDE.md');
+  for (const mine of [
+    '#\nAI-CODING-SPEC v8 notes\n',
+    '#AI-CODING-SPEC notes\n',
+    '# AI-CODING-SPEC-like rules\n',
+  ]) {
+    fs.writeFileSync(home, mine);
+    const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+    assert.deepEqual(res.kept, [home], JSON.stringify(mine));
+    assert.equal(fs.readFileSync(home, 'utf8'), mine);
+  }
+});
+
+test('D#392: without a manifest a module counts only with its heading right after the frontmatter', async () => {
+  // MODULE_H1_RE was /m over the first 2,048 characters, so a file of the
+  // user's quoting the heading on any early line was deleted. Every shipped
+  // module has the heading on the second line after the closing fence.
+  await uninstall({ specAction: 'keep' });
+  const modDir = path.join(tmpHome, '.claude/spec-modules');
+  fs.mkdirSync(modDir, { recursive: true });
+  const heading = '# AI-CODING-SPEC v8.1.0 — module: ship\n';
+  const theirs = {
+    'quoted.md': `# My notes on ship\n\n${heading}`,
+    'later.md': `---\nmodule: ship\n---\n\nMy notes\n${heading}`,
+  };
+  for (const [f, body] of Object.entries(theirs)) fs.writeFileSync(path.join(modDir, f), body);
+  const ours = path.join(modDir, 'ship.md');
+  fs.writeFileSync(ours, `---\nmodule: ship\ntriggers: a---b\n---\n\n${heading}\nbody\n`);
+  const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.equal(fs.existsSync(ours), false, "claudemd's module goes");
+  assert.deepEqual(
+    res.kept.sort(),
+    Object.keys(theirs)
+      .map(f => path.join(modDir, f))
+      .sort()
+  );
+  for (const [f, body] of Object.entries(theirs))
+    assert.equal(fs.readFileSync(path.join(modDir, f), 'utf8'), body);
+});
+
 test('R23 M2: without a manifest a delete keeps spec-modules files claudemd did not write', async () => {
   await uninstall({ specAction: 'keep' }); // a default uninstall removes the manifest
   const modDir = path.join(tmpHome, '.claude/spec-modules');
