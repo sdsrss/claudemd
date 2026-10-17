@@ -89,8 +89,9 @@ SINCE_TS=""
 WINDOW="turn"
 if [[ -f "$SUMMARY_REF" ]] && command -v platform_stat_mtime >/dev/null 2>&1; then
   smtime=$(platform_stat_mtime "$SUMMARY_REF" 2>/dev/null || true)
-  # jq, not date: busybox `date` takes neither GNU `-d @N` nor BSD `-r N`, and
-  # the 24 h start below fell back to 1970 there, counting the whole log.
+  # jq, not date: busybox `date` has no form for "24 hours ago" (it does take
+  # `-d @N`), so the 24 h start below fell back to 1970 there, counting the
+  # whole log; both starts now come from jq.
   if [[ "$smtime" =~ ^[0-9]+$ ]]; then
     SINCE_TS=$(jq -nr --argjson t "$smtime" '$t | todate' 2>/dev/null || true)
   fi

@@ -1,6 +1,6 @@
 // v0.30.0 E2 — cross-layer memory maintenance report (plan P5,
 // docs/spec-optimization-plan-2026-07-10.md). The two memory layers (durable
-// ~/.claude/projects/<cwd>/memory/ vs claude-mem-lite recall) fail SILENTLY
+// ~/.claude/projects/<git root>/memory/ vs claude-mem-lite recall) fail SILENTLY
 // when a fact lands in the wrong layer: a hot plugin lesson never becomes
 // durable, a plugin-absent recall_*.md fallback lingers after the plugin
 // returns, a durable file nobody's keywords ever match rots in the index.

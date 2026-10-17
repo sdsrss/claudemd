@@ -14,7 +14,7 @@
 # stderr to the user as advisory; this hook never blocks.
 #
 # Independence: this hook audits CC built-in auto-memory under
-# ~/.claude/projects/<encoded-cwd>/memory/ ONLY. It does NOT depend on
+# ~/.claude/projects/<encoded-root>/memory/ ONLY (every project dir's). It does NOT depend on
 # claude-mem-lite, claude-mem, or any other recall-layer plugin. If a user
 # only has the claudemd plugin installed and no recall-layer plugin, this
 # hook still operates correctly: it scans whatever CC built-in 4-types

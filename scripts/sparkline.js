@@ -8,10 +8,10 @@
 //
 // Each row: `§X-Y    A / B / C  arrow [annotation]`
 //   A = events in last 30d, B = last 60d, C = last 90d (cumulative).
-//   Arrow compares the per-period RATE (count / window-days):
-//     ↗ recent > mid > old
-//     ↘ recent < mid < old
-//     ≈ otherwise
+//   Arrow compares the recent bucket's per-day RATE with the baseline (oldest
+//   covered) bucket's: ↗ when it is over 20% higher AND an exact two-sided 5%
+//   test on the two counts rejects equal rates, ↘ the same downward, ≈
+//   otherwise (see the comment at the test below).
 //   Annotation: (newly active) when oldest-bucket count == 0 and recent > 0,
 //     (silenced) when recent == 0 and an older bucket has events.
 //

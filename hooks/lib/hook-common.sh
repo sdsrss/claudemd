@@ -233,7 +233,8 @@ hook_read_telemetry_ids() {
 #   `.git`, or a bare repository itself. Anything else it does not recognise
 #   keeps the nearest root; outside git, START_DIR. The docs say the same in
 #   prose: "all worktrees and subdirectories within the same repo share one auto
-#   memory directory". A `.git` directory costs no fork; a worktree one subshell.
+#   memory directory". A `.git` directory costs no external process (the
+#   caller's `$( )` is the only fork); a worktree one more subshell.
 hook_memory_root() {
   local start="${1:-}" r canon
   [[ "$start" == /* ]] || { printf '%s' "$start"; return 0; }
