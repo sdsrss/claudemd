@@ -89,7 +89,9 @@ fi
 : > "$HOME/.claude/logs/claudemd-bootstrap.log"
 echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
 rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
-STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+# 3>&1: $(…) also waits for the detached install, so it cannot run on into
+# the next case (D#405, case 20).
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1 3>&1)
 # Background install needs a moment to write bootstrap log + new manifest.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   NEW_VER=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
@@ -537,15 +539,14 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_HOME/fakebin/node"
 # consumes the sentinel so a healthy follow-up session stays quiet.
 [[ -f "$BOOT_SENTINEL" ]] || printf '{"ts":"2026-07-15T00:00:00Z","from":"0.0.1","to":"%s"}\n' "$PLUGIN_VER_REAL" > "$BOOT_SENTINEL"
 echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
-OUT20=$(bash "$HOOK" <<<'{}' 2>/dev/null)
+# The background retry (real node; it succeeds) must be gone before case 20b,
+# or its last step, clearing the sentinel, can delete the sentinel 20b has just
+# written: 20b then read empty output, at load and on a macOS leg (D#405).
+# Polling for the healed manifest did not cover that step, which comes after
+# install.js exits. The retry inherits fd 3, here the substitution's pipe, so
+# $(…) returns only once every process of the retry has exited.
+OUT20=$(bash "$HOOK" <<<'{}' 2>/dev/null 3>&1)
 OBJ20=$(printf '%s' "$OUT20" | jq -s 'length' 2>/dev/null)
-# Wait out the background retry (real node — it will succeed) so its writes
-# can't bleed into later cases.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  V=$(jq -r .version "$HOME/.claude/.claudemd-manifest.json" 2>/dev/null || echo "")
-  [[ "$V" == "$PLUGIN_VER_REAL" ]] && break
-  sleep 0.5
-done
 if [[ "$OBJ20" == "1" && ! -f "$BOOT_SENTINEL" ]] \
    && jq -r '.systemMessage // ""' <<<"$OUT20" | grep -q 'background upgrade failed' \
    && jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT20" | grep -q '/claudemd-refresh'; then
@@ -817,7 +818,8 @@ fi
 rm -f "$HOME/.claude/.claudemd-manifest.json"
 rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
 : > "$HOME/.claude/logs/claudemd-bootstrap.log"
-STDERR=$(CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 bash "$HOOK" <<<'{}' 2>&1)
+# 3>&1: $(…) also waits for the detached install (D#405, case 20).
+STDERR=$(CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1 bash "$HOOK" <<<'{}' 2>&1 3>&1)
 # The detached header is written by hook_spawn_install's BACKGROUND subshell, so
 # reading the log the instant the hook returns races it (pre-tag review NOTE 3).
 # The parent only spawns jq + hook_record before exiting, so the child normally
@@ -850,7 +852,8 @@ done
 : > "$HOME/.claude/logs/claudemd-bootstrap.log"
 echo '{"version":"0.0.1","entries":[]}' > "$HOME/.claude/.claudemd-manifest.json"
 rm -f "$HOME/.claude/.claudemd-state/installed.json" 2>/dev/null || true
-STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
+# 3>&1: $(…) also waits for the detached install (D#405, case 20).
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1 3>&1)
 LOG_TXT=$(cat "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || echo "")
 if [[ -z "$STDERR" ]] && ! grep -qF "$SYNC_MARK" <<<"$LOG_TXT" \
    && grep -qF 'auto-upgrade' <<<"$LOG_TXT"; then
