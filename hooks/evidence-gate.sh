@@ -88,10 +88,14 @@ SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 # partial never earns a nag. Both spellings stay: the hook ships beside the spec
 # it reads, but a machine can run a v7 spec with these hooks for a while. The
 # English phrase must end there: `is not running anymore` is prose, not a
-# verdict (0.109.0 pre-tag review L3).
+# verdict (0.109.0 pre-tag review L3). "Ends" means no ASCII letter follows,
+# spelled out: `[![:alpha:]]` asked the locale, and a UTF-8 one counts 原 as a
+# letter where C does not (D#342). Prose such as `does not run on Windows`
+# also suppresses; kept, because the real ones are honest partials (`was not
+# run end to end`) — 0 of 1,967 turn ends on this machine used it otherwise.
 case "$LAST_MSG" in
   *'[PARTIAL'* | *'未运行'* | *'无法运行'*) exit 0 ;;
-  *[Nn]'ot run' | *[Nn]'ot run'[![:alpha:]]*) exit 0 ;;
+  *[Nn]'ot run' | *[Nn]'ot run'[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ]*) exit 0 ;;
 esac
 
 # Completion-claim shapes. Wider than scripts/sampling-audit.js's, deliberately

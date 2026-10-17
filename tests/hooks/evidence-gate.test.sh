@@ -847,5 +847,25 @@ else
   ng "32: the long message went silent: ${OUT:0:300} (rows $(log_rows))"
 fi
 
+# --- Case 33 (D#342): the not-run exemption reads the same in every locale ---
+# `[![:alpha:]]` after `not run` asked the locale: under C a CJK byte is not a
+# letter (suppressed), under a UTF-8 locale 原 is one (fired). The end of the
+# English phrase is now an ASCII-letter test, so both legs suppress.
+U8=$(locale -a 2>/dev/null | grep -i -m1 -E '^(C\.utf-?8|en_US\.utf-?8)$')
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+for L in C ${U8:+"$U8"}; do
+  reset_log
+  OUT=$(LC_ALL=$L run_hook $'## Report\n\n**Changes**: rewrote the parser.\n\n**Verification**: `npm test` → not run原因：没有数据库')
+  if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+    ok "33: LC_ALL=$L — 'not run' followed by a CJK character is a not-run verdict"
+  else
+    ng "33: LC_ALL=$L — fired: ${OUT:0:200}"
+  fi
+done
+[[ -n "$U8" ]] || echo "  (33: no UTF-8 locale installed; only the C leg ran)"
+
 echo
 claudemd_assert_summary
