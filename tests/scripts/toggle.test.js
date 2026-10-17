@@ -149,6 +149,9 @@ test('re-enabling inside a session that has the kill switch names the relaunch (
       on.note,
       /DISABLE_BANNED_VOCAB_HOOK=1 stays set in this session until Claude Code is relaunched/
     );
+    // The variable may come from the shell instead, which a relaunch keeps
+    // (0.112.0 pre-tag review): the note says where else to clear it.
+    assert.match(on.note, /if your shell exports DISABLE_BANNED_VOCAB_HOOK, unset it there too/);
     delete process.env.DISABLE_BANNED_VOCAB_HOOK; // a fresh launch
     await toggle('banned-vocab');
     const onFresh = await toggle('banned-vocab');

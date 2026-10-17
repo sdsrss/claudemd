@@ -104,7 +104,8 @@ export async function toggle(name) {
   if (newState === 'enabled' && !ks && process.env[key] === '1') {
     notes.push(
       `${key}=1 stays set in this session until Claude Code is relaunched (a removed settings variable is not ` +
-        `unset in a running session), so ${name} stays disabled until then.`
+        `unset in a running session), so ${name} stays disabled until then; if your shell exports ${key}, ` +
+        `unset it there too.`
     );
   }
   if (newState === 'enabled' && effective('DISABLE_CLAUDEMD_HOOKS') === '1') {
