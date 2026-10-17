@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.1.0 — Extended
+# AI-CODING-SPEC v8.2.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -145,7 +145,7 @@ syntax            → auto-fix ≤2 attempts
 L1 code bug       → §7.L1-bugfix (core)
 L2+ code/logic    → Iron Law #3 below (root cause first)
 env/staging/deploy → investigate there first (logs / config / deploy diff); code cause → row above
-UI/visual         → browser capture (core §2.1) → route per cause
+UI/visual         → browser capture → route per cause
 sideways          → STOP + stash → re-plan (note pivot reason)
 ```
 
@@ -178,7 +178,7 @@ L2 evidence rules → core §7 (numbers with their baseline, in the report's ver
 
 1. **Failing unit/integration test → fix → green.**
 2. **Executable repro script** (shell/python). When test infra absent.
-3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → browser capture (core §2.1).
+3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → browser capture.
 4. **Minimal harness in `tmp/`.** Legacy / glue code.
 5. **Last resort**: state "no reproducer — <structural reason>". Valid reasons only: unmockable hardware / prod-scale race / third-party side channel.
 
@@ -252,8 +252,8 @@ Universal session rules live in core §11 SESSION — they bind whether or not t
 - **1 task = 1 subagent**, briefed fully the first time.
 - **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
 - Subagent output uses §7 evidence format.
-- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.
-- **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
+- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield gives the spawn an output path and polls that file; the notification channel itself is not pollable.
+- **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
 - **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: pick a reading per §0 and state it in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, list the boundary under open items as `<op> needs AUTH`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.1.0 (minor, 2026-10-16)** — core §7 **Git**: after you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it; if `-d` refuses, keep the branch and name it under open items, never `-D`. Asked for by the user after two repos kept merged local branches: nothing in the spec said to delete them, and the branch-prune hook's line left it to the user (it now says to delete them, leaving out any the project keeps). Design record `tasks/specs/merged-branch-cleanup.md`. No HARD rule added or removed.
+**v8.2.0 (minor, 2026-10-17)** — from the 2026-10-17 prompt audit: core §2.1 no longer routes UI checks to gstack's `browse` (the user is removing gstack; the case against the Chrome tools was gstack's own) and drops the module-overview hint; §7's push-onto-red rule gains its reason; §8's deep-traversal reason names where tool output is saved now; §11-O **Long reports** replaces Report by file: a named spawn's report is cut at 4000 chars, an unnamed one's arrives whole, so reviews and audits are spawned unnamed and report in their final message. Design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. No HARD rule added or removed.
 
-**Sizing** (v8.1.0, 2026-10-16, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23156 → 23351 bytes (Δ +195); extended 39317 → 36793 bytes (Δ -2524); OPERATOR.md 15335 → 15335 bytes (Δ 0). Size budget: core 23351/25000 (**1649 bytes headroom**); extended 36793/50000 (**13207 bytes headroom**).
+**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36832 bytes (Δ +39); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36832/50000 (**13168 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

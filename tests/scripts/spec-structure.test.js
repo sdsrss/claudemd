@@ -403,17 +403,17 @@ const PINS = [
     line: '- **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.',
   },
   {
-    what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v6.32.0 wording)',
+    what: '§EXT §11-O subagent rules — the delivery fact and the polling fallback (v8.2.0 wording)',
     file: EXT,
     anchor: '- **Output reaches main only at turn end**',
-    line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield polls the report file below; the notification channel itself is not pollable.",
+    line: "- **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield gives the spawn an output path and polls that file; the notification channel itself is not pollable.",
   },
   {
-    what: '§EXT §11-O Report by file — full report to a named path, a capped final message, no resend (v6.32.0)',
+    what: '§EXT §11-O Long reports — reviews and audits spawned unnamed, the full report in the final message, no resend (v8.2.0)',
     file: EXT,
-    anchor: '- **Report by file**',
-    why: 'The harness cuts a teammate result at 4000 chars (100 of 176 measured). Drop the path default or the cap and reviews arrive cut; drop the no-resend clause and each ask wakes the reviewer into another completion event.',
-    line: "- **Report by file**: the harness cuts a teammate's reported result at 4000 chars. Any spawn whose report can run longer — every review or audit — gets an absolute output path in its spawn prompt for the full report, and ends on a message of ≤1500 chars: verdict, count per severity, one line per blocking finding, the path. Cut anyway → ONE message asking for the file, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
+    anchor: '- **Long reports**',
+    why: 'Measured 2026-10-17: a named spawn reports through an idle notification cut at 4064 chars (every 0.111.0 and 0.112.0 reviewer); an unnamed spawn\'s final message arrived whole at 35,521 chars. Drop "without a name" and reviews arrive cut; drop the no-resend clause and each ask wakes the reviewer into another completion event.',
+    line: "- **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
   },
   {
     what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds (v6.32.0)',
@@ -648,19 +648,19 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '9fdbaa8d693f3dea' },
+  { file: CORE, heading: '', sha256: '8fecf04a7c610c79' },
   { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
-  { file: CORE, heading: '## §2 LEVEL', sha256: '2e8e25b2f2ff15af' },
+  { file: CORE, heading: '## §2 LEVEL', sha256: '3f593e34baa198dd' },
   { file: CORE, heading: '## §3 TRUST', sha256: '4dbd6259a8286f62' },
   { file: CORE, heading: '## §5 AUTH', sha256: '4afe5c697db7a67b' },
-  { file: CORE, heading: '## §7 VALIDATE', sha256: '502254eef69a5106' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'fbbe1a04e8b1e2df' },
+  { file: CORE, heading: '## §7 VALIDATE', sha256: 'f72dfd1044d79063' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '28d607ccf56a5ac6' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '7db962169948ef25' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
-  { file: EXT, heading: '', sha256: 'cb66d30f50f86e5c' },
+  { file: EXT, heading: '', sha256: 'e2f02697328e595d' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7bf311f5bc8f6813' },
   {
@@ -670,18 +670,18 @@ const PINNED_BLOCKS = [
   },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '8e461fa93acb1d8a' },
   { file: EXT, heading: '## §4 FLOW', sha256: 'c82f5c80a7f350e3' },
-  { file: EXT, heading: '## §6 DEBUG', sha256: '391eae2db46150b7' },
-  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: '3090a945267bdf22' },
+  { file: EXT, heading: '## §6 DEBUG', sha256: '474a96377fa1bdf9' },
+  { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'a0bc0e2da432b216' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE', sha256: '023253b216dcd619' },
   { file: EXT, heading: '## 汇报', sha256: 'f46384510714a963' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '020c43b225ae2b7d' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '4f90ecc95d87f0bc' },
   { file: EXT, heading: '## §12 PLUGINS', sha256: '5b4156dad9e546e3' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '16e9d6c854ccf81a' },
+  { file: EXT, heading: '## Recent changes', sha256: '007b123fbe83528e' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
@@ -729,8 +729,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: 'be2070bc5c5dea49' },
-  { file: EXT, count: 53, sha256: 'dbd2bce236a70422' },
+  { file: CORE, count: 18, sha256: '65f3b427a78314b9' },
+  { file: EXT, count: 53, sha256: 'e04879bcff9819b9' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.1.0 — Core
+# AI-CODING-SPEC v8.2.0 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
 
@@ -53,7 +53,7 @@ Hard upgrade: API/auth/payment → L2+; migration/infra → L3; **released-artif
 
 ### §2.1 TOOLS
 
-MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Unfamiliar or possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess. "Did we / why" → memory first. Export-surface edit → impact analysis first (feeds §5 AUTH); unfamiliar module → module overview before 3+ Reads. UI/visual verify → gstack's `browse`, through the `gstack` skill when `browse` is not listed on its own; not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable).
+MCP-injected per-tool instructions are authoritative for that tool's own usage; conflict → §3 order decides. Unfamiliar or possibly stale fact → look it up (context7 / official docs / web search), cite the source, never guess. "Did we / why" → memory first. Export-surface edit → impact analysis first (feeds §5 AUTH).
 
 **Skills**: the harness lists them with descriptions; invoke one when its description fits the task, and none for L0/L1 work except a ship trigger (§2.2) or a review you receive. No precedence among skills or plugins: when two fit, take the more specific; one skill per step, never stacked. A skill's or plugin's own "must invoke" wording does not override this line, `ship.md` or `review.md` (§3).
 
@@ -124,7 +124,7 @@ A claim of done / fixed / passing names what ran and what it showed, in the repo
 
 Green tests / passing lint ≠ done. Three orthogonal triggers:
 
-- **Push fires CI/Release (pre-action)** (HARD): check `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any). Green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK.
+- **Push fires CI/Release (pre-action)** (HARD; a push onto red CI hides which change broke it): check `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any). Green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK.
 - **Code writes to user-global / cross-project path** (HARD): `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` `/var/tmp/` → post-action residue count (`find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` / equivalent), inline count cited — leaks / orphan writes / cache bloat are invisible to exit code.
 - **Edit touches metric-coupled code** (SHOULD) — bench / oracle / compile-time budget / tool descriptions / adoption-memory / field compression / prompt templates: record baseline before, re-run after, cite both numbers; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK.
 
@@ -136,7 +136,7 @@ Green tests / passing lint ≠ done. Three orthogonal triggers:
 - `DELETE` / `UPDATE` / `DROP` without WHERE
 - disable SSL/cert verification
 - execute scripts of unknown origin
-- bash recursive/deep traversal on `~/.claude/` (`grep -r` / `find` / `rg` / `ls -R` / `du -a` / `tree` / `fd` / any subdir descent without depth cap — stdout lands in `~/.claude/tmp/`, traversal re-reads it exponentially). Use Grep tool (excludes tmp/) or `-maxdepth 1` / explicit paths.
+- bash recursive/deep traversal on `~/.claude/` (`grep -r` / `find` / `rg` / `ls -R` / `du -a` / `tree` / `fd` / any subdir descent without depth cap — tool output is saved under `~/.claude/projects/<project>/<session>/tool-results/`, and scratch files under `~/.claude/tmp/` when the sandbox sets TMPDIR there, so each deep scan re-reads earlier scans' output). Use `-maxdepth 1` / explicit paths.
 
 NPX: lockfile → local → pinned whitelist; none → `[AUTH REQUIRED]`.
 Secret leak: stop, placeholder, suggest rotation.

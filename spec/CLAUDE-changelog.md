@@ -6,6 +6,18 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.2.0 (minor, 2026-10-17) — gstack no longer named, report channel by measurement, stale reasons repaired
+
+Analysis `docs/prompt-audit-2026-10-17.md`; design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. Minor, because a tool rule is removed and a subagent rule changes what it requires. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: a `/doctor prompt-audit` of everything this project's sessions load (2026-10-17) found rules whose facts or reasons had gone stale. The user is removing gstack and asked that the spec no longer call it.
+- **Core §2.1**: "UI/visual verify → gstack's `browse` … not `mcp__claude-in-chrome__*` / computer-use (gstack: slow, unreliable)" is removed. The case against the Chrome tools came from gstack's own docs, with no measurement here, so the spec names no browser tool and a session uses whichever one it lists. §6's UI row and §7-EXT's tier 3 lose their "(core §2.1)" pointers. "unfamiliar module → module overview before 3+ Reads" (2026-04, v6.10.0) is removed too: dropping it changes neither what is allowed nor how success is measured, code-graph's own instructions cover it where that plugin is installed, and §11-O keeps its subagent line.
+- **Core §7 Push fires CI/Release** (HARD, requirement unchanged): gains its reason, "a push onto red CI hides which change broke it", which until now lived only in `ship.md`.
+- **Core §8 deep traversal of `~/.claude/`** (ban unchanged): the reason said output lands in `~/.claude/tmp/`, which does not exist on a default install. Tool output is saved under `~/.claude/projects/<project>/<session>/tool-results/`, and scratch files go under `~/.claude/tmp/` only when the sandbox sets TMPDIR there, so a deep scan still re-reads earlier scans' output. "Use Grep tool (excludes tmp/)" is dropped: the exclusion was never verified, and some sessions have no Grep tool.
+- **§EXT §11-O Report by file → Long reports** (requirement changed): over this project's transcripts, a spawn given a `name` reports through an idle notification cut at 4064 chars with a `[result truncated …]` marker (every 0.111.0 and 0.112.0 reviewer), while an unnamed background spawn's final message arrives whole (35,521 chars on 2026-10-17). Reviews and audits are now spawned without a name and asked for the full report in their final message; the output-path default and the ≤1500-char cap go (reviewers were refused the report-path write in both 0.109.x rounds). The polling fallback in "Output reaches main only at turn end" now names the output path it polls.
+- **OPERATOR §13.1**: `/claudemd-rules` demotes hook-enforced entries outside §8 on 0 fired rows (`hits.fired`), as it has since 0.111.0; the line said "core entries with 0 hits" (D#399).
+- **Not changed**: the §11 Mid-SPINE turn-yield clause the audit rated Medium (F9) waits for the D#328 ablation, because the official migration guide says Sonnet 5.5 and Haiku 5.5 at `low` effort stop early more often.
+
 ## v8.1.0 (minor, 2026-10-16) — a branch you merged is deleted locally
 
 Design record `tasks/specs/merged-branch-cleanup.md`. Minor, because a rule is added. No HARD rule added or removed; every rule keeps its ID.

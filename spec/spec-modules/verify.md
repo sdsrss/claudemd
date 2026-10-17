@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.1.0 — module: verify
+# AI-CODING-SPEC v8.2.0 — module: verify
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -27,7 +27,7 @@ L2 evidence rules → core §7 (numbers with their baseline, in the report's ver
 
 1. **Failing unit/integration test → fix → green.**
 2. **Executable repro script** (shell/python). When test infra absent.
-3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → browser capture (core §2.1).
+3. **Snapshot / DOM assertion / log reproducer.** Visual or runtime bugs. Visual → browser capture.
 4. **Minimal harness in `tmp/`.** Legacy / glue code.
 5. **Last resort**: state "no reproducer — <structural reason>". Valid reasons only: unmockable hardware / prod-scale race / third-party side channel.
 
