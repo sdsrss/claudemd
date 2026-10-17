@@ -1,5 +1,5 @@
 # 提示词审计修复与 0.113.0 发版
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 2026-10-17 的 `/doctor prompt-audit`（`docs/prompt-audit-2026-10-17.md`）给出 25 个补丁和 4 处冲突。使用者的指示（2026-10-17）：
@@ -26,7 +26,7 @@
 - [x] AC2：规范树一致 — 验证：`node scripts/version-cascade-check.js`、`node scripts/spec-coherence-audit.js --strict`（coreDelta=0, extendedDelta=0）
 - [x] AC3：`npm run check` 退出码 0
 - [x] AC4：P01 实测：同一读取动作，无 settings 时出现 `spec/CLAUDE.md` 的 nested_memory，有 settings 时不出现 — 验证：两次无头 `claude -p` 会话记录对比
-- [ ] AC5：0.113.0 发版：PR CI 绿、发版前评审完成、tag 的 ci 和 npm-publish 绿、`npm view claudemd-cli version` = 0.113.0
+- [x] AC5：0.113.0 发版：PR CI 绿、发版前评审完成、tag 的 ci 和 npm-publish 绿、`npm view claudemd-cli version` = 0.113.0
 
 ## 方案
 - 报告渠道（冲突 i）实测：本项目会话记录中，带 `name` 派出的代理经 idle notification 回报，结果被截在 4064 字符并附 "[result truncated — ask the agent for the rest via SendMessage]"（10-16 至 10-17 的 0.111/0.112 评审全部如此）；不带 name 的后台代理经 task-notification 回报，结果完整（10-17 最长 35,521 字符）。所以 extended 的 "4000" 只对带名派出成立；runbook 的"约 5 KB"不对；release-reviewer 的 1500 是自设上限。改法：评审和审计不带名派出，完整报告放在最终消息里。
@@ -40,8 +40,8 @@
 - [x] S3：项目文件 P01/P04/P05/P10 + P01 实测 — 覆盖 AC4
 - [x] S4：用户级 U03/S-M10/S-M11 + runbook 记忆
 - [x] S5：`npm run check`、CHANGELOG、六处版本号 — 覆盖 AC3
-- [ ] S6：按 runbook 发版 — 覆盖 AC5
-- [ ] S7：gsd-lite 提示词；清理
+- [x] S6：按 runbook 发版 — 覆盖 AC5
+- [x] S7：gsd-lite 提示词；清理
 
 ## 决策与进展
 - 2026-10-17：C09 不进本次发版（见范围）。
@@ -61,3 +61,8 @@
 - AC4 无头 `claude -p`（haiku，`--setting-sources project,local`）读 `spec/hard-rules.json`：无 settings 时出现 `spec/CLAUDE.md` 的 nested_memory，有 settings 时没有（`spec-edit.md` 照常载入）；读 `tasks/skill-ab/A/` 下文件：无 settings 时载入该目录 `CLAUDE.md`，有时 0 个 → 通过。4 份探针会话记录已删除。
 - `( trap '' PIPE; npm run check )` on c9df0e9 + version bump → 通过（exit 0；node 1545/1546，1 个因 SHFMT 未设置跳过；全部 shell 套件通过；shellcheck 94 个文件；bash 3.2 运行时步骤因 BASH32_BIN 未设置跳过，hooks 在此前各提交上已用 bash 3.2.57 跑过）
 - `npm run smoke` → 通过（2/2）
+- 发版前评审：第 1 轮两个不带名评审（契约 0C/1H/0M/12L，代码 0C/0H/2M/9L），第 2 轮一个（0C/0H/1M/7L，纯文字）；修复 2c6732b、3e02fdf、c018288，D#404 撤回 4d73f7b；`node scripts/claim-drift.js --range=2c6732b..3e02fdf` → 通过（6 处提及逐条核对仍成立）
+- PR CI：39060803291（58a1599）、39062343641（2c6732b）、39063731381（c018288）→ 通过（各 7/7）
+- tag v0.113.0（c018288）：ci 39064960853 → 通过（7/7）；npm-publish 39064960903 → 通过（publish 作业 success）；main ci 39064957693 → 通过（7/7）
+- `npm view claudemd-cli version dist-tags` → 通过（0.113.0，latest = 0.113.0，发布于 2026-10-17T20:16:15Z）
+- GitHub Release https://github.com/sdsrss/claudemd/releases/tag/v0.113.0 已创建；PR #9 合并于 2026-10-17T20:01:33Z
