@@ -335,7 +335,10 @@ export function scanClaudeTmp({ claudeTmpDir, now = Date.now() } = {}) {
   // somewhere shared (a common /tmp, a scratch volume): --apply deleted that
   // directory's old files there (converge round 18 L8). Not scanned at all.
   try {
-    if (fs.lstatSync(claudeTmpDir).isSymbolicLink()) return { candidates: [], skipped: 'symlink' };
+    // path.resolve drops a trailing `/`, through which lstat follows the link
+    // (pre-tag review L8).
+    if (fs.lstatSync(path.resolve(claudeTmpDir)).isSymbolicLink())
+      return { candidates: [], skipped: 'symlink' };
   } catch {
     return { candidates: [] };
   }

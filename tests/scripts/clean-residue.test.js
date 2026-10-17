@@ -410,6 +410,10 @@ test('cleanClaudeTmp does not scan a ~/.claude/tmp that is itself a symlink', ()
     assert.deepEqual(r.targets, []);
     assert.equal(r.skipped, 'symlink');
     assert.ok(fs.existsSync(someoneElses), 'the link target keeps its files');
+    // A trailing slash makes lstat follow the link (pre-tag review L8).
+    const slashed = cleanClaudeTmp({ claudeTmpDir: link + '/', apply: true, retentionDays: 7 });
+    assert.equal(slashed.skipped, 'symlink');
+    assert.ok(fs.existsSync(someoneElses), 'a trailing slash does not reach the target either');
     // Control: the same directory, named directly, is scanned.
     assert.equal(cleanClaudeTmp({ claudeTmpDir: shared }).targets.length, 1);
     // The CLI says why nothing was scanned, in the JSON and to the human.

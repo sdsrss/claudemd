@@ -278,7 +278,14 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   [[ -f "$C12_HOME/exited" ]] && break
   sleep 0.5
 done
-C12_SEEN=$(grep -c '"spec":' "$C12_HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
+# tee is its own process: give it up to 1 s after the exit to write node's
+# last line (pre-tag review L9). Still well inside the shim's 2 s pause, so
+# output printed only once the wrapper finishes (26b057d) stays red.
+for _ in 1 2 3 4; do
+  C12_SEEN=$(grep -c '"spec":' "$C12_HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
+  [[ "$C12_SEEN" == "1" ]] && break
+  sleep 0.25
+done
 # Let the wrapper finish inside the sandbox before the trap removes it.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   [[ -f "$C12_HOME/done" ]] && break
