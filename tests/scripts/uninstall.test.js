@@ -238,6 +238,47 @@ test("R20 M2: a second restore does not overwrite the user's edits to the first 
   );
 });
 
+test('R23 M1: without a manifest only a file whose FIRST line is the H1 counts as the spec', async () => {
+  // looksLikeSpec accepts the H1 on any line of the first 256 characters, so a
+  // personal file quoting it on line 4 was deleted with no copy, and a restore
+  // overwrote one. Uninstall's own test reads the first line.
+  await uninstall({ specAction: 'keep' }); // a default uninstall removes the manifest
+  const mine = '# My own rules\nuse pnpm\n\n# AI-CODING-SPEC notes I pasted\n';
+  const home = path.join(tmpHome, '.claude/CLAUDE.md');
+  fs.writeFileSync(home, mine);
+  const del = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.deepEqual(del.kept, [home]);
+  assert.equal(fs.readFileSync(home, 'utf8'), mine, 'delete keeps it');
+
+  const bkDir = path.join(tmpHome, '.claude/backup-20260101T000000Z');
+  fs.mkdirSync(bkDir);
+  fs.writeFileSync(path.join(bkDir, 'CLAUDE.md'), 'prior-version\n');
+  const res = await uninstall({ specAction: 'restore' });
+  assert.deepEqual(res.kept, [home]);
+  assert.equal(fs.readFileSync(home, 'utf8'), mine, 'restore does not overwrite it');
+
+  // Control: the spec's H1 on the first line, behind a byte-order mark, goes.
+  fs.writeFileSync(home, '\uFEFF# AI-CODING-SPEC v9 — Core\nbody\n');
+  const del2 = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.equal(del2.kept, undefined, 'nothing kept: the field is omitted');
+  assert.equal(fs.existsSync(home), false);
+});
+
+test('R23 M2: without a manifest a delete keeps spec-modules files claudemd did not write', async () => {
+  await uninstall({ specAction: 'keep' }); // a default uninstall removes the manifest
+  const modDir = path.join(tmpHome, '.claude/spec-modules');
+  fs.mkdirSync(modDir, { recursive: true });
+  const ours = path.join(modDir, 'ship.md');
+  const theirs = path.join(modDir, 'mine.md');
+  // Shipped modules open with frontmatter; the module H1 comes after it.
+  fs.writeFileSync(ours, '---\nmodule: ship\n---\n\n# AI-CODING-SPEC v8.1.0 — module: ship\n');
+  fs.writeFileSync(theirs, '# My module\nkeep me\n');
+  const res = await uninstall({ specAction: 'delete', confirmHardAuth: true });
+  assert.equal(fs.existsSync(ours), false, "claudemd's module goes");
+  assert.equal(fs.readFileSync(theirs, 'utf8'), '# My module\nkeep me\n');
+  assert.deepEqual(res.kept, [theirs]);
+});
+
 test('ENG-01: a restore that puts nothing back says so instead of reporting success', async () => {
   // The live shape: install moved a stow-style relative symlink into the backup
   // dir, where it dangles. restoreBackup skips unstattable entries (R10-04), so

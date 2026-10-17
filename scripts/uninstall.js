@@ -6,7 +6,7 @@ import {
   unmergeHook,
   isClaudemdLegacyHookCommand,
 } from './lib/settings-merge.js';
-import { listBackups, restoreBackup, looksLikeSpec } from './lib/backup.js';
+import { listBackups, restoreBackup } from './lib/backup.js';
 import {
   stateDir,
   logsDir,
@@ -76,9 +76,11 @@ Remove claudemd hooks from ~/.claude/settings.json + clear the install
 manifest. Spec files in ~/.claude/CLAUDE*.md are kept by default. Idempotent
 (re-run after success returns warning: already-uninstalled), except that a
 restore or delete runs whenever it is asked for: neither needs the manifest.
-Without one, a delete removes only files that open with the "# AI-CODING-SPEC"
-H1; anything else is listed in \`kept\`. A restore never overwrites a home file
-that is not the spec and differs from the backup (also listed in \`kept\`).
+Without one, a delete removes only spec files whose first line is the
+"# AI-CODING-SPEC" H1 and only the spec-modules/*.md files claudemd generated
+(their "# AI-CODING-SPEC … — module: <name>" heading); anything else is listed
+in \`kept\`. A restore never overwrites a home file that is not the spec (by
+the same first-line test) and differs from the backup (also listed in \`kept\`).
 
 No flags. Behavior is read from the following env vars:
   CLAUDEMD_SPEC_ACTION  keep (default) | delete | restore
@@ -86,7 +88,8 @@ No flags. Behavior is read from the following env vars:
   CLAUDEMD_PURGE        1 to also wipe ~/.claude/.claudemd-state and logs
 
 restore copies the newest backup-<stamp>/ back over ~/.claude and REPORTS what
-it copied (\`restored\`; \`warning: "restore-empty"\` when that list is empty).
+it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
+kept nothing: a restore whose every file was kept lists them in \`kept\` instead).
 It restores; it does not remove. The spec files claudemd added and you never
 had — CLAUDE-extended.md, CLAUDE-changelog.md, OPERATOR.md — are left in place,
 because removing spec files is what CLAUDEMD_SPEC_ACTION=delete does and that
@@ -98,7 +101,7 @@ Options:
   --help, -h     Print this message and exit.
 
 Exit codes: 0 success | 1 uninstall failure | 2 argv-shape error |
-            3 restore ran and copied nothing back (warning: restore-empty);
+            3 restore ran, copied nothing back and kept nothing (warning: restore-empty);
               your spec files are unchanged — check the backup dir it names.`;
 
 // The state + logs half of a purge, lifted out of uninstall() so the branch
@@ -196,12 +199,27 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
   }
 }
 
-// Is this home file claudemd's? Every spec file opens with the
-// `# AI-CODING-SPEC` H1 (install decides the same way, backup.js#looksLikeSpec);
-// a restored personal CLAUDE.md does not. Unreadable reads as the user's.
+// Is this home file claudemd's? Every spec file's FIRST line is the
+// `# AI-CODING-SPEC` H1; a restored personal CLAUDE.md does not open with it.
+// Stricter than install's backup.js#looksLikeSpec, which takes the H1 on any
+// line of the first 256 characters: a wrong yes here deletes or overwrites the
+// user's file with no copy, so a personal file quoting the H1 further down
+// stays theirs (R23 M1). Unreadable reads as the user's.
+const SPEC_FIRST_LINE_RE = /^\uFEFF?#\s*AI-CODING-SPEC\b/;
 const isSpecFile = p => {
   try {
-    return looksLikeSpec(fs.readFileSync(p, 'utf8'));
+    return SPEC_FIRST_LINE_RE.test(fs.readFileSync(p, 'utf8').slice(0, 256));
+  } catch {
+    return false;
+  }
+};
+// A per-phase module claudemd generated: frontmatter, then the
+// `# AI-CODING-SPEC <version> — module: <name>` heading (every module since
+// v7.0.0). Used only where no manifest says what claudemd wrote (R23 M2).
+const MODULE_H1_RE = /^# AI-CODING-SPEC\b[^\n]*— module: [a-z-]+[ \t]*$/m;
+const isSpecModule = p => {
+  try {
+    return MODULE_H1_RE.test(fs.readFileSync(p, 'utf8').slice(0, 2048));
   } catch {
     return false;
   }
@@ -243,12 +261,15 @@ function disposeSpec(specAction, restoreSource, { ownedOnly = false } = {}) {
     }
     // The per-phase modules go with the spec that points at them: every regular
     // *.md in the directory (claudemd keeps no record of which ones it wrote),
-    // then the directory if that left it empty.
+    // then the directory if that left it empty. Without a manifest, only the
+    // modules claudemd generated; the rest are listed in `kept` (R23 M2).
     const modDir = specModulesHome();
     if (fs.existsSync(modDir)) {
       for (const f of fs.readdirSync(modDir)) {
         const fp = path.join(modDir, f);
-        if (f.endsWith('.md') && fs.lstatSync(fp).isFile()) fs.unlinkSync(fp);
+        if (!f.endsWith('.md') || !fs.lstatSync(fp).isFile()) continue;
+        if (ownedOnly && !isSpecModule(fp)) kept.push(fp);
+        else fs.unlinkSync(fp);
       }
       if (fs.readdirSync(modDir).length === 0) fs.rmdirSync(modDir);
     }
