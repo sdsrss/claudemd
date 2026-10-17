@@ -8,7 +8,7 @@ Default is dry-run — the user must opt into deletion explicitly. Flags:
 
 - `--apply` — do delete.
 - `--age-days=N` — $TMPDIR staleness threshold (default 1). Applies only to the claudemd-* patterns.
-- `--retention-days=N` — ~/.claude/tmp and ~/.claude/.claudemd-state retention window, at least 1. Resolution: this flag > `TMP_RETENTION_DAYS:` in the project's CLAUDE.md > 7 (spec §EXT §7-EXT-TMP). Below 1 the flag is rejected (exit 1) and a CLAUDE.md value warns and falls back to 7: `~/.claude/tmp/claude-<uid>` holds every live session's scratchpad, so a zero-day window would delete running sessions' working directories.
+- `--retention-days=N` — ~/.claude/tmp and ~/.claude/.claudemd-state retention window, at least 1. Resolution: this flag > `TMP_RETENTION_DAYS:` in the project's CLAUDE.md > 7 (spec §EXT §7-EXT-TMP). Below 1 the flag is rejected (exit 1) and a CLAUDE.md value warns and falls back to 7: where the sandbox puts TMPDIR there, `~/.claude/tmp/claude-<uid>` holds every live session's scratchpad, so a zero-day window would delete running sessions' working directories.
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/clean-residue.js $ARGUMENTS`
 

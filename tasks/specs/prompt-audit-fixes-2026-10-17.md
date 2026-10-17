@@ -50,6 +50,7 @@
 - 2026-10-17：`.claude/settings.json` 原本被 `.gitignore` 的 `/.claude/*` 忽略；加例外改为跟踪，因为 release-reviewer 在 worktree 里运行，未跟踪的文件到不了那里。
 - 2026-10-17：converge 的 L8（描述改写）只是建议、没出补丁；gstack 卸载后技能清单的构成会变，这次不改。
 - 2026-10-17：本地 A/B 脚本 `tasks/{skill-ab,v8-ab,merged-branch-ab,r6b}/run-ab.mjs` 会复制 `~/.claude/skills/gstack/SKILL.md`，gstack 卸载后会报错；D#328 的消融脚本要去掉这一步。
+- 2026-10-17：发版前评审第 1 轮（两个不带名的评审并行）：契约侧 0C/1H/0M/12L，代码侧 0C/0H/2M/9L。H1 与 M1 是同一处：CHANGELOG 把 D#404 的内部列表完整误写成检查点列出全部，已改文字。D#404（8d88816）一个组件占 1M（经仓库内符号链接的编辑被误丢）+ 5L，修的是噪声、引入的是漏报，按"整块撤回组件"的做法撤回到 0.112.0 字节（4d73f7b），D#404 带着评审证据重新延后。契约侧 L1–L12 中改了 L3、L4、L5、L6、L8–L12；L2、L1 随 D#404 撤回作废；L7（ROLLBACK.md 没说怎么让 Claude Code 先加载旧版）早于本次，留作遗留。代码侧 L7（锁路径上的 FIFO）写进 CHANGELOG 的 Not changed；L8 不是本次引入；L9（无 timeout 的 PATH 上 session-start 套件慢 38 秒）只影响测试，留作遗留。
 - 提交：e556f41（规范 v8.2.0）、f85c1a3（命令 B8/B9）、d8f0441（项目文件）、c9df0e9（记忆路径）。
 
 ## 验证记录

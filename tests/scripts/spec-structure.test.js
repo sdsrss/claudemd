@@ -170,8 +170,8 @@ test('§13.1 demote window: one number, and no cadence word standing in for it',
   const manifest = fs.readFileSync('spec/hard-rules.json', 'utf8');
   assert.match(
     JSON.parse(manifest)._doc,
-    /0 hits in 30d/,
-    'hard-rules.json `_doc` no longer states the 30d demote window it is the manifest for.'
+    /with 0 fired rows, `hits\.fired`, in 30d/,
+    'hard-rules.json `_doc` no longer states the 30d demote window (counted in fired rows, D#399) it is the manifest for.'
   );
   const auditSrc = fs.readFileSync('scripts/hard-rules-audit.js', 'utf8');
   assert.match(
@@ -416,11 +416,11 @@ const PINS = [
     line: "- **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
   },
   {
-    what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds (v6.32.0)',
+    what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds, and how the reviewer is spawned (v6.32.0; Long reports pointer v8.2.0)',
     file: EXT,
     anchor: '- **Blind brief**',
     why: 'Author ≠ reviewer fixes the context, not the prompt; the withhold list is what keeps the author verdict out of the review.',
-    line: "- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.",
+    line: "- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. Spawn the reviewer without a name and ask for the whole report in its final message (§11-O Long reports). A re-review after repair is a new spawn, never a message to the reviewer who found the defect.",
   },
   {
     what: 'core §5 Hard — the eleven hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
@@ -676,12 +676,12 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §10-R COMPLETE', sha256: '023253b216dcd619' },
   { file: EXT, heading: '## 汇报', sha256: 'f46384510714a963' },
   { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '4f90ecc95d87f0bc' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: '5b4156dad9e546e3' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: 'a50532f806aabd1a' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: 'ee7a2a4154c39a5c' },
+  { file: EXT, heading: '## Recent changes', sha256: '3766d4cc9ec8c454' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },

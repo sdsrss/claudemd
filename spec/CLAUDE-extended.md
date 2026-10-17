@@ -269,7 +269,7 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 
 ### Hard cooperation rules
 - **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.
-- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
+- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. Spawn the reviewer without a name and ask for the whole report in its final message (§11-O Long reports). A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **L3 two-tier review**: a fresh-subagent review per sub-task, then one pre-ship review across the whole change.
 - **Ship order**: branch finished → pre-ship review → ship → deploy → monitoring checklist.
 
@@ -370,7 +370,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 
 **v8.2.0 (minor, 2026-10-17)** — from the 2026-10-17 prompt audit: core §2.1 no longer routes UI checks to gstack's `browse` (the user is removing gstack; the case against the Chrome tools was gstack's own) and drops the module-overview hint; §7's push-onto-red rule gains its reason; §8's deep-traversal reason names where tool output is saved now; §11-O **Long reports** replaces Report by file: a named spawn's report is cut at 4000 chars, an unnamed one's arrives whole, so reviews and audits are spawned unnamed and report in their final message; §11-EXT-MEM gives the memory path by git root. Design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. No HARD rule added or removed.
 
-**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36885 bytes (Δ +92); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36885/50000 (**13115 bytes headroom**).
+**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36993 bytes (Δ +200); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36993/50000 (**13007 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
