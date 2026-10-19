@@ -1306,6 +1306,43 @@ else
 fi
 git32 rebase --abort; git32 checkout -q -- a.txt; git32 checkout -q main
 
+# 33i (0.113.1 review round 2, Low): the other five in-progress markers turn
+# the check off as rebase-merge does in 33h. The hook tests each with -e, so
+# an empty file stands in for git's own. The control runs first: with no
+# marker the same transcript leaves no checkpoint (32a), so a row that keeps
+# a.txt open is the marker's doing.
+T="$TMP_HOME/case32a.jsonl"
+run_hook32 "$T"
+R33=$([[ ! -e "$P32" ]] || echo " control:$(opens32)-kept")
+for M in rebase-apply MERGE_HEAD MERGE_AUTOSTASH CHERRY_PICK_HEAD REVERT_HEAD; do
+  : > "$G32/.git/$M"
+  run_hook32 "$T"
+  [[ "$(opens32)" == 1 ]] || R33+=" $M:$(opens32)"
+  rm -f "$G32/.git/$M"
+done
+if [[ -z "$R33" ]]; then
+  ok "Case 33i: rebase-apply, MERGE_HEAD, MERGE_AUTOSTASH, CHERRY_PICK_HEAD and REVERT_HEAD each keep the file open"
+else
+  ng "Case 33i:$R33 (want no checkpoint without a marker, 1 kept with each)"
+fi
+
+# 33j (0.113.1 review round 2, Low): once the hook has run for 2 s, the guard
+# in _git_settle turns the git questions off. A jq that takes 2 s on the call
+# just before the first question stands in for a slow hook; without it the
+# same transcript leaves no checkpoint (33i's control). The file staying open
+# shows the check did not settle it, not that git was never asked: a guard
+# that let the first question through would pass too.
+SLOW33J="$TMP_HOME/slow33j"
+mkdir -p "$SLOW33J"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = ".opened | arrays" ] && sleep 2; done\nexec "%s" "$@"\n' "$(command -v jq)" > "$SLOW33J/jq"
+chmod +x "$SLOW33J/jq"
+PATH="$SLOW33J:$PATH" run_hook32 "$T"
+if [[ "$(opens32)" == 1 ]]; then
+  ok "Case 33j: a hook that reaches the git questions after 2 s keeps the file open"
+else
+  ng "Case 33j: $(opens32) of 1 kept"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
