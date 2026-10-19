@@ -52,6 +52,8 @@
 - 2026-10-17：本地 A/B 脚本 `tasks/{skill-ab,v8-ab,merged-branch-ab,r6b}/run-ab.mjs` 会复制 `~/.claude/skills/gstack/SKILL.md`，gstack 卸载后会报错；D#328 的消融脚本要去掉这一步。
 - 2026-10-17：发版前评审第 1 轮（两个不带名的评审并行）：契约侧 0C/1H/0M/12L，代码侧 0C/0H/2M/9L。H1 与 M1 是同一处：CHANGELOG 把 D#404 的内部列表完整误写成检查点列出全部，已改文字。D#404（8d88816）一个组件占 1M（经仓库内符号链接的编辑被误丢）+ 6L，修的是噪声、引入的是漏报，按"整块撤回组件"的做法撤回到 0.112.0 字节（4d73f7b），D#404 带着评审证据重新延后。契约侧 L1–L12 中改了 L3、L4、L5、L6、L8–L12；L2、L1 随 D#404 撤回作废；L7（ROLLBACK.md 没说怎么让 Claude Code 先加载旧版）早于本次，留作遗留。代码侧 L7（锁路径上的 FIFO）写进 CHANGELOG 的 Not changed；L8 不是本次引入；L9（无 timeout 的 PATH 上 session-start 套件慢 38 秒）只影响测试，留作遗留。
 - 2026-10-17：第 2 轮（一个不带名的新评审，只看 58a1599..2c6732b）：0C/0H/1M/7L，全是文字：CHANGELOG 的验证行引用的是撤回前的树（M1），另有"local"、设计记录里 D#404 的旧说法、"No hook's default output changes" 对 spec-module-inject 不准、规范改动没列全、Tests 行少写、D#404 条目多写、4064 与 4000 两个数。已到深度上限 2，纯文字修复不再派第三轮，用 `scripts/claim-drift.js` 自查。extended 的 Recent changes 段是摘要，没有补 Blind brief 指针（规范 changelog 里有）。
+- 2026-10-19：L8 已做（用户说"按你的建议执行"，作为对这一项的授权）。`~/.claude/skills/converge/SKILL.md` 的描述 407 → 273 字节，去掉了行为规定（每条独立提交、不可逆的事攒到轮末问，正文里都有）和 `/converge` 触发词（按名字调用不经描述）。审计稿还删掉了"自动优化项目"，路由探针显示它不是重复项：删掉后"帮我自动优化一下这个项目"从 2/2 命中变成 0/2，所以把它加回触发句。回滚：`patch -R -d ~ -p1 < docs/prompt-audit-2026-10-17/patches/L8-converge-description.patch`（已在副本上验证能还原原文件）。
+- 2026-10-19：四个本地 A/B 脚本已去掉 gstack 路由的复制步骤，头部注释写明 2026-10-18 之前的运行带着它。
 - 提交：e556f41（规范 v8.2.0）、f85c1a3（命令 B8/B9）、d8f0441（项目文件）、c9df0e9（记忆路径）。
 
 ## 验证记录
@@ -66,3 +68,5 @@
 - tag v0.113.0（c018288）：ci 39064960853 → 通过（7/7）；npm-publish 39064960903 → 通过（publish 作业 success）；main ci 39064957693 → 通过（7/7）
 - `npm view claudemd-cli version dist-tags` → 通过（0.113.0，latest = 0.113.0，发布于 2026-10-17T20:16:15Z）
 - GitHub Release https://github.com/sdsrss/claudemd/releases/tag/v0.113.0 已创建；PR #9 合并于 2026-10-17T20:01:33Z
+- 2026-10-19 L8 路由探针（`claude -p` 在临时小项目里跑，禁用写类工具，记录前 3 次工具调用里是否调用 Skill(converge)，每个提示 2 次）：改前 4 个触发提示 7/8 命中（1 次 180 秒内没调用任何工具，按超时计），对照提示 0/4 误触发；审计稿原文 6/8，"自动优化"0/2；最终版 8/8、对照 0/4。样本只够做健全性检查，不能用来下"没有退化"的结论。探针在 `~/.claude/projects/` 留下的空目录已删除。
+- 2026-10-19 A/B 脚本：`node --check` 4/4 通过；`--reps=0` 在预先建好的输出目录上 4/4 以 0 退出（启动检查不再要求 gstack 文件存在）。
