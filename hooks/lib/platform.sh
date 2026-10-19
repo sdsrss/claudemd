@@ -42,8 +42,9 @@ platform_timeout() {
     if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"; return $?; fi
     if command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"; return $?; fi
   fi
-  # Pure-bash watchdog (bash 3.2-safe): run CMD in background, kill it if a
-  # sleeper outlives it. Whichever finishes first, the other is reaped.
+  # Pure-bash watchdog (bash 3.2-safe): run CMD in background, kill it if it
+  # outlives a sleeper. The command is always waited for; the watchdog is
+  # disowned (D#444, below).
   "$@" &
   local cmd_pid=$!
   # The watchdog's own stdout/stderr go to /dev/null, and that redirect is the
@@ -55,15 +56,17 @@ platform_timeout() {
   # what all three reachable call sites wrap — git ls-remote, gh run list) it
   # measured 30/30 blocked, minimum 2008ms against a 2s ceiling; with the
   # redirect, 0/30 at 8–20ms. The wrapped command keeps the caller's fds, so its
-  # own output and stderr are untouched; `disown` was tried and changes nothing,
-  # because the orphan holds the fd whether or not the shell tracks it.
+  # own output and stderr are untouched; `disown` was tried for this and changes
+  # nothing, because the orphan holds the fd whether or not the shell tracks it.
   # The redirect covers fds 1 and 2 only, so the sleep is also killed with the
   # watchdog (D#434): it held every other fd the caller had open, and a reader
   # of an inherited fd 3 waited out the full ceiling. `wait` on a background
-  # sleep returns as soon as the trapped TERM arrives; a foreground sleep would
-  # defer the trap until it ended. The trap names the sleep by `jobs -p`, not by
-  # a variable: a TERM between the fork and `$!` found the variable empty and
-  # left the sleep running (52 of 300 calls under bash 5.3, 10 under 3.2).
+  # sleep returns as soon as the trapped TERM arrives, except that bash 3.2 can
+  # hold a TERM landing just before the `wait` (D#444, below); a foreground
+  # sleep would always defer the trap until it ended. The trap names the sleep
+  # by `jobs -p`, not by a variable: a TERM between the fork and `$!` found the
+  # variable empty and left the sleep running (52 of 300 calls under bash 5.3,
+  # 10 under 3.2).
   ( trap 'kill -TERM $(jobs -p) 2>/dev/null; exit 0' TERM
     sleep "$secs" 2>/dev/null &
     wait "$!" 2>/dev/null && kill -TERM "$cmd_pid" 2>/dev/null

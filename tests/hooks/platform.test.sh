@@ -115,11 +115,15 @@ fi
 # exits within a millisecond returned after the full ceiling: 17 of 500
 # `/bin/true` calls under 3.2.57, 0 of 500 under 5.3 (2026-10-19). Commands
 # that outlast the watchdog's startup never hit it (real git: 0 of 300).
-# Under the old code 300 calls all pass with odds of about (1-0.03)^300, 1e-4.
-# `time` reports sub-second elapsed with BSD and GNU tools alike, and the loop
-# stops at the first call that takes a second, so a failure costs one ceiling.
-# A first line that is not a number (a job-status message) also fails.
-CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "source $LIB; TIMEFORMAT=%R
+# Under 3.2.57 the old code failed 18 of 18 runs on an idle machine (first
+# slow call between 1 and 90); with every core busy it passed 7 of 22 runs in
+# one sample and 13 of 22 in another, so a loaded run can miss the bug. Under
+# 5.3 it never fails (0 of 1000 calls); other bash versions were not measured.
+# The bash keyword `time` reports sub-second elapsed on every platform; 5.3
+# prints the locale's decimal point (3.2 always a dot), hence LC_ALL=C (D#148).
+# The loop stops at the first call that takes a second, so a failure costs
+# one ceiling. A first line that is not a number (a job-status message) fails.
+CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "source $LIB; LC_ALL=C; TIMEFORMAT=%R
   for ((i = 1; i <= 300; i++)); do
     { time platform_timeout 2 /bin/true; } 2>'$TMP/t15'
     read -r t < '$TMP/t15'
