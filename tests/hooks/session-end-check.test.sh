@@ -1329,18 +1329,19 @@ fi
 # 33j (0.113.1 review round 2, Low): once the hook has run for 2 s, the guard
 # in _git_settle turns the git questions off. A jq that takes 2 s on the call
 # just before the first question stands in for a slow hook; without it the
-# same transcript leaves no checkpoint (33i's control). The file staying open
-# shows the check did not settle it, not that git was never asked: a guard
-# that let the first question through would pass too.
+# same transcript leaves no checkpoint (33i's control). The wrapper marks the
+# call once the real jq has answered it, so the hook got that far. The file
+# staying open shows the check did not settle it, not that git was never
+# asked: a guard that let the first question through would pass too.
 SLOW33J="$TMP_HOME/slow33j"
 mkdir -p "$SLOW33J"
-printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = ".opened | arrays" ] && sleep 2; done\nexec "%s" "$@"\n' "$(command -v jq)" > "$SLOW33J/jq"
+printf '#!/bin/sh\nhit=\nfor a in "$@"; do [ "$a" = ".opened | arrays" ] && hit=1; done\n[ -z "$hit" ] || sleep 2\n"%s" "$@" || exit\n[ -z "$hit" ] || : > "%s/ran"\n' "$(command -v jq)" "$SLOW33J" > "$SLOW33J/jq"
 chmod +x "$SLOW33J/jq"
 PATH="$SLOW33J:$PATH" run_hook32 "$T"
-if [[ "$(opens32)" == 1 ]]; then
+if [[ -e "$SLOW33J/ran" && "$(opens32)" == 1 ]]; then
   ok "Case 33j: a hook that reaches the git questions after 2 s keeps the file open"
 else
-  ng "Case 33j: $(opens32) of 1 kept"
+  ng "Case 33j: $(opens32) of 1 kept, slow jq ran: $([[ -e "$SLOW33J/ran" ]] && echo yes || echo no)"
 fi
 
 echo ""
