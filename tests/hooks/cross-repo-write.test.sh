@@ -481,7 +481,7 @@ fi
 next_sid
 OUT=$(bash_ev "cd $R/beta && git commit -m x" "$R/alpha" "$SID" \
   | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null))
-expect_advisory "X23 no temp file writable: cd into another repo and commit still advises" "$OUT" "$R/beta" "$R/alpha"
+expect_advisory "X23 no temp file writable: cd into another repo and commit still advises" "$OUT" beta alpha
 
 echo
 claudemd_assert_summary

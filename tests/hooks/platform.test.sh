@@ -123,16 +123,18 @@ fi
 # prints the locale's decimal point (3.2 always a dot), hence LC_ALL=C (D#148).
 # The loop stops at the first call that takes a second, so a failure costs
 # one ceiling. A first line that is not a number (a job-status message) fails.
+# The external true is looked up: macOS has it only in /usr/bin.
+TRUE_BIN=$(type -P true)
 CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "source $LIB; LC_ALL=C; TIMEFORMAT=%R
   for ((i = 1; i <= 300; i++)); do
-    { time platform_timeout 2 /bin/true; } 2>'$TMP/t15'
+    { time platform_timeout 2 '$TRUE_BIN'; } 2>'$TMP/t15'
     read -r t < '$TMP/t15'
     case \$t in [0-9]*.*) ;; *) echo \"call \$i wrote '\$t'\"; exit 1 ;; esac
     [[ \${t%%.*} -ge 1 ]] && { echo \"call \$i took \${t}s of a 2s ceiling\"; exit 1; }
   done; echo done" > "$TMP/o15" 2>&1
 OUT=$(cat "$TMP/o15")
 if [[ "$OUT" == "done" ]]; then
-  echo "PASS: 15 watchdog returns with the command (300 calls of /bin/true, none reached 1s)"
+  echo "PASS: 15 watchdog returns with the command (300 calls of $TRUE_BIN, none reached 1s)"
 else
   echo "FAIL: 15 $OUT"; FAIL=$((FAIL+1))
 fi
