@@ -361,7 +361,7 @@ xrepo_scan_bash() {
           esac
         done
         arg="${toks[$j]:-}"
-        # A target quoted as one word with spaces was split by `read -a`;
+        # A target quoted as one word with spaces was split into words above;
         # take it whole.
         if [[ "$seg" =~ ^cd([[:space:]]+-[^[:space:]]*)*[[:space:]]+\"([^\"]*)\" ]] ||
           [[ "$seg" =~ ^cd([[:space:]]+-[^[:space:]]*)*[[:space:]]+\'([^\']*)\' ]]; then

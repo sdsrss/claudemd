@@ -31,9 +31,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // buffer keeps can only go to that file. So a redirection of stdout to a file
 // fails this check when what it applies to runs in the hook's own shell and can
 // print through that buffer:
-//   • a printing builtin (printf, echo, pwd, declare, …), also behind
+//   • a printing builtin (printf, echo, pwd, declare, pushd, kill, …) or one
+//     that runs shell code in this shell (eval, source, .), also behind
 //     `command`/`builtin` and assignments;
-//   • a function defined anywhere under hooks/;
+//   • a function defined anywhere under hooks/ (`name()` or `function name`);
 //   • a compound command closed by `}`, `done`, `fi` or `esac`;
 //   • `exec` with no command (the redirection stays for the rest of the hook).
 // A redirection INSIDE a subshell, `( printf … > file )`, fails too: the
@@ -87,6 +88,18 @@ const PRINTING_BUILTINS = new Set([
   'shopt',
   'compgen',
   'caller',
+  'pushd',
+  'popd',
+  'cd',
+  'kill',
+  'help',
+  'history',
+  'fc',
+  'bind',
+  'enable',
+  'eval',
+  'source',
+  '.',
 ]);
 const COMPOUND_CLOSERS = new Set(['}', 'done', 'fi', 'esac']);
 // Words that stand before the command without being it.
@@ -95,7 +108,10 @@ const PREFIXES = new Set(['!', '{', 'then', 'do', 'else', 'elif', 'if', 'while',
 function functionNames(files) {
   const names = new Set();
   for (const src of files) {
-    for (const m of src.matchAll(/^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)/gm)) names.add(m[1]);
+    for (const m of src.matchAll(
+      /^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\))/gm
+    ))
+      names.add(m[1] ?? m[2]);
   }
   return names;
 }
@@ -162,7 +178,7 @@ function builtinWrites(top, fns) {
       const fd = m[2] ?? '';
       const op = m[3] ?? '';
       if (!both && fd !== '' && fd !== '1') continue;
-      if (!both && !['>', '>>', '>|', '>&'].includes(op)) continue;
+      if (!both && !['>', '>>', '>|', '>&'].includes(op) && !(op === '<>' && fd === '1')) continue;
       if (op === '>&' && ['1', '2', '-'].includes(target)) continue;
       if (target === '/dev/null' || target === '/dev/stderr') continue;
       cmd.redirs.push({ redir: tok, target });
@@ -260,6 +276,14 @@ test('recognizer: shapes it must report', () => {
     'while read -r l; do echo "$l"; done > "$F"': 'compound',
     'exec > "$F"': 'exec',
     'case $x in a) echo x > "$F" ;; esac': 'builtin',
+    // Shapes the 0.113.2 pre-tag review found unreported (L4).
+    'eval \'printf x\' > "$F"': 'builtin',
+    'source x > "$F"': 'builtin',
+    '. x > "$F"': 'builtin',
+    'pushd "$d" > "$F"': 'builtin',
+    'cd - > "$F"': 'builtin',
+    'kill -l > "$F"': 'builtin',
+    'printf x 1<> "$F"': 'builtin',
   };
   for (const [src, kind] of Object.entries(must)) assert.deepEqual(kinds(src), [kind], src);
 });
@@ -282,8 +306,18 @@ test('recognizer: shapes it must not report', () => {
     'while read -r l; do :; done < <(printf "%s\\n" "$v")',
     'echo x 2> "$F"',
     'exec jq . > "$F"',
+    'printf x <> "$F"',
   ];
   for (const src of mustNot) assert.deepEqual(kinds(src), [], src);
+});
+
+test('recognizer: a function defined either way is a function', () => {
+  const fns = functionNames(['function wr {\n  printf x\n}\nwr2() { :; }\nfunction wr3() { :; }\n']);
+  assert.deepEqual([...fns].sort(), ['wr', 'wr2', 'wr3']);
+  assert.deepEqual(
+    findSites('wr > "$F"', fns).sites.map(s => s.kind),
+    ['function']
+  );
 });
 
 test('here-string rule: code lines only', () => {

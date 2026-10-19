@@ -213,4 +213,16 @@ if [[ "$(decision "$OUT17")" == deny ]]; then
   ok "17 no temp file writable: a release is still denied"
 else ng "17 no temp file writable: decision=$(decision "$OUT17") out=${OUT17:0:80}"; fi
 
+# 17b. The same past a pipe buffer: bash 5.1 and later also write a here-string
+# to a temp file once it is longer than one, so a 70,000-character release
+# command went through under bash 5.3.9 too (0.113.2 pre-tag review, M1).
+# Discriminates under every bash.
+LONG17="gh release create v1.0.0 $(printf 'A%.0s' $(seq 1 70000))"
+jq -cn --arg c "$LONG17" --arg t "$EMPTY_TR" \
+  '{tool_name:"Bash", tool_input:{command:$c}, session_id:"g17b", transcript_path:$t, cwd:"/work/p"}' >"$HOME/ev17b"
+OUT17B=$( (trap '' XFSZ; ulimit -f 0; SPEC_MODULE_GATE=deny DISABLE_RULE_HITS_LOG=1 bash "$HOOK" <"$HOME/ev17b" 2>/dev/null) )
+if [[ "$(decision "$OUT17B")" == deny ]]; then
+  ok "17b no temp file writable: a 70,000-character release is still denied"
+else ng "17b no temp file writable, long command: decision=$(decision "$OUT17B") out=${OUT17B:0:80}"; fi
+
 claudemd_assert_summary
