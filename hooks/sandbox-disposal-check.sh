@@ -175,7 +175,7 @@ else
     [[ -n "$p" ]] || continue
     case $'\n'"$CONFIRMED" in *$'\n'"$p"$'\n'*) continue ;; esac
     NEXT_PENDING+="$p"$'\n'
-  done <<< "$FOUND"
+  done < <(printf '%s\n' "$FOUND")
   FOUND="$CONFIRMED"
 fi
 # Written before the verdict; a block below rewrites it to hold the reported

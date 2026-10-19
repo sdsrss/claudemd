@@ -339,7 +339,12 @@ xrepo_scan_bash() {
       seg="${BASH_REMATCH[1]}"
     done
     [[ -n "$seg" ]] || continue
-    read -r -a toks <<< "$seg"
+    # Split without a here-string: bash 3.2 writes one to a temp file and, with
+    # none writable, leaves toks empty (D#417). Globbing off for the split.
+    set -f
+    # shellcheck disable=SC2206  # word splitting is the point
+    toks=($seg)
+    set +f
     case "${toks[0]:-}" in
       cd)
         # `cd -P`, `-L`, `-e`, `-@` (any combination) and `--` come before the
@@ -403,7 +408,7 @@ xrepo_scan_bash() {
         fi
         ;;
     esac
-  done <<< "$view"
+  done < <(printf '%s\n' "$view")
 }
 
 case "$XR_TOOL" in
@@ -422,7 +427,7 @@ XR_STATE_DIR="$HOME/.claude/.claudemd-state"
 XR_SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
 ALLOW_LIST=()
 if [[ -n "${CROSS_REPO_WRITE_ALLOW:-}" ]]; then
-  IFS=: read -r -a ALLOW_LIST <<< "$CROSS_REPO_WRITE_ALLOW"
+  IFS=: read -r -a ALLOW_LIST < <(printf '%s\n' "$CROSS_REPO_WRITE_ALLOW")
 fi
 
 MSG=""

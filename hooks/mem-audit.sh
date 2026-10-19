@@ -200,7 +200,7 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
     fi
   done < <(awk '
       NR == FNR { if ($0 != "") known[$0] = 1; next }
-      $0 != "" && !($0 in known)' <(printf '%s\n' "$on_disk_list") - <<<"$in_index_list")
+      $0 != "" && !($0 in known)' <(printf '%s\n' "$on_disk_list") <(printf '%s\n' "$in_index_list"))
 
   # Reverse direction: any on-disk file with no MEMORY.md link.
   while IFS= read -r base; do
@@ -219,7 +219,7 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   # moved further out (audit-2026-08-22 条目 17).
   done < <(awk '
       NR == FNR { if ($0 != "") known[$0] = 1; next }
-      $0 != "" && !($0 in known)' <(printf '%s\n' "$in_index_list") - <<<"$on_disk_list")
+      $0 != "" && !($0 in known)' <(printf '%s\n' "$in_index_list") <(printf '%s\n' "$on_disk_list"))
 done
 
 if [[ "$MISSING" -eq 0 && "$DRIFT" -eq 0 ]]; then

@@ -98,7 +98,7 @@ declare -a HITS=()
 # `## Done with the analysis` (narrative continuation) does NOT match
 # because the next non-space char must be `:`, `—`, or EOL.
 # Output: "DONE_LN NOTDONE_LN FAILED_LN UNCERTAIN_LN" (0 = absent).
-read -r done_ln notdone_ln failed_ln uncertain_ln <<< "$(
+read -r done_ln notdone_ln failed_ln uncertain_ln < <(
   printf '%s\n' "$LAST_TEXT" | awk '
     {
       l = $0
@@ -110,7 +110,7 @@ read -r done_ln notdone_ln failed_ln uncertain_ln <<< "$(
     l ~ /^Uncertain([[:space:]]+—|:|[[:space:]]*$)/ { if (!u) u = NR }
     END { print (d+0)" "(nd+0)" "(f+0)" "(u+0) }
   '
-)"
+)
 
 # --- Detection 1: four-section-order -----------------------------------------
 # Only fire when ALL 4 present within a 50-line window. Single-section
@@ -358,6 +358,6 @@ while IFS= read -r section; do
   hook_record transcript-structure-scan structure-advisory \
     "{\"matched\":$matched_json,\"count\":$count}" "$section" "$SESSION_ID"
   unset matched
-done <<< "$SECTION_LIST"
+done < <(printf '%s\n' "$SECTION_LIST")
 
 exit 0

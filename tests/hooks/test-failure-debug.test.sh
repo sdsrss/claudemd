@@ -88,4 +88,14 @@ O9=$(fail_event 'npm test' s9 | run); RC9=$?
 mv "$HOME/.claude/spec-modules.off" "$HOME/.claude/spec-modules"
 [[ -z "$O9" && "$RC9" == 0 ]] && ok "9 no debug.md installed: silent" || ng "9 rc=$RC9 out=${O9:0:40}"
 
+# 10. no temp file writable (D#417): bash 3.2 read the event's fields from a
+# here-string, a temp file, and with none writable `set -u` ended the hook on
+# "TOOL: unbound variable" before it injected anything. stderr joins stdout, so
+# an error line also fails the parse. Discriminates under bash 3.2 only
+# (bash32-runtime.sh, macOS CI): 5.1+ sends a small here-string through a pipe.
+O10=$(fail_event 'npm test' s10 | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 DEBUG_ON_TEST_FAILURE=1 bash "$HOOK" 2>&1))
+if grep -q '^<spec-module name="debug">$' < <(ctx <<<"$O10"); then
+  ok "10 no temp file writable: a failing test run still injects debug.md"
+else ng "10 no temp file writable: ${O10:0:200}"; fi
+
 claudemd_assert_summary

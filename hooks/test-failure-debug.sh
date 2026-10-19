@@ -48,7 +48,7 @@ hook_require_jq || { hook_record_failopen test-failure-debug jq-missing; exit 0;
 
 EVENT=$(hook_read_event) || exit 0
 FIELDS=$(hook_jq_field test-failure-debug "$EVENT" '[.tool_name // "", (.is_interrupt // false | tostring), .session_id // ""] | @tsv') || exit 0
-IFS=$'\t' read -r TOOL INTERRUPT SESSION_ID <<<"$FIELDS"
+IFS=$'\t' read -r TOOL INTERRUPT SESSION_ID < <(printf '%s\n' "$FIELDS")
 [[ "$TOOL" == Bash && "$INTERRUPT" != true ]] || exit 0
 [[ "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)

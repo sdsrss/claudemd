@@ -46,7 +46,7 @@ hook_require_jq || { hook_record_failopen verify-log jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
 FIELDS=$(hook_jq_field verify-log "$EVENT" '[.tool_name // "", .session_id // "", .tool_use_id // "", .cwd // ""] | @tsv') || exit 0
-IFS=$'\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD <<<"$FIELDS"
+IFS=$'\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD < <(printf '%s\n' "$FIELDS")
 [[ "$TOOL" == Bash && -n "$CWD" && -d "$CWD" ]] || exit 0
 CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0

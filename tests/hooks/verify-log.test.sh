@@ -170,4 +170,12 @@ if [[ "$N8" == 0 && "$(jq -r .wtree <<<"$ROW")" == "$W0" && "$(jq -r .verdict <<
   ok "8 with EVIDENCE_WTREE=1 a claim logs its fingerprint beside evidence-gate's verdict; without it, nothing"
 else ng "8 before=$N8 row=$ROW"; fi
 
+# 12. no temp file writable (D#417): bash 3.2 read the event's fields from a
+# here-string, a temp file, and with none writable `set -u` ended the hook on
+# "TOOL: unbound variable" (exit 1). stderr goes to the pipe: a file would be
+# under the same limit. Discriminates under bash 3.2 only (bash32-runtime.sh,
+# macOS CI): 5.1+ sends a small here-string through a pipe.
+OUT12=$(post 'npm test' 'ok' | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 EVIDENCE_WTREE=1 bash "$HOOK" 2>&1; echo "rc=$?"))
+[[ "$OUT12" == rc=0 ]] && ok "12 no temp file writable: exit 0, nothing printed" || ng "12 no temp file writable: ${OUT12:0:200}"
+
 claudemd_assert_summary

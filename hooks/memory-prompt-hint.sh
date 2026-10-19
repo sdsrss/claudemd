@@ -185,7 +185,7 @@ if [[ -n "$PRIOR_SUGGESTED" ]]; then
   DEDUP_FILES=()
   DEDUP_TAGS=()
   for i in "${!UNREAD_FILES[@]}"; do
-    if grep -qxF -- "${UNREAD_FILES[$i]}" <<<"$PRIOR_SUGGESTED"; then
+    if grep -qxF -- "${UNREAD_FILES[$i]}" < <(printf '%s\n' "$PRIOR_SUGGESTED"); then
       continue
     fi
     DEDUP_FILES+=("${UNREAD_FILES[$i]}")

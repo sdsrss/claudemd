@@ -205,7 +205,12 @@ _mg_is_release() {
 
 IS_RELEASE=0
 while IFS= read -r _seg; do
-  read -ra _words <<<"$_seg"
+  # Split without a here-string: bash 3.2 writes one to a temp file and, with
+  # none writable, leaves _words empty, so no release is seen (D#417).
+  set -f
+  # shellcheck disable=SC2206  # word splitting is the point
+  _words=($_seg)
+  set +f
   (( ${#_words[@]} > 0 )) || continue
   _mg_is_release "${_words[@]}" && { IS_RELEASE=1; break; }
 done < <(printf '%s\n' "$VIEW" \

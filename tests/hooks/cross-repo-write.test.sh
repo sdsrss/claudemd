@@ -472,5 +472,16 @@ else
   ng "X19 default OFF spawned jq $(wc -l < "$BASE/jq.count") time(s)"
 fi
 
+# --- X23: no temp file writable (D#417) -----------------------------------------
+# bash 3.2 writes every here-string to a temp file. The Bash scan read its
+# segments and split each into words from one, so with none writable it read no
+# command and `cd <other repo> && git commit` passed in silence. Discriminates
+# under bash 3.2 only (bash32-runtime.sh, macOS CI): 5.1+ sends a small
+# here-string through a pipe. No log: this row is about the scan (D#421).
+next_sid
+OUT=$(bash_ev "cd $R/beta && git commit -m x" "$R/alpha" "$SID" \
+  | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null))
+expect_advisory "X23 no temp file writable: cd into another repo and commit still advises" "$OUT" "$R/beta" "$R/alpha"
+
 echo
 claudemd_assert_summary

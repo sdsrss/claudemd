@@ -201,4 +201,16 @@ if [[ -z "$OUT16" ]] && [[ "$E16" =~ ^[0-9]+\.[0-9]+$ ]] && (( ${E16%%.*} < 2 ))
   ok "16 a 100,000-character first word is read in ${E16} s"
 else ng "16 long first word: out=${OUT16:0:60} elapsed=${E16} s"; fi
 
+# 17. no temp file writable (D#417): bash 3.2 writes every here-string to a temp
+# file, and each segment was split into words from one, so with none writable no
+# command was read and the release went through. Discriminates under bash 3.2
+# only (bash32-runtime.sh, macOS CI): 5.1+ sends a small here-string through a
+# pipe. No log: this row is about the split, not the log write (D#421).
+OUT17=$(jq -cn --arg t "$EMPTY_TR" \
+  '{tool_name:"Bash", tool_input:{command:"gh release create v1.0.0"}, session_id:"g17", transcript_path:$t, cwd:"/work/p"}' \
+  | (trap '' XFSZ; ulimit -f 0; SPEC_MODULE_GATE=deny DISABLE_RULE_HITS_LOG=1 bash "$HOOK" 2>/dev/null))
+if [[ "$(decision "$OUT17")" == deny ]]; then
+  ok "17 no temp file writable: a release is still denied"
+else ng "17 no temp file writable: decision=$(decision "$OUT17") out=${OUT17:0:80}"; fi
+
 claudemd_assert_summary

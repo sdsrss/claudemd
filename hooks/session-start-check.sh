@@ -683,7 +683,7 @@ upstream_check() {
 
   local remote_url remote_output remote_tag
   remote_url="${CLAUDEMD_REMOTE_URL:-https://github.com/sdsrss/claudemd}"
-  read -ra ls_remote_args <<< "${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}"
+  read -ra ls_remote_args < <(printf '%s\n' "${CLAUDEMD_LS_REMOTE_CMD:-git ls-remote}")
   remote_output=$(platform_timeout 3 "${ls_remote_args[@]}" --tags --refs --sort=-v:refname "$remote_url" 'v*.*.*' 2>/dev/null) || return 0
   remote_tag=$(printf '%s' "$remote_output" | head -1 | awk '{print $2}' | sed 's|refs/tags/||')
   [[ -z "$remote_tag" ]] && return 0
