@@ -828,7 +828,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     NEWER=$(printf '%s\n%s\n' "$PLUGIN_VER" "$INSTALLED_VER" | sort -V | tail -1)
     if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
       mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
-      echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+      ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" ) >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
       # Through merge_banners with the ledger candidate, not a bare `jq -cn`.
       # This is the session being told to run /claudemd-refresh, i.e. a long
       # one, i.e. one that will compact — exactly when the ledger is owed. It
@@ -847,7 +847,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
   # Mismatch: log intent, then fall through to the install block below which
   # writes the real bootstrap trail. Skip upstream-check on mismatch — the
   # local upgrade is already in flight; banner would compound noise.
-  echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+  ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" ) >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
 fi
 
 # Reached on the mismatch fall-through and the no-manifest (fresh install)
@@ -940,12 +940,14 @@ if [[ "$FRESH_INSTALL" == "1" && "${CLAUDEMD_FORCE_ASYNC_BOOTSTRAP:-0}" != "1" ]
   # the user. Pre-0.75.0 every write on this path lived inside
   # hook_spawn_install's detached `( … ) >/dev/null 2>&1 &` and was swallowed;
   # this branch runs in the foreground, so it has to swallow it itself. The
-  # inner `2>&1` still binds install.js's stderr to fd1 = the log.
+  # inner `2>&1` still binds install.js's stderr to fd1 = the log. A subshell,
+  # not `{ }`: its stdout is the log for its whole life, so a failed write's
+  # bytes cannot reach the hook's stdout (D#421).
   SYNC_RC=0
-  {
+  (
     echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) SessionStart fresh-install bootstrap (sync) → $PLUGIN_ROOT/scripts/install.js"
     platform_timeout 4 node "$PLUGIN_ROOT/scripts/install.js" 2>&1
-  } 2>/dev/null >> "$LOG" || SYNC_RC=$?
+  ) 2>/dev/null >> "$LOG" || SYNC_RC=$?
   if [[ "$SYNC_RC" -eq 0 ]]; then
     hook_install_sentinel_clear
     # The install just finished, so its user-content sentinel — if it wrote one
@@ -970,12 +972,12 @@ if [[ "$FRESH_INSTALL" == "1" && "${CLAUDEMD_FORCE_ASYNC_BOOTSTRAP:-0}" != "1" ]
   # fresh path because install.js still wrote no manifest. Same left-to-right
   # redirect ordering as above, for the same reason.
   if [[ "$SYNC_RC" -eq 3 ]]; then
-    echo "[claudemd] sync bootstrap stood down — another install holds the lock" 2>/dev/null >> "$LOG" || true
+    ( echo "[claudemd] sync bootstrap stood down — another install holds the lock" ) 2>/dev/null >> "$LOG" || true
     emit_tail_banners
     hook_record session-start bootstrap-stand-down null '' "$SESSION_ID"
     exit 0
   fi
-  echo "[claudemd] sync bootstrap exited non-zero or timed out — retrying detached" 2>/dev/null >> "$LOG" || true
+  ( echo "[claudemd] sync bootstrap exited non-zero or timed out — retrying detached" ) 2>/dev/null >> "$LOG" || true
 fi
 
 # Shared spawn (hook-common.sh): background install with a 10s ceiling,

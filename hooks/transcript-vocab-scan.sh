@@ -115,7 +115,7 @@ if [[ -n "$SESSION_ID" ]]; then
     exit 0
   fi
   if [[ -n "$VS_HASH" ]]; then
-    mkdir -p "$VS_STATE_DIR" 2>/dev/null && printf '%s' "$VS_HASH" > "$VS_SENTINEL" 2>/dev/null || true
+    mkdir -p "$VS_STATE_DIR" 2>/dev/null && ( printf '%s' "$VS_HASH" ) > "$VS_SENTINEL" 2>/dev/null || true
   fi
 fi
 

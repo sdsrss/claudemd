@@ -612,4 +612,17 @@ AFTER_LINES=$(wc -l < "$LOG" | tr -d ' ')
 rm -f "$LOG.rotating"
 echo "PASS: ROT-10 a FIFO at the lock path is a held lock, not a file to open"
 
+# STDOUT-1 (D#421): a log write that fails puts nothing on the hook's stdout.
+# bash's printf builtin writes through the shell's stdio buffer; when the write
+# to the redirected file fails (a full disk, a file-size limit), BSD libc keeps
+# the bytes and the next flush sends them to the restored stdout. On macOS's
+# /bin/bash 3.2 that put this row after banned-vocab's deny JSON, two objects
+# where Claude Code reads one (0.112.0 PR CI, macOS leg, case 26n). glibc drops
+# the bytes, so this row discriminates on macOS only; the source half is
+# tests/scripts/hook-full-disk-source.test.js.
+OUT=$( (trap '' XFSZ; ulimit -f 0; bash -c "source $LIB; rule_hits_append banned-vocab deny null '' sess-stdout1; printf END") 2>/dev/null)
+[[ "$OUT" == "END" ]] \
+  || { echo "FAIL: STDOUT-1 a failed log write reached stdout: ${OUT:0:200}"; exit 1; }
+echo "PASS: STDOUT-1 a failed log write puts nothing on stdout"
+
 echo "rule-hits: all cases passed"

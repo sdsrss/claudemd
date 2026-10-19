@@ -100,14 +100,14 @@ for f in "${picked[@]}"; do
   if [[ -n "$ctx" ]]; then
     total=$(jq -n --arg c "$ctx$entry" '$c | length' 2>/dev/null) || total=$BUDGET
     if (( total > BUDGET )); then
-      grep -qx "pending:$name" "$SEEN" 2>/dev/null || printf 'pending:%s\n' "$name" >>"$SEEN" 2>/dev/null || true
+      grep -qx "pending:$name" "$SEEN" 2>/dev/null || ( printf 'pending:%s\n' "$name" ) >>"$SEEN" 2>/dev/null || true
       deferred+="${deferred:+,}$name"
       continue
     fi
   fi
   ctx+="$entry"
   names+="${names:+,}$name"
-  printf '%s\n' "$name" >>"$SEEN" 2>/dev/null || true
+  ( printf '%s\n' "$name" ) >>"$SEEN" 2>/dev/null || true
 done
 
 hook_record spec-module-inject module-inject "$(jq -cn --arg m "$names" --arg d "$deferred" '{modules: $m} + (if $d == "" then {} else {deferred: $d} end)' 2>/dev/null || echo 'null')" '§2.2-modules' "$SESSION_ID" 2>/dev/null || true

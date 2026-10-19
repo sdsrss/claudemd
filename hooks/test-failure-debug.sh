@@ -76,7 +76,7 @@ SEEN="$STATE_DIR/modinj-$SESSION_ID.list"
 grep -qx debug "$SEEN" 2>/dev/null && exit 0
 
 specmod_entry debug "$(specmod_body "$MOD")" "injected because a test run just failed"
-printf 'debug\n' >>"$SEEN" 2>/dev/null || true
+( printf 'debug\n' ) >>"$SEEN" 2>/dev/null || true
 
 hook_record test-failure-debug module-inject '{"modules":"debug","trigger":"test-failure"}' '§2.2-modules' "$SESSION_ID" 2>/dev/null || true
 jq -cn --arg c "$SPECMOD_ENTRY" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUseFailure", additionalContext: $c}}'

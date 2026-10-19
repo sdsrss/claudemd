@@ -124,14 +124,15 @@ for FILE_PATH in "${FILE_PATHS[@]}"; do
   RB_KEY=$(printf '%s' "$FILE_PATH" | cksum 2>/dev/null | awk '{print $1"-"$2}')
   [[ -n "$RB_KEY" ]] || { hook_record_failopen rework-breaker prereq-missing; continue; }
 
-  # The redirection is inside the subshell, not after `printf`. A failing `>>` is
-  # reported by the SHELL before printf runs, so `printf … 2>/dev/null` left
-  # `rework-breaker.sh: line N: …: Permission denied` on the user's stderr while
-  # still exiting 0 (pre-ship review, behaviour L2). The claim write below already
-  # had this shape; now both writers in this file do.
+  # `2>/dev/null` before `>>`: a failing `>>` is reported by the SHELL before
+  # printf runs, so `printf … 2>/dev/null` left `rework-breaker.sh: line N: …:
+  # Permission denied` on the user's stderr while still exiting 0 (pre-ship
+  # review, behaviour L2). Both on the subshell, so its stdout is the ledger for
+  # its whole life: on macOS's bash 3.2 a failed write's bytes stayed in the
+  # shell's buffer and reached the hook's stdout (D#421).
   # `break`, not `exit`: a multiple an earlier file in this command already
   # claimed and logged must still be announced (0.99.0 pre-tag review L7).
-  (printf '%s\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {
+  ( printf '%s\n' "$RB_KEY" ) 2>/dev/null >> "$RB_LEDGER" || {
     hook_record_failopen rework-breaker prereq-missing
     break
   }

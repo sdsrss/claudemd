@@ -236,11 +236,11 @@ assert_deny "26: prior prose 'robust' + git push → deny" "$TMP_FIX"
 # SIGXFSZ ignored fails every temp-file write and leaves pipes alone. Under
 # bash 5.1+ a small here-doc goes through a pipe, so this row discriminates
 # only where the reach line below says so (bash32-runtime.sh, macOS CI).
-# DISABLE_RULE_HITS_LOG=1: the limit also fails the hook's log write, and on
-# macOS's bash 3.2 a builtin's failed write leaks its bytes onto stdout after
-# the JSON (0.112.0 PR CI, a separate defect, D#421). This row is about the
-# programs read at load time, so it writes no log.
-out=$( (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 bash "$HOOK" < "$TMP_FIX" 2>/dev/null) )
+# The limit also fails the hook's log write, and until D#421 macOS's bash 3.2
+# then printed the log row after the JSON (0.112.0 PR CI ran this row with the
+# log on and failed there), so the log stays on: two objects on stdout read as
+# no decision here.
+out=$( (trap '' XFSZ; ulimit -f 0; bash "$HOOK" < "$TMP_FIX" 2>/dev/null) )
 if [[ "$(printf '%s' "$out" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)" == deny ]]; then
   echo "PASS: 26n: no temp file writable → the Path 2 push deny still fires"
 else

@@ -499,7 +499,7 @@ hook_record_failopen() {
       return 0
     fi
   fi
-  printf '%s' "$now" > "$marker" 2>/dev/null || return 0
+  ( printf '%s' "$now" ) > "$marker" 2>/dev/null || return 0
 
   # Emit via rule_hits_append. extra carries the reason as structured JSON.
   local lib_dir
@@ -654,7 +654,7 @@ hook_install_sentinel_write() {
          jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
            '{ts: $ts, from: $from, to: $to, reason: ($reason | if length > 800 then .[0:800] + "…" else . end)}' \
            > "$tmp" 2>/dev/null; }; then
-    printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" > "$tmp" 2>/dev/null
+    ( printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" ) > "$tmp" 2>/dev/null
   fi && mv -f "$tmp" "$f" 2>/dev/null
   rm -f "$tmp" 2>/dev/null
   return 0
@@ -721,8 +721,8 @@ hook_record_plugin_root() {
   fi
 
   local tmp="$state_dir/hook-root.json.$$"
-  if printf '{"root":"%s","ts":"%s","version":"%s","sid":"%s"}\n' \
-       "$root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$version" "$sid" >"$tmp" 2>/dev/null; then
+  if ( printf '{"root":"%s","ts":"%s","version":"%s","sid":"%s"}\n' \
+       "$root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$version" "$sid" ) >"$tmp" 2>/dev/null; then
     mv -f "$tmp" "$state_dir/hook-root.json" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   else
     rm -f "$tmp" 2>/dev/null

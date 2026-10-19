@@ -106,7 +106,7 @@ if [[ "$PLUGIN_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$INSTALLED_VER" =~ ^[0-9]+\.
   if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
     LOG_DIR="$HOME/.claude/logs"
     mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
-    echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root (piggy-back): hook v$PLUGIN_VER < installed v$INSTALLED_VER — sync skipped (would downgrade)" >> "$LOG_DIR/claudemd-bootstrap.log" 2>/dev/null || true
+    ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root (piggy-back): hook v$PLUGIN_VER < installed v$INSTALLED_VER — sync skipped (would downgrade)" ) >> "$LOG_DIR/claudemd-bootstrap.log" 2>/dev/null || true
     STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
     hook_record user-prompt-submit stale-root "$STALE_EXTRA" '' "$SESSION_ID"
     exit 0
