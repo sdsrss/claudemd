@@ -77,7 +77,16 @@ platform_timeout() {
   # exited 7 looked like a timeout, contradicting this function's contract.
   wait "$cmd_pid" 2>/dev/null; rc=$?
   [[ "$rc" -eq 143 ]] && rc=124
+  # Disown the watchdog instead of waiting for it (D#444). A TERM that lands
+  # after the trap is set but before `wait` can be interrupted is held by bash
+  # 3.2 until the sleep ends, so waiting for the watchdog took the full ceiling
+  # (17 of 500 calls of /bin/true under 3.2.57; none under 5.3). Not waiting
+  # alone printed "Terminated" (1 of 1000 calls under 3.2): bash 3.2 reports a
+  # job that a signal killed (a TERM before the trap is set) and nobody waited
+  # for. A disowned job is never reported, so the disown comes first. In the
+  # held-TERM case the watchdog and its sleep still run to the ceiling in the
+  # background, with the caller's fds above 2 open.
+  disown "$watch_pid" 2>/dev/null || true
   kill -TERM "$watch_pid" 2>/dev/null
-  wait "$watch_pid" 2>/dev/null || true
   return "$rc"
 }

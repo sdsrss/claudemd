@@ -108,7 +108,32 @@ else
   echo "FAIL: 14 a reader of fd 3 blocked ${ELAPSED}s of a 5s ceiling"; FAIL=$((FAIL+1))
 fi
 
-if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
+# Case 15 (D#444): the call returns when the command does, under bash 3.2 too.
+# The caller used to `wait` for the watchdog after killing it. A TERM that
+# reached the watchdog after its trap was set but before its `wait` could be
+# interrupted was held by bash 3.2 until the sleep ended, so a command that
+# exits within a millisecond returned after the full ceiling: 17 of 500
+# `/bin/true` calls under 3.2.57, 0 of 500 under 5.3 (2026-10-19). Commands
+# that outlast the watchdog's startup never hit it (real git: 0 of 300).
+# Under the old code 300 calls all pass with odds of about (1-0.03)^300, 1e-4.
+# `time` reports sub-second elapsed with BSD and GNU tools alike, and the loop
+# stops at the first call that takes a second, so a failure costs one ceiling.
+# A first line that is not a number (a job-status message) also fails.
+CLAUDEMD_NO_TIMEOUT_BIN=1 bash -c "source $LIB; TIMEFORMAT=%R
+  for ((i = 1; i <= 300; i++)); do
+    { time platform_timeout 2 /bin/true; } 2>'$TMP/t15'
+    read -r t < '$TMP/t15'
+    case \$t in [0-9]*.*) ;; *) echo \"call \$i wrote '\$t'\"; exit 1 ;; esac
+    [[ \${t%%.*} -ge 1 ]] && { echo \"call \$i took \${t}s of a 2s ceiling\"; exit 1; }
+  done; echo done" > "$TMP/o15" 2>&1
+OUT=$(cat "$TMP/o15")
+if [[ "$OUT" == "done" ]]; then
+  echo "PASS: 15 watchdog returns with the command (300 calls of /bin/true, none reached 1s)"
+else
+  echo "FAIL: 15 $OUT"; FAIL=$((FAIL+1))
 fi
-echo "Tests: 14/14 passed"
+
+if (( FAIL > 0 )); then
+  echo "Tests: $((15 - FAIL))/15 passed"; exit 1
+fi
+echo "Tests: 15/15 passed"
