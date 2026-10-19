@@ -476,7 +476,7 @@ fi
 # bash 3.2 writes every here-string to a temp file. The Bash scan read its
 # segments and split each into words from one, so with none writable it read no
 # command and `cd <other repo> && git commit` passed in silence. Discriminates
-# under bash 3.2 only (bash32-runtime.sh, macOS CI): 5.1+ sends a small
+# under bash 5.0 and earlier (bash32-runtime.sh, macOS CI): 5.1+ sends a short
 # here-string through a pipe. No log: this row is about the scan (D#421).
 next_sid
 OUT=$(bash_ev "cd $R/beta && git commit -m x" "$R/alpha" "$SID" \

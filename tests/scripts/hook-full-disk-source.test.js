@@ -11,11 +11,12 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // /bin/bash) when a file cannot be written (a full disk, a quota, a file-size
 // limit).
 //
-// HERE-STRING (D#417). bash 3.2 writes every here-string to a temp file; when
-// it cannot, the command it feeds does not run. `IFS=$'\t' read -r TOOL … <<<"$F"`
+// HERE-STRING (D#417). bash 3.2 to 5.0 write every here-string to a temp file,
+// 5.1+ one longer than a pipe buffer; when it cannot, the command it feeds does
+// not run. `IFS=$'\t' read -r TOOL … <<<"$F"`
 // left TOOL unset and `set -u` ended verify-log.sh and test-failure-debug.sh
-// with "TOOL: unbound variable"; elsewhere a gate's loop read nothing. bash 5.1+
-// sends a small one through a pipe, so only 3.2 shows it. The fix is
+// with "TOOL: unbound variable"; elsewhere a gate's loop read nothing. Under
+// bash 5.1+ only a long one shows it. The fix is
 // `< <(printf '%s\n' "$x")`: a process substitution is a pipe on every version.
 // The check is on the raw text of every line that is not a comment, so a
 // here-string inside $( ) or a quoted program counts too.
@@ -40,8 +41,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // A redirection INSIDE a subshell, `( printf … > file )`, fails too: the
 // subshell's own stdout is still the hook's. Not a file: /dev/null,
 // /dev/stderr, `>&2`, `>&1`, `>&-`. Any other target counts, `>&3` included.
-// Not seen, by construction: writes inside $( ), <( ), >( ) or backticks (their
-// stdout is a pipe into the hook, not the hook's stdout), and a command whose
+// Not seen, by construction: writes inside $( ), <( ) or backticks (their
+// stdout is a pipe into the hook, not the hook's stdout), writes inside >( )
+// (its stdout IS the hook's; there is no >( ) under hooks/), and a command whose
 // name the reader cannot see (built from a variable).
 
 const HOOKS_DIR = path.join(REPO_ROOT, 'hooks');
@@ -221,7 +223,7 @@ function checkTree(read) {
   for (const [rel, src] of srcs) {
     for (const h of hereStrings(src)) {
       problems.push(
-        `${rel}:${h.line}: here-string — bash 3.2 needs a temp file for it; read from \`< <(printf '%s\\n' …)\`: ${h.text.trim().slice(0, 160)}`
+        `${rel}:${h.line}: here-string — bash up to 5.0 needs a temp file for it; read from \`< <(printf '%s\\n' …)\`: ${h.text.trim().slice(0, 160)}`
       );
     }
     const { sites, unterminated, swallowed } = findSites(src, fns);
