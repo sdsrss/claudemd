@@ -1,5 +1,5 @@
 # macOS bash 3.2 磁盘写满：D#417、D#421，随 D#444 发 0.113.2
-状态：进行中
+状态：已完成（0.113.2，2026-10-19）
 
 ## 背景与目标
 2026-10-19 使用者让我判断剩余工作哪些值得做并执行。逐项按"发生概率 × 后果 ÷ 成本"核对后的结论见"决策与进展"。要做的两项触发条件相同：macOS 自带的 bash 3.2，并且临时文件或日志写不进去（磁盘满、配额、文件大小上限）。
@@ -22,7 +22,7 @@
 - [x] D#417：失败用例（静态 + bash 3.2 运行时），修复（1b0e6d5，rebase 前的 SHA）
 - [x] D#421：扫描器抽出（b772b5b）；源码检查（先红），修复全部位置；STDOUT 行为用例（只在 macOS bash 3.2 上有区分力）（3c8fbe6）
 - [x] 全量检查：`npm run check`、bash 3.2 运行时 44 个套件、`npm run smoke`（发版分支头上再跑一遍）
-- [ ] 发版 0.113.2：发版分支 + 草稿 PR（含 macOS CI）、发版前评审、tag、npm、GitHub release
+- [x] 发版 0.113.2：发版分支 + 草稿 PR #11（含 macOS CI）、两轮发版前评审、tag、npm、GitHub release
 
 ## 决策与进展
 - 2026-10-19：取舍（使用者授权"按你的建议执行"）。
@@ -40,9 +40,14 @@
 - 2026-10-19：核实 §8 路径：0.112.0 PR CI 的 macOS 腿上 pre-bash-safety 的 no-tmp 行是通过的，原因是它们用 `session_id:"t"`，`rule_hits_append` 见到 "t" 不写日志（rule-hits.sh:200）；真实会话的 §8 deny 与 banned-vocab 同样先写日志再输出 deny。新加一行带真实 session id 的用例（只在 macOS 上有区分力）。
 - 2026-10-19：第一次全量检查红了 3 个 node 用例，都是新文件带来的文档漂移：ARCHITECTURE.md 的 node 套件数（93 → 94）及其变异对照，ADDING-NEW-HOOK.md 没写新门禁。已补，两个套件 24/24。
 
+- 2026-10-19：发版。release/v0.113.2 从 next-release rebase 到 main（41b675c）。PR CI run 39307188194（42178ab）在 macos-latest/Node 22 上红两行，另两条 macOS 腿打出同样两行后被 fail-fast 取消：platform 15 用了 macOS 没有的 /bin/true（改 `type -P true`；对 v0.113.1 的 platform.sh 在 bash 3.2 下仍 3/3 失败），X23 断言逻辑路径 /var/folders 而 hook 给出物理路径（改为匹配仓库名；Linux 上把 TMPDIR 指到符号链接可复现，57/58 → 58/58）。59d1477 修复，推送被 ship-baseline 门禁拦下（分支 CI 红），按其选项在提交说明里写 `known-red baseline:`。同一 macOS 腿上 D#421/D#417 的行为用例全过（26n 开日志、§8 deny 单对象、STDOUT-1、gate 17、verify-log 12、tfd 10）。
+- 2026-10-19：评审第 1 轮（release-reviewer，不带名，41b675c..42178ab）：0C/2H/1M/8L。两个 High 即上条两行（已在 59d1477 修）。M1：条目说 bash 4+ 行为不变，错——bash 3.2–5.0 每个 here-string 都要临时文件，5.1+ 超过管道缓冲的也要；本机 bash 5.3.9 复现：70,000 字符发版命令在无可写文件时旧 hook 无决定、新 hook deny。改条目，加 spec-module-gate 17b（旧 hook 在 5.3 下失败）。Low：改了 cross-repo-write 一处过时注释、源码检查补读 eval/source/./pushd/popd/cd/kill/help/history/fc/bind/enable、`1<>`、`function name {`，条目里的计数和两条 Not changed 理由；scripts/statusline.sh 的 here-string 记为 D#455；e939d6e 提交说明里的 25 和 rebase 前 SHA 1b0e6d5 不改（要重写分支历史）。修复提交 6db20b1，全量检查 node 1557/1558、bash 3.2 44/44、smoke 2/2，PR CI run 39314681157 7/7。
+- 2026-10-19：评审第 2 轮（新 spawn，42178ab..6db20b1）：0C/0H/0M/8L。7 条文字（测试注释仍写"只在 bash 3.2"、`>( )` 注释写错、条目对内建列表/第 1 次 CI/11 处替换形式/提交说明的描述、本设计记录过时），在 49c4e1d 修；claim-drift 自查又找到 ADDING-NEW-HOOK.md 那行仍写 bash 3.2 only，在 b3f7169 修。第 8 条不修：函数名模式会收进引号里 awk 程序的函数名，只会多报，今天不报。已到深度上限 2，不派第 3 轮。最终头 b3f7169 的 PR CI run 39318491344 7/7。
+- 2026-10-19：main ff 到 b3f7169，tag v0.113.2，GitHub release 已建；next-release 的 7 个提交在 main 里都有补丁等价（git cherry 全为 -），重置到 main（--force-with-lease 锁 51ebe85）。
+
 ## 验证记录
 - D#417 改前，bash 3.2.57，`(trap '' XFSZ; ulimit -f 0; …)`：`verify-log.sh`（EVIDENCE_WTREE=1）→ `line 49: cannot create temp file for here document: File too large`、`line 50: TOOL: unbound variable`，exit 1；`test-failure-debug.sh`（DEBUG_ON_TEST_FAILURE=1）→ 同样在 51/52 行，exit 1。bash 5.3.9 下两者 exit 0。
 - D#417 新用例在旧 hook 上（HEAD 的 worktree + 新测试文件，PATH 指向 bash 3.2.57）：spec-module-gate 17、verify-log 12、test-failure-debug 10、cross-repo-write X23 全部失败；修复后在 5.3.9 与 3.2.57 下：spec-module-gate 16/16、verify-log 13/13、test-failure-debug 10/10、cross-repo-write 58/58、sandbox-disposal 28/28、mem-audit 14/14、memory-prompt-hint 27/27、transcript-structure-scan 33/33、session-start 88/88。
-- D#421 源码检查：修复前 25 处报错；修复后 10/10（含 6 个变异行，各自报出预期的那一条）。
+- D#421 源码检查：修复前报 13 处 here-string、24 处写入（第 25 处是 KEPT 那条，列出而不报）；修复后 10/10（含 6 个变异行，各自报出预期的那一条），第 1 轮修复后 11/11。
 - 3c8fbe6 之前的工作树（D#421 已改、未提交）：`( trap '' PIPE; npm run check )` → 失败（node 1553/1557，3 个失败，均为上条文档漂移；所有 shell 套件通过）；bash 3.2 运行时 → 通过（44/44）；`npm run smoke` → 通过（2/2）。补文档后 architecture-drift + subject-set-drift → 通过（24/24）。
 - 日志追加 200 行，3 次取最好，负载约 1：bash 5.3.9 1.54 s → 1.54 s；bash 3.2.57 1.61 s → 1.67 s。
