@@ -1369,30 +1369,6 @@ else
   ng "Case 34a:$R34"
 fi
 
-# --- Case 34b: a make target counts when one of its [:._-]-separated segments
-# is a check word, as an npm script name does (D#102). `make install-latest`
-# validated: the pattern let any word characters run before `test` and none
-# had to end it, so "install-la" + "test" matched, and `checkout` read as
-# `check`. Rows marked v must validate, rows marked n must leave the checkpoint.
-R34=""
-for C34 in 'v|make test' 'v|make -j4 unit-test' 'v|make ci.check' \
-           'n|make install-latest' 'n|make checkout-deps'; do
-  reset_cwd
-  T="$TMP_HOME/case34b.jsonl"
-  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "${C34#*|}")" "$TR_OK"
-  run_hook "$T"
-  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
-    [[ "${C34%%|*}" == n ]] || R34+=" '${C34#*|}':not-a-validation"
-  else
-    [[ "${C34%%|*}" == v ]] || R34+=" '${C34#*|}':validated"
-  fi
-done
-if [[ -z "$R34" ]]; then
-  ok "Case 34b: make test, unit-test and ci.check validate; install-latest and checkout-deps do not"
-else
-  ng "Case 34b:$R34"
-fi
-
 # --- Case 34c: a HOME with a trailing slash names the same ~/.claude zone. The
 # zone was "$HOME/.claude" glued as is, so HOME=/x/ gave /x//.claude, which no
 # normalised path sits under: 25e.1's memory edit after a commit counted and

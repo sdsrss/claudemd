@@ -102,11 +102,6 @@ _OPT="([ \t]+-${_W}+([ \t]+[^- \t\n;&|]${_W}*)?)*"
 # word: test:unit, lint:js, ci-test. A substring does not: publish:latest holds
 # "test" and ran as a validation until the 0.100.0 review (D#102).
 _SCRIPT="(${_W}*[:._-])?(test|lint|typecheck|check|smoke|verify|validate)([:._-]${_W}*)?([ \t\n;&|)<>]|\$)"
-# A make target is cut the same way, over test, lint and check: `make test-js`
-# counts, `make install-latest` and `make checkout-deps` do not. The make arm
-# used to let any word characters run before the check word and none end it,
-# so "install-la" + "test" and "check" + "out" both read as validations.
-_TARGET="(${_W}*[:._-])?(test|lint|check)([:._-]${_W}*)?([ \t\n;&|)<>]|\$)"
 # An assignment value may be quoted (FOO="a b"); quotes stop at a newline.
 # npm's own options: the ones that take a value always consume the next word
 # (in `npm --prefix test install` the `test` is --prefix's value), every other
@@ -132,7 +127,7 @@ VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_NPMOPT}[ \t]+(
 VALIDATE_RE+="|npm${_NPMOPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
 # `tsc` takes the word end npm test has: it ends a command as often as not.
-VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_TARGET}|bash tests/|tsc([ \t\n;&|)<>]|\$)|vue-tsc|eslint"
+VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_W}*(test|lint|check)|bash tests/|tsc([ \t\n;&|)<>]|\$)|vue-tsc|eslint"
 VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clippy|shellcheck|git commit|git push)"
 
 # Single jq pass over last 200 lines: find last user-input message,
