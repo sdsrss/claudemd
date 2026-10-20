@@ -1504,6 +1504,24 @@ test('G0 rework: the threshold fires at 8 and not at 7, on both denominators', (
   assert.equal(docs.reworkSessionsCodeOnly, 0);
 });
 
+// D#126: the hottest-file count was `Math.max(...map.values())`, which passes
+// one argument per distinct path and throws RangeError near 130k paths — one
+// session that touched that many files took the whole audit down.
+test('D#126: 300k distinct edited paths in one session do not overflow the hottest-file max', () => {
+  const N = 300000;
+  const tools = Array.from({ length: N }, (_, i) => edit(`/p/src/f${i}.js`));
+  tools.push(...Array.from({ length: REWORK_THRESHOLD }, () => edit('/p/src/hot.js')));
+  // Built directly: `ev(...tools)` would itself spread 300k arguments.
+  const b = scanBehavior([
+    { kind: 'assistant', text: '', hasText: false, toolUses: tools, sidechain: false },
+  ]);
+  assert.equal(b.editedSessions, 1);
+  assert.equal(b.reworkSessions, 1, 'the one file edited 8 times is still found among 300k');
+  assert.equal(b.reworkSessionsCodeOnly, 1);
+  assert.equal(b.reworkSessionsAnyChannel, 1);
+  assert.equal(b.editBuckets['8-14'], 1);
+});
+
 test('G0 test-edit disposition: the four classes partition the edits', () => {
   const b = scanBehavior([
     ev(edit('tests/a.test.js', 'assert(1)', 'assert(1); assert(2)')), // +1 assertion

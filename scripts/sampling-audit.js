@@ -1128,6 +1128,13 @@ export function scanBehavior(events) {
   const perCodeFile = new Map();
   const perFileAny = new Map();
   const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  // A loop, not `Math.max(...m.values())`: the spread passes one argument per
+  // distinct path and threw RangeError near 130k of them (D#126).
+  const maxOf = m => {
+    let top = 0;
+    for (const v of m.values()) if (v > top) top = v;
+    return top;
+  };
   const erroredIds = new Set(events.filter(e => e.kind === 'tool-error').map(e => e.id));
   for (const e of events) {
     if (e.kind === 'bash-edit-capable') b.bashEditCapableSessions = 1;
@@ -1179,17 +1186,17 @@ export function scanBehavior(events) {
   }
   if (perFile.size > 0) {
     b.editedSessions = 1;
-    const hottest = Math.max(...perFile.values());
+    const hottest = maxOf(perFile);
     b.editBuckets[editBucket(hottest)] = 1;
     if (hottest >= REWORK_THRESHOLD) b.reworkSessions = 1;
   }
   if (perCodeFile.size > 0) {
     b.codeEditedSessions = 1;
-    if (Math.max(...perCodeFile.values()) >= REWORK_THRESHOLD) b.reworkSessionsCodeOnly = 1;
+    if (maxOf(perCodeFile) >= REWORK_THRESHOLD) b.reworkSessionsCodeOnly = 1;
   }
   if (perFileAny.size > 0) {
     b.editedSessionsAnyChannel = 1;
-    if (Math.max(...perFileAny.values()) >= REWORK_THRESHOLD) b.reworkSessionsAnyChannel = 1;
+    if (maxOf(perFileAny) >= REWORK_THRESHOLD) b.reworkSessionsAnyChannel = 1;
   }
   return b;
 }
