@@ -1401,3 +1401,65 @@ test('scanProbeProjects: an interactive row past the first 64 KiB still keeps th
   const kept = Object.fromEntries(r.kept.map(k => [k.path, k.reason]));
   for (const d of [resumed, ...straddles]) assert.equal(kept[d], 'not-headless', d);
 });
+
+test('132: a probe dir with a 0500 child stays unreapable on the second --apply, not kept', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.diagnostic('SKIP: running as root — a 0500 directory does not stop root, so the fixture cannot fail');
+    return;
+  }
+  // The transcript is what makes the dir a target. Run 1 used to delete it
+  // and then hit the locked child, so run 2 read the leftover as
+  // `no-transcript`, kept it, and printed `remaining: 0` with exit 0 while the
+  // tree was still on disk. rmSync deletes in directory order, which on tmpfs
+  // is newest first: the transcript is written last so it is the entry the old
+  // code reached before the locked one.
+  const d = mkProj('-tmp-locked-probe', 10);
+  const transcript = path.join(d, 'a1b2c3d4-0000.jsonl');
+  const body = fs.readFileSync(transcript);
+  fs.rmSync(transcript);
+  const locked = path.join(d, 'a1b2c3d4', 'subagents');
+  fs.mkdirSync(locked, { recursive: true });
+  fs.writeFileSync(path.join(locked, 'agent-1.jsonl'), '{}\n');
+  fs.writeFileSync(transcript, body);
+  setMtime(d, 10);
+  fs.chmodSync(locked, 0o500);
+  try {
+    assertUnreapableTwice(d);
+    assert.ok(fs.existsSync(transcript), 'nothing was deleted from a tree that could not all go');
+  } finally {
+    fs.chmodSync(locked, 0o700);
+  }
+});
+
+test('132: a probe dir whose parent is not writable is not emptied first', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.diagnostic('SKIP: running as root — a 0500 directory does not stop root, so the fixture cannot fail');
+    return;
+  }
+  // The same defect without any dependence on directory order: rmSync empties
+  // the dir and only then fails to unlink it from the 0500 parent.
+  const d = mkProj('-tmp-locked-parent', 10);
+  fs.chmodSync(cliProjectsDir, 0o500);
+  try {
+    assertUnreapableTwice(d);
+    assert.ok(fs.existsSync(path.join(d, 'a1b2c3d4-0000.jsonl')), 'the transcript is still there');
+  } finally {
+    fs.chmodSync(cliProjectsDir, 0o700);
+  }
+});
+
+function assertUnreapableTwice(d) {
+  for (const run of [1, 2]) {
+    const r = spawnSync(process.execPath, [SCRIPT, '--apply'], { env: cliEnv(), encoding: 'utf8' });
+    assert.equal(r.status, 3, `run ${run}: expected exit 3; stderr: ${r.stderr}`);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.remaining, 1, `run ${run}: the dir is still on disk`);
+    assert.deepEqual(
+      o.unreapable.map(u => u.path),
+      [d],
+      `run ${run}: named as unreapable`
+    );
+    assert.match(o.unreapable[0].code, REFUSED);
+    assert.deepEqual(o.probeProjects.kept, [], `run ${run}: not filed as a kept dir`);
+  }
+}

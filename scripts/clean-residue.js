@@ -578,8 +578,42 @@ export function cleanProbeProjects({
     candidates.filter(c => c.ageDays >= window)
   );
   if (!apply) return { dryRun: true, targets, protected: protectedTargets, kept, deleted: 0, failures: [] };
-  const { deleted, failures } = rmEach(targets, { recursive: true, force: true });
-  return { dryRun: false, targets, protected: protectedTargets, kept, deleted, failures };
+  // A probe dir is a target only while its transcript is there, so a delete
+  // that stops part-way must not start: rmSync removed the transcript, then hit
+  // a 0500 child, and the next run kept the leftover as `no-transcript` and
+  // reported `remaining: 0` with the tree still on disk (defect 132).
+  const blocked = [];
+  const ready = targets.filter(t => {
+    const code = deleteBlocker(t.path);
+    if (code) blocked.push({ path: t.path, code });
+    return !code;
+  });
+  const { deleted, failures } = rmEach(ready, { recursive: true, force: true });
+  return {
+    dryRun: false,
+    targets,
+    protected: protectedTargets,
+    kept,
+    deleted,
+    failures: [...blocked, ...failures],
+  };
+}
+
+// The errno that would stop `rm -r dir` part-way, or null: each directory it
+// has to empty needs r/w/x, and the parent it is unlinked from needs w/x.
+function deleteBlocker(dir) {
+  const { R_OK, W_OK, X_OK } = fs.constants;
+  try {
+    fs.accessSync(path.dirname(dir), W_OK | X_OK);
+    fs.accessSync(dir, R_OK | W_OK | X_OK);
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const code = e.isDirectory() ? deleteBlocker(path.join(dir, e.name)) : null;
+      if (code) return code;
+    }
+    return null;
+  } catch (e) {
+    return e.code || 'UNKNOWN';
+  }
 }
 
 // --- ~/.claude/.claudemd-state orphan reaping (2026-07-28 audit H3) ---
