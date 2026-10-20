@@ -220,4 +220,24 @@ if [[ "$(mods "$C19")" == "debug " && -z "$C19B" ]]; then
   ok "19 under LC_ALL=C a CJK prompt's head window is its first 300 characters"
 else ng "19 CJK head window wrong: at 121=$(mods "$C19") at 311=$(mods "$C19B")"; fi
 
+# 20. an unwritable state dir: the seen list cannot record an injection, so a
+# module that went in would go in again on every prompt. It stays out (the core
+# index still points the model at the file), and nothing reaches stderr, which
+# the user sees: the append's redirect used to open before its 2>/dev/null.
+if [[ "$(id -u)" == 0 ]]; then ok "20 skipped: root writes a mode-555 dir"; else
+  H20=$(mktemp -d -t claudemd-modinj20-XXXXXX)
+  mkdir -p "$H20/.claude/spec-modules" "$H20/.claude/logs" "$H20/.claude/.claudemd-state"
+  cp "$REPO"/spec/spec-modules/*.md "$H20/.claude/spec-modules/"
+  chmod 555 "$H20/.claude/.claudemd-state"
+  run20() { jq -cn --arg p "$1" '{prompt:$p, session_id:"s20", cwd:"/work/p"}' | HOME="$H20" bash "$HOOK" 2>"$H20/err$2" \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+  O20A=$(run20 'Please ship v1.2.3 to npm today' a); O20B=$(run20 'ship it again' b)
+  E20=$(cat "$H20/erra" "$H20/errb")
+  R20=$(jq -c 'select(.hook=="spec-module-inject" and .event=="fail-open") | .extra.reason' "$H20/.claude/logs/claudemd.jsonl" 2>/dev/null | head -1)
+  chmod 755 "$H20/.claude/.claudemd-state"; rm -rf "${H20:?}"
+  if [[ -z "$O20A" && -z "$O20B" && -z "$E20" && "$R20" == '"prereq-missing"' ]]; then
+    ok "20 unwritable state dir: no module, a prereq-missing fail-open row, nothing on stderr"
+  else ng "20 unwritable state dir: first=$(mods "$O20A") second=$(mods "$O20B") row=[$R20] stderr=[$E20]"; fi
+fi
+
 claudemd_assert_summary

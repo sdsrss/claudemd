@@ -102,15 +102,19 @@ for f in "${picked[@]}"; do
   if [[ -n "$ctx" ]]; then
     total=$(jq -n --arg c "$ctx$entry" '$c | length' 2>/dev/null) || total=$BUDGET
     if (( total > BUDGET )); then
-      grep -qx "pending:$name" "$SEEN" 2>/dev/null || ( printf 'pending:%s\n' "$name" ) >>"$SEEN" 2>/dev/null || true
+      grep -qx "pending:$name" "$SEEN" 2>/dev/null || ( printf 'pending:%s\n' "$name" ) 2>/dev/null >>"$SEEN" || true
       deferred+="${deferred:+,}$name"
       continue
     fi
   fi
+  # Recorded first, injected only if recorded: a module the list cannot hold (an
+  # unwritable state dir) would go in again on every prompt. Left out, it is
+  # still reached through the core index.
+  ( printf '%s\n' "$name" ) 2>/dev/null >>"$SEEN" || { hook_record_failopen spec-module-inject prereq-missing; continue; }
   ctx+="$entry"
   names+="${names:+,}$name"
-  ( printf '%s\n' "$name" ) >>"$SEEN" 2>/dev/null || true
 done
+[[ -n "$ctx" ]] || exit 0
 
 hook_record spec-module-inject module-inject "$(jq -cn --arg m "$names" --arg d "$deferred" '{modules: $m} + (if $d == "" then {} else {deferred: $d} end)' 2>/dev/null || echo 'null')" '§2.2-modules' "$SESSION_ID" 2>/dev/null || true
 jq -cn --arg c "$ctx" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $c}}'
