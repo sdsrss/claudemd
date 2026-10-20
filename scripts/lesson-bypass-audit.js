@@ -43,8 +43,12 @@ across recent sessions.
 
 Options:
   --days=N       Window in days (positive integer, default 30).
-  --cwd=PATH     CC project cwd to audit (default: current process.cwd()).
-                 Mapped to ~/.claude/projects/<encoded>/ for transcript lookup.
+  --cwd=PATH     Fallback project for transcript lookup (default: current
+                 process.cwd()), mapped to ~/.claude/projects/<encoded>/. It
+                 does NOT narrow the audit: every project's suggest rows in
+                 the rule-hits log are scored, each against the transcript in
+                 the project its row names; this dir is tried after that, and
+                 alone for a row that names none.
   --project=PATH Alias for --cwd. spec-coherence-audit spells this same concept
                  --project; accepting both means neither spelling is a silent
                  argv-shape error depending on which tool you reached for.

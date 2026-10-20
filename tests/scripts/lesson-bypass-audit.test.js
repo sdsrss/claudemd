@@ -485,6 +485,44 @@ test('R11-25: --project is an alias for --cwd, and a conflicting pair is refused
   assert.match(conflict.stderr, /--cwd and --project are aliases but were given different values/);
 });
 
+// D#172b: USAGE called --cwd the "CC project cwd to audit", but the audit
+// scores every project's suggest rows, each against the transcript in its own
+// row's `project` dir — deliberately, so the two denominators it prints cover
+// one population (see lessonBypassAudit). USAGE now says what it does; the
+// behaviour is pinned beside the text so neither can drift alone.
+test('D#172b: --cwd does not narrow the audit to one project, and --help says so', () => {
+  const now = new Date().toISOString();
+  const row = (session_id, project) => ({
+    ts: now,
+    hook: 'memory-prompt-hint',
+    event: 'suggest',
+    session_id,
+    project,
+    spec_section: '§11-memory-hint',
+    extra: { suggested: ['feedback_x.md'], match_count: 1 },
+  });
+  writeLog([row('sess-AAAA', '-projA'), row('sess-BBBB', '-projB')]);
+  const said = [{ timestamp: now, message: { content: 'read feedback_x.md' } }];
+  writeTranscript(path.join(tmpHome, '.claude/projects/-projA'), 'sess-AAAA', said);
+  writeTranscript(path.join(tmpHome, '.claude/projects/-projB'), 'sess-BBBB', said);
+
+  const r = spawnSync(process.execPath, [SCRIPT, '--cwd=/projA', '--json'], {
+    env: { ...process.env, HOME: tmpHome },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.totalSuggestEvents, 2, "projB's row is counted under --cwd=/projA");
+  assert.equal(out.totalApplied, 2, "and scored against projB's own transcript");
+  assert.equal(out.totalMissingTranscript, 0);
+
+  const help = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /does NOT narrow the audit/);
+  assert.match(help.stdout, /every project's suggest rows/);
+  assert.doesNotMatch(help.stdout, /CC project cwd to audit/, 'the scope claim the behaviour contradicts');
+});
+
 test('R11-24: a FULLY corrupt transcript keeps its malformed count across the candidate loop', () => {
   // Pre-tag review N1: the candidate loop was last-wins, and a fully-corrupt
   // file yields rows.length === 0 so it does NOT break — the next (absent)
