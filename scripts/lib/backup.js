@@ -173,7 +173,7 @@ export function createBackup(files, { label = DEFAULT_LABEL, dir = null } = {}) 
     // against ITS own unmoved directory. The link — not a copy of the bytes —
     // is what belongs here, because the bytes were never claudemd's to move;
     // the dotfiles source stays exactly where the user put it, and restore
-    // copies THROUGH the entry.
+    // puts the link itself back.
     let linkTarget = null;
     if (st.isSymbolicLink()) {
       try {
@@ -410,7 +410,15 @@ export function restoreBackup(backupDir, targetRoot, { skip } = {}) {
     }
     if (isFile) {
       if (skip && skip(src, dest)) continue;
-      fs.copyFileSync(src, dest);
+      // createBackup keeps a symlinked source AS a link (see there). Put the
+      // link back: copying through it left a dotfiles user's ~/.claude/CLAUDE.md
+      // a plain file that their dotfiles no longer reach (defect 163).
+      if (fs.lstatSync(src).isSymbolicLink()) {
+        fs.rmSync(dest, { force: true });
+        fs.symlinkSync(fs.readlinkSync(src), dest);
+      } else {
+        fs.copyFileSync(src, dest);
+      }
       restored.push(dest);
     }
   }

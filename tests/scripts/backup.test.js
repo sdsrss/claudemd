@@ -345,7 +345,7 @@ test('ENG-01: createBackup absolutises a relative symlink instead of moving it i
   // The whole point of the entry: restore can read through it.
   assert.deepEqual(restoreBackup(dir, path.join(box.home, '.claude')), [src]);
   assert.equal(fs.readFileSync(src, 'utf8'), 'personal\n');
-  assert.equal(fs.lstatSync(src).isSymbolicLink(), false, 'restored as a regular file');
+  assert.equal(fs.lstatSync(src).isSymbolicLink(), true, 'restored as a link (163)');
 });
 
 test('ENG-01: a symlinked ~/.claude resolves the target against the REAL parent', () => {
@@ -400,6 +400,26 @@ test('ENG-01: an ALREADY-absolute symlink keeps its target verbatim', () => {
 
   assert.equal(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), target);
   assert.equal(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'abs-personal\n');
+});
+
+test('163: restore puts a symlinked CLAUDE.md back as the same link, not a copy', () => {
+  // A dotfiles user's ~/.claude/CLAUDE.md is a link. createBackup keeps the
+  // link in backup-<stamp>/; restore used to copy THROUGH it, so after
+  // install + `/claudemd-uninstall restore` the home path was a plain file and
+  // later edits to the dotfiles source no longer reached Claude Code.
+  const target = path.join(box.home, 'dotfiles/CLAUDE.md');
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, 'personal\n');
+  const home = path.join(box.home, '.claude/CLAUDE.md');
+  fs.symlinkSync(target, home);
+  const { dir } = createBackup([home]);
+  fs.writeFileSync(home, '# AI-CODING-SPEC v0 — Core\n'); // what install puts there
+
+  assert.deepEqual(restoreBackup(dir, path.join(box.home, '.claude')), [home]);
+
+  assert.equal(fs.lstatSync(home).isSymbolicLink(), true, 'the home path is a link again');
+  assert.equal(fs.readlinkSync(home), target);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'personal\n', 'the dotfiles source is untouched');
 });
 
 test('ENG-01: a plain file is still MOVED, byte-for-byte, by the same call', () => {
