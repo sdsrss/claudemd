@@ -85,7 +85,7 @@ fi
 if [[ ! -f "$SESSION_REF" ]]; then
   # First Stop of THIS session: establish the window silently. Scanning here
   # against any other baseline is exactly the misattribution being fixed.
-  touch "$SESSION_REF"
+  touch "$SESSION_REF" 2>/dev/null
   exit 0
 fi
 
@@ -214,5 +214,5 @@ if [[ -n "$FOUND" ]]; then
   hook_record sandbox-disposal warn "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
 fi
 
-touch "$SESSION_REF"
+touch "$SESSION_REF" 2>/dev/null
 exit 0

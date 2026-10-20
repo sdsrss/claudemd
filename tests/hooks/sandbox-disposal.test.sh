@@ -419,7 +419,17 @@ else
 fi
 rm -rf "$HOME/.claude/tmp/tmp.immediate"
 
-TOTAL=$((28 - ${SKIPPED:-0}))
+# Case 29: a state directory the hook cannot write (0.113.3 pre-tag review M2):
+# the session-ref `touch` printed "Permission denied" on every Stop, and a Stop
+# hook's stderr reaches the user.
+rm -f "$HOME/.claude/.claudemd-state/session-start.ref"
+chmod 555 "$HOME/.claude/.claudemd-state"
+STDERR=$(bash "$HOOK" <<<'{}' 2>&1 >/dev/null)
+chmod 755 "$HOME/.claude/.claudemd-state"
+[[ -z "$STDERR" ]] && echo "PASS: 29 an unwritable state dir prints nothing" \
+  || { echo "FAIL: 29 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
+
+TOTAL=$((29 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi

@@ -240,4 +240,12 @@ DU_OUT=$(bash -c "$DU" 2>/dev/null)
 [[ "$DU" == "du -sh "* && "$DU_OUT" == *"$SP/entry10"* ]] && ok "10 a temp root with a space: the du line runs as given" ||
   ng "10 (du: $DU; its output: $DU_OUT)"
 
+# Case 11: a result file the hook cannot write (0.113.3 pre-tag review M2): the
+# detached sweep's redirection failed with "Permission denied" on the stderr it
+# shares with the hook, which a PostToolUse hook shows the user.
+rm -f "$STAMP"; : >"$RESULT"; chmod 444 "$RESULT"
+ERR11=$(CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" 2>&1 >/dev/null)
+chmod 644 "$RESULT"
+[[ -z "$ERR11" ]] && ok "11 a result file it cannot write prints nothing" || ng "11 (stderr: $ERR11)"
+
 claudemd_assert_summary

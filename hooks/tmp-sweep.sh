@@ -100,7 +100,7 @@ if command -v node >/dev/null 2>&1; then
   SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/housekeeping.js"
   # Detached: stdin from /dev/null and both streams to the result file, so the
   # hook's own pipes close when it exits and Claude Code does not wait on them.
-  nohup node "$SCRIPT" tmp --apply >"$STATE_DIR/tmp-sweep.last.json" 2>&1 </dev/null &
+  nohup node "$SCRIPT" tmp --apply 2>/dev/null >"$STATE_DIR/tmp-sweep.last.json" 2>&1 </dev/null &
   disown 2>/dev/null || true
 else
   hook_record_failopen tmp-sweep prereq-missing
