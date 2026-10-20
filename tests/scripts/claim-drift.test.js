@@ -115,6 +115,60 @@ test('claim-drift CLI: --help exits 0, an unknown flag exits 2', () => {
   assert.equal(spawnSync('node', [SCRIPT, '--bogus']).status, 2);
 });
 
+// The range is handed to `git diff` as an argument of its own, so one that
+// starts with `-` was read as an option: `--output=<path>..x` made git write
+// a file there.
+test('claim-drift CLI: a range that starts with - is a usage error, not a git option', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-claimdrift-'));
+  try {
+    const out = path.join(d, 'written..x'); // the whole range is the --output value
+    const r = spawnSync('node', [SCRIPT, `--range=--output=${out}`], { encoding: 'utf8' });
+    assert.ok(!fs.existsSync(out), 'git wrote the --output file');
+    assert.equal(r.status, 2, r.stderr);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// The diff is parsed for `+++ b/<path>` and the tracked list matched by path:
+// diff.noprefix=true drops the b/, and core.quotePath (on by default) prints
+// a non-ASCII path as "docs/\303\251.md", so names and files went missing.
+test('claim-drift CLI: diff.noprefix and a non-ASCII path change nothing in the list', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-claimdrift-'));
+  try {
+    const g = (...a) => execFileSync('git', ['-C', d, ...a], { encoding: 'utf8' });
+    g('init', '-q');
+    g('config', 'user.email', 't@example.com');
+    g('config', 'user.name', 't');
+    g('config', 'diff.noprefix', 'true');
+    fs.mkdirSync(path.join(d, 'hooks'));
+    fs.mkdirSync(path.join(d, 'docs'));
+    fs.writeFileSync(path.join(d, 'hooks/foo-check.sh'), '#!/bin/bash\nexit 0\n');
+    fs.writeFileSync(path.join(d, 'README.md'), 'foo-check reads BAR_LIMIT_MAX.\n');
+    fs.writeFileSync(path.join(d, 'docs/é.md'), 'BAR_LIMIT_MAX caps it.\nold\n');
+    g('add', '.');
+    g('commit', '-qm', 'a');
+    fs.writeFileSync(
+      path.join(d, 'hooks/foo-check.sh'),
+      '#!/bin/bash\nBAR_LIMIT_MAX=${BAR_LIMIT_MAX:-5}\nexit 0\n'
+    );
+    fs.writeFileSync(path.join(d, 'docs/é.md'), 'BAR_LIMIT_MAX caps it.\nBAR_LIMIT_MAX is 5.\n');
+    g('commit', '-qam', 'b');
+    const r = spawnSync('node', [SCRIPT, '--json'], { cwd: d, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const at = list => (list || []).map(x => `${x.file}:${x.line}`).sort();
+    const m = JSON.parse(r.stdout).mentions;
+    assert.deepEqual(at(m['foo-check']), ['README.md:1'], 'the changed hook file names foo-check');
+    assert.deepEqual(
+      at(m.BAR_LIMIT_MAX),
+      ['README.md:1', 'docs/é.md:1'],
+      'docs/é.md is searched, and its changed line 2 is not listed'
+    );
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test('claim-drift CLI: end to end on a scratch repository', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-test-claimdrift-'));
   try {

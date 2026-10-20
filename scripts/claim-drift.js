@@ -147,14 +147,22 @@ export function findMentions(names, files, changed, read) {
   return res;
 }
 
+// core.quotePath=false: a non-ASCII path is printed as itself, not as
+// "docs/\303\251.md", which neither the diff parser nor proseFiles matches.
 function git(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return execFileSync('git', ['-c', 'core.quotePath=false', ...args], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 function main(p) {
   const range = p.values['--range'] || 'HEAD~1..HEAD';
   const limit = Number(p.values['--limit'] || 12);
-  if (!/^[^\s.][^\s]*\.\.[^\s.][^\s]*$/.test(range) || !Number.isInteger(limit) || limit < 1) {
+  // No leading `-`: git would read the range as an option (`--output=<path>..x`
+  // writes a file).
+  if (!/^[^\s.-][^\s]*\.\.[^\s.][^\s]*$/.test(range) || !Number.isInteger(limit) || limit < 1) {
     console.error(
       `claim-drift: --range must be A..B and --limit a positive integer (got ${range}, ${p.values['--limit']})`
     );
@@ -165,7 +173,9 @@ function main(p) {
   let diff, tracked, root;
   try {
     root = git(['rev-parse', '--show-toplevel']).trim();
-    diff = git(['diff', '-U0', '--no-color', range], root);
+    // Explicit prefixes: the parser reads `+++ b/<path>`, and diff.noprefix or
+    // diff.mnemonicPrefix in the user's config would print other ones.
+    diff = git(['diff', '-U0', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', range], root);
     tracked = git(['ls-files'], root).split('\n').filter(Boolean);
   } catch (e) {
     console.error(`claim-drift: git failed: ${e.message.split('\n')[0]}`);
