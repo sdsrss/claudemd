@@ -1,7 +1,7 @@
 ---
 module: debug
 loads-on: when a bug, a failing test or an error is the task
-triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])|(测试|用例|单测|(?<![A-Za-z0-9_])CI(?![A-Za-z0-9_]))\s*[^\s,，。.!！?？;；、:：]{0,2}(挂了|挂掉|跑挂|失败了|失败(?=[\s,，。.!！?？;；、:：]|$)|红了|没过)
+triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])
 trigger-window: head
 ---
 

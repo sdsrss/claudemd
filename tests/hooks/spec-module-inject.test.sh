@@ -240,31 +240,34 @@ if [[ "$(id -u)" == 0 ]]; then ok "20 skipped: root writes a mode-555 dir"; else
   else ng "20 unwritable state dir: first=$(mods "$O20A") second=$(mods "$O20B") row=[$R20] stderr=[$E20]"; fi
 fi
 
-# 21. Chinese release and failing-test phrasings the triggers missed (0.113.3
-# "Not changed"; D#493): 打个tag / 打一个tag, 发个版 / 发一版 / 发一个版本 for
-# ship ("把剩余的做完了发个版" is a real prompt the ship trigger missed), and
-# 测试/用例/单测/CI + up to four characters + 挂了 / 失败 / 红了 / 没过 for
-# debug. Negative rows sit next to each arm: tag without 打, 发 + 个 without
-# 版, a test word with no failure word, a failure word with no test word.
-# 0.113.4 pre-tag review M1/M2: the arms first drew ship on 开发/研发一个版本 and
-# 发个版本号, and debug on prompts about writing tests for a failure case; the
-# rows after 'CI 配置在哪' pin each bound that stops them (the 开发 lookbehind,
-# 版本号, 失败 not followed by 了 or punctuation, the two-character gap, the
-# punctuation stop, and CI's ASCII bounds), so dropping any one turns this red.
-# Runs through jq, the hook's regex engine.
+# 21. Chinese release and failing-test phrasings (0.113.3 "Not changed";
+# D#493). 打个tag / 打一个 tag inject ship: 0.113.4 widened `打\s*tag`.
+# RESIDUAL rows: 0.113.4 also added arms for 发个版 and for 测试/CI + 挂了/失败/红了,
+# and backed both out after two pre-tag review rounds found each repair leaving
+# a new false match beside it (开发一个版本, 发一个版权声明, 测试没过期的缓存 …),
+# while on this machine's 659 human prompts the debug arm matched nothing and
+# the 发个版 arm one prompt in a session that had already drawn ship. These rows
+# hold that trade: they draw nothing today, and a future arm for them flips the
+# case (feedback: revert the component, not the next defect). The neighbours
+# after them are forward-looking pins from those review rounds: each must keep
+# drawing nothing if such an arm comes back. Runs through jq, the hook's
+# regex engine.
 BAD21=0; N21=0
-for row in 'ship|帮我打个tag' 'ship|打一个 tag 吧' 'ship|把剩余的做完了发个版' 'ship|今天发一版' 'ship|发一个版本吧' \
-  'debug|测试挂了，看一下' 'debug|用例跑挂了' 'debug|单测失败了怎么回事' 'debug|CI 红了' 'debug|ci没过' 'debug|这个测试又挂掉了'; do
-  N21=$((N21+1)); want="${row%%|*}"; p="${row#*|}"
-  [[ "$(mods "$(inject "$p" "s21p$N21")")" == "$want " ]] || { ng "21 missed $want: $p -> $(mods "$(inject "$p" "s21q$N21")")"; BAD21=1; }
+for p in '帮我打个tag' '打一个 tag 吧'; do
+  N21=$((N21+1)); [[ "$(mods "$(inject "$p" "s21p$N21")")" == "ship " ]] || { ng "21 missed ship: $p -> $(mods "$(inject "$p" "s21q$N21")")"; BAD21=1; }
+done
+N21=0
+for p in '把剩余的做完了发个版' '今天发一版' '发一个版本吧' '测试挂了，看一下' '用例跑挂了' '单测失败了怎么回事' \
+  'CI 红了' 'ci没过' '这个测试又挂掉了'; do
+  N21=$((N21+1)); [[ -z "$(inject "$p" "s21r$N21")" ]] || { ng "21 RESIDUAL row now draws a module (update the residual): $p -> $(mods "$(inject "$p" "s21s$N21")")"; BAD21=1; }
 done
 N21=0
 for p in '这个tag名字不对' '打个招呼' '发个链接给我' '测试通过了，没问题' '用例写得不错' '上传失败了' '页面红了一块' \
-  'CI_job 的名字' 'CI 配置在哪' '我想开发一个版本管理工具' '研发一个版本号解析器' '发个版本号给我' \
-  '写测试覆盖登录失败的情况' '测试失败率统计' '用例失败时打印日志' '用例里的人挂了电话' '单测。红了的按钮颜色改一下' '测试，红了的那行删掉' \
-  'CI_1挂了' 'ABCI挂了'; do
+  'CI_job 的名字' 'CI 配置在哪' '我想开发一个版本管理工具' '研发一个版本号解析器' '发个版本号给我' '帮我发一个版权声明' \
+  '写测试覆盖登录失败的情况' '测试失败率统计' '用例失败时打印日志' '用例里的人挂了电话' '单测。红了的按钮颜色改一下' \
+  '测试，红了的那行删掉' '测试没过期的缓存' 'CI_1挂了' 'ABCI挂了'; do
   N21=$((N21+1)); [[ -z "$(inject "$p" "s21n$N21")" ]] || { ng "21 drew a module: $p -> $(mods "$(inject "$p" "s21m$N21")")"; BAD21=1; }
 done
-[[ $BAD21 == 0 ]] && ok "21 打个tag / 发个版 inject ship and 测试挂了 / CI 红了 inject debug; their neighbours do not"
+[[ $BAD21 == 0 ]] && ok "21 打个tag injects ship; 发个版 / 测试挂了 stay residual misses; their neighbours draw nothing"
 
 claudemd_assert_summary
