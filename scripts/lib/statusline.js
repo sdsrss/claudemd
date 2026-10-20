@@ -273,10 +273,15 @@ export function remove() {
   if (fs.existsSync(prevPath())) {
     try {
       const prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8'));
-      if (prev && typeof prev.command === 'string') {
+      if (prev && prev.statusLine != null && typeof prev.statusLine === 'object') {
+        // The whole prior slot, whatever its command's shape.
+        settings.statusLine = prev.statusLine;
+        const c = prev.statusLine.command;
+        restored = typeof c === 'string' ? c : JSON.stringify(c ?? null);
+        action = 'restored';
+      } else if (prev && typeof prev.command === 'string') {
         // A pre-173 record has the command only; that still restores.
-        const whole = prev.statusLine?.command === prev.command ? prev.statusLine : {};
-        settings.statusLine = { type: 'command', ...whole, command: prev.command };
+        settings.statusLine = { type: 'command', command: prev.command };
         restored = prev.command;
         action = 'restored';
       } else {

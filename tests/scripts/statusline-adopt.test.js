@@ -109,6 +109,16 @@ test('173: remove after force restores the prior statusLine whole, padding inclu
   assert.deepEqual(readS().statusLine, prior);
 });
 
+test('173: remove after force restores a prior slot whose command is not a string', () => {
+  // 0.113.3 pre-tag review L4: the whole slot was saved, but remove restored
+  // only a string command and otherwise deleted the user's slot.
+  const prior = { type: 'command', command: ['bash', 'x.sh'], padding: 1 };
+  writeS({ statusLine: prior });
+  adopt({ pluginRoot, force: true });
+  assert.equal(remove().action, 'restored');
+  assert.deepEqual(readS().statusLine, prior);
+});
+
 test('173: a restore record written before 173 (command only) still restores', () => {
   writeS({ statusLine: { type: 'command', command: CMD } });
   fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
