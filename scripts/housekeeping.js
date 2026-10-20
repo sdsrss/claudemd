@@ -171,6 +171,13 @@ export function scanVitestTmp({
 // Deletes scan targets, re-checking each one's signature and age right before
 // its rm: scan and delete are separate moments, and a run that restarted in
 // between has made the directory fresh again.
+//
+// Several sweeps racing over one root each count what they removed, so their
+// sum can exceed the dirs removed. Counting only a successful rmdir of the top
+// (529ad53, backed out in 864b03a) does not fix that on macOS: there, two
+// processes' rmdir(2) of the same empty dir can both return success (PR CI run
+// 39461011037: 801, 897 and 885 successes for 800 dirs on Node 20, 22 and 24;
+// Linux exactly 800).
 export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(), now = Date.now() }) {
   let deleted = 0;
   let bytes = 0;

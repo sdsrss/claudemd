@@ -46,5 +46,8 @@
 ## 决策与进展
 - 2026-10-20：版本取 0.113.4（patch）。命令页是改正文字；触发词补的是模块 loads-on 已经写明的场景（打 tag 属于 "before tagging"，测试挂了属于 "a failing test"），按"恢复已写明的行为"算修复。触发词的开关不变（spec-module-inject 的 kill switch 照旧）。
 - 2026-10-20：`next-release` 先快进到 `main`（575ce92），发版分支 `release/v0.113.4` 从它开出。
+- 2026-10-20：触发词定稿（f68f3e5）。ship 的 `-` 边界不改：只靠 `ship-`/`-ship` 命中的 2 条提示里 1 条之后发了版。已知误配：debug 新分支会命中"测试没有失败"（中间两个字符），回放里没有这种提示，写进 CHANGELOG 的 Not changed。
+- 2026-10-20：PR CI 前两轮红：39456034935 是 ARCHITECTURE.md 的套件数（94→96，e26828b），39458386087 是"spec/ 改了必须升版"闸门（2334033 升版）。两轮 macOS 腿都被 fail-fast 取消，探针第三轮才拿到数据。教训：推之前先跑 `npm run check`，并且 spec/ 一改就同时升版。
+- 2026-10-20：探针结果（PR CI 39461011037）：macOS 上两个进程对同一个**空**目录 `rmdir(2)` 都能返回成功——bare 模式 800 个目录 801 / 897 / 885 次成功（Node 20 / 22 / 24），bottomup 模式两个进程记录的 inode 相同；Linux 三种模式都正好 800，readdir 没有重复项。所以"rmdir 成功才计数"在 APFS 上不成立。决定：不修，撤掉探针（7 天内没有 macOS 主机，能在 macOS 上成立的认领要用 rename 或认领文件，二者都会在进程中途被杀时留下没有扫除匹配的孤儿；而这个数只进 tmp-sweep 的结果文件）。在 `scripts/housekeeping.js` 删除处写明原因，防止有人再试 529ad53 的做法。仓库里没有别的地方把 rmdir 成功当作认领（`grep rmdir hooks/ scripts/ bin/`：rule-hits 的锁回收和 uninstall 的空目录删除都不依赖谁赢）。
 
 ## 验证记录

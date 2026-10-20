@@ -27,19 +27,20 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - `debug` (first 300 characters, as before): 测试, 用例, 单测 or CI (ASCII-bounded), then at most four non-punctuation characters, then 挂了, 挂掉, 跑挂, 失败, 红了 or 没过.
 - Replayed on this machine's 659 human prompts: `ship` gains 1 (a release request whose session then ran a release command), `debug` gains 0, and no prompt loses a match. 打个tag and 测试挂了 themselves occur in none of them, so the debug arm has no local evidence either way.
 
-@@PROBE@@
+**Parallel `housekeeping tmp --apply` count (D#494)** — 0.113.3 backed out a fix that counted a directory only when this process's `rmdir` of it succeeded, because it failed on macOS CI alone. A probe in this release's PR, removed before the tag, raced four processes over 800 directories on every CI leg. On macos-latest, two processes' `rmdir(2)` of the same empty directory both returned success: 801, 897 and 885 successes for 800 directories on Node 20, 22 and 24 (PR CI run 39461011037). On Linux the sum was exactly 800. That design cannot count on macOS, so the count stays as in 0.113.3; `scripts/housekeeping.js` records why beside the removal. No behaviour changes.
 
 **Not changed, and why.**
 - A prompt saying a test did *not* fail (测试没有失败) also matches the new debug arm: the gap allows any two characters before 失败. No such prompt occurs in the replay.
 - `ship` still matches `ship-baseline` and `pre-ship`: of the 2 prompts that matched only through a hyphenated form, 1 was followed by a release, so a tighter bound trades a hit for a miss.
 - English "test failed" / "tests fail" still draw no debug module (`failing` does); this release fixes the Chinese phrasings 0.113.3 named.
 - `/claudemd-doctor`'s `hook-fail-open` row still stays red for 30 days after a real fail-open: making it clear on recovery changes doctor's exit-code semantics, outside this release.
+- Parallel `housekeeping tmp --apply` runs can still report more deletions than directories they removed, a number only tmp-sweep's result file reads. A claim that holds on macOS needs a rename or a claim file, and either one leaves an orphan no sweep matches after a kill mid-removal.
 - The other items under 0.113.3's "Not changed" stand.
 
 **Tests.**
 - `tests/scripts/command-page-behaviour.test.js` (new) pins each new page sentence as a whole line and, in a sandbox HOME, runs what it names: `spec-coherence-audit` exits 1 on a missing `--project` and 2 on an unknown flag, its `--help` no longer says "always exit 0", `lesson-bypass-audit --help` says `--cwd` does not narrow the audit, `status` returns every field and value the page names (without and with a plugin cache), `statusline-adopt` refuses a `null` settings file and leaves it as it was, and `refresh-plugin.sh` prints the commands the page quotes. Before the page edits 0 of 6 passed; after, 6 of 6. Putting the old `--help` line back fails the analyze case.
 - `tests/hooks/spec-module-inject.test.sh` case 21: 11 phrasings that missed before (打个tag, 打一个 tag, 发个版, 发一版, 发一个版本, 测试挂了, 用例跑挂了, 单测失败了, CI 红了, ci没过, 测试又挂掉了) and 9 neighbours that must draw nothing (a tag without 打, 打个招呼, 发个链接, 测试通过了, 用例写得不错, 上传失败了, 页面红了, `CI_job`, CI 配置). Before, all 11 missed; after, 21 of 21 cases pass.
-- `docs/ARCHITECTURE.md`'s suite count follows the new node suite (e26828b).
+- `docs/ARCHITECTURE.md`'s suite count follows the new node suite (95).
 - @@CHECKS@@
 
 @@REVIEW@@
