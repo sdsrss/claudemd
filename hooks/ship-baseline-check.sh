@@ -109,7 +109,13 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # Every case in this suite drove `git push origin main`, so nothing said so
 # (0.70.0 pre-tag review, HIGH-1). Not `[^a-zA-Z]` (memory-read-check's spelling):
 # that would newly match `git push-notes`.
-TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|[;&|]|\$)"
+# A subshell or command substitution opens a command position too: `(`, `$(` and
+# a backtick before `git`, `)` and a backtick after `push`. Without them, on red
+# CI `(git push origin main)`, `echo $(git push origin main)` and
+# `(cd sub && git push)` were allowed while `git push origin main` was denied
+# (defect 177a). Inside "…" the view has already emptied the body, so
+# `"$(git push)"` is still not seen.
+TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*|[(\`][[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push([[:space:]]|[;&|)\`]|\$)"
 grep -qE "$TRIGGER_RE" < <(echo "$CMD_FLAT") || exit 0
 
 # Telemetry fields — below the TRIGGER exit, not merely below the fast-path exit

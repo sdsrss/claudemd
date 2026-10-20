@@ -471,6 +471,46 @@ OUT=$(run_hook fail-red "$EVENT_CD_BEFORE")
 [[ -z "$OUT" ]] && echo "PASS: 47 a cd BEFORE the push does select the target repo" \
   || { echo "FAIL: 47 (expected pass via B's marker, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 48-52 (defect 177a): a push inside a subshell or a command substitution.
+# The trigger admitted `^` or a shell separator before `git` and whitespace or a
+# separator after `push`, so with CI red `(git push origin main)`,
+# `echo $(git push origin main)`, a backtick substitution, and the
+# argument-less `(cd sub && git push)` (where `)` follows the verb) were all
+# allowed while `git push origin main` was denied. HEAD is clean first: Case 45
+# left a known-red marker only in B, but a stale bypass here would prove nothing.
+cd "$R15_A" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: clean for 48"
+
+EVENT_SUB=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"(git push origin main)"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_SUB")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 48 a push inside ( ) reaches the §7 gate" \
+  || { echo "FAIL: 48 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_CSUB=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"echo $(git push origin main)"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_CSUB")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 49 a push inside \$( ) reaches the §7 gate" \
+  || { echo "FAIL: 49 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_BTICK=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"echo `git push origin main`"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_BTICK")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 50 a push inside backticks reaches the §7 gate" \
+  || { echo "FAIL: 50 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+EVENT_SUB_BARE=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"(cd sub && git push)"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_SUB_BARE")
+DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 51 an argument-less push closed by ')' reaches the §7 gate" \
+  || { echo "FAIL: 51 (expected deny, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
+# FP guard: `)` joined the suffix, `-` did not, so `git push-notes` stays a
+# different command inside a subshell too.
+EVENT_SUB_NOTES=$(jq -nc '{session_id:"t",tool_name:"Bash",tool_input:{command:"(git push-notes)"},cwd:"/tmp"}')
+OUT=$(run_hook fail-red "$EVENT_SUB_NOTES")
+[[ -z "$OUT" ]] && echo "PASS: 52 '(git push-notes)' is not a push" \
+  || { echo "FAIL: 52 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
+
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same
 # drift class the 2026-07-27 audit found in memory-read-check.test.sh.
