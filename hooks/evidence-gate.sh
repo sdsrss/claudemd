@@ -203,7 +203,10 @@ STREAM=$(tail -n "$EG_WINDOW" "$TRANSCRIPT_PATH" 2>/dev/null | jq -R -r '
         if (.name == "Edit" or .name == "Write") then
           (if ((.input.file_path // "") | is_code)
            then "E" else empty end)
-        elif .name == "Bash" then
+        # A `run_in_background` call is not indexed: its result is "Command
+        # running in background", not the outcome of the run, so `npm test`
+        # there verified nothing. Its output counts once a later call reads it.
+        elif .name == "Bash" and .input.run_in_background != true then
           # Head AND tail (re-review M1): a runner is usually the LAST thing a
           # command runs, and `.[0:300]` cut `&& npm test` off every heredoc
           # patch longer than that — the self-edit row, which may verify only by

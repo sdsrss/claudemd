@@ -918,5 +918,36 @@ for L in C ${U8:+"$U8"}; do
   fi
 done
 
+# --- Case 36: a backgrounded runner is not its own verification ---------------
+# `Bash(run_in_background: true)` answers with "Command running in background";
+# the test outcome arrives later, if anyone reads it. Matching `npm test` on
+# that answer's COMMAND counted a run nobody saw finish.
+row_bash_bg() { jq -cn --arg i "$1" --arg c "$2" '{type:"assistant",message:{content:[{type:"tool_use",id:$i,name:"Bash",input:{command:$c,run_in_background:true}}]}}'; }
+{
+  row_edit /p/src/a.js
+  row_bash_bg tu_rib "npm test"
+  row_result tu_rib "Command running in background with ID: bash_9"
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+if [[ "$OUT" == *"Iron Law #2"* && "$(log_rows)" == "1" ]]; then
+  ok "36: run_in_background npm test with its outcome unread → advisory"
+else
+  ng "36: a background run counted as verification: ${OUT:0:200} (rows $(log_rows))"
+fi
+# Control: the same background run, its output read back by a later Bash call.
+{
+  row_edit /p/src/a.js
+  row_bash_bg tu_rib2 "npm test"
+  row_result tu_rib2 "Command running in background with ID: bash_9"
+  row_bash tu_tail "tail -3 /tmp/tasks/bash_9.output"
+  row_result tu_tail "Tests: 12 passed, 12 total"
+  row_text "x"
+} > "$TRANSCRIPT"
+reset_log
+OUT=$(run_hook "$DONE_CLAIM")
+[[ -z "$OUT" ]] && ok "36b: control — the background run's output, read back, is evidence" || ng "36b: fired: ${OUT:0:200}"
+
 echo
 claudemd_assert_summary
