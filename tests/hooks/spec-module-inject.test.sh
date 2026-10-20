@@ -209,4 +209,15 @@ C18=$(printf '%s' "$P18" | jq -Rsc '{prompt:., session_id:"s18", cwd:"/work/p", 
 [[ "$(mods "$C18")" == "ship " ]] && ok "18 a 140,000-character prompt still matches ship's whole window" \
   || ng "18 long prompt missed ship: $(mods "$C18")"
 
+# 19. the head window counts characters, not bytes. Under LC_ALL=C bash's
+# ${PROMPT:0:300} took 300 bytes, 100 CJK characters, so a trigger at
+# character 121 missed debug. Past 300 characters it still misses.
+CJK120=$(printf '中%.0s' $(seq 1 120))
+CJK310=$(printf '中%.0s' $(seq 1 310))
+C19=$(LC_ALL=C inject "${CJK120}这个bug怎么修" s19)
+C19B=$(LC_ALL=C inject "${CJK310}这个bug怎么修" s19b)
+if [[ "$(mods "$C19")" == "debug " && -z "$C19B" ]]; then
+  ok "19 under LC_ALL=C a CJK prompt's head window is its first 300 characters"
+else ng "19 CJK head window wrong: at 121=$(mods "$C19") at 311=$(mods "$C19B")"; fi
+
 claudemd_assert_summary

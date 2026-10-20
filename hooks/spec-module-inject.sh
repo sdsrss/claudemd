@@ -54,7 +54,6 @@ STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 [[ "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
 SEEN="$STATE_DIR/modinj-$SESSION_ID.list"
-PROMPT_HEAD="${PROMPT:0:300}"
 
 # ship first, then the rest in name order.
 mods=()
@@ -80,11 +79,12 @@ for f in "${mods[@]}"; do
   re=$(awk 'NR==1 && $0!="---"{exit} NR>1 && $0=="---"{exit} /^triggers: /{sub(/^triggers: /,""); print; exit}' "$f")
   [[ -n "$re" ]] || continue
   win=$(awk 'NR>1 && $0=="---"{exit} /^trigger-window: /{sub(/^trigger-window: /,""); print; exit}' "$f")
-  text="$PROMPT_HEAD"
-  [[ "$win" == whole ]] && text="$PROMPT"
   # The text goes on stdin: as --arg, a prompt of 128 KiB or more made jq's exec
   # fail on Linux (one argument's cap), and ship's whole window never matched.
-  hit=$(printf '%s' "$text" | jq -Rs --arg re "$re" 'try test($re; "i") catch false' 2>/dev/null)
+  # jq cuts the head, in characters: bash's ${PROMPT:0:300} counted bytes under
+  # LC_ALL=C, where 100 CJK characters filled it.
+  hit=$(printf '%s' "$PROMPT" | jq -Rs --arg re "$re" --arg win "$win" \
+    'try ((if $win == "whole" then . else .[0:300] end) | test($re; "i")) catch false' 2>/dev/null)
   [[ "$hit" == true ]] && picked+=("$f")
 done
 (( ${#picked[@]} > 0 )) || exit 0
