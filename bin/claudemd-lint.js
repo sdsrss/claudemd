@@ -74,7 +74,7 @@ Notes:
 Exit codes:
   0   no hits
   1   one or more hits
-  2   usage error (bad args, missing file)
+  2   usage error (bad args, missing or unreadable file, text that is not UTF-8)
 
 Pattern source: <REPO>/hooks/banned-vocab.patterns
 Spec: §10 Honesty rules — Specificity (HARD).`;
@@ -149,6 +149,21 @@ function workTreeOf(git, cwd) {
     return path.dirname(path.resolve(cwd, common.stdout.trim()));
   }
   return cwd;
+}
+
+// UTF-16 decoded as UTF-8 is a NUL between every ASCII letter, so no pattern
+// matched and the scan printed "OK: no hits", exit 0 (D#174). git refuses a NUL
+// in a commit message, so a NUL byte or a UTF-16 byte-order mark means these
+// bytes are not the text a reader sees: say so instead of scanning them.
+function decodeTextOrExit(buf, source) {
+  const utf16Bom = (buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff);
+  if (utf16Bom || buf.includes(0)) {
+    process.stderr.write(
+      `lint: ${source} is not UTF-8 text (UTF-16 byte-order mark or NUL bytes) — convert it to UTF-8 and re-run\n`
+    );
+    process.exit(2);
+  }
+  return buf.toString('utf8');
 }
 
 function lintCmd(rawArgs) {
@@ -239,7 +254,7 @@ function lintCmd(rawArgs) {
   let sourcePath = null;
   if (stdin) {
     try {
-      text = fs.readFileSync(0, 'utf8');
+      text = decodeTextOrExit(fs.readFileSync(0), 'stdin');
     } catch (e) {
       process.stderr.write(`lint: failed to read stdin: ${e.message}\n`);
       process.exit(2);
@@ -267,7 +282,7 @@ function lintCmd(rawArgs) {
       process.exit(2);
     }
     try {
-      text = fs.readFileSync(filePath, 'utf8');
+      text = decodeTextOrExit(fs.readFileSync(filePath), filePath);
       sourcePath = filePath;
     } catch (e) {
       process.stderr.write(`lint: failed to read ${filePath}: ${e.message}\n`);
@@ -304,25 +319,37 @@ function lintCmd(rawArgs) {
       // branch saw `/` and exited 2 with "file not found", forcing users to
       // either omit citations from inline text or explicitly switch to --stdin.
       const looksLikePath = (arg.includes('/') || arg === '.' || arg === '..') && !/\s/.test(arg);
+      let st = null;
       try {
-        const st = fs.statSync(arg);
-        if (st.isFile()) {
-          text = fs.readFileSync(arg, 'utf8');
-          sourcePath = arg;
-        } else if (looksLikePath) {
-          process.stderr.write(
-            `lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`
-          );
-          process.exit(2);
-        }
-        // Non-path-shape + non-file (e.g. a symlink loop, fifo) → fall through to text scan.
+        st = fs.statSync(arg);
       } catch (e) {
         if (looksLikePath) {
-          process.stderr.write(`lint: file not found: ${arg}\n`);
+          process.stderr.write(
+            e.code === 'ENOENT'
+              ? `lint: file not found: ${arg}\n`
+              : `lint: failed to stat ${arg}: ${e.message}\n`
+          );
           process.exit(2);
         }
         // Non-path-shape miss → fall through to text scan.
       }
+      if (st && st.isFile()) {
+        // Read outside the stat's catch: a mode-000 file stats fine and fails
+        // HERE, and that catch reported it as "file not found" (D#174).
+        try {
+          text = decodeTextOrExit(fs.readFileSync(arg), arg);
+          sourcePath = arg;
+        } catch (e) {
+          process.stderr.write(`lint: failed to read ${arg}: ${e.message}\n`);
+          process.exit(2);
+        }
+      } else if (st && looksLikePath) {
+        process.stderr.write(
+          `lint: '${arg}' is not a regular file (use --file PATH for explicit file scan or quote literal text)\n`
+        );
+        process.exit(2);
+      }
+      // Non-path-shape + non-file (e.g. a symlink loop, fifo) → fall through to text scan.
     }
     if (text === undefined) text = positional.join(' ');
     // An empty positional is a missing one (R15). Its live shape is

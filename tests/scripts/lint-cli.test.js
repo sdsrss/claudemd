@@ -744,3 +744,70 @@ test('CLI: audit <unreadable file> exits 2, not 1 with a Node stack (R11-11)', t
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- D#174 (a): UTF-16 input read as "OK: no hits" ---
+// Decoded as UTF-8, UTF-16 text is a NUL between every ASCII letter, so no
+// pattern matched and `lint` printed "OK: no hits", exit 0 — a commit-msg gate
+// passing a message it never read. Every text source is checked: --file, the
+// auto-detected positional path, and --stdin.
+test('D#174a: UTF-16 input is reported as unreadable text, exit 2, on every source', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
+  try {
+    const word = 'this is significantly better\n';
+    const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(word, 'utf16le')]);
+    const be = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(word, 'utf16le').swap16()]);
+    const noBom = Buffer.from(word, 'utf16le');
+    const cases = [];
+    for (const [name, bytes] of [
+      ['le.txt', le],
+      ['be.txt', be],
+      ['nobom.txt', noBom],
+    ]) {
+      const f = path.join(dir, name);
+      fs.writeFileSync(f, bytes);
+      cases.push([`--file ${name}`, run(['lint', '--file', f])]);
+      cases.push([`positional ${name}`, run(['lint', f])]);
+      cases.push([`--stdin ${name}`, run(['lint', '--stdin'], bytes)]);
+    }
+    for (const [label, r] of cases) {
+      assert.equal(r.status, 2, `${label}: expected exit 2; stdout=${r.stdout} stderr=${r.stderr}`);
+      assert.match(r.stderr, /is not UTF-8 text/, label);
+      assert.doesNotMatch(r.stdout, /OK/, `${label}: no clean verdict for text that was not read`);
+    }
+    // Control: a UTF-8 file with a UTF-8 BOM is text, and its hit is found.
+    const utf8Bom = path.join(dir, 'utf8bom.txt');
+    fs.writeFileSync(utf8Bom, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(word)]));
+    const ok = run(['lint', '--file', utf8Bom]);
+    assert.equal(ok.status, 1, `stderr=${ok.stderr}`);
+    assert.match(ok.stderr, /significantly/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- D#174 (b): a mode-000 positional path reported "file not found" ---
+// statSync succeeds on a mode-000 file; the read inside the same try threw
+// EACCES and the catch, written for a missing path, said "file not found".
+test('D#174b: an unreadable positional file reports the real error, not "file not found"', t => {
+  if (process.getuid && process.getuid() === 0) {
+    t.skip('running as root — mode 000 is still readable');
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
+  const f = path.join(dir, 'msg.txt');
+  try {
+    fs.writeFileSync(f, 'clean text\n');
+    fs.chmodSync(f, 0o000);
+    const r = run(['lint', f]);
+    assert.equal(r.status, 2, `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /lint: failed to read .*msg\.txt: EACCES/);
+    assert.doesNotMatch(r.stderr, /file not found/);
+    // Control: a path that really is missing still says so.
+    const missing = run(['lint', path.join(dir, 'gone.txt')]);
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /lint: file not found: .*gone\.txt/);
+  } finally {
+    fs.chmodSync(f, 0o600);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
