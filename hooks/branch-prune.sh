@@ -83,13 +83,16 @@ N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 # cross-repo-write-check.sh), keyed by the session and a cksum of the cwd and
 # every listed name, so concurrent calls hint once and a changed set hints
 # again. With no session id or no HOME there is nothing to key on, and every
-# call hints. /claudemd-clean-residue reaps the claims past its retention window.
+# call hints. Only a claim that EXISTS means this session was told: one that
+# cannot be written (an unwritable state dir) hints, as cross-repo-write does.
+# /claudemd-clean-residue reaps the claims past its retention window.
 if [[ -n "$SESSION_ID" && -n "$HOME" ]]; then
   KEY=$( (printf '%s\n' "$CWD" && printf '%s' "$OUT" | jq -r '.deletable[].name') | cksum 2>/dev/null | awk '{print $1"-"$2}')
   STATE_DIR="$HOME/.claude/.claudemd-state"
   SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
   if [[ -n "$KEY" ]] && mkdir -p "$STATE_DIR" 2>/dev/null; then
-    (set -C; : >"$STATE_DIR/branch-prune-${SAFE_SID}-${KEY}") 2>/dev/null || exit 0
+    BP_CLAIM="$STATE_DIR/branch-prune-${SAFE_SID}-${KEY}"
+    if ! (set -C; : >"$BP_CLAIM") 2>/dev/null && [[ -e "$BP_CLAIM" ]]; then exit 0; fi
   fi
 fi
 

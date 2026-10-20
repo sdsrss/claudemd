@@ -191,5 +191,12 @@ N8=$(printf '%s\n' "$CLAIMS" | grep -c '^branch-prune-bp-8-')
 BAD=$(printf '%s\n' "$CLAIMS" | grep -cvE '^branch-prune-.+-[0-9]+-[0-9]+$')
 [[ "$N8" == 2 && "$BAD" == 0 ]] && ok "9d one claim per hinted set, each in the shape clean-residue reaps" ||
   ng "9d (bp-8 claims $N8, malformed $BAD: $CLAIMS)"
+# 9e: a claim that cannot be written is no reason to stay silent (0.113.3
+# pre-tag review M1): with the state dir read-only the hint never came, in any
+# session, and nothing said why. Only a claim that exists means "told".
+chmod 555 "$HOME/.claude/.claudemd-state"
+OUT=$(evt 'git push' bp-9e | bash "$HOOK" 2>/dev/null)
+chmod 755 "$HOME/.claude/.claudemd-state"
+[[ "$OUT" == *"140 local branch(es)"* ]] && ok "9e an unwritable state dir still gets the hint" || ng "9e (out: ${OUT:0:200})"
 
 claudemd_assert_summary
