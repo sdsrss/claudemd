@@ -77,7 +77,10 @@ call in the window was a read (`git log`, `git show`, `git merge-base`, `git mer
     the path of a `cd` operand from inside its quotes when its first word opens one;
     `cd -P/-L/-e/-@/--` options come before it. Subshells are not tracked, and a `-C`
     path with spaces or a `\ `-escaped path is not re-joined: known limits, pinned by
-    tests (r7). `hook_trigger_view` cannot
+    tests (r7). A `;` `&` `|` inside quotes still splits the command (r8): in
+    `git commit -m "x; cd ../b && git add"` the quoted part reads as a `cd` and a git
+    write, so the advisory can fire for a repo the command never writes, and that repo's
+    once-per-session advisory is then spent. `hook_trigger_view` cannot
     be reused, because it empties quoted bodies and loses `cd "/path"`.
   - Split the view into segments on `;` `&&` `||` `|`. Track the last literal absolute or
     `~` `cd` target; a later segment's git write is attributed to it, or to `git -C <p>`
@@ -193,3 +196,9 @@ Produces:
   (`git stash list)` read as a write; found by the r4 scoped review, documented, not
   patched). Replay over 23,453 calls: 9 calls flagged, 10 repo hits, no
   verdict change from r6, 0 non-zero exits, 0 stderr.
+- r8 2026-10-20: the 0.113.3 backlog sweep (converge item 178/139b) produced a
+  quote-aware split, an awk pass that turns a separator inside quotes into a
+  space (0241e73 on the local branch fix/optin-hooks; replay over 9,598 commands: 0
+  verdict changes). Not taken: by user decision the r7 simple form stays, and the
+  quoted separator is listed above as a known limit. The patch is kept outside git at
+  `tasks/cross-repo-write/0241e73-quote-aware-split.patch` on the maintainer's machine.
