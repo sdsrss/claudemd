@@ -69,11 +69,11 @@ Options:
                       backups, delete
                       ${backupGlobs()}
                       manually — this flag cannot do that.
-  --ack-fail-open     The cause of the hook-fail-open row is fixed: record
-                      that in ~/.claude/.claudemd-state/fail-open-ack.json.
-                      Fail-open events at or before that moment no longer
-                      turn the row red; a new one does. Writes nothing when
-                      there is nothing unacknowledged.
+  --ack-fail-open     The cause of the hook-fail-open row is fixed: write the
+                      moment to ~/.claude/.claudemd-state/fail-open-ack.json;
+                      fail-open events at or before it no longer turn the row
+                      red, a new one does. Writes nothing when there is
+                      nothing unacknowledged.
   --help, -h          Print this message and exit.
 
 Wrapped by /claudemd-doctor.

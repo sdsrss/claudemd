@@ -163,6 +163,12 @@ const DECLARED = [
     'the spec-module registry, one JSON document',
   ],
   [
+    'scripts/doctor.js',
+    "const j = JSON.parse(fs.readFileSync(failOpenAckPath(), 'utf8'));",
+    'not-a-row',
+    'the --ack-fail-open acknowledgement, one JSON document; a null or non-object result counts as no acknowledgement',
+  ],
+  [
     'scripts/baseline-metrics.js',
     "const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));",
     'not-a-row',
