@@ -8,6 +8,77 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.113.3] - 2026-10-20
+
+**Upgrade notes — a backlog sweep: fixes only, spec unchanged (v8.2.0). Plugin users have nothing to do.** Where an output was wrong it now says what happened, so a few verdicts and exit codes move: the §8 gate denies `rm -rf ~` and `npm x <unpinned>`; three push gates see a push wrapped in `( )`, `$( )` or backticks; `claudemd-cli lint` exits 2 on UTF-16 or unreadable input; `sampling-audit` exits 1 when its report cannot be written; `spec-coherence-audit` exits 1 on a `--project` that is not a directory. Each is listed below. To go back to 0.113.2, follow `docs/ROLLBACK.md`.
+
+**Why.** The converge backlog (`.converge/BACKLOG.md`, local) held 75 P2 entries written between 09-13 and 10-17 that nobody had re-checked against the code. A read-only triage against 80cdce4 found 40 still real (31 were not defects, 3 already fixed, 1 stale). This release fixes 34 of the 40 in full and parts of 3 more. It also fixes three backlog entries the triage was not asked about (the 128 KiB prompt limit in spec-module injection, the node-absent install banner, `perf-baseline.sh`'s here-strings), D#455 (the status line's here-string), and the stderr class under "Every hook" below, which three of the triaged fixes each met at one site. Design record `tasks/specs/residuals-0.113.3-2026-10-20.md`.
+
+**What changes for you.**
+
+*§8 safety gate (`pre-bash-safety-check.sh`, on by default)*
+- **`rm -rf ~` is denied like `rm -rf $HOME`** (941ecfd). A target with no `$` never reached the arm that denies a bare `$HOME`, so `rm -rf ~`, `rm -rf ~/` and `find ~ -delete` were allowed. `~/x`, `~/*`, `~user` and a find with a selection primary keep their verdicts, as `$HOME/x` and `$HOME/*` do. The gate reads targets after quote removal, so a quoted `"~"` (a directory literally named `~`) is denied too; the message names `./~`, which passes (xfp family F20).
+- **`npm x`, npm's alias of `npm exec`, goes through the npx check** (9f86289): lockfile, then local install, then a pinned version. Only `npm x` right after `npm` joins: with flags allowed in between, a flag's argument named `x` (`npm --prefix x run build`) would read as the subcommand. `npm --yes x pkg` stays allowed (xfn family F19).
+- Replay for both: of the 101,102 distinct Bash commands in this machine's transcripts, the 4,519 that hold rm or find followed by a `~`, or npm, were run through the 0.113.2 gate and this one; none changes verdict.
+
+*Push and release gates (on by default)*
+- **A push inside `( )`, `$( )` or backticks reaches the gates** (77dd706 ship-baseline, 8501c0e banned-vocab, 2ebd90d memory-read-check). `(git push origin main)` and `out=$(git push … 2>&1)` passed all three. Replays over this machine's transcripts changed 1 of 1,150 (ship-baseline), 2 of 4,203 (banned-vocab) and 1 of 8,589 (memory-read-check) verdicts, each from allow to deny and each a real push or commit inside `( )` or `$( )`. One new deny: `(git push --help)` on red CI (a bare `git push --help` is still exempt); 0 in the replay.
+
+*Session end and session start (on by default)*
+- **Session-end checkpoint** (`session-end-check.sh`): a command with 17 or more `A="x"` assignments made jq give up and dropped the checkpoint (e089374); a make target counts as a check only when a whole segment of its name is `test`, `lint` or `check`, so `make install-latest` no longer counts, and neither do `make tests` or `make unittest` (ad5605f); a command ending in `tsc` (`npx tsc`, `tsc`) counts as a typecheck (5d58c44); a `HOME` with a trailing slash still keeps memory edits out of the checkpoint (cd69a35); a cwd whose name holds a newline is still a project root (f77f083).
+- **Failed-install banner without node** (9152ba8): with no `node` on the PATH the hooks run with, nothing retries the install, but the banner said "Retrying this session" (or "The install retries at every session start") and deleted its sentinel. It now says that nothing retries until node is reachable and keeps the sentinel, so the next session shows it again (`DISABLE_BOOTSTRAP_FAIL_BANNER=1` still turns it off). With node nothing changes.
+- A ledger with CRLF line endings yields its banner again (04b87a7); the `auto-upgrade` line reaches the bootstrap log on a machine with no `~/.claude/logs` yet, instead of a shell error on stderr (24d5778).
+
+*Spec-module injection (`spec-module-inject.sh`, on by default)*
+- A prompt of 128 KiB or more reached jq as one argument, past Linux's per-argument cap, so ship's whole-prompt trigger never matched; the text now goes on stdin (c907e25).
+- The 300-character head window counted bytes under `LC_ALL=C`, so a CJK prompt could miss its module; it counts characters now (d59f234).
+- When the per-session list of injected modules cannot be written, a module is no longer injected on every prompt with "Permission denied" on stderr: it is skipped and a `prereq-missing` fail-open row says why (d1e93ec).
+
+*Every hook: nothing on the user's stderr when a file cannot be written*
+- bash applies redirections left to right, so `cmd > "$f" 2>/dev/null` reports a file it cannot open on the hook's own stderr, which Claude Code shows the user. c07e25e, d1e93ec and 24d5778 fixed that order where their own defects met it; 737d6d7 fixes the 13 other sites a new source rule reported across 9 files, and five writes that discarded nothing, among them the shared rule-hits row append. All now write `2>/dev/null` first. `hook_record_failopen` still writes its row when its 60 s throttle marker cannot be written, so those rows are unthrottled in that state (c07e25e). tmp-sweep's lock and stamp reads print nothing when a concurrent run removes the file mid-read (fd7f139).
+
+*Other default-on advisories*
+- **branch-prune** names at most 10 branches (`(+N more)`; the command deletes the 10 named) and gives the line once per session for an unchanged set (13c988e). It used to send over 10,000 characters with 150 merged branches, on every merge, pull, fetch or push. The claim files (`branch-prune-*` in `~/.claude/.claudemd-state`) are a new class `/claudemd-clean-residue` reaps.
+- **memory-prompt-hint** suggests a memory again after a compaction when it was suggested before it and never read (43053b9).
+- **mem-audit** accepts `**Why**（…）：` and the other parenthetical forms before the colon, and takes the last `](….md)` on an index line as its link (670ed1b).
+- **residue-audit** writes a zero baseline when `~/.claude/tmp` does not exist yet, so that directory's later growth alarms, and its remedy lists the newest entries instead of a `find -mtime +7` that matched none of them (d1ec361).
+- **tmp-sweep**'s `du` suggestion quotes a `TMPDIR` with a space, and the advisory no longer claims "nothing is reclaiming" (4de4f2d).
+
+*Opt-in hooks*
+- evidence-gate and transcript-structure-scan: a full-width colon or dash reads the same under `LC_ALL=C` (a76ace0); evidence-gate: a backgrounded test run no longer counts as its own verification (b893a1c).
+- cross-repo-write: when its per-session claim cannot be written the advisory still goes out, and the row says `claim_failed` (42cdc56).
+- test-failure-debug: one non-empty injection per session, also under concurrent calls, with a reason that holds for a chained command (c19629d).
+- ledger-staleness names only the window it read (2f439e2); verify-log keeps its row when `session_id` is empty or the cwd has a backslash (e3f5e17); deferred-notice delivers when `HOME` contains `[` (30d3cf6).
+
+*Status line, commands and scripts*
+- The status line read its input from a here-string, so with no file writable (bash 5.0 and earlier, or 5.1+ past a pipe buffer) it showed only `user@host:` (be1a7ec, D#455). `/claudemd-statusline` refuses a `settings.json` that is `[]` or `null` instead of reporting `set` or crashing, and `remove` restores the whole prior statusLine object, `padding` included (258ce3b).
+- `/claudemd-uninstall restore` puts a symlinked `~/.claude/CLAUDE.md` back as the same link instead of a copy (5e06a1d); uninstall leaves `settings.json` untouched when it removed nothing (15ead1a).
+- `/claudemd-clean-residue` keeps reporting a probe dir it cannot fully delete instead of deleting part of it and calling the rest kept (73abe09).
+- `/claudemd-status` reports an unparseable manifest (`hint: "manifest-unparseable"`, additive) instead of `installed: false` alone (5ce45a6); `/claudemd-refresh` prints how to reinstall when the install fails after the uninstall succeeded (fb0f669).
+
+*`claudemd-cli` and the audit scripts*
+- `claudemd-cli lint`: UTF-16 or NUL-bearing input and an unreadable file exit 2 with the real reason instead of "OK: no hits" or "file not found" (91e74f5); `-h` inside the text is text, `--file` given twice says so, and `--help` names the repository (3cd1fbd).
+- `sampling-audit`: a report that cannot be written exits 1 with the reason on stderr, the summary still printed (24b92a3); a tool-only transcript gets a report (88f336f); a skill named `constructor` counts as a number, and `--until` rejects a date that does not exist (exit 1) (892c6b4); one transcript with very many distinct paths no longer overflows the stack (5003ace).
+- `spec-coherence-audit`: a `--project`/`--cwd` that is not a directory exits 1 naming it (ff91c3d). `lesson-bypass-audit`: USAGE says `--cwd` is a lookup fallback, not the audit's scope; the numbers do not change (15a8364).
+
+*Maintainer tools* — `build-spec-modules` fails on a line that looks like a module marker but is not one (48eca7c; the built modules are byte-identical); `housekeeping` counts only its own deletions under parallel runs, reports `truncated` past 200 branches and makes a bad `--root` a usage error (529ad53); `claim-drift` refuses a range that starts with `-` and reads names under `diff.noprefix` and non-ASCII paths (b8e0d52); `doc-check` handles CRLF, unclosed blocks, a directory argument and long digit runs (fc43648); `baseline-metrics --skip-dup` says it skipped (efcdba8); `perf-baseline.sh` has no here-string left (8c19e8f).
+
+**Tests.**
+- Every fix above carries a case in the suite of the file it changes; each failed on the code before its fix and passes now. Hook suites ran under bash 5.3.9 and under 3.2.57 first on PATH.
+- Two new source rules in `tests/scripts/hook-full-disk-source.test.js`: no here-string in any `scripts/*.sh`, and no file redirection before `2>/dev/null` under `hooks/` (13 sites before 737d6d7, none after).
+- Test-only, already on `main`: `hook-budget` keeps its sandbox off `/tmp/claude-*` (0a337e0); the sigpipe source check finds the line its mutation inserts instead of pinning 2220 (6b484e5).
+- @@CHECKS@@
+
+**Not changed, and why.**
+- cross-repo-write still splits a command on a `;` or `&&` inside quotes, which can spend its once-per-repo advisory on a commit message. A fix was written and left out: quote handling in that hook was reverted to the simple form by user decision in its design record (`tasks/specs/cross-repo-write.md` r7).
+- banned-vocab still denies a commit message that quotes a banned word to remove it, and `npm --prefix dir exec pkg` is still judged from the event's cwd: the first needs a decision on how much quoted text may pass, the second would turn a deny into an allow on the §8 gate.
+- The ship and debug module triggers still miss "打个tag" and "测试挂了": the trigger lines are model-visible text.
+- `/claudemd-doctor`'s `hook-fail-open` row stays red for 30 days after a real fail-open: making it clear on recovery changes doctor's exit code semantics.
+- tmp-sweep can still remove a long-running `vitest run`'s directory (listed since 0.107.1); the premise that vitest reads it without touching its mtime was not reproduced.
+- Command pages that now say less than the code (`/claudemd-bypass-audit`'s `--cwd`, `/claudemd-analyze`'s exit code, `/claudemd-uninstall restore`, `/claudemd-refresh`, `/claudemd-status`) are model-visible text and wait for a text release. `/claudemd-clean-residue`'s page does change: its class count follows the new branch-prune claims, which a drift test checks.
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.113.2] - 2026-10-19
 
 **Upgrade notes — three fixes, mostly for stock macOS (`/bin/bash` 3.2); spec unchanged (v8.2.0). Plugin users have nothing to do.** One of them (D#417) also reaches Linux: when no file can be written, bash 4.x and 5.0 need a temp file for every here-string, and 5.1 and later for one longer than a pipe buffer (64 KiB on Linux), so a hook given such input now behaves as it does with a writable disk. Otherwise the hooks behave as before, with a few more short-lived subshells (one for each file a hook writes, one for most former here-strings). To go back to 0.113.1, follow `docs/ROLLBACK.md`.
