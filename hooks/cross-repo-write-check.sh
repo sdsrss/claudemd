@@ -452,19 +452,29 @@ for ((h = 0; h < ${#HIT_IDS[@]}; h++)); do
   done
   # The claim is an O_CREAT|O_EXCL create, so concurrent calls (several Edits
   # in one assistant message) announce a repo exactly once. With no session id
-  # there is nothing to key on, and every hit is announced.
+  # there is nothing to key on, and every hit is announced. Only a claim file
+  # that EXISTS means another call announced the repo: one that could not be
+  # written (state dir unwritable, disk full) is announced, and the row says
+  # so with claim_failed, since the next hit will be announced again.
   FIRST=true
+  CLAIM_FAILED=false
   if [[ "$ALLOWED" == true ]]; then
     FIRST=false
   elif [[ -n "$SESSION_ID" ]]; then
     XR_KEY=$(printf '%s' "$ID" | cksum 2>/dev/null | awk '{print $1"-"$2}')
-    if [[ -n "$XR_KEY" ]] && mkdir -p "$XR_STATE_DIR" 2>/dev/null; then
-      (set -o noclobber; : > "$XR_STATE_DIR/xrepo-${XR_SAFE_SID}-${XR_KEY}") 2>/dev/null || FIRST=false
+    XR_CLAIM="$XR_STATE_DIR/xrepo-${XR_SAFE_SID}-${XR_KEY}"
+    if [[ -n "$XR_KEY" ]] && mkdir -p "$XR_STATE_DIR" 2>/dev/null \
+      && (set -o noclobber; : > "$XR_CLAIM") 2>/dev/null; then
+      :
+    elif [[ -n "$XR_KEY" && -e "$XR_CLAIM" ]]; then
+      FIRST=false
+    else
+      CLAIM_FAILED=true
     fi
   fi
   EXTRA=$(jq -cn --arg k "${HIT_KINDS[$h]}" --arg tool "$XR_TOOL" --arg o "$OWN_NAME" --arg t "$T_NAME" \
-    --argjson f "$FIRST" --argjson al "$ALLOWED" \
-    '{kind:$k, tool:$tool, own:$o, target:$t, first:$f, allowlisted:$al}' 2>/dev/null) || EXTRA='null'
+    --argjson f "$FIRST" --argjson al "$ALLOWED" --argjson cf "$CLAIM_FAILED" \
+    '{kind:$k, tool:$tool, own:$o, target:$t, first:$f, allowlisted:$al, claim_failed:$cf}' 2>/dev/null) || EXTRA='null'
   hook_record cross-repo-write cross-repo-advisory "$EXTRA" '§5-scope' "$SESSION_ID" "$TOOL_USE_ID"
   [[ "$FIRST" == true ]] || continue
   MSG+="[claudemd] system-injected: this ${HIT_DESCS[$h]} writes into the git repo ${T_NAME} (${T_ROOT}), but this session's project is ${OWN_NAME} (${OWN_ROOT}). Spec §5: files outside the grant need the user's AUTH. If the user did not ask for work in ${T_NAME}, stop and ask before writing there. If they did, do git work in ${T_NAME} from a separate checkout made with \`git worktree add\` rather than switching branches in its shared working tree — another session may be using it. Advisory only; told once per repo per session; the user can turn it off with DISABLE_CROSS_REPO_WRITE_HOOK=1."$'\n'

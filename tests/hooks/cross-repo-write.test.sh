@@ -483,5 +483,30 @@ OUT=$(bash_ev "cd $R/beta && git commit -m x" "$R/alpha" "$SID" \
   | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 CROSS_REPO_WRITE=1 TMPDIR="$HOOK_TMPDIR" bash "$HOOK" 2>/dev/null))
 expect_advisory "X23 no temp file writable: cd into another repo and commit still advises" "$OUT" beta alpha
 
+# --- X24: a claim that cannot be written is not a claim another call made -------
+# The once-per-repo claim is a file in the state dir. When creating it failed for
+# any reason, the hit was taken as already announced: an unwritable state dir
+# silenced every advisory, and the row said first:false.
+XR_STATE="$HOME/.claude/.claudemd-state"
+mkdir -p "$XR_STATE"
+chmod 500 "$XR_STATE"
+if : 2>/dev/null > "$XR_STATE/probe"; then
+  rm -f "$XR_STATE/probe"
+  ok "X24 skipped: running as a user who can write a mode-500 dir"
+else
+  next_sid
+  OUT=$(run "$(file_ev Edit "$R/beta/src/f" "$R/alpha" "$SID")")
+  expect_advisory "X24 unwritable state dir: the advisory still goes out" "$OUT" beta alpha
+  ROW=$(jq -r --arg s "$SID" 'select(.hook=="cross-repo-write" and .session_id==$s) | "\(.extra.first) \(.extra.claim_failed)"' "$LOG" 2>/dev/null)
+  assert_eq "X24 the row says it was announced and that the claim was not recorded" "true true" "$ROW"
+fi
+chmod 700 "$XR_STATE"
+next_sid
+run "$(file_ev Edit "$R/beta/src/f" "$R/alpha" "$SID")" >/dev/null
+OUT=$(run "$(file_ev Edit "$R/beta/src/g" "$R/alpha" "$SID")")
+expect_silent "X24b control: with the dir writable, the repeat is still suppressed" "$OUT"
+ROW=$(jq -r --arg s "$SID" 'select(.hook=="cross-repo-write" and .session_id==$s) | "\(.extra.first) \(.extra.claim_failed)"' "$LOG" 2>/dev/null | tr '\n' ,)
+assert_eq "X24b control: rows read first then repeat, both claimed" "true false,false false," "$ROW"
+
 echo
 claudemd_assert_summary
