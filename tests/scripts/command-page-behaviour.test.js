@@ -84,8 +84,15 @@ test('refresh: the page relays what the script prints when the install fails aft
   });
   assert.equal(r.status, 3, r.stderr);
   assert.match(r.stderr, /is NOT installed now/);
-  assert.ok(r.stderr.includes('claude plugin install claudemd@claudemd'), r.stderr);
-  assert.ok(r.stderr.includes('/plugin install claudemd@claudemd, then /reload-plugins'), r.stderr);
+  // The whole line, so a changed command or a sentence around it fails here.
+  assert.ok(
+    r.stderr
+      .split('\n')
+      .includes(
+        'Reinstall it: claude plugin install claudemd@claudemd   (inside Claude Code: /plugin install claudemd@claudemd, then /reload-plugins)'
+      ),
+    r.stderr
+  );
 });
 
 test('status: every field and value the page names for an unparseable manifest is in the output', () => {

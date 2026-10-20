@@ -23,7 +23,7 @@
 
 ## 验收标准
 - [ ] AC1：六个命令页各自说出 0.113.3 的行为，新测试把每句钉住，并在能跑的地方把句子和真实行为连起来 — 验证：`node --test tests/scripts/command-page-behaviour.test.js`（改页前失败，改页后通过）
-- [ ] AC2：`帮我打个tag`、`发个版吧` 注入 ship；`测试挂了` 一类注入 debug；对照行不注入 — 验证：`bash tests/hooks/spec-module-inject.test.sh`（改前新行失败，改后通过，bash 5.3 与 3.2）
+- [x] AC2（评审后缩小）：`帮我打个tag` 注入 ship；`发个版`、`测试挂了` 两个分支撤回，作为 RESIDUAL 行留在 case 21；对照行不注入 — 验证：`bash tests/hooks/spec-module-inject.test.sh`（改前新行失败，改后通过，bash 5.3 与 3.2）
 - [ ] AC3：真实提示词回放：ship、debug 新增命中逐条列出，没有新增误注入 — 验证：`node scripts/offline-eval/trigger-calibrate.mjs` 前后数字 + 逐条清单
 - [ ] AC4：macOS 探针的 CI 输出读到，结论写进本文件；探针在 tag 前修掉或撤掉 — 验证：PR CI 的 macos-latest 日志
 - [ ] AC5：`npm run check` 退出 0；PR CI 7/7；发版前独立评审；tag、npm、GitHub release — 验证：runbook 第 1–10 步
@@ -56,5 +56,10 @@
   - L1 uninstall：相对链接还原成绝对链接，目标不存在的链接被跳过——页面、README、CHANGELOG 改写。L2 statusline：拒绝的形状补上 string、boolean。L3 analyze：exit 1 的条件改为"它读的文件读不了"（含 MEMORY.md）。L4 status：不再说"manifestPath 处的文件不是合法 JSON"（旧版 manifest 与 JSON null 两种情况不成立）。L5 refresh 测试改为真的跑脚本（`claude` 替身），评审者的变异（去掉 `, then /reload-plugins`）现在会让它失败。L6 statusline 的三处"command"改为 statusLine。L7 CHANGELOG 的字符类说法改准。L9 本文件的数字改正。L10 测试里的 `\S+` 改为 `.+`（TMPDIR 带空格）。L11 bypass-audit 的提示改为"两个地方都找不到"。
   - L8（不修）：JS 与 jq 在 emoji（JS 按 UTF-16 码元计数）和 ſ（Oniguruma 的大小写折叠）上不一致。hook 用的是 jq，JS 副本只用于离线校准；两种输入都是评审者构造的，回放里没有。
   - 修复改了触发词（行为），按 runbook 要第 2 轮评审（新开一个评审，只看修复范围）。
+
+- 2026-10-20：第 2 轮评审（新开一个评审，bad2e0f..82a4399）：0C/0H/2M/8L。两个 M 都还在触发词上：debug 分支在"测试没过期的缓存""CI 没过多久就跑完了""测试登录失败了怎么提示"上误配，ship 的 发个版 分支在"帮我发一个版权声明""发个版面截图""转发一个版本"上误配。已到深度上限 2。
+  - 按组件归因（两轮合计）：debug 分支 2M+6L、发个版 分支 2M（与 debug 各半）+1L、打个tag 分支 0、命令页/测试/文档 0M+13L、探针 0。真实提示：debug 分支 0/659 命中；发个版 分支 1/659，而那个会话之前已有两条提示注入过 ship（"本地做完的任务要不要提交发版"），ship 每会话只注入一次，召回增益 0。
+  - 决定：按记忆 feedback_revert_the_component_not_the_next_defect 的规则（收益与回归不在同一块时，撑回收益为零的那块，发版照发），撤回 debug 分支（回到 0.113.3 的字节）和 发个版 分支，保留 打个tag 分支。不开第 3 轮：撤回恢复的是已发布的字节，打个tag 分支两轮都没有发现；其余修复只涉及测试和文字，按 runbook 用 claim-drift 自查。case 21 的 9 条旧正例改成 RESIDUAL 行（今天不注入，将来有人加回分支会翻红），两轮评审的 22 条反例留作前瞻钉。
+  - 第 2 轮的 L：L1（CHANGELOG 说页面写了 manifestPath）改；L4 refresh 用例改为整行比对，评审者的两个变异（`${PLUGIN}-next`、前缀一句话）现在都会让它失败；L6 README 的 "saving its command" 改为 statusLine；L7 注释随 case 21 重写；L8 README 补上绝对链接与跳过失效链接两句，使 82a4399 的提交说明成立。L2、L3、L5 针对的分支已撤回。已推送的提交说明（d2764b1 的"11 neighbours, one per bound"）不改写历史，在 CHANGELOG 的评审段说明。
 
 ## 验证记录
