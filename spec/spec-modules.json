@@ -3,7 +3,7 @@
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",
-      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*(个|一个)?\\s*tag|发(个|一个?)版|(?<![A-Za-z0-9_])ship(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])cut a release(?![A-Za-z0-9_])|create-release|merge-and-push|(?<![A-Za-z0-9_])release(?![A-Za-z0-9_]).{0,40}(?<![A-Za-z0-9_])to npm(?![A-Za-z0-9_])|npm publish|gh release|(?<![A-Za-z0-9_])deploy(?![A-Za-z0-9_])|上线",
+      "triggers": "发版|发布(新)?版本|(?<![开触研出批激散引])发\\s*v?[0-9]+(\\.[0-9]+)+|(推送|合并)\\S{0,4}\\s*发布|打\\s*(个|一个)?\\s*tag|(?<![开触研出批激散引])发(个|一个?)版(?!本号)|(?<![A-Za-z0-9_])ship(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])cut a release(?![A-Za-z0-9_])|create-release|merge-and-push|(?<![A-Za-z0-9_])release(?![A-Za-z0-9_]).{0,40}(?<![A-Za-z0-9_])to npm(?![A-Za-z0-9_])|npm publish|gh release|(?<![A-Za-z0-9_])deploy(?![A-Za-z0-9_])|上线",
       "window": "whole"
     },
     "review": {
@@ -13,7 +13,7 @@
     },
     "debug": {
       "loadsOn": "when a bug, a failing test or an error is the task",
-      "triggers": "报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])|(测试|用例|单测|(?<![A-Za-z0-9_])CI(?![A-Za-z0-9_]))\\s*[^\\s,，。.!！?？;；、]{0,4}(挂了|挂掉|跑挂|失败|红了|没过)",
+      "triggers": "报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])|(测试|用例|单测|(?<![A-Za-z0-9_])CI(?![A-Za-z0-9_]))\\s*[^\\s,，。.!！?？;；、:：]{0,2}(挂了|挂掉|跑挂|失败了|失败(?=[\\s,，。.!！?？;；、:：]|$)|红了|没过)",
       "window": "head"
     },
     "verify": {
