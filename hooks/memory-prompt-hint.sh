@@ -21,8 +21,9 @@
 #      un-Read match list and stop here (v0.35.0 R1; row moved BEFORE the
 #      dedupe in v0.36.0 so it fires even when every match was already
 #      suggested to a human prompt — review finding #5).
-#   6. Drop files already suggested this session (rule-hits log lookup,
-#      event=suggest only — beats transcript flush lag; v0.35.0 R1).
+#   6. Drop files already suggested this session since its last compaction
+#      (rule-hits log lookup, event=suggest only — beats transcript flush
+#      lag; v0.35.0 R1).
 #   7. If any un-Read matches remain, emit additionalContext
 #      (suppressOutput=true so model sees it, UI stays quiet), capped at 5 to
 #      bound prompt noise, and log `suggest` for cite-recall measurement.
@@ -171,14 +172,35 @@ fi
 # the session (pre-ship review finding, 2026-07-11; suggested is priority-
 # ordered, so first min(MAX, len) = exactly what was emitted). Fail-open: log
 # missing / unreadable / jq error → empty PRIOR_SUGGESTED → no dedupe.
+#
+# "Shown this session" ends at a compaction: every hint before it is gone from
+# context, so a memory suggested then and never Read was not suggested again
+# for the rest of the session. Only rows logged after the transcript's last
+# compact_boundary count (its timestamp and the row's ts are both UTC; compared
+# to the second, a row in the boundary's own second counts as before it — the
+# cheap side of a tie is one repeated hint). Same reset spec-module-inject.sh
+# gets from session-start clearing its list on compaction; this dedupe lives
+# in the rule-hits log, so it reads the boundary instead. The grep is the
+# cheap pre-filter (no jq spawn while the transcript never names it), the jq select
+# is the check: a tool result quoting the marker is a user row, not a system one.
 MAX=5
 RULE_LOG="$HOME/.claude/logs/claudemd.jsonl"
 PRIOR_SUGGESTED=""
 if [[ -r "$RULE_LOG" ]]; then
+  COMPACTED_AT=""
+  CB_LINES=""
+  [[ -r "$TRANSCRIPT" ]] && CB_LINES=$(grep -F -- 'compact_boundary' "$TRANSCRIPT" 2>/dev/null)
+  if [[ -n "$CB_LINES" ]]; then
+    COMPACTED_AT=$(printf '%s\n' "$CB_LINES" \
+      | jq -R -r 'try fromjson catch empty
+           | select(.type=="system" and .subtype=="compact_boundary")
+           | .timestamp // empty | strings' 2>/dev/null | tail -n 1)
+  fi
   PRIOR_SUGGESTED=$(grep -F -- "$SESSION_ID" "$RULE_LOG" 2>/dev/null \
-    | jq -R -r --arg sid "$SESSION_ID" --argjson max "$MAX" \
+    | jq -R -r --arg sid "$SESSION_ID" --argjson max "$MAX" --arg after "${COMPACTED_AT:0:19}" \
         'try fromjson catch empty
          | select(.hook=="memory-prompt-hint" and .event=="suggest" and .session_id==$sid)
+         | select($after == "" or ((.ts // "") | tostring | .[0:19]) > $after)
          | .extra.suggested[:$max] | .[]?' 2>/dev/null | sort -u)
 fi
 if [[ -n "$PRIOR_SUGGESTED" ]]; then

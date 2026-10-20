@@ -454,8 +454,35 @@ else
   ng "27 (out: $OUT)"
 fi
 
+# Case 28: a compaction resets the dedupe. Everything shown before it is gone
+# from context, so a memory suggested then and never Read must be suggested
+# again on the first matching prompt after it, and deduped again from there.
+# The session's suggest row is backdated in the log so the boundary can sit
+# after it without a sleep. Control: a transcript line that only QUOTES the
+# marker (a tool result, a pasted grep) is not a compaction, even when its
+# timestamp is later than every row.
+SESS="sess28"
+OUT1=$(mkevent "first ask about the macos runner" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX1=$(echo "$OUT1" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+jq -cn '{type:"user", timestamp:"2099-01-01T00:00:00.000Z", message:{role:"user", content:"grep \"subtype\":\"compact_boundary\" in the transcript"}}' \
+  > "$PROJ_DIR/$SESS.jsonl"
+OUT2=$(mkevent "second ask about the macos runner" "$SESS" | bash "$HOOK" 2>/dev/null)
+jq -c --arg s "$SESS" 'if .session_id == $s then .ts = "2026-01-01T00:00:00Z" else . end' "$RULE_LOG" > "$RULE_LOG.28" \
+  && mv "$RULE_LOG.28" "$RULE_LOG"
+jq -cn '{type:"system", subtype:"compact_boundary", content:"Conversation compacted", timestamp:"2026-01-01T00:00:05.000Z"}' \
+  >> "$PROJ_DIR/$SESS.jsonl"
+OUT3=$(mkevent "after the compaction: the macos runner again" "$SESS" | bash "$HOOK" 2>/dev/null)
+CTX3=$(echo "$OUT3" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+OUT4=$(mkevent "and the macos runner once more" "$SESS" | bash "$HOOK" 2>/dev/null)
+if echo "$CTX1" | grep -qF "feedback_macos.md" && [[ -z "$OUT2" ]] \
+   && echo "$CTX3" | grep -qF "feedback_macos.md" && [[ -z "$OUT4" ]]; then
+  ok "28 a compaction resets the per-session dedupe; a quoted marker does not"
+else
+  ng "28 (out1: ${OUT1:0:80}; out2: ${OUT2:0:80}; out3: ${OUT3:0:80}; out4: ${OUT4:0:80})"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((27 - FAIL))/27 passed"
+  echo "Tests: $((28 - FAIL))/28 passed"
   exit 1
 fi
-echo "Tests: 27/27 passed"
+echo "Tests: 28/28 passed"
