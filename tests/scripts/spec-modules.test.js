@@ -56,6 +56,9 @@ test('spec-modules: a line that looks like a marker but is not one is a build er
     '<!-- module: b -->\r',
     '<!--module: b -->',
     '<!-- Module: b -->',
+    // 0.113.3 pre-tag review L3: no colon, and the plural, passed silently.
+    '<!-- module b -->',
+    '<!-- modules: b -->',
   ]) {
     const src = [
       '# AI-CODING-SPEC v1.0.0 — Extended',

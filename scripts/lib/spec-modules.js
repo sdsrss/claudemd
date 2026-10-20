@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const MARKER = /^<!-- module: ([a-z][a-z0-9-]*) -->$/;
-const NEAR_MARKER = /^\s*<!--\s*module\s*:/i;
+const NEAR_MARKER = /^\s*<!--\s*modules?\b/i;
 export const MODULE_DIR = 'spec-modules';
 
 /** { name: [chunkText, ...] } in source order, `none` excluded. Throws on a near-miss marker. */
