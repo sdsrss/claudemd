@@ -255,10 +255,15 @@ test('hooks/ holds no here-string and no stdout file write outside a subshell', 
   assert.deepEqual(problems, [], problems.join('\n'));
 });
 
-// D#455: the status line is not a hook, but it ships, runs under the user's
-// bash on every render, and writes no file, so only the here-string rule applies.
-test('scripts/statusline.sh holds no here-string', () => {
-  const found = hereStrings(readReal('scripts/statusline.sh')).map(h => `${h.line}: ${h.text.trim()}`);
+// D#455: the shell scripts under scripts/ are not hooks, but they ship and run
+// under the user's bash (the status line on every render), so the here-string
+// rule applies to them too. The builtin-write rule is about a hook's stdout and
+// stays with hooks/.
+test('scripts/*.sh hold no here-string', () => {
+  const found = fs
+    .readdirSync(path.join(REPO_ROOT, 'scripts'))
+    .filter(f => f.endsWith('.sh'))
+    .flatMap(f => hereStrings(readReal(`scripts/${f}`)).map(h => `scripts/${f}:${h.line}: ${h.text.trim()}`));
   assert.deepEqual(found, [], found.join('\n'));
 });
 

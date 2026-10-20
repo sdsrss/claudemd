@@ -199,7 +199,7 @@ run_pretoolse_bash() {
   while IFS= read -r hook; do
     [[ -n "$hook" ]] || continue
     printf '%s' "$event" | bash "$HOOKS_DIR/$hook" >/dev/null 2>&1
-  done <<< "$PRETOOLUSE_BASH_HOOKS"
+  done < <(printf '%s\n' "$PRETOOLUSE_BASH_HOOKS")
 }
 
 # The UserPromptSubmit chain — the one that actually crossed its timeout in a
@@ -213,7 +213,7 @@ run_user_prompt_submit() {
   while IFS= read -r hook; do
     [[ -n "$hook" ]] || continue
     printf '%s' "$event" | bash "$HOOKS_DIR/$hook" >/dev/null 2>&1
-  done <<< "$USERPROMPT_HOOKS"
+  done < <(printf '%s\n' "$USERPROMPT_HOOKS")
 }
 
 # Median of N runs, in milliseconds (integer).
