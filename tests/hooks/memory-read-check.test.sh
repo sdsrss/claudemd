@@ -1098,6 +1098,40 @@ D66C=$(dec66 "$T66/fake66")
   && echo "PASS: 66 a session started in a subdirectory or a linked worktree reads the git root's MEMORY.md" \
   || { echo "FAIL: 66 (subdir: '$D66A'; worktree: '$D66B'; fake worktree: '$D66C')"; FAIL=$((FAIL+1)); }
 
+# Cases 67-71 (defect 177a): a ship verb inside a subshell or a command
+# substitution. The trigger admitted `^` or a shell separator before the verb,
+# so `(git push origin main)`, `echo $(git push origin main)` and a backticked
+# push walked past this §11 gate while `git push origin main` was denied. Only
+# `(cd x && git push)` was caught, through its `&&`. Own index, as at case 65.
+S67_ROOT="/work/s67proj"
+S67_PROJ="$HOME/.claude/projects/$(echo "$S67_ROOT" | tr '/' '-')"
+mkdir -p "$S67_PROJ/memory"
+printf '%s\n' '- [Ship lessons](feedback_ship.md) `[ship, release, push]` — baseline' > "$S67_PROJ/memory/MEMORY.md"
+touch "$S67_PROJ/memory/feedback_ship.md"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S67_PROJ/sess67.jsonl"
+s67dec() { # COMMAND
+  jq -cn --arg c "$1" --arg cwd "$S67_ROOT" '{session_id:"sess67",tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' \
+    | bash "$HOOK" 2>/dev/null | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null
+}
+D67=$(s67dec "(git push origin main)")
+[[ "$D67" == deny ]] && echo "PASS: 67 a push inside ( ) reaches the §11 gate" \
+  || { echo "FAIL: 67 (expected deny, got: '${D67}')"; FAIL=$((FAIL+1)); }
+D68=$(s67dec "echo \$(git push origin main)")
+[[ "$D68" == deny ]] && echo "PASS: 68 a push inside \$( ) reaches the §11 gate" \
+  || { echo "FAIL: 68 (expected deny, got: '${D68}')"; FAIL=$((FAIL+1)); }
+D69=$(s67dec "echo \`git push origin main\`")
+[[ "$D69" == deny ]] && echo "PASS: 69 a push inside backticks reaches the §11 gate" \
+  || { echo "FAIL: 69 (expected deny, got: '${D69}')"; FAIL=$((FAIL+1)); }
+# The opener is part of the shared prefix, so every arm gains it, not only push.
+D70=$(s67dec "(gh release create v1.2.3 --notes-file n.md)")
+[[ "$D70" == deny ]] && echo "PASS: 70 a release create inside ( ) reaches the §11 gate" \
+  || { echo "FAIL: 70 (expected deny, got: '${D70}')"; FAIL=$((FAIL+1)); }
+# FP guard: the read-only gh query exemption (cases 56-58) follows the opener,
+# so a status check inside \$( ) stays a query, as it is unwrapped.
+D71=$(s67dec "V=\$(gh release view v1.2.3 --json tagName)")
+[[ -z "$D71" ]] && echo "PASS: 71 a read-only gh query inside \$( ) does not trigger" \
+  || { echo "FAIL: 71 (expected silence, got: '${D71}')"; FAIL=$((FAIL+1)); }
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

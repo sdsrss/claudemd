@@ -71,7 +71,14 @@ fi
 # ordinary way for an agent to push a repo it is not cd'd into, and requiring
 # `git` and `push` to be adjacent let it walk past this gate — and past the §7
 # and §10-V gates, which shared the omission (2026-08-29 audit R10-05).
-TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|\$)"
+#
+# A subshell or command substitution opens a command position too: `(`, `$(` and
+# a backtick before the verb. Without them `(git push origin main)` and
+# `echo $(git push origin main)` walked past this gate while the unwrapped push
+# was denied (defect 177a). The suffix already admits `)` and a backtick.
+# Inside "…" the view has already emptied the body, so `"$(git push)"` is still
+# not seen. Same spelling as ship-baseline-check.sh and banned-vocab-check.sh.
+TRIGGER_RE="(^|[[:space:]]*[;&|]+[[:space:]]*|[(\`][[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push|gh[[:space:]]+(release|pr)|glab[[:space:]]+mr|npm[[:space:]]+(publish|run[[:space:]]+(release|deploy|ship))|cargo[[:space:]]+publish|make[[:space:]]+(release|deploy|ship)|release|deploy|ship)([^a-zA-Z]|\$)"
 # v0.9.28: collapse newlines to spaces before regex check. Prior behavior fired
 # on multi-line commands where heredoc body lines started with conventional-
 # commit verbs (e.g. `git commit -m "$(cat <<EOF\nrelease(v0.9.27): ...\nEOF\n)"`
@@ -102,9 +109,11 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # runbook was opened: five of that day's twelve live denies, each one a command
 # that publishes nothing. Those segments are renamed for the TRIGGER test only;
 # the tag stage below still sees their text, so a query sitting next to a real
-# `git push` keeps matching a `release` tag (tests Cases 56-58).
+# `git push` keeps matching a `release` tag (tests Cases 56-58). The rename
+# follows TRIGGER_RE's openers (`(`, `$(`, backtick), or widening the trigger for
+# defect 177a would newly hold `V=$(gh release view …)` (Case 71).
 CMD_TRIG=$(printf '%s' "$CMD_FLAT" | sed -E -e ':a' \
-  -e 's/(^[[:space:]]*|[;&|][[:space:]]*)gh[[:space:]]+(release|pr)[[:space:]]+(list|view|status|checks|diff)([^a-zA-Z0-9_-]|$)/\1gh-query\4/' \
+  -e 's/(^[[:space:]]*|[;&|(`][[:space:]]*)gh[[:space:]]+(release|pr)[[:space:]]+(list|view|status|checks|diff)([^a-zA-Z0-9_-]|$)/\1gh-query\4/' \
   -e 'ta')
 grep -qE "$TRIGGER_RE" < <(echo "$CMD_TRIG") || exit 0
 
