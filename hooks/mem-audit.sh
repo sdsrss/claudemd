@@ -143,13 +143,18 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
       }
       FNR == 1 { flush(); cur = FILENAME; why = 0; how = 0 }
       {
-        # Both markers must appear at line start. Match BOTH common punctuation
-        # forms (CC memoryTypes.ts uses `**Why:**`, but `**Why**:` is also
-        # widely used in the wild; accept either to avoid false-positive
+        # Both markers must appear at line start. Match the punctuation forms
+        # in use (CC memoryTypes.ts uses `**Why:**`; `**Why**:` is also
+        # widely used in the wild; accept each to avoid false-positive
         # alarms):  **Why:** … OR **Why**: … / **How to apply:** … OR
-        # **How to apply**: …
-        if ($0 ~ /^\*\*Why(:\*\*|\*\*:)/) why = 1
-        if ($0 ~ /^\*\*How to apply(:\*\*|\*\*:)/) how = 1
+        # **How to apply**: … — and after the closing `**`, an optional
+        # parenthetical in either width and then either colon:
+        # **Why**（2026-09-06 实测）： … / **Why**(v0.78.0): … / **Why**： …
+        # Full-width characters as alternations, never inside a bracket
+        # expression: a byte-oriented awk (mawk) reads `[^）]` as a set of
+        # three bytes, and the CJK text between the parentheses can hold them.
+        if ($0 ~ /^\*\*Why(:\*\*|\*\*(\(.*\)|（.*）)?(:|：))/) why = 1
+        if ($0 ~ /^\*\*How to apply(:\*\*|\*\*(\(.*\)|（.*）)?(:|：))/) how = 1
       }
       END { flush() }
     ' {} + 2>/dev/null)
@@ -173,9 +178,12 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
     on_disk_list+="$base"$'\n'
   done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
-  # Extract `(file.md)` references from MEMORY.md index lines. Markdown link
-  # syntax `[Title](file.md) ...` — first matching .md token per line.
-  in_index_list=$(grep -oE '\([^)]+\.md\)' "$index_file" 2>/dev/null | sed -E 's/^\(|\)$//g')
+  # Extract the linked file from each MEMORY.md index line. Markdown link
+  # syntax `[Title](file.md) ...` — the LAST `](….md)` on the line (the greedy
+  # `.*`), one per line. Every `(….md)` token on the line used to count, so a
+  # title holding `(legacy.md)` or a description mentioning `(other.md)` was
+  # reported as an index_orphan.
+  in_index_list=$(sed -nE 's/.*]\(([^)]+\.md)\).*/\1/p' "$index_file" 2>/dev/null)
   [[ -n "$in_index_list" ]] && in_index_list="$in_index_list"$'\n'
 
   # Set difference in awk, both directions, instead of a `printf | grep -qFx`

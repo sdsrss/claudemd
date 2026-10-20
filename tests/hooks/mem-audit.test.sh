@@ -309,9 +309,84 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 13: a parenthetical between the bold label and its colon, in either
+# width, and the full-width colon alone — `**Why**（2026-09-06 实测）：`,
+# `**Why**(v0.78.0):`, `**Why**：` and the same for How to apply — are
+# markers. All three shapes sit in real feedback memories and were each
+# reported as missing their Why/How. Control: a label with no colon after it
+# is still not a marker, so exactly one of the four files is reported.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+PAD=$(printf '%0400d' 0 | tr 0 x)  # one PAD alone clears the 400-byte stub floor
+seed "-proj-" "feedback_fw_paren.md" "---
+name: fw-paren
+type: feedback
+---
+**Rule**: do X.
+
+**Why**（2026-09-06 发版实测，transcript \`65386fc7\`）：
+because Y. $PAD
+
+**How to apply**（顺序即优先级）：
+1. when Z. $PAD"
+seed "-proj-" "feedback_ascii_paren.md" "---
+name: ascii-paren
+type: feedback
+---
+**Why**(claudemd v0.78.0, 2026-09-06): because Y. $PAD
+
+**How to apply**(in order): when Z. $PAD"
+seed "-proj-" "feedback_fw_colon.md" "---
+name: fw-colon
+type: feedback
+---
+**Why**：它把问题变成假阴性。$PAD
+
+**How to apply**：
+when Z. $PAD"
+seed "-proj-" "feedback_no_colon.md" "---
+name: no-colon
+type: feedback
+---
+**Why**（a note） with no colon after it. $PAD
+
+**How to apply**: when Z. $PAD"
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
+if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'mem-audit: 1 feedback memories missing.*feedback_no_colon\.md\. Disable'; then
+  echo "PASS: 13 parenthetical / full-width-colon Why and How forms accepted; a colon-less label is not"
+else
+  echo "FAIL: 13 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
+# Case 14: the index link is the last `](….md)` on the line. A title holding
+# `(legacy.md)` and a description mentioning `(other.md)` each produced an
+# index_orphan for a file the line does not link. Control: a link whose target
+# is really missing is still reported, and nothing else is.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+seed "-proj-" "feedback_title.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "feedback_desc.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "MEMORY.md" "# Memory index
+- [Fix for (legacy.md) parsing](feedback_title.md) — text
+- [Desc mention](feedback_desc.md) — see also (other.md)
+- [Gone](feedback_gone.md) — text"
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
+if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q 'mem-audit: 1 MEMORY.md drift entries:' &&
+  echo "$ERR" | grep -q 'index_orphan: .*MEMORY.md → feedback_gone.md (link target missing)'; then
+  echo "PASS: 14 a .md token in the title or description is not the link; a missing target still is"
+else
+  echo "FAIL: 14 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Result
 # --------------------------------------------------------------------------
 if (( FAIL > 0 )); then
-  echo "Tests: $((14 - FAIL))/14 passed"; exit 1
+  echo "Tests: $((16 - FAIL))/16 passed"; exit 1
 fi
-echo "Tests: 14/14 passed"
+echo "Tests: 16/16 passed"
