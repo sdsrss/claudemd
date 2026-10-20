@@ -657,8 +657,30 @@ else
 fi
 rm -f "$TMP_FIX"
 
+# Cases 53-57 (defect 177a): a ship verb inside a subshell or a command
+# substitution. Both triggers admitted `^` or a shell separator before the verb
+# and whitespace or a separator after it, so `(git push origin main)`,
+# `echo $(git push)` and `(git commit -m "…")` never reached either scan while
+# the same commands unwrapped were denied.
+PCWD="/work/p53"
+PSID="sess53"
+mk_prose_transcript "$PCWD" "$PSID" "The fix significantly improves throughput."
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mk_prose_event "(git push origin main)" "$PCWD" "$PSID" > "$TMP_FIX"
+assert_deny "53: push inside ( ) reaches the Path 2 prose scan → deny" "$TMP_FIX"
+mk_prose_event "echo \$(git push)" "$PCWD" "$PSID" > "$TMP_FIX"
+assert_deny "54: argument-less push inside \$( ) reaches the Path 2 prose scan → deny" "$TMP_FIX"
+mk_prose_event "echo \`gh release create v1\`" "$PCWD" "$PSID" > "$TMP_FIX"
+assert_deny "55: release create inside backticks reaches the Path 2 prose scan → deny" "$TMP_FIX"
+# FP guard: `)` joined the suffix, `-` did not.
+mk_prose_event "(git push-notes)" "$PCWD" "$PSID" > "$TMP_FIX"
+assert_pass "56: '(git push-notes)' is not a ship verb" "$TMP_FIX"
+jq -cn '{session_id:"t",tool_name:"Bash",tool_input:{command:"(git commit -m \"significantly faster\")"},cwd:"/tmp"}' > "$TMP_FIX"
+assert_deny "57: commit inside ( ) reaches the Path 1 message scan → deny" "$TMP_FIX"
+rm -f "$TMP_FIX"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((52 - FAIL))/52 passed"
+  echo "Tests: $((57 - FAIL))/57 passed"
   exit 1
 fi
-echo "Tests: 52/52 passed"
+echo "Tests: 57/57 passed"

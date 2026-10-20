@@ -90,8 +90,15 @@ CMD_FLAT=$(printf '%s' "$CMD" | hook_trigger_view)
 # and `npm publish --tag next` did. Every case in this suite carried arguments,
 # so nothing said so (0.70.0 pre-tag review, HIGH-1). Not `[^a-zA-Z]`
 # (memory-read-check's spelling): that would newly match `git push-notes`.
-GIT_COMMIT_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+commit([[:space:]]|[;&|]|\$)"
-SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|[;&|]|\$)"
+#
+# A subshell or command substitution opens a command position too: `(`, `$(` and
+# a backtick before the verb, `)` and a backtick after it. Without them
+# `(git commit -m "…")`, `echo $(git push)` and a backticked `gh release create`
+# reached neither scan while the unwrapped commands were denied (defect 177a).
+# Inside "…" the view has already emptied the body, so `"$(git push)"` is still
+# not seen. Same spelling as ship-baseline-check.sh.
+GIT_COMMIT_RE="(^|[[:space:]]*[;&|]+[[:space:]]*|[(\`][[:space:]]*)git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+commit([[:space:]]|[;&|)\`]|\$)"
+SHIP_VERB_RE="(^|[[:space:]]*[;&|]+[[:space:]]*|[(\`][[:space:]]*)(git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+(commit|push)|gh[[:space:]]+(release|pr)[[:space:]]+create|npm[[:space:]]+publish|cargo[[:space:]]+publish)([[:space:]]|[;&|)\`]|\$)"
 
 IS_GIT_COMMIT=0
 IS_SHIP_VERB=0
