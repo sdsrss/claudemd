@@ -183,6 +183,16 @@ else
   else
     ng "8b (ctx: $CTX)"
   fi
+  # 8c: it said "so nothing is reclaiming the vitest per-run dirs", which the
+  # hook cannot know (another session's hook, or the user, may sweep them). It
+  # now says only what this hook knows, and still names the dirs that
+  # "anything else" is set against.
+  if [[ "$CTX" == *"% full. The vitest per-run dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ||
+    "$CTX" == *"(or swap). The vitest per-run dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ]]; then
+    ok "8c without node: the advisory claims nothing about who reclaims the dirs"
+  else
+    ng "8c (ctx: $CTX)"
+  fi
 fi
 
 # Case 9: the lock or stamp vanishing between the two `stat` calls of
@@ -215,5 +225,19 @@ printf '%s' "$EVT" | PATH="$ST:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "
 RC=$?
 [[ $RC -eq 0 && ! -s "$SANDBOX/err9b" ]] && ok "9b stamp gone between the two stats: exit 0, nothing on stderr" ||
   ng "9b (rc $RC, err: $(cat "$SANDBOX/err9b"))"
+
+# Case 10: a temp root whose path holds a space. The advisory's `du` line is
+# for pasting into a shell, and unquoted it split into two arguments and
+# listed nothing. Run as handed over, it must list the entry inside.
+SP="$SANDBOX/tmp root"
+mkdir -p "$SP" && printf 'x' >"$SP/entry10"
+rm -f "$STAMP"
+OUT=$(printf '%s' "$EVT" | PATH="$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$SP" bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)
+DU=${CTX#*list the largest entries (\`}
+DU=${DU%%\`*}
+DU_OUT=$(bash -c "$DU" 2>/dev/null)
+[[ "$DU" == "du -sh "* && "$DU_OUT" == *"$SP/entry10"* ]] && ok "10 a temp root with a space: the du line runs as given" ||
+  ng "10 (du: $DU; its output: $DU_OUT)"
 
 claudemd_assert_summary
