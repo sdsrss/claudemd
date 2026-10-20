@@ -8,6 +8,30 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.114.0] - 2026-10-20
+
+**Upgrade notes — one new `/claudemd-doctor` flag; spec unchanged (v8.2.0). Plugin users have nothing to do.** `/claudemd-doctor --ack-fail-open` clears a `hook-fail-open` row once its cause is fixed. Without the flag, doctor's checks, verdicts and exit codes are as in 0.113.4; the red row's text now also says how to clear it. To go back to 0.113.4, follow `docs/ROLLBACK.md`; 0.113.4 does not read the acknowledgement file, so its row is red again until the window passes.
+
+**Why.** A hook that skips enforcement because a prerequisite is missing (`jq`, a patterns file, a writable state directory) writes a `fail-open` row, and `/claudemd-doctor` reported `hook-fail-open` red, exiting 3, for the 30 days that row stays in its window, also after the user had fixed the cause (0.113.3 and 0.113.4 "Not changed"). Design record `tasks/specs/doctor-fail-open-ack.md`.
+
+**`/claudemd-doctor --ack-fail-open`** (25d80cc)
+- With at least one unacknowledged prerequisite row in the window, it records the moment in `~/.claude/.claudemd-state/fail-open-ack.json` (`{ackedAt, acknowledged}`), and the same run reports the row green: the events are listed as acknowledged at that moment, with none since.
+- Rows after the acknowledgement turn the row red as before, and the detail also counts the acknowledged ones. No per-reason recovery test is needed: a prerequisite that is still missing writes a new row the next time its hook runs.
+- An acknowledgement file that does not parse, or a row whose `ts` does not, counts as unacknowledged. With nothing to acknowledge it writes nothing and returns `failOpenAck: {written: false, reason}`. A file it cannot write exits 1 naming it.
+- The command page tells the model to run it only after the user says the cause is fixed, never to turn the check green on its own. `doctor --help`, README and `docs/ARCHITECTURE.md` list the flag; `--help` now says doctor is read-only apart from its two flags and the one manifest relocation, and that exit 1 includes an acknowledgement it cannot write.
+- `clean-residue` does not reap the file: it matches none of the state directory's ephemeral name patterns.
+
+**Not changed, and why.**
+- Between an acknowledgement and the next run of the affected hook, doctor reports green even if the cause is not fixed. The next run of that hook writes a new row and the check is red again.
+- The other two classes of fail-open row (an empty event from a manual run, a gate with nothing to evaluate) are as before; there is nothing to acknowledge in them.
+
+**Tests.**
+- `tests/scripts/doctor.test.js`, five cases: acknowledging turns the row green in the same run and writes the file; a row after it turns it red with the acknowledged count; nothing to acknowledge writes nothing (also when everything is already acknowledged, keeping the earlier moment); four damaged files count as no acknowledgement; the CLI writes the file and exits 1 naming it when the state directory is not writable. Before the change 4 failed; the damaged-file case is a control that passes on both. An acknowledgement that never hides anything fails 3 of the 5.
+- `tests/scripts/command-page-behaviour.test.js` gains a doctor case: it pins the new page paragraph and runs the flag twice in a sandbox HOME, checking the fields and the file the paragraph names. It fails on 0.113.4's page.
+- @@CHECKS@@
+
+@@REVIEW@@
+
 ## [0.113.4] - 2026-10-20
 
 **Upgrade notes — command pages and one module trigger: fixes only, spec unchanged (v8.2.0). Plugin users have nothing to do.** Six slash-command pages now describe what 0.113.3 made their commands do, so the model running them reads the current exit codes, fields and recovery steps. The `ship` module now also loads on 打个tag. No command, hook verdict or exit code changes. To go back to 0.113.3, follow `docs/ROLLBACK.md`.
