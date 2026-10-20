@@ -811,3 +811,55 @@ test('D#174b: an unreadable positional file reports the real error, not "file no
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- D#174 (c): `-h` as one word of unquoted text printed help ---
+// `lint` joins its positional words into the text, so `-h` there is a word.
+// main() matched it anywhere in argv, printed help and exited 0: the message
+// was never scanned.
+test('D#174c: -h among lint text words is scanned as text, not taken as help', () => {
+  const r = run(['lint', 'this', 'is', 'significantly', '-h', 'better']);
+  assert.equal(r.status, 1, `expected the hit; stdout=${r.stdout.slice(0, 80)}`);
+  assert.match(r.stderr, /significantly/);
+  assert.doesNotMatch(r.stdout, /Usage:/);
+  // Controls: where no text can be, -h is still help, and --help is a flag anywhere.
+  for (const argv of [
+    ['-h'],
+    ['lint', '-h'],
+    ['audit', '-h'],
+    ['lint', '--json', '-h'],
+    ['lint', 'x', '--help'],
+  ]) {
+    const h = run(argv);
+    assert.equal(h.status, 0, `${argv.join(' ')}: stderr=${h.stderr}`);
+    assert.match(h.stdout, /Usage:/, argv.join(' '));
+  }
+});
+
+// --- D#174 (d): a second --file was reported as positional text ---
+test('D#174d: --file given twice is named as such, not as "positional text"', () => {
+  for (const argv of [
+    ['lint', '--file', 'a.txt', '--file', 'b.txt'],
+    ['lint', '--file=a.txt', '--file=b.txt'],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.status, 2, argv.join(' '));
+    assert.match(r.stderr, /^lint: --file given more than once — pass it exactly once$/m, argv.join(' '));
+    assert.doesNotMatch(r.stderr, /mutually exclusive/);
+  }
+});
+
+// --- D#174 (e): --help printed a literal `<REPO>` ---
+test('D#174e: --help names the pattern file and the repository package.json declares', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+  const repo = pkg.repository.url.replace(/^git\+/, '').replace(/\.git$/, '');
+  assert.match(repo, /^https:\/\//, 'premise: package.json declares an https repository');
+  const r = run(['--help']);
+  assert.equal(r.status, 0);
+  assert.doesNotMatch(r.stdout, /<REPO>/);
+  assert.ok(
+    r.stdout
+      .split('\n')
+      .includes(`Pattern source: hooks/banned-vocab.patterns, shipped in this package (${repo})`),
+    `no Pattern source line naming ${repo}:\n${r.stdout}`
+  );
+});

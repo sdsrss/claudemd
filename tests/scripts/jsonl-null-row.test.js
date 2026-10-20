@@ -146,9 +146,9 @@ const SPLIT_ON_NEWLINE = /\.split\((?:"\\n"|'\\n'|`\\n`|\/\\r\?\\n\/[a-z]*)\)/;
 const DECLARED = [
   [
     'bin/claudemd-lint.js',
-    "const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));",
+    "return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));",
     'not-a-row',
-    'own package.json',
+    'own package.json (readPackageJson, shared by --version and --help)',
   ],
   [
     'bin/claudemd-lint.js',

@@ -76,16 +76,26 @@ Exit codes:
   1   one or more hits
   2   usage error (bad args, missing or unreadable file, text that is not UTF-8)
 
-Pattern source: <REPO>/hooks/banned-vocab.patterns
+Pattern source: hooks/banned-vocab.patterns, shipped in this package (${readRepoUrl()})
 Spec: §10 Honesty rules — Specificity (HARD).`;
 
-function readPackageVersion() {
+function readPackageJson() {
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-    return pkg.version;
+    return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
   } catch {
-    return 'unknown';
+    return {};
   }
+}
+
+function readPackageVersion() {
+  return readPackageJson().version ?? 'unknown';
+}
+
+// The repository package.json declares, for --help, which printed a literal
+// `<REPO>` until D#174. `git+https://…/x.git` → `https://…/x`.
+function readRepoUrl() {
+  const url = readPackageJson().repository?.url;
+  return typeof url === 'string' ? url.replace(/^git\+/, '').replace(/\.git$/, '') : 'repository unknown';
 }
 
 // Resolve the repo's `commit.template` and return its lines, so cleanup can
@@ -210,9 +220,16 @@ function lintCmd(rawArgs) {
     commentChar = next;
   }
 
-  // --file <path> consumes the next non-flag arg.
+  // --file <path> consumes the next non-flag arg. Counted like --comment-char:
+  // with only the first slot filtered, a second `--file b` left `b` behind as
+  // positional text and the error blamed "positional text" (D#174).
   let filePath = null;
-  const fileIdx = args.indexOf('--file'); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  const fileIdxs = args.reduce((acc, a, i) => (a === '--file' ? acc.concat(i) : acc), []); // argv-lint:allow — validated upstream by validateAndExpandFlags
+  if (fileIdxs.length > 1) {
+    process.stderr.write('lint: --file given more than once — pass it exactly once\n');
+    process.exit(2);
+  }
+  const fileIdx = fileIdxs.length === 1 ? fileIdxs[0] : -1;
   if (fileIdx !== -1) {
     const next = args[fileIdx + 1];
     if (!next || next.startsWith('--')) {
@@ -591,8 +608,13 @@ function main() {
   // meant `claudemd-cli lint --help` exited 2 with "unknown flag '--help'" — the
   // exact discoverability bug lib/argv.js#printHelpAndExit was written to fix,
   // which this CLI predates.
+  // `-h` is narrower (D#174): `lint` joins its non-flag words into the text, so
+  // `lint fix the -h flag` printed help, exit 0, and scanned nothing. It counts
+  // only where no text can be: first, or the subcommand's only non-flag word.
+  const words = argv.slice(1).filter(a => !a.startsWith('--'));
+  const shortHelp = argv[0] === '-h' || (words.length === 1 && words[0] === '-h');
   // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
-  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
+  if (argv.length === 0 || argv.includes('--help') || shortHelp) {
     process.stdout.write(USAGE + '\n');
     process.exit(argv.length === 0 ? 2 : 0);
   }
