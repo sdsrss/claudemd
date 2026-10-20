@@ -67,6 +67,17 @@ command -v jq >/dev/null 2>&1 || {
 #   rule-hits   ~3 MB                             (observed: 2.7 MB)
 SANDBOX=$(mktemp -d -t claudemd-budget-XXXXXX) || { echo "FAIL: mktemp"; exit 1; }
 SANDBOX=$(cd "$SANDBOX" && pwd -P) || { echo "FAIL: cannot resolve sandbox"; exit 1; }
+# cross-repo-write-check skips anything under /tmp/claude-* (Claude Code's
+# scratchpad root). A suite launched from inside a session can inherit a TMPDIR
+# there, and then the cross-repo probe exits early on its fixture repos. Same
+# move as cross-repo-write.test.sh.
+case "$SANDBOX" in
+  /tmp/claude-* | /private/tmp/claude-*)
+    rm -rf "${SANDBOX:?}"
+    SANDBOX=$(mktemp -d /tmp/claudemd-budget-XXXXXX) || { echo "FAIL: mktemp"; exit 1; }
+    SANDBOX=$(cd "$SANDBOX" && pwd -P) || { echo "FAIL: cannot resolve sandbox"; exit 1; }
+    ;;
+esac
 trap 'rm -rf "$SANDBOX"' EXIT
 
 FIX_HOME="$SANDBOX/home"
