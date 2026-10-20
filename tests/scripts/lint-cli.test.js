@@ -759,7 +759,9 @@ test('D#174a: text that is not UTF-8 is reported as such, exit 2, on every sourc
     const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(word, 'utf16le')]);
     const be = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(word, 'utf16le').swap16()]);
     const noBom = Buffer.from(word, 'utf16le');
-    const cjk = Buffer.from('显著提升\n', 'utf16le');
+    // No newline: in UTF-16 one would be the bytes 0A 00, and that NUL is caught
+    // by the older check, so the strict decode would go untested.
+    const cjk = Buffer.from('显著提升', 'utf16le');
     const cases = [];
     for (const [name, bytes] of [
       ['le.txt', le],
