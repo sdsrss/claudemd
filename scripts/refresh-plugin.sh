@@ -26,7 +26,14 @@ echo "==> 2/3 uninstall $PLUGIN (-y: non-interactive)"
 claude plugin uninstall "$PLUGIN" -y
 
 echo "==> 3/3 install $PLUGIN (pulls the just-updated marketplace version)"
-claude plugin install "$PLUGIN"
+# The uninstall above has already succeeded, so a failure here leaves the
+# plugin NOT installed. Say how to get it back; keep the install's exit status.
+claude plugin install "$PLUGIN" || {
+  rc=$?
+  echo "refresh-plugin: install failed (exit $rc) after the uninstall succeeded — $PLUGIN is NOT installed now." >&2
+  echo "Reinstall it: claude plugin install $PLUGIN   (inside Claude Code: /plugin install $PLUGIN, then /reload-plugins)" >&2
+  exit "$rc"
+}
 
 echo
 echo "Plugin cache refreshed. Now RESTART Claude Code (or /reload-plugins);"

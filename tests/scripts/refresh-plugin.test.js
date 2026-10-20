@@ -64,6 +64,26 @@ test('control B: marketplace-update failure stops the pipeline before uninstall'
   }
 });
 
+test('162: install failing after the uninstall prints how to get the plugin back', () => {
+  // The uninstall has already gone through at this point, so the plugin is
+  // gone; a bare non-zero exit left the user with nothing to run.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-inst-'));
+  try {
+    const log = path.join(tmp, 'calls.log');
+    makeShim(
+      path.join(tmp, 'bin'),
+      `echo "$*" >> "${log}"\n[[ "$*" == plugin\\ install* ]] && exit 7\nexit 0`
+    );
+    const r = runScript([path.join(tmp, 'bin'), '/usr/bin', '/bin']);
+    assert.equal(r.status, 7, 'the install failure is still the exit status');
+    assert.match(fs.readFileSync(log, 'utf8'), /^plugin uninstall claudemd@claudemd -y$/m, 'uninstall ran');
+    assert.match(r.stderr, /claude plugin install claudemd@claudemd/);
+    assert.match(r.stderr, /\/plugin install claudemd@claudemd/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('claude CLI missing from PATH: exit 1 + stderr names the problem', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-none-'));
   try {
