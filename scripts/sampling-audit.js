@@ -250,7 +250,11 @@ export function parseUntilMs(raw) {
     if (!m) return NaN;
     const parsed = Date.parse(raw);
     if (!Number.isFinite(parsed)) return NaN;
-    const [, , hh, , ss, frac] = m;
+    const [, date, hh, , ss, frac] = m;
+    // `Date.parse` rolls a day the month does not have into the next month
+    // (2026-09-31 → 10-01) instead of failing (D#142): the date must round-trip.
+    const [y, mo, d] = date.split('-').map(Number);
+    if (new Date(Date.UTC(y, mo - 1, d)).toISOString().slice(0, 10) !== date) return NaN;
     if (hh === undefined) ms = parsed + 86400000 - 1;
     else if (frac !== undefined) ms = parsed;
     else if (ss === undefined) ms = parsed + 60000 - 1;
@@ -1097,12 +1101,14 @@ export function emptyBehavior() {
     // Skill routing: denominator is every tool_use in the window.
     toolUses: 0,
     skillInvocations: 0,
-    skillsByName: {},
+    // Keyed by a name the transcript chose, so no prototype: on `{}` a Skill
+    // named `constructor` counted as "function Object() {…}1" (D#142).
+    skillsByName: Object.create(null),
     // Skill calls whose tool_result came back is_error (`Unknown skill: …`) —
     // a SUBSET of skillInvocations, reported beside it (the pre-registered
     // field keeps its definition; succeeded = invocations - errors).
     skillInvocationErrors: 0,
-    skillErrorsByName: {},
+    skillErrorsByName: Object.create(null),
     // Edit channel. `editsViaTool` counts Edit/Write tool_use; `editsViaBash`
     // counts files in `bashEditDiff`. The any-channel rework pair merges both
     // per file. The tool-only pair above stays the pre-registered G0 number;

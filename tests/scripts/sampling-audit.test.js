@@ -23,6 +23,7 @@ import {
   yieldTellSuppressed,
   scanBehavior,
   emptyBehavior,
+  mergeBehavior,
   isTestFile,
   REWORK_THRESHOLD,
   behaviorLines,
@@ -1540,9 +1541,31 @@ test('G0 skill rate: Skill calls counted by name against every tool_use', () => 
   ]);
   assert.equal(b.toolUses, 5, 'every tool_use is in the denominator, Skill included');
   assert.equal(b.skillInvocations, 3);
-  assert.deepEqual(b.skillsByName, { 'superpowers:brainstorming': 2, '(unnamed)': 1 });
+  assert.deepEqual(b.skillsByName, { __proto__: null, 'superpowers:brainstorming': 2, '(unnamed)': 1 });
   // Read carries a file_path and must not count as an edit.
   assert.equal(b.editedSessions, 0);
+});
+
+// D#142: the by-name maps were plain objects, so a Skill named `constructor`
+// read Object's constructor as its prior count and stored the string
+// "function Object() { [native code] }1"; `__proto__` was dropped outright.
+test('D#142: a Skill named after an Object.prototype member counts as a number, in scan and merge', () => {
+  const names = ['constructor', 'toString', '__proto__'];
+  const b = scanBehavior([
+    ...names.map(skill => ev({ id: `tu_${skill}`, name: 'Skill', input: { skill } })),
+    { kind: 'tool-error', id: 'tu_constructor', sidechain: false },
+  ]);
+  for (const k of names) assert.equal(b.skillsByName[k], 1, `skillsByName[${k}]`);
+  assert.equal(b.skillErrorsByName.constructor, 1);
+  assert.deepEqual(Object.keys(b.skillsByName).sort(), [...names].sort());
+
+  const total = emptyBehavior();
+  mergeBehavior(total, b);
+  mergeBehavior(total, b);
+  for (const k of names) assert.equal(total.skillsByName[k], 2, `merged skillsByName[${k}]`);
+  assert.equal(total.skillErrorsByName.constructor, 2);
+  // The --json output a dashboard reads carries the same numbers.
+  assert.equal(JSON.parse(JSON.stringify(total)).skillsByName.constructor, 2);
 });
 
 // Analysis 2026-09-26 B1: Opus 5.5 routes most edits through Bash heredocs,
@@ -1591,8 +1614,8 @@ test('B4 skill rate: an errored Skill call stays in skillInvocations and is also
   ]);
   assert.equal(b.skillInvocations, 2, 'pre-registered: every Skill tool_use');
   assert.equal(b.skillInvocationErrors, 1);
-  assert.deepEqual(b.skillsByName, { 'superpowers:tdd': 1, ship: 1 });
-  assert.deepEqual(b.skillErrorsByName, { ship: 1 });
+  assert.deepEqual(b.skillsByName, { __proto__: null, 'superpowers:tdd': 1, ship: 1 });
+  assert.deepEqual(b.skillErrorsByName, { __proto__: null, ship: 1 });
   assert.equal(b.toolUses, 2, 'a failed call is still a tool_use');
 });
 
@@ -2122,6 +2145,29 @@ test('--until: a value that resolves to an implausible instant is rejected, not 
     Number.isFinite(parseUntilMs('1790054707')),
     'epoch seconds for the same instant are still accepted'
   );
+});
+
+// D#142: `Date.parse('2026-09-31')` rolls over to 10-01 instead of failing, so
+// a calendar date that does not exist widened the bound by a day in silence.
+test('--until: a calendar date that does not exist is rejected, not rolled over', () => {
+  for (const raw of ['2026-09-31', '2026-02-29', '2026-09-31T12:00:00Z', '2026-04-31T12:00+08:00']) {
+    assert.ok(!Number.isFinite(parseUntilMs(raw)), `${raw} names no real day and must be rejected`);
+  }
+  // Controls: the last real day of the same months, and a real leap day.
+  assert.equal(parseUntilMs('2026-09-30'), Date.UTC(2026, 8, 30, 23, 59, 59, 999));
+  assert.ok(Number.isFinite(parseUntilMs('2024-02-29')), 'a leap day that exists is accepted');
+  assert.ok(Number.isFinite(parseUntilMs('2026-04-30T12:00+08:00')));
+  const cli = spawnSync(
+    process.execPath,
+    [path.join(REPO_ROOT, 'scripts/sampling-audit.js'), '--until=2026-09-31', '--json'],
+    { encoding: 'utf8', timeout: 20000 }
+  );
+  assert.equal(
+    cli.status,
+    1,
+    `a bad --until value exits 1 like the others; stdout=${cli.stdout.slice(0, 120)}`
+  );
+  assert.match(cli.stderr, /--until requires .*got '2026-09-31'/);
 });
 
 // Two spellings of the same minute-granularity instant must give the same
