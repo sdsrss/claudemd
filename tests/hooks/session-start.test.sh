@@ -1328,6 +1328,19 @@ else
 fi
 rm -f "$NOLEDGER_PROJ/tasks/renamed-ledger.md"
 
+# Case 41g: a ledger saved with CRLF line endings (a Windows editor). Under mawk
+# `$2` of `## Decisions\r` is "Decisions\r", so no heading matched and the
+# banner was skipped with nothing said.
+CRLF_PROJ="$HOME/crlfproj"; mkdir -p "$CRLF_PROJ/tasks"
+printf '## Goal\r\n\r\nCRLF-GOAL-TEXT\r\n\r\n## Decisions\r\n\r\n- D1: CRLF-DECISION-TEXT\r\n\r\n## Next\r\n\r\nCRLF-NEXT-TEXT\r\n' > "$CRLF_PROJ/tasks/w-ledger.md"
+CTX41G=$(bash "$HOOK" <<<"{\"session_id\":\"lgg\",\"source\":\"compact\",\"cwd\":\"$CRLF_PROJ\"}" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if grep -qF 'CRLF-DECISION-TEXT' <<<"$CTX41G" && grep -qF 'CRLF-NEXT-TEXT' <<<"$CTX41G" \
+   && ! grep -qF 'CRLF-GOAL-TEXT' <<<"$CTX41G" && [[ "$CTX41G" != *$'\r'* ]]; then
+  echo "PASS: 41g a CRLF ledger injects Decisions + Next, carriage returns stripped"
+else
+  echo "FAIL: 41g CRLF ledger skipped or wrong (ctx=$(tr '\r' '^' <<<"$CTX41G"))"; FAIL=$((FAIL+1))
+fi
+
 # Sub-feature kill-switch.
 OUT41E=$(DISABLE_LEDGER_INJECT=1 bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
 CTX41E=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41E" 2>/dev/null)

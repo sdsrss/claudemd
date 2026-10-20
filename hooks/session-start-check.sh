@@ -158,9 +158,12 @@ ledger_banner() {
   # would go down with the ledger; pre-ship review falsified that twice on the
   # real code path (behaviour L8).
   # `head -n` bounds what is read into the variable in the first place; the
-  # character cap is what the reader actually sees.
+  # character cap is what the reader actually sees. A CRLF ledger loses its
+  # `\r` first: mawk read `## Decisions\r`'s $2 as "Decisions\r", matched no
+  # heading, and the banner was skipped.
   local body
   body=$(awk '
+    { sub(/\r$/, "") }
     /^## / { want = ($2 == "Decisions" || $2 == "Next") ? 1 : 0 }
     want { print }
   ' "$newest" 2>/dev/null | head -n 400 | cut -c1-400)
