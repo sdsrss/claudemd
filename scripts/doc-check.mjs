@@ -47,7 +47,8 @@ Options:
                               nothing is skipped.
   --help, -h                  Print this message and exit.
 
-Exit codes: 0 clean | 1 problem found | 2 argv-shape error.`;
+Exit codes: 0 clean | 1 problem found | 2 argv-shape error, or a <doc.md> that
+is missing or not a file.`;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..');

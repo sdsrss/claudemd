@@ -163,13 +163,21 @@ function workTreeOf(git, cwd) {
 
 // UTF-16 decoded as UTF-8 is a NUL between every ASCII letter, so no pattern
 // matched and the scan printed "OK: no hits", exit 0 (D#174). git refuses a NUL
-// in a commit message, so a NUL byte or a UTF-16 byte-order mark means these
-// bytes are not the text a reader sees: say so instead of scanning them.
+// in a commit message, so a NUL byte, or bytes that do not decode as UTF-8 (a
+// UTF-16 byte-order mark, UTF-16 CJK text), are not the text a reader sees: say
+// so instead of scanning them. Exit 2, as for any input this CLI cannot use
+// (a missing or unreadable file, a JSON file that is not a transcript).
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true });
 function decodeTextOrExit(buf, source) {
-  const utf16Bom = (buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff);
-  if (utf16Bom || buf.includes(0)) {
+  let valid = !buf.includes(0);
+  try {
+    if (valid) STRICT_UTF8.decode(buf);
+  } catch {
+    valid = false;
+  }
+  if (!valid) {
     process.stderr.write(
-      `lint: ${source} is not UTF-8 text (UTF-16 byte-order mark or NUL bytes) — convert it to UTF-8 and re-run\n`
+      `lint: ${source} is not UTF-8 text (UTF-16 or NUL bytes) — convert it to UTF-8 and re-run\n`
     );
     process.exit(2);
   }
@@ -611,8 +619,10 @@ function main() {
   // `-h` is narrower (D#174): `lint` joins its non-flag words into the text, so
   // `lint fix the -h flag` printed help, exit 0, and scanned nothing. It counts
   // only where no text can be: first, or the subcommand's only non-flag word.
+  // Other subcommands take paths, not text, and keep `-h` anywhere.
   const words = argv.slice(1).filter(a => !a.startsWith('--'));
-  const shortHelp = argv[0] === '-h' || (words.length === 1 && words[0] === '-h');
+  const shortHelp =
+    argv[0] === '-h' || (argv[0] === 'lint' ? words.length === 1 && words[0] === '-h' : argv.includes('-h'));
   // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
   if (argv.length === 0 || argv.includes('--help') || shortHelp) {
     process.stdout.write(USAGE + '\n');

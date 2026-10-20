@@ -750,18 +750,22 @@ test('CLI: audit <unreadable file> exits 2, not 1 with a Node stack (R11-11)', t
 // pattern matched and `lint` printed "OK: no hits", exit 0 — a commit-msg gate
 // passing a message it never read. Every text source is checked: --file, the
 // auto-detected positional path, and --stdin.
-test('D#174a: UTF-16 input is reported as unreadable text, exit 2, on every source', () => {
+// Bytes that are not UTF-8 but hold no NUL (UTF-16 CJK) count too (0.113.3
+// pre-tag review L1).
+test('D#174a: text that is not UTF-8 is reported as such, exit 2, on every source', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-lint-cli-'));
   try {
     const word = 'this is significantly better\n';
     const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(word, 'utf16le')]);
     const be = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(word, 'utf16le').swap16()]);
     const noBom = Buffer.from(word, 'utf16le');
+    const cjk = Buffer.from('显著提升\n', 'utf16le');
     const cases = [];
     for (const [name, bytes] of [
       ['le.txt', le],
       ['be.txt', be],
       ['nobom.txt', noBom],
+      ['cjk.txt', cjk],
     ]) {
       const f = path.join(dir, name);
       fs.writeFileSync(f, bytes);
@@ -783,6 +787,15 @@ test('D#174a: UTF-16 input is reported as unreadable text, exit 2, on every sour
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// 0.113.3 pre-tag review M3: D#174's narrowing of `-h` is for lint, whose words
+// are text. audit's positional is a path, so `audit x.jsonl -h` asks for help, as
+// it did before.
+test('D#174c: audit <path> -h still prints help, exit 0', () => {
+  const r = run(['audit', 'x.jsonl', '-h']);
+  assert.equal(r.status, 0, `stdout=${r.stdout} stderr=${r.stderr}`);
+  assert.match(r.stdout, /Exit codes:/);
 });
 
 // --- D#174 (b): a mode-000 positional path reported "file not found" ---
