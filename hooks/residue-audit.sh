@@ -38,7 +38,9 @@ fi
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 
 TMP_DIR="$HOME/.claude/tmp"
-[[ -d "$TMP_DIR" ]] || exit 0
+# An absent dir counts 0 below and gets a baseline like any other. Exiting here
+# left none, so the next Stop took everything the new dir held as its baseline
+# and that growth never alarmed.
 
 # Counts every depth-1 entry, files included. `-type d` alone made loose files
 # invisible (2026-07-28 audit H3) — a hook or script that leaks scratch FILES
@@ -82,10 +84,10 @@ THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
 
 if (( DELTA > THRESHOLD )); then
   echo "[claudemd] §7 residue audit: ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2
-  # Remediation must cover what CURRENT counts. `-type d` here would remove none
-  # of the loose files this hook now counts — the exact case v0.65.0 added — and
-  # it also matched ~/.claude/tmp itself. `-mindepth 1` fixes both.
-  echo "[claudemd] Consider: find ~/.claude/tmp -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} +" >&2
+  # The remedy names the new entries, files included (`ls -A`, as CURRENT counts
+  # them). The former `find … -mtime +7` matched none of them: what this flags
+  # appeared since this session's last Stop.
+  echo "[claudemd] The $DELTA newest entries: ls -At ~/.claude/tmp | head -n $DELTA" >&2
   hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}" '§7-user-global-state' "$SESSION_ID"
 fi
 

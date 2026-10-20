@@ -110,6 +110,39 @@ else
   echo "FAIL: 12 owner window reset by another session (stderr: $STDERR)"; FAIL=$((FAIL+1))
 fi
 
+# Case 13: ~/.claude/tmp absent at a session's first Stop. The hook exited before
+# writing a baseline, so the next Stop took everything the new dir held as its
+# baseline and the growth never alarmed. An absent dir counts 0.
+rm -rf "$HOME/.claude/tmp"; rm -f "$HOME/.claude/.claudemd-state"/tmp-baseline*.txt
+bash "$HOOK" <<<'{"session_id":"rsC"}' >/dev/null 2>&1
+mkdir -p "$HOME/.claude/tmp"; for i in $(seq 1 25); do : > "$HOME/.claude/tmp/n$i"; done
+STDERR=$(bash "$HOOK" <<<'{"session_id":"rsC"}' 2>&1 >/dev/null)
+if echo "$STDERR" | grep -q "grew by 25 entries (current: 25, baseline: 0,"; then
+  ok "13 a dir absent at the first Stop gets a zero baseline, so its growth alarms"
+else
+  echo "FAIL: 13 growth of a dir absent at the first Stop went unflagged (stderr: $STDERR)"; FAIL=$((FAIL+1))
+fi
+
+# Case 14: the remedy names the new entries. The old `find … -mtime +7` matched
+# none of them: what the audit flags appeared since this session's last Stop.
+# Four entries dated 2000, three new: the printed command, run as printed, lists
+# exactly the three new ones.
+rm -rf "$HOME/.claude/tmp"; mkdir -p "$HOME/.claude/tmp"
+for i in 1 2 3 4; do : > "$HOME/.claude/tmp/old$i"; touch -t 200001010000 "$HOME/.claude/tmp/old$i"; done
+printf 'v2:4' > "$HOME/.claude/.claudemd-state/tmp-baseline-rsD.txt"
+for i in 1 2 3; do : > "$HOME/.claude/tmp/new$i"; done
+STDERR=$(SPEC_RESIDUE_THRESHOLD=2 bash "$HOOK" <<<'{"session_id":"rsD"}' 2>&1 >/dev/null)
+LINE14=$(echo "$STDERR" | sed -n 2p)
+# Run only once it equals the pinned line: never execute whatever the hook printed.
+LISTED14=""
+[[ "$LINE14" == '[claudemd] The 3 newest entries: ls -At ~/.claude/tmp | head -n 3' ]] \
+  && LISTED14=$(bash -c "${LINE14#*: }" 2>/dev/null | sort | tr '\n' ' ')
+if [[ "$LISTED14" == "new1 new2 new3 " ]]; then
+  ok "14 the remedy lists the new entries, not ones older than 7 days"
+else
+  echo "FAIL: 14 remedy wrong (line: $LINE14 | lists: $LISTED14)"; FAIL=$((FAIL+1))
+fi
+
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$((PASS + FAIL)) passed"; exit 1
 fi
