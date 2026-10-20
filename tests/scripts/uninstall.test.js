@@ -144,6 +144,18 @@ test('parseable settings.json leaves settingsWarning null', async () => {
   assert.equal(res.settingsWarning, null);
 });
 
+test('158: a settings.json with nothing of claudemd in it is not rewritten', async () => {
+  // Eviction removed nothing, yet the file was written back pretty-printed:
+  // a compact settings.json came out reformatted. install.js already writes
+  // only when eviction removed something.
+  const settingsP = path.join(tmpHome, '.claude/settings.json');
+  const compact = '{"model":"opus","hooks":{"PostToolUse":[]}}';
+  fs.writeFileSync(settingsP, compact);
+  const res = await uninstall({ specAction: 'keep' });
+  assert.equal(res.settingsWarning, null);
+  assert.equal(fs.readFileSync(settingsP, 'utf8'), compact);
+});
+
 test('delete option: requires confirmHardAuth=true, then removes spec', async () => {
   const refused = await uninstall({ specAction: 'delete', confirmHardAuth: false });
   assert.equal(refused.specAction, 'abort');

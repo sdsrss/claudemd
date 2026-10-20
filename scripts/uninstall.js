@@ -350,7 +350,9 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
         commandPredicate: c => pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
       });
       settingsRemoved = r.removed;
-      writeSettings(s);
+      // Only when something went, as install.js does (defect 158): an unchanged
+      // file was otherwise rewritten pretty-printed.
+      if (r.removed > 0) writeSettings(s);
     } catch (e) {
       // Name BOTH residues. settings.json is the only home for two things we
       // own — legacy hook entries AND the statusLine — and removeStatusline()
