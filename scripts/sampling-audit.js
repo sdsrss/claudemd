@@ -2091,8 +2091,9 @@ if (invokedAsMain(import.meta.url)) {
 
     const today = todayLocal();
     // Zero scanned transcripts → an all-zeros report reads like a completed
-    // audit and litters tasks/ with stubs. Say so and write nothing.
-    if (result.scannedTranscripts === 0) {
+    // audit and litters tasks/ with stubs. Say so and write nothing. A
+    // tool-only transcript is not zero: the G0 numbers count it (D#125).
+    if (result.scannedTranscripts === 0 && result.behaviorMetrics.toolUses === 0) {
       console.log(
         `No transcripts in the ${days}d window${
           untilMs === null ? '' : ` ending ${new Date(untilMs).toISOString()} (--until)`

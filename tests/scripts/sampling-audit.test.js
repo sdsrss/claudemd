@@ -1116,6 +1116,26 @@ test('D#105: a report that cannot be written says why on stderr, still prints th
   assert.equal(ok.r.stderr, '');
 });
 
+// D#125: the skip guard keyed on `scannedTranscripts`, which counts transcripts
+// with assistant TEXT only. A transcript that only ran tools is in the G0
+// behaviour numbers (`--json` counts its tool uses), yet markdown mode said
+// "nothing scanned, nothing to report" and wrote no file.
+test('D#125: a transcript that only ran tools gets a report, not "nothing scanned"', () => {
+  const toolOnly = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 'tu_1', name: 'Bash', input: { command: 'ls' } }] },
+  });
+  const { r, md } = runCliReport([toolOnly]);
+  assert.equal(r.status, 0, `stderr=${r.stderr}`);
+  assert.doesNotMatch(r.stdout, /nothing scanned/);
+  assert.ok(md, 'the report file must be written');
+  assert.match(
+    md,
+    /Skill invocations: 0\/1 tool_use/,
+    'the tool use the --json view counts is in the report'
+  );
+});
+
 // --- H4 default-ASK measure (audit 20260906-231957 §7.2) -------------------
 //
 // The fixture is three tasks: one ask answered with assent ("就按你说的"), one
