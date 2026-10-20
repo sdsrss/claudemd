@@ -198,13 +198,17 @@ export const isAdvisoryCheck = name => ADVISORY.test(name);
 // The acknowledgement `--ack-fail-open` writes (tasks/specs/doctor-fail-open-ack.md).
 const failOpenAckPath = () => path.join(stateDir(), 'fail-open-ack.json');
 
-// Its moment in ms, or null. Anything that does not parse to {ackedAt: <date>}
-// counts as no acknowledgement, so a damaged file leaves the row red.
-function readFailOpenAckMs() {
+// Its moment in ms, or null. Only a regular file whose string ackedAt parses
+// to a moment no later than now counts. A damaged file, anything that is not a
+// regular file (a FIFO would block the read), and a moment in the future (a
+// clock that was ahead, a hand edit) all leave the row red, and the flag can
+// then write a new acknowledgement (0.114.0 pre-tag review M1, L6).
+function readFailOpenAckMs(now = Date.now()) {
   try {
+    if (!fs.lstatSync(failOpenAckPath()).isFile()) return null;
     const j = JSON.parse(fs.readFileSync(failOpenAckPath(), 'utf8'));
     const ms = j && typeof j.ackedAt === 'string' ? Date.parse(j.ackedAt) : NaN;
-    return Number.isFinite(ms) ? ms : null;
+    return Number.isFinite(ms) && ms <= now ? ms : null;
   } catch {
     return null;
   }
@@ -892,9 +896,11 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
   // --ack-fail-open: the user's statement that the cause is fixed. It hides
   // only prerequisite rows at or before its moment. A prerequisite that is
-  // still missing writes a new row on the next hook run, and that row is red
-  // again, so no per-reason "recovered" test is needed. A row whose ts does not
-  // parse is never acknowledged.
+  // still missing writes a new row the next time its hook records one (at most
+  // once a minute per hook and reason, hook_record_failopen), and that row is
+  // red again, so no per-reason "recovered" test is needed. readHits drops a
+  // row whose ts does not parse; a numeric ts reaches here and is never
+  // acknowledged.
   const isPrereq = h =>
     (h.extra?.reason || '') !== 'bad-event' && !UNEVALUABLE_REASONS.has(h.extra?.reason || '');
   let ackedAtMs = readFailOpenAckMs();
@@ -902,16 +908,24 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   let failOpenAck;
   if (ackFailOpen) {
     const pending = failOpenEvents.filter(h => isPrereq(h) && !isAcked(h));
-    if (pending.length === 0) {
+    // The moment is the newest acknowledged row's own ts, not the wall clock:
+    // rows carry whole seconds, and a row another session appends after this
+    // run read the log must not fall inside the acknowledgement. A row dated
+    // after now (a clock that was ahead) is not acknowledged (review L1, L3).
+    const nowMs = Date.now();
+    const covered = pending.filter(h => Date.parse(h.ts) <= nowMs);
+    if (covered.length === 0) {
       failOpenAck = {
         written: false,
-        reason: `no unacknowledged live-environment fail-open event in ${RULE_USAGE_WINDOW_DAYS}d`,
+        reason: pending.length
+          ? 'every unacknowledged live-environment fail-open event is dated after the current time'
+          : `no unacknowledged live-environment fail-open event in ${RULE_USAGE_WINDOW_DAYS}d`,
       };
     } else {
-      const ackedAt = new Date().toISOString();
+      const ackedAt = new Date(covered.reduce((m, h) => Math.max(m, Date.parse(h.ts)), 0)).toISOString();
       try {
         fs.mkdirSync(stateDir(), { recursive: true });
-        fs.writeFileSync(failOpenAckPath(), JSON.stringify({ ackedAt, acknowledged: pending.length }) + '\n');
+        fs.writeFileSync(failOpenAckPath(), JSON.stringify({ ackedAt, acknowledged: covered.length }) + '\n');
       } catch (e) {
         throw new Error(
           `cannot write the fail-open acknowledgement ${failOpenAckPath()}: ${e.code || e.message}`,
@@ -919,7 +933,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         );
       }
       ackedAtMs = Date.parse(ackedAt);
-      failOpenAck = { written: true, ackedAt, acknowledged: pending.length };
+      failOpenAck = { written: true, ackedAt, acknowledged: covered.length };
     }
   }
   if (failOpenEvents.length > 0) {
@@ -949,13 +963,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       checks.push({
         name: 'hook-fail-open',
         ok: false,
-        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and a fail-open after that turns this red again.${acknowledged.length ? ` ${acknowledged.length} earlier one(s) acknowledged at ${ackedAtIso}.` : ''}${unevaluableClause}`,
+        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and a fail-open after that turns this red again.${acknowledged.length ? ` ${acknowledged.length} earlier one(s) acknowledged (up to ${ackedAtIso}).` : ''}${unevaluableClause}`,
       });
     } else if (acknowledged.length > 0) {
       checks.push({
         name: 'hook-fail-open',
         ok: true,
-        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged at ${ackedAtIso} with --ack-fail-open; none since. A new one turns this red again.${unevaluableClause}`,
+        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged with --ack-fail-open (up to ${ackedAtIso}); none since. The next one recorded turns this red again.${unevaluableClause}`,
       });
     } else if (unevaluable.length > 0) {
       checks.push({
