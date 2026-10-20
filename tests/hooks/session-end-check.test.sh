@@ -1393,6 +1393,28 @@ else
   ng "Case 34b:$R34"
 fi
 
+# --- Case 34e: `tsc` ending the command is a typecheck. The arm was `tsc ` with
+# a space, so `npx tsc`, a bare `tsc` and `pnpm exec tsc` left a checkpoint
+# after a clean typecheck. The control is a different tool whose name starts
+# with tsc.
+R34=""
+for C34 in 'v|npx tsc' 'v|tsc' 'v|pnpm exec tsc' 'n|npx tsc-alias'; do
+  reset_cwd
+  T="$TMP_HOME/case34e.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "${C34#*|}")" "$TR_OK"
+  run_hook "$T"
+  if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null; then
+    [[ "${C34%%|*}" == n ]] || R34+=" '${C34#*|}':not-a-validation"
+  else
+    [[ "${C34%%|*}" == v ]] || R34+=" '${C34#*|}':validated"
+  fi
+done
+if [[ -z "$R34" ]]; then
+  ok "Case 34e: npx tsc, tsc and pnpm exec tsc validate at the end of a command; tsc-alias does not"
+else
+  ng "Case 34e:$R34"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL

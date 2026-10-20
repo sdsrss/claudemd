@@ -130,7 +130,8 @@ VALIDATE_RE+="((\./)?node_modules/\.bin/)?"
 VALIDATE_RE+="(node${_OPT}[ \t]+--test|pytest|unittest|mypy|npm${_NPMOPT}[ \t]+(test|t)([ \t\n;&|)<>]|\$)"
 VALIDATE_RE+="|npm${_NPMOPT}[ \t]+run(-script)?${_OPT}[ \t]+${_SCRIPT}|(pnpm|yarn|bun)([ \t]+run)?${_OPT}[ \t]+${_SCRIPT}"
 VALIDATE_RE+="|jest|vitest|go test|cargo[ \t]+(test|clippy|check|nextest|fmt[^;&|\n]*--check)"
-VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_TARGET}|bash tests/|tsc |vue-tsc|eslint"
+# `tsc` takes the word end npm test has: it ends a command as often as not.
+VALIDATE_RE+="|make([ \t]+-${_W}+)*[ \t]+${_TARGET}|bash tests/|tsc([ \t\n;&|)<>]|\$)|vue-tsc|eslint"
 VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clippy|shellcheck|git commit|git push)"
 
 # Single jq pass over last 200 lines: find last user-input message,
