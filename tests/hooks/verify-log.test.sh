@@ -178,4 +178,19 @@ else ng "8 before=$N8 row=$ROW"; fi
 OUT12=$(post 'npm test' 'ok' | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_LOG=1 EVIDENCE_WTREE=1 bash "$HOOK" 2>&1; echo "rc=$?"))
 [[ "$OUT12" == rc=0 ]] && ok "12 no temp file writable: exit 0, nothing printed" || ng "12 no temp file writable: ${OUT12:0:200}"
 
+# 13. Fields read by position: a tab-separated `read` merges an empty field into
+# the next (tab is IFS whitespace), and @tsv writes a backslash as `\\`, so an
+# event with an empty session_id, or a cwd holding a backslash, lost its row.
+RB="$HOME/back\\slash"
+mkdir -p "$RB"
+git -C "$RB" init -q -b main && git -C "$RB" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+N13=$(runs | wc -l | tr -d ' ')
+jq -cn --arg d "$R" '{hook_event_name:"PostToolUse", session_id:"", tool_use_id:"tu13", cwd:$d, tool_name:"Bash", tool_input:{command:"npm test"}, tool_response:{stdout:"ok", stderr:""}}' \
+  | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+post 'npm test' 'ok' "$RB" | EVIDENCE_WTREE=1 bash "$HOOK" >/dev/null 2>&1
+TU13=$(jq -r 'select(.hook=="verify-log" and .event=="verify-run") | .tool_use_id // .extra.tool_use_id // empty' "$LOG" 2>/dev/null | tail -n 2 | tr '\n' ' ')
+N13B=$(runs | wc -l | tr -d ' ')
+[[ $((N13B - N13)) == 2 && "$TU13" == "tu13 tu9 " ]] && ok "13 an empty session_id and a cwd with a backslash each still log their run" \
+  || ng "13 rows added=$((N13B - N13)) (want 2), tool_use_ids=[$TU13]"
+
 claudemd_assert_summary

@@ -45,10 +45,15 @@ hook_kill_switch VERIFY_LOG || exit 0
 hook_require_jq || { hook_record_failopen verify-log jq-missing; exit 0; }
 
 EVENT=$(hook_read_event) || exit 0
-FIELDS=$(hook_jq_field verify-log "$EVENT" '[.tool_name // "", .session_id // "", .tool_use_id // "", .cwd // ""] | @tsv') || exit 0
-IFS=$'\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD < <(printf '%s\n' "$FIELDS")
+# NUL-separated (hook-common.sh): a tab-separated `read` merged an empty
+# session_id into the next field, and @tsv's `\\` for a backslash in cwd stayed
+# doubled, so either event lost its row.
+hook_read_bash_fields verify-log "$EVENT" || exit 0
+TOOL="$HOOK_TOOL_NAME"
+CMD="$HOOK_CMD"
+hook_read_telemetry_ids "$EVENT"
+CWD="$EVENT_CWD"
 [[ "$TOOL" == Bash && -n "$CWD" && -d "$CWD" ]] || exit 0
-CMD=$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [[ -n "$CMD" ]] || exit 0
 
 OUT=$(printf '%s' "$EVENT" | jq -r '(.tool_response.stdout // "") | .[0:20000]' 2>/dev/null)

@@ -370,10 +370,10 @@ const MUTATIONS = [
     /^hooks\/session-start-check\.sh:\d+: compound writes stdout to a file/,
   ],
   [
-    "verify-log's fields back on a here-string",
+    "verify-log's failure check back on a here-string",
     'hooks/verify-log.sh',
-    `IFS=$'\\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD < <(printf '%s\\n' "$FIELDS")`,
-    `IFS=$'\\t' read -r TOOL SESSION_ID TOOL_USE_ID CWD <<<"$FIELDS"`,
+    `grep -Eq "$FAIL_OUT_RE" < <(printf '%s\\n%s' "$OUT" "$ERR") && exit 0`,
+    `grep -Eq "$FAIL_OUT_RE" <<<"$OUT"$'\\n'"$ERR" && exit 0`,
     /^hooks\/verify-log\.sh:\d+: here-string/,
   ],
   [
