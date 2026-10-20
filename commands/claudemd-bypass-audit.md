@@ -38,5 +38,5 @@ Format: lead with `citeRecall`, `bypassRate`, and the top-5 bypassed memories. S
 **Reading the signal**:
 - `citeRecall ≥ 60%` over 30d with ≥20 measurable events = R3 Step 2 working as designed; cite-#NN contract loop is observable.
 - `citeRecall < 30%` consistently = either (a) suggestions are too noisy (FP rate high — investigate top suggested files for over-trigger patterns) or (b) agent is genuinely bypassing relevant memories (real cite-recall problem).
-- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are gone from `~/.claude/projects/<encoded>/` (deleted, or the sessions were synthetic), or the rows name no project and `--cwd` is not the project where they fired. Only that last case is fixed by re-running with `--cwd=<that project>`.
+- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are in neither place the audit looks: the project each row names, then `--cwd`. A deleted or synthetic session cannot be recovered; for sessions that ran in another project, re-run with `--cwd=<that project>`.
 - Newly added memories may show 100% bypass for their first few suggest events while the agent hasn't yet learned to look at them — that's a Bayesian prior issue, not a measurement bug. Per §13.3 promotion criteria, fold into the existing 30d-default-OFF FP-collection window before treating as load-bearing.

@@ -36,7 +36,7 @@ test('bypass-audit: the page says --cwd is a lookup fallback, as --help does', (
   );
   assertLine(
     'bypass-audit',
-    '- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are gone from `~/.claude/projects/<encoded>/` (deleted, or the sessions were synthetic), or the rows name no project and `--cwd` is not the project where they fired. Only that last case is fixed by re-running with `--cwd=<that project>`.'
+    '- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are in neither place the audit looks: the project each row names, then `--cwd`. A deleted or synthetic session cannot be recovered; for sessions that ran in another project, re-run with `--cwd=<that project>`.'
   );
   const r = run('lesson-bypass-audit.js', ['--help'], box.env());
   assert.equal(r.status, 0);
@@ -46,7 +46,7 @@ test('bypass-audit: the page says --cwd is a lookup fallback, as --help does', (
 test('analyze: the page names exit 1 for an audit that cannot run, and the CLI exits 1 on a non-directory --project', () => {
   assertLine(
     'analyze',
-    'This command is read-only. Without `--strict` it exits 0 whatever it finds; `--strict` exits 1 on CRITICAL or HIGH findings — suitable for pre-tag ship gate. Either way it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a spec file it cannot read) and 2 on an argument it does not accept: report those as a failed run, not as a clean audit.'
+    "This command is read-only. Without `--strict` it exits 0 whatever it finds; `--strict` exits 1 on CRITICAL or HIGH findings — suitable for pre-tag ship gate. Either way it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a file it reads that cannot be read, such as a spec file or the project's MEMORY.md) and 2 on an argument it does not accept: report those as a failed run, not as a clean audit."
   );
   const missing = path.join(box.home, 'no-such-project');
   const r = run('spec-coherence-audit.js', [`--project=${missing}`], box.env());
@@ -59,34 +59,38 @@ test('analyze: the page names exit 1 for an audit that cannot run, and the CLI e
   assert.match(help.stdout, /Default: exit 0 whatever the findings \(advisory\)\./);
 });
 
-test('uninstall: the restore bullet says a symlinked file comes back as the same link', () => {
+test('uninstall: the restore bullet says a symlinked file comes back as a link', () => {
   assertLine(
     'uninstall',
-    '  This restores; it does not remove. A file that was a symlink when claudemd backed it up (a `CLAUDE.md` kept in a dotfiles repo, say) comes back as the same link to the same target, not as a copy. `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` — spec files claudemd added that you never had — are left in place, because removing spec files is `CLAUDEMD_SPEC_ACTION=delete` and that path is gated behind `CLAUDEMD_CONFIRM=1`. Claude Code does not auto-load those three, so they are inert; delete them by hand if you want them gone. `~/.claude/spec-modules/` is left in place too, and with the claudemd hooks gone nothing injects it.'
+    '  This restores; it does not remove. A file that was a symlink when claudemd backed it up (a `CLAUDE.md` kept in a dotfiles repo, say) comes back as a link to the file it pointed at, not as a copy (an absolute link, also when the original was relative); a link whose target is gone is skipped. `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` — spec files claudemd added that you never had — are left in place, because removing spec files is `CLAUDEMD_SPEC_ACTION=delete` and that path is gated behind `CLAUDEMD_CONFIRM=1`. Claude Code does not auto-load those three, so they are inert; delete them by hand if you want them gone. `~/.claude/spec-modules/` is left in place too, and with the claudemd hooks gone nothing injects it.'
   );
 });
 
-test('refresh: the page relays the reinstall line the script prints when the install fails after the uninstall', () => {
+test('refresh: the page relays what the script prints when the install fails after the uninstall', () => {
   const line =
     'If the script exits non-zero after its uninstall step succeeded, its stderr says the plugin is NOT installed now: relay that and the reinstall commands it prints — `claude plugin install claudemd@claudemd` in a shell, or `/plugin install claudemd@claudemd` and then `/reload-plugins` inside Claude Code. Do not report the refresh as done.';
   assertLine('refresh', line);
-  // The commands the page quotes are the ones the script prints.
-  const sh = fs.readFileSync(path.join(REPO, 'scripts/refresh-plugin.sh'), 'utf8');
-  const plugin = /^PLUGIN="?([^"\n]+)"?$/m.exec(sh)?.[1];
-  assert.equal(plugin, 'claudemd@claudemd');
-  const printed = sh.replaceAll('$PLUGIN', plugin);
-  assert.match(printed, /is NOT installed now/);
-  for (const cmd of [
-    'claude plugin install claudemd@claudemd',
-    '/plugin install claudemd@claudemd',
-    '/reload-plugins',
-  ])
-    assert.ok(printed.includes(cmd) && line.includes(cmd), cmd);
+  // Run the script against a `claude` shim whose install fails, as
+  // refresh-plugin.test.js 162 does, and read what it actually prints.
+  const bin = box.dir('bin');
+  fs.writeFileSync(
+    path.join(bin, 'claude'),
+    '#!/usr/bin/env bash\n[[ "$*" == plugin\\ install* ]] && exit 3\nexit 0\n'
+  );
+  fs.chmodSync(path.join(bin, 'claude'), 0o755);
+  const r = spawnSync('bash', [path.join(REPO, 'scripts/refresh-plugin.sh')], {
+    encoding: 'utf8',
+    env: box.env({ PATH: [bin, '/usr/bin', '/bin'].join(':') }),
+  });
+  assert.equal(r.status, 3, r.stderr);
+  assert.match(r.stderr, /is NOT installed now/);
+  assert.ok(r.stderr.includes('claude plugin install claudemd@claudemd'), r.stderr);
+  assert.ok(r.stderr.includes('/plugin install claudemd@claudemd, then /reload-plugins'), r.stderr);
 });
 
 test('status: every field and value the page names for an unparseable manifest is in the output', () => {
   const line =
-    '- If `plugin.manifestError` is `unparseable`: the manifest at `plugin.manifestPath` exists but is not valid JSON. Relay `plugin.detail`, which names `/claudemd-install` as the fix, and do not suggest `/plugin install`. `plugin.hint` is `manifest-unparseable` unless the cache hint above applies, which keeps its own hint and `cacheVersions`; then give both.';
+    '- If `plugin.manifestError` is `unparseable`: an install manifest is on disk but could not be read. Relay `plugin.detail`, which names `/claudemd-install` as the fix, and do not suggest `/plugin install`. `plugin.hint` is `manifest-unparseable` unless the cache hint above applies, which keeps its own hint and `cacheVersions`; then give both.';
   assertLine('status', line);
   fs.writeFileSync(box.claude('.claudemd-manifest.json'), '{"version":"0.1.0","entr');
   const r = run('status.js', [], box.env());
@@ -109,13 +113,13 @@ test('statusline: the page says remove restores the whole saved slot and adopt r
     "Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer; the host keeps the slot. Then run:"
   );
   const line =
-    "If `adopt` exits 1 with `statusline-adopt failed: statusline: <path> parses to null, not a JSON object` (or `to an array`, `to a JSON number`): nothing was written, and `detect` reads such a file as `absent`. Tell the user to replace the file's content with a JSON object (`{}` is valid) and re-run.";
+    "If `adopt` exits 1 with `statusline-adopt failed: statusline: <path> parses to null, not a JSON object` (or to `an array`, `a JSON string`, `a JSON number` or `a JSON boolean`): nothing was written, and `detect` reads such a file as `absent`. Tell the user to replace the file's content with a JSON object (`{}` is valid) and re-run.";
   assertLine('statusline', line);
   fs.writeFileSync(box.claude('settings.json'), 'null\n');
   const detect = run('statusline-adopt.js', ['detect', '--json'], box.env());
   assert.equal(JSON.parse(detect.stdout).verdict, 'absent');
   const adopt = run('statusline-adopt.js', ['adopt', '--json'], box.env());
   assert.equal(adopt.status, 1);
-  assert.match(adopt.stderr, /^statusline-adopt failed: statusline: \S+ parses to null, not a JSON object/m);
+  assert.match(adopt.stderr, /^statusline-adopt failed: statusline: .+ parses to null, not a JSON object/m);
   assert.equal(fs.readFileSync(box.claude('settings.json'), 'utf8'), 'null\n');
 });

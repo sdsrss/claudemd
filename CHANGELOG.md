@@ -16,21 +16,21 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 **Command pages** (23cf62f)
 - `/claudemd-bypass-audit`: the audit scores every project's suggest rows, each against the transcript in the project the row names; `--cwd` is where a transcript is looked for when that fails or the row names no project, so it does not narrow the numbers. The missing-transcript hint now says when re-running with `--cwd` helps. The page said `--cwd` is "what you want when auditing the project the agent is running in".
-- `/claudemd-analyze`: without `--strict` it exits 0 whatever it finds; it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a spec file it cannot read) and 2 on an argument it does not accept. The page said "exits 0 by default", and `spec-coherence-audit --help` said "Default: always exit 0"; both are corrected.
-- `/claudemd-uninstall restore`: a file that was a symlink when it was backed up comes back as the same link.
+- `/claudemd-analyze`: without `--strict` it exits 0 whatever it finds; it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a file it reads that cannot be read) and 2 on an argument it does not accept. The page said "exits 0 by default", and `spec-coherence-audit --help` said "Default: always exit 0"; both are corrected.
+- `/claudemd-uninstall restore`: a file that was a symlink when it was backed up comes back as a link to the file it pointed at (an absolute link, also when the original was relative); a link whose target is gone is skipped.
 - `/claudemd-refresh`: when the install fails after the uninstall succeeded, the model relays the reinstall commands the script prints instead of reporting the refresh as done.
 - `/claudemd-status`: `plugin.manifestError: "unparseable"`, `manifestPath`, `detail` and the `manifest-unparseable` hint now have a branch on the page; with the cache hint present, both are given.
-- `/claudemd-statusline`: `remove` restores the whole saved statusLine object, `padding` included; `adopt` refuses a `settings.json` that parses to `null`, an array or a number (which `detect` reads as `absent`), and the page says what to tell the user.
+- `/claudemd-statusline`: `remove` restores the whole saved statusLine object, `padding` included; `adopt` refuses a `settings.json` that parses to `null`, an array, a string, a number or a boolean (which `detect` reads as `absent`), and the page says what to tell the user.
 
-**Module triggers** (f68f3e5)
-- `ship`: `打\s*tag` becomes `打\s*(个|一个)?\s*tag`, and `发(个|一个?)版` is added.
-- `debug` (first 300 characters, as before): 测试, 用例, 单测 or CI (ASCII-bounded), then at most four non-punctuation characters, then 挂了, 挂掉, 跑挂, 失败, 红了 or 没过.
+**Module triggers** (f68f3e5, narrowed in the pre-tag review)
+- `ship`: `打\s*tag` becomes `打\s*(个|一个)?\s*tag`, and 发个版 / 发一版 / 发一个版 are added, not after 开, 研 and the other characters the existing `发 <version>` arm excludes (开发一个版本 is not a release) and not before 本号.
+- `debug` (first 300 characters, as before): 测试, 用例, 单测 or CI (ASCII-bounded), then at most two characters that are neither whitespace nor punctuation (`,，。.!！?？;；、:：`), then 挂了, 挂掉, 跑挂, 失败了, 失败 followed by whitespace, punctuation or the end, 红了 or 没过. So 测试失败率, 用例失败时 and 写测试覆盖登录失败的情况 draw nothing.
 - Replayed on this machine's 659 human prompts: `ship` gains 1 (a release request whose session then ran a release command), `debug` gains 0, and no prompt loses a match. 打个tag and 测试挂了 themselves occur in none of them, so the debug arm has no local evidence either way.
 
 **Parallel `housekeeping tmp --apply` count (D#494)** — 0.113.3 backed out a fix that counted a directory only when this process's `rmdir` of it succeeded, because it failed on macOS CI alone. A probe in this release's PR, removed before the tag, raced four processes over 800 directories on every CI leg. On macos-latest, two processes' `rmdir(2)` of the same empty directory both returned success: 801, 897 and 885 successes for 800 directories on Node 20, 22 and 24 (PR CI run 39461011037). On Linux the sum was exactly 800. That design cannot count on macOS, so the count stays as in 0.113.3; `scripts/housekeeping.js` records why beside the removal. No behaviour changes.
 
 **Not changed, and why.**
-- A prompt saying a test did *not* fail (测试没有失败) also matches the new debug arm: the gap allows any two characters before 失败. No such prompt occurs in the replay.
+- Two shapes still match the new debug arm without being a failing test: a test word, two characters, then a failure word (测试没有失败, 用例评审没过). Neither occurs in the replay.
 - `ship` still matches `ship-baseline` and `pre-ship`: of the 2 prompts that matched only through a hyphenated form, 1 was followed by a release, so a tighter bound trades a hit for a miss.
 - English "test failed" / "tests fail" still draw no debug module (`failing` does); this release fixes the Chinese phrasings 0.113.3 named.
 - `/claudemd-doctor`'s `hook-fail-open` row still stays red for 30 days after a real fail-open: making it clear on recovery changes doctor's exit-code semantics, outside this release.
@@ -38,8 +38,8 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - The other items under 0.113.3's "Not changed" stand.
 
 **Tests.**
-- `tests/scripts/command-page-behaviour.test.js` (new) pins each new page sentence as a whole line and, in a sandbox HOME, runs what it names: `spec-coherence-audit` exits 1 on a missing `--project` and 2 on an unknown flag, its `--help` no longer says "always exit 0", `lesson-bypass-audit --help` says `--cwd` does not narrow the audit, `status` returns every field and value the page names (without and with a plugin cache), `statusline-adopt` refuses a `null` settings file and leaves it as it was, and `refresh-plugin.sh` prints the commands the page quotes. Before the page edits 0 of 6 passed; after, 6 of 6. Putting the old `--help` line back fails the analyze case.
-- `tests/hooks/spec-module-inject.test.sh` case 21: 11 phrasings that missed before (打个tag, 打一个 tag, 发个版, 发一版, 发一个版本, 测试挂了, 用例跑挂了, 单测失败了, CI 红了, ci没过, 测试又挂掉了) and 9 neighbours that must draw nothing (a tag without 打, 打个招呼, 发个链接, 测试通过了, 用例写得不错, 上传失败了, 页面红了, `CI_job`, CI 配置). Before, all 11 missed; after, 21 of 21 cases pass.
+- `tests/scripts/command-page-behaviour.test.js` (new) pins each new page sentence as a whole line and, in a sandbox HOME, runs what it names: `spec-coherence-audit` exits 1 on a missing `--project` and 2 on an unknown flag, its `--help` no longer says "always exit 0", `lesson-bypass-audit --help` says `--cwd` does not narrow the audit, `status` returns every field and value the page names (without and with a plugin cache), `statusline-adopt` refuses a `null` settings file and leaves it as it was, and `refresh-plugin.sh`, run against a `claude` shim whose install fails, exits with that status and prints the commands the page quotes. Before the page edits 0 of 6 passed; after, 6 of 6. Putting the old `--help` line back fails the analyze case.
+- `tests/hooks/spec-module-inject.test.sh` case 21: 11 phrasings that missed before (打个tag, 打一个 tag, 发个版, 发一版, 发一个版本, 测试挂了, 用例跑挂了, 单测失败了, CI 红了, ci没过, 测试又挂掉了) and 20 neighbours that must draw nothing, among them a tag without 打, 发个链接, 测试通过了, 上传失败了, 开发一个版本, 发个版本号, 测试失败率, 写测试覆盖登录失败的情况 and `CI_1挂了`. Before, all 11 missed; after, 21 of 21 cases pass. Each bound of the new arms (the 开发 lookbehind, 本号, CI's ASCII bounds, the two-character gap, its punctuation stop, the 失败 lookahead) was removed in turn, and each removal turned the case red.
 - `docs/ARCHITECTURE.md`'s suite count follows the new node suite (95).
 - @@CHECKS@@
 

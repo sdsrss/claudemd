@@ -23,4 +23,4 @@ Out of scope (covered by sibling commands):
 - MEMORY.md tag-specificity → `/claudemd-doctor` (`memory-tag-specificity` check)
 - rule-hits.jsonl telemetry → `/claudemd-audit`
 
-This command is read-only. Without `--strict` it exits 0 whatever it finds; `--strict` exits 1 on CRITICAL or HIGH findings — suitable for pre-tag ship gate. Either way it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a spec file it cannot read) and 2 on an argument it does not accept: report those as a failed run, not as a clean audit.
+This command is read-only. Without `--strict` it exits 0 whatever it finds; `--strict` exits 1 on CRITICAL or HIGH findings — suitable for pre-tag ship gate. Either way it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a file it reads that cannot be read, such as a spec file or the project's MEMORY.md) and 2 on an argument it does not accept: report those as a failed run, not as a clean audit.
