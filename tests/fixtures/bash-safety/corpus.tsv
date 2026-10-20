@@ -79,6 +79,10 @@ deny	rm -rf $HOME/ (trailing slash, no subpath)	rm -rf $HOME/
 deny	rm -rf ~ (bare tilde)	rm -rf ~
 deny	rm -rf ~/ (tilde, trailing slash)	rm -rf ~/
 deny	find ~ -delete (bare tilde, no primary)	find ~ -delete
+# A start point ending in `/.` names the directory itself, so these delete
+# everything under home; the residue `/.` reads as a subpath (residual F21).
+xfn	S8-DOTSTART1 find ~/. -delete (start point ends in /.)	find ~/. -delete
+xfn	S8-DOTSTART2 find $HOME/. -delete (start point ends in /.)	find $HOME/. -delete
 pass	rm -rf ~/cache (tilde with a subpath)	rm -rf ~/cache
 pass	rm -rf ~/* (tilde with a glob, as $HOME/*)	rm -rf ~/*
 pass	find ~ -name -delete (bounded find, as $HOME)	find ~ -name '*.tmp' -delete
@@ -86,7 +90,7 @@ pass	rm -rf ./~ (a directory literally named ~)	rm -rf ./~
 # The gate reads targets after quote removal, so a quoted `~` (a directory
 # literally named ~, no expansion) reads as the bare one: residual F20; the
 # deny names ./~, which passes.
-xfp	F20 rm -rf "~" (quoted, no expansion)	rm -rf "~"
+xfp	S8-TILDEQ1 rm -rf "~" (quoted, no expansion)	rm -rf "~"
 
 # === pattern 2: npx unpinned ===
 deny	npx prettier (bare)	npx prettier
@@ -682,7 +686,7 @@ deny	npm x unpinned (alias of npm exec)	npm x some-unknown-pkg
 deny	npm x scoped unpinned	npm x @scope/some-unknown-pkg
 pass	npm x pinned	npm x prettier@3.0.0
 pass	npm --prefix x run build (a flag argument named x)	npm --prefix x run build
-xfn	F19 npm --yes x unpinned (flag before the alias)	npm --yes x some-unknown-pkg
+xfn	S8-NPMX1 npm --yes x unpinned (flag before the alias)	npm --yes x some-unknown-pkg
 
 # --- F31 (2026-07-27 audit, L1): indented terminator belongs to `<<-` only ---
 # bash ends a plain `<<EOF` body only at an EOF in column 0, so in the first row
