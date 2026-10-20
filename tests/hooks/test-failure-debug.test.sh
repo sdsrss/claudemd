@@ -138,4 +138,12 @@ E14=$(fail_event 'npm test' s14 | DEBUG_ON_TEST_FAILURE=1 bash "$HOOK" 2>&1 >/de
 O14=$(fail_event 'npm test' s14b | run | ctx)
 [[ -z "$E14" && -n "$O14" ]] && ok "14 an unwritable session list writes nothing to stderr" || ng "14 stderr: $E14"
 
+# 15. A lock left by a hook killed between taking and releasing it (a timeout)
+# blocked debug.md for the rest of the session (0.113.3 pre-tag review). The
+# lock is held for one grep and one append, so one older than a minute is stale.
+touch "$HOME/.claude/.claudemd-state/modinj-s15.debug-lock"
+touch -t 200001010000 "$HOME/.claude/.claudemd-state/modinj-s15.debug-lock"
+O15=$(fail_event 'npm test' s15 | run | ctx)
+[[ -n "$O15" ]] && ok "15 a lock older than a minute does not block the injection" || ng "15 stale lock blocked debug.md"
+
 claudemd_assert_summary

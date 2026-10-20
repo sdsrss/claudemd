@@ -82,8 +82,10 @@ MOD_BODY=$(specmod_body "$MOD")
 # around a re-check and the append lets one through; a lock that EXISTS means
 # another call is injecting now. Released, not kept as a claim: session-start
 # clears the list on compaction so the module can come back, and a kept claim
-# would not be.
+# would not be. The lock is held for one grep and one append, so one older than
+# a minute was left by a hook killed in between (a timeout): it is stale.
 LOCK="$STATE_DIR/modinj-$SESSION_ID.debug-lock"
+[[ -n "$(find "$LOCK" -mmin +1 2>/dev/null)" ]] && rm -f "$LOCK" 2>/dev/null
 if ! (set -C; : > "$LOCK") 2>/dev/null; then [[ -e "$LOCK" ]] && exit 0; fi
 grep -qx debug "$SEEN" 2>/dev/null && { rm -f "$LOCK" 2>/dev/null; exit 0; }
 # 2>/dev/null first: a failed `>>` open reports before later redirections apply.
