@@ -674,6 +674,27 @@ test('scanStateDir reaps vocab-scan sentinels', () => {
   );
 });
 
+test('scanStateDir reaps branch-prune hint claims, nothing else', () => {
+  // branch-prune.sh creates one empty branch-prune-<sid>-<cksum>-<len> per set
+  // of merged branches a session was hinted; nothing reaps it on session end.
+  const stateDir = path.join(tmpDir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  for (const f of [
+    'branch-prune-0b9c5c1e-4f7a-4d4e-9a51-2f0f1a9e7c3d-3053201415-1534',
+    'branch-prune-s1',
+    'branch-prune.lock',
+  ]) {
+    const p = path.join(stateDir, f);
+    fs.writeFileSync(p, '');
+    setMtime(p, 30);
+  }
+  const { candidates } = scanStateDir({ stateDir });
+  assert.deepEqual(
+    candidates.map(c => [c.kind, path.basename(c.path)]),
+    [['branch-prune', 'branch-prune-0b9c5c1e-4f7a-4d4e-9a51-2f0f1a9e7c3d-3053201415-1534']]
+  );
+});
+
 test('scanStateDir reaps stale deferred notices and their delivering claims, nothing else', () => {
   // evidence-gate.sh queues notice-<sid>.evidence-gate for deferred-notice.sh,
   // which renames it to ….delivering.<pid> before reading. A session that never

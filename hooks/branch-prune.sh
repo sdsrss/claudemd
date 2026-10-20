@@ -26,6 +26,14 @@
 # with no upstream; nothing while a rebase or bisect is in progress in a
 # worktree it can see. Silent when there is nothing to list.
 #
+# Bounded: at most CAP names, in the list and in the command, then "(+M more)".
+# Both used to carry every name, and 150 merged branches made 10,841 characters
+# of additionalContext (the suite's case 8), past the 10,000 Claude Code keeps
+# inline. And once per session for an unchanged set (the claim below): the
+# same hint used to repeat on every merge, pull, fetch or push. A changed set —
+# the listed ones deleted, a new one merged — is hinted again, so the next CAP
+# follow.
+#
 # Known limits: the trigger reads the command TEXT, so a commit message that
 # mentions `git pull` fires it; and it inspects the event's cwd, not a repo
 # named by `git -C` or a `cd`.
@@ -71,16 +79,37 @@ OUT=$(platform_timeout 8 node "$SCRIPT" branches --cwd="$CWD" 2>/dev/null) || ex
 N=$(printf '%s' "$OUT" | jq -r '.deletable | length' 2>/dev/null) || exit 0
 [[ "$N" =~ ^[0-9]+$ ]] && ((N > 0)) || exit 0
 
+# Once per session per set. The claim is an O_CREAT|O_EXCL create (as in
+# cross-repo-write-check.sh), keyed by the session and a cksum of the cwd and
+# every listed name, so concurrent calls hint once and a changed set hints
+# again. With no session id or no HOME there is nothing to key on, and every
+# call hints. /claudemd-clean-residue reaps the claims past its retention window.
+if [[ -n "$SESSION_ID" && -n "$HOME" ]]; then
+  KEY=$( (printf '%s\n' "$CWD" && printf '%s' "$OUT" | jq -r '.deletable[].name') | cksum 2>/dev/null | awk '{print $1"-"$2}')
+  STATE_DIR="$HOME/.claude/.claudemd-state"
+  SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_-' '_')
+  if [[ -n "$KEY" ]] && mkdir -p "$STATE_DIR" 2>/dev/null; then
+    (set -C; : >"$STATE_DIR/branch-prune-${SAFE_SID}-${KEY}") 2>/dev/null || exit 0
+  fi
+fi
+
 # The command is built by jq's @sh, never by interpolation: git accepts `$( )`,
 # braces, `;` and a leading `-` in branch names and anything in a directory
 # name, and this line exists to be pasted into a shell. Unquoted, a branch
 # named `{-D,wip}` brace-expanded into `branch -d -D wip` and force-deleted
 # unmerged work, and `$(…)` in a name or the cwd ran (0.93.0 claims review
 # H1/M1). `--` ends option parsing for a name that starts with `-`.
-NAMES=$(printf '%s' "$OUT" | jq -r '[.deletable[].name] | join(", ")')
+CAP=10
+NAMES=$(printf '%s' "$OUT" | jq -r --argjson c "$CAP" '[.deletable[:$c][].name] | join(", ")')
 DEF=$(printf '%s' "$OUT" | jq -r '.defaultBranch')
-CMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" '"git -C \($cwd | @sh) branch -d -- \([.deletable[].name] | @sh)"')
-MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise. The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
+CMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" --argjson c "$CAP" '"git -C \($cwd | @sh) branch -d -- \([.deletable[:$c][].name] | @sh)"')
+MORE=""
+REST=""
+if ((N > CAP)); then
+  MORE=" (+$((N - CAP)) more)"
+  REST=" The command covers the $CAP listed; once they are deleted, the next merge, pull, fetch or push lists the others."
+fi
+MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES$MORE. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise.$REST The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0
