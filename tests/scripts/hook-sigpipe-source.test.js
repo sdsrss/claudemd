@@ -410,7 +410,14 @@ const MUTATIONS = [
     'hooks/pre-bash-safety-check.sh',
     "    REASONS+=$'\\n  - a fetch/transport command\\'s output is executed by a shell or interpreter — unknown-origin code'\n  fi\n",
     '    REASONS+=$\'\\n  - a fetch/transport command\\\'s output is executed by a shell or interpreter — unknown-origin code\'\n    echo "$CMD" | grep -qE "curl" && exit 0\n  fi\n',
-    /^hooks\/pre-bash-safety-check\.sh:2220: a pipeline into an early-exit reader/,
+    // The inserted line is the one after the REASONS line, wherever edits above it moved it.
+    new RegExp(
+      `^hooks/pre-bash-safety-check\\.sh:${
+        readReal('hooks/pre-bash-safety-check.sh')
+          .split('\n')
+          .findIndex(l => l.includes("a fetch/transport command\\'s output is executed")) + 2
+      }: a pipeline into an early-exit reader`
+    ),
   ],
   [
     'a second pipeline on a line that holds a KEPT site (pre-tag review M2)',
