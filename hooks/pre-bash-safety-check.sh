@@ -1654,7 +1654,11 @@ NPX_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space
 # fetch-execute, one space apart. Not a new rule, a missing spelling of an
 # existing one, so it joins the family here and inherits lockfile → local →
 # pinned rather than getting a parallel check of its own.
-NPX_CMD_REGEX="^(npx|bunx|npm${NPX_GLOBAL_FLAGS}[[:space:]]+exec|pnpm${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|yarn${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|bun${NPX_GLOBAL_FLAGS}[[:space:]]+x)([[:space:]]|$)"
+# `npm x` is npm's own alias of `npm exec` and joins the same way, but only
+# right after `npm`: with flags allowed in between, a flag's argument named x
+# (`npm --prefix x run build`) would read as the subcommand. A flag before `x`
+# is residual F19 (docs/S8-RESIDUALS.md).
+NPX_CMD_REGEX="^(npx|bunx|npm${NPX_GLOBAL_FLAGS}[[:space:]]+exec|npm[[:space:]]+x|pnpm${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|yarn${NPX_GLOBAL_FLAGS}[[:space:]]+dlx|bun${NPX_GLOBAL_FLAGS}[[:space:]]+x)([[:space:]]|$)"
 runner=""
 npx_seg=""
 # Every runner segment is examined, not only the first. The loop used to stop
@@ -2643,7 +2647,7 @@ REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
 Spec: ~/.claude/CLAUDE.md §8 SAFETY —
   • \"rm -rf \$VAR without validating VAR\" (forbidden)
   • NPX: \"lockfile → local → pinned whitelist; none → [AUTH REQUIRED]\"
-    (covers npx / bunx / bun x / npm exec / pnpm dlx / yarn dlx, plus runners
+    (covers npx / bunx / bun x / npm exec / npm x / pnpm dlx / yarn dlx, plus runners
      whose argument is itself remote: deno run <URL|npm:|jsr:>, pip install
      git+…/<artifact URL>, cargo install --git, go run|install …@latest,
      nix run github:…)

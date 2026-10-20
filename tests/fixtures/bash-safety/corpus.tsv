@@ -673,6 +673,16 @@ pass	F30 npm run exec-tests (bare word is a subcommand)	npm run exec-tests
 pass	F30 npm --prefix with run subcommand	npm --prefix ./pkgs run build
 pass	F30 yarn --cwd install	yarn --cwd pkgs install
 pass	F30 npm --prefix separated-arg exec pinned	npm --prefix ./pkgs exec prettier@3.0.0
+# `npm x` is npm's own alias of `npm exec` (npm 11 docs: "alias: x"); it was
+# not in the family, so `npm x some-unknown-pkg` passed while `npm exec` denied
+# (converge backlog 179b). Only the adjacent spelling joins: with flags allowed
+# in between, a flag's argument named x (`npm --prefix x run build`) would read
+# as the subcommand. A flag before `x` is residual F19 (docs/S8-RESIDUALS.md).
+deny	npm x unpinned (alias of npm exec)	npm x some-unknown-pkg
+deny	npm x scoped unpinned	npm x @scope/some-unknown-pkg
+pass	npm x pinned	npm x prettier@3.0.0
+pass	npm --prefix x run build (a flag argument named x)	npm --prefix x run build
+xfn	F19 npm --yes x unpinned (flag before the alias)	npm --yes x some-unknown-pkg
 
 # --- F31 (2026-07-27 audit, L1): indented terminator belongs to `<<-` only ---
 # bash ends a plain `<<EOF` body only at an EOF in column 0, so in the first row
