@@ -137,6 +137,19 @@ test('status reports not-installed when manifest missing', async () => {
   assert.equal(r.plugin.hint, undefined);
 });
 
+test('160: a manifest on disk that does not parse is named, not reported as not-installed', async () => {
+  // A truncated write used to read exactly like no install at all — bare
+  // `{installed:false}` — and /claudemd-status then suggested `/plugin
+  // install`, a no-op on an installed plugin. doctor.js names this state.
+  const manifest = path.join(tmpHome, '.claude/.claudemd-manifest.json');
+  fs.writeFileSync(manifest, '{"version":"0.1.0","entr');
+  const r = await status();
+  assert.equal(r.plugin.installed, false);
+  assert.equal(r.plugin.hint, 'manifest-unparseable', JSON.stringify(r.plugin));
+  assert.equal(r.plugin.manifestPath, manifest);
+  assert.match(r.plugin.detail, /not valid JSON.*\/claudemd-install/);
+});
+
 test('status survives a manifest with version but no entries array (v0.23.11)', async () => {
   // A legacy / hand-edited / truncated manifest may carry `version` without
   // `entries`. Pre-fix `m.data.entries.length` threw an unguarded TypeError
