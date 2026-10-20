@@ -1037,11 +1037,14 @@ test('R11-26 CLI: --sample rejects a non-positive-integer with exit 1', () => {
 // saying whether they were complete. The line prints in BOTH states on purpose:
 // one that speaks up only on trouble cannot be told from one that stopped
 // printing (memory: a gate must report its cardinality).
-function runCliReport(transcriptLines) {
+function runCliReport(transcriptLines, { tasksIsFile = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-cli-md-'));
   const fakeHome = path.join(tmp, 'home');
   const fakeCwd = path.join(tmp, 'cwd');
   fs.mkdirSync(fakeCwd, { recursive: true });
+  // A regular file where tasks/ should be: the report cannot be written, and
+  // unlike a mode-555 dir this holds under root too.
+  if (tasksIsFile) fs.writeFileSync(path.join(fakeCwd, 'tasks'), '');
   const proj = path.join(fakeHome, '.claude', 'projects', encodeProjectCwd(fakeCwd));
   fs.mkdirSync(proj, { recursive: true });
   fs.writeFileSync(path.join(proj, 'a.jsonl'), transcriptLines.join('\n') + '\n');
@@ -1083,6 +1086,34 @@ test('R11-24: the markdown report states reader integrity in both states', () =>
   assert.doesNotMatch(dirty.md, /every transcript read in full/);
   // …and stdout says so too, so an operator who never opens the file still sees it.
   assert.match(dirty.r.stdout, /Reader integrity:.*denominators below are short/);
+});
+
+// D#105: an unwritable report path printed the markdown to stdout and exited 0
+// with nothing on stderr — no `Wrote` line, no per-rule summary, no file —
+// while USAGE promised both. A wrapper that branches on the code and then opens
+// the file found nothing and no reason.
+test('D#105: a report that cannot be written says why on stderr, still prints the summary, exits 1', () => {
+  const good = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: 'Done: fixed it.' }] },
+  });
+  const { r, md } = runCliReport([good], { tasksIsFile: true });
+  assert.equal(md, null, 'premise: nothing was written');
+  assert.equal(r.status, 1, `a failed write is a runtime error; stderr=${r.stderr}`);
+  assert.match(
+    r.stderr,
+    /\[claudemd\] sampling-audit failed: could not write \S*tasks\/sampling-audit-\d{4}-\d{2}-\d{2}\.md: E[A-Z]+/
+  );
+  assert.match(r.stdout, /^ {2}§10-V: \d+\/\d+ \(rate /m, 'the per-rule summary still prints');
+  assert.match(r.stdout, /^ {2}§5-hard-auth: \d+\/\d+ \(rate /m);
+  assert.match(r.stdout, /^# /m, 'the report itself goes to stdout so the scan is not lost');
+  assert.doesNotMatch(r.stdout, /^Wrote /m, 'no claim of a file that is not there');
+
+  // Control: the same transcript with a writable cwd exits 0 and says Wrote.
+  const ok = runCliReport([good]);
+  assert.equal(ok.r.status, 0, `stderr=${ok.r.stderr}`);
+  assert.match(ok.r.stdout, /^Wrote /m);
+  assert.equal(ok.r.stderr, '');
 });
 
 // --- H4 default-ASK measure (audit 20260906-231957 §7.2) -------------------

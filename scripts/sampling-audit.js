@@ -2034,9 +2034,10 @@ Env: CLAUDEMD_SAMPLING_DAYS=N (overridden by --days=N when both set).
 Wrapped by /claudemd-sampling-audit.
 
 Output (non-JSON mode): writes \`tasks/sampling-audit-<YYYY-MM-DD>.md\` and
-prints a per-rule summary to stdout.
+prints a per-rule summary to stdout. When that file cannot be written, stderr
+says why, the report and the summary go to stdout, and the exit code is 1.
 
-Exit codes: 0 success | 1 validation error | 2 argv-shape error.`;
+Exit codes: 0 success | 1 validation or runtime error (incl. an unwritable report file) | 2 argv-shape error.`;
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
@@ -2113,24 +2114,30 @@ if (invokedAsMain(import.meta.url)) {
       console.log('  Re-run with --force to replace it, or --json to print without writing.');
       return;
     }
+    // An unwritable path (read-only checkout, `tasks` is a file) printed the
+    // report and exited 0 with nothing on stderr (D#105): a caller that checks
+    // the code and opens the file found no file and no reason. Now the reason
+    // goes to stderr, the report and the summary to stdout, and the run exits 1.
     try {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, md);
       console.log(
         `Wrote ${outPath} — ${result.scannedTranscripts} transcripts, ${result.totalAssistantTextRows} assistant message rows scanned.`
       );
-      const badLines = (result.malformedTranscripts || []).reduce((n, m) => n + m.lines, 0);
-      if (badLines > 0 || (result.unreadableTranscripts || []).length > 0) {
-        console.log(`  ${integrityLine(result).replace(/\*\*/g, '')}`);
-      }
-      for (const k of RULE_KEYS) {
-        const v = result.byRule[k];
-        console.log(
-          `  ${k}: ${v.violations}/${v.opportunities} (rate ${fmtRate(v.violations, v.opportunities)}, ${v.status})`
-        );
-      }
-    } catch {
+    } catch (e) {
+      console.error(`[claudemd] sampling-audit failed: could not write ${outPath}: ${e.code || e.message}`);
       console.log(md);
+      process.exitCode = 1;
+    }
+    const badLines = (result.malformedTranscripts || []).reduce((n, m) => n + m.lines, 0);
+    if (badLines > 0 || (result.unreadableTranscripts || []).length > 0) {
+      console.log(`  ${integrityLine(result).replace(/\*\*/g, '')}`);
+    }
+    for (const k of RULE_KEYS) {
+      const v = result.byRule[k];
+      console.log(
+        `  ${k}: ${v.violations}/${v.opportunities} (rate ${fmtRate(v.violations, v.opportunities)}, ${v.status})`
+      );
     }
   })().catch(err => {
     // Same handler as the .then()-shaped entry points. Without it a throw
