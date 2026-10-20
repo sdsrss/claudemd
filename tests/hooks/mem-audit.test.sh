@@ -361,18 +361,23 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 14: the index link is the last `](….md)` on the line. A title holding
-# `(legacy.md)` and a description mentioning `(other.md)` each produced an
-# index_orphan for a file the line does not link. Control: a link whose target
-# is really missing is still reported, and nothing else is.
+# Case 14: the index link is the first `](….md)` on the line. A title holding
+# `(legacy.md)`, a description mentioning `(other.md)`, and (0.113.3 pre-tag
+# review L3) a description linking another memory `[old](feedback_old.md)` each
+# produced an orphan for a file the line does not link. Control: a link whose
+# target is really missing is still reported, and nothing else is.
 # --------------------------------------------------------------------------
 reset_sentinel
 rm -rf "$HOME/.claude/projects"
 seed "-proj-" "feedback_title.md" "$COMPLIANT_NO_LINK"
 seed "-proj-" "feedback_desc.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "feedback_sup.md" "$COMPLIANT_NO_LINK"
+seed "-proj-" "feedback_old.md" "$COMPLIANT_NO_LINK"
 seed "-proj-" "MEMORY.md" "# Memory index
 - [Fix for (legacy.md) parsing](feedback_title.md) — text
 - [Desc mention](feedback_desc.md) — see also (other.md)
+- [Rule](feedback_sup.md) — supersedes [old](feedback_old.md)
+- [Old rule](feedback_old.md) — text
 - [Gone](feedback_gone.md) — text"
 OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
 ERR=$(cat "$ERRF"); rm -f "$ERRF"

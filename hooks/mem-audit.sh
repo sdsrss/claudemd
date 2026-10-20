@@ -179,11 +179,11 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
   # Extract the linked file from each MEMORY.md index line. Markdown link
-  # syntax `[Title](file.md) ...` — the LAST `](….md)` on the line (the greedy
-  # `.*`), one per line. Every `(….md)` token on the line used to count, so a
-  # title holding `(legacy.md)` or a description mentioning `(other.md)` was
-  # reported as an index_orphan.
-  in_index_list=$(sed -nE 's/.*]\(([^)]+\.md)\).*/\1/p' "$index_file" 2>/dev/null)
+  # syntax `[Title](file.md) ...` — the FIRST `](` on the line, one per line.
+  # Every `(….md)` token on the line used to count, so a title holding
+  # `(legacy.md)` or a description mentioning `(other.md)` was reported as an
+  # index_orphan; the last `](….md)` picked a description's own link instead.
+  in_index_list=$(sed -nE 's/^([^]]|][^(])*]\(([^)]+\.md)\).*/\2/p' "$index_file" 2>/dev/null)
   [[ -n "$in_index_list" ]] && in_index_list="$in_index_list"$'\n'
 
   # Set difference in awk, both directions, instead of a `printf | grep -qFx`
