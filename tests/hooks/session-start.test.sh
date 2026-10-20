@@ -108,6 +108,24 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Case 7b: the same mismatch on a machine with no ~/.claude/logs. The
+# "auto-upgrade: manifest … → plugin …" line was appended before the hook
+# created that dir: "No such file or directory" on stderr, which the user sees,
+# and the line lost. A `node` shim that exits 0 stands in for the install.
+H7B=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$H7B/.claude" "$H7B/fakebin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$H7B/fakebin/node"; chmod +x "$H7B/fakebin/node"
+echo '{"version":"0.0.1","entries":[]}' > "$H7B/.claude/.claudemd-manifest.json"
+# 3>&2 (the capture pipe): $(…) waits for the detached install, as in case 7.
+ERR7B=$(HOME="$H7B" PATH="$H7B/fakebin:$PATH" bash "$HOOK" <<<'{}' 2>&1 >/dev/null 3>&2)
+LOG7B=$(cat "$H7B/.claude/logs/claudemd-bootstrap.log" 2>/dev/null)
+rm -rf "${H7B:?}"
+if [[ -z "$ERR7B" ]] && grep -qF 'auto-upgrade: manifest 0.0.1 → plugin' <<<"$LOG7B"; then
+  echo "PASS: 7b no ~/.claude/logs yet: the auto-upgrade line is logged, nothing on stderr"
+else
+  echo "FAIL: 7b (stderr=$ERR7B log=$LOG7B)"; FAIL=$((FAIL+1))
+fi
+
 # --- v0.4.0 upstream-check cases ---
 # Restore manifest to plugin-current version so subsequent cases hit the
 # manifest-MATCH path (where upstream_check fires).

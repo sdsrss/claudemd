@@ -861,8 +861,10 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
   fi
   # Mismatch: log intent, then fall through to the install block below which
   # writes the real bootstrap trail. Skip upstream-check on mismatch — the
-  # local upgrade is already in flight; banner would compound noise.
-  ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" ) >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+  # local upgrade is already in flight; banner would compound noise. The logs
+  # dir is created here: the LOG_DIR mkdir below runs after this line.
+  mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
+  ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) auto-upgrade: manifest $INSTALLED_VER → plugin $PLUGIN_VER" ) 2>/dev/null >> "$HOME/.claude/logs/claudemd-bootstrap.log" || true
 fi
 
 # Reached on the mismatch fall-through and the no-manifest (fresh install)
