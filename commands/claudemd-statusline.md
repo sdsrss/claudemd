@@ -24,7 +24,7 @@ Run Step 0. Report `verdict`, `current`, and whether `~/.claude/claudemd-statusl
 
 ## `remove` mode
 
-Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (restored prior command if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer; the host keeps the slot. Then run:
+Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer; the host keeps the slot. Then run:
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js remove --json`
 Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any. If `not-ours`, nothing was changed.
 
@@ -42,6 +42,8 @@ Preview with `--dry-run` if useful: `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusli
 
 Run (add `--force` only for the `foreign` take-over the user approved; for the host case, pass `--supersede=<id>` only if the user chose to supersede):
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js adopt [--force] [--supersede=<id>] --json`
+
+If `adopt` exits 1 with `statusline-adopt failed: statusline: <path> parses to null, not a JSON object` (or `to an array`, `to a JSON number`): nothing was written, and `detect` reads such a file as `absent`. Tell the user to replace the file's content with a JSON object (`{}` is valid) and re-run.
 
 ## Step 3 — verify + report
 

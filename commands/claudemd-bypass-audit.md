@@ -17,7 +17,7 @@ Default window is 30 days. The script answers one question: when claudemd's `mem
 
 Run: `CLAUDEMD_BYPASS_DAYS=<numeric-from-the-arguments-or-30> node ${CLAUDE_PLUGIN_ROOT}/scripts/lesson-bypass-audit.js --json`
 
-(`--cwd` defaults to the current working directory, which is what you want when auditing the project the agent is running in.)
+The audit covers every project's suggest rows in the rule-hits log, not only this one: each row is scored against the transcript in the project the row names. `--cwd` (default: the current working directory) is only where a transcript is looked for when that fails or the row names no project, so it does not narrow the numbers to one project.
 
 The JSON contains:
 
@@ -38,5 +38,5 @@ Format: lead with `citeRecall`, `bypassRate`, and the top-5 bypassed memories. S
 **Reading the signal**:
 - `citeRecall ≥ 60%` over 30d with ≥20 measurable events = R3 Step 2 working as designed; cite-#NN contract loop is observable.
 - `citeRecall < 30%` consistently = either (a) suggestions are too noisy (FP rate high — investigate top suggested files for over-trigger patterns) or (b) agent is genuinely bypassing relevant memories (real cite-recall problem).
-- `totalMissingTranscript` ≈ `totalSuggestions` = the `--cwd` doesn't match any sessions in `~/.claude/projects/<encoded>/`. Re-run with explicit `--cwd=` to the project where suggestions fired.
+- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are gone from `~/.claude/projects/<encoded>/` (deleted, or the sessions were synthetic), or the rows name no project and `--cwd` is not the project where they fired. Only that last case is fixed by re-running with `--cwd=<that project>`.
 - Newly added memories may show 100% bypass for their first few suggest events while the agent hasn't yet learned to look at them — that's a Bayesian prior issue, not a measurement bug. Per §13.3 promotion criteria, fold into the existing 30d-default-OFF FP-collection window before treating as load-bearing.

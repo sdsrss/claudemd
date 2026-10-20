@@ -58,7 +58,7 @@ Output: human-readable by default; --json for machine-readable.
 Options:
   --json             Emit JSON instead of human-readable.
   --strict           Exit non-zero (1) when CRITICAL or HIGH findings present.
-                     Default: always exit 0 (advisory).
+                     Default: exit 0 whatever the findings (advisory).
   --project=<cwd>    MEMORY.md scan target cwd (default: process.cwd()).
   --cwd=<cwd>        Alias for --project. lesson-bypass-audit spells this same
                      concept --cwd; both tools accept both names.

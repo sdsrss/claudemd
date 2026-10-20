@@ -12,6 +12,8 @@ On success, tell the user: **restart Claude Code** (or `/reload-plugins`). Nothi
 
 If the user has **other Claude Code windows open**, tell them to run `/reload-plugins` in each one too. The refresh removes the old versioned plugin-cache dir, but every already-running session pinned its hook paths to that dir at startup — those sessions error on every hook event (claudemd enforcement is absent) until they reload or restart.
 
+If the script exits non-zero after its uninstall step succeeded, its stderr says the plugin is NOT installed now: relay that and the reinstall commands it prints — `claude plugin install claudemd@claudemd` in a shell, or `/plugin install claudemd@claudemd` and then `/reload-plugins` inside Claude Code. Do not report the refresh as done.
+
 If the script fails with `'claude' CLI not found`, have the user paste the manual sequence one line at a time:
 
 ```
