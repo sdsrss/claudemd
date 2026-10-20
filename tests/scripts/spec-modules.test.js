@@ -47,6 +47,42 @@ test('spec-modules: an unregistered marker or an empty registry entry is a build
   assert.throws(() => buildModules(src, { x: { loadsOn: 'x' }, y: { loadsOn: 'y' } }), /no marked text: y/);
 });
 
+// A marker the build does not recognise used to be plain text: its chunk went
+// on into the module before it (one trailing space moved 687 bytes of ship
+// into verify). Every near-miss spelling is a build error naming its line.
+test('spec-modules: a line that looks like a marker but is not one is a build error naming the line', () => {
+  for (const bad of [
+    '<!-- module: b --> ',
+    '<!-- module: b -->\r',
+    '<!--module: b -->',
+    '<!-- Module: b -->',
+  ]) {
+    const src = [
+      '# AI-CODING-SPEC v1.0.0 — Extended',
+      '<!-- module: a -->',
+      '## A',
+      'x',
+      bad,
+      '## B',
+      'y',
+    ].join('\n');
+    assert.throws(() => splitModules(src), /line 5 .*not a module marker/, JSON.stringify(bad));
+  }
+});
+
+test('build-spec-modules: an unwritable module file is a one-line error and exit 1, not a stack trace', t => {
+  if (process.getuid && process.getuid() === 0) return t.skip('root writes through mode 0444');
+  const root = box.dir('repo');
+  fs.mkdirSync(path.join(root, 'scripts', 'lib'), { recursive: true });
+  for (const f of ['build-spec-modules.js', 'lib/argv.js', 'lib/spec-modules.js'])
+    fs.copyFileSync(path.join(REPO, 'scripts', f), path.join(root, 'scripts', f));
+  fs.cpSync(path.join(REPO, 'spec'), path.join(root, 'spec'), { recursive: true });
+  fs.chmodSync(path.join(root, 'spec', 'spec-modules', 'ship.md'), 0o444);
+  const r = spawnSync('node', [path.join(root, 'scripts', 'build-spec-modules.js')], { encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /^[^\n]*ship\.md[^\n]*\n$/, 'one line naming the file');
+});
+
 test('spec-modules: the committed modules are exactly what the source builds', () => {
   const r = spawnSync('node', [path.join(REPO, 'scripts/build-spec-modules.js'), '--check'], {
     encoding: 'utf8',

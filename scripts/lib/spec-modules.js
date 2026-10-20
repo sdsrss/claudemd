@@ -3,9 +3,12 @@
 //
 // The source stays one file: a line `<!-- module: NAME -->` starts a module and
 // holds until the next marker; `<!-- module: none -->` marks text no module
-// carries (maintainer-only). Text before the first marker is `none`. A chunk
-// that starts inside a `##` section (its first heading is `###`) is prefixed
-// with that `##` heading, so the module keeps the context the source gave it.
+// carries (maintainer-only). Text before the first marker is `none`. A line
+// that looks like a marker but is not one exactly (a trailing space, `Module:`,
+// `<!--module:`) is a build error: read as text, it would put the chunk after
+// it into the module before it, silently. A chunk that starts inside a `##`
+// section (its first heading is `###`) is prefixed with that `##` heading, so
+// the module keeps the context the source gave it.
 // Metadata (when to load, tier-2 triggers) lives in spec/spec-modules.json and
 // is written into each module's frontmatter, where the hooks read it.
 
@@ -13,9 +16,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const MARKER = /^<!-- module: ([a-z][a-z0-9-]*) -->$/;
+const NEAR_MARKER = /^\s*<!--\s*module\s*:/i;
 export const MODULE_DIR = 'spec-modules';
 
-/** { name: [chunkText, ...] } in source order, `none` excluded. */
+/** { name: [chunkText, ...] } in source order, `none` excluded. Throws on a near-miss marker. */
 export function splitModules(text) {
   const out = {};
   let current = 'none';
@@ -33,8 +37,10 @@ export function splitModules(text) {
     }
     chunk = [];
   };
-  for (const line of text.split('\n')) {
+  for (const [i, line] of text.split('\n').entries()) {
     const m = MARKER.exec(line);
+    if (!m && NEAR_MARKER.test(line))
+      throw new Error(`spec-modules: line ${i + 1} is not a module marker: ${JSON.stringify(line)}`);
     if (m) {
       flush();
       current = m[1];

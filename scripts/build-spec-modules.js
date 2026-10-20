@@ -55,9 +55,14 @@ if (invokedAsMain(import.meta.url)) {
     }
     console.log(`spec modules up to date (${Object.keys(r.built).length})`);
   } else {
-    fs.mkdirSync(r.dir, { recursive: true });
-    for (const n of r.orphans) fs.rmSync(path.join(r.dir, `${n}.md`), { force: true });
-    for (const [n, text] of Object.entries(r.built)) fs.writeFileSync(path.join(r.dir, `${n}.md`), text);
+    try {
+      fs.mkdirSync(r.dir, { recursive: true });
+      for (const n of r.orphans) fs.rmSync(path.join(r.dir, `${n}.md`), { force: true });
+      for (const [n, text] of Object.entries(r.built)) fs.writeFileSync(path.join(r.dir, `${n}.md`), text);
+    } catch (e) {
+      console.error(`could not write spec modules: ${e.message}`);
+      process.exit(1);
+    }
     console.log(`wrote ${Object.keys(r.built).length} module(s) to spec/${MODULE_DIR}/`);
   }
 }
