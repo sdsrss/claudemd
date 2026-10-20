@@ -63,13 +63,16 @@ NOW=$(date +%s)
 # each fails on the other's entry. Clearing races with other losers, so while a
 # stale lock is recovered a few sweeps can start together; each re-checks the
 # signature before deleting.
+# Both mtime reads discard stderr: platform_stat_mtime stats twice, and the
+# file can go between the two (another call releasing the lock), which printed
+# `stat: cannot statx …` to the user: 43 such lines in 300 concurrent runs.
 if ! (set -C; : >"$LOCK") 2>/dev/null; then
-  held=$(platform_stat_mtime "$LOCK") || held=$NOW
+  held=$(platform_stat_mtime "$LOCK" 2>/dev/null) || held=$NOW
   ((NOW - held > 60)) && rm -rf "${LOCK:?}" 2>/dev/null
   exit 0
 fi
 if [[ -f "$STAMP" ]]; then
-  last=$(platform_stat_mtime "$STAMP") || last=0
+  last=$(platform_stat_mtime "$STAMP" 2>/dev/null) || last=0
   if ((NOW - last < INTERVAL_MIN * 60)); then
     rm -f "${LOCK:?}" 2>/dev/null
     exit 0

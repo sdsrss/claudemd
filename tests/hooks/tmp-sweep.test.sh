@@ -185,4 +185,35 @@ else
   fi
 fi
 
+# Case 9: the lock or stamp vanishing between the two `stat` calls of
+# platform_stat_mtime — another Bash call releasing it — must leave stderr
+# empty: a hook's stderr with exit 0 is shown to the user, and 300 concurrent
+# runs printed 43 `stat: cannot statx …lock` lines. A `stat` shim deletes the
+# file right after the first (probe) call succeeds, so the race is hit every run.
+REAL_STAT=$(command -v stat)
+ST="$SANDBOX/statshim"
+mkdir -p "$ST"
+cat >"$ST/stat" <<EOF
+#!/usr/bin/env bash
+"$REAL_STAT" "\$@"
+rc=\$?
+for a in "\$@"; do :; done
+case "\$a" in *tmp-sweep.lock | *tmp-sweep.stamp) rm -rf "\$a" ;; esac
+exit \$rc
+EOF
+chmod +x "$ST/stat"
+LOCK="$HOME/.claude/.claudemd-state/tmp-sweep.lock"
+rm -rf "${LOCK:?}"
+: >"$LOCK"
+printf '%s' "$EVT" | PATH="$ST:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" >/dev/null 2>"$SANDBOX/err9a"
+RC=$?
+[[ $RC -eq 0 && ! -s "$SANDBOX/err9a" ]] && ok "9a lock gone between the two stats: exit 0, nothing on stderr" ||
+  ng "9a (rc $RC, err: $(cat "$SANDBOX/err9a"))"
+rm -rf "${LOCK:?}"
+touch -d '20 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-20M +%Y%m%d%H%M)" "$STAMP"
+printf '%s' "$EVT" | PATH="$ST:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" >/dev/null 2>"$SANDBOX/err9b"
+RC=$?
+[[ $RC -eq 0 && ! -s "$SANDBOX/err9b" ]] && ok "9b stamp gone between the two stats: exit 0, nothing on stderr" ||
+  ng "9b (rc $RC, err: $(cat "$SANDBOX/err9b"))"
+
 claudemd_assert_summary
