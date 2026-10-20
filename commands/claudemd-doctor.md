@@ -1,14 +1,16 @@
 ---
 name: claudemd-doctor
-description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, rule usage and memory hygiene. Supports --prune-backups=N.
+description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, rule usage and memory hygiene. Supports --prune-backups=N and --ack-fail-open.
 disable-model-invocation: true
 ---
 
-Usage: `/claudemd-doctor` or `/claudemd-doctor --prune-backups=5`
+Usage: `/claudemd-doctor`, `/claudemd-doctor --prune-backups=5` or `/claudemd-doctor --ack-fail-open`
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.js $ARGUMENTS`
 
 Surface the checks list with [✓] / [△] / [✗] prefixes based on the `ok` field. If `pruned` is non-empty, list the removed backup directories. If `pruneSkippedLegacy` is non-empty, say so separately: those are pre-0.68.3 spec-shaped dirs sitting in the personal backup namespace — the prune deliberately neither deleted them nor counted them toward N, and the `backup-namespace-legacy` check above explains why the user has to sort them by hand. Reporting only `pruned` hides the half of the story that needs a decision.
+
+For `hook-fail-open` when `ok=false`: a hook skipped enforcement because a prerequisite was missing (`jq`, a patterns file, a writable state directory). Name the hooks and reasons the detail lists and help the user fix the cause. Run `--ack-fail-open` only after the user says the cause is fixed, never to turn the check green on your own. It records the moment in `~/.claude/.claudemd-state/fail-open-ack.json`; fail-open events up to then stop counting, and the next one turns the row red again, which is how a cause that is not fixed shows itself. Report `failOpenAck`: `written` and `acknowledged`, or the `reason` nothing was written.
 
 For `memory-tag-specificity` check: when `ok=false`, present the candidate list, group by memory file, and cite spec §11-EXT Tag-specificity (SHOULD, v6.11.11). Suggest the rename pattern shown in the detail (`impact`→`impact-analysis`, etc.). Advisory only — operator decides per case.
 

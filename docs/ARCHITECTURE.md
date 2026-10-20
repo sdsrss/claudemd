@@ -37,7 +37,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `scripts/uninstall.js` | Reverse of install: evict hook entries, clear manifest, optional purge of state (`CLAUDEMD_PURGE=1`) | `node scripts/uninstall.js` (no flags — env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
 | `scripts/update.js` | Diff installed `~/.claude/CLAUDE*.md` against the shipped spec; apply on request | `node scripts/update.js`; env `CLAUDEMD_UPDATE_CHOICE=apply-all` |
 | `scripts/status.js` | Plugin / spec / kill-switch / log status | `node scripts/status.js [--verbose]` → JSON |
-| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, memory layers | `node scripts/doctor.js [--prune-backups=N]` |
+| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, memory layers | `node scripts/doctor.js [--prune-backups=N] [--ack-fail-open]` |
 | `scripts/toggle.js` | Flip one hook's `DISABLE_*` env in `settings.json` | `node scripts/toggle.js <hook-name>` |
 | `scripts/audit.js` | Aggregate rule-hits over a window | `node scripts/audit.js [--days=N]` → JSON |
 | `scripts/hard-rules-audit.js` | Join `spec/hard-rules.json` with rule-hits → demote candidates | `node scripts/hard-rules-audit.js [--days=N]` |

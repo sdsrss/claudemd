@@ -54,7 +54,7 @@ import { runHookSelfTests } from './lib/doctor-hook-tests.js';
 import { cleanStateDir, readRetentionFromClaudeMd, DEFAULT_RETENTION_DAYS } from './clean-residue.js';
 import { printHelpAndExit, parsePositiveInt, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
-const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N]
+const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N] [--ack-fail-open]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
 settings.json issues, hook drift, backup inventory, rule-usage health, and
@@ -69,16 +69,21 @@ Options:
                       backups, delete
                       ${backupGlobs()}
                       manually — this flag cannot do that.
+  --ack-fail-open     The cause of the hook-fail-open row is fixed: record
+                      that in ~/.claude/.claudemd-state/fail-open-ack.json.
+                      Fail-open events at or before that moment no longer
+                      turn the row red; a new one does. Writes nothing when
+                      there is nothing unacknowledged.
   --help, -h          Print this message and exit.
 
 Wrapped by /claudemd-doctor.
 
 
-Read-only with ONE exception: reading the install manifest relocates a
-pre-0.1.9 ~/.claude/.claudemd-state/installed.json to its current path.
-The move is lossless and happens once (Round-14 audit SCR-L5 — the
-"read-only command" description did not mention it).
-Exit codes: 0 all checks passed | 1 validation error | 2 argv-shape error | 3 one or more checks failed.`;
+Read-only apart from the two flags above and ONE more exception: reading
+the install manifest relocates a pre-0.1.9 ~/.claude/.claudemd-state/installed.json
+to its current path. The move is lossless and happens once (Round-14 audit
+SCR-L5 — the "read-only command" description did not mention it).
+Exit codes: 0 all checks passed | 1 validation or runtime error (an --ack-fail-open file that cannot be written) | 2 argv-shape error | 3 one or more checks failed.`;
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -190,7 +195,22 @@ export const isAdvisoryCheck = name => ADVISORY.test(name);
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
 // call doctor() in-process ~80 times, the 25 hook spawns were ~88% of each
 // call, and none of those cases read a self-test row. The CLI never passes it.
-export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {}) {
+// The acknowledgement `--ack-fail-open` writes (tasks/specs/doctor-fail-open-ack.md).
+const failOpenAckPath = () => path.join(stateDir(), 'fail-open-ack.json');
+
+// Its moment in ms, or null. Anything that does not parse to {ackedAt: <date>}
+// counts as no acknowledgement, so a damaged file leaves the row red.
+function readFailOpenAckMs() {
+  try {
+    const j = JSON.parse(fs.readFileSync(failOpenAckPath(), 'utf8'));
+    const ms = j && typeof j.ackedAt === 'string' ? Date.parse(j.ackedAt) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFailOpen = false } = {}) {
   const checks = [];
   const push = (name, ok, detail) => checks.push({ name, ok, detail });
 
@@ -870,11 +890,45 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {})
   // rather than being quietly downgraded to advisory.
   const UNEVALUABLE_REASONS = UNEVALUABLE_FAILOPEN_REASONS;
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
+  // --ack-fail-open: the user's statement that the cause is fixed. It hides
+  // only prerequisite rows at or before its moment. A prerequisite that is
+  // still missing writes a new row on the next hook run, and that row is red
+  // again, so no per-reason "recovered" test is needed. A row whose ts does not
+  // parse is never acknowledged.
+  const isPrereq = h =>
+    (h.extra?.reason || '') !== 'bad-event' && !UNEVALUABLE_REASONS.has(h.extra?.reason || '');
+  let ackedAtMs = readFailOpenAckMs();
+  const isAcked = h => ackedAtMs != null && Date.parse(h.ts) <= ackedAtMs;
+  let failOpenAck;
+  if (ackFailOpen) {
+    const pending = failOpenEvents.filter(h => isPrereq(h) && !isAcked(h));
+    if (pending.length === 0) {
+      failOpenAck = {
+        written: false,
+        reason: `no unacknowledged live-environment fail-open event in ${RULE_USAGE_WINDOW_DAYS}d`,
+      };
+    } else {
+      const ackedAt = new Date().toISOString();
+      try {
+        fs.mkdirSync(stateDir(), { recursive: true });
+        fs.writeFileSync(failOpenAckPath(), JSON.stringify({ ackedAt, acknowledged: pending.length }) + '\n');
+      } catch (e) {
+        throw new Error(
+          `cannot write the fail-open acknowledgement ${failOpenAckPath()}: ${e.code || e.message}`,
+          { cause: e }
+        );
+      }
+      ackedAtMs = Date.parse(ackedAt);
+      failOpenAck = { written: true, ackedAt, acknowledged: pending.length };
+    }
+  }
   if (failOpenEvents.length > 0) {
     const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');
     const noiseCount = failOpenEvents.length - liveFailOpen.length;
     const unevaluable = liveFailOpen.filter(h => UNEVALUABLE_REASONS.has(h.extra?.reason || ''));
-    const prereqFailOpen = liveFailOpen.filter(h => !UNEVALUABLE_REASONS.has(h.extra?.reason || ''));
+    const acknowledged = liveFailOpen.filter(h => isPrereq(h) && isAcked(h));
+    const prereqFailOpen = liveFailOpen.filter(h => isPrereq(h) && !isAcked(h));
+    const ackedAtIso = ackedAtMs != null ? new Date(ackedAtMs).toISOString() : '';
     const summarize = rows => {
       const byReason = {};
       for (const h of rows) {
@@ -895,7 +949,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {})
       checks.push({
         name: 'hook-fail-open',
         ok: false,
-        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore.${unevaluableClause}`,
+        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and a fail-open after that turns this red again.${acknowledged.length ? ` ${acknowledged.length} earlier one(s) acknowledged at ${ackedAtIso}.` : ''}${unevaluableClause}`,
+      });
+    } else if (acknowledged.length > 0) {
+      checks.push({
+        name: 'hook-fail-open',
+        ok: true,
+        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged at ${ackedAtIso} with --ack-fail-open; none since. A new one turns this red again.${unevaluableClause}`,
       });
     } else if (unevaluable.length > 0) {
       checks.push({
@@ -1372,12 +1432,20 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true } = {})
         )
       : [];
 
-  return { checks, pruned, pruneSkippedLegacy: prune != null ? pruneSkippedLegacy : [] };
+  return {
+    checks,
+    pruned,
+    pruneSkippedLegacy: prune != null ? pruneSkippedLegacy : [],
+    ...(failOpenAck ? { failOpenAck } : {}),
+  };
 }
 
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), USAGE);
-  const parsed = parseStrictOrExit(process.argv.slice(2), { values: ['--prune-backups'] });
+  const parsed = parseStrictOrExit(process.argv.slice(2), {
+    bools: ['--ack-fail-open'],
+    values: ['--prune-backups'],
+  });
   let prune;
   const raw = parsed.values['--prune-backups'];
   if (raw !== undefined) {
@@ -1395,7 +1463,7 @@ if (invokedAsMain(import.meta.url)) {
     }
     prune = val;
   }
-  doctor({ pruneBackups: prune })
+  doctor({ pruneBackups: prune, ackFailOpen: parsed.bools.has('--ack-fail-open') })
     .then(r => {
       console.log(JSON.stringify(r, null, 2));
       // Exit non-zero when checks failed. This always exited 0 regardless of

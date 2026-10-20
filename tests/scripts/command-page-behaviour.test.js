@@ -130,3 +130,22 @@ test('statusline: the page says remove restores the whole saved slot and adopt r
   assert.match(adopt.stderr, /^statusline-adopt failed: statusline: .+ parses to null, not a JSON object/m);
   assert.equal(fs.readFileSync(box.claude('settings.json'), 'utf8'), 'null\n');
 });
+
+test('doctor: the page says when to run --ack-fail-open, and the fields and file it names are what the flag produces', () => {
+  assertLine(
+    'doctor',
+    'For `hook-fail-open` when `ok=false`: a hook skipped enforcement because a prerequisite was missing (`jq`, a patterns file, a writable state directory). Name the hooks and reasons the detail lists and help the user fix the cause. Run `--ack-fail-open` only after the user says the cause is fixed, never to turn the check green on your own. It records the moment in `~/.claude/.claudemd-state/fail-open-ack.json`; fail-open events up to then stop counting, and the next one turns the row red again, which is how a cause that is not fixed shows itself. Report `failOpenAck`: `written` and `acknowledged`, or the `reason` nothing was written.'
+  );
+  const doctorRun = () => JSON.parse(run('doctor.js', ['--ack-fail-open'], box.env()).stdout);
+  const none = doctorRun().failOpenAck;
+  assert.equal(none.written, false);
+  assert.equal(typeof none.reason, 'string');
+  fs.mkdirSync(box.claude('logs'), { recursive: true });
+  fs.writeFileSync(
+    box.claude('logs/claudemd.jsonl'),
+    `{"ts":"${new Date(Date.now() - 60000).toISOString()}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"jq-missing"},"session_id":null}\n`
+  );
+  const ack = doctorRun().failOpenAck;
+  assert.deepEqual([ack.written, ack.acknowledged], [true, 1]);
+  assert.ok(fs.existsSync(path.join(box.stateDir, 'fail-open-ack.json')));
+});
