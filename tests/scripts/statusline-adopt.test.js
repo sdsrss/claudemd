@@ -99,6 +99,37 @@ test('remove after force → prior restored, DEST gone', () => {
   assert.ok(!fs.existsSync(prevFile()));
 });
 
+test('173: remove after force restores the prior statusLine whole, padding included', () => {
+  // The restore record held only the command, so the user's `padding` (and
+  // any other key of their statusLine) was gone after remove.
+  const prior = { type: 'command', command: 'node /other/x.js', padding: 2 };
+  writeS({ statusLine: prior });
+  adopt({ pluginRoot, force: true });
+  assert.equal(remove().action, 'restored');
+  assert.deepEqual(readS().statusLine, prior);
+});
+
+test('173: a restore record written before 173 (command only) still restores', () => {
+  writeS({ statusLine: { type: 'command', command: CMD } });
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(prevFile(), JSON.stringify({ command: 'node /other/x.js' }));
+  assert.equal(remove().action, 'restored');
+  assert.deepEqual(readS().statusLine, { type: 'command', command: 'node /other/x.js' });
+});
+
+test('173: a settings.json that parses to [] or null is refused, not reported as set', () => {
+  // [] : a key set on an array is dropped by JSON.stringify, so adopt said
+  // `set` and wrote nothing. null : every reader crashed with a TypeError.
+  for (const raw of ['null', '[]']) {
+    fs.writeFileSync(settingsFile(), raw);
+    assert.throws(() => adopt({ pluginRoot }), /not a JSON object/, raw);
+    assert.equal(fs.readFileSync(settingsFile(), 'utf8'), raw, `${raw}: file untouched`);
+    assert.ok(!fs.existsSync(destFile()), `${raw}: no renderer copied`);
+    assert.equal(detect().verdict, 'absent', `${raw}: detect reads it as no slot`);
+    assert.equal(remove().action, 'not-ours', `${raw}: remove has nothing to remove`);
+  }
+});
+
 test('remove when foreign → not-ours, untouched', () => {
   writeS({ statusLine: { type: 'command', command: 'node /other/x.js' } });
   const r = remove();

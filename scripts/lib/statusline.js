@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSettings, writeSettings } from './settings-merge.js';
+import { readSettings, writeSettings, settingsShapeError } from './settings-merge.js';
 import { claudeHome, settingsPath, stateDir } from './paths.js';
 import { backupSettingsFile } from './backup.js';
 import { detectHost, HOST_ADAPTERS, CLAUDEMD_PROVIDER_ID, manualPsCandidates } from './statusline-hosts.js';
@@ -19,7 +19,15 @@ const GUEST_COMMAND = () => `bash "${destPath()}"`;
 const destPath = () => claudeHome('claudemd-statusline.sh');
 const prevPath = () => path.join(stateDir(), 'statusline-prev.json');
 const shippedRenderer = pluginRoot => path.join(pluginRoot, 'scripts', 'statusline.sh');
-const loadSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {});
+const rawSettings = () => (fs.existsSync(settingsPath()) ? readSettings() : {});
+// A settings.json that parses to null or an array holds no statusLine, so
+// readers see `{}`; adopt refuses it before writing (defect 173): null crashed
+// every reader, and on an array JSON.stringify drops the key adopt sets, so it
+// reported `set` having written nothing.
+function loadSettings() {
+  const s = rawSettings();
+  return settingsShapeError(s) ? {} : s;
+}
 
 // The supersede restore-record accepts both the current list shape
 // ({superseded:[<prov>,…]}) and the legacy singular shape ({superseded:<prov>},
@@ -118,6 +126,13 @@ export function adopt({
   backupSettings = true,
 } = {}) {
   if (!pluginRoot) throw new Error('adopt: pluginRoot required');
+  const shape = settingsShapeError(rawSettings());
+  if (shape) {
+    throw new Error(
+      `statusline: ${settingsPath()} parses to ${shape}, not a JSON object. Refusing — the statusLine ` +
+        `would not be written. Replace it with an object (\`{}\` is valid) and re-run.`
+    );
+  }
   const { verdict, current, host } = detect(pluginRoot);
 
   if (verdict === 'claudemd') {
@@ -196,7 +211,10 @@ export function adopt({
     if (dryRun) return { action: 'dry-run', from: current, to: COMMAND };
     const settingsBackup = backupSettings ? backupSettingsFile().backup : null;
     fs.mkdirSync(stateDir(), { recursive: true });
-    fs.writeFileSync(prevPath(), JSON.stringify({ command: current }, null, 2));
+    // The whole slot, not just its command: remove() puts back every key the
+    // user had, `padding` included (defect 173).
+    const statusLine = loadSettings().statusLine;
+    fs.writeFileSync(prevPath(), JSON.stringify({ command: current, statusLine }, null, 2));
     copyRenderer(pluginRoot);
     setStatusLine();
     return { action: 'replaced', from: current, to: COMMAND, settingsBackup };
@@ -256,7 +274,9 @@ export function remove() {
     try {
       const prev = JSON.parse(fs.readFileSync(prevPath(), 'utf8'));
       if (prev && typeof prev.command === 'string') {
-        settings.statusLine = { type: 'command', command: prev.command };
+        // A pre-173 record has the command only; that still restores.
+        const whole = prev.statusLine?.command === prev.command ? prev.statusLine : {};
+        settings.statusLine = { type: 'command', ...whole, command: prev.command };
         restored = prev.command;
         action = 'restored';
       } else {
