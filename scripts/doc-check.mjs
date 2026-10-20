@@ -42,7 +42,9 @@ Options:
   --allow-untracked-missing   A referenced path that is absent AND not
                               git-tracked is reported, not failed. For CI,
                               where the operator's local-only files do not
-                              exist. Absent tracked paths still fail.
+                              exist. Absent tracked paths still fail, and
+                              where git cannot list the repository's files
+                              nothing is skipped.
   --help, -h                  Print this message and exit.
 
 Exit codes: 0 clean | 1 problem found | 2 argv-shape error.`;
@@ -73,7 +75,12 @@ export function parseConfig(text) {
   };
   const errors = [];
   const block = text.match(/^```doc-check[ \t]*\n([\s\S]*?)^```[ \t]*$/m);
-  if (!block) return { cfg, errors, present: false };
+  if (!block) {
+    // An opening fence with no closing one is a block the author meant to have.
+    const open = text.split('\n').findIndex(l => /^```doc-check[ \t]*$/.test(l));
+    if (open !== -1) errors.push(`doc-check block opened at line ${open + 1} is never closed`);
+    return { cfg, errors, present: false };
+  }
   for (const [i, raw] of block[1].split('\n').entries()) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
@@ -146,7 +153,9 @@ function trackedFiles(root) {
         .filter(Boolean)
     );
   } catch {
-    return new Set();
+    // Not a repository: nothing is tracked. A repository git could not list
+    // (git not on PATH): unknown, so --allow-untracked-missing skips nothing.
+    return fs.existsSync(path.join(root, '.git')) ? null : new Set();
   }
 }
 
@@ -191,7 +200,7 @@ export function checkPaths(text, opts) {
     }
     // Absent. A TRACKED path that is absent is a broken repo, not a local-only
     // file — that case fails whatever the flag says.
-    if (allowUntrackedMissing && !tracked.has(p)) {
+    if (allowUntrackedMissing && tracked && !tracked.has(p)) {
       stats.skippedUntracked.push(p);
       continue;
     }
@@ -263,8 +272,12 @@ export function checkRatios(text, ratioLines) {
   };
   // Inline: A/B, then the percentage within 16 characters that contain no other
   // digit — enough for " = ", "(**" and a short unit word, not enough to reach
-  // across into an unrelated number.
-  for (const m of text.matchAll(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)[^0-9%\n]{0,16}?(\d+(?:\.\d+)?)\s*%/g))
+  // across into an unrelated number. A starts and B ends at a digit run's edge:
+  // without the two guards a long run was retried from every offset and its
+  // tail rescanned each time (80,000 digits: 2.8 s).
+  for (const m of text.matchAll(
+    /(?<![\d,])(\d[\d,]*)\s*\/\s*(\d[\d,]*)(?![\d,])[^0-9%\n]{0,16}?(\d+(?:\.\d+)?)\s*%/g
+  ))
     verify(num(m[1]), num(m[2]), m[3], '%', `inline "${m[0].replace(/\s+/g, ' ')}"`);
   for (const raw of ratioLines) {
     const m = raw.match(/^(\d[\d,]*)\s*\/\s*(\d[\d,]*)\s*=\s*(\d+(?:\.\d+)?)\s*([%x×])$/);
@@ -302,7 +315,8 @@ export function checkStale(text, { stale, sectionExempt, lineExempt }) {
 }
 
 export function docCheck(docPath, { root = REPO_ROOT, allowUntrackedMissing = false, home = null } = {}) {
-  const text = fs.readFileSync(docPath, 'utf8');
+  // CRLF to LF: every check, and the config block's fences, read `\n` lines.
+  const text = fs.readFileSync(docPath, 'utf8').replace(/\r\n/g, '\n');
   const out = [];
   const problems = [];
   const { cfg, errors, present } = parseConfig(text);
@@ -382,8 +396,9 @@ if (invokedAsMain(import.meta.url)) {
     process.exit(2);
   }
   const doc = path.resolve(positionals[0]);
-  if (!fs.existsSync(doc)) {
-    console.error(`No such document: ${positionals[0]}`);
+  const st = fs.statSync(doc, { throwIfNoEntry: false });
+  if (!st?.isFile()) {
+    console.error(`${st ? 'Not a file' : 'No such document'}: ${positionals[0]}`);
     process.exit(2);
   }
   const { problems, lines } = docCheck(doc, {

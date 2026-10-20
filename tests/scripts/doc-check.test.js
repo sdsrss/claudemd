@@ -218,6 +218,67 @@ test('doc-check: an unknown key or an uncompilable regex in the config block is 
   }
 });
 
+// A CRLF document and an unclosed fence both read as "no block": the stale
+// check went inactive and a live retracted claim passed.
+test('doc-check: a CRLF document keeps its config block; an unclosed block is a problem', () => {
+  const root = makeRepo();
+  try {
+    const live = CLEAN.replace('## 3 Numbers', '## 3 Numbers\n\n核心零命中,所以…');
+    assert.match(run(root, live).problems.join(' '), /retracted claim live/, 'LF control');
+    assert.match(run(root, live.replace(/\n/g, '\r\n')).problems.join(' '), /retracted claim live/, 'CRLF');
+    const clean = run(root, CLEAN.replace(/\n/g, '\r\n'));
+    assert.deepEqual(clean.problems, []);
+    assert.match(clean.lines.join('\n'), /ratios: 3 recomputed \(1 from config\)/);
+    const unclosed = CLEAN.slice(0, CLEAN.lastIndexOf('```'));
+    assert.deepEqual(run(root, unclosed).problems, ['doc-check block opened at line 19 is never closed']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// trackedFiles answered an empty set whenever git failed, so with git off PATH
+// every absent path read as untracked and the flag skipped a tracked one too.
+test('doc-check: without git, an absent tracked path still fails under the flag', () => {
+  const root = makeRepo();
+  try {
+    spawnSync('git', ['-C', root, 'init', '-q']);
+    fs.writeFileSync(path.join(root, 'docs/tracked.md'), 'x\n');
+    assert.equal(spawnSync('git', ['-C', root, 'add', 'docs/tracked.md']).status, 0);
+    fs.rmSync(path.join(root, 'docs/tracked.md'));
+    const body = CLEAN.replace('scripts/real-file.js', 'docs/tracked.md');
+    const want = ['path missing: docs/tracked.md'];
+    assert.deepEqual(run(root, body, { allowUntrackedMissing: true }).problems, want, 'with git');
+    const saved = process.env.PATH;
+    process.env.PATH = path.join(root, 'no-bin');
+    try {
+      assert.deepEqual(run(root, body, { allowUntrackedMissing: true }).problems, want, 'without git');
+    } finally {
+      process.env.PATH = saved;
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The inline-ratio regex retried from every offset of a digit run and rescanned
+// its tail each time: 2,775 ms on 80,000 digits, 4,732 ms after "1/" (node 26).
+test('doc-check: the inline-ratio scan stays bounded on an 80,000-digit run', () => {
+  for (const text of ['1'.repeat(80000), '1/' + '1'.repeat(80000), '1/2 ' + '1'.repeat(80000)]) {
+    const t = process.hrtime.bigint();
+    assert.equal(checkRatios(text, []).checked, 0);
+    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    assert.ok(ms < 500, `${text.slice(0, 4)}…: ${ms.toFixed(0)} ms (budget 500)`);
+  }
+  // The shapes the check exists for still match.
+  assert.equal(checkRatios('74/126 = 58.7% and 9/17(**52.9%**), 50/28,099 = 0.18%', []).checked, 3);
+});
+
+test('doc-check CLI: a directory argument is a one-line usage error, not a stack trace', () => {
+  const r = spawnSync(process.execPath, [CLI, 'docs'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /^[^\n]*docs[^\n]*\n$/);
+});
+
 test('doc-check CLI: --help exits 0, a bogus flag exits 2, a missing doc exits 2', () => {
   const r = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', timeout: 20000 });
   const help = r('--help');
