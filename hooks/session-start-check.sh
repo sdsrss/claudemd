@@ -479,7 +479,8 @@ spec_drift_check() {
 # SessionStart object carrying the notice as both systemMessage (the human
 # acts on it) and additionalContext, and consumes the sentinel
 # (removed once shown, so one banner per failure; a repeat failure rewrites the
-# sentinel). Always returns 0.
+# sentinel). Without node (HAVE_NODE, set before the call) nothing retries, so
+# the banner says so and the sentinel stays. Always returns 0.
 # Skipped on: DISABLE_BOOTSTRAP_FAIL_BANNER=1, jq missing, sentinel absent.
 emit_bootstrap_failed_banner() {
   [[ "${DISABLE_BOOTSTRAP_FAIL_BANNER:-0}" == "1" ]] && return 0
@@ -508,7 +509,18 @@ emit_bootstrap_failed_banner() {
   # ~10 characters of settings.json around the fault, which can be a fragment
   # of a token in `env`. The model is told that a cause was shown, not what it is.
   local sys ctx
-  if [[ -n "$reason" ]]; then
+  if [[ "$HAVE_NODE" != 1 ]]; then
+    # The install is a node script, so without node nothing retries it and the
+    # sentinel stays (below): the notice repeats each session until node is back.
+    local nonode="\`node\` is not on the PATH Claude Code runs its hooks with, so nothing retries the install until it is (for example, start Claude Code from a shell where \`node\` works); this notice repeats each session until then."
+    if [[ -n "$reason" ]]; then
+      sys="$msg: $reason (details: ~/.claude/logs/claudemd-bootstrap.log). $nonode$off_msg"
+      ctx="$msg. The user's banner names the cause, which can quote ~/.claude/settings.json and is not repeated here. $nonode$off_msg"
+    else
+      sys="$msg. Details: ~/.claude/logs/claudemd-bootstrap.log. $nonode$off_msg"
+      ctx="$sys"
+    fi
+  elif [[ -n "$reason" ]]; then
     sys="$msg: $reason (details: ~/.claude/logs/claudemd-bootstrap.log). The install retries at every session start, so fixing that is enough.$off_msg"
     ctx="$msg. The user's banner names the cause, which can quote ~/.claude/settings.json and is not repeated here; the install retries at every session start. Ask the user what it says if they want help fixing it.$off_msg"
   else
@@ -527,7 +539,7 @@ emit_bootstrap_failed_banner() {
     }
   }' 2>/dev/null
 
-  rm -f "$f" 2>/dev/null
+  if [[ "$HAVE_NODE" == 1 ]]; then rm -f "$f" 2>/dev/null; fi
   hook_record session-start bootstrap-fail-banner null '' "$SESSION_ID" 2>/dev/null || true
 }
 
@@ -869,6 +881,9 @@ fi
 # strict single-value JSON.parse — printing a second object here and another
 # after the install is invalid JSON and silently drops BOTH. So collect, then
 # emit exactly once, on every exit path below.
+# node is looked up first: the bootstrap-failed banner says whether a retry can run.
+HAVE_NODE=0
+command -v node >/dev/null 2>&1 && HAVE_NODE=1
 _bf_json=$(emit_bootstrap_failed_banner)
 _sum_json=$(emit_session_summary_banner)
 _uc_json=""
@@ -880,7 +895,7 @@ emit_tail_banners() {
 # node required to run install.js — silent no-op if absent. The banners still
 # owe the user their emit: they describe state a PRIOR session left behind and
 # are consume-once, so skipping the print here drops them permanently.
-command -v node >/dev/null 2>&1 || { emit_tail_banners; exit 0; }
+[[ "$HAVE_NODE" == 1 ]] || { emit_tail_banners; exit 0; }
 
 # Background self-install with a 10s ceiling. Detach so a hanging filesystem
 # cannot delay session start. Stdout/stderr captured for post-hoc debug.

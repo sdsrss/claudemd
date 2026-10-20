@@ -137,11 +137,13 @@ through to the install block.
 Two of these helpers **consume** state the bootstrap is about to rewrite, so the candidate set is
 computed first. `uc` stays empty here; only the synchronous branch can fill it.
 
-**13. No node** — `hooks/session-start-check.sh` → `command -v node >/dev/null 2>&1 || { emit_tail_banners; exit 0; }`
+**13. No node** — `hooks/session-start-check.sh` → `[[ "$HAVE_NODE" == 1 ]] || { emit_tail_banners; exit 0; }`
 
 Without node there is nothing to install, but the banners are still owed: they describe state a
 **prior** session left behind and are consume-once, so skipping the print here loses them
-permanently.
+permanently. `HAVE_NODE` is looked up before step 12, because the bootstrap-failed banner depends
+on it: without node it says that nothing retries the install and leaves its sentinel in place, so
+the next session shows it again.
 
 **14. Rotate the log** — `hooks/session-start-check.sh` → `LOG_BYTES=$(wc -c < "$LOG" 2>/dev/null | tr -d ' ')`
 

@@ -1056,6 +1056,35 @@ else
   else
     echo "FAIL: 37 pending banner dropped when node is absent (out=$OUT37)"; FAIL=$((FAIL+1))
   fi
+  # 37b: without node nothing retries (the install is a node script), so the
+  # banner says why instead of "Retrying this session", and the sentinel stays:
+  # the next session shows it again rather than dropping the only notice.
+  SYS37=$(jq -r '.systemMessage // ""' <<<"$OUT37" 2>/dev/null)
+  CTX37=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT37" 2>/dev/null)
+  OUT37B=$(PATH="$NODELESS_PATH" bash "$HOOK" <<<'{}' 2>/dev/null)
+  if grep -qF '`node` is not on the PATH' <<<"$SYS37" && grep -qF '`node` is not on the PATH' <<<"$CTX37" \
+     && ! grep -qF 'Retrying this session' <<<"$SYS37$CTX37" \
+     && grep -qF 'background upgrade failed' <<<"$OUT37B" \
+     && [[ -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" ]]; then
+    echo "PASS: 37b node-absent banner names node, promises no retry, and shows again next session"
+  else
+    echo "FAIL: 37b (sys=$SYS37 | second=$OUT37B)"; FAIL=$((FAIL+1))
+  fi
+  # 37c: the same with a reason in the sentinel: the user still gets the reason,
+  # the model still does not, and neither is told the install retries.
+  printf '{"ts":"2026-09-05T00:00:00Z","from":"0.74.2","to":"0.75.0","reason":"install: settings.json is not valid JSON (x)."}\n' \
+    > "$HOME/.claude/.claudemd-state/bootstrap-failed.json"
+  OUT37C=$(PATH="$NODELESS_PATH" bash "$HOOK" <<<'{}' 2>/dev/null)
+  SYS37C=$(jq -r '.systemMessage // ""' <<<"$OUT37C" 2>/dev/null)
+  CTX37C=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT37C" 2>/dev/null)
+  if grep -qF 'not valid JSON (x)' <<<"$SYS37C" && ! grep -qF 'not valid JSON' <<<"$CTX37C" \
+     && grep -qF '`node` is not on the PATH' <<<"$SYS37C" && grep -qF '`node` is not on the PATH' <<<"$CTX37C" \
+     && ! grep -qF 'retries at every session start' <<<"$SYS37C$CTX37C" \
+     && [[ -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json" ]]; then
+    echo "PASS: 37c node-absent banner with a reason: reason to the user only, no retry promised, sentinel kept"
+  else
+    echo "FAIL: 37c (sys=$SYS37C | ctx=$CTX37C)"; FAIL=$((FAIL+1))
+  fi
 fi
 rm -f "$HOME/.claude/.claudemd-state/bootstrap-failed.json"* 2>/dev/null || true
 
