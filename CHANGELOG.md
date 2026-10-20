@@ -19,7 +19,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - Rows after the acknowledgement turn the row red as before, and the detail also counts the acknowledged ones. No per-reason recovery test is needed: a prerequisite that is still missing writes a new row the next time its hook runs.
 - An acknowledgement file that does not parse, or a row whose `ts` does not, counts as unacknowledged. With nothing to acknowledge it writes nothing and returns `failOpenAck: {written: false, reason}`. A file it cannot write exits 1 naming it.
 - The command page tells the model to run it only after the user says the cause is fixed, never to turn the check green on its own. `doctor --help`, README and `docs/ARCHITECTURE.md` list the flag; `--help` now says doctor is read-only apart from its two flags and the one manifest relocation, and that exit 1 includes an acknowledgement it cannot write.
-- `clean-residue` does not reap the file: it matches none of the state directory's ephemeral name patterns.
+- `clean-residue` does not reap the file: it matches none of the state directory's ephemeral name patterns. `CLAUDEMD_PURGE=1` uninstall removes it with the rest of the state directory, also from one that `CLAUDEMD_STATE_DIR` moved (f1a89e6).
 
 **Not changed, and why.**
 - Between an acknowledgement and the next run of the affected hook, doctor reports green even if the cause is not fixed. The next run of that hook writes a new row and the check is red again.
