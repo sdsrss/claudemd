@@ -199,4 +199,14 @@ if [[ "$(mods "$A17")" == "aaa " && "$(mods "$B17")" == "bbb " && -z "$D17" && "
   ok "17 over budget: the second module waits for the next prompt, then goes in once"
 else ng "17 deferral wrong: first=$(mods "$A17") next=$(mods "$B17") again=$(mods "$D17") list=[$LIST17] deferred=[$ROW17]"; fi
 
+# 18. a prompt past Linux's 128 KiB single-argument cap: ship's whole window
+# still matches. Passed to jq as --arg, the text made the exec fail, 2>/dev/null
+# hid it, and ship stayed out. The event is built on stdin here for the same
+# reason (inject() passes the prompt as --arg).
+P18="$(printf '%140000s' '' | tr ' ' x) and then ship it"
+C18=$(printf '%s' "$P18" | jq -Rsc '{prompt:., session_id:"s18", cwd:"/work/p", hook_event_name:"UserPromptSubmit"}' \
+  | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$(mods "$C18")" == "ship " ]] && ok "18 a 140,000-character prompt still matches ship's whole window" \
+  || ng "18 long prompt missed ship: $(mods "$C18")"
+
 claudemd_assert_summary

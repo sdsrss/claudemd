@@ -82,7 +82,9 @@ for f in "${mods[@]}"; do
   win=$(awk 'NR>1 && $0=="---"{exit} /^trigger-window: /{sub(/^trigger-window: /,""); print; exit}' "$f")
   text="$PROMPT_HEAD"
   [[ "$win" == whole ]] && text="$PROMPT"
-  hit=$(jq -n --arg t "$text" --arg re "$re" 'try ($t | test($re; "i")) catch false' 2>/dev/null)
+  # The text goes on stdin: as --arg, a prompt of 128 KiB or more made jq's exec
+  # fail on Linux (one argument's cap), and ship's whole window never matched.
+  hit=$(printf '%s' "$text" | jq -Rs --arg re "$re" 'try test($re; "i") catch false' 2>/dev/null)
   [[ "$hit" == true ]] && picked+=("$f")
 done
 (( ${#picked[@]} > 0 )) || exit 0
