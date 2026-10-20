@@ -228,9 +228,9 @@ export function copySpecFiles(pluginRoot, names = SPEC_FILES, { backupDir = null
           // is rolling back. Restore the entry in the shape it had.
           //
           // A link whose target still resolves keeps the older behavior above:
-          // its content is copied back. That asymmetry is deliberate — copying
-          // through a live entry is what restoreBackup does too, and widening it
-          // here would change a path this fix has no evidence about.
+          // its content is copied back. That asymmetry is deliberate: widening it
+          // here would change a path this fix has no evidence about. (restoreBackup,
+          // the uninstall path, puts a link back as a link since 0.113.3.)
           else if (fs.lstatSync(saved, { throwIfNoEntry: false })?.isSymbolicLink()) {
             const target = fs.readlinkSync(saved);
             fs.rmSync(homeSpec(name), { force: true });

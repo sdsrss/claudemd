@@ -390,7 +390,7 @@ Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `
 | Option | Type / ask for | Env vars the script reads | Behavior |
 |---|---|---|---|
 | `keep` (default) | `/claudemd-uninstall` | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
-| `restore` | `/claudemd-uninstall restore` | `CLAUDEMD_SPEC_ACTION=restore` | Copies the most recent `~/.claude/backup-<ISO>/*.md` back to `~/.claude/`, except over a home file that is not the spec and differs from the backup (listed in `kept`). Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. Then run `/plugin uninstall claudemd@claudemd`: while the plugin stays installed, the next session start installs the spec over the restored file again. |
+| `restore` | `/claudemd-uninstall restore` | `CLAUDEMD_SPEC_ACTION=restore` | Puts the most recent `~/.claude/backup-<ISO>/*.md` back in `~/.claude/` (a file that was a symlink comes back as the same link), except over a home file that is not the spec and differs from the backup (listed in `kept`). Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. Then run `/plugin uninstall claudemd@claudemd`: while the plugin stays installed, the next session start installs the spec over the restored file again. |
 | `delete` | ask for a full removal | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every regular `*.md` file in `~/.claude/spec-modules/`. After a default uninstall (no manifest left), only spec files whose first line is the `# AI-CODING-SPEC` H1 and only the module files claudemd generated (their `# AI-CODING-SPEC … — module: <name>` heading) go; the rest are listed in `kept`. |
 
 Asking for a purge (`CLAUDEMD_PURGE=1`) also drops `~/.claude/.claudemd-state/` and your rule-hits log.
@@ -469,7 +469,7 @@ claudemd/
 
 ## Changelog
 
-Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 727 KB it was 89% of a package whose runtime is 133 KB unpacked (35 KB compressed), and `npx claudemd-cli` re-downloads that tarball on every cold run.
+Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 1.3 MB it is larger than the whole runtime (133 KB unpacked, 47 KB compressed), and `npx claudemd-cli` re-downloads that tarball on every cold run.
 
 ---
 
