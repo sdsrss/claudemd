@@ -100,4 +100,13 @@ if jq -e 'select(.hook=="evidence-gate" and .session_id=="s6" and .extra.queued=
   ok "8 evidence-advisory rows carry queued true/false"
 else ng "8 rows: $(jq -c 'select(.hook=="evidence-gate")|.extra' "$LOG" 2>/dev/null | tr '\n' ' ')"; fi
 
+# 9. A HOME holding glob characters is a path, not a pattern: `compgen -G` read
+# `[1]` in `h[1]` as a class matching `h1`, found no notice, and the fast path
+# exited before every delivery.
+H9="$TMP_HOME/h[1]"
+mkdir -p "$H9/.claude/.claudemd-state" "$H9/.claude/logs"
+printf 'NOTICE-9\n' >"$H9/.claude/.claudemd-state/notice-s9.evidence-gate"
+C9=$(jq -cn '{hook_event_name:"UserPromptSubmit", prompt:"next", session_id:"s9", cwd:"/work/p"}' | HOME="$H9" bash "$HOOK" 2>/dev/null | ctx)
+grep -q 'NOTICE-9' <<<"$C9" && ok "9 a HOME with [ ] in it still gets its notice" || ng "9 not delivered under HOME=$H9: ${C9:0:80}"
+
 claudemd_assert_summary

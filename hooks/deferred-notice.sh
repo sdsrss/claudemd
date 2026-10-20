@@ -31,7 +31,11 @@ set -uo pipefail
 
 STATE_DIR="${HOME:-}/.claude/.claudemd-state"
 [[ -n "${HOME:-}" ]] || exit 0
-compgen -G "$STATE_DIR/notice-*" >/dev/null 2>&1 || exit 0
+# A glob with the directory quoted, not `compgen -G`: that reads the whole
+# argument as a pattern, so a HOME holding `[` never matched its own notices.
+DN_ANY=0
+for f in "$STATE_DIR"/notice-*; do [[ -e "$f" ]] && DN_ANY=1 && break; done
+(( DN_ANY )) || exit 0
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
