@@ -18,6 +18,7 @@ import {
   longFunctionsInSh,
   findCycles,
   measure,
+  markdown,
   summarizeJscpdReport,
   summarizeEslintResults,
   summarizeShellcheckFindings,
@@ -225,6 +226,15 @@ test('measure() on the real tree: inventory, long functions and the import graph
   assert.equal(m.coverage, null);
   assert.equal(m.lint, null);
   assert.equal(m.duplication.skipped, true);
+});
+
+// measure() marks a --skip-dup run { available: false, skipped: true }; the
+// renderer read only `available` and printed "jscpd not installed".
+test('markdown: a --skip-dup run says the duplication leg was skipped, not that jscpd is missing', async () => {
+  const md = markdown(await measure({ skipCoverage: true, skipDup: true, skipLint: true, top: 1 }));
+  const section = md.slice(md.indexOf('## Duplication (jscpd)'), md.indexOf('## Import cycles'));
+  assert.match(section, /skipped \(--skip-dup\)/);
+  assert.doesNotMatch(section, /not installed/);
 });
 
 test('CLI: --help exits 0 with usage; unknown flag exits 2; bad numeric exits 1', () => {

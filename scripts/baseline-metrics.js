@@ -724,6 +724,7 @@ function mdFunctions(L, m) {
 function mdDuplication(L, m) {
   const d = m.duplication;
   L.push('## Duplication (jscpd)', '');
+  if (d.skipped) return L.push('skipped (--skip-dup).', '');
   if (!d.available) return L.push(`${na} — jscpd not installed (\`npm install\`).`, '');
   if (d.error) return L.push(`error: ${d.error}`, '');
   L.push(`Scope: ${d.scope}`, '');
