@@ -83,6 +83,11 @@ deny	find ~ -delete (bare tilde, no primary)	find ~ -delete
 # everything under home; the residue `/.` reads as a subpath (residual F21).
 xfn	S8-DOTSTART1 find ~/. -delete (start point ends in /.)	find ~/. -delete
 xfn	S8-DOTSTART2 find $HOME/. -delete (start point ends in /.)	find $HOME/. -delete
+xfn	S8-DOTSTART3 find ~/./ -delete (start point is /. and slashes)	find ~/./ -delete
+# `~+` is $PWD and `~-` is $OLDPWD; `rm -rf $PWD` is denied, these are not
+# (residual F22).
+xfn	S8-TILDEPWD1 rm -rf ~+ (tilde-plus is $PWD)	rm -rf ~+
+xfn	S8-TILDEPWD2 find ~- -delete (tilde-minus is $OLDPWD)	find ~- -delete
 pass	rm -rf ~/cache (tilde with a subpath)	rm -rf ~/cache
 pass	rm -rf ~/* (tilde with a glob, as $HOME/*)	rm -rf ~/*
 pass	find ~ -name -delete (bounded find, as $HOME)	find ~ -name '*.tmp' -delete
@@ -687,6 +692,9 @@ deny	npm x scoped unpinned	npm x @scope/some-unknown-pkg
 pass	npm x pinned	npm x prettier@3.0.0
 pass	npm --prefix x run build (a flag argument named x)	npm --prefix x run build
 xfn	S8-NPMX1 npm --yes x unpinned (flag before the alias)	npm --yes x some-unknown-pkg
+# pnpm's `pnpx` (its old name for `pnpm dlx`) is not in the runner family
+# (residual F23).
+xfn	S8-PNPX1 pnpx unpinned	pnpx some-unknown-pkg
 
 # --- F31 (2026-07-27 audit, L1): indented terminator belongs to `<<-` only ---
 # bash ends a plain `<<EOF` body only at an EOF in column 0, so in the first row
