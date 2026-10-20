@@ -35,7 +35,7 @@
 //              missing file).
 //   LOW      — drift that adds noise but doesn't bind (orphan memory file).
 //
-// Exit codes: 0 always (read-only). --strict → 1 on CRITICAL/HIGH count > 0.
+// Exit codes: see USAGE. Read-only; --strict → 1 on CRITICAL/HIGH count > 0.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -73,10 +73,12 @@ section each left this tool reporting all checks clean. Whole-line golden pins
 in tests/scripts/spec-structure.test.js are what catch that class; this tool
 catches the drift between two places that state the same fact.
 
-Exit codes: 0 success | 1 runtime error, or --strict with CRITICAL/HIGH | 2 argv-shape error.
-  Note: 1 is overloaded — a failed run and a --strict finding share it. Read
-  stderr (a runtime failure prints '[claudemd] spec-coherence-audit failed: …'
-  and emits no report) rather than branching on the code alone.`;
+Exit codes: 0 success | 1 bad flag value or runtime error, or --strict with CRITICAL/HIGH | 2 argv-shape error.
+  Note: 1 is overloaded — a bad value (a --project/--cwd that is not a
+  directory), a failed run and a --strict finding share it. Read stderr
+  rather than branching on the code alone: a bad value names itself, a
+  runtime failure prints '[claudemd] spec-coherence-audit failed: …', and
+  neither emits a report.`;
 
 // v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤25K / extended
 // ≤50K. The danger ratio (0.97) is the standing-advisory band: once a file
@@ -672,6 +674,14 @@ if (invokedAsMain(import.meta.url)) {
     process.exit(1);
   }
   const projectCwd = aliasProject ?? aliasCwd ?? process.cwd();
+  // A mistyped path read as "MEMORY.md absent — skipped (project has no memory
+  // yet)" with exit 0: a clean audit of a project nobody named (D#107).
+  if (!fs.existsSync(projectCwd) || !fs.statSync(projectCwd).isDirectory()) {
+    console.error(
+      `--project/--cwd: '${projectCwd}' is not a directory. Pass the project's working directory.`
+    );
+    process.exit(1);
+  }
   const pluginRoot = resolvePluginRoot(import.meta.url);
   // One-line failure, not a bare V8 stack (audit-2026-08-22 条目 16, extended
   // to the sync entry points by the 2026-08-29 audit R10-20). This call reads

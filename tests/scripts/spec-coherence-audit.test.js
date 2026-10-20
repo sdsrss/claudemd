@@ -457,7 +457,9 @@ test('summary severityCounts aggregates across checks', () => {
 test('R11-26 CLI: --project= selects the memory dir the audit scans', () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-cli-'));
   try {
-    const target = '/work/r11-26-target';
+    // A real directory: a --project that does not exist is refused (D#107).
+    const target = path.join(tmpHome, 'r11-26-target');
+    fs.mkdirSync(target);
     const encoded = target.replace(/[^a-zA-Z0-9-]/g, '-');
     const memDir = path.join(tmpHome, '.claude/projects', encoded, 'memory');
     fs.mkdirSync(memDir, { recursive: true });
@@ -522,16 +524,53 @@ test('R11-25: --cwd is accepted as an alias of --project, and a conflicting pair
       }
     );
 
-  const viaCwd = run(['--cwd=/work/alias-target']);
-  assert.equal(viaCwd.status, 0, `stderr=${viaCwd.stderr}`);
-  assert.equal(JSON.parse(viaCwd.stdout).projectCwd, '/work/alias-target');
+  // A real directory: a --project that does not exist is refused (D#107).
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-alias-'));
+  try {
+    const viaCwd = run([`--cwd=${target}`]);
+    assert.equal(viaCwd.status, 0, `stderr=${viaCwd.stderr}`);
+    assert.equal(JSON.parse(viaCwd.stdout).projectCwd, target);
 
-  const viaProject = run(['--project=/work/alias-target']);
-  assert.equal(viaProject.status, 0, `stderr=${viaProject.stderr}`);
-  assert.equal(JSON.parse(viaProject.stdout).projectCwd, '/work/alias-target');
+    const viaProject = run([`--project=${target}`]);
+    assert.equal(viaProject.status, 0, `stderr=${viaProject.stderr}`);
+    assert.equal(JSON.parse(viaProject.stdout).projectCwd, target);
 
-  assert.equal(run(['--project=/a', '--cwd=/a']).status, 0);
+    assert.equal(run([`--project=${target}`, `--cwd=${target}`]).status, 0);
+  } finally {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
   const conflict = run(['--project=/a', '--cwd=/b']);
   assert.equal(conflict.status, 1);
   assert.match(conflict.stderr, /--project and --cwd are aliases but were given different values/);
+});
+
+// D#107: a mistyped --project path reached the memory-index check as a project
+// with no memory yet — "MEMORY.md absent — skipped (project has no memory
+// yet)", exit 0 — so a typo read as a clean audit of a project nobody named.
+test('D#107: a --project / --cwd path that is not a directory is refused, naming the path', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-d107-'));
+  try {
+    const missing = path.join(tmp, 'typo-no-such-dir');
+    const file = path.join(tmp, 'a-file');
+    fs.writeFileSync(file, '');
+    const run = args =>
+      spawnSync(
+        process.execPath,
+        [path.join(REPO_ROOT, 'scripts/spec-coherence-audit.js'), '--json', ...args],
+        { cwd: REPO_ROOT, encoding: 'utf8', timeout: 20000 }
+      );
+    for (const arg of [`--project=${missing}`, `--cwd=${missing}`, `--project=${file}`]) {
+      const r = run([arg]);
+      assert.equal(r.status, 1, `${arg} must be refused as a bad value; stdout=${r.stdout.slice(0, 120)}`);
+      assert.ok(r.stderr.includes(arg.slice(arg.indexOf('=') + 1)), `stderr names the path: ${r.stderr}`);
+      assert.match(r.stderr, /is not a directory/);
+      assert.equal(r.stdout, '', 'no report for a project nobody named');
+    }
+    // Control: an existing directory with no memory is still the advisory skip.
+    const ok = run([`--project=${tmp}`]);
+    assert.equal(ok.status, 0, `stderr=${ok.stderr}`);
+    assert.equal(JSON.parse(ok.stdout).checks.find(c => c.name === 'memory-index').stats.status, 'no-index');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
