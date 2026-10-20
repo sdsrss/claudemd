@@ -162,6 +162,11 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
                   else norm as $p | ($p | zone) as $z
                     | any($roots[]; . as $r | ($p | under($r)) and ($z == null or ($r | under($z))))
                   end;
+  # A match jq cannot finish is not a validation. `A="x"` fits both the quoted
+  # and the bare value, so 17 of them before a non-check command pass
+  # Oniguruma'"'"'s retry limit, and the uncaught error emptied the whole pass:
+  # the open edits got no checkpoint.
+  def is_validate: try test($vre) catch false;
   split("\n") |
   map(select(length > 0) | try fromjson catch null) |
   # Normalize row shapes before any path expression runs (0.99.0 pre-tag review
@@ -245,8 +250,8 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
       # `bash -c` / `sh -lc` with a quoted body: the body is a command line of its
       # own, tested with the same anchored pattern (0.99.0 matched it only
       # because it had no anchor at all).
-      if ($cmd | test($vre)) or ([$cmd | scan("(?:^|[;&|\n])[ \t(]*(?:bash|sh|zsh)[ \t]+-l?c[ \t]+(?:\u0027([^\u0027]*)\u0027|\"([^\"]*)\")")]
-            | map(.[] | select(. != null)) | any(test($vre))) then
+      if ($cmd | is_validate) or ([$cmd | scan("(?:^|[;&|\n])[ \t(]*(?:bash|sh|zsh)[ \t]+-l?c[ \t]+(?:\u0027([^\u0027]*)\u0027|\"([^\"]*)\")")]
+            | map(.[] | select(. != null)) | any(is_validate)) then
         .validates += 1 | .open = 0 | .opened = []
       else . end
     else . end

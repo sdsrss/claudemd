@@ -1344,6 +1344,31 @@ else
   ng "Case 33j: $(opens32) of 1 kept, slow jq ran: $([[ -e "$SLOW33J/ran" ]] && echo yes || echo no)"
 fi
 
+# --- Case 34a: a command jq cannot finish matching is not a validation. Each
+# `A="x"` matches the quoted value and the bare one, so 17 of them before a
+# non-check command hit Oniguruma's retry limit; the error emptied the whole
+# pass and the edit before it got no checkpoint. Both arms are covered: the
+# command itself and a `bash -c` body. The control ends in `npm test`.
+A34=""
+for i in $(seq 1 17); do A34+="A$i=\"x\" "; done
+R34=""
+for C34 in "${A34}echo hi" "bash -c '${A34}echo hi'"; do
+  reset_cwd
+  T="$TMP_HOME/case34a.jsonl"
+  make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "$C34")" "$TR_OK"
+  run_hook "$T"
+  compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null || R34+=" [${C34:0:4}…]:no-checkpoint"
+done
+reset_cwd
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$(bash_call "${A34}npm test")" "$TR_OK"
+run_hook "$T"
+[[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]] || R34+=" control:checkpoint"
+if [[ -z "$R34" ]]; then
+  ok "Case 34a: 17 quoted assignments before a non-check leave the edit open; before npm test they validate"
+else
+  ng "Case 34a:$R34"
+fi
+
 echo ""
 echo "session-end-check:$([[ $FAIL -eq 0 ]] && echo PASS || echo "FAIL ($FAIL assertion(s))")"
 exit $FAIL
