@@ -181,7 +181,7 @@ fi
 # Written before the verdict; a block below rewrites it to hold the reported
 # dirs instead, so the Stop that follows the block re-checks them.
 if [[ -n "$NEXT_PENDING" ]]; then
-  ( printf '%s' "$NEXT_PENDING" ) > "$PENDING_FILE" 2>/dev/null
+  ( printf '%s' "$NEXT_PENDING" ) 2>/dev/null > "$PENDING_FILE"
 else
   rm -f "$PENDING_FILE" 2>/dev/null
 fi
@@ -204,7 +204,7 @@ if [[ -n "$FOUND" ]]; then
       # Only the CONFIRMED dirs stay pending: the window is not advanced on a
       # block, so this Stop's first-sight candidates are re-found by the next
       # scan and must not be promoted to confirmed within the same turn.
-      [[ "$MODE" == deferred ]] && ( printf '%s' "$FOUND" ) > "$PENDING_FILE" 2>/dev/null
+      [[ "$MODE" == deferred ]] && ( printf '%s' "$FOUND" ) 2>/dev/null > "$PENDING_FILE"
       hook_record sandbox-disposal block "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
       exit 0
     fi

@@ -656,8 +656,8 @@ hook_install_sentinel_write() {
   if ! { [[ -n "$reason" ]] && command -v jq >/dev/null 2>&1 &&
          jq -cn --arg ts "$ts" --arg from "$from" --arg to "$to" --arg reason "$reason" \
            '{ts: $ts, from: $from, to: $to, reason: ($reason | if length > 800 then .[0:800] + "…" else . end)}' \
-           > "$tmp" 2>/dev/null; }; then
-    ( printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" ) > "$tmp" 2>/dev/null
+           2>/dev/null > "$tmp"; }; then
+    ( printf '{"ts":"%s","from":"%s","to":"%s"}\n' "$ts" "$from" "$to" ) 2>/dev/null > "$tmp"
   fi && mv -f "$tmp" "$f" 2>/dev/null
   rm -f "$tmp" 2>/dev/null
   return 0
@@ -725,7 +725,7 @@ hook_record_plugin_root() {
 
   local tmp="$state_dir/hook-root.json.$$"
   if ( printf '{"root":"%s","ts":"%s","version":"%s","sid":"%s"}\n' \
-       "$root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$version" "$sid" ) >"$tmp" 2>/dev/null; then
+       "$root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$version" "$sid" ) 2>/dev/null > "$tmp"; then
     mv -f "$tmp" "$state_dir/hook-root.json" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   else
     rm -f "$tmp" 2>/dev/null

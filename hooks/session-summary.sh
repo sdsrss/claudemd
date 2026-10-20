@@ -156,6 +156,6 @@ total=$(printf '%s' "$SUMMARY" | jq -r '.total // 0' 2>/dev/null)
 # Atomic write: tmp → rename. SessionStart reading mid-write would see
 # partial JSON otherwise.
 TMP="$SUMMARY_FILE.tmp.$$"
-( printf '%s\n' "$SUMMARY" ) > "$TMP" 2>/dev/null && mv -f "$TMP" "$SUMMARY_FILE" 2>/dev/null || rm -f "$TMP" 2>/dev/null
+( printf '%s\n' "$SUMMARY" ) 2>/dev/null > "$TMP" && mv -f "$TMP" "$SUMMARY_FILE" 2>/dev/null || rm -f "$TMP" 2>/dev/null
 
 exit 0

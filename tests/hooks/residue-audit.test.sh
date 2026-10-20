@@ -143,6 +143,18 @@ else
   echo "FAIL: 14 remedy wrong (line: $LINE14 | lists: $LISTED14)"; FAIL=$((FAIL+1))
 fi
 
+# Case 15: a state directory the hook cannot write. The baseline write failed
+# with bash's own "Permission denied" on stderr, which a Stop hook shows the user.
+rm -f "$HOME/.claude/.claudemd-state"/tmp-baseline*.txt
+chmod 500 "$HOME/.claude/.claudemd-state"
+STDERR15=$(bash "$HOOK" <<<'{"session_id":"rsE"}' 2>&1 >/dev/null); RC15=$?
+chmod 700 "$HOME/.claude/.claudemd-state"
+if [[ -z "$STDERR15" && "$RC15" == 0 ]]; then
+  ok "15 an unwritable state directory costs the baseline, not a line on stderr"
+else
+  echo "FAIL: 15 (rc=$RC15 stderr: $STDERR15)"; FAIL=$((FAIL+1))
+fi
+
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$((PASS + FAIL)) passed"; exit 1
 fi

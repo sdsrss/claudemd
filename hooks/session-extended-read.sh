@@ -48,7 +48,7 @@ mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SAFE_SID=$(printf '%s' "$SESSION_ID" | tr -c '[:alnum:]-' '_')
 SENTINEL="$STATE_DIR/ext-read-${SAFE_SID}.ts"
 [[ -f "$SENTINEL" ]] && exit 0
-date +%s > "$SENTINEL" 2>/dev/null || true
+date +%s 2>/dev/null > "$SENTINEL" || true
 
 hook_record session-extended-read read 'null' '§13.1-extended-read' "$SESSION_ID" "$TOOL_USE_ID"
 exit 0

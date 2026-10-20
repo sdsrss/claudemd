@@ -843,7 +843,7 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     NEWER=$(printf '%s\n%s\n' "$PLUGIN_VER" "$INSTALLED_VER" | sort -V | tail -1)
     if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
       mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
-      ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" ) >> "$HOME/.claude/logs/claudemd-bootstrap.log" 2>/dev/null || true
+      ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" ) 2>/dev/null >> "$HOME/.claude/logs/claudemd-bootstrap.log" || true
       # Through merge_banners with the ledger candidate, not a bare `jq -cn`.
       # This is the session being told to run /claudemd-refresh, i.e. a long
       # one, i.e. one that will compact — exactly when the ledger is owed. It
@@ -915,7 +915,7 @@ if [[ -f "$LOG" ]]; then
   LOG_BYTES=$(wc -c < "$LOG" 2>/dev/null | tr -d ' ')
   if [[ -n "$LOG_BYTES" && "$LOG_BYTES" -gt 65536 ]]; then
     TAIL_TMP="$LOG.tail.$$"
-    if tail -c 32768 "$LOG" > "$TAIL_TMP" 2>/dev/null; then
+    if tail -c 32768 "$LOG" 2>/dev/null > "$TAIL_TMP"; then
       mv -f "$TAIL_TMP" "$LOG" 2>/dev/null || rm -f "$TAIL_TMP" 2>/dev/null
     else
       rm -f "$TAIL_TMP" 2>/dev/null

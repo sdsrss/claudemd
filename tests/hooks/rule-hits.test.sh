@@ -625,4 +625,13 @@ OUT=$( (trap '' XFSZ; ulimit -f 0; bash -c "source $LIB; rule_hits_append banned
   || { echo "FAIL: STDOUT-1 a failed log write reached stdout: ${OUT:0:200}"; exit 1; }
 echo "PASS: STDOUT-1 a failed log write puts nothing on stdout"
 
+# A log the hook cannot open (read-only file): the append's redirection failed
+# with bash's "Permission denied" on the stderr every calling hook shares, and
+# several callers (branch-prune, rework-breaker) do not discard it.
+mkdir -p "$(dirname "$LOG")"; : >> "$LOG"; chmod 444 "$LOG"
+ERR=$(bash -c "source $LIB; rule_hits_append banned-vocab deny null '' sess-readonly1" 2>&1)
+chmod 644 "$LOG"
+[[ -z "$ERR" ]] || { echo "FAIL: STDERR-1 a log it cannot open put this on stderr: ${ERR:0:200}"; exit 1; }
+echo "PASS: STDERR-1 a log it cannot open puts nothing on stderr"
+
 echo "rule-hits: all cases passed"

@@ -533,7 +533,7 @@ if [[ "${DISABLE_BATCH_CADENCE_ADVISORY:-0}" != "1" ]]; then
       # Same pattern as session-summary.sh's SUMMARY_FILE write.
       _counter_write() {
         local _v="$1" _tmp="$COUNTER_FILE.tmp.$$"
-        ( printf '%d' "$_v" ) > "$_tmp" 2>/dev/null || return 0
+        ( printf '%d' "$_v" ) 2>/dev/null > "$_tmp" || return 0
         mv -f "$_tmp" "$COUNTER_FILE" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
       }
       CUR=0

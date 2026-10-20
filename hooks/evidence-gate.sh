@@ -338,7 +338,7 @@ if [[ "${EVIDENCE_GATE_DELIVER:-0}" == 1 && "${DISABLE_DEFERRED_NOTICE_HOOK:-0}"
   EG_STATE="$HOME/.claude/.claudemd-state"
   if mkdir -p "$EG_STATE" 2>/dev/null \
     && ( printf '[claudemd] system-injected — an observation from the end of your previous turn (%s), by evidence-gate, which the user turned on: that reply read as a completion claim after code edits, and %s If the claim stands, its verification is still outstanding; if it was not a completion claim, disregard this. The user can turn this off with DISABLE_EVIDENCE_GATE_HOOK=1.\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DETAIL" ) >"$EG_STATE/notice-$SESSION_ID.evidence-gate" 2>/dev/null; then
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DETAIL" ) 2>/dev/null > "$EG_STATE/notice-$SESSION_ID.evidence-gate"; then
     EG_QUEUED=1
   fi
 fi

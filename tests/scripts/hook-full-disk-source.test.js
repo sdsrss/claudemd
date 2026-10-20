@@ -267,6 +267,50 @@ test('scripts/*.sh hold no here-string', () => {
   assert.deepEqual(found, [], found.join('\n'));
 });
 
+// REDIRECT ORDER. bash applies redirections left to right, so in
+// `cmd > "$f" 2>/dev/null` a file that cannot be opened (an unwritable state
+// directory) is reported on the stderr that is still the hook's, which the user
+// sees: "…: Permission denied". `cmd 2>/dev/null > "$f"` reports it nowhere and
+// keeps the exit status. Read on each line's unquoted text (`top`), so a quoted
+// message that spells the shape is not a site.
+const LATE_DISCARD_RE =
+  /(^|[^0-9&<>])(1?>>?|>\|)[ \t]*(?!&)(?!\/dev\/(?:null|stderr)\b)("[^"]*"|'[^']*'|[^ \t;&|()]+)[ \t]+2>[ \t]*\/dev\/null/;
+
+function lateDiscards(src) {
+  return logicalLines(src)
+    .lines.filter(({ text, top }) => !/^\s*#/.test(text) && LATE_DISCARD_RE.test(top))
+    .map(({ line, text }) => ({ line, text: text.trim() }));
+}
+
+test('hooks/ silence stderr before they open a file, not after', () => {
+  const found = hookFiles().flatMap(rel =>
+    lateDiscards(readReal(rel)).map(
+      s => `${rel}:${s.line}: write the 2>/dev/null first: ${s.text.slice(0, 160)}`
+    )
+  );
+  assert.deepEqual(found, [], found.join('\n'));
+});
+
+test('redirect order: shapes it must report and must not', () => {
+  for (const src of [
+    '( printf x ) > "$F" 2>/dev/null',
+    '( echo x ) >> "$LOG" 2>/dev/null || true',
+    'date +%s > "$S" 2>/dev/null',
+    'if tail -c 9 "$L" > "$T" 2>/dev/null; then :; fi',
+    'jq -cn . >"$tmp" 2>/dev/null',
+  ])
+    assert.equal(lateDiscards(src).length, 1, src);
+  for (const src of [
+    '( printf x ) 2>/dev/null > "$F"',
+    '( echo x ) 2>/dev/null >> "$LOG" || true',
+    'cmd > /dev/null 2>/dev/null',
+    'cmd >&2 2>/dev/null',
+    'cmd 2>&1 >/dev/null',
+    'echo "write ( printf x ) > \\"$F\\" 2>/dev/null first"',
+  ])
+    assert.equal(lateDiscards(src).length, 0, src);
+});
+
 const NO_FNS = new Set(['rule_hits_append']);
 const kinds = src => findSites(src, NO_FNS).sites.map(s => s.kind);
 
@@ -351,7 +395,7 @@ const MUTATIONS = [
   [
     'the rule-hits row append back to a bare printf (the §8 deny path)',
     'hooks/lib/rule-hits.sh',
-    `[[ -n "$row" ]] && ( printf '%s\\n' "$row" ) >> "$log_file"`,
+    `[[ -n "$row" ]] && ( printf '%s\\n' "$row" ) 2>/dev/null >> "$log_file"`,
     `[[ -n "$row" ]] && printf '%s\\n' "$row" >> "$log_file" 2>/dev/null`,
     /^hooks\/lib\/rule-hits\.sh:\d+: builtin writes stdout to a file/,
   ],

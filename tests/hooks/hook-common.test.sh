@@ -267,6 +267,18 @@ HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/fake-root" "
 assert_contains "hook_record_plugin_root: the same call records with the switch unset" \
   '"sid":"sid-switched-off"' "$(cat "$HOOKROOT_FILE" 2>/dev/null)"
 
+# A state directory the hook cannot write: the temp file's redirection failed
+# and bash put "Permission denied" on stderr, which a hook shows the user. Both
+# writers into that directory, the root record and the bootstrap-failed sentinel.
+chmod 500 "$HOOKROOT_SANDBOX/.claude/.claudemd-state"
+RO_ERR=$( { HOME="$HOOKROOT_SANDBOX" hook_record_plugin_root "$HOOKROOT_SANDBOX/fake-root" "sid-ro"; } 2>&1 )
+assert_eq "hook_record_plugin_root: an unwritable state dir prints nothing" "" "$RO_ERR"
+RO_ERR=$( { HOME="$HOOKROOT_SANDBOX" hook_install_sentinel_write 0.1.0 0.2.0 ""; } 2>&1 )
+assert_eq "hook_install_sentinel_write: an unwritable state dir prints nothing" "" "$RO_ERR"
+RO_ERR=$( { HOME="$HOOKROOT_SANDBOX" hook_install_sentinel_write 0.1.0 0.2.0 "install failed: x"; } 2>&1 )
+assert_eq "hook_install_sentinel_write: with a reason, an unwritable state dir prints nothing" "" "$RO_ERR"
+chmod 700 "$HOOKROOT_SANDBOX/.claude/.claudemd-state"
+
 rm -rf "${HOOKROOT_SANDBOX:?}"
 
 # hook_memory_root on a `.git` file it cannot read (0.112.0 pre-tag review):

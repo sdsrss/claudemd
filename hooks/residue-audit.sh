@@ -54,7 +54,7 @@ CURRENT=$(find "$TMP_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' 
 # eat an immediate false alarm with BASELINE=0 on initial Stop. Mirrors
 # sandbox-disposal-check.sh, which also exits silently on first call.
 if [[ ! -f "$BASELINE_FILE" ]]; then
-  ( echo "v2:$CURRENT" ) > "$BASELINE_FILE"
+  ( echo "v2:$CURRENT" ) 2>/dev/null > "$BASELINE_FILE"
   exit 0
 fi
 
@@ -67,7 +67,7 @@ BASELINE_RAW=$(cat "$BASELINE_FILE" 2>/dev/null || echo "")
 if [[ "$BASELINE_RAW" =~ ^v2:([0-9]+)$ ]]; then
   BASELINE="${BASH_REMATCH[1]}"
 else
-  ( echo "v2:$CURRENT" ) > "$BASELINE_FILE"
+  ( echo "v2:$CURRENT" ) 2>/dev/null > "$BASELINE_FILE"
   exit 0
 fi
 # Defence in depth. The `v2:([0-9]+)` capture above already guarantees a numeric
@@ -91,5 +91,5 @@ if (( DELTA > THRESHOLD )); then
   hook_record residue-audit warn "{\"delta\":$DELTA,\"current\":$CURRENT,\"baseline\":$BASELINE}" '§7-user-global-state' "$SESSION_ID"
 fi
 
-( echo "v2:$CURRENT" ) > "$BASELINE_FILE"
+( echo "v2:$CURRENT" ) 2>/dev/null > "$BASELINE_FILE"
 exit 0

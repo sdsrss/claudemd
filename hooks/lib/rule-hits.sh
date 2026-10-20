@@ -455,6 +455,6 @@ rule_hits_append() {
   # stdio buffer, and on BSD libc (macOS /bin/bash 3.2) the next flush sent
   # them to the hook's real stdout, after its JSON (0.112.0 PR CI, D#421). The
   # subshell takes its buffer with it.
-  [[ -n "$row" ]] && ( printf '%s\n' "$row" ) >> "$log_file"
+  [[ -n "$row" ]] && ( printf '%s\n' "$row" ) 2>/dev/null >> "$log_file"
   return 0
 }
