@@ -8,6 +8,42 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.113.4] - 2026-10-20
+
+**Upgrade notes — command pages and two module triggers: fixes only, spec unchanged (v8.2.0). Plugin users have nothing to do.** Six slash-command pages now describe what 0.113.3 made their commands do, so the model running them reads the current exit codes, fields and recovery steps. The `ship` module now also loads on 打个tag and 发个版, and the `debug` module on a test or CI word followed by 挂了, 失败, 红了 or 没过. No command, hook verdict or exit code changes. To go back to 0.113.3, follow `docs/ROLLBACK.md`.
+
+**Why.** 0.113.3 changed six commands and listed their pages under "Not changed": the pages are model-visible text, which this project changes only in a release that is reviewed for it. The same list named the two trigger misses. Design record `tasks/specs/text-release-0.113.4.md`.
+
+**Command pages** (23cf62f)
+- `/claudemd-bypass-audit`: the audit scores every project's suggest rows, each against the transcript in the project the row names; `--cwd` is where a transcript is looked for when that fails or the row names no project, so it does not narrow the numbers. The missing-transcript hint now says when re-running with `--cwd` helps. The page said `--cwd` is "what you want when auditing the project the agent is running in".
+- `/claudemd-analyze`: without `--strict` it exits 0 whatever it finds; it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a spec file it cannot read) and 2 on an argument it does not accept. The page said "exits 0 by default", and `spec-coherence-audit --help` said "Default: always exit 0"; both are corrected.
+- `/claudemd-uninstall restore`: a file that was a symlink when it was backed up comes back as the same link.
+- `/claudemd-refresh`: when the install fails after the uninstall succeeded, the model relays the reinstall commands the script prints instead of reporting the refresh as done.
+- `/claudemd-status`: `plugin.manifestError: "unparseable"`, `manifestPath`, `detail` and the `manifest-unparseable` hint now have a branch on the page; with the cache hint present, both are given.
+- `/claudemd-statusline`: `remove` restores the whole saved statusLine object, `padding` included; `adopt` refuses a `settings.json` that parses to `null`, an array or a number (which `detect` reads as `absent`), and the page says what to tell the user.
+
+**Module triggers** (f68f3e5)
+- `ship`: `打\s*tag` becomes `打\s*(个|一个)?\s*tag`, and `发(个|一个?)版` is added.
+- `debug` (first 300 characters, as before): 测试, 用例, 单测 or CI (ASCII-bounded), then at most four non-punctuation characters, then 挂了, 挂掉, 跑挂, 失败, 红了 or 没过.
+- Replayed on this machine's 659 human prompts: `ship` gains 1 (a release request whose session then ran a release command), `debug` gains 0, and no prompt loses a match. 打个tag and 测试挂了 themselves occur in none of them, so the debug arm has no local evidence either way.
+
+@@PROBE@@
+
+**Not changed, and why.**
+- A prompt saying a test did *not* fail (测试没有失败) also matches the new debug arm: the gap allows any two characters before 失败. No such prompt occurs in the replay.
+- `ship` still matches `ship-baseline` and `pre-ship`: of the 2 prompts that matched only through a hyphenated form, 1 was followed by a release, so a tighter bound trades a hit for a miss.
+- English "test failed" / "tests fail" still draw no debug module (`failing` does); this release fixes the Chinese phrasings 0.113.3 named.
+- `/claudemd-doctor`'s `hook-fail-open` row still stays red for 30 days after a real fail-open: making it clear on recovery changes doctor's exit-code semantics, outside this release.
+- The other items under 0.113.3's "Not changed" stand.
+
+**Tests.**
+- `tests/scripts/command-page-behaviour.test.js` (new) pins each new page sentence as a whole line and, in a sandbox HOME, runs what it names: `spec-coherence-audit` exits 1 on a missing `--project` and 2 on an unknown flag, its `--help` no longer says "always exit 0", `lesson-bypass-audit --help` says `--cwd` does not narrow the audit, `status` returns every field and value the page names (without and with a plugin cache), `statusline-adopt` refuses a `null` settings file and leaves it as it was, and `refresh-plugin.sh` prints the commands the page quotes. Before the page edits 0 of 6 passed; after, 6 of 6. Putting the old `--help` line back fails the analyze case.
+- `tests/hooks/spec-module-inject.test.sh` case 21: 11 phrasings that missed before (打个tag, 打一个 tag, 发个版, 发一版, 发一个版本, 测试挂了, 用例跑挂了, 单测失败了, CI 红了, ci没过, 测试又挂掉了) and 9 neighbours that must draw nothing (a tag without 打, 打个招呼, 发个链接, 测试通过了, 用例写得不错, 上传失败了, 页面红了, `CI_job`, CI 配置). Before, all 11 missed; after, 21 of 21 cases pass.
+- `docs/ARCHITECTURE.md`'s suite count follows the new node suite (e26828b).
+- @@CHECKS@@
+
+@@REVIEW@@
+
 ## [0.113.3] - 2026-10-20
 
 **Upgrade notes — a backlog sweep: fixes only, spec unchanged (v8.2.0). Plugin users have nothing to do.** Where an output was wrong it now says what happened, so these verdicts and exit codes move:
