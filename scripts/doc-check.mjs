@@ -275,9 +275,10 @@ export function checkRatios(text, ratioLines) {
   // digit — enough for " = ", "(**" and a short unit word, not enough to reach
   // across into an unrelated number. A starts and B ends at a digit run's edge:
   // without the two guards a long run was retried from every offset and its
-  // tail rescanned each time (80,000 digits: 2.8 s).
+  // tail rescanned each time (80,000 digits: 2.8 s). A comma stops A only after
+  // a digit, where it is a thousands separator: `75%,1/2` still starts at 1.
   for (const m of text.matchAll(
-    /(?<![\d,])(\d[\d,]*)\s*\/\s*(\d[\d,]*)(?![\d,])[^0-9%\n]{0,16}?(\d+(?:\.\d+)?)\s*%/g
+    /(?<!\d|\d,)(\d[\d,]*)\s*\/\s*(\d[\d,]*)(?![\d,])[^0-9%\n]{0,16}?(\d+(?:\.\d+)?)\s*%/g
   ))
     verify(num(m[1]), num(m[2]), m[3], '%', `inline "${m[0].replace(/\s+/g, ' ')}"`);
   for (const raw of ratioLines) {

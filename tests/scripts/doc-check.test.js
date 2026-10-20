@@ -159,6 +159,13 @@ test('doc-check: a ratio is judged at the precision the document states, not mor
   assert.deepEqual(checkRatios('50/28,099(**0.2%**)', []).problems, []);
   assert.deepEqual(checkRatios('50/28,099 = 0.18%', []).problems, []);
   assert.equal(checkRatios('50/28,099 = 0.1%', []).problems.length, 1);
+  // A ratio right after a comma is still read (0.113.3 pre-tag review L2: the
+  // digit-run guard had excluded every A preceded by a comma), while a comma
+  // inside a number still cannot start one.
+  const listed = checkRatios('pass rates 3/4=75%,1/2=40%', []);
+  assert.equal(listed.checked, 2);
+  assert.equal(listed.problems.length, 1, listed.problems.join('; '));
+  assert.equal(checkRatios('1,234/2,468 = 50%', []).checked, 1);
 });
 
 test('doc-check: a config ratio (stated in prose, not as A/B = P%) is recomputed', () => {
