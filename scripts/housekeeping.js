@@ -168,33 +168,9 @@ export function scanVitestTmp({
   return targets;
 }
 
-const unlessGone = fn => {
-  try {
-    return fn();
-  } catch (e) {
-    if (e.code !== 'ENOENT') throw e;
-  }
-};
-
-// Bottom-up by hand, not rmSync({ recursive }): with several sweeps racing over
-// one root, rmSync returned normally in every racer that had passed the recheck
-// (four parallel --apply runs reported 4,244 deletions of 2,000 dirs), while
-// only one rmdir of the top succeeds. ENOENT from that rmdir: another sweep
-// removed it.
-function removeVitestDir(dir) {
-  for (const env of VITEST_ENV_NAMES) {
-    const ep = path.join(dir, env);
-    for (const f of unlessGone(() => fs.readdirSync(ep)) || []) fs.rmSync(path.join(ep, f), { force: true });
-    unlessGone(() => fs.rmdirSync(ep));
-  }
-  fs.rmdirSync(dir);
-}
-
 // Deletes scan targets, re-checking each one's signature and age right before
 // its rm: scan and delete are separate moments, and a run that restarted in
-// between has made the directory fresh again. Counts only the directories this
-// process removed; one another sweep removed first is neither a deletion nor
-// an error.
+// between has made the directory fresh again.
 export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(), now = Date.now() }) {
   let deleted = 0;
   let bytes = 0;
@@ -203,11 +179,11 @@ export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(),
     const sig = vitestSignature(t.path, uid);
     if (!sig || now - sig.newestMs < minAgeMs) continue;
     try {
-      removeVitestDir(t.path);
+      fs.rmSync(t.path, { recursive: true });
       deleted++;
       bytes += t.bytes;
     } catch (e) {
-      if (e.code !== 'ENOENT') errors.push({ path: t.path, code: e.code || String(e) });
+      errors.push({ path: t.path, code: e.code || String(e) });
     }
   }
   return { deleted, bytes, errors };

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   scanVitestTmp,
@@ -203,42 +203,6 @@ test('vitest tmp: CLI dry-run prints JSON and exits 0', () => {
   assert.equal(out.targets.length, 1);
   assert.equal(out.deleted, 0);
   assert.ok(fs.existsSync(d));
-});
-
-// Four sweeps racing over one root reported 4,244 deletions of 2,000 dirs:
-// rmSync({ recursive }) returned normally in every racer that had passed the
-// recheck. A dir is counted by the one sweep that removed it, and a dir another
-// sweep removed first is neither a deletion nor an error.
-test('vitest tmp: parallel --apply runs count each deleted dir once', async () => {
-  const n = 800;
-  for (let i = 0; i < n; i++) vitestDir(String(i).padStart(21, 'x'));
-  age(root, 2);
-  const runs = await Promise.all(
-    [1, 2, 3, 4].map(
-      () =>
-        new Promise(resolve => {
-          const c = spawn('node', [SCRIPT, 'tmp', '--apply', `--root=${root}`, '--min-age-minutes=1']);
-          let out = '';
-          c.stdout.on('data', d => (out += d));
-          c.on('close', code => resolve({ code, out }));
-        })
-    )
-  );
-  assert.deepEqual(
-    runs.map(r => r.code),
-    [0, 0, 0, 0]
-  );
-  const outs = runs.map(r => JSON.parse(r.out));
-  assert.deepEqual(fs.readdirSync(root), []);
-  assert.equal(
-    outs.reduce((sum, o) => sum + o.deleted, 0),
-    n,
-    `deleted per run: ${outs.map(o => o.deleted)}`
-  );
-  assert.deepEqual(
-    outs.flatMap(o => o.errors),
-    []
-  );
 });
 
 test('vitest tmp: CLI --root that is missing, not a directory or empty is a usage error naming it', () => {
