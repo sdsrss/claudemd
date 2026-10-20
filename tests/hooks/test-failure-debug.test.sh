@@ -35,7 +35,7 @@ O1=$(fail_event 'npm test' s1 | bash "$HOOK" 2>/dev/null)
 O2=$(fail_event 'npm test' s2 | run)
 C2=$(ctx <<<"$O2")
 if [[ "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$O2")" == PostToolUseFailure ]] \
-   && grep -q '^<spec-module name="debug">$' <<<"$C2" && grep -q 'injected because a test run just failed' <<<"$C2" \
+   && grep -q '^<spec-module name="debug">$' <<<"$C2" && grep -q 'injected because a command that runs tests just failed' <<<"$C2" \
    && ! grep -q '<!-- generated from' <<<"$C2" && grep -qx debug "$HOME/.claude/.claudemd-state/modinj-s2.list"; then
   ok "2 a failing npm test injects debug.md once and records it in the session list"
 else ng "2 wrong: event=$(jq -r '.hookSpecificOutput.hookEventName' <<<"$O2" 2>/dev/null) ctx=${C2:0:120}"; fi
@@ -97,5 +97,45 @@ O10=$(fail_event 'npm test' s10 | (trap '' XFSZ; ulimit -f 0; DISABLE_RULE_HITS_
 if grep -q '^<spec-module name="debug">$' < <(ctx <<<"$O10"); then
   ok "10 no temp file writable: a failing test run still injects debug.md"
 else ng "10 no temp file writable: ${O10:0:200}"; fi
+
+# 11. A chained command's exit status can be another segment's: when
+# `npm test && git push` fails, the push may be what failed, and when
+# `cd /nonexistent && npm test` fails the tests never ran. The injected reason
+# says what the hook knows — a command that runs tests failed.
+C11=$(fail_event 'npm test && git push' s11 | run | ctx)
+if [[ "$C11" == *"injected because a command that runs tests just failed"* && "$C11" != *"a test run just failed"* ]]; then
+  ok "11 a chained command's failure is not called a failed test run"
+else ng "11 reason text: $(printf '%s' "$C11" | head -n 1)"; fi
+
+# 12. An empty module injects nothing and leaves the session's slot open.
+cp "$HOME/.claude/spec-modules/debug.md" "$HOME/debug.md.keep"
+printf -- '---\nname: debug\n---\n\n' > "$HOME/.claude/spec-modules/debug.md"
+O12=$(fail_event 'npm test' s12 | run)
+cp "$HOME/debug.md.keep" "$HOME/.claude/spec-modules/debug.md"
+O12B=$(fail_event 'npm test' s12 | run | ctx)
+if [[ -z "$O12" ]] && grep -q 'name="debug"' < <(printf '%s' "$O12B"); then
+  ok "12 an empty debug.md injects nothing, and the real one still gets in later"
+else ng "12 empty=${O12:0:80} later=${O12B:0:80}"; fi
+
+# 13. Concurrent failures in one session inject once. Failing Bash calls in one
+# assistant message run this hook in parallel, and each read the list before
+# any of them had appended to it.
+D13="$HOME/c13"; mkdir -p "$D13"
+fail_event 'npm test' s13 > "$D13/ev"
+for k in 1 2 3 4 5 6 7 8; do
+  ( DEBUG_ON_TEST_FAILURE=1 bash "$HOOK" < "$D13/ev" > "$D13/out$k" 2>/dev/null ) &
+done
+wait
+N13=0
+for k in 1 2 3 4 5 6 7 8; do [[ -s "$D13/out$k" ]] && N13=$((N13 + 1)); done
+L13=$(grep -cx debug "$HOME/.claude/.claudemd-state/modinj-s13.list" 2>/dev/null)
+[[ "$N13" == 1 && "$L13" == 1 ]] && ok "13 eight concurrent failures inject debug.md once" || ng "13 injected $N13 times, list has $L13 debug lines"
+
+# 14. A session list that cannot be written: the redirect error must not reach
+# stderr (it was opened before `2>/dev/null` applied), and the module still goes in.
+mkdir -p "$HOME/.claude/.claudemd-state/modinj-s14.list"
+E14=$(fail_event 'npm test' s14 | DEBUG_ON_TEST_FAILURE=1 bash "$HOOK" 2>&1 >/dev/null)
+O14=$(fail_event 'npm test' s14b | run | ctx)
+[[ -z "$E14" && -n "$O14" ]] && ok "14 an unwritable session list writes nothing to stderr" || ng "14 stderr: $E14"
 
 claudemd_assert_summary

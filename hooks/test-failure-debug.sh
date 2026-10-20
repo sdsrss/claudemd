@@ -74,9 +74,25 @@ STATE_DIR="$HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 SEEN="$STATE_DIR/modinj-$SESSION_ID.list"
 grep -qx debug "$SEEN" 2>/dev/null && exit 0
+# A module with no body would inject an empty block and use up the slot.
+MOD_BODY=$(specmod_body "$MOD")
+[[ "$MOD_BODY" == *[![:space:]]* ]] || exit 0
+# Check-then-append races: failing Bash calls in one message run this hook in
+# parallel, and each read the list before any had appended. An O_EXCL lock
+# around a re-check and the append lets one through; a lock that EXISTS means
+# another call is injecting now. Released, not kept as a claim: session-start
+# clears the list on compaction so the module can come back, and a kept claim
+# would not be.
+LOCK="$STATE_DIR/modinj-$SESSION_ID.debug-lock"
+if ! (set -C; : > "$LOCK") 2>/dev/null; then [[ -e "$LOCK" ]] && exit 0; fi
+grep -qx debug "$SEEN" 2>/dev/null && { rm -f "$LOCK" 2>/dev/null; exit 0; }
+# 2>/dev/null first: a failed `>>` open reports before later redirections apply.
+( printf 'debug\n' ) 2>/dev/null >>"$SEEN" || true
+rm -f "$LOCK" 2>/dev/null
 
-specmod_entry debug "$(specmod_body "$MOD")" "injected because a test run just failed"
-( printf 'debug\n' ) >>"$SEEN" 2>/dev/null || true
+# The exit status of a chained command can be another segment's (`npm test &&
+# git push`, `cd /missing && npm test`), so the reason claims no more than that.
+specmod_entry debug "$MOD_BODY" "injected because a command that runs tests just failed"
 
 hook_record test-failure-debug module-inject '{"modules":"debug","trigger":"test-failure"}' '§2.2-modules' "$SESSION_ID" 2>/dev/null || true
 jq -cn --arg c "$SPECMOD_ENTRY" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUseFailure", additionalContext: $c}}'
