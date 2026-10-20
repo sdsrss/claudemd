@@ -1,5 +1,5 @@
 # 0.113.4：命令页跟上 0.113.3、ship/debug 触发词补漏、macOS 并行计数探针
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 0.113.3（2026-10-20）改了六个命令背后的行为，但它们的命令页（模型读的文字）没改，列在 CHANGELOG 的 Not changed 里（D#493）。同一版的 Not changed 还记着 ship/debug 模块触发词漏掉"打个tag""测试挂了"。并行 `housekeeping tmp --apply` 的删除计数修法在 macOS CI 上失败、原因不明，已撤回（D#494），计划是在下一个发版 PR 里加探针、读 macOS 那条腿。
@@ -22,11 +22,11 @@
   - 规范版本：触发词是模块元数据，0.103.0、0.104.0 改触发词时规范都没升版，这次同样保持 v8.2.0。
 
 ## 验收标准
-- [ ] AC1：六个命令页各自说出 0.113.3 的行为，新测试把每句钉住，并在能跑的地方把句子和真实行为连起来 — 验证：`node --test tests/scripts/command-page-behaviour.test.js`（改页前失败，改页后通过）
+- [x] AC1：六个命令页各自说出 0.113.3 的行为，新测试把每句钉住，并在能跑的地方把句子和真实行为连起来 — 验证：`node --test tests/scripts/command-page-behaviour.test.js`（改页前失败，改页后通过）
 - [x] AC2（评审后缩小）：`帮我打个tag` 注入 ship；`发个版`、`测试挂了` 两个分支撤回，作为 RESIDUAL 行留在 case 21；对照行不注入 — 验证：`bash tests/hooks/spec-module-inject.test.sh`（改前新行失败，改后通过，bash 5.3 与 3.2）
-- [ ] AC3：真实提示词回放：ship、debug 新增命中逐条列出，没有新增误注入 — 验证：`node scripts/offline-eval/trigger-calibrate.mjs` 前后数字 + 逐条清单
-- [ ] AC4：macOS 探针的 CI 输出读到，结论写进本文件；探针在 tag 前修掉或撤掉 — 验证：PR CI 的 macos-latest 日志
-- [ ] AC5：`npm run check` 退出 0；PR CI 7/7；发版前独立评审；tag、npm、GitHub release — 验证：runbook 第 1–10 步
+- [x] AC3：真实提示词回放：ship、debug 新增命中逐条列出，没有新增误注入 — 验证：`node scripts/offline-eval/trigger-calibrate.mjs` 前后数字 + 逐条清单
+- [x] AC4：macOS 探针的 CI 输出读到，结论写进本文件；探针在 tag 前修掉或撤掉 — 验证：PR CI 的 macos-latest 日志
+- [x] AC5：`npm run check` 退出 0；PR CI 7/7；发版前独立评审；tag、npm、GitHub release — 验证：runbook 第 1–10 步
 
 ## 方案
 - 命令页：只改说错或没说的句子，不重写整页。新测试 `tests/scripts/command-page-behaviour.test.js`：每页一条整行钉住新句子；能便宜跑起来的行为（analyze 的非目录 `--project` 退出 1、bypass-audit 的 `--help`、status 对坏 manifest 返回的字段、statusline 对 `null` 的拒绝）在沙箱 HOME 里实跑，断言页里引用的字段名或值确实出现在输出里。
@@ -36,12 +36,12 @@
 - 探针：测试里起 4 个子进程并发删同一批目录，三种模式（空目录裸 rmdir；529ad53 的自底向上删除、不复检；带复检），每个进程记下每个目标每一步的结果和 errno，父进程找出被两个进程都算成删除的目录，用 `t.diagnostic` 打出来。测试本身不断言计数（它是记录现场，不是闸门）。
 
 ## 计划
-- [ ] S1：探针测试，先推草稿 PR 让 macOS 腿跑起来 — 覆盖 AC4 — 执行：主会话
-- [ ] S2：命令页测试（红）→ 改六页 + USAGE（绿）— 覆盖 AC1
-- [ ] S3：触发词测试行（红）→ 改 json、重建、同步副本（绿）；回放 — 覆盖 AC2、AC3
-- [ ] S4：读 macOS 探针 → 修或撤 — 覆盖 AC4
-- [ ] S5：记录类三项
-- [ ] S6：CHANGELOG、六处版本号、`npm run check`、bash 3.2、PR CI、评审、tag、release — 覆盖 AC5
+- [x] S1：探针测试，先推草稿 PR 让 macOS 腿跑起来 — 覆盖 AC4 — 执行：主会话
+- [x] S2：命令页测试（红）→ 改六页 + USAGE（绿）— 覆盖 AC1
+- [x] S3：触发词测试行（红）→ 改 json、重建、同步副本（绿）；回放 — 覆盖 AC2、AC3
+- [x] S4：读 macOS 探针 → 修或撤 — 覆盖 AC4
+- [x] S5：记录类三项
+- [x] S6：CHANGELOG、六处版本号、`npm run check`、bash 3.2、PR CI、评审、tag、release — 覆盖 AC5
 
 ## 决策与进展
 - 2026-10-20：版本取 0.113.4（patch）。命令页是改正文字；触发词补的是模块 loads-on 已经写明的场景（打 tag 属于 "before tagging"，测试挂了属于 "a failing test"），按"恢复已写明的行为"算修复。触发词的开关不变（spec-module-inject 的 kill switch 照旧）。
@@ -63,3 +63,11 @@
   - 第 2 轮的 L：L1（CHANGELOG 说页面写了 manifestPath）改；L4 refresh 用例改为整行比对，评审者的两个变异（`${PLUGIN}-next`、前缀一句话）现在都会让它失败；L6 README 的 "saving its command" 改为 statusLine；L7 注释随 case 21 重写；L8 README 补上绝对链接与跳过失效链接两句，使 82a4399 的提交说明成立。L2、L3、L5 针对的分支已撤回。已推送的提交说明（d2764b1 的"11 neighbours, one per bound"）不改写历史，在 CHANGELOG 的评审段说明。
 
 ## 验证记录
+- 6a12749 之前：`node --test tests/scripts/command-page-behaviour.test.js` → 改页前 0/6（每条 "lacks the line"），改页后 6/6；第 1 轮评审后改了钉住的句子，5/6 在旧文字上失败，改后 6/6；refresh 用例对评审者的三个变异（去掉 `, then /reload-plugins`、`${PLUGIN}-next`、行首加一句）都失败。
+- `bash tests/hooks/spec-module-inject.test.sh` → 最终 21/21（bash 5.3.9）；case 21 的两条 打个tag 正例在 575ce92 的 ship 模块上失败。
+- 回放（旧 = 575ce92 的触发词，新 = 最终）：663 条人类提示，没有一条增加或丢失匹配。
+- 探针：PR CI 39461011037，macOS bare 模式 801 / 897 / 885（Node 20 / 22 / 24），Linux 三种模式 800。
+- 最终 head（2936214，代码同 41402d5）：`( trap '' PIPE; npm run check )` → 退出 0（node 1,603/1,604，1 个因未设 SHFMT 跳过，shell 套件全过）；`tests/lib/bash32-runtime.sh`（bash 3.2.57）→ 44/44，运行前后 `/tmp/sh-thd*` 都是 0；`npm run smoke` → 2/2。
+- PR CI：39456034935 失败（套件数）、39458386087 失败（spec 改动未升版），39461011037、39464930475、39471198117、39476706726（最终 head）7/7。
+- 发版：`main` 快进到 2936214 并推送，main 的 CI 39479990773 通过；tag v0.113.4（e25f01a）的 ci 39480014593 与 npm-publish 39480014657 全部作业通过；`npm view claudemd-cli dist-tags.latest` → 0.113.4（19:24:45Z，第 1 次轮询）；GitHub release https://github.com/sdsrss/claudemd/releases/tag/v0.113.4；PR #13 已合并。
+- 暴露 T0 未记：要等使用者运行 `/claudemd-refresh` 并重启（runbook 第 11 步），两份 PREREG 已写附记。
