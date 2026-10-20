@@ -1,5 +1,5 @@
 # 0.113.2 之后剩下能做的，发 0.113.3
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 2026-10-20 上午先核对了遗留：`main` CI 红（a3c496f 修）、`hook-budget` 在会话临时目录作 TMPDIR 时红（0a337e0）、D#455 状态栏的 here-string（be1a7ec，`next-release`）、D#327 复测前提（80cdce4）。汇报里列了"核实过、但没修"的几条和 converge 积压里约 35 条没复核的 P2。
@@ -28,7 +28,7 @@
 - [x] scripts/*.sh here-string（8c19e8f）
 - [x] session-start 无 node 横幅（9152ba8）
 - [x] converge 积压复核（只读子代理，75 条）与选出的修复（7 个执行代理 + 主会话 §8 组）
-- [ ] 发版 0.113.3：发版分支、CHANGELOG、六处版本号、`npm run check`、bash 3.2 运行时、smoke、草稿 PR、CI、发版前评审、tag、npm、GitHub release
+- [x] 发版 0.113.3：发版分支、CHANGELOG、六处版本号、`npm run check`、bash 3.2 运行时、smoke、草稿 PR、CI、发版前评审、tag、npm、GitHub release（tag v0.113.3 → 31a8613，PR #12）
 
 ## 决策与进展
 - 2026-10-20：jq `--arg` 传大段文本的位置共 19 处（`grep`），只有 `spec-module-inject.sh:85` 传的是使用者整段提示词、长度无上限；其余是模块正文（预算 9,800 字符）、拒绝理由（pre-bash-safety 截到 30,000 字符）、文件路径列表等有界内容，不改。
@@ -52,3 +52,4 @@
 - 8c19e8f：`node --test tests/scripts/hook-full-disk-source.test.js` → 改前失败（perf-baseline.sh:202、:216），改后 12/12；`bash tests/integration/perf-baseline-hermetic.test.sh` → 7/7。
 - 9152ba8：`bash tests/hooks/session-start.test.sh` → 改前 88/90（37b、37c 失败），改后 90/90（bash 5.3.9 与 3.2.57）；变异（无条件删除哨兵）→ 37b、37c 变红；`npm run test:scripts` → 1559/1560，1 个跳过（改流程文档前，引用检查失败 1 条）。
 - §8 回放（941ecfd、9f86289）：101,102 条不重复真实命令中 4,519 条命中筛选，0.113.2 与新闸门判定 0 条翻转。推送闸门回放（代理）：ship-baseline 1/1,150、banned-vocab 2/4,203、memory-read-check 1/8,589 由放行变拒绝，均为包在 `( )`/`$( )` 里的真实推送或提交。
+- 发版（31a8613）：PR CI run 39437997113 7/7；`main` push CI run 39440951916 通过；tag 的 ci run 39440974470 与 npm-publish run 39440974741 全部作业通过；`npm view claudemd-cli dist-tags.latest` → 0.113.3（publish 作业结束后第 3 次轮询）。
