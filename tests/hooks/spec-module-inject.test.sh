@@ -240,4 +240,24 @@ if [[ "$(id -u)" == 0 ]]; then ok "20 skipped: root writes a mode-555 dir"; else
   else ng "20 unwritable state dir: first=$(mods "$O20A") second=$(mods "$O20B") row=[$R20] stderr=[$E20]"; fi
 fi
 
+# 21. Chinese release and failing-test phrasings the triggers missed (0.113.3
+# "Not changed"; D#493): 打个tag / 打一个tag, 发个版 / 发一版 / 发一个版本 for
+# ship ("把剩余的做完了发个版" is a real prompt the ship trigger missed), and
+# 测试/用例/单测/CI + up to four characters + 挂了 / 失败 / 红了 / 没过 for
+# debug. Negative rows sit next to each arm: tag without 打, 发 + 个 without
+# 版, a test word with no failure word, a failure word with no test word, and
+# CI glued to _ . Runs through jq, the hook's regex engine.
+BAD21=0; N21=0
+for row in 'ship|帮我打个tag' 'ship|打一个 tag 吧' 'ship|把剩余的做完了发个版' 'ship|今天发一版' 'ship|发一个版本吧' \
+  'debug|测试挂了，看一下' 'debug|用例跑挂了' 'debug|单测失败了怎么回事' 'debug|CI 红了' 'debug|ci没过' 'debug|这个测试又挂掉了'; do
+  N21=$((N21+1)); want="${row%%|*}"; p="${row#*|}"
+  [[ "$(mods "$(inject "$p" "s21p$N21")")" == "$want " ]] || { ng "21 missed $want: $p -> $(mods "$(inject "$p" "s21q$N21")")"; BAD21=1; }
+done
+N21=0
+for p in '这个tag名字不对' '打个招呼' '发个链接给我' '测试通过了，没问题' '用例写得不错' '上传失败了' '页面红了一块' \
+  'CI_job 的名字' 'CI 配置在哪'; do
+  N21=$((N21+1)); [[ -z "$(inject "$p" "s21n$N21")" ]] || { ng "21 drew a module: $p -> $(mods "$(inject "$p" "s21m$N21")")"; BAD21=1; }
+done
+[[ $BAD21 == 0 ]] && ok "21 打个tag / 发个版 inject ship and 测试挂了 / CI 红了 inject debug; their neighbours do not"
+
 claudemd_assert_summary
