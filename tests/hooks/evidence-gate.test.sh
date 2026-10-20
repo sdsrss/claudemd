@@ -893,5 +893,30 @@ reset_log
 OUT=$(run_hook "$DONE_CLAIM")
 [[ -z "$OUT" ]] && ok "34b: an upper-case OVERALL: verdict alone is output evidence" || ng "34b: fired: ${OUT:0:200}"
 
+# --- Case 35: a full-width paren after Done is not a label colon -------------
+# DONE_RE's colon was the bracket `[:：]`, which grep reads byte by byte under
+# LC_ALL=C: `（` (EF BC 88) shares its lead byte with `：` (EF BC 9A), so
+# "Done（…）" read as a `Done:` claim there and not in a UTF-8 locale.
+{
+  row_edit /p/src/a.js
+  row_text "x"
+} > "$TRANSCRIPT"
+for L in C ${U8:+"$U8"}; do
+  reset_log
+  OUT=$(LC_ALL=$L run_hook 'Done（the parser rewrite is next, after review）')
+  if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+    ok "35: LC_ALL=$L — 'Done（' is not a completion label"
+  else
+    ng "35: LC_ALL=$L — fired: ${OUT:0:200}"
+  fi
+  reset_log
+  OUT=$(LC_ALL=$L run_hook 'Done：rewrote the parser.')
+  if [[ "$OUT" == *"Iron Law #2"* ]]; then
+    ok "35b: LC_ALL=$L — control: 'Done：' (full-width colon) is still a claim"
+  else
+    ng "35b: LC_ALL=$L — the full-width colon label went silent: ${OUT:0:200}"
+  fi
+done
+
 echo
 claudemd_assert_summary

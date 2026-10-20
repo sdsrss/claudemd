@@ -141,7 +141,7 @@ const KEPT = [
   },
   {
     file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$norm" | grep -qE '^Uncertain[[:space:]]*[:—-]`,
+    has: `echo "$norm" | grep -qE '^Uncertain[[:space:]]*(:|—|-)`,
     why: 'explicit-none skip: a lost match flags it',
   },
   {

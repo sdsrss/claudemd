@@ -122,7 +122,11 @@ esac
 # a nag. All three FP controls still gate every shape added: a code edit must
 # have happened, `[PARTIAL` suppresses, and the evidence lookup still has to
 # come up empty.
-DONE_RE='^[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成|变更|Changes)(\*\*)?[[:space:]]*([:：]|\*\*[[:space:]]*$|$)'
+#
+# The colon is `(:|：)`, not the bracket `[:：]`: under LC_ALL=C grep reads a
+# bracket byte by byte, and `（` shares `：`'s lead byte, so "Done（…）" read as
+# a label there and not in a UTF-8 locale (verify-cmd.sh has the same note).
+DONE_RE='^[[:space:]]*(#{1,4}[[:space:]]*)?(-[[:space:]]+)?(\*\*)?(Done|Shipped|完成|变更|Changes)(\*\*)?[[:space:]]*(:|：|\*\*[[:space:]]*$|$)'
 DONE_TAIL_RE='[^[:space:]]完成|已(发布|上线|实现|修复|生成|完成)'
 # Round-17 ALG-M2. The exclusion used to live inside the class as
 # `[^[:space:]没未不]完成`, which only rejected a negation sitting IMMEDIATELY

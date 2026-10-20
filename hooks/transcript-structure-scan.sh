@@ -153,9 +153,10 @@ if (( done_ln > 0 && notdone_ln > 0 && failed_ln > 0 && uncertain_ln > 0 )); the
       block=$(printf '%s\n' "$LAST_TEXT" | sed -n "${ln},${upper}p")
       # Evidence fingerprints (any one suffices). Tight set — `\b(passed|
       # failed|tests)\b` is word-bounded so "untested" / "testing" don't
-      # match. `证据[:：]` requires the section-header form (Chinese colon
-      # included) so prose mentions of "证据" don't trip.
-      if printf '%s' "$block" | grep -qE '\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]+[^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]+|Checked:|baseline|known-red|证据[:：]' >/dev/null 2>&1; then
+      # match. `证据(:|：)` requires the section-header form (Chinese colon
+      # included) so prose mentions of "证据" don't trip. An alternation, not
+      # the bracket `[:：]`, which LC_ALL=C reads byte by byte (`（` matched).
+      if printf '%s' "$block" | grep -qE '\.[a-zA-Z]+:[0-9]+|\b(passed|failed|tests)\b|[0-9]+[^[:space:]]*[[:space:]]*(→|->|=>)[[:space:]]*[0-9]+|Checked:|baseline|known-red|证据(:|：)' >/dev/null 2>&1; then
         continue
       fi
       # L3 zero-issue / empty Done: → skip. The skip applies only to the
@@ -197,8 +198,9 @@ while IFS= read -r ln_str; do
   # Markdown header alone (`## Uncertain` w/ no inline content) → skip;
   # the rationale typically lives on a following line, not the header itself.
   echo "$line" | grep -qE '^##[[:space:]]+Uncertain[[:space:]]*$' && continue
-  # Empty / explicit-none → skip.
-  echo "$norm" | grep -qE '^Uncertain[[:space:]]*[:—-][[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
+  # Empty / explicit-none → skip. `(:|—|-)`, not `[:—-]`: under LC_ALL=C that
+  # bracket took the em dash's first byte alone.
+  echo "$norm" | grep -qE '^Uncertain[[:space:]]*(:|—|-)[[:space:]]*(\(none\)|\(无\)|none|N/A|-+)?[[:space:]]*$' && continue
   # Has rationale connector → skip. The list must cover both halves of the
   # spec's bilingual canonical form: English `because/since/due to/owing to`
   # and 中文 `因为/由于/鉴于`. Pre-fix it only had `因为`, so a 中文 report

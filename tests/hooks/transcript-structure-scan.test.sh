@@ -465,6 +465,38 @@ if [[ "$STDERR" == *"§iron-law-2"*"跑完了"* ]]; then
 else
   echo "FAIL: 24e missed a colon line before a list-form part label: $STDERR"; FAIL=$((FAIL+1))
 fi
+
+# --------------------------------------------------------------------------
+# Case 25: a bracket holding a multibyte character is byte-wise under
+# LC_ALL=C — `[:：]` took `（` (same lead byte as `：`) for a colon, and `[:—-]`
+# took the em dash's first byte alone, leaving two bytes that matched nothing.
+# Both checks must read the same in C and in a UTF-8 locale.
+# --------------------------------------------------------------------------
+U8=$(locale -a 2>/dev/null | command grep -i -m1 -E '^(C\.utf-?8|en_US\.utf-?8)$')
+for L in C ${U8:+"$U8"}; do
+  TX=$(seed_transcript $'Some prose.\n\nUncertain — (none)\n\nEnd.')
+  LC_ALL=$L drive "$TX"
+  if [[ -z "$STDERR" ]]; then
+    echo "PASS: 25 LC_ALL=$L 'Uncertain — (none)' is an explicit none → silent"; PASS=$((PASS+1))
+  else
+    echo "FAIL: 25 LC_ALL=$L flagged an explicit none: $STDERR"; FAIL=$((FAIL+1))
+  fi
+  TX=$(seed_transcript $'Done: 重写了解析器，证据（稍后补）。\nNot done: (none)\nFailed: (none)\nUncertain: env because untested.')
+  LC_ALL=$L drive "$TX"
+  if [[ "$STDERR" == *"§iron-law-2"* ]]; then
+    echo "PASS: 25b LC_ALL=$L '证据（' is not the 证据： header → §iron-law-2"; PASS=$((PASS+1))
+  else
+    echo "FAIL: 25b LC_ALL=$L read '证据（' as an evidence header: $STDERR"; FAIL=$((FAIL+1))
+  fi
+  TX=$(seed_transcript $'Done: 重写了解析器，证据：见上。\nNot done: (none)\nFailed: (none)\nUncertain: env because untested.')
+  LC_ALL=$L drive "$TX"
+  if [[ -z "$STDERR" ]]; then
+    echo "PASS: 25c LC_ALL=$L control: '证据：' is still an evidence header → silent"; PASS=$((PASS+1))
+  else
+    echo "FAIL: 25c LC_ALL=$L missed the 证据： header: $STDERR"; FAIL=$((FAIL+1))
+  fi
+done
+[[ -n "$U8" ]] || echo "  (25: no UTF-8 locale installed; only the C leg ran)"
 unset TRANSCRIPT_STRUCTURE_SCAN
 
 # --------------------------------------------------------------------------
