@@ -468,6 +468,7 @@ hook_record() {
 # Rate limit rationale: a misconfigured environment (jq uninstalled) would
 # fire on every hook invocation otherwise. 60s/reason caps log growth at
 # ≤1440 events/day per (hook,reason) — surfaces the issue without flooding.
+# The marker needs a writable state dir; without one every call writes a row.
 # Reasons (canonical):
 #   jq-missing       prerequisite jq binary not on PATH
 #   bad-event        stdin JSON unreadable / truncated
@@ -499,7 +500,9 @@ hook_record_failopen() {
       return 0
     fi
   fi
-  ( printf '%s' "$now" ) > "$marker" 2>/dev/null || return 0
+  # An unwritable state dir leaves nowhere to keep the throttle: write the row
+  # unthrottled (the log's size cap still bounds it) rather than none.
+  ( printf '%s' "$now" ) 2>/dev/null > "$marker" || true
 
   # Emit via rule_hits_append. extra carries the reason as structured JSON.
   local lib_dir

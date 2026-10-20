@@ -570,6 +570,22 @@ else
   ng "T22 pre-bash-safety lost the rm deny with a truncated hook-common.sh (def line=$T22_DEF, out: $T22_OUT)"
 fi
 
+# T23: an unwritable state dir, where the rate-limit marker lives. The marker's
+# redirect opened before its 2>/dev/null, so bash printed "Permission denied"
+# (stderr reaches the user) and the function returned before the row: every
+# hook's fail-open path went noisy and unrecorded at once.
+fresh_home
+mkdir -p "$HOME/.claude/.claudemd-state" && chmod 555 "$HOME/.claude/.claudemd-state"
+T23_ERR=$(bash -c "source '$HOOKS_DIR/lib/hook-common.sh'; hook_record_failopen banned-vocab bad-event" 2>&1 >/dev/null)
+chmod 755 "$HOME/.claude/.claudemd-state"
+if [[ "$(id -u)" == 0 ]]; then
+  ok "T23 skipped: root writes a mode-555 dir"
+elif [[ -z "$T23_ERR" ]] && has_failopen banned-vocab bad-event; then
+  ok "T23 unwritable state dir: fail-open row written, nothing on stderr"
+else
+  ng "T23 unwritable state dir: stderr=[$T23_ERR] row=$(has_failopen banned-vocab bad-event && echo yes || echo no)"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
