@@ -44,6 +44,7 @@
   - 修复：status 改为纯增量（0974a1e）；claudemd-cli 严格 UTF-8、`audit <path> -h`、CONTRIBUTING 退出码表写明"无法使用的输入用 2"（8d24040）；branch-prune 认领失败照常提示（8ec325e）；sandbox-disposal 的 touch 与 tmp-sweep 的 nohup 重定向（42d8031）；doc-check 逗号后的比例（7ddcdb4）；模块标记近似写法（37829d4）；statusline 恢复整个对象（107b61e）；mem-audit 取第一个链接（be8fa47）；test-failure-debug 锁过期（270847c）；语料行编号与 F21 登记（6fdb653）；文档（61a494c）；CHANGELOG 按三份报告改写。
   - 退出码的取舍：先按表把 lint 的非 UTF-8 改成 1，随后改回 2——这个 CLI 本来就用 2 表示"无法使用的输入"（文件不存在、目录、不是会话记录的 JSON），表与现状不符，改的是表。
   - 不修：已发布提交说明里引用了拣入前的 SHA（b1732d3、7d92c78、b654165），改要重写已推送的历史；branch-prune 认领不随压缩重置；推送闸门的其他命令位置形状、`--help` 豁免只读第一段（0.113.2 起就如此）。
+- 2026-10-20：PR CI run 39426400220（164ad9b）macOS/Node 24 腿红：529ad53 的并行计数用例 4 个进程报 946 个删除（实为 800）。本机没有 macOS，找不出 APFS 上为何两个进程的 rmdir 都算成功；这个计数只进 tmp-sweep 的结果文件，撤回这部分（864b03a），保留 `truncated` 和 `--root`。131 号随之变为部分修复：整条 31、部分 6、不修 3。
 
 ## 验证记录
 - c907e25：`bash tests/hooks/spec-module-inject.test.sh` → 改前 17/18（用例 18 失败），改后 18/18（bash 5.3.9 与 3.2.57）；每条提示词耗时 100 次 × 3：改前 11.58/11.00/11.21 ms，改后 11.17/11.27/10.63 ms。
