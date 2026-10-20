@@ -83,7 +83,8 @@ ROOTS=("$CWD")
 _r=$(cd "$CWD" 2>/dev/null && pwd -P) && ROOTS+=("$_r")
 GIT_TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && ROOTS+=("$GIT_TOP") || GIT_TOP=""
 [[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && ROOTS+=("$CLAUDE_PROJECT_DIR")
-ROOTS_JSON=$(printf '%s\n' "${ROOTS[@]}" | jq -R . | jq -sc 'map(select(startswith("/")))' 2>/dev/null) || ROOTS_JSON='[]'
+# NUL-separated: one per line split a cwd holding a newline, and lost it.
+ROOTS_JSON=$(printf '%s\0' "${ROOTS[@]}" | jq -R -s -c 'split("\u0000")[:-1] | map(select(startswith("/")))' 2>/dev/null) || ROOTS_JSON='[]'
 
 # Validate command, anchored at a command position (see the comment at its use).
 # Between the anchor and the tool name it admits what real commands put there:

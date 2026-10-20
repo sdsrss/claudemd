@@ -1416,6 +1416,21 @@ else
   ng "Case 34c:$R34"
 fi
 
+# --- Case 34d: a cwd whose name holds a newline is still a root. The roots went
+# to jq one per line, so the cwd split in two, neither half held the edited
+# file, and the edit was not counted.
+NL34="$TMP_HOME/nl"$'\n'"cwd"
+mkdir -p "$NL34"
+T="$TMP_HOME/case34d.jsonl"
+make_transcript "$T" "$USER_MSG" "$(edit_at "$NL34/x.js")" "$TR_OK"
+printf '%s' "$(jq -cn --arg t "$T" --arg c "$NL34" '{hook_event_name:"SessionEnd",session_id:"x",transcript_path:$t,cwd:$c}')" \
+  | bash "$HOOK" 2>/dev/null
+if [[ -n "$(ls -A "$NL34/tasks" 2>/dev/null)" ]]; then
+  ok "Case 34d: an edit under a cwd with a newline in its name writes the checkpoint"
+else
+  ng "Case 34d: the edit under a cwd with a newline was not counted"
+fi
+
 # --- Case 34e: `tsc` ending the command is a typecheck. The arm was `tsc ` with
 # a space, so `npx tsc`, a bare `tsc` and `pnpm exec tsc` left a checkpoint
 # after a clean typecheck. The control is a different tool whose name starts
