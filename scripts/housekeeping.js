@@ -29,17 +29,19 @@ branches  REPORT (never delete) the local branches that are safe to delete:
           on the default branch (squash merge) is listed under
           \`goneUnmerged\`. Deleting is left to \`git branch -d\`, which runs
           git's own merged and in-use checks at the moment of deletion.
+          Examines at most 200 candidates; \`truncated\` counts the rest.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
-  --root=DIR             tmp: scan only DIR (test seam).
+  --root=DIR             tmp: scan only DIR, an existing directory (test seam).
   --min-age-minutes=N    tmp: override the age floor.
   --cwd=DIR              branches: repository to inspect (default: cwd).
   --help, -h             Print this message and exit.
 
 Output: JSON on stdout.
 
-Exit codes: 0 success | 2 argv-shape error.`;
+Exit codes: 0 success | 2 argv-shape error, a bad --min-age-minutes, or a
+--root that is not a directory.`;
 
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
@@ -166,9 +168,33 @@ export function scanVitestTmp({
   return targets;
 }
 
+const unlessGone = fn => {
+  try {
+    return fn();
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+};
+
+// Bottom-up by hand, not rmSync({ recursive }): with several sweeps racing over
+// one root, rmSync returned normally in every racer that had passed the recheck
+// (four parallel --apply runs reported 4,244 deletions of 2,000 dirs), while
+// only one rmdir of the top succeeds. ENOENT from that rmdir: another sweep
+// removed it.
+function removeVitestDir(dir) {
+  for (const env of VITEST_ENV_NAMES) {
+    const ep = path.join(dir, env);
+    for (const f of unlessGone(() => fs.readdirSync(ep)) || []) fs.rmSync(path.join(ep, f), { force: true });
+    unlessGone(() => fs.rmdirSync(ep));
+  }
+  fs.rmdirSync(dir);
+}
+
 // Deletes scan targets, re-checking each one's signature and age right before
 // its rm: scan and delete are separate moments, and a run that restarted in
-// between has made the directory fresh again.
+// between has made the directory fresh again. Counts only the directories this
+// process removed; one another sweep removed first is neither a deletion nor
+// an error.
 export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(), now = Date.now() }) {
   let deleted = 0;
   let bytes = 0;
@@ -177,11 +203,11 @@ export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(),
     const sig = vitestSignature(t.path, uid);
     if (!sig || now - sig.newestMs < minAgeMs) continue;
     try {
-      fs.rmSync(t.path, { recursive: true });
+      removeVitestDir(t.path);
       deleted++;
       bytes += t.bytes;
     } catch (e) {
-      errors.push({ path: t.path, code: e.code || String(e) });
+      if (e.code !== 'ENOENT') errors.push({ path: t.path, code: e.code || String(e) });
     }
   }
   return { deleted, bytes, errors };
@@ -237,7 +263,7 @@ function gitIn(cwd) {
 }
 
 const MAX_CANDIDATES = 200;
-const EMPTY = () => ({ defaultBranch: null, deletable: [], goneUnmerged: [], skipped: null });
+const EMPTY = () => ({ defaultBranch: null, deletable: [], goneUnmerged: [], skipped: null, truncated: 0 });
 
 function defaultBranchOf(git) {
   const sym = git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
@@ -281,7 +307,7 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
       .filter(l => l.startsWith('branch refs/heads/'))
       .map(l => l.slice('branch refs/heads/'.length))
   );
-  const refs = (
+  const candidates = (
     git(
       'for-each-ref',
       '--format=%(refname)%09%(objectname)%09%(upstream:track)%09%(symref)',
@@ -301,8 +327,10 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
     })
     .filter(b => !b.symref)
     .filter(b => b.name !== defaultBranch && !checkedOut.has(b.name))
-    .filter(b => b.gone || b.name.startsWith('worktree-agent-'))
-    .slice(0, MAX_CANDIDATES);
+    .filter(b => b.gone || b.name.startsWith('worktree-agent-'));
+  // The first MAX_CANDIDATES are examined; `truncated` counts the rest, so a
+  // short list is not read as a complete one.
+  const refs = candidates.slice(0, MAX_CANDIDATES);
 
   const deletable = [];
   const goneUnmerged = [];
@@ -311,7 +339,13 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
     if (onDefault) deletable.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
     else if (b.gone) goneUnmerged.push({ name: b.name, sha: b.sha });
   }
-  return { defaultBranch, deletable, goneUnmerged, skipped: null };
+  return {
+    defaultBranch,
+    deletable,
+    goneUnmerged,
+    skipped: null,
+    truncated: candidates.length - refs.length,
+  };
 }
 
 if (invokedAsMain(import.meta.url)) {
@@ -321,7 +355,16 @@ if (invokedAsMain(import.meta.url)) {
   if (sub === 'tmp') {
     const p = parseStrictOrExit(rest, { bools: ['--apply'], values: ['--root', '--min-age-minutes'] });
     const opts = { apply: p.bools.has('--apply') };
-    if (p.values['--root'] !== undefined) opts.roots = [p.values['--root']];
+    if (p.values['--root'] !== undefined) {
+      // A root that is not a directory scans nothing, and an empty report with
+      // exit 0 reads as "nothing to reclaim".
+      const r = p.values['--root'];
+      if (!r || !fs.statSync(r, { throwIfNoEntry: false })?.isDirectory()) {
+        console.error(`--root must be an existing directory (got '${r}').`);
+        process.exit(2);
+      }
+      opts.roots = [r];
+    }
     if (p.values['--min-age-minutes'] !== undefined) {
       const n = parsePositiveInt(p.values['--min-age-minutes']);
       if (n === null) {

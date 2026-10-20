@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   scanVitestTmp,
@@ -205,6 +205,53 @@ test('vitest tmp: CLI dry-run prints JSON and exits 0', () => {
   assert.ok(fs.existsSync(d));
 });
 
+// Four sweeps racing over one root reported 4,244 deletions of 2,000 dirs:
+// rmSync({ recursive }) returned normally in every racer that had passed the
+// recheck. A dir is counted by the one sweep that removed it, and a dir another
+// sweep removed first is neither a deletion nor an error.
+test('vitest tmp: parallel --apply runs count each deleted dir once', async () => {
+  const n = 800;
+  for (let i = 0; i < n; i++) vitestDir(String(i).padStart(21, 'x'));
+  age(root, 2);
+  const runs = await Promise.all(
+    [1, 2, 3, 4].map(
+      () =>
+        new Promise(resolve => {
+          const c = spawn('node', [SCRIPT, 'tmp', '--apply', `--root=${root}`, '--min-age-minutes=1']);
+          let out = '';
+          c.stdout.on('data', d => (out += d));
+          c.on('close', code => resolve({ code, out }));
+        })
+    )
+  );
+  assert.deepEqual(
+    runs.map(r => r.code),
+    [0, 0, 0, 0]
+  );
+  const outs = runs.map(r => JSON.parse(r.out));
+  assert.deepEqual(fs.readdirSync(root), []);
+  assert.equal(
+    outs.reduce((sum, o) => sum + o.deleted, 0),
+    n,
+    `deleted per run: ${outs.map(o => o.deleted)}`
+  );
+  assert.deepEqual(
+    outs.flatMap(o => o.errors),
+    []
+  );
+});
+
+test('vitest tmp: CLI --root that is missing, not a directory or empty is a usage error naming it', () => {
+  const file = path.join(root, 'f');
+  fs.writeFileSync(file, '');
+  for (const bad of [path.join(root, 'nope'), file, '']) {
+    const r = spawnSync('node', [SCRIPT, 'tmp', `--root=${bad}`], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `--root=${bad}: ${r.stdout}`);
+    assert.equal(r.stdout, '');
+    assert.ok(r.stderr.includes(`'${bad}'`), r.stderr);
+  }
+});
+
 test('CLI: unknown subcommand exits 2', () => {
   const r = spawnSync('node', [SCRIPT, 'bogus'], { encoding: 'utf8' });
   assert.equal(r.status, 2);
@@ -403,6 +450,20 @@ test('branches: the CLI only reports — the listed branch still exists, and --a
   const apply = spawnSync('node', [SCRIPT, 'branches', '--apply', `--cwd=${r}`], { encoding: 'utf8' });
   assert.equal(apply.status, 2);
   assert.ok(git(r, 'branch', '--list', 'feat'), 'feat still exists after --apply');
+});
+
+// At most 200 candidates are examined; the ones left out used to vanish without
+// a word, so a caller could not tell "nothing more" from "not looked at".
+test('branches: more than 200 candidates → 200 examined and truncated counts the rest', () => {
+  const r = clone();
+  const sha = git(r, 'rev-parse', 'HEAD');
+  const refs = Array.from({ length: 203 }, (_, i) => `create refs/heads/worktree-agent-${i} ${sha}\n`);
+  const u = spawnSync('git', ['-C', r, 'update-ref', '--stdin'], { input: refs.join(''), env: GIT_ENV });
+  assert.equal(u.status, 0, String(u.stderr));
+  const out = classifyBranches({ cwd: r });
+  assert.equal(out.deletable.length, 200);
+  assert.equal(out.truncated, 3);
+  assert.equal(classifyBranches({ cwd: root }).truncated, 0, 'not a repo: nothing left out');
 });
 
 test('branches: a symbolic ref is never listed, whatever it points at (re-review 2 M1)', () => {
