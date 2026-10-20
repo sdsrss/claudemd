@@ -10,7 +10,8 @@
 # deferred: `PreCompact`'s behaviour under AUTOMATIC compaction is unverified
 # here, and the fact it would record is already available to arm (i)'s
 # `source=="compact"` branch. This is arm (iii): at Stop, a session that did
-# code work and never wrote to its ledger gets one line saying so.
+# code work and did not write to its ledger in the window read (below) gets
+# one line saying so.
 #
 # Which matters because of what the ledger is FOR. Its value is entirely in
 # being current, and arm (i) re-injects it whether or not it is. Nothing else
@@ -223,7 +224,7 @@ EXTRA=$(jq -cn --arg l "$LS_BASE" --argjson n "$LS_EDITS" --argjson w "$LS_WINDO
   '{ledger:$l, edits:$n, window:$w, ledgers:$c}' 2>/dev/null) || EXTRA='null'
 hook_record ledger-staleness ledger-stale-advisory "$EXTRA" '§11-ledger' "$SESSION_ID"
 
-printf '[claudemd] §11 / G7 — this session edited code and never wrote to its ledger.\n' >&2
+printf '[claudemd] §11 / G7 — this session edited code and did not write to its ledger in the last %s transcript rows.\n' "$LS_WINDOW" >&2
 printf '  Ledger: %s (%s code-file edit(s) in the last %s transcript rows, and no Edit/Write on it in that span).\n' \
   "$LEDGER" "$LS_EDITS" "$LS_WINDOW" >&2
 if (( LS_COUNT > 1 )); then

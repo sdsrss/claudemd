@@ -304,6 +304,13 @@ if [[ "$OUT" == *"2 code-file edit(s)"* ]]; then
 else
   ng "6f: a ledger write outside the threshold still silenced: $OUT"
 fi
+# This session DID write the ledger, before the window. The headline said it
+# "never wrote to its ledger", which the hook cannot know: it reads the window.
+if [[ "$OUT" != *"never wrote"* && "$OUT" == *"edited code and did not write to its ledger in the last 10 transcript rows"* ]]; then
+  ok "6f2: the headline claims only the window it read"
+else
+  ng "6f2: the headline overclaims: $(printf '%s' "$OUT" | head -n 1)"
+fi
 # Control: the same transcript with a window that reaches the ledger write is
 # silent, so 6f is the threshold and not the rows themselves.
 reset_log
