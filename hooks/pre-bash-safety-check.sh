@@ -1184,6 +1184,22 @@ if :; then
       REASONS+=$'\n  - '"$s8_pos_msg"
       continue
     fi
+    # `~` is $HOME, but a target with no `$` never reached the bare
+    # whitelisted-var arm below: `rm -rf $HOME` denied and `rm -rf ~` passed.
+    # Deny-only: it fires on `~` followed by nothing but slashes, and not on a
+    # bounded find, the same two conditions that arm denies `$HOME` under;
+    # `~/x`, `~/*` and `~user` keep their verdicts, as `$HOME/x` and `$HOME/*` do.
+    s8_tilde_re='^~/*$'
+    if [[ "$rm_target" =~ $s8_tilde_re ]] && (( S8_FIND_BOUNDED == 0 )); then
+      HITS+=("$S8_RM_VERB ~ with no literal subpath (bare home directory)")
+      HIT_SECTIONS+=('§8-rm-rf-var')
+      if (( S8_RM_IS_FIND == 0 )); then
+        REASONS+=$'\n  - '"$S8_RM_VERB"$' ~ with no subpath: ~ is $HOME, and the whitelist permits ~/sub, not bare ~ (a directory literally named ~ is ./~)'
+      else
+        REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare ~ with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
+      fi
+      continue
+    fi
     grep -qE '\$[[:alpha:]_]|\$\{[^}]+\}' < <(echo "$rm_target") || continue
     varname=$(echo "$rm_target" | grep -oE '\$\{[^}]+\}|\$[[:alpha:]_][[:alnum:]_]*' | head -n1 \
       | sed -E 's/[${}"'"'"']//g')

@@ -72,6 +72,21 @@ deny	rm -rf $PWD (bare whitelisted-var)	rm -rf $PWD
 deny	rm -rf $TMPDIR (bare whitelisted-var)	rm -rf $TMPDIR
 deny	rm -rf $OLDPWD (bare whitelisted-var)	rm -rf $OLDPWD
 deny	rm -rf $HOME/ (trailing slash, no subpath)	rm -rf $HOME/
+# `~` is $HOME, but a target with no `$` never reached the arm that denies the
+# rows above: `rm -rf ~` and `rm -rf ~/` were allowed (converge backlog 175).
+# Same verdicts as the $HOME spellings; a subpath, a glob, a bounded find and a
+# directory literally named ~ keep theirs.
+deny	rm -rf ~ (bare tilde)	rm -rf ~
+deny	rm -rf ~/ (tilde, trailing slash)	rm -rf ~/
+deny	find ~ -delete (bare tilde, no primary)	find ~ -delete
+pass	rm -rf ~/cache (tilde with a subpath)	rm -rf ~/cache
+pass	rm -rf ~/* (tilde with a glob, as $HOME/*)	rm -rf ~/*
+pass	find ~ -name -delete (bounded find, as $HOME)	find ~ -name '*.tmp' -delete
+pass	rm -rf ./~ (a directory literally named ~)	rm -rf ./~
+# The gate reads targets after quote removal, so a quoted `~` (a directory
+# literally named ~, no expansion) reads as the bare one: residual F20; the
+# deny names ./~, which passes.
+xfp	F20 rm -rf "~" (quoted, no expansion)	rm -rf "~"
 
 # === pattern 2: npx unpinned ===
 deny	npx prettier (bare)	npx prettier
