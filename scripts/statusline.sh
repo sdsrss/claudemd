@@ -22,13 +22,16 @@ if [ -n "$input" ]; then
   # One jq call, five NUL-separated outputs. NUL cannot occur in a JSON string
   # value or a real path, so the reads always align regardless of field
   # content. `// ""` (NOT `// empty`) keeps all fields present.
+  # The input reaches jq through a pipe, not a here-string: bash up to 5.0 (and
+  # 5.1+ past a pipe buffer) writes a here-string to a temp file, so on a full
+  # disk jq got nothing and the line lost every field (D#455).
   {
     IFS= read -r -d '' cwd
     IFS= read -r -d '' model
     IFS= read -r -d '' used
     IFS= read -r -d '' fh_used
     IFS= read -r -d '' sd_used
-  } < <(jq -j '
+  } < <(printf '%s' "$input" 2>/dev/null | jq -j '
     (.cwd // .workspace.current_dir // ""), ([0]|implode),
     (.model.display_name // ""), ([0]|implode),
     # ctx: right after /clear (before the first API response) CC sends
@@ -38,7 +41,7 @@ if [ -n "$input" ]; then
        then ((.used_percentage // 0) | tostring) else "" end), ([0]|implode),
     ((.rate_limits.five_hour.used_percentage // "") | tostring), ([0]|implode),
     ((.rate_limits.seven_day.used_percentage // "") | tostring), ([0]|implode)
-  ' <<<"$input" 2>/dev/null)
+  ' 2>/dev/null)
 fi
 
 # M2: a field carrying a literal newline (pathological cwd/model) would break the

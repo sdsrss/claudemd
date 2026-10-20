@@ -291,3 +291,26 @@ test('M2: a field containing a newline still yields a single output line', () =>
   assert.equal(out.split('\n').length, 1, 'output must be exactly one line');
   assert.match(out, /Opus 4\.8/, 'newline in model collapsed to a space');
 });
+
+// D#455: bash 3.2 to 5.0 write every here-string to a temp file, 5.1 and later
+// one longer than a pipe buffer (64 KiB on Linux). With no file writable the
+// jq call that splits the fields got no input, and the line lost the dir, the
+// model and the meter. The 70,000-character field makes this discriminate on
+// bash 5.1+ as well as on macOS's /bin/bash 3.2.
+test('D#455: no file writable (a full disk) still renders every field', () => {
+  const payload = {
+    cwd: '/tmp/nonrepo-xyz',
+    model: { display_name: 'Opus 4.8' },
+    context_window: { used_percentage: 6 },
+    pad: 'x'.repeat(70000),
+  };
+  const r = spawnSync('bash', ['-c', `trap '' XFSZ; ulimit -f 0; exec bash "$0"`, SCRIPT], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    env: { ...process.env, DISABLE_STATUSLINE_QUOTA: '' },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes(`${ESC}[01;34mnonrepo-xyz${ESC}[00m`), `dir; got: ${JSON.stringify(r.stdout)}`);
+  assert.ok(r.stdout.includes(`${ESC}[00;36mOpus 4.8${ESC}[00m`), 'model');
+  assert.ok(r.stdout.includes(`${ESC}[02;32mctx:6%${ESC}[00m`), 'meter');
+});

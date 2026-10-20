@@ -255,6 +255,13 @@ test('hooks/ holds no here-string and no stdout file write outside a subshell', 
   assert.deepEqual(problems, [], problems.join('\n'));
 });
 
+// D#455: the status line is not a hook, but it ships, runs under the user's
+// bash on every render, and writes no file, so only the here-string rule applies.
+test('scripts/statusline.sh holds no here-string', () => {
+  const found = hereStrings(readReal('scripts/statusline.sh')).map(h => `${h.line}: ${h.text.trim()}`);
+  assert.deepEqual(found, [], found.join('\n'));
+});
+
 const NO_FNS = new Set(['rule_hits_append']);
 const kinds = src => findSites(src, NO_FNS).sites.map(s => s.kind);
 
