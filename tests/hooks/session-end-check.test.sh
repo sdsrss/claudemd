@@ -1393,6 +1393,29 @@ else
   ng "Case 34b:$R34"
 fi
 
+# --- Case 34c: a HOME with a trailing slash names the same ~/.claude zone. The
+# zone was "$HOME/.claude" glued as is, so HOME=/x/ gave /x//.claude, which no
+# normalised path sits under: 25e.1's memory edit after a commit counted and
+# wrote a checkpoint. The second row is 25d under the same HOME, the zone's
+# other use: a project inside ~/.claude keeps counting its own edits.
+R34=""
+reset_cwd
+T="$TMP_HOME/case34c.jsonl"
+make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$commit_call" "$TR_OK" \
+  "$(edit_at "$TMP_HOME/.claude/projects/x/memory/y.md")" "$TR_OK"
+HOME="$TMP_HOME/" CLAUDE_PROJECT_DIR="$TMP_HOME" run_hook "$T"
+[[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]] || R34+=" memory-edit:checkpoint"
+rm -rf "$CLAUDE_ROOT/tasks"
+make_transcript "$T" "$USER_MSG" "$(edit_at "$CLAUDE_ROOT/a.js")" "$TR_OK"
+printf '%s' "$(jq -cn --arg t "$T" --arg c "$CLAUDE_ROOT" '{hook_event_name:"SessionEnd",session_id:"x",transcript_path:$t,cwd:$c}')" \
+  | HOME="$TMP_HOME/" bash "$HOOK" 2>/dev/null
+compgen -G "$CLAUDE_ROOT/tasks/*-paused.md" >/dev/null || R34+=" claude-root-edit:dropped"
+if [[ -z "$R34" ]]; then
+  ok "Case 34c: with HOME=<dir>/ a memory edit is still outside the project, a project under ~/.claude still counts"
+else
+  ng "Case 34c:$R34"
+fi
+
 # --- Case 34e: `tsc` ending the command is a typecheck. The arm was `tsc ` with
 # a space, so `npx tsc`, a bare `tsc` and `pnpm exec tsc` left a checkpoint
 # after a clean typecheck. The control is a different tool whose name starts

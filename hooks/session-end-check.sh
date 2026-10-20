@@ -162,7 +162,10 @@ RESULT=$(tail -n 200 "$TRANSCRIPT" 2>/dev/null | jq -R -s --arg vre "$VALIDATE_R
             else . end;
   def under($d): if $d == "/" then startswith("/")
                  else ($d | rtrimstr("/")) as $d | ($d | length) > 0 and (. == $d or startswith($d + "/")) end;
-  def zone: if ($home | length) > 0 and under($home + "/.claude") then $home + "/.claude"
+  # HOME=/x/ must give /x/.claude, not /x//.claude, which no normalised path
+  # sits under: a memory edit then counted as a project change.
+  def zone: ($home | rtrimstr("/") + "/.claude") as $c
+            | if ($home | length) > 0 and under($c) then $c
             else (capture("^(?<z>(/private)?/tmp/claude-[0-9]+)(/|$)") | .z) // null end;
   def in_project: if type != "string" or (startswith("/") | not) then true
                   else norm as $p | ($p | zone) as $z
