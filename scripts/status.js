@@ -183,19 +183,6 @@ export async function status({ verbose = false } = {}) {
       version: m.data.version,
       entries: Array.isArray(m.data.entries) ? m.data.entries.length : 0,
     };
-  } else if (m.exists && m.data == null) {
-    // On disk but not JSON: an interrupted write, a truncating disk-full, a
-    // hand-edit. A bare `{installed:false}` read as "never installed", and
-    // /claudemd-status then suggested `/plugin install`, a no-op on an installed
-    // plugin (defect 160). Named the way doctor.js's manifest row names it.
-    plugin = {
-      installed: false,
-      hint: 'manifest-unparseable',
-      manifestPath: m.path,
-      detail:
-        'manifest is not valid JSON (interrupted write or hand-edit). ' +
-        'Fix: /claudemd-install (rewrites the manifest atomically).',
-    };
   } else {
     // CC's `/plugin install claudemd@claudemd` lands the version dir under
     // ~/.claude/plugins/cache/claudemd/claudemd/<ver>/ but does NOT fire
@@ -222,6 +209,19 @@ export async function status({ verbose = false } = {}) {
       }
     } catch {
       /* best-effort hint; absence is non-fatal */
+    }
+    // On disk but not JSON: an interrupted write, a truncating disk-full, a
+    // hand-edit. A bare `{installed:false}` read as "never installed", and
+    // /claudemd-status then suggested `/plugin install`, a no-op on an installed
+    // plugin (defect 160). Named the way doctor.js's manifest row names it, in
+    // fields of its own: the cache hint above keeps its keys and values.
+    if (m.exists && m.data == null) {
+      plugin.manifestError = 'unparseable';
+      plugin.manifestPath = m.path;
+      plugin.detail =
+        'manifest is not valid JSON (interrupted write or hand-edit). ' +
+        'Fix: /claudemd-install (rewrites the manifest atomically).';
+      if (!plugin.hint) plugin.hint = 'manifest-unparseable';
     }
   }
 

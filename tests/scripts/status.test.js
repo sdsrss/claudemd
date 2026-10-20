@@ -150,6 +150,23 @@ test('160: a manifest on disk that does not parse is named, not reported as not-
   assert.match(r.plugin.detail, /not valid JSON.*\/claudemd-install/);
 });
 
+test('160b: with a plugin cache present, an unparseable manifest keeps the cache hint and adds its own fields', async () => {
+  // 0.113.3 pre-tag review M1: the first fix replaced the cache-present hint
+  // and cacheVersions with its own, which /claudemd-status's page does not
+  // know. The change has to be additive: the old keys keep their values.
+  const manifest = path.join(tmpHome, '.claude/.claudemd-manifest.json');
+  fs.writeFileSync(manifest, '{"version":"0.1.0","entr');
+  const cacheBase = path.join(tmpHome, '.claude/plugins/cache/claudemd/claudemd');
+  fs.mkdirSync(path.join(cacheBase, '0.6.5'), { recursive: true });
+  const r = await status();
+  fs.rmSync(path.join(tmpHome, '.claude/plugins'), { recursive: true, force: true });
+  assert.equal(r.plugin.installed, false);
+  assert.equal(r.plugin.hint, 'cache-present-bootstrap-pending', JSON.stringify(r.plugin));
+  assert.deepEqual(r.plugin.cacheVersions, ['0.6.5']);
+  assert.equal(r.plugin.manifestError, 'unparseable');
+  assert.equal(r.plugin.manifestPath, manifest);
+});
+
 test('status survives a manifest with version but no entries array (v0.23.11)', async () => {
   // A legacy / hand-edited / truncated manifest may carry `version` without
   // `entries`. Pre-fix `m.data.entries.length` threw an unguarded TypeError
