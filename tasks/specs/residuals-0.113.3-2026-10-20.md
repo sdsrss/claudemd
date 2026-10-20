@@ -39,6 +39,11 @@
 - 2026-10-20：不修、留给使用者的：178（cross-repo-write 引号里的分隔符，修法 0241e73 已写好未拣入：与 `tasks/specs/cross-repo-write.md` r7 使用者"撤回到简单形式"的决定冲突）；179a（banned-vocab 放行引号里的词，要权衡绕过口子）；166（触发词是模型可见文字，L3）；doctor fail-open（退出码语义，L3）。不修、有依据的：124（前提没复现，0.107.1 起已登记为已知限制）、141a（1,500 个暂停文件不现实）、179c（会把 §8 的拒绝变成放行）。
 - 2026-10-20：执行代理报的同类遗漏一起修了：重定向顺序这一类在 `hooks/` 下还有 13 处、另有 5 处写入完全没丢弃 stderr（737d6d7），加了源码规则。session-end 的 `make tests`/`make unittest` 不再算验证：与 npm 脚本名的规则一致，本机会话里出现的 make 目标只有 `lint-js`、`test-js`，维持。
 - 2026-10-20：`commands/claudemd-clean-residue.md` 的类别数随 branch-prune 新状态类改了（漂移测试要求）；其余因修复而说得不全的命令页（bypass-audit、analyze、uninstall、refresh、status）是模型可见文字，没改，列入 CHANGELOG 的 Not changed。
+- 2026-10-20：发版前评审第 1 轮（三个不带名的评审并行，b3f7169..164ad9b）：对外承诺侧 0C/0H/2M/10L，hooks 侧 0C/0H/2M/9L，脚本侧 0C/0H/3M/6L。
+  - 撤回两个组件（修的是罕见漏报，引入的误报有真实数据或更常见）：b893a1c（evidence-gate 后台运行，573528b）、ad5605f（session-end make 目标，7f1a749）。
+  - 修复：status 改为纯增量（0974a1e）；claudemd-cli 严格 UTF-8、`audit <path> -h`、CONTRIBUTING 退出码表写明"无法使用的输入用 2"（8d24040）；branch-prune 认领失败照常提示（8ec325e）；sandbox-disposal 的 touch 与 tmp-sweep 的 nohup 重定向（42d8031）；doc-check 逗号后的比例（7ddcdb4）；模块标记近似写法（37829d4）；statusline 恢复整个对象（107b61e）；mem-audit 取第一个链接（be8fa47）；test-failure-debug 锁过期（270847c）；语料行编号与 F21 登记（6fdb653）；文档（61a494c）；CHANGELOG 按三份报告改写。
+  - 退出码的取舍：先按表把 lint 的非 UTF-8 改成 1，随后改回 2——这个 CLI 本来就用 2 表示"无法使用的输入"（文件不存在、目录、不是会话记录的 JSON），表与现状不符，改的是表。
+  - 不修：已发布提交说明里引用了拣入前的 SHA（b1732d3、7d92c78、b654165），改要重写已推送的历史；branch-prune 认领不随压缩重置；推送闸门的其他命令位置形状、`--help` 豁免只读第一段（0.113.2 起就如此）。
 
 ## 验证记录
 - c907e25：`bash tests/hooks/spec-module-inject.test.sh` → 改前 17/18（用例 18 失败），改后 18/18（bash 5.3.9 与 3.2.57）；每条提示词耗时 100 次 × 3：改前 11.58/11.00/11.21 ms，改后 11.17/11.27/10.63 ms。
