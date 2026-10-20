@@ -9,7 +9,7 @@
 #   2. Fetch-execute package runner without a version pin AND not resolvable from
 #      cwd's lockfile / node_modules — spec §8 NPX rule "lockfile → local →
 #      pinned whitelist; none → [AUTH REQUIRED]". Covers `npx` / `npm exec` /
-#      `bunx` / `pnpm dlx` / `yarn dlx` (`npm install` / `pnpm install` etc. are
+#      `npm x` / `bunx` / `bun x` / `pnpm dlx` / `yarn dlx` (`npm install` etc. are
 #      not fetch-execute one-offs and stay excluded).
 #   3. Network fetch piped/`<()`-substituted into a shell — spec §8 "execute
 #      scripts of unknown origin": `curl|wget … | [sudo] sh/bash/…` or
@@ -1626,7 +1626,7 @@ fi
 # fetch+run an unpinned unknown package identically (npx is literally a shortcut
 # for `npm exec`), so the §8 NPX gate (lockfile → local → pinned) applies to the
 # whole family. `npm install` / `npm run` / `pnpm install` / `yarn add` are NOT
-# fetch-execute one-offs and stay excluded (the regex requires the `exec`/`dlx`
+# fetch-execute one-offs and stay excluded (the regex requires the `exec`/`x`/`dlx`
 # subcommand). 2026-07-03 §8 false-negative audit + code review found the
 # siblings bypassed the npx-only detector; local/lockfile resolution below
 # already reads pnpm-lock.yaml / yarn.lock, so the gate is symmetric across

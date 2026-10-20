@@ -168,8 +168,8 @@ Emitters, derived from source and gated by
 - `cross-repo-write-check.sh` — PreToolUse (`Edit|Write|NotebookEdit|Bash`);
   one line per git repo, other than the one owning `cwd`, that the call writes
   into — the target path of a file tool, or a git write after a literal `cd` or
-  `git -C` in Bash. Told once per repo per session (an `O_EXCL` claim), recorded
-  on every hit. Opt-in `CROSS_REPO_WRITE=1`. It never sets
+  `git -C` in Bash. Told once per repo per session (an `O_EXCL` claim; told again
+  when the claim cannot be written), recorded on every hit. Opt-in `CROSS_REPO_WRITE=1`. It never sets
   `permissionDecision`, so the envelope carries context only.
 - `tmp-sweep.sh` — PostToolUse (`Bash`); one line when the temp root is at or
   past `CLAUDEMD_TMP_PRESSURE_PCT` (default 80) full, naming the percentage
