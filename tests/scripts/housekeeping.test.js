@@ -1241,6 +1241,30 @@ test('refused: a commit changed in the pick → kept, naming the commit with no 
   ]);
 });
 
+// A replace ref swaps a commit's content for another's, parents included: one
+// that gives the branch tip main's copy as its content and the fork point as
+// its parent hid the commit before it, and the branch read as landed.
+test('refused / branches: a replace ref that hides a branch commit → kept, naming that commit', () => {
+  const r = clone();
+  const wa = 'worktree-agent-e0123456789abcdef';
+  git(r, 'checkout', '-q', '-b', 'topic');
+  commit(r, 'c.txt', 'work not on main\n');
+  const hidden = git(r, 'rev-parse', '--short', 'HEAD');
+  commit(r, 'b.txt', 'b\n');
+  const tip = git(r, 'rev-parse', 'HEAD');
+  git(r, 'branch', wa);
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'b.txt', 'b\n');
+  const lookalike = git(r, 'commit-tree', 'main^{tree}', '-p', 'main~1', '-m', 'edit b.txt');
+  git(r, 'replace', tip, lookalike);
+  assert.notEqual(branchD(r, 'topic').status, 0, 'fixture: git branch -d refuses topic');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d topic' });
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept[0]?.reason, 'not-on-default');
+  assert.deepEqual(out.kept[0].unmatched, [{ sha: hidden, subject: 'edit c.txt' }]);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+});
+
 test('refused: on main but -d refused because HEAD is elsewhere → landed on-main', () => {
   const r = clone();
   git(r, 'checkout', '-q', '-b', 'topic');

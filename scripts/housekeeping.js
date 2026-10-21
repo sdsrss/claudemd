@@ -304,9 +304,14 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // merged one; the sha this report gives is what a caller compares the tip
 // with first, so a branch that moved since is not deleted.
 
+// --no-replace-objects: a replace ref swaps a commit's content and parents, so
+// one could hide a branch commit from `rev-list` and the branch read as
+// landed. The history walked here is the commits' own; patch ids read with
+// replacement only pick candidates, which the merge-tree check below then
+// compares as the real objects.
 function gitIn(cwd) {
   return (...args) => {
-    const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
+    const r = spawnSync('git', ['--no-replace-objects', '-C', cwd, ...args], { encoding: 'utf8' });
     return r.status === 0 ? r.stdout.replace(/\n$/, '') : null;
   };
 }
