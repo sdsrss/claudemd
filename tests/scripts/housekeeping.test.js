@@ -806,8 +806,8 @@ test('branches: an edit that main made to the other identical block, after chang
 // result: merge=ours keeps main's side, the built-in merge=union keeps both
 // sides of a conflict, so a change that is not on main read as landed. They
 // came from .git/info/attributes with a driver in the repository config, from
-// the user's ~/.gitconfig and attributes file, and from a .gitattributes
-// (pre-tag review round 2 M1).
+// the user's global config (GIT_CONFIG_GLOBAL stands for ~/.gitconfig here)
+// and attributes file, and from a .gitattributes (pre-tag review round 2 M1).
 test('branches: merge attributes and drivers do not decide the same-place check', () => {
   const withEnv = (vars, fn) => {
     const saved = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));
@@ -844,16 +844,16 @@ test('branches: merge attributes and drivers do not decide the same-place check'
     commit(r, 'f.txt', block(2) + block(1));
     commit(r, 'f.txt', block(2) + dropped);
   };
-  const ours = path.join(root, 'home-ours');
-  fs.mkdirSync(ours);
-  fs.writeFileSync(path.join(ours, 'attributes'), 'f.txt merge=ours\n');
+  const user = path.join(root, 'user');
+  fs.mkdirSync(path.join(user, 'git'), { recursive: true });
+  fs.writeFileSync(path.join(user, 'attributes'), 'f.txt merge=ours\n');
   fs.writeFileSync(
-    path.join(ours, '.gitconfig'),
-    `[core]\n\tattributesFile = ${path.join(ours, 'attributes')}\n[merge "ours"]\n\tdriver = true\n`
+    path.join(user, 'gitconfig'),
+    `[core]\n\tattributesFile = ${path.join(user, 'attributes')}\n[merge "ours"]\n\tdriver = true\n`
   );
-  const union = path.join(root, 'home-union');
-  fs.mkdirSync(path.join(union, '.config', 'git'), { recursive: true });
-  fs.writeFileSync(path.join(union, '.config', 'git', 'attributes'), 'f.txt merge=union\n');
+  fs.writeFileSync(path.join(user, 'empty'), '');
+  // The attributes file's default place, $XDG_CONFIG_HOME/git/attributes.
+  fs.writeFileSync(path.join(user, 'git', 'attributes'), 'f.txt merge=union\n');
   const cases = [
     [
       '.git/info/attributes',
@@ -865,12 +865,12 @@ test('branches: merge attributes and drivers do not decide the same-place check'
       },
       {},
     ],
-    ['~/.gitconfig', otherBlock, () => {}, { HOME: ours, GIT_CONFIG_GLOBAL: undefined }],
+    ['global core.attributesFile', otherBlock, () => {}, { GIT_CONFIG_GLOBAL: path.join(user, 'gitconfig') }],
     [
-      '~/.config/git/attributes',
+      '$XDG_CONFIG_HOME/git/attributes',
       dropBlock,
       () => {},
-      { HOME: union, XDG_CONFIG_HOME: path.join(union, '.config'), GIT_CONFIG_GLOBAL: undefined },
+      { GIT_CONFIG_GLOBAL: path.join(user, 'empty'), XDG_CONFIG_HOME: user },
     ],
     [
       '.gitattributes',
@@ -883,18 +883,16 @@ test('branches: merge attributes and drivers do not decide the same-place check'
       {},
     ],
   ];
+  const landed = {};
   for (const [where, fixture, attrs, vars] of cases) {
     for (const d of ['remote.git', 'seed', 'repo'])
       fs.rmSync(path.join(root, d), { recursive: true, force: true });
     const r = clone();
     attrs(r);
     fixture(r);
-    assert.deepEqual(
-      withEnv(vars, () => names(classifyBranches({ cwd: r }).landed)),
-      [],
-      where
-    );
+    landed[where] = withEnv(vars, () => names(classifyBranches({ cwd: r }).landed));
   }
+  assert.deepEqual(landed, Object.fromEntries(cases.map(([where]) => [where, []])));
 });
 
 // Judging ran a merge driver from the repository's config (an npx-based one
